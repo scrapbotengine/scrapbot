@@ -1,6 +1,6 @@
 # FDR-001: Project Directory Runtime
 
-**Status:** Planned
+**Status:** Active
 **Last reviewed:** 2026-07-01
 
 ## Overview
@@ -12,6 +12,7 @@ The project directory runtime lets users and agents run the `machina` binary ins
 - Users can launch Machina commands from a project directory.
 - Users can pass an explicit project path when they do not want to rely on the current working directory.
 - The runtime locates project metadata, resolves project-relative paths, and reports clear diagnostics when the directory is not a valid project.
+- Users can initialize a new project with `machina init [path]`.
 - Interactive and headless commands use the same project loading rules.
 - Commands that write files keep generated artifacts separate from authoritative source files.
 
@@ -36,5 +37,4 @@ The project directory runtime lets users and agents run the `machina` binary ins
 
 ## Open Questions
 
-- What is the canonical project metadata filename?
-- Should `machina init` be part of the first implementation slice?
+- Generated cache and artifact path rules still need to be formalized beyond the Zig build cache.

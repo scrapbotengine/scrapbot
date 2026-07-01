@@ -1,6 +1,6 @@
 # FDR-002: Text-Based Scene Authoring
 
-**Status:** Planned
+**Status:** Active
 **Last reviewed:** 2026-07-01
 
 ## Overview
@@ -11,6 +11,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 
 - Scenes are stored as text files in a documented, schema-validated format.
 - Scene files describe entities, names, hierarchy or relationships, components, and references to assets, scripts, prefabs, and other project resources.
+- The initial scene format uses TOML-shaped text files, starting with `scenes/main.scene.toml`.
 - Scene files are stable under repeated editor saves when the scene has not changed.
 - Invalid scene files produce precise diagnostics suitable for command-line and editor display.
 - Scene authoring is separate from behavior scripting; scripts can be referenced by scene components but do not replace scene data.
@@ -36,5 +37,4 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 
 ## Open Questions
 
-- Which scene file format should be used initially?
 - How much schema versioning is needed before the first playable slice?

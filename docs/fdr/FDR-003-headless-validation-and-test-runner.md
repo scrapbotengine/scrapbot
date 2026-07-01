@@ -1,6 +1,6 @@
 # FDR-003: Headless Validation and Test Runner
 
-**Status:** Planned
+**Status:** Active
 **Last reviewed:** 2026-07-01
 
 ## Overview
@@ -10,6 +10,7 @@ The headless validation and test runner lets users, CI systems, and agents check
 ## Behavior
 
 - Users can run a command that validates project metadata, scenes, referenced files, asset metadata, script references, and supported configuration files.
+- The initial `machina check [path]` command validates project metadata and the default scene.
 - Users can run project tests without initializing graphical presentation.
 - Validation and test failures produce structured, location-aware diagnostics.
 - Commands return appropriate process exit codes for automation.
