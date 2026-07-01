@@ -18,7 +18,7 @@ pub const RenderError = error{
     BufferMapFailed,
 };
 
-pub fn renderTriangleBmp(io: Io, output_path: []const u8) !void {
+pub fn renderTriangleBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8) !void {
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
 
@@ -173,7 +173,7 @@ pub fn renderTriangleBmp(io: Io, output_path: []const u8) !void {
     const mapped: [*]u8 = @ptrCast(@alignCast(staging_buffer.getMappedRange(0, output_size) orelse return RenderError.BufferMapFailed));
     defer staging_buffer.unmap();
 
-    try write24BitBmp(io, output_path, mapped[0..output_size]);
+    try write24BitBmp(io, allocator, output_path, mapped[0..output_size]);
 }
 
 fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?*anyopaque, userdata2: ?*anyopaque) callconv(.c) void {
@@ -184,20 +184,21 @@ fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?
     map_status.* = status;
 }
 
-fn write24BitBmp(io: Io, output_path: []const u8, bgra_data: []const u8) !void {
-    var bytes: [bmpFileSize()]u8 = undefined;
-    @memset(&bytes, 0);
+fn write24BitBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, bgra_data: []const u8) !void {
+    const bytes = try allocator.alloc(u8, bmpFileSize());
+    defer allocator.free(bytes);
+    @memset(bytes, 0);
 
     var cursor: usize = 0;
-    putBytes(&bytes, &cursor, "BM");
-    putInt(u32, &bytes, &cursor, bmpFileSize());
-    putInt(u32, &bytes, &cursor, 0);
-    putInt(u32, &bytes, &cursor, 54);
-    putInt(u32, &bytes, &cursor, 40);
-    putInt(u32, &bytes, &cursor, output_width);
-    putInt(u32, &bytes, &cursor, output_height);
-    putInt(u16, &bytes, &cursor, 1);
-    putInt(u16, &bytes, &cursor, 24);
+    putBytes(bytes, &cursor, "BM");
+    putInt(u32, bytes, &cursor, bmpFileSize());
+    putInt(u32, bytes, &cursor, 0);
+    putInt(u32, bytes, &cursor, 54);
+    putInt(u32, bytes, &cursor, 40);
+    putInt(u32, bytes, &cursor, output_width);
+    putInt(u32, bytes, &cursor, output_height);
+    putInt(u16, bytes, &cursor, 1);
+    putInt(u16, bytes, &cursor, 24);
     cursor += 4 * 6;
 
     var line_buffer = [_]u8{0} ** bmp_bytes_per_line;
@@ -212,12 +213,12 @@ fn write24BitBmp(io: Io, output_path: []const u8, bgra_data: []const u8) !void {
             line_buffer[bgr_pixel_offset + 1] = bgra_data[bgra_pixel_offset + 1];
             line_buffer[bgr_pixel_offset + 2] = bgra_data[bgra_pixel_offset + 2];
         }
-        putBytes(&bytes, &cursor, &line_buffer);
+        putBytes(bytes, &cursor, &line_buffer);
     }
 
     try Io.Dir.cwd().writeFile(io, .{
         .sub_path = output_path,
-        .data = &bytes,
+        .data = bytes,
     });
 }
 

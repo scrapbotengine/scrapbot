@@ -91,7 +91,7 @@ fn run(
         };
         defer machina.freeProject(allocator, result.project);
 
-        machina.renderTriangleBmp(io, output_path) catch |err| {
+        machina.renderTriangleBmp(io, allocator, output_path) catch |err| {
             try stderr.print("render failed: {s}\n", .{@errorName(err)});
             return 1;
         };
