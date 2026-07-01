@@ -46,10 +46,13 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
 
     try root_dir.createDirPath(io, "scenes");
 
+    const escaped_name = try encodeTomlBasicString(allocator, name);
+    defer allocator.free(escaped_name);
+
     const project_contents = try std.fmt.allocPrint(
         allocator,
         "name = \"{s}\"\nversion = 1\ndefault_scene = \"{s}\"\n",
-        .{ name, default_scene_path },
+        .{ escaped_name, default_scene_path },
     );
     defer allocator.free(project_contents);
 
@@ -158,10 +161,58 @@ fn readRequiredString(allocator: std.mem.Allocator, contents: []const u8, key: [
         if (value.len < 2 or value[0] != '"' or value[value.len - 1] != '"') {
             return null;
         }
-        return try allocator.dupe(u8, value[1 .. value.len - 1]);
+        return try decodeTomlBasicString(allocator, value[1 .. value.len - 1]);
     }
 
     return null;
+}
+
+fn encodeTomlBasicString(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    for (value) |byte| {
+        switch (byte) {
+            '\\' => try out.appendSlice(allocator, "\\\\"),
+            '"' => try out.appendSlice(allocator, "\\\""),
+            '\n' => try out.appendSlice(allocator, "\\n"),
+            '\r' => try out.appendSlice(allocator, "\\r"),
+            '\t' => try out.appendSlice(allocator, "\\t"),
+            else => try out.append(allocator, byte),
+        }
+    }
+
+    return try out.toOwnedSlice(allocator);
+}
+
+fn decodeTomlBasicString(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    var index: usize = 0;
+    while (index < value.len) : (index += 1) {
+        const byte = value[index];
+        if (byte != '\\') {
+            try out.append(allocator, byte);
+            continue;
+        }
+
+        index += 1;
+        if (index >= value.len) {
+            return ProjectError.InvalidProject;
+        }
+
+        switch (value[index]) {
+            '\\' => try out.append(allocator, '\\'),
+            '"' => try out.append(allocator, '"'),
+            'n' => try out.append(allocator, '\n'),
+            'r' => try out.append(allocator, '\r'),
+            't' => try out.append(allocator, '\t'),
+            else => return ProjectError.InvalidProject,
+        }
+    }
+
+    return try out.toOwnedSlice(allocator);
 }
 
 fn hasRequiredString(contents: []const u8, key: []const u8) bool {
@@ -241,6 +292,21 @@ test "checkProject validates a project directory" {
 
     try std.testing.expectEqualStrings("Game", result.project.name);
     try std.testing.expectEqualStrings(default_scene_path, result.project.default_scene);
+}
+
+test "initProject escapes project names in metadata" {
+    const root_path = ".zig-cache/test-escaped-project-name";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Agent \"One\"");
+
+    const result = try checkProject(io, std.testing.allocator, root_path);
+    defer freeProject(std.testing.allocator, result.project);
+
+    try std.testing.expectEqualStrings("Agent \"One\"", result.project.name);
 }
 
 test "checkProject rejects unsupported metadata version" {

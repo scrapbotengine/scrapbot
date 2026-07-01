@@ -5,14 +5,13 @@
 
 ## Overview
 
-The headless validation and test runner lets users, CI systems, and agents check project correctness without opening a window. It exists to make project health observable and enforceable through deterministic commands.
+The headless validation and test runner lets users, CI systems, and agents check project correctness without opening a window. The initial implementation validates project metadata and the default scene; broader asset, script, and configuration validation will be added as those systems come online.
 
 ## Behavior
 
-- Users can run a command that validates project metadata, scenes, referenced files, asset metadata, script references, and supported configuration files.
 - The initial `machina check [path]` command validates project metadata and the default scene.
-- Users can run project tests without initializing graphical presentation.
-- Validation and test failures produce structured, location-aware diagnostics.
+- Users can run project validation without initializing graphical presentation.
+- Validation failures produce command-line diagnostics and non-zero process exit codes.
 - Commands return appropriate process exit codes for automation.
 - Headless commands avoid creating or mutating source files unless the command explicitly performs a repair, import, or generation action.
 
@@ -38,4 +37,5 @@ The headless validation and test runner lets users, CI systems, and agents check
 ## Open Questions
 
 - What diagnostic output formats should be supported beyond human-readable text?
+- How should location-aware diagnostics be represented once schemas become richer?
 - Should snapshot rendering be part of validation, testing, or a separate command?
