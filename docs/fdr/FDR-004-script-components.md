@@ -26,11 +26,11 @@ Script components let scenes attach scripted behavior to entities. They exist so
 **Why:** This keeps structure in the scene model and behavior in script files. It follows ADR-001 and ADR-006.
 **Tradeoff:** The engine needs a stable component representation before the scripting API is complete.
 
-### 2. Delay the final scripting language until prototype evidence exists
+### 2. Use Luau as the scripting target
 
-**Decision:** The feature is designed around an embeddable scripting language, with Lua, Luau, and Wren still candidates.
-**Why:** Binding ergonomics, diagnostics, sandboxing, and agent-generated script quality need direct evaluation. It follows ADR-006.
-**Tradeoff:** Early feature docs cannot yet specify final syntax or runtime library behavior.
+**Decision:** Script components target Luau.
+**Why:** Luau gives Machina a game-oriented scripting language with room for sandboxing, type annotations, editor diagnostics, and agent-readable source. It follows ADR-006.
+**Tradeoff:** Machina needs a clear backend boundary for Luau packaging, binding, and cross-platform builds.
 
 ### 3. Bind scripts through the entity component runtime
 
@@ -51,7 +51,6 @@ Script components let scenes attach scripted behavior to entities. They exist so
 
 ## Open Questions
 
-- Which scripting language becomes the initial supported runtime?
 - What lifecycle callbacks should the first script component support?
 - How should script APIs expose entity and component access without creating unstable coupling?
 - How should script state be preserved or reset across reloads?

@@ -1,6 +1,6 @@
 # FDR-009: Entity Component Runtime
 
-**Status:** Planned
+**Status:** Active
 **Last reviewed:** 2026-07-01
 
 ## Overview
@@ -15,7 +15,8 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Scene files author entity and component data as text.
 - Scripts can query, add, update, and remove supported components through the scripting API.
 - Scripts can register new component and system types with project-local or qualified non-reserved ids.
-- Engine-owned and script-defined systems can participate in the runtime lifecycle once scheduling rules exist.
+- Engine-owned and script-defined systems declare phases, read/write component access, and optional before/after ordering relationships.
+- The runtime can build phase-specific system schedule batches from those declarations.
 - Invalid, duplicate, or unsupported entity/component data produces diagnostics suitable for command-line and editor display.
 
 ## Design Decisions
@@ -28,7 +29,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 
 ### 2. Commit to ECS semantics before committing to ECS storage
 
-**Decision:** The feature commits to entity/component/system behavior now, while storage layout, archetypes, scheduling, and library choices remain implementation decisions.
+**Decision:** The feature commits to entity/component/system behavior now, while storage layout, archetypes, and library choices remain implementation decisions.
 **Why:** Early slices should not lock the engine into a performance strategy before real workloads exist. It follows ADR-008.
 **Tradeoff:** Implementation needs discipline so temporary native structures do not become permanent side channels.
 
@@ -44,6 +45,12 @@ The entity component runtime is the shared low-level model for game state. It gi
 **Why:** Component and system references need to be ergonomic in local projects and stable across packages, reloads, and diagnostics. It follows ADR-010.
 **Tradeoff:** Promoting a local type into a reusable package requires an explicit id migration.
 
+### 5. Schedule by declared access
+
+**Decision:** System definitions include phase, read components, write components, and ordering relationships. The native runtime uses those declarations to build batches of systems that can run without access conflicts.
+**Why:** Explicit access keeps validation, reload, editor inspection, and future parallel execution aligned. It follows ADR-006 and ADR-008.
+**Tradeoff:** Systems must be honest and explicit about access before the scheduler can safely parallelize them.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010
@@ -53,4 +60,4 @@ The entity component runtime is the shared low-level model for game state. It gi
 
 - What stable id format should entities use?
 - What is the first explicit component table syntax in scene files?
-- How much system scheduling control should scripts get in the first playable slice?
+- How much scheduler control should scripts get beyond phases, access declarations, and before/after relationships?

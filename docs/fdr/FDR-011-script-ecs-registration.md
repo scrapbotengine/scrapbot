@@ -1,6 +1,6 @@
 # FDR-011: Script ECS Registration
 
-**Status:** Planned
+**Status:** Active
 **Last reviewed:** 2026-07-01
 
 ## Overview
@@ -13,11 +13,17 @@ Script ECS registration lets project and package scripts define new component an
 - Package scripts can register component and system types only with qualified ids.
 - Engine-owned ids use the reserved `machina.*` namespace.
 - Machina does not infer a default project namespace.
+- Project metadata lists script files in a root-level `scripts = [...]` array.
+- Script files use Luau source files and currently support a constrained declaration surface: `ecs.component(...)` and `ecs.system(...)`.
 - Duplicate registration with an identical definition is accepted as reload-compatible.
 - Duplicate registration with an incompatible definition fails validation.
 - Systems declare the component types they read and write.
+- Systems declare a phase; the current exposed schedule is the `update` phase.
 - Systems may declare ordering relationships by system id.
+- The native runtime builds update schedule batches from declared read/write access and before/after dependencies.
+- Systems that only read compatible component sets can share a batch; write conflicts or order dependencies force later batches.
 - Registration failures produce diagnostics suitable for command-line, editor, and reload surfaces.
+- This slice does not execute Luau system bodies yet.
 
 ## Design Decisions
 
@@ -39,6 +45,18 @@ Script ECS registration lets project and package scripts define new component an
 **Why:** Script reload should not fail just because a module runs its registration code again, but schema changes need explicit compatibility rules. It follows ADR-009 and ADR-010.
 **Tradeoff:** Definition equality and future migration behavior must be kept deterministic.
 
+### 4. Keep scheduling native
+
+**Decision:** Scripts declare systems and access sets, but the native runtime owns scheduling.
+**Why:** The engine needs deterministic validation, dependency planning, parallel batch construction, and a path toward multiple Luau VM partitions. It follows ADR-006 and ADR-008.
+**Tradeoff:** Script authors must describe access up front, and dynamic component access needs explicit API design before it can be supported.
+
+### 5. Start with Luau declarations before VM execution
+
+**Decision:** The first implementation parses a constrained Luau declaration surface and does not execute `run` callbacks.
+**Why:** Registration and scheduling shape the architecture more than callback execution. They can be validated headlessly and reloaded before the Luau runtime dependency is wired into the build.
+**Tradeoff:** This is scripting metadata, not playable script behavior yet.
+
 ## Related
 
 - **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010
@@ -46,6 +64,7 @@ Script ECS registration lets project and package scripts define new component an
 
 ## Open Questions
 
-- Which Lua runtime becomes the first scripting backend?
+- How should the real Luau VM be packaged and linked across platforms?
+- How are Luau system bodies compiled, cached, invoked, and isolated?
 - How will component defaults and migrations be represented in script schemas?
-- Which system phases are exposed to script-defined systems first?
+- Which system phases beyond `update` should be exposed to script-defined systems first?

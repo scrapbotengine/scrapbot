@@ -19,6 +19,10 @@ pub const RegistryError = TypeIdError || error{
     DuplicateSystemAccess,
 };
 
+pub const ScheduleError = error{
+    CyclicSystemOrder,
+};
+
 const engine_namespace = "machina";
 
 pub const FieldType = enum {
@@ -39,12 +43,62 @@ pub const ComponentDefinition = struct {
     fields: []const ComponentFieldDefinition = &.{},
 };
 
+pub const SystemPhase = enum {
+    startup,
+    update,
+    fixed_update,
+    render,
+};
+
 pub const SystemDefinition = struct {
     id: []const u8,
+    phase: SystemPhase = .update,
     reads: []const []const u8 = &.{},
     writes: []const []const u8 = &.{},
     before: []const []const u8 = &.{},
     after: []const []const u8 = &.{},
+};
+
+pub const ScheduledSystem = struct {
+    registry_index: usize,
+    id: []const u8,
+};
+
+pub const SystemBatch = struct {
+    phase: SystemPhase,
+    systems: []const ScheduledSystem,
+};
+
+pub const SystemSchedule = struct {
+    allocator: std.mem.Allocator,
+    batches: []const SystemBatch,
+
+    pub fn deinit(self: *SystemSchedule) void {
+        const allocator = self.allocator;
+        for (self.batches) |batch| {
+            for (batch.systems) |system| {
+                allocator.free(system.id);
+            }
+            allocator.free(batch.systems);
+        }
+        allocator.free(self.batches);
+        self.* = .{
+            .allocator = allocator,
+            .batches = &.{},
+        };
+    }
+
+    pub fn batchCount(self: SystemSchedule) usize {
+        return self.batches.len;
+    }
+
+    pub fn systemCount(self: SystemSchedule) usize {
+        var count: usize = 0;
+        for (self.batches) |batch| {
+            count += batch.systems.len;
+        }
+        return count;
+    }
 };
 
 const RegistrationContext = enum {
@@ -125,6 +179,115 @@ pub const ComponentRegistry = struct {
             }
         }
         return null;
+    }
+
+    pub fn buildSchedule(self: ComponentRegistry, allocator: std.mem.Allocator, phase: SystemPhase) !SystemSchedule {
+        var phase_indices: std.ArrayList(usize) = .empty;
+        defer phase_indices.deinit(allocator);
+
+        for (self.systems.items, 0..) |system, index| {
+            if (system.phase == phase) {
+                try phase_indices.append(allocator, index);
+            }
+        }
+
+        const system_count = phase_indices.items.len;
+        const remaining_dependencies = try allocator.alloc(usize, system_count);
+        defer allocator.free(remaining_dependencies);
+        const scheduled = try allocator.alloc(bool, system_count);
+        defer allocator.free(scheduled);
+
+        @memset(remaining_dependencies, 0);
+        @memset(scheduled, false);
+
+        for (0..system_count) |target_local| {
+            for (0..system_count) |source_local| {
+                if (source_local == target_local) {
+                    continue;
+                }
+                if (self.mustRunBefore(phase_indices.items[source_local], phase_indices.items[target_local])) {
+                    remaining_dependencies[target_local] += 1;
+                }
+            }
+        }
+
+        var batches: std.ArrayList(SystemBatch) = .empty;
+        errdefer {
+            for (batches.items) |batch| {
+                for (batch.systems) |system| {
+                    allocator.free(system.id);
+                }
+                allocator.free(batch.systems);
+            }
+            batches.deinit(allocator);
+        }
+
+        var scheduled_count: usize = 0;
+        while (scheduled_count < system_count) {
+            var batch_local_indices: std.ArrayList(usize) = .empty;
+            defer batch_local_indices.deinit(allocator);
+
+            for (0..system_count) |local_index| {
+                if (scheduled[local_index] or remaining_dependencies[local_index] != 0) {
+                    continue;
+                }
+                if (self.conflictsWithBatch(phase_indices.items[local_index], phase_indices.items, batch_local_indices.items)) {
+                    continue;
+                }
+
+                try batch_local_indices.append(allocator, local_index);
+                scheduled[local_index] = true;
+            }
+
+            if (batch_local_indices.items.len == 0) {
+                return ScheduleError.CyclicSystemOrder;
+            }
+
+            const systems = try allocator.alloc(ScheduledSystem, batch_local_indices.items.len);
+            var copied_system_count: usize = 0;
+            var systems_transferred = false;
+            errdefer {
+                if (!systems_transferred) {
+                    for (systems[0..copied_system_count]) |system| {
+                        allocator.free(system.id);
+                    }
+                    allocator.free(systems);
+                }
+            }
+
+            for (batch_local_indices.items, 0..) |local_index, batch_index| {
+                const registry_index = phase_indices.items[local_index];
+                systems[batch_index] = .{
+                    .registry_index = registry_index,
+                    .id = try allocator.dupe(u8, self.systems.items[registry_index].id),
+                };
+                copied_system_count += 1;
+            }
+
+            try batches.append(allocator, .{
+                .phase = phase,
+                .systems = systems,
+            });
+            systems_transferred = true;
+
+            scheduled_count += batch_local_indices.items.len;
+
+            for (batch_local_indices.items) |source_local| {
+                for (0..system_count) |target_local| {
+                    if (scheduled[target_local]) {
+                        continue;
+                    }
+                    if (self.mustRunBefore(phase_indices.items[source_local], phase_indices.items[target_local])) {
+                        remaining_dependencies[target_local] -= 1;
+                    }
+                }
+            }
+        }
+
+        return .{
+            .allocator = allocator,
+            .batches = try batches.toOwnedSlice(allocator),
+        };
     }
 
     fn registerComponentAs(self: *ComponentRegistry, context: RegistrationContext, definition: ComponentDefinition) !void {
@@ -238,6 +401,7 @@ pub const ComponentRegistry = struct {
 
         return .{
             .id = id,
+            .phase = definition.phase,
             .reads = reads,
             .writes = writes,
             .before = before,
@@ -285,6 +449,28 @@ pub const ComponentRegistry = struct {
             self.allocator.free(value);
         }
         self.allocator.free(values);
+    }
+
+    fn mustRunBefore(self: ComponentRegistry, source_index: usize, target_index: usize) bool {
+        const source = self.systems.items[source_index];
+        const target = self.systems.items[target_index];
+        return containsString(source.before, target.id) or containsString(target.after, source.id);
+    }
+
+    fn conflictsWithBatch(
+        self: ComponentRegistry,
+        candidate_index: usize,
+        phase_indices: []const usize,
+        batch_local_indices: []const usize,
+    ) bool {
+        const candidate = self.systems.items[candidate_index];
+        for (batch_local_indices) |local_index| {
+            const other = self.systems.items[phase_indices[local_index]];
+            if (systemsConflict(candidate, other)) {
+                return true;
+            }
+        }
+        return false;
     }
 };
 
@@ -573,11 +759,25 @@ fn componentDefinitionsEqual(left: ComponentDefinition, right: ComponentDefiniti
 }
 
 fn systemDefinitionsEqual(left: SystemDefinition, right: SystemDefinition) bool {
-    return std.mem.eql(u8, left.id, right.id) and
+    return std.mem.eql(u8, left.id, right.id) and left.phase == right.phase and
         stringListsEqual(left.reads, right.reads) and
         stringListsEqual(left.writes, right.writes) and
         stringListsEqual(left.before, right.before) and
         stringListsEqual(left.after, right.after);
+}
+
+fn systemsConflict(left: SystemDefinition, right: SystemDefinition) bool {
+    for (left.writes) |component_id| {
+        if (containsString(right.reads, component_id) or containsString(right.writes, component_id)) {
+            return true;
+        }
+    }
+    for (right.writes) |component_id| {
+        if (containsString(left.reads, component_id) or containsString(left.writes, component_id)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn stringListsEqual(left: []const []const u8, right: []const []const u8) bool {
@@ -775,4 +975,48 @@ test "system registry validates component access and reload-compatible definitio
     try std.testing.expectError(RegistryError.ReservedTypeId, registry.registerProjectSystem(.{
         .id = "machina.script_system",
     }));
+}
+
+test "system schedule batches compatible systems and detects order cycles" {
+    var registry = ComponentRegistry.init(std.testing.allocator);
+    defer registry.deinit();
+
+    try registry.registerProjectComponent(.{ .id = "health" });
+    try registry.registerProjectComponent(.{ .id = "mood" });
+
+    try registry.registerProjectSystem(.{
+        .id = "observe_health",
+        .reads = &.{"health"},
+    });
+    try registry.registerProjectSystem(.{
+        .id = "observe_mood",
+        .reads = &.{"mood"},
+    });
+    try registry.registerProjectSystem(.{
+        .id = "regen_health",
+        .writes = &.{"health"},
+        .after = &.{"observe_health"},
+    });
+
+    var schedule = try registry.buildSchedule(std.testing.allocator, .update);
+    defer schedule.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), schedule.batchCount());
+    try std.testing.expectEqual(@as(usize, 3), schedule.systemCount());
+    try std.testing.expectEqualStrings("observe_health", schedule.batches[0].systems[0].id);
+    try std.testing.expectEqualStrings("observe_mood", schedule.batches[0].systems[1].id);
+    try std.testing.expectEqualStrings("regen_health", schedule.batches[1].systems[0].id);
+
+    var cyclic = ComponentRegistry.init(std.testing.allocator);
+    defer cyclic.deinit();
+    try cyclic.registerProjectSystem(.{
+        .id = "first",
+        .after = &.{"second"},
+    });
+    try cyclic.registerProjectSystem(.{
+        .id = "second",
+        .after = &.{"first"},
+    });
+
+    try std.testing.expectError(ScheduleError.CyclicSystemOrder, cyclic.buildSchedule(std.testing.allocator, .update));
 }

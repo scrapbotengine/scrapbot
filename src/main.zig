@@ -67,6 +67,7 @@ fn run(
         defer machina.freeProject(allocator, result.project);
         try stdout.print("Project OK: {s}\n", .{result.project.name});
         try stdout.print("Default scene: {s}\n", .{result.project.default_scene});
+        try stdout.print("Scripts: {d}\n", .{result.project.scripts.len});
         return 0;
     }
 
@@ -100,6 +101,10 @@ fn run(
         try stdout.print("Loaded project {s}\n", .{result.project.name});
         try stdout.print("Selected scene: {s}\n", .{result.project.default_scene});
         try stdout.print("Scene entities: {d}\n", .{live_project.scene.entityCount()});
+        try stdout.print("Scripts: {d}, update batches: {d}\n", .{
+            live_project.project.scripts.len,
+            live_project.schedule.batchCount(),
+        });
 
         machina.runDemoWindow(allocator, result.project.name, window_options, live_project.renderScene()) catch |err| {
             try stderr.print("run failed: {s}\n", .{@errorName(err)});
@@ -216,13 +221,16 @@ fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
         .unchanged => return null,
         .reloaded => |info| {
             context.stderr.print(
-                "Reloaded {s}{s}: {s}, {d} entities, {d} renderable cubes\n",
+                "Reloaded {s}{s}{s}: {s}, {d} entities, {d} renderable cubes, {d} scripts, {d} update batches\n",
                 .{
                     if (info.project_reloaded) "project" else "",
-                    if (info.project_reloaded and info.scene_reloaded) " and scene" else "scene",
+                    if (info.scene_reloaded) if (info.project_reloaded) " and scene" else "scene" else "",
+                    if (info.scripts_reloaded) if (info.project_reloaded or info.scene_reloaded) " and scripts" else "scripts" else "",
                     info.scene_path,
                     info.entity_count,
                     info.renderable_cube_count,
+                    info.script_count,
+                    info.system_batch_count,
                 },
             ) catch {};
             context.stderr.flush() catch {};
@@ -291,6 +299,8 @@ fn printProjectError(writer: *Io.Writer, root_path: []const u8, err: anyerror) !
         machina.ProjectError.DuplicateSceneEntityId => "duplicate scene entity id",
         machina.ProjectError.InvalidSceneNumber => "invalid scene number",
         machina.ProjectError.MissingSceneContent => "missing scene content",
+        machina.ProjectError.MissingScript => "missing script",
+        machina.ProjectError.InvalidScript => "invalid script",
         else => "unexpected project error",
     };
     try writer.print("{s}: {s}\n", .{ root_path, message });
