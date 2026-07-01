@@ -12,6 +12,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 - Scenes are stored as text files in a documented, schema-validated format.
 - Scene files describe entities, names, hierarchy or relationships, components, and references to assets, scripts, prefabs, and other project resources.
 - The initial scene format uses TOML-shaped text files, starting with `scenes/main.scene.toml`.
+- Scene references are forward-slash, project-relative paths and may not escape the project directory.
 - Scene files are stable under repeated editor saves when the scene has not changed.
 - Invalid scene files produce precise diagnostics suitable for command-line and editor display.
 - Scene authoring is separate from behavior scripting; scripts can be referenced by scene components but do not replace scene data.

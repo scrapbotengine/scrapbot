@@ -113,6 +113,9 @@ fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
 
     const default_scene = try readRequiredString(allocator, contents, "default_scene") orelse return ProjectError.InvalidDefaultScene;
     errdefer allocator.free(default_scene);
+    if (!isSafeProjectRelativePath(default_scene)) {
+        return ProjectError.InvalidDefaultScene;
+    }
 
     const version_value = readRequiredInt(contents, "version") orelse return ProjectError.UnsupportedProjectVersion;
     if (version_value != 1) {
@@ -257,6 +260,21 @@ fn readRequiredInt(contents: []const u8, key: []const u8) ?u32 {
     return null;
 }
 
+fn isSafeProjectRelativePath(path: []const u8) bool {
+    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null) {
+        return false;
+    }
+
+    var parts = std.mem.splitScalar(u8, path, '/');
+    while (parts.next()) |part| {
+        if (part.len == 0 or std.mem.eql(u8, part, ".") or std.mem.eql(u8, part, "..")) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 fn fileExists(io: Io, dir: Io.Dir, path: []const u8) bool {
     dir.access(io, path, .{}) catch return false;
     return true;
@@ -307,6 +325,50 @@ test "initProject escapes project names in metadata" {
     defer freeProject(std.testing.allocator, result.project);
 
     try std.testing.expectEqualStrings("Agent \"One\"", result.project.name);
+}
+
+test "checkProject rejects default scenes outside the project" {
+    const root_path = ".zig-cache/test-scene-escape";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try cwd.createDirPath(io, root_path);
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"../outside.scene.toml\"\n",
+    });
+
+    try std.testing.expectError(
+        ProjectError.InvalidDefaultScene,
+        checkProject(io, std.testing.allocator, root_path),
+    );
+}
+
+test "checkProject rejects platform separators in project resource paths" {
+    const root_path = ".zig-cache/test-scene-backslash";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try cwd.createDirPath(io, root_path);
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes\\\\main.scene.toml\"\n",
+    });
+
+    try std.testing.expectError(
+        ProjectError.InvalidDefaultScene,
+        checkProject(io, std.testing.allocator, root_path),
+    );
 }
 
 test "checkProject rejects unsupported metadata version" {
