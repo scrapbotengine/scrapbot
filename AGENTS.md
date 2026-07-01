@@ -48,3 +48,4 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 ## Local Skills
 
 - Use `.agents/skills/machina-render-verification` when changing rendering, shaders, scene-driven render data, or visual test expectations.
+- Use `.agents/skills/machina-script-diagnostics` when changing script diagnostics, Luau bridge error reporting, `machina check` diagnostic output, script reload/runtime failure handling, or editor/agent-facing diagnostic surfaces.
