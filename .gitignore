@@ -1,3 +1,4 @@
 .context/
 .zig-cache/
+zig-pkg/
 zig-out/

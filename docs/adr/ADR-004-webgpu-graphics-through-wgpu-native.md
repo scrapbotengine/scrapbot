@@ -14,6 +14,8 @@ Machina uses WebGPU for its initial rendering abstraction and accesses it throug
 
 The engine owns a Zig renderer backend wrapper around `wgpu-native`. Application, scene, UI, and asset systems depend on Machina renderer concepts, not directly on `wgpu-native` types.
 
+The initial integration uses a vendored Zig binding package for `wgpu-native`, patched for the repository's current Zig toolchain. This binding remains an implementation detail of the renderer module.
+
 ## Consequences
 
 Machina can build a renderer on a modern cross-platform graphics model while avoiding direct backend implementation work.
@@ -21,3 +23,5 @@ Machina can build a renderer on a modern cross-platform graphics model while avo
 The project takes on native dependency packaging, version pinning, header translation, platform library loading, and wrapper maintenance. `wgpu-native` release changes may require binding and build updates.
 
 Keeping `wgpu-native` behind an engine-owned wrapper preserves the option to switch to another WebGPU implementation, use platform-native backends later, or experiment with alternative graphics toolkits.
+
+Vendoring the Zig binding makes local compatibility patches auditable, but it creates maintenance work when either Zig or `wgpu-native` changes.

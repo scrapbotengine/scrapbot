@@ -1,9 +1,12 @@
 const std = @import("std");
 const Io = std.Io;
+const render = @import("render.zig");
 
 pub const version = "0.1.0-dev";
 pub const project_file_name = "project.machina.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
+
+pub const renderTriangleBmp = render.renderTriangleBmp;
 
 pub const Project = struct {
     root_path: []const u8,

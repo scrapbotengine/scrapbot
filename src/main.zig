@@ -82,6 +82,24 @@ fn run(
         return 0;
     }
 
+    if (std.mem.eql(u8, command, "render")) {
+        const target_path = if (args.len >= 3) args[2] else ".";
+        const output_path = if (args.len >= 4) args[3] else "zig-out/machina-triangle.bmp";
+        const result = machina.checkProject(io, allocator, target_path) catch |err| {
+            try printProjectError(stderr, target_path, err);
+            return 1;
+        };
+        defer machina.freeProject(allocator, result.project);
+
+        machina.renderTriangleBmp(io, output_path) catch |err| {
+            try stderr.print("render failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+
+        try stdout.print("Rendered triangle: {s}\n", .{output_path});
+        return 0;
+    }
+
     try stderr.print("Unknown command: {s}\n\n", .{command});
     try printHelp(stderr);
     return 1;
@@ -97,6 +115,7 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina init [path]
         \\  machina check [path]
         \\  machina run [path]
+        \\  machina render [path] [output.bmp]
         \\
     );
 }
