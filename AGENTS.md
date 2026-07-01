@@ -31,6 +31,7 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 - Update ADRs when changing architecture or backend choices.
 - Update FDRs when changing feature behavior, command behavior, scene schema, or validation semantics.
 - Route runtime state through the ECS-ish world instead of introducing renderer-specific or script-owned side channels.
+- Script-defined ECS component and system types must use explicit non-reserved dotted ids. `machina.*` is engine-owned, and Machina does not infer a default project namespace.
 - When adding a text-authored runtime resource, register it with the live reload path or document why it is intentionally not reloadable yet.
 - Preserve last-known-good behavior for live reload. Failed reloads should produce diagnostics without destroying the running project state.
 - For long-lived interactive state, use an allocator that can free replaced resources; avoid arena-backed state for reloadable worlds and scenes.

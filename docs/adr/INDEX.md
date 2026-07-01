@@ -11,3 +11,4 @@
 | [ADR-007](ADR-007-engine-hosted-ui-for-editor-tooling.md) | Engine-Hosted UI for Editor Tooling | 2026-07-01 |
 | [ADR-008](ADR-008-component-system-runtime-model.md) | Component-System Runtime Model | 2026-07-01 |
 | [ADR-009](ADR-009-live-reload-as-a-core-runtime-capability.md) | Live Reload as a Core Runtime Capability | 2026-07-01 |
+| [ADR-010](ADR-010-explicit-dotted-ids-for-script-ecs-extensions.md) | Explicit Dotted IDs for Script ECS Extensions | 2026-07-01 |

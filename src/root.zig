@@ -19,6 +19,14 @@ pub const EntityHandle = runtime.EntityHandle;
 pub const Transform = runtime.Transform;
 pub const CubeRenderer = runtime.CubeRenderer;
 pub const Spin = runtime.Spin;
+pub const ComponentRegistry = runtime.ComponentRegistry;
+pub const ComponentDefinition = runtime.ComponentDefinition;
+pub const ComponentFieldDefinition = runtime.ComponentFieldDefinition;
+pub const FieldType = runtime.FieldType;
+pub const SystemDefinition = runtime.SystemDefinition;
+pub const TypeIdError = runtime.TypeIdError;
+pub const RegistryError = runtime.RegistryError;
+pub const validateExternalTypeId = runtime.validateExternalTypeId;
 pub const verifyRenderBmp = render_verify.verifyBmp;
 
 pub const Project = struct {

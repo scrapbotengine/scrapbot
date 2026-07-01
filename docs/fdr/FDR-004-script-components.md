@@ -14,6 +14,7 @@ Script components let scenes attach scripted behavior to entities. They exist so
 - Script load, compile, and runtime errors are reported with file and location information.
 - Script components can be validated in headless mode.
 - Script components can access supported entity and component operations through the scripting API.
+- Scripts can register ECS component and system types through explicit non-reserved dotted ids.
 - Script reloads should preserve or intentionally reset state according to explicit lifecycle rules.
 - Scripts are behavior files; they do not become the primary storage format for scene structure.
 
@@ -37,10 +38,16 @@ Script components let scenes attach scripted behavior to entities. They exist so
 **Why:** This keeps scripts aligned with scenes, validation, editor tooling, and live reload. It follows ADR-008 and ADR-009.
 **Tradeoff:** The scripting API depends on the component model becoming explicit enough to bind cleanly.
 
+### 4. Require explicit ids for script-defined ECS types
+
+**Decision:** Script-defined component and system registrations use explicit dotted ids, and the engine does not provide a default project namespace.
+**Why:** This keeps package boundaries and reload compatibility explicit. It follows ADR-010.
+**Tradeoff:** Project authors must choose a namespace before registering script-defined ECS types.
+
 ## Related
 
-- **ADRs:** ADR-001, ADR-003, ADR-006, ADR-008, ADR-009
-- **FDRs:** FDR-002, FDR-003, FDR-009, FDR-010
+- **ADRs:** ADR-001, ADR-003, ADR-006, ADR-008, ADR-009, ADR-010
+- **FDRs:** FDR-002, FDR-003, FDR-009, FDR-010, FDR-011
 
 ## Open Questions
 
