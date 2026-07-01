@@ -16,6 +16,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 - Scene references are forward-slash, project-relative paths and may not escape the project directory.
 - Scene files are stable under repeated editor saves when the scene has not changed.
 - Invalid scene files produce precise diagnostics suitable for command-line and editor display.
+- Duplicate entity ids are invalid because stable ids are the anchor for component lookup and future live reload patching.
 - Scene authoring is separate from behavior scripting; scripts can be referenced by scene components but do not replace scene data.
 
 ## Design Decisions

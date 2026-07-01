@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
+const runtime = @import("runtime.zig");
 const wgpu = @import("wgpu");
 
 const sdl = if (builtin.os.tag == .macos) @cImport({
@@ -32,6 +33,7 @@ pub const RenderError = error{
     MetalLayerMissing,
     BufferMapFailed,
     OutOfMemory,
+    InvalidScene,
 };
 
 pub const WindowOptions = struct {
@@ -39,15 +41,7 @@ pub const WindowOptions = struct {
 };
 
 pub const Scene = struct {
-    cubes: []const CubeInstance,
-};
-
-pub const CubeInstance = struct {
-    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
-    rotation: [3]f32 = .{ 0.0, 0.0, 0.0 },
-    scale: [3]f32 = .{ 1.0, 1.0, 1.0 },
-    color: [3]f32 = .{ 0.0, 0.56, 1.0 },
-    spin: [3]f32 = .{ 0.62, 1.0, 0.0 },
+    world: *const runtime.World,
 };
 
 pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
@@ -253,7 +247,7 @@ const ObjectConfig = struct {
     width: u32,
     height: u32,
     time: f32,
-    cube: *const CubeInstance,
+    cube: *const runtime.RenderableCube,
 };
 
 const GpuContext = struct {
@@ -361,7 +355,7 @@ const CubeDemo = struct {
         }) orelse return RenderError.NoDevice;
         errdefer bind_group_layout.release();
 
-        const objects = allocator.alloc(ObjectResources, scene.cubes.len) catch return RenderError.OutOfMemory;
+        const objects = allocator.alloc(ObjectResources, scene.world.renderableCubeCount()) catch return RenderError.OutOfMemory;
         errdefer allocator.free(objects);
         var object_count: usize = 0;
         errdefer {
@@ -370,7 +364,9 @@ const CubeDemo = struct {
             }
         }
 
-        for (scene.cubes, 0..) |*cube, index| {
+        var cubes = scene.world.renderableCubes();
+        while (cubes.next()) |cube| {
+            const index = object_count;
             objects[index] = try ObjectResources.create(device, queue, bind_group_layout, cube);
             object_count += 1;
         }
@@ -417,14 +413,19 @@ const CubeDemo = struct {
         depth_view: *wgpu.TextureView,
         config: FrameConfig,
     ) RenderError!void {
-        for (config.scene.cubes, self.objects) |*cube, *object| {
+        var cubes = config.scene.world.renderableCubes();
+        for (self.objects) |*object| {
+            const cube = cubes.next() orelse return RenderError.InvalidScene;
             var uniforms = frameUniforms(.{
                 .width = config.width,
                 .height = config.height,
                 .time = config.time,
-                .cube = cube,
+                .cube = &cube,
             });
             writeUniforms(queue, object.uniform_buffer, &uniforms);
+        }
+        if (cubes.next() != null) {
+            return RenderError.InvalidScene;
         }
 
         const encoder = device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
@@ -483,7 +484,7 @@ const ObjectResources = struct {
         device: *wgpu.Device,
         queue: *wgpu.Queue,
         bind_group_layout: *wgpu.BindGroupLayout,
-        cube: *const CubeInstance,
+        cube: runtime.RenderableCube,
     ) RenderError!ObjectResources {
         const uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
             .label = wgpu.StringView.fromSlice("Machina cube object uniforms"),
@@ -497,7 +498,7 @@ const ObjectResources = struct {
             .width = output_width,
             .height = output_height,
             .time = 0,
-            .cube = cube,
+            .cube = &cube,
         });
         writeUniforms(queue, uniform_buffer, &initial_uniforms);
 

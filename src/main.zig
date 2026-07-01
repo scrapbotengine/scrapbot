@@ -89,7 +89,7 @@ fn run(
 
         try stdout.print("Loaded project {s}\n", .{result.project.name});
         try stdout.print("Selected scene: {s}\n", .{result.project.default_scene});
-        try stdout.print("Scene entities: {d}\n", .{scene.cubes.len});
+        try stdout.print("Scene entities: {d}\n", .{scene.entityCount()});
 
         machina.runDemoWindow(allocator, result.project.name, window_options, scene.renderScene()) catch |err| {
             try stderr.print("run failed: {s}\n", .{@errorName(err)});
@@ -222,7 +222,8 @@ fn printArgumentError(writer: *Io.Writer, err: ArgumentError) !void {
 fn expectedColorGroups(scene: machina.Scene) usize {
     var has_warm = false;
     var has_cool = false;
-    for (scene.cubes) |cube| {
+    var cubes = scene.world.renderableCubes();
+    while (cubes.next()) |cube| {
         if (cube.color[0] > cube.color[2] + 0.1) {
             has_warm = true;
         }
@@ -244,6 +245,7 @@ fn printProjectError(writer: *Io.Writer, root_path: []const u8, err: anyerror) !
         machina.ProjectError.InvalidProjectName => "invalid project name",
         machina.ProjectError.InvalidDefaultScene => "invalid default scene",
         machina.ProjectError.InvalidSceneEntity => "invalid scene entity",
+        machina.ProjectError.DuplicateSceneEntityId => "duplicate scene entity id",
         machina.ProjectError.InvalidSceneNumber => "invalid scene number",
         machina.ProjectError.MissingSceneContent => "missing scene content",
         else => "unexpected project error",

@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const render = @import("render.zig");
 const render_verify = @import("render_verify.zig");
+const runtime = @import("runtime.zig");
 
 pub const version = "0.1.0-dev";
 pub const project_file_name = "project.machina.toml";
@@ -10,10 +11,14 @@ pub const default_scene_path = "scenes/main.scene.toml";
 pub const renderDemoBmp = render.renderDemoBmp;
 pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
-pub const CubeInstance = render.CubeInstance;
 pub const RenderScene = render.Scene;
 pub const RenderVerification = render_verify.Verification;
 pub const RenderVerificationOptions = render_verify.VerificationOptions;
+pub const World = runtime.World;
+pub const EntityHandle = runtime.EntityHandle;
+pub const Transform = runtime.Transform;
+pub const CubeRenderer = runtime.CubeRenderer;
+pub const Spin = runtime.Spin;
 pub const verifyRenderBmp = render_verify.verifyBmp;
 
 pub const Project = struct {
@@ -24,10 +29,18 @@ pub const Project = struct {
 
 pub const Scene = struct {
     name: []const u8,
-    cubes: []CubeInstance,
+    world: World,
 
-    pub fn renderScene(self: Scene) RenderScene {
-        return .{ .cubes = self.cubes };
+    pub fn renderScene(self: *const Scene) RenderScene {
+        return .{ .world = &self.world };
+    }
+
+    pub fn entityCount(self: Scene) usize {
+        return self.world.entityCount();
+    }
+
+    pub fn renderableCubeCount(self: Scene) usize {
+        return self.world.renderableCubeCount();
     }
 };
 
@@ -49,6 +62,7 @@ pub const ProjectError = error{
     InvalidProjectName,
     InvalidDefaultScene,
     InvalidSceneEntity,
+    DuplicateSceneEntityId,
     InvalidSceneNumber,
     MissingSceneContent,
 };
@@ -146,7 +160,8 @@ pub fn loadDefaultScene(io: Io, allocator: std.mem.Allocator, project: Project) 
 
 pub fn freeScene(allocator: std.mem.Allocator, scene: Scene) void {
     allocator.free(scene.name);
-    allocator.free(scene.cubes);
+    var world = scene.world;
+    world.deinit();
 }
 
 fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, root_dir: Io.Dir) !Project {
@@ -194,20 +209,21 @@ fn loadSceneFile(io: Io, allocator: std.mem.Allocator, root_dir: Io.Dir, scene_p
 
     var parser = SceneParser{
         .allocator = allocator,
+        .world = World.init(allocator),
     };
     return .{
         .name = name,
-        .cubes = try parser.parse(contents),
+        .world = try parser.parse(contents),
     };
 }
 
 const SceneParser = struct {
     allocator: std.mem.Allocator,
-    cubes: std.ArrayList(CubeInstance) = .empty,
+    world: World,
     active_entity: ?EntityDraft = null,
 
-    fn parse(self: *SceneParser, contents: []const u8) ![]CubeInstance {
-        errdefer self.cubes.deinit(self.allocator);
+    fn parse(self: *SceneParser, contents: []const u8) !World {
+        errdefer self.world.deinit();
 
         var lines = std.mem.splitScalar(u8, contents, '\n');
         while (lines.next()) |line| {
@@ -232,11 +248,13 @@ const SceneParser = struct {
         }
 
         try self.flushEntity();
-        if (self.cubes.items.len == 0) {
+        if (self.world.entityCount() == 0) {
             return ProjectError.MissingSceneContent;
         }
 
-        return try self.cubes.toOwnedSlice(self.allocator);
+        const world = self.world;
+        self.world = World.init(self.allocator);
+        return world;
     }
 
     fn flushEntity(self: *SceneParser) !void {
@@ -245,7 +263,13 @@ const SceneParser = struct {
         if (!entity.id_seen or !entity.name_seen or !entity.kind_seen or !entity.kind_cube) {
             return ProjectError.InvalidSceneEntity;
         }
-        try self.cubes.append(self.allocator, entity.cube);
+        const handle = self.world.createEntity(entity.id, entity.name) catch |err| switch (err) {
+            runtime.WorldError.DuplicateEntityId => return ProjectError.DuplicateSceneEntityId,
+            else => return err,
+        };
+        try self.world.setTransform(handle, entity.transform);
+        try self.world.setCubeRenderer(handle, entity.cube_renderer);
+        try self.world.setSpin(handle, entity.spin);
     }
 };
 
@@ -254,7 +278,11 @@ const EntityDraft = struct {
     name_seen: bool = false,
     kind_seen: bool = false,
     kind_cube: bool = false,
-    cube: CubeInstance = .{},
+    id: []const u8 = "",
+    name: []const u8 = "",
+    transform: Transform = .{},
+    cube_renderer: CubeRenderer = .{},
+    spin: Spin = .{},
 
     fn readProperty(self: *EntityDraft, line: []const u8) !void {
         const eq_index = std.mem.indexOfScalar(u8, line, '=') orelse return ProjectError.InvalidSceneEntity;
@@ -262,25 +290,25 @@ const EntityDraft = struct {
         const value = std.mem.trim(u8, line[eq_index + 1 ..], " \t");
 
         if (std.mem.eql(u8, key, "id")) {
-            _ = stringValue(value) orelse return ProjectError.InvalidSceneEntity;
+            self.id = stringValue(value) orelse return ProjectError.InvalidSceneEntity;
             self.id_seen = true;
         } else if (std.mem.eql(u8, key, "name")) {
-            _ = stringValue(value) orelse return ProjectError.InvalidSceneEntity;
+            self.name = stringValue(value) orelse return ProjectError.InvalidSceneEntity;
             self.name_seen = true;
         } else if (std.mem.eql(u8, key, "kind")) {
             const kind = stringValue(value) orelse return ProjectError.InvalidSceneEntity;
             self.kind_seen = true;
             self.kind_cube = std.mem.eql(u8, kind, "cube");
         } else if (std.mem.eql(u8, key, "position")) {
-            self.cube.position = try readVec3(value);
+            self.transform.position = try readVec3(value);
         } else if (std.mem.eql(u8, key, "rotation")) {
-            self.cube.rotation = try readVec3(value);
+            self.transform.rotation = try readVec3(value);
         } else if (std.mem.eql(u8, key, "scale")) {
-            self.cube.scale = try readVec3(value);
+            self.transform.scale = try readVec3(value);
         } else if (std.mem.eql(u8, key, "color")) {
-            self.cube.color = try readVec3(value);
+            self.cube_renderer.color = try readVec3(value);
         } else if (std.mem.eql(u8, key, "spin")) {
-            self.cube.spin = try readVec3(value);
+            self.spin.angular_velocity = try readVec3(value);
         } else {
             return ProjectError.InvalidSceneEntity;
         }
@@ -553,8 +581,13 @@ test "loadDefaultScene reads cube entities from scene data" {
     defer freeScene(std.testing.allocator, scene);
 
     try std.testing.expectEqualStrings("Main", scene.name);
-    try std.testing.expectEqual(@as(usize, 1), scene.cubes.len);
-    try std.testing.expectEqual(@as(f32, 0.56), scene.cubes[0].color[1]);
+    try std.testing.expectEqual(@as(usize, 1), scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 1), scene.renderableCubeCount());
+
+    const entity = scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
+    const cube = scene.world.renderableCubeAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(entity.index, cube.entity.index);
+    try std.testing.expectEqual(@as(f32, 0.56), cube.color[1]);
 }
 
 test "checkProject rejects invalid scene numeric data" {
@@ -585,6 +618,42 @@ test "checkProject rejects invalid scene numeric data" {
 
     try std.testing.expectError(
         ProjectError.InvalidSceneNumber,
+        checkProject(io, std.testing.allocator, root_path),
+    );
+}
+
+test "checkProject rejects duplicate scene entity ids" {
+    const root_path = ".zig-cache/test-duplicate-scene-entity-id";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Game");
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+
+    try root_dir.writeFile(io, .{
+        .sub_path = default_scene_path,
+        .data =
+        \\name = "Main"
+        \\version = 1
+        \\
+        \\[[entities]]
+        \\id = "same-id"
+        \\name = "One"
+        \\kind = "cube"
+        \\
+        \\[[entities]]
+        \\id = "same-id"
+        \\name = "Two"
+        \\kind = "cube"
+        \\
+        ,
+    });
+
+    try std.testing.expectError(
+        ProjectError.DuplicateSceneEntityId,
         checkProject(io, std.testing.allocator, root_path),
     );
 }
