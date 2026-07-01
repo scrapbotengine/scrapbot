@@ -84,7 +84,7 @@ fn run(
         try stdout.print("Loaded project {s}\n", .{result.project.name});
         try stdout.print("Selected scene: {s}\n", .{result.project.default_scene});
 
-        machina.runTriangleWindow(allocator, result.project.name, window_options) catch |err| {
+        machina.runDemoWindow(allocator, result.project.name, window_options) catch |err| {
             try stderr.print("run failed: {s}\n", .{@errorName(err)});
             return 1;
         };
@@ -93,19 +93,19 @@ fn run(
 
     if (std.mem.eql(u8, command, "render")) {
         const target_path = if (args.len >= 3) args[2] else ".";
-        const output_path = if (args.len >= 4) args[3] else "zig-out/machina-triangle.bmp";
+        const output_path = if (args.len >= 4) args[3] else "zig-out/machina-cube.bmp";
         const result = machina.checkProject(io, allocator, target_path) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
         };
         defer machina.freeProject(allocator, result.project);
 
-        machina.renderTriangleBmp(io, allocator, output_path) catch |err| {
+        machina.renderDemoBmp(io, allocator, output_path) catch |err| {
             try stderr.print("render failed: {s}\n", .{@errorName(err)});
             return 1;
         };
 
-        try stdout.print("Rendered triangle: {s}\n", .{output_path});
+        try stdout.print("Rendered cube: {s}\n", .{output_path});
         return 0;
     }
 

@@ -1,17 +1,18 @@
-# FDR-008: Headful Triangle Window
+# FDR-008: Headful Demo Window
 
 **Status:** Active
 **Last reviewed:** 2026-07-01
 
 ## Overview
 
-Headful triangle rendering proves that Machina can create a platform window, hand its native surface to WebGPU, configure a presentable surface, and draw visible frames through the same renderer foundation used by offscreen rendering.
+Headful demo rendering proves that Machina can create a platform window, hand its native surface to WebGPU, configure a presentable surface, and draw visible frames through the same renderer foundation used by offscreen rendering.
 
 ## Behavior
 
 - Users can run `machina run [path]` against a valid project.
 - The command validates the project before opening a window.
-- The renderer opens a visible window and presents a colored triangle until the window is closed.
+- The renderer opens a visible window and presents the current built-in demo scene until the window is closed.
+- The current demo scene is a rotating colored cube with depth testing and simple directional diffuse shading.
 - Users can run `machina run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
 - `machina render [path] [output.bmp]` remains the headless/offscreen snapshot command.
 

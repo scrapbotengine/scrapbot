@@ -6,8 +6,8 @@ pub const version = "0.1.0-dev";
 pub const project_file_name = "project.machina.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
 
-pub const renderTriangleBmp = render.renderTriangleBmp;
-pub const runTriangleWindow = render.runTriangleWindow;
+pub const renderDemoBmp = render.renderDemoBmp;
+pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
 
 pub const Project = struct {
