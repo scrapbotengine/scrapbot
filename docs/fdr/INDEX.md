@@ -13,3 +13,4 @@
 | [FDR-009](FDR-009-entity-component-runtime.md) | Entity Component Runtime | Active | 2026-07-01 |
 | [FDR-010](FDR-010-live-reload-for-scenes-and-scripts.md) | Live Reload for Scenes and Scripts | Active | 2026-07-01 |
 | [FDR-011](FDR-011-script-ecs-registration.md) | Script ECS Registration | Active | 2026-07-01 |
+| [FDR-012](FDR-012-hybrid-luau-zig-systems.md) | Hybrid Luau and Zig Systems | Planned | 2026-07-01 |
