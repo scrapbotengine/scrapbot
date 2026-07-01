@@ -20,6 +20,8 @@ Projects have a `project.machina.toml` file and a default scene path. Scenes are
 
 Rendering uses `wgpu-native`. Headful rendering currently uses SDL3 on macOS via Homebrew paths in `build.zig`; offscreen rendering writes BMP artifacts and is the preferred automation surface.
 
+The intended low-level runtime model is ECS-ish: stable entity identity, structured components, systems over component queries, and a scripting API that exposes those concepts directly. Live reload of scenes and scripts is a core runtime capability, so new architecture should preserve reloadable text data, stable ids, staged validation, and last-known-good behavior.
+
 ## Working Rules
 
 - Keep project and scene data text-based and diffable.

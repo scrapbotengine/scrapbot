@@ -11,6 +11,7 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 - The initial `machina check [path]` command validates project metadata and the default scene.
 - `machina render-test [path] [output.bmp]` renders the default scene offscreen, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation.
+- Future headless test commands can exercise scene and script live reload deterministically.
 - Users can run project validation without initializing graphical presentation.
 - Validation failures produce command-line diagnostics and non-zero process exit codes.
 - Commands return appropriate process exit codes for automation.
@@ -38,8 +39,8 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-003, ADR-005
-- **FDRs:** FDR-001, FDR-002, FDR-004, FDR-006
+- **ADRs:** ADR-001, ADR-003, ADR-005, ADR-009
+- **FDRs:** FDR-001, FDR-002, FDR-004, FDR-006, FDR-010
 
 ## Open Questions
 
