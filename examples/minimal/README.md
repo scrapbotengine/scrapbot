@@ -8,4 +8,6 @@ mise machina check examples/minimal
 mise machina run examples/minimal
 mise machina run examples/minimal --frames 120
 mise machina render examples/minimal zig-out/minimal-cube.bmp
+mise machina render-test examples/minimal zig-out/minimal-render-test.bmp
+mise render-test
 ```

@@ -121,6 +121,47 @@ fn run(
         return 0;
     }
 
+    if (std.mem.eql(u8, command, "render-test")) {
+        const target_path = if (args.len >= 3) args[2] else ".";
+        const output_path = if (args.len >= 4) args[3] else "zig-out/machina-render-test.bmp";
+        const result = machina.checkProject(io, allocator, target_path) catch |err| {
+            try printProjectError(stderr, target_path, err);
+            return 1;
+        };
+        defer machina.freeProject(allocator, result.project);
+        const scene = machina.loadDefaultScene(io, allocator, result.project) catch |err| {
+            try printProjectError(stderr, target_path, err);
+            return 1;
+        };
+        defer machina.freeScene(allocator, scene);
+
+        machina.renderDemoBmp(io, allocator, output_path, scene.renderScene()) catch |err| {
+            try stderr.print("render-test render failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+
+        const verification = machina.verifyRenderBmp(io, allocator, output_path, .{
+            .min_visible_components = 1,
+            .min_color_groups = expectedColorGroups(scene),
+        }) catch |err| {
+            try stderr.print("render-test verification failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+
+        try stdout.print(
+            "Render test OK: {d}x{d}, foreground pixels: {d}, visible components: {d}, color groups: {d}\n",
+            .{
+                verification.width,
+                verification.height,
+                verification.foreground_pixels,
+                verification.visible_components,
+                verification.color_groups,
+            },
+        );
+        try stdout.print("Rendered artifact: {s}\n", .{output_path});
+        return 0;
+    }
+
     try stderr.print("Unknown command: {s}\n\n", .{command});
     try printHelp(stderr);
     return 1;
@@ -137,6 +178,7 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina check [path]
         \\  machina run [path] [--frames N]
         \\  machina render [path] [output.bmp]
+        \\  machina render-test [path] [output.bmp]
         \\
     );
 }
@@ -175,6 +217,21 @@ fn printArgumentError(writer: *Io.Writer, err: ArgumentError) !void {
         ArgumentError.UnknownArgument => "unknown run argument",
     };
     try writer.print("{s}\n", .{message});
+}
+
+fn expectedColorGroups(scene: machina.Scene) usize {
+    var has_warm = false;
+    var has_cool = false;
+    for (scene.cubes) |cube| {
+        if (cube.color[0] > cube.color[2] + 0.1) {
+            has_warm = true;
+        }
+        if (cube.color[2] > cube.color[0] + 0.1) {
+            has_cool = true;
+        }
+    }
+    const groups = @as(usize, @intFromBool(has_warm)) + @as(usize, @intFromBool(has_cool));
+    return @max(groups, 1);
 }
 
 fn printProjectError(writer: *Io.Writer, root_path: []const u8, err: anyerror) !void {

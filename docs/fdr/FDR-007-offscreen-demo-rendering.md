@@ -10,11 +10,13 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 ## Behavior
 
 - Users can run `machina render [path] [output.bmp]` against a valid project.
+- Users can run `machina render-test [path] [output.bmp]` to render offscreen and verify the generated BMP.
 - The command validates the project before rendering.
 - The command loads the project's default scene and draws one frame of its cube entities into an offscreen texture.
 - Cube entity position, rotation, scale, color, and spin values come from scene data.
 - Cubes render with depth testing and simple directional diffuse shading.
 - The rendered pixels are copied back to CPU memory and written as a 24-bit BMP file.
+- Render verification parses the BMP and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene cube colors.
 - The command works without a platform window or editor.
 
 ## Design Decisions

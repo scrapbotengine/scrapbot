@@ -9,6 +9,10 @@ run = "zig build"
 description = "Run Zig tests"
 run = "zig build test"
 
+[tasks.render-test]
+description = "Render and verify the minimal example scene"
+run = "mise machina render-test examples/minimal zig-out/minimal-render-test.bmp"
+
 [tasks.machina]
 description = "Build and run the machina CLI"
 run = "mise build && ./zig-out/bin/machina"

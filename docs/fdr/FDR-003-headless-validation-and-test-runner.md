@@ -10,6 +10,7 @@ The headless validation and test runner lets users, CI systems, and agents check
 ## Behavior
 
 - The initial `machina check [path]` command validates project metadata and the default scene.
+- `machina render-test [path] [output.bmp]` renders the default scene offscreen, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation.
 - Users can run project validation without initializing graphical presentation.
 - Validation failures produce command-line diagnostics and non-zero process exit codes.
 - Commands return appropriate process exit codes for automation.
@@ -28,6 +29,12 @@ The headless validation and test runner lets users, CI systems, and agents check
 **Decision:** Validation and tests run without requiring a window or GPU surface.
 **Why:** CI and agent workflows need reliable execution in non-graphical environments. It follows ADR-003 and ADR-005.
 **Tradeoff:** Some rendering behavior requires separate snapshot or backend-specific tests.
+
+### 3. Prefer offscreen render assertions for visual checks
+
+**Decision:** The first visual verification command uses offscreen BMP output and pixel analysis instead of screenshotting a headful window.
+**Why:** Offscreen rendering is easier to run in agent and CI workflows, and parsing the output artifact can catch regressions like missing foreground content or collapsed multi-object renders.
+**Tradeoff:** Pixel analysis is still coarse and does not replace future golden-image or semantic render tests.
 
 ## Related
 

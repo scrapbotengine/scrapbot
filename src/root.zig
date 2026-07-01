@@ -1,6 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 const render = @import("render.zig");
+const render_verify = @import("render_verify.zig");
 
 pub const version = "0.1.0-dev";
 pub const project_file_name = "project.machina.toml";
@@ -11,6 +12,9 @@ pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
 pub const CubeInstance = render.CubeInstance;
 pub const RenderScene = render.Scene;
+pub const RenderVerification = render_verify.Verification;
+pub const RenderVerificationOptions = render_verify.VerificationOptions;
+pub const verifyRenderBmp = render_verify.verifyBmp;
 
 pub const Project = struct {
     root_path: []const u8,
