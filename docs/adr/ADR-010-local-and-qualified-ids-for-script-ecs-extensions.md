@@ -14,9 +14,9 @@ The engine must reserve its own built-in component and system namespace without 
 
 Script-defined component and system types use explicit ids in one of two forms.
 
-Project-local ids are single lowercase ASCII identifier segments, such as `health` or `inventory_item`. They are only stable inside the current project and are not valid for reusable packages.
+Project-local ids are single lowercase ASCII identifier segments, such as `spin` or `inventory_item`. They are only stable inside the current project and are not valid for reusable packages.
 
-Qualified ids have two or more lowercase ASCII segments, such as `com.example.health` or `local_project.dialogue_state`. Reusable packages must use qualified ids, preferably under a namespace they own, such as a reverse-DNS name.
+Qualified ids have two or more lowercase ASCII segments, such as `com.example.stamina` or `local_project.dialogue_state`. Reusable packages must use qualified ids, preferably under a namespace they own, such as a reverse-DNS name.
 
 Machina reserves `machina.*` for engine-owned types. The engine does not provide, recommend, or infer a default project namespace; `game.*` has no special behavior beyond being an explicitly chosen qualified id.
 

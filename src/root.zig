@@ -1219,20 +1219,19 @@ test "checkProject validates script declarations and builds a system schedule" {
     try root_dir.writeFile(io, .{
         .sub_path = "scripts/gameplay.luau",
         .data =
-        \\ecs.component("health", {
+        \\ecs.component("spin", {
         \\  fields = {
-        \\    current = "f32",
-        \\    max = "f32",
+        \\    angular_velocity = "f32",
         \\  },
         \\})
         \\
-        \\ecs.system("observe_health", {
-        \\  reads = { "health" },
+        \\ecs.system("observe_spin", {
+        \\  reads = { "spin" },
         \\})
         \\
-        \\ecs.system("health_regen", {
-        \\  writes = { "health" },
-        \\  after = { "observe_health" },
+        \\ecs.system("observe_cubes", {
+        \\  reads = { "machina.transform", "machina.render.cube" },
+        \\  after = { "observe_spin" },
         \\})
         ,
     });
@@ -1244,8 +1243,8 @@ test "checkProject validates script declarations and builds a system schedule" {
     defer scripts.deinit();
 
     try std.testing.expectEqual(@as(usize, 1), result.project.scripts.len);
-    try std.testing.expect(scripts.registry.findComponent("health") != null);
-    try std.testing.expect(scripts.registry.findSystem("health_regen") != null);
+    try std.testing.expect(scripts.registry.findComponent("spin") != null);
+    try std.testing.expect(scripts.registry.findSystem("observe_cubes") != null);
     try std.testing.expectEqual(@as(usize, 2), scripts.schedule.batchCount());
 }
 
@@ -1398,45 +1397,45 @@ test "LiveProject reloads changed scripts and keeps last good registry on failur
     try root_dir.writeFile(io, .{
         .sub_path = "scripts/gameplay.luau",
         .data =
-        \\ecs.component("health", {
+        \\ecs.component("spin", {
         \\  fields = {
-        \\    current = "f32",
+        \\    angular_velocity = "f32",
         \\  },
         \\})
         \\
-        \\ecs.system("observe_health", {
-        \\  reads = { "health" },
+        \\ecs.system("observe_spin", {
+        \\  reads = { "spin" },
         \\})
         ,
     });
 
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
-    try std.testing.expect(live_project.scripts.registry.findComponent("health") != null);
-    try std.testing.expect(live_project.scripts.registry.findComponent("mood") == null);
+    try std.testing.expect(live_project.scripts.registry.findComponent("spin") != null);
+    try std.testing.expect(live_project.scripts.registry.findComponent("marker") == null);
     try std.testing.expectEqual(@as(usize, 1), live_project.scripts.schedule.systemCount());
 
     try root_dir.writeFile(io, .{
         .sub_path = "scripts/gameplay.luau",
         .data =
-        \\ecs.component("health", {
+        \\ecs.component("spin", {
         \\  fields = {
-        \\    current = "f32",
+        \\    angular_velocity = "f32",
         \\  },
         \\})
         \\
-        \\ecs.component("mood", {
+        \\ecs.component("marker", {
         \\  fields = {
-        \\    value = "string",
+        \\    enabled = "boolean",
         \\  },
         \\})
         \\
-        \\ecs.system("observe_health", {
-        \\  reads = { "health" },
+        \\ecs.system("observe_spin", {
+        \\  reads = { "spin" },
         \\})
         \\
-        \\ecs.system("observe_mood", {
-        \\  reads = { "mood" },
+        \\ecs.system("observe_marker", {
+        \\  reads = { "marker" },
         \\})
         ,
     });
@@ -1445,7 +1444,7 @@ test "LiveProject reloads changed scripts and keeps last good registry on failur
     try std.testing.expect(!reload.reloaded.project_reloaded);
     try std.testing.expect(!reload.reloaded.scene_reloaded);
     try std.testing.expect(reload.reloaded.scripts_reloaded);
-    try std.testing.expect(live_project.scripts.registry.findComponent("mood") != null);
+    try std.testing.expect(live_project.scripts.registry.findComponent("marker") != null);
     try std.testing.expectEqual(@as(usize, 2), live_project.scripts.schedule.systemCount());
 
     try root_dir.writeFile(io, .{
@@ -1464,7 +1463,7 @@ test "LiveProject reloads changed scripts and keeps last good registry on failur
     try std.testing.expectEqual(script.DiagnosticStage.registration, diagnostic.stage);
     try std.testing.expectEqualStrings("scripts/gameplay.luau", diagnostic.path orelse return error.TestExpectedEqual);
     try std.testing.expectEqual(@as(u32, 1), (diagnostic.start orelse return error.TestExpectedEqual).line);
-    try std.testing.expect(live_project.scripts.registry.findComponent("mood") != null);
+    try std.testing.expect(live_project.scripts.registry.findComponent("marker") != null);
     try std.testing.expectEqual(@as(usize, 2), live_project.scripts.schedule.systemCount());
     try std.testing.expectEqual(ReloadResult.unchanged, try live_project.pollLoadedSources());
 }
@@ -1488,11 +1487,17 @@ test "LiveProject update runs the scheduled rotation system" {
     try root_dir.writeFile(io, .{
         .sub_path = "scripts/gameplay.luau",
         .data =
+        \\ecs.component("spin", {
+        \\  fields = {
+        \\    angular_velocity = "f32",
+        \\  },
+        \\})
+        \\
         \\ecs.system("rotate_cubes", {
-        \\  reads = { "machina.spin" },
+        \\  reads = { "spin" },
         \\  writes = { "machina.transform" },
         \\  run = function(world, dt)
-        \\    world.rotate("machina.transform", "machina.spin", dt)
+        \\    world.rotate("machina.transform", "spin", dt)
         \\  end,
         \\})
         ,
@@ -1791,11 +1796,17 @@ fn writeRotateScript(io: Io, root_dir: Io.Dir, delta_expression: []const u8) !vo
     var buffer: [512]u8 = undefined;
     const data = try std.fmt.bufPrint(
         &buffer,
+        \\ecs.component("spin", {{
+        \\  fields = {{
+        \\    angular_velocity = "f32",
+        \\  }},
+        \\}})
+        \\
         \\ecs.system("rotate_cubes", {{
-        \\  reads = {{ "machina.spin" }},
+        \\  reads = {{ "spin" }},
         \\  writes = {{ "machina.transform" }},
         \\  run = function(world, dt)
-        \\    world.rotate("machina.transform", "machina.spin", {s})
+        \\    world.rotate("machina.transform", "spin", {s})
         \\  end,
         \\}})
     ,

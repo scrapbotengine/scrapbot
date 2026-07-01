@@ -1,22 +1,15 @@
-ecs.component("health", {
+ecs.component("spin", {
   fields = {
-    current = "f32",
-    max = "f32",
-  },
-})
-
-ecs.component("mood", {
-  fields = {
-    value = "string",
+    angular_velocity = "f32",
   },
 })
 
 ecs.system("rotate_cubes", {
   phase = "update",
-  reads = { "machina.spin" },
+  reads = { "spin" },
   writes = { "machina.transform" },
   run = function(world, dt)
-    world.rotate("machina.transform", "machina.spin", dt * 10)
+    world.rotate("machina.transform", "spin", dt)
   end,
 })
 
@@ -24,16 +17,4 @@ ecs.system("observe_cubes", {
   phase = "update",
   reads = { "machina.transform", "machina.render.cube" },
   after = { "rotate_cubes" },
-})
-
-ecs.system("observe_health", {
-  phase = "update",
-  reads = { "health" },
-})
-
-ecs.system("health_regen", {
-  phase = "update",
-  reads = { "machina.transform" },
-  writes = { "health" },
-  after = { "observe_health" },
 })

@@ -26,7 +26,7 @@ pub const ScheduleError = error{
 const engine_namespace = "machina";
 pub const transform_component_id = "machina.transform";
 pub const cube_renderer_component_id = "machina.render.cube";
-pub const spin_component_id = "machina.spin";
+pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
     boolean,
@@ -897,26 +897,26 @@ test "world rotates transforms through spin component data" {
     try std.testing.expectEqual(@as(f32, 0.6), transform_after.rotation[0]);
     try std.testing.expectEqual(@as(f32, 1.2), transform_after.rotation[1]);
     try std.testing.expectEqual(@as(f32, -1.7), transform_after.rotation[2]);
-    try std.testing.expect(!world.rotateBySpin("health", spin_component_id, 0.5));
+    try std.testing.expect(!world.rotateBySpin("stamina", spin_component_id, 0.5));
     try std.testing.expect(!world.rotateBySpin(transform_component_id, spin_component_id, std.math.inf(f32)));
 }
 
 test "type ids distinguish project-local, package, and engine namespaces" {
-    try validateProjectTypeId("health");
+    try validateProjectTypeId("stamina");
     try validateProjectTypeId("inventory_item");
-    try validateProjectTypeId("com.acme.health");
-    try validateProjectTypeId("game.health");
-    try validatePackageTypeId("com.acme.health");
+    try validateProjectTypeId("com.acme.stamina");
+    try validateProjectTypeId("game.stamina");
+    try validatePackageTypeId("com.acme.stamina");
     try validateEngineTypeId("machina.transform");
 
-    try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("Com.Acme.Health"));
-    try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("com.acme-health"));
-    try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("com..health"));
-    try std.testing.expectError(TypeIdError.InvalidTypeId, validatePackageTypeId("health"));
+    try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("Com.Acme.Stamina"));
+    try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("com.acme-stamina"));
+    try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("com..stamina"));
+    try std.testing.expectError(TypeIdError.InvalidTypeId, validatePackageTypeId("stamina"));
     try std.testing.expectError(TypeIdError.ReservedTypeId, validateProjectTypeId("machina.transform"));
     try std.testing.expectError(TypeIdError.ReservedTypeId, validatePackageTypeId("machina.transform"));
-    try std.testing.expectError(TypeIdError.ReservedTypeId, validateEngineTypeId("health"));
-    try std.testing.expectError(TypeIdError.ReservedTypeId, validateEngineTypeId("com.acme.health"));
+    try std.testing.expectError(TypeIdError.ReservedTypeId, validateEngineTypeId("stamina"));
+    try std.testing.expectError(TypeIdError.ReservedTypeId, validateEngineTypeId("com.acme.stamina"));
 }
 
 test "component registry allows reload-identical components and rejects incompatible duplicates" {
@@ -928,12 +928,12 @@ test "component registry allows reload-identical components and rejects incompat
         .{ .name = "max", .value_type = .float },
     };
     try registry.registerProjectComponent(.{
-        .id = "health",
+        .id = "stamina",
         .version = 1,
         .fields = &fields,
     });
     try registry.registerProjectComponent(.{
-        .id = "health",
+        .id = "stamina",
         .version = 1,
         .fields = &fields,
     });
@@ -945,7 +945,7 @@ test "component registry allows reload-identical components and rejects incompat
         .{ .name = "max", .value_type = .float },
     };
     try std.testing.expectError(RegistryError.DuplicateComponentType, registry.registerProjectComponent(.{
-        .id = "health",
+        .id = "stamina",
         .version = 1,
         .fields = &incompatible_fields,
     }));
@@ -960,7 +960,7 @@ test "component registry rejects duplicate field names" {
         .{ .name = "current", .value_type = .int },
     };
     try std.testing.expectError(RegistryError.DuplicateComponentField, registry.registerProjectComponent(.{
-        .id = "com.acme.health",
+        .id = "com.acme.stamina",
         .version = 1,
         .fields = &fields,
     }));
@@ -971,7 +971,7 @@ test "component registry separates project, package, and engine registrations" {
     defer registry.deinit();
 
     try registry.registerProjectComponent(.{
-        .id = "health",
+        .id = "stamina",
         .version = 1,
     });
     try std.testing.expectError(RegistryError.InvalidTypeId, registry.registerPackageComponent(.{
@@ -998,21 +998,21 @@ test "system registry validates component access and reload-compatible definitio
     var registry = ComponentRegistry.init(std.testing.allocator);
     defer registry.deinit();
 
-    try registry.registerProjectComponent(.{ .id = "health", .version = 1 });
+    try registry.registerProjectComponent(.{ .id = "stamina", .version = 1 });
     try registry.registerPackageComponent(.{ .id = "com.acme.mana", .version = 1 });
     try registry.registerEngineComponent(.{ .id = "machina.transform", .version = 1 });
 
-    const reads = [_][]const u8{ "machina.transform", "health" };
-    const writes = [_][]const u8{"health"};
+    const reads = [_][]const u8{ "machina.transform", "stamina" };
+    const writes = [_][]const u8{"stamina"};
     const after = [_][]const u8{"input"};
     try registry.registerProjectSystem(.{
-        .id = "health_regen",
+        .id = "stamina_regen",
         .reads = &reads,
         .writes = &.{},
         .after = &after,
     });
     try registry.registerProjectSystem(.{
-        .id = "health_regen",
+        .id = "stamina_regen",
         .reads = &reads,
         .writes = &.{},
         .after = &after,
@@ -1032,7 +1032,7 @@ test "system registry validates component access and reload-compatible definitio
     }));
     try std.testing.expectError(RegistryError.InvalidTypeId, registry.registerPackageSystem(.{
         .id = "com.acme.bad_local_access",
-        .reads = &.{"health"},
+        .reads = &.{"stamina"},
     }));
     try std.testing.expectError(RegistryError.DuplicateSystemAccess, registry.registerProjectSystem(.{
         .id = "com.acme.bad_access",
@@ -1048,21 +1048,21 @@ test "system schedule batches compatible systems and detects order cycles" {
     var registry = ComponentRegistry.init(std.testing.allocator);
     defer registry.deinit();
 
-    try registry.registerProjectComponent(.{ .id = "health" });
-    try registry.registerProjectComponent(.{ .id = "mood" });
+    try registry.registerProjectComponent(.{ .id = "stamina" });
+    try registry.registerProjectComponent(.{ .id = "focus" });
 
     try registry.registerProjectSystem(.{
-        .id = "observe_health",
-        .reads = &.{"health"},
+        .id = "observe_stamina",
+        .reads = &.{"stamina"},
     });
     try registry.registerProjectSystem(.{
-        .id = "observe_mood",
-        .reads = &.{"mood"},
+        .id = "observe_focus",
+        .reads = &.{"focus"},
     });
     try registry.registerProjectSystem(.{
-        .id = "regen_health",
-        .writes = &.{"health"},
-        .after = &.{"observe_health"},
+        .id = "regen_stamina",
+        .writes = &.{"stamina"},
+        .after = &.{"observe_stamina"},
     });
 
     var schedule = try registry.buildSchedule(std.testing.allocator, .update);
@@ -1070,9 +1070,9 @@ test "system schedule batches compatible systems and detects order cycles" {
 
     try std.testing.expectEqual(@as(usize, 2), schedule.batchCount());
     try std.testing.expectEqual(@as(usize, 3), schedule.systemCount());
-    try std.testing.expectEqualStrings("observe_health", schedule.batches[0].systems[0].id);
-    try std.testing.expectEqualStrings("observe_mood", schedule.batches[0].systems[1].id);
-    try std.testing.expectEqualStrings("regen_health", schedule.batches[1].systems[0].id);
+    try std.testing.expectEqualStrings("observe_stamina", schedule.batches[0].systems[0].id);
+    try std.testing.expectEqualStrings("observe_focus", schedule.batches[0].systems[1].id);
+    try std.testing.expectEqualStrings("regen_stamina", schedule.batches[1].systems[0].id);
 
     var cyclic = ComponentRegistry.init(std.testing.allocator);
     defer cyclic.deinit();

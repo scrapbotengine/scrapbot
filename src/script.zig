@@ -301,15 +301,6 @@ fn registerEngineTypes(registry: *runtime.ComponentRegistry) !void {
         .version = 1,
         .fields = &cube_fields,
     });
-
-    const spin_fields = [_]runtime.ComponentFieldDefinition{
-        .{ .name = "angular_velocity", .value_type = .float },
-    };
-    try registry.registerEngineComponent(.{
-        .id = runtime.spin_component_id,
-        .version = 1,
-        .fields = &spin_fields,
-    });
 }
 
 fn registerDeclaredTypes(program: *Program) ScriptError!void {
@@ -591,25 +582,24 @@ fn containsString(values: []const []const u8, needle: []const u8) bool {
 
 test "luau declarations register components and executable systems" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
-        \\ecs.component("health", {
+        \\ecs.component("spin", {
         \\  fields = {
-        \\    current = "f32",
-        \\    max = "f32",
+        \\    angular_velocity = "f32",
         \\  },
         \\})
         \\
         \\ecs.system("rotate_cubes", {
         \\  phase = "update",
-        \\  reads = { "machina.spin" },
+        \\  reads = { "spin" },
         \\  writes = { "machina.transform" },
         \\  run = function(world, dt)
-        \\    world.rotate("machina.transform", "machina.spin", dt * (1 + 1.5))
+        \\    world.rotate("machina.transform", "spin", dt * (1 + 1.5))
         \\  end,
         \\})
     );
     defer program.deinit();
 
-    try std.testing.expect(program.registry.findComponent("health") != null);
+    try std.testing.expect(program.registry.findComponent("spin") != null);
     const system = program.registry.findSystem("rotate_cubes") orelse return error.TestExpectedEqual;
     try std.testing.expect(system.runner.luau != 0);
 
@@ -626,17 +616,19 @@ test "luau declarations register components and executable systems" {
 
 test "luau world mutation requires declared system access" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
-        \\ecs.component("health", {
+        \\ecs.component("spin", {
         \\  fields = {
-        \\    current = "f32",
+        \\    angular_velocity = "f32",
         \\  },
         \\})
         \\
+        \\ecs.component("marker", {})
+        \\
         \\ecs.system("bad_rotate", {
-        \\  reads = { "machina.spin" },
-        \\  writes = { "health" },
+        \\  reads = { "spin" },
+        \\  writes = { "marker" },
         \\  run = function(world, dt)
-        \\    world.rotate("machina.transform", "machina.spin", dt)
+        \\    world.rotate("machina.transform", "spin", dt)
         \\  end,
         \\})
     );
@@ -658,19 +650,19 @@ test "update schedule batches read-only systems and separates write conflicts" {
     defer registry.deinit();
     try registerEngineTypes(&registry);
 
-    try registry.registerProjectComponent(.{ .id = "health" });
+    try registry.registerProjectComponent(.{ .id = "stamina" });
     try registry.registerProjectSystem(.{
         .id = "read_transform",
         .reads = &.{"machina.transform"},
     });
     try registry.registerProjectSystem(.{
-        .id = "observe_health",
-        .reads = &.{"health"},
+        .id = "observe_stamina",
+        .reads = &.{"stamina"},
     });
     try registry.registerProjectSystem(.{
-        .id = "regen_health",
+        .id = "regen_stamina",
         .reads = &.{"machina.transform"},
-        .writes = &.{"health"},
+        .writes = &.{"stamina"},
     });
 
     var schedule = try buildUpdateSchedule(std.testing.allocator, registry);

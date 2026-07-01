@@ -16,6 +16,7 @@ Script ECS registration lets project and package scripts define new component an
 - Project metadata lists script files in a root-level `scripts = [...]` array.
 - Script files use Luau source files executed by the embedded Luau VM.
 - Scripts register component and system definitions through the engine-provided `ecs.component(...)` and `ecs.system(...)` globals.
+- The example project's rotating cube behavior declares `spin` as a project-local component instead of relying on an engine-owned spin type.
 - Duplicate registration with an identical definition is accepted as reload-compatible.
 - Duplicate registration with an incompatible definition fails validation.
 - Systems declare the component types they read and write.
