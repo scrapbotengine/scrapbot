@@ -2,6 +2,14 @@
 
 Machina is an experimental, text-first game engine written in Zig. The engine is intended to be friendly to agentic workflows: project state should be inspectable, editable, and reviewable as source text wherever possible. Binary files are for assets and build outputs, not core scene or project data.
 
+## Primary Goals & Features
+
+- Built with Zig, with embedded Luau for scripting.
+- Fully ECS based. The ECS is exposed to scripts. Users can author new component types and systems in Luau, and the engine will schedule them with native systems.
+- Projects are split into scenes, which are mostly collections of entities, persisted as .toml files.
+- Run your project by running `machina run` in your project directory.
+- Hit F1 to open an editing UI.
+
 ## Project Shape
 
 - `src/main.zig` contains the CLI entry point and command routing.
@@ -17,14 +25,15 @@ Machina is an experimental, text-first game engine written in Zig. The engine is
 - `docs/adr/` records architectural decisions.
 - `docs/fdr/` records feature behavior and product/implementation decisions.
 - `NOTICE` tracks third-party license notices for vendored code, data, generated source, and direct external binary dependencies.
+- `tools/generate-ui-font.py` regenerates `src/ui_font.zig` from the checked-in Spleen BDF source.
 - `third_party/wgpu_native_zig/` is a vendored and locally patched Zig binding for `wgpu-native`.
-- `third_party/spleen/` contains the BSD-2 license for the embedded Spleen-derived bitmap UI font data in `src/ui_font.zig`.
+- `third_party/spleen/` contains the BSD-2 license and source BDF for the embedded Spleen-derived bitmap UI font data in `src/ui_font.zig`.
 
 ## Current Engine Model
 
 Projects have a `project.machina.toml` file, a default scene path, and an optional `scripts = [...]` list. Scenes are TOML-shaped text files with root `name` and `version` fields plus `[[entities]]` records. Entity data is authored as component tables such as `[entities.components."machina.transform"]`, `[entities.components."machina.geometry.primitive"]`, `[entities.components."machina.material.surface"]`, `[entities.components."machina.camera"]`, `[entities.components."machina.light.directional"]`, shadow markers like `[entities.components."machina.shadow.caster"]`, UI tables like `[entities.components."machina.ui.rect"]` and `[entities.components."machina.ui.text"]`, and project-local tables like `[entities.components.spin]`. Scene component ids and fields must validate against the engine/script component registry.
 
-Rendering uses `wgpu-native`. Headful rendering currently uses SDL3 on macOS via Homebrew paths in `build.zig`; offscreen rendering writes BMP artifacts and is the preferred automation surface. Renderable meshes, UI primitives, the active camera fallback, and the first directional light are resolved from ECS world data where available. New scene-authored renderables should use `machina.geometry.primitive` plus `machina.material.surface`; `machina.render.cube` is a legacy shortcut that renders as box geometry with inline color. Shadow behavior is authored with `machina.shadow.caster` and `machina.shadow.receiver` marker components. First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.text`, and `machina.ui.button`; UI renders as a screen-space overlay after 3D content, with fixed-pixel Spleen 8x16-derived built-in text and button markers that are not interactive yet. The renderer owns an internal render world and render-phase schedule built with the same `runtime.World`, component registry, and scheduler implementation as game worlds. Matching geometry/material/shadow-state renderables are automatically grouped into instanced render batches below the scene authoring surface. GPU handles remain renderer-owned side resources until native/internal component storage has explicit lifecycle rules.
+Rendering uses `wgpu-native`. Headful rendering currently uses SDL3 on macOS via Homebrew paths in `build.zig`; offscreen rendering writes BMP artifacts and is the preferred automation surface. Renderable meshes, UI primitives, the active camera fallback, and the first directional light are resolved from ECS world data where available. New scene-authored renderables should use `machina.geometry.primitive` plus `machina.material.surface`; `machina.render.cube` is a legacy shortcut that renders as box geometry with inline color. Shadow behavior is authored with `machina.shadow.caster` and `machina.shadow.receiver` marker components. First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.text`, and `machina.ui.button`; UI renders as a screen-space overlay after 3D content, with fixed-pixel Spleen 16x32-derived built-in text and button markers that are not interactive yet. The renderer owns an internal render world and render-phase schedule built with the same `runtime.World`, component registry, and scheduler implementation as game worlds. Matching geometry/material/shadow-state renderables are automatically grouped into instanced render batches below the scene authoring surface. GPU handles remain renderer-owned side resources until native/internal component storage has explicit lifecycle rules.
 
 The low-level runtime model is ECS-oriented: stable entity identity, structured components, systems over component queries, and a scripting API that exposes those concepts directly. `src/runtime.zig` owns the current `World`, component registry, and system schedule planning. Component storage is columnar per component type: each component table has dense entity rows, a sparse entity-to-row index, and typed SoA field columns. Scene loading builds a world, scripts register ECS component/system types, and rendering queries renderable components from that world.
 
@@ -39,6 +48,7 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 - Update ADRs when changing architecture or backend choices.
 - Update FDRs when changing feature behavior, command behavior, scene schema, or validation semantics.
 - Keep `NOTICE` current when adding, removing, replacing, or redistributing third-party code, assets, generated data, fonts, tools, native libraries, or fetched binary dependencies.
+- When changing the built-in UI bitmap font, update `third_party/spleen/`, regenerate `src/ui_font.zig` with `tools/generate-ui-font.py`, and update `NOTICE`/FDRs if the source face changes.
 - Route runtime state through the ECS world instead of introducing renderer-specific or script-owned side channels. Engine subsystems may own separate internal worlds and schedules, but they must use the shared runtime ECS implementation rather than creating a parallel ECS model.
 - Script-defined ECS component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local, qualified dotted ids are for packages/libraries, and `machina.*` is engine-owned. Machina does not infer a default project namespace.
 - Author new Luau component schemas with `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage. If field-schema type inference regresses, fix the Luau type definitions/checker setup or runtime bridge support rather than reverting to marker-value inference.

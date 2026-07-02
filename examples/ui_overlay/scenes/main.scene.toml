@@ -13,7 +13,7 @@ name = "Debug Panel"
 
 [entities.components."machina.ui.rect"]
 position = [24.0, 24.0, 0.0]
-size = [360.0, 158.0, 0.0]
+size = [360.0, 176.0, 0.0]
 color = [0.013, 0.0222, 0.0437]
 
 [[entities]]
@@ -31,7 +31,7 @@ name = "UI Title"
 
 [entities.components."machina.ui.text"]
 position = [42.0, 42.0, 0.0]
-size = 2.0
+size = 1.0
 color = [0.8796, 0.9131, 0.9473]
 value = "MACHINA UI"
 
@@ -50,8 +50,8 @@ id = "ui-demo-button"
 name = "Demo Button"
 
 [entities.components."machina.ui.rect"]
-position = [42.0, 124.0, 0.0]
-size = [150.0, 34.0, 0.0]
+position = [42.0, 132.0, 0.0]
+size = [150.0, 48.0, 0.0]
 color = [0.0044, 0.3763, 0.8148]
 
 [entities.components."machina.ui.button"]
@@ -61,7 +61,7 @@ id = "ui-demo-button-label"
 name = "Demo Button Label"
 
 [entities.components."machina.ui.text"]
-position = [58.0, 134.0, 0.0]
+position = [58.0, 140.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "BUTTON"
@@ -71,8 +71,8 @@ id = "ui-status-pill"
 name = "Status Pill"
 
 [entities.components."machina.ui.rect"]
-position = [210.0, 124.0, 0.0]
-size = [96.0, 34.0, 0.0]
+position = [214.0, 132.0, 0.0]
+size = [116.0, 48.0, 0.0]
 color = [0.9131, 0.3419, 0.0033]
 
 [[entities]]
@@ -80,7 +80,7 @@ id = "ui-status-label"
 name = "Status Label"
 
 [entities.components."machina.ui.text"]
-position = [226.0, 134.0, 0.0]
+position = [232.0, 140.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "READY"

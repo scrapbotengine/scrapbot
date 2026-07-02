@@ -2464,8 +2464,8 @@ fn appendGlyph(
     const rows = ui_font.glyphRows(byte);
     for (rows, 0..) |row_bits, row| {
         for (0..ui_font.width) |column| {
-            const bit: u3 = @intCast(ui_font.width - 1 - column);
-            if ((row_bits & (@as(u8, 1) << bit)) == 0) {
+            const bit: ui_font.BitShift = @intCast(ui_font.width - 1 - column);
+            if ((row_bits & (@as(ui_font.Row, 1) << bit)) == 0) {
                 continue;
             }
             try appendUiRect(

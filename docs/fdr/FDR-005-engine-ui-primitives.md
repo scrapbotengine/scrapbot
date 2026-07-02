@@ -40,7 +40,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 4. Use a built-in pixel text path before font assets
 
-**Decision:** Early text labels render with Spleen 8x16-derived bitmap glyphs embedded as engine source data.
+**Decision:** Early text labels render with Spleen 16x32-derived bitmap glyphs embedded as engine source data, generated from the checked-in BDF source under `third_party/spleen/`.
 **Why:** UI without text is not useful, and a built-in text path avoids making asset import, font atlases, shaping, and localization prerequisites for the first UI milestone.
 **Tradeoff:** The current text path is suitable for diagnostics and examples, not polished editor typography.
 
