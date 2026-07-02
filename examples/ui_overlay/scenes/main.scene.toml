@@ -13,8 +13,17 @@ name = "Debug Panel"
 
 [entities.components."machina.ui.rect"]
 position = [24.0, 24.0, 0.0]
-size = [308.0, 132.0, 0.0]
-color = [0.02, 0.09, 0.16]
+size = [360.0, 158.0, 0.0]
+color = [0.013, 0.0222, 0.0437]
+
+[[entities]]
+id = "ui-debug-panel-accent"
+name = "Debug Panel Accent"
+
+[entities.components."machina.ui.rect"]
+position = [24.0, 24.0, 0.0]
+size = [360.0, 3.0, 0.0]
+color = [0.016, 0.6514, 0.855]
 
 [[entities]]
 id = "ui-title"
@@ -22,8 +31,8 @@ name = "UI Title"
 
 [entities.components."machina.ui.text"]
 position = [42.0, 42.0, 0.0]
-size = 3.0
-color = [0.82, 0.94, 1.0]
+size = 2.0
+color = [0.8796, 0.9131, 0.9473]
 value = "MACHINA UI"
 
 [[entities]]
@@ -31,19 +40,19 @@ id = "ui-stats"
 name = "UI Stats"
 
 [entities.components."machina.ui.text"]
-position = [44.0, 80.0, 0.0]
-size = 2.0
-color = [1.0, 0.72, 0.18]
-value = "RECTS 3"
+position = [44.0, 84.0, 0.0]
+size = 1.0
+color = [0.9734, 0.6514, 0.0742]
+value = "RECTS 4"
 
 [[entities]]
 id = "ui-demo-button"
 name = "Demo Button"
 
 [entities.components."machina.ui.rect"]
-position = [42.0, 112.0, 0.0]
+position = [42.0, 124.0, 0.0]
 size = [150.0, 34.0, 0.0]
-color = [0.0, 0.48, 0.86]
+color = [0.0044, 0.3763, 0.8148]
 
 [entities.components."machina.ui.button"]
 
@@ -52,8 +61,8 @@ id = "ui-demo-button-label"
 name = "Demo Button Label"
 
 [entities.components."machina.ui.text"]
-position = [58.0, 122.0, 0.0]
-size = 2.0
+position = [58.0, 134.0, 0.0]
+size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "BUTTON"
 
@@ -62,16 +71,16 @@ id = "ui-status-pill"
 name = "Status Pill"
 
 [entities.components."machina.ui.rect"]
-position = [208.0, 112.0, 0.0]
+position = [210.0, 124.0, 0.0]
 size = [96.0, 34.0, 0.0]
-color = [0.9, 0.42, 0.08]
+color = [0.9131, 0.3419, 0.0033]
 
 [[entities]]
 id = "ui-status-label"
 name = "Status Label"
 
 [entities.components."machina.ui.text"]
-position = [224.0, 122.0, 0.0]
-size = 2.0
-color = [0.92, 1.0, 0.86]
+position = [226.0, 134.0, 0.0]
+size = 1.0
+color = [1.0, 1.0, 1.0]
 value = "READY"

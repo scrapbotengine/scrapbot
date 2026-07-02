@@ -2,7 +2,8 @@
 
 This project demonstrates the first engine-native UI slice. The scene is
 text-authored ECS data: a canvas marker, screen-space rectangles, fixed-pixel
-text labels, and a button marker rendered by Machina's own renderer.
+text labels, and a button marker rendered by Machina's own renderer. The demo
+uses Tailwind palette colors and the embedded Spleen 8x16 bitmap font.
 
 ```sh
 mise machina check examples/ui_overlay

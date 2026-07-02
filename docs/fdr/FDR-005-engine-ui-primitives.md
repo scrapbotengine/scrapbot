@@ -12,6 +12,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
 - Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, and button markers.
 - UI rectangles and text labels use screen-space positions and sizes with a top-left origin.
+- The first UI demo uses Tailwind palette colors for a more disciplined visual baseline.
 - Button markers currently provide semantic authoring and button styling; pointer interaction is not active yet.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
@@ -39,7 +40,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 4. Use a built-in pixel text path before font assets
 
-**Decision:** Early text labels render with a deterministic fixed-pixel ASCII style.
+**Decision:** Early text labels render with Spleen 8x16-derived bitmap glyphs embedded as engine source data.
 **Why:** UI without text is not useful, and a built-in text path avoids making asset import, font atlases, shaping, and localization prerequisites for the first UI milestone.
 **Tradeoff:** The current text path is suitable for diagnostics and examples, not polished editor typography.
 
