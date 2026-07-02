@@ -36,11 +36,52 @@ typedef int (*machina_luau_set_vec3_fn)(
     const float value[3]
 );
 
+enum
+{
+    MACHINA_LUAU_FIELD_BOOLEAN = 1,
+    MACHINA_LUAU_FIELD_INT = 2,
+    MACHINA_LUAU_FIELD_FLOAT = 3,
+    MACHINA_LUAU_FIELD_VEC3 = 4,
+    MACHINA_LUAU_FIELD_STRING = 5,
+    MACHINA_LUAU_FIELD_NUMBER = 6,
+};
+
+typedef struct machina_luau_field_value
+{
+    int tag;
+    int boolean_value;
+    int32_t int_value;
+    double number_value;
+    const char* string_data;
+    size_t string_len;
+    float vec3_value[3];
+} machina_luau_field_value;
+
+typedef int (*machina_luau_get_field_fn)(
+    void* context,
+    void* world,
+    uint32_t entity,
+    const char* component_id,
+    const char* field_name,
+    machina_luau_field_value* out_value
+);
+
+typedef int (*machina_luau_set_field_fn)(
+    void* context,
+    void* world,
+    uint32_t entity,
+    const char* component_id,
+    const char* field_name,
+    const machina_luau_field_value* value
+);
+
 typedef struct machina_luau_callbacks
 {
     machina_luau_query_next_fn query_next;
     machina_luau_get_vec3_fn get_vec3;
     machina_luau_set_vec3_fn set_vec3;
+    machina_luau_get_field_fn get_field;
+    machina_luau_set_field_fn set_field;
 } machina_luau_callbacks;
 
 machina_luau* machina_luau_create(machina_luau_callbacks callbacks);

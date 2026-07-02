@@ -1497,8 +1497,8 @@ test "checkProject validates script declarations and builds a system schedule" {
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\local Spinners = ecs.query(Spin)
@@ -1697,8 +1697,8 @@ test "LiveProject reloads changed scripts and keeps last good registry on failur
         \\--!strict
         \\
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\local Spinners = ecs.query(Spin)
@@ -1725,8 +1725,8 @@ test "LiveProject reloads changed scripts and keeps last good registry on failur
         \\}
         \\
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\
@@ -1800,8 +1800,8 @@ test "LiveProject update runs the scheduled rotation system" {
         \\
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\local RotatingCubes = ecs.query(Transform, Spin)
@@ -2137,8 +2137,8 @@ fn writeRotateScript(io: Io, root_dir: Io.Dir, delta_expression: []const u8) !vo
         \\
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local Spin = ecs.component("spin", {{
-        \\  fields = ecs.schema({{
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({{
+        \\    angular_velocity = "vec3",
         \\  }}),
         \\}})
         \\local RotatingCubes = ecs.query(Transform, Spin)

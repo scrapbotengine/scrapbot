@@ -850,6 +850,14 @@ pub const World = struct {
         try self.setFieldValue(handle, component_id, field_name, .{ .vec3 = value });
     }
 
+    pub fn getComponentFieldValue(self: World, handle: EntityHandle, component_id: []const u8, field_name: []const u8) WorldError!ComponentValue {
+        return self.getFieldValue(handle, component_id, field_name);
+    }
+
+    pub fn setComponentFieldValue(self: *World, handle: EntityHandle, component_id: []const u8, field_name: []const u8, value: ComponentValue) WorldError!void {
+        try self.setFieldValue(handle, component_id, field_name, value);
+    }
+
     pub fn renderableCubeCount(self: World) usize {
         var count: usize = 0;
         var cursor: usize = 0;

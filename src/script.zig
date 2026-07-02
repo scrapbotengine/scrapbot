@@ -254,6 +254,8 @@ fn initProgram(allocator: std.mem.Allocator) !Program {
         .query_next = queryNextCallback,
         .get_vec3 = getVec3Callback,
         .set_vec3 = setVec3Callback,
+        .get_field = getFieldCallback,
+        .set_field = setFieldCallback,
     };
     const vm = c.machina_luau_create(callbacks) orelse return ScriptError.InvalidScript;
 
@@ -608,6 +610,146 @@ fn setVec3Callback(
     return 1;
 }
 
+fn getFieldCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+    raw_field_name: ?[*:0]const u8,
+    raw_out_value: ?*c.machina_luau_field_value,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    const field_name = std.mem.span(raw_field_name orelse return 0);
+    const out_value = raw_out_value orelse return 0;
+    if (!program.activeSystemAllowsRead(component_id)) {
+        return 0;
+    }
+
+    const value = world.getComponentFieldValue(.{ .index = entity_index }, component_id, field_name) catch return 0;
+    out_value.* = .{
+        .tag = 0,
+        .boolean_value = 0,
+        .int_value = 0,
+        .number_value = 0,
+        .string_data = null,
+        .string_len = 0,
+        .vec3_value = .{ 0.0, 0.0, 0.0 },
+    };
+
+    switch (value) {
+        .boolean => |payload| {
+            out_value.tag = c.MACHINA_LUAU_FIELD_BOOLEAN;
+            out_value.boolean_value = if (payload) 1 else 0;
+        },
+        .int => |payload| {
+            out_value.tag = c.MACHINA_LUAU_FIELD_INT;
+            out_value.int_value = payload;
+        },
+        .float => |payload| {
+            out_value.tag = c.MACHINA_LUAU_FIELD_FLOAT;
+            out_value.number_value = payload;
+        },
+        .vec3 => |payload| {
+            out_value.tag = c.MACHINA_LUAU_FIELD_VEC3;
+            out_value.vec3_value = payload;
+        },
+        .string => |payload| {
+            out_value.tag = c.MACHINA_LUAU_FIELD_STRING;
+            out_value.string_data = payload.ptr;
+            out_value.string_len = payload.len;
+        },
+    }
+
+    return 1;
+}
+
+fn setFieldCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+    raw_field_name: ?[*:0]const u8,
+    raw_value: ?*const c.machina_luau_field_value,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    const field_name = std.mem.span(raw_field_name orelse return 0);
+    const value = raw_value orelse return 0;
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        return 0;
+    }
+
+    const component_value = componentValueFromLuau(world, .{ .index = entity_index }, component_id, field_name, value) catch return 0;
+    world.setComponentFieldValue(.{ .index = entity_index }, component_id, field_name, component_value) catch return 0;
+    return 1;
+}
+
+fn componentValueFromLuau(
+    world: *runtime.World,
+    entity: runtime.EntityHandle,
+    component_id: []const u8,
+    field_name: []const u8,
+    value: *const c.machina_luau_field_value,
+) !runtime.ComponentValue {
+    return switch (value.tag) {
+        c.MACHINA_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
+        c.MACHINA_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
+        c.MACHINA_LUAU_FIELD_VEC3 => blk: {
+            const vec3 = value.vec3_value;
+            if (!std.math.isFinite(vec3[0]) or !std.math.isFinite(vec3[1]) or !std.math.isFinite(vec3[2])) {
+                return ScriptError.InvalidScript;
+            }
+            break :blk .{ .vec3 = .{ vec3[0], vec3[1], vec3[2] } };
+        },
+        c.MACHINA_LUAU_FIELD_NUMBER => blk: {
+            if (!std.math.isFinite(value.number_value)) {
+                return ScriptError.InvalidScript;
+            }
+
+            const current = try world.getComponentFieldValue(entity, component_id, field_name);
+            break :blk switch (current) {
+                .int => .{ .int = try i32FromLuauNumber(value.number_value) },
+                .float => .{ .float = try f32FromLuauNumber(value.number_value) },
+                else => return ScriptError.InvalidScript,
+            };
+        },
+        else => ScriptError.InvalidScript,
+    };
+}
+
+fn stringFromLuau(value: *const c.machina_luau_field_value) []const u8 {
+    if (value.string_len == 0) {
+        return "";
+    }
+    return value.string_data[0..value.string_len];
+}
+
+fn i32FromLuauNumber(value: f64) !i32 {
+    if (!std.math.isFinite(value)) {
+        return ScriptError.InvalidScript;
+    }
+    const min = @as(f64, @floatFromInt(std.math.minInt(i32)));
+    const max = @as(f64, @floatFromInt(std.math.maxInt(i32)));
+    if (value < min or value > max or value != @floor(value)) {
+        return ScriptError.InvalidScript;
+    }
+    return @intFromFloat(value);
+}
+
+fn f32FromLuauNumber(value: f64) !f32 {
+    if (!std.math.isFinite(value)) {
+        return ScriptError.InvalidScript;
+    }
+    const narrowed: f32 = @floatCast(value);
+    if (!std.math.isFinite(narrowed)) {
+        return ScriptError.InvalidScript;
+    }
+    return narrowed;
+}
+
 fn parseFieldType(value: []const u8) ScriptError!runtime.FieldType {
     if (std.mem.eql(u8, value, "boolean") or std.mem.eql(u8, value, "bool")) {
         return .boolean;
@@ -658,8 +800,8 @@ test "luau declarations register components and executable systems" {
         \\
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\local RotatingCubes = ecs.query(Transform, Spin)
@@ -742,8 +884,8 @@ test "luau refs helper erases component handles for system declarations" {
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\
@@ -782,13 +924,13 @@ test "luau fields helper preserves component declaration fields" {
     try std.testing.expectEqual(runtime.FieldType.vec3, spin.fields[0].value_type);
 }
 
-test "luau schema helper infers and preserves component declaration fields" {
+test "luau fields helper infers and preserves component payload types" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\local Spinners = ecs.query(Spin)
@@ -806,6 +948,90 @@ test "luau schema helper infers and preserves component declaration fields" {
     const system = program.registry.findSystem("observe_spin") orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 1), system.reads.len);
     try std.testing.expectEqualStrings("spin", system.reads[0]);
+}
+
+test "luau component proxies read and write scalar fields" {
+    var program = try loadSourceProgram(std.testing.allocator, "test.luau",
+        \\--!strict
+        \\
+        \\local Stats = ecs.component("stats", {
+        \\  fields = ecs.fields({
+        \\    enabled = "boolean",
+        \\    count = "i32",
+        \\    speed = "f32",
+        \\    label = "string",
+        \\  }),
+        \\})
+        \\local StatsQuery = ecs.query(Stats)
+        \\
+        \\ecs.system("update_stats", {
+        \\  query = StatsQuery,
+        \\  writes = ecs.refs(Stats),
+        \\  run = function(world, _dt)
+        \\    for _entity, stats in StatsQuery:iter(world) do
+        \\      if stats.enabled and stats.label == "ready" then
+        \\        stats.count = stats.count + 1
+        \\        stats.speed = stats.speed + 0.5
+        \\        stats.label = "done"
+        \\      end
+        \\    end
+        \\  end,
+        \\})
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+    const entity = try world.createEntity("stats-entity", "Stats Entity");
+    const fields = [_]runtime.ComponentFieldValue{
+        .{ .name = "enabled", .value = .{ .boolean = true } },
+        .{ .name = "count", .value = .{ .int = 41 } },
+        .{ .name = "speed", .value = .{ .float = 1.5 } },
+        .{ .name = "label", .value = .{ .string = "ready" } },
+    };
+    try world.setComponent(entity, "stats", &fields);
+
+    try std.testing.expect(program.update(&world, 0.25));
+    try std.testing.expectEqual(runtime.ComponentValue{ .boolean = true }, try world.getComponentFieldValue(entity, "stats", "enabled"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .int = 42 }, try world.getComponentFieldValue(entity, "stats", "count"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .float = 2.0 }, try world.getComponentFieldValue(entity, "stats", "speed"));
+    const label = try world.getComponentFieldValue(entity, "stats", "label");
+    try std.testing.expectEqualStrings("done", label.string);
+}
+
+test "luau component proxy rejects scalar values outside host field range" {
+    var program = try loadSourceProgram(std.testing.allocator, "test.luau",
+        \\--!strict
+        \\
+        \\local Stats = ecs.component("stats", {
+        \\  fields = ecs.fields({
+        \\    speed = "f32",
+        \\  }),
+        \\})
+        \\local StatsQuery = ecs.query(Stats)
+        \\
+        \\ecs.system("break_stats", {
+        \\  query = StatsQuery,
+        \\  writes = ecs.refs(Stats),
+        \\  run = function(world, _dt)
+        \\    for _entity, stats in StatsQuery:iter(world) do
+        \\      stats.speed = 1e100
+        \\    end
+        \\  end,
+        \\})
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+    const entity = try world.createEntity("stats-entity", "Stats Entity");
+    const fields = [_]runtime.ComponentFieldValue{
+        .{ .name = "speed", .value = .{ .float = 1.5 } },
+    };
+    try world.setComponent(entity, "stats", &fields);
+
+    try std.testing.expect(!program.update(&world, 0.25));
+    try std.testing.expectEqual(runtime.ComponentValue{ .float = 1.5 }, try world.getComponentFieldValue(entity, "stats", "speed"));
 }
 
 test "luau schema helper rejects non-marker field values" {
@@ -827,8 +1053,8 @@ test "luau query objects infer system reads from unwritten query components" {
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\local RotatingCubes = ecs.query(Transform, Spin, RenderCube)
@@ -865,8 +1091,8 @@ test "luau world mutation requires declared system access" {
         \\
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\
@@ -904,8 +1130,8 @@ test "luau world query requires declared component access" {
         \\
         \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
         \\local Spin = ecs.component("spin", {
-        \\  fields = ecs.schema({
-        \\    angular_velocity = ecs.vec3(),
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
         \\  }),
         \\})
         \\

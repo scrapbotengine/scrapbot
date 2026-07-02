@@ -35,6 +35,7 @@ luaurc="${repo_root}/.luaurc"
 analyze() {
   "${luau_lsp}" analyze \
     --platform=standard \
+    --flag:LuauSolverV2=true \
     "--definitions:machina=${definitions}" \
     --base-luaurc "${luaurc}" \
     "$@"
@@ -51,8 +52,11 @@ valid_script="${tmpdir}/typed-query-valid.luau"
 cat > "${valid_script}" <<'LUA'
 local Transform = ecs.component<<MachinaTransform>>("machina.transform")
 local Spin = ecs.component("spin", {
-  fields = ecs.schema({
-    angular_velocity = ecs.vec3(),
+  fields = ecs.fields({
+    angular_velocity = "vec3",
+    label = "string",
+    enabled = "boolean",
+    speed = "f32",
   }),
 })
 local RotatingCubes = ecs.query(Transform, Spin)
@@ -65,6 +69,9 @@ ecs.system("typed_query", {
     for _entity, transform, spin in RotatingCubes:iter(world) do
       local _rotation: MachinaVec3 = transform.rotation
       local _angular_speed: number = spin.angular_velocity[1] * dt
+      local _label: string = spin.label
+      local _enabled: boolean = spin.enabled
+      local _speed: number = spin.speed
       transform.rotation = {
         transform.rotation[1] + spin.angular_velocity[1] * dt,
         transform.rotation[2],
@@ -81,8 +88,8 @@ invalid_script="${tmpdir}/typed-query-invalid.luau"
 cat > "${invalid_script}" <<'LUA'
 local Transform = ecs.component<<MachinaTransform>>("machina.transform")
 local Spin = ecs.component("spin", {
-  fields = ecs.schema({
-    angular_velocity = ecs.vec3(),
+  fields = ecs.fields({
+    angular_velocity = "vec3",
   }),
 })
 local RotatingCubes = ecs.query(Transform, Spin)
@@ -113,7 +120,7 @@ fi
 invalid_schema_script="${tmpdir}/typed-schema-invalid.luau"
 cat > "${invalid_schema_script}" <<'LUA'
 local _Spin = ecs.component("spin", {
-  fields = ecs.schema({
+  fields = ecs.fields({
     angular_velocity = "vec4",
   }),
 })
@@ -124,6 +131,26 @@ if analyze "${invalid_schema_script}" >"${invalid_schema_output}" 2>&1; then
   printf 'error: expected invalid schema fixture to fail Luau analysis\n' >&2
   exit 1
 fi
+
+if ! grep -q "vec4" "${invalid_schema_output}"; then
+  printf 'error: invalid inferred field fixture failed for an unexpected reason\n' >&2
+  cat "${invalid_schema_output}" >&2
+  exit 1
+fi
+
+valid_schema_script="${tmpdir}/typed-schema-compat-valid.luau"
+cat > "${valid_schema_script}" <<'LUA'
+local Spin = ecs.component("spin", {
+  fields = ecs.schema({
+    angular_velocity = ecs.vec3(),
+  }),
+})
+
+local spin = Spin.__machina_component_type()
+local _angular_velocity: MachinaVec3 = spin.angular_velocity
+LUA
+
+analyze "${valid_schema_script}"
 
 invalid_fields_script="${tmpdir}/typed-fields-invalid.luau"
 cat > "${invalid_fields_script}" <<'LUA'

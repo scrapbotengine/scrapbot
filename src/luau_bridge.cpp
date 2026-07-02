@@ -471,6 +471,69 @@ static bool read_vec3(lua_State* state, int index, float value[3])
     return true;
 }
 
+static void push_field_value(lua_State* state, const machina_luau_field_value& value)
+{
+    switch (value.tag)
+    {
+    case MACHINA_LUAU_FIELD_BOOLEAN:
+        lua_pushboolean(state, value.boolean_value != 0);
+        return;
+    case MACHINA_LUAU_FIELD_INT:
+        lua_pushinteger(state, value.int_value);
+        return;
+    case MACHINA_LUAU_FIELD_FLOAT:
+    case MACHINA_LUAU_FIELD_NUMBER:
+        lua_pushnumber(state, value.number_value);
+        return;
+    case MACHINA_LUAU_FIELD_VEC3:
+        push_vec3(state, value.vec3_value);
+        return;
+    case MACHINA_LUAU_FIELD_STRING:
+        lua_pushlstring(state, value.string_data ? value.string_data : "", value.string_len);
+        return;
+    default:
+        luaL_error(state, "component field read returned unsupported field type");
+        return;
+    }
+}
+
+static void read_field_value(lua_State* state, int index, machina_luau_field_value* value)
+{
+    std::memset(value, 0, sizeof(*value));
+
+    if (lua_isboolean(state, index))
+    {
+        value->tag = MACHINA_LUAU_FIELD_BOOLEAN;
+        value->boolean_value = lua_toboolean(state, index);
+        return;
+    }
+
+    if (lua_isnumber(state, index))
+    {
+        value->tag = MACHINA_LUAU_FIELD_NUMBER;
+        value->number_value = lua_tonumber(state, index);
+        return;
+    }
+
+    if (lua_isstring(state, index))
+    {
+        value->tag = MACHINA_LUAU_FIELD_STRING;
+        size_t len = 0;
+        value->string_data = luaL_checklstring(state, index, &len);
+        value->string_len = len;
+        return;
+    }
+
+    if (lua_istable(state, index))
+    {
+        value->tag = MACHINA_LUAU_FIELD_VEC3;
+        read_vec3(state, index, value->vec3_value);
+        return;
+    }
+
+    luaL_error(state, "component field write received unsupported value type");
+}
+
 static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity)
 {
     lua_newtable(state);
@@ -521,10 +584,10 @@ static int component_proxy_index(lua_State* state)
         return 1;
     }
 
-    float value[3] = {};
-    if (!vm->callbacks.get_vec3 || !vm->callbacks.get_vec3(vm->callback_context, vm->active_world, entity, component_id, field_name, value))
+    machina_luau_field_value value = {};
+    if (!vm->callbacks.get_field || !vm->callbacks.get_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
         luaL_error(state, "component field read access denied or failed");
-    push_vec3(state, value);
+    push_field_value(state, value);
     return 1;
 }
 
@@ -534,9 +597,9 @@ static int component_proxy_newindex(lua_State* state)
     const uint32_t entity = static_cast<uint32_t>(lua_tointeger(state, lua_upvalueindex(2)));
     const char* component_id = lua_tostring(state, lua_upvalueindex(3));
     const char* field_name = luaL_checkstring(state, 2);
-    float value[3] = {};
-    read_vec3(state, 3, value);
-    if (!vm->callbacks.set_vec3 || !vm->callbacks.set_vec3(vm->callback_context, vm->active_world, entity, component_id, field_name, value))
+    machina_luau_field_value value = {};
+    read_field_value(state, 3, &value);
+    if (!vm->callbacks.set_field || !vm->callbacks.set_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
         luaL_error(state, "component field write access denied or failed");
     return 0;
 }

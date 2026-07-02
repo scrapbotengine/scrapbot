@@ -29,8 +29,9 @@ Script ECS registration lets project and package scripts define new component an
 - Script system callbacks receive an engine-provided world facade instead of direct component storage ownership.
 - `ecs.component(...)` returns a typed component handle.
 - Component handle type-brand metadata supports editor analysis and is not callable gameplay API.
-- Scripts can use `ecs.schema(...)` with field marker helpers to infer component payload types from schema declarations.
 - Scripts use `ecs.fields(...)` to declare component field maps with editor-visible field type validation.
+- Component payload editor types can be inferred from literal `ecs.fields(...)` declarations.
+- Legacy `ecs.schema(...)` marker declarations remain available for compatibility, but new script examples use `ecs.fields(...)`.
 - Scripts use `ecs.query(...)` to create reusable typed query objects from component handles.
 - Systems may attach a query object; unwritten query components become inferred read access.
 - Scripts use `ecs.refs(...)` to erase typed component handles into explicit `reads` or `writes` declarations when needed.
@@ -38,6 +39,7 @@ Script ECS registration lets project and package scripts define new component an
 - The lower-level `world.query(...)` loop remains available for compatibility and debugging.
 - Low-level entity vector accessors remain available for compatibility and debugging.
 - Script-driven world mutation is checked against the system's declared component access.
+- Component proxies can read and write registered boolean, integer, float, string, and Vec3 fields through the typed query API.
 - Non-finite script values that reach host mutation APIs fail the system invocation for that frame instead of corrupting world state.
 - Registration failures produce structured diagnostics suitable for command-line, editor, and reload surfaces.
 - Script runtime failures keep the last loaded project state active and surface diagnostics with script path, system id, stage, and message where available.
@@ -74,11 +76,11 @@ Script ECS registration lets project and package scripts define new component an
 **Why:** Running real Luau keeps script behavior honest, reloadable, and compatible with editor tooling while preserving native ownership of ECS storage and scheduling. Narrow host APIs prevent scripts from bypassing validation while the ECS query/mutation model matures.
 **Tradeoff:** Each host API must be designed, typed, validated, and diagnosed explicitly before scripts can use it.
 
-### 6. Prefer typed query objects for script iteration
+### 6. Prefer typed field schemas and query objects
 
-**Decision:** `ecs.component(...)` returns an opaque typed component handle with guarded type-brand metadata, `ecs.schema(...)` can infer component payload types from field marker helpers, `ecs.fields(...)` preserves typed string field maps for explicit declarations, `ecs.query(...)` turns one or more handles into a reusable query object, systems can attach that query object, and runtime loops iterate it through the world facade.
-**Why:** Query objects keep the component set explicit, reusable, and easy for Luau tooling to type while avoiding repeated string or handle lists inside hot loops. Schema markers let common component payload types be inferred from the declaration itself, while the explicit field helper remains available where inference is not expressive enough yet. Inferring reads from the query object lets scripts describe the common "iterate these components" case once, while explicit writes still keep scheduling honest. It follows ADR-006 and ADR-008.
-**Tradeoff:** Script authors introduce a named query before system registration. The typed editor surface supports a practical maximum query arity rather than arbitrary compile-time tuple lengths, and schema inference initially covers Vec3 marker fields while other field types can continue using explicit declarations.
+**Decision:** `ecs.component(...)` returns an opaque typed component handle with guarded type-brand metadata, `ecs.fields(...)` declares runtime field schemas and drives editor payload inference through Luau type functions, `ecs.query(...)` turns one or more handles into a reusable query object, systems can attach that query object, and runtime loops iterate it through the world facade.
+**Why:** Field schemas should be written once and read directly by both the runtime and the editor. Query objects keep the component set explicit, reusable, and easy for Luau tooling to type while avoiding repeated string or handle lists inside hot loops. Inferring reads from the query object lets scripts describe the common "iterate these components" case once, while explicit writes still keep scheduling honest. It follows ADR-006, ADR-008, and ADR-012.
+**Tradeoff:** Script authors introduce a named query before system registration. The typed editor surface supports a practical maximum query arity rather than arbitrary compile-time tuple lengths, and the editor type surface now depends on Luau's new solver.
 
 ### 7. Vendor the initial Luau runtime behind the scripting boundary
 
@@ -88,13 +90,13 @@ Script ECS registration lets project and package scripts define new component an
 
 ## Related
 
-- **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011
+- **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012
 - **FDRs:** FDR-004, FDR-009, FDR-010, FDR-012, FDR-013
 
 ## Open Questions
 
 - How will component defaults and migrations be represented in script schemas?
 - Which system phases beyond `update` should be exposed to script-defined systems first?
-- Which scalar and structured field accessors should be added after `vec3`?
+- Which structured field accessors beyond scalar values and `vec3` should be added to the Luau runtime bridge?
 - How should component insertion/removal work from scripts, and which phases may perform structural changes?
 - How should script runtime errors include full stack context and source spans?
