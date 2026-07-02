@@ -56,6 +56,9 @@ color = [0.0044, 0.3763, 0.8148]
 
 [entities.components."machina.ui.button"]
 
+[entities.components."machina.ui.command"]
+command = "mark_ready_clicked"
+
 [[entities]]
 id = "ui-demo-button-label"
 name = "Demo Button Label"
@@ -84,3 +87,5 @@ position = [232.0, 140.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "READY"
+
+[entities.components.status_label]

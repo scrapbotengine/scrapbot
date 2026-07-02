@@ -211,6 +211,15 @@ export type MachinaUiText = {
 
 export type MachinaUiButton = {}
 
+export type MachinaUiCommand = {
+    command: string,
+}
+
+export type MachinaUiCommandEvent = {
+    command: string,
+    source: string,
+}
+
 export type MachinaEntity = {
     get_vec3: (
         component: MachinaComponentId,

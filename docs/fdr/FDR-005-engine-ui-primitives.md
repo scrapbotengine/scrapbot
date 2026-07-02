@@ -10,10 +10,11 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 ## Behavior
 
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
-- Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, and button markers.
+- Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, and button command ids.
 - UI rectangles and text labels use screen-space positions and sizes with a top-left origin.
 - The first UI demo uses Tailwind palette colors for a more disciplined visual baseline.
 - Button markers derive hover, held, and pressed interaction state in headful runs and use that state for button visuals.
+- Releasing the primary pointer over a command button emits a transient ECS command event that Luau systems can consume during the same frame.
 - Headful runs can toggle the current UI overlay with F1.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
@@ -47,9 +48,15 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 5. Keep input interaction in the ECS path
 
-**Decision:** Platform input is translated into frame input data, and UI button interaction is derived by render-phase ECS systems.
+**Decision:** Platform input is translated into frame input data, UI button visuals are derived by render-phase ECS systems, and command events are emitted into the live project world before update systems run.
 **Why:** This keeps UI behavior aligned with the engine-wide ECS model and avoids a separate immediate-mode renderer input channel.
-**Tradeoff:** The first interaction slice supports button state and overlay toggling, but not focus, text input, or script-facing command routing yet.
+**Tradeoff:** Command routing is string-id based for now; richer action payloads, focus, text input, and editor service dispatch still need later design.
+
+### 6. Route button presses through command events
+
+**Decision:** Button entities can author a command id, and a successful release emits a one-frame command event containing the command id and source entity id.
+**Why:** This gives scripts and future editor systems a simple ECS-native way to react to UI without embedding callbacks in scene data.
+**Tradeoff:** The current event shape is intentionally small and does not yet model bubbling, capture, disabled state, modifiers, or typed payloads.
 
 ## Related
 
@@ -59,7 +66,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 ## Open Questions
 
 - What script-facing API should generate or mutate UI state for runtime tools?
-- How should button presses route commands into scripts, editor tools, or engine services?
+- How should command ids be namespaced and routed into editor tools or engine services?
 - When should focus and text input become active behavior?
 - What layout primitives are needed before editor panels become practical?
 - What text editing capability is needed before the editor becomes practical?

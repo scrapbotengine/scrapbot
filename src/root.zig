@@ -13,6 +13,8 @@ pub const default_scene_path = "scenes/main.scene.toml";
 pub const renderDemoBmp = render.renderDemoBmp;
 pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
+pub const FrameInput = render.FrameInput;
+pub const PointerInput = render.PointerInput;
 pub const RenderScene = render.Scene;
 pub const RenderVerification = render_verify.Verification;
 pub const RenderVerificationOptions = render_verify.VerificationOptions;
@@ -26,6 +28,8 @@ pub const Camera = runtime.Camera;
 pub const DirectionalLight = runtime.DirectionalLight;
 pub const UiRect = runtime.UiRectComponent;
 pub const UiText = runtime.UiTextComponent;
+pub const UiCommand = runtime.UiCommandComponent;
+pub const UiCommandEvent = runtime.UiCommandEvent;
 pub const Spin = runtime.Spin;
 pub const PrimitiveGeometry = geometry.Primitive;
 pub const GeometryMesh = geometry.Mesh;
@@ -258,7 +262,20 @@ pub const LiveProject = struct {
     }
 
     pub fn update(self: *LiveProject, delta_seconds: f32) void {
+        self.updateWithInput(delta_seconds, .{});
+    }
+
+    pub fn updateWithInput(self: *LiveProject, delta_seconds: f32, input: FrameInput) void {
         self.clearLastDiagnostic();
+        updateUiCommandEvents(&self.scene.world, input) catch |err| {
+            if (std.fmt.allocPrint(self.allocator, "UI command routing failed: {s}", .{@errorName(err)})) |message| {
+                defer self.allocator.free(message);
+                self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
+            } else |_| {
+                self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, "UI command routing failed") catch null;
+            }
+            return;
+        };
         if (!self.scripts.update(&self.scene.world, delta_seconds)) {
             if (self.scripts.last_diagnostic) |diagnostic| {
                 self.last_diagnostic = cloneScriptDiagnostic(self.allocator, diagnostic) catch null;
@@ -451,6 +468,56 @@ pub const LiveProject = struct {
         return .{ .reloaded = info };
     }
 };
+
+const UiCommandHit = struct {
+    command: []const u8,
+    source: []const u8,
+};
+
+fn updateUiCommandEvents(world: *World, input: FrameInput) !void {
+    try clearUiCommandEvent(world);
+    if (!input.ui_visible or !input.pointer.has_position or !input.pointer.primary_released) {
+        return;
+    }
+
+    var selected: ?UiCommandHit = null;
+    var cursor: usize = 0;
+    const command_button_query = [_][]const u8{
+        runtime.ui_rect_component_id,
+        runtime.ui_button_component_id,
+        runtime.ui_command_component_id,
+    };
+    while (world.queryNext(&command_button_query, &cursor)) |entity| {
+        const position = try world.getVec3(entity, runtime.ui_rect_component_id, "position");
+        const size = try world.getVec3(entity, runtime.ui_rect_component_id, "size");
+        if (!runtime.pointInsideUiRect(input.pointer.position, position, size)) {
+            continue;
+        }
+
+        const stored_entity = try world.entity(entity);
+        selected = .{
+            .command = try world.getString(entity, runtime.ui_command_component_id, "command"),
+            .source = stored_entity.id,
+        };
+    }
+
+    if (selected) |hit| {
+        try emitUiCommandEvent(world, hit.command, hit.source);
+    }
+}
+
+fn clearUiCommandEvent(world: *World) !void {
+    const event_entity = world.findEntityById(runtime.ui_command_event_entity_id) orelse return;
+    _ = try world.removeComponent(event_entity, runtime.ui_command_event_component_id);
+}
+
+fn emitUiCommandEvent(world: *World, command: []const u8, source: []const u8) !void {
+    const event_entity = world.findEntityById(runtime.ui_command_event_entity_id) orelse try world.createEntity(runtime.ui_command_event_entity_id, "UI Command Event");
+    try world.setUiCommandEvent(event_entity, .{
+        .command = command,
+        .source = source,
+    });
+}
 
 pub const LiveScene = LiveProject;
 
@@ -2179,6 +2246,106 @@ test "LiveProject update runs the scheduled rotation system" {
     try std.testing.expect(after.rotation[0] > before.rotation[0]);
     try std.testing.expect(after.rotation[1] > before.rotation[1]);
     try std.testing.expectEqual(before.rotation[2], after.rotation[2]);
+}
+
+test "LiveProject emits UI command events before scheduled scripts run" {
+    const root_path = ".zig-cache/test-live-project-ui-command";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Game");
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.createDirPath(io, "scripts");
+
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n",
+    });
+    try root_dir.writeFile(io, .{
+        .sub_path = "scenes/main.scene.toml",
+        .data =
+        \\name = "Main"
+        \\version = 1
+        \\
+        \\[[entities]]
+        \\id = "button"
+        \\name = "Button"
+        \\
+        \\[entities.components."machina.ui.rect"]
+        \\position = [32.0, 24.0, 0.0]
+        \\size = [120.0, 48.0, 0.0]
+        \\color = [0.0, 0.2, 0.4]
+        \\
+        \\[entities.components."machina.ui.button"]
+        \\
+        \\[entities.components."machina.ui.command"]
+        \\command = "activate_flag"
+        \\
+        \\[[entities]]
+        \\id = "flag"
+        \\name = "Flag"
+        \\
+        \\[entities.components.flag]
+        \\active = false
+        \\
+        ,
+    });
+    try root_dir.writeFile(io, .{
+        .sub_path = "scripts/gameplay.luau",
+        .data =
+        \\--!strict
+        \\
+        \\local CommandEvent = ecs.component<<MachinaUiCommandEvent>>("machina.ui.command_event")
+        \\local Flag = ecs.component("flag", {
+        \\  fields = ecs.fields({
+        \\    active = "boolean",
+        \\  }),
+        \\})
+        \\local CommandEvents = ecs.query(CommandEvent)
+        \\local Flags = ecs.query(Flag)
+        \\
+        \\ecs.system("handle_ui_commands", {
+        \\  query = CommandEvents,
+        \\  reads = ecs.refs(CommandEvent),
+        \\  writes = ecs.refs(Flag),
+        \\  run = function(world, _dt)
+        \\    for _event_entity, event in CommandEvents:iter(world) do
+        \\      if event.command == "activate_flag" then
+        \\        for _flag_entity, flag in Flags:iter(world) do
+        \\          flag.active = true
+        \\        end
+        \\      end
+        \\    end
+        \\  end,
+        \\})
+        ,
+    });
+
+    var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
+    defer live_project.deinit();
+
+    const flag = live_project.scene.world.findEntityById("flag") orelse return error.TestExpectedEqual;
+    try std.testing.expect(!try live_project.scene.world.getBoolean(flag, "flag", "active"));
+
+    live_project.updateWithInput(0.016, .{
+        .pointer = .{
+            .position = .{ 48.0, 36.0 },
+            .has_position = true,
+            .primary_released = true,
+        },
+    });
+
+    try std.testing.expect(try live_project.scene.world.getBoolean(flag, "flag", "active"));
+    const event = live_project.scene.world.uiCommandEvent() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("activate_flag", event.command);
+    try std.testing.expectEqualStrings("button", event.source);
+
+    live_project.updateWithInput(0.016, .{});
+    try std.testing.expect(live_project.scene.world.uiCommandEvent() == null);
+    try std.testing.expect(try live_project.scene.world.getBoolean(flag, "flag", "active"));
 }
 
 test "stepProjectDetailed runs requested frames headlessly" {

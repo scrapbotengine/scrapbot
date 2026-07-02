@@ -39,6 +39,9 @@ pub const ui_canvas_component_id = "machina.ui.canvas";
 pub const ui_rect_component_id = "machina.ui.rect";
 pub const ui_text_component_id = "machina.ui.text";
 pub const ui_button_component_id = "machina.ui.button";
+pub const ui_command_component_id = "machina.ui.command";
+pub const ui_command_event_component_id = "machina.ui.command_event";
+pub const ui_command_event_entity_id = "machina.ui.command_event.current";
 pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
@@ -606,6 +609,25 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .id = ui_button_component_id,
         .version = 1,
     });
+
+    const ui_command_fields = [_]ComponentFieldDefinition{
+        .{ .name = "command", .value_type = .string },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_command_component_id,
+        .version = 1,
+        .fields = &ui_command_fields,
+    });
+
+    const ui_command_event_fields = [_]ComponentFieldDefinition{
+        .{ .name = "command", .value_type = .string },
+        .{ .name = "source", .value_type = .string },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_command_event_component_id,
+        .version = 1,
+        .fields = &ui_command_event_fields,
+    });
 }
 
 pub const EntityHandle = struct {
@@ -712,6 +734,23 @@ pub const UiTextComponent = struct {
     size: f32 = 2.0,
     color: [3]f32 = .{ 1.0, 1.0, 1.0 },
     value: []const u8 = "",
+};
+
+pub const UiCommandComponent = struct {
+    command: []const u8,
+};
+
+pub const UiCommandEventComponent = struct {
+    command: []const u8,
+    source: []const u8,
+};
+
+pub const UiCommandEvent = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    command: []const u8,
+    source: []const u8,
 };
 
 pub const UiRect = struct {
@@ -846,6 +885,37 @@ const ComponentColumnValues = union(FieldType) {
             .string => |*values| {
                 const value = values.pop().?;
                 allocator.free(value);
+            },
+        }
+    }
+
+    fn swapRemove(self: *ComponentColumnValues, allocator: std.mem.Allocator, row: usize) void {
+        switch (self.*) {
+            .boolean => |*values| {
+                values.items[row] = values.items[values.items.len - 1];
+                _ = values.pop();
+            },
+            .int => |*values| {
+                values.items[row] = values.items[values.items.len - 1];
+                _ = values.pop();
+            },
+            .float => |*values| {
+                values.items[row] = values.items[values.items.len - 1];
+                _ = values.pop();
+            },
+            .vec3 => |*values| {
+                values.items[row] = values.items[values.items.len - 1];
+                _ = values.pop();
+            },
+            .string => |*values| {
+                const last_index = values.items.len - 1;
+                if (row == last_index) {
+                    allocator.free(values.pop().?);
+                } else {
+                    allocator.free(values.items[row]);
+                    values.items[row] = values.items[last_index];
+                    _ = values.pop();
+                }
             },
         }
     }
@@ -1072,6 +1142,21 @@ pub const World = struct {
         try self.setComponent(handle, ui_button_component_id, &.{});
     }
 
+    pub fn setUiCommand(self: *World, handle: EntityHandle, command: UiCommandComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "command", .value = .{ .string = command.command } },
+        };
+        try self.setComponent(handle, ui_command_component_id, &fields);
+    }
+
+    pub fn setUiCommandEvent(self: *World, handle: EntityHandle, event: UiCommandEventComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "command", .value = .{ .string = event.command } },
+            .{ .name = "source", .value = .{ .string = event.source } },
+        };
+        try self.setComponent(handle, ui_command_event_component_id, &fields);
+    }
+
     pub fn setSpin(self: *World, handle: EntityHandle, spin: Spin) WorldError!void {
         const fields = [_]ComponentFieldValue{
             .{ .name = "angular_velocity", .value = .{ .vec3 = spin.angular_velocity } },
@@ -1131,6 +1216,28 @@ pub const World = struct {
         } else {
             try self.appendComponentRow(table, handle, index, fields);
         }
+    }
+
+    pub fn removeComponent(self: *World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
+        const entity_index = try self.componentIndex(handle);
+        const table = self.findMutableComponentTable(component_id) orelse return false;
+        const row = table.rows_by_entity.items[entity_index] orelse return false;
+        const last_row = table.entities.items.len - 1;
+        const removed_entity = table.entities.items[row];
+        const moved_entity = table.entities.items[last_row];
+
+        table.entities.items[row] = moved_entity;
+        _ = table.entities.pop();
+        table.rows_by_entity.items[removed_entity.index] = null;
+        if (row != last_row) {
+            table.rows_by_entity.items[moved_entity.index] = row;
+        }
+
+        for (table.columns) |*column| {
+            column.values.swapRemove(self.allocator, row);
+        }
+
+        return true;
     }
 
     pub fn hasComponent(self: World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
@@ -1270,6 +1377,20 @@ pub const World = struct {
 
     pub fn uiTexts(self: *const World) UiTextIterator {
         return .{ .world = self };
+    }
+
+    pub fn uiCommandEvent(self: World) ?UiCommandEvent {
+        var cursor: usize = 0;
+        const component_ids = [_][]const u8{ui_command_event_component_id};
+        const handle = self.queryNext(&component_ids, &cursor) orelse return null;
+        const stored_entity = self.entity(handle) catch return null;
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .command = self.getString(handle, ui_command_event_component_id, "command") catch return null,
+            .source = self.getString(handle, ui_command_event_component_id, "source") catch return null,
+        };
     }
 
     fn renderableMeshAtEntity(self: World, handle: EntityHandle) ?RenderableMesh {
@@ -1635,6 +1756,19 @@ pub fn validateTypeId(id: []const u8) TypeIdError!void {
     _ = try validateTypeIdShape(id);
 }
 
+pub fn pointInsideUiRect(point: [2]f32, position: [3]f32, size: [3]f32) bool {
+    if (!std.math.isFinite(point[0]) or !std.math.isFinite(point[1]) or
+        !isFiniteVec3(position) or !isFiniteVec3(size) or size[0] <= 0.0 or size[1] <= 0.0)
+    {
+        return false;
+    }
+
+    return point[0] >= position[0] and
+        point[1] >= position[1] and
+        point[0] < position[0] + size[0] and
+        point[1] < position[1] + size[1];
+}
+
 pub fn validateProjectTypeId(id: []const u8) TypeIdError!void {
     try validateTypeId(id);
     if (isEngineTypeId(id)) {
@@ -1718,6 +1852,10 @@ fn isEngineTypeId(id: []const u8) bool {
 
 fn isLowerAlpha(byte: u8) bool {
     return byte >= 'a' and byte <= 'z';
+}
+
+fn isFiniteVec3(value: [3]f32) bool {
+    return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
 }
 
 fn componentDefinitionsEqual(left: ComponentDefinition, right: ComponentDefinition) bool {
@@ -1817,6 +1955,27 @@ test "world stores stable entity ids and components" {
     const mesh = world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("box", mesh.primitive);
     try std.testing.expectEqual(@as(f32, 1.0), mesh.base_color[0]);
+}
+
+test "world removes component rows without moving entity handles" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    const second = try world.createEntity("second", "Second");
+    try world.setUiCommandEvent(first, .{ .command = "one", .source = "first" });
+    try world.setUiCommandEvent(second, .{ .command = "two", .source = "second" });
+
+    try std.testing.expect(try world.removeComponent(first, ui_command_event_component_id));
+    try std.testing.expect(!try world.hasComponent(first, ui_command_event_component_id));
+    try std.testing.expect(try world.hasComponent(second, ui_command_event_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_command_event_component_id));
+
+    const event = world.uiCommandEvent() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(second.index, event.entity.index);
+    try std.testing.expectEqualStrings("two", event.command);
+    try std.testing.expectEqualStrings("second", event.source);
+    try std.testing.expect(!try world.removeComponent(first, ui_command_event_component_id));
 }
 
 test "world resolves explicit primitive geometry and surface material renderables" {
@@ -2127,7 +2286,9 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(ui_rect_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_text_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_button_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 12), registry.componentCount());
+    try std.testing.expect(registry.findComponent(ui_command_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_command_event_component_id) != null);
+    try std.testing.expectEqual(@as(usize, 14), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);
@@ -2136,6 +2297,10 @@ test "engine component schemas are registered from runtime" {
     const ui_text = registry.findComponent(ui_text_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 4), ui_text.fields.len);
     try std.testing.expectEqual(FieldType.string, ui_text.fields[3].value_type);
+
+    const ui_command_event = registry.findComponent(ui_command_event_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 2), ui_command_event.fields.len);
+    try std.testing.expectEqual(FieldType.string, ui_command_event.fields[0].value_type);
 }
 
 test "system registry validates component access and reload-compatible definitions" {

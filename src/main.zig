@@ -449,9 +449,9 @@ fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
     }
 }
 
-fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32) void {
+fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: machina.FrameInput) void {
     const context: *SceneReloadContext = @ptrCast(@alignCast(raw_context));
-    context.live_project.update(delta_seconds);
+    context.live_project.updateWithInput(delta_seconds, input);
     if (context.live_project.lastDiagnostic()) |diagnostic| {
         printScriptDiagnostic(context.stderr, context.target_path, diagnostic.*) catch {};
         context.stderr.flush() catch {};

@@ -69,10 +69,10 @@ pub const SceneReloadHook = struct {
 
 pub const FrameUpdateHook = struct {
     context: *anyopaque,
-    step: *const fn (context: *anyopaque, delta_seconds: f32) void,
+    step: *const fn (context: *anyopaque, delta_seconds: f32, input: FrameInput) void,
 };
 
-const PointerInput = struct {
+pub const PointerInput = struct {
     position: [2]f32 = .{ 0.0, 0.0 },
     has_position: bool = false,
     primary_down: bool = false,
@@ -85,7 +85,7 @@ const PointerInput = struct {
     }
 };
 
-const FrameInput = struct {
+pub const FrameInput = struct {
     pointer: PointerInput = .{},
     ui_visible: bool = true,
     f1_pressed: bool = false,
@@ -310,7 +310,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
 
         const delta_seconds: f32 = 0.025;
         if (options.frame_update) |frame_update| {
-            frame_update.step(frame_update.context, delta_seconds);
+            frame_update.step(frame_update.context, delta_seconds, input);
         }
 
         try configureSurfaceFromWindow(surface, gpu.device, window, surface_format, &width, &height);
@@ -905,25 +905,12 @@ fn renderUiButtonState(world: *const runtime.World, entity: runtime.EntityHandle
 }
 
 fn evaluateUiButtonState(input: FrameInput, position: [3]f32, size: [3]f32) UiButtonState {
-    const hovered = input.pointer.has_position and pointInsideUiRect(input.pointer.position, position, size);
+    const hovered = input.pointer.has_position and runtime.pointInsideUiRect(input.pointer.position, position, size);
     return .{
         .hovered = hovered,
         .held = hovered and input.pointer.primary_down,
         .pressed = hovered and input.pointer.primary_released,
     };
-}
-
-fn pointInsideUiRect(point: [2]f32, position: [3]f32, size: [3]f32) bool {
-    if (!std.math.isFinite(point[0]) or !std.math.isFinite(point[1]) or
-        !isFiniteVec3(position) or !isFiniteVec3(size) or size[0] <= 0.0 or size[1] <= 0.0)
-    {
-        return false;
-    }
-
-    return point[0] >= position[0] and
-        point[1] >= position[1] and
-        point[0] < position[0] + size[0] and
-        point[1] < position[1] + size[1];
 }
 
 fn extractCameraInto(world: *runtime.World, camera: CameraState) RenderError!void {
@@ -2310,22 +2297,28 @@ test "render ECS schedule orders extract prepare queue and draw systems" {
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
 
-    try std.testing.expectEqual(@as(usize, 6), state.schedule.systemCount());
+    try std.testing.expectEqual(@as(usize, 7), state.schedule.systemCount());
     try std.testing.expectEqual(@as(usize, 6), state.schedule.batchCount());
 
     const expected = [_][]const u8{
         render_extract_system_id,
         render_prepare_meshes_system_id,
+        render_interact_ui_system_id,
         render_queue_meshes_system_id,
         render_prepare_ui_system_id,
         render_queue_ui_system_id,
         render_draw_meshes_system_id,
     };
-    for (expected, state.schedule.batches) |system_id, batch| {
+    var expected_index: usize = 0;
+    for (state.schedule.batches) |batch| {
         try std.testing.expectEqual(runtime.SystemPhase.render, batch.phase);
-        try std.testing.expectEqual(@as(usize, 1), batch.systems.len);
-        try std.testing.expectEqualStrings(system_id, batch.systems[0].id);
+        for (batch.systems) |system| {
+            try std.testing.expect(expected_index < expected.len);
+            try std.testing.expectEqualStrings(expected[expected_index], system.id);
+            expected_index += 1;
+        }
     }
+    try std.testing.expectEqual(expected.len, expected_index);
 }
 
 test "render ECS extracts scene data and queues mesh draw commands" {
@@ -2501,10 +2494,10 @@ test "UI hit testing uses half-open screen rects" {
     const position = [3]f32{ 32.0, 24.0, 0.0 };
     const size = [3]f32{ 120.0, 48.0, 0.0 };
 
-    try std.testing.expect(pointInsideUiRect(.{ 32.0, 24.0 }, position, size));
-    try std.testing.expect(pointInsideUiRect(.{ 151.99, 71.99 }, position, size));
-    try std.testing.expect(!pointInsideUiRect(.{ 152.0, 72.0 }, position, size));
-    try std.testing.expect(!pointInsideUiRect(.{ 31.99, 24.0 }, position, size));
+    try std.testing.expect(runtime.pointInsideUiRect(.{ 32.0, 24.0 }, position, size));
+    try std.testing.expect(runtime.pointInsideUiRect(.{ 151.99, 71.99 }, position, size));
+    try std.testing.expect(!runtime.pointInsideUiRect(.{ 152.0, 72.0 }, position, size));
+    try std.testing.expect(!runtime.pointInsideUiRect(.{ 31.99, 24.0 }, position, size));
 }
 
 test "render ECS derives UI button interaction state from frame input" {
