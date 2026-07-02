@@ -1207,12 +1207,12 @@ fn printArgumentError(writer: *Io.Writer, err: ArgumentError) !void {
 fn expectedColorGroups(scene: machina.Scene) usize {
     var has_warm = false;
     var has_cool = false;
-    var cubes = scene.world.renderableCubes();
-    while (cubes.next()) |cube| {
-        if (cube.color[0] > cube.color[2] + 0.1) {
+    var meshes = scene.world.renderableMeshes();
+    while (meshes.next()) |mesh| {
+        if (mesh.base_color[0] > mesh.base_color[2] + 0.1) {
             has_warm = true;
         }
-        if (cube.color[2] > cube.color[0] + 0.1) {
+        if (mesh.base_color[2] > mesh.base_color[0] + 0.1) {
             has_cool = true;
         }
     }

@@ -15,8 +15,8 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Scene files author entity and component data as text component tables.
 - The runtime world stores component instances in per-component column tables rather than renderer-specific side arrays.
 - Engine subsystems can own internal worlds that use the same `World`, component registry, query, and schedule implementation as game worlds.
-- Engine-owned rendering components include transform, cube renderer, camera, and directional light data.
-- The renderer owns an internal render world and render-phase schedule for extracted render data and draw-command entities.
+- Engine-owned rendering components include transform, built-in primitive geometry, surface material, legacy cube renderer, camera, and directional light data.
+- The renderer owns an internal render world and render-phase schedule for extracted render data and mesh draw-command entities.
 - Each component table owns dense entity rows, a sparse entity-to-row index, and typed SoA field columns derived from engine or script schemas.
 - Scripts can query entities by component set and mutate supported component fields through the scripting API.
 - Scripts can register new component and system types with project-local or qualified non-reserved ids.
@@ -66,7 +66,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 ## Related
 
 - **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013
-- **FDRs:** FDR-002, FDR-004, FDR-010, FDR-011, FDR-014
+- **FDRs:** FDR-002, FDR-004, FDR-010, FDR-011, FDR-014, FDR-015
 
 ## Open Questions
 

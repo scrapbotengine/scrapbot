@@ -10,8 +10,13 @@ position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [0.68, 0.68, 0.68]
 
-[entities.components."machina.render.cube"]
-color = [0.0, 0.56, 1.0]
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.56, 1.0]
 
 [entities.components.spin]
 angular_velocity = [0.42, 0.92, 0.18]
@@ -23,16 +28,21 @@ speed = 1.35
 phase = 0.0
 
 [[entities]]
-id = "showcase-warm-cube"
-name = "Warm Cube"
+id = "showcase-warm-sphere"
+name = "Warm UV Sphere"
 
 [entities.components."machina.transform"]
 position = [-1.42, -0.24, -0.48]
 rotation = [0.15, 0.1, 0.25]
 scale = [0.46, 0.46, 0.46]
 
-[entities.components."machina.render.cube"]
-color = [1.0, 0.5, 0.08]
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 32
+rings = 16
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.5, 0.08]
 
 [entities.components.spin]
 angular_velocity = [-0.32, 1.15, 0.58]
@@ -44,16 +54,21 @@ speed = 1.8
 phase = 1.4
 
 [[entities]]
-id = "showcase-mint-cube"
-name = "Mint Cube"
+id = "showcase-mint-icosphere"
+name = "Mint Ico Sphere"
 
 [entities.components."machina.transform"]
 position = [1.36, 0.15, -0.34]
 rotation = [0.0, 0.4, 0.12]
 scale = [0.5, 0.5, 0.5]
 
-[entities.components."machina.render.cube"]
-color = [0.08, 0.92, 0.58]
+[entities.components."machina.geometry.primitive"]
+primitive = "ico_sphere"
+segments = 2
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.08, 0.92, 0.58]
 
 [entities.components.spin]
 angular_velocity = [0.7, -0.42, 0.36]
@@ -65,16 +80,21 @@ speed = 1.55
 phase = 2.6
 
 [[entities]]
-id = "showcase-ruby-cube"
-name = "Ruby Cube"
+id = "showcase-ruby-plane"
+name = "Ruby Plane"
 
 [entities.components."machina.transform"]
 position = [0.12, 0.92, -0.92]
-rotation = [0.45, 0.0, 0.2]
-scale = [0.36, 0.36, 0.36]
+rotation = [1.5708, 0.0, 0.2]
+scale = [0.42, 0.42, 0.42]
 
-[entities.components."machina.render.cube"]
-color = [0.95, 0.08, 0.24]
+[entities.components."machina.geometry.primitive"]
+primitive = "plane"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.95, 0.08, 0.24]
 
 [entities.components.spin]
 angular_velocity = [1.1, 0.28, -0.48]

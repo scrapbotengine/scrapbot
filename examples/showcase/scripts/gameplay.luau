@@ -1,7 +1,8 @@
 --!strict
 
 local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
+local Geometry = ecs.component<<MachinaGeometryPrimitive>>("machina.geometry.primitive")
+local Material = ecs.component<<MachinaSurfaceMaterial>>("machina.material.surface")
 local DirectionalLight = ecs.component<<MachinaDirectionalLight>>("machina.light.directional")
 
 local Spin = ecs.component("spin", {
@@ -31,7 +32,7 @@ local LightPulse = ecs.component("light_pulse", {
 local SpinningCubes = ecs.query(Transform, Spin)
 local FloatingCubes = ecs.query(Transform, Bob)
 local PulsingLights = ecs.query(DirectionalLight, LightPulse)
-local RenderedCubes = ecs.query(Transform, RenderCube)
+local RenderedMeshes = ecs.query(Transform, Geometry, Material)
 
 ecs.system("rotate_cubes", {
   phase = "update",
@@ -79,8 +80,8 @@ ecs.system("pulse_key_light", {
   end,
 })
 
-ecs.system("observe_rendered_cubes", {
+ecs.system("observe_rendered_meshes", {
   phase = "update",
-  query = RenderedCubes,
+  query = RenderedMeshes,
   after = { "float_cubes", "pulse_key_light" },
 })

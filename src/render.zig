@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
+const geometry = @import("geometry.zig");
 const runtime = @import("runtime.zig");
 const wgpu = @import("wgpu");
 
@@ -19,11 +20,11 @@ const output_extent = wgpu.Extent3D{
 const output_bytes_per_row = 4 * output_width;
 const output_size = output_bytes_per_row * output_height;
 const depth_format = wgpu.TextureFormat.depth24_plus;
-const render_draw_cube_component_id = "machina.render.internal.draw.cube";
+const render_draw_mesh_component_id = "machina.render.internal.draw.mesh";
 const render_extract_system_id = "machina.render.extract";
-const render_prepare_cubes_system_id = "machina.render.prepare_cubes";
-const render_queue_cubes_system_id = "machina.render.queue_cubes";
-const render_draw_cubes_system_id = "machina.render.draw_cubes";
+const render_prepare_meshes_system_id = "machina.render.prepare_meshes";
+const render_queue_meshes_system_id = "machina.render.queue_meshes";
+const render_draw_meshes_system_id = "machina.render.draw_meshes";
 
 pub const RenderError = error{
     NoAdapter,
@@ -70,7 +71,7 @@ pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const 
 
     const texture_format = wgpu.TextureFormat.bgra8_unorm_srgb;
     const target_texture = gpu.device.createTexture(&wgpu.TextureDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina cube target"),
+        .label = wgpu.StringView.fromSlice("Machina mesh target"),
         .size = output_extent,
         .format = texture_format,
         .usage = wgpu.TextureUsages.render_attachment | wgpu.TextureUsages.copy_src,
@@ -78,20 +79,20 @@ pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const 
     defer target_texture.release();
 
     const target_view = target_texture.createView(&wgpu.TextureViewDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina cube target view"),
+        .label = wgpu.StringView.fromSlice("Machina mesh target view"),
         .mip_level_count = 1,
         .array_layer_count = 1,
     }) orelse return RenderError.NoDevice;
     defer target_view.release();
 
-    var demo = try CubeDemo.create(allocator, gpu.device, gpu.queue, texture_format, scene);
+    var demo = try MeshDemo.create(allocator, gpu.device, gpu.queue, texture_format, scene);
     defer demo.deinit();
 
     var depth = try DepthTarget.create(gpu.device, output_width, output_height);
     defer depth.deinit();
 
     const staging_buffer = gpu.device.createBuffer(&wgpu.BufferDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina cube staging buffer"),
+        .label = wgpu.StringView.fromSlice("Machina mesh staging buffer"),
         .usage = wgpu.BufferUsages.map_read | wgpu.BufferUsages.copy_dst,
         .size = output_size,
         .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -105,7 +106,7 @@ pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const 
     });
 
     const encoder = gpu.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina cube copy encoder"),
+        .label = wgpu.StringView.fromSlice("Machina mesh copy encoder"),
     }) orelse return RenderError.NoDevice;
     defer encoder.release();
 
@@ -125,7 +126,7 @@ pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const 
     );
 
     const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina cube copy command buffer"),
+        .label = wgpu.StringView.fromSlice("Machina mesh copy command buffer"),
     }) orelse return RenderError.NoDevice;
     defer command_buffer.release();
 
@@ -199,7 +200,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
 
     const surface_format = chooseSurfaceFormat(capabilities) orelse return RenderError.NoSurfaceFormat;
     var scene = initial_scene;
-    var demo = try CubeDemo.create(allocator, gpu.device, gpu.queue, surface_format, scene);
+    var demo = try MeshDemo.create(allocator, gpu.device, gpu.queue, surface_format, scene);
     defer demo.deinit();
 
     var depth = DepthTarget{};
@@ -234,7 +235,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
 
         if (options.scene_reload) |reload| {
             if (reload.poll(reload.context)) |reloaded_scene| {
-                const reloaded_demo = try CubeDemo.create(allocator, gpu.device, gpu.queue, surface_format, reloaded_scene);
+                const reloaded_demo = try MeshDemo.create(allocator, gpu.device, gpu.queue, surface_format, reloaded_scene);
                 demo.deinit();
                 demo = reloaded_demo;
                 scene = reloaded_scene;
@@ -248,7 +249,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
 
         try configureSurfaceFromWindow(surface, gpu.device, window, surface_format, &width, &height);
         try depth.ensure(gpu.device, width, height);
-        try drawCubeToSurface(surface, gpu.device, gpu.queue, &demo, depth.view orelse return RenderError.NoDevice, .{
+        try drawMeshToSurface(surface, gpu.device, gpu.queue, &demo, depth.view orelse return RenderError.NoDevice, .{
             .width = width,
             .height = height,
             .scene = scene,
@@ -275,7 +276,7 @@ const FrameConfig = struct {
 const ObjectConfig = struct {
     width: u32,
     height: u32,
-    cube: *const runtime.RenderableCube,
+    mesh: *const runtime.RenderableMesh,
     camera: CameraState,
     light: DirectionalLightState,
 };
@@ -336,11 +337,11 @@ const RenderEcsState = struct {
         var next_world = runtime.World.init(self.allocator);
         errdefer next_world.deinit();
 
-        var cube_index: usize = 0;
-        var cubes = scene.world.renderableCubes();
-        while (cubes.next()) |cube| {
-            try extractCubeInto(self.allocator, &next_world, cube_index, cube);
-            cube_index += 1;
+        var mesh_index: usize = 0;
+        var meshes = scene.world.renderableMeshes();
+        while (meshes.next()) |mesh| {
+            try extractMeshInto(self.allocator, &next_world, mesh_index, mesh);
+            mesh_index += 1;
         }
 
         try extractCameraInto(&next_world, try cameraState(scene.world));
@@ -350,25 +351,25 @@ const RenderEcsState = struct {
         self.world = next_world;
     }
 
-    fn queueCubeDraws(self: *RenderEcsState) RenderError!void {
-        const count = self.world.renderableCubeCount();
+    fn queueMeshDraws(self: *RenderEcsState) RenderError!void {
+        const count = self.world.renderableMeshCount();
         for (0..count) |render_index| {
             if (render_index > std.math.maxInt(i32)) {
                 return RenderError.InvalidScene;
             }
-            const entity_id = std.fmt.allocPrint(self.allocator, "machina.render.draw.cube.{d}", .{render_index}) catch return RenderError.OutOfMemory;
+            const entity_id = std.fmt.allocPrint(self.allocator, "machina.render.draw.mesh.{d}", .{render_index}) catch return RenderError.OutOfMemory;
             defer self.allocator.free(entity_id);
 
-            const entity = self.world.createEntity(entity_id, "Cube Draw") catch |err| return mapWorldError(err);
+            const entity = self.world.createEntity(entity_id, "Mesh Draw") catch |err| return mapWorldError(err);
             const fields = [_]runtime.ComponentFieldValue{
                 .{ .name = "render_index", .value = .{ .int = @intCast(render_index) } },
             };
-            self.world.setComponent(entity, render_draw_cube_component_id, &fields) catch |err| return mapWorldError(err);
+            self.world.setComponent(entity, render_draw_mesh_component_id, &fields) catch |err| return mapWorldError(err);
         }
     }
 
     fn drawCommandCount(self: RenderEcsState) usize {
-        return self.world.componentInstanceCountFor(render_draw_cube_component_id);
+        return self.world.componentInstanceCountFor(render_draw_mesh_component_id);
     }
 
     fn drawCommandRenderIndex(self: RenderEcsState, entity: runtime.EntityHandle) RenderError!usize {
@@ -408,7 +409,7 @@ const DepthTarget = struct {
         self.deinit();
 
         const texture = device.createTexture(&wgpu.TextureDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube depth texture"),
+            .label = wgpu.StringView.fromSlice("Machina mesh depth texture"),
             .size = .{
                 .width = width,
                 .height = height,
@@ -420,7 +421,7 @@ const DepthTarget = struct {
         errdefer texture.release();
 
         const view = texture.createView(&wgpu.TextureViewDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube depth view"),
+            .label = wgpu.StringView.fromSlice("Machina mesh depth view"),
             .mip_level_count = 1,
             .array_layer_count = 1,
         }) orelse return RenderError.NoDevice;
@@ -445,18 +446,19 @@ const DepthTarget = struct {
 fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     try runtime.registerEngineComponents(registry);
 
-    const draw_cube_fields = [_]runtime.ComponentFieldDefinition{
+    const draw_mesh_fields = [_]runtime.ComponentFieldDefinition{
         .{ .name = "render_index", .value_type = .int },
     };
     try registry.registerEngineComponent(.{
-        .id = render_draw_cube_component_id,
+        .id = render_draw_mesh_component_id,
         .version = 1,
-        .fields = &draw_cube_fields,
+        .fields = &draw_mesh_fields,
     });
 
     const extract_writes = [_][]const u8{
         runtime.transform_component_id,
-        runtime.cube_renderer_component_id,
+        runtime.geometry_primitive_component_id,
+        runtime.surface_material_component_id,
         runtime.camera_component_id,
         runtime.directional_light_component_id,
     };
@@ -468,11 +470,12 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
 
     const prepare_reads = [_][]const u8{
         runtime.transform_component_id,
-        runtime.cube_renderer_component_id,
+        runtime.geometry_primitive_component_id,
+        runtime.surface_material_component_id,
     };
     const after_extract = [_][]const u8{render_extract_system_id};
     try registry.registerEngineSystem(.{
-        .id = render_prepare_cubes_system_id,
+        .id = render_prepare_meshes_system_id,
         .phase = .render,
         .reads = &prepare_reads,
         .after = &after_extract,
@@ -480,12 +483,13 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
 
     const queue_reads = [_][]const u8{
         runtime.transform_component_id,
-        runtime.cube_renderer_component_id,
+        runtime.geometry_primitive_component_id,
+        runtime.surface_material_component_id,
     };
-    const queue_writes = [_][]const u8{render_draw_cube_component_id};
-    const after_prepare = [_][]const u8{render_prepare_cubes_system_id};
+    const queue_writes = [_][]const u8{render_draw_mesh_component_id};
+    const after_prepare = [_][]const u8{render_prepare_meshes_system_id};
     try registry.registerEngineSystem(.{
-        .id = render_queue_cubes_system_id,
+        .id = render_queue_meshes_system_id,
         .phase = .render,
         .reads = &queue_reads,
         .writes = &queue_writes,
@@ -493,38 +497,44 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     });
 
     const draw_reads = [_][]const u8{
-        render_draw_cube_component_id,
+        render_draw_mesh_component_id,
         runtime.transform_component_id,
-        runtime.cube_renderer_component_id,
+        runtime.geometry_primitive_component_id,
+        runtime.surface_material_component_id,
         runtime.camera_component_id,
         runtime.directional_light_component_id,
     };
-    const after_queue = [_][]const u8{render_queue_cubes_system_id};
+    const after_queue = [_][]const u8{render_queue_meshes_system_id};
     try registry.registerEngineSystem(.{
-        .id = render_draw_cubes_system_id,
+        .id = render_draw_meshes_system_id,
         .phase = .render,
         .reads = &draw_reads,
         .after = &after_queue,
     });
 }
 
-fn extractCubeInto(
+fn extractMeshInto(
     allocator: std.mem.Allocator,
     world: *runtime.World,
     render_index: usize,
-    cube: runtime.RenderableCube,
+    mesh: runtime.RenderableMesh,
 ) RenderError!void {
-    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.cube.{d}", .{render_index}) catch return RenderError.OutOfMemory;
+    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.mesh.{d}", .{render_index}) catch return RenderError.OutOfMemory;
     defer allocator.free(entity_id);
 
-    const entity = world.createEntity(entity_id, cube.name) catch |err| return mapWorldError(err);
+    const entity = world.createEntity(entity_id, mesh.name) catch |err| return mapWorldError(err);
     world.setTransform(entity, .{
-        .position = cube.position,
-        .rotation = cube.rotation,
-        .scale = cube.scale,
+        .position = mesh.position,
+        .rotation = mesh.rotation,
+        .scale = mesh.scale,
     }) catch |err| return mapWorldError(err);
-    world.setCubeRenderer(entity, .{
-        .color = cube.color,
+    world.setGeometryPrimitive(entity, .{
+        .primitive = mesh.primitive,
+        .segments = mesh.segments,
+        .rings = mesh.rings,
+    }) catch |err| return mapWorldError(err);
+    world.setSurfaceMaterial(entity, .{
+        .base_color = mesh.base_color,
     }) catch |err| return mapWorldError(err);
 }
 
@@ -549,7 +559,7 @@ fn extractDirectionalLightInto(world: *runtime.World, light: DirectionalLightSta
 }
 
 fn renderIndexFromDrawEntity(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!usize {
-    const value = world.getComponentFieldValue(entity, render_draw_cube_component_id, "render_index") catch |err| return mapWorldError(err);
+    const value = world.getComponentFieldValue(entity, render_draw_mesh_component_id, "render_index") catch |err| return mapWorldError(err);
     const render_index = switch (value) {
         .int => |payload| payload,
         else => return RenderError.InvalidScene,
@@ -574,13 +584,18 @@ fn mapWorldError(err: anyerror) RenderError {
     };
 }
 
-const CubeDemo = struct {
+fn mapGeometryError(err: anyerror) RenderError {
+    return switch (err) {
+        error.OutOfMemory => RenderError.OutOfMemory,
+        else => RenderError.InvalidScene,
+    };
+}
+
+const MeshDemo = struct {
     allocator: std.mem.Allocator,
     pipeline: *wgpu.RenderPipeline,
     bind_group_layout: *wgpu.BindGroupLayout,
     pipeline_layout: *wgpu.PipelineLayout,
-    vertex_buffer: *wgpu.Buffer,
-    index_buffer: *wgpu.Buffer,
     render_state: RenderEcsState,
     objects: []ObjectResources,
 
@@ -590,13 +605,7 @@ const CubeDemo = struct {
         _: *wgpu.Queue,
         texture_format: wgpu.TextureFormat,
         scene: Scene,
-    ) RenderError!CubeDemo {
-        const vertex_buffer = try createStaticBuffer(device, "Machina cube vertex buffer", wgpu.BufferUsages.vertex, std.mem.asBytes(&cube_vertices));
-        errdefer vertex_buffer.release();
-
-        const index_buffer = try createStaticBuffer(device, "Machina cube index buffer", wgpu.BufferUsages.index, std.mem.asBytes(&cube_indices));
-        errdefer index_buffer.release();
-
+    ) RenderError!MeshDemo {
         const bind_group_layout_entries = [_]wgpu.BindGroupLayoutEntry{
             .{
                 .binding = 0,
@@ -608,7 +617,7 @@ const CubeDemo = struct {
             },
         };
         const bind_group_layout = device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube bind group layout"),
+            .label = wgpu.StringView.fromSlice("Machina mesh bind group layout"),
             .entry_count = bind_group_layout_entries.len,
             .entries = &bind_group_layout_entries,
         }) orelse return RenderError.NoDevice;
@@ -623,13 +632,13 @@ const CubeDemo = struct {
 
         const bind_group_layouts = [_]*wgpu.BindGroupLayout{bind_group_layout};
         const pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube pipeline layout"),
+            .label = wgpu.StringView.fromSlice("Machina mesh pipeline layout"),
             .bind_group_layout_count = bind_group_layouts.len,
             .bind_group_layouts = &bind_group_layouts,
         }) orelse return RenderError.NoDevice;
         errdefer pipeline_layout.release();
 
-        const pipeline = try createCubePipeline(device, texture_format, pipeline_layout);
+        const pipeline = try createMeshPipeline(device, texture_format, pipeline_layout);
         errdefer pipeline.release();
 
         return .{
@@ -637,14 +646,12 @@ const CubeDemo = struct {
             .pipeline = pipeline,
             .bind_group_layout = bind_group_layout,
             .pipeline_layout = pipeline_layout,
-            .vertex_buffer = vertex_buffer,
-            .index_buffer = index_buffer,
             .render_state = render_state,
             .objects = objects,
         };
     }
 
-    fn deinit(self: *CubeDemo) void {
+    fn deinit(self: *MeshDemo) void {
         self.render_state.deinit();
         self.pipeline.release();
         self.pipeline_layout.release();
@@ -653,12 +660,10 @@ const CubeDemo = struct {
             object.deinit();
         }
         self.allocator.free(self.objects);
-        self.index_buffer.release();
-        self.vertex_buffer.release();
     }
 
     fn draw(
-        self: *CubeDemo,
+        self: *MeshDemo,
         device: *wgpu.Device,
         queue: *wgpu.Queue,
         target_view: *wgpu.TextureView,
@@ -674,17 +679,17 @@ const CubeDemo = struct {
         });
     }
 
-    fn runRenderSchedule(self: *CubeDemo, context: RenderSystemContext) RenderError!void {
+    fn runRenderSchedule(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
         for (self.render_state.schedule.batches) |batch| {
             for (batch.systems) |system| {
                 if (std.mem.eql(u8, system.id, render_extract_system_id)) {
                     try self.render_state.extractScene(context.frame.scene);
-                } else if (std.mem.eql(u8, system.id, render_prepare_cubes_system_id)) {
+                } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) {
                     try self.ensureObjectResources(context.device, context.queue);
-                } else if (std.mem.eql(u8, system.id, render_queue_cubes_system_id)) {
-                    try self.render_state.queueCubeDraws();
-                } else if (std.mem.eql(u8, system.id, render_draw_cubes_system_id)) {
-                    try self.drawQueuedCubes(context);
+                } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) {
+                    try self.render_state.queueMeshDraws();
+                } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) {
+                    try self.drawQueuedMeshes(context);
                 } else {
                     return RenderError.InvalidScene;
                 }
@@ -692,13 +697,13 @@ const CubeDemo = struct {
         }
     }
 
-    fn ensureObjectResources(self: *CubeDemo, device: *wgpu.Device, queue: *wgpu.Queue) RenderError!void {
-        const cube_count = self.render_state.world.renderableCubeCount();
-        if (cube_count == self.objects.len) {
+    fn ensureObjectResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue) RenderError!void {
+        const mesh_count = self.render_state.world.renderableMeshCount();
+        if (mesh_count == self.objects.len and self.objectResourcesMatchRenderWorld()) {
             return;
         }
 
-        const new_objects = self.allocator.alloc(ObjectResources, cube_count) catch return RenderError.OutOfMemory;
+        const new_objects = self.allocator.alloc(ObjectResources, mesh_count) catch return RenderError.OutOfMemory;
         var object_count: usize = 0;
         errdefer {
             for (new_objects[0..object_count]) |*object| {
@@ -707,12 +712,12 @@ const CubeDemo = struct {
             self.allocator.free(new_objects);
         }
 
-        var cubes = self.render_state.world.renderableCubes();
-        while (cubes.next()) |cube| {
-            new_objects[object_count] = try ObjectResources.create(device, queue, self.bind_group_layout, cube);
+        var meshes = self.render_state.world.renderableMeshes();
+        while (meshes.next()) |mesh| {
+            new_objects[object_count] = try ObjectResources.create(self.allocator, device, queue, self.bind_group_layout, mesh);
             object_count += 1;
         }
-        if (object_count != cube_count) {
+        if (object_count != mesh_count) {
             return RenderError.InvalidScene;
         }
 
@@ -723,24 +728,36 @@ const CubeDemo = struct {
         self.objects = new_objects;
     }
 
-    fn drawQueuedCubes(self: *CubeDemo, context: RenderSystemContext) RenderError!void {
+    fn objectResourcesMatchRenderWorld(self: MeshDemo) bool {
+        var index: usize = 0;
+        var meshes = self.render_state.world.renderableMeshes();
+        while (meshes.next()) |mesh| {
+            if (index >= self.objects.len or !self.objects[index].matches(mesh)) {
+                return false;
+            }
+            index += 1;
+        }
+        return index == self.objects.len;
+    }
+
+    fn drawQueuedMeshes(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
         const camera = try cameraState(&self.render_state.world);
         const light = try directionalLightState(&self.render_state.world);
         var draw_indices: std.ArrayList(usize) = .empty;
         defer draw_indices.deinit(self.allocator);
 
         var draw_cursor: usize = 0;
-        const draw_query = [_][]const u8{render_draw_cube_component_id};
+        const draw_query = [_][]const u8{render_draw_mesh_component_id};
         while (self.render_state.world.queryNext(&draw_query, &draw_cursor)) |draw_entity| {
             const render_index = try self.render_state.drawCommandRenderIndex(draw_entity);
             if (render_index >= self.objects.len) {
                 return RenderError.InvalidScene;
             }
-            const cube = self.render_state.world.renderableCubeAt(render_index) orelse return RenderError.InvalidScene;
+            const mesh = self.render_state.world.renderableMeshAt(render_index) orelse return RenderError.InvalidScene;
             var uniforms = try frameUniforms(.{
                 .width = context.frame.width,
                 .height = context.frame.height,
-                .cube = &cube,
+                .mesh = &mesh,
                 .camera = camera,
                 .light = light,
             });
@@ -749,7 +766,7 @@ const CubeDemo = struct {
         }
 
         const encoder = context.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube command encoder"),
+            .label = wgpu.StringView.fromSlice("Machina mesh command encoder"),
         }) orelse return RenderError.NoDevice;
         defer encoder.release();
 
@@ -778,16 +795,17 @@ const CubeDemo = struct {
         }) orelse return RenderError.NoDevice;
         defer render_pass.release();
         render_pass.setPipeline(self.pipeline);
-        render_pass.setVertexBuffer(0, self.vertex_buffer, 0, @sizeOf(@TypeOf(cube_vertices)));
-        render_pass.setIndexBuffer(self.index_buffer, .uint16, 0, @sizeOf(@TypeOf(cube_indices)));
         for (draw_indices.items) |render_index| {
-            render_pass.setBindGroup(0, self.objects[render_index].bind_group, 0, null);
-            render_pass.drawIndexed(cube_indices.len, 1, 0, 0, 0);
+            const object = self.objects[render_index];
+            render_pass.setVertexBuffer(0, object.vertex_buffer, 0, object.vertex_buffer_size);
+            render_pass.setIndexBuffer(object.index_buffer, .uint16, 0, object.index_buffer_size);
+            render_pass.setBindGroup(0, object.bind_group, 0, null);
+            render_pass.drawIndexed(object.index_count, 1, 0, 0, 0);
         }
         render_pass.end();
 
         const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube command buffer"),
+            .label = wgpu.StringView.fromSlice("Machina mesh command buffer"),
         }) orelse return RenderError.NoDevice;
         defer command_buffer.release();
 
@@ -797,17 +815,41 @@ const CubeDemo = struct {
 };
 
 const ObjectResources = struct {
+    geometry_key: GeometryKey,
+    vertex_buffer: *wgpu.Buffer,
+    index_buffer: *wgpu.Buffer,
+    vertex_buffer_size: u64,
+    index_buffer_size: u64,
+    index_count: u32,
     uniform_buffer: *wgpu.Buffer,
     bind_group: *wgpu.BindGroup,
 
     fn create(
+        allocator: std.mem.Allocator,
         device: *wgpu.Device,
         queue: *wgpu.Queue,
         bind_group_layout: *wgpu.BindGroupLayout,
-        cube: runtime.RenderableCube,
+        renderable: runtime.RenderableMesh,
     ) RenderError!ObjectResources {
+        const geometry_key = GeometryKey.fromRenderable(renderable) orelse return RenderError.InvalidScene;
+        var mesh = geometry.generatePrimitive(
+            allocator,
+            geometry_key.primitive,
+            geometry_key.segments,
+            geometry_key.rings,
+        ) catch |err| return mapGeometryError(err);
+        defer mesh.deinit(allocator);
+
+        const vertex_bytes = std.mem.sliceAsBytes(mesh.vertices);
+        const index_bytes = std.mem.sliceAsBytes(mesh.indices);
+        const vertex_buffer = try createStaticBuffer(device, "Machina mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
+        errdefer vertex_buffer.release();
+
+        const index_buffer = try createStaticBuffer(device, "Machina mesh index buffer", wgpu.BufferUsages.index, index_bytes);
+        errdefer index_buffer.release();
+
         const uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube object uniforms"),
+            .label = wgpu.StringView.fromSlice("Machina mesh object uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
             .size = @sizeOf(FrameUniforms),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -817,7 +859,7 @@ const ObjectResources = struct {
         var initial_uniforms = try frameUniforms(.{
             .width = output_width,
             .height = output_height,
-            .cube = &cube,
+            .mesh = &renderable,
             .camera = .{},
             .light = .{},
         });
@@ -831,21 +873,52 @@ const ObjectResources = struct {
             },
         };
         const bind_group = device.createBindGroup(&wgpu.BindGroupDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina cube object bind group"),
+            .label = wgpu.StringView.fromSlice("Machina mesh object bind group"),
             .layout = bind_group_layout,
             .entry_count = bind_group_entries.len,
             .entries = &bind_group_entries,
         }) orelse return RenderError.NoDevice;
 
         return .{
+            .geometry_key = geometry_key,
+            .vertex_buffer = vertex_buffer,
+            .index_buffer = index_buffer,
+            .vertex_buffer_size = @intCast(vertex_bytes.len),
+            .index_buffer_size = @intCast(index_bytes.len),
+            .index_count = @intCast(mesh.indices.len),
             .uniform_buffer = uniform_buffer,
             .bind_group = bind_group,
         };
     }
 
+    fn matches(self: ObjectResources, renderable: runtime.RenderableMesh) bool {
+        const geometry_key = GeometryKey.fromRenderable(renderable) orelse return false;
+        return self.geometry_key.eql(geometry_key);
+    }
+
     fn deinit(self: *ObjectResources) void {
         self.bind_group.release();
         self.uniform_buffer.release();
+        self.index_buffer.release();
+        self.vertex_buffer.release();
+    }
+};
+
+const GeometryKey = struct {
+    primitive: geometry.Primitive,
+    segments: i32,
+    rings: i32,
+
+    fn fromRenderable(renderable: runtime.RenderableMesh) ?GeometryKey {
+        return .{
+            .primitive = geometry.parsePrimitive(renderable.primitive) orelse return null,
+            .segments = renderable.segments,
+            .rings = renderable.rings,
+        };
+    }
+
+    fn eql(self: GeometryKey, other: GeometryKey) bool {
+        return self.primitive == other.primitive and self.segments == other.segments and self.rings == other.rings;
     }
 };
 
@@ -922,11 +995,11 @@ fn configureSurfaceFromWindow(
     current_height.* = height;
 }
 
-fn drawCubeToSurface(
+fn drawMeshToSurface(
     surface: *wgpu.Surface,
     device: *wgpu.Device,
     queue: *wgpu.Queue,
-    demo: *CubeDemo,
+    demo: *MeshDemo,
     depth_view: *wgpu.TextureView,
     config: FrameConfig,
 ) !void {
@@ -957,7 +1030,7 @@ fn drawCubeToSurface(
     }
 }
 
-fn createCubePipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
+fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
     const shader_module = device.createShaderModule(&wgpu.shaderModuleWGSLDescriptor(.{
         .code = @embedFile("shaders/demo.wgsl"),
     })) orelse return RenderError.NoDevice;
@@ -966,18 +1039,18 @@ fn createCubePipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
     const vertex_attributes = [_]wgpu.VertexAttribute{
         .{
             .format = .float32x3,
-            .offset = @offsetOf(Vertex, "position"),
+            .offset = @offsetOf(geometry.Vertex, "position"),
             .shader_location = 0,
         },
         .{
             .format = .float32x3,
-            .offset = @offsetOf(Vertex, "normal"),
+            .offset = @offsetOf(geometry.Vertex, "normal"),
             .shader_location = 1,
         },
     };
     const vertex_buffers = [_]wgpu.VertexBufferLayout{
         .{
-            .array_stride = @sizeOf(Vertex),
+            .array_stride = @sizeOf(geometry.Vertex),
             .attribute_count = vertex_attributes.len,
             .attributes = &vertex_attributes,
         },
@@ -997,7 +1070,7 @@ fn createCubePipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina cube pipeline"),
+        .label = wgpu.StringView.fromSlice("Machina mesh pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -1041,17 +1114,17 @@ fn writeUniforms(queue: *wgpu.Queue, buffer: *wgpu.Buffer, uniforms: *const Fram
 
 fn frameUniforms(config: ObjectConfig) RenderError!FrameUniforms {
     const aspect = @as(f32, @floatFromInt(config.width)) / @as(f32, @floatFromInt(config.height));
-    const cube = config.cube;
+    const mesh = config.mesh;
     const rotation = matMul(
-        rotationZ(cube.rotation[2]),
+        rotationZ(mesh.rotation[2]),
         matMul(
-            rotationY(cube.rotation[1]),
-            rotationX(cube.rotation[0]),
+            rotationY(mesh.rotation[1]),
+            rotationX(mesh.rotation[0]),
         ),
     );
     const model = matMul(
-        translation(cube.position[0], cube.position[1], cube.position[2]),
-        matMul(rotation, scaling(cube.scale[0], cube.scale[1], cube.scale[2])),
+        translation(mesh.position[0], mesh.position[1], mesh.position[2]),
+        matMul(rotation, scaling(mesh.scale[0], mesh.scale[1], mesh.scale[2])),
     );
     const camera = try validateCamera(config.camera);
     const light = try validateDirectionalLight(config.light);
@@ -1065,7 +1138,7 @@ fn frameUniforms(config: ObjectConfig) RenderError!FrameUniforms {
         .model = model,
         .light_dir = .{ normalized_light[0], normalized_light[1], normalized_light[2], 0.0 },
         .light_color = .{ light.color[0], light.color[1], light.color[2], 1.0 },
-        .object_color = .{ cube.color[0], cube.color[1], cube.color[2], 1.0 },
+        .object_color = .{ mesh.base_color[0], mesh.base_color[1], mesh.base_color[2], 1.0 },
         .lighting = .{ light.ambient, light.intensity, 0.0, 0.0 },
     };
 }
@@ -1184,9 +1257,9 @@ test "render ECS schedule orders extract prepare queue and draw systems" {
 
     const expected = [_][]const u8{
         render_extract_system_id,
-        render_prepare_cubes_system_id,
-        render_queue_cubes_system_id,
-        render_draw_cubes_system_id,
+        render_prepare_meshes_system_id,
+        render_queue_meshes_system_id,
+        render_draw_meshes_system_id,
     };
     for (expected, state.schedule.batches) |system_id, batch| {
         try std.testing.expectEqual(runtime.SystemPhase.render, batch.phase);
@@ -1195,26 +1268,31 @@ test "render ECS schedule orders extract prepare queue and draw systems" {
     }
 }
 
-test "render ECS extracts scene data and queues cube draw commands" {
+test "render ECS extracts scene data and queues mesh draw commands" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
 
-    const cool_cube = try scene_world.createEntity("cool-cube", "Cool Cube");
-    try scene_world.setTransform(cool_cube, .{
+    const cool_box = try scene_world.createEntity("cool-box", "Cool Box");
+    try scene_world.setTransform(cool_box, .{
         .position = .{ -1.0, 0.0, 0.0 },
         .rotation = .{ 0.1, 0.2, 0.3 },
     });
-    try scene_world.setCubeRenderer(cool_cube, .{
+    try scene_world.setCubeRenderer(cool_box, .{
         .color = .{ 0.1, 0.5, 1.0 },
     });
 
-    const warm_cube = try scene_world.createEntity("warm-cube", "Warm Cube");
-    try scene_world.setTransform(warm_cube, .{
+    const warm_sphere = try scene_world.createEntity("warm-sphere", "Warm Sphere");
+    try scene_world.setTransform(warm_sphere, .{
         .position = .{ 1.0, 0.0, 0.0 },
         .scale = .{ 0.8, 0.8, 0.8 },
     });
-    try scene_world.setCubeRenderer(warm_cube, .{
-        .color = .{ 1.0, 0.35, 0.12 },
+    try scene_world.setGeometryPrimitive(warm_sphere, .{
+        .primitive = "uv_sphere",
+        .segments = 16,
+        .rings = 8,
+    });
+    try scene_world.setSurfaceMaterial(warm_sphere, .{
+        .base_color = .{ 1.0, 0.35, 0.12 },
     });
 
     const camera = try scene_world.createEntity("camera", "Camera");
@@ -1229,15 +1307,18 @@ test "render ECS extracts scene data and queues cube draw commands" {
     try state.extractScene(.{ .world = &scene_world });
 
     try std.testing.expectEqual(@as(usize, 4), state.world.entityCount());
-    try std.testing.expectEqual(@as(usize, 2), state.world.renderableCubeCount());
+    try std.testing.expectEqual(@as(usize, 2), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(f32, 52.0), (state.world.renderCamera() orelse return error.TestExpectedEqual).fov_y_degrees);
     try std.testing.expectEqual(@as(f32, 1.25), (state.world.renderDirectionalLight() orelse return error.TestExpectedEqual).intensity);
+    const extracted_sphere = state.world.renderableMeshAt(1) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("uv_sphere", extracted_sphere.primitive);
+    try std.testing.expectEqual(@as(f32, 0.35), extracted_sphere.base_color[1]);
 
-    try state.queueCubeDraws();
+    try state.queueMeshDraws();
     try std.testing.expectEqual(@as(usize, 2), state.drawCommandCount());
 
     var cursor: usize = 0;
-    const draw_query = [_][]const u8{render_draw_cube_component_id};
+    const draw_query = [_][]const u8{render_draw_mesh_component_id};
     const first_draw = state.world.queryNext(&draw_query, &cursor) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 0), try state.drawCommandRenderIndex(first_draw));
     const second_draw = state.world.queryNext(&draw_query, &cursor) orelse return error.TestExpectedEqual;
@@ -1327,52 +1408,6 @@ const FrameUniforms = extern struct {
     light_color: [4]f32,
     object_color: [4]f32,
     lighting: [4]f32,
-};
-
-const Vertex = extern struct {
-    position: [3]f32,
-    normal: [3]f32,
-};
-
-const cube_vertices = [_]Vertex{
-    .{ .position = .{ -1.0, -1.0, 1.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ 1.0, -1.0, 1.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ 1.0, 1.0, 1.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ -1.0, 1.0, 1.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-
-    .{ .position = .{ 1.0, -1.0, -1.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-    .{ .position = .{ -1.0, -1.0, -1.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-    .{ .position = .{ -1.0, 1.0, -1.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-    .{ .position = .{ 1.0, 1.0, -1.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-
-    .{ .position = .{ -1.0, 1.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ 1.0, 1.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ 1.0, 1.0, -1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ -1.0, 1.0, -1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-
-    .{ .position = .{ -1.0, -1.0, -1.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-    .{ .position = .{ 1.0, -1.0, -1.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-    .{ .position = .{ 1.0, -1.0, 1.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-    .{ .position = .{ -1.0, -1.0, 1.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-
-    .{ .position = .{ 1.0, -1.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 1.0, -1.0, -1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 1.0, 1.0, -1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 1.0, 1.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-
-    .{ .position = .{ -1.0, -1.0, -1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-    .{ .position = .{ -1.0, -1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-    .{ .position = .{ -1.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-    .{ .position = .{ -1.0, 1.0, -1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-};
-
-const cube_indices = [_]u16{
-    0,  1,  2,  0,  2,  3,
-    4,  5,  6,  4,  6,  7,
-    8,  9,  10, 8,  10, 11,
-    12, 13, 14, 12, 14, 15,
-    16, 17, 18, 16, 18, 19,
-    20, 21, 22, 20, 22, 23,
 };
 
 fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?*anyopaque, userdata2: ?*anyopaque) callconv(.c) void {

@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const render = @import("render.zig");
 const render_verify = @import("render_verify.zig");
+const geometry = @import("geometry.zig");
 const runtime = @import("runtime.zig");
 const script = @import("script.zig");
 
@@ -19,9 +20,13 @@ pub const World = runtime.World;
 pub const EntityHandle = runtime.EntityHandle;
 pub const Transform = runtime.Transform;
 pub const CubeRenderer = runtime.CubeRenderer;
+pub const GeometryPrimitive = runtime.GeometryPrimitive;
+pub const SurfaceMaterial = runtime.SurfaceMaterial;
 pub const Camera = runtime.Camera;
 pub const DirectionalLight = runtime.DirectionalLight;
 pub const Spin = runtime.Spin;
+pub const PrimitiveGeometry = geometry.Primitive;
+pub const GeometryMesh = geometry.Mesh;
 pub const ComponentRegistry = runtime.ComponentRegistry;
 pub const ComponentDefinition = runtime.ComponentDefinition;
 pub const ComponentFieldDefinition = runtime.ComponentFieldDefinition;
@@ -68,6 +73,10 @@ pub const Scene = struct {
 
     pub fn renderableCubeCount(self: Scene) usize {
         return self.world.renderableCubeCount();
+    }
+
+    pub fn renderableMeshCount(self: Scene) usize {
+        return self.world.renderableMeshCount();
     }
 };
 

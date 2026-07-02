@@ -29,6 +29,8 @@ pub const ScheduleError = error{
 const engine_namespace = "machina";
 pub const transform_component_id = "machina.transform";
 pub const cube_renderer_component_id = "machina.render.cube";
+pub const geometry_primitive_component_id = "machina.geometry.primitive";
+pub const surface_material_component_id = "machina.material.surface";
 pub const camera_component_id = "machina.camera";
 pub const directional_light_component_id = "machina.light.directional";
 pub const spin_component_id = "spin";
@@ -513,6 +515,26 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .fields = &cube_fields,
     });
 
+    const geometry_fields = [_]ComponentFieldDefinition{
+        .{ .name = "primitive", .value_type = .string },
+        .{ .name = "segments", .value_type = .int },
+        .{ .name = "rings", .value_type = .int },
+    };
+    try registry.registerEngineComponent(.{
+        .id = geometry_primitive_component_id,
+        .version = 1,
+        .fields = &geometry_fields,
+    });
+
+    const material_fields = [_]ComponentFieldDefinition{
+        .{ .name = "base_color", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = surface_material_component_id,
+        .version = 1,
+        .fields = &material_fields,
+    });
+
     const camera_fields = [_]ComponentFieldDefinition{
         .{ .name = "fov_y_degrees", .value_type = .float },
         .{ .name = "near", .value_type = .float },
@@ -556,6 +578,16 @@ pub const CubeRenderer = struct {
     color: [3]f32 = .{ 0.0, 0.56, 1.0 },
 };
 
+pub const GeometryPrimitive = struct {
+    primitive: []const u8 = "box",
+    segments: i32 = 0,
+    rings: i32 = 0,
+};
+
+pub const SurfaceMaterial = struct {
+    base_color: [3]f32 = .{ 0.0, 0.56, 1.0 },
+};
+
 pub const Camera = struct {
     fov_y_degrees: f32 = 48.0,
     near: f32 = 0.1,
@@ -581,6 +613,20 @@ pub const RenderableCube = struct {
     rotation: [3]f32,
     scale: [3]f32,
     color: [3]f32,
+    spin: [3]f32,
+};
+
+pub const RenderableMesh = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    position: [3]f32,
+    rotation: [3]f32,
+    scale: [3]f32,
+    primitive: []const u8,
+    segments: i32,
+    rings: i32,
+    base_color: [3]f32,
     spin: [3]f32,
 };
 
@@ -872,6 +918,22 @@ pub const World = struct {
         try self.setComponent(handle, cube_renderer_component_id, &fields);
     }
 
+    pub fn setGeometryPrimitive(self: *World, handle: EntityHandle, primitive: GeometryPrimitive) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "primitive", .value = .{ .string = primitive.primitive } },
+            .{ .name = "segments", .value = .{ .int = primitive.segments } },
+            .{ .name = "rings", .value = .{ .int = primitive.rings } },
+        };
+        try self.setComponent(handle, geometry_primitive_component_id, &fields);
+    }
+
+    pub fn setSurfaceMaterial(self: *World, handle: EntityHandle, material: SurfaceMaterial) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "base_color", .value = .{ .vec3 = material.base_color } },
+        };
+        try self.setComponent(handle, surface_material_component_id, &fields);
+    }
+
     pub fn setCamera(self: *World, handle: EntityHandle, camera: Camera) WorldError!void {
         const fields = [_]ComponentFieldValue{
             .{ .name = "fov_y_degrees", .value = .{ .float = camera.fov_y_degrees } },
@@ -913,6 +975,22 @@ pub const World = struct {
         const value = try self.getFieldValue(handle, component_id, field_name);
         return switch (value) {
             .float => |payload| payload,
+            else => WorldError.InvalidFieldType,
+        };
+    }
+
+    pub fn getInt(self: World, handle: EntityHandle, component_id: []const u8, field_name: []const u8) WorldError!i32 {
+        const value = try self.getFieldValue(handle, component_id, field_name);
+        return switch (value) {
+            .int => |payload| payload,
+            else => WorldError.InvalidFieldType,
+        };
+    }
+
+    pub fn getString(self: World, handle: EntityHandle, component_id: []const u8, field_name: []const u8) WorldError![]const u8 {
+        const value = try self.getFieldValue(handle, component_id, field_name);
+        return switch (value) {
+            .string => |payload| payload,
             else => WorldError.InvalidFieldType,
         };
     }
@@ -979,35 +1057,40 @@ pub const World = struct {
     }
 
     pub fn renderableCubeCount(self: World) usize {
+        return self.renderableMeshCount();
+    }
+
+    pub fn renderableMeshCount(self: World) usize {
         var count: usize = 0;
-        var cursor: usize = 0;
-        const component_ids = [_][]const u8{ transform_component_id, cube_renderer_component_id };
-        while (self.queryNext(&component_ids, &cursor)) |_| {
-            count += 1;
+        for (0..self.entityCount()) |index| {
+            if (self.renderableMeshAtEntity(.{ .index = @intCast(index) }) != null) {
+                count += 1;
+            }
         }
         return count;
     }
 
     pub fn renderableCubeAt(self: World, render_index: usize) ?RenderableCube {
+        const mesh = self.renderableMeshAt(render_index) orelse return null;
+        return .{
+            .entity = mesh.entity,
+            .id = mesh.id,
+            .name = mesh.name,
+            .position = mesh.position,
+            .rotation = mesh.rotation,
+            .scale = mesh.scale,
+            .color = mesh.base_color,
+            .spin = mesh.spin,
+        };
+    }
+
+    pub fn renderableMeshAt(self: World, render_index: usize) ?RenderableMesh {
         var found: usize = 0;
-        var cursor: usize = 0;
-        const component_ids = [_][]const u8{ transform_component_id, cube_renderer_component_id };
-        while (self.queryNext(&component_ids, &cursor)) |handle| {
-            const stored_entity = self.entity(handle) catch return null;
+        for (0..self.entityCount()) |index| {
+            const handle = EntityHandle{ .index = @intCast(index) };
+            const mesh = self.renderableMeshAtEntity(handle) orelse continue;
             if (found == render_index) {
-                const transform = (self.getTransform(handle) catch return null) orelse return null;
-                const color = self.getVec3(handle, cube_renderer_component_id, "color") catch return null;
-                const spin = self.getVec3(handle, spin_component_id, "angular_velocity") catch .{ 0.0, 0.0, 0.0 };
-                return .{
-                    .entity = handle,
-                    .id = stored_entity.id,
-                    .name = stored_entity.name,
-                    .position = transform.position,
-                    .rotation = transform.rotation,
-                    .scale = transform.scale,
-                    .color = color,
-                    .spin = spin,
-                };
+                return mesh;
             }
             found += 1;
         }
@@ -1016,6 +1099,52 @@ pub const World = struct {
 
     pub fn renderableCubes(self: *const World) RenderableCubeIterator {
         return .{ .world = self };
+    }
+
+    pub fn renderableMeshes(self: *const World) RenderableMeshIterator {
+        return .{ .world = self };
+    }
+
+    fn renderableMeshAtEntity(self: World, handle: EntityHandle) ?RenderableMesh {
+        const stored_entity = self.entity(handle) catch return null;
+        const transform = (self.getTransform(handle) catch return null) orelse return null;
+        const spin = self.getVec3(handle, spin_component_id, "angular_velocity") catch .{ 0.0, 0.0, 0.0 };
+
+        if ((self.hasComponent(handle, geometry_primitive_component_id) catch false) and
+            (self.hasComponent(handle, surface_material_component_id) catch false))
+        {
+            return .{
+                .entity = handle,
+                .id = stored_entity.id,
+                .name = stored_entity.name,
+                .position = transform.position,
+                .rotation = transform.rotation,
+                .scale = transform.scale,
+                .primitive = self.getString(handle, geometry_primitive_component_id, "primitive") catch return null,
+                .segments = self.getInt(handle, geometry_primitive_component_id, "segments") catch return null,
+                .rings = self.getInt(handle, geometry_primitive_component_id, "rings") catch return null,
+                .base_color = self.getVec3(handle, surface_material_component_id, "base_color") catch return null,
+                .spin = spin,
+            };
+        }
+
+        if (self.hasComponent(handle, cube_renderer_component_id) catch false) {
+            return .{
+                .entity = handle,
+                .id = stored_entity.id,
+                .name = stored_entity.name,
+                .position = transform.position,
+                .rotation = transform.rotation,
+                .scale = transform.scale,
+                .primitive = "box",
+                .segments = 0,
+                .rings = 0,
+                .base_color = self.getVec3(handle, cube_renderer_component_id, "color") catch return null,
+                .spin = spin,
+            };
+        }
+
+        return null;
     }
 
     pub fn renderCamera(self: World) ?RenderCamera {
@@ -1252,6 +1381,21 @@ pub const RenderableCubeIterator = struct {
     }
 };
 
+pub const RenderableMeshIterator = struct {
+    world: *const World,
+    index: usize = 0,
+
+    pub fn next(self: *RenderableMeshIterator) ?RenderableMesh {
+        const count = self.world.renderableMeshCount();
+        while (self.index < count) : (self.index += 1) {
+            const mesh = self.world.renderableMeshAt(self.index) orelse continue;
+            self.index += 1;
+            return mesh;
+        }
+        return null;
+    }
+};
+
 pub fn validateTypeId(id: []const u8) TypeIdError!void {
     _ = try validateTypeIdShape(id);
 }
@@ -1434,6 +1578,36 @@ test "world stores stable entity ids and components" {
     try std.testing.expectEqualStrings("entity-1", cube.id);
     try std.testing.expectEqual(@as(f32, 2.0), cube.position[1]);
     try std.testing.expectEqual(@as(f32, 1.0), cube.color[0]);
+
+    const mesh = world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("box", mesh.primitive);
+    try std.testing.expectEqual(@as(f32, 1.0), mesh.base_color[0]);
+}
+
+test "world resolves explicit primitive geometry and surface material renderables" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("sphere", "Sphere");
+    try world.setTransform(entity, .{ .position = .{ 0.0, 1.0, 0.0 } });
+    try world.setGeometryPrimitive(entity, .{
+        .primitive = "uv_sphere",
+        .segments = 32,
+        .rings = 16,
+    });
+    try world.setSurfaceMaterial(entity, .{
+        .base_color = .{ 0.2, 0.8, 1.0 },
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), world.renderableCubeCount());
+
+    const mesh = world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(entity.index, mesh.entity.index);
+    try std.testing.expectEqualStrings("uv_sphere", mesh.primitive);
+    try std.testing.expectEqual(@as(i32, 32), mesh.segments);
+    try std.testing.expectEqual(@as(i32, 16), mesh.rings);
+    try std.testing.expectEqual(@as(f32, 0.8), mesh.base_color[1]);
 }
 
 test "world resolves render camera and directional light components" {
@@ -1653,9 +1827,11 @@ test "engine component schemas are registered from runtime" {
 
     try std.testing.expect(registry.findComponent(transform_component_id) != null);
     try std.testing.expect(registry.findComponent(cube_renderer_component_id) != null);
+    try std.testing.expect(registry.findComponent(geometry_primitive_component_id) != null);
+    try std.testing.expect(registry.findComponent(surface_material_component_id) != null);
     try std.testing.expect(registry.findComponent(camera_component_id) != null);
     try std.testing.expect(registry.findComponent(directional_light_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 4), registry.componentCount());
+    try std.testing.expectEqual(@as(usize, 6), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);

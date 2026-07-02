@@ -48,7 +48,7 @@ Scene-driven camera and lighting let projects describe the view and first direct
 ## Related
 
 - **ADRs:** ADR-001, ADR-004, ADR-005, ADR-008, ADR-013
-- **FDRs:** FDR-002, FDR-007, FDR-008, FDR-009
+- **FDRs:** FDR-002, FDR-007, FDR-008, FDR-009, FDR-015
 
 ## Open Questions
 

@@ -12,13 +12,14 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 - Users can run `machina render [path] [output.bmp]` against a valid project.
 - Users can run `machina render-test [path] [output.bmp]` to render offscreen and verify the generated BMP.
 - The command validates the project before rendering.
-- The command loads the project's default scene and draws one frame of its cube entities into an offscreen texture.
-- Cube entity position, rotation, scale, color, and spin values come from scene data.
+- The command loads the project's default scene and draws one frame of its renderable mesh entities into an offscreen texture.
+- Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
+- Legacy cube entities remain supported and render as box geometry with inline color material data.
 - Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
-- The renderer extracts scene data into an internal render ECS world, queues cube draw commands as render-world entities, and executes the render path through a render-phase system schedule.
-- Cubes render with depth testing and scene-driven directional diffuse shading.
+- The renderer extracts scene data into an internal render ECS world, queues mesh draw commands as render-world entities, and executes the render path through a render-phase system schedule.
+- Renderable meshes render with depth testing and scene-driven directional diffuse shading.
 - The rendered pixels are copied back to CPU memory and written as a 24-bit BMP file.
-- Render verification parses the BMP and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene cube colors.
+- Render verification parses the BMP and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene material colors.
 - The command works without a platform window or editor.
 
 ## Design Decisions
@@ -44,7 +45,7 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 ## Related
 
 - **ADRs:** ADR-004, ADR-005, ADR-013
-- **FDRs:** FDR-001, FDR-002, FDR-014
+- **FDRs:** FDR-001, FDR-002, FDR-014, FDR-015
 
 ## Open Questions
 

@@ -168,6 +168,16 @@ export type MachinaRenderCube = {
     color: MachinaVec3,
 }
 
+export type MachinaGeometryPrimitive = {
+    primitive: string,
+    segments: number,
+    rings: number,
+}
+
+export type MachinaSurfaceMaterial = {
+    base_color: MachinaVec3,
+}
+
 export type MachinaCamera = {
     fov_y_degrees: number,
     near: number,
