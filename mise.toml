@@ -2,12 +2,16 @@
 zig = "latest"
 
 [tasks.build]
-description = "Build the machina CLI"
-run = "zig build"
+description = "Build the machina CLI optimized for interactive use"
+run = "zig build -Doptimize=ReleaseFast"
+
+[tasks.build-debug]
+description = "Build the machina CLI with Debug safety checks"
+run = "zig build -Doptimize=Debug"
 
 [tasks.test]
 description = "Run the full Machina test suite"
-run = "zig build test && zig build && ./zig-out/bin/machina test tests/projects && ./zig-out/bin/machina bench examples/spawn_swarm --frames 60 --format=json && ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp && ./zig-out/bin/machina render-test examples/batching zig-out/batching-render-test.bmp && ./zig-out/bin/machina render-test examples/ui_overlay zig-out/ui-overlay-render-test.bmp && ./zig-out/bin/machina render-test examples/spawning zig-out/spawning-render-test.bmp && ./zig-out/bin/machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp"
+run = "zig build test && mise build && ./zig-out/bin/machina test tests/projects && ./zig-out/bin/machina bench examples/spawn_swarm --frames 60 --format=json && ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp && ./zig-out/bin/machina render-test examples/batching zig-out/batching-render-test.bmp && ./zig-out/bin/machina render-test examples/ui_overlay zig-out/ui-overlay-render-test.bmp && ./zig-out/bin/machina render-test examples/spawning zig-out/spawning-render-test.bmp && ./zig-out/bin/machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp"
 
 [tasks.luau-check]
 description = "Run Luau editor type checks"

@@ -67,6 +67,7 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 - Runtime script host API failures should report the active system plus relevant component/field context. Avoid generic bridge errors when Zig can identify the denied access or failed mutation.
 - Use `machina test` for automated gameplay fixture coverage. Use `machina step` for narrower deterministic script/ECS debugging and runtime diagnostic checks.
 - Use `machina bench` for headless performance smoke coverage; keep renderable and render-batch counts useful enough to catch batching regressions.
+- Keep `mise build` optimized for interactive CLI use. Use `mise build-debug` or `zig build test` when Debug safety checks are the point.
 - When adding a text-authored runtime resource, register it with the live reload path or document why it is intentionally not reloadable yet.
 - Preserve last-known-good behavior for live reload. Failed reloads should produce diagnostics without destroying the running project state.
 - For long-lived interactive state, use an allocator that can free replaced resources; avoid arena-backed state for reloadable worlds and scenes.
