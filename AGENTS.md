@@ -35,6 +35,7 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 - Update FDRs when changing feature behavior, command behavior, scene schema, or validation semantics.
 - Route runtime state through the ECS world instead of introducing renderer-specific or script-owned side channels.
 - Script-defined ECS component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local, qualified dotted ids are for packages/libraries, and `machina.*` is engine-owned. Machina does not infer a default project namespace.
+- Author new Luau component schemas with `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage. If field-schema type inference regresses, fix the Luau type definitions/checker setup or runtime bridge support rather than reverting to marker-value inference.
 - Keep script behavior system-first. Do not introduce arbitrary per-object script callbacks that bypass the component registry or native scheduler.
 - Systems must declare phase plus read/write component access before they can participate in scheduling.
 - When adding a text-authored runtime resource, register it with the live reload path or document why it is intentionally not reloadable yet.

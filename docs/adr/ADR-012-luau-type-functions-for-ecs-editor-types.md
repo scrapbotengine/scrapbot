@@ -18,6 +18,8 @@ The preferred component authoring form is a single field-schema table using lite
 
 Machina's checked editor configuration enables Luau's new solver so these type functions are available in both command-line type checks and VS Code. Legacy marker-schema helpers remain available as compatibility shims, but new examples and docs should use `ecs.fields(...)`.
 
+New component schema authoring must not reintroduce marker-value inference as the primary path. If field-schema inference breaks, the fix should be in the Luau definition file, type-check harness, or runtime bridge support, not by moving canonical examples back to `ecs.schema(...)` or `ecs.vec3()`.
+
 ## Consequences
 
 Component schemas become more direct: runtime field declarations and editor payload inference use the same field map instead of a parallel marker DSL.
@@ -27,3 +29,5 @@ Machina now depends on Luau new-solver behavior for the richest editor experienc
 The definition file carries more responsibility. It contains type-function code that must be tested with editor-analysis fixtures, and future field kinds must update both runtime support and the type-function mapping.
 
 Some analysis-only metadata is acceptable inside the Luau type surface when it keeps query ergonomics practical, but it must stay private and must not become gameplay API.
+
+The marker-schema compatibility surface is temporary infrastructure. Keeping it working is useful for migration and regression coverage, but it should not shape future component API design.
