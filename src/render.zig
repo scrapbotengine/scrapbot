@@ -95,13 +95,22 @@ pub const PointerInput = struct {
 pub const FrameInput = struct {
     pointer: PointerInput = .{},
     ui_visible: bool = true,
+    debug_overlay_visible: bool = false,
     f1_pressed: bool = false,
+    fps: f32 = 0.0,
 
     fn beginFrame(self: *FrameInput) void {
         self.pointer.beginFrame();
         self.f1_pressed = false;
     }
 };
+
+fn toggleDebugOverlay(input: *FrameInput) void {
+    const next_visible = !input.debug_overlay_visible;
+    input.debug_overlay_visible = next_visible;
+    input.ui_visible = next_visible;
+    input.f1_pressed = true;
+}
 
 pub fn stats(allocator: std.mem.Allocator, scene: Scene) RenderError!Stats {
     var state = try RenderEcsState.init(allocator);
@@ -276,7 +285,9 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
 
     var running = true;
     var frame_count: u32 = 0;
-    var input: FrameInput = .{};
+    var input: FrameInput = .{ .debug_overlay_visible = true };
+    var last_frame_ticks = sdl.SDL_GetTicksNS();
+    var smoothed_fps: f32 = 0.0;
     while (running) {
         input.beginFrame();
 
@@ -286,8 +297,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
                 sdl.SDL_EVENT_QUIT => running = false,
                 sdl.SDL_EVENT_KEY_DOWN => {
                     if (!event.key.repeat and event.key.key == sdl.SDLK_F1) {
-                        input.ui_visible = !input.ui_visible;
-                        input.f1_pressed = true;
+                        toggleDebugOverlay(&input);
                     }
                 },
                 sdl.SDL_EVENT_MOUSE_MOTION => {
@@ -320,6 +330,15 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
 
         if (!running) {
             break;
+        }
+
+        const frame_ticks = sdl.SDL_GetTicksNS();
+        if (frame_ticks > last_frame_ticks) {
+            const elapsed_ns = frame_ticks - last_frame_ticks;
+            last_frame_ticks = frame_ticks;
+            const instant_fps = 1_000_000_000.0 / @as(f32, @floatFromInt(elapsed_ns));
+            smoothed_fps = if (smoothed_fps == 0.0) instant_fps else smoothed_fps * 0.9 + instant_fps * 0.1;
+            input.fps = smoothed_fps;
         }
 
         if (options.scene_reload) |reload| {
@@ -464,6 +483,10 @@ const RenderEcsState = struct {
                 try extractUiTextInto(self.allocator, &next_world, ui_text_index, text);
                 ui_text_index += 1;
             }
+        }
+
+        if (input.debug_overlay_visible) {
+            try extractDebugOverlayInto(self.allocator, &next_world, input);
         }
 
         try extractCameraInto(&next_world, try cameraState(scene.world));
@@ -646,7 +669,9 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         .{ .name = "primary_pressed", .value_type = .boolean },
         .{ .name = "primary_released", .value_type = .boolean },
         .{ .name = "ui_visible", .value_type = .boolean },
+        .{ .name = "debug_overlay_visible", .value_type = .boolean },
         .{ .name = "f1_pressed", .value_type = .boolean },
+        .{ .name = "fps", .value_type = .float },
     };
     try registry.registerEngineComponent(.{
         .id = render_frame_input_component_id,
@@ -877,6 +902,52 @@ fn extractUiTextInto(
     }) catch |err| return mapWorldError(err);
 }
 
+fn extractDebugOverlayInto(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    input: FrameInput,
+) RenderError!void {
+    const canvas = world.createEntity("machina.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
+    world.setUiCanvas(canvas) catch |err| return mapWorldError(err);
+
+    const panel = world.createEntity("machina.editor.debug.panel", "Editor Debug Panel") catch |err| return mapWorldError(err);
+    world.setUiRect(panel, .{
+        .position = .{ 12.0, 12.0, 0.0 },
+        .size = .{ 144.0, 52.0, 0.0 },
+        .color = .{ 0.059, 0.09, 0.165 },
+    }) catch |err| return mapWorldError(err);
+
+    const accent = world.createEntity("machina.editor.debug.accent", "Editor Debug Accent") catch |err| return mapWorldError(err);
+    world.setUiRect(accent, .{
+        .position = .{ 12.0, 12.0, 0.0 },
+        .size = .{ 144.0, 4.0, 0.0 },
+        .color = .{ 0.056, 0.749, 0.823 },
+    }) catch |err| return mapWorldError(err);
+
+    const fps_text = formatFpsLabel(allocator, input.fps) catch return RenderError.OutOfMemory;
+    defer allocator.free(fps_text);
+
+    const label = world.createEntity("machina.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
+    world.setUiText(label, .{
+        .position = .{ 28.0, 22.0, 0.0 },
+        .size = 2.0,
+        .color = .{ 0.93, 0.969, 1.0 },
+        .value = fps_text,
+    }) catch |err| return mapWorldError(err);
+}
+
+fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]const u8 {
+    return std.fmt.allocPrint(allocator, "FPS {d}", .{roundedFps(fps)});
+}
+
+fn roundedFps(fps: f32) i32 {
+    if (!std.math.isFinite(fps) or fps <= 0.0) {
+        return 0;
+    }
+    const clamped = @min(fps, 9999.0);
+    return @intFromFloat(@round(clamped));
+}
+
 fn setRenderFrameInput(world: *runtime.World, input: FrameInput) RenderError!void {
     const entity = world.createEntity(render_input_entity_id, "Render Input") catch |err| return mapWorldError(err);
     const fields = [_]runtime.ComponentFieldValue{
@@ -886,7 +957,9 @@ fn setRenderFrameInput(world: *runtime.World, input: FrameInput) RenderError!voi
         .{ .name = "primary_pressed", .value = .{ .boolean = input.pointer.primary_pressed } },
         .{ .name = "primary_released", .value = .{ .boolean = input.pointer.primary_released } },
         .{ .name = "ui_visible", .value = .{ .boolean = input.ui_visible } },
+        .{ .name = "debug_overlay_visible", .value = .{ .boolean = input.debug_overlay_visible } },
         .{ .name = "f1_pressed", .value = .{ .boolean = input.f1_pressed } },
+        .{ .name = "fps", .value = .{ .float = input.fps } },
     };
     world.setComponent(entity, render_frame_input_component_id, &fields) catch |err| return mapWorldError(err);
 }
@@ -903,7 +976,9 @@ fn renderFrameInput(world: *const runtime.World) RenderError!FrameInput {
             .primary_released = world.getBoolean(entity, render_frame_input_component_id, "primary_released") catch |err| return mapWorldError(err),
         },
         .ui_visible = world.getBoolean(entity, render_frame_input_component_id, "ui_visible") catch |err| return mapWorldError(err),
+        .debug_overlay_visible = world.getBoolean(entity, render_frame_input_component_id, "debug_overlay_visible") catch |err| return mapWorldError(err),
         .f1_pressed = world.getBoolean(entity, render_frame_input_component_id, "f1_pressed") catch |err| return mapWorldError(err),
+        .fps = world.getFloat(entity, render_frame_input_component_id, "fps") catch |err| return mapWorldError(err),
     };
 }
 
@@ -2617,6 +2692,52 @@ test "hidden UI overlay skips UI extraction but keeps frame input" {
 
     const input = try renderFrameInput(&state.world);
     try std.testing.expect(!input.ui_visible);
+    try std.testing.expect(!input.debug_overlay_visible);
+}
+
+test "F1 debug overlay toggle updates visible flags" {
+    var input = FrameInput{ .debug_overlay_visible = true };
+
+    toggleDebugOverlay(&input);
+    try std.testing.expect(!input.debug_overlay_visible);
+    try std.testing.expect(!input.ui_visible);
+    try std.testing.expect(input.f1_pressed);
+
+    input.beginFrame();
+    try std.testing.expect(!input.f1_pressed);
+
+    toggleDebugOverlay(&input);
+    try std.testing.expect(input.debug_overlay_visible);
+    try std.testing.expect(input.ui_visible);
+    try std.testing.expect(input.f1_pressed);
+}
+
+test "debug overlay extracts FPS label when visible" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .ui_visible = false,
+        .debug_overlay_visible = true,
+        .fps = 59.6,
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
+    try std.testing.expectEqual(@as(usize, 2), state.world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
+
+    const label = state.world.uiTextAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("FPS 60", label.value);
+
+    const input = try renderFrameInput(&state.world);
+    try std.testing.expect(!input.ui_visible);
+    try std.testing.expect(input.debug_overlay_visible);
+    try std.testing.expectApproxEqAbs(@as(f32, 59.6), input.fps, 0.001);
+
+    try state.queueUiDraw();
+    try std.testing.expectEqual(@as(usize, 1), state.uiDrawCommandCount());
 }
 
 test "UI vertex builder reflects button interaction state" {
