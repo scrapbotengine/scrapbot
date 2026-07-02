@@ -64,6 +64,22 @@ static void set_error(machina_luau* vm, const char* message)
     vm->last_error = message ? message : "unknown Luau error";
 }
 
+static const char* host_error_message(machina_luau* vm, const char* fallback)
+{
+    if (vm && vm->callbacks.host_error)
+    {
+        const char* message = vm->callbacks.host_error(vm->callback_context);
+        if (message && message[0] != '\0')
+            return message;
+    }
+    return fallback;
+}
+
+static void raise_host_error(lua_State* state, machina_luau* vm, const char* fallback)
+{
+    luaL_error(state, "%s", host_error_message(vm, fallback));
+}
+
 static std::string check_string(lua_State* state, int index)
 {
     size_t len = 0;
@@ -547,7 +563,7 @@ static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity)
         const char* field_name = luaL_checkstring(state, 2);
         float value[3] = {};
         if (!vm->callbacks.get_vec3 || !vm->callbacks.get_vec3(vm->callback_context, vm->active_world, entity, component_id, field_name, value))
-            luaL_error(state, "world query get_vec3 access denied or failed");
+            raise_host_error(state, vm, "world query get_vec3 access denied or failed");
         push_vec3(state, value);
         return 1;
     }, "entity.get_vec3", 2);
@@ -563,7 +579,7 @@ static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity)
         float value[3] = {};
         read_vec3(state, 3, value);
         if (!vm->callbacks.set_vec3 || !vm->callbacks.set_vec3(vm->callback_context, vm->active_world, entity, component_id, field_name, value))
-            luaL_error(state, "world query set_vec3 access denied or failed");
+            raise_host_error(state, vm, "world query set_vec3 access denied or failed");
         return 0;
     }, "entity.set_vec3", 2);
     lua_setfield(state, -2, "set_vec3");
@@ -586,7 +602,7 @@ static int component_proxy_index(lua_State* state)
 
     machina_luau_field_value value = {};
     if (!vm->callbacks.get_field || !vm->callbacks.get_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
-        luaL_error(state, "component field read access denied or failed");
+        raise_host_error(state, vm, "component field read access denied or failed");
     push_field_value(state, value);
     return 1;
 }
@@ -600,7 +616,7 @@ static int component_proxy_newindex(lua_State* state)
     machina_luau_field_value value = {};
     read_field_value(state, 3, &value);
     if (!vm->callbacks.set_field || !vm->callbacks.set_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
-        luaL_error(state, "component field write access denied or failed");
+        raise_host_error(state, vm, "component field write access denied or failed");
     return 0;
 }
 
@@ -654,7 +670,7 @@ static int query_iterator(lua_State* state)
         &query->cursor,
         &entity);
     if (status < 0)
-        luaL_error(state, "world.query access denied or failed");
+        raise_host_error(state, query->vm, "world.query access denied or failed");
     if (status == 0)
     {
         return 0;

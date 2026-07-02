@@ -1,15 +1,16 @@
 # FDR-003: Headless Validation and Test Runner
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
-The headless validation and test runner lets users, CI systems, and agents check project correctness without opening a window. The initial implementation validates project metadata and the default scene; broader asset, script, and configuration validation will be added as those systems come online.
+The headless validation and test runner lets users, CI systems, and agents check project correctness without opening a window. It validates project metadata, script ECS declarations, the default scene, and exposes machine-readable validation details for editor and agent workflows.
 
 ## Behavior
 
-- The initial `machina check [path]` command validates project metadata and the default scene.
+- `machina check [path]` validates project metadata, project scripts, script-declared ECS types, update schedule construction, and the default scene.
+- `machina check [path] --format=json` reports project metadata and the validated update schedule batches, including system ids, runner kinds, read/write sets, and before/after ordering declarations.
 - `machina render-test [path] [output.bmp]` renders the default scene offscreen, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation.
 - Future headless test commands can exercise scene and script live reload deterministically.
 - Users can run project validation without initializing graphical presentation.
@@ -44,6 +45,4 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 ## Open Questions
 
-- What diagnostic output formats should be supported beyond human-readable text?
-- How should location-aware diagnostics be represented once schemas become richer?
 - Should snapshot rendering be part of validation, testing, or a separate command?

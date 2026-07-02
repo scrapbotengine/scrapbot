@@ -69,7 +69,7 @@ fn run(
             return 1;
         };
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
-        defer machina.freeProject(allocator, result.project);
+        defer machina.freeCheckResult(allocator, result);
         var live_project = machina.LiveProject.init(io, std.heap.smp_allocator, target_path) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
@@ -109,7 +109,7 @@ fn run(
         const target_path = if (args.len >= 3) args[2] else ".";
         const output_path = if (args.len >= 4) args[3] else "zig-out/machina-cube.bmp";
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
-        defer machina.freeProject(allocator, result.project);
+        defer machina.freeCheckResult(allocator, result);
         const scene = machina.loadDefaultScene(io, allocator, result.project) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
@@ -129,7 +129,7 @@ fn run(
         const target_path = if (args.len >= 3) args[2] else ".";
         const output_path = if (args.len >= 4) args[3] else "zig-out/machina-render-test.bmp";
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
-        defer machina.freeProject(allocator, result.project);
+        defer machina.freeCheckResult(allocator, result);
         const scene = machina.loadDefaultScene(io, allocator, result.project) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
@@ -200,14 +200,18 @@ fn checkCommand(
 
     switch (result) {
         .ok => |ok| {
-            defer machina.freeProject(allocator, ok.project);
+            defer machina.freeCheckResult(allocator, ok);
             switch (options.format) {
                 .text => {
                     try stdout.print("Project OK: {s}\n", .{ok.project.name});
                     try stdout.print("Default scene: {s}\n", .{ok.project.default_scene});
                     try stdout.print("Scripts: {d}\n", .{ok.project.scripts.len});
+                    try stdout.print("Update batches: {d}, systems: {d}\n", .{
+                        ok.schedule.batchCount(),
+                        ok.schedule.systemCount(),
+                    });
                 },
-                .json => try printCheckOkJson(stdout, ok.project),
+                .json => try printCheckOkJson(stdout, ok),
             }
             return 0;
         },
@@ -440,13 +444,65 @@ fn printScriptDiagnostic(writer: *Io.Writer, root_path: []const u8, diagnostic: 
     try writer.print(": {s}\n", .{diagnostic.message});
 }
 
-fn printCheckOkJson(writer: *Io.Writer, project: machina.Project) !void {
+fn printCheckOkJson(writer: *Io.Writer, result: machina.CheckResult) !void {
+    const project = result.project;
     try writer.writeAll("{\"ok\":true,\"project\":{\"name\":");
     try writeJsonString(writer, project.name);
     try writer.writeAll(",\"default_scene\":");
     try writeJsonString(writer, project.default_scene);
     try writer.print(",\"scripts\":{d}", .{project.scripts.len});
-    try writer.writeAll("}}\n");
+    try writer.writeAll("},\"schedule\":");
+    try printCheckScheduleJson(writer, result.schedule);
+    try writer.writeAll("}\n");
+}
+
+fn printCheckScheduleJson(writer: *Io.Writer, schedule: machina.CheckSchedule) !void {
+    try writer.writeAll("{\"batches\":[");
+    for (schedule.batches, 0..) |batch, batch_index| {
+        if (batch_index != 0) {
+            try writer.writeByte(',');
+        }
+        try writer.writeAll("{\"phase\":");
+        try writeJsonString(writer, @tagName(batch.phase));
+        try writer.writeAll(",\"systems\":[");
+        for (batch.systems, 0..) |system, system_index| {
+            if (system_index != 0) {
+                try writer.writeByte(',');
+            }
+            try printCheckSystemJson(writer, system);
+        }
+        try writer.writeAll("]}");
+    }
+    try writer.writeAll("]}");
+}
+
+fn printCheckSystemJson(writer: *Io.Writer, system: machina.CheckSystemSummary) !void {
+    try writer.writeAll("{\"id\":");
+    try writeJsonString(writer, system.id);
+    try writer.writeAll(",\"phase\":");
+    try writeJsonString(writer, @tagName(system.phase));
+    try writer.writeAll(",\"runner\":");
+    try writeJsonString(writer, @tagName(system.runner));
+    try writer.writeAll(",\"reads\":");
+    try writeJsonStringList(writer, system.reads);
+    try writer.writeAll(",\"writes\":");
+    try writeJsonStringList(writer, system.writes);
+    try writer.writeAll(",\"before\":");
+    try writeJsonStringList(writer, system.before);
+    try writer.writeAll(",\"after\":");
+    try writeJsonStringList(writer, system.after);
+    try writer.writeAll("}");
+}
+
+fn writeJsonStringList(writer: *Io.Writer, values: []const []const u8) !void {
+    try writer.writeByte('[');
+    for (values, 0..) |value, index| {
+        if (index != 0) {
+            try writer.writeByte(',');
+        }
+        try writeJsonString(writer, value);
+    }
+    try writer.writeByte(']');
 }
 
 fn printProjectErrorJson(writer: *Io.Writer, root_path: []const u8, err: anyerror) !void {
@@ -554,4 +610,42 @@ test "parseCheckOptions accepts format before path" {
 test "parseCheckOptions rejects unknown format" {
     const args = [_][]const u8{"--format=yaml"};
     try std.testing.expectError(ArgumentError.InvalidFormat, parseCheckOptions(&args));
+}
+
+test "printCheckOkJson includes schedule summary" {
+    var buffer: [1024]u8 = undefined;
+    var writer = Io.Writer.fixed(&buffer);
+
+    const scripts = [_][]const u8{"scripts/gameplay.luau"};
+    const reads = [_][]const u8{"spin"};
+    const writes = [_][]const u8{"machina.transform"};
+    const system = machina.CheckSystemSummary{
+        .id = "autorotate",
+        .phase = .update,
+        .runner = .luau,
+        .reads = &reads,
+        .writes = &writes,
+    };
+    const systems = [_]machina.CheckSystemSummary{system};
+    const batch = machina.CheckScheduleBatch{
+        .phase = .update,
+        .systems = &systems,
+    };
+    const batches = [_]machina.CheckScheduleBatch{batch};
+    const result = machina.CheckResult{
+        .project = .{
+            .root_path = "examples/minimal",
+            .name = "Minimal",
+            .default_scene = "scenes/main.scene.toml",
+            .scripts = &scripts,
+        },
+        .schedule = .{ .batches = &batches },
+    };
+
+    try printCheckOkJson(&writer, result);
+
+    try std.testing.expectEqualStrings(
+        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"machina.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
+        writer.buffered(),
+    );
 }

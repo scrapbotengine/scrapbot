@@ -16,6 +16,8 @@ Project validation, live reload, and runtime update paths will preserve this dia
 
 The scripting subsystem owns Luau-specific messages. The project runtime owns lifecycle behavior: failed validation or reload keeps the previous valid state active, and runtime system failures are reported without corrupting world state.
 
+Runtime host APIs may provide engine-authored failure messages before the Luau bridge raises the system error. This lets denied ECS access and failed component mutations name the active system, component, field, and operation while still flowing through the same structured diagnostic object.
+
 ## Consequences
 
 Script failures become actionable: the engine can report which script failed, what stage failed, and which system failed when relevant.

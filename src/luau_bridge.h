@@ -75,6 +75,8 @@ typedef int (*machina_luau_set_field_fn)(
     const machina_luau_field_value* value
 );
 
+typedef const char* (*machina_luau_host_error_fn)(void* context);
+
 typedef struct machina_luau_callbacks
 {
     machina_luau_query_next_fn query_next;
@@ -82,6 +84,7 @@ typedef struct machina_luau_callbacks
     machina_luau_set_vec3_fn set_vec3;
     machina_luau_get_field_fn get_field;
     machina_luau_set_field_fn set_field;
+    machina_luau_host_error_fn host_error;
 } machina_luau_callbacks;
 
 machina_luau* machina_luau_create(machina_luau_callbacks callbacks);

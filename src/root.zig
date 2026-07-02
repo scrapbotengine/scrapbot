@@ -71,11 +71,48 @@ pub const Diagnostic = struct {
 
 pub const CheckResult = struct {
     project: Project,
+    schedule: CheckSchedule,
 };
 
 pub const CheckDetailedResult = union(enum) {
     ok: CheckResult,
     invalid: ScriptDiagnostic,
+};
+
+pub const CheckSystemRunner = enum {
+    none,
+    luau,
+};
+
+pub const CheckSystemSummary = struct {
+    id: []const u8,
+    phase: SystemPhase,
+    runner: CheckSystemRunner,
+    reads: []const []const u8 = &.{},
+    writes: []const []const u8 = &.{},
+    before: []const []const u8 = &.{},
+    after: []const []const u8 = &.{},
+};
+
+pub const CheckScheduleBatch = struct {
+    phase: SystemPhase,
+    systems: []const CheckSystemSummary,
+};
+
+pub const CheckSchedule = struct {
+    batches: []const CheckScheduleBatch = &.{},
+
+    pub fn batchCount(self: CheckSchedule) usize {
+        return self.batches.len;
+    }
+
+    pub fn systemCount(self: CheckSchedule) usize {
+        var count: usize = 0;
+        for (self.batches) |batch| {
+            count += batch.systems.len;
+        }
+        return count;
+    }
 };
 
 const SourceFileStamp = struct {
@@ -470,14 +507,20 @@ pub fn checkProjectDetailed(io: Io, allocator: std.mem.Allocator, root_path: []c
             defer scripts.deinit();
             const scene = try loadSceneFile(io, allocator, root_dir, project.default_scene, scripts.registry);
             defer freeScene(allocator, scene);
+            const schedule = try cloneCheckSchedule(allocator, scripts.registry, scripts.schedule);
+            errdefer freeCheckSchedule(allocator, schedule);
+            return .{ .ok = .{ .project = project, .schedule = schedule } };
         },
         .diagnostic => |diagnostic| {
             freeProject(allocator, project);
             return .{ .invalid = diagnostic };
         },
     }
+}
 
-    return .{ .ok = .{ .project = project } };
+pub fn freeCheckResult(allocator: std.mem.Allocator, result: CheckResult) void {
+    freeProject(allocator, result.project);
+    freeCheckSchedule(allocator, result.schedule);
 }
 
 pub fn freeProject(allocator: std.mem.Allocator, project: Project) void {
@@ -487,11 +530,125 @@ pub fn freeProject(allocator: std.mem.Allocator, project: Project) void {
     freeStringList(allocator, project.scripts);
 }
 
+pub fn freeCheckSchedule(allocator: std.mem.Allocator, schedule: CheckSchedule) void {
+    for (schedule.batches) |batch| {
+        for (batch.systems) |system| {
+            freeCheckSystemSummary(allocator, system);
+        }
+        allocator.free(batch.systems);
+    }
+    allocator.free(schedule.batches);
+}
+
+fn freeCheckSystemSummary(allocator: std.mem.Allocator, system: CheckSystemSummary) void {
+    allocator.free(system.id);
+    freeStringList(allocator, system.reads);
+    freeStringList(allocator, system.writes);
+    freeStringList(allocator, system.before);
+    freeStringList(allocator, system.after);
+}
+
 fn freeStringList(allocator: std.mem.Allocator, values: []const []const u8) void {
     for (values) |value| {
         allocator.free(value);
     }
     allocator.free(values);
+}
+
+fn cloneCheckSchedule(
+    allocator: std.mem.Allocator,
+    registry: runtime.ComponentRegistry,
+    schedule: runtime.SystemSchedule,
+) !CheckSchedule {
+    var batches: std.ArrayList(CheckScheduleBatch) = .empty;
+    errdefer {
+        for (batches.items) |batch| {
+            for (batch.systems) |system| {
+                freeCheckSystemSummary(allocator, system);
+            }
+            allocator.free(batch.systems);
+        }
+        batches.deinit(allocator);
+    }
+
+    for (schedule.batches) |batch| {
+        var systems: std.ArrayList(CheckSystemSummary) = .empty;
+        errdefer {
+            for (systems.items) |system| {
+                freeCheckSystemSummary(allocator, system);
+            }
+            systems.deinit(allocator);
+        }
+
+        for (batch.systems) |scheduled_system| {
+            if (scheduled_system.registry_index >= registry.systems.items.len) {
+                return ProjectError.InvalidScript;
+            }
+            const definition = registry.systems.items[scheduled_system.registry_index];
+            try systems.append(allocator, try cloneCheckSystemSummary(allocator, definition));
+        }
+
+        const owned_systems = try systems.toOwnedSlice(allocator);
+        var systems_transferred = false;
+        errdefer if (!systems_transferred) {
+            for (owned_systems) |system| {
+                freeCheckSystemSummary(allocator, system);
+            }
+            allocator.free(owned_systems);
+        };
+        try batches.append(allocator, .{
+            .phase = batch.phase,
+            .systems = owned_systems,
+        });
+        systems_transferred = true;
+    }
+
+    return .{ .batches = try batches.toOwnedSlice(allocator) };
+}
+
+fn cloneCheckSystemSummary(allocator: std.mem.Allocator, definition: runtime.SystemDefinition) !CheckSystemSummary {
+    const id = try allocator.dupe(u8, definition.id);
+    errdefer allocator.free(id);
+
+    const reads = try cloneStringList(allocator, definition.reads);
+    errdefer freeStringList(allocator, reads);
+    const writes = try cloneStringList(allocator, definition.writes);
+    errdefer freeStringList(allocator, writes);
+    const before = try cloneStringList(allocator, definition.before);
+    errdefer freeStringList(allocator, before);
+    const after = try cloneStringList(allocator, definition.after);
+    errdefer freeStringList(allocator, after);
+
+    return .{
+        .id = id,
+        .phase = definition.phase,
+        .runner = switch (definition.runner) {
+            .none => .none,
+            .luau => .luau,
+        },
+        .reads = reads,
+        .writes = writes,
+        .before = before,
+        .after = after,
+    };
+}
+
+fn cloneStringList(allocator: std.mem.Allocator, values: []const []const u8) ![]const []const u8 {
+    const owned = try allocator.alloc([]const u8, values.len);
+    errdefer allocator.free(owned);
+
+    var copied: usize = 0;
+    errdefer {
+        for (owned[0..copied]) |value| {
+            allocator.free(value);
+        }
+    }
+
+    for (values, 0..) |value, index| {
+        owned[index] = try allocator.dupe(u8, value);
+        copied += 1;
+    }
+    return owned;
 }
 
 pub fn loadProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8) !Project {
@@ -1224,10 +1381,11 @@ test "checkProject validates a project directory" {
     try initProject(io, std.testing.allocator, root_path, "Game");
 
     const result = try checkProject(io, std.testing.allocator, root_path);
-    defer freeProject(std.testing.allocator, result.project);
+    defer freeCheckResult(std.testing.allocator, result);
 
     try std.testing.expectEqualStrings("Game", result.project.name);
     try std.testing.expectEqualStrings(default_scene_path, result.project.default_scene);
+    try std.testing.expectEqual(@as(usize, 0), result.schedule.systemCount());
 }
 
 test "loadDefaultScene reads cube entities from scene data" {
@@ -1240,7 +1398,7 @@ test "loadDefaultScene reads cube entities from scene data" {
     try initProject(io, std.testing.allocator, root_path, "Game");
 
     const result = try checkProject(io, std.testing.allocator, root_path);
-    defer freeProject(std.testing.allocator, result.project);
+    defer freeCheckResult(std.testing.allocator, result);
 
     const scene = try loadDefaultScene(io, std.testing.allocator, result.project);
     defer freeScene(std.testing.allocator, scene);
@@ -1506,6 +1664,8 @@ test "checkProject validates script declarations and builds a system schedule" {
         \\
         \\ecs.system("observe_spin", {
         \\  query = Spinners,
+        \\  run = function(world, dt)
+        \\  end,
         \\})
         \\
         \\ecs.system("observe_cubes", {
@@ -1516,15 +1676,18 @@ test "checkProject validates script declarations and builds a system schedule" {
     });
 
     const result = try checkProject(io, std.testing.allocator, root_path);
-    defer freeProject(std.testing.allocator, result.project);
-
-    var scripts = try loadProjectScripts(io, std.testing.allocator, result.project);
-    defer scripts.deinit();
+    defer freeCheckResult(std.testing.allocator, result);
 
     try std.testing.expectEqual(@as(usize, 1), result.project.scripts.len);
-    try std.testing.expect(scripts.registry.findComponent("spin") != null);
-    try std.testing.expect(scripts.registry.findSystem("observe_cubes") != null);
-    try std.testing.expectEqual(@as(usize, 2), scripts.schedule.batchCount());
+    try std.testing.expectEqual(@as(usize, 2), result.schedule.batchCount());
+    try std.testing.expectEqual(@as(usize, 2), result.schedule.systemCount());
+    try std.testing.expectEqualStrings("observe_spin", result.schedule.batches[0].systems[0].id);
+    try std.testing.expectEqual(CheckSystemRunner.luau, result.schedule.batches[0].systems[0].runner);
+    try std.testing.expectEqual(@as(usize, 1), result.schedule.batches[0].systems[0].reads.len);
+    try std.testing.expectEqualStrings("spin", result.schedule.batches[0].systems[0].reads[0]);
+    try std.testing.expectEqualStrings("observe_cubes", result.schedule.batches[1].systems[0].id);
+    try std.testing.expectEqual(@as(usize, 1), result.schedule.batches[1].systems[0].after.len);
+    try std.testing.expectEqualStrings("observe_spin", result.schedule.batches[1].systems[0].after[0]);
 }
 
 test "checkProject rejects invalid script declarations" {
@@ -2058,7 +2221,7 @@ test "initProject escapes project names in metadata" {
     try initProject(io, std.testing.allocator, root_path, "Agent \"One\"");
 
     const result = try checkProject(io, std.testing.allocator, root_path);
-    defer freeProject(std.testing.allocator, result.project);
+    defer freeCheckResult(std.testing.allocator, result);
 
     try std.testing.expectEqualStrings("Agent \"One\"", result.project.name);
 }

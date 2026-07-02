@@ -1,7 +1,7 @@
 # FDR-013: Script Diagnostics
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
@@ -12,9 +12,10 @@ Script diagnostics report Luau and script-ECS failures in a form that humans, co
 - Project validation can report script diagnostics for invalid Luau source or invalid script ECS declarations.
 - Live script reload can report why a changed script failed while keeping the last known good script program active.
 - Runtime system failures can report the failing system id and source script path when available.
+- Runtime failures caused by denied or failed host ECS access report the system id plus the relevant component and field when available.
 - Diagnostics identify the failure stage as load, registration, schedule, or runtime.
 - Diagnostics can include source positions. Syntax and runtime errors use Luau-reported line numbers when available; script ECS declarations use the line where the declaration function was called.
-- Diagnostics include a human-readable message from Luau or the engine validation layer.
+- Diagnostics include a human-readable message from Luau, the engine validation layer, or the host ECS access bridge.
 - Successful subsequent operations clear stale live diagnostics.
 - Command-line commands render diagnostics as text.
 - `machina check` can render diagnostics as JSON for editor panels, automation, and agent workflows.
@@ -50,6 +51,12 @@ Script diagnostics report Luau and script-ECS failures in a form that humans, co
 **Decision:** Machine-readable diagnostics are exposed through `machina check --format=json` before interactive run/reload output.
 **Why:** Project validation is the stable headless surface used by agents, tests, and editor integrations. Live run output can stay optimized for human stderr until the editor API is clearer.
 **Tradeoff:** Interactive reload diagnostics are not yet emitted as structured events.
+
+### 6. Prefer host-authored runtime access messages
+
+**Decision:** Runtime host APIs provide detailed error messages before the Luau bridge raises the system failure.
+**Why:** Generic bridge failures make it hard to tell whether a system forgot a read/write declaration, requested a missing field, or supplied invalid data. Host-authored messages can name the system, component, field, and failed operation.
+**Tradeoff:** The bridge must preserve a small host error channel alongside Luau's own last-error string.
 
 ## Related
 

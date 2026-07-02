@@ -38,6 +38,8 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 - Author new Luau component schemas with `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage. If field-schema type inference regresses, fix the Luau type definitions/checker setup or runtime bridge support rather than reverting to marker-value inference.
 - Keep script behavior system-first. Do not introduce arbitrary per-object script callbacks that bypass the component registry or native scheduler.
 - Systems must declare phase plus read/write component access before they can participate in scheduling.
+- Keep `machina check --format=json` useful for editor and agent workflows. Successful JSON output should preserve project metadata and the validated schedule summary; add fields compatibly rather than removing or renaming existing ones.
+- Runtime script host API failures should report the active system plus relevant component/field context. Avoid generic bridge errors when Zig can identify the denied access or failed mutation.
 - When adding a text-authored runtime resource, register it with the live reload path or document why it is intentionally not reloadable yet.
 - Preserve last-known-good behavior for live reload. Failed reloads should produce diagnostics without destroying the running project state.
 - For long-lived interactive state, use an allocator that can free replaced resources; avoid arena-backed state for reloadable worlds and scenes.

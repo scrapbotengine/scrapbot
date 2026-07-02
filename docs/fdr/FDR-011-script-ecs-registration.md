@@ -25,6 +25,7 @@ Script ECS registration lets project and package scripts define new component an
 - Systems may declare ordering relationships by system id.
 - The native runtime builds update schedule batches from declared read/write access and before/after dependencies.
 - Systems that only read compatible component sets can share a batch; write conflicts or order dependencies force later batches.
+- `machina check --format=json` exposes the validated update schedule so editor tools and agents can inspect system batches, runner kinds, access declarations, and ordering relationships without running a window.
 - Script-authored systems can provide Luau `run` callbacks that execute during the native update schedule.
 - Script system callbacks receive an engine-provided world facade instead of direct component storage ownership.
 - `ecs.component(...)` returns a typed component handle.
@@ -42,7 +43,7 @@ Script ECS registration lets project and package scripts define new component an
 - Component proxies can read and write registered boolean, integer, float, string, and Vec3 fields through the typed query API.
 - Non-finite script values that reach host mutation APIs fail the system invocation for that frame instead of corrupting world state.
 - Registration failures produce structured diagnostics suitable for command-line, editor, and reload surfaces.
-- Script runtime failures keep the last loaded project state active and surface diagnostics with script path, system id, stage, and message where available.
+- Script runtime failures keep the last loaded project state active and surface diagnostics with script path, system id, stage, and messages that identify denied or failed component access where available.
 
 ## Design Decisions
 

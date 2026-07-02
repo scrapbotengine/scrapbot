@@ -80,8 +80,10 @@ pub const Program = struct {
     component_origins: std.ArrayList(ScriptOrigin) = .empty,
     system_origins: std.ArrayList(ScriptOrigin) = .empty,
     last_diagnostic: ?Diagnostic = null,
+    host_error: ?[:0]u8 = null,
 
     pub fn deinit(self: *Program) void {
+        self.clearHostError();
         self.clearLastDiagnostic();
         for (self.system_origins.items) |origin| {
             origin.deinit(self.allocator);
@@ -99,6 +101,7 @@ pub const Program = struct {
 
     pub fn update(self: *Program, world: *runtime.World, delta_seconds: f32) bool {
         self.clearLastDiagnostic();
+        self.clearHostError();
         c.machina_luau_set_callback_context(self.vm, self);
 
         var ok = true;
@@ -111,12 +114,14 @@ pub const Program = struct {
                 switch (system.runner) {
                     .none => {},
                     .luau => |runner_ref| {
+                        self.clearHostError();
                         self.active_system = system;
                         const system_ok = c.machina_luau_call_system(self.vm, runner_ref, world, delta_seconds) != 0;
                         if (!system_ok and self.last_diagnostic == null) {
                             self.setRuntimeDiagnostic(system.*, runner_ref) catch {};
                         }
                         self.active_system = null;
+                        self.clearHostError();
                         ok = ok and system_ok;
                     },
                 }
@@ -143,6 +148,25 @@ pub const Program = struct {
 
         const definition = self.registry.systems.items[active_system.registry_index];
         return containsString(definition.writes, component_id);
+    }
+
+    fn activeSystemId(self: Program) []const u8 {
+        const active_system = self.active_system orelse return "unknown";
+        return active_system.id;
+    }
+
+    fn clearHostError(self: *Program) void {
+        if (self.host_error) |message| {
+            self.allocator.free(message);
+            self.host_error = null;
+        }
+    }
+
+    fn setHostError(self: *Program, comptime format: []const u8, args: anytype) void {
+        self.clearHostError();
+        const message = std.fmt.allocPrint(self.allocator, format, args) catch return;
+        defer self.allocator.free(message);
+        self.host_error = self.allocator.dupeZ(u8, message) catch null;
     }
 
     pub fn clearLastDiagnostic(self: *Program) void {
@@ -256,6 +280,7 @@ fn initProgram(allocator: std.mem.Allocator) !Program {
         .set_vec3 = setVec3Callback,
         .get_field = getFieldCallback,
         .set_field = setFieldCallback,
+        .host_error = hostErrorCallback,
     };
     const vm = c.machina_luau_create(callbacks) orelse return ScriptError.InvalidScript;
 
@@ -529,6 +554,14 @@ fn spanC(value: ?[*:0]const u8) ScriptError![]const u8 {
     return std.mem.span(value orelse return ScriptError.InvalidScript);
 }
 
+fn hostErrorCallback(raw_context: ?*anyopaque) callconv(.c) [*c]const u8 {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return null));
+    if (program.host_error) |message| {
+        return message.ptr;
+    }
+    return null;
+}
+
 fn queryNextCallback(
     raw_context: ?*anyopaque,
     raw_world: ?*anyopaque,
@@ -545,12 +578,21 @@ fn queryNextCallback(
 
     var component_ids_buffer: [16][]const u8 = undefined;
     if (component_count == 0 or component_count > component_ids_buffer.len) {
+        program.setHostError("system '{s}' tried to query {d} components; the host bridge supports at most {d}", .{
+            program.activeSystemId(),
+            component_count,
+            component_ids_buffer.len,
+        });
         return -1;
     }
 
     for (0..component_count) |index| {
         const component_id = std.mem.span(component_id_ptr[index] orelse return -1);
         if (!program.activeSystemAllowsRead(component_id)) {
+            program.setHostError("system '{s}' tried to query component '{s}' without declaring it in reads or writes", .{
+                program.activeSystemId(),
+                component_id,
+            });
             return -1;
         }
         component_ids_buffer[index] = component_id;
@@ -577,9 +619,23 @@ fn getVec3Callback(
     const field_name = std.mem.span(raw_field_name orelse return 0);
     const out_value = raw_out_value orelse return 0;
     if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
         return 0;
     }
-    const value = world.getVec3(.{ .index = entity_index }, component_id, field_name) catch return 0;
+    const value = world.getVec3(.{ .index = entity_index }, component_id, field_name) catch |err| {
+        program.setHostError("system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
     out_value[0] = value[0];
     out_value[1] = value[1];
     out_value[2] = value[2];
@@ -600,13 +656,27 @@ fn setVec3Callback(
     const field_name = std.mem.span(raw_field_name orelse return 0);
     const value = raw_value orelse return 0;
     if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
         return 0;
     }
     world.setVec3(.{ .index = entity_index }, component_id, field_name, .{
         value[0],
         value[1],
         value[2],
-    }) catch return 0;
+    }) catch |err| {
+        program.setHostError("system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
     return 1;
 }
 
@@ -624,10 +694,24 @@ fn getFieldCallback(
     const field_name = std.mem.span(raw_field_name orelse return 0);
     const out_value = raw_out_value orelse return 0;
     if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
         return 0;
     }
 
-    const value = world.getComponentFieldValue(.{ .index = entity_index }, component_id, field_name) catch return 0;
+    const value = world.getComponentFieldValue(.{ .index = entity_index }, component_id, field_name) catch |err| {
+        program.setHostError("system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
     out_value.* = .{
         .tag = 0,
         .boolean_value = 0,
@@ -679,11 +763,33 @@ fn setFieldCallback(
     const field_name = std.mem.span(raw_field_name orelse return 0);
     const value = raw_value orelse return 0;
     if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
         return 0;
     }
 
-    const component_value = componentValueFromLuau(world, .{ .index = entity_index }, component_id, field_name, value) catch return 0;
-    world.setComponentFieldValue(.{ .index = entity_index }, component_id, field_name, component_value) catch return 0;
+    const component_value = componentValueFromLuau(world, .{ .index = entity_index }, component_id, field_name, value) catch |err| {
+        program.setHostError("system '{s}' failed to convert value for '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    world.setComponentFieldValue(.{ .index = entity_index }, component_id, field_name, component_value) catch |err| {
+        program.setHostError("system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
     return 1;
 }
 
@@ -1118,6 +1224,12 @@ test "luau world mutation requires declared system access" {
     try world.setSpin(entity, .{ .angular_velocity = .{ 1.0, 0.0, 0.0 } });
 
     try std.testing.expect(!program.update(&world, 1.0));
+    const diagnostic = program.last_diagnostic orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(DiagnosticStage.runtime, diagnostic.stage);
+    try std.testing.expectEqualStrings("bad_rotate", diagnostic.system_id orelse return error.TestExpectedEqual);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "bad_rotate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "machina.transform.rotation") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "writes") != null);
     const transform = (try world.getTransform(entity)) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(f32, 0.0), transform.rotation[0]);
 }
@@ -1157,6 +1269,12 @@ test "luau world query requires declared component access" {
     try world.setSpin(entity, .{ .angular_velocity = .{ 1.0, 0.0, 0.0 } });
 
     try std.testing.expect(!program.update(&world, 1.0));
+    const diagnostic = program.last_diagnostic orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(DiagnosticStage.runtime, diagnostic.stage);
+    try std.testing.expectEqualStrings("bad_query", diagnostic.system_id orelse return error.TestExpectedEqual);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "bad_query") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "marker") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "reads or writes") != null);
 }
 
 test "update schedule batches read-only systems and separates write conflicts" {
