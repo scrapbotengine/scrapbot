@@ -18,3 +18,4 @@
 | [FDR-014](FDR-014-scene-driven-camera-and-lighting.md) | Scene-Driven Camera and Lighting | Active | 2026-07-02 |
 | [FDR-015](FDR-015-built-in-geometry-and-materials.md) | Built-In Geometry and Materials | Active | 2026-07-02 |
 | [FDR-016](FDR-016-render-batching.md) | Render Batching | Active | 2026-07-02 |
+| [FDR-017](FDR-017-shadow-components.md) | Shadow Components | Active | 2026-07-02 |

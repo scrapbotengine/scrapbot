@@ -20,6 +20,8 @@ const output_extent = wgpu.Extent3D{
 const output_bytes_per_row = 4 * output_width;
 const output_size = output_bytes_per_row * output_height;
 const depth_format = wgpu.TextureFormat.depth24_plus;
+const shadow_depth_format = wgpu.TextureFormat.depth32_float;
+const shadow_map_size = 1024;
 const render_draw_batch_component_id = "machina.render.internal.draw.batch";
 const render_extract_system_id = "machina.render.extract";
 const render_prepare_meshes_system_id = "machina.render.prepare_meshes";
@@ -278,6 +280,7 @@ const InstanceConfig = struct {
     height: u32,
     mesh: *const runtime.RenderableMesh,
     camera: CameraState,
+    light_view_projection: [16]f32,
 };
 
 const CameraState = struct {
@@ -441,6 +444,47 @@ const DepthTarget = struct {
     }
 };
 
+const ShadowTarget = struct {
+    texture: ?*wgpu.Texture = null,
+    view: ?*wgpu.TextureView = null,
+
+    fn create(device: *wgpu.Device) RenderError!ShadowTarget {
+        const texture = device.createTexture(&wgpu.TextureDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina shadow map texture"),
+            .size = .{
+                .width = shadow_map_size,
+                .height = shadow_map_size,
+                .depth_or_array_layers = 1,
+            },
+            .format = shadow_depth_format,
+            .usage = wgpu.TextureUsages.render_attachment | wgpu.TextureUsages.texture_binding,
+        }) orelse return RenderError.NoDevice;
+        errdefer texture.release();
+
+        const view = texture.createView(&wgpu.TextureViewDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina shadow map view"),
+            .mip_level_count = 1,
+            .array_layer_count = 1,
+            .aspect = .depth_only,
+        }) orelse return RenderError.NoDevice;
+
+        return .{
+            .texture = texture,
+            .view = view,
+        };
+    }
+
+    fn deinit(self: *ShadowTarget) void {
+        if (self.view) |view| {
+            view.release();
+        }
+        if (self.texture) |texture| {
+            texture.release();
+        }
+        self.* = .{};
+    }
+};
+
 fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     try runtime.registerEngineComponents(registry);
 
@@ -459,6 +503,8 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.surface_material_component_id,
         runtime.camera_component_id,
         runtime.directional_light_component_id,
+        runtime.shadow_caster_component_id,
+        runtime.shadow_receiver_component_id,
     };
     try registry.registerEngineSystem(.{
         .id = render_extract_system_id,
@@ -470,6 +516,8 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.transform_component_id,
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
+        runtime.shadow_caster_component_id,
+        runtime.shadow_receiver_component_id,
     };
     const after_extract = [_][]const u8{render_extract_system_id};
     try registry.registerEngineSystem(.{
@@ -483,6 +531,8 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.transform_component_id,
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
+        runtime.shadow_caster_component_id,
+        runtime.shadow_receiver_component_id,
     };
     const queue_writes = [_][]const u8{render_draw_batch_component_id};
     const after_prepare = [_][]const u8{render_prepare_meshes_system_id};
@@ -501,6 +551,8 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.surface_material_component_id,
         runtime.camera_component_id,
         runtime.directional_light_component_id,
+        runtime.shadow_caster_component_id,
+        runtime.shadow_receiver_component_id,
     };
     const after_queue = [_][]const u8{render_queue_meshes_system_id};
     try registry.registerEngineSystem(.{
@@ -534,6 +586,12 @@ fn extractMeshInto(
     world.setSurfaceMaterial(entity, .{
         .base_color = mesh.base_color,
     }) catch |err| return mapWorldError(err);
+    if (mesh.casts_shadow) {
+        world.setShadowCaster(entity) catch |err| return mapWorldError(err);
+    }
+    if (mesh.receives_shadow) {
+        world.setShadowReceiver(entity) catch |err| return mapWorldError(err);
+    }
 }
 
 fn extractCameraInto(world: *runtime.World, camera: CameraState) RenderError!void {
@@ -607,10 +665,14 @@ const BatchPlan = struct {
             const renderable = world.renderableMeshAt(render_index) orelse return RenderError.InvalidScene;
             const geometry_key = GeometryKey.fromRenderable(renderable) orelse return RenderError.InvalidScene;
             const material_key = MaterialKey.fromRenderable(renderable);
+            const shadow_key = ShadowKey.fromRenderable(renderable);
 
             var batch_index: ?usize = null;
             for (builds.items, 0..) |pending_batch, index| {
-                if (pending_batch.geometry_key.eql(geometry_key) and pending_batch.material_key.eql(material_key)) {
+                if (pending_batch.geometry_key.eql(geometry_key) and
+                    pending_batch.material_key.eql(material_key) and
+                    pending_batch.shadow_key.eql(shadow_key))
+                {
                     batch_index = index;
                     break;
                 }
@@ -620,6 +682,7 @@ const BatchPlan = struct {
                 try builds.append(allocator, .{
                     .geometry_key = geometry_key,
                     .material_key = material_key,
+                    .shadow_key = shadow_key,
                 });
                 break :blk builds.items.len - 1;
             };
@@ -639,6 +702,7 @@ const BatchPlan = struct {
             batches[index] = .{
                 .geometry_key = pending_batch.geometry_key,
                 .material_key = pending_batch.material_key,
+                .shadow_key = pending_batch.shadow_key,
                 .render_indices = pending_batch.render_indices.toOwnedSlice(allocator) catch return RenderError.OutOfMemory,
             };
             copied += 1;
@@ -667,6 +731,7 @@ const BatchPlan = struct {
 const BatchBuild = struct {
     geometry_key: GeometryKey,
     material_key: MaterialKey,
+    shadow_key: ShadowKey,
     render_indices: std.ArrayList(usize) = .empty,
 
     fn deinit(self: *BatchBuild, allocator: std.mem.Allocator) void {
@@ -677,16 +742,21 @@ const BatchBuild = struct {
 const BatchPlanEntry = struct {
     geometry_key: GeometryKey,
     material_key: MaterialKey,
+    shadow_key: ShadowKey,
     render_indices: []usize,
 };
 
 const MeshDemo = struct {
     allocator: std.mem.Allocator,
     pipeline: *wgpu.RenderPipeline,
+    shadow_pipeline: *wgpu.RenderPipeline,
     bind_group_layout: *wgpu.BindGroupLayout,
     pipeline_layout: *wgpu.PipelineLayout,
+    shadow_pipeline_layout: *wgpu.PipelineLayout,
     frame_uniform_buffer: *wgpu.Buffer,
     bind_group: *wgpu.BindGroup,
+    shadow_target: ShadowTarget,
+    shadow_sampler: *wgpu.Sampler,
     render_state: RenderEcsState,
     batches: []BatchResources,
 
@@ -704,6 +774,21 @@ const MeshDemo = struct {
                 .buffer = .{
                     .type = .uniform,
                     .min_binding_size = @sizeOf(FrameUniforms),
+                },
+            },
+            .{
+                .binding = 1,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .depth,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 2,
+                .visibility = wgpu.ShaderStages.fragment,
+                .sampler = .{
+                    .type = .comparison,
                 },
             },
         };
@@ -725,11 +810,34 @@ const MeshDemo = struct {
         var initial_uniforms = try frameUniforms(.{});
         writeUniforms(queue, frame_uniform_buffer, &initial_uniforms);
 
+        var shadow_target = try ShadowTarget.create(device);
+        errdefer shadow_target.deinit();
+
+        const shadow_sampler = device.createSampler(&wgpu.SamplerDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina shadow comparison sampler"),
+            .address_mode_u = .clamp_to_edge,
+            .address_mode_v = .clamp_to_edge,
+            .address_mode_w = .clamp_to_edge,
+            .mag_filter = .linear,
+            .min_filter = .linear,
+            .mipmap_filter = .nearest,
+            .compare = .less_equal,
+        }) orelse return RenderError.NoDevice;
+        errdefer shadow_sampler.release();
+
         const bind_group_entries = [_]wgpu.BindGroupEntry{
             .{
                 .binding = 0,
                 .buffer = frame_uniform_buffer,
                 .size = @sizeOf(FrameUniforms),
+            },
+            .{
+                .binding = 1,
+                .texture_view = shadow_target.view orelse return RenderError.NoDevice,
+            },
+            .{
+                .binding = 2,
+                .sampler = shadow_sampler,
             },
         };
         const bind_group = device.createBindGroup(&wgpu.BindGroupDescriptor{
@@ -758,13 +866,28 @@ const MeshDemo = struct {
         const pipeline = try createMeshPipeline(device, texture_format, pipeline_layout);
         errdefer pipeline.release();
 
+        const empty_bind_group_layouts = [_]*wgpu.BindGroupLayout{};
+        const shadow_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina shadow pipeline layout"),
+            .bind_group_layout_count = empty_bind_group_layouts.len,
+            .bind_group_layouts = &empty_bind_group_layouts,
+        }) orelse return RenderError.NoDevice;
+        errdefer shadow_pipeline_layout.release();
+
+        const shadow_pipeline = try createShadowPipeline(device, shadow_pipeline_layout);
+        errdefer shadow_pipeline.release();
+
         return .{
             .allocator = allocator,
             .pipeline = pipeline,
+            .shadow_pipeline = shadow_pipeline,
             .bind_group_layout = bind_group_layout,
             .pipeline_layout = pipeline_layout,
+            .shadow_pipeline_layout = shadow_pipeline_layout,
             .frame_uniform_buffer = frame_uniform_buffer,
             .bind_group = bind_group,
+            .shadow_target = shadow_target,
+            .shadow_sampler = shadow_sampler,
             .render_state = render_state,
             .batches = batches,
         };
@@ -778,8 +901,12 @@ const MeshDemo = struct {
         self.allocator.free(self.batches);
         self.bind_group.release();
         self.frame_uniform_buffer.release();
+        self.shadow_sampler.release();
+        self.shadow_target.deinit();
         self.pipeline.release();
+        self.shadow_pipeline.release();
         self.pipeline_layout.release();
+        self.shadow_pipeline_layout.release();
         self.bind_group_layout.release();
     }
 
@@ -872,6 +999,8 @@ const MeshDemo = struct {
 
     fn updateBatchInstances(self: *MeshDemo, queue: *wgpu.Queue, plan: BatchPlan, config: FrameConfig) RenderError!void {
         const camera = try cameraState(&self.render_state.world);
+        const light = try directionalLightState(&self.render_state.world);
+        const light_view_projection = try shadowLightViewProjection(light);
         for (plan.batches, 0..) |entry, batch_index| {
             if (batch_index >= self.batches.len) {
                 return RenderError.InvalidScene;
@@ -887,6 +1016,7 @@ const MeshDemo = struct {
                     .height = config.height,
                     .mesh = &mesh,
                     .camera = camera,
+                    .light_view_projection = light_view_projection,
                 });
             }
 
@@ -917,6 +1047,8 @@ const MeshDemo = struct {
             .label = wgpu.StringView.fromSlice("Machina mesh command encoder"),
         }) orelse return RenderError.NoDevice;
         defer encoder.release();
+
+        try self.drawShadowPass(encoder, draw_batch_indices.items);
 
         const color_attachments = [_]wgpu.ColorAttachment{
             .{
@@ -961,11 +1093,43 @@ const MeshDemo = struct {
         const command_buffers = [_]*const wgpu.CommandBuffer{command_buffer};
         context.queue.submit(&command_buffers);
     }
+
+    fn drawShadowPass(self: *MeshDemo, encoder: *wgpu.CommandEncoder, draw_batch_indices: []const usize) RenderError!void {
+        const shadow_view = self.shadow_target.view orelse return RenderError.NoDevice;
+        const depth_attachment = wgpu.DepthStencilAttachment{
+            .view = shadow_view,
+            .depth_load_op = .clear,
+            .depth_store_op = .store,
+            .depth_clear_value = 1.0,
+        };
+        const color_attachments = [_]wgpu.ColorAttachment{};
+        const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina shadow pass"),
+            .color_attachment_count = color_attachments.len,
+            .color_attachments = &color_attachments,
+            .depth_stencil_attachment = &depth_attachment,
+        }) orelse return RenderError.NoDevice;
+        defer render_pass.release();
+
+        render_pass.setPipeline(self.shadow_pipeline);
+        for (draw_batch_indices) |batch_index| {
+            const batch = self.batches[batch_index];
+            if (!batch.shadow_key.casts_shadow) {
+                continue;
+            }
+            render_pass.setVertexBuffer(0, batch.vertex_buffer, 0, batch.vertex_buffer_size);
+            render_pass.setVertexBuffer(1, batch.instance_buffer, 0, batch.instance_buffer_size);
+            render_pass.setIndexBuffer(batch.index_buffer, .uint16, 0, batch.index_buffer_size);
+            render_pass.drawIndexed(batch.index_count, batch.instance_count, 0, 0, 0);
+        }
+        render_pass.end();
+    }
 };
 
 const BatchResources = struct {
     geometry_key: GeometryKey,
     material_key: MaterialKey,
+    shadow_key: ShadowKey,
     vertex_buffer: *wgpu.Buffer,
     index_buffer: *wgpu.Buffer,
     instance_buffer: *wgpu.Buffer,
@@ -1011,6 +1175,7 @@ const BatchResources = struct {
         return .{
             .geometry_key = entry.geometry_key,
             .material_key = entry.material_key,
+            .shadow_key = entry.shadow_key,
             .vertex_buffer = vertex_buffer,
             .index_buffer = index_buffer,
             .instance_buffer = instance_buffer,
@@ -1028,6 +1193,7 @@ const BatchResources = struct {
         }
         return self.geometry_key.eql(entry.geometry_key) and
             self.material_key.eql(entry.material_key) and
+            self.shadow_key.eql(entry.shadow_key) and
             self.instance_count == @as(u32, @intCast(entry.render_indices.len));
     }
 
@@ -1067,6 +1233,22 @@ const MaterialKey = struct {
         return self.base_color[0] == other.base_color[0] and
             self.base_color[1] == other.base_color[1] and
             self.base_color[2] == other.base_color[2];
+    }
+};
+
+const ShadowKey = struct {
+    casts_shadow: bool,
+    receives_shadow: bool,
+
+    fn fromRenderable(renderable: runtime.RenderableMesh) ShadowKey {
+        return .{
+            .casts_shadow = renderable.casts_shadow,
+            .receives_shadow = renderable.receives_shadow,
+        };
+    }
+
+    fn eql(self: ShadowKey, other: ShadowKey) bool {
+        return self.casts_shadow == other.casts_shadow and self.receives_shadow == other.receives_shadow;
     }
 };
 
@@ -1243,6 +1425,31 @@ fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
             .offset = @offsetOf(InstanceAttributes, "object_color"),
             .shader_location = 10,
         },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 0,
+            .shader_location = 11,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 1,
+            .shader_location = 12,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 2,
+            .shader_location = 13,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 3,
+            .shader_location = 14,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_flags"),
+            .shader_location = 15,
+        },
     };
     const vertex_buffers = [_]wgpu.VertexBufferLayout{
         .{
@@ -1282,7 +1489,7 @@ fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
             .buffers = &vertex_buffers,
         },
         .primitive = .{
-            .cull_mode = .back,
+            .cull_mode = .none,
         },
         .depth_stencil = &depth_stencil,
         .fragment = &wgpu.FragmentState{
@@ -1291,6 +1498,84 @@ fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
             .target_count = color_targets.len,
             .targets = &color_targets,
         },
+        .multisample = .{},
+    }) orelse return RenderError.NoDevice;
+}
+
+fn createShadowPipeline(device: *wgpu.Device, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
+    const shader_module = device.createShaderModule(&wgpu.shaderModuleWGSLDescriptor(.{
+        .code = @embedFile("shaders/shadow.wgsl"),
+    })) orelse return RenderError.NoDevice;
+    defer shader_module.release();
+
+    const vertex_attributes = [_]wgpu.VertexAttribute{
+        .{
+            .format = .float32x3,
+            .offset = @offsetOf(geometry.Vertex, "position"),
+            .shader_location = 0,
+        },
+    };
+    const vec4_size = @sizeOf([4]f32);
+    const instance_attributes = [_]wgpu.VertexAttribute{
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 0,
+            .shader_location = 2,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 1,
+            .shader_location = 3,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 2,
+            .shader_location = 4,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "shadow_mvp") + vec4_size * 3,
+            .shader_location = 5,
+        },
+    };
+    const vertex_buffers = [_]wgpu.VertexBufferLayout{
+        .{
+            .step_mode = .vertex,
+            .array_stride = @sizeOf(geometry.Vertex),
+            .attribute_count = vertex_attributes.len,
+            .attributes = &vertex_attributes,
+        },
+        .{
+            .step_mode = .instance,
+            .array_stride = @sizeOf(InstanceAttributes),
+            .attribute_count = instance_attributes.len,
+            .attributes = &instance_attributes,
+        },
+    };
+
+    const depth_stencil = wgpu.DepthStencilState{
+        .format = shadow_depth_format,
+        .depth_write_enabled = .true,
+        .depth_compare = .less,
+        .stencil_front = .{},
+        .stencil_back = .{},
+        .depth_bias = 2,
+        .depth_bias_slope_scale = 2.0,
+    };
+
+    return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
+        .label = wgpu.StringView.fromSlice("Machina shadow pipeline"),
+        .layout = pipeline_layout,
+        .vertex = .{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice("vs_main"),
+            .buffer_count = vertex_buffers.len,
+            .buffers = &vertex_buffers,
+        },
+        .primitive = .{
+            .cull_mode = .back,
+        },
+        .depth_stencil = &depth_stencil,
         .multisample = .{},
     }) orelse return RenderError.NoDevice;
 }
@@ -1344,12 +1629,35 @@ fn instanceAttributes(config: InstanceConfig) RenderError!InstanceAttributes {
     const view = cameraViewMatrix(camera.transform);
     const projection = perspective(std.math.degreesToRadians(camera.fov_y_degrees), aspect, camera.near, camera.far);
     const mvp = matMul(projection, matMul(view, model));
+    const shadow_mvp = matMul(config.light_view_projection, model);
 
     return .{
         .mvp = mvp,
         .model = model,
         .object_color = .{ mesh.base_color[0], mesh.base_color[1], mesh.base_color[2], 1.0 },
+        .shadow_mvp = shadow_mvp,
+        .shadow_flags = .{
+            @floatFromInt(@as(u32, @intFromBool(mesh.receives_shadow))),
+            @floatFromInt(@as(u32, @intFromBool(mesh.casts_shadow))),
+            0.0,
+            0.0,
+        },
     };
+}
+
+fn shadowLightViewProjection(light_value: DirectionalLightState) RenderError![16]f32 {
+    const light = try validateDirectionalLight(light_value);
+    const light_direction = normalizeVec3(light.direction);
+    const eye = scaleVec3(light_direction, 7.5);
+    const target = [3]f32{ 0.0, 0.0, 0.0 };
+    const preferred_up = [3]f32{ 0.0, 1.0, 0.0 };
+    const up = if (@abs(dotVec3(light_direction, preferred_up)) > 0.95)
+        [3]f32{ 0.0, 0.0, 1.0 }
+    else
+        preferred_up;
+    const view = lookAt(eye, target, up);
+    const projection = orthographic(-5.2, 5.2, -3.9, 3.9, 0.1, 18.0);
+    return matMul(projection, view);
 }
 
 fn cameraState(world: *const runtime.World) RenderError!CameraState {
@@ -1425,8 +1733,41 @@ fn cameraViewMatrix(transform_value: runtime.Transform) [16]f32 {
     );
 }
 
+fn lookAt(eye: [3]f32, target: [3]f32, up: [3]f32) [16]f32 {
+    const z = normalizeVec3(subtractVec3(eye, target));
+    const x = normalizeVec3(crossVec3(up, z));
+    const y = crossVec3(z, x);
+
+    return .{
+        x[0],             y[0],             z[0],             0.0,
+        x[1],             y[1],             z[1],             0.0,
+        x[2],             y[2],             z[2],             0.0,
+        -dotVec3(x, eye), -dotVec3(y, eye), -dotVec3(z, eye), 1.0,
+    };
+}
+
 fn isFiniteVec3(value: [3]f32) bool {
     return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
+}
+
+fn subtractVec3(left: [3]f32, right: [3]f32) [3]f32 {
+    return .{ left[0] - right[0], left[1] - right[1], left[2] - right[2] };
+}
+
+fn scaleVec3(value: [3]f32, scalar: f32) [3]f32 {
+    return .{ value[0] * scalar, value[1] * scalar, value[2] * scalar };
+}
+
+fn dotVec3(left: [3]f32, right: [3]f32) f32 {
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+fn crossVec3(left: [3]f32, right: [3]f32) [3]f32 {
+    return .{
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    };
 }
 
 fn normalizeVec3(value: [3]f32) [3]f32 {
@@ -1489,6 +1830,7 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     try scene_world.setCubeRenderer(cool_box, .{
         .color = .{ 0.1, 0.5, 1.0 },
     });
+    try scene_world.setShadowCaster(cool_box);
 
     const warm_sphere = try scene_world.createEntity("warm-sphere", "Warm Sphere");
     try scene_world.setTransform(warm_sphere, .{
@@ -1503,6 +1845,7 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     try scene_world.setSurfaceMaterial(warm_sphere, .{
         .base_color = .{ 1.0, 0.35, 0.12 },
     });
+    try scene_world.setShadowReceiver(warm_sphere);
 
     const camera = try scene_world.createEntity("camera", "Camera");
     try scene_world.setTransform(camera, .{ .position = .{ 0.0, 1.0, 7.0 } });
@@ -1522,6 +1865,11 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     const extracted_sphere = state.world.renderableMeshAt(1) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("uv_sphere", extracted_sphere.primitive);
     try std.testing.expectEqual(@as(f32, 0.35), extracted_sphere.base_color[1]);
+    const extracted_box = state.world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expect(extracted_box.casts_shadow);
+    try std.testing.expect(!extracted_box.receives_shadow);
+    try std.testing.expect(!extracted_sphere.casts_shadow);
+    try std.testing.expect(extracted_sphere.receives_shadow);
 
     var plan = try BatchPlan.build(std.testing.allocator, &state.world);
     defer plan.deinit();
@@ -1543,10 +1891,11 @@ test "batch plan groups matching geometry and material renderables" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
 
-    try addBatchTestRenderable(&scene_world, "blue-box-a", "box", 0, 0, .{ -1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 });
-    try addBatchTestRenderable(&scene_world, "gold-sphere", "uv_sphere", 16, 8, .{ 0.0, 0.0, 0.0 }, .{ 1.0, 0.56, 0.1 });
-    try addBatchTestRenderable(&scene_world, "blue-box-b", "box", 0, 0, .{ 1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 });
-    try addBatchTestRenderable(&scene_world, "red-box", "box", 0, 0, .{ 0.0, 1.2, 0.0 }, .{ 0.95, 0.12, 0.18 });
+    try addBatchTestRenderable(&scene_world, "blue-box-a", "box", 0, 0, .{ -1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{ .casts_shadow = true });
+    try addBatchTestRenderable(&scene_world, "gold-sphere", "uv_sphere", 16, 8, .{ 0.0, 0.0, 0.0 }, .{ 1.0, 0.56, 0.1 }, .{});
+    try addBatchTestRenderable(&scene_world, "blue-box-b", "box", 0, 0, .{ 1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{ .casts_shadow = true });
+    try addBatchTestRenderable(&scene_world, "red-box", "box", 0, 0, .{ 0.0, 1.2, 0.0 }, .{ 0.95, 0.12, 0.18 }, .{});
+    try addBatchTestRenderable(&scene_world, "blue-box-receiver", "box", 0, 0, .{ 0.0, -1.2, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{ .receives_shadow = true });
 
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
@@ -1555,8 +1904,10 @@ test "batch plan groups matching geometry and material renderables" {
     var plan = try BatchPlan.build(std.testing.allocator, &state.world);
     defer plan.deinit();
 
-    try std.testing.expectEqual(@as(usize, 3), plan.batches.len);
+    try std.testing.expectEqual(@as(usize, 4), plan.batches.len);
     try std.testing.expectEqual(geometry.Primitive.box, plan.batches[0].geometry_key.primitive);
+    try std.testing.expect(plan.batches[0].shadow_key.casts_shadow);
+    try std.testing.expect(!plan.batches[0].shadow_key.receives_shadow);
     try std.testing.expectEqual(@as(usize, 2), plan.batches[0].render_indices.len);
     try std.testing.expectEqual(@as(usize, 0), plan.batches[0].render_indices[0]);
     try std.testing.expectEqual(@as(usize, 2), plan.batches[0].render_indices[1]);
@@ -1569,9 +1920,20 @@ test "batch plan groups matching geometry and material renderables" {
     try std.testing.expectEqual(@as(usize, 1), plan.batches[2].render_indices.len);
     try std.testing.expectEqual(@as(usize, 3), plan.batches[2].render_indices[0]);
 
+    try std.testing.expectEqual(geometry.Primitive.box, plan.batches[3].geometry_key.primitive);
+    try std.testing.expect(!plan.batches[3].shadow_key.casts_shadow);
+    try std.testing.expect(plan.batches[3].shadow_key.receives_shadow);
+    try std.testing.expectEqual(@as(usize, 1), plan.batches[3].render_indices.len);
+    try std.testing.expectEqual(@as(usize, 4), plan.batches[3].render_indices[0]);
+
     try state.queueBatchDraws(plan.batches.len);
-    try std.testing.expectEqual(@as(usize, 3), state.drawCommandCount());
+    try std.testing.expectEqual(@as(usize, 4), state.drawCommandCount());
 }
+
+const BatchTestShadowFlags = struct {
+    casts_shadow: bool = false,
+    receives_shadow: bool = false,
+};
 
 fn addBatchTestRenderable(
     world: *runtime.World,
@@ -1581,6 +1943,7 @@ fn addBatchTestRenderable(
     rings: i32,
     position: [3]f32,
     base_color: [3]f32,
+    shadow_flags: BatchTestShadowFlags,
 ) !void {
     const entity = try world.createEntity(id, id);
     try world.setTransform(entity, .{ .position = position });
@@ -1590,6 +1953,12 @@ fn addBatchTestRenderable(
         .rings = rings,
     });
     try world.setSurfaceMaterial(entity, .{ .base_color = base_color });
+    if (shadow_flags.casts_shadow) {
+        try world.setShadowCaster(entity);
+    }
+    if (shadow_flags.receives_shadow) {
+        try world.setShadowReceiver(entity);
+    }
 }
 
 fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) [16]f32 {
@@ -1599,6 +1968,15 @@ fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) [16]f32 {
         0.0,        f,   0.0,                         0.0,
         0.0,        0.0, far / (near - far),          -1.0,
         0.0,        0.0, (far * near) / (near - far), 0.0,
+    };
+}
+
+fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) [16]f32 {
+    return .{
+        2.0 / (right - left),             0.0,                              0.0,                 0.0,
+        0.0,                              2.0 / (top - bottom),             0.0,                 0.0,
+        0.0,                              0.0,                              1.0 / (near - far),  0.0,
+        -(right + left) / (right - left), -(top + bottom) / (top - bottom), near / (near - far), 1.0,
     };
 }
 
@@ -1677,6 +2055,8 @@ const InstanceAttributes = extern struct {
     mvp: [16]f32,
     model: [16]f32,
     object_color: [4]f32,
+    shadow_mvp: [16]f32,
+    shadow_flags: [4]f32,
 };
 
 fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?*anyopaque, userdata2: ?*anyopaque) callconv(.c) void {

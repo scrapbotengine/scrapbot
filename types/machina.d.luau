@@ -191,6 +191,9 @@ export type MachinaDirectionalLight = {
     ambient: number,
 }
 
+export type MachinaShadowCaster = {}
+export type MachinaShadowReceiver = {}
+
 export type MachinaEntity = {
     get_vec3: (
         component: MachinaComponentId,

@@ -33,6 +33,8 @@ pub const geometry_primitive_component_id = "machina.geometry.primitive";
 pub const surface_material_component_id = "machina.material.surface";
 pub const camera_component_id = "machina.camera";
 pub const directional_light_component_id = "machina.light.directional";
+pub const shadow_caster_component_id = "machina.shadow.caster";
+pub const shadow_receiver_component_id = "machina.shadow.receiver";
 pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
@@ -557,6 +559,16 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .version = 1,
         .fields = &directional_light_fields,
     });
+
+    try registry.registerEngineComponent(.{
+        .id = shadow_caster_component_id,
+        .version = 1,
+    });
+
+    try registry.registerEngineComponent(.{
+        .id = shadow_receiver_component_id,
+        .version = 1,
+    });
 }
 
 pub const EntityHandle = struct {
@@ -628,6 +640,8 @@ pub const RenderableMesh = struct {
     rings: i32,
     base_color: [3]f32,
     spin: [3]f32,
+    casts_shadow: bool,
+    receives_shadow: bool,
 };
 
 pub const RenderCamera = struct {
@@ -953,6 +967,14 @@ pub const World = struct {
         try self.setComponent(handle, directional_light_component_id, &fields);
     }
 
+    pub fn setShadowCaster(self: *World, handle: EntityHandle) WorldError!void {
+        try self.setComponent(handle, shadow_caster_component_id, &.{});
+    }
+
+    pub fn setShadowReceiver(self: *World, handle: EntityHandle) WorldError!void {
+        try self.setComponent(handle, shadow_receiver_component_id, &.{});
+    }
+
     pub fn setSpin(self: *World, handle: EntityHandle, spin: Spin) WorldError!void {
         const fields = [_]ComponentFieldValue{
             .{ .name = "angular_velocity", .value = .{ .vec3 = spin.angular_velocity } },
@@ -1109,6 +1131,8 @@ pub const World = struct {
         const stored_entity = self.entity(handle) catch return null;
         const transform = (self.getTransform(handle) catch return null) orelse return null;
         const spin = self.getVec3(handle, spin_component_id, "angular_velocity") catch .{ 0.0, 0.0, 0.0 };
+        const casts_shadow = self.hasComponent(handle, shadow_caster_component_id) catch false;
+        const receives_shadow = self.hasComponent(handle, shadow_receiver_component_id) catch false;
 
         if ((self.hasComponent(handle, geometry_primitive_component_id) catch false) and
             (self.hasComponent(handle, surface_material_component_id) catch false))
@@ -1125,6 +1149,8 @@ pub const World = struct {
                 .rings = self.getInt(handle, geometry_primitive_component_id, "rings") catch return null,
                 .base_color = self.getVec3(handle, surface_material_component_id, "base_color") catch return null,
                 .spin = spin,
+                .casts_shadow = casts_shadow,
+                .receives_shadow = receives_shadow,
             };
         }
 
@@ -1141,6 +1167,8 @@ pub const World = struct {
                 .rings = 0,
                 .base_color = self.getVec3(handle, cube_renderer_component_id, "color") catch return null,
                 .spin = spin,
+                .casts_shadow = casts_shadow,
+                .receives_shadow = receives_shadow,
             };
         }
 
@@ -1598,9 +1626,13 @@ test "world resolves explicit primitive geometry and surface material renderable
     try world.setSurfaceMaterial(entity, .{
         .base_color = .{ 0.2, 0.8, 1.0 },
     });
+    try world.setShadowCaster(entity);
+    try world.setShadowReceiver(entity);
 
     try std.testing.expectEqual(@as(usize, 1), world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 1), world.renderableCubeCount());
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(shadow_caster_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(shadow_receiver_component_id));
 
     const mesh = world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(entity.index, mesh.entity.index);
@@ -1608,6 +1640,8 @@ test "world resolves explicit primitive geometry and surface material renderable
     try std.testing.expectEqual(@as(i32, 32), mesh.segments);
     try std.testing.expectEqual(@as(i32, 16), mesh.rings);
     try std.testing.expectEqual(@as(f32, 0.8), mesh.base_color[1]);
+    try std.testing.expect(mesh.casts_shadow);
+    try std.testing.expect(mesh.receives_shadow);
 }
 
 test "world resolves render camera and directional light components" {
@@ -1831,7 +1865,9 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(surface_material_component_id) != null);
     try std.testing.expect(registry.findComponent(camera_component_id) != null);
     try std.testing.expect(registry.findComponent(directional_light_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 6), registry.componentCount());
+    try std.testing.expect(registry.findComponent(shadow_caster_component_id) != null);
+    try std.testing.expect(registry.findComponent(shadow_receiver_component_id) != null);
+    try std.testing.expectEqual(@as(usize, 8), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);

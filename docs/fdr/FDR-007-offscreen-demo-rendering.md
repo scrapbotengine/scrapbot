@@ -16,8 +16,9 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
 - Legacy cube entities remain supported and render as box geometry with inline color material data.
 - Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
+- Renderable meshes can cast or receive directional-light shadows when authored with shadow marker components.
 - The renderer extracts scene data into an internal render ECS world, batches matching renderables, queues batch draw commands as render-world entities, and executes the render path through a render-phase system schedule.
-- Renderable meshes render with depth testing and scene-driven directional diffuse shading.
+- Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
 - The rendered pixels are copied back to CPU memory and written as a 24-bit BMP file.
 - Render verification parses the BMP and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene material colors.
 - The command works without a platform window or editor.
@@ -45,7 +46,7 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 ## Related
 
 - **ADRs:** ADR-004, ADR-005, ADR-013
-- **FDRs:** FDR-001, FDR-002, FDR-014, FDR-015, FDR-016
+- **FDRs:** FDR-001, FDR-002, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions
 

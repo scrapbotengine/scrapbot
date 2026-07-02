@@ -2,8 +2,9 @@
 
 This project demonstrates automatic renderer batching. The scene authors many
 independent ECS entities with repeated geometry/material component pairs, then a
-Luau ECS system animates their transforms. The renderer groups those entities
-into shared GPU draw batches automatically.
+Luau ECS system animates their transforms while leaving the receiver floor
+static. The renderer groups those entities into shared GPU draw batches
+automatically and renders shadows from the animated casters onto the floor.
 
 ```sh
 mise machina check examples/batching
