@@ -1,7 +1,7 @@
-type MachinaComponentId = string
-type MachinaSystemId = string
+export type MachinaComponentId = string
+export type MachinaSystemId = string
 
-type MachinaFieldType =
+export type MachinaFieldType =
     "boolean"
     | "bool"
     | "int"
@@ -11,32 +11,32 @@ type MachinaFieldType =
     | "vec3"
     | "string"
 
-type MachinaComponentDefinition = {
+export type MachinaComponentDefinition = {
     version: number?,
     fields: { [string]: MachinaFieldType }?,
 }
 
-type MachinaSystemPhase = "startup" | "update" | "fixed_update" | "render"
+export type MachinaSystemPhase = "startup" | "update" | "fixed_update" | "render"
 
-type MachinaVec3 = { number }
+export type MachinaVec3 = { number }
 
-type MachinaComponent<T> = {
+export type MachinaComponent<T> = {
     id: MachinaComponentId,
 }
 
-type MachinaComponentRef = MachinaComponentId | MachinaComponent<any>
+export type MachinaComponentRef = MachinaComponentId | MachinaComponent<any>
 
-type MachinaTransform = {
+export type MachinaTransform = {
     position: MachinaVec3,
     rotation: MachinaVec3,
     scale: MachinaVec3,
 }
 
-type MachinaRenderCube = {
+export type MachinaRenderCube = {
     color: MachinaVec3,
 }
 
-type MachinaEntity = {
+export type MachinaEntity = {
     get_vec3: (
         component: MachinaComponentId,
         field: string
@@ -49,18 +49,18 @@ type MachinaEntity = {
     ) -> (),
 }
 
-type MachinaQuery =
+export type MachinaQuery =
     (<A>(MachinaComponent<A>) -> (() -> (MachinaEntity, A)))
     & (<A, B>(MachinaComponent<A>, MachinaComponent<B>) -> (() -> (MachinaEntity, A, B)))
     & (<A, B, C>(MachinaComponent<A>, MachinaComponent<B>, MachinaComponent<C>) -> (() -> (MachinaEntity, A, B, C)))
     & ((...MachinaComponentId) -> (() -> MachinaEntity))
 
-type MachinaWorld = {
+export type MachinaWorld = {
     --- Iterates entities that have all requested components.
     query: MachinaQuery,
 }
 
-type MachinaSystemDefinition = {
+export type MachinaSystemDefinition = {
     phase: MachinaSystemPhase?,
     reads: { MachinaComponentRef }?,
     writes: { MachinaComponentRef }?,
@@ -69,12 +69,12 @@ type MachinaSystemDefinition = {
     run: ((world: MachinaWorld, delta_seconds: number) -> ())?,
 }
 
-type MachinaComponentFunction = <T>(
+export type MachinaComponentFunction = <T>(
     id: MachinaComponentId,
     definition: MachinaComponentDefinition?
 ) -> MachinaComponent<T>
 
-type MachinaEcs = {
+export type MachinaEcs = {
     --- Registers a project-local component type or returns a typed handle for an existing component.
     component: MachinaComponentFunction,
 
