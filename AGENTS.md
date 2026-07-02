@@ -10,6 +10,8 @@ Machina is an experimental, text-first game engine written in Zig. The engine is
 - Run your project by running `machina run` in your project directory.
 - Hit F1 to open an editing UI.
 
+Please add to this list as needed.
+
 ## Project Shape
 
 - `src/main.zig` contains the CLI entry point and command routing.
