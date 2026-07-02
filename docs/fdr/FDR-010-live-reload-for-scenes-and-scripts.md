@@ -1,7 +1,7 @@
 # FDR-010: Live Reload for Scenes and Scripts
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
@@ -13,7 +13,9 @@ Live reload lets users, editor tools, and agents change scene and script files w
 - The current implementation polls project metadata, the active scene, and project-listed scripts during `machina run`, including changes to the project's `default_scene`.
 - Reloaded files are parsed and validated before they replace active runtime state.
 - Compatible scene changes replace the active scene world after validation.
-- Script reloads validate Luau source, execute script ECS registration, rebuild the component registry, and rebuild update schedule batches.
+- Script reloads validate Luau source, execute script ECS registration, rebuild the component registry, and rebuild schedule batches.
+- Script-only reloads do not replay startup systems against an already-running world.
+- Project reloads and scene reloads create a fresh scene generation, so startup systems run again before the next update.
 - Failed script reloads report structured diagnostics with failure stage, script path, and message.
 - Failed reloads leave the last known good state active.
 - Headless commands can exercise reload behavior deterministically for tests and agent workflows.

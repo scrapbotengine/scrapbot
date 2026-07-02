@@ -1,0 +1,26 @@
+name = "Spawning Demo"
+version = 1
+
+[[entities]]
+id = "spawning-camera"
+name = "Spawning Camera"
+
+[entities.components."machina.transform"]
+position = [0.0, 1.15, 7.2]
+rotation = [-0.18, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+[entities.components."machina.camera"]
+fov_y_degrees = 56.0
+near = 0.1
+far = 100.0
+
+[[entities]]
+id = "spawning-key-light"
+name = "Spawning Key Light"
+
+[entities.components."machina.light.directional"]
+direction = [0.35, 0.75, 0.52]
+color = [1.0, 0.96, 0.88]
+intensity = 1.1
+ambient = 0.2

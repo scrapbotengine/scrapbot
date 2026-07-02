@@ -12,7 +12,7 @@ The engine should encourage project authors and coding agents to think in entiti
 
 Machina will use an ECS-oriented component-system runtime model in the low-level engine.
 
-The core runtime owns entity identity, component storage, component validation, system scheduling, and query/mutation APIs. Scenes serialize entity and component data as text. Scripts interact with game state through a supported component/system API instead of directly owning authoritative scene structure.
+The core runtime owns entity identity, component storage, component validation, system scheduling, structural mutation, and query/mutation APIs. Scenes serialize entity and component data as text. Scripts interact with game state through a supported component/system API instead of directly owning authoritative scene structure.
 
 Storage starts as sparse column tables: one table per component type, dense entity rows per table, sparse entity-to-row lookup, and typed SoA columns per component field. This supports engine and Luau-registered schemas without requiring native structs for every component.
 
@@ -24,4 +24,4 @@ Scenes, scripts, tests, editor tooling, and agent workflows get one shared menta
 
 The engine must design stable component schemas, diagnostics, migration behavior, and script bindings. It also needs discipline to prevent subsystem-specific state from bypassing the component model.
 
-The sparse SoA table layout gives early systems a real ECS data path, but it still requires explicit follow-up work for structural mutation, component removal, chunking/archetypes, migration, and parallel iteration.
+The sparse SoA table layout gives early systems a real ECS data path, including entity creation/destruction and component insertion/removal. It still requires explicit follow-up work for generation-safe handles, deferred command buffers, chunking/archetypes, migration, and parallel iteration.

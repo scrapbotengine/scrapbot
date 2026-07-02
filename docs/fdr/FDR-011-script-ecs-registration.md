@@ -21,13 +21,19 @@ Script ECS registration lets project and package scripts define new component an
 - Duplicate registration with an identical definition is accepted as reload-compatible.
 - Duplicate registration with an incompatible definition fails validation.
 - Systems declare the component types they read and write.
-- Systems declare a phase; the current exposed schedule is the `update` phase.
+- Systems declare a phase; the current exposed phases are `startup` and `update`.
+- Startup systems run once for a loaded project/scene generation before update systems.
+- Script-only reloads replace the script program for future systems but do not replay startup against an already-started live world.
 - Systems may declare ordering relationships by system id.
-- The native runtime builds update schedule batches from declared read/write access and before/after dependencies.
+- The native runtime builds phase-specific schedule batches from declared read/write access and before/after dependencies.
 - Systems that only read compatible component sets can share a batch; write conflicts or order dependencies force later batches.
-- `machina check --format=json` exposes the validated update schedule so editor tools and agents can inspect system batches, runner kinds, access declarations, and ordering relationships without running a window.
-- Script-authored systems can provide Luau `run` callbacks that execute during the native update schedule.
+- `machina check --format=json` exposes the validated schedule so editor tools and agents can inspect phases, system batches, runner kinds, access declarations, and ordering relationships without running a window.
+- Script-authored systems can provide Luau `run` callbacks that execute during the native schedule.
 - Script system callbacks receive an engine-provided world facade instead of direct component storage ownership.
+- Script systems can call the world facade to spawn entities.
+- Script systems can call entity facade methods to add/remove registered components or despawn entities.
+- Adding/removing a component requires the active system to declare write access to that component.
+- Despawning an entity requires the active system to declare write access to every component currently attached to the entity.
 - `ecs.component(...)` returns a typed component handle.
 - Component handle type-brand metadata supports editor analysis and is not callable gameplay API.
 - Scripts use `ecs.fields(...)` to declare component field maps with editor-visible field type validation.
@@ -89,6 +95,18 @@ Script ECS registration lets project and package scripts define new component an
 **Why:** Homebrew provides Luau command-line tools but not the embeddable library surface Machina needs. Keeping Luau behind the scripting boundary follows ADR-005 and lets the Zig runtime avoid depending on Luau internals directly.
 **Tradeoff:** The repository carries third-party source and must periodically update the vendored subset deliberately.
 
+### 8. Treat startup as scene generation
+
+**Decision:** Startup systems run once before update for a loaded project/scene generation. Project reloads and scene reloads create a fresh generation and can run startup again; script-only reloads do not replay startup against already-live world state.
+**Why:** Startup systems are allowed to perform structural mutation such as spawning renderables. Replaying them on script-only reload would duplicate or destroy live state without a migration model.
+**Tradeoff:** Adding a new startup system while a live scene is already running requires a project/scene reload or a future explicit restart/migration command before that startup logic affects the active world.
+
+### 9. Require write access for structural component mutation
+
+**Decision:** Script systems may spawn new entities, but component insertion/removal and entity despawn are constrained by declared writes.
+**Why:** The scheduler and diagnostics already use reads/writes as the source of truth for mutation. Structural changes alter query membership and must obey the same contract to stay compatible with future parallel execution.
+**Tradeoff:** Dynamic entity lifecycle systems carry more explicit access declarations.
+
 ## Related
 
 - **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012
@@ -97,7 +115,7 @@ Script ECS registration lets project and package scripts define new component an
 ## Open Questions
 
 - How will component defaults and migrations be represented in script schemas?
-- Which system phases beyond `update` should be exposed to script-defined systems first?
+- Which system phases beyond `startup` and `update` should be exposed to script-defined systems first?
 - Which structured field accessors beyond scalar values and `vec3` should be added to the Luau runtime bridge?
-- How should component insertion/removal work from scripts, and which phases may perform structural changes?
+- How should live script reload handle startup changes, schema changes, and world migrations without replaying unsafe mutations?
 - How should script runtime errors include full stack context and source spans?

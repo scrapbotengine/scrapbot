@@ -550,6 +550,29 @@ static void read_field_value(lua_State* state, int index, machina_luau_field_val
     luaL_error(state, "component field write received unsupported value type");
 }
 
+static std::vector<machina_luau_component_field_value> read_component_field_values(lua_State* state, int index)
+{
+    std::vector<machina_luau_component_field_value> fields;
+    if (lua_isnoneornil(state, index))
+        return fields;
+
+    luaL_checktype(state, index, LUA_TTABLE);
+    const int table_index = lua_absindex(state, index);
+    lua_pushnil(state);
+    while (lua_next(state, table_index) != 0)
+    {
+        size_t name_len = 0;
+        const char* name = luaL_checklstring(state, -2, &name_len);
+        machina_luau_component_field_value field = {};
+        field.name = name;
+        field.name_len = name_len;
+        read_field_value(state, -1, &field.value);
+        fields.push_back(field);
+        lua_pop(state, 1);
+    }
+    return fields;
+}
+
 static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity)
 {
     lua_newtable(state);
@@ -583,6 +606,44 @@ static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity)
         return 0;
     }, "entity.set_vec3", 2);
     lua_setfield(state, -2, "set_vec3");
+
+    lua_pushlightuserdata(state, vm);
+    lua_pushinteger(state, entity);
+    lua_pushcclosure(state, [](lua_State* state) -> int {
+        machina_luau* vm = static_cast<machina_luau*>(lua_tolightuserdata(state, lua_upvalueindex(1)));
+        const uint32_t entity = static_cast<uint32_t>(lua_tointeger(state, lua_upvalueindex(2)));
+        const int first_arg = lua_istable(state, 1) ? 2 : 1;
+        const std::string component_id = check_component_id(state, first_arg);
+        const std::vector<machina_luau_component_field_value> fields = read_component_field_values(state, first_arg + 1);
+        if (!vm->callbacks.add_component || !vm->callbacks.add_component(vm->callback_context, vm->active_world, entity, component_id.c_str(), fields.data(), fields.size()))
+            raise_host_error(state, vm, "entity.add access denied or failed");
+        return 0;
+    }, "entity.add", 2);
+    lua_setfield(state, -2, "add");
+
+    lua_pushlightuserdata(state, vm);
+    lua_pushinteger(state, entity);
+    lua_pushcclosure(state, [](lua_State* state) -> int {
+        machina_luau* vm = static_cast<machina_luau*>(lua_tolightuserdata(state, lua_upvalueindex(1)));
+        const uint32_t entity = static_cast<uint32_t>(lua_tointeger(state, lua_upvalueindex(2)));
+        const int first_arg = lua_istable(state, 1) ? 2 : 1;
+        const std::string component_id = check_component_id(state, first_arg);
+        if (!vm->callbacks.remove_component || !vm->callbacks.remove_component(vm->callback_context, vm->active_world, entity, component_id.c_str()))
+            raise_host_error(state, vm, "entity.remove access denied or failed");
+        return 0;
+    }, "entity.remove", 2);
+    lua_setfield(state, -2, "remove");
+
+    lua_pushlightuserdata(state, vm);
+    lua_pushinteger(state, entity);
+    lua_pushcclosure(state, [](lua_State* state) -> int {
+        machina_luau* vm = static_cast<machina_luau*>(lua_tolightuserdata(state, lua_upvalueindex(1)));
+        const uint32_t entity = static_cast<uint32_t>(lua_tointeger(state, lua_upvalueindex(2)));
+        if (!vm->callbacks.despawn_entity || !vm->callbacks.despawn_entity(vm->callback_context, vm->active_world, entity))
+            raise_host_error(state, vm, "entity.despawn access denied or failed");
+        return 0;
+    }, "entity.despawn", 2);
+    lua_setfield(state, -2, "despawn");
 
     lua_setreadonly(state, -1, 1);
 }
@@ -754,6 +815,20 @@ static void push_world(lua_State* state, machina_luau* vm)
     lua_pushlightuserdata(state, vm);
     lua_pushcclosure(state, world_query, "world.query", 1);
     lua_setfield(state, -2, "query");
+
+    lua_pushlightuserdata(state, vm);
+    lua_pushcclosure(state, [](lua_State* state) -> int {
+        machina_luau* vm = vm_from_upvalue(state);
+        const char* id = luaL_checkstring(state, 1);
+        const char* name = luaL_optstring(state, 2, id);
+        uint32_t entity = 0;
+        if (!vm->callbacks.spawn_entity || !vm->callbacks.spawn_entity(vm->callback_context, vm->active_world, id, name, &entity))
+            raise_host_error(state, vm, "world.spawn access denied or failed");
+        push_entity(state, vm, entity);
+        return 1;
+    }, "world.spawn", 1);
+    lua_setfield(state, -2, "spawn");
+
     lua_setreadonly(state, -1, 1);
 }
 

@@ -19,6 +19,9 @@ The entity component runtime is the shared low-level model for game state. It gi
 - The renderer owns an internal render world and render-phase schedule for extracted render data, mesh draw-command entities, and UI draw-command entities.
 - Each component table owns dense entity rows, a sparse entity-to-row index, and typed SoA field columns derived from engine or script schemas.
 - Scripts can query entities by component set and mutate supported component fields through the scripting API.
+- Scripts can spawn and despawn entities through the ECS facade.
+- Scripts can add and remove registered components through the ECS facade.
+- Script-driven structural mutations are checked against the active system's declared write access.
 - Scripts can register new component and system types with project-local or qualified non-reserved ids.
 - Engine-owned and script-defined systems declare phases, read/write component access, and optional before/after ordering relationships.
 - The runtime can build phase-specific system schedule batches from those declarations.
@@ -37,7 +40,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 
 **Decision:** The runtime world owns one table per component type. A table stores entity handles densely, maps entity indexes back to table rows sparsely, and stores each component field in its own typed column.
 **Why:** SoA columns give systems and renderer adapters a real ECS storage shape while still supporting runtime-created Luau component schemas. It follows ADR-008.
-**Tradeoff:** This is not yet chunked archetype storage, and query planning is still simple. Structural mutation, removal, migration, and parallel iteration need follow-up design.
+**Tradeoff:** This is not yet chunked archetype storage, and query planning is still simple. Generation-safe handles, deferred command buffers, migration, and parallel iteration need follow-up design.
 
 ### 3. Expose a safe ECS facade to scripts
 
@@ -63,12 +66,19 @@ The entity component runtime is the shared low-level model for game state. It gi
 **Why:** This prevents renderer, editor, physics, or asset subsystems from growing parallel ECS-like models with different query and scheduling rules. It follows ADR-013.
 **Tradeoff:** Native/backend-only values still need an explicit storage design before they can live fully inside internal ECS worlds.
 
+### 7. Gate structural mutation by declared access
+
+**Decision:** Script systems may create entities directly, but adding/removing components requires write access to the affected component, and despawning an entity requires write access to every component currently attached to it.
+**Why:** Structural mutation changes query membership and scheduler safety just like field writes do. Reusing declared access keeps validation, diagnostics, live reload, and future parallelization aligned with ADR-006 and ADR-008.
+**Tradeoff:** Generic cleanup systems must declare broad write access or narrow their entity sets before despawning.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013
-- **FDRs:** FDR-002, FDR-004, FDR-005, FDR-010, FDR-011, FDR-014, FDR-015, FDR-017
+- **FDRs:** FDR-002, FDR-004, FDR-005, FDR-010, FDR-011, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions
 
 - What stable id format should entities use?
 - How much scheduler control should scripts get beyond phases, access declarations, and before/after relationships?
+- When should structural mutations move from immediate execution to deferred command buffers?

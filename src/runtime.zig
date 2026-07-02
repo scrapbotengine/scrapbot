@@ -639,6 +639,26 @@ pub const Entity = struct {
     name: []const u8,
 };
 
+pub const EntityComponentIterator = struct {
+    world: *const World,
+    handle: EntityHandle,
+    index: usize = 0,
+
+    pub fn next(self: *EntityComponentIterator) ?[]const u8 {
+        while (self.index < self.world.component_tables.items.len) {
+            const table = &self.world.component_tables.items[self.index];
+            self.index += 1;
+            if (self.handle.index >= table.rows_by_entity.items.len) {
+                continue;
+            }
+            if (table.rows_by_entity.items[self.handle.index] != null) {
+                return table.id;
+            }
+        }
+        return null;
+    }
+};
+
 pub const Transform = struct {
     position: [3]f32 = .{ 0.0, 0.0, 0.0 },
     rotation: [3]f32 = .{ 0.0, 0.0, 0.0 },
@@ -1047,6 +1067,14 @@ pub const World = struct {
         return self.entities.items[index];
     }
 
+    pub fn entityComponents(self: *const World, handle: EntityHandle) WorldError!EntityComponentIterator {
+        _ = try self.componentIndex(handle);
+        return .{
+            .world = self,
+            .handle = handle,
+        };
+    }
+
     pub fn findEntityById(self: World, id: []const u8) ?EntityHandle {
         for (self.entities.items, 0..) |stored_entity, index| {
             if (std.mem.eql(u8, stored_entity.id, id)) {
@@ -1221,6 +1249,9 @@ pub const World = struct {
     pub fn removeComponent(self: *World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
         const entity_index = try self.componentIndex(handle);
         const table = self.findMutableComponentTable(component_id) orelse return false;
+        if (entity_index >= table.rows_by_entity.items.len) {
+            return false;
+        }
         const row = table.rows_by_entity.items[entity_index] orelse return false;
         const last_row = table.entities.items.len - 1;
         const removed_entity = table.entities.items[row];
@@ -1240,9 +1271,54 @@ pub const World = struct {
         return true;
     }
 
+    pub fn removeEntity(self: *World, handle: EntityHandle) WorldError!bool {
+        const entity_index = try self.componentIndex(handle);
+        const last_entity_index = self.entities.items.len - 1;
+
+        while (true) {
+            var removed_component = false;
+            for (self.component_tables.items) |*table| {
+                if (entity_index < table.rows_by_entity.items.len and table.rows_by_entity.items[entity_index] != null) {
+                    _ = try self.removeComponent(handle, table.id);
+                    removed_component = true;
+                    break;
+                }
+            }
+            if (!removed_component) {
+                break;
+            }
+        }
+
+        self.allocator.free(self.entities.items[entity_index].id);
+        self.allocator.free(self.entities.items[entity_index].name);
+
+        if (entity_index != last_entity_index) {
+            self.entities.items[entity_index] = self.entities.items[last_entity_index];
+        }
+        _ = self.entities.pop();
+
+        for (self.component_tables.items) |*table| {
+            const moved_row = if (entity_index != last_entity_index and last_entity_index < table.rows_by_entity.items.len) table.rows_by_entity.items[last_entity_index] else null;
+            if (entity_index < table.rows_by_entity.items.len) {
+                table.rows_by_entity.items[entity_index] = moved_row;
+            }
+            if (moved_row) |row| {
+                table.entities.items[row] = .{ .index = @intCast(entity_index) };
+            }
+            if (table.rows_by_entity.items.len > 0) {
+                _ = table.rows_by_entity.pop();
+            }
+        }
+
+        return true;
+    }
+
     pub fn hasComponent(self: World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
         const index = try self.componentIndex(handle);
         const table = self.findComponentTable(component_id) orelse return false;
+        if (index >= table.rows_by_entity.items.len) {
+            return false;
+        }
         return table.rows_by_entity.items[index] != null;
     }
 
@@ -1550,6 +1626,9 @@ pub const World = struct {
     fn getFieldValue(self: World, handle: EntityHandle, component_id: []const u8, field_name: []const u8) WorldError!ComponentValue {
         const index = try self.componentIndex(handle);
         const table = self.findComponentTable(component_id) orelse return WorldError.UnknownComponent;
+        if (index >= table.rows_by_entity.items.len) {
+            return WorldError.UnknownComponent;
+        }
         const row = table.rows_by_entity.items[index] orelse return WorldError.UnknownComponent;
         const column = findColumn(table.*, field_name) orelse return WorldError.UnknownField;
         return column.values.valueAt(row);
@@ -1558,6 +1637,9 @@ pub const World = struct {
     fn setFieldValue(self: *World, handle: EntityHandle, component_id: []const u8, field_name: []const u8, value: ComponentValue) WorldError!void {
         const index = try self.componentIndex(handle);
         const table = self.findMutableComponentTable(component_id) orelse return WorldError.UnknownComponent;
+        if (index >= table.rows_by_entity.items.len) {
+            return WorldError.UnknownComponent;
+        }
         const row = table.rows_by_entity.items[index] orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
@@ -1976,6 +2058,35 @@ test "world removes component rows without moving entity handles" {
     try std.testing.expectEqualStrings("two", event.command);
     try std.testing.expectEqualStrings("second", event.source);
     try std.testing.expect(!try world.removeComponent(first, ui_command_event_component_id));
+}
+
+test "world removes entities and repairs component table handles" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    const middle = try world.createEntity("middle", "Middle");
+    const last = try world.createEntity("last", "Last");
+    try world.setTransform(first, .{ .position = .{ -1.0, 0.0, 0.0 } });
+    try world.setTransform(middle, .{ .position = .{ 0.0, 0.0, 0.0 } });
+    try world.setTransform(last, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(last, .{ .base_color = .{ 0.1, 0.2, 0.3 } });
+
+    try std.testing.expect(try world.removeEntity(middle));
+    try std.testing.expectEqual(@as(usize, 2), world.entityCount());
+    try std.testing.expect(world.findEntityById("middle") == null);
+
+    const moved_last = world.findEntityById("last") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(u32, 1), moved_last.index);
+    const moved_transform = (try world.getTransform(moved_last)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(f32, 1.0), moved_transform.position[0]);
+    try std.testing.expect(try world.hasComponent(moved_last, surface_material_component_id));
+
+    var cursor: usize = 0;
+    const query = [_][]const u8{transform_component_id};
+    try std.testing.expectEqual(first.index, (world.queryNext(&query, &cursor) orelse return error.TestExpectedEqual).index);
+    try std.testing.expectEqual(moved_last.index, (world.queryNext(&query, &cursor) orelse return error.TestExpectedEqual).index);
+    try std.testing.expect(world.queryNext(&query, &cursor) == null);
 }
 
 test "world resolves explicit primitive geometry and surface material renderables" {

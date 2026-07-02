@@ -221,6 +221,21 @@ export type MachinaUiCommandEvent = {
 }
 
 export type MachinaEntity = {
+    add: <T>(
+        self: MachinaEntity,
+        component: MachinaTypedComponent<T>,
+        fields: T?
+    ) -> (),
+
+    remove: (
+        self: MachinaEntity,
+        component: MachinaComponentRef
+    ) -> (),
+
+    despawn: (
+        self: MachinaEntity
+    ) -> (),
+
     get_vec3: (
         component: MachinaComponentId,
         field: string
@@ -245,6 +260,9 @@ export type MachinaWorldQueryFunction =
 export type MachinaWorld = {
     --- Iterates entities that have all requested components.
     query: MachinaWorldQueryFunction,
+
+    --- Spawns an empty entity. Add components before expecting it in queries.
+    spawn: (id: string, name: string?) -> MachinaEntity,
 }
 
 export type MachinaQueryObject1<A> = {

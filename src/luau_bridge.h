@@ -75,6 +75,43 @@ typedef int (*machina_luau_set_field_fn)(
     const machina_luau_field_value* value
 );
 
+typedef struct machina_luau_component_field_value
+{
+    const char* name;
+    size_t name_len;
+    machina_luau_field_value value;
+} machina_luau_component_field_value;
+
+typedef int (*machina_luau_spawn_entity_fn)(
+    void* context,
+    void* world,
+    const char* id,
+    const char* name,
+    uint32_t* out_entity
+);
+
+typedef int (*machina_luau_despawn_entity_fn)(
+    void* context,
+    void* world,
+    uint32_t entity
+);
+
+typedef int (*machina_luau_add_component_fn)(
+    void* context,
+    void* world,
+    uint32_t entity,
+    const char* component_id,
+    const machina_luau_component_field_value* fields,
+    size_t field_count
+);
+
+typedef int (*machina_luau_remove_component_fn)(
+    void* context,
+    void* world,
+    uint32_t entity,
+    const char* component_id
+);
+
 typedef const char* (*machina_luau_host_error_fn)(void* context);
 
 typedef struct machina_luau_callbacks
@@ -84,6 +121,10 @@ typedef struct machina_luau_callbacks
     machina_luau_set_vec3_fn set_vec3;
     machina_luau_get_field_fn get_field;
     machina_luau_set_field_fn set_field;
+    machina_luau_spawn_entity_fn spawn_entity;
+    machina_luau_despawn_entity_fn despawn_entity;
+    machina_luau_add_component_fn add_component;
+    machina_luau_remove_component_fn remove_component;
     machina_luau_host_error_fn host_error;
 } machina_luau_callbacks;
 

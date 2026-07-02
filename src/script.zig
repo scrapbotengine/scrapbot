@@ -99,14 +99,22 @@ pub const Program = struct {
         self.* = undefined;
     }
 
+    pub fn startup(self: *Program, world: *runtime.World) bool {
+        return self.runPhase(world, .startup, 0.0);
+    }
+
     pub fn update(self: *Program, world: *runtime.World, delta_seconds: f32) bool {
+        return self.runPhase(world, .update, delta_seconds);
+    }
+
+    fn runPhase(self: *Program, world: *runtime.World, phase: runtime.SystemPhase, delta_seconds: f32) bool {
         self.clearLastDiagnostic();
         self.clearHostError();
         c.machina_luau_set_callback_context(self.vm, self);
 
         var ok = true;
         for (self.schedule.batches) |batch| {
-            if (batch.phase != .update) {
+            if (batch.phase != phase) {
                 continue;
             }
 
@@ -238,7 +246,7 @@ pub fn loadProjectProgramDetailed(
         program.deinit();
         return .{ .diagnostic = diagnostic };
     };
-    program.schedule = buildUpdateSchedule(allocator, program.registry) catch |err| {
+    program.schedule = buildRuntimeSchedule(allocator, program.registry) catch |err| {
         const diagnostic = try makeDiagnostic(allocator, .{
             .stage = .schedule,
             .message = @errorName(err),
@@ -262,15 +270,50 @@ pub fn loadSourceProgram(
         return ScriptError.InvalidScript;
     }
     try registerDeclaredTypes(&program);
-    program.schedule = try buildUpdateSchedule(allocator, program.registry);
+    program.schedule = try buildRuntimeSchedule(allocator, program.registry);
     return program;
 }
 
-pub fn buildUpdateSchedule(
+pub fn buildRuntimeSchedule(
     allocator: std.mem.Allocator,
     registry: runtime.ComponentRegistry,
 ) !runtime.SystemSchedule {
-    return registry.buildSchedule(allocator, .update);
+    const script_phases = [_]runtime.SystemPhase{ .startup, .update };
+    var batches: std.ArrayList(runtime.SystemBatch) = .empty;
+    errdefer {
+        for (batches.items) |batch| {
+            for (batch.systems) |system| {
+                allocator.free(system.id);
+            }
+            allocator.free(batch.systems);
+        }
+        batches.deinit(allocator);
+    }
+
+    for (script_phases) |phase| {
+        const phase_schedule = try registry.buildSchedule(allocator, phase);
+        var transferred: usize = 0;
+        errdefer {
+            for (phase_schedule.batches[transferred..]) |batch| {
+                for (batch.systems) |system| {
+                    allocator.free(system.id);
+                }
+                allocator.free(batch.systems);
+            }
+            allocator.free(phase_schedule.batches);
+        }
+
+        for (phase_schedule.batches) |batch| {
+            try batches.append(allocator, batch);
+            transferred += 1;
+        }
+        allocator.free(phase_schedule.batches);
+    }
+
+    return .{
+        .allocator = allocator,
+        .batches = try batches.toOwnedSlice(allocator),
+    };
 }
 
 fn initProgram(allocator: std.mem.Allocator) !Program {
@@ -280,6 +323,10 @@ fn initProgram(allocator: std.mem.Allocator) !Program {
         .set_vec3 = setVec3Callback,
         .get_field = getFieldCallback,
         .set_field = setFieldCallback,
+        .spawn_entity = spawnEntityCallback,
+        .despawn_entity = despawnEntityCallback,
+        .add_component = addComponentCallback,
+        .remove_component = removeComponentCallback,
         .host_error = hostErrorCallback,
     };
     const vm = c.machina_luau_create(callbacks) orelse return ScriptError.InvalidScript;
@@ -771,6 +818,179 @@ fn setFieldCallback(
     return 1;
 }
 
+fn spawnEntityCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    raw_id: ?[*:0]const u8,
+    raw_name: ?[*:0]const u8,
+    raw_out_entity: ?*u32,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const id = std.mem.span(raw_id orelse return 0);
+    const name = std.mem.span(raw_name orelse return 0);
+    const out_entity = raw_out_entity orelse return 0;
+
+    const entity = world.createEntity(id, name) catch |err| {
+        program.setHostError("system '{s}' failed to spawn entity '{s}': {s}", .{
+            program.activeSystemId(),
+            id,
+            @errorName(err),
+        });
+        return 0;
+    };
+    out_entity.* = entity.index;
+    return 1;
+}
+
+fn despawnEntityCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const entity = runtime.EntityHandle{ .index = entity_index };
+    _ = world.entity(entity) catch |err| {
+        program.setHostError("system '{s}' failed to despawn entity {d}: {s}", .{
+            program.activeSystemId(),
+            entity_index,
+            @errorName(err),
+        });
+        return 0;
+    };
+
+    var components = world.entityComponents(entity) catch |err| {
+        program.setHostError("system '{s}' failed to inspect entity {d}: {s}", .{
+            program.activeSystemId(),
+            entity_index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    while (components.next()) |component_id| {
+        if (!program.activeSystemAllowsWrite(component_id)) {
+            program.setHostError("system '{s}' tried to despawn entity {d} without declaring write access to '{s}'", .{
+                program.activeSystemId(),
+                entity_index,
+                component_id,
+            });
+            return 0;
+        }
+    }
+
+    _ = world.removeEntity(entity) catch |err| {
+        program.setHostError("system '{s}' failed to despawn entity {d}: {s}", .{
+            program.activeSystemId(),
+            entity_index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn addComponentCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+    raw_fields: ?[*]const c.machina_luau_component_field_value,
+    field_count: usize,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("system '{s}' tried to add component '{s}' without declaring it in writes", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    }
+
+    const definition = program.registry.findComponent(component_id) orelse {
+        program.setHostError("system '{s}' tried to add unknown component '{s}'", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    };
+    const entity = runtime.EntityHandle{ .index = entity_index };
+    const raw_slice = if (field_count == 0) &[_]c.machina_luau_component_field_value{} else (raw_fields orelse return 0)[0..field_count];
+    const fields = program.allocator.alloc(runtime.ComponentFieldValue, field_count) catch {
+        program.setHostError("system '{s}' failed to allocate component fields for '{s}'", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    };
+    defer program.allocator.free(fields);
+
+    for (raw_slice, 0..) |raw_field, index| {
+        const field_name = raw_field.name[0..raw_field.name_len];
+        const field_definition = findComponentField(definition.*, field_name) orelse {
+            program.setHostError("system '{s}' tried to add unknown field '{s}.{s}'", .{
+                program.activeSystemId(),
+                component_id,
+                field_name,
+            });
+            return 0;
+        };
+        fields[index] = .{
+            .name = field_name,
+            .value = componentValueFromLuauType(field_definition.value_type, &raw_field.value) catch |err| {
+                program.setHostError("system '{s}' failed to convert value for '{s}.{s}': {s}", .{
+                    program.activeSystemId(),
+                    component_id,
+                    field_name,
+                    @errorName(err),
+                });
+                return 0;
+            },
+        };
+    }
+
+    world.setComponent(entity, component_id, fields) catch |err| {
+        program.setHostError("system '{s}' failed to add component '{s}' to entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity_index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn removeComponentCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("system '{s}' tried to remove component '{s}' without declaring it in writes", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    }
+    _ = world.removeComponent(.{ .index = entity_index }, component_id) catch |err| {
+        program.setHostError("system '{s}' failed to remove component '{s}' from entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity_index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
 fn componentValueFromLuau(
     world: *runtime.World,
     entity: runtime.EntityHandle,
@@ -802,6 +1022,48 @@ fn componentValueFromLuau(
         },
         else => ScriptError.InvalidScript,
     };
+}
+
+fn componentValueFromLuauType(field_type: runtime.FieldType, value: *const c.machina_luau_field_value) !runtime.ComponentValue {
+    return switch (field_type) {
+        .boolean => switch (value.tag) {
+            c.MACHINA_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
+            else => ScriptError.InvalidScript,
+        },
+        .string => switch (value.tag) {
+            c.MACHINA_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
+            else => ScriptError.InvalidScript,
+        },
+        .vec3 => switch (value.tag) {
+            c.MACHINA_LUAU_FIELD_VEC3 => blk: {
+                const vec3 = value.vec3_value;
+                if (!std.math.isFinite(vec3[0]) or !std.math.isFinite(vec3[1]) or !std.math.isFinite(vec3[2])) {
+                    return ScriptError.InvalidScript;
+                }
+                break :blk .{ .vec3 = .{ vec3[0], vec3[1], vec3[2] } };
+            },
+            else => ScriptError.InvalidScript,
+        },
+        .int => switch (value.tag) {
+            c.MACHINA_LUAU_FIELD_NUMBER => .{ .int = try i32FromLuauNumber(value.number_value) },
+            c.MACHINA_LUAU_FIELD_INT => .{ .int = value.int_value },
+            else => ScriptError.InvalidScript,
+        },
+        .float => switch (value.tag) {
+            c.MACHINA_LUAU_FIELD_NUMBER => .{ .float = try f32FromLuauNumber(value.number_value) },
+            c.MACHINA_LUAU_FIELD_FLOAT => .{ .float = @floatCast(value.number_value) },
+            else => ScriptError.InvalidScript,
+        },
+    };
+}
+
+fn findComponentField(definition: runtime.ComponentDefinition, field_name: []const u8) ?runtime.ComponentFieldDefinition {
+    for (definition.fields) |field| {
+        if (std.mem.eql(u8, field.name, field_name)) {
+            return field;
+        }
+    }
+    return null;
 }
 
 fn stringFromLuau(value: *const c.machina_luau_field_value) []const u8 {
@@ -924,6 +1186,60 @@ test "luau declarations register components and executable systems" {
     try std.testing.expect(program.update(&world, 0.5));
     const transform = (try world.getTransform(entity)) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(f32, 1.25), transform.rotation[0]);
+}
+
+test "luau systems can spawn despawn add and remove components" {
+    var program = try loadSourceProgram(
+        std.testing.allocator,
+        "test.luau",
+        \\--!strict
+        \\
+        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Spawned = ecs.component("spawned", {
+        \\  fields = ecs.fields({
+        \\    value = "int",
+        \\  }),
+        \\})
+        \\local Temporary = ecs.component("temporary", {
+        \\  fields = ecs.fields({
+        \\    value = "int",
+        \\  }),
+        \\})
+        \\
+        \\ecs.system("spawn_entities", {
+        \\  phase = "startup",
+        \\  writes = ecs.refs(Transform, Spawned, Temporary),
+        \\  run = function(world, _dt)
+        \\    local entity = world.spawn("spawned-one", "Spawned One")
+        \\    entity:add(Transform, {
+        \\      position = { 1.0, 2.0, 3.0 },
+        \\      rotation = { 0.0, 0.0, 0.0 },
+        \\      scale = { 1.0, 1.0, 1.0 },
+        \\    })
+        \\    entity:add(Spawned, { value = 7 })
+        \\    entity:add(Temporary, { value = 99 })
+        \\    entity:remove(Temporary)
+        \\
+        \\    local doomed = world.spawn("doomed", "Doomed")
+        \\    doomed:add(Temporary, { value = 1 })
+        \\    doomed:despawn()
+        \\  end,
+        \\})
+        ,
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try std.testing.expect(program.startup(&world));
+    const spawned = world.findEntityById("spawned-one") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 1), world.entityCount());
+    try std.testing.expect(try world.hasComponent(spawned, runtime.transform_component_id));
+    try std.testing.expect(try world.hasComponent(spawned, "spawned"));
+    try std.testing.expect(!try world.hasComponent(spawned, "temporary"));
+    try std.testing.expectEqual(@as(i32, 7), try world.getInt(spawned, "spawned", "value"));
+    try std.testing.expect(world.findEntityById("doomed") == null);
 }
 
 test "luau component handles can reference engine components without registration" {
@@ -1255,12 +1571,17 @@ test "luau world query requires declared component access" {
     try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "reads or writes") != null);
 }
 
-test "update schedule batches read-only systems and separates write conflicts" {
+test "script runtime schedule includes startup and update batches" {
     var registry = runtime.ComponentRegistry.init(std.testing.allocator);
     defer registry.deinit();
     try runtime.registerEngineComponents(&registry);
 
     try registry.registerProjectComponent(.{ .id = "stamina" });
+    try registry.registerProjectSystem(.{
+        .id = "spawn_initial",
+        .phase = .startup,
+        .writes = &.{"machina.transform"},
+    });
     try registry.registerProjectSystem(.{
         .id = "read_transform",
         .reads = &.{"machina.transform"},
@@ -1275,11 +1596,16 @@ test "update schedule batches read-only systems and separates write conflicts" {
         .writes = &.{"stamina"},
     });
 
-    var schedule = try buildUpdateSchedule(std.testing.allocator, registry);
+    var schedule = try buildRuntimeSchedule(std.testing.allocator, registry);
     defer schedule.deinit();
 
-    try std.testing.expectEqual(@as(usize, 2), schedule.batchCount());
-    try std.testing.expectEqual(@as(usize, 3), schedule.systemCount());
-    try std.testing.expectEqual(@as(usize, 2), schedule.batches[0].systems.len);
-    try std.testing.expectEqual(@as(usize, 1), schedule.batches[1].systems.len);
+    try std.testing.expectEqual(@as(usize, 3), schedule.batchCount());
+    try std.testing.expectEqual(@as(usize, 4), schedule.systemCount());
+    try std.testing.expectEqual(runtime.SystemPhase.startup, schedule.batches[0].phase);
+    try std.testing.expectEqual(@as(usize, 1), schedule.batches[0].systems.len);
+    try std.testing.expectEqualStrings("spawn_initial", schedule.batches[0].systems[0].id);
+    try std.testing.expectEqual(runtime.SystemPhase.update, schedule.batches[1].phase);
+    try std.testing.expectEqual(@as(usize, 2), schedule.batches[1].systems.len);
+    try std.testing.expectEqual(runtime.SystemPhase.update, schedule.batches[2].phase);
+    try std.testing.expectEqual(@as(usize, 1), schedule.batches[2].systems.len);
 }

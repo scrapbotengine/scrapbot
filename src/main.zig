@@ -101,7 +101,7 @@ fn run(
         try stdout.print("Loaded project {s}\n", .{result.project.name});
         try stdout.print("Selected scene: {s}\n", .{result.project.default_scene});
         try stdout.print("Scene entities: {d}\n", .{live_project.scene.entityCount()});
-        try stdout.print("Scripts: {d}, update batches: {d}\n", .{
+        try stdout.print("Scripts: {d}, schedule batches: {d}\n", .{
             live_project.project.scripts.len,
             live_project.scripts.schedule.batchCount(),
         });
@@ -118,13 +118,19 @@ fn run(
         const output_path = if (args.len >= 4) args[3] else "zig-out/machina-cube.bmp";
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
         defer machina.freeCheckResult(allocator, result);
-        const scene = machina.loadDefaultScene(io, allocator, result.project) catch |err| {
+        var live_project = machina.LiveProject.init(io, allocator, target_path) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
         };
-        defer machina.freeScene(allocator, scene);
+        defer live_project.deinit();
+        if (!live_project.runStartup()) {
+            if (live_project.lastDiagnostic()) |diagnostic| {
+                try printScriptDiagnostic(stderr, target_path, diagnostic.*);
+            }
+            return 1;
+        }
 
-        machina.renderDemoBmp(io, allocator, output_path, scene.renderScene()) catch |err| {
+        machina.renderDemoBmp(io, allocator, output_path, live_project.renderScene()) catch |err| {
             try stderr.print("render failed: {s}\n", .{@errorName(err)});
             return 1;
         };
@@ -138,13 +144,20 @@ fn run(
         const output_path = if (args.len >= 4) args[3] else "zig-out/machina-render-test.bmp";
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
         defer machina.freeCheckResult(allocator, result);
-        const scene = machina.loadDefaultScene(io, allocator, result.project) catch |err| {
+        var live_project = machina.LiveProject.init(io, allocator, target_path) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
         };
-        defer machina.freeScene(allocator, scene);
+        defer live_project.deinit();
+        if (!live_project.runStartup()) {
+            if (live_project.lastDiagnostic()) |diagnostic| {
+                try printScriptDiagnostic(stderr, target_path, diagnostic.*);
+            }
+            return 1;
+        }
+        const scene = live_project.scene;
 
-        machina.renderDemoBmp(io, allocator, output_path, scene.renderScene()) catch |err| {
+        machina.renderDemoBmp(io, allocator, output_path, live_project.renderScene()) catch |err| {
             try stderr.print("render-test render failed: {s}\n", .{@errorName(err)});
             return 1;
         };
@@ -431,7 +444,7 @@ fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
         .unchanged => return null,
         .reloaded => |info| {
             context.stderr.print(
-                "Reloaded {s}{s}{s}: {s}, {d} entities, {d} renderable cubes, {d} scripts, {d} update batches\n",
+                "Reloaded {s}{s}{s}: {s}, {d} entities, {d} renderable cubes, {d} scripts, {d} schedule batches\n",
                 .{
                     if (info.project_reloaded) "project" else "",
                     if (info.scene_reloaded) if (info.project_reloaded) " and scene" else "scene" else "",
@@ -1795,7 +1808,8 @@ test "testCommand runs gameplay project suite" {
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS health_tick") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS projectile_lifetime") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS render_camera_light") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 5 passed, 0 failed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS spawn_lifecycle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 6 passed, 0 failed") != null);
     try std.testing.expectEqualStrings("", stderr.buffered());
 }
 

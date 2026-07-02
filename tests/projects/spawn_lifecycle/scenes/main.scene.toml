@@ -1,0 +1,11 @@
+name = "Spawn Lifecycle"
+version = 1
+
+[[entities]]
+id = "stats"
+name = "Stats"
+
+[entities.components.lifecycle_stats]
+spawned_count = 0
+removed_count = 0
+despawned_count = 0

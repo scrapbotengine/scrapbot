@@ -215,6 +215,7 @@ pub const LiveProject = struct {
     last_failed_script_index: ?usize = null,
     last_failed_script_stamp: ?SourceFileStamp = null,
     last_diagnostic: ?ScriptDiagnostic = null,
+    startup_ran: bool = false,
 
     pub fn init(io: Io, allocator: std.mem.Allocator, root_path: []const u8) !LiveProject {
         const project = try loadProject(io, allocator, root_path);
@@ -267,6 +268,9 @@ pub const LiveProject = struct {
 
     pub fn updateWithInput(self: *LiveProject, delta_seconds: f32, input: FrameInput) void {
         self.clearLastDiagnostic();
+        if (!self.runStartup()) {
+            return;
+        }
         updateUiCommandEvents(&self.scene.world, input) catch |err| {
             if (std.fmt.allocPrint(self.allocator, "UI command routing failed: {s}", .{@errorName(err)})) |message| {
                 defer self.allocator.free(message);
@@ -281,6 +285,20 @@ pub const LiveProject = struct {
                 self.last_diagnostic = cloneScriptDiagnostic(self.allocator, diagnostic) catch null;
             }
         }
+    }
+
+    pub fn runStartup(self: *LiveProject) bool {
+        if (self.startup_ran) {
+            return true;
+        }
+        if (!self.scripts.startup(&self.scene.world)) {
+            if (self.scripts.last_diagnostic) |diagnostic| {
+                self.last_diagnostic = cloneScriptDiagnostic(self.allocator, diagnostic) catch null;
+            }
+            return false;
+        }
+        self.startup_ran = true;
+        return true;
     }
 
     pub fn lastDiagnostic(self: *const LiveProject) ?*const ScriptDiagnostic {
@@ -408,6 +426,7 @@ pub const LiveProject = struct {
         self.last_failed_scene_stamp = null;
         self.last_failed_script_index = null;
         self.last_failed_script_stamp = null;
+        self.startup_ran = false;
         return .{ .reloaded = info };
     }
 
@@ -430,6 +449,7 @@ pub const LiveProject = struct {
         self.scene = next_scene;
         self.scene_source.stamp = scene_stamp;
         self.last_failed_scene_stamp = null;
+        self.startup_ran = false;
         return .{ .reloaded = info };
     }
 
@@ -692,6 +712,24 @@ pub fn stepProjectDetailed(
     errdefer freeCheckSchedule(allocator, schedule);
 
     var completed_frames: u32 = 0;
+    if (!scripts.startup(&scene.world)) {
+        const diagnostic = if (scripts.last_diagnostic) |found|
+            try cloneScriptDiagnostic(allocator, found)
+        else
+            try makeSyntheticRuntimeDiagnostic(allocator, "script startup failed without diagnostic");
+        return .{ .runtime_error = .{
+            .project = project,
+            .scene = scene,
+            .schedule = schedule,
+            .summary = .{
+                .frames = options.frames,
+                .completed_frames = completed_frames,
+                .delta_seconds = options.delta_seconds,
+            },
+            .diagnostic = diagnostic,
+        } };
+    }
+
     while (completed_frames < options.frames) {
         if (!scripts.update(&scene.world, options.delta_seconds)) {
             const diagnostic = if (scripts.last_diagnostic) |found|
