@@ -9,10 +9,12 @@
         },
     },
     .paths = .{
+        "NOTICE",
         "build.zig",
         "build.zig.zon",
         "src",
         "third_party/luau",
+        "third_party/spleen",
         "third_party/wgpu_native_zig",
     },
 }

@@ -16,6 +16,7 @@ Machina is an experimental, text-first game engine written in Zig. The engine is
 - `tests/projects/` contains game-shaped project fixtures used only by automated tests. Each runnable fixture has a `test.machina.toml` manifest with frames, timestep, and ECS field assertions.
 - `docs/adr/` records architectural decisions.
 - `docs/fdr/` records feature behavior and product/implementation decisions.
+- `NOTICE` tracks third-party license notices for vendored code, data, generated source, and direct external binary dependencies.
 - `third_party/wgpu_native_zig/` is a vendored and locally patched Zig binding for `wgpu-native`.
 - `third_party/spleen/` contains the BSD-2 license for the embedded Spleen-derived bitmap UI font data in `src/ui_font.zig`.
 
@@ -37,6 +38,7 @@ Live reload is a core runtime capability. `machina run` currently uses a `LivePr
 - Prefer small vertical slices that leave `main` working.
 - Update ADRs when changing architecture or backend choices.
 - Update FDRs when changing feature behavior, command behavior, scene schema, or validation semantics.
+- Keep `NOTICE` current when adding, removing, replacing, or redistributing third-party code, assets, generated data, fonts, tools, native libraries, or fetched binary dependencies.
 - Route runtime state through the ECS world instead of introducing renderer-specific or script-owned side channels. Engine subsystems may own separate internal worlds and schedules, but they must use the shared runtime ECS implementation rather than creating a parallel ECS model.
 - Script-defined ECS component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local, qualified dotted ids are for packages/libraries, and `machina.*` is engine-owned. Machina does not infer a default project namespace.
 - Author new Luau component schemas with `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage. If field-schema type inference regresses, fix the Luau type definitions/checker setup or runtime bridge support rather than reverting to marker-value inference.

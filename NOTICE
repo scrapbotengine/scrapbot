@@ -1,0 +1,42 @@
+Machina Third-Party Notices
+
+This file tracks third-party software, data, generated source, and direct
+external binary dependencies that are vendored into this repository or used by
+Machina's build. Keep the referenced license texts in the repository whenever
+the source/data is committed here.
+
+Before distributing Machina binaries, audit linked/fetched binary artifacts for
+transitive dependency notices as part of release packaging.
+
+Luau
+- Use: embedded scripting VM, compiler, parser, and runtime.
+- Source in repo: third_party/luau/
+- License: MIT.
+- Copyright: Copyright (c) 2019-2025 Roblox Corporation.
+- Lua-derived portions: Copyright (c) 1994-2019 Lua.org, PUC-Rio.
+- Full notices: third_party/luau/LICENSE.txt and
+  third_party/luau/lua_LICENSE.txt.
+
+wgpu_native_zig
+- Use: Zig bindings for wgpu-native/WebGPU.
+- Source in repo: third_party/wgpu_native_zig/
+- License: MIT.
+- Copyright: Copyright (c) 2024 Gabriel Charleboix.
+- Full notice: third_party/wgpu_native_zig/LICENSE.
+
+wgpu-native
+- Use: native WebGPU implementation linked by the renderer through
+  wgpu_native_zig.
+- Source package: gfx-rs/wgpu-native v25.0.2.1, fetched by
+  third_party/wgpu_native_zig/build.zig.zon.
+- License: MIT OR Apache-2.0.
+- Upstream license files for this release: LICENSE.MIT and LICENSE.APACHE in
+  https://github.com/gfx-rs/wgpu-native/tree/v25.0.2.1.
+
+Spleen bitmap font
+- Use: source data for the built-in fixed-pixel UI font in src/ui_font.zig.
+- Source in repo: third_party/spleen/LICENSE.
+- Upstream source: Spleen 8x16 2.2.0.
+- License: BSD-2-Clause.
+- Copyright: Copyright (c) 2018-2026, Frederic Cambus.
+- Full notice: third_party/spleen/LICENSE.
