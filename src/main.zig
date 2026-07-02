@@ -1216,6 +1216,24 @@ fn expectedColorGroups(scene: machina.Scene) usize {
             has_cool = true;
         }
     }
+    var ui_rects = scene.world.uiRects();
+    while (ui_rects.next()) |rect| {
+        if (rect.color[0] > rect.color[2] + 0.1) {
+            has_warm = true;
+        }
+        if (rect.color[2] > rect.color[0] + 0.1) {
+            has_cool = true;
+        }
+    }
+    var ui_texts = scene.world.uiTexts();
+    while (ui_texts.next()) |text| {
+        if (text.color[0] > text.color[2] + 0.1) {
+            has_warm = true;
+        }
+        if (text.color[2] > text.color[0] + 0.1) {
+            has_cool = true;
+        }
+    }
     const groups = @as(usize, @intFromBool(has_warm)) + @as(usize, @intFromBool(has_cool));
     return @max(groups, 1);
 }

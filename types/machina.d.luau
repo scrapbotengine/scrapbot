@@ -194,6 +194,23 @@ export type MachinaDirectionalLight = {
 export type MachinaShadowCaster = {}
 export type MachinaShadowReceiver = {}
 
+export type MachinaUiCanvas = {}
+
+export type MachinaUiRect = {
+    position: MachinaVec3,
+    size: MachinaVec3,
+    color: MachinaVec3,
+}
+
+export type MachinaUiText = {
+    position: MachinaVec3,
+    size: number,
+    color: MachinaVec3,
+    value: string,
+}
+
+export type MachinaUiButton = {}
+
 export type MachinaEntity = {
     get_vec3: (
         component: MachinaComponentId,

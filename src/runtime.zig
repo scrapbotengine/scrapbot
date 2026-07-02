@@ -35,6 +35,10 @@ pub const camera_component_id = "machina.camera";
 pub const directional_light_component_id = "machina.light.directional";
 pub const shadow_caster_component_id = "machina.shadow.caster";
 pub const shadow_receiver_component_id = "machina.shadow.receiver";
+pub const ui_canvas_component_id = "machina.ui.canvas";
+pub const ui_rect_component_id = "machina.ui.rect";
+pub const ui_text_component_id = "machina.ui.text";
+pub const ui_button_component_id = "machina.ui.button";
 pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
@@ -569,6 +573,39 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .id = shadow_receiver_component_id,
         .version = 1,
     });
+
+    try registry.registerEngineComponent(.{
+        .id = ui_canvas_component_id,
+        .version = 1,
+    });
+
+    const ui_rect_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "size", .value_type = .vec3 },
+        .{ .name = "color", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_rect_component_id,
+        .version = 1,
+        .fields = &ui_rect_fields,
+    });
+
+    const ui_text_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "size", .value_type = .float },
+        .{ .name = "color", .value_type = .vec3 },
+        .{ .name = "value", .value_type = .string },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_text_component_id,
+        .version = 1,
+        .fields = &ui_text_fields,
+    });
+
+    try registry.registerEngineComponent(.{
+        .id = ui_button_component_id,
+        .version = 1,
+    });
 }
 
 pub const EntityHandle = struct {
@@ -662,6 +699,39 @@ pub const RenderDirectionalLight = struct {
     color: [3]f32,
     intensity: f32,
     ambient: f32,
+};
+
+pub const UiRectComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    size: [3]f32 = .{ 1.0, 1.0, 0.0 },
+    color: [3]f32 = .{ 1.0, 1.0, 1.0 },
+};
+
+pub const UiTextComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    size: f32 = 2.0,
+    color: [3]f32 = .{ 1.0, 1.0, 1.0 },
+    value: []const u8 = "",
+};
+
+pub const UiRect = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    position: [3]f32,
+    size: [3]f32,
+    color: [3]f32,
+    is_button: bool,
+};
+
+pub const UiText = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    position: [3]f32,
+    size: f32,
+    color: [3]f32,
+    value: []const u8,
 };
 
 pub const ComponentValue = union(FieldType) {
@@ -975,6 +1045,33 @@ pub const World = struct {
         try self.setComponent(handle, shadow_receiver_component_id, &.{});
     }
 
+    pub fn setUiCanvas(self: *World, handle: EntityHandle) WorldError!void {
+        try self.setComponent(handle, ui_canvas_component_id, &.{});
+    }
+
+    pub fn setUiRect(self: *World, handle: EntityHandle, rect: UiRectComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = rect.position } },
+            .{ .name = "size", .value = .{ .vec3 = rect.size } },
+            .{ .name = "color", .value = .{ .vec3 = rect.color } },
+        };
+        try self.setComponent(handle, ui_rect_component_id, &fields);
+    }
+
+    pub fn setUiText(self: *World, handle: EntityHandle, text: UiTextComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = text.position } },
+            .{ .name = "size", .value = .{ .float = text.size } },
+            .{ .name = "color", .value = .{ .vec3 = text.color } },
+            .{ .name = "value", .value = .{ .string = text.value } },
+        };
+        try self.setComponent(handle, ui_text_component_id, &fields);
+    }
+
+    pub fn setUiButton(self: *World, handle: EntityHandle) WorldError!void {
+        try self.setComponent(handle, ui_button_component_id, &.{});
+    }
+
     pub fn setSpin(self: *World, handle: EntityHandle, spin: Spin) WorldError!void {
         const fields = [_]ComponentFieldValue{
             .{ .name = "angular_velocity", .value = .{ .vec3 = spin.angular_velocity } },
@@ -1127,6 +1224,46 @@ pub const World = struct {
         return .{ .world = self };
     }
 
+    pub fn uiRectCount(self: World) usize {
+        return self.componentInstanceCountFor(ui_rect_component_id);
+    }
+
+    pub fn uiRectAt(self: World, ui_index: usize) ?UiRect {
+        var found: usize = 0;
+        for (0..self.entityCount()) |index| {
+            const rect = self.uiRectAtEntity(.{ .index = @intCast(index) }) orelse continue;
+            if (found == ui_index) {
+                return rect;
+            }
+            found += 1;
+        }
+        return null;
+    }
+
+    pub fn uiRects(self: *const World) UiRectIterator {
+        return .{ .world = self };
+    }
+
+    pub fn uiTextCount(self: World) usize {
+        return self.componentInstanceCountFor(ui_text_component_id);
+    }
+
+    pub fn uiTextAt(self: World, ui_index: usize) ?UiText {
+        var found: usize = 0;
+        for (0..self.entityCount()) |index| {
+            const text = self.uiTextAtEntity(.{ .index = @intCast(index) }) orelse continue;
+            if (found == ui_index) {
+                return text;
+            }
+            found += 1;
+        }
+        return null;
+    }
+
+    pub fn uiTexts(self: *const World) UiTextIterator {
+        return .{ .world = self };
+    }
+
     fn renderableMeshAtEntity(self: World, handle: EntityHandle) ?RenderableMesh {
         const stored_entity = self.entity(handle) catch return null;
         const transform = (self.getTransform(handle) catch return null) orelse return null;
@@ -1173,6 +1310,38 @@ pub const World = struct {
         }
 
         return null;
+    }
+
+    fn uiRectAtEntity(self: World, handle: EntityHandle) ?UiRect {
+        const stored_entity = self.entity(handle) catch return null;
+        if (!(self.hasComponent(handle, ui_rect_component_id) catch false)) {
+            return null;
+        }
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .position = self.getVec3(handle, ui_rect_component_id, "position") catch return null,
+            .size = self.getVec3(handle, ui_rect_component_id, "size") catch return null,
+            .color = self.getVec3(handle, ui_rect_component_id, "color") catch return null,
+            .is_button = self.hasComponent(handle, ui_button_component_id) catch false,
+        };
+    }
+
+    fn uiTextAtEntity(self: World, handle: EntityHandle) ?UiText {
+        const stored_entity = self.entity(handle) catch return null;
+        if (!(self.hasComponent(handle, ui_text_component_id) catch false)) {
+            return null;
+        }
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .position = self.getVec3(handle, ui_text_component_id, "position") catch return null,
+            .size = self.getFloat(handle, ui_text_component_id, "size") catch return null,
+            .color = self.getVec3(handle, ui_text_component_id, "color") catch return null,
+            .value = self.getString(handle, ui_text_component_id, "value") catch return null,
+        };
     }
 
     pub fn renderCamera(self: World) ?RenderCamera {
@@ -1419,6 +1588,36 @@ pub const RenderableMeshIterator = struct {
             const mesh = self.world.renderableMeshAt(self.index) orelse continue;
             self.index += 1;
             return mesh;
+        }
+        return null;
+    }
+};
+
+pub const UiRectIterator = struct {
+    world: *const World,
+    index: usize = 0,
+
+    pub fn next(self: *UiRectIterator) ?UiRect {
+        const count = self.world.uiRectCount();
+        while (self.index < count) : (self.index += 1) {
+            const rect = self.world.uiRectAt(self.index) orelse continue;
+            self.index += 1;
+            return rect;
+        }
+        return null;
+    }
+};
+
+pub const UiTextIterator = struct {
+    world: *const World,
+    index: usize = 0,
+
+    pub fn next(self: *UiTextIterator) ?UiText {
+        const count = self.world.uiTextCount();
+        while (self.index < count) : (self.index += 1) {
+            const text = self.world.uiTextAt(self.index) orelse continue;
+            self.index += 1;
+            return text;
         }
         return null;
     }
@@ -1675,6 +1874,55 @@ test "world resolves render camera and directional light components" {
     try std.testing.expectEqual(@as(f32, 1.2), light.intensity);
 }
 
+test "world resolves UI rect and text components" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const canvas = try world.createEntity("hud-canvas", "HUD Canvas");
+    try world.setUiCanvas(canvas);
+
+    const panel = try world.createEntity("hud-panel", "HUD Panel");
+    try world.setUiRect(panel, .{
+        .position = .{ 24.0, 24.0, 0.0 },
+        .size = .{ 220.0, 72.0, 0.0 },
+        .color = .{ 0.02, 0.08, 0.14 },
+    });
+
+    const button = try world.createEntity("hud-button", "HUD Button");
+    try world.setUiRect(button, .{
+        .position = .{ 32.0, 104.0, 0.0 },
+        .size = .{ 140.0, 34.0, 0.0 },
+        .color = .{ 0.0, 0.48, 0.86 },
+    });
+    try world.setUiButton(button);
+
+    const label = try world.createEntity("hud-label", "HUD Label");
+    try world.setUiText(label, .{
+        .position = .{ 40.0, 42.0, 0.0 },
+        .size = 2.0,
+        .color = .{ 0.82, 0.94, 1.0 },
+        .value = "BATCHES 4",
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_canvas_component_id));
+    try std.testing.expectEqual(@as(usize, 2), world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 1), world.uiTextCount());
+
+    const resolved_panel = world.uiRectAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(panel.index, resolved_panel.entity.index);
+    try std.testing.expectEqual(@as(f32, 220.0), resolved_panel.size[0]);
+    try std.testing.expect(!resolved_panel.is_button);
+
+    const resolved_button = world.uiRectAt(1) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(button.index, resolved_button.entity.index);
+    try std.testing.expect(resolved_button.is_button);
+
+    const resolved_label = world.uiTextAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(label.index, resolved_label.entity.index);
+    try std.testing.expectEqual(@as(f32, 2.0), resolved_label.size);
+    try std.testing.expectEqualStrings("BATCHES 4", resolved_label.value);
+}
+
 test "world rejects duplicate entity ids" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
@@ -1867,11 +2115,19 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(directional_light_component_id) != null);
     try std.testing.expect(registry.findComponent(shadow_caster_component_id) != null);
     try std.testing.expect(registry.findComponent(shadow_receiver_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 8), registry.componentCount());
+    try std.testing.expect(registry.findComponent(ui_canvas_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_rect_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_text_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_button_component_id) != null);
+    try std.testing.expectEqual(@as(usize, 12), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);
     try std.testing.expectEqual(FieldType.vec3, transform.fields[0].value_type);
+
+    const ui_text = registry.findComponent(ui_text_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 4), ui_text.fields.len);
+    try std.testing.expectEqual(FieldType.string, ui_text.fields[3].value_type);
 }
 
 test "system registry validates component access and reload-compatible definitions" {

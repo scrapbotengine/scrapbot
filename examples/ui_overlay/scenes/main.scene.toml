@@ -1,0 +1,77 @@
+name = "UI Overlay"
+version = 1
+
+[[entities]]
+id = "ui-canvas"
+name = "UI Canvas"
+
+[entities.components."machina.ui.canvas"]
+
+[[entities]]
+id = "ui-debug-panel"
+name = "Debug Panel"
+
+[entities.components."machina.ui.rect"]
+position = [24.0, 24.0, 0.0]
+size = [308.0, 132.0, 0.0]
+color = [0.02, 0.09, 0.16]
+
+[[entities]]
+id = "ui-title"
+name = "UI Title"
+
+[entities.components."machina.ui.text"]
+position = [42.0, 42.0, 0.0]
+size = 3.0
+color = [0.82, 0.94, 1.0]
+value = "MACHINA UI"
+
+[[entities]]
+id = "ui-stats"
+name = "UI Stats"
+
+[entities.components."machina.ui.text"]
+position = [44.0, 80.0, 0.0]
+size = 2.0
+color = [1.0, 0.72, 0.18]
+value = "RECTS 3"
+
+[[entities]]
+id = "ui-demo-button"
+name = "Demo Button"
+
+[entities.components."machina.ui.rect"]
+position = [42.0, 112.0, 0.0]
+size = [150.0, 34.0, 0.0]
+color = [0.0, 0.48, 0.86]
+
+[entities.components."machina.ui.button"]
+
+[[entities]]
+id = "ui-demo-button-label"
+name = "Demo Button Label"
+
+[entities.components."machina.ui.text"]
+position = [58.0, 122.0, 0.0]
+size = 2.0
+color = [1.0, 1.0, 1.0]
+value = "BUTTON"
+
+[[entities]]
+id = "ui-status-pill"
+name = "Status Pill"
+
+[entities.components."machina.ui.rect"]
+position = [208.0, 112.0, 0.0]
+size = [96.0, 34.0, 0.0]
+color = [0.9, 0.42, 0.08]
+
+[[entities]]
+id = "ui-status-label"
+name = "Status Label"
+
+[entities.components."machina.ui.text"]
+position = [224.0, 122.0, 0.0]
+size = 2.0
+color = [0.92, 1.0, 0.86]
+value = "READY"

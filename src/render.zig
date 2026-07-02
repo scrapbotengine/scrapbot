@@ -23,9 +23,12 @@ const depth_format = wgpu.TextureFormat.depth24_plus;
 const shadow_depth_format = wgpu.TextureFormat.depth32_float;
 const shadow_map_size = 1024;
 const render_draw_batch_component_id = "machina.render.internal.draw.batch";
+const render_draw_ui_component_id = "machina.render.internal.draw.ui";
 const render_extract_system_id = "machina.render.extract";
 const render_prepare_meshes_system_id = "machina.render.prepare_meshes";
 const render_queue_meshes_system_id = "machina.render.queue_meshes";
+const render_prepare_ui_system_id = "machina.render.prepare_ui";
+const render_queue_ui_system_id = "machina.render.queue_ui";
 const render_draw_meshes_system_id = "machina.render.draw_meshes";
 
 pub const RenderError = error{
@@ -346,6 +349,29 @@ const RenderEcsState = struct {
             mesh_index += 1;
         }
 
+        var ui_canvas_index: usize = 0;
+        var ui_canvas_cursor: usize = 0;
+        const ui_canvas_query = [_][]const u8{runtime.ui_canvas_component_id};
+        while (scene.world.queryNext(&ui_canvas_query, &ui_canvas_cursor)) |canvas| {
+            const stored_canvas = scene.world.entity(canvas) catch return RenderError.InvalidScene;
+            try extractUiCanvasInto(self.allocator, &next_world, ui_canvas_index, stored_canvas.name);
+            ui_canvas_index += 1;
+        }
+
+        var ui_rect_index: usize = 0;
+        var ui_rects = scene.world.uiRects();
+        while (ui_rects.next()) |rect| {
+            try extractUiRectInto(self.allocator, &next_world, ui_rect_index, rect);
+            ui_rect_index += 1;
+        }
+
+        var ui_text_index: usize = 0;
+        var ui_texts = scene.world.uiTexts();
+        while (ui_texts.next()) |text| {
+            try extractUiTextInto(self.allocator, &next_world, ui_text_index, text);
+            ui_text_index += 1;
+        }
+
         try extractCameraInto(&next_world, try cameraState(scene.world));
         try extractDirectionalLightInto(&next_world, try directionalLightState(scene.world));
 
@@ -369,8 +395,20 @@ const RenderEcsState = struct {
         }
     }
 
+    fn queueUiDraw(self: *RenderEcsState) RenderError!void {
+        if (self.world.uiRectCount() == 0 and self.world.uiTextCount() == 0) {
+            return;
+        }
+        const entity = self.world.createEntity("machina.render.draw.ui", "UI Draw") catch |err| return mapWorldError(err);
+        self.world.setComponent(entity, render_draw_ui_component_id, &.{}) catch |err| return mapWorldError(err);
+    }
+
     fn drawCommandCount(self: RenderEcsState) usize {
         return self.world.componentInstanceCountFor(render_draw_batch_component_id);
+    }
+
+    fn uiDrawCommandCount(self: RenderEcsState) usize {
+        return self.world.componentInstanceCountFor(render_draw_ui_component_id);
     }
 
     fn drawCommandBatchIndex(self: RenderEcsState, entity: runtime.EntityHandle) RenderError!usize {
@@ -496,6 +534,10 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         .version = 1,
         .fields = &draw_batch_fields,
     });
+    try registry.registerEngineComponent(.{
+        .id = render_draw_ui_component_id,
+        .version = 1,
+    });
 
     const extract_writes = [_][]const u8{
         runtime.transform_component_id,
@@ -505,6 +547,10 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.directional_light_component_id,
         runtime.shadow_caster_component_id,
         runtime.shadow_receiver_component_id,
+        runtime.ui_canvas_component_id,
+        runtime.ui_rect_component_id,
+        runtime.ui_text_component_id,
+        runtime.ui_button_component_id,
     };
     try registry.registerEngineSystem(.{
         .id = render_extract_system_id,
@@ -544,8 +590,36 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         .after = &after_prepare,
     });
 
+    const prepare_ui_reads = [_][]const u8{
+        runtime.ui_rect_component_id,
+        runtime.ui_text_component_id,
+        runtime.ui_button_component_id,
+    };
+    const after_queue_meshes = [_][]const u8{render_queue_meshes_system_id};
+    try registry.registerEngineSystem(.{
+        .id = render_prepare_ui_system_id,
+        .phase = .render,
+        .reads = &prepare_ui_reads,
+        .after = &after_queue_meshes,
+    });
+
+    const queue_ui_reads = [_][]const u8{
+        runtime.ui_rect_component_id,
+        runtime.ui_text_component_id,
+    };
+    const queue_ui_writes = [_][]const u8{render_draw_ui_component_id};
+    const after_prepare_ui = [_][]const u8{render_prepare_ui_system_id};
+    try registry.registerEngineSystem(.{
+        .id = render_queue_ui_system_id,
+        .phase = .render,
+        .reads = &queue_ui_reads,
+        .writes = &queue_ui_writes,
+        .after = &after_prepare_ui,
+    });
+
     const draw_reads = [_][]const u8{
         render_draw_batch_component_id,
+        render_draw_ui_component_id,
         runtime.transform_component_id,
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
@@ -553,8 +627,11 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.directional_light_component_id,
         runtime.shadow_caster_component_id,
         runtime.shadow_receiver_component_id,
+        runtime.ui_rect_component_id,
+        runtime.ui_text_component_id,
+        runtime.ui_button_component_id,
     };
-    const after_queue = [_][]const u8{render_queue_meshes_system_id};
+    const after_queue = [_][]const u8{render_queue_ui_system_id};
     try registry.registerEngineSystem(.{
         .id = render_draw_meshes_system_id,
         .phase = .render,
@@ -592,6 +669,57 @@ fn extractMeshInto(
     if (mesh.receives_shadow) {
         world.setShadowReceiver(entity) catch |err| return mapWorldError(err);
     }
+}
+
+fn extractUiCanvasInto(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    ui_index: usize,
+    name: []const u8,
+) RenderError!void {
+    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.ui.canvas.{d}", .{ui_index}) catch return RenderError.OutOfMemory;
+    defer allocator.free(entity_id);
+
+    const entity = world.createEntity(entity_id, name) catch |err| return mapWorldError(err);
+    world.setUiCanvas(entity) catch |err| return mapWorldError(err);
+}
+
+fn extractUiRectInto(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    ui_index: usize,
+    rect: runtime.UiRect,
+) RenderError!void {
+    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.ui.rect.{d}", .{ui_index}) catch return RenderError.OutOfMemory;
+    defer allocator.free(entity_id);
+
+    const entity = world.createEntity(entity_id, rect.name) catch |err| return mapWorldError(err);
+    world.setUiRect(entity, .{
+        .position = rect.position,
+        .size = rect.size,
+        .color = rect.color,
+    }) catch |err| return mapWorldError(err);
+    if (rect.is_button) {
+        world.setUiButton(entity) catch |err| return mapWorldError(err);
+    }
+}
+
+fn extractUiTextInto(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    ui_index: usize,
+    text: runtime.UiText,
+) RenderError!void {
+    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.ui.text.{d}", .{ui_index}) catch return RenderError.OutOfMemory;
+    defer allocator.free(entity_id);
+
+    const entity = world.createEntity(entity_id, text.name) catch |err| return mapWorldError(err);
+    world.setUiText(entity, .{
+        .position = text.position,
+        .size = text.size,
+        .color = text.color,
+        .value = text.value,
+    }) catch |err| return mapWorldError(err);
 }
 
 fn extractCameraInto(world: *runtime.World, camera: CameraState) RenderError!void {
@@ -746,19 +874,68 @@ const BatchPlanEntry = struct {
     render_indices: []usize,
 };
 
+const UiDrawResources = struct {
+    vertex_buffer: ?*wgpu.Buffer = null,
+    vertex_buffer_size: u64 = 0,
+    vertex_count: u32 = 0,
+
+    fn update(
+        self: *UiDrawResources,
+        device: *wgpu.Device,
+        queue: *wgpu.Queue,
+        vertices: []const UiVertex,
+    ) RenderError!void {
+        if (vertices.len > std.math.maxInt(u32)) {
+            return RenderError.InvalidScene;
+        }
+
+        self.vertex_count = @intCast(vertices.len);
+        if (vertices.len == 0) {
+            return;
+        }
+
+        const bytes = std.mem.sliceAsBytes(vertices);
+        if (self.vertex_buffer == null or self.vertex_buffer_size < bytes.len) {
+            const buffer = device.createBuffer(&wgpu.BufferDescriptor{
+                .label = wgpu.StringView.fromSlice("Machina UI vertex buffer"),
+                .usage = wgpu.BufferUsages.vertex | wgpu.BufferUsages.copy_dst,
+                .size = @intCast(bytes.len),
+                .mapped_at_creation = @as(u32, @intFromBool(false)),
+            }) orelse return RenderError.NoDevice;
+            if (self.vertex_buffer) |old_buffer| {
+                old_buffer.release();
+            }
+            self.vertex_buffer = buffer;
+            self.vertex_buffer_size = @intCast(bytes.len);
+        }
+
+        queue.writeBuffer(self.vertex_buffer orelse return RenderError.NoDevice, 0, bytes.ptr, bytes.len);
+    }
+
+    fn deinit(self: *UiDrawResources) void {
+        if (self.vertex_buffer) |buffer| {
+            buffer.release();
+        }
+        self.* = .{};
+    }
+};
+
 const MeshDemo = struct {
     allocator: std.mem.Allocator,
     pipeline: *wgpu.RenderPipeline,
     shadow_pipeline: *wgpu.RenderPipeline,
+    ui_pipeline: *wgpu.RenderPipeline,
     bind_group_layout: *wgpu.BindGroupLayout,
     pipeline_layout: *wgpu.PipelineLayout,
     shadow_pipeline_layout: *wgpu.PipelineLayout,
+    ui_pipeline_layout: *wgpu.PipelineLayout,
     frame_uniform_buffer: *wgpu.Buffer,
     bind_group: *wgpu.BindGroup,
     shadow_target: ShadowTarget,
     shadow_sampler: *wgpu.Sampler,
     render_state: RenderEcsState,
     batches: []BatchResources,
+    ui_draw: UiDrawResources = .{},
 
     fn create(
         allocator: std.mem.Allocator,
@@ -877,13 +1054,25 @@ const MeshDemo = struct {
         const shadow_pipeline = try createShadowPipeline(device, shadow_pipeline_layout);
         errdefer shadow_pipeline.release();
 
+        const ui_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina UI pipeline layout"),
+            .bind_group_layout_count = empty_bind_group_layouts.len,
+            .bind_group_layouts = &empty_bind_group_layouts,
+        }) orelse return RenderError.NoDevice;
+        errdefer ui_pipeline_layout.release();
+
+        const ui_pipeline = try createUiPipeline(device, texture_format, ui_pipeline_layout);
+        errdefer ui_pipeline.release();
+
         return .{
             .allocator = allocator,
             .pipeline = pipeline,
             .shadow_pipeline = shadow_pipeline,
+            .ui_pipeline = ui_pipeline,
             .bind_group_layout = bind_group_layout,
             .pipeline_layout = pipeline_layout,
             .shadow_pipeline_layout = shadow_pipeline_layout,
+            .ui_pipeline_layout = ui_pipeline_layout,
             .frame_uniform_buffer = frame_uniform_buffer,
             .bind_group = bind_group,
             .shadow_target = shadow_target,
@@ -905,9 +1094,12 @@ const MeshDemo = struct {
         self.shadow_target.deinit();
         self.pipeline.release();
         self.shadow_pipeline.release();
+        self.ui_pipeline.release();
         self.pipeline_layout.release();
         self.shadow_pipeline_layout.release();
+        self.ui_pipeline_layout.release();
         self.bind_group_layout.release();
+        self.ui_draw.deinit();
     }
 
     fn draw(
@@ -950,6 +1142,10 @@ const MeshDemo = struct {
                 } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) {
                     const plan = maybe_plan orelse return RenderError.InvalidScene;
                     try self.render_state.queueBatchDraws(plan.batches.len);
+                } else if (std.mem.eql(u8, system.id, render_prepare_ui_system_id)) {
+                    try self.prepareUiDrawResources(context.device, context.queue, context.frame);
+                } else if (std.mem.eql(u8, system.id, render_queue_ui_system_id)) {
+                    try self.render_state.queueUiDraw();
                 } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) {
                     try self.drawQueuedBatches(context);
                 } else {
@@ -957,6 +1153,12 @@ const MeshDemo = struct {
                 }
             }
         }
+    }
+
+    fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
+        var vertices = try buildUiVertices(self.allocator, &self.render_state.world, config.width, config.height);
+        defer vertices.deinit(self.allocator);
+        try self.ui_draw.update(device, queue, vertices.items);
     }
 
     fn prepareBatchResources(self: *MeshDemo, device: *wgpu.Device, plan: BatchPlan) RenderError!void {
@@ -1043,6 +1245,8 @@ const MeshDemo = struct {
             draw_batch_indices.append(self.allocator, batch_index) catch return RenderError.OutOfMemory;
         }
 
+        const should_draw_ui = self.render_state.uiDrawCommandCount() > 0 and self.ui_draw.vertex_count > 0;
+
         const encoder = context.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
             .label = wgpu.StringView.fromSlice("Machina mesh command encoder"),
         }) orelse return RenderError.NoDevice;
@@ -1085,6 +1289,10 @@ const MeshDemo = struct {
         }
         render_pass.end();
 
+        if (should_draw_ui) {
+            try self.drawUiPass(encoder, context.target_view);
+        }
+
         const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
             .label = wgpu.StringView.fromSlice("Machina mesh command buffer"),
         }) orelse return RenderError.NoDevice;
@@ -1122,6 +1330,28 @@ const MeshDemo = struct {
             render_pass.setIndexBuffer(batch.index_buffer, .uint16, 0, batch.index_buffer_size);
             render_pass.drawIndexed(batch.index_count, batch.instance_count, 0, 0, 0);
         }
+        render_pass.end();
+    }
+
+    fn drawUiPass(self: *MeshDemo, encoder: *wgpu.CommandEncoder, target_view: *wgpu.TextureView) RenderError!void {
+        const color_attachments = [_]wgpu.ColorAttachment{
+            .{
+                .view = target_view,
+                .load_op = .load,
+                .store_op = .store,
+            },
+        };
+        const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina UI pass"),
+            .color_attachment_count = color_attachments.len,
+            .color_attachments = &color_attachments,
+        }) orelse return RenderError.NoDevice;
+        defer render_pass.release();
+
+        render_pass.setPipeline(self.ui_pipeline);
+        const vertex_buffer = self.ui_draw.vertex_buffer orelse return RenderError.NoDevice;
+        render_pass.setVertexBuffer(0, vertex_buffer, 0, self.ui_draw.vertex_buffer_size);
+        render_pass.draw(self.ui_draw.vertex_count, 1, 0, 0);
         render_pass.end();
     }
 };
@@ -1580,6 +1810,58 @@ fn createShadowPipeline(device: *wgpu.Device, pipeline_layout: *wgpu.PipelineLay
     }) orelse return RenderError.NoDevice;
 }
 
+fn createUiPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
+    const shader_module = device.createShaderModule(&wgpu.shaderModuleWGSLDescriptor(.{
+        .code = @embedFile("shaders/ui.wgsl"),
+    })) orelse return RenderError.NoDevice;
+    defer shader_module.release();
+
+    const vertex_attributes = [_]wgpu.VertexAttribute{
+        .{
+            .format = .float32x2,
+            .offset = @offsetOf(UiVertex, "position"),
+            .shader_location = 0,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "color"),
+            .shader_location = 1,
+        },
+    };
+    const vertex_buffers = [_]wgpu.VertexBufferLayout{
+        .{
+            .step_mode = .vertex,
+            .array_stride = @sizeOf(UiVertex),
+            .attribute_count = vertex_attributes.len,
+            .attributes = &vertex_attributes,
+        },
+    };
+    const color_targets = [_]wgpu.ColorTargetState{
+        .{
+            .format = texture_format,
+        },
+    };
+
+    return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
+        .label = wgpu.StringView.fromSlice("Machina UI pipeline"),
+        .layout = pipeline_layout,
+        .vertex = .{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice("vs_main"),
+            .buffer_count = vertex_buffers.len,
+            .buffers = &vertex_buffers,
+        },
+        .primitive = .{},
+        .fragment = &wgpu.FragmentState{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice("fs_main"),
+            .target_count = color_targets.len,
+            .targets = &color_targets,
+        },
+        .multisample = .{},
+    }) orelse return RenderError.NoDevice;
+}
+
 fn createStaticBuffer(device: *wgpu.Device, label: []const u8, usage: wgpu.BufferUsage, data: []const u8) RenderError!*wgpu.Buffer {
     const buffer = device.createBuffer(&wgpu.BufferDescriptor{
         .label = wgpu.StringView.fromSlice(label),
@@ -1802,13 +2084,15 @@ test "render ECS schedule orders extract prepare queue and draw systems" {
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
 
-    try std.testing.expectEqual(@as(usize, 4), state.schedule.systemCount());
-    try std.testing.expectEqual(@as(usize, 4), state.schedule.batchCount());
+    try std.testing.expectEqual(@as(usize, 6), state.schedule.systemCount());
+    try std.testing.expectEqual(@as(usize, 6), state.schedule.batchCount());
 
     const expected = [_][]const u8{
         render_extract_system_id,
         render_prepare_meshes_system_id,
         render_queue_meshes_system_id,
+        render_prepare_ui_system_id,
+        render_queue_ui_system_id,
         render_draw_meshes_system_id,
     };
     for (expected, state.schedule.batches) |system_id, batch| {
@@ -1854,12 +2138,34 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     const light = try scene_world.createEntity("key-light", "Key Light");
     try scene_world.setDirectionalLight(light, .{ .intensity = 1.25 });
 
+    const canvas = try scene_world.createEntity("debug-canvas", "Debug Canvas");
+    try scene_world.setUiCanvas(canvas);
+
+    const panel = try scene_world.createEntity("debug-panel", "Debug Panel");
+    try scene_world.setUiRect(panel, .{
+        .position = .{ 24.0, 24.0, 0.0 },
+        .size = .{ 180.0, 58.0, 0.0 },
+        .color = .{ 0.02, 0.08, 0.16 },
+    });
+    try scene_world.setUiButton(panel);
+
+    const label = try scene_world.createEntity("debug-label", "Debug Label");
+    try scene_world.setUiText(label, .{
+        .position = .{ 38.0, 42.0, 0.0 },
+        .size = 2.0,
+        .color = .{ 1.0, 0.68, 0.16 },
+        .value = "UI READY",
+    });
+
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
     try state.extractScene(.{ .world = &scene_world });
 
-    try std.testing.expectEqual(@as(usize, 4), state.world.entityCount());
+    try std.testing.expectEqual(@as(usize, 7), state.world.entityCount());
     try std.testing.expectEqual(@as(usize, 2), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
     try std.testing.expectEqual(@as(f32, 52.0), (state.world.renderCamera() orelse return error.TestExpectedEqual).fov_y_degrees);
     try std.testing.expectEqual(@as(f32, 1.25), (state.world.renderDirectionalLight() orelse return error.TestExpectedEqual).intensity);
     const extracted_sphere = state.world.renderableMeshAt(1) orelse return error.TestExpectedEqual;
@@ -1885,6 +2191,13 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     const second_draw = state.world.queryNext(&draw_query, &cursor) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 1), try state.drawCommandBatchIndex(second_draw));
     try std.testing.expect(state.world.queryNext(&draw_query, &cursor) == null);
+
+    const extracted_panel = state.world.uiRectAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expect(extracted_panel.is_button);
+    const extracted_label = state.world.uiTextAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("UI READY", extracted_label.value);
+    try state.queueUiDraw();
+    try std.testing.expectEqual(@as(usize, 1), state.uiDrawCommandCount());
 }
 
 test "batch plan groups matching geometry and material renderables" {
@@ -1928,6 +2241,33 @@ test "batch plan groups matching geometry and material renderables" {
 
     try state.queueBatchDraws(plan.batches.len);
     try std.testing.expectEqual(@as(usize, 4), state.drawCommandCount());
+}
+
+test "UI vertex builder expands rects and fixed pixel text" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const panel = try world.createEntity("panel", "Panel");
+    try world.setUiRect(panel, .{
+        .position = .{ 32.0, 24.0, 0.0 },
+        .size = .{ 120.0, 48.0, 0.0 },
+        .color = .{ 0.0, 0.2, 0.4 },
+    });
+
+    const label = try world.createEntity("label", "Label");
+    try world.setUiText(label, .{
+        .position = .{ 42.0, 36.0, 0.0 },
+        .size = 2.0,
+        .color = .{ 1.0, 0.8, 0.2 },
+        .value = "UI 1",
+    });
+
+    var vertices = try buildUiVertices(std.testing.allocator, &world, 640, 480);
+    defer vertices.deinit(std.testing.allocator);
+
+    try std.testing.expect(vertices.items.len > 6);
+    try std.testing.expectEqual(@as(f32, -0.9), vertices.items[0].position[0]);
+    try std.testing.expect(vertices.items[0].position[1] > 0.8);
 }
 
 const BatchTestShadowFlags = struct {
@@ -2045,6 +2385,200 @@ fn matMul(a: [16]f32, b: [16]f32) [16]f32 {
     return out;
 }
 
+fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, width: u32, height: u32) RenderError!std.ArrayList(UiVertex) {
+    if (width == 0 or height == 0) {
+        return RenderError.InvalidScene;
+    }
+
+    var vertices: std.ArrayList(UiVertex) = .empty;
+    errdefer vertices.deinit(allocator);
+
+    var rects = world.uiRects();
+    while (rects.next()) |rect| {
+        try appendUiRect(&vertices, allocator, width, height, rect.position, rect.size, rect.color);
+        if (rect.is_button) {
+            const highlight = scaleColor(rect.color, 1.35);
+            const shadow = scaleColor(rect.color, 0.65);
+            try appendUiRect(&vertices, allocator, width, height, rect.position, .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 }, highlight);
+            try appendUiRect(
+                &vertices,
+                allocator,
+                width,
+                height,
+                .{ rect.position[0], rect.position[1] + @max(rect.size[1] - 2.0, 0.0), rect.position[2] },
+                .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 },
+                shadow,
+            );
+        }
+    }
+
+    var texts = world.uiTexts();
+    while (texts.next()) |text| {
+        try appendUiText(&vertices, allocator, width, height, text);
+    }
+
+    return vertices;
+}
+
+fn appendUiText(
+    vertices: *std.ArrayList(UiVertex),
+    allocator: std.mem.Allocator,
+    width: u32,
+    height: u32,
+    text: runtime.UiText,
+) RenderError!void {
+    if (!isFiniteVec3(text.position) or
+        !std.math.isFinite(text.size) or
+        text.size <= 0.0 or
+        !isFiniteVec3(text.color))
+    {
+        return RenderError.InvalidScene;
+    }
+
+    const origin_x = text.position[0];
+    var cursor_x = origin_x;
+    var cursor_y = text.position[1];
+    for (text.value) |byte| {
+        if (byte == '\n') {
+            cursor_x = origin_x;
+            cursor_y += text.size * 8.0;
+            continue;
+        }
+        try appendGlyph(vertices, allocator, width, height, cursor_x, cursor_y, text.size, text.color, byte);
+        cursor_x += text.size * 6.0;
+    }
+}
+
+fn appendGlyph(
+    vertices: *std.ArrayList(UiVertex),
+    allocator: std.mem.Allocator,
+    width: u32,
+    height: u32,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: [3]f32,
+    byte: u8,
+) RenderError!void {
+    const rows = glyphRows(byte);
+    for (rows, 0..) |row_bits, row| {
+        for (0..5) |column| {
+            const bit: u3 = @intCast(4 - column);
+            if ((row_bits & (@as(u8, 1) << bit)) == 0) {
+                continue;
+            }
+            try appendUiRect(
+                vertices,
+                allocator,
+                width,
+                height,
+                .{ x + @as(f32, @floatFromInt(column)) * size, y + @as(f32, @floatFromInt(row)) * size, 0.0 },
+                .{ size, size, 0.0 },
+                color,
+            );
+        }
+    }
+}
+
+fn appendUiRect(
+    vertices: *std.ArrayList(UiVertex),
+    allocator: std.mem.Allocator,
+    width: u32,
+    height: u32,
+    position: [3]f32,
+    size: [3]f32,
+    color: [3]f32,
+) RenderError!void {
+    if (!isFiniteVec3(position) or !isFiniteVec3(size) or !isFiniteVec3(color) or size[0] <= 0.0 or size[1] <= 0.0) {
+        return RenderError.InvalidScene;
+    }
+
+    const left = screenToClipX(position[0], width);
+    const right = screenToClipX(position[0] + size[0], width);
+    const top = screenToClipY(position[1], height);
+    const bottom = screenToClipY(position[1] + size[1], height);
+    const vertex_color = [4]f32{ clamp01(color[0]), clamp01(color[1]), clamp01(color[2]), 1.0 };
+
+    const quad = [_]UiVertex{
+        .{ .position = .{ left, top }, .color = vertex_color },
+        .{ .position = .{ right, top }, .color = vertex_color },
+        .{ .position = .{ right, bottom }, .color = vertex_color },
+        .{ .position = .{ left, top }, .color = vertex_color },
+        .{ .position = .{ right, bottom }, .color = vertex_color },
+        .{ .position = .{ left, bottom }, .color = vertex_color },
+    };
+    try vertices.appendSlice(allocator, &quad);
+}
+
+fn screenToClipX(value: f32, width: u32) f32 {
+    return (value / @as(f32, @floatFromInt(width))) * 2.0 - 1.0;
+}
+
+fn screenToClipY(value: f32, height: u32) f32 {
+    return 1.0 - (value / @as(f32, @floatFromInt(height))) * 2.0;
+}
+
+fn scaleColor(color: [3]f32, scale: f32) [3]f32 {
+    return .{
+        clamp01(color[0] * scale),
+        clamp01(color[1] * scale),
+        clamp01(color[2] * scale),
+    };
+}
+
+fn clamp01(value: f32) f32 {
+    return @min(@max(value, 0.0), 1.0);
+}
+
+fn glyphRows(byte: u8) [7]u8 {
+    const upper = if (byte >= 'a' and byte <= 'z') byte - 32 else byte;
+    return switch (upper) {
+        'A' => .{ 0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 },
+        'B' => .{ 0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e },
+        'C' => .{ 0x0e, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0e },
+        'D' => .{ 0x1e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1e },
+        'E' => .{ 0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f },
+        'F' => .{ 0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x10 },
+        'G' => .{ 0x0e, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0e },
+        'H' => .{ 0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 },
+        'I' => .{ 0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1f },
+        'J' => .{ 0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0e },
+        'K' => .{ 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 },
+        'L' => .{ 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f },
+        'M' => .{ 0x11, 0x1b, 0x15, 0x15, 0x11, 0x11, 0x11 },
+        'N' => .{ 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 },
+        'O' => .{ 0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e },
+        'P' => .{ 0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10 },
+        'Q' => .{ 0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d },
+        'R' => .{ 0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11 },
+        'S' => .{ 0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e },
+        'T' => .{ 0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 },
+        'U' => .{ 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e },
+        'V' => .{ 0x11, 0x11, 0x11, 0x11, 0x0a, 0x0a, 0x04 },
+        'W' => .{ 0x11, 0x11, 0x11, 0x15, 0x15, 0x1b, 0x11 },
+        'X' => .{ 0x11, 0x11, 0x0a, 0x04, 0x0a, 0x11, 0x11 },
+        'Y' => .{ 0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04 },
+        'Z' => .{ 0x1f, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1f },
+        '0' => .{ 0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e },
+        '1' => .{ 0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e },
+        '2' => .{ 0x0e, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1f },
+        '3' => .{ 0x1e, 0x01, 0x01, 0x0e, 0x01, 0x01, 0x1e },
+        '4' => .{ 0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02 },
+        '5' => .{ 0x1f, 0x10, 0x10, 0x1e, 0x01, 0x01, 0x1e },
+        '6' => .{ 0x0e, 0x10, 0x10, 0x1e, 0x11, 0x11, 0x0e },
+        '7' => .{ 0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 },
+        '8' => .{ 0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e },
+        '9' => .{ 0x0e, 0x11, 0x11, 0x0f, 0x01, 0x01, 0x0e },
+        ':' => .{ 0x00, 0x04, 0x04, 0x00, 0x04, 0x04, 0x00 },
+        '-' => .{ 0x00, 0x00, 0x00, 0x1f, 0x00, 0x00, 0x00 },
+        '_' => .{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f },
+        '.' => .{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x0c },
+        '/' => .{ 0x01, 0x01, 0x02, 0x04, 0x08, 0x10, 0x10 },
+        ' ' => .{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+        else => .{ 0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04 },
+    };
+}
+
 const FrameUniforms = extern struct {
     light_dir: [4]f32,
     light_color: [4]f32,
@@ -2057,6 +2591,11 @@ const InstanceAttributes = extern struct {
     object_color: [4]f32,
     shadow_mvp: [16]f32,
     shadow_flags: [4]f32,
+};
+
+const UiVertex = extern struct {
+    position: [2]f32,
+    color: [4]f32,
 };
 
 fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?*anyopaque, userdata2: ?*anyopaque) callconv(.c) void {
