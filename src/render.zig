@@ -36,7 +36,14 @@ const render_prepare_ui_system_id = "machina.render.prepare_ui";
 const render_queue_ui_system_id = "machina.render.queue_ui";
 const render_draw_meshes_system_id = "machina.render.draw_meshes";
 const editor_system_profile_max_rows = 8;
-const editor_system_profile_id_chars = 28;
+const editor_system_profile_id_chars = 22;
+const editor_debug_panel_width: f32 = 176.0;
+const editor_system_panel_width: f32 = 780.0;
+const editor_debug_fps_size: f32 = 1.5;
+const editor_system_text_size: f32 = 1.0;
+const editor_system_header_y: f32 = 86.0;
+const editor_system_first_row_y: f32 = 122.0;
+const editor_system_row_stride: f32 = 36.0;
 
 pub const RenderError = error{
     NoAdapter,
@@ -915,12 +922,12 @@ fn extractDebugOverlayInto(
 ) RenderError!void {
     const profile_rows = @min(input.system_profiles.len, editor_system_profile_max_rows);
     const has_profiles = input.system_profiles.len > 0;
-    const panel_width: f32 = if (has_profiles) 604.0 else 144.0;
-    var panel_height: f32 = 52.0;
+    const panel_width: f32 = if (has_profiles) editor_system_panel_width else editor_debug_panel_width;
+    var panel_height: f32 = 92.0;
     if (has_profiles) {
-        panel_height = 84.0 + @as(f32, @floatFromInt(profile_rows)) * 18.0;
+        panel_height = 132.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
         if (input.system_profiles.len > profile_rows) {
-            panel_height += 18.0;
+            panel_height += editor_system_row_stride;
         }
     }
 
@@ -946,8 +953,8 @@ fn extractDebugOverlayInto(
 
     const label = world.createEntity("machina.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
     world.setUiText(label, .{
-        .position = .{ 28.0, 22.0, 0.0 },
-        .size = 1.0,
+        .position = .{ 28.0, 24.0, 0.0 },
+        .size = editor_debug_fps_size,
         .color = .{ 0.93, 0.969, 1.0 },
         .value = fps_text,
     }) catch |err| return mapWorldError(err);
@@ -960,8 +967,8 @@ fn extractDebugOverlayInto(
     defer allocator.free(header_text);
     const header = world.createEntity("machina.editor.debug.systems.header", "Editor Debug Systems Header") catch |err| return mapWorldError(err);
     world.setUiText(header, .{
-        .position = .{ 28.0, 58.0, 0.0 },
-        .size = 0.5,
+        .position = .{ 28.0, editor_system_header_y, 0.0 },
+        .size = editor_system_text_size,
         .color = .{ 0.56, 0.737, 0.949 },
         .value = header_text,
     }) catch |err| return mapWorldError(err);
@@ -973,8 +980,8 @@ fn extractDebugOverlayInto(
         defer allocator.free(row_id);
         const row = world.createEntity(row_id, "Editor Debug System Row") catch |err| return mapWorldError(err);
         world.setUiText(row, .{
-            .position = .{ 28.0, 78.0 + @as(f32, @floatFromInt(index)) * 18.0, 0.0 },
-            .size = 0.5,
+            .position = .{ 28.0, editor_system_first_row_y + @as(f32, @floatFromInt(index)) * editor_system_row_stride, 0.0 },
+            .size = editor_system_text_size,
             .color = .{ 0.889, 0.949, 0.992 },
             .value = line_text,
         }) catch |err| return mapWorldError(err);
@@ -985,8 +992,8 @@ fn extractDebugOverlayInto(
         defer allocator.free(overflow_text);
         const overflow = world.createEntity("machina.editor.debug.systems.overflow", "Editor Debug Systems Overflow") catch |err| return mapWorldError(err);
         world.setUiText(overflow, .{
-            .position = .{ 28.0, 78.0 + @as(f32, @floatFromInt(profile_rows)) * 18.0, 0.0 },
-            .size = 0.5,
+            .position = .{ 28.0, editor_system_first_row_y + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride, 0.0 },
+            .size = editor_system_text_size,
             .color = .{ 0.56, 0.737, 0.949 },
             .value = overflow_text,
         }) catch |err| return mapWorldError(err);
@@ -1011,14 +1018,14 @@ fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.System
     const ellipsis = if (profile.id.len > editor_system_profile_id_chars) "..." else "";
 
     if (profile.sample_count == 0) {
-        return std.fmt.allocPrint(allocator, "{s} {s}{s} AVG -- LAST --", .{
+        return std.fmt.allocPrint(allocator, "{s} {s}{s} avg -- last --", .{
             phase,
             id_prefix,
             ellipsis,
         });
     }
 
-    return std.fmt.allocPrint(allocator, "{s} {s}{s} AVG {d} US LAST {d} US", .{
+    return std.fmt.allocPrint(allocator, "{s} {s}{s} avg {d}us last {d}us", .{
         phase,
         id_prefix,
         ellipsis,
@@ -2884,13 +2891,14 @@ test "debug overlay extracts system profile rows when available" {
     var saw_update = false;
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
+        try std.testing.expect(text.size >= 1.0);
         if (std.mem.indexOf(u8, text.value, "SYSTEMS 2  AVG 120F") != null) {
             saw_header = true;
         }
-        if (std.mem.indexOf(u8, text.value, "startup spawn_initial AVG -- LAST --") != null) {
+        if (std.mem.indexOf(u8, text.value, "startup spawn_initial avg -- last --") != null) {
             saw_startup = true;
         }
-        if (std.mem.indexOf(u8, text.value, "update rotate_cubes AVG 57 US LAST 123 US") != null) {
+        if (std.mem.indexOf(u8, text.value, "update rotate_cubes avg 57us last 123us") != null) {
             saw_update = true;
         }
     }
