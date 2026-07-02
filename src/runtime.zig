@@ -29,6 +29,8 @@ pub const ScheduleError = error{
 const engine_namespace = "machina";
 pub const transform_component_id = "machina.transform";
 pub const cube_renderer_component_id = "machina.render.cube";
+pub const camera_component_id = "machina.camera";
+pub const directional_light_component_id = "machina.light.directional";
 pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
@@ -509,6 +511,19 @@ pub const CubeRenderer = struct {
     color: [3]f32 = .{ 0.0, 0.56, 1.0 },
 };
 
+pub const Camera = struct {
+    fov_y_degrees: f32 = 48.0,
+    near: f32 = 0.1,
+    far: f32 = 100.0,
+};
+
+pub const DirectionalLight = struct {
+    direction: [3]f32 = .{ 0.35, 0.68, 0.64 },
+    color: [3]f32 = .{ 1.0, 1.0, 1.0 },
+    intensity: f32 = 0.78,
+    ambient: f32 = 0.18,
+};
+
 pub const Spin = struct {
     angular_velocity: [3]f32 = .{ 0.62, 1.0, 0.0 },
 };
@@ -522,6 +537,26 @@ pub const RenderableCube = struct {
     scale: [3]f32,
     color: [3]f32,
     spin: [3]f32,
+};
+
+pub const RenderCamera = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    transform: Transform,
+    fov_y_degrees: f32,
+    near: f32,
+    far: f32,
+};
+
+pub const RenderDirectionalLight = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    direction: [3]f32,
+    color: [3]f32,
+    intensity: f32,
+    ambient: f32,
 };
 
 pub const ComponentValue = union(FieldType) {
@@ -754,6 +789,11 @@ pub const World = struct {
         return count;
     }
 
+    pub fn componentInstanceCountFor(self: World, component_id: []const u8) usize {
+        const table = self.findComponentTable(component_id) orelse return 0;
+        return table.entities.items.len;
+    }
+
     pub fn entity(self: World, handle: EntityHandle) WorldError!Entity {
         const index = handle.index;
         if (index >= self.entities.items.len) {
@@ -787,6 +827,25 @@ pub const World = struct {
         try self.setComponent(handle, cube_renderer_component_id, &fields);
     }
 
+    pub fn setCamera(self: *World, handle: EntityHandle, camera: Camera) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "fov_y_degrees", .value = .{ .float = camera.fov_y_degrees } },
+            .{ .name = "near", .value = .{ .float = camera.near } },
+            .{ .name = "far", .value = .{ .float = camera.far } },
+        };
+        try self.setComponent(handle, camera_component_id, &fields);
+    }
+
+    pub fn setDirectionalLight(self: *World, handle: EntityHandle, light: DirectionalLight) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "direction", .value = .{ .vec3 = light.direction } },
+            .{ .name = "color", .value = .{ .vec3 = light.color } },
+            .{ .name = "intensity", .value = .{ .float = light.intensity } },
+            .{ .name = "ambient", .value = .{ .float = light.ambient } },
+        };
+        try self.setComponent(handle, directional_light_component_id, &fields);
+    }
+
     pub fn setSpin(self: *World, handle: EntityHandle, spin: Spin) WorldError!void {
         const fields = [_]ComponentFieldValue{
             .{ .name = "angular_velocity", .value = .{ .vec3 = spin.angular_velocity } },
@@ -802,6 +861,14 @@ pub const World = struct {
             .position = try self.getVec3(handle, transform_component_id, "position"),
             .rotation = try self.getVec3(handle, transform_component_id, "rotation"),
             .scale = try self.getVec3(handle, transform_component_id, "scale"),
+        };
+    }
+
+    pub fn getFloat(self: World, handle: EntityHandle, component_id: []const u8, field_name: []const u8) WorldError!f32 {
+        const value = try self.getFieldValue(handle, component_id, field_name);
+        return switch (value) {
+            .float => |payload| payload,
+            else => WorldError.InvalidFieldType,
         };
     }
 
@@ -904,6 +971,39 @@ pub const World = struct {
 
     pub fn renderableCubes(self: *const World) RenderableCubeIterator {
         return .{ .world = self };
+    }
+
+    pub fn renderCamera(self: World) ?RenderCamera {
+        var cursor: usize = 0;
+        const component_ids = [_][]const u8{ transform_component_id, camera_component_id };
+        const handle = self.queryNext(&component_ids, &cursor) orelse return null;
+        const stored_entity = self.entity(handle) catch return null;
+        const transform = (self.getTransform(handle) catch return null) orelse return null;
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .transform = transform,
+            .fov_y_degrees = self.getFloat(handle, camera_component_id, "fov_y_degrees") catch return null,
+            .near = self.getFloat(handle, camera_component_id, "near") catch return null,
+            .far = self.getFloat(handle, camera_component_id, "far") catch return null,
+        };
+    }
+
+    pub fn renderDirectionalLight(self: World) ?RenderDirectionalLight {
+        var cursor: usize = 0;
+        const component_ids = [_][]const u8{directional_light_component_id};
+        const handle = self.queryNext(&component_ids, &cursor) orelse return null;
+        const stored_entity = self.entity(handle) catch return null;
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .direction = self.getVec3(handle, directional_light_component_id, "direction") catch return null,
+            .color = self.getVec3(handle, directional_light_component_id, "color") catch return null,
+            .intensity = self.getFloat(handle, directional_light_component_id, "intensity") catch return null,
+            .ambient = self.getFloat(handle, directional_light_component_id, "ambient") catch return null,
+        };
     }
 
     fn componentIndex(self: World, handle: EntityHandle) WorldError!usize {
@@ -1279,6 +1379,8 @@ test "world stores stable entity ids and components" {
 
     try std.testing.expectEqual(@as(usize, 1), world.entityCount());
     try std.testing.expectEqual(@as(usize, 1), world.renderableCubeCount());
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(cube_renderer_component_id));
+    try std.testing.expectEqual(@as(usize, 0), world.componentInstanceCountFor(camera_component_id));
 
     const found = world.findEntityById("entity-1") orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(entity.index, found.index);
@@ -1287,6 +1389,37 @@ test "world stores stable entity ids and components" {
     try std.testing.expectEqualStrings("entity-1", cube.id);
     try std.testing.expectEqual(@as(f32, 2.0), cube.position[1]);
     try std.testing.expectEqual(@as(f32, 1.0), cube.color[0]);
+}
+
+test "world resolves render camera and directional light components" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const camera_entity = try world.createEntity("camera", "Camera");
+    try world.setTransform(camera_entity, .{ .position = .{ 0.0, 1.5, 6.0 } });
+    try world.setCamera(camera_entity, .{
+        .fov_y_degrees = 55.0,
+        .near = 0.2,
+        .far = 250.0,
+    });
+
+    const light_entity = try world.createEntity("key-light", "Key Light");
+    try world.setDirectionalLight(light_entity, .{
+        .direction = .{ -0.25, 0.75, 0.5 },
+        .color = .{ 0.9, 0.95, 1.0 },
+        .intensity = 1.2,
+        .ambient = 0.12,
+    });
+
+    const camera = world.renderCamera() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(camera_entity.index, camera.entity.index);
+    try std.testing.expectEqual(@as(f32, 6.0), camera.transform.position[2]);
+    try std.testing.expectEqual(@as(f32, 55.0), camera.fov_y_degrees);
+
+    const light = world.renderDirectionalLight() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(light_entity.index, light.entity.index);
+    try std.testing.expectEqual(@as(f32, 0.75), light.direction[1]);
+    try std.testing.expectEqual(@as(f32, 1.2), light.intensity);
 }
 
 test "world rejects duplicate entity ids" {

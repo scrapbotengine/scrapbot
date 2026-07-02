@@ -1,7 +1,7 @@
 # FDR-009: Entity Component Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
@@ -14,6 +14,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Systems operate over component queries rather than over renderer-specific or script-owned object lists.
 - Scene files author entity and component data as text component tables.
 - The runtime world stores component instances in per-component column tables rather than renderer-specific side arrays.
+- Engine-owned rendering components include transform, cube renderer, camera, and directional light data.
 - Each component table owns dense entity rows, a sparse entity-to-row index, and typed SoA field columns derived from engine or script schemas.
 - Scripts can query entities by component set and mutate supported component fields through the scripting API.
 - Scripts can register new component and system types with project-local or qualified non-reserved ids.
@@ -57,7 +58,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 ## Related
 
 - **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010
-- **FDRs:** FDR-002, FDR-004, FDR-010, FDR-011
+- **FDRs:** FDR-002, FDR-004, FDR-010, FDR-011, FDR-014
 
 ## Open Questions
 

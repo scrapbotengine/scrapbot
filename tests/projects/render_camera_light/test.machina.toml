@@ -1,0 +1,38 @@
+frames = 1
+dt = 1.0
+
+[[expect.field]]
+entity = "camera-1"
+component = "machina.camera"
+field = "fov_y_degrees"
+equals_float = 42.0
+
+[[expect.field]]
+entity = "camera-1"
+component = "machina.camera"
+field = "near"
+equals_float = 0.2
+
+[[expect.field]]
+entity = "camera-1"
+component = "machina.transform"
+field = "position"
+equals_vec3 = [0.0, 0.0, 5.5]
+
+[[expect.field]]
+entity = "light-1"
+component = "machina.light.directional"
+field = "direction"
+equals_vec3 = [-0.2, 0.8, 0.6]
+
+[[expect.field]]
+entity = "light-1"
+component = "machina.light.directional"
+field = "intensity"
+equals_float = 1.1
+
+[[expect.field]]
+entity = "cube-1"
+component = "machina.render.cube"
+field = "color"
+equals_vec3 = [0.2, 0.7, 1.0]

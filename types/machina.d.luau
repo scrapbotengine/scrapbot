@@ -168,6 +168,19 @@ export type MachinaRenderCube = {
     color: MachinaVec3,
 }
 
+export type MachinaCamera = {
+    fov_y_degrees: number,
+    near: number,
+    far: number,
+}
+
+export type MachinaDirectionalLight = {
+    direction: MachinaVec3,
+    color: MachinaVec3,
+    intensity: number,
+    ambient: number,
+}
+
 export type MachinaEntity = {
     get_vec3: (
         component: MachinaComponentId,

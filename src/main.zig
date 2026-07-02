@@ -1775,7 +1775,8 @@ test "testCommand runs gameplay project suite" {
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS auto_door") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS health_tick") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS projectile_lifetime") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 3 passed, 0 failed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS render_camera_light") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 4 passed, 0 failed") != null);
     try std.testing.expectEqualStrings("", stderr.buffered());
 }
 

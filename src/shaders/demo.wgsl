@@ -2,7 +2,9 @@ struct FrameUniforms {
     mvp: mat4x4<f32>,
     model: mat4x4<f32>,
     light_dir: vec4<f32>,
+    light_color: vec4<f32>,
     object_color: vec4<f32>,
+    lighting: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -31,8 +33,10 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let normal = normalize(input.normal);
     let light = normalize(frame.light_dir.xyz);
     let diffuse = max(dot(normal, light), 0.0);
-    let ambient = 0.18;
+    let ambient = frame.lighting.x;
+    let intensity = frame.lighting.y;
     let rim = pow(1.0 - max(abs(normal.z), 0.0), 2.0) * 0.12;
-    let shaded = frame.object_color.xyz * (ambient + diffuse * 0.78) + vec3<f32>(rim);
+    let lit = frame.object_color.xyz * frame.light_color.xyz * diffuse * intensity;
+    let shaded = frame.object_color.xyz * ambient + lit + vec3<f32>(rim);
     return vec4<f32>(shaded, 1.0);
 }

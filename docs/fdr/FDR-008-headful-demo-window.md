@@ -1,7 +1,7 @@
 # FDR-008: Headful Demo Window
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
@@ -13,7 +13,8 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 - The command validates the project before opening a window.
 - The renderer opens a visible window and presents the project's default scene until the window is closed.
 - Cube entity position, rotation, scale, color, and spin values come from scene data.
-- Cubes render with depth testing and simple directional diffuse shading.
+- Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
+- Cubes render with depth testing and scene-driven directional diffuse shading.
 - Users can run `machina run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
 - `machina render [path] [output.bmp]` remains the headless/offscreen snapshot command.
 
@@ -40,7 +41,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 ## Related
 
 - **ADRs:** ADR-004, ADR-005
-- **FDRs:** FDR-003, FDR-007
+- **FDRs:** FDR-003, FDR-007, FDR-014
 
 ## Open Questions
 

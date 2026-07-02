@@ -1,7 +1,7 @@
 # FDR-002: Text-Based Scene Authoring
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
@@ -13,7 +13,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 - Scene files describe entities, names, component data, and eventually hierarchy, references to assets, scripts, prefabs, and other project resources.
 - The initial scene format uses TOML-shaped text files, starting with `scenes/main.scene.toml`.
 - The current entity schema uses `[[entities]]` records with stable text ids and names, then component data under `[entities.components.<id>]` tables.
-- Engine component tables currently include `[entities.components."machina.transform"]` with `position`, `rotation`, and `scale` `vec3` fields, plus `[entities.components."machina.render.cube"]` with a `color` `vec3` field.
+- Engine component tables currently include `[entities.components."machina.transform"]` with `position`, `rotation`, and `scale` `vec3` fields; `[entities.components."machina.render.cube"]` with a `color` `vec3` field; `[entities.components."machina.camera"]` with projection fields; and `[entities.components."machina.light.directional"]` with directional light fields.
 - Project and package component tables may appear in scenes after scripts register matching component schemas.
 - Scene references are forward-slash, project-relative paths and may not escape the project directory.
 - Scene files are stable under repeated editor saves when the scene has not changed.
@@ -44,7 +44,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 ## Related
 
 - **ADRs:** ADR-001, ADR-006, ADR-008, ADR-009
-- **FDRs:** FDR-001, FDR-004, FDR-006, FDR-009, FDR-010
+- **FDRs:** FDR-001, FDR-004, FDR-006, FDR-009, FDR-010, FDR-014
 
 ## Open Questions
 

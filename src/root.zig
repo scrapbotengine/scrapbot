@@ -19,6 +19,8 @@ pub const World = runtime.World;
 pub const EntityHandle = runtime.EntityHandle;
 pub const Transform = runtime.Transform;
 pub const CubeRenderer = runtime.CubeRenderer;
+pub const Camera = runtime.Camera;
+pub const DirectionalLight = runtime.DirectionalLight;
 pub const Spin = runtime.Spin;
 pub const ComponentRegistry = runtime.ComponentRegistry;
 pub const ComponentDefinition = runtime.ComponentDefinition;
@@ -509,6 +511,30 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\
             \\[entities.components."machina.render.cube"]
             \\color = [0.0, 0.56, 1.0]
+            \\
+            \\[[entities]]
+            \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0002"
+            \\name = "Main Camera"
+            \\
+            \\[entities.components."machina.transform"]
+            \\position = [0.0, 0.0, 4.8]
+            \\rotation = [0.0, 0.0, 0.0]
+            \\scale = [1.0, 1.0, 1.0]
+            \\
+            \\[entities.components."machina.camera"]
+            \\fov_y_degrees = 48.0
+            \\near = 0.1
+            \\far = 100.0
+            \\
+            \\[[entities]]
+            \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0003"
+            \\name = "Key Light"
+            \\
+            \\[entities.components."machina.light.directional"]
+            \\direction = [0.35, 0.68, 0.64]
+            \\color = [1.0, 1.0, 1.0]
+            \\intensity = 0.78
+            \\ambient = 0.18
             \\
             ,
             .flags = .{ .exclusive = true },
@@ -1540,13 +1566,22 @@ test "loadDefaultScene reads cube entities from scene data" {
     defer freeScene(std.testing.allocator, scene);
 
     try std.testing.expectEqualStrings("Main", scene.name);
-    try std.testing.expectEqual(@as(usize, 1), scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 3), scene.entityCount());
     try std.testing.expectEqual(@as(usize, 1), scene.renderableCubeCount());
 
     const entity = scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
     const cube = scene.world.renderableCubeAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(entity.index, cube.entity.index);
     try std.testing.expectEqual(@as(f32, 0.56), cube.color[1]);
+
+    const camera = scene.world.renderCamera() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("Main Camera", camera.name);
+    try std.testing.expectEqual(@as(f32, 4.8), camera.transform.position[2]);
+    try std.testing.expectEqual(@as(f32, 48.0), camera.fov_y_degrees);
+
+    const light = scene.world.renderDirectionalLight() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("Key Light", light.name);
+    try std.testing.expectEqual(@as(f32, 0.78), light.intensity);
 }
 
 test "loadDefaultScene stores script-declared component tables" {
@@ -1902,7 +1937,7 @@ test "LiveProject reloads changed active scene and keeps last good state on fail
 
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
-    try std.testing.expectEqual(@as(usize, 1), live_project.scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 3), live_project.scene.entityCount());
     try std.testing.expectEqual(ReloadResult.unchanged, try live_project.pollLoadedSources());
 
     const root_dir = try cwd.openDir(io, root_path, .{});
@@ -2438,7 +2473,7 @@ test "LiveProject reloads project metadata and follows default scene changes" {
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
     try std.testing.expectEqualStrings(default_scene_path, live_project.project.default_scene);
-    try std.testing.expectEqual(@as(usize, 1), live_project.scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 3), live_project.scene.entityCount());
 
     try root_dir.writeFile(io, .{
         .sub_path = project_file_name,

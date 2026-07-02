@@ -339,6 +339,29 @@ fn registerEngineTypes(registry: *runtime.ComponentRegistry) !void {
         .version = 1,
         .fields = &cube_fields,
     });
+
+    const camera_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "fov_y_degrees", .value_type = .float },
+        .{ .name = "near", .value_type = .float },
+        .{ .name = "far", .value_type = .float },
+    };
+    try registry.registerEngineComponent(.{
+        .id = runtime.camera_component_id,
+        .version = 1,
+        .fields = &camera_fields,
+    });
+
+    const directional_light_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "direction", .value_type = .vec3 },
+        .{ .name = "color", .value_type = .vec3 },
+        .{ .name = "intensity", .value_type = .float },
+        .{ .name = "ambient", .value_type = .float },
+    };
+    try registry.registerEngineComponent(.{
+        .id = runtime.directional_light_component_id,
+        .version = 1,
+        .fields = &directional_light_fields,
+    });
 }
 
 fn registerDeclaredTypes(program: *Program) ScriptError!void {

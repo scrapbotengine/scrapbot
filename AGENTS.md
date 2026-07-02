@@ -18,9 +18,9 @@ Machina is an experimental, text-first game engine written in Zig. The engine is
 
 ## Current Engine Model
 
-Projects have a `project.machina.toml` file, a default scene path, and an optional `scripts = [...]` list. Scenes are TOML-shaped text files with root `name` and `version` fields plus `[[entities]]` records. Entity data is authored as component tables such as `[entities.components."machina.transform"]`, `[entities.components."machina.render.cube"]`, and project-local tables like `[entities.components.spin]`. Scene component ids and fields must validate against the engine/script component registry.
+Projects have a `project.machina.toml` file, a default scene path, and an optional `scripts = [...]` list. Scenes are TOML-shaped text files with root `name` and `version` fields plus `[[entities]]` records. Entity data is authored as component tables such as `[entities.components."machina.transform"]`, `[entities.components."machina.render.cube"]`, `[entities.components."machina.camera"]`, `[entities.components."machina.light.directional"]`, and project-local tables like `[entities.components.spin]`. Scene component ids and fields must validate against the engine/script component registry.
 
-Rendering uses `wgpu-native`. Headful rendering currently uses SDL3 on macOS via Homebrew paths in `build.zig`; offscreen rendering writes BMP artifacts and is the preferred automation surface.
+Rendering uses `wgpu-native`. Headful rendering currently uses SDL3 on macOS via Homebrew paths in `build.zig`; offscreen rendering writes BMP artifacts and is the preferred automation surface. Rendered cubes, the active camera fallback, and the first directional light are resolved from ECS world data where available.
 
 The low-level runtime model is ECS-oriented: stable entity identity, structured components, systems over component queries, and a scripting API that exposes those concepts directly. `src/runtime.zig` owns the current `World`, component registry, and system schedule planning. Component storage is columnar per component type: each component table has dense entity rows, a sparse entity-to-row index, and typed SoA field columns. Scene loading builds a world, scripts register ECS component/system types, and rendering queries renderable components from that world.
 

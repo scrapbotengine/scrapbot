@@ -271,6 +271,22 @@ const ObjectConfig = struct {
     width: u32,
     height: u32,
     cube: *const runtime.RenderableCube,
+    camera: CameraState,
+    light: DirectionalLightState,
+};
+
+const CameraState = struct {
+    transform: runtime.Transform = .{ .position = .{ 0.0, 0.0, 4.8 } },
+    fov_y_degrees: f32 = 48.0,
+    near: f32 = 0.1,
+    far: f32 = 100.0,
+};
+
+const DirectionalLightState = struct {
+    direction: [3]f32 = .{ 0.35, 0.68, 0.64 },
+    color: [3]f32 = .{ 1.0, 1.0, 1.0 },
+    intensity: f32 = 0.78,
+    ambient: f32 = 0.18,
 };
 
 const GpuContext = struct {
@@ -436,13 +452,17 @@ const CubeDemo = struct {
         depth_view: *wgpu.TextureView,
         config: FrameConfig,
     ) RenderError!void {
+        const camera = try cameraState(config.scene.world);
+        const light = try directionalLightState(config.scene.world);
         var cubes = config.scene.world.renderableCubes();
         for (self.objects) |*object| {
             const cube = cubes.next() orelse return RenderError.InvalidScene;
-            var uniforms = frameUniforms(.{
+            var uniforms = try frameUniforms(.{
                 .width = config.width,
                 .height = config.height,
                 .cube = &cube,
+                .camera = camera,
+                .light = light,
             });
             writeUniforms(queue, object.uniform_buffer, &uniforms);
         }
@@ -516,10 +536,12 @@ const ObjectResources = struct {
         }) orelse return RenderError.NoDevice;
         errdefer uniform_buffer.release();
 
-        var initial_uniforms = frameUniforms(.{
+        var initial_uniforms = try frameUniforms(.{
             .width = output_width,
             .height = output_height,
             .cube = &cube,
+            .camera = .{},
+            .light = .{},
         });
         writeUniforms(queue, uniform_buffer, &initial_uniforms);
 
@@ -739,7 +761,7 @@ fn writeUniforms(queue: *wgpu.Queue, buffer: *wgpu.Buffer, uniforms: *const Fram
     queue.writeBuffer(buffer, 0, bytes.ptr, bytes.len);
 }
 
-fn frameUniforms(config: ObjectConfig) FrameUniforms {
+fn frameUniforms(config: ObjectConfig) RenderError!FrameUniforms {
     const aspect = @as(f32, @floatFromInt(config.width)) / @as(f32, @floatFromInt(config.height));
     const cube = config.cube;
     const rotation = matMul(
@@ -753,16 +775,126 @@ fn frameUniforms(config: ObjectConfig) FrameUniforms {
         translation(cube.position[0], cube.position[1], cube.position[2]),
         matMul(rotation, scaling(cube.scale[0], cube.scale[1], cube.scale[2])),
     );
-    const view = translation(0.0, 0.0, -4.8);
-    const projection = perspective(std.math.degreesToRadians(48.0), aspect, 0.1, 100.0);
+    const camera = try validateCamera(config.camera);
+    const light = try validateDirectionalLight(config.light);
+    const view = cameraViewMatrix(camera.transform);
+    const projection = perspective(std.math.degreesToRadians(camera.fov_y_degrees), aspect, camera.near, camera.far);
     const mvp = matMul(projection, matMul(view, model));
+    const normalized_light = normalizeVec3(light.direction);
 
     return .{
         .mvp = mvp,
         .model = model,
-        .light_dir = .{ 0.35, 0.68, 0.64, 0.0 },
+        .light_dir = .{ normalized_light[0], normalized_light[1], normalized_light[2], 0.0 },
+        .light_color = .{ light.color[0], light.color[1], light.color[2], 1.0 },
         .object_color = .{ cube.color[0], cube.color[1], cube.color[2], 1.0 },
+        .lighting = .{ light.ambient, light.intensity, 0.0, 0.0 },
     };
+}
+
+fn cameraState(world: *const runtime.World) RenderError!CameraState {
+    if (world.renderCamera()) |camera| {
+        return validateCamera(.{
+            .transform = camera.transform,
+            .fov_y_degrees = camera.fov_y_degrees,
+            .near = camera.near,
+            .far = camera.far,
+        });
+    }
+    if (world.componentInstanceCountFor(runtime.camera_component_id) != 0) {
+        return RenderError.InvalidScene;
+    }
+    return .{};
+}
+
+fn directionalLightState(world: *const runtime.World) RenderError!DirectionalLightState {
+    if (world.renderDirectionalLight()) |light| {
+        return validateDirectionalLight(.{
+            .direction = light.direction,
+            .color = light.color,
+            .intensity = light.intensity,
+            .ambient = light.ambient,
+        });
+    }
+    return .{};
+}
+
+fn validateCamera(camera: CameraState) RenderError!CameraState {
+    if (!isFiniteVec3(camera.transform.position) or
+        !isFiniteVec3(camera.transform.rotation) or
+        !isFiniteVec3(camera.transform.scale) or
+        !std.math.isFinite(camera.fov_y_degrees) or
+        !std.math.isFinite(camera.near) or
+        !std.math.isFinite(camera.far) or
+        camera.fov_y_degrees <= 0.0 or
+        camera.fov_y_degrees >= 179.0 or
+        camera.near <= 0.0 or
+        camera.far <= camera.near)
+    {
+        return RenderError.InvalidScene;
+    }
+    return camera;
+}
+
+fn validateDirectionalLight(light: DirectionalLightState) RenderError!DirectionalLightState {
+    if (!isFiniteVec3(light.direction) or
+        !isFiniteVec3(light.color) or
+        !std.math.isFinite(light.intensity) or
+        !std.math.isFinite(light.ambient) or
+        vec3Length(light.direction) == 0.0 or
+        light.intensity < 0.0 or
+        light.ambient < 0.0)
+    {
+        return RenderError.InvalidScene;
+    }
+    return light;
+}
+
+fn cameraViewMatrix(transform_value: runtime.Transform) [16]f32 {
+    const inverse_translation = translation(
+        -transform_value.position[0],
+        -transform_value.position[1],
+        -transform_value.position[2],
+    );
+    return matMul(
+        rotationX(-transform_value.rotation[0]),
+        matMul(
+            rotationY(-transform_value.rotation[1]),
+            matMul(rotationZ(-transform_value.rotation[2]), inverse_translation),
+        ),
+    );
+}
+
+fn isFiniteVec3(value: [3]f32) bool {
+    return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
+}
+
+fn normalizeVec3(value: [3]f32) [3]f32 {
+    const length = vec3Length(value);
+    if (length == 0.0) {
+        return .{ 0.0, 0.0, 1.0 };
+    }
+    return .{ value[0] / length, value[1] / length, value[2] / length };
+}
+
+fn vec3Length(value: [3]f32) f32 {
+    return @sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
+}
+
+test "camera state falls back only when no camera component exists" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const fallback = try cameraState(&world);
+    try std.testing.expectEqual(@as(f32, 4.8), fallback.transform.position[2]);
+
+    const camera_entity = try world.createEntity("camera", "Camera");
+    try world.setCamera(camera_entity, .{});
+    try std.testing.expectError(RenderError.InvalidScene, cameraState(&world));
+
+    try world.setTransform(camera_entity, .{ .position = .{ 0.0, 0.0, 6.0 } });
+    const resolved = try cameraState(&world);
+    try std.testing.expectEqual(@as(f32, 6.0), resolved.transform.position[2]);
 }
 
 fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) [16]f32 {
@@ -844,7 +976,9 @@ const FrameUniforms = extern struct {
     mvp: [16]f32,
     model: [16]f32,
     light_dir: [4]f32,
+    light_color: [4]f32,
     object_color: [4]f32,
+    lighting: [4]f32,
 };
 
 const Vertex = extern struct {

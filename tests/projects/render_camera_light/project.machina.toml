@@ -1,0 +1,3 @@
+name = "Render Camera Light Test"
+version = 1
+default_scene = "scenes/main.scene.toml"

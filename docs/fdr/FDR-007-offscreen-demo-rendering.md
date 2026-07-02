@@ -1,7 +1,7 @@
 # FDR-007: Offscreen Demo Rendering
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-02
 
 ## Overview
 
@@ -14,7 +14,8 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 - The command validates the project before rendering.
 - The command loads the project's default scene and draws one frame of its cube entities into an offscreen texture.
 - Cube entity position, rotation, scale, color, and spin values come from scene data.
-- Cubes render with depth testing and simple directional diffuse shading.
+- Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
+- Cubes render with depth testing and scene-driven directional diffuse shading.
 - The rendered pixels are copied back to CPU memory and written as a 24-bit BMP file.
 - Render verification parses the BMP and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene cube colors.
 - The command works without a platform window or editor.
@@ -36,7 +37,7 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 ## Related
 
 - **ADRs:** ADR-004, ADR-005
-- **FDRs:** FDR-001, FDR-002
+- **FDRs:** FDR-001, FDR-002, FDR-014
 
 ## Open Questions
 
