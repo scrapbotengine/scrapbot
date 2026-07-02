@@ -10,7 +10,7 @@ Machina verifies rendering primarily through offscreen BMP output. Use this work
 ## Workflow
 
 1. Build and run Zig tests.
-2. Run the offscreen visual check against `examples/minimal`.
+2. Run the offscreen visual checks against `examples/minimal` and `examples/batching`.
 3. Run a bounded headful smoke test only when the change touches window/surface presentation.
 4. Inspect or improve `src/render_verify.zig` if the failure is about visual assertions rather than rendering itself.
 
@@ -24,9 +24,9 @@ Machina verifies rendering primarily through offscreen BMP output. Use this work
 - verifies BMP shape,
 - checks foreground pixel coverage,
 - checks visible connected components,
-- checks expected warm/cool color groups derived from scene cube colors.
+- checks expected warm/cool color groups derived from scene material colors.
 
-This catches failures such as blank frames, invalid artifacts, and the prior class of bug where multiple scene cubes collapsed to one visible object/color due to shared uniform state.
+This catches failures such as blank frames, invalid artifacts, the prior class of bug where multiple scene cubes collapsed to one visible object/color due to shared uniform state, and broad batching regressions where repeated renderables stop appearing.
 
 ## Limits
 

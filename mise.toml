@@ -7,15 +7,15 @@ run = "zig build"
 
 [tasks.test]
 description = "Run the full Machina test suite"
-run = "zig build test && zig build && ./zig-out/bin/machina test tests/projects && ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp"
+run = "zig build test && zig build && ./zig-out/bin/machina test tests/projects && ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp && ./zig-out/bin/machina render-test examples/batching zig-out/batching-render-test.bmp"
 
 [tasks.luau-check]
 description = "Run Luau editor type checks"
 run = "bash tools/check-luau-types.sh"
 
 [tasks.render-test]
-description = "Render and verify the minimal example scene"
-run = "mise machina render-test examples/minimal zig-out/minimal-render-test.bmp"
+description = "Render and verify example scenes"
+run = "mise machina render-test examples/minimal zig-out/minimal-render-test.bmp && mise machina render-test examples/batching zig-out/batching-render-test.bmp"
 
 [tasks.machina]
 description = "Build and run the machina CLI"

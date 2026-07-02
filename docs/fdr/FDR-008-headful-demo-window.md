@@ -16,6 +16,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 - Legacy cube entities remain supported and render as box geometry with inline color material data.
 - Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
 - Each presented frame uses the same internal render ECS world and render-phase schedule as offscreen rendering.
+- Matching geometry/material renderables are drawn through automatic instanced render batches.
 - Renderable meshes render with depth testing and scene-driven directional diffuse shading.
 - Users can run `machina run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
 - `machina render [path] [output.bmp]` remains the headless/offscreen snapshot command.
@@ -49,7 +50,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 ## Related
 
 - **ADRs:** ADR-004, ADR-005, ADR-013
-- **FDRs:** FDR-003, FDR-007, FDR-014, FDR-015
+- **FDRs:** FDR-003, FDR-007, FDR-014, FDR-015, FDR-016
 
 ## Open Questions
 

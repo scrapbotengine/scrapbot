@@ -20,7 +20,7 @@ const output_extent = wgpu.Extent3D{
 const output_bytes_per_row = 4 * output_width;
 const output_size = output_bytes_per_row * output_height;
 const depth_format = wgpu.TextureFormat.depth24_plus;
-const render_draw_mesh_component_id = "machina.render.internal.draw.mesh";
+const render_draw_batch_component_id = "machina.render.internal.draw.batch";
 const render_extract_system_id = "machina.render.extract";
 const render_prepare_meshes_system_id = "machina.render.prepare_meshes";
 const render_queue_meshes_system_id = "machina.render.queue_meshes";
@@ -273,12 +273,11 @@ const FrameConfig = struct {
     scene: Scene,
 };
 
-const ObjectConfig = struct {
+const InstanceConfig = struct {
     width: u32,
     height: u32,
     mesh: *const runtime.RenderableMesh,
     camera: CameraState,
-    light: DirectionalLightState,
 };
 
 const CameraState = struct {
@@ -351,29 +350,28 @@ const RenderEcsState = struct {
         self.world = next_world;
     }
 
-    fn queueMeshDraws(self: *RenderEcsState) RenderError!void {
-        const count = self.world.renderableMeshCount();
-        for (0..count) |render_index| {
-            if (render_index > std.math.maxInt(i32)) {
+    fn queueBatchDraws(self: *RenderEcsState, batch_count: usize) RenderError!void {
+        for (0..batch_count) |batch_index| {
+            if (batch_index > std.math.maxInt(i32)) {
                 return RenderError.InvalidScene;
             }
-            const entity_id = std.fmt.allocPrint(self.allocator, "machina.render.draw.mesh.{d}", .{render_index}) catch return RenderError.OutOfMemory;
+            const entity_id = std.fmt.allocPrint(self.allocator, "machina.render.draw.batch.{d}", .{batch_index}) catch return RenderError.OutOfMemory;
             defer self.allocator.free(entity_id);
 
-            const entity = self.world.createEntity(entity_id, "Mesh Draw") catch |err| return mapWorldError(err);
+            const entity = self.world.createEntity(entity_id, "Batch Draw") catch |err| return mapWorldError(err);
             const fields = [_]runtime.ComponentFieldValue{
-                .{ .name = "render_index", .value = .{ .int = @intCast(render_index) } },
+                .{ .name = "batch_index", .value = .{ .int = @intCast(batch_index) } },
             };
-            self.world.setComponent(entity, render_draw_mesh_component_id, &fields) catch |err| return mapWorldError(err);
+            self.world.setComponent(entity, render_draw_batch_component_id, &fields) catch |err| return mapWorldError(err);
         }
     }
 
     fn drawCommandCount(self: RenderEcsState) usize {
-        return self.world.componentInstanceCountFor(render_draw_mesh_component_id);
+        return self.world.componentInstanceCountFor(render_draw_batch_component_id);
     }
 
-    fn drawCommandRenderIndex(self: RenderEcsState, entity: runtime.EntityHandle) RenderError!usize {
-        return renderIndexFromDrawEntity(&self.world, entity);
+    fn drawCommandBatchIndex(self: RenderEcsState, entity: runtime.EntityHandle) RenderError!usize {
+        return batchIndexFromDrawEntity(&self.world, entity);
     }
 };
 
@@ -446,13 +444,13 @@ const DepthTarget = struct {
 fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     try runtime.registerEngineComponents(registry);
 
-    const draw_mesh_fields = [_]runtime.ComponentFieldDefinition{
-        .{ .name = "render_index", .value_type = .int },
+    const draw_batch_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "batch_index", .value_type = .int },
     };
     try registry.registerEngineComponent(.{
-        .id = render_draw_mesh_component_id,
+        .id = render_draw_batch_component_id,
         .version = 1,
-        .fields = &draw_mesh_fields,
+        .fields = &draw_batch_fields,
     });
 
     const extract_writes = [_][]const u8{
@@ -486,7 +484,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
     };
-    const queue_writes = [_][]const u8{render_draw_mesh_component_id};
+    const queue_writes = [_][]const u8{render_draw_batch_component_id};
     const after_prepare = [_][]const u8{render_prepare_meshes_system_id};
     try registry.registerEngineSystem(.{
         .id = render_queue_meshes_system_id,
@@ -497,7 +495,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     });
 
     const draw_reads = [_][]const u8{
-        render_draw_mesh_component_id,
+        render_draw_batch_component_id,
         runtime.transform_component_id,
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
@@ -558,16 +556,16 @@ fn extractDirectionalLightInto(world: *runtime.World, light: DirectionalLightSta
     }) catch |err| return mapWorldError(err);
 }
 
-fn renderIndexFromDrawEntity(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!usize {
-    const value = world.getComponentFieldValue(entity, render_draw_mesh_component_id, "render_index") catch |err| return mapWorldError(err);
-    const render_index = switch (value) {
+fn batchIndexFromDrawEntity(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!usize {
+    const value = world.getComponentFieldValue(entity, render_draw_batch_component_id, "batch_index") catch |err| return mapWorldError(err);
+    const batch_index = switch (value) {
         .int => |payload| payload,
         else => return RenderError.InvalidScene,
     };
-    if (render_index < 0) {
+    if (batch_index < 0) {
         return RenderError.InvalidScene;
     }
-    return @intCast(render_index);
+    return @intCast(batch_index);
 }
 
 fn mapEngineSetupError(err: anyerror) RenderError {
@@ -591,18 +589,111 @@ fn mapGeometryError(err: anyerror) RenderError {
     };
 }
 
+const BatchPlan = struct {
+    allocator: std.mem.Allocator,
+    batches: []BatchPlanEntry,
+
+    fn build(allocator: std.mem.Allocator, world: *const runtime.World) RenderError!BatchPlan {
+        var builds: std.ArrayList(BatchBuild) = .empty;
+        errdefer {
+            for (builds.items) |*pending_batch| {
+                pending_batch.deinit(allocator);
+            }
+            builds.deinit(allocator);
+        }
+
+        const mesh_count = world.renderableMeshCount();
+        for (0..mesh_count) |render_index| {
+            const renderable = world.renderableMeshAt(render_index) orelse return RenderError.InvalidScene;
+            const geometry_key = GeometryKey.fromRenderable(renderable) orelse return RenderError.InvalidScene;
+            const material_key = MaterialKey.fromRenderable(renderable);
+
+            var batch_index: ?usize = null;
+            for (builds.items, 0..) |pending_batch, index| {
+                if (pending_batch.geometry_key.eql(geometry_key) and pending_batch.material_key.eql(material_key)) {
+                    batch_index = index;
+                    break;
+                }
+            }
+
+            const index = batch_index orelse blk: {
+                try builds.append(allocator, .{
+                    .geometry_key = geometry_key,
+                    .material_key = material_key,
+                });
+                break :blk builds.items.len - 1;
+            };
+            builds.items[index].render_indices.append(allocator, render_index) catch return RenderError.OutOfMemory;
+        }
+
+        const batches = allocator.alloc(BatchPlanEntry, builds.items.len) catch return RenderError.OutOfMemory;
+        var copied: usize = 0;
+        errdefer {
+            for (batches[0..copied]) |entry| {
+                allocator.free(entry.render_indices);
+            }
+            allocator.free(batches);
+        }
+
+        for (builds.items, 0..) |*pending_batch, index| {
+            batches[index] = .{
+                .geometry_key = pending_batch.geometry_key,
+                .material_key = pending_batch.material_key,
+                .render_indices = pending_batch.render_indices.toOwnedSlice(allocator) catch return RenderError.OutOfMemory,
+            };
+            copied += 1;
+        }
+
+        builds.deinit(allocator);
+        return .{
+            .allocator = allocator,
+            .batches = batches,
+        };
+    }
+
+    fn deinit(self: *BatchPlan) void {
+        const allocator = self.allocator;
+        for (self.batches) |entry| {
+            allocator.free(entry.render_indices);
+        }
+        allocator.free(self.batches);
+        self.* = .{
+            .allocator = allocator,
+            .batches = &.{},
+        };
+    }
+};
+
+const BatchBuild = struct {
+    geometry_key: GeometryKey,
+    material_key: MaterialKey,
+    render_indices: std.ArrayList(usize) = .empty,
+
+    fn deinit(self: *BatchBuild, allocator: std.mem.Allocator) void {
+        self.render_indices.deinit(allocator);
+    }
+};
+
+const BatchPlanEntry = struct {
+    geometry_key: GeometryKey,
+    material_key: MaterialKey,
+    render_indices: []usize,
+};
+
 const MeshDemo = struct {
     allocator: std.mem.Allocator,
     pipeline: *wgpu.RenderPipeline,
     bind_group_layout: *wgpu.BindGroupLayout,
     pipeline_layout: *wgpu.PipelineLayout,
+    frame_uniform_buffer: *wgpu.Buffer,
+    bind_group: *wgpu.BindGroup,
     render_state: RenderEcsState,
-    objects: []ObjectResources,
+    batches: []BatchResources,
 
     fn create(
         allocator: std.mem.Allocator,
         device: *wgpu.Device,
-        _: *wgpu.Queue,
+        queue: *wgpu.Queue,
         texture_format: wgpu.TextureFormat,
         scene: Scene,
     ) RenderError!MeshDemo {
@@ -623,12 +714,38 @@ const MeshDemo = struct {
         }) orelse return RenderError.NoDevice;
         errdefer bind_group_layout.release();
 
+        const frame_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina frame uniforms"),
+            .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
+            .size = @sizeOf(FrameUniforms),
+            .mapped_at_creation = @as(u32, @intFromBool(false)),
+        }) orelse return RenderError.NoDevice;
+        errdefer frame_uniform_buffer.release();
+
+        var initial_uniforms = try frameUniforms(.{});
+        writeUniforms(queue, frame_uniform_buffer, &initial_uniforms);
+
+        const bind_group_entries = [_]wgpu.BindGroupEntry{
+            .{
+                .binding = 0,
+                .buffer = frame_uniform_buffer,
+                .size = @sizeOf(FrameUniforms),
+            },
+        };
+        const bind_group = device.createBindGroup(&wgpu.BindGroupDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina frame bind group"),
+            .layout = bind_group_layout,
+            .entry_count = bind_group_entries.len,
+            .entries = &bind_group_entries,
+        }) orelse return RenderError.NoDevice;
+        errdefer bind_group.release();
+
         var render_state = try RenderEcsState.init(allocator);
         errdefer render_state.deinit();
         try render_state.extractScene(scene);
 
-        const objects = allocator.alloc(ObjectResources, 0) catch return RenderError.OutOfMemory;
-        errdefer allocator.free(objects);
+        const batches = allocator.alloc(BatchResources, 0) catch return RenderError.OutOfMemory;
+        errdefer allocator.free(batches);
 
         const bind_group_layouts = [_]*wgpu.BindGroupLayout{bind_group_layout};
         const pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
@@ -646,20 +763,24 @@ const MeshDemo = struct {
             .pipeline = pipeline,
             .bind_group_layout = bind_group_layout,
             .pipeline_layout = pipeline_layout,
+            .frame_uniform_buffer = frame_uniform_buffer,
+            .bind_group = bind_group,
             .render_state = render_state,
-            .objects = objects,
+            .batches = batches,
         };
     }
 
     fn deinit(self: *MeshDemo) void {
         self.render_state.deinit();
+        for (self.batches) |*batch| {
+            batch.deinit();
+        }
+        self.allocator.free(self.batches);
+        self.bind_group.release();
+        self.frame_uniform_buffer.release();
         self.pipeline.release();
         self.pipeline_layout.release();
         self.bind_group_layout.release();
-        for (self.objects) |*object| {
-            object.deinit();
-        }
-        self.allocator.free(self.objects);
     }
 
     fn draw(
@@ -680,16 +801,30 @@ const MeshDemo = struct {
     }
 
     fn runRenderSchedule(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
+        var maybe_plan: ?BatchPlan = null;
+        defer if (maybe_plan) |*plan| {
+            plan.deinit();
+        };
+
         for (self.render_state.schedule.batches) |batch| {
             for (batch.systems) |system| {
                 if (std.mem.eql(u8, system.id, render_extract_system_id)) {
                     try self.render_state.extractScene(context.frame.scene);
                 } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) {
-                    try self.ensureObjectResources(context.device, context.queue);
+                    var plan = try BatchPlan.build(self.allocator, &self.render_state.world);
+                    var plan_transferred = false;
+                    errdefer if (!plan_transferred) {
+                        plan.deinit();
+                    };
+                    try self.prepareBatchResources(context.device, plan);
+                    try self.updateBatchInstances(context.queue, plan, context.frame);
+                    maybe_plan = plan;
+                    plan_transferred = true;
                 } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) {
-                    try self.render_state.queueMeshDraws();
+                    const plan = maybe_plan orelse return RenderError.InvalidScene;
+                    try self.render_state.queueBatchDraws(plan.batches.len);
                 } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) {
-                    try self.drawQueuedMeshes(context);
+                    try self.drawQueuedBatches(context);
                 } else {
                     return RenderError.InvalidScene;
                 }
@@ -697,72 +832,85 @@ const MeshDemo = struct {
         }
     }
 
-    fn ensureObjectResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue) RenderError!void {
-        const mesh_count = self.render_state.world.renderableMeshCount();
-        if (mesh_count == self.objects.len and self.objectResourcesMatchRenderWorld()) {
+    fn prepareBatchResources(self: *MeshDemo, device: *wgpu.Device, plan: BatchPlan) RenderError!void {
+        if (self.batchResourcesMatchPlan(plan)) {
             return;
         }
 
-        const new_objects = self.allocator.alloc(ObjectResources, mesh_count) catch return RenderError.OutOfMemory;
-        var object_count: usize = 0;
+        const new_batches = self.allocator.alloc(BatchResources, plan.batches.len) catch return RenderError.OutOfMemory;
+        var batch_count: usize = 0;
         errdefer {
-            for (new_objects[0..object_count]) |*object| {
-                object.deinit();
+            for (new_batches[0..batch_count]) |*batch| {
+                batch.deinit();
             }
-            self.allocator.free(new_objects);
+            self.allocator.free(new_batches);
         }
 
-        var meshes = self.render_state.world.renderableMeshes();
-        while (meshes.next()) |mesh| {
-            new_objects[object_count] = try ObjectResources.create(self.allocator, device, queue, self.bind_group_layout, mesh);
-            object_count += 1;
-        }
-        if (object_count != mesh_count) {
-            return RenderError.InvalidScene;
+        for (plan.batches, 0..) |entry, index| {
+            new_batches[index] = try BatchResources.create(self.allocator, device, entry);
+            batch_count += 1;
         }
 
-        for (self.objects) |*object| {
-            object.deinit();
+        for (self.batches) |*batch| {
+            batch.deinit();
         }
-        self.allocator.free(self.objects);
-        self.objects = new_objects;
+        self.allocator.free(self.batches);
+        self.batches = new_batches;
     }
 
-    fn objectResourcesMatchRenderWorld(self: MeshDemo) bool {
-        var index: usize = 0;
-        var meshes = self.render_state.world.renderableMeshes();
-        while (meshes.next()) |mesh| {
-            if (index >= self.objects.len or !self.objects[index].matches(mesh)) {
+    fn batchResourcesMatchPlan(self: MeshDemo, plan: BatchPlan) bool {
+        if (self.batches.len != plan.batches.len) {
+            return false;
+        }
+        for (plan.batches, self.batches) |entry, batch| {
+            if (!batch.matches(entry)) {
                 return false;
             }
-            index += 1;
         }
-        return index == self.objects.len;
+        return true;
     }
 
-    fn drawQueuedMeshes(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
+    fn updateBatchInstances(self: *MeshDemo, queue: *wgpu.Queue, plan: BatchPlan, config: FrameConfig) RenderError!void {
         const camera = try cameraState(&self.render_state.world);
-        const light = try directionalLightState(&self.render_state.world);
-        var draw_indices: std.ArrayList(usize) = .empty;
-        defer draw_indices.deinit(self.allocator);
-
-        var draw_cursor: usize = 0;
-        const draw_query = [_][]const u8{render_draw_mesh_component_id};
-        while (self.render_state.world.queryNext(&draw_query, &draw_cursor)) |draw_entity| {
-            const render_index = try self.render_state.drawCommandRenderIndex(draw_entity);
-            if (render_index >= self.objects.len) {
+        for (plan.batches, 0..) |entry, batch_index| {
+            if (batch_index >= self.batches.len) {
                 return RenderError.InvalidScene;
             }
-            const mesh = self.render_state.world.renderableMeshAt(render_index) orelse return RenderError.InvalidScene;
-            var uniforms = try frameUniforms(.{
-                .width = context.frame.width,
-                .height = context.frame.height,
-                .mesh = &mesh,
-                .camera = camera,
-                .light = light,
-            });
-            writeUniforms(context.queue, self.objects[render_index].uniform_buffer, &uniforms);
-            draw_indices.append(self.allocator, render_index) catch return RenderError.OutOfMemory;
+
+            const instances = self.allocator.alloc(InstanceAttributes, entry.render_indices.len) catch return RenderError.OutOfMemory;
+            defer self.allocator.free(instances);
+
+            for (entry.render_indices, 0..) |render_index, instance_index| {
+                const mesh = self.render_state.world.renderableMeshAt(render_index) orelse return RenderError.InvalidScene;
+                instances[instance_index] = try instanceAttributes(.{
+                    .width = config.width,
+                    .height = config.height,
+                    .mesh = &mesh,
+                    .camera = camera,
+                });
+            }
+
+            const bytes = std.mem.sliceAsBytes(instances);
+            queue.writeBuffer(self.batches[batch_index].instance_buffer, 0, bytes.ptr, bytes.len);
+        }
+    }
+
+    fn drawQueuedBatches(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
+        const light = try directionalLightState(&self.render_state.world);
+        var frame_uniforms = try frameUniforms(light);
+        writeUniforms(context.queue, self.frame_uniform_buffer, &frame_uniforms);
+
+        var draw_batch_indices: std.ArrayList(usize) = .empty;
+        defer draw_batch_indices.deinit(self.allocator);
+
+        var draw_cursor: usize = 0;
+        const draw_query = [_][]const u8{render_draw_batch_component_id};
+        while (self.render_state.world.queryNext(&draw_query, &draw_cursor)) |draw_entity| {
+            const batch_index = try self.render_state.drawCommandBatchIndex(draw_entity);
+            if (batch_index >= self.batches.len) {
+                return RenderError.InvalidScene;
+            }
+            draw_batch_indices.append(self.allocator, batch_index) catch return RenderError.OutOfMemory;
         }
 
         const encoder = context.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
@@ -795,12 +943,13 @@ const MeshDemo = struct {
         }) orelse return RenderError.NoDevice;
         defer render_pass.release();
         render_pass.setPipeline(self.pipeline);
-        for (draw_indices.items) |render_index| {
-            const object = self.objects[render_index];
-            render_pass.setVertexBuffer(0, object.vertex_buffer, 0, object.vertex_buffer_size);
-            render_pass.setIndexBuffer(object.index_buffer, .uint16, 0, object.index_buffer_size);
-            render_pass.setBindGroup(0, object.bind_group, 0, null);
-            render_pass.drawIndexed(object.index_count, 1, 0, 0, 0);
+        render_pass.setBindGroup(0, self.bind_group, 0, null);
+        for (draw_batch_indices.items) |batch_index| {
+            const batch = self.batches[batch_index];
+            render_pass.setVertexBuffer(0, batch.vertex_buffer, 0, batch.vertex_buffer_size);
+            render_pass.setVertexBuffer(1, batch.instance_buffer, 0, batch.instance_buffer_size);
+            render_pass.setIndexBuffer(batch.index_buffer, .uint16, 0, batch.index_buffer_size);
+            render_pass.drawIndexed(batch.index_count, batch.instance_count, 0, 0, 0);
         }
         render_pass.end();
 
@@ -814,29 +963,28 @@ const MeshDemo = struct {
     }
 };
 
-const ObjectResources = struct {
+const BatchResources = struct {
     geometry_key: GeometryKey,
+    material_key: MaterialKey,
     vertex_buffer: *wgpu.Buffer,
     index_buffer: *wgpu.Buffer,
+    instance_buffer: *wgpu.Buffer,
     vertex_buffer_size: u64,
     index_buffer_size: u64,
+    instance_buffer_size: u64,
     index_count: u32,
-    uniform_buffer: *wgpu.Buffer,
-    bind_group: *wgpu.BindGroup,
+    instance_count: u32,
 
     fn create(
         allocator: std.mem.Allocator,
         device: *wgpu.Device,
-        queue: *wgpu.Queue,
-        bind_group_layout: *wgpu.BindGroupLayout,
-        renderable: runtime.RenderableMesh,
-    ) RenderError!ObjectResources {
-        const geometry_key = GeometryKey.fromRenderable(renderable) orelse return RenderError.InvalidScene;
+        entry: BatchPlanEntry,
+    ) RenderError!BatchResources {
         var mesh = geometry.generatePrimitive(
             allocator,
-            geometry_key.primitive,
-            geometry_key.segments,
-            geometry_key.rings,
+            entry.geometry_key.primitive,
+            entry.geometry_key.segments,
+            entry.geometry_key.rings,
         ) catch |err| return mapGeometryError(err);
         defer mesh.deinit(allocator);
 
@@ -848,57 +996,43 @@ const ObjectResources = struct {
         const index_buffer = try createStaticBuffer(device, "Machina mesh index buffer", wgpu.BufferUsages.index, index_bytes);
         errdefer index_buffer.release();
 
-        const uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh object uniforms"),
-            .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
-            .size = @sizeOf(FrameUniforms),
+        if (entry.render_indices.len > std.math.maxInt(u32)) {
+            return RenderError.InvalidScene;
+        }
+        const instance_buffer_size = @sizeOf(InstanceAttributes) * entry.render_indices.len;
+        const instance_buffer = device.createBuffer(&wgpu.BufferDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina mesh instance buffer"),
+            .usage = wgpu.BufferUsages.vertex | wgpu.BufferUsages.copy_dst,
+            .size = @intCast(instance_buffer_size),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
         }) orelse return RenderError.NoDevice;
-        errdefer uniform_buffer.release();
-
-        var initial_uniforms = try frameUniforms(.{
-            .width = output_width,
-            .height = output_height,
-            .mesh = &renderable,
-            .camera = .{},
-            .light = .{},
-        });
-        writeUniforms(queue, uniform_buffer, &initial_uniforms);
-
-        const bind_group_entries = [_]wgpu.BindGroupEntry{
-            .{
-                .binding = 0,
-                .buffer = uniform_buffer,
-                .size = @sizeOf(FrameUniforms),
-            },
-        };
-        const bind_group = device.createBindGroup(&wgpu.BindGroupDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh object bind group"),
-            .layout = bind_group_layout,
-            .entry_count = bind_group_entries.len,
-            .entries = &bind_group_entries,
-        }) orelse return RenderError.NoDevice;
+        errdefer instance_buffer.release();
 
         return .{
-            .geometry_key = geometry_key,
+            .geometry_key = entry.geometry_key,
+            .material_key = entry.material_key,
             .vertex_buffer = vertex_buffer,
             .index_buffer = index_buffer,
+            .instance_buffer = instance_buffer,
             .vertex_buffer_size = @intCast(vertex_bytes.len),
             .index_buffer_size = @intCast(index_bytes.len),
+            .instance_buffer_size = @intCast(instance_buffer_size),
             .index_count = @intCast(mesh.indices.len),
-            .uniform_buffer = uniform_buffer,
-            .bind_group = bind_group,
+            .instance_count = @intCast(entry.render_indices.len),
         };
     }
 
-    fn matches(self: ObjectResources, renderable: runtime.RenderableMesh) bool {
-        const geometry_key = GeometryKey.fromRenderable(renderable) orelse return false;
-        return self.geometry_key.eql(geometry_key);
+    fn matches(self: BatchResources, entry: BatchPlanEntry) bool {
+        if (entry.render_indices.len > std.math.maxInt(u32)) {
+            return false;
+        }
+        return self.geometry_key.eql(entry.geometry_key) and
+            self.material_key.eql(entry.material_key) and
+            self.instance_count == @as(u32, @intCast(entry.render_indices.len));
     }
 
-    fn deinit(self: *ObjectResources) void {
-        self.bind_group.release();
-        self.uniform_buffer.release();
+    fn deinit(self: *BatchResources) void {
+        self.instance_buffer.release();
         self.index_buffer.release();
         self.vertex_buffer.release();
     }
@@ -919,6 +1053,20 @@ const GeometryKey = struct {
 
     fn eql(self: GeometryKey, other: GeometryKey) bool {
         return self.primitive == other.primitive and self.segments == other.segments and self.rings == other.rings;
+    }
+};
+
+const MaterialKey = struct {
+    base_color: [3]f32,
+
+    fn fromRenderable(renderable: runtime.RenderableMesh) MaterialKey {
+        return .{ .base_color = renderable.base_color };
+    }
+
+    fn eql(self: MaterialKey, other: MaterialKey) bool {
+        return self.base_color[0] == other.base_color[0] and
+            self.base_color[1] == other.base_color[1] and
+            self.base_color[2] == other.base_color[2];
     }
 };
 
@@ -1048,11 +1196,66 @@ fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
             .shader_location = 1,
         },
     };
+    const vec4_size = @sizeOf([4]f32);
+    const instance_attributes = [_]wgpu.VertexAttribute{
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "mvp") + vec4_size * 0,
+            .shader_location = 2,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "mvp") + vec4_size * 1,
+            .shader_location = 3,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "mvp") + vec4_size * 2,
+            .shader_location = 4,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "mvp") + vec4_size * 3,
+            .shader_location = 5,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "model") + vec4_size * 0,
+            .shader_location = 6,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "model") + vec4_size * 1,
+            .shader_location = 7,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "model") + vec4_size * 2,
+            .shader_location = 8,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "model") + vec4_size * 3,
+            .shader_location = 9,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(InstanceAttributes, "object_color"),
+            .shader_location = 10,
+        },
+    };
     const vertex_buffers = [_]wgpu.VertexBufferLayout{
         .{
+            .step_mode = .vertex,
             .array_stride = @sizeOf(geometry.Vertex),
             .attribute_count = vertex_attributes.len,
             .attributes = &vertex_attributes,
+        },
+        .{
+            .step_mode = .instance,
+            .array_stride = @sizeOf(InstanceAttributes),
+            .attribute_count = instance_attributes.len,
+            .attributes = &instance_attributes,
         },
     };
 
@@ -1112,7 +1315,18 @@ fn writeUniforms(queue: *wgpu.Queue, buffer: *wgpu.Buffer, uniforms: *const Fram
     queue.writeBuffer(buffer, 0, bytes.ptr, bytes.len);
 }
 
-fn frameUniforms(config: ObjectConfig) RenderError!FrameUniforms {
+fn frameUniforms(light_value: DirectionalLightState) RenderError!FrameUniforms {
+    const light = try validateDirectionalLight(light_value);
+    const normalized_light = normalizeVec3(light.direction);
+
+    return .{
+        .light_dir = .{ normalized_light[0], normalized_light[1], normalized_light[2], 0.0 },
+        .light_color = .{ light.color[0], light.color[1], light.color[2], 1.0 },
+        .lighting = .{ light.ambient, light.intensity, 0.0, 0.0 },
+    };
+}
+
+fn instanceAttributes(config: InstanceConfig) RenderError!InstanceAttributes {
     const aspect = @as(f32, @floatFromInt(config.width)) / @as(f32, @floatFromInt(config.height));
     const mesh = config.mesh;
     const rotation = matMul(
@@ -1127,19 +1341,14 @@ fn frameUniforms(config: ObjectConfig) RenderError!FrameUniforms {
         matMul(rotation, scaling(mesh.scale[0], mesh.scale[1], mesh.scale[2])),
     );
     const camera = try validateCamera(config.camera);
-    const light = try validateDirectionalLight(config.light);
     const view = cameraViewMatrix(camera.transform);
     const projection = perspective(std.math.degreesToRadians(camera.fov_y_degrees), aspect, camera.near, camera.far);
     const mvp = matMul(projection, matMul(view, model));
-    const normalized_light = normalizeVec3(light.direction);
 
     return .{
         .mvp = mvp,
         .model = model,
-        .light_dir = .{ normalized_light[0], normalized_light[1], normalized_light[2], 0.0 },
-        .light_color = .{ light.color[0], light.color[1], light.color[2], 1.0 },
         .object_color = .{ mesh.base_color[0], mesh.base_color[1], mesh.base_color[2], 1.0 },
-        .lighting = .{ light.ambient, light.intensity, 0.0, 0.0 },
     };
 }
 
@@ -1314,16 +1523,73 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     try std.testing.expectEqualStrings("uv_sphere", extracted_sphere.primitive);
     try std.testing.expectEqual(@as(f32, 0.35), extracted_sphere.base_color[1]);
 
-    try state.queueMeshDraws();
+    var plan = try BatchPlan.build(std.testing.allocator, &state.world);
+    defer plan.deinit();
+    try std.testing.expectEqual(@as(usize, 2), plan.batches.len);
+
+    try state.queueBatchDraws(plan.batches.len);
     try std.testing.expectEqual(@as(usize, 2), state.drawCommandCount());
 
     var cursor: usize = 0;
-    const draw_query = [_][]const u8{render_draw_mesh_component_id};
+    const draw_query = [_][]const u8{render_draw_batch_component_id};
     const first_draw = state.world.queryNext(&draw_query, &cursor) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqual(@as(usize, 0), try state.drawCommandRenderIndex(first_draw));
+    try std.testing.expectEqual(@as(usize, 0), try state.drawCommandBatchIndex(first_draw));
     const second_draw = state.world.queryNext(&draw_query, &cursor) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqual(@as(usize, 1), try state.drawCommandRenderIndex(second_draw));
+    try std.testing.expectEqual(@as(usize, 1), try state.drawCommandBatchIndex(second_draw));
     try std.testing.expect(state.world.queryNext(&draw_query, &cursor) == null);
+}
+
+test "batch plan groups matching geometry and material renderables" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    try addBatchTestRenderable(&scene_world, "blue-box-a", "box", 0, 0, .{ -1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 });
+    try addBatchTestRenderable(&scene_world, "gold-sphere", "uv_sphere", 16, 8, .{ 0.0, 0.0, 0.0 }, .{ 1.0, 0.56, 0.1 });
+    try addBatchTestRenderable(&scene_world, "blue-box-b", "box", 0, 0, .{ 1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 });
+    try addBatchTestRenderable(&scene_world, "red-box", "box", 0, 0, .{ 0.0, 1.2, 0.0 }, .{ 0.95, 0.12, 0.18 });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractScene(.{ .world = &scene_world });
+
+    var plan = try BatchPlan.build(std.testing.allocator, &state.world);
+    defer plan.deinit();
+
+    try std.testing.expectEqual(@as(usize, 3), plan.batches.len);
+    try std.testing.expectEqual(geometry.Primitive.box, plan.batches[0].geometry_key.primitive);
+    try std.testing.expectEqual(@as(usize, 2), plan.batches[0].render_indices.len);
+    try std.testing.expectEqual(@as(usize, 0), plan.batches[0].render_indices[0]);
+    try std.testing.expectEqual(@as(usize, 2), plan.batches[0].render_indices[1]);
+
+    try std.testing.expectEqual(geometry.Primitive.uv_sphere, plan.batches[1].geometry_key.primitive);
+    try std.testing.expectEqual(@as(usize, 1), plan.batches[1].render_indices.len);
+    try std.testing.expectEqual(@as(usize, 1), plan.batches[1].render_indices[0]);
+
+    try std.testing.expectEqual(geometry.Primitive.box, plan.batches[2].geometry_key.primitive);
+    try std.testing.expectEqual(@as(usize, 1), plan.batches[2].render_indices.len);
+    try std.testing.expectEqual(@as(usize, 3), plan.batches[2].render_indices[0]);
+
+    try state.queueBatchDraws(plan.batches.len);
+    try std.testing.expectEqual(@as(usize, 3), state.drawCommandCount());
+}
+
+fn addBatchTestRenderable(
+    world: *runtime.World,
+    id: []const u8,
+    primitive: []const u8,
+    segments: i32,
+    rings: i32,
+    position: [3]f32,
+    base_color: [3]f32,
+) !void {
+    const entity = try world.createEntity(id, id);
+    try world.setTransform(entity, .{ .position = position });
+    try world.setGeometryPrimitive(entity, .{
+        .primitive = primitive,
+        .segments = segments,
+        .rings = rings,
+    });
+    try world.setSurfaceMaterial(entity, .{ .base_color = base_color });
 }
 
 fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) [16]f32 {
@@ -1402,12 +1668,15 @@ fn matMul(a: [16]f32, b: [16]f32) [16]f32 {
 }
 
 const FrameUniforms = extern struct {
-    mvp: [16]f32,
-    model: [16]f32,
     light_dir: [4]f32,
     light_color: [4]f32,
-    object_color: [4]f32,
     lighting: [4]f32,
+};
+
+const InstanceAttributes = extern struct {
+    mvp: [16]f32,
+    model: [16]f32,
+    object_color: [4]f32,
 };
 
 fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?*anyopaque, userdata2: ?*anyopaque) callconv(.c) void {

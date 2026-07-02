@@ -1,0 +1,3 @@
+name = "Batching Demo"
+version = 1
+default_scene = "scenes/main.scene.toml"

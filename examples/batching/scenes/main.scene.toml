@@ -1,0 +1,519 @@
+name = "Batching Demo"
+version = 1
+
+[[entities]]
+id = "batch-floor"
+name = "Batch Floor"
+
+[entities.components."machina.transform"]
+position = [0.0, -1.35, -0.35]
+rotation = [0.0, 0.0, 0.0]
+scale = [4.8, 1.0, 3.2]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "plane"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.18, 0.22, 0.26]
+
+[[entities]]
+id = "batch-cool-box-01"
+name = "Cool Box 01"
+
+[entities.components."machina.transform"]
+position = [-3.3, -0.62, 0.12]
+rotation = [0.2, 0.1, 0.0]
+scale = [0.26, 0.26, 0.26]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-02"
+name = "Cool Box 02"
+
+[entities.components."machina.transform"]
+position = [-2.1, -0.62, 0.02]
+rotation = [0.35, 0.5, 0.14]
+scale = [0.26, 0.26, 0.26]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-03"
+name = "Cool Box 03"
+
+[entities.components."machina.transform"]
+position = [-0.9, -0.62, -0.04]
+rotation = [0.05, 0.85, 0.28]
+scale = [0.26, 0.26, 0.26]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-04"
+name = "Cool Box 04"
+
+[entities.components."machina.transform"]
+position = [0.3, -0.62, -0.1]
+rotation = [0.48, 0.22, 0.52]
+scale = [0.26, 0.26, 0.26]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-05"
+name = "Cool Box 05"
+
+[entities.components."machina.transform"]
+position = [1.5, -0.62, -0.04]
+rotation = [0.15, 0.7, 0.2]
+scale = [0.26, 0.26, 0.26]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-06"
+name = "Cool Box 06"
+
+[entities.components."machina.transform"]
+position = [2.7, -0.62, 0.08]
+rotation = [0.42, 0.18, 0.38]
+scale = [0.26, 0.26, 0.26]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-07"
+name = "Cool Box 07"
+
+[entities.components."machina.transform"]
+position = [-2.7, 0.1, -0.82]
+rotation = [0.28, 0.34, 0.65]
+scale = [0.25, 0.25, 0.25]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-08"
+name = "Cool Box 08"
+
+[entities.components."machina.transform"]
+position = [-1.5, 0.1, -0.88]
+rotation = [0.64, 0.12, 0.3]
+scale = [0.25, 0.25, 0.25]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-09"
+name = "Cool Box 09"
+
+[entities.components."machina.transform"]
+position = [-0.3, 0.1, -0.96]
+rotation = [0.12, 0.62, 0.46]
+scale = [0.25, 0.25, 0.25]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-10"
+name = "Cool Box 10"
+
+[entities.components."machina.transform"]
+position = [0.9, 0.1, -0.92]
+rotation = [0.5, 0.4, 0.05]
+scale = [0.25, 0.25, 0.25]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-11"
+name = "Cool Box 11"
+
+[entities.components."machina.transform"]
+position = [2.1, 0.1, -0.84]
+rotation = [0.18, 0.95, 0.35]
+scale = [0.25, 0.25, 0.25]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-cool-box-12"
+name = "Cool Box 12"
+
+[entities.components."machina.transform"]
+position = [3.3, 0.1, -0.76]
+rotation = [0.44, 0.28, 0.72]
+scale = [0.25, 0.25, 0.25]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.55, 1.0]
+
+[[entities]]
+id = "batch-gold-sphere-01"
+name = "Gold Sphere 01"
+
+[entities.components."machina.transform"]
+position = [-3.0, 0.9, -1.52]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.22, 0.22, 0.22]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-02"
+name = "Gold Sphere 02"
+
+[entities.components."machina.transform"]
+position = [-1.8, 0.9, -1.58]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.22, 0.22, 0.22]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-03"
+name = "Gold Sphere 03"
+
+[entities.components."machina.transform"]
+position = [-0.6, 0.9, -1.64]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.22, 0.22, 0.22]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-04"
+name = "Gold Sphere 04"
+
+[entities.components."machina.transform"]
+position = [0.6, 0.9, -1.64]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.22, 0.22, 0.22]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-05"
+name = "Gold Sphere 05"
+
+[entities.components."machina.transform"]
+position = [1.8, 0.9, -1.58]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.22, 0.22, 0.22]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-06"
+name = "Gold Sphere 06"
+
+[entities.components."machina.transform"]
+position = [3.0, 0.9, -1.52]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.22, 0.22, 0.22]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-07"
+name = "Gold Sphere 07"
+
+[entities.components."machina.transform"]
+position = [-2.4, 1.5, -2.2]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.2, 0.2, 0.2]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-08"
+name = "Gold Sphere 08"
+
+[entities.components."machina.transform"]
+position = [-1.2, 1.5, -2.26]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.2, 0.2, 0.2]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-09"
+name = "Gold Sphere 09"
+
+[entities.components."machina.transform"]
+position = [0.0, 1.5, -2.3]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.2, 0.2, 0.2]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-10"
+name = "Gold Sphere 10"
+
+[entities.components."machina.transform"]
+position = [1.2, 1.5, -2.26]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.2, 0.2, 0.2]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-gold-sphere-11"
+name = "Gold Sphere 11"
+
+[entities.components."machina.transform"]
+position = [2.4, 1.5, -2.2]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.2, 0.2, 0.2]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 24
+rings = 12
+
+[entities.components."machina.material.surface"]
+base_color = [1.0, 0.54, 0.08]
+
+[[entities]]
+id = "batch-mint-ico-01"
+name = "Mint Ico 01"
+
+[entities.components."machina.transform"]
+position = [-2.4, -1.02, 0.78]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.18, 0.18, 0.18]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "ico_sphere"
+segments = 2
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.08, 0.92, 0.58]
+
+[[entities]]
+id = "batch-mint-ico-02"
+name = "Mint Ico 02"
+
+[entities.components."machina.transform"]
+position = [-1.2, -1.02, 0.9]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.18, 0.18, 0.18]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "ico_sphere"
+segments = 2
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.08, 0.92, 0.58]
+
+[[entities]]
+id = "batch-mint-ico-03"
+name = "Mint Ico 03"
+
+[entities.components."machina.transform"]
+position = [0.0, -1.02, 0.98]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.18, 0.18, 0.18]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "ico_sphere"
+segments = 2
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.08, 0.92, 0.58]
+
+[[entities]]
+id = "batch-mint-ico-04"
+name = "Mint Ico 04"
+
+[entities.components."machina.transform"]
+position = [1.2, -1.02, 0.9]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.18, 0.18, 0.18]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "ico_sphere"
+segments = 2
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.08, 0.92, 0.58]
+
+[[entities]]
+id = "batch-mint-ico-05"
+name = "Mint Ico 05"
+
+[entities.components."machina.transform"]
+position = [2.4, -1.02, 0.78]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.18, 0.18, 0.18]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "ico_sphere"
+segments = 2
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.08, 0.92, 0.58]
+
+[[entities]]
+id = "batch-camera"
+name = "Batching Camera"
+
+[entities.components."machina.transform"]
+position = [0.0, 0.12, 7.2]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+[entities.components."machina.camera"]
+fov_y_degrees = 58.0
+near = 0.1
+far = 100.0
+
+[[entities]]
+id = "batch-key-light"
+name = "Batching Key Light"
+
+[entities.components."machina.light.directional"]
+direction = [0.32, 0.76, 0.56]
+color = [1.0, 0.95, 0.86]
+intensity = 1.05
+ambient = 0.2
