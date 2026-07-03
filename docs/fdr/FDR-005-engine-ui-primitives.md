@@ -24,7 +24,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
 - The system performance view uses compact fixed-width rows and a clipped smooth-scroll viewport so long system lists remain legible and every system can be reached.
-- While the editor/debug overlay is visible, mouse wheel input scrolls the visible system viewport when the system list overflows. Scroll state uses a target pixel offset plus an animated visible pixel offset, so both fractional wheel deltas and discrete wheel notches move content smoothly.
+- While the editor/debug overlay is visible, mouse wheel input scrolls the visible system viewport when the system list overflows. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
 - The editor/debug overlay includes a compact input diagnostics row with current wheel delta, pointer position, profiler scroll pixel offset, and scrollable profile count while input routing is still being hardened.
 - The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, and script-mutated UI state.
 - UI can be used for runtime diagnostics before a full editor exists.
@@ -83,8 +83,8 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 9. Prove clipped smooth scrolling internally before exposing public layout containers
 
-**Decision:** The first overflowing editor list uses an engine-owned target pixel scroll offset, an animated visible pixel offset, a small vertical layout helper, and an internal render clip component. Machina does not yet expose public `VBox`, `HBox`, or `ScrollContainer` scene components.
-**Why:** Smooth scrolling requires target/display state, fractional content offsets, frame-time animation, and clipping. The editor needs this behavior immediately, while public layout primitives still need a real ECS component model for children, ordering, clipping, focus, and input routing.
+**Decision:** The first overflowing editor list uses an engine-owned target pixel scroll offset, an animated visible pixel offset, a row-height-independent wheel pixel distance, a small vertical layout helper, and an internal render clip component. Machina does not yet expose public `VBox`, `HBox`, or `ScrollContainer` scene components.
+**Why:** Smooth canvas scrolling requires target/display state, fractional content offsets that can settle between rows, frame-time animation, and clipping. The editor needs this behavior immediately, while public layout primitives still need a real ECS component model for children, ordering, clipping, focus, and input routing.
 **Tradeoff:** The editor overlay can prove smooth scrolling and clipping internally before the UI gallery and scene schema gain reusable layout containers.
 
 ### 10. Treat examples as the primitive gallery

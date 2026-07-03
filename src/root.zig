@@ -2576,7 +2576,7 @@ test "LiveProject editor scrolling uses render system profile count hint" {
         },
     });
 
-    try std.testing.expectApproxEqAbs(@as(f32, 32.0), live_project.editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 18.0), live_project.editor_state.system_scroll_target_y, 0.001);
     try std.testing.expect(live_project.editor_state.system_scroll_y > 0.0);
     try std.testing.expect(live_project.editor_state.system_scroll_y < live_project.editor_state.system_scroll_target_y);
 }

@@ -46,7 +46,7 @@ const editor_input_debug_y: f32 = 104.0;
 const editor_system_header_y: f32 = 136.0;
 const editor_system_first_row_y: f32 = 168.0;
 const editor_system_row_stride: f32 = 32.0;
-const editor_system_scroll_pixels_per_wheel: f32 = editor_system_row_stride;
+const editor_system_scroll_pixels_per_wheel: f32 = 18.0;
 const editor_system_scroll_smoothing: f32 = 22.0;
 const render_system_profile_window_frames: usize = 120;
 const editor_controls_panel_width: f32 = 360.0;
@@ -3847,7 +3847,7 @@ test "editor system list scroll state responds to wheel input" {
         },
     });
     try std.testing.expect(down_update.consumed_pointer);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
     try std.testing.expect(editor_state.system_scroll_y > 0.0);
     try std.testing.expect(editor_state.system_scroll_y < editor_state.system_scroll_target_y);
 
@@ -3894,7 +3894,7 @@ test "editor system list wheel scroll does not depend on pointer hit testing" {
     });
 
     try std.testing.expect(update.consumed_pointer);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
 }
 
 test "editor system list uses profile count hint for render-added rows" {
@@ -3916,7 +3916,7 @@ test "editor system list uses profile count hint for render-added rows" {
     });
 
     try std.testing.expect(update.consumed_pointer);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
 }
 
 test "editor system list uses fixed wheel direction" {
@@ -3956,7 +3956,7 @@ test "editor system list uses fixed wheel direction" {
         .system_profiles = &profiles,
         .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
     });
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
 
     _ = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
@@ -3996,7 +3996,7 @@ test "editor system list supports fractional pixel scroll" {
         .system_profiles = &profiles,
         .pointer = .{ .wheel_delta = .{ 0.0, -0.5 } },
     });
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride / 2.0), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel / 2.0), editor_state.system_scroll_target_y, 0.001);
     editor_state.system_scroll_y = editor_state.system_scroll_target_y;
 
     const range = editorSystemVisibleRange(.{
@@ -4005,7 +4005,7 @@ test "editor system list supports fractional pixel scroll" {
     });
     try std.testing.expectEqual(@as(usize, 0), range.start);
     try std.testing.expectEqual(@as(usize, 8), range.end);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride / 2.0), range.offset_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel / 2.0), range.offset_y, 0.001);
 }
 
 test "editor system list animates toward scroll target" {
@@ -4032,7 +4032,7 @@ test "editor system list animates toward scroll target" {
         .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
     });
 
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
     try std.testing.expect(editor_state.system_scroll_y > 0.0);
     try std.testing.expect(editor_state.system_scroll_y < editor_state.system_scroll_target_y);
 
@@ -4087,11 +4087,11 @@ test "editor system list replay applies fractional scroll away from the bottom" 
         0.18, 0.0, 0.24, 0.0, 0.12, 0.0, 0.2,
     };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &bounce_frames);
-    try std.testing.expectApproxEqAbs(@as(f32, 40.32), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 50.68), editor_state.system_scroll_target_y, 0.001);
 
     const deliberate_reverse_frames = [_]f32{1.0};
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &deliberate_reverse_frames);
-    try std.testing.expectApproxEqAbs(@as(f32, 8.32), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 32.68), editor_state.system_scroll_target_y, 0.001);
 }
 
 test "editor system list replay stays pinned through large boundary bounce stream" {
@@ -4112,14 +4112,18 @@ test "editor system list replay stays pinned through large boundary bounce strea
 
     var editor_state = EditorState{};
     const frames = [_]f32{
-        -1.0, -1.0, -1.0, 1.0, 1.0, -0.75, 2.0, -1.0,
+        -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, -0.75, 2.0, -1.0,
     };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &frames);
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride * 2.0), editor_state.system_scroll_target_y, 0.001);
 
     const deliberate_reverse_after_idle = [_]f32{ 0.0, 1.0 };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &deliberate_reverse_after_idle);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(
+        editorSystemMaxScrollY(profiles.len) - editor_system_scroll_pixels_per_wheel,
+        editor_state.system_scroll_target_y,
+        0.001,
+    );
 }
 
 test "render ECS schedule orders extract prepare queue and draw systems" {
