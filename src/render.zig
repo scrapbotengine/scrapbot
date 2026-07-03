@@ -244,7 +244,7 @@ pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: Fram
     }
     clampEditorSystemScroll(state, input.system_profiles.len);
 
-    if (input.pointer.wheel_delta[1] != 0.0 and (!input.pointer.has_position or hitEditorSystemPanel(input))) {
+    if (input.pointer.wheel_delta[1] != 0.0 and editorSystemNeedsScroll(input.system_profiles.len)) {
         scrollEditorSystemList(state, input.system_profiles.len, input.pointer.wheel_delta[1]);
         return .{ .consumed_pointer = true };
     }
@@ -520,7 +520,6 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
                     }
                 },
                 sdl.SDL_EVENT_MOUSE_WHEEL => {
-                    updatePointerFromWindow(&input.pointer, window, event.wheel.mouse_x, event.wheel.mouse_y);
                     input.pointer.wheel_delta[0] += event.wheel.x;
                     input.pointer.wheel_delta[1] += event.wheel.y;
                 },
@@ -3647,6 +3646,37 @@ test "editor system list scroll state responds to wheel input" {
     });
     try std.testing.expect(up_update.consumed_pointer);
     try std.testing.expectEqual(@as(usize, 0), editor_state.system_scroll_offset);
+}
+
+test "editor system list wheel scroll does not depend on pointer hit testing" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const profiles = [_]runtime.SystemProfileSnapshot{
+        .{ .id = "system.0", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.1", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.2", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.3", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.4", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.5", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.6", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.7", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.8", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+    };
+
+    var editor_state = EditorState{};
+    const update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .system_profiles = &profiles,
+        .pointer = .{
+            .position = .{ 1200.0, 680.0 },
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
+    });
+
+    try std.testing.expect(update.consumed_pointer);
+    try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
 }
 
 test "render ECS schedule orders extract prepare queue and draw systems" {
