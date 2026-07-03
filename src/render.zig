@@ -203,6 +203,18 @@ fn updateKeyboardModifiers(keyboard: *KeyboardInput, modifiers: sdl.SDL_Keymod) 
     keyboard.super_down = (modifiers & sdl.SDL_KMOD_GUI) != 0;
 }
 
+fn normalizedMouseWheelDelta(wheel: anytype) [2]f32 {
+    var delta = [2]f32{
+        if (wheel.x != 0.0) wheel.x else @as(f32, @floatFromInt(wheel.integer_x)),
+        if (wheel.y != 0.0) wheel.y else @as(f32, @floatFromInt(wheel.integer_y)),
+    };
+    if (wheel.direction == sdl.SDL_MOUSEWHEEL_FLIPPED) {
+        delta[0] = -delta[0];
+        delta[1] = -delta[1];
+    }
+    return delta;
+}
+
 pub fn editorFrameState(world: *const runtime.World, state: EditorState) EditorFrameState {
     return .{
         .paused = state.paused,
@@ -520,8 +532,9 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
                     }
                 },
                 sdl.SDL_EVENT_MOUSE_WHEEL => {
-                    input.pointer.wheel_delta[0] += event.wheel.x;
-                    input.pointer.wheel_delta[1] += event.wheel.y;
+                    const wheel_delta = normalizedMouseWheelDelta(event.wheel);
+                    input.pointer.wheel_delta[0] += wheel_delta[0];
+                    input.pointer.wheel_delta[1] += wheel_delta[1];
                 },
                 sdl.SDL_EVENT_WINDOW_RESIZED,
                 sdl.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED,
@@ -4049,6 +4062,25 @@ test "ctrl-tab debug overlay toggle updates editor visibility only" {
     try std.testing.expect(isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_LCTRL));
     try std.testing.expect(!isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_NONE));
     try std.testing.expect(!isEditorToggleShortcut(sdl.SDLK_F1, sdl.SDL_KMOD_NONE));
+}
+
+test "mouse wheel deltas normalize flipped direction and integer fallback" {
+    const Wheel = struct {
+        x: f32 = 0.0,
+        y: f32 = 0.0,
+        direction: sdl.SDL_MouseWheelDirection = sdl.SDL_MOUSEWHEEL_NORMAL,
+        integer_x: i32 = 0,
+        integer_y: i32 = 0,
+    };
+
+    const normal = normalizedMouseWheelDelta(Wheel{ .y = -1.0 });
+    try std.testing.expectEqual(@as(f32, -1.0), normal[1]);
+
+    const flipped = normalizedMouseWheelDelta(Wheel{ .y = 1.0, .direction = sdl.SDL_MOUSEWHEEL_FLIPPED });
+    try std.testing.expectEqual(@as(f32, -1.0), flipped[1]);
+
+    const integer_fallback = normalizedMouseWheelDelta(Wheel{ .integer_y = -2 });
+    try std.testing.expectEqual(@as(f32, -2.0), integer_fallback[1]);
 }
 
 test "debug overlay extracts FPS label when visible" {
