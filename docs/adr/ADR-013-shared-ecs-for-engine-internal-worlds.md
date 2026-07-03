@@ -16,10 +16,13 @@ The renderer owns a render world and a render-phase schedule. Each frame, render
 
 Engine-internal render components and systems use reserved `machina.*` type ids. Backend handles remain renderer-owned side resources until Machina has explicit native/internal component storage with lifecycle rules for non-serializable values.
 
+Render systems are profiled at the render scheduler boundary and exposed to the same editor performance overlay stream as project systems. The overlay currently displays render timings from the last completed frame alongside current project system timings.
+
 ## Consequences
 
 - Engine subsystems can have separate worlds without creating separate ECS implementations.
 - Render extraction, preparation, queueing, and drawing can use the same system access declarations and scheduling rules as game logic.
+- Runtime tooling can inspect engine-internal system costs without a separate profiling model.
 - Scene-authored data remains text-based and serializable, while backend handles stay outside project files and scripting APIs.
 - The renderer now has a clear path toward native/internal components for GPU resources instead of ad hoc object lists.
 - The current implementation still has a GPU-resource sidecar, so not every renderer-owned value is an ECS component yet.

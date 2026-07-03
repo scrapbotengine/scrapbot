@@ -29,6 +29,26 @@ pub const Vec3 = extern struct {
     }
 };
 
+pub const StringView = extern struct {
+    ptr: ?[*]const u8 = null,
+    len: usize = 0,
+
+    pub fn fromSlice(value: []const u8) StringView {
+        return .{
+            .ptr = if (value.len == 0) null else value.ptr,
+            .len = value.len,
+        };
+    }
+
+    pub fn asSlice(self: StringView) ?[]const u8 {
+        if (self.len == 0) {
+            return "";
+        }
+        const ptr = self.ptr orelse return null;
+        return ptr[0..self.len];
+    }
+};
+
 pub const Entity = extern struct {
     index: u32,
     generation: u32,
@@ -49,6 +69,56 @@ pub const ComponentDefinition = extern struct {
 pub const StringList = extern struct {
     items: ?[*]const [*:0]const u8 = null,
     len: usize = 0,
+};
+
+pub const FieldValue = extern struct {
+    name: [*:0]const u8,
+    field_type: FieldType,
+    boolean_value: u8 = 0,
+    int_value: i32 = 0,
+    float_value: f32 = 0.0,
+    vec3_value: Vec3 = .{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    string_value: StringView = .{},
+
+    pub fn boolean(name: [*:0]const u8, value: bool) FieldValue {
+        return .{
+            .name = name,
+            .field_type = .boolean,
+            .boolean_value = if (value) 1 else 0,
+        };
+    }
+
+    pub fn int(name: [*:0]const u8, value: i32) FieldValue {
+        return .{
+            .name = name,
+            .field_type = .int,
+            .int_value = value,
+        };
+    }
+
+    pub fn float(name: [*:0]const u8, value: f32) FieldValue {
+        return .{
+            .name = name,
+            .field_type = .float,
+            .float_value = value,
+        };
+    }
+
+    pub fn vec3(name: [*:0]const u8, value: Vec3) FieldValue {
+        return .{
+            .name = name,
+            .field_type = .vec3,
+            .vec3_value = value,
+        };
+    }
+
+    pub fn string(name: [*:0]const u8, value: []const u8) FieldValue {
+        return .{
+            .name = name,
+            .field_type = .string,
+            .string_value = StringView.fromSlice(value),
+        };
+    }
 };
 
 pub const SystemContext = extern struct {
@@ -92,6 +162,16 @@ pub const GetVec3Fn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const 
 pub const SetVec3Fn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, Vec3) callconv(.c) c_int;
 pub const GetF32Fn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, *f32) callconv(.c) c_int;
 pub const SetF32Fn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, f32) callconv(.c) c_int;
+pub const GetBoolFn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, *u8) callconv(.c) c_int;
+pub const SetBoolFn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, u8) callconv(.c) c_int;
+pub const GetI32Fn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, *i32) callconv(.c) c_int;
+pub const SetI32Fn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, i32) callconv(.c) c_int;
+pub const GetStringFn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, *StringView) callconv(.c) c_int;
+pub const SetStringFn = *const fn (?*anyopaque, Entity, [*:0]const u8, [*:0]const u8, StringView) callconv(.c) c_int;
+pub const SpawnEntityFn = *const fn (?*anyopaque, StringView, StringView, *Entity) callconv(.c) c_int;
+pub const DespawnEntityFn = *const fn (?*anyopaque, Entity) callconv(.c) c_int;
+pub const AddComponentFn = *const fn (?*anyopaque, Entity, [*:0]const u8, ?[*]const FieldValue, usize) callconv(.c) c_int;
+pub const RemoveComponentFn = *const fn (?*anyopaque, Entity, [*:0]const u8) callconv(.c) c_int;
 pub const HostErrorFn = *const fn (?*anyopaque) callconv(.c) ?[*:0]const u8;
 
 pub const SystemApi = extern struct {
@@ -100,6 +180,16 @@ pub const SystemApi = extern struct {
     set_vec3: SetVec3Fn,
     get_f32: GetF32Fn,
     set_f32: SetF32Fn,
+    get_bool: GetBoolFn,
+    set_bool: SetBoolFn,
+    get_i32: GetI32Fn,
+    set_i32: SetI32Fn,
+    get_string: GetStringFn,
+    set_string: SetStringFn,
+    spawn_entity: SpawnEntityFn,
+    despawn_entity: DespawnEntityFn,
+    add_component: AddComponentFn,
+    remove_component: RemoveComponentFn,
     host_error: HostErrorFn,
 };
 
@@ -183,6 +273,75 @@ pub fn getF32(context: *SystemContext, entity: Entity, component_id: [*:0]const 
 
 pub fn setF32(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8, value: f32) HostError!void {
     if (context.api.set_f32(context.world, entity, component_id, field_name, value) == 0) {
+        return error.NativeHostError;
+    }
+}
+
+pub fn getBool(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8) HostError!bool {
+    var value: u8 = 0;
+    if (context.api.get_bool(context.world, entity, component_id, field_name, &value) == 0) {
+        return error.NativeHostError;
+    }
+    return value != 0;
+}
+
+pub fn setBool(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8, value: bool) HostError!void {
+    if (context.api.set_bool(context.world, entity, component_id, field_name, if (value) 1 else 0) == 0) {
+        return error.NativeHostError;
+    }
+}
+
+pub fn getI32(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8) HostError!i32 {
+    var value: i32 = 0;
+    if (context.api.get_i32(context.world, entity, component_id, field_name, &value) == 0) {
+        return error.NativeHostError;
+    }
+    return value;
+}
+
+pub fn setI32(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8, value: i32) HostError!void {
+    if (context.api.set_i32(context.world, entity, component_id, field_name, value) == 0) {
+        return error.NativeHostError;
+    }
+}
+
+pub fn getString(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8) HostError![]const u8 {
+    var value: StringView = .{};
+    if (context.api.get_string(context.world, entity, component_id, field_name, &value) == 0) {
+        return error.NativeHostError;
+    }
+    // Borrowed host storage; copy it before mutating the world or keeping it after this callback.
+    return value.asSlice() orelse error.NativeHostError;
+}
+
+pub fn setString(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, field_name: [*:0]const u8, value: []const u8) HostError!void {
+    if (context.api.set_string(context.world, entity, component_id, field_name, StringView.fromSlice(value)) == 0) {
+        return error.NativeHostError;
+    }
+}
+
+pub fn spawnEntity(context: *SystemContext, id: []const u8, name: []const u8) HostError!Entity {
+    var entity: Entity = undefined;
+    if (context.api.spawn_entity(context.world, StringView.fromSlice(id), StringView.fromSlice(name), &entity) == 0) {
+        return error.NativeHostError;
+    }
+    return entity;
+}
+
+pub fn despawnEntity(context: *SystemContext, entity: Entity) HostError!void {
+    if (context.api.despawn_entity(context.world, entity) == 0) {
+        return error.NativeHostError;
+    }
+}
+
+pub fn addComponent(context: *SystemContext, entity: Entity, component_id: [*:0]const u8, fields: []const FieldValue) HostError!void {
+    if (context.api.add_component(context.world, entity, component_id, if (fields.len == 0) null else fields.ptr, fields.len) == 0) {
+        return error.NativeHostError;
+    }
+}
+
+pub fn removeComponent(context: *SystemContext, entity: Entity, component_id: [*:0]const u8) HostError!void {
+    if (context.api.remove_component(context.world, entity, component_id) == 0) {
         return error.NativeHostError;
     }
 }

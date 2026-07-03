@@ -22,6 +22,8 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 - Systems use the same phase, access declaration, and ordering model regardless of authoring language.
 - A system can be ported from Luau to Zig without changing scene data or entity component ids.
 - Native systems receive an opaque host context and use access-checked query/read/write helpers rather than direct `runtime.World` access.
+- Native systems can read and write `bool`, `i32`, `f32`, `vec3`, and `string` component fields through the host facade.
+- Native systems can spawn/despawn entities and add/remove components through deferred structural commands.
 - Runtime diagnostics identify whether a failing component or system came from Luau script, native game code, or the engine.
 - Native system runtime is profiled at the same scheduler dispatch boundary as Luau systems.
 - Interactive workflows can reload Luau scripts without rebuilding native code.
@@ -71,7 +73,13 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 
 **Decision:** Game projects can declare one Zig source file with `native = "native/game.zig"`. Machina builds it as a dynamic library during development, calls `machina_register`, and exposes only the `machina_native` registration/runtime facade.
 **Why:** Project code should own its native hot paths without depending on engine internals or creating a second ECS. The narrow facade preserves the same scheduler access rules used by Luau and keeps a future static-link build path viable. This follows ADR-019.
-**Tradeoff:** The first host facade only exposes query iteration plus `vec3` and `f32` field access. Structural commands and broader field typing need explicit API additions.
+**Tradeoff:** The facade must grow deliberately through typed callbacks and tests. It now supports scalar/string/vector field access plus structural lifecycle commands, but it still does not expose raw storage views, native pointers, or arbitrary engine internals.
+
+### 8. Match Luau structural mutation semantics in native systems
+
+**Decision:** Native entity spawns happen immediately and are tracked for rollback, while native add/remove component and despawn commands are queued and flushed only after the active system succeeds.
+**Why:** Luau and Zig systems should have the same lifecycle model. Deferred structural mutation keeps queries stable during a system callback and prevents failed systems from leaving half-applied component changes behind.
+**Tradeoff:** A native system cannot add a component and then read that component through a query in the same callback. The command becomes visible after the system returns successfully.
 
 ## Related
 
@@ -84,4 +92,4 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 - What is the `machina build` static-link workflow for platforms that forbid dynamic code loading?
 - How do Luau and Zig share component storage layouts without leaking unstable engine internals?
 - What tooling proves that a Zig port preserves behavior from the original Luau system?
-- Which structural ECS commands should the native host facade expose first?
+- Which bulk/native storage view APIs are worth exposing without compromising storage encapsulation?

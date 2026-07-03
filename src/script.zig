@@ -300,7 +300,12 @@ pub const Program = struct {
                         self.clearHostError();
                         self.active_system = system;
                         const started_ns = monotonicTimestampNs();
-                        const system_ok = self.callNativeSystem(system.*, native_index, world, delta_seconds);
+                        var system_ok = self.callNativeSystem(system.*, native_index, world, delta_seconds);
+                        if (system_ok) {
+                            system_ok = self.flushQueuedScriptCommands(world);
+                        } else {
+                            self.discardQueuedScriptCommands(world);
+                        }
                         self.recordSystemDuration(system.*, phase, elapsedNanosecondsSince(started_ns));
                         if (!system_ok and self.last_diagnostic == null) {
                             self.setNativeRuntimeDiagnostic(system.*) catch {};
@@ -1062,6 +1067,16 @@ const native_system_api = native_api.SystemApi{
     .set_vec3 = nativeSetVec3,
     .get_f32 = nativeGetF32,
     .set_f32 = nativeSetF32,
+    .get_bool = nativeGetBool,
+    .set_bool = nativeSetBool,
+    .get_i32 = nativeGetI32,
+    .set_i32 = nativeSetI32,
+    .get_string = nativeGetString,
+    .set_string = nativeSetString,
+    .spawn_entity = nativeSpawnEntity,
+    .despawn_entity = nativeDespawnEntity,
+    .add_component = nativeAddComponent,
+    .remove_component = nativeRemoveComponent,
     .host_error = nativeHostError,
 };
 
@@ -1265,6 +1280,392 @@ fn nativeSetF32(
         return 0;
     };
     return 1;
+}
+
+fn nativeGetBool(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    out_value: *u8,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("native system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    const value = context.world.getBoolean(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name) catch |err| {
+        program.setHostError("native system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    out_value.* = if (value) 1 else 0;
+    return 1;
+}
+
+fn nativeSetBool(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    value: u8,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("native system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    context.world.setComponentFieldValue(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name, .{ .boolean = value != 0 }) catch |err| {
+        program.setHostError("native system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeGetI32(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    out_value: *i32,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("native system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    out_value.* = context.world.getInt(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name) catch |err| {
+        program.setHostError("native system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeSetI32(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    value: i32,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("native system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    context.world.setComponentFieldValue(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name, .{ .int = value }) catch |err| {
+        program.setHostError("native system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeGetString(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    out_value: *native_api.StringView,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("native system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    const value = context.world.getString(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name) catch |err| {
+        program.setHostError("native system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    out_value.* = native_api.StringView.fromSlice(value);
+    return 1;
+}
+
+fn nativeSetString(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    raw_value: native_api.StringView,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    const value = raw_value.asSlice() orelse {
+        program.setHostError("native system '{s}' tried to write invalid string value to '{s}.{s}'", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+        });
+        return 0;
+    };
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("native system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    context.world.setComponentFieldValue(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name, .{ .string = value }) catch |err| {
+        program.setHostError("native system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeSpawnEntity(
+    raw_context: ?*anyopaque,
+    raw_id: native_api.StringView,
+    raw_name: native_api.StringView,
+    out_entity: *native_api.Entity,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const id = raw_id.asSlice() orelse {
+        program.setHostError("native system '{s}' tried to spawn an entity with an invalid id", .{program.activeSystemId()});
+        return 0;
+    };
+    const name = raw_name.asSlice() orelse {
+        program.setHostError("native system '{s}' tried to spawn entity '{s}' with an invalid name", .{ program.activeSystemId(), id });
+        return 0;
+    };
+
+    const entity = context.world.createEntity(id, name) catch |err| {
+        program.setHostError("native system '{s}' failed to spawn entity '{s}': {s}", .{
+            program.activeSystemId(),
+            id,
+            @errorName(err),
+        });
+        return 0;
+    };
+    out_entity.* = .{ .index = entity.index, .generation = entity.generation };
+    program.immediate_script_spawns.append(program.allocator, entity) catch {
+        _ = context.world.removeEntity(entity) catch {};
+        program.setHostError("native system '{s}' failed to record spawned entity '{s}': {s}", .{
+            program.activeSystemId(),
+            id,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeDespawnEntity(raw_context: ?*anyopaque, entity: native_api.Entity) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    return queueDespawnEntity(context.program, context.world, .{ .index = entity.index, .generation = entity.generation });
+}
+
+fn nativeAddComponent(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_fields: ?[*]const native_api.FieldValue,
+    field_count: usize,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("native system '{s}' tried to add component '{s}' without declaring it in writes", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    }
+
+    const definition = program.registry.findComponent(component_id) orelse {
+        program.setHostError("native system '{s}' tried to add unknown component '{s}'", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    };
+    const runtime_entity = runtime.EntityHandle{ .index = entity.index, .generation = entity.generation };
+    _ = context.world.entity(runtime_entity) catch |err| {
+        program.setHostError("native system '{s}' failed to queue add component '{s}' to entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity.index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    const raw_slice = if (field_count == 0) &[_]native_api.FieldValue{} else (raw_fields orelse return 0)[0..field_count];
+    const fields = program.allocator.alloc(QueuedComponentFieldValue, field_count) catch {
+        program.setHostError("native system '{s}' failed to allocate component fields for '{s}'", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    };
+    var initialized_fields: usize = 0;
+    var fields_owned = true;
+    defer {
+        if (fields_owned) {
+            for (fields[0..initialized_fields]) |*field| {
+                field.deinit(program.allocator);
+            }
+            program.allocator.free(fields);
+        }
+    }
+
+    for (raw_slice, 0..) |raw_field, index| {
+        const field_name = std.mem.span(raw_field.name);
+        const field_definition = findComponentField(definition.*, field_name) orelse {
+            program.setHostError("native system '{s}' tried to add unknown field '{s}.{s}'", .{
+                program.activeSystemId(),
+                component_id,
+                field_name,
+            });
+            return 0;
+        };
+        const component_value = componentValueFromNativeType(field_definition.value_type, raw_field) catch |err| {
+            program.setHostError("native system '{s}' failed to convert value for '{s}.{s}': {s}", .{
+                program.activeSystemId(),
+                component_id,
+                field_name,
+                @errorName(err),
+            });
+            return 0;
+        };
+        const owned_field_name = program.allocator.dupe(u8, field_name) catch {
+            program.setHostError("native system '{s}' failed to queue field name for '{s}.{s}': {s}", .{
+                program.activeSystemId(),
+                component_id,
+                field_name,
+                @errorName(error.OutOfMemory),
+            });
+            return 0;
+        };
+        fields[index] = .{
+            .name = owned_field_name,
+            .value = cloneComponentValue(program.allocator, component_value) catch |err| {
+                program.allocator.free(owned_field_name);
+                program.setHostError("native system '{s}' failed to queue value for '{s}.{s}': {s}", .{
+                    program.activeSystemId(),
+                    component_id,
+                    field_name,
+                    @errorName(err),
+                });
+                return 0;
+            },
+        };
+        initialized_fields += 1;
+    }
+
+    const owned_component_id = program.allocator.dupe(u8, component_id) catch {
+        program.setHostError("native system '{s}' failed to queue add component '{s}' to entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity.index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    var component_id_owned = true;
+    defer {
+        if (component_id_owned) {
+            program.allocator.free(owned_component_id);
+        }
+    }
+
+    program.queued_script_commands.append(program.allocator, .{ .add_component = .{
+        .entity = runtime_entity,
+        .component_id = owned_component_id,
+        .fields = fields,
+    } }) catch {
+        program.setHostError("native system '{s}' failed to queue add component '{s}' to entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity.index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    fields_owned = false;
+    component_id_owned = false;
+    return 1;
+}
+
+fn nativeRemoveComponent(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    return queueRemoveComponent(context.program, context.world, .{ .index = entity.index, .generation = entity.generation }, std.mem.span(raw_component_id));
 }
 
 fn queryNextCallback(
@@ -2230,6 +2631,94 @@ fn removeComponentCallback(
     return 1;
 }
 
+fn queueDespawnEntity(program: *Program, world: *runtime.World, entity: runtime.EntityHandle) c_int {
+    _ = world.entity(entity) catch |err| {
+        program.setHostError("system '{s}' failed to despawn entity {d}: {s}", .{
+            program.activeSystemId(),
+            entity.index,
+            @errorName(err),
+        });
+        return 0;
+    };
+
+    var components = world.entityComponents(entity) catch |err| {
+        program.setHostError("system '{s}' failed to inspect entity {d}: {s}", .{
+            program.activeSystemId(),
+            entity.index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    while (components.next()) |component_id| {
+        if (!program.activeSystemAllowsWrite(component_id)) {
+            program.setHostError("system '{s}' tried to despawn entity {d} without declaring write access to '{s}'", .{
+                program.activeSystemId(),
+                entity.index,
+                component_id,
+            });
+            return 0;
+        }
+    }
+
+    program.queued_script_commands.append(program.allocator, .{ .despawn_entity = entity }) catch {
+        program.setHostError("system '{s}' failed to queue despawn entity {d}: {s}", .{
+            program.activeSystemId(),
+            entity.index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn queueRemoveComponent(program: *Program, world: *runtime.World, entity: runtime.EntityHandle, component_id: []const u8) c_int {
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("system '{s}' tried to remove component '{s}' without declaring it in writes", .{
+            program.activeSystemId(),
+            component_id,
+        });
+        return 0;
+    }
+    _ = world.entity(entity) catch |err| {
+        program.setHostError("system '{s}' failed to queue remove component '{s}' from entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity.index,
+            @errorName(err),
+        });
+        return 0;
+    };
+    const owned_component_id = program.allocator.dupe(u8, component_id) catch {
+        program.setHostError("system '{s}' failed to queue remove component '{s}' from entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity.index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    var component_id_owned = true;
+    defer {
+        if (component_id_owned) {
+            program.allocator.free(owned_component_id);
+        }
+    }
+    program.queued_script_commands.append(program.allocator, .{ .remove_component = .{
+        .entity = entity,
+        .component_id = owned_component_id,
+    } }) catch {
+        program.setHostError("system '{s}' failed to queue remove component '{s}' from entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity.index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    component_id_owned = false;
+    return 1;
+}
+
 fn componentValueFromLuau(
     world: *runtime.World,
     entity: runtime.EntityHandle,
@@ -2324,6 +2813,42 @@ fn componentValueFromLuauType(field_type: runtime.FieldType, value: *const c.mac
         .float => switch (value.tag) {
             c.MACHINA_LUAU_FIELD_NUMBER => .{ .float = try f32FromLuauNumber(value.number_value) },
             c.MACHINA_LUAU_FIELD_FLOAT => .{ .float = @floatCast(value.number_value) },
+            else => ScriptError.InvalidScript,
+        },
+    };
+}
+
+fn componentValueFromNativeType(field_type: runtime.FieldType, value: native_api.FieldValue) !runtime.ComponentValue {
+    return switch (field_type) {
+        .boolean => switch (value.field_type) {
+            .boolean => .{ .boolean = value.boolean_value != 0 },
+            else => ScriptError.InvalidScript,
+        },
+        .int => switch (value.field_type) {
+            .int => .{ .int = value.int_value },
+            else => ScriptError.InvalidScript,
+        },
+        .float => switch (value.field_type) {
+            .float => blk: {
+                if (!std.math.isFinite(value.float_value)) {
+                    return ScriptError.InvalidScript;
+                }
+                break :blk .{ .float = value.float_value };
+            },
+            else => ScriptError.InvalidScript,
+        },
+        .vec3 => switch (value.field_type) {
+            .vec3 => blk: {
+                const vec3 = value.vec3_value;
+                if (!std.math.isFinite(vec3.x) or !std.math.isFinite(vec3.y) or !std.math.isFinite(vec3.z)) {
+                    return ScriptError.InvalidScript;
+                }
+                break :blk .{ .vec3 = .{ vec3.x, vec3.y, vec3.z } };
+            },
+            else => ScriptError.InvalidScript,
+        },
+        .string => switch (value.field_type) {
+            .string => .{ .string = value.string_value.asSlice() orelse return ScriptError.InvalidScript },
             else => ScriptError.InvalidScript,
         },
     };
@@ -2439,6 +2964,56 @@ fn testFailingNativeSystem(context: *NativeSystemContext) callconv(.c) c_int {
     return 0;
 }
 
+fn testNativeLifecycleSystem(context: *NativeSystemContext) callconv(.c) c_int {
+    const stats_query = [_][*:0]const u8{"native_stats"};
+    var stats_cursor: usize = 0;
+    while (native_api.queryNext(context, stats_query[0..], &stats_cursor) catch return 0) |stats_entity| {
+        const ready = native_api.getBool(context, stats_entity, "native_stats", "ready") catch return 0;
+        const label = native_api.getString(context, stats_entity, "native_stats", "label") catch return 0;
+        const gain = native_api.getF32(context, stats_entity, "native_stats", "gain") catch return 0;
+        const direction = native_api.getVec3(context, stats_entity, "native_stats", "direction") catch return 0;
+        const previous_spawned = native_api.getI32(context, stats_entity, "native_stats", "spawned_count") catch return 0;
+        if (!ready or !std.mem.eql(u8, label, "ready")) {
+            return 0;
+        }
+
+        const survivor = native_api.spawnEntity(context, "native-survivor", "Native Survivor") catch return 0;
+        const payload_fields = [_]native_api.FieldValue{
+            native_api.FieldValue.int("count", previous_spawned + 7),
+            native_api.FieldValue.boolean("enabled", true),
+            native_api.FieldValue.float("speed", gain + 0.25),
+            native_api.FieldValue.vec3("direction", direction.addScaled(.{ .x = 1.0, .y = 0.0, .z = -1.0 }, 2.0)),
+            native_api.FieldValue.string("label", "spawned"),
+        };
+        native_api.addComponent(context, survivor, "native_payload", payload_fields[0..]) catch return 0;
+
+        const doomed = native_api.spawnEntity(context, "native-doomed", "Native Doomed") catch return 0;
+        const marker_fields = [_]native_api.FieldValue{
+            native_api.FieldValue.int("value", 3),
+        };
+        native_api.addComponent(context, doomed, "native_marker", marker_fields[0..]) catch return 0;
+        native_api.despawnEntity(context, doomed) catch return 0;
+
+        const marker_query = [_][*:0]const u8{"native_marker"};
+        var marker_cursor: usize = 0;
+        var removed_count: i32 = 0;
+        while (native_api.queryNext(context, marker_query[0..], &marker_cursor) catch return 0) |marker_entity| {
+            native_api.removeComponent(context, marker_entity, "native_marker") catch return 0;
+            removed_count += 1;
+            break;
+        }
+
+        native_api.setI32(context, stats_entity, "native_stats", "spawned_count", 2) catch return 0;
+        native_api.setI32(context, stats_entity, "native_stats", "removed_count", removed_count) catch return 0;
+        native_api.setI32(context, stats_entity, "native_stats", "despawned_count", 1) catch return 0;
+        native_api.setBool(context, stats_entity, "native_stats", "ready", false) catch return 0;
+        native_api.setString(context, stats_entity, "native_stats", "label", "done") catch return 0;
+        native_api.setF32(context, stats_entity, "native_stats", "gain", gain + 1.0) catch return 0;
+        native_api.setVec3(context, stats_entity, "native_stats", "direction", direction.addScaled(.{ .x = 0.0, .y = 1.0, .z = 0.0 }, 1.5)) catch return 0;
+    }
+    return 1;
+}
+
 test "luau declarations register components and executable systems" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
@@ -2547,7 +3122,7 @@ test "native and luau systems share components and scheduling" {
         \\    end
         \\  end,
         \\})
-        ,
+    ,
         native_extension,
     );
     defer program.deinit();
@@ -2576,6 +3151,85 @@ test "native and luau systems share components and scheduling" {
     try std.testing.expectEqual(@as(usize, 2), profiles.len);
     try std.testing.expectEqual(@as(u32, 1), profiles[0].sample_count);
     try std.testing.expectEqual(@as(u32, 1), profiles[1].sample_count);
+}
+
+test "native host facade supports typed fields and lifecycle commands" {
+    const stats_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "spawned_count", .value_type = .int },
+        .{ .name = "removed_count", .value_type = .int },
+        .{ .name = "despawned_count", .value_type = .int },
+        .{ .name = "ready", .value_type = .boolean },
+        .{ .name = "label", .value_type = .string },
+        .{ .name = "gain", .value_type = .float },
+        .{ .name = "direction", .value_type = .vec3 },
+    };
+    const payload_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "count", .value_type = .int },
+        .{ .name = "enabled", .value_type = .boolean },
+        .{ .name = "speed", .value_type = .float },
+        .{ .name = "direction", .value_type = .vec3 },
+        .{ .name = "label", .value_type = .string },
+    };
+    const marker_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "value", .value_type = .int },
+    };
+    const native_systems = [_]NativeSystemRegistration{
+        .{ .definition = .{
+            .id = "native_lifecycle",
+            .phase = .startup,
+            .reads = &.{},
+            .writes = &.{ "native_stats", "native_payload", "native_marker" },
+        }, .run = testNativeLifecycleSystem },
+    };
+    const native_extension = NativeExtension{
+        .components = &.{
+            .{ .id = "native_stats", .fields = &stats_fields },
+            .{ .id = "native_payload", .fields = &payload_fields },
+            .{ .id = "native_marker", .fields = &marker_fields },
+        },
+        .systems = &native_systems,
+    };
+
+    var program = try loadSourceProgramWithNative(std.testing.allocator, "test.luau", "--!strict\n", native_extension);
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+    const stats = try world.createEntity("stats", "Stats");
+    try world.setComponent(stats, "native_stats", &.{
+        .{ .name = "spawned_count", .value = .{ .int = 0 } },
+        .{ .name = "removed_count", .value = .{ .int = 0 } },
+        .{ .name = "despawned_count", .value = .{ .int = 0 } },
+        .{ .name = "ready", .value = .{ .boolean = true } },
+        .{ .name = "label", .value = .{ .string = "ready" } },
+        .{ .name = "gain", .value = .{ .float = 1.5 } },
+        .{ .name = "direction", .value = .{ .vec3 = .{ 1.0, 2.0, 3.0 } } },
+    });
+    const marked = try world.createEntity("marked", "Marked");
+    try world.setComponent(marked, "native_marker", &.{
+        .{ .name = "value", .value = .{ .int = 1 } },
+    });
+
+    try std.testing.expect(program.startup(&world));
+    try std.testing.expectEqual(runtime.ComponentValue{ .int = 2 }, try world.getComponentFieldValue(stats, "native_stats", "spawned_count"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .int = 1 }, try world.getComponentFieldValue(stats, "native_stats", "removed_count"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .int = 1 }, try world.getComponentFieldValue(stats, "native_stats", "despawned_count"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .boolean = false }, try world.getComponentFieldValue(stats, "native_stats", "ready"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .float = 2.5 }, try world.getComponentFieldValue(stats, "native_stats", "gain"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .vec3 = .{ 1.0, 3.5, 3.0 } }, try world.getComponentFieldValue(stats, "native_stats", "direction"));
+    const stats_label = try world.getComponentFieldValue(stats, "native_stats", "label");
+    try std.testing.expectEqualStrings("done", stats_label.string);
+
+    const survivor = world.findEntityById("native-survivor") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(runtime.ComponentValue{ .int = 7 }, try world.getComponentFieldValue(survivor, "native_payload", "count"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .boolean = true }, try world.getComponentFieldValue(survivor, "native_payload", "enabled"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .float = 1.75 }, try world.getComponentFieldValue(survivor, "native_payload", "speed"));
+    try std.testing.expectEqual(runtime.ComponentValue{ .vec3 = .{ 3.0, 2.0, 1.0 } }, try world.getComponentFieldValue(survivor, "native_payload", "direction"));
+    const payload_label = try world.getComponentFieldValue(survivor, "native_payload", "label");
+    try std.testing.expectEqualStrings("spawned", payload_label.string);
+
+    try std.testing.expect(!try world.hasComponent(marked, "native_marker"));
+    try std.testing.expect(world.findEntityById("native-doomed") == null);
 }
 
 test "native system failures produce runtime diagnostics" {

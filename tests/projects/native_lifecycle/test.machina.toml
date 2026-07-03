@@ -1,0 +1,74 @@
+frames = 1
+dt = 0.25
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "spawned_count"
+equals_int = 2
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "removed_count"
+equals_int = 1
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "despawned_count"
+equals_int = 1
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "ready"
+equals_bool = false
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "label"
+equals_string = "done"
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "gain"
+equals_float = 2.5
+
+[[expect.field]]
+entity = "stats"
+component = "native_stats"
+field = "direction"
+equals_vec3 = [1.0, 3.5, 3.0]
+
+[[expect.field]]
+entity = "native-survivor"
+component = "native_payload"
+field = "count"
+equals_int = 7
+
+[[expect.field]]
+entity = "native-survivor"
+component = "native_payload"
+field = "enabled"
+equals_bool = true
+
+[[expect.field]]
+entity = "native-survivor"
+component = "native_payload"
+field = "speed"
+equals_float = 1.75
+
+[[expect.field]]
+entity = "native-survivor"
+component = "native_payload"
+field = "direction"
+equals_vec3 = [3.0, 2.0, 1.0]
+
+[[expect.field]]
+entity = "native-survivor"
+component = "native_payload"
+field = "label"
+equals_string = "spawned"

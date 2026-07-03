@@ -1,0 +1,5 @@
+name = "Native Lifecycle"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = []
+native = "native/game.zig"

@@ -8,7 +8,7 @@ Machina is an experimental, text-first game engine written in Zig. The engine is
 - Fully ECS based. The ECS is exposed to scripts. Users can author new component types and systems in Luau, and the engine will schedule them with native systems.
 - Projects are split into scenes, which are mostly collections of entities, persisted as .toml files.
 - Run your project by running `machina run` in your project directory.
-- Press Ctrl+Tab in a headful run to toggle the engine UI overlay; `machina run --editor` shows it by default. The editor/debug overlay shows FPS and live script system timings.
+- Press Ctrl+Tab in a headful run to toggle the engine UI overlay; `machina run --editor` shows it by default. The editor/debug overlay shows FPS plus live project and engine system timings.
 
 Please add to this list as needed.
 
@@ -59,7 +59,7 @@ Rendering and UI:
 - Button markers derive ECS interaction state for hovered, held, and pressed visuals.
 - Command buttons emit transient `machina.ui.command_event` components before update systems run.
 - Headful runs can generate an engine-owned debug overlay in the render ECS world.
-- The debug overlay is hidden by default, `machina run --editor` shows it on startup, Ctrl+Tab toggles it, and the current panel shows FPS plus script system timing rows when a live project provides profiling data.
+- The debug overlay is hidden by default, `machina run --editor` shows it on startup, Ctrl+Tab toggles it, and the current panel shows FPS plus project/native system timing rows and engine-internal render system timing rows.
 - The renderer owns an internal render world and render-phase schedule built with the same `runtime.World`, component registry, and scheduler implementation as game worlds.
 - Matching geometry and shadow-state renderables are automatically grouped into instanced render batches below the scene authoring surface.
 - Current base color is per-instance and should not split batches.
@@ -79,8 +79,11 @@ ECS runtime:
 - Native Zig components/systems go through `NativeExtension` and the same `runtime.ComponentRegistry`, `SystemRunner`, schedule, and profiling path as Luau systems; do not add a second ECS or scheduler for native hot paths.
 - Project-local native Zig code imports `machina_native`, exports `machina_register(api)`, and is built into `.machina/native/` during development.
 - Native system callbacks must use the access-checked host API in `machina_native`; do not expose or depend on raw `runtime.World` from project native modules.
+- Native system callbacks can use `machina_native` typed field helpers for bool, i32, f32, vec3, and string fields.
+- Native spawn/despawn/add/remove component commands use the same deferred mutation semantics as Luau: immediate spawns are rolled back on failure, queued structural changes flush only after the native system succeeds, and same-callback queries must not expect queued component changes to be visible.
 - Native components register before Luau chunks load; native systems register after Luau components and before Luau systems so both languages can reference each other's component ids.
-- Script system runtime profiling is collected at the scheduler dispatch boundary and exposed as rolling per-system snapshots for editor UI.
+- Project system runtime profiling is collected at the scheduler dispatch boundary and exposed as rolling per-system snapshots for editor UI.
+- Engine-internal render systems are also profiled at the render scheduler boundary and should appear in the same editor performance stream instead of a separate profiler model.
 
 Luau scripting:
 

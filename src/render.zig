@@ -44,6 +44,7 @@ const editor_system_text_size: f32 = 1.0;
 const editor_system_header_y: f32 = 86.0;
 const editor_system_first_row_y: f32 = 122.0;
 const editor_system_row_stride: f32 = 36.0;
+const render_system_profile_window_frames: usize = 120;
 
 pub const RenderError = error{
     NoAdapter,
@@ -426,11 +427,56 @@ const RenderSystemContext = struct {
     frame: FrameConfig,
 };
 
+const RenderSystemProfileState = struct {
+    id: []const u8,
+    phase: runtime.SystemPhase,
+    samples_ns: [render_system_profile_window_frames]u64 = [_]u64{0} ** render_system_profile_window_frames,
+    sample_count: usize = 0,
+    next_sample: usize = 0,
+    total_ns: u64 = 0,
+    last_ns: u64 = 0,
+
+    fn deinit(self: *RenderSystemProfileState, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        self.* = undefined;
+    }
+
+    fn record(self: *RenderSystemProfileState, duration_ns: u64) void {
+        if (self.sample_count < render_system_profile_window_frames) {
+            self.samples_ns[self.next_sample] = duration_ns;
+            self.sample_count += 1;
+            self.total_ns += duration_ns;
+        } else {
+            self.total_ns -= self.samples_ns[self.next_sample];
+            self.samples_ns[self.next_sample] = duration_ns;
+            self.total_ns += duration_ns;
+        }
+
+        self.next_sample = (self.next_sample + 1) % render_system_profile_window_frames;
+        self.last_ns = duration_ns;
+    }
+
+    fn snapshot(self: RenderSystemProfileState) runtime.SystemProfileSnapshot {
+        const average_ns = if (self.sample_count == 0) 0 else self.total_ns / self.sample_count;
+        return .{
+            .id = self.id,
+            .phase = self.phase,
+            .sample_count = @intCast(self.sample_count),
+            .window_size = @intCast(render_system_profile_window_frames),
+            .last_ns = self.last_ns,
+            .rolling_average_ns = average_ns,
+        };
+    }
+};
+
 const RenderEcsState = struct {
     allocator: std.mem.Allocator,
     registry: runtime.ComponentRegistry,
     schedule: runtime.SystemSchedule,
     world: runtime.World,
+    system_profiles: std.ArrayList(RenderSystemProfileState) = .empty,
+    system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
+    combined_system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
 
     fn init(allocator: std.mem.Allocator) RenderError!RenderEcsState {
         var registry = runtime.ComponentRegistry.init(allocator);
@@ -441,19 +487,82 @@ const RenderEcsState = struct {
         var schedule = registry.buildSchedule(allocator, .render) catch |err| return mapEngineSetupError(err);
         errdefer schedule.deinit();
 
-        return .{
+        var state = RenderEcsState{
             .allocator = allocator,
             .registry = registry,
             .schedule = schedule,
             .world = runtime.World.init(allocator),
         };
+        errdefer state.deinit();
+        try state.initializeSystemProfiles();
+        return state;
     }
 
     fn deinit(self: *RenderEcsState) void {
+        self.combined_system_profile_snapshots.deinit(self.allocator);
+        self.system_profile_snapshots.deinit(self.allocator);
+        self.clearSystemProfiles();
+        self.system_profiles.deinit(self.allocator);
         self.world.deinit();
         self.schedule.deinit();
         self.registry.deinit();
         self.* = undefined;
+    }
+
+    fn systemProfileSnapshots(self: *RenderEcsState) []const runtime.SystemProfileSnapshot {
+        self.system_profile_snapshots.clearRetainingCapacity();
+        for (self.system_profiles.items) |profile| {
+            self.system_profile_snapshots.appendAssumeCapacity(profile.snapshot());
+        }
+        return self.system_profile_snapshots.items;
+    }
+
+    fn combineSystemProfileSnapshots(
+        self: *RenderEcsState,
+        project_profiles: []const runtime.SystemProfileSnapshot,
+    ) RenderError![]const runtime.SystemProfileSnapshot {
+        const render_profiles = self.systemProfileSnapshots();
+        self.combined_system_profile_snapshots.clearRetainingCapacity();
+        self.combined_system_profile_snapshots.ensureTotalCapacity(self.allocator, project_profiles.len + render_profiles.len) catch return RenderError.OutOfMemory;
+        self.combined_system_profile_snapshots.appendSliceAssumeCapacity(project_profiles);
+        self.combined_system_profile_snapshots.appendSliceAssumeCapacity(render_profiles);
+        return self.combined_system_profile_snapshots.items;
+    }
+
+    fn initializeSystemProfiles(self: *RenderEcsState) RenderError!void {
+        self.clearSystemProfiles();
+        self.system_profile_snapshots.clearRetainingCapacity();
+        self.combined_system_profile_snapshots.clearRetainingCapacity();
+
+        const system_count = self.schedule.systemCount();
+        self.system_profiles.ensureTotalCapacity(self.allocator, system_count) catch return RenderError.OutOfMemory;
+        self.system_profile_snapshots.ensureTotalCapacity(self.allocator, system_count) catch return RenderError.OutOfMemory;
+
+        for (self.schedule.batches) |batch| {
+            for (batch.systems) |system| {
+                const owned_id = self.allocator.dupe(u8, system.id) catch return RenderError.OutOfMemory;
+                self.system_profiles.appendAssumeCapacity(.{
+                    .id = owned_id,
+                    .phase = batch.phase,
+                });
+            }
+        }
+    }
+
+    fn clearSystemProfiles(self: *RenderEcsState) void {
+        for (self.system_profiles.items) |*profile| {
+            profile.deinit(self.allocator);
+        }
+        self.system_profiles.clearRetainingCapacity();
+    }
+
+    fn recordSystemDuration(self: *RenderEcsState, system: runtime.ScheduledSystem, phase: runtime.SystemPhase, duration_ns: u64) void {
+        for (self.system_profiles.items) |*profile| {
+            if (profile.phase == phase and std.mem.eql(u8, profile.id, system.id)) {
+                profile.record(duration_ns);
+                return;
+            }
+        }
     }
 
     fn extractScene(self: *RenderEcsState, scene: Scene) RenderError!void {
@@ -1047,6 +1156,19 @@ fn nsToMicrosRounded(ns: u64) u64 {
     return (ns + 500) / 1000;
 }
 
+fn elapsedNanosecondsSince(started_ns: i128) u64 {
+    const elapsed_ns = monotonicTimestampNs() - started_ns;
+    if (elapsed_ns <= 0) {
+        return 0;
+    }
+    return @intCast(@min(elapsed_ns, std.math.maxInt(u64)));
+}
+
+fn monotonicTimestampNs() i128 {
+    const io = Io.Threaded.global_single_threaded.io();
+    return Io.Timestamp.now(io, .awake).nanoseconds;
+}
+
 fn roundedFps(fps: f32) i32 {
     if (!std.math.isFinite(fps) or fps <= 0.0) {
         return 0;
@@ -1526,35 +1648,50 @@ const MeshDemo = struct {
             plan.deinit();
         };
 
+        var profiled_context = context;
+        profiled_context.frame.input.system_profiles = try self.render_state.combineSystemProfileSnapshots(context.frame.input.system_profiles);
+
         for (self.render_state.schedule.batches) |batch| {
             for (batch.systems) |system| {
-                if (std.mem.eql(u8, system.id, render_extract_system_id)) {
-                    try self.render_state.extractSceneWithInput(context.frame.scene, context.frame.input);
-                } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) {
-                    var plan = try BatchPlan.build(self.allocator, &self.render_state.world);
-                    var plan_transferred = false;
-                    errdefer if (!plan_transferred) {
-                        plan.deinit();
-                    };
-                    try self.prepareBatchResources(context.device, plan);
-                    try self.updateBatchInstances(context.queue, plan, context.frame);
-                    maybe_plan = plan;
-                    plan_transferred = true;
-                } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) {
-                    const plan = maybe_plan orelse return RenderError.InvalidScene;
-                    try self.render_state.queueBatchDraws(plan.batches.len);
-                } else if (std.mem.eql(u8, system.id, render_interact_ui_system_id)) {
-                    try self.render_state.updateUiInteractions();
-                } else if (std.mem.eql(u8, system.id, render_prepare_ui_system_id)) {
-                    try self.prepareUiDrawResources(context.device, context.queue, context.frame);
-                } else if (std.mem.eql(u8, system.id, render_queue_ui_system_id)) {
-                    try self.render_state.queueUiDraw();
-                } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) {
-                    try self.drawQueuedBatches(context);
-                } else {
-                    return RenderError.InvalidScene;
-                }
+                const started_ns = monotonicTimestampNs();
+                const result = self.runRenderSystem(system, profiled_context, &maybe_plan);
+                self.render_state.recordSystemDuration(system, batch.phase, elapsedNanosecondsSince(started_ns));
+                try result;
             }
+        }
+    }
+
+    fn runRenderSystem(
+        self: *MeshDemo,
+        system: runtime.ScheduledSystem,
+        context: RenderSystemContext,
+        maybe_plan: *?BatchPlan,
+    ) RenderError!void {
+        if (std.mem.eql(u8, system.id, render_extract_system_id)) {
+            try self.render_state.extractSceneWithInput(context.frame.scene, context.frame.input);
+        } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) {
+            var plan = try BatchPlan.build(self.allocator, &self.render_state.world);
+            var plan_transferred = false;
+            errdefer if (!plan_transferred) {
+                plan.deinit();
+            };
+            try self.prepareBatchResources(context.device, plan);
+            try self.updateBatchInstances(context.queue, plan, context.frame);
+            maybe_plan.* = plan;
+            plan_transferred = true;
+        } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) {
+            const plan = maybe_plan.* orelse return RenderError.InvalidScene;
+            try self.render_state.queueBatchDraws(plan.batches.len);
+        } else if (std.mem.eql(u8, system.id, render_interact_ui_system_id)) {
+            try self.render_state.updateUiInteractions();
+        } else if (std.mem.eql(u8, system.id, render_prepare_ui_system_id)) {
+            try self.prepareUiDrawResources(context.device, context.queue, context.frame);
+        } else if (std.mem.eql(u8, system.id, render_queue_ui_system_id)) {
+            try self.render_state.queueUiDraw();
+        } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) {
+            try self.drawQueuedBatches(context);
+        } else {
+            return RenderError.InvalidScene;
         }
     }
 
@@ -2906,6 +3043,48 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expect(saw_header);
     try std.testing.expect(saw_startup);
     try std.testing.expect(saw_update);
+}
+
+test "render ECS profiles internal systems for editor overlay" {
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+
+    const initial_profiles = state.systemProfileSnapshots();
+    try std.testing.expectEqual(@as(usize, 7), initial_profiles.len);
+    try std.testing.expectEqualStrings(render_extract_system_id, initial_profiles[0].id);
+    try std.testing.expectEqual(runtime.SystemPhase.render, initial_profiles[0].phase);
+    try std.testing.expectEqual(@as(u32, 0), initial_profiles[0].sample_count);
+    try std.testing.expectEqual(@as(u32, render_system_profile_window_frames), initial_profiles[0].window_size);
+
+    const first_batch = state.schedule.batches[0];
+    state.recordSystemDuration(first_batch.systems[0], first_batch.phase, 12_300);
+
+    const recorded_profiles = state.systemProfileSnapshots();
+    try std.testing.expectEqual(@as(u32, 1), recorded_profiles[0].sample_count);
+    try std.testing.expectEqual(@as(u64, 12_300), recorded_profiles[0].last_ns);
+    try std.testing.expectEqual(@as(u64, 12_300), recorded_profiles[0].rolling_average_ns);
+}
+
+test "editor profile input combines project and engine system rows" {
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+
+    const project_profiles = [_]runtime.SystemProfileSnapshot{
+        .{
+            .id = "game.update",
+            .phase = .update,
+            .sample_count = 2,
+            .window_size = 120,
+            .last_ns = 1_000,
+            .rolling_average_ns = 900,
+        },
+    };
+
+    const combined = try state.combineSystemProfileSnapshots(project_profiles[0..]);
+    try std.testing.expectEqual(project_profiles.len + state.system_profiles.items.len, combined.len);
+    try std.testing.expectEqualStrings("game.update", combined[0].id);
+    try std.testing.expectEqualStrings(render_extract_system_id, combined[1].id);
+    try std.testing.expectEqual(runtime.SystemPhase.render, combined[1].phase);
 }
 
 test "UI vertex builder reflects button interaction state" {

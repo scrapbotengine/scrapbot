@@ -26,7 +26,8 @@ Project native code imports the generated `machina_native` API module. This API 
 
 - Component and system registration helpers.
 - Opaque host context handles instead of raw engine internals.
-- Query, `vec3`, and `f32` field access helpers for native systems.
+- Query and typed field access helpers for `bool`, `i32`, `f32`, `vec3`, and `string` component fields.
+- Deferred structural ECS commands for spawning/despawning entities and adding/removing components.
 
 Native callbacks run through the same ECS schedule, access declarations, profiling boundary, and runtime diagnostics as Luau systems. Native systems use a host facade that enforces declared component reads and writes at query/read/write time.
 
@@ -42,7 +43,7 @@ The native ABI is intentionally narrow. This protects engine internals, preserve
 
 Dynamic native reload is now part of the development loop, but it remains platform-sensitive. Shipping builds still need a static-link packaging path before this model is complete for consoles and other locked-down targets.
 
-Native system APIs are still minimal. The first public host facade supports query iteration plus `vec3` and `f32` field reads/writes. Structural commands and broader typed field access should be added through the same access-checked facade rather than exposing `runtime.World`.
+Native system APIs remain intentionally narrow. The public host facade supports query iteration, typed field reads/writes, and structural commands through access-checked callbacks instead of exposing `runtime.World` or storage pointers. Added components are queued with typed field values and flushed only after the native system succeeds, matching Luau lifecycle semantics.
 
 ## Related
 

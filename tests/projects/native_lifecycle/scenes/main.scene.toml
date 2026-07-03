@@ -1,0 +1,22 @@
+name = "Native Lifecycle"
+version = 1
+
+[[entities]]
+id = "stats"
+name = "Stats"
+
+[entities.components.native_stats]
+spawned_count = 0
+removed_count = 0
+despawned_count = 0
+ready = true
+label = "ready"
+gain = 1.5
+direction = [1.0, 2.0, 3.0]
+
+[[entities]]
+id = "marked"
+name = "Marked"
+
+[entities.components.native_marker]
+value = 1
