@@ -85,6 +85,7 @@ Luau scripting:
 - `ecs.query(...)` creates a reusable typed query object.
 - Systems attach that query object with `query = ...`.
 - Runtime loops use `Query:iter(world)` to yield the entity plus requested component proxies.
+- `Query:iter(world)` prepares component table and row positions internally for each iterator; keep the Luau API ergonomic and let the bridge/runtime optimize below it.
 - `ecs.schema(...)` and `ecs.vec3()` are compatibility shims, not the default authoring style.
 - Use `ecs.refs(...)` for explicit write access or extra manual access declarations.
 - Startup systems run once for a loaded project/scene generation before update systems.
@@ -118,6 +119,7 @@ Live reload:
 - Author new Luau component schemas with `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage. If field-schema type inference regresses, fix the Luau type definitions/checker setup or runtime bridge support rather than reverting to marker-value inference.
 - Keep script behavior system-first. Do not introduce arbitrary per-object script callbacks that bypass the component registry or native scheduler.
 - In hot Luau system loops, cache component fields in locals before reusing them. Repeated `component.field` access crosses the host ECS bridge each time, and repeated vec3 field access allocates repeated Luau tables.
+- Measure Luau bridge hot-loop optimizations before keeping them. Query-local field-index caching has already been tried against `spawn_swarm` and regressed versus the simpler resolved-row path.
 - Systems must declare phase plus read/write component access before they can participate in scheduling.
 - Structural script mutations must happen inside scheduled systems through `world`/`entity` APIs. Adding or removing a component requires declared write access to that component; despawning an entity requires write access to every component currently attached to it.
 - Keep `machina check --format=json` useful for editor and agent workflows. Successful JSON output should preserve project metadata and the validated schedule summary; add fields compatibly rather than removing or renaming existing ones.

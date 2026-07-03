@@ -1,7 +1,7 @@
 # FDR-009: Entity Component Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-02
+**Last reviewed:** 2026-07-03
 
 ## Overview
 
@@ -19,6 +19,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 - The renderer owns an internal render world and render-phase schedule for extracted render data, mesh draw-command entities, and UI draw-command entities.
 - Each component table owns dense entity rows, a sparse entity-to-row index, and typed SoA field columns derived from engine or script schemas.
 - Scripts can query entities by component set and mutate supported component fields through the scripting API.
+- Script query iteration preserves the public component proxy API while internally reusing resolved component table and row positions for the lifetime of an iterator.
 - Scripts can spawn and despawn entities through the ECS facade.
 - Scripts can add and remove registered components through the ECS facade.
 - Script-driven structural mutations are checked against the active system's declared write access.
@@ -72,9 +73,15 @@ The entity component runtime is the shared low-level model for game state. It gi
 **Why:** Structural mutation changes query membership and scheduler safety just like field writes do. Reusing declared access keeps validation, diagnostics, live reload, and future parallelization aligned with ADR-006 and ADR-008.
 **Tradeoff:** Generic cleanup systems must declare broad write access or narrow their entity sets before despawning.
 
+### 8. Prepare script query iteration against ECS storage
+
+**Decision:** Luau query iterators resolve component tables and row positions behind the component proxy API instead of rediscovering them through component ids on every yielded access.
+**Why:** Script systems need hot loops that still look like normal ECS component iteration. Reusing resolved storage positions follows ADR-014 while keeping scheduler validation and row safety in the runtime.
+**Tradeoff:** The bridge has more internal state, and component field access still crosses the host boundary until a broader bulk-access design exists.
+
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013
+- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013, ADR-014
 - **FDRs:** FDR-002, FDR-004, FDR-005, FDR-010, FDR-011, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions

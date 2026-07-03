@@ -1,7 +1,7 @@
 # FDR-011: Script ECS Registration
 
 **Status:** Active
-**Last reviewed:** 2026-07-02
+**Last reviewed:** 2026-07-03
 
 ## Overview
 
@@ -43,6 +43,7 @@ Script ECS registration lets project and package scripts define new component an
 - Systems may attach a query object; unwritten query components become inferred read access.
 - Scripts use `ecs.refs(...)` to erase typed component handles into explicit `reads` or `writes` declarations when needed.
 - The preferred runtime loop calls `Query:iter(world)` and receives the entity plus component proxies for the requested components.
+- `Query:iter(world)` prepares its component set for the iterator so repeated loop rows can reuse resolved ECS table and row positions behind the proxy API.
 - The lower-level `world.query(...)` loop remains available for compatibility and debugging.
 - Low-level entity vector accessors remain available for compatibility and debugging.
 - Script-driven world mutation is checked against the system's declared component access.
@@ -107,9 +108,15 @@ Script ECS registration lets project and package scripts define new component an
 **Why:** The scheduler and diagnostics already use reads/writes as the source of truth for mutation. Structural changes alter query membership and must obey the same contract to stay compatible with future parallel execution.
 **Tradeoff:** Dynamic entity lifecycle systems carry more explicit access declarations.
 
+### 10. Hide hot-loop query preparation behind typed query objects
+
+**Decision:** Typed query objects keep the author-facing Luau API stable while the bridge prepares component table and row access internally for each iterator.
+**Why:** Authors and agents should keep writing clear ECS loops, and the engine should optimize the storage path under that API. It follows ADR-014.
+**Tradeoff:** The bridge must preserve compatibility with the lower-level string-based query path, and per-field proxy access still has a host-call cost.
+
 ## Related
 
-- **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012
+- **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012, ADR-014
 - **FDRs:** FDR-004, FDR-009, FDR-010, FDR-012, FDR-013
 
 ## Open Questions

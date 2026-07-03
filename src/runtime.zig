@@ -643,6 +643,11 @@ pub const EntityHandle = struct {
     index: u32,
 };
 
+pub const ResolvedComponentRow = struct {
+    table_index: u32,
+    row_index: u32,
+};
+
 pub const Entity = struct {
     id: []const u8,
     name: []const u8,
@@ -1352,6 +1357,64 @@ pub const World = struct {
         return null;
     }
 
+    pub fn resolveComponentTableIndex(self: World, component_id: []const u8) ?u32 {
+        for (self.component_tables.items, 0..) |table, index| {
+            if (std.mem.eql(u8, table.id, component_id)) {
+                return @intCast(index);
+            }
+        }
+        return null;
+    }
+
+    pub fn queryDriverTableIndex(self: World, component_table_indices: []const u32) WorldError!?u32 {
+        if (component_table_indices.len == 0) {
+            return null;
+        }
+
+        var driver_index: ?u32 = null;
+        var driver_len: usize = std.math.maxInt(usize);
+        for (component_table_indices) |table_index| {
+            const table = try self.componentTableAt(table_index);
+            if (driver_index == null or table.entities.items.len < driver_len) {
+                driver_index = table_index;
+                driver_len = table.entities.items.len;
+            }
+        }
+        return driver_index;
+    }
+
+    pub fn queryNextResolved(
+        self: World,
+        component_table_indices: []const u32,
+        driver_table_index: u32,
+        cursor: *usize,
+        out_rows: []u32,
+    ) WorldError!?EntityHandle {
+        if (component_table_indices.len == 0 or out_rows.len < component_table_indices.len) {
+            return WorldError.UnknownComponent;
+        }
+
+        const driver = try self.componentTableAt(driver_table_index);
+        while (cursor.* < driver.entities.items.len) : (cursor.* += 1) {
+            const handle = driver.entities.items[cursor.*];
+            var matches = true;
+            for (component_table_indices, 0..) |table_index, index| {
+                const table = try self.componentTableAt(table_index);
+                const row = rowForEntity(table.*, handle) orelse {
+                    matches = false;
+                    break;
+                };
+                out_rows[index] = @intCast(row);
+            }
+
+            if (matches) {
+                cursor.* += 1;
+                return handle;
+            }
+        }
+        return null;
+    }
+
     pub fn getVec3(self: World, handle: EntityHandle, component_id: []const u8, field_name: []const u8) WorldError![3]f32 {
         const value = try self.getFieldValue(handle, component_id, field_name);
         return switch (value) {
@@ -1371,8 +1434,16 @@ pub const World = struct {
         return self.getFieldValue(handle, component_id, field_name);
     }
 
+    pub fn getComponentFieldValueResolved(self: World, handle: EntityHandle, resolved: ResolvedComponentRow, field_name: []const u8) WorldError!ComponentValue {
+        return self.getFieldValueResolved(handle, resolved, field_name);
+    }
+
     pub fn setComponentFieldValue(self: *World, handle: EntityHandle, component_id: []const u8, field_name: []const u8, value: ComponentValue) WorldError!void {
         try self.setFieldValue(handle, component_id, field_name, value);
+    }
+
+    pub fn setComponentFieldValueResolved(self: *World, handle: EntityHandle, resolved: ResolvedComponentRow, field_name: []const u8, value: ComponentValue) WorldError!void {
+        try self.setFieldValueResolved(handle, resolved, field_name, value);
     }
 
     pub fn renderableCubeCount(self: World) usize {
@@ -1617,6 +1688,22 @@ pub const World = struct {
         return null;
     }
 
+    fn componentTableAt(self: World, table_index: u32) WorldError!*const ComponentTable {
+        const index: usize = table_index;
+        if (index >= self.component_tables.items.len) {
+            return WorldError.UnknownComponent;
+        }
+        return &self.component_tables.items[index];
+    }
+
+    fn mutableComponentTableAt(self: *World, table_index: u32) WorldError!*ComponentTable {
+        const index: usize = table_index;
+        if (index >= self.component_tables.items.len) {
+            return WorldError.UnknownComponent;
+        }
+        return &self.component_tables.items[index];
+    }
+
     fn queryDriverTable(self: World, component_ids: []const []const u8) ?*const ComponentTable {
         if (component_ids.len == 0) {
             return null;
@@ -1643,6 +1730,14 @@ pub const World = struct {
         return column.values.valueAt(row);
     }
 
+    fn getFieldValueResolved(self: World, handle: EntityHandle, resolved: ResolvedComponentRow, field_name: []const u8) WorldError!ComponentValue {
+        const index = try self.componentIndex(handle);
+        const table = try self.componentTableAt(resolved.table_index);
+        const row = resolvedRowForEntity(table.*, .{ .index = @intCast(index) }, resolved.row_index) orelse return WorldError.UnknownComponent;
+        const column = findColumn(table.*, field_name) orelse return WorldError.UnknownField;
+        return column.values.valueAt(row);
+    }
+
     fn setFieldValue(self: *World, handle: EntityHandle, component_id: []const u8, field_name: []const u8, value: ComponentValue) WorldError!void {
         const index = try self.componentIndex(handle);
         const table = self.findMutableComponentTable(component_id) orelse return WorldError.UnknownComponent;
@@ -1650,6 +1745,14 @@ pub const World = struct {
             return WorldError.UnknownComponent;
         }
         const row = table.rows_by_entity.items[index] orelse return WorldError.UnknownComponent;
+        const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
+        try column.values.setCopy(self.allocator, row, value);
+    }
+
+    fn setFieldValueResolved(self: *World, handle: EntityHandle, resolved: ResolvedComponentRow, field_name: []const u8, value: ComponentValue) WorldError!void {
+        const index = try self.componentIndex(handle);
+        const table = try self.mutableComponentTableAt(resolved.table_index);
+        const row = resolvedRowForEntity(table.*, .{ .index = @intCast(index) }, resolved.row_index) orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
     }
@@ -1755,6 +1858,22 @@ fn findColumn(table: ComponentTable, field_name: []const u8) ?*const ComponentCo
         }
     }
     return null;
+}
+
+fn rowForEntity(table: ComponentTable, handle: EntityHandle) ?usize {
+    const entity_index: usize = handle.index;
+    if (entity_index >= table.rows_by_entity.items.len) {
+        return null;
+    }
+    return table.rows_by_entity.items[entity_index];
+}
+
+fn resolvedRowForEntity(table: ComponentTable, handle: EntityHandle, row_index: u32) ?usize {
+    const row: usize = row_index;
+    if (row < table.entities.items.len and table.entities.items[row].index == handle.index) {
+        return row;
+    }
+    return rowForEntity(table, handle);
 }
 
 fn findMutableColumn(table: *ComponentTable, field_name: []const u8) ?*ComponentColumn {
@@ -2299,6 +2418,68 @@ test "world stores component fields in sparse SoA tables" {
     };
     try std.testing.expectEqual(@as(usize, 2), updated_table.entities.items.len);
     try std.testing.expectEqual(@as(f32, 0.6), updated_rotation_values.items[1][1]);
+}
+
+test "world resolved queries return reusable component rows" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    const second = try world.createEntity("second", "Second");
+    try world.setTransform(first, .{
+        .position = .{ 1.0, 0.0, 0.0 },
+        .rotation = .{ 0.1, 0.2, 0.3 },
+    });
+    try world.setTransform(second, .{
+        .position = .{ 2.0, 0.0, 0.0 },
+        .rotation = .{ 1.1, 1.2, 1.3 },
+    });
+    try world.setSpin(second, .{ .angular_velocity = .{ 0.0, 2.0, 0.0 } });
+
+    const transform_table = world.resolveComponentTableIndex(transform_component_id) orelse return error.TestExpectedEqual;
+    const spin_table = world.resolveComponentTableIndex(spin_component_id) orelse return error.TestExpectedEqual;
+    const query_tables = [_]u32{ transform_table, spin_table };
+    const driver = (try world.queryDriverTableIndex(&query_tables)) orelse return error.TestExpectedEqual;
+
+    var cursor: usize = 0;
+    var rows: [2]u32 = undefined;
+    const queried = (try world.queryNextResolved(&query_tables, driver, &cursor, &rows)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(second.index, queried.index);
+    try std.testing.expectEqual(spin_table, query_tables[1]);
+
+    const rotation = try world.getComponentFieldValueResolved(queried, .{
+        .table_index = transform_table,
+        .row_index = rows[0],
+    }, "rotation");
+    try std.testing.expectEqual(@as(f32, 1.2), rotation.vec3[1]);
+
+    try world.setComponentFieldValueResolved(queried, .{
+        .table_index = transform_table,
+        .row_index = rows[0],
+    }, "rotation", .{ .vec3 = .{ 3.0, 4.0, 5.0 } });
+    try std.testing.expectEqual(@as(f32, 4.0), (try world.getVec3(second, transform_component_id, "rotation"))[1]);
+    try std.testing.expect((try world.queryNextResolved(&query_tables, driver, &cursor, &rows)) == null);
+}
+
+test "world resolved field access repairs stale moved rows" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    const second = try world.createEntity("second", "Second");
+    try world.setTransform(first, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setTransform(second, .{ .position = .{ 2.0, 0.0, 0.0 } });
+
+    const transform_table = world.resolveComponentTableIndex(transform_component_id) orelse return error.TestExpectedEqual;
+    const stale_second_row = ResolvedComponentRow{
+        .table_index = transform_table,
+        .row_index = 1,
+    };
+
+    try std.testing.expect(try world.removeComponent(first, transform_component_id));
+    try world.setComponentFieldValueResolved(second, stale_second_row, "position", .{ .vec3 = .{ 9.0, 8.0, 7.0 } });
+    try std.testing.expectEqual(@as(f32, 9.0), (try world.getVec3(second, transform_component_id, "position"))[0]);
+    try std.testing.expectError(WorldError.UnknownComponent, world.getComponentFieldValueResolved(first, stale_second_row, "position"));
 }
 
 test "type ids distinguish project-local, package, and engine namespaces" {

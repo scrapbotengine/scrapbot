@@ -61,6 +61,9 @@ struct ComponentProxyState
     machina_luau* vm = nullptr;
     uint32_t entity = 0;
     std::string component_id;
+    uint32_t component_table_index = 0;
+    uint32_t component_row_index = 0;
+    bool has_resolved_row = false;
 };
 
 struct QueryState
@@ -68,7 +71,12 @@ struct QueryState
     machina_luau* vm = nullptr;
     std::vector<std::string> component_ids;
     std::vector<const char*> component_id_ptrs;
+    std::vector<uint32_t> component_table_indices;
+    std::vector<uint32_t> component_row_indices;
+    uint32_t driver_table_index = 0;
     uint32_t cursor = 0;
+    bool prepared = false;
+    bool empty = false;
 
     void refresh_component_id_ptrs()
     {
@@ -76,6 +84,12 @@ struct QueryState
         component_id_ptrs.reserve(component_ids.size());
         for (const std::string& id : component_ids)
             component_id_ptrs.push_back(id.c_str());
+        component_table_indices.assign(component_ids.size(), 0);
+        component_row_indices.assign(component_ids.size(), 0);
+        driver_table_index = 0;
+        cursor = 0;
+        prepared = false;
+        empty = false;
     }
 };
 
@@ -153,6 +167,28 @@ static std::string check_component_id(lua_State* state, int index)
 static QueryState* query_state_from_upvalue(lua_State* state)
 {
     return static_cast<QueryState*>(lua_touserdata(state, lua_upvalueindex(1)));
+}
+
+static void prepare_query(lua_State* state, QueryState* query)
+{
+    if (!query || query->prepared || query->empty)
+        return;
+
+    query->prepared = true;
+    if (!query->vm->callbacks.prepare_query || query->component_ids.empty())
+        return;
+
+    const int status = query->vm->callbacks.prepare_query(
+        query->vm->callback_context,
+        query->vm->active_world,
+        query->component_id_ptrs.data(),
+        query->component_id_ptrs.size(),
+        query->component_table_indices.data(),
+        &query->driver_table_index);
+    if (status < 0)
+        raise_host_error(state, query->vm, "world.query prepare access denied or failed");
+    if (status == 0)
+        query->empty = true;
 }
 
 static EntityProxyState* entity_proxy_from_upvalue(lua_State* state)
@@ -748,8 +784,23 @@ static int component_proxy_index(lua_State* state)
     }
 
     machina_luau_field_value value = {};
-    if (!vm->callbacks.get_field || !vm->callbacks.get_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
+    if (proxy->has_resolved_row && vm->callbacks.get_field_resolved)
+    {
+        if (!vm->callbacks.get_field_resolved(
+                vm->callback_context,
+                vm->active_world,
+                entity,
+                component_id,
+                proxy->component_table_index,
+                proxy->component_row_index,
+                field_name,
+                &value))
+            raise_host_error(state, vm, "component field read access denied or failed");
+    }
+    else if (!vm->callbacks.get_field || !vm->callbacks.get_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
+    {
         raise_host_error(state, vm, "component field read access denied or failed");
+    }
     push_field_value(state, value);
     return 1;
 }
@@ -763,8 +814,23 @@ static int component_proxy_newindex(lua_State* state)
     const char* field_name = luaL_checkstring(state, 2);
     machina_luau_field_value value = {};
     read_field_value(state, 3, &value);
-    if (!vm->callbacks.set_field || !vm->callbacks.set_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
+    if (proxy->has_resolved_row && vm->callbacks.set_field_resolved)
+    {
+        if (!vm->callbacks.set_field_resolved(
+                vm->callback_context,
+                vm->active_world,
+                entity,
+                component_id,
+                proxy->component_table_index,
+                proxy->component_row_index,
+                field_name,
+                &value))
+            raise_host_error(state, vm, "component field write access denied or failed");
+    }
+    else if (!vm->callbacks.set_field || !vm->callbacks.set_field(vm->callback_context, vm->active_world, entity, component_id, field_name, &value))
+    {
         raise_host_error(state, vm, "component field write access denied or failed");
+    }
     return 0;
 }
 
@@ -780,13 +846,23 @@ static void ensure_component_proxy_metatable(lua_State* state)
     }
 }
 
-static void push_component_proxy(lua_State* state, machina_luau* vm, uint32_t entity, const std::string& component_id)
+static void push_component_proxy(
+    lua_State* state,
+    machina_luau* vm,
+    uint32_t entity,
+    const std::string& component_id,
+    uint32_t component_table_index,
+    uint32_t component_row_index,
+    bool has_resolved_row)
 {
     void* storage = lua_newuserdatadtor(state, sizeof(ComponentProxyState), component_proxy_dtor);
     ComponentProxyState* proxy = new (storage) ComponentProxyState();
     proxy->vm = vm;
     proxy->entity = entity;
     proxy->component_id = component_id;
+    proxy->component_table_index = component_table_index;
+    proxy->component_row_index = component_row_index;
+    proxy->has_resolved_row = has_resolved_row;
     ensure_component_proxy_metatable(state);
     lua_setmetatable(state, -2);
 }
@@ -805,17 +881,42 @@ static void push_query_iterator(lua_State* state, machina_luau* vm, const std::v
 static int query_iterator(lua_State* state)
 {
     QueryState* query = query_state_from_upvalue(state);
-    if (!query || !query->vm || !query->vm->callbacks.query_next)
+    if (!query || !query->vm)
+        return 0;
+
+    prepare_query(state, query);
+    if (query->empty)
         return 0;
 
     uint32_t entity = 0;
-    const int status = query->vm->callbacks.query_next(
-        query->vm->callback_context,
-        query->vm->active_world,
-        query->component_id_ptrs.data(),
-        query->component_id_ptrs.size(),
-        &query->cursor,
-        &entity);
+    int status = 0;
+    const bool use_prepared_query = query->prepared && query->vm->callbacks.prepare_query && query->vm->callbacks.query_next_prepared;
+    if (use_prepared_query)
+    {
+        status = query->vm->callbacks.query_next_prepared(
+            query->vm->callback_context,
+            query->vm->active_world,
+            query->component_table_indices.data(),
+            query->component_table_indices.size(),
+            query->driver_table_index,
+            &query->cursor,
+            &entity,
+            query->component_row_indices.data());
+    }
+    else if (query->vm->callbacks.query_next)
+    {
+        status = query->vm->callbacks.query_next(
+            query->vm->callback_context,
+            query->vm->active_world,
+            query->component_id_ptrs.data(),
+            query->component_id_ptrs.size(),
+            &query->cursor,
+            &entity);
+    }
+    else
+    {
+        return 0;
+    }
     if (status < 0)
         raise_host_error(state, query->vm, "world.query access denied or failed");
     if (status == 0)
@@ -824,8 +925,17 @@ static int query_iterator(lua_State* state)
     }
 
     push_entity(state, query->vm, entity);
-    for (const std::string& id : query->component_ids)
-        push_component_proxy(state, query->vm, entity, id);
+    for (size_t index = 0; index < query->component_ids.size(); ++index)
+    {
+        push_component_proxy(
+            state,
+            query->vm,
+            entity,
+            query->component_ids[index],
+            use_prepared_query ? query->component_table_indices[index] : 0,
+            use_prepared_query ? query->component_row_indices[index] : 0,
+            use_prepared_query);
+    }
     return static_cast<int>(1 + query->component_ids.size());
 }
 

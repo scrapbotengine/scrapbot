@@ -15,3 +15,4 @@
 | [ADR-011](ADR-011-structured-script-diagnostics.md) | Structured Script Diagnostics | 2026-07-01 |
 | [ADR-012](ADR-012-luau-type-functions-for-ecs-editor-types.md) | Luau Type Functions for ECS Editor Types | 2026-07-02 |
 | [ADR-013](ADR-013-shared-ecs-for-engine-internal-worlds.md) | Shared ECS for Engine-Internal Worlds | 2026-07-02 |
+| [ADR-014](ADR-014-resolved-query-plans-for-luau-ecs-iteration.md) | Resolved Query Plans for Luau ECS Iteration | 2026-07-03 |

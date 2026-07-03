@@ -428,10 +428,14 @@ pub fn buildRuntimeSchedule(
 fn initProgram(allocator: std.mem.Allocator) !Program {
     const callbacks = c.machina_luau_callbacks{
         .query_next = queryNextCallback,
+        .prepare_query = prepareQueryCallback,
+        .query_next_prepared = queryNextPreparedCallback,
         .get_vec3 = getVec3Callback,
         .set_vec3 = setVec3Callback,
         .get_field = getFieldCallback,
+        .get_field_resolved = getFieldResolvedCallback,
         .set_field = setFieldCallback,
+        .set_field_resolved = setFieldResolvedCallback,
         .spawn_entity = spawnEntityCallback,
         .despawn_entity = despawnEntityCallback,
         .add_component = addComponentCallback,
@@ -739,6 +743,97 @@ fn queryNextCallback(
     return 1;
 }
 
+fn prepareQueryCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    raw_component_ids: ?[*]const ?[*:0]const u8,
+    component_count: usize,
+    raw_out_component_table_indices: ?[*]u32,
+    raw_out_driver_table_index: ?*u32,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return -1));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return -1));
+    const component_id_ptr = raw_component_ids orelse return -1;
+    const out_component_table_indices = raw_out_component_table_indices orelse return -1;
+    const out_driver_table_index = raw_out_driver_table_index orelse return -1;
+
+    var component_table_indices_buffer: [16]u32 = undefined;
+    if (component_count == 0 or component_count > component_table_indices_buffer.len) {
+        program.setHostError("system '{s}' tried to query {d} components; the host bridge supports at most {d}", .{
+            program.activeSystemId(),
+            component_count,
+            component_table_indices_buffer.len,
+        });
+        return -1;
+    }
+
+    for (0..component_count) |index| {
+        const component_id = std.mem.span(component_id_ptr[index] orelse return -1);
+        if (!program.activeSystemAllowsRead(component_id)) {
+            program.setHostError("system '{s}' tried to query component '{s}' without declaring it in reads or writes", .{
+                program.activeSystemId(),
+                component_id,
+            });
+            return -1;
+        }
+
+        const table_index = world.resolveComponentTableIndex(component_id) orelse return 0;
+        component_table_indices_buffer[index] = table_index;
+        out_component_table_indices[index] = table_index;
+    }
+
+    const driver_table_index = (world.queryDriverTableIndex(component_table_indices_buffer[0..component_count]) catch |err| {
+        program.setHostError("system '{s}' failed to prepare query: {s}", .{
+            program.activeSystemId(),
+            @errorName(err),
+        });
+        return -1;
+    }) orelse return 0;
+    out_driver_table_index.* = driver_table_index;
+    return 1;
+}
+
+fn queryNextPreparedCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    raw_component_table_indices: ?[*]const u32,
+    component_count: usize,
+    driver_table_index: u32,
+    raw_cursor: ?*u32,
+    raw_out_entity: ?*u32,
+    raw_out_component_rows: ?[*]u32,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return -1));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return -1));
+    const component_table_indices_ptr = raw_component_table_indices orelse return -1;
+    const cursor = raw_cursor orelse return -1;
+    const out_entity = raw_out_entity orelse return -1;
+    const out_component_rows_ptr = raw_out_component_rows orelse return -1;
+
+    if (component_count == 0 or component_count > 16) {
+        program.setHostError("system '{s}' tried to run prepared query with unsupported component count {d}", .{
+            program.activeSystemId(),
+            component_count,
+        });
+        return -1;
+    }
+
+    const component_table_indices = component_table_indices_ptr[0..component_count];
+    const out_component_rows = out_component_rows_ptr[0..component_count];
+    var cursor_value: usize = cursor.*;
+    const entity = (world.queryNextResolved(component_table_indices, driver_table_index, &cursor_value, out_component_rows) catch |err| {
+        program.setHostError("system '{s}' failed to run prepared query: {s}", .{
+            program.activeSystemId(),
+            @errorName(err),
+        });
+        return -1;
+    }) orelse return 0;
+
+    cursor.* = @intCast(cursor_value);
+    out_entity.* = entity.index;
+    return 1;
+}
+
 fn getVec3Callback(
     raw_context: ?*anyopaque,
     raw_world: ?*anyopaque,
@@ -814,38 +909,7 @@ fn setVec3Callback(
     return 1;
 }
 
-fn getFieldCallback(
-    raw_context: ?*anyopaque,
-    raw_world: ?*anyopaque,
-    entity_index: u32,
-    raw_component_id: ?[*:0]const u8,
-    raw_field_name: ?[*:0]const u8,
-    raw_out_value: ?*c.machina_luau_field_value,
-) callconv(.c) c_int {
-    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
-    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
-    const component_id = std.mem.span(raw_component_id orelse return 0);
-    const field_name = std.mem.span(raw_field_name orelse return 0);
-    const out_value = raw_out_value orelse return 0;
-    if (!program.activeSystemAllowsRead(component_id)) {
-        program.setHostError("system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
-            program.activeSystemId(),
-            component_id,
-            field_name,
-            component_id,
-        });
-        return 0;
-    }
-
-    const value = world.getComponentFieldValue(.{ .index = entity_index }, component_id, field_name) catch |err| {
-        program.setHostError("system '{s}' failed to read '{s}.{s}': {s}", .{
-            program.activeSystemId(),
-            component_id,
-            field_name,
-            @errorName(err),
-        });
-        return 0;
-    };
+fn writeLuauFieldValue(out_value: *c.machina_luau_field_value, value: runtime.ComponentValue) void {
     out_value.* = .{
         .tag = 0,
         .boolean_value = 0,
@@ -879,7 +943,82 @@ fn getFieldCallback(
             out_value.string_len = payload.len;
         },
     }
+}
 
+fn getFieldCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+    raw_field_name: ?[*:0]const u8,
+    raw_out_value: ?*c.machina_luau_field_value,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    const field_name = std.mem.span(raw_field_name orelse return 0);
+    const out_value = raw_out_value orelse return 0;
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+
+    const value = world.getComponentFieldValue(.{ .index = entity_index }, component_id, field_name) catch |err| {
+        program.setHostError("system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    writeLuauFieldValue(out_value, value);
+    return 1;
+}
+
+fn getFieldResolvedCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+    component_table_index: u32,
+    component_row_index: u32,
+    raw_field_name: ?[*:0]const u8,
+    raw_out_value: ?*c.machina_luau_field_value,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    const field_name = std.mem.span(raw_field_name orelse return 0);
+    const out_value = raw_out_value orelse return 0;
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+
+    const value = world.getComponentFieldValueResolved(.{ .index = entity_index }, .{
+        .table_index = component_table_index,
+        .row_index = component_row_index,
+    }, field_name) catch |err| {
+        program.setHostError("system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    writeLuauFieldValue(out_value, value);
     return 1;
 }
 
@@ -916,6 +1055,57 @@ fn setFieldCallback(
         return 0;
     };
     world.setComponentFieldValue(.{ .index = entity_index }, component_id, field_name, component_value) catch |err| {
+        program.setHostError("system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn setFieldResolvedCallback(
+    raw_context: ?*anyopaque,
+    raw_world: ?*anyopaque,
+    entity_index: u32,
+    raw_component_id: ?[*:0]const u8,
+    component_table_index: u32,
+    component_row_index: u32,
+    raw_field_name: ?[*:0]const u8,
+    raw_value: ?*const c.machina_luau_field_value,
+) callconv(.c) c_int {
+    const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
+    const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
+    const component_id = std.mem.span(raw_component_id orelse return 0);
+    const field_name = std.mem.span(raw_field_name orelse return 0);
+    const value = raw_value orelse return 0;
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+
+    const resolved = runtime.ResolvedComponentRow{
+        .table_index = component_table_index,
+        .row_index = component_row_index,
+    };
+    const entity = runtime.EntityHandle{ .index = entity_index };
+    const component_value = componentValueFromLuauResolved(world, entity, resolved, field_name, value) catch |err| {
+        program.setHostError("system '{s}' failed to convert value for '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    world.setComponentFieldValueResolved(entity, resolved, field_name, component_value) catch |err| {
         program.setHostError("system '{s}' failed to write '{s}.{s}': {s}", .{
             program.activeSystemId(),
             component_id,
@@ -1123,6 +1313,39 @@ fn componentValueFromLuau(
             }
 
             const current = try world.getComponentFieldValue(entity, component_id, field_name);
+            break :blk switch (current) {
+                .int => .{ .int = try i32FromLuauNumber(value.number_value) },
+                .float => .{ .float = try f32FromLuauNumber(value.number_value) },
+                else => return ScriptError.InvalidScript,
+            };
+        },
+        else => ScriptError.InvalidScript,
+    };
+}
+
+fn componentValueFromLuauResolved(
+    world: *runtime.World,
+    entity: runtime.EntityHandle,
+    resolved: runtime.ResolvedComponentRow,
+    field_name: []const u8,
+    value: *const c.machina_luau_field_value,
+) !runtime.ComponentValue {
+    return switch (value.tag) {
+        c.MACHINA_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
+        c.MACHINA_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
+        c.MACHINA_LUAU_FIELD_VEC3 => blk: {
+            const vec3 = value.vec3_value;
+            if (!std.math.isFinite(vec3[0]) or !std.math.isFinite(vec3[1]) or !std.math.isFinite(vec3[2])) {
+                return ScriptError.InvalidScript;
+            }
+            break :blk .{ .vec3 = .{ vec3[0], vec3[1], vec3[2] } };
+        },
+        c.MACHINA_LUAU_FIELD_NUMBER => blk: {
+            if (!std.math.isFinite(value.number_value)) {
+                return ScriptError.InvalidScript;
+            }
+
+            const current = try world.getComponentFieldValueResolved(entity, resolved, field_name);
             break :blk switch (current) {
                 .int => .{ .int = try i32FromLuauNumber(value.number_value) },
                 .float => .{ .float = try f32FromLuauNumber(value.number_value) },

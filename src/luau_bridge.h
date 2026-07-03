@@ -18,6 +18,26 @@ typedef int (*machina_luau_query_next_fn)(
     uint32_t* out_entity
 );
 
+typedef int (*machina_luau_prepare_query_fn)(
+    void* context,
+    void* world,
+    const char* const* component_ids,
+    size_t component_count,
+    uint32_t* out_component_table_indices,
+    uint32_t* out_driver_table_index
+);
+
+typedef int (*machina_luau_query_next_prepared_fn)(
+    void* context,
+    void* world,
+    const uint32_t* component_table_indices,
+    size_t component_count,
+    uint32_t driver_table_index,
+    uint32_t* cursor,
+    uint32_t* out_entity,
+    uint32_t* out_component_rows
+);
+
 typedef int (*machina_luau_get_vec3_fn)(
     void* context,
     void* world,
@@ -66,11 +86,33 @@ typedef int (*machina_luau_get_field_fn)(
     machina_luau_field_value* out_value
 );
 
+typedef int (*machina_luau_get_field_resolved_fn)(
+    void* context,
+    void* world,
+    uint32_t entity,
+    const char* component_id,
+    uint32_t component_table_index,
+    uint32_t component_row_index,
+    const char* field_name,
+    machina_luau_field_value* out_value
+);
+
 typedef int (*machina_luau_set_field_fn)(
     void* context,
     void* world,
     uint32_t entity,
     const char* component_id,
+    const char* field_name,
+    const machina_luau_field_value* value
+);
+
+typedef int (*machina_luau_set_field_resolved_fn)(
+    void* context,
+    void* world,
+    uint32_t entity,
+    const char* component_id,
+    uint32_t component_table_index,
+    uint32_t component_row_index,
     const char* field_name,
     const machina_luau_field_value* value
 );
@@ -117,10 +159,14 @@ typedef const char* (*machina_luau_host_error_fn)(void* context);
 typedef struct machina_luau_callbacks
 {
     machina_luau_query_next_fn query_next;
+    machina_luau_prepare_query_fn prepare_query;
+    machina_luau_query_next_prepared_fn query_next_prepared;
     machina_luau_get_vec3_fn get_vec3;
     machina_luau_set_vec3_fn set_vec3;
     machina_luau_get_field_fn get_field;
+    machina_luau_get_field_resolved_fn get_field_resolved;
     machina_luau_set_field_fn set_field;
+    machina_luau_set_field_resolved_fn set_field_resolved;
     machina_luau_spawn_entity_fn spawn_entity;
     machina_luau_despawn_entity_fn despawn_entity;
     machina_luau_add_component_fn add_component;
