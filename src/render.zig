@@ -35,27 +35,30 @@ const render_interact_ui_system_id = "machina.render.interact_ui";
 const render_prepare_ui_system_id = "machina.render.prepare_ui";
 const render_queue_ui_system_id = "machina.render.queue_ui";
 const render_draw_meshes_system_id = "machina.render.draw_meshes";
-const editor_system_profile_max_rows = 8;
-const editor_system_profile_id_chars = 22;
-const editor_debug_panel_width: f32 = 176.0;
-const editor_system_panel_width: f32 = 780.0;
-const editor_debug_fps_size: f32 = 1.5;
+const default_window_width = 1280;
+const default_window_height = 720;
+const editor_performance_display_interval_ns: u64 = 333_000_000;
+const editor_system_profile_max_rows = 7;
+const editor_system_profile_id_chars = 18;
+const editor_system_panel_width: f32 = 650.0;
+const editor_debug_fps_size: f32 = 1.6;
 const editor_system_text_size: f32 = 1.0;
 const editor_system_header_y: f32 = 104.0;
-const editor_system_first_row_y: f32 = 140.0;
-const editor_system_row_stride: f32 = 36.0;
+const editor_system_first_row_y: f32 = 136.0;
+const editor_system_row_stride: f32 = 32.0;
 const render_system_profile_window_frames: usize = 120;
 const editor_controls_panel_width: f32 = 360.0;
-const editor_controls_panel_height: f32 = 94.0;
+const editor_controls_panel_height: f32 = 102.0;
 const editor_controls_panel_x: f32 = 12.0;
 const editor_controls_panel_y: f32 = 12.0;
-const editor_control_button_y: f32 = 56.0;
+const editor_control_button_y: f32 = 58.0;
 const editor_play_button_x: f32 = 28.0;
-const editor_step_button_x: f32 = 154.0;
+const editor_step_button_x: f32 = 148.0;
 const editor_control_button_width: f32 = 104.0;
-const editor_control_button_height: f32 = 34.0;
+const editor_control_button_height: f32 = 36.0;
 const editor_inspector_panel_width: f32 = 430.0;
 const editor_inspector_panel_height: f32 = 548.0;
+const editor_inspector_empty_panel_height: f32 = 178.0;
 const editor_inspector_panel_margin: f32 = 12.0;
 const editor_inspector_text_size: f32 = 1.0;
 const editor_inspector_line_stride: f32 = 28.0;
@@ -382,7 +385,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     defer sdl.SDL_Quit();
 
     const window_flags = @as(sdl.SDL_WindowFlags, sdl.SDL_WINDOW_METAL | sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    const window = sdl.SDL_CreateWindow(title_z.ptr, 960, 540, window_flags) orelse return RenderError.WindowCreateFailed;
+    const window = sdl.SDL_CreateWindow(title_z.ptr, default_window_width, default_window_height, window_flags) orelse return RenderError.WindowCreateFailed;
     defer sdl.SDL_DestroyWindow(window);
 
     const metal_view = sdl.SDL_Metal_CreateView(window) orelse return RenderError.MetalViewCreateFailed;
@@ -427,7 +430,9 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     var frame_count: u32 = 0;
     var input: FrameInput = .{ .debug_overlay_visible = options.editor };
     var last_frame_ticks = sdl.SDL_GetTicksNS();
+    var last_performance_display_ticks: u64 = 0;
     var smoothed_fps: f32 = 0.0;
+    var displayed_fps: f32 = 0.0;
     while (running) {
         input.beginFrame();
 
@@ -478,7 +483,11 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             last_frame_ticks = frame_ticks;
             const instant_fps = 1_000_000_000.0 / @as(f32, @floatFromInt(elapsed_ns));
             smoothed_fps = if (smoothed_fps == 0.0) instant_fps else smoothed_fps * 0.9 + instant_fps * 0.1;
-            input.fps = smoothed_fps;
+            if (displayed_fps == 0.0 or frame_ticks - last_performance_display_ticks >= editor_performance_display_interval_ns) {
+                displayed_fps = smoothed_fps;
+                last_performance_display_ticks = frame_ticks;
+            }
+            input.fps = displayed_fps;
         }
 
         if (options.scene_reload) |reload| {
@@ -605,6 +614,9 @@ const RenderEcsState = struct {
     system_profiles: std.ArrayList(RenderSystemProfileState) = .empty,
     system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
     combined_system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
+    display_system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
+    display_system_profile_ids: std.ArrayList([]u8) = .empty,
+    last_display_system_profile_update_ns: i128 = 0,
 
     fn init(allocator: std.mem.Allocator) RenderError!RenderEcsState {
         var registry = runtime.ComponentRegistry.init(allocator);
@@ -627,6 +639,9 @@ const RenderEcsState = struct {
     }
 
     fn deinit(self: *RenderEcsState) void {
+        self.clearDisplaySystemProfileSnapshots();
+        self.display_system_profile_ids.deinit(self.allocator);
+        self.display_system_profile_snapshots.deinit(self.allocator);
         self.combined_system_profile_snapshots.deinit(self.allocator);
         self.system_profile_snapshots.deinit(self.allocator);
         self.clearSystemProfiles();
@@ -649,18 +664,69 @@ const RenderEcsState = struct {
         self: *RenderEcsState,
         project_profiles: []const runtime.SystemProfileSnapshot,
     ) RenderError![]const runtime.SystemProfileSnapshot {
+        const now_ns = monotonicTimestampNs();
+        if (self.display_system_profile_snapshots.items.len > 0 and
+            now_ns - self.last_display_system_profile_update_ns < @as(i128, editor_performance_display_interval_ns))
+        {
+            return self.display_system_profile_snapshots.items;
+        }
+
         const render_profiles = self.systemProfileSnapshots();
+        try self.refreshDisplaySystemProfileSnapshots(project_profiles, render_profiles);
+        self.last_display_system_profile_update_ns = now_ns;
+        return self.display_system_profile_snapshots.items;
+    }
+
+    fn refreshDisplaySystemProfileSnapshots(
+        self: *RenderEcsState,
+        project_profiles: []const runtime.SystemProfileSnapshot,
+        render_profiles: []const runtime.SystemProfileSnapshot,
+    ) RenderError!void {
+        self.clearDisplaySystemProfileSnapshots();
+        self.display_system_profile_snapshots.ensureTotalCapacity(self.allocator, project_profiles.len + render_profiles.len) catch return RenderError.OutOfMemory;
+        self.display_system_profile_ids.ensureTotalCapacity(self.allocator, project_profiles.len + render_profiles.len) catch return RenderError.OutOfMemory;
         self.combined_system_profile_snapshots.clearRetainingCapacity();
         self.combined_system_profile_snapshots.ensureTotalCapacity(self.allocator, project_profiles.len + render_profiles.len) catch return RenderError.OutOfMemory;
-        self.combined_system_profile_snapshots.appendSliceAssumeCapacity(project_profiles);
-        self.combined_system_profile_snapshots.appendSliceAssumeCapacity(render_profiles);
-        return self.combined_system_profile_snapshots.items;
+
+        for (project_profiles) |profile| {
+            try self.appendDisplaySystemProfileSnapshot(profile);
+        }
+        for (render_profiles) |profile| {
+            try self.appendDisplaySystemProfileSnapshot(profile);
+        }
+    }
+
+    fn appendDisplaySystemProfileSnapshot(self: *RenderEcsState, profile: runtime.SystemProfileSnapshot) RenderError!void {
+        const owned_id = self.allocator.dupe(u8, profile.id) catch return RenderError.OutOfMemory;
+        errdefer self.allocator.free(owned_id);
+        self.display_system_profile_ids.appendAssumeCapacity(owned_id);
+        const copied = runtime.SystemProfileSnapshot{
+            .id = owned_id,
+            .phase = profile.phase,
+            .sample_count = profile.sample_count,
+            .window_size = profile.window_size,
+            .last_ns = profile.last_ns,
+            .rolling_average_ns = profile.rolling_average_ns,
+        };
+        self.display_system_profile_snapshots.appendAssumeCapacity(copied);
+        self.combined_system_profile_snapshots.appendAssumeCapacity(copied);
+    }
+
+    fn clearDisplaySystemProfileSnapshots(self: *RenderEcsState) void {
+        for (self.display_system_profile_ids.items) |id| {
+            self.allocator.free(id);
+        }
+        self.display_system_profile_ids.clearRetainingCapacity();
+        self.display_system_profile_snapshots.clearRetainingCapacity();
+        self.combined_system_profile_snapshots.clearRetainingCapacity();
     }
 
     fn initializeSystemProfiles(self: *RenderEcsState) RenderError!void {
         self.clearSystemProfiles();
         self.system_profile_snapshots.clearRetainingCapacity();
         self.combined_system_profile_snapshots.clearRetainingCapacity();
+        self.clearDisplaySystemProfileSnapshots();
+        self.last_display_system_profile_update_ns = 0;
 
         const system_count = self.schedule.systemCount();
         self.system_profiles.ensureTotalCapacity(self.allocator, system_count) catch return RenderError.OutOfMemory;
@@ -1341,11 +1407,12 @@ fn extractEditorInspectorInto(
 ) RenderError!void {
     const panel_x = @max(editorViewportWidth(input) - editor_inspector_panel_width - editor_inspector_panel_margin, editor_inspector_panel_margin);
     const panel_y = editor_inspector_panel_margin;
+    const panel_height = editorInspectorPanelHeight(input);
 
     const panel = world.createEntity("machina.editor.inspector.panel", "Editor Inspector Panel") catch |err| return mapWorldError(err);
     world.setUiRect(panel, .{
         .position = .{ panel_x, panel_y, 0.0 },
-        .size = .{ editor_inspector_panel_width, editor_inspector_panel_height, 0.0 },
+        .size = .{ editor_inspector_panel_width, panel_height, 0.0 },
         .color = .{ 0.059, 0.09, 0.165 },
     }) catch |err| return mapWorldError(err);
 
@@ -1494,12 +1561,19 @@ fn editorDebugPanelSize(input: FrameInput) [2]f32 {
     const panel_width: f32 = if (has_profiles) editor_system_panel_width else editor_controls_panel_width;
     var panel_height: f32 = 108.0;
     if (has_profiles) {
-        panel_height = 150.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
+        panel_height = 146.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
         if (input.system_profiles.len > profile_rows) {
             panel_height += editor_system_row_stride;
         }
     }
     return .{ panel_width, panel_height };
+}
+
+fn editorInspectorPanelHeight(input: FrameInput) f32 {
+    return if (input.editor.selected_entity == null)
+        editor_inspector_empty_panel_height
+    else
+        editor_inspector_panel_height;
 }
 
 fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]const u8 {
@@ -1508,7 +1582,7 @@ fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]c
 
 fn formatSystemProfileHeader(allocator: std.mem.Allocator, profiles: []const runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
     const window_size = if (profiles.len == 0) 0 else profiles[0].window_size;
-    return std.fmt.allocPrint(allocator, "SYSTEMS {d}  AVG {d}F", .{ profiles.len, window_size });
+    return std.fmt.allocPrint(allocator, "SYSTEMS {d}  AVG {d}F  SNAP 3HZ", .{ profiles.len, window_size });
 }
 
 fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
@@ -1520,14 +1594,14 @@ fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.System
     const ellipsis = if (profile.id.len > editor_system_profile_id_chars) "..." else "";
 
     if (profile.sample_count == 0) {
-        return std.fmt.allocPrint(allocator, "{s} {s}{s} avg -- last --", .{
+        return std.fmt.allocPrint(allocator, "{s} {s}{s}  AVG --  LAST --", .{
             phase,
             id_prefix,
             ellipsis,
         });
     }
 
-    return std.fmt.allocPrint(allocator, "{s} {s}{s} avg {d}us last {d}us", .{
+    return std.fmt.allocPrint(allocator, "{s} {s}{s}  AVG {d}US  LAST {d}US", .{
         phase,
         id_prefix,
         ellipsis,
@@ -1538,10 +1612,10 @@ fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.System
 
 fn systemPhaseLabel(phase: runtime.SystemPhase) []const u8 {
     return switch (phase) {
-        .startup => "startup",
-        .update => "update",
-        .fixed_update => "fixed",
-        .render => "render",
+        .startup => "STA",
+        .update => "UPD",
+        .fixed_update => "FIX",
+        .render => "RND",
     };
 }
 
@@ -3124,7 +3198,7 @@ fn hitEditorChrome(input: FrameInput) bool {
     const inspector_x = @max(width - editor_inspector_panel_width - editor_inspector_panel_margin, editor_inspector_panel_margin);
     const debug_panel_size = editorDebugPanelSize(input);
     return pointInsideScreenRect(input.pointer.position, .{ editor_controls_panel_x, editor_controls_panel_y }, debug_panel_size) or
-        pointInsideScreenRect(input.pointer.position, .{ inspector_x, editor_inspector_panel_margin }, .{ editor_inspector_panel_width, editor_inspector_panel_height });
+        pointInsideScreenRect(input.pointer.position, .{ inspector_x, editor_inspector_panel_margin }, .{ editor_inspector_panel_width, editorInspectorPanelHeight(input) });
 }
 
 fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
@@ -3786,13 +3860,13 @@ test "debug overlay extracts system profile rows when available" {
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
         try std.testing.expect(text.size >= 1.0);
-        if (std.mem.indexOf(u8, text.value, "SYSTEMS 2  AVG 120F") != null) {
+        if (std.mem.indexOf(u8, text.value, "SYSTEMS 2  AVG 120F  SNAP 3HZ") != null) {
             saw_header = true;
         }
-        if (std.mem.indexOf(u8, text.value, "startup spawn_initial avg -- last --") != null) {
+        if (std.mem.indexOf(u8, text.value, "STA spawn_initial  AVG --  LAST --") != null) {
             saw_startup = true;
         }
-        if (std.mem.indexOf(u8, text.value, "update rotate_cubes avg 57us last 123us") != null) {
+        if (std.mem.indexOf(u8, text.value, "UPD rotate_cubes  AVG 57US  LAST 123US") != null) {
             saw_update = true;
         }
         if (std.mem.indexOf(u8, text.value, "PAUSE") != null) {
@@ -3890,6 +3964,45 @@ test "editor profile input combines project and engine system rows" {
     try std.testing.expectEqualStrings("game.update", combined[0].id);
     try std.testing.expectEqualStrings(render_extract_system_id, combined[1].id);
     try std.testing.expectEqual(runtime.SystemPhase.render, combined[1].phase);
+}
+
+test "editor profile display snapshots are copied and throttled" {
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+
+    const first_project_profiles = [_]runtime.SystemProfileSnapshot{
+        .{
+            .id = "game.fast",
+            .phase = .update,
+            .sample_count = 1,
+            .window_size = 120,
+            .last_ns = 1_000,
+            .rolling_average_ns = 1_000,
+        },
+    };
+    const first = try state.combineSystemProfileSnapshots(first_project_profiles[0..]);
+    try std.testing.expectEqualStrings("game.fast", first[0].id);
+    try std.testing.expect(first[0].id.ptr != first_project_profiles[0].id.ptr);
+    try std.testing.expectEqual(@as(u64, 1_000), first[0].last_ns);
+
+    const second_project_profiles = [_]runtime.SystemProfileSnapshot{
+        .{
+            .id = "game.slow",
+            .phase = .update,
+            .sample_count = 1,
+            .window_size = 120,
+            .last_ns = 9_000,
+            .rolling_average_ns = 9_000,
+        },
+    };
+    const throttled = try state.combineSystemProfileSnapshots(second_project_profiles[0..]);
+    try std.testing.expectEqualStrings("game.fast", throttled[0].id);
+    try std.testing.expectEqual(@as(u64, 1_000), throttled[0].last_ns);
+
+    state.last_display_system_profile_update_ns -= @as(i128, editor_performance_display_interval_ns);
+    const refreshed = try state.combineSystemProfileSnapshots(second_project_profiles[0..]);
+    try std.testing.expectEqualStrings("game.slow", refreshed[0].id);
+    try std.testing.expectEqual(@as(u64, 9_000), refreshed[0].last_ns);
 }
 
 test "UI vertex builder reflects button interaction state" {

@@ -1,7 +1,7 @@
 # FDR-008: Headful Demo Window
 
 **Status:** Active
-**Last reviewed:** 2026-07-02
+**Last reviewed:** 2026-07-03
 
 ## Overview
 
@@ -11,7 +11,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 
 - Users can run `machina run [path]` against a valid project.
 - The command validates the project before opening a window.
-- The renderer opens a visible window and presents the project's default scene until the window is closed.
+- The renderer opens a 16:9 visible window and presents the project's default scene until the window is closed.
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
 - Legacy cube entities remain supported and render as box geometry with inline color material data.
 - Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
@@ -32,25 +32,31 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 **Why:** Running a project should exercise the interactive runtime path. The previous command was only a placeholder, so changing it now avoids accumulating a false contract.
 **Tradeoff:** Headful execution now depends on platform windowing support and may not run in every CI environment.
 
-### 2. Use SDL3 for the first window backend
+### 2. Use a larger 16:9 default viewport
+
+**Decision:** The default headful window opens at 1280x720.
+**Why:** The editor overlay and UI examples need enough room to be legible while preserving the common 16:9 shape used by current render examples.
+**Tradeoff:** Smaller screens may need users to resize the window manually until project/window settings exist.
+
+### 3. Use SDL3 for the first window backend
 
 **Decision:** The first macOS window path uses SDL3 to create a Metal-capable window and obtain a `CAMetalLayer` for `wgpu-native`.
 **Why:** SDL3 gives Machina a small C ABI windowing layer with cross-platform reach while keeping platform details behind the renderer boundary described in ADR-005.
 **Tradeoff:** The current build assumes Homebrew SDL3 on macOS. Dependency discovery and packaging need to become first-class before this is portable.
 
-### 3. Keep the frame cap as a runtime option
+### 4. Keep the frame cap as a runtime option
 
 **Decision:** `--frames N` is supported on the headful run command.
 **Why:** A visible window normally runs until closed, but development agents and CI need a bounded smoke-test path that still initializes the same surface and presentation code.
 **Tradeoff:** The option is an engine-runner concern rather than project data, so it should remain a CLI/runtime flag.
 
-### 4. Keep editor visibility as a runtime option
+### 5. Keep editor visibility as a runtime option
 
 **Decision:** `--editor` is supported on the headful run command and starts the engine-owned editor/debug overlay visible.
 **Why:** Normal gameplay runs should show the game first, while editor sessions need immediate tooling chrome without mutating project data.
 **Tradeoff:** Early editor state is controlled by runner flags until editor session persistence is designed.
 
-### 5. Share the renderer ECS path with offscreen rendering
+### 6. Share the renderer ECS path with offscreen rendering
 
 **Decision:** Headful rendering extracts, prepares, queues, and draws through the same renderer-owned ECS world and schedule as offscreen rendering.
 **Why:** Visible windows and headless snapshots should exercise the same rendering architecture wherever possible. This follows ADR-013.

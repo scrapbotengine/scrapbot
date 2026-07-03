@@ -1,0 +1,237 @@
+name = "UI Gallery"
+version = 1
+
+[[entities]]
+id = "ui-canvas"
+name = "UI Canvas"
+
+[entities.components."machina.ui.canvas"]
+
+[[entities]]
+id = "gallery-shell"
+name = "Gallery Shell"
+
+[entities.components."machina.ui.rect"]
+position = [24.0, 32.0, 0.0]
+size = [592.0, 420.0, 0.0]
+color = [0.059, 0.09, 0.165]
+
+[[entities]]
+id = "gallery-accent"
+name = "Gallery Accent"
+
+[entities.components."machina.ui.rect"]
+position = [24.0, 32.0, 0.0]
+size = [592.0, 5.0, 0.0]
+color = [0.056, 0.749, 0.823]
+
+[[entities]]
+id = "gallery-sidebar"
+name = "Gallery Sidebar"
+
+[entities.components."machina.ui.rect"]
+position = [24.0, 37.0, 0.0]
+size = [160.0, 415.0, 0.0]
+color = [0.129, 0.161, 0.216]
+
+[[entities]]
+id = "gallery-title"
+name = "Gallery Title"
+
+[entities.components."machina.ui.text"]
+position = [48.0, 60.0, 0.0]
+size = 1.25
+color = [0.93, 0.969, 1.0]
+value = "UI GALLERY"
+
+[[entities]]
+id = "gallery-subtitle"
+name = "Gallery Subtitle"
+
+[entities.components."machina.ui.text"]
+position = [48.0, 104.0, 0.0]
+size = 1.0
+color = [0.56, 0.737, 0.949]
+value = "ECS UI"
+
+[[entities]]
+id = "nav-panels"
+name = "Nav Panels"
+
+[entities.components."machina.ui.text"]
+position = [48.0, 164.0, 0.0]
+size = 1.0
+color = [0.889, 0.949, 0.992]
+value = "PANELS"
+
+[[entities]]
+id = "nav-buttons"
+name = "Nav Buttons"
+
+[entities.components."machina.ui.text"]
+position = [48.0, 204.0, 0.0]
+size = 1.0
+color = [0.889, 0.949, 0.992]
+value = "BUTTONS"
+
+[[entities]]
+id = "nav-status"
+name = "Nav Status"
+
+[entities.components."machina.ui.text"]
+position = [48.0, 244.0, 0.0]
+size = 1.0
+color = [0.889, 0.949, 0.992]
+value = "STATUS"
+
+[[entities]]
+id = "content-panel"
+name = "Content Panel"
+
+[entities.components."machina.ui.rect"]
+position = [208.0, 72.0, 0.0]
+size = [360.0, 152.0, 0.0]
+color = [0.02, 0.027, 0.051]
+
+[[entities]]
+id = "content-title"
+name = "Content Title"
+
+[entities.components."machina.ui.text"]
+position = [232.0, 96.0, 0.0]
+size = 1.0
+color = [0.253, 0.827, 0.933]
+value = "PANELS + TEXT"
+
+[[entities]]
+id = "content-copy"
+name = "Content Copy"
+
+[entities.components."machina.ui.text"]
+position = [232.0, 138.0, 0.0]
+size = 1.0
+color = [0.889, 0.949, 0.992]
+value = "PIXEL TEXT + RECTS"
+
+[[entities]]
+id = "content-copy-2"
+name = "Content Copy 2"
+
+[entities.components."machina.ui.text"]
+position = [232.0, 178.0, 0.0]
+size = 1.0
+color = [0.647, 0.725, 0.839]
+value = "COMPONENT DATA"
+
+[[entities]]
+id = "button-primary"
+name = "Primary Button"
+
+[entities.components."machina.ui.rect"]
+position = [208.0, 260.0, 0.0]
+size = [112.0, 50.0, 0.0]
+color = [0.028, 0.567, 0.827]
+
+[entities.components."machina.ui.button"]
+
+[entities.components."machina.ui.command"]
+command = "gallery_primary"
+
+[[entities]]
+id = "button-primary-label"
+name = "Primary Button Label"
+
+[entities.components."machina.ui.text"]
+position = [224.0, 274.0, 0.0]
+size = 1.0
+color = [0.953, 0.969, 0.996]
+value = "ACTION"
+
+[[entities]]
+id = "button-confirm"
+name = "Confirm Button"
+
+[entities.components."machina.ui.rect"]
+position = [336.0, 260.0, 0.0]
+size = [112.0, 50.0, 0.0]
+color = [0.063, 0.725, 0.506]
+
+[entities.components."machina.ui.button"]
+
+[entities.components."machina.ui.command"]
+command = "gallery_confirm"
+
+[[entities]]
+id = "button-confirm-label"
+name = "Confirm Button Label"
+
+[entities.components."machina.ui.text"]
+position = [348.0, 274.0, 0.0]
+size = 1.0
+color = [0.953, 0.969, 0.996]
+value = "OK"
+
+[[entities]]
+id = "button-warn"
+name = "Warning Button"
+
+[entities.components."machina.ui.rect"]
+position = [464.0, 260.0, 0.0]
+size = [112.0, 50.0, 0.0]
+color = [0.961, 0.62, 0.043]
+
+[entities.components."machina.ui.button"]
+
+[entities.components."machina.ui.command"]
+command = "gallery_warn"
+
+[[entities]]
+id = "button-warn-label"
+name = "Warning Button Label"
+
+[entities.components."machina.ui.text"]
+position = [500.0, 274.0, 0.0]
+size = 1.0
+color = [0.953, 0.969, 0.996]
+value = "WARN"
+
+[[entities]]
+id = "status-panel"
+name = "Status Panel"
+
+[entities.components."machina.ui.rect"]
+position = [208.0, 340.0, 0.0]
+size = [368.0, 72.0, 0.0]
+color = [0.129, 0.161, 0.216]
+
+[[entities]]
+id = "status-label"
+name = "Status Label"
+
+[entities.components."machina.ui.text"]
+position = [232.0, 360.0, 0.0]
+size = 1.0
+color = [0.93, 0.969, 1.0]
+value = "AWAITING COMMAND"
+
+[entities.components.status_label]
+
+[[entities]]
+id = "meter-track"
+name = "Meter Track"
+
+[entities.components."machina.ui.rect"]
+position = [232.0, 394.0, 0.0]
+size = [260.0, 18.0, 0.0]
+color = [0.02, 0.027, 0.051]
+
+[[entities]]
+id = "meter-fill"
+name = "Meter Fill"
+
+[entities.components."machina.ui.rect"]
+position = [232.0, 394.0, 0.0]
+size = [148.0, 18.0, 0.0]
+color = [0.253, 0.827, 0.933]
+
+[entities.components.meter_fill]

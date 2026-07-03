@@ -21,7 +21,9 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The engine-owned editor/debug overlay also hosts the first editor playback controls and selected-entity inspector; detailed behavior is tracked in FDR-018.
 - When live system profiling data is available, the editor/debug overlay lists active systems with their phase, rolling average runtime over the current profiling window, and last sample runtime.
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
+- The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
 - The first system performance view caps visible rows and reports that additional systems exist instead of providing scrolling.
+- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, and script-mutated UI state.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
 - The UI overlay renders after 3D scene content.
@@ -76,6 +78,12 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 **Why:** Measuring at the scheduler boundary keeps the data tied to declared ECS systems and works for human and agent debugging without script instrumentation. It follows ADR-006, ADR-007, and ADR-008.
 **Tradeoff:** The table reports CPU wall time for project and engine-internal render systems. It does not yet include GPU time, parallel worker timing, flame charts, sorting, or scrollable inspection.
 
+### 9. Treat examples as the primitive gallery
+
+**Decision:** The UI gallery example is the proving ground for retained UI primitives until Machina has a richer widget/layout library.
+**Why:** Examples give humans and agents a concrete target for visual checks and show how text-authored UI pieces compose today.
+**Tradeoff:** The gallery is not a substitute for real layout, styling, focus, text input, or reusable widget APIs.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-004, ADR-007, ADR-008, ADR-013
@@ -89,3 +97,4 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - What layout primitives are needed before editor panels become practical?
 - What text editing capability is needed before the editor becomes practical?
 - How should the editor expose large system lists, sorting, and drill-down timing history?
+- What should the first user-facing UI primitive library look like beyond raw retained ECS components?
