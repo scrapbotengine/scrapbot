@@ -15,6 +15,7 @@ name = "Gallery Shell"
 position = [24.0, 32.0, 0.0]
 size = [592.0, 420.0, 0.0]
 color = [0.031, 0.041, 0.063]
+corner_radius = 8.0
 
 [[entities]]
 id = "gallery-accent"
@@ -24,6 +25,7 @@ name = "Gallery Accent"
 position = [24.0, 32.0, 0.0]
 size = [592.0, 5.0, 0.0]
 color = [0.031, 0.431, 0.533]
+corner_radius = 2.0
 
 [[entities]]
 id = "gallery-sidebar"
@@ -33,6 +35,7 @@ name = "Gallery Sidebar"
 position = [24.0, 37.0, 0.0]
 size = [160.0, 415.0, 0.0]
 color = [0.051, 0.065, 0.094]
+corner_radius = 6.0
 
 [[entities]]
 id = "gallery-title"
@@ -92,6 +95,7 @@ name = "Nav Scroll Demo"
 position = [44.0, 292.0, 0.0]
 size = [118.0, 124.0, 0.0]
 color = [0.008, 0.012, 0.024]
+corner_radius = 4.0
 
 [entities.components."machina.ui.scroll_view"]
 position = [44.0, 292.0, 0.0]
@@ -188,6 +192,7 @@ name = "Content Panel"
 position = [208.0, 72.0, 0.0]
 size = [360.0, 152.0, 0.0]
 color = [0.008, 0.012, 0.024]
+corner_radius = 6.0
 
 [[entities]]
 id = "content-title"
@@ -227,6 +232,7 @@ name = "Primary Button"
 position = [208.0, 260.0, 0.0]
 size = [112.0, 50.0, 0.0]
 color = [0.028, 0.324, 0.49]
+corner_radius = 6.0
 
 [entities.components."machina.ui.button"]
 
@@ -251,6 +257,7 @@ name = "Confirm Button"
 position = [336.0, 260.0, 0.0]
 size = [112.0, 50.0, 0.0]
 color = [0.023, 0.471, 0.314]
+corner_radius = 6.0
 
 [entities.components."machina.ui.button"]
 
@@ -275,6 +282,7 @@ name = "Warning Button"
 position = [464.0, 260.0, 0.0]
 size = [112.0, 50.0, 0.0]
 color = [0.714, 0.333, 0.031]
+corner_radius = 6.0
 
 [entities.components."machina.ui.button"]
 
@@ -299,6 +307,7 @@ name = "Status Panel"
 position = [208.0, 340.0, 0.0]
 size = [368.0, 72.0, 0.0]
 color = [0.051, 0.065, 0.094]
+corner_radius = 6.0
 
 [[entities]]
 id = "status-label"
@@ -320,6 +329,7 @@ name = "Meter Track"
 position = [232.0, 394.0, 0.0]
 size = [260.0, 18.0, 0.0]
 color = [0.008, 0.012, 0.024]
+corner_radius = 4.0
 
 [[entities]]
 id = "meter-fill"
@@ -329,5 +339,6 @@ name = "Meter Fill"
 position = [232.0, 394.0, 0.0]
 size = [148.0, 18.0, 0.0]
 color = [0.22, 0.714, 0.82]
+corner_radius = 4.0
 
 [entities.components.meter_fill]

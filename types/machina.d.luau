@@ -200,6 +200,7 @@ export type MachinaUiRect = {
     position: MachinaVec3,
     size: MachinaVec3,
     color: MachinaVec3,
+    corner_radius: number,
 }
 
 export type MachinaUiText = {

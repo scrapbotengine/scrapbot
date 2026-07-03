@@ -1396,15 +1396,29 @@ const SceneParser = struct {
             runtime.WorldError.DuplicateEntityId => return ProjectError.DuplicateSceneEntityId,
             else => return err,
         };
-        for (entity.components.items) |component| {
+        for (entity.components.items) |*component| {
             const definition = self.registry.findComponent(component.id) orelse return ProjectError.InvalidSceneEntity;
-            if (!componentHasEveryDefinedField(component, definition.*)) {
+            try addSceneComponentDefaults(self.allocator, component);
+            if (!componentHasEveryDefinedField(component.*, definition.*)) {
                 return ProjectError.InvalidSceneEntity;
             }
             try self.world.setComponent(handle, component.id, component.fields.items);
         }
     }
 };
+
+fn addSceneComponentDefaults(allocator: std.mem.Allocator, component: *ComponentDraft) !void {
+    if (!std.mem.eql(u8, component.id, runtime.ui_rect_component_id)) {
+        return;
+    }
+    if (componentHasField(component.*, "corner_radius")) {
+        return;
+    }
+    try component.fields.append(allocator, .{
+        .name = "corner_radius",
+        .value = .{ .float = 0.0 },
+    });
+}
 
 const EntityDraft = struct {
     allocator: std.mem.Allocator,
@@ -1503,18 +1517,20 @@ fn findComponentField(definition: runtime.ComponentDefinition, field_name: []con
 
 fn componentHasEveryDefinedField(component: ComponentDraft, definition: runtime.ComponentDefinition) bool {
     for (definition.fields) |field| {
-        var found = false;
-        for (component.fields.items) |value| {
-            if (std.mem.eql(u8, value.name, field.name)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        if (!componentHasField(component, field.name)) {
             return false;
         }
     }
     return true;
+}
+
+fn componentHasField(component: ComponentDraft, field_name: []const u8) bool {
+    for (component.fields.items) |value| {
+        if (std.mem.eql(u8, value.name, field_name)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn readComponentValue(field_type: runtime.FieldType, value: []const u8) !runtime.ComponentValue {
@@ -2659,6 +2675,9 @@ test "LiveProject emits UI command events before scheduled scripts run" {
 
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
+
+    const button = live_project.scene.world.findEntityById("button") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(f32, 0.0), try live_project.scene.world.getFloat(button, runtime.ui_rect_component_id, "corner_radius"));
 
     const flag = live_project.scene.world.findEntityById("flag") orelse return error.TestExpectedEqual;
     try std.testing.expect(!try live_project.scene.world.getBoolean(flag, "flag", "active"));

@@ -57,6 +57,8 @@ const render_system_profile_window_frames: usize = 120;
 const editor_control_button_width: f32 = 104.0;
 const editor_control_button_height: f32 = 36.0;
 const editor_control_button_gap: f32 = 14.0;
+const editor_panel_corner_radius: f32 = 8.0;
+const editor_button_corner_radius: f32 = 6.0;
 const editor_inspector_panel_height: f32 = 548.0;
 const editor_inspector_empty_panel_height: f32 = 178.0;
 const editor_inspector_text_size: f32 = 1.0;
@@ -1547,6 +1549,7 @@ fn extractEditorShellInto(world: *runtime.World, input: FrameInput) RenderError!
         .position = sidebar.position(),
         .size = sidebar.size3(),
         .color = editor_palette.shell,
+        .corner_radius = editor_panel_corner_radius,
     }) catch |err| return mapWorldError(err);
 
     const sidebar_accent = world.createEntity("machina.editor.shell.sidebar.accent", "Editor Sidebar Accent") catch |err| return mapWorldError(err);
@@ -1554,6 +1557,7 @@ fn extractEditorShellInto(world: *runtime.World, input: FrameInput) RenderError!
         .position = sidebar.position(),
         .size = .{ sidebar.width, 4.0, 0.0 },
         .color = editor_palette.accent,
+        .corner_radius = 2.0,
     }) catch |err| return mapWorldError(err);
 
     const frame_color = editor_palette.panel_muted;
@@ -1590,6 +1594,7 @@ fn extractEditorShellRect(world: *runtime.World, id: []const u8, rect: ScreenRec
         .position = rect.position(),
         .size = rect.size3(),
         .color = color,
+        .corner_radius = 0.0,
     }) catch |err| return mapWorldError(err);
 }
 
@@ -1613,6 +1618,7 @@ fn extractDebugOverlayInto(
         .position = panel.position(),
         .size = .{ panel_size[0], panel_size[1], 0.0 },
         .color = editor_palette.panel,
+        .corner_radius = editor_panel_corner_radius,
     }) catch |err| return mapWorldError(err);
 
     const accent = world.createEntity("machina.editor.debug.accent", "Editor Debug Accent") catch |err| return mapWorldError(err);
@@ -1620,6 +1626,7 @@ fn extractDebugOverlayInto(
         .position = panel.position(),
         .size = .{ panel_size[0], 4.0, 0.0 },
         .color = editor_palette.accent,
+        .corner_radius = 2.0,
     }) catch |err| return mapWorldError(err);
 
     const fps_text = formatFpsLabel(allocator, input.fps) catch return RenderError.OutOfMemory;
@@ -1699,10 +1706,11 @@ fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) R
         .position = play_rect.position(),
         .size = play_rect.size3(),
         .color = play_color,
+        .corner_radius = editor_button_corner_radius,
     }) catch |err| return mapWorldError(err);
     const play_text = world.createEntity("machina.editor.controls.play.label", "Editor Play Label") catch |err| return mapWorldError(err);
     world.setUiText(play_text, .{
-        .position = .{ play_rect.x + 18.0, play_rect.y + 8.0, 0.0 },
+        .position = centeredUiTextPosition(play_rect, play_label, 1.0),
         .size = 1.0,
         .color = editor_palette.text,
         .value = play_label,
@@ -1714,10 +1722,11 @@ fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) R
         .position = step_rect.position(),
         .size = step_rect.size3(),
         .color = editor_palette.panel_muted,
+        .corner_radius = editor_button_corner_radius,
     }) catch |err| return mapWorldError(err);
     const step_text = world.createEntity("machina.editor.controls.step.label", "Editor Step Label") catch |err| return mapWorldError(err);
     world.setUiText(step_text, .{
-        .position = .{ step_rect.x + 22.0, step_rect.y + 8.0, 0.0 },
+        .position = centeredUiTextPosition(step_rect, "STEP", 1.0),
         .size = 1.0,
         .color = editor_palette.text,
         .value = "STEP",
@@ -1743,6 +1752,7 @@ fn extractEditorInspectorInto(
         .position = .{ panel_x, panel_y, 0.0 },
         .size = .{ panel_width, @min(panel_height, available_height), 0.0 },
         .color = editor_palette.panel,
+        .corner_radius = editor_panel_corner_radius,
     }) catch |err| return mapWorldError(err);
 
     const accent = world.createEntity("machina.editor.inspector.accent", "Editor Inspector Accent") catch |err| return mapWorldError(err);
@@ -1750,6 +1760,7 @@ fn extractEditorInspectorInto(
         .position = .{ panel_x, panel_y, 0.0 },
         .size = .{ panel_width, 4.0, 0.0 },
         .color = editor_palette.accent,
+        .corner_radius = 2.0,
     }) catch |err| return mapWorldError(err);
 
     var row: usize = 0;
@@ -1886,6 +1897,18 @@ fn formatInspectorFieldValue(allocator: std.mem.Allocator, field_name: []const u
 
 fn editorTextHeight(size: f32) f32 {
     return @as(f32, @floatFromInt(ui_font.height)) * size;
+}
+
+fn editorTextWidth(value: []const u8, size: f32) f32 {
+    return @as(f32, @floatFromInt(value.len * ui_font.advance)) * size;
+}
+
+fn centeredUiTextPosition(rect: ScreenRect, value: []const u8, size: f32) [3]f32 {
+    return .{
+        rect.x + @max((rect.width - editorTextWidth(value, size)) * 0.5, 0.0),
+        rect.y + @max((rect.height - editorTextHeight(size)) * 0.5, 0.0),
+        0.0,
+    };
 }
 
 fn editorPanelTextPosition(panel: ScreenRect, local_y: f32) [3]f32 {
@@ -3456,6 +3479,16 @@ fn createUiPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pi
             .offset = @offsetOf(UiVertex, "color"),
             .shader_location = 1,
         },
+        .{
+            .format = .float32x2,
+            .offset = @offsetOf(UiVertex, "local_position"),
+            .shader_location = 2,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "rect_size_radius"),
+            .shader_location = 3,
+        },
     };
     const vertex_buffers = [_]wgpu.VertexBufferLayout{
         .{
@@ -3468,6 +3501,7 @@ fn createUiPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pi
     const color_targets = [_]wgpu.ColorTargetState{
         .{
             .format = texture_format,
+            .blend = &wgpu.BlendState.alpha_blending,
         },
     };
 
@@ -4987,13 +5021,20 @@ test "debug overlay extracts FPS label when visible" {
     const play_button = state.world.findEntityById("machina.editor.controls.play") orelse return error.TestExpectedEqual;
     const play_position = try state.world.getVec3(play_button, runtime.ui_rect_component_id, "position");
     try std.testing.expect(play_position[1] >= label.position[1] + editorTextHeight(label.size) + editor_panel_section_gap - 0.001);
+    try std.testing.expectEqual(@as(f32, editor_button_corner_radius), try state.world.getFloat(play_button, runtime.ui_rect_component_id, "corner_radius"));
+
+    const input = try renderFrameInput(&state.world);
+    const play_label = state.world.findEntityById("machina.editor.controls.play.label") orelse return error.TestExpectedEqual;
+    const play_label_position = try state.world.getVec3(play_label, runtime.ui_text_component_id, "position");
+    const expected_play_label_position = centeredUiTextPosition(editorPlayButtonRect(input), "PAUSE", 1.0);
+    try std.testing.expectApproxEqAbs(expected_play_label_position[0], play_label_position[0], 0.001);
+    try std.testing.expectApproxEqAbs(expected_play_label_position[1], play_label_position[1], 0.001);
 
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
         try std.testing.expect(std.mem.indexOf(u8, text.value, "IN W") == null);
     }
 
-    const input = try renderFrameInput(&state.world);
     try std.testing.expect(!input.ui_visible);
     try std.testing.expect(input.debug_overlay_visible);
     const sidebar = editorSidebarRect(input);
@@ -5254,18 +5295,21 @@ test "UI vertex builder reflects button interaction state" {
         .position = .{ 32.0, 24.0, 0.0 },
         .size = .{ 120.0, 48.0, 0.0 },
         .color = .{ 0.1, 0.2, 0.3 },
+        .corner_radius = 6.0,
     });
     try world.setUiButton(button);
     try setRenderUiButtonState(&world, button, .{ .hovered = true });
 
     var hovered_vertices = try buildUiVertices(std.testing.allocator, &world, 640, 480);
     defer hovered_vertices.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 6), hovered_vertices.items.len);
     try std.testing.expectApproxEqAbs(@as(f32, 0.106), hovered_vertices.items[0].color[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 6.0), hovered_vertices.items[0].rect_size_radius[2], 0.001);
 
     try setRenderUiButtonState(&world, button, .{ .held = true });
     var held_vertices = try buildUiVertices(std.testing.allocator, &world, 640, 480);
     defer held_vertices.deinit(std.testing.allocator);
-    try std.testing.expect(held_vertices.items[6].color[0] < held_vertices.items[12].color[0]);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.086), held_vertices.items[0].color[0], 0.001);
 }
 
 test "UI vertex builder clips text to render clip rect" {
@@ -5437,29 +5481,7 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
             }
         }
 
-        try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, rect.size, rect_color, maybe_clip);
-        if (rect.is_button) {
-            var top_color = scaleColor(rect_color, 1.16);
-            var bottom_color = scaleColor(rect_color, 0.82);
-            if (maybe_button_state) |state| {
-                if (state.held) {
-                    top_color = scaleColor(rect_color, 0.82);
-                    bottom_color = scaleColor(rect_color, 1.16);
-                }
-            }
-
-            try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 }, top_color, maybe_clip);
-            try appendUiRectClipped(
-                &vertices,
-                allocator,
-                width,
-                height,
-                .{ screen_layout.position[0], screen_layout.position[1] + @max(rect.size[1] - 2.0, 0.0), screen_layout.position[2] },
-                .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 },
-                bottom_color,
-                maybe_clip,
-            );
-        }
+        try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, rect.size, rect_color, rect.corner_radius, maybe_clip);
     }
 
     var texts = world.uiTexts();
@@ -5533,6 +5555,7 @@ fn appendGlyph(
                 .{ x + @as(f32, @floatFromInt(column)) * size, y + @as(f32, @floatFromInt(row)) * size, 0.0 },
                 .{ size, size, 0.0 },
                 color,
+                0.0,
                 clip,
             );
         }
@@ -5548,7 +5571,7 @@ fn appendUiRect(
     size: [3]f32,
     color: [3]f32,
 ) RenderError!void {
-    try appendUiRectClipped(vertices, allocator, width, height, position, size, color, null);
+    try appendUiRectClipped(vertices, allocator, width, height, position, size, color, 0.0, null);
 }
 
 fn appendUiRectClipped(
@@ -5559,9 +5582,17 @@ fn appendUiRectClipped(
     position: [3]f32,
     size: [3]f32,
     color: [3]f32,
+    corner_radius: f32,
     clip: ?UiClipRect,
 ) RenderError!void {
-    if (!isFiniteVec3(position) or !isFiniteVec3(size) or !isFiniteVec3(color) or size[0] <= 0.0 or size[1] <= 0.0) {
+    if (!isFiniteVec3(position) or
+        !isFiniteVec3(size) or
+        !isFiniteVec3(color) or
+        !std.math.isFinite(corner_radius) or
+        size[0] <= 0.0 or
+        size[1] <= 0.0 or
+        corner_radius < 0.0)
+    {
         return RenderError.InvalidScene;
     }
 
@@ -5590,14 +5621,24 @@ fn appendUiRectClipped(
     const top = screenToClipY(clipped_position[1], height);
     const bottom = screenToClipY(clipped_position[1] + clipped_size[1], height);
     const vertex_color = [4]f32{ clamp01(color[0]), clamp01(color[1]), clamp01(color[2]), 1.0 };
+    const rect_size_radius = [4]f32{
+        size[0],
+        size[1],
+        @min(corner_radius, @min(size[0], size[1]) * 0.5),
+        if (corner_radius > 0.0) 1.0 else 0.0,
+    };
+    const local_left = clipped_position[0] - position[0];
+    const local_top = clipped_position[1] - position[1];
+    const local_right = local_left + clipped_size[0];
+    const local_bottom = local_top + clipped_size[1];
 
     const quad = [_]UiVertex{
-        .{ .position = .{ left, top }, .color = vertex_color },
-        .{ .position = .{ right, top }, .color = vertex_color },
-        .{ .position = .{ right, bottom }, .color = vertex_color },
-        .{ .position = .{ left, top }, .color = vertex_color },
-        .{ .position = .{ right, bottom }, .color = vertex_color },
-        .{ .position = .{ left, bottom }, .color = vertex_color },
+        .{ .position = .{ left, top }, .color = vertex_color, .local_position = .{ local_left, local_top }, .rect_size_radius = rect_size_radius },
+        .{ .position = .{ right, top }, .color = vertex_color, .local_position = .{ local_right, local_top }, .rect_size_radius = rect_size_radius },
+        .{ .position = .{ right, bottom }, .color = vertex_color, .local_position = .{ local_right, local_bottom }, .rect_size_radius = rect_size_radius },
+        .{ .position = .{ left, top }, .color = vertex_color, .local_position = .{ local_left, local_top }, .rect_size_radius = rect_size_radius },
+        .{ .position = .{ right, bottom }, .color = vertex_color, .local_position = .{ local_right, local_bottom }, .rect_size_radius = rect_size_radius },
+        .{ .position = .{ left, bottom }, .color = vertex_color, .local_position = .{ local_left, local_bottom }, .rect_size_radius = rect_size_radius },
     };
     try vertices.appendSlice(allocator, &quad);
 }
@@ -5639,6 +5680,8 @@ const InstanceAttributes = extern struct {
 const UiVertex = extern struct {
     position: [2]f32,
     color: [4]f32,
+    local_position: [2]f32,
+    rect_size_radius: [4]f32,
 };
 
 fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?*anyopaque, userdata2: ?*anyopaque) callconv(.c) void {

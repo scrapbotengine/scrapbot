@@ -55,6 +55,8 @@ Rendering and UI:
 - `machina.render.cube` is a legacy shortcut that renders as box geometry with inline color.
 - Shadow behavior is authored with `machina.shadow.caster` and `machina.shadow.receiver` marker components.
 - First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.text`, `machina.ui.button`, `machina.ui.command`, `machina.ui.scroll_view`, `machina.ui.vbox`, and `machina.ui.layout.item`.
+- `machina.ui.rect` has `position`, `size`, `color`, and `corner_radius` fields. Missing scene-authored `corner_radius` values default to `0.0` for compatibility.
+- Rounded UI corners render through the shared UI shader with SDF coverage and alpha blending. Do not add renderer-only corner geometry or per-example hacks for rounded panels/buttons.
 - UI renders as a screen-space overlay after 3D content, with fixed-pixel Spleen 16x32-derived built-in text.
 - `machina.ui.scroll_view` provides a clipped screen-space viewport with `position`, `size`, and `content_offset`.
 - `machina.ui.vbox` stacks direct children vertically from its local `position` with `spacing`.

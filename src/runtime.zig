@@ -603,6 +603,7 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .{ .name = "position", .value_type = .vec3 },
         .{ .name = "size", .value_type = .vec3 },
         .{ .name = "color", .value_type = .vec3 },
+        .{ .name = "corner_radius", .value_type = .float },
     };
     try registry.registerEngineComponent(.{
         .id = ui_rect_component_id,
@@ -841,6 +842,7 @@ pub const UiRectComponent = struct {
     position: [3]f32 = .{ 0.0, 0.0, 0.0 },
     size: [3]f32 = .{ 1.0, 1.0, 0.0 },
     color: [3]f32 = .{ 1.0, 1.0, 1.0 },
+    corner_radius: f32 = 0.0,
 };
 
 pub const UiTextComponent = struct {
@@ -890,6 +892,7 @@ pub const UiRect = struct {
     position: [3]f32,
     size: [3]f32,
     color: [3]f32,
+    corner_radius: f32,
     is_button: bool,
 };
 
@@ -1315,6 +1318,7 @@ pub const World = struct {
             .{ .name = "position", .value = .{ .vec3 = rect.position } },
             .{ .name = "size", .value = .{ .vec3 = rect.size } },
             .{ .name = "color", .value = .{ .vec3 = rect.color } },
+            .{ .name = "corner_radius", .value = .{ .float = rect.corner_radius } },
         };
         try self.setComponent(handle, ui_rect_component_id, &fields);
     }
@@ -1822,6 +1826,7 @@ pub const World = struct {
             .position = self.getVec3(handle, ui_rect_component_id, "position") catch return null,
             .size = self.getVec3(handle, ui_rect_component_id, "size") catch return null,
             .color = self.getVec3(handle, ui_rect_component_id, "color") catch return null,
+            .corner_radius = self.getFloat(handle, ui_rect_component_id, "corner_radius") catch return null,
             .is_button = self.hasComponent(handle, ui_button_component_id) catch false,
         };
     }
@@ -2609,6 +2614,7 @@ test "world resolves UI rect and text components" {
         .position = .{ 32.0, 104.0, 0.0 },
         .size = .{ 140.0, 34.0, 0.0 },
         .color = .{ 0.0, 0.48, 0.86 },
+        .corner_radius = 6.0,
     });
     try world.setUiButton(button);
 
@@ -2632,6 +2638,7 @@ test "world resolves UI rect and text components" {
     const resolved_button = world.uiRectAt(1) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(button.index, resolved_button.entity.index);
     try std.testing.expect(resolved_button.is_button);
+    try std.testing.expectEqual(@as(f32, 6.0), resolved_button.corner_radius);
 
     const resolved_label = world.uiTextAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(label.index, resolved_label.entity.index);
@@ -2914,6 +2921,10 @@ test "engine component schemas are registered from runtime" {
     const ui_text = registry.findComponent(ui_text_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 4), ui_text.fields.len);
     try std.testing.expectEqual(FieldType.string, ui_text.fields[3].value_type);
+
+    const ui_rect = registry.findComponent(ui_rect_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 4), ui_rect.fields.len);
+    try std.testing.expectEqual(FieldType.float, ui_rect.fields[3].value_type);
 
     const ui_command_event = registry.findComponent(ui_command_event_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 2), ui_command_event.fields.len);

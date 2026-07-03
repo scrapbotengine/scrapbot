@@ -11,7 +11,9 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
 - Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, button command ids, scroll views, vertical stacks, and layout child metadata.
-- UI rectangles and text labels use screen-space positions and sizes with a top-left origin.
+- UI rectangles use screen-space positions and sizes with a top-left origin, plus an optional `corner_radius` field in pixels. Missing `corner_radius` values default to `0.0` for compatibility with older scene data.
+- UI rectangle corners render through the UI shader using rounded-rectangle SDF coverage with alpha blending. Text glyph quads use the same UI pipeline with `corner_radius = 0.0`.
+- UI text labels use screen-space positions with a top-left origin.
 - The first UI demo uses a subdued dark Tailwind-derived palette: near-black workspaces, slate panels, muted cyan structure accents, restrained semantic control colors, and high-contrast but not pure-white text.
 - Button markers derive hover, held, and pressed interaction state in headful runs and use that state for button visuals.
 - UI interaction consumes transient `machina.input.*` ECS resources instead of reading raw platform events directly.
@@ -59,6 +61,12 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 **Decision:** The first UI primitives are retained scene data rather than an immediate-mode scripting API.
 **Why:** Retained ECS data keeps the first slice text-first, reloadable through scene files, render-testable, and aligned with ADR-008 and ADR-013.
 **Tradeoff:** Authoring dynamic UI from scripts still needs a higher-level API in a later slice.
+
+### 4a. Render rounded rectangles with SDF coverage
+
+**Decision:** `machina.ui.rect.corner_radius` is a real ECS field and rounded corners are rendered in `ui.wgsl` through a rounded-rectangle SDF.
+**Why:** Rounded panels and buttons should be data-authored, work for scene UI and engine-generated editor UI, and avoid baking corner geometry into every rect.
+**Tradeoff:** The current radius is uniform per rect. Per-corner radii, borders, shadows, and style inheritance remain future work.
 
 ### 5. Use a built-in pixel text path before font assets
 
