@@ -152,8 +152,15 @@ pub const EditorState = struct {
     system_scroll_offset: usize = 0,
     system_scroll_down_sign: f32 = -1.0,
     system_scroll_accumulator: f32 = 0.0,
+    system_scroll_boundary: EditorScrollBoundary = .none,
     last_pointer: [2]f32 = .{ 0.0, 0.0 },
     has_last_pointer: bool = false,
+};
+
+const EditorScrollBoundary = enum {
+    none,
+    top,
+    bottom,
 };
 
 pub const EditorFrameState = struct {
@@ -248,10 +255,19 @@ fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delt
         state.system_scroll_down_sign = sign;
     }
 
+    const direction = scrollDirectionFromSign(state, sign);
+    if (state.system_scroll_boundary == .bottom and direction == .up) {
+        return;
+    }
+    if (state.system_scroll_boundary == .top and direction == .down) {
+        return;
+    }
+
     state.system_scroll_accumulator += scroll_delta_y * state.system_scroll_down_sign;
     while (state.system_scroll_accumulator >= 1.0) {
         if (state.system_scroll_offset == max_scroll) {
             state.system_scroll_accumulator = 0.0;
+            state.system_scroll_boundary = .bottom;
             return;
         }
         state.system_scroll_offset += 1;
@@ -260,6 +276,7 @@ fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delt
     while (state.system_scroll_accumulator <= -1.0) {
         if (state.system_scroll_offset == 0) {
             state.system_scroll_accumulator = 0.0;
+            state.system_scroll_boundary = .top;
             return;
         }
         state.system_scroll_offset -= 1;
@@ -269,6 +286,15 @@ fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delt
 
 fn scrollDirectionSign(value: f32) f32 {
     return if (value < 0.0) -1.0 else 1.0;
+}
+
+const EditorScrollDirection = enum {
+    down,
+    up,
+};
+
+fn scrollDirectionFromSign(state: *const EditorState, sign: f32) EditorScrollDirection {
+    return if (sign == state.system_scroll_down_sign) .down else .up;
 }
 
 pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!EditorUpdate {
@@ -284,6 +310,7 @@ pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: Fram
 
     if (input.pointer.wheel_delta[1] == 0.0) {
         state.system_scroll_accumulator = 0.0;
+        state.system_scroll_boundary = .none;
     }
 
     if (input.pointer.wheel_delta[1] != 0.0 and editorSystemNeedsScroll(profile_count)) {
@@ -3897,6 +3924,34 @@ test "editor system list replay ignores fractional inertial bounce at the bottom
     const positive_down_reverse_frames = [_]f32{-1.0};
     try replayEditorScrollFrames(&world, &positive_down_state, &profiles, &positive_down_reverse_frames);
     try std.testing.expectEqual(@as(usize, 1), positive_down_state.system_scroll_offset);
+}
+
+test "editor system list replay stays pinned through large boundary bounce stream" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const profiles = [_]runtime.SystemProfileSnapshot{
+        .{ .id = "system.0", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.1", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.2", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.3", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.4", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.5", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.6", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.7", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.8", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+    };
+
+    var editor_state = EditorState{ .system_scroll_down_sign = 1.0 };
+    const frames = [_]f32{
+        1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 0.75, -2.0, 1.0,
+    };
+    try replayEditorScrollFrames(&world, &editor_state, &profiles, &frames);
+    try std.testing.expectEqual(@as(usize, 2), editor_state.system_scroll_offset);
+
+    const deliberate_reverse_after_idle = [_]f32{ 0.0, -1.0 };
+    try replayEditorScrollFrames(&world, &editor_state, &profiles, &deliberate_reverse_after_idle);
+    try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
 }
 
 test "render ECS schedule orders extract prepare queue and draw systems" {
