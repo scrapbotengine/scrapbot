@@ -64,7 +64,7 @@ Rendering and UI:
 - Headful runs can generate an engine-owned debug overlay in the render ECS world.
 - The debug overlay is hidden by default, `machina run --editor` shows it on startup, Ctrl+Tab toggles it, and the current panel shows FPS plus project/native system timing rows and engine-internal render system timing rows.
 - The debug overlay displays performance snapshots at a throttled human-readable cadence; keep measuring every frame, but do not make the visible table flicker every frame.
-- The debug overlay performance table uses compact rows and a clipped pixel-scroll viewport for long system lists. It should not truncate the list to unreachable rows or regress to row-only scroll state.
+- The debug overlay performance table uses compact rows and a clipped animated pixel-scroll viewport for long system lists. It should not truncate the list to unreachable rows or regress to row-only or instant-jump scroll state.
 - The editor overlay also owns playback controls, selected-entity inspection, click selection, and the first translate gizmo.
 - Editor selection is generation-aware and should reject stale handles instead of silently selecting whatever now lives at the old dense index.
 - The first click-selection path is CPU renderable-bounds picking; treat triangle-accurate picking, ID-buffer picking, acceleration structures, and selectable non-renderable entities as future design work.
@@ -143,7 +143,7 @@ Live reload:
 - Treat `machina.ui.command_event` as runtime-only transient data. Do not author it in scene files; author `machina.ui.command` on button entities instead.
 - Keep editor/debug UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces; prefer larger sizes for primary readouts and verify compact panels in a headful screenshot or smoke run.
 - Keep editor/debug list rows bounded and readable. Use compact formatting, scrolling, windowing, or pagination for unbounded lists instead of drawing unreachable overflow or hidden `... more` rows.
-- Keep smooth UI scrolling modeled as pixel/float offsets plus clipping. Do not fake smooth scrolling with hidden whole-row windows or by drawing unclipped overflow outside the viewport.
+- Keep smooth UI scrolling modeled as target pixel/float offsets, animated visible offsets, and clipping. Do not fake smooth scrolling with hidden whole-row windows, instant jumps, or by drawing unclipped overflow outside the viewport.
 - For editor input bugs, add deterministic frame-replay coverage in Zig tests. Prefer replaying wheel/key/pointer frame sequences against editor state before relying on manual headful checks.
 - Keep `examples/ui_gallery/` current when adding or materially changing UI primitives.
 - Design editor surfaces for large worlds. Prefer selection-first, search, filtering, pagination, or virtualized lists over drawing every entity every frame.

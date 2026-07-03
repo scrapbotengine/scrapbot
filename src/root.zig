@@ -309,6 +309,7 @@ pub const LiveProject = struct {
         }
         var editor_input = input;
         const render_profile_count = input.system_profile_count_hint;
+        editor_input.delta_seconds = delta_seconds;
         editor_input.editor = self.editorFrameState();
         editor_input.system_profiles = self.systemProfileSnapshots();
         editor_input.system_profile_count_hint = editor_input.system_profiles.len + render_profile_count;
@@ -323,6 +324,7 @@ pub const LiveProject = struct {
             }
             return;
         };
+        routed_input.editor = self.editorFrameState();
         if (editor_update.consumed_pointer) {
             routed_input.pointer.primary_down = false;
             routed_input.pointer.primary_pressed = false;
@@ -2574,7 +2576,9 @@ test "LiveProject editor scrolling uses render system profile count hint" {
         },
     });
 
-    try std.testing.expectApproxEqAbs(@as(f32, 32.0), live_project.editor_state.system_scroll_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 32.0), live_project.editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expect(live_project.editor_state.system_scroll_y > 0.0);
+    try std.testing.expect(live_project.editor_state.system_scroll_y < live_project.editor_state.system_scroll_target_y);
 }
 
 test "LiveProject emits UI command events before scheduled scripts run" {
