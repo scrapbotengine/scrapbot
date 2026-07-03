@@ -182,10 +182,12 @@ pub const FrameInput = struct {
     viewport_height: f32 = 0.0,
     editor: EditorFrameState = .{},
     system_profiles: []const runtime.SystemProfileSnapshot = &.{},
+    system_profile_count_hint: usize = 0,
 
     fn beginFrame(self: *FrameInput) void {
         self.pointer.beginFrame();
         self.keyboard.beginFrame();
+        self.system_profile_count_hint = 0;
     }
 };
 
@@ -265,10 +267,11 @@ pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: Fram
         state.has_last_pointer = false;
         return .{};
     }
-    clampEditorSystemScroll(state, input.system_profiles.len);
+    const profile_count = editorSystemProfileScrollCount(input);
+    clampEditorSystemScroll(state, profile_count);
 
-    if (input.pointer.wheel_delta[1] != 0.0 and editorSystemNeedsScroll(input.system_profiles.len)) {
-        scrollEditorSystemList(state, input.system_profiles.len, input.pointer.wheel_delta[1]);
+    if (input.pointer.wheel_delta[1] != 0.0 and editorSystemNeedsScroll(profile_count)) {
+        scrollEditorSystemList(state, profile_count, input.pointer.wheel_delta[1]);
         return .{ .consumed_pointer = true };
     }
 
@@ -587,6 +590,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         const delta_seconds: f32 = 0.025;
         input.viewport_width = @floatFromInt(width);
         input.viewport_height = @floatFromInt(height);
+        input.system_profile_count_hint = demo.renderSystemProfileCount();
         if (options.frame_update) |frame_update| {
             frame_update.step(frame_update.context, delta_seconds, &input);
         }
@@ -1714,6 +1718,10 @@ fn editorSystemNeedsScroll(profile_count: usize) bool {
     return profile_count > editor_system_profile_max_rows;
 }
 
+fn editorSystemProfileScrollCount(input: FrameInput) usize {
+    return @max(input.system_profiles.len, input.system_profile_count_hint);
+}
+
 fn editorSystemMaxScroll(profile_count: usize) usize {
     return if (profile_count > editor_system_profile_max_rows)
         profile_count - editor_system_profile_max_rows
@@ -1734,19 +1742,21 @@ fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]c
 
 fn formatEditorInputDiagnostics(allocator: std.mem.Allocator, input: FrameInput) error{OutOfMemory}![]const u8 {
     if (!input.pointer.has_position) {
-        return std.fmt.allocPrint(allocator, "IN W{d:.1},{d:.1} P--,-- S{d}", .{
+        return std.fmt.allocPrint(allocator, "IN W{d:.1},{d:.1} P--,-- S{d} C{d}", .{
             input.pointer.wheel_delta[0],
             input.pointer.wheel_delta[1],
             input.editor.system_scroll_offset,
+            editorSystemProfileScrollCount(input),
         });
     }
 
-    return std.fmt.allocPrint(allocator, "IN W{d:.1},{d:.1} P{d},{d} S{d}", .{
+    return std.fmt.allocPrint(allocator, "IN W{d:.1},{d:.1} P{d},{d} S{d} C{d}", .{
         input.pointer.wheel_delta[0],
         input.pointer.wheel_delta[1],
         roundedScreenCoordinate(input.pointer.position[0]),
         roundedScreenCoordinate(input.pointer.position[1]),
         input.editor.system_scroll_offset,
+        editorSystemProfileScrollCount(input),
     });
 }
 
@@ -2318,6 +2328,10 @@ const MeshDemo = struct {
             .depth_view = depth_view,
             .frame = config,
         });
+    }
+
+    fn renderSystemProfileCount(self: *const MeshDemo) usize {
+        return self.render_state.system_profiles.items.len;
     }
 
     fn runRenderSchedule(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
@@ -3742,6 +3756,27 @@ test "editor system list wheel scroll does not depend on pointer hit testing" {
     try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
 }
 
+test "editor system list uses profile count hint for render-added rows" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const profiles = [_]runtime.SystemProfileSnapshot{
+        .{ .id = "project.0", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "project.1", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+    };
+
+    var editor_state = EditorState{};
+    const update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .system_profiles = &profiles,
+        .system_profile_count_hint = 9,
+        .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
+    });
+
+    try std.testing.expect(update.consumed_pointer);
+    try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
+}
+
 test "editor system list calibrates positive wheel deltas as down from the top" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
@@ -4184,7 +4219,7 @@ test "editor input diagnostics include wheel pointer and scroll state" {
     });
     defer std.testing.allocator.free(line);
 
-    try std.testing.expectEqualStrings("IN W0.0,-1.3 P123,568 S3", line);
+    try std.testing.expectEqualStrings("IN W0.0,-1.3 P123,568 S3 C0", line);
 }
 
 test "debug overlay extracts FPS label when visible" {
@@ -4209,7 +4244,7 @@ test "debug overlay extracts FPS label when visible" {
     var saw_input = false;
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
-        if (std.mem.indexOf(u8, text.value, "IN W0.0,0.0 P--,-- S0") != null) {
+        if (std.mem.indexOf(u8, text.value, "IN W0.0,0.0 P--,-- S0 C0") != null) {
             saw_input = true;
         }
     }
@@ -4265,7 +4300,7 @@ test "debug overlay extracts system profile rows when available" {
     var saw_input = false;
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
-        if (std.mem.indexOf(u8, text.value, "IN W0.0,0.0 P--,-- S0") != null) {
+        if (std.mem.indexOf(u8, text.value, "IN W0.0,0.0 P--,-- S0 C2") != null) {
             saw_input = true;
         }
         try std.testing.expect(text.size >= 1.0);

@@ -25,7 +25,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
 - The system performance view uses compact fixed-width rows and a scroll window so long system lists remain legible and every system can be reached.
 - While the editor/debug overlay is visible, mouse wheel input scrolls the visible system window when the system list overflows.
-- The editor/debug overlay includes a compact input diagnostics row with current wheel delta, pointer position, and profiler scroll offset while input routing is still being hardened.
+- The editor/debug overlay includes a compact input diagnostics row with current wheel delta, pointer position, profiler scroll offset, and scrollable profile count while input routing is still being hardened.
 - The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, and script-mutated UI state.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.

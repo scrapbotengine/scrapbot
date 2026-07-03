@@ -576,9 +576,6 @@ fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
 
 fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *machina.FrameInput) void {
     const context: *SceneReloadContext = @ptrCast(@alignCast(raw_context));
-    // Editor input handling needs the current profile list to know whether scrollable panels overflow.
-    input.editor = context.live_project.editorFrameState();
-    input.system_profiles = context.live_project.systemProfileSnapshots();
     context.live_project.updateWithInput(delta_seconds, input.*);
     input.editor = context.live_project.editorFrameState();
     input.system_profiles = context.live_project.systemProfileSnapshots();

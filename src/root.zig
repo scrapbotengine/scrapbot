@@ -307,8 +307,14 @@ pub const LiveProject = struct {
         if (!self.runStartup()) {
             return;
         }
-        var routed_input = input;
-        const editor_update = render.updateEditorState(&self.scene.world, &self.editor_state, input) catch |err| {
+        var editor_input = input;
+        const render_profile_count = input.system_profile_count_hint;
+        editor_input.editor = self.editorFrameState();
+        editor_input.system_profiles = self.systemProfileSnapshots();
+        editor_input.system_profile_count_hint = editor_input.system_profiles.len + render_profile_count;
+
+        var routed_input = editor_input;
+        const editor_update = render.updateEditorState(&self.scene.world, &self.editor_state, editor_input) catch |err| {
             if (std.fmt.allocPrint(self.allocator, "Editor interaction failed: {s}", .{@errorName(err)})) |message| {
                 defer self.allocator.free(message);
                 self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
@@ -2546,6 +2552,29 @@ test "LiveProject editor pause gates scheduled update systems" {
     try std.testing.expect(running_after.rotation[0] > paused_after.rotation[0]);
     try std.testing.expect(running_after.rotation[1] > paused_after.rotation[1]);
     try std.testing.expectEqual(paused_after.rotation[2], running_after.rotation[2]);
+}
+
+test "LiveProject editor scrolling uses render system profile count hint" {
+    const root_path = ".zig-cache/test-live-project-editor-scroll-profile-hint";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Game");
+
+    var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
+    defer live_project.deinit();
+
+    live_project.updateWithInput(0.016, .{
+        .debug_overlay_visible = true,
+        .system_profile_count_hint = 9,
+        .pointer = .{
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), live_project.editor_state.system_scroll_offset);
 }
 
 test "LiveProject emits UI command events before scheduled scripts run" {
