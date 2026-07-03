@@ -1,5 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
+const native_api = @import("native_api.zig");
 const runtime = @import("runtime.zig");
 
 const c = @cImport({
@@ -16,6 +17,9 @@ pub const ScriptError = runtime.RegistryError || runtime.ScheduleError || std.me
 
 pub const DiagnosticStage = enum {
     load,
+    native_build,
+    native_load,
+    native_registration,
     registration,
     schedule,
     runtime,
@@ -23,6 +27,9 @@ pub const DiagnosticStage = enum {
     pub fn label(self: DiagnosticStage) []const u8 {
         return switch (self) {
             .load => "script load",
+            .native_build => "native build",
+            .native_load => "native load",
+            .native_registration => "native registration",
             .registration => "script registration",
             .schedule => "script schedule",
             .runtime => "script runtime",
@@ -60,22 +67,29 @@ pub const LoadResult = union(enum) {
     diagnostic: Diagnostic,
 };
 
-pub const NativeSystemContext = struct {
-    world: *runtime.World,
-    delta_seconds: f32,
-    system_id: []const u8,
-};
-
-pub const NativeSystemFn = *const fn (*NativeSystemContext) anyerror!void;
+pub const NativeSystemContext = native_api.SystemContext;
+pub const NativeSystemFn = native_api.SystemRunFn;
 
 pub const NativeSystemRegistration = struct {
     definition: runtime.SystemDefinition,
     run: NativeSystemFn,
 };
 
+pub const NativeLibrary = struct {
+    path: []u8,
+    handle: std.DynLib,
+
+    pub fn deinit(self: *NativeLibrary, allocator: std.mem.Allocator) void {
+        self.handle.close();
+        allocator.free(self.path);
+        self.* = undefined;
+    }
+};
+
 pub const NativeExtension = struct {
     components: []const runtime.ComponentDefinition = &.{},
     systems: []const NativeSystemRegistration = &.{},
+    libraries: []const NativeLibrary = &.{},
 };
 
 const ScriptOrigin = struct {
@@ -92,7 +106,7 @@ const ScriptOrigin = struct {
 };
 
 const NativeSystemEntry = struct {
-    id: []const u8,
+    id: [:0]u8,
     run: NativeSystemFn,
 
     fn deinit(self: *NativeSystemEntry, allocator: std.mem.Allocator) void {
@@ -212,6 +226,7 @@ pub const Program = struct {
     active_system: ?*const runtime.ScheduledSystem = null,
     component_origins: std.ArrayList(ScriptOrigin) = .empty,
     system_origins: std.ArrayList(ScriptOrigin) = .empty,
+    native_libraries: std.ArrayList(NativeLibrary) = .empty,
     native_systems: std.ArrayList(NativeSystemEntry) = .empty,
     system_profiles: std.ArrayList(SystemProfileState) = .empty,
     system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
@@ -237,6 +252,10 @@ pub const Program = struct {
             native_system.deinit(self.allocator);
         }
         self.native_systems.deinit(self.allocator);
+        for (self.native_libraries.items) |*native_library| {
+            native_library.deinit(self.allocator);
+        }
+        self.native_libraries.deinit(self.allocator);
         for (self.component_origins.items) |origin| {
             origin.deinit(self.allocator);
         }
@@ -326,15 +345,22 @@ pub const Program = struct {
             return false;
         }
         const native_system = self.native_systems.items[native_index];
-        var context = NativeSystemContext{
+        var call_context = NativeCallContext{
+            .program = self,
             .world = world,
+        };
+        var context = NativeSystemContext{
+            .world = &call_context,
+            .api = &native_system_api,
             .delta_seconds = delta_seconds,
-            .system_id = system.id,
+            .system_id = native_system.id.ptr,
         };
-        native_system.run(&context) catch |err| {
-            self.setHostError("native system '{s}' failed: {s}", .{ system.id, @errorName(err) });
+        if (native_system.run(&context) == 0) {
+            if (self.host_error == null) {
+                self.setHostError("native system '{s}' failed", .{system.id});
+            }
             return false;
-        };
+        }
         return true;
     }
 
@@ -430,6 +456,16 @@ pub const Program = struct {
             profile.deinit(self.allocator);
         }
         self.system_profiles.clearRetainingCapacity();
+    }
+
+    fn adoptNativeLibraries(self: *Program, libraries: []const NativeLibrary) !void {
+        try self.native_libraries.ensureUnusedCapacity(self.allocator, libraries.len);
+        for (libraries) |library| {
+            self.native_libraries.appendAssumeCapacity(.{
+                .path = library.path,
+                .handle = library.handle,
+            });
+        }
     }
 
     fn recordSystemDuration(self: *Program, system: runtime.ScheduledSystem, phase: runtime.SystemPhase, duration_ns: u64) void {
@@ -565,6 +601,7 @@ pub fn loadProjectProgramDetailedWithNative(
 ) !LoadResult {
     var program = try initProgram(allocator);
     errdefer program.deinit();
+    try program.adoptNativeLibraries(native_extension.libraries);
 
     registerNativeComponents(&program, native_extension) catch |err| {
         const diagnostic = try nativeRegistrationDiagnostic(allocator, null, err);
@@ -624,6 +661,7 @@ pub fn loadSourceProgramWithNative(
 ) !Program {
     var program = try initProgram(allocator);
     errdefer program.deinit();
+    try program.adoptNativeLibraries(native_extension.libraries);
     try registerNativeComponents(&program, native_extension);
     if (try loadChunk(&program, chunk_name, source)) |diagnostic| {
         var owned_diagnostic = diagnostic;
@@ -737,7 +775,7 @@ fn registerNativeSystem(program: *Program, registration: NativeSystemRegistratio
     }
 
     const native_index = std.math.cast(u32, program.native_systems.items.len) orelse return ScriptError.InvalidScript;
-    const owned_id = try program.allocator.dupe(u8, registration.definition.id);
+    const owned_id = try program.allocator.dupeZ(u8, registration.definition.id);
     errdefer program.allocator.free(owned_id);
 
     try program.native_systems.append(program.allocator, .{
@@ -896,7 +934,7 @@ fn registrationDiagnostic(program: *Program, err: anyerror) !Diagnostic {
 
 fn nativeRegistrationDiagnostic(allocator: std.mem.Allocator, system_id: ?[]const u8, err: anyerror) !Diagnostic {
     return makeDiagnostic(allocator, .{
-        .stage = .registration,
+        .stage = .native_registration,
         .path = "native",
         .system_id = system_id,
         .message = @errorName(err),
@@ -1011,6 +1049,222 @@ fn hostErrorCallback(raw_context: ?*anyopaque) callconv(.c) [*c]const u8 {
         return message.ptr;
     }
     return null;
+}
+
+const NativeCallContext = struct {
+    program: *Program,
+    world: *runtime.World,
+};
+
+const native_system_api = native_api.SystemApi{
+    .query_next = nativeQueryNext,
+    .get_vec3 = nativeGetVec3,
+    .set_vec3 = nativeSetVec3,
+    .get_f32 = nativeGetF32,
+    .set_f32 = nativeSetF32,
+    .host_error = nativeHostError,
+};
+
+fn nativeCallContext(raw_context: ?*anyopaque) ?*NativeCallContext {
+    return @ptrCast(@alignCast(raw_context orelse return null));
+}
+
+fn nativeHostError(raw_context: ?*anyopaque) callconv(.c) ?[*:0]const u8 {
+    const context = nativeCallContext(raw_context) orelse return null;
+    if (context.program.host_error) |message| {
+        return message.ptr;
+    }
+    return null;
+}
+
+fn nativeQueryNext(
+    raw_context: ?*anyopaque,
+    raw_component_ids: ?[*]const [*:0]const u8,
+    component_count: usize,
+    raw_cursor: *usize,
+    out_entity: *native_api.Entity,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return -1;
+    const program = context.program;
+    const component_id_ptr = raw_component_ids orelse return -1;
+
+    var component_ids_buffer: [16][]const u8 = undefined;
+    if (component_count == 0 or component_count > component_ids_buffer.len) {
+        program.setHostError("native system '{s}' tried to query {d} components; the host bridge supports at most {d}", .{
+            program.activeSystemId(),
+            component_count,
+            component_ids_buffer.len,
+        });
+        return -1;
+    }
+
+    for (0..component_count) |index| {
+        const component_id = std.mem.span(component_id_ptr[index]);
+        if (!program.activeSystemAllowsRead(component_id)) {
+            program.setHostError("native system '{s}' tried to query component '{s}' without declaring it in reads or writes", .{
+                program.activeSystemId(),
+                component_id,
+            });
+            return -1;
+        }
+        component_ids_buffer[index] = component_id;
+    }
+
+    const entity = context.world.queryNext(component_ids_buffer[0..component_count], raw_cursor) orelse return 0;
+    out_entity.* = .{
+        .index = entity.index,
+        .generation = entity.generation,
+    };
+    return 1;
+}
+
+fn nativeGetVec3(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    out_value: *native_api.Vec3,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("native system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    const value = context.world.getVec3(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name) catch |err| {
+        program.setHostError("native system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    out_value.* = .{ .x = value[0], .y = value[1], .z = value[2] };
+    return 1;
+}
+
+fn nativeSetVec3(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    value: native_api.Vec3,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("native system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    if (!std.math.isFinite(value.x) or !std.math.isFinite(value.y) or !std.math.isFinite(value.z)) {
+        program.setHostError("native system '{s}' tried to write non-finite vec3 value to '{s}.{s}'", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+        });
+        return 0;
+    }
+    context.world.setVec3(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name, .{
+        value.x,
+        value.y,
+        value.z,
+    }) catch |err| {
+        program.setHostError("native system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeGetF32(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    out_value: *f32,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsRead(component_id)) {
+        program.setHostError("native system '{s}' tried to read '{s}.{s}' without declaring '{s}' in reads or writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    out_value.* = context.world.getFloat(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name) catch |err| {
+        program.setHostError("native system '{s}' failed to read '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
+}
+
+fn nativeSetF32(
+    raw_context: ?*anyopaque,
+    entity: native_api.Entity,
+    raw_component_id: [*:0]const u8,
+    raw_field_name: [*:0]const u8,
+    value: f32,
+) callconv(.c) c_int {
+    const context = nativeCallContext(raw_context) orelse return 0;
+    const program = context.program;
+    const component_id = std.mem.span(raw_component_id);
+    const field_name = std.mem.span(raw_field_name);
+    if (!program.activeSystemAllowsWrite(component_id)) {
+        program.setHostError("native system '{s}' tried to write '{s}.{s}' without declaring '{s}' in writes", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            component_id,
+        });
+        return 0;
+    }
+    if (!std.math.isFinite(value)) {
+        program.setHostError("native system '{s}' tried to write non-finite f32 value to '{s}.{s}'", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+        });
+        return 0;
+    }
+    context.world.setComponentFieldValue(.{ .index = entity.index, .generation = entity.generation }, component_id, field_name, .{ .float = value }) catch |err| {
+        program.setHostError("native system '{s}' failed to write '{s}.{s}': {s}", .{
+            program.activeSystemId(),
+            component_id,
+            field_name,
+            @errorName(err),
+        });
+        return 0;
+    };
+    return 1;
 }
 
 fn queryNextCallback(
@@ -2168,24 +2422,21 @@ fn containsString(values: []const []const u8, needle: []const u8) bool {
     return false;
 }
 
-fn testNativeMoveSystem(context: *NativeSystemContext) anyerror!void {
-    const component_ids = [_][]const u8{ runtime.transform_component_id, "velocity", "boost" };
+fn testNativeMoveSystem(context: *NativeSystemContext) callconv(.c) c_int {
+    const component_ids = [_][*:0]const u8{ "machina.transform", "velocity", "boost" };
     var cursor: usize = 0;
-    while (context.world.queryNext(&component_ids, &cursor)) |entity| {
-        const position = try context.world.getVec3(entity, runtime.transform_component_id, "position");
-        const velocity = try context.world.getVec3(entity, "velocity", "linear");
-        const boost = try context.world.getFloat(entity, "boost", "amount");
-        try context.world.setVec3(entity, runtime.transform_component_id, "position", .{
-            position[0] + velocity[0] * boost * context.delta_seconds,
-            position[1] + velocity[1] * boost * context.delta_seconds,
-            position[2] + velocity[2] * boost * context.delta_seconds,
-        });
+    while (native_api.queryNext(context, component_ids[0..], &cursor) catch return 0) |entity| {
+        const position = native_api.getVec3(context, entity, "machina.transform", "position") catch return 0;
+        const velocity = native_api.getVec3(context, entity, "velocity", "linear") catch return 0;
+        const boost = native_api.getF32(context, entity, "boost", "amount") catch return 0;
+        native_api.setVec3(context, entity, "machina.transform", "position", position.addScaled(velocity, boost * context.delta_seconds)) catch return 0;
     }
+    return 1;
 }
 
-fn testFailingNativeSystem(context: *NativeSystemContext) anyerror!void {
+fn testFailingNativeSystem(context: *NativeSystemContext) callconv(.c) c_int {
     _ = context;
-    return error.NativeBoom;
+    return 0;
 }
 
 test "luau declarations register components and executable systems" {
@@ -2349,7 +2600,7 @@ test "native system failures produce runtime diagnostics" {
     const diagnostic = program.last_diagnostic orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(DiagnosticStage.runtime, diagnostic.stage);
     try std.testing.expectEqualStrings("native_fail", diagnostic.system_id orelse return error.TestExpectedEqual);
-    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "NativeBoom") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "native system 'native_fail' failed") != null);
 }
 
 test "luau systems can spawn despawn add and remove components" {

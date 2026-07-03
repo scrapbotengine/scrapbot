@@ -20,3 +20,4 @@
 | [ADR-016](ADR-016-generation-aware-entity-handles.md) | Generation-Aware Entity Handles | 2026-07-03 |
 | [ADR-017](ADR-017-deferred-script-structural-commands.md) | Deferred Script Structural Commands | 2026-07-03 |
 | [ADR-018](ADR-018-engine-linked-native-ecs-systems.md) | Engine-Linked Native ECS Systems | 2026-07-03 |
+| [ADR-019](ADR-019-project-local-native-zig-modules.md) | Project-Local Native Zig Modules | 2026-07-03 |

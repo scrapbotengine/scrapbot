@@ -12,16 +12,22 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 - Developers can define components in Luau or Zig.
 - Developers can define systems in Luau or Zig.
 - Engine-linked Zig code can provide a `NativeExtension` with component and system registrations.
+- Project-local Zig code can be declared with `native = "native/game.zig"` in `project.machina.toml`.
+- Project-local native modules export `machina_register(api)` and import the engine-provided `machina_native` API.
+- During development, project-local native modules are built to `.machina/native/`, loaded as dynamic libraries, and kept alive for the lifetime of the script program that registered their callbacks.
 - Native components are registered before Luau scripts load, allowing Luau code to reference them with `ecs.component("id")`.
 - Native systems are registered after Luau components, allowing Zig systems to read and write script-defined components.
 - Luau-authored and Zig-authored systems participate in the same ECS schedule.
 - Components use the same ids, schemas, validation rules, and scene references regardless of authoring language.
 - Systems use the same phase, access declaration, and ordering model regardless of authoring language.
 - A system can be ported from Luau to Zig without changing scene data or entity component ids.
+- Native systems receive an opaque host context and use access-checked query/read/write helpers rather than direct `runtime.World` access.
 - Runtime diagnostics identify whether a failing component or system came from Luau script, native game code, or the engine.
 - Native system runtime is profiled at the same scheduler dispatch boundary as Luau systems.
 - Interactive workflows can reload Luau scripts without rebuilding native code.
-- Native game code reload is a future capability, not a prerequisite for the first hybrid implementation.
+- Interactive workflows reload project-local native source by rebuilding the dynamic library, re-registering the ECS program, validating the current scene, and swapping only on success.
+- Failed native builds, loads, or registrations keep the last-known-good native program active and report structured diagnostics.
+- Future shipping builds should call the same registration entrypoint through static linking where dynamic code loading is impossible or forbidden.
 
 ## Design Decisions
 
@@ -59,17 +65,23 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 
 **Decision:** The first active implementation is an engine-linked `NativeExtension` surface that registers native components and systems into `ScriptProgram` before the runtime schedule is built.
 **Why:** This proves the shared ECS contract, schedule ordering, profiling, native diagnostics, and Luau/Zig component interop without prematurely committing to a dynamic library ABI. It follows ADR-018.
-**Tradeoff:** Native systems are currently linked with the engine/test binary and are trusted to respect declared access. Dynamic per-game loading and hot reload remain future work.
+**Tradeoff:** The engine-linked surface remains useful for tests and built-in extensions, but project-local modules now use the same access-checked native host facade. Static shipping builds are still future work.
+
+### 7. Add project-local native modules through a narrow host API
+
+**Decision:** Game projects can declare one Zig source file with `native = "native/game.zig"`. Machina builds it as a dynamic library during development, calls `machina_register`, and exposes only the `machina_native` registration/runtime facade.
+**Why:** Project code should own its native hot paths without depending on engine internals or creating a second ECS. The narrow facade preserves the same scheduler access rules used by Luau and keeps a future static-link build path viable. This follows ADR-019.
+**Tradeoff:** The first host facade only exposes query iteration plus `vec3` and `f32` field access. Structural commands and broader field typing need explicit API additions.
 
 ## Related
 
-- **ADRs:** ADR-002, ADR-005, ADR-006, ADR-008, ADR-009, ADR-010, ADR-018
+- **ADRs:** ADR-002, ADR-005, ADR-006, ADR-008, ADR-009, ADR-010, ADR-018, ADR-019
 - **FDRs:** FDR-004, FDR-009, FDR-010, FDR-011
 
 ## Open Questions
 
-- How are native module ABI compatibility and Zig compiler version compatibility handled?
-- Can native game modules be hot-reloaded safely on every target platform?
+- How are native module ABI compatibility and Zig compiler version compatibility handled across installed engine builds?
+- What is the `machina build` static-link workflow for platforms that forbid dynamic code loading?
 - How do Luau and Zig share component storage layouts without leaking unstable engine internals?
 - What tooling proves that a Zig port preserves behavior from the original Luau system?
-- Should native systems get an access-checked world facade before dynamic modules make native code less trusted?
+- Which structural ECS commands should the native host facade expose first?

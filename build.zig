@@ -9,6 +9,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
+
     const machina_mod = b.addModule("machina", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -17,6 +20,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "wgpu", .module = wgpu_dep.module("wgpu") },
         },
     });
+    machina_mod.addOptions("build_options", build_options);
     linkLuau(b, machina_mod);
 
     const exe = b.addExecutable(.{

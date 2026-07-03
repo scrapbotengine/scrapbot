@@ -1,0 +1,5 @@
+name = "Native Motion"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = ["scripts/gameplay.luau"]
+native = "native/game.zig"

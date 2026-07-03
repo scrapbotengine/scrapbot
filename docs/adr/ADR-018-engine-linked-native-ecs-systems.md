@@ -18,14 +18,14 @@ Machina supports engine-linked native ECS systems through a `NativeExtension` re
 - Native systems are registered after Luau components so native systems can read and write script-defined components.
 - The runtime schedule uses one `SystemRunner` union with `none`, `luau`, and `native` runner variants.
 - Native systems run through the same schedule batches and profiling boundary as Luau systems.
-- Native callbacks receive a narrow `NativeSystemContext` containing the world, delta seconds, and system id.
+- Native callbacks receive a narrow `NativeSystemContext` containing an opaque host world handle, access-checked host API callbacks, delta seconds, and system id.
 
-The first implementation is linked into the engine/test binary. It is not a dynamic per-game library loader and does not hot-reload native code.
+The first implementation was linked into the engine/test binary. Project-local dynamic modules and native live reload are covered by ADR-019.
 
 ## Consequences
 
 Luau and Zig systems now interoperate over the same ECS registry, component storage, schedule, and profiling data. A hot Luau system can be ported toward Zig while keeping component ids and scheduler declarations stable.
 
-Native callbacks are currently trusted Zig code with direct `World` access. Their declared read/write sets drive scheduling and diagnostics, but the host does not yet enforce those declarations at every `World` method call the way the Luau bridge does.
+Native callbacks now use the same access-checked host facade as project-local native modules. Their declared read/write sets drive scheduling, diagnostics, and host API permission checks.
 
-The dynamic module boundary remains future work. That boundary should build on this registration model instead of introducing a second ECS or scheduler.
+The dynamic module boundary builds on this registration model instead of introducing a second ECS or scheduler.

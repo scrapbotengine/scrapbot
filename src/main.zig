@@ -269,6 +269,9 @@ fn checkCommand(
                     try stdout.print("Project OK: {s}\n", .{ok.project.name});
                     try stdout.print("Default scene: {s}\n", .{ok.project.default_scene});
                     try stdout.print("Scripts: {d}\n", .{ok.project.scripts.len});
+                    if (ok.project.native) |native_path| {
+                        try stdout.print("Native: {s}\n", .{native_path});
+                    }
                     try stdout.print("Update batches: {d}, systems: {d}\n", .{
                         ok.schedule.batchCount(),
                         ok.schedule.systemCount(),
@@ -552,11 +555,12 @@ fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
         .unchanged => return null,
         .reloaded => |info| {
             context.stderr.print(
-                "Reloaded {s}{s}{s}: {s}, {d} entities, {d} renderable cubes, {d} scripts, {d} schedule batches\n",
+                "Reloaded {s}{s}{s}{s}: {s}, {d} entities, {d} renderable cubes, {d} scripts, {d} schedule batches\n",
                 .{
                     if (info.project_reloaded) "project" else "",
                     if (info.scene_reloaded) if (info.project_reloaded) " and scene" else "scene" else "",
                     if (info.scripts_reloaded) if (info.project_reloaded or info.scene_reloaded) " and scripts" else "scripts" else "",
+                    if (info.native_reloaded) if (info.project_reloaded or info.scene_reloaded or info.scripts_reloaded) " and native" else "native" else "",
                     info.scene_path,
                     info.entity_count,
                     info.renderable_cube_count,
@@ -1766,6 +1770,10 @@ fn printProjectSummaryJson(writer: *Io.Writer, project: machina.Project) !void {
     try writer.writeAll(",\"default_scene\":");
     try writeJsonString(writer, project.default_scene);
     try writer.print(",\"scripts\":{d}", .{project.scripts.len});
+    if (project.native) |native_path| {
+        try writer.writeAll(",\"native\":");
+        try writeJsonString(writer, native_path);
+    }
     try writer.writeAll("}");
 }
 
@@ -2022,24 +2030,19 @@ test "parseTestManifest reads field assertions" {
     try std.testing.expect(manifest.expectations[1].expected.matches(.{ .boolean = true }));
 }
 
-test "testCommand runs gameplay project suite" {
+test "testCommand runs a gameplay project fixture" {
     var stdout_buffer: [8192]u8 = undefined;
     var stdout = Io.Writer.fixed(&stdout_buffer);
     var stderr_buffer: [2048]u8 = undefined;
     var stderr = Io.Writer.fixed(&stderr_buffer);
     const io = Io.Threaded.global_single_threaded.io();
 
-    const args = [_][]const u8{"tests/projects"};
+    const args = [_][]const u8{"tests/projects/health_tick"};
     const exit_code = try testCommand(io, std.testing.allocator, &args, &stdout, &stderr);
 
     try std.testing.expectEqual(@as(u8, 0), exit_code);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS auto_door") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS batching_animation") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS health_tick") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS projectile_lifetime") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS render_camera_light") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS spawn_lifecycle") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 6 passed, 0 failed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 1 passed, 0 failed") != null);
     try std.testing.expectEqualStrings("", stderr.buffered());
 }
 

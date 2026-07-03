@@ -1,22 +1,25 @@
-# FDR-010: Live Reload for Scenes and Scripts
+# FDR-010: Live Reload for Scenes, Scripts, and Native Modules
 
 **Status:** Active
-**Last reviewed:** 2026-07-02
+**Last reviewed:** 2026-07-03
 
 ## Overview
 
-Live reload lets users, editor tools, and agents change scene and script files while the engine is running. It shortens the edit-run loop and makes text-first project state practical for interactive development.
+Live reload lets users, editor tools, and agents change scene, script, and project-local native source files while the engine is running. It shortens the edit-run loop and makes text-first project state practical for interactive development.
 
 ## Behavior
 
-- Interactive runs detect changed scene and script source files.
-- The current implementation polls project metadata, the active scene, and project-listed scripts during `machina run`, including changes to the project's `default_scene`.
+- Interactive runs detect changed scene, script, and project-local native source files.
+- The current implementation polls project metadata, the active scene, project-listed scripts, and `native = "native/game.zig"` during `machina run`, including changes to the project's `default_scene`.
 - Reloaded files are parsed and validated before they replace active runtime state.
 - Compatible scene changes replace the active scene world after validation.
 - Script reloads validate Luau source, execute script ECS registration, rebuild the component registry, and rebuild schedule batches.
+- Native reloads rebuild the project-local Zig module, load it, call its registration entrypoint, rebuild the ECS program, validate the current scene against the new registry, and swap only after all stages succeed.
 - Script-only reloads do not replay startup systems against an already-running world.
+- Native-only reloads do not replay startup systems against an already-running world.
 - Project reloads and scene reloads create a fresh scene generation, so startup systems run again before the next update.
 - Failed script reloads report structured diagnostics with failure stage, script path, and message.
+- Failed native builds, loads, and registrations report structured diagnostics with native stage, native path, and message.
 - Failed reloads leave the last known good state active.
 - Headless commands can exercise reload behavior deterministically for tests and agent workflows.
 - Reload diagnostics are exposed in a form suitable for command-line output, editor panels, and future structured machine-readable output.
@@ -49,8 +52,8 @@ Live reload lets users, editor tools, and agents change scene and script files w
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-003, ADR-006, ADR-008, ADR-009, ADR-011
-- **FDRs:** FDR-002, FDR-003, FDR-004, FDR-009, FDR-013
+- **ADRs:** ADR-001, ADR-003, ADR-006, ADR-008, ADR-009, ADR-011, ADR-019
+- **FDRs:** FDR-002, FDR-003, FDR-004, FDR-009, FDR-012, FDR-013
 
 ## Open Questions
 

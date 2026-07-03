@@ -3,6 +3,7 @@ const Io = std.Io;
 const render = @import("render.zig");
 const render_verify = @import("render_verify.zig");
 const geometry = @import("geometry.zig");
+const native = @import("native.zig");
 const runtime = @import("runtime.zig");
 const script = @import("script.zig");
 
@@ -68,6 +69,7 @@ pub const Project = struct {
     name: []const u8,
     default_scene: []const u8,
     scripts: []const []const u8,
+    native: ?[]const u8 = null,
 };
 
 pub const Scene = struct {
@@ -197,6 +199,7 @@ pub const ReloadInfo = struct {
     project_reloaded: bool,
     scene_reloaded: bool,
     scripts_reloaded: bool,
+    native_reloaded: bool,
     project_name: []const u8,
     scene_path: []const u8,
     entity_count: usize,
@@ -220,10 +223,12 @@ pub const LiveProject = struct {
     project_source: LoadedSource,
     scene_source: LoadedSource,
     script_sources: []LoadedSource,
+    native_source: ?LoadedSource = null,
     last_failed_project_stamp: ?SourceFileStamp = null,
     last_failed_scene_stamp: ?SourceFileStamp = null,
     last_failed_script_index: ?usize = null,
     last_failed_script_stamp: ?SourceFileStamp = null,
+    last_failed_native_stamp: ?SourceFileStamp = null,
     last_diagnostic: ?ScriptDiagnostic = null,
     startup_ran: bool = false,
 
@@ -239,6 +244,8 @@ pub const LiveProject = struct {
 
         const script_sources = try statProjectScripts(io, allocator, project);
         errdefer freeLoadedSources(allocator, script_sources);
+        const native_source = try statProjectNative(io, allocator, project);
+        errdefer if (native_source) |source| freeLoadedSource(allocator, source);
 
         return .{
             .io = io,
@@ -256,11 +263,15 @@ pub const LiveProject = struct {
                 .stamp = try statProjectResource(io, project, project.default_scene, ProjectError.MissingDefaultScene),
             },
             .script_sources = script_sources,
+            .native_source = native_source,
         };
     }
 
     pub fn deinit(self: *LiveProject) void {
         self.clearLastDiagnostic();
+        if (self.native_source) |source| {
+            freeLoadedSource(self.allocator, source);
+        }
         freeLoadedSources(self.allocator, self.script_sources);
         self.scripts.deinit();
         freeScene(self.allocator, self.scene);
@@ -385,7 +396,26 @@ pub const LiveProject = struct {
             };
         }
 
-        return .unchanged;
+        return self.pollNativeSource();
+    }
+
+    fn pollNativeSource(self: *LiveProject) !ReloadResult {
+        const loaded_native = self.native_source orelse return .unchanged;
+        const native_path = self.project.native orelse return .unchanged;
+        const native_stamp = try statProjectResource(self.io, self.project, native_path, ProjectError.MissingScript);
+        if (native_stamp.eql(loaded_native.stamp)) {
+            return .unchanged;
+        }
+
+        return self.reloadNative(native_stamp) catch |err| {
+            if (self.last_failed_native_stamp) |failed_stamp| {
+                if (failed_stamp.eql(native_stamp)) {
+                    return .unchanged;
+                }
+            }
+            self.last_failed_native_stamp = native_stamp;
+            return err;
+        };
     }
 
     fn reloadProject(self: *LiveProject, project_stamp: SourceFileStamp) !ReloadResult {
@@ -408,12 +438,15 @@ pub const LiveProject = struct {
 
         const next_script_sources = try statProjectScripts(self.io, self.allocator, next_project);
         errdefer freeLoadedSources(self.allocator, next_script_sources);
+        const next_native_source = try statProjectNative(self.io, self.allocator, next_project);
+        errdefer if (next_native_source) |source| freeLoadedSource(self.allocator, source);
 
         const scene_stamp = try statProjectResource(self.io, next_project, next_project.default_scene, ProjectError.MissingDefaultScene);
         const info = ReloadInfo{
             .project_reloaded = true,
             .scene_reloaded = true,
             .scripts_reloaded = true,
+            .native_reloaded = next_project.native != null,
             .project_name = next_project.name,
             .scene_path = next_project.default_scene,
             .entity_count = next_scene.entityCount(),
@@ -423,6 +456,9 @@ pub const LiveProject = struct {
         };
 
         freeLoadedSources(self.allocator, self.script_sources);
+        if (self.native_source) |source| {
+            freeLoadedSource(self.allocator, source);
+        }
         self.scripts.deinit();
         freeScene(self.allocator, self.scene);
         freeProject(self.allocator, self.project);
@@ -436,10 +472,12 @@ pub const LiveProject = struct {
             .stamp = scene_stamp,
         };
         self.script_sources = next_script_sources;
+        self.native_source = next_native_source;
         self.last_failed_project_stamp = null;
         self.last_failed_scene_stamp = null;
         self.last_failed_script_index = null;
         self.last_failed_script_stamp = null;
+        self.last_failed_native_stamp = null;
         self.startup_ran = false;
         return .{ .reloaded = info };
     }
@@ -451,6 +489,7 @@ pub const LiveProject = struct {
             .project_reloaded = false,
             .scene_reloaded = true,
             .scripts_reloaded = false,
+            .native_reloaded = false,
             .project_name = self.project.name,
             .scene_path = self.project.default_scene,
             .entity_count = next_scene.entityCount(),
@@ -481,11 +520,16 @@ pub const LiveProject = struct {
 
         const checked_scene = try loadDefaultSceneWithRegistry(self.io, self.allocator, self.project, next_scripts.registry);
         defer freeScene(self.allocator, checked_scene);
+        const refreshed_native_stamp = if (self.native_source) |source|
+            try statProjectResource(self.io, self.project, source.path, ProjectError.MissingScript)
+        else
+            null;
 
         const info = ReloadInfo{
             .project_reloaded = false,
             .scene_reloaded = false,
             .scripts_reloaded = true,
+            .native_reloaded = false,
             .project_name = self.project.name,
             .scene_path = self.project.default_scene,
             .entity_count = self.scene.entityCount(),
@@ -497,8 +541,51 @@ pub const LiveProject = struct {
         self.scripts.deinit();
         self.scripts = next_scripts;
         self.script_sources[changed_index].stamp = script_stamp;
+        if (refreshed_native_stamp) |stamp| {
+            if (self.native_source) |*source| {
+                source.stamp = stamp;
+            }
+        }
         self.last_failed_script_index = null;
         self.last_failed_script_stamp = null;
+        self.last_failed_native_stamp = null;
+        return .{ .reloaded = info };
+    }
+
+    fn reloadNative(self: *LiveProject, native_stamp: SourceFileStamp) !ReloadResult {
+        self.clearLastDiagnostic();
+        const next_scripts_result = try loadProjectScriptsDetailed(self.io, self.allocator, self.project);
+        var next_scripts = switch (next_scripts_result) {
+            .program => |program| program,
+            .diagnostic => |diagnostic| {
+                self.last_diagnostic = diagnostic;
+                return ProjectError.InvalidScript;
+            },
+        };
+        errdefer next_scripts.deinit();
+
+        const checked_scene = try loadDefaultSceneWithRegistry(self.io, self.allocator, self.project, next_scripts.registry);
+        defer freeScene(self.allocator, checked_scene);
+
+        const info = ReloadInfo{
+            .project_reloaded = false,
+            .scene_reloaded = false,
+            .scripts_reloaded = true,
+            .native_reloaded = true,
+            .project_name = self.project.name,
+            .scene_path = self.project.default_scene,
+            .entity_count = self.scene.entityCount(),
+            .renderable_cube_count = self.scene.renderableCubeCount(),
+            .script_count = self.project.scripts.len,
+            .system_batch_count = next_scripts.schedule.batchCount(),
+        };
+
+        self.scripts.deinit();
+        self.scripts = next_scripts;
+        if (self.native_source) |*source| {
+            source.stamp = native_stamp;
+        }
+        self.last_failed_native_stamp = null;
         return .{ .reloaded = info };
     }
 };
@@ -813,6 +900,9 @@ pub fn freeProject(allocator: std.mem.Allocator, project: Project) void {
     allocator.free(project.name);
     allocator.free(project.default_scene);
     freeStringList(allocator, project.scripts);
+    if (project.native) |native_path| {
+        allocator.free(native_path);
+    }
 }
 
 pub fn freeCheckSchedule(allocator: std.mem.Allocator, schedule: CheckSchedule) void {
@@ -1003,9 +1093,23 @@ fn statProjectScripts(io: Io, allocator: std.mem.Allocator, project: Project) ![
     return sources;
 }
 
+fn statProjectNative(io: Io, allocator: std.mem.Allocator, project: Project) !?LoadedSource {
+    const native_path = project.native orelse return null;
+    const owned_path = try allocator.dupe(u8, native_path);
+    errdefer allocator.free(owned_path);
+    return .{
+        .path = owned_path,
+        .stamp = try statProjectResource(io, project, native_path, ProjectError.MissingScript),
+    };
+}
+
+fn freeLoadedSource(allocator: std.mem.Allocator, source: LoadedSource) void {
+    allocator.free(source.path);
+}
+
 fn freeLoadedSources(allocator: std.mem.Allocator, sources: []LoadedSource) void {
     for (sources) |source| {
-        allocator.free(source.path);
+        freeLoadedSource(allocator, source);
     }
     allocator.free(sources);
 }
@@ -1051,6 +1155,14 @@ fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
         }
     }
 
+    const native_path = try readOptionalString(allocator, contents, "native");
+    errdefer if (native_path) |path| allocator.free(path);
+    if (native_path) |path| {
+        if (!isSafeProjectRelativePath(path)) {
+            return ProjectError.InvalidScript;
+        }
+    }
+
     const version_value = readRequiredInt(contents, "version") orelse return ProjectError.UnsupportedProjectVersion;
     if (version_value != 1) {
         return ProjectError.UnsupportedProjectVersion;
@@ -1061,6 +1173,7 @@ fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
         .name = name,
         .default_scene = default_scene,
         .scripts = scripts,
+        .native = native_path,
     };
 }
 
@@ -1080,7 +1193,21 @@ pub fn loadProjectScriptsDetailed(io: Io, allocator: std.mem.Allocator, project:
     const root_dir = try cwd.openDir(io, project.root_path, .{});
     defer root_dir.close(io);
 
-    return script.loadProjectProgramDetailed(io, allocator, root_dir, project.scripts) catch |err| switch (err) {
+    var native_extension: ?native.LoadedExtension = if (project.native) |native_path| blk: {
+        const source_stamp = try statProjectResource(io, project, native_path, ProjectError.MissingScript);
+        const native_result = try native.loadProjectExtensionDetailed(io, allocator, project.root_path, native_path, source_stamp);
+        break :blk switch (native_result) {
+            .extension => |extension| extension,
+            .diagnostic => |diagnostic| return .{ .diagnostic = diagnostic },
+        };
+    } else null;
+    var native_libraries_transferred = false;
+    defer if (native_extension) |*extension| {
+        extension.deinit(allocator, native_libraries_transferred);
+    };
+
+    const extension = if (native_extension) |loaded| loaded.nativeExtension() else script.NativeExtension{};
+    const result = script.loadProjectProgramDetailedWithNative(io, allocator, root_dir, project.scripts, extension) catch |err| switch (err) {
         error.FileNotFound => ProjectError.MissingScript,
         error.InvalidFieldName,
         error.DuplicateComponentField,
@@ -1097,6 +1224,8 @@ pub fn loadProjectScriptsDetailed(io: Io, allocator: std.mem.Allocator, project:
         => ProjectError.InvalidScript,
         else => err,
     };
+    native_libraries_transferred = native_extension != null;
+    return result;
 }
 
 fn cloneScriptDiagnostic(allocator: std.mem.Allocator, diagnostic: ScriptDiagnostic) !ScriptDiagnostic {
@@ -1410,6 +1539,10 @@ fn readRequiredString(allocator: std.mem.Allocator, contents: []const u8, key: [
     }
 
     return null;
+}
+
+fn readOptionalString(allocator: std.mem.Allocator, contents: []const u8, key: []const u8) !?[]const u8 {
+    return readRequiredString(allocator, contents, key);
 }
 
 fn readOptionalStringArray(allocator: std.mem.Allocator, contents: []const u8, key: []const u8) ![]const []const u8 {

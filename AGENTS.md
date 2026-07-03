@@ -25,6 +25,7 @@ Please add to this list as needed.
 - `examples/spawn_swarm/` demonstrates script-spawned swarm entities with startup-authored renderables and update-driven flock motion.
 - `examples/spawning/` demonstrates script-driven entity spawning from an otherwise empty rendered scene.
 - `examples/ui_overlay/` demonstrates the first engine-native UI primitives rendered from text-authored ECS component data.
+- `examples/native_motion/` demonstrates a project-local Zig native module declared by the project manifest.
 - `tests/projects/` contains game-shaped project fixtures used only by automated tests. Each runnable fixture has a `test.machina.toml` manifest with frames, timestep, and ECS field assertions.
 - `docs/adr/` records architectural decisions.
 - `docs/fdr/` records feature behavior and product/implementation decisions.
@@ -38,6 +39,7 @@ Please add to this list as needed.
 Project data:
 
 - Projects have a `project.machina.toml` file, a default scene path, and an optional `scripts = [...]` list.
+- Projects may declare one project-local native Zig module with `native = "native/game.zig"`.
 - Scenes are TOML-shaped text files with root `name` and `version` fields plus `[[entities]]` records.
 - Entity data is authored as component tables such as `[entities.components."machina.transform"]`, `[entities.components."machina.geometry.primitive"]`, `[entities.components."machina.material.surface"]`, `[entities.components."machina.camera"]`, `[entities.components."machina.light.directional"]`, shadow markers like `[entities.components."machina.shadow.caster"]`, UI tables like `[entities.components."machina.ui.rect"]`, `[entities.components."machina.ui.text"]`, and `[entities.components."machina.ui.command"]`, and project-local tables like `[entities.components.spin]`.
 - Scene component ids and fields must validate against the engine/script component registry.
@@ -75,6 +77,8 @@ ECS runtime:
 - Structural mutations must respect declared write access.
 - Luau component add/remove/despawn calls are queued during the active system and flushed only after that system returns successfully; do not write examples/tests that expect same-callback queries to see queued structural changes.
 - Native Zig components/systems go through `NativeExtension` and the same `runtime.ComponentRegistry`, `SystemRunner`, schedule, and profiling path as Luau systems; do not add a second ECS or scheduler for native hot paths.
+- Project-local native Zig code imports `machina_native`, exports `machina_register(api)`, and is built into `.machina/native/` during development.
+- Native system callbacks must use the access-checked host API in `machina_native`; do not expose or depend on raw `runtime.World` from project native modules.
 - Native components register before Luau chunks load; native systems register after Luau components and before Luau systems so both languages can reference each other's component ids.
 - Script system runtime profiling is collected at the scheduler dispatch boundary and exposed as rolling per-system snapshots for editor UI.
 
@@ -105,8 +109,10 @@ Live reload:
 
 - Live reload is a core runtime capability.
 - `machina run` currently uses a `LiveProject` session that tracks project metadata and the active scene as loaded text sources.
+- `LiveProject` also tracks project-listed script sources and optional project-local native source.
 - Valid edits swap into the running renderer.
 - Invalid edits keep the last known good project and scene active.
+- Native reloads rebuild and reload the module, rebuild the ECS program, validate the scene, and preserve the last-known-good native program on build/load/registration failure.
 - New architecture should preserve reloadable text data, stable ids, staged validation, and last-known-good behavior.
 
 ## Working Rules
@@ -140,6 +146,9 @@ Live reload:
 - When adding a text-authored runtime resource, register it with the live reload path or document why it is intentionally not reloadable yet.
 - Preserve last-known-good behavior for live reload. Failed reloads should produce diagnostics without destroying the running project state.
 - For long-lived interactive state, use an allocator that can free replaced resources; avoid arena-backed state for reloadable worlds and scenes.
+- Do not commit generated `.machina/` project-native build caches.
+- Keep project-native source modules small and explicit: registration entrypoint, component definitions, system definitions, and access-checked host API calls.
+- Remember the static packaging direction: dynamic native loading is for the dev loop, while future `machina build` should be able to statically link the same native registration source for restricted targets.
 - For rendering changes, use deterministic offscreen verification before relying on visible-window inspection.
 - When a render example depends on startup-spawned content, run startup before offscreen verification and keep the example covered by `mise test`.
 - For window-loop, surface, or live-reload changes in `machina run`, also run a bounded headful smoke test such as `mise machina run examples/minimal --frames 2`.

@@ -11,7 +11,7 @@ run = "zig build -Doptimize=Debug"
 
 [tasks.test]
 description = "Run the full Machina test suite"
-run = "zig build test && mise build && ./zig-out/bin/machina test tests/projects && ./zig-out/bin/machina bench examples/spawn_swarm --frames 60 --format=json && ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp && ./zig-out/bin/machina render-test examples/batching zig-out/batching-render-test.bmp && ./zig-out/bin/machina render-test examples/ui_overlay zig-out/ui-overlay-render-test.bmp && ./zig-out/bin/machina render-test examples/spawning zig-out/spawning-render-test.bmp && ./zig-out/bin/machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp && ./zig-out/bin/machina render-test examples/comet_garden zig-out/comet-garden-render-test.bmp"
+run = "zig build test && mise build && ./zig-out/bin/machina test tests/projects && ./zig-out/bin/machina bench examples/spawn_swarm --frames 60 --format=json && ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp && ./zig-out/bin/machina render-test examples/batching zig-out/batching-render-test.bmp && ./zig-out/bin/machina render-test examples/ui_overlay zig-out/ui-overlay-render-test.bmp && ./zig-out/bin/machina render-test examples/spawning zig-out/spawning-render-test.bmp && ./zig-out/bin/machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp && ./zig-out/bin/machina render-test examples/comet_garden zig-out/comet-garden-render-test.bmp && ./zig-out/bin/machina render-test examples/native_motion zig-out/native-motion-render-test.bmp"
 
 [tasks.luau-check]
 description = "Run Luau editor type checks"
@@ -19,7 +19,7 @@ run = "bash tools/check-luau-types.sh"
 
 [tasks.render-test]
 description = "Render and verify example scenes"
-run = "mise machina render-test examples/minimal zig-out/minimal-render-test.bmp && mise machina render-test examples/batching zig-out/batching-render-test.bmp && mise machina render-test examples/ui_overlay zig-out/ui-overlay-render-test.bmp && mise machina render-test examples/spawning zig-out/spawning-render-test.bmp && mise machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp && mise machina render-test examples/comet_garden zig-out/comet-garden-render-test.bmp"
+run = "mise machina render-test examples/minimal zig-out/minimal-render-test.bmp && mise machina render-test examples/batching zig-out/batching-render-test.bmp && mise machina render-test examples/ui_overlay zig-out/ui-overlay-render-test.bmp && mise machina render-test examples/spawning zig-out/spawning-render-test.bmp && mise machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp && mise machina render-test examples/comet_garden zig-out/comet-garden-render-test.bmp && mise machina render-test examples/native_motion zig-out/native-motion-render-test.bmp"
 
 [tasks.bench]
 description = "Run headless Machina benchmarks"
