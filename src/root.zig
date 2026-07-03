@@ -1408,15 +1408,22 @@ const SceneParser = struct {
 };
 
 fn addSceneComponentDefaults(allocator: std.mem.Allocator, component: *ComponentDraft) !void {
-    if (!std.mem.eql(u8, component.id, runtime.ui_rect_component_id)) {
-        return;
+    if (std.mem.eql(u8, component.id, runtime.ui_rect_component_id)) {
+        try addSceneComponentDefaultField(allocator, component, "corner_radius", .{ .float = 0.0 });
+    } else if (std.mem.eql(u8, component.id, runtime.ui_layout_item_component_id)) {
+        try addSceneComponentDefaultField(allocator, component, "min_size", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
+        try addSceneComponentDefaultField(allocator, component, "grow", .{ .float = 0.0 });
+        try addSceneComponentDefaultField(allocator, component, "align", .{ .string = "start" });
     }
-    if (componentHasField(component.*, "corner_radius")) {
+}
+
+fn addSceneComponentDefaultField(allocator: std.mem.Allocator, component: *ComponentDraft, name: []const u8, value: runtime.ComponentValue) !void {
+    if (componentHasField(component.*, name)) {
         return;
     }
     try component.fields.append(allocator, .{
-        .name = "corner_radius",
-        .value = .{ .float = 0.0 },
+        .name = name,
+        .value = value,
     });
 }
 

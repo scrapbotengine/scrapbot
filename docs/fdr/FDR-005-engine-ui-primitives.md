@@ -10,7 +10,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 ## Behavior
 
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
-- Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, button command ids, scroll views, vertical stacks, and layout child metadata.
+- Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, button command ids, scroll views, vertical stacks, direction-aware stacks, layout child metadata, spacers, text blocks, toggles, progress bars, and separators.
 - UI rectangles use screen-space positions and sizes with a top-left origin, plus an optional `corner_radius` field in pixels. Missing `corner_radius` values default to `0.0` for compatibility with older scene data.
 - UI rectangle corners render through the UI shader using rounded-rectangle SDF coverage with alpha blending. Text glyph quads use the same UI pipeline with `corner_radius = 0.0`.
 - UI text labels use screen-space positions with a top-left origin.
@@ -28,10 +28,16 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
 - The system performance view uses compact fixed-width rows and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached without inline pagination text.
 - While the editor/debug overlay is visible, mouse wheel input scrolls the visible system viewport when the system list overflows. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
-- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical stacks, and script-mutated UI state.
+- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical stacks, horizontal stacks, spacers, centered text blocks, toggles, progress bars, separators, and script-mutated UI state.
 - `machina.ui.scroll_view` defines a screen-space viewport with `position`, `size`, and `content_offset` fields. Descendants are offset by `content_offset` and clipped to the viewport.
 - `machina.ui.vbox` defines a vertical stack origin and spacing. Direct children are ordered by `machina.ui.layout.item.order` and stacked by their current primitive height.
-- `machina.ui.layout.item` attaches an entity to a parent entity id and gives it an integer order. Parent ids are stable scene entity ids, not dense runtime handles.
+- `machina.ui.stack` defines a direction-aware stack origin, spacing, direction, and padding. Supported directions are `vertical`, `column`, `horizontal`, and `row`.
+- `machina.ui.layout.item` attaches an entity to a parent entity id and gives it integer order, minimum size, grow ratio, and cross-axis alignment metadata. Parent ids are stable scene entity ids, not dense runtime handles. Grow ratios are stored and validated but do not redistribute extra space yet.
+- `machina.ui.spacer` participates in layout without rendering.
+- `machina.ui.text_block` gives a text entity a content box and horizontal/vertical `start`, `center`, or `end` alignment.
+- `machina.ui.toggle` stores checked state and influences button/rect visuals. It does not yet toggle itself automatically; scripts or editor systems own state mutation.
+- `machina.ui.progress_bar` stores value, max, and fill color. It renders as a fill inside the entity's rect.
+- `machina.ui.separator` renders a thin semantic divider through the same UI vertex path as rectangles.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
 - The UI overlay renders after 3D scene content.
@@ -98,6 +104,12 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 **Why:** Smooth canvas scrolling requires target/display state, fractional content offsets that can settle between rows, frame-time animation, clipping, and explicit child ordering. Keeping that shape in ECS avoids a renderer-private layout path and gives examples, tools, and future editor surfaces the same data model.
 **Tradeoff:** The first layout model is deliberately small. It has vertical stacking and clipping, but not hbox, flex/grid sizing, padding, focus, scroll bars, virtualization, keyboard navigation, or style inheritance.
 
+### 9a. Add a Machina-native control library shape
+
+**Decision:** Machina expands the retained UI model with `machina.ui.stack`, `machina.ui.spacer`, `machina.ui.text_block`, `machina.ui.toggle`, `machina.ui.progress_bar`, and `machina.ui.separator` instead of adopting Godot's exact control names.
+**Why:** Godot's UI model is useful inspiration: content controls, layout containers, child sizing metadata, and themeable semantic controls. Machina still needs component names and behavior that fit ECS authoring, text scenes, and future agent workflows.
+**Tradeoff:** This is not a full widget toolkit yet. `grow` ratios are stored but not space-distributing; toggles do not self-mutate; text input, focus, keyboard navigation, scroll bars, style inheritance, and reusable composite widgets remain future work.
+
 ### 10. Treat examples as the primitive gallery
 
 **Decision:** The UI gallery example is the proving ground for retained UI primitives until Machina has a richer widget/layout library.
@@ -115,7 +127,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - How should command ids be namespaced and routed into editor tools or engine services?
 - When should focus and text input become active behavior?
 - What should full keyboard state and text input look like beyond the current modifier/action edge fields?
-- What exact ECS shape should `HBox`, grid/flex sizing, padding, and scroll bars use?
+- What exact ECS shape should grid/flex sizing, scroll bars, and grow-ratio space distribution use?
 - How should UI containers express focus, keyboard navigation, virtualization, and style inheritance?
 - What text editing capability is needed before the editor becomes practical?
 - How should the editor expose system-list sorting and drill-down timing history?

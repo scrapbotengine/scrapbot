@@ -452,6 +452,9 @@ const UiResolvedLayout = struct {
 const UiLayoutItem = struct {
     parent: []const u8,
     order: i32,
+    min_size: [3]f32,
+    grow: f32,
+    @"align": []const u8,
 };
 
 const UiScrollView = struct {
@@ -463,6 +466,25 @@ const UiScrollView = struct {
 const UiVBox = struct {
     position: [3]f32,
     spacing: f32,
+};
+
+const UiStack = struct {
+    position: [3]f32,
+    spacing: f32,
+    direction: []const u8,
+    padding: [3]f32,
+};
+
+const UiTextBlock = struct {
+    size: [3]f32,
+    horizontal_align: []const u8,
+    vertical_align: []const u8,
+};
+
+const UiProgressBar = struct {
+    value: f32,
+    max: f32,
+    fill_color: [3]f32,
 };
 
 pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
@@ -1214,6 +1236,16 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_rect_component_id,
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
+        runtime.ui_command_component_id,
+        runtime.ui_scroll_view_component_id,
+        runtime.ui_vbox_component_id,
+        runtime.ui_stack_component_id,
+        runtime.ui_layout_item_component_id,
+        runtime.ui_spacer_component_id,
+        runtime.ui_text_block_component_id,
+        runtime.ui_toggle_component_id,
+        runtime.ui_progress_bar_component_id,
+        runtime.ui_separator_component_id,
         runtime.input_pointer_component_id,
         runtime.input_keyboard_component_id,
         runtime.input_frame_component_id,
@@ -1261,6 +1293,10 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.input_frame_component_id,
         runtime.ui_rect_component_id,
         runtime.ui_button_component_id,
+        runtime.ui_scroll_view_component_id,
+        runtime.ui_vbox_component_id,
+        runtime.ui_stack_component_id,
+        runtime.ui_layout_item_component_id,
     };
     const interact_ui_writes = [_][]const u8{render_ui_button_state_component_id};
     try registry.registerEngineSystem(.{
@@ -1275,6 +1311,15 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_rect_component_id,
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
+        runtime.ui_scroll_view_component_id,
+        runtime.ui_vbox_component_id,
+        runtime.ui_stack_component_id,
+        runtime.ui_layout_item_component_id,
+        runtime.ui_spacer_component_id,
+        runtime.ui_text_block_component_id,
+        runtime.ui_toggle_component_id,
+        runtime.ui_progress_bar_component_id,
+        runtime.ui_separator_component_id,
         render_ui_button_state_component_id,
     };
     const after_queue_meshes = [_][]const u8{ render_queue_meshes_system_id, render_interact_ui_system_id };
@@ -1288,6 +1333,8 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     const queue_ui_reads = [_][]const u8{
         runtime.ui_rect_component_id,
         runtime.ui_text_component_id,
+        runtime.ui_separator_component_id,
+        runtime.ui_progress_bar_component_id,
     };
     const queue_ui_writes = [_][]const u8{render_draw_ui_component_id};
     const after_prepare_ui = [_][]const u8{render_prepare_ui_system_id};
@@ -1312,6 +1359,15 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_rect_component_id,
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
+        runtime.ui_scroll_view_component_id,
+        runtime.ui_vbox_component_id,
+        runtime.ui_stack_component_id,
+        runtime.ui_layout_item_component_id,
+        runtime.ui_spacer_component_id,
+        runtime.ui_text_block_component_id,
+        runtime.ui_toggle_component_id,
+        runtime.ui_progress_bar_component_id,
+        runtime.ui_separator_component_id,
         runtime.input_pointer_component_id,
         runtime.input_keyboard_component_id,
         runtime.input_frame_component_id,
@@ -1434,7 +1490,13 @@ fn extractSceneUiInto(allocator: std.mem.Allocator, render_world: *runtime.World
         try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_command_component_id);
         try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_scroll_view_component_id);
         try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_vbox_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_stack_component_id);
         try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_layout_item_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_spacer_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_text_block_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_toggle_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_progress_bar_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_separator_component_id);
     }
 }
 
@@ -1446,7 +1508,13 @@ fn hasExtractableUiComponent(world: *const runtime.World, entity: runtime.Entity
         (world.hasComponent(entity, runtime.ui_command_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_scroll_view_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_vbox_component_id) catch false) or
-        (world.hasComponent(entity, runtime.ui_layout_item_component_id) catch false);
+        (world.hasComponent(entity, runtime.ui_stack_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_layout_item_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_spacer_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_text_block_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_toggle_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_progress_bar_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_separator_component_id) catch false);
 }
 
 fn copyUiComponent(
@@ -2197,6 +2265,18 @@ fn uiVBox(world: *const runtime.World, entity: runtime.EntityHandle) RenderError
     };
 }
 
+fn uiStack(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiStack {
+    if (!(world.hasComponent(entity, runtime.ui_stack_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return .{
+        .position = world.getVec3(entity, runtime.ui_stack_component_id, "position") catch |err| return mapWorldError(err),
+        .spacing = world.getFloat(entity, runtime.ui_stack_component_id, "spacing") catch |err| return mapWorldError(err),
+        .direction = world.getString(entity, runtime.ui_stack_component_id, "direction") catch |err| return mapWorldError(err),
+        .padding = world.getVec3(entity, runtime.ui_stack_component_id, "padding") catch |err| return mapWorldError(err),
+    };
+}
+
 fn uiLayoutItem(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiLayoutItem {
     if (!(world.hasComponent(entity, runtime.ui_layout_item_component_id) catch |err| return mapWorldError(err))) {
         return null;
@@ -2204,7 +2284,39 @@ fn uiLayoutItem(world: *const runtime.World, entity: runtime.EntityHandle) Rende
     return .{
         .parent = world.getString(entity, runtime.ui_layout_item_component_id, "parent") catch |err| return mapWorldError(err),
         .order = world.getInt(entity, runtime.ui_layout_item_component_id, "order") catch |err| return mapWorldError(err),
+        .min_size = world.getVec3(entity, runtime.ui_layout_item_component_id, "min_size") catch |err| return mapWorldError(err),
+        .grow = world.getFloat(entity, runtime.ui_layout_item_component_id, "grow") catch |err| return mapWorldError(err),
+        .@"align" = world.getString(entity, runtime.ui_layout_item_component_id, "align") catch |err| return mapWorldError(err),
     };
+}
+
+fn uiTextBlock(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiTextBlock {
+    if (!(world.hasComponent(entity, runtime.ui_text_block_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return .{
+        .size = world.getVec3(entity, runtime.ui_text_block_component_id, "size") catch |err| return mapWorldError(err),
+        .horizontal_align = world.getString(entity, runtime.ui_text_block_component_id, "horizontal_align") catch |err| return mapWorldError(err),
+        .vertical_align = world.getString(entity, runtime.ui_text_block_component_id, "vertical_align") catch |err| return mapWorldError(err),
+    };
+}
+
+fn uiProgressBar(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiProgressBar {
+    if (!(world.hasComponent(entity, runtime.ui_progress_bar_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return .{
+        .value = world.getFloat(entity, runtime.ui_progress_bar_component_id, "value") catch |err| return mapWorldError(err),
+        .max = world.getFloat(entity, runtime.ui_progress_bar_component_id, "max") catch |err| return mapWorldError(err),
+        .fill_color = world.getVec3(entity, runtime.ui_progress_bar_component_id, "fill_color") catch |err| return mapWorldError(err),
+    };
+}
+
+fn uiToggleChecked(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?bool {
+    if (!(world.hasComponent(entity, runtime.ui_toggle_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return world.getBoolean(entity, runtime.ui_toggle_component_id, "checked") catch |err| return mapWorldError(err);
 }
 
 fn combineUiClip(a: ?UiClipRect, b: ?UiClipRect) RenderError!?UiClipRect {
@@ -2237,6 +2349,13 @@ fn resolveUiLayout(world: *const runtime.World, entity: runtime.EntityHandle, lo
             resolved.position[0] += vbox.position[0];
             resolved.position[1] += vbox.position[1] + try uiVBoxChildOffsetY(world, parent, child, item);
             resolved.position[2] += vbox.position[2];
+        }
+
+        if (try uiStack(world, parent)) |stack| {
+            const stack_offset = try uiStackChildOffset(world, parent, child, item, stack);
+            resolved.position[0] += stack.position[0] + stack.padding[0] + stack_offset[0];
+            resolved.position[1] += stack.position[1] + stack.padding[1] + stack_offset[1];
+            resolved.position[2] += stack.position[2] + stack_offset[2];
         }
 
         if (try uiScrollView(world, parent)) |scroll_view| {
@@ -2297,22 +2416,122 @@ fn uiVBoxChildOffsetY(world: *const runtime.World, parent: runtime.EntityHandle,
         if (!before_child) {
             continue;
         }
-        offset += try uiLayoutItemHeight(world, sibling);
+        offset += (try uiLayoutItemSize(world, sibling))[1];
         offset += vbox.spacing;
     }
     return offset;
 }
 
-fn uiLayoutItemHeight(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!f32 {
+fn uiStackChildOffset(world: *const runtime.World, parent: runtime.EntityHandle, child: runtime.EntityHandle, child_item: UiLayoutItem, stack: UiStack) RenderError![3]f32 {
+    const parent_entity = world.entity(parent) catch |err| return mapWorldError(err);
+    if (!isFiniteVec3(stack.position) or !isFiniteVec3(stack.padding) or !std.math.isFinite(stack.spacing)) {
+        return RenderError.InvalidScene;
+    }
+    const horizontal = try stackDirectionIsHorizontal(stack.direction);
+    const main_axis: usize = if (horizontal) 0 else 1;
+    const cross_axis: usize = if (horizontal) 1 else 0;
+    var offset = [3]f32{ 0.0, 0.0, 0.0 };
+
+    for (0..world.entityCount()) |index| {
+        const sibling = runtime.EntityHandle{ .index = @intCast(index) };
+        const sibling_item = (try uiLayoutItem(world, sibling)) orelse continue;
+        if (!std.mem.eql(u8, sibling_item.parent, parent_entity.id)) {
+            continue;
+        }
+        const before_child = sibling_item.order < child_item.order or
+            (sibling_item.order == child_item.order and sibling.index < child.index);
+        if (!before_child) {
+            continue;
+        }
+        offset[main_axis] += (try uiLayoutItemSize(world, sibling))[main_axis];
+        offset[main_axis] += stack.spacing;
+    }
+
+    const parent_size = try uiLayoutItemSize(world, parent);
+    const child_size = try uiLayoutItemSize(world, child);
+    const inner_cross_size = @max(parent_size[cross_axis] - stack.padding[cross_axis] * 2.0, 0.0);
+    if (std.mem.eql(u8, child_item.@"align", "center")) {
+        offset[cross_axis] += @max((inner_cross_size - child_size[cross_axis]) * 0.5, 0.0);
+    } else if (std.mem.eql(u8, child_item.@"align", "end")) {
+        offset[cross_axis] += @max(inner_cross_size - child_size[cross_axis], 0.0);
+    } else if (!std.mem.eql(u8, child_item.@"align", "start") and !std.mem.eql(u8, child_item.@"align", "fill")) {
+        return RenderError.InvalidScene;
+    }
+
+    return offset;
+}
+
+fn stackDirectionIsHorizontal(direction: []const u8) RenderError!bool {
+    if (std.mem.eql(u8, direction, "horizontal") or std.mem.eql(u8, direction, "row")) {
+        return true;
+    }
+    if (std.mem.eql(u8, direction, "vertical") or std.mem.eql(u8, direction, "column")) {
+        return false;
+    }
+    return RenderError.InvalidScene;
+}
+
+fn uiLayoutItemSize(world: *const runtime.World, entity: runtime.EntityHandle) RenderError![3]f32 {
+    var size = try uiLayoutItemNaturalSize(world, entity);
+    if (try uiLayoutItem(world, entity)) |item| {
+        if (!isFiniteVec3(item.min_size) or !std.math.isFinite(item.grow) or item.grow < 0.0) {
+            return RenderError.InvalidScene;
+        }
+        size[0] = @max(size[0], item.min_size[0]);
+        size[1] = @max(size[1], item.min_size[1]);
+        size[2] = @max(size[2], item.min_size[2]);
+    }
+    return size;
+}
+
+fn uiLayoutItemNaturalSize(world: *const runtime.World, entity: runtime.EntityHandle) RenderError![3]f32 {
     if (world.hasComponent(entity, runtime.ui_rect_component_id) catch |err| return mapWorldError(err)) {
         const size = world.getVec3(entity, runtime.ui_rect_component_id, "size") catch |err| return mapWorldError(err);
-        return size[1];
+        return size;
+    }
+    if (world.hasComponent(entity, runtime.ui_separator_component_id) catch |err| return mapWorldError(err)) {
+        const size = world.getVec3(entity, runtime.ui_separator_component_id, "size") catch |err| return mapWorldError(err);
+        return size;
+    }
+    if (world.hasComponent(entity, runtime.ui_spacer_component_id) catch |err| return mapWorldError(err)) {
+        const size = world.getVec3(entity, runtime.ui_spacer_component_id, "size") catch |err| return mapWorldError(err);
+        return size;
+    }
+    if (world.hasComponent(entity, runtime.ui_scroll_view_component_id) catch |err| return mapWorldError(err)) {
+        const size = world.getVec3(entity, runtime.ui_scroll_view_component_id, "size") catch |err| return mapWorldError(err);
+        return size;
+    }
+    if (world.hasComponent(entity, runtime.ui_text_block_component_id) catch |err| return mapWorldError(err)) {
+        const size = world.getVec3(entity, runtime.ui_text_block_component_id, "size") catch |err| return mapWorldError(err);
+        return size;
     }
     if (world.hasComponent(entity, runtime.ui_text_component_id) catch |err| return mapWorldError(err)) {
         const size = world.getFloat(entity, runtime.ui_text_component_id, "size") catch |err| return mapWorldError(err);
-        return @as(f32, @floatFromInt(ui_font.height)) * size;
+        const value = world.getString(entity, runtime.ui_text_component_id, "value") catch |err| return mapWorldError(err);
+        return textPixelSize(value, size);
     }
-    return 0.0;
+    return .{ 0.0, 0.0, 0.0 };
+}
+
+fn textPixelSize(value: []const u8, size: f32) [3]f32 {
+    var line_width: usize = 0;
+    var max_width: usize = 0;
+    var line_count: usize = 1;
+    for (value) |byte| {
+        if (byte == '\n') {
+            max_width = @max(max_width, line_width);
+            line_width = 0;
+            line_count += 1;
+        } else {
+            line_width += 1;
+        }
+    }
+    max_width = @max(max_width, line_width);
+    return .{
+        @as(f32, @floatFromInt(max_width * ui_font.advance)) * size,
+        @as(f32, @floatFromInt(line_count * ui_font.height)) * size,
+        0.0,
+    };
 }
 
 fn pointInsideUiClip(point: [2]f32, clip: ?UiClipRect) bool {
@@ -4780,6 +4999,101 @@ test "UI layout resolves scroll views and vbox rows" {
     try std.testing.expectApproxEqAbs(@as(f32, 60.0), clip.size[1], 0.001);
 }
 
+test "UI stack layout resolves horizontal rows and text block centering" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const stack = try world.createEntity("stack", "Stack");
+    try world.setUiStack(stack, .{
+        .position = .{ 20.0, 30.0, 0.0 },
+        .spacing = 3.0,
+        .direction = "horizontal",
+        .padding = .{ 5.0, 6.0, 0.0 },
+    });
+
+    const first = try world.createEntity("first", "First");
+    try world.setUiRect(first, .{
+        .position = .{ 1.0, 2.0, 0.0 },
+        .size = .{ 20.0, 10.0, 0.0 },
+        .color = .{ 0.1, 0.2, 0.3 },
+    });
+    try world.setUiLayoutItem(first, .{ .parent = "stack", .order = 0 });
+
+    const second = try world.createEntity("second", "Second");
+    try world.setUiRect(second, .{
+        .position = .{ 2.0, 4.0, 0.0 },
+        .size = .{ 12.0, 10.0, 0.0 },
+        .color = .{ 0.2, 0.3, 0.4 },
+    });
+    try world.setUiLayoutItem(second, .{ .parent = "stack", .order = 1 });
+
+    const first_layout = try resolveUiLayout(&world, first, .{ 1.0, 2.0, 0.0 }, .{ 20.0, 10.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 26.0), first_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 38.0), first_layout.position[1], 0.001);
+
+    const second_layout = try resolveUiLayout(&world, second, .{ 2.0, 4.0, 0.0 }, .{ 12.0, 10.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 50.0), second_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 40.0), second_layout.position[1], 0.001);
+
+    const bad_stack = try world.createEntity("bad-stack", "Bad Stack");
+    try world.setUiStack(bad_stack, .{ .direction = "diagonal" });
+    const bad_child = try world.createEntity("bad-child", "Bad Child");
+    try world.setUiRect(bad_child, .{});
+    try world.setUiLayoutItem(bad_child, .{ .parent = "bad-stack" });
+    try std.testing.expectError(RenderError.InvalidScene, resolveUiLayout(&world, bad_child, .{ 0.0, 0.0, 0.0 }, .{ 1.0, 1.0, 0.0 }));
+
+    const label = try world.createEntity("label", "Label");
+    try world.setUiText(label, .{
+        .position = .{ 10.0, 20.0, 0.0 },
+        .size = 1.0,
+        .value = "OK",
+    });
+    try world.setUiTextBlock(label, .{
+        .size = .{ 100.0, 48.0, 0.0 },
+        .horizontal_align = "center",
+        .vertical_align = "center",
+    });
+    const label_position = try resolveUiTextPosition(&world, label, world.uiTextAt(0) orelse return error.TestExpectedEqual, .{ 10.0, 20.0, 0.0 });
+    const label_size = textPixelSize("OK", 1.0);
+    try std.testing.expectApproxEqAbs(10.0 + (100.0 - label_size[0]) * 0.5, label_position[0], 0.001);
+    try std.testing.expectApproxEqAbs(20.0 + (48.0 - label_size[1]) * 0.5, label_position[1], 0.001);
+}
+
+test "UI vertex builder renders progress fills and separators" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const progress = try world.createEntity("progress", "Progress");
+    try world.setUiRect(progress, .{
+        .position = .{ 10.0, 20.0, 0.0 },
+        .size = .{ 100.0, 16.0, 0.0 },
+        .color = .{ 0.1, 0.1, 0.1 },
+        .corner_radius = 4.0,
+    });
+    try world.setUiProgressBar(progress, .{
+        .value = 0.25,
+        .max = 1.0,
+        .fill_color = .{ 0.2, 0.7, 0.8 },
+    });
+
+    const separator = try world.createEntity("separator", "Separator");
+    try world.setUiSeparator(separator, .{
+        .position = .{ 10.0, 44.0, 0.0 },
+        .size = .{ 100.0, 2.0, 0.0 },
+        .color = .{ 0.5, 0.6, 0.7 },
+    });
+
+    var vertices = try buildUiVertices(std.testing.allocator, &world, 200, 100);
+    defer vertices.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 18), vertices.items.len);
+    try std.testing.expectApproxEqAbs(screenToClipX(35.0, 200), vertices.items[7].position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2), vertices.items[6].color[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 4.0), vertices.items[6].rect_size_radius[2], 0.001);
+    try std.testing.expectApproxEqAbs(screenToClipY(44.0, 100), vertices.items[12].position[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.5), vertices.items[12].color[0], 0.001);
+}
+
 test "render ECS derives UI button interaction state from frame input" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
@@ -5480,22 +5794,72 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
                 rect_color = scaleColor(rect.color, 1.06);
             }
         }
+        if ((try uiToggleChecked(world, rect.entity)) orelse false) {
+            rect_color = scaleColor(rect_color, 1.18);
+        }
 
         try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, rect.size, rect_color, rect.corner_radius, maybe_clip);
+        if (try uiProgressBar(world, rect.entity)) |progress| {
+            const ratio = try uiProgressRatio(progress);
+            if (ratio > 0.0) {
+                const fill_size = [3]f32{ rect.size[0] * ratio, rect.size[1], rect.size[2] };
+                try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, fill_size, progress.fill_color, rect.corner_radius, maybe_clip);
+            }
+        }
+    }
+
+    var separators = world.uiSeparators();
+    while (separators.next()) |separator| {
+        const layout = try resolveUiLayout(world, separator.entity, separator.position, separator.size);
+        const screen_layout = try resolveUiScreenLayout(input, separator.id, layout, separator.size);
+        const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity));
+        try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, separator.size, separator.color, 0.0, maybe_clip);
     }
 
     var texts = world.uiTexts();
     while (texts.next()) |text| {
-        const text_height = @as(f32, @floatFromInt(ui_font.height)) * text.size;
-        const layout = try resolveUiLayout(world, text.entity, text.position, .{ 0.0, text_height, 0.0 });
-        const screen_layout = try resolveUiScreenLayout(input, text.id, layout, .{ 0.0, text_height, 0.0 });
+        const item_size = try uiLayoutItemSize(world, text.entity);
+        const layout = try resolveUiLayout(world, text.entity, text.position, item_size);
+        const screen_layout = try resolveUiScreenLayout(input, text.id, layout, item_size);
         const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity));
         var resolved_text = text;
-        resolved_text.position = screen_layout.position;
+        resolved_text.position = try resolveUiTextPosition(world, text.entity, text, screen_layout.position);
         try appendUiText(&vertices, allocator, width, height, resolved_text, maybe_clip);
     }
 
     return vertices;
+}
+
+fn uiProgressRatio(progress: UiProgressBar) RenderError!f32 {
+    if (!std.math.isFinite(progress.value) or !std.math.isFinite(progress.max) or !isFiniteVec3(progress.fill_color) or progress.max <= 0.0) {
+        return RenderError.InvalidScene;
+    }
+    return clamp01(progress.value / progress.max);
+}
+
+fn resolveUiTextPosition(world: *const runtime.World, entity: runtime.EntityHandle, text: runtime.UiText, position: [3]f32) RenderError![3]f32 {
+    const text_block = (try uiTextBlock(world, entity)) orelse return position;
+    if (!isFiniteVec3(text_block.size)) {
+        return RenderError.InvalidScene;
+    }
+    const text_size = textPixelSize(text.value, text.size);
+    var resolved = position;
+    if (std.mem.eql(u8, text_block.horizontal_align, "center")) {
+        resolved[0] += @max((text_block.size[0] - text_size[0]) * 0.5, 0.0);
+    } else if (std.mem.eql(u8, text_block.horizontal_align, "end")) {
+        resolved[0] += @max(text_block.size[0] - text_size[0], 0.0);
+    } else if (!std.mem.eql(u8, text_block.horizontal_align, "start")) {
+        return RenderError.InvalidScene;
+    }
+
+    if (std.mem.eql(u8, text_block.vertical_align, "center")) {
+        resolved[1] += @max((text_block.size[1] - text_size[1]) * 0.5, 0.0);
+    } else if (std.mem.eql(u8, text_block.vertical_align, "end")) {
+        resolved[1] += @max(text_block.size[1] - text_size[1], 0.0);
+    } else if (!std.mem.eql(u8, text_block.vertical_align, "start")) {
+        return RenderError.InvalidScene;
+    }
+    return resolved;
 }
 
 fn appendUiText(

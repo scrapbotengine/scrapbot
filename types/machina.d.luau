@@ -227,9 +227,45 @@ export type MachinaUiVBox = {
     spacing: number,
 }
 
+export type MachinaUiStack = {
+    position: MachinaVec3,
+    spacing: number,
+    direction: string,
+    padding: MachinaVec3,
+}
+
 export type MachinaUiLayoutItem = {
     parent: string,
     order: number,
+    min_size: MachinaVec3,
+    grow: number,
+    align: string,
+}
+
+export type MachinaUiSpacer = {
+    size: MachinaVec3,
+}
+
+export type MachinaUiTextBlock = {
+    size: MachinaVec3,
+    horizontal_align: string,
+    vertical_align: string,
+}
+
+export type MachinaUiToggle = {
+    checked: boolean,
+}
+
+export type MachinaUiProgressBar = {
+    value: number,
+    max: number,
+    fill_color: MachinaVec3,
+}
+
+export type MachinaUiSeparator = {
+    position: MachinaVec3,
+    size: MachinaVec3,
+    color: MachinaVec3,
 }
 
 export type MachinaUiCommandEvent = {

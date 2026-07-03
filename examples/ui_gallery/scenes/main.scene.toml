@@ -154,6 +154,17 @@ value = "ROW 3"
 
 [entities.components."machina.ui.layout.item"]
 parent = "nav-scroll-stack"
+order = 3
+
+[[entities]]
+id = "nav-scroll-spacer"
+name = "Nav Scroll Spacer"
+
+[entities.components."machina.ui.spacer"]
+size = [1.0, 12.0, 0.0]
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-stack"
 order = 2
 
 [[entities]]
@@ -168,7 +179,7 @@ value = "ROW 4"
 
 [entities.components."machina.ui.layout.item"]
 parent = "nav-scroll-stack"
-order = 3
+order = 4
 
 [[entities]]
 id = "nav-scroll-row-5"
@@ -182,7 +193,7 @@ value = "ROW 5"
 
 [entities.components."machina.ui.layout.item"]
 parent = "nav-scroll-stack"
-order = 4
+order = 5
 
 [[entities]]
 id = "content-panel"
@@ -225,16 +236,39 @@ color = [0.392, 0.455, 0.545]
 value = "COMPONENT DATA"
 
 [[entities]]
+id = "content-separator"
+name = "Content Separator"
+
+[entities.components."machina.ui.separator"]
+position = [232.0, 212.0, 0.0]
+size = [304.0, 2.0, 0.0]
+color = [0.031, 0.431, 0.533]
+
+[[entities]]
+id = "action-stack"
+name = "Action Stack"
+
+[entities.components."machina.ui.stack"]
+position = [208.0, 260.0, 0.0]
+spacing = 16.0
+direction = "horizontal"
+padding = [0.0, 0.0, 0.0]
+
+[[entities]]
 id = "button-primary"
 name = "Primary Button"
 
 [entities.components."machina.ui.rect"]
-position = [208.0, 260.0, 0.0]
+position = [0.0, 0.0, 0.0]
 size = [112.0, 50.0, 0.0]
 color = [0.028, 0.324, 0.49]
 corner_radius = 6.0
 
 [entities.components."machina.ui.button"]
+
+[entities.components."machina.ui.layout.item"]
+parent = "action-stack"
+order = 0
 
 [entities.components."machina.ui.command"]
 command = "gallery_primary"
@@ -244,22 +278,34 @@ id = "button-primary-label"
 name = "Primary Button Label"
 
 [entities.components."machina.ui.text"]
-position = [224.0, 274.0, 0.0]
+position = [208.0, 260.0, 0.0]
 size = 1.0
 color = [0.886, 0.91, 0.941]
 value = "ACTION"
+
+[entities.components."machina.ui.text_block"]
+size = [112.0, 50.0, 0.0]
+horizontal_align = "center"
+vertical_align = "center"
 
 [[entities]]
 id = "button-confirm"
 name = "Confirm Button"
 
 [entities.components."machina.ui.rect"]
-position = [336.0, 260.0, 0.0]
+position = [0.0, 0.0, 0.0]
 size = [112.0, 50.0, 0.0]
 color = [0.023, 0.471, 0.314]
 corner_radius = 6.0
 
 [entities.components."machina.ui.button"]
+
+[entities.components."machina.ui.toggle"]
+checked = true
+
+[entities.components."machina.ui.layout.item"]
+parent = "action-stack"
+order = 1
 
 [entities.components."machina.ui.command"]
 command = "gallery_confirm"
@@ -269,22 +315,31 @@ id = "button-confirm-label"
 name = "Confirm Button Label"
 
 [entities.components."machina.ui.text"]
-position = [348.0, 274.0, 0.0]
+position = [336.0, 260.0, 0.0]
 size = 1.0
 color = [0.886, 0.91, 0.941]
 value = "OK"
+
+[entities.components."machina.ui.text_block"]
+size = [112.0, 50.0, 0.0]
+horizontal_align = "center"
+vertical_align = "center"
 
 [[entities]]
 id = "button-warn"
 name = "Warning Button"
 
 [entities.components."machina.ui.rect"]
-position = [464.0, 260.0, 0.0]
+position = [0.0, 0.0, 0.0]
 size = [112.0, 50.0, 0.0]
 color = [0.714, 0.333, 0.031]
 corner_radius = 6.0
 
 [entities.components."machina.ui.button"]
+
+[entities.components."machina.ui.layout.item"]
+parent = "action-stack"
+order = 2
 
 [entities.components."machina.ui.command"]
 command = "gallery_warn"
@@ -294,10 +349,15 @@ id = "button-warn-label"
 name = "Warning Button Label"
 
 [entities.components."machina.ui.text"]
-position = [500.0, 274.0, 0.0]
+position = [464.0, 260.0, 0.0]
 size = 1.0
 color = [0.886, 0.91, 0.941]
 value = "WARN"
+
+[entities.components."machina.ui.text_block"]
+size = [112.0, 50.0, 0.0]
+horizontal_align = "center"
+vertical_align = "center"
 
 [[entities]]
 id = "status-panel"
@@ -331,14 +391,9 @@ size = [260.0, 18.0, 0.0]
 color = [0.008, 0.012, 0.024]
 corner_radius = 4.0
 
-[[entities]]
-id = "meter-fill"
-name = "Meter Fill"
-
-[entities.components."machina.ui.rect"]
-position = [232.0, 394.0, 0.0]
-size = [148.0, 18.0, 0.0]
-color = [0.22, 0.714, 0.82]
-corner_radius = 4.0
+[entities.components."machina.ui.progress_bar"]
+value = 148.0
+max = 260.0
+fill_color = [0.22, 0.714, 0.82]
 
 [entities.components.meter_fill]

@@ -44,7 +44,13 @@ pub const ui_command_event_component_id = "machina.ui.command_event";
 pub const ui_command_event_entity_id = "machina.ui.command_event.current";
 pub const ui_scroll_view_component_id = "machina.ui.scroll_view";
 pub const ui_vbox_component_id = "machina.ui.vbox";
+pub const ui_stack_component_id = "machina.ui.stack";
 pub const ui_layout_item_component_id = "machina.ui.layout.item";
+pub const ui_spacer_component_id = "machina.ui.spacer";
+pub const ui_text_block_component_id = "machina.ui.text_block";
+pub const ui_toggle_component_id = "machina.ui.toggle";
+pub const ui_progress_bar_component_id = "machina.ui.progress_bar";
+pub const ui_separator_component_id = "machina.ui.separator";
 pub const input_entity_id = "machina.input.frame";
 pub const input_pointer_component_id = "machina.input.pointer";
 pub const input_keyboard_component_id = "machina.input.keyboard";
@@ -668,14 +674,80 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .fields = &ui_vbox_fields,
     });
 
+    const ui_stack_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "spacing", .value_type = .float },
+        .{ .name = "direction", .value_type = .string },
+        .{ .name = "padding", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_stack_component_id,
+        .version = 1,
+        .fields = &ui_stack_fields,
+    });
+
     const ui_layout_item_fields = [_]ComponentFieldDefinition{
         .{ .name = "parent", .value_type = .string },
         .{ .name = "order", .value_type = .int },
+        .{ .name = "min_size", .value_type = .vec3 },
+        .{ .name = "grow", .value_type = .float },
+        .{ .name = "align", .value_type = .string },
     };
     try registry.registerEngineComponent(.{
         .id = ui_layout_item_component_id,
         .version = 1,
         .fields = &ui_layout_item_fields,
+    });
+
+    const ui_spacer_fields = [_]ComponentFieldDefinition{
+        .{ .name = "size", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_spacer_component_id,
+        .version = 1,
+        .fields = &ui_spacer_fields,
+    });
+
+    const ui_text_block_fields = [_]ComponentFieldDefinition{
+        .{ .name = "size", .value_type = .vec3 },
+        .{ .name = "horizontal_align", .value_type = .string },
+        .{ .name = "vertical_align", .value_type = .string },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_text_block_component_id,
+        .version = 1,
+        .fields = &ui_text_block_fields,
+    });
+
+    const ui_toggle_fields = [_]ComponentFieldDefinition{
+        .{ .name = "checked", .value_type = .boolean },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_toggle_component_id,
+        .version = 1,
+        .fields = &ui_toggle_fields,
+    });
+
+    const ui_progress_bar_fields = [_]ComponentFieldDefinition{
+        .{ .name = "value", .value_type = .float },
+        .{ .name = "max", .value_type = .float },
+        .{ .name = "fill_color", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_progress_bar_component_id,
+        .version = 1,
+        .fields = &ui_progress_bar_fields,
+    });
+
+    const ui_separator_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "size", .value_type = .vec3 },
+        .{ .name = "color", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_separator_component_id,
+        .version = 1,
+        .fields = &ui_separator_fields,
     });
 
     const input_pointer_fields = [_]ComponentFieldDefinition{
@@ -867,9 +939,45 @@ pub const UiVBoxComponent = struct {
     spacing: f32 = 0.0,
 };
 
+pub const UiStackComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    spacing: f32 = 0.0,
+    direction: []const u8 = "vertical",
+    padding: [3]f32 = .{ 0.0, 0.0, 0.0 },
+};
+
 pub const UiLayoutItemComponent = struct {
     parent: []const u8,
     order: i32 = 0,
+    min_size: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    grow: f32 = 0.0,
+    @"align": []const u8 = "start",
+};
+
+pub const UiSpacerComponent = struct {
+    size: [3]f32 = .{ 1.0, 1.0, 0.0 },
+};
+
+pub const UiTextBlockComponent = struct {
+    size: [3]f32 = .{ 1.0, 1.0, 0.0 },
+    horizontal_align: []const u8 = "start",
+    vertical_align: []const u8 = "start",
+};
+
+pub const UiToggleComponent = struct {
+    checked: bool = false,
+};
+
+pub const UiProgressBarComponent = struct {
+    value: f32 = 0.0,
+    max: f32 = 1.0,
+    fill_color: [3]f32 = .{ 0.22, 0.714, 0.82 },
+};
+
+pub const UiSeparatorComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    size: [3]f32 = .{ 1.0, 1.0, 0.0 },
+    color: [3]f32 = .{ 1.0, 1.0, 1.0 },
 };
 
 pub const UiCommandEventComponent = struct {
@@ -904,6 +1012,15 @@ pub const UiText = struct {
     size: f32,
     color: [3]f32,
     value: []const u8,
+};
+
+pub const UiSeparator = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    position: [3]f32,
+    size: [3]f32,
+    color: [3]f32,
 };
 
 pub const InputPointerComponent = struct {
@@ -1361,12 +1478,66 @@ pub const World = struct {
         try self.setComponent(handle, ui_vbox_component_id, &fields);
     }
 
+    pub fn setUiStack(self: *World, handle: EntityHandle, stack: UiStackComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = stack.position } },
+            .{ .name = "spacing", .value = .{ .float = stack.spacing } },
+            .{ .name = "direction", .value = .{ .string = stack.direction } },
+            .{ .name = "padding", .value = .{ .vec3 = stack.padding } },
+        };
+        try self.setComponent(handle, ui_stack_component_id, &fields);
+    }
+
     pub fn setUiLayoutItem(self: *World, handle: EntityHandle, item: UiLayoutItemComponent) WorldError!void {
         const fields = [_]ComponentFieldValue{
             .{ .name = "parent", .value = .{ .string = item.parent } },
             .{ .name = "order", .value = .{ .int = item.order } },
+            .{ .name = "min_size", .value = .{ .vec3 = item.min_size } },
+            .{ .name = "grow", .value = .{ .float = item.grow } },
+            .{ .name = "align", .value = .{ .string = item.@"align" } },
         };
         try self.setComponent(handle, ui_layout_item_component_id, &fields);
+    }
+
+    pub fn setUiSpacer(self: *World, handle: EntityHandle, spacer: UiSpacerComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "size", .value = .{ .vec3 = spacer.size } },
+        };
+        try self.setComponent(handle, ui_spacer_component_id, &fields);
+    }
+
+    pub fn setUiTextBlock(self: *World, handle: EntityHandle, text_block: UiTextBlockComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "size", .value = .{ .vec3 = text_block.size } },
+            .{ .name = "horizontal_align", .value = .{ .string = text_block.horizontal_align } },
+            .{ .name = "vertical_align", .value = .{ .string = text_block.vertical_align } },
+        };
+        try self.setComponent(handle, ui_text_block_component_id, &fields);
+    }
+
+    pub fn setUiToggle(self: *World, handle: EntityHandle, toggle: UiToggleComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "checked", .value = .{ .boolean = toggle.checked } },
+        };
+        try self.setComponent(handle, ui_toggle_component_id, &fields);
+    }
+
+    pub fn setUiProgressBar(self: *World, handle: EntityHandle, progress: UiProgressBarComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "value", .value = .{ .float = progress.value } },
+            .{ .name = "max", .value = .{ .float = progress.max } },
+            .{ .name = "fill_color", .value = .{ .vec3 = progress.fill_color } },
+        };
+        try self.setComponent(handle, ui_progress_bar_component_id, &fields);
+    }
+
+    pub fn setUiSeparator(self: *World, handle: EntityHandle, separator: UiSeparatorComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = separator.position } },
+            .{ .name = "size", .value = .{ .vec3 = separator.size } },
+            .{ .name = "color", .value = .{ .vec3 = separator.color } },
+        };
+        try self.setComponent(handle, ui_separator_component_id, &fields);
     }
 
     pub fn setUiCommandEvent(self: *World, handle: EntityHandle, event: UiCommandEventComponent) WorldError!void {
@@ -1748,6 +1919,26 @@ pub const World = struct {
         return .{ .world = self };
     }
 
+    pub fn uiSeparatorCount(self: World) usize {
+        return self.componentInstanceCountFor(ui_separator_component_id);
+    }
+
+    pub fn uiSeparatorAt(self: World, ui_index: usize) ?UiSeparator {
+        var found: usize = 0;
+        for (0..self.entityCount()) |index| {
+            const separator = self.uiSeparatorAtEntity(.{ .index = @intCast(index) }) orelse continue;
+            if (found == ui_index) {
+                return separator;
+            }
+            found += 1;
+        }
+        return null;
+    }
+
+    pub fn uiSeparators(self: *const World) UiSeparatorIterator {
+        return .{ .world = self };
+    }
+
     pub fn uiCommandEvent(self: World) ?UiCommandEvent {
         var cursor: usize = 0;
         const component_ids = [_][]const u8{ui_command_event_component_id};
@@ -1844,6 +2035,21 @@ pub const World = struct {
             .size = self.getFloat(handle, ui_text_component_id, "size") catch return null,
             .color = self.getVec3(handle, ui_text_component_id, "color") catch return null,
             .value = self.getString(handle, ui_text_component_id, "value") catch return null,
+        };
+    }
+
+    fn uiSeparatorAtEntity(self: World, handle: EntityHandle) ?UiSeparator {
+        const stored_entity = self.entity(handle) catch return null;
+        if (!(self.hasComponent(handle, ui_separator_component_id) catch false)) {
+            return null;
+        }
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .position = self.getVec3(handle, ui_separator_component_id, "position") catch return null,
+            .size = self.getVec3(handle, ui_separator_component_id, "size") catch return null,
+            .color = self.getVec3(handle, ui_separator_component_id, "color") catch return null,
         };
     }
 
@@ -2211,6 +2417,20 @@ pub const UiTextIterator = struct {
             const handle = EntityHandle{ .index = @intCast(self.index) };
             self.index += 1;
             return self.world.uiTextAtEntity(handle) orelse continue;
+        }
+        return null;
+    }
+};
+
+pub const UiSeparatorIterator = struct {
+    world: *const World,
+    index: usize = 0,
+
+    pub fn next(self: *UiSeparatorIterator) ?UiSeparator {
+        while (self.index < self.world.entityCount()) {
+            const handle = EntityHandle{ .index = @intCast(self.index) };
+            self.index += 1;
+            return self.world.uiSeparatorAtEntity(handle) orelse continue;
         }
         return null;
     }
@@ -2646,6 +2866,63 @@ test "world resolves UI rect and text components" {
     try std.testing.expectEqualStrings("BATCHES 4", resolved_label.value);
 }
 
+test "world stores expanded UI semantic components" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const stack = try world.createEntity("toolbar", "Toolbar");
+    try world.setUiStack(stack, .{
+        .position = .{ 10.0, 12.0, 0.0 },
+        .spacing = 6.0,
+        .direction = "horizontal",
+        .padding = .{ 8.0, 4.0, 0.0 },
+    });
+
+    const slot = try world.createEntity("slot", "Slot");
+    try world.setUiLayoutItem(slot, .{
+        .parent = "toolbar",
+        .order = 2,
+        .min_size = .{ 64.0, 32.0, 0.0 },
+        .grow = 1.0,
+        .@"align" = "center",
+    });
+    try world.setUiSpacer(slot, .{ .size = .{ 24.0, 16.0, 0.0 } });
+
+    const progress = try world.createEntity("progress", "Progress");
+    try world.setUiProgressBar(progress, .{
+        .value = 3.0,
+        .max = 5.0,
+        .fill_color = .{ 0.1, 0.7, 0.3 },
+    });
+    try world.setUiToggle(progress, .{ .checked = true });
+
+    const label = try world.createEntity("label", "Label");
+    try world.setUiText(label, .{ .value = "CENTER" });
+    try world.setUiTextBlock(label, .{
+        .size = .{ 120.0, 48.0, 0.0 },
+        .horizontal_align = "center",
+        .vertical_align = "center",
+    });
+
+    const separator = try world.createEntity("separator", "Separator");
+    try world.setUiSeparator(separator, .{
+        .position = .{ 0.0, 44.0, 0.0 },
+        .size = .{ 120.0, 2.0, 0.0 },
+        .color = .{ 0.5, 0.6, 0.7 },
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_stack_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_spacer_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_text_block_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_toggle_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_progress_bar_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.uiSeparatorCount());
+
+    const resolved_separator = world.uiSeparatorAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(separator.index, resolved_separator.entity.index);
+    try std.testing.expectEqual(@as(f32, 2.0), resolved_separator.size[1]);
+}
+
 test "world rejects duplicate entity ids" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
@@ -2908,11 +3185,17 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(ui_command_event_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_scroll_view_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_vbox_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_stack_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_layout_item_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_spacer_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_text_block_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_toggle_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_progress_bar_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_separator_component_id) != null);
     try std.testing.expect(registry.findComponent(input_pointer_component_id) != null);
     try std.testing.expect(registry.findComponent(input_keyboard_component_id) != null);
     try std.testing.expect(registry.findComponent(input_frame_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 20), registry.componentCount());
+    try std.testing.expectEqual(@as(usize, 26), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);
@@ -2925,6 +3208,24 @@ test "engine component schemas are registered from runtime" {
     const ui_rect = registry.findComponent(ui_rect_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 4), ui_rect.fields.len);
     try std.testing.expectEqual(FieldType.float, ui_rect.fields[3].value_type);
+
+    const ui_stack = registry.findComponent(ui_stack_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 4), ui_stack.fields.len);
+    try std.testing.expectEqual(FieldType.string, ui_stack.fields[2].value_type);
+
+    const ui_layout_item = registry.findComponent(ui_layout_item_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 5), ui_layout_item.fields.len);
+    try std.testing.expectEqual(FieldType.vec3, ui_layout_item.fields[2].value_type);
+    try std.testing.expectEqual(FieldType.float, ui_layout_item.fields[3].value_type);
+    try std.testing.expectEqual(FieldType.string, ui_layout_item.fields[4].value_type);
+
+    const ui_progress_bar = registry.findComponent(ui_progress_bar_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 3), ui_progress_bar.fields.len);
+    try std.testing.expectEqual(FieldType.vec3, ui_progress_bar.fields[2].value_type);
+
+    const ui_separator = registry.findComponent(ui_separator_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 3), ui_separator.fields.len);
+    try std.testing.expectEqual(FieldType.vec3, ui_separator.fields[2].value_type);
 
     const ui_command_event = registry.findComponent(ui_command_event_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 2), ui_command_event.fields.len);
