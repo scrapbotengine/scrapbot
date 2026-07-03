@@ -1,4 +1,5 @@
 [tools]
+pnpm = "10"
 zig = "latest"
 
 [tasks.build]
