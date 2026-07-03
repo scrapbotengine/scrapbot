@@ -39,7 +39,7 @@ const default_window_width = 1280;
 const default_window_height = 720;
 const editor_performance_display_interval_ns: u64 = 333_000_000;
 const editor_system_profile_max_rows = 7;
-const editor_system_profile_id_chars = 18;
+const editor_system_profile_id_chars = 15;
 const editor_system_panel_width: f32 = 650.0;
 const editor_debug_fps_size: f32 = 1.6;
 const editor_system_text_size: f32 = 1.0;
@@ -136,6 +136,7 @@ pub const EditorState = struct {
     selected_entity: ?runtime.EntityHandle = null,
     dragging_axis: EditorAxis = .none,
     captured_pointer: bool = false,
+    system_scroll_offset: usize = 0,
     last_pointer: [2]f32 = .{ 0.0, 0.0 },
     has_last_pointer: bool = false,
 };
@@ -144,6 +145,7 @@ pub const EditorFrameState = struct {
     paused: bool = false,
     selected_entity: ?runtime.EntityHandle = null,
     dragging_axis: EditorAxis = .none,
+    system_scroll_offset: usize = 0,
     entity_count: usize = 0,
     component_instance_count: usize = 0,
     renderable_count: usize = 0,
@@ -162,6 +164,7 @@ pub const FrameInput = struct {
     debug_overlay_visible: bool = false,
     editor_toggle_pressed: bool = false,
     fps: f32 = 0.0,
+    scroll_delta_y: f32 = 0.0,
     viewport_width: f32 = 0.0,
     viewport_height: f32 = 0.0,
     editor: EditorFrameState = .{},
@@ -170,6 +173,7 @@ pub const FrameInput = struct {
     fn beginFrame(self: *FrameInput) void {
         self.pointer.beginFrame();
         self.editor_toggle_pressed = false;
+        self.scroll_delta_y = 0.0;
     }
 };
 
@@ -187,17 +191,49 @@ pub fn editorFrameState(world: *const runtime.World, state: EditorState) EditorF
         .paused = state.paused,
         .selected_entity = validatedEditorSelection(world, state.selected_entity),
         .dragging_axis = state.dragging_axis,
+        .system_scroll_offset = state.system_scroll_offset,
         .entity_count = world.entityCount(),
         .component_instance_count = world.componentInstanceCount(),
         .renderable_count = world.renderableMeshCount(),
     };
 }
 
+fn clampEditorSystemScroll(state: *EditorState, profile_count: usize) void {
+    state.system_scroll_offset = @min(state.system_scroll_offset, editorSystemMaxScroll(profile_count));
+}
+
+fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delta_y: f32) void {
+    const max_scroll = editorSystemMaxScroll(profile_count);
+    if (max_scroll == 0) {
+        state.system_scroll_offset = 0;
+        return;
+    }
+
+    const rows = @max(@as(usize, 1), @as(usize, @intFromFloat(@ceil(@abs(scroll_delta_y)))));
+    if (scroll_delta_y < 0.0) {
+        state.system_scroll_offset = @min(max_scroll, state.system_scroll_offset + rows);
+    } else {
+        state.system_scroll_offset = if (rows > state.system_scroll_offset) 0 else state.system_scroll_offset - rows;
+    }
+}
+
 pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!EditorUpdate {
     state.selected_entity = validatedEditorSelection(world, state.selected_entity);
-    if (!input.debug_overlay_visible or !input.pointer.has_position) {
+    if (!input.debug_overlay_visible) {
         state.dragging_axis = .none;
         state.captured_pointer = false;
+        state.has_last_pointer = false;
+        return .{};
+    }
+    clampEditorSystemScroll(state, input.system_profiles.len);
+
+    if (input.scroll_delta_y != 0.0 and (!input.pointer.has_position or hitEditorSystemPanel(input))) {
+        scrollEditorSystemList(state, input.system_profiles.len, input.scroll_delta_y);
+        return .{ .consumed_pointer = true };
+    }
+
+    if (!input.pointer.has_position) {
+        state.dragging_axis = .none;
         state.has_last_pointer = false;
         return .{};
     }
@@ -461,6 +497,9 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
                         input.pointer.primary_down = false;
                         input.pointer.primary_released = true;
                     }
+                },
+                sdl.SDL_EVENT_MOUSE_WHEEL => {
+                    input.scroll_delta_y += event.wheel.y;
                 },
                 sdl.SDL_EVENT_WINDOW_RESIZED,
                 sdl.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED,
@@ -1283,13 +1322,57 @@ fn extractUiTextInto(
     }) catch |err| return mapWorldError(err);
 }
 
+const EditorVBox = struct {
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    id_prefix: []const u8,
+    x: f32,
+    y: f32,
+    row_stride: f32,
+    row: usize = 0,
+
+    fn init(
+        allocator: std.mem.Allocator,
+        world: *runtime.World,
+        id_prefix: []const u8,
+        x: f32,
+        y: f32,
+        row_stride: f32,
+    ) EditorVBox {
+        return .{
+            .allocator = allocator,
+            .world = world,
+            .id_prefix = id_prefix,
+            .x = x,
+            .y = y,
+            .row_stride = row_stride,
+        };
+    }
+
+    fn text(self: *EditorVBox, name: []const u8, value: []const u8, size: f32, color: [3]f32) RenderError!void {
+        const entity_id = std.fmt.allocPrint(self.allocator, "{s}.{d}", .{ self.id_prefix, self.row }) catch return RenderError.OutOfMemory;
+        defer self.allocator.free(entity_id);
+        const entity = self.world.createEntity(entity_id, name) catch |err| return mapWorldError(err);
+        self.world.setUiText(entity, .{
+            .position = .{
+                self.x,
+                self.y + @as(f32, @floatFromInt(self.row)) * self.row_stride,
+                0.0,
+            },
+            .size = size,
+            .color = color,
+            .value = value,
+        }) catch |err| return mapWorldError(err);
+        self.row += 1;
+    }
+};
+
 fn extractDebugOverlayInto(
     allocator: std.mem.Allocator,
     world: *runtime.World,
     input: FrameInput,
     scene_world: *const runtime.World,
 ) RenderError!void {
-    const profile_rows = @min(input.system_profiles.len, editor_system_profile_max_rows);
     const has_profiles = input.system_profiles.len > 0;
     const panel_size = editorDebugPanelSize(input);
 
@@ -1338,30 +1421,22 @@ fn extractDebugOverlayInto(
         .value = header_text,
     }) catch |err| return mapWorldError(err);
 
-    for (input.system_profiles[0..profile_rows], 0..) |profile, index| {
+    const visible_range = editorSystemVisibleRange(input);
+    var system_rows = EditorVBox.init(allocator, world, "machina.editor.debug.systems.row", 28.0, editor_system_first_row_y, editor_system_row_stride);
+    for (input.system_profiles[visible_range.start..visible_range.end]) |profile| {
         const line_text = formatSystemProfileLine(allocator, profile) catch return RenderError.OutOfMemory;
         defer allocator.free(line_text);
-        const row_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}", .{index}) catch return RenderError.OutOfMemory;
-        defer allocator.free(row_id);
-        const row = world.createEntity(row_id, "Editor Debug System Row") catch |err| return mapWorldError(err);
-        world.setUiText(row, .{
-            .position = .{ 28.0, editor_system_first_row_y + @as(f32, @floatFromInt(index)) * editor_system_row_stride, 0.0 },
-            .size = editor_system_text_size,
-            .color = .{ 0.889, 0.949, 0.992 },
-            .value = line_text,
-        }) catch |err| return mapWorldError(err);
+        try system_rows.text("Editor Debug System Row", line_text, editor_system_text_size, .{ 0.889, 0.949, 0.992 });
     }
 
-    if (input.system_profiles.len > profile_rows) {
-        const overflow_text = std.fmt.allocPrint(allocator, "... {d} more systems", .{input.system_profiles.len - profile_rows}) catch return RenderError.OutOfMemory;
-        defer allocator.free(overflow_text);
-        const overflow = world.createEntity("machina.editor.debug.systems.overflow", "Editor Debug Systems Overflow") catch |err| return mapWorldError(err);
-        world.setUiText(overflow, .{
-            .position = .{ 28.0, editor_system_first_row_y + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride, 0.0 },
-            .size = editor_system_text_size,
-            .color = .{ 0.56, 0.737, 0.949 },
-            .value = overflow_text,
-        }) catch |err| return mapWorldError(err);
+    if (editorSystemNeedsScroll(input.system_profiles.len)) {
+        const footer_text = std.fmt.allocPrint(allocator, "ROWS {d}-{d}/{d}  WHEEL", .{
+            visible_range.start + 1,
+            visible_range.end,
+            input.system_profiles.len,
+        }) catch return RenderError.OutOfMemory;
+        defer allocator.free(footer_text);
+        try system_rows.text("Editor Debug Systems Footer", footer_text, editor_system_text_size, .{ 0.56, 0.737, 0.949 });
     }
 
     try extractEditorInspectorInto(allocator, world, scene_world, input);
@@ -1556,17 +1631,45 @@ fn formatInspectorFieldValue(allocator: std.mem.Allocator, field_name: []const u
 }
 
 fn editorDebugPanelSize(input: FrameInput) [2]f32 {
-    const profile_rows = @min(input.system_profiles.len, editor_system_profile_max_rows);
+    const visible_range = editorSystemVisibleRange(input);
+    const profile_rows = visible_range.end - visible_range.start;
     const has_profiles = input.system_profiles.len > 0;
     const panel_width: f32 = if (has_profiles) editor_system_panel_width else editor_controls_panel_width;
     var panel_height: f32 = 108.0;
     if (has_profiles) {
         panel_height = 146.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
-        if (input.system_profiles.len > profile_rows) {
+        if (editorSystemNeedsScroll(input.system_profiles.len)) {
             panel_height += editor_system_row_stride;
         }
     }
     return .{ panel_width, panel_height };
+}
+
+const EditorSystemVisibleRange = struct {
+    start: usize,
+    end: usize,
+};
+
+fn editorSystemVisibleRange(input: FrameInput) EditorSystemVisibleRange {
+    const profile_count = input.system_profiles.len;
+    const visible_count = @min(profile_count, editor_system_profile_max_rows);
+    const max_start = editorSystemMaxScroll(profile_count);
+    const start = @min(input.editor.system_scroll_offset, max_start);
+    return .{
+        .start = start,
+        .end = @min(profile_count, start + visible_count),
+    };
+}
+
+fn editorSystemNeedsScroll(profile_count: usize) bool {
+    return profile_count > editor_system_profile_max_rows;
+}
+
+fn editorSystemMaxScroll(profile_count: usize) usize {
+    return if (profile_count > editor_system_profile_max_rows)
+        profile_count - editor_system_profile_max_rows
+    else
+        0;
 }
 
 fn editorInspectorPanelHeight(input: FrameInput) f32 {
@@ -1582,7 +1685,7 @@ fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]c
 
 fn formatSystemProfileHeader(allocator: std.mem.Allocator, profiles: []const runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
     const window_size = if (profiles.len == 0) 0 else profiles[0].window_size;
-    return std.fmt.allocPrint(allocator, "SYSTEMS {d}  AVG {d}F  SNAP 3HZ", .{ profiles.len, window_size });
+    return std.fmt.allocPrint(allocator, "SYS {d} AVG {d}F SNAP 3HZ", .{ profiles.len, window_size });
 }
 
 fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
@@ -1594,20 +1697,32 @@ fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.System
     const ellipsis = if (profile.id.len > editor_system_profile_id_chars) "..." else "";
 
     if (profile.sample_count == 0) {
-        return std.fmt.allocPrint(allocator, "{s} {s}{s}  AVG --  LAST --", .{
+        return std.fmt.allocPrint(allocator, "{s} {s}{s} A-- L--", .{
             phase,
             id_prefix,
             ellipsis,
         });
     }
 
-    return std.fmt.allocPrint(allocator, "{s} {s}{s}  AVG {d}US  LAST {d}US", .{
+    var average_buffer: [16]u8 = undefined;
+    var last_buffer: [16]u8 = undefined;
+    const average = formatDurationShort(&average_buffer, profile.rolling_average_ns);
+    const last = formatDurationShort(&last_buffer, profile.last_ns);
+    return std.fmt.allocPrint(allocator, "{s} {s}{s} A{s} L{s}", .{
         phase,
         id_prefix,
         ellipsis,
-        nsToMicrosRounded(profile.rolling_average_ns),
-        nsToMicrosRounded(profile.last_ns),
+        average,
+        last,
     });
+}
+
+fn formatDurationShort(buffer: *[16]u8, ns: u64) []const u8 {
+    const micros = nsToMicrosRounded(ns);
+    if (micros < 10_000) {
+        return std.fmt.bufPrint(buffer, "{d}U", .{micros}) catch "----";
+    }
+    return std.fmt.bufPrint(buffer, "{d}MS", .{(micros + 500) / 1000}) catch "----";
 }
 
 fn systemPhaseLabel(phase: runtime.SystemPhase) []const u8 {
@@ -3196,9 +3311,12 @@ fn hitEditorStepButton(position: [2]f32) bool {
 fn hitEditorChrome(input: FrameInput) bool {
     const width = editorViewportWidth(input);
     const inspector_x = @max(width - editor_inspector_panel_width - editor_inspector_panel_margin, editor_inspector_panel_margin);
-    const debug_panel_size = editorDebugPanelSize(input);
-    return pointInsideScreenRect(input.pointer.position, .{ editor_controls_panel_x, editor_controls_panel_y }, debug_panel_size) or
+    return hitEditorSystemPanel(input) or
         pointInsideScreenRect(input.pointer.position, .{ inspector_x, editor_inspector_panel_margin }, .{ editor_inspector_panel_width, editorInspectorPanelHeight(input) });
+}
+
+fn hitEditorSystemPanel(input: FrameInput) bool {
+    return pointInsideScreenRect(input.pointer.position, .{ editor_controls_panel_x, editor_controls_panel_y }, editorDebugPanelSize(input));
 }
 
 fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
@@ -3453,6 +3571,48 @@ test "editor playback controls toggle pause and request single step" {
     try std.testing.expect(step_update.consumed_pointer);
     try std.testing.expect(step_update.step_once);
     try std.testing.expect(editor_state.paused);
+}
+
+test "editor system list scroll state responds to wheel input" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const profiles = [_]runtime.SystemProfileSnapshot{
+        .{ .id = "system.0", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.1", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.2", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.3", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.4", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.5", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.6", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.7", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.8", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+    };
+
+    var editor_state = EditorState{};
+    const down_update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .scroll_delta_y = -1.0,
+        .system_profiles = &profiles,
+        .pointer = .{
+            .position = .{ editor_controls_panel_x + 12.0, editor_system_first_row_y },
+            .has_position = true,
+        },
+    });
+    try std.testing.expect(down_update.consumed_pointer);
+    try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
+
+    const up_update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .scroll_delta_y = 1.0,
+        .system_profiles = &profiles,
+        .pointer = .{
+            .position = .{ editor_controls_panel_x + 12.0, editor_system_first_row_y },
+            .has_position = true,
+        },
+    });
+    try std.testing.expect(up_update.consumed_pointer);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.system_scroll_offset);
 }
 
 test "render ECS schedule orders extract prepare queue and draw systems" {
@@ -3860,13 +4020,13 @@ test "debug overlay extracts system profile rows when available" {
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
         try std.testing.expect(text.size >= 1.0);
-        if (std.mem.indexOf(u8, text.value, "SYSTEMS 2  AVG 120F  SNAP 3HZ") != null) {
+        if (std.mem.indexOf(u8, text.value, "SYS 2 AVG 120F SNAP 3HZ") != null) {
             saw_header = true;
         }
-        if (std.mem.indexOf(u8, text.value, "STA spawn_initial  AVG --  LAST --") != null) {
+        if (std.mem.indexOf(u8, text.value, "STA spawn_initial A-- L--") != null) {
             saw_startup = true;
         }
-        if (std.mem.indexOf(u8, text.value, "UPD rotate_cubes  AVG 57US  LAST 123US") != null) {
+        if (std.mem.indexOf(u8, text.value, "UPD rotate_cubes A57U L123U") != null) {
             saw_update = true;
         }
         if (std.mem.indexOf(u8, text.value, "PAUSE") != null) {
@@ -3882,6 +4042,58 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expect(saw_update);
     try std.testing.expect(saw_pause);
     try std.testing.expect(saw_no_selection);
+}
+
+test "debug overlay renders a scrolled system profile window" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    const profiles = [_]runtime.SystemProfileSnapshot{
+        .{ .id = "system.zero", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1_000, .rolling_average_ns = 1_000 },
+        .{ .id = "system.one", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 2_000, .rolling_average_ns = 2_000 },
+        .{ .id = "system.two", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 3_000, .rolling_average_ns = 3_000 },
+        .{ .id = "system.three", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 4_000, .rolling_average_ns = 4_000 },
+        .{ .id = "system.four", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 5_000, .rolling_average_ns = 5_000 },
+        .{ .id = "system.five", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 6_000, .rolling_average_ns = 6_000 },
+        .{ .id = "system.six", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 7_000, .rolling_average_ns = 7_000 },
+        .{ .id = "system.seven", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 8_000, .rolling_average_ns = 8_000 },
+        .{ .id = "system.eight", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 9_000, .rolling_average_ns = 9_000 },
+    };
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .debug_overlay_visible = true,
+        .fps = 60.0,
+        .system_profiles = &profiles,
+        .editor = .{ .system_scroll_offset = 2 },
+    });
+
+    var saw_zero = false;
+    var saw_two = false;
+    var saw_eight = false;
+    var saw_footer = false;
+    var texts = state.world.uiTexts();
+    while (texts.next()) |text| {
+        if (std.mem.indexOf(u8, text.value, "system.zero") != null) {
+            saw_zero = true;
+        }
+        if (std.mem.indexOf(u8, text.value, "system.two") != null) {
+            saw_two = true;
+        }
+        if (std.mem.indexOf(u8, text.value, "system.eight") != null) {
+            saw_eight = true;
+        }
+        if (std.mem.indexOf(u8, text.value, "ROWS 3-9/9  WHEEL") != null) {
+            saw_footer = true;
+        }
+        try std.testing.expect(text.value.len <= 36 or std.mem.indexOf(u8, text.value, "NO ENTITY SELECTED") != null);
+    }
+
+    try std.testing.expect(!saw_zero);
+    try std.testing.expect(saw_two);
+    try std.testing.expect(saw_eight);
+    try std.testing.expect(saw_footer);
 }
 
 test "editor overlay extracts selected entity inspector and translate gizmo" {
