@@ -41,8 +41,9 @@ const editor_system_profile_id_chars = 15;
 const editor_system_panel_width: f32 = 650.0;
 const editor_debug_fps_size: f32 = 1.6;
 const editor_system_text_size: f32 = 1.0;
-const editor_system_header_y: f32 = 104.0;
-const editor_system_first_row_y: f32 = 136.0;
+const editor_input_debug_y: f32 = 104.0;
+const editor_system_header_y: f32 = 136.0;
+const editor_system_first_row_y: f32 = 168.0;
 const editor_system_row_stride: f32 = 32.0;
 const render_system_profile_window_frames: usize = 120;
 const editor_controls_panel_width: f32 = 360.0;
@@ -1429,6 +1430,7 @@ fn extractDebugOverlayInto(
     }) catch |err| return mapWorldError(err);
 
     try extractEditorPlaybackControlsInto(world, input);
+    try extractEditorInputDiagnosticsInto(allocator, world, input);
 
     if (!has_profiles) {
         try extractEditorInspectorInto(allocator, world, scene_world, input);
@@ -1464,6 +1466,19 @@ fn extractDebugOverlayInto(
     }
 
     try extractEditorInspectorInto(allocator, world, scene_world, input);
+}
+
+fn extractEditorInputDiagnosticsInto(allocator: std.mem.Allocator, world: *runtime.World, input: FrameInput) RenderError!void {
+    const input_text = formatEditorInputDiagnostics(allocator, input) catch return RenderError.OutOfMemory;
+    defer allocator.free(input_text);
+
+    const entity = world.createEntity("machina.editor.debug.input", "Editor Debug Input") catch |err| return mapWorldError(err);
+    world.setUiText(entity, .{
+        .position = .{ 28.0, editor_input_debug_y, 0.0 },
+        .size = editor_system_text_size,
+        .color = .{ 0.74, 0.879, 0.996 },
+        .value = input_text,
+    }) catch |err| return mapWorldError(err);
 }
 
 fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) RenderError!void {
@@ -1659,9 +1674,9 @@ fn editorDebugPanelSize(input: FrameInput) [2]f32 {
     const profile_rows = visible_range.end - visible_range.start;
     const has_profiles = input.system_profiles.len > 0;
     const panel_width: f32 = if (has_profiles) editor_system_panel_width else editor_controls_panel_width;
-    var panel_height: f32 = 108.0;
+    var panel_height: f32 = 140.0;
     if (has_profiles) {
-        panel_height = 146.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
+        panel_height = 178.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
         if (editorSystemNeedsScroll(input.system_profiles.len)) {
             panel_height += editor_system_row_stride;
         }
@@ -1705,6 +1720,31 @@ fn editorInspectorPanelHeight(input: FrameInput) f32 {
 
 fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]const u8 {
     return std.fmt.allocPrint(allocator, "FPS {d}", .{roundedFps(fps)});
+}
+
+fn formatEditorInputDiagnostics(allocator: std.mem.Allocator, input: FrameInput) error{OutOfMemory}![]const u8 {
+    if (!input.pointer.has_position) {
+        return std.fmt.allocPrint(allocator, "IN W{d:.1},{d:.1} P--,-- S{d}", .{
+            input.pointer.wheel_delta[0],
+            input.pointer.wheel_delta[1],
+            input.editor.system_scroll_offset,
+        });
+    }
+
+    return std.fmt.allocPrint(allocator, "IN W{d:.1},{d:.1} P{d},{d} S{d}", .{
+        input.pointer.wheel_delta[0],
+        input.pointer.wheel_delta[1],
+        roundedScreenCoordinate(input.pointer.position[0]),
+        roundedScreenCoordinate(input.pointer.position[1]),
+        input.editor.system_scroll_offset,
+    });
+}
+
+fn roundedScreenCoordinate(value: f32) i32 {
+    if (!std.math.isFinite(value)) {
+        return 0;
+    }
+    return @intFromFloat(@round(std.math.clamp(value, -9999.0, 9999.0)));
 }
 
 fn formatSystemProfileHeader(allocator: std.mem.Allocator, profiles: []const runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
@@ -4083,6 +4123,20 @@ test "mouse wheel deltas normalize flipped direction and integer fallback" {
     try std.testing.expectEqual(@as(f32, -2.0), integer_fallback[1]);
 }
 
+test "editor input diagnostics include wheel pointer and scroll state" {
+    const line = try formatEditorInputDiagnostics(std.testing.allocator, .{
+        .pointer = .{
+            .position = .{ 123.4, 567.8 },
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.25 },
+        },
+        .editor = .{ .system_scroll_offset = 3 },
+    });
+    defer std.testing.allocator.free(line);
+
+    try std.testing.expectEqualStrings("IN W0.0,-1.3 P123,568 S3", line);
+}
+
 test "debug overlay extracts FPS label when visible" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
@@ -4097,10 +4151,19 @@ test "debug overlay extracts FPS label when visible" {
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
     try std.testing.expectEqual(@as(usize, 6), state.world.uiRectCount());
-    try std.testing.expectEqual(@as(usize, 8), state.world.uiTextCount());
+    try std.testing.expectEqual(@as(usize, 9), state.world.uiTextCount());
 
     const label = state.world.uiTextAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("FPS 60", label.value);
+
+    var saw_input = false;
+    var texts = state.world.uiTexts();
+    while (texts.next()) |text| {
+        if (std.mem.indexOf(u8, text.value, "IN W0.0,0.0 P--,-- S0") != null) {
+            saw_input = true;
+        }
+    }
+    try std.testing.expect(saw_input);
 
     const input = try renderFrameInput(&state.world);
     try std.testing.expect(!input.ui_visible);
@@ -4142,15 +4205,19 @@ test "debug overlay extracts system profile rows when available" {
     });
 
     try std.testing.expectEqual(@as(usize, 6), state.world.uiRectCount());
-    try std.testing.expectEqual(@as(usize, 11), state.world.uiTextCount());
+    try std.testing.expectEqual(@as(usize, 12), state.world.uiTextCount());
 
     var saw_header = false;
     var saw_startup = false;
     var saw_update = false;
     var saw_pause = false;
     var saw_no_selection = false;
+    var saw_input = false;
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
+        if (std.mem.indexOf(u8, text.value, "IN W0.0,0.0 P--,-- S0") != null) {
+            saw_input = true;
+        }
         try std.testing.expect(text.size >= 1.0);
         if (std.mem.indexOf(u8, text.value, "SYS 2 AVG 120F SNAP 3HZ") != null) {
             saw_header = true;
@@ -4174,6 +4241,7 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expect(saw_update);
     try std.testing.expect(saw_pause);
     try std.testing.expect(saw_no_selection);
+    try std.testing.expect(saw_input);
 }
 
 test "debug overlay renders a scrolled system profile window" {
