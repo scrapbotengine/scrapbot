@@ -115,6 +115,67 @@ const SystemProfileState = struct {
     }
 };
 
+const QueuedComponentFieldValue = struct {
+    name: []u8,
+    value: runtime.ComponentValue,
+
+    fn deinit(self: *QueuedComponentFieldValue, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        switch (self.value) {
+            .string => |payload| allocator.free(payload),
+            else => {},
+        }
+        self.* = undefined;
+    }
+
+    fn asRuntime(self: QueuedComponentFieldValue) runtime.ComponentFieldValue {
+        return .{
+            .name = self.name,
+            .value = self.value,
+        };
+    }
+};
+
+const ScriptCommand = union(enum) {
+    add_component: QueuedAddComponent,
+    remove_component: QueuedRemoveComponent,
+    despawn_entity: runtime.EntityHandle,
+
+    fn deinit(self: *ScriptCommand, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .add_component => |*payload| payload.deinit(allocator),
+            .remove_component => |*payload| payload.deinit(allocator),
+            .despawn_entity => {},
+        }
+        self.* = undefined;
+    }
+};
+
+const QueuedAddComponent = struct {
+    entity: runtime.EntityHandle,
+    component_id: []u8,
+    fields: []QueuedComponentFieldValue,
+
+    fn deinit(self: *QueuedAddComponent, allocator: std.mem.Allocator) void {
+        allocator.free(self.component_id);
+        for (self.fields) |*field| {
+            field.deinit(allocator);
+        }
+        allocator.free(self.fields);
+        self.* = undefined;
+    }
+};
+
+const QueuedRemoveComponent = struct {
+    entity: runtime.EntityHandle,
+    component_id: []u8,
+
+    fn deinit(self: *QueuedRemoveComponent, allocator: std.mem.Allocator) void {
+        allocator.free(self.component_id);
+        self.* = undefined;
+    }
+};
+
 pub const Program = struct {
     allocator: std.mem.Allocator,
     registry: runtime.ComponentRegistry,
@@ -125,14 +186,19 @@ pub const Program = struct {
     system_origins: std.ArrayList(ScriptOrigin) = .empty,
     system_profiles: std.ArrayList(SystemProfileState) = .empty,
     system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
+    queued_script_commands: std.ArrayList(ScriptCommand) = .empty,
+    immediate_script_spawns: std.ArrayList(runtime.EntityHandle) = .empty,
     last_diagnostic: ?Diagnostic = null,
     host_error: ?[:0]u8 = null,
 
     pub fn deinit(self: *Program) void {
         self.clearHostError();
         self.clearLastDiagnostic();
+        self.clearQueuedScriptCommands();
+        self.immediate_script_spawns.deinit(self.allocator);
         self.clearSystemProfiles();
         self.system_profile_snapshots.deinit(self.allocator);
+        self.queued_script_commands.deinit(self.allocator);
         self.system_profiles.deinit(self.allocator);
         for (self.system_origins.items) |origin| {
             origin.deinit(self.allocator);
@@ -182,7 +248,12 @@ pub const Program = struct {
                         self.clearHostError();
                         self.active_system = system;
                         const started_ns = monotonicTimestampNs();
-                        const system_ok = c.machina_luau_call_system(self.vm, runner_ref, world, delta_seconds) != 0;
+                        var system_ok = c.machina_luau_call_system(self.vm, runner_ref, world, delta_seconds) != 0;
+                        if (system_ok) {
+                            system_ok = self.flushQueuedScriptCommands(world);
+                        } else {
+                            self.discardQueuedScriptCommands(world);
+                        }
                         self.recordSystemDuration(system.*, phase, elapsedNanosecondsSince(started_ns));
                         if (!system_ok and self.last_diagnostic == null) {
                             self.setRuntimeDiagnostic(system.*, runner_ref) catch {};
@@ -195,6 +266,74 @@ pub const Program = struct {
             }
         }
         return ok;
+    }
+
+    fn flushQueuedScriptCommands(self: *Program, world: *runtime.World) bool {
+        defer self.clearQueuedScriptCommands();
+        defer self.immediate_script_spawns.clearRetainingCapacity();
+
+        for (self.queued_script_commands.items) |*command| {
+            switch (command.*) {
+                .add_component => |payload| {
+                    const fields = self.allocator.alloc(runtime.ComponentFieldValue, payload.fields.len) catch {
+                        self.setHostError("system '{s}' failed to allocate queued add fields", .{self.activeSystemId()});
+                        return false;
+                    };
+                    defer self.allocator.free(fields);
+                    for (payload.fields, 0..) |field, index| {
+                        fields[index] = field.asRuntime();
+                    }
+                    world.setComponent(payload.entity, payload.component_id, fields) catch |err| {
+                        self.setHostError("system '{s}' failed to flush add component '{s}' to entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                            @errorName(err),
+                        });
+                        return false;
+                    };
+                },
+                .remove_component => |payload| {
+                    _ = world.removeComponent(payload.entity, payload.component_id) catch |err| {
+                        self.setHostError("system '{s}' failed to flush remove component '{s}' from entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                            @errorName(err),
+                        });
+                        return false;
+                    };
+                },
+                .despawn_entity => |entity| {
+                    _ = world.removeEntity(entity) catch |err| {
+                        self.setHostError("system '{s}' failed to flush despawn entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            entity.index,
+                            @errorName(err),
+                        });
+                        return false;
+                    };
+                },
+            }
+        }
+        return true;
+    }
+
+    fn discardQueuedScriptCommands(self: *Program, world: *runtime.World) void {
+        self.clearQueuedScriptCommands();
+        var index = self.immediate_script_spawns.items.len;
+        while (index > 0) {
+            index -= 1;
+            _ = world.removeEntity(self.immediate_script_spawns.items[index]) catch {};
+        }
+        self.immediate_script_spawns.clearRetainingCapacity();
+    }
+
+    fn clearQueuedScriptCommands(self: *Program) void {
+        for (self.queued_script_commands.items) |*command| {
+            command.deinit(self.allocator);
+        }
+        self.queued_script_commands.clearRetainingCapacity();
     }
 
     fn initializeSystemProfiles(self: *Program) !void {
@@ -1416,6 +1555,15 @@ fn spawnEntityCallback(
     };
     out_entity.* = entity.index;
     out_entity_generation.* = entity.generation;
+    program.immediate_script_spawns.append(program.allocator, entity) catch {
+        _ = world.removeEntity(entity) catch {};
+        program.setHostError("system '{s}' failed to record spawned entity '{s}': {s}", .{
+            program.activeSystemId(),
+            id,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
     return 1;
 }
 
@@ -1456,11 +1604,11 @@ fn despawnEntityCallback(
         }
     }
 
-    _ = world.removeEntity(entity) catch |err| {
-        program.setHostError("system '{s}' failed to despawn entity {d}: {s}", .{
+    program.queued_script_commands.append(program.allocator, .{ .despawn_entity = entity }) catch {
+        program.setHostError("system '{s}' failed to queue despawn entity {d}: {s}", .{
             program.activeSystemId(),
             entity_index,
-            @errorName(err),
+            @errorName(error.OutOfMemory),
         });
         return 0;
     };
@@ -1495,15 +1643,33 @@ fn addComponentCallback(
         return 0;
     };
     const entity = runtime.EntityHandle{ .index = entity_index, .generation = entity_generation };
+    _ = world.entity(entity) catch |err| {
+        program.setHostError("system '{s}' failed to queue add component '{s}' to entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity_index,
+            @errorName(err),
+        });
+        return 0;
+    };
     const raw_slice = if (field_count == 0) &[_]c.machina_luau_component_field_value{} else (raw_fields orelse return 0)[0..field_count];
-    const fields = program.allocator.alloc(runtime.ComponentFieldValue, field_count) catch {
+    const fields = program.allocator.alloc(QueuedComponentFieldValue, field_count) catch {
         program.setHostError("system '{s}' failed to allocate component fields for '{s}'", .{
             program.activeSystemId(),
             component_id,
         });
         return 0;
     };
-    defer program.allocator.free(fields);
+    var initialized_fields: usize = 0;
+    var fields_owned = true;
+    defer {
+        if (fields_owned) {
+            for (fields[0..initialized_fields]) |*field| {
+                field.deinit(program.allocator);
+            }
+            program.allocator.free(fields);
+        }
+    }
 
     for (raw_slice, 0..) |raw_field, index| {
         const field_name = raw_field.name[0..raw_field.name_len];
@@ -1515,10 +1681,29 @@ fn addComponentCallback(
             });
             return 0;
         };
+        const component_value = componentValueFromLuauType(field_definition.value_type, &raw_field.value) catch |err| {
+            program.setHostError("system '{s}' failed to convert value for '{s}.{s}': {s}", .{
+                program.activeSystemId(),
+                component_id,
+                field_name,
+                @errorName(err),
+            });
+            return 0;
+        };
+        const owned_field_name = program.allocator.dupe(u8, field_name) catch {
+            program.setHostError("system '{s}' failed to queue field name for '{s}.{s}': {s}", .{
+                program.activeSystemId(),
+                component_id,
+                field_name,
+                @errorName(error.OutOfMemory),
+            });
+            return 0;
+        };
         fields[index] = .{
-            .name = field_name,
-            .value = componentValueFromLuauType(field_definition.value_type, &raw_field.value) catch |err| {
-                program.setHostError("system '{s}' failed to convert value for '{s}.{s}': {s}", .{
+            .name = owned_field_name,
+            .value = cloneComponentValue(program.allocator, component_value) catch |err| {
+                program.allocator.free(owned_field_name);
+                program.setHostError("system '{s}' failed to queue value for '{s}.{s}': {s}", .{
                     program.activeSystemId(),
                     component_id,
                     field_name,
@@ -1527,17 +1712,40 @@ fn addComponentCallback(
                 return 0;
             },
         };
+        initialized_fields += 1;
     }
 
-    world.setComponent(entity, component_id, fields) catch |err| {
-        program.setHostError("system '{s}' failed to add component '{s}' to entity {d}: {s}", .{
+    const owned_component_id = program.allocator.dupe(u8, component_id) catch {
+        program.setHostError("system '{s}' failed to queue add component '{s}' to entity {d}: {s}", .{
             program.activeSystemId(),
             component_id,
             entity_index,
-            @errorName(err),
+            @errorName(error.OutOfMemory),
         });
         return 0;
     };
+    var component_id_owned = true;
+    defer {
+        if (component_id_owned) {
+            program.allocator.free(owned_component_id);
+        }
+    }
+
+    program.queued_script_commands.append(program.allocator, .{ .add_component = .{
+        .entity = entity,
+        .component_id = owned_component_id,
+        .fields = fields,
+    } }) catch {
+        program.setHostError("system '{s}' failed to queue add component '{s}' to entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity_index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    fields_owned = false;
+    component_id_owned = false;
     return 1;
 }
 
@@ -1558,8 +1766,9 @@ fn removeComponentCallback(
         });
         return 0;
     }
-    _ = world.removeComponent(.{ .index = entity_index, .generation = entity_generation }, component_id) catch |err| {
-        program.setHostError("system '{s}' failed to remove component '{s}' from entity {d}: {s}", .{
+    const entity = runtime.EntityHandle{ .index = entity_index, .generation = entity_generation };
+    _ = world.entity(entity) catch |err| {
+        program.setHostError("system '{s}' failed to queue remove component '{s}' from entity {d}: {s}", .{
             program.activeSystemId(),
             component_id,
             entity_index,
@@ -1567,6 +1776,34 @@ fn removeComponentCallback(
         });
         return 0;
     };
+    const owned_component_id = program.allocator.dupe(u8, component_id) catch {
+        program.setHostError("system '{s}' failed to queue remove component '{s}' from entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity_index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    var component_id_owned = true;
+    defer {
+        if (component_id_owned) {
+            program.allocator.free(owned_component_id);
+        }
+    }
+    program.queued_script_commands.append(program.allocator, .{ .remove_component = .{
+        .entity = entity,
+        .component_id = owned_component_id,
+    } }) catch {
+        program.setHostError("system '{s}' failed to queue remove component '{s}' from entity {d}: {s}", .{
+            program.activeSystemId(),
+            component_id,
+            entity_index,
+            @errorName(error.OutOfMemory),
+        });
+        return 0;
+    };
+    component_id_owned = false;
     return 1;
 }
 
@@ -1683,6 +1920,16 @@ fn stringFromLuau(value: *const c.machina_luau_field_value) []const u8 {
         return "";
     }
     return value.string_data[0..value.string_len];
+}
+
+fn cloneComponentValue(allocator: std.mem.Allocator, value: runtime.ComponentValue) !runtime.ComponentValue {
+    return switch (value) {
+        .boolean => |payload| .{ .boolean = payload },
+        .int => |payload| .{ .int = payload },
+        .float => |payload| .{ .float = payload },
+        .vec3 => |payload| .{ .vec3 = payload },
+        .string => |payload| .{ .string = try allocator.dupe(u8, payload) },
+    };
 }
 
 fn i32FromLuauNumber(value: f64) !i32 {
@@ -1879,8 +2126,9 @@ test "luau entity proxies reject stale generated handles after despawn" {
         \\    value = "int",
         \\  }),
         \\})
+        \\local stale = nil
         \\
-        \\ecs.system("reject_stale_proxy", {
+        \\ecs.system("make_stale_proxy", {
         \\  phase = "startup",
         \\  writes = ecs.refs(Marker),
         \\  run = function(world, _dt)
@@ -1889,12 +2137,15 @@ test "luau entity proxies reject stale generated handles after despawn" {
         \\    local second = world.spawn("second", "Second")
         \\    second:add(Marker, { value = 2 })
         \\    first:despawn()
-        \\    local ok = pcall(function()
-        \\      first:add(Marker, { value = 3 })
-        \\    end)
-        \\    if ok then
-        \\      error("stale proxy unexpectedly mutated a live entity")
-        \\    end
+        \\    stale = first
+        \\  end,
+        \\})
+        \\
+        \\ecs.system("reject_stale_proxy", {
+        \\  phase = "update",
+        \\  writes = ecs.refs(Marker),
+        \\  run = function(_world, _dt)
+        \\    stale:add(Marker, { value = 3 })
         \\  end,
         \\})
         ,
@@ -1908,6 +2159,99 @@ test "luau entity proxies reject stale generated handles after despawn" {
     const second = world.findEntityById("second") orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 1), world.entityCount());
     try std.testing.expectEqual(@as(i32, 2), try world.getInt(second, "marker", "value"));
+    try std.testing.expect(!program.update(&world, 0.25));
+    try std.testing.expectEqual(@as(usize, 1), world.entityCount());
+    try std.testing.expectEqual(@as(i32, 2), try world.getInt(second, "marker", "value"));
+}
+
+test "luau structural commands roll back immediate spawns when a system fails" {
+    var program = try loadSourceProgram(
+        std.testing.allocator,
+        "test.luau",
+        \\--!strict
+        \\
+        \\local Marker = ecs.component("marker", {
+        \\  fields = ecs.fields({
+        \\    value = "int",
+        \\  }),
+        \\})
+        \\
+        \\ecs.system("spawn_then_fail", {
+        \\  phase = "startup",
+        \\  writes = ecs.refs(Marker),
+        \\  run = function(world, _dt)
+        \\    local entity = world.spawn("rolled-back", "Rolled Back")
+        \\    entity:add(Marker, { value = 7 })
+        \\    error("boom")
+        \\  end,
+        \\})
+        ,
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try std.testing.expect(!program.startup(&world));
+    try std.testing.expectEqual(@as(usize, 0), world.entityCount());
+    try std.testing.expect(world.findEntityById("rolled-back") == null);
+}
+
+test "luau queued component adds become visible after system boundary" {
+    var program = try loadSourceProgram(
+        std.testing.allocator,
+        "test.luau",
+        \\--!strict
+        \\
+        \\local Marker = ecs.component("marker", {
+        \\  fields = ecs.fields({
+        \\    value = "int",
+        \\  }),
+        \\})
+        \\local Markers = ecs.query(Marker)
+        \\
+        \\ecs.system("create_marker", {
+        \\  phase = "startup",
+        \\  query = Markers,
+        \\  writes = ecs.refs(Marker),
+        \\  before = { "observe_marker" },
+        \\  run = function(world, _dt)
+        \\    local entity = world.spawn("queued", "Queued")
+        \\    entity:add(Marker, { value = 11 })
+        \\    local count = 0
+        \\    for _entity, _marker in Markers:iter(world) do
+        \\      count += 1
+        \\    end
+        \\    if count ~= 0 then
+        \\      error("queued add was visible inside the mutating system")
+        \\    end
+        \\  end,
+        \\})
+        \\
+        \\ecs.system("observe_marker", {
+        \\  phase = "startup",
+        \\  query = Markers,
+        \\  after = { "create_marker" },
+        \\  run = function(world, _dt)
+        \\    local sum = 0
+        \\    for _entity, marker in Markers:iter(world) do
+        \\      sum += marker.value
+        \\    end
+        \\    if sum ~= 11 then
+        \\      error("queued add was not visible after the system boundary")
+        \\    end
+        \\  end,
+        \\})
+        ,
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try std.testing.expect(program.startup(&world));
+    const entity = world.findEntityById("queued") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(i32, 11), try world.getInt(entity, "marker", "value"));
 }
 
 test "luau component handles can reference engine components without registration" {
@@ -2283,21 +2627,39 @@ test "luau query object plans invalidate when component tables appear" {
         \\})
         \\local Markers = ecs.query(Marker)
         \\
-        \\ecs.system("create_then_query", {
+        \\ecs.system("observe_empty", {
         \\  query = Markers,
+        \\  before = { "create_marker" },
+        \\  run = function(world, _dt)
+        \\    local count = 0
+        \\    for _entity, _marker in Markers:iter(world) do
+        \\      count += 1
+        \\    end
+        \\    if count ~= 0 then
+        \\      error("query unexpectedly found markers")
+        \\    end
+        \\  end,
+        \\})
+        \\
+        \\ecs.system("create_marker", {
+        \\  after = { "observe_empty" },
+        \\  before = { "observe_created" },
         \\  writes = ecs.refs(Marker),
         \\  run = function(world, _dt)
-        \\    local before = 0
-        \\    for _entity, _marker in Markers:iter(world) do
-        \\      before += 1
-        \\    end
         \\    local entity = world.spawn("marker-one", "Marker One")
         \\    entity:add(Marker, { value = 3 })
-        \\    local after = 0
+        \\  end,
+        \\})
+        \\
+        \\ecs.system("observe_created", {
+        \\  query = Markers,
+        \\  after = { "create_marker" },
+        \\  run = function(world, _dt)
+        \\    local sum = 0
         \\    for _entity, marker in Markers:iter(world) do
-        \\      after += marker.value
+        \\      sum += marker.value
         \\    end
-        \\    if before ~= 0 or after ~= 3 then
+        \\    if sum ~= 3 then
         \\      error("query plan did not invalidate")
         \\    end
         \\  end,

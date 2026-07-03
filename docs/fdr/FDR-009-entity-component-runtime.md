@@ -26,6 +26,8 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Scripts can spawn and despawn entities through the ECS facade.
 - Scripts can add and remove registered components through the ECS facade.
 - Script-driven structural mutations are checked against the active system's declared write access.
+- Script component add/remove/despawn operations are queued during a Luau system and flushed after the system returns successfully.
+- Entities spawned during a Luau system are rolled back if that system fails before its queued structural commands flush.
 - Scripts can register new component and system types with project-local or qualified non-reserved ids.
 - Engine-owned and script-defined systems declare phases, read/write component access, and optional before/after ordering relationships.
 - The runtime can build phase-specific system schedule batches from those declarations.
@@ -94,9 +96,15 @@ The entity component runtime is the shared low-level model for game state. It gi
 **Why:** Dense entity removal can move another entity into a removed index. Generation checks prevent stale handles and script proxies from silently aliasing that moved entity. It follows ADR-016.
 **Tradeoff:** Handles are safer but not fully stable across compaction; an old handle to a moved entity also becomes invalid until a stable slot/free-list model exists.
 
+### 11. Defer script structural commands
+
+**Decision:** Luau component add/remove/despawn operations are command-buffered during a system callback and flushed after the callback succeeds. Immediate spawns are tracked and rolled back if the callback fails before flush.
+**Why:** Structural mutation changes query membership and should occur at a scheduler boundary instead of mid-system. This keeps runtime behavior closer to future parallel scheduling and gives failed script systems cleaner rollback semantics. It follows ADR-017.
+**Tradeoff:** Scripts cannot query their own queued component mutations until a later system or frame, and fully queued spawn handles still need a future temporary-handle design.
+
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013, ADR-014, ADR-015, ADR-016
+- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013, ADR-014, ADR-015, ADR-016, ADR-017
 - **FDRs:** FDR-002, FDR-004, FDR-005, FDR-010, FDR-011, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions
@@ -104,5 +112,6 @@ The entity component runtime is the shared low-level model for game state. It gi
 - What stable id format should entities use?
 - Should entity handles eventually use stable slots and a free list instead of dense indices that invalidate moved handles?
 - How much scheduler control should scripts get beyond phases, access declarations, and before/after relationships?
-- When should structural mutations move from immediate execution to deferred command buffers?
+- Should script structural command buffers flush after each system, each schedule batch, or each phase once parallel execution is introduced?
+- Should command flushes gain all-or-nothing transaction rollback, or should preflight validation make flush-time failures impossible?
 - Which additional field types need bulk query view support beyond `f32` and `vec3`?

@@ -73,6 +73,7 @@ ECS runtime:
 - Scene loading builds a world, scripts register ECS component/system types, and rendering queries renderable components from that world.
 - Script systems can spawn/despawn entities and add/remove components through the ECS facade.
 - Structural mutations must respect declared write access.
+- Luau component add/remove/despawn calls are queued during the active system and flushed only after that system returns successfully; do not write examples/tests that expect same-callback queries to see queued structural changes.
 - Script system runtime profiling is collected at the scheduler dispatch boundary and exposed as rolling per-system snapshots for editor UI.
 
 Luau scripting:

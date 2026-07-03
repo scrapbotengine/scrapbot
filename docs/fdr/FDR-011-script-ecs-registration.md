@@ -35,6 +35,8 @@ Script ECS registration lets project and package scripts define new component an
 - Script systems can call entity facade methods to add/remove registered components or despawn entities.
 - Adding/removing a component requires the active system to declare write access to that component.
 - Despawning an entity requires the active system to declare write access to every component currently attached to the entity.
+- Component add/remove/despawn calls from Luau are queued and flushed only after the current system returns successfully.
+- Entities spawned by a failing Luau system are rolled back with that system's unflushed structural command queue.
 - `ecs.component(...)` returns a typed component handle.
 - Component handle type-brand metadata supports editor analysis and is not callable gameplay API.
 - Scripts use `ecs.fields(...)` to declare component field maps with editor-visible field type validation.
@@ -129,9 +131,15 @@ Script ECS registration lets project and package scripts define new component an
 **Why:** Script code can hold proxies past structural mutation. Generation-aware callbacks prevent stale proxies from mutating the wrong live entity after dense removal. It follows ADR-016.
 **Tradeoff:** The host bridge has a wider callback ABI, and stale proxies fail rather than continuing to track entities that moved to a different dense index.
 
+### 13. Flush structural commands after successful systems
+
+**Decision:** Luau structural component/entity commands are buffered during a system and flushed after that system returns successfully.
+**Why:** Systems should not change query membership while they are still executing, and script errors should not leave partially applied queued component mutations. It follows ADR-017.
+**Tradeoff:** A script cannot immediately query components it just added in the same callback; use a later ordered system or later frame for that observation.
+
 ## Related
 
-- **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012, ADR-014, ADR-015, ADR-016
+- **ADRs:** ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012, ADR-014, ADR-015, ADR-016, ADR-017
 - **FDRs:** FDR-004, FDR-009, FDR-010, FDR-012, FDR-013
 
 ## Open Questions
