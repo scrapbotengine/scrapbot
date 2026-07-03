@@ -150,7 +150,6 @@ pub const EditorState = struct {
     dragging_axis: EditorAxis = .none,
     captured_pointer: bool = false,
     system_scroll_offset: usize = 0,
-    system_scroll_down_sign: f32 = -1.0,
     system_scroll_accumulator: f32 = 0.0,
     system_scroll_boundary: EditorScrollBoundary = .none,
     last_pointer: [2]f32 = .{ 0.0, 0.0 },
@@ -250,20 +249,11 @@ fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delt
         return;
     }
 
-    const sign = scrollDirectionSign(scroll_delta_y);
-    if (state.system_scroll_offset == 0 and state.system_scroll_accumulator == 0.0 and sign != state.system_scroll_down_sign) {
-        state.system_scroll_down_sign = sign;
-    }
-
-    const direction = scrollDirectionFromSign(state, sign);
-    if (state.system_scroll_boundary == .bottom and direction == .up) {
-        return;
-    }
-    if (state.system_scroll_boundary == .top and direction == .down) {
+    if (state.system_scroll_boundary != .none) {
         return;
     }
 
-    state.system_scroll_accumulator += scroll_delta_y * state.system_scroll_down_sign;
+    state.system_scroll_accumulator += -scroll_delta_y;
     while (state.system_scroll_accumulator >= 1.0) {
         if (state.system_scroll_offset == max_scroll) {
             state.system_scroll_accumulator = 0.0;
@@ -282,19 +272,6 @@ fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delt
         state.system_scroll_offset -= 1;
         state.system_scroll_accumulator += 1.0;
     }
-}
-
-fn scrollDirectionSign(value: f32) f32 {
-    return if (value < 0.0) -1.0 else 1.0;
-}
-
-const EditorScrollDirection = enum {
-    down,
-    up,
-};
-
-fn scrollDirectionFromSign(state: *const EditorState, sign: f32) EditorScrollDirection {
-    return if (sign == state.system_scroll_down_sign) .down else .up;
 }
 
 pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!EditorUpdate {
@@ -3820,7 +3797,7 @@ test "editor system list uses profile count hint for render-added rows" {
     try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
 }
 
-test "editor system list calibrates positive wheel deltas as down from the top" {
+test "editor system list uses fixed wheel direction" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
 
@@ -3842,15 +3819,7 @@ test "editor system list calibrates positive wheel deltas as down from the top" 
         .system_profiles = &profiles,
         .pointer = .{ .wheel_delta = .{ 0.0, 1.0 } },
     });
-    try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
-    try std.testing.expectEqual(@as(f32, 1.0), editor_state.system_scroll_down_sign);
-
-    _ = try updateEditorState(&world, &editor_state, .{
-        .debug_overlay_visible = true,
-        .system_profiles = &profiles,
-        .pointer = .{ .wheel_delta = .{ 0.0, 1.0 } },
-    });
-    try std.testing.expectEqual(@as(usize, 2), editor_state.system_scroll_offset);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.system_scroll_offset);
 
     _ = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
@@ -3863,6 +3832,18 @@ test "editor system list calibrates positive wheel deltas as down from the top" 
         .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
     });
     try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
+
+    _ = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .system_profiles = &profiles,
+    });
+
+    _ = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .system_profiles = &profiles,
+        .pointer = .{ .wheel_delta = .{ 0.0, 1.0 } },
+    });
+    try std.testing.expectEqual(@as(usize, 0), editor_state.system_scroll_offset);
 }
 
 fn replayEditorScrollFrames(
@@ -3898,7 +3879,6 @@ test "editor system list replay ignores fractional inertial bounce at the bottom
 
     var editor_state = EditorState{
         .system_scroll_offset = 2,
-        .system_scroll_down_sign = -1.0,
     };
 
     const bounce_frames = [_]f32{
@@ -3910,20 +3890,6 @@ test "editor system list replay ignores fractional inertial bounce at the bottom
     const deliberate_reverse_frames = [_]f32{1.0};
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &deliberate_reverse_frames);
     try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
-
-    var positive_down_state = EditorState{
-        .system_scroll_offset = 2,
-        .system_scroll_down_sign = 1.0,
-    };
-    const positive_down_bounce_frames = [_]f32{
-        -0.18, 0.0, -0.24, 0.0, -0.12, 0.0, -0.2,
-    };
-    try replayEditorScrollFrames(&world, &positive_down_state, &profiles, &positive_down_bounce_frames);
-    try std.testing.expectEqual(@as(usize, 2), positive_down_state.system_scroll_offset);
-
-    const positive_down_reverse_frames = [_]f32{-1.0};
-    try replayEditorScrollFrames(&world, &positive_down_state, &profiles, &positive_down_reverse_frames);
-    try std.testing.expectEqual(@as(usize, 1), positive_down_state.system_scroll_offset);
 }
 
 test "editor system list replay stays pinned through large boundary bounce stream" {
@@ -3942,14 +3908,14 @@ test "editor system list replay stays pinned through large boundary bounce strea
         .{ .id = "system.8", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
     };
 
-    var editor_state = EditorState{ .system_scroll_down_sign = 1.0 };
+    var editor_state = EditorState{};
     const frames = [_]f32{
-        1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 0.75, -2.0, 1.0,
+        -1.0, -1.0, -1.0, 1.0, 1.0, -0.75, 2.0, -1.0,
     };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &frames);
     try std.testing.expectEqual(@as(usize, 2), editor_state.system_scroll_offset);
 
-    const deliberate_reverse_after_idle = [_]f32{ 0.0, -1.0 };
+    const deliberate_reverse_after_idle = [_]f32{ 0.0, 1.0 };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &deliberate_reverse_after_idle);
     try std.testing.expectEqual(@as(usize, 1), editor_state.system_scroll_offset);
 }
