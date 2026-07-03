@@ -1,7 +1,7 @@
 # FDR-005: Engine UI Primitives
 
 **Status:** Active
-**Last reviewed:** 2026-07-02
+**Last reviewed:** 2026-07-03
 
 ## Overview
 
@@ -18,6 +18,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - Headful runs can toggle the engine-owned editor/debug overlay with Ctrl+Tab.
 - Headful runs hide the engine-owned editor/debug overlay by default; `machina run --editor` starts with it visible.
 - The first engine-owned editor/debug overlay displays current FPS over the rendered scene.
+- The engine-owned editor/debug overlay also hosts the first editor playback controls and selected-entity inspector; detailed behavior is tracked in FDR-018.
 - When live system profiling data is available, the editor/debug overlay lists active systems with their phase, rolling average runtime over the current profiling window, and last sample runtime.
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
 - The first system performance view caps visible rows and reports that additional systems exist instead of providing scrolling.
@@ -78,7 +79,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 ## Related
 
 - **ADRs:** ADR-001, ADR-004, ADR-007, ADR-008, ADR-013
-- **FDRs:** FDR-001, FDR-002, FDR-003, FDR-007, FDR-008, FDR-009
+- **FDRs:** FDR-001, FDR-002, FDR-003, FDR-007, FDR-008, FDR-009, FDR-018
 
 ## Open Questions
 

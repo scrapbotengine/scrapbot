@@ -41,10 +41,28 @@ const editor_debug_panel_width: f32 = 176.0;
 const editor_system_panel_width: f32 = 780.0;
 const editor_debug_fps_size: f32 = 1.5;
 const editor_system_text_size: f32 = 1.0;
-const editor_system_header_y: f32 = 86.0;
-const editor_system_first_row_y: f32 = 122.0;
+const editor_system_header_y: f32 = 104.0;
+const editor_system_first_row_y: f32 = 140.0;
 const editor_system_row_stride: f32 = 36.0;
 const render_system_profile_window_frames: usize = 120;
+const editor_controls_panel_width: f32 = 360.0;
+const editor_controls_panel_height: f32 = 94.0;
+const editor_controls_panel_x: f32 = 12.0;
+const editor_controls_panel_y: f32 = 12.0;
+const editor_control_button_y: f32 = 56.0;
+const editor_play_button_x: f32 = 28.0;
+const editor_step_button_x: f32 = 154.0;
+const editor_control_button_width: f32 = 104.0;
+const editor_control_button_height: f32 = 34.0;
+const editor_inspector_panel_width: f32 = 430.0;
+const editor_inspector_panel_height: f32 = 548.0;
+const editor_inspector_panel_margin: f32 = 12.0;
+const editor_inspector_text_size: f32 = 1.0;
+const editor_inspector_line_stride: f32 = 28.0;
+const editor_inspector_max_lines: usize = 18;
+const editor_gizmo_axis_length: f32 = 1.25;
+const editor_gizmo_axis_thickness: f32 = 0.035;
+const editor_gizmo_pick_radius_px: f32 = 18.0;
 
 pub const RenderError = error{
     NoAdapter,
@@ -103,12 +121,47 @@ pub const PointerInput = struct {
     }
 };
 
+pub const EditorAxis = enum {
+    none,
+    x,
+    y,
+    z,
+};
+
+pub const EditorState = struct {
+    paused: bool = false,
+    selected_entity: ?runtime.EntityHandle = null,
+    dragging_axis: EditorAxis = .none,
+    captured_pointer: bool = false,
+    last_pointer: [2]f32 = .{ 0.0, 0.0 },
+    has_last_pointer: bool = false,
+};
+
+pub const EditorFrameState = struct {
+    paused: bool = false,
+    selected_entity: ?runtime.EntityHandle = null,
+    dragging_axis: EditorAxis = .none,
+    entity_count: usize = 0,
+    component_instance_count: usize = 0,
+    renderable_count: usize = 0,
+};
+
+pub const EditorUpdate = struct {
+    consumed_pointer: bool = false,
+    step_once: bool = false,
+};
+
+pub const EditorError = runtime.WorldError || error{InvalidScene};
+
 pub const FrameInput = struct {
     pointer: PointerInput = .{},
     ui_visible: bool = true,
     debug_overlay_visible: bool = false,
     editor_toggle_pressed: bool = false,
     fps: f32 = 0.0,
+    viewport_width: f32 = 0.0,
+    viewport_height: f32 = 0.0,
+    editor: EditorFrameState = .{},
     system_profiles: []const runtime.SystemProfileSnapshot = &.{},
 
     fn beginFrame(self: *FrameInput) void {
@@ -124,6 +177,79 @@ fn toggleDebugOverlay(input: *FrameInput) void {
 
 fn isEditorToggleShortcut(key: sdl.SDL_Keycode, modifiers: sdl.SDL_Keymod) bool {
     return key == sdl.SDLK_TAB and (modifiers & sdl.SDL_KMOD_CTRL) != 0;
+}
+
+pub fn editorFrameState(world: *const runtime.World, state: EditorState) EditorFrameState {
+    return .{
+        .paused = state.paused,
+        .selected_entity = validatedEditorSelection(world, state.selected_entity),
+        .dragging_axis = state.dragging_axis,
+        .entity_count = world.entityCount(),
+        .component_instance_count = world.componentInstanceCount(),
+        .renderable_count = world.renderableMeshCount(),
+    };
+}
+
+pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!EditorUpdate {
+    state.selected_entity = validatedEditorSelection(world, state.selected_entity);
+    if (!input.debug_overlay_visible or !input.pointer.has_position) {
+        state.dragging_axis = .none;
+        state.captured_pointer = false;
+        state.has_last_pointer = false;
+        return .{};
+    }
+
+    const release_consumes = input.pointer.primary_released and
+        (state.captured_pointer or state.dragging_axis != .none or hitEditorChrome(input));
+    if (input.pointer.primary_released) {
+        state.dragging_axis = .none;
+        state.captured_pointer = false;
+        state.has_last_pointer = false;
+    }
+
+    if (input.pointer.primary_pressed) {
+        if (hitEditorPlayButton(input.pointer.position)) {
+            state.paused = !state.paused;
+            state.captured_pointer = true;
+            return .{ .consumed_pointer = true };
+        }
+        if (hitEditorStepButton(input.pointer.position)) {
+            state.paused = true;
+            state.captured_pointer = true;
+            return .{ .consumed_pointer = true, .step_once = true };
+        }
+        if (hitEditorChrome(input)) {
+            state.captured_pointer = true;
+            return .{ .consumed_pointer = true };
+        }
+
+        if (state.selected_entity) |selected| {
+            const axis = try pickEditorGizmoAxis(world, selected, input);
+            if (axis != .none) {
+                state.dragging_axis = axis;
+                state.captured_pointer = true;
+                state.last_pointer = input.pointer.position;
+                state.has_last_pointer = true;
+                return .{ .consumed_pointer = true };
+            }
+        }
+
+        state.selected_entity = try pickRenderableEntity(world, input);
+        state.captured_pointer = state.selected_entity != null;
+        return .{ .consumed_pointer = state.selected_entity != null };
+    }
+
+    if (input.pointer.primary_down and state.dragging_axis != .none) {
+        try dragSelectedEntity(world, state, input);
+        return .{ .consumed_pointer = true };
+    }
+
+    if (release_consumes) {
+        return .{ .consumed_pointer = true };
+    }
+
+    state.has_last_pointer = false;
+    return .{};
 }
 
 pub fn stats(allocator: std.mem.Allocator, scene: Scene) RenderError!Stats {
@@ -365,6 +491,8 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         }
 
         const delta_seconds: f32 = 0.025;
+        input.viewport_width = @floatFromInt(width);
+        input.viewport_height = @floatFromInt(height);
         if (options.frame_update) |frame_update| {
             frame_update.step(frame_update.context, delta_seconds, &input);
         }
@@ -582,6 +710,10 @@ const RenderEcsState = struct {
             mesh_index += 1;
         }
 
+        if (input.debug_overlay_visible) {
+            try extractEditorGizmoInto(self.allocator, &next_world, scene.world, input);
+        }
+
         if (input.ui_visible) {
             var ui_canvas_index: usize = 0;
             var ui_canvas_cursor: usize = 0;
@@ -608,7 +740,7 @@ const RenderEcsState = struct {
         }
 
         if (input.debug_overlay_visible) {
-            try extractDebugOverlayInto(self.allocator, &next_world, input);
+            try extractDebugOverlayInto(self.allocator, &next_world, input, scene.world);
         }
 
         try extractCameraInto(&next_world, try cameraState(scene.world));
@@ -973,6 +1105,67 @@ fn extractMeshInto(
     }
 }
 
+fn extractEditorGizmoInto(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    scene_world: *const runtime.World,
+    input: FrameInput,
+) RenderError!void {
+    const selected = input.editor.selected_entity orelse return;
+    const selected_transform = (scene_world.getTransform(selected) catch return RenderError.InvalidScene) orelse return;
+    const axes = [_]struct {
+        id: []const u8,
+        axis: EditorAxis,
+        position_offset: [3]f32,
+        scale: [3]f32,
+        color: [3]f32,
+        active_color: [3]f32,
+    }{
+        .{
+            .id = "x",
+            .axis = .x,
+            .position_offset = .{ editor_gizmo_axis_length * 0.5, 0.0, 0.0 },
+            .scale = .{ editor_gizmo_axis_length, editor_gizmo_axis_thickness, editor_gizmo_axis_thickness },
+            .color = .{ 0.94, 0.267, 0.267 },
+            .active_color = .{ 1.0, 0.455, 0.455 },
+        },
+        .{
+            .id = "y",
+            .axis = .y,
+            .position_offset = .{ 0.0, editor_gizmo_axis_length * 0.5, 0.0 },
+            .scale = .{ editor_gizmo_axis_thickness, editor_gizmo_axis_length, editor_gizmo_axis_thickness },
+            .color = .{ 0.133, 0.773, 0.369 },
+            .active_color = .{ 0.455, 0.914, 0.573 },
+        },
+        .{
+            .id = "z",
+            .axis = .z,
+            .position_offset = .{ 0.0, 0.0, editor_gizmo_axis_length * 0.5 },
+            .scale = .{ editor_gizmo_axis_thickness, editor_gizmo_axis_thickness, editor_gizmo_axis_length },
+            .color = .{ 0.231, 0.51, 0.965 },
+            .active_color = .{ 0.576, 0.773, 0.992 },
+        },
+    };
+
+    for (axes) |entry| {
+        const entity_id = std.fmt.allocPrint(allocator, "machina.editor.gizmo.{s}", .{entry.id}) catch return RenderError.OutOfMemory;
+        defer allocator.free(entity_id);
+        const entity = world.createEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
+        world.setTransform(entity, .{
+            .position = addVec3(selected_transform.position, entry.position_offset),
+            .scale = entry.scale,
+        }) catch |err| return mapWorldError(err);
+        world.setGeometryPrimitive(entity, .{
+            .primitive = "box",
+            .segments = 0,
+            .rings = 0,
+        }) catch |err| return mapWorldError(err);
+        world.setSurfaceMaterial(entity, .{
+            .base_color = if (input.editor.dragging_axis == entry.axis) entry.active_color else entry.color,
+        }) catch |err| return mapWorldError(err);
+    }
+}
+
 fn extractUiCanvasInto(
     allocator: std.mem.Allocator,
     world: *runtime.World,
@@ -1028,17 +1221,11 @@ fn extractDebugOverlayInto(
     allocator: std.mem.Allocator,
     world: *runtime.World,
     input: FrameInput,
+    scene_world: *const runtime.World,
 ) RenderError!void {
     const profile_rows = @min(input.system_profiles.len, editor_system_profile_max_rows);
     const has_profiles = input.system_profiles.len > 0;
-    const panel_width: f32 = if (has_profiles) editor_system_panel_width else editor_debug_panel_width;
-    var panel_height: f32 = 92.0;
-    if (has_profiles) {
-        panel_height = 132.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
-        if (input.system_profiles.len > profile_rows) {
-            panel_height += editor_system_row_stride;
-        }
-    }
+    const panel_size = editorDebugPanelSize(input);
 
     const canvas = world.createEntity("machina.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
     world.setUiCanvas(canvas) catch |err| return mapWorldError(err);
@@ -1046,14 +1233,14 @@ fn extractDebugOverlayInto(
     const panel = world.createEntity("machina.editor.debug.panel", "Editor Debug Panel") catch |err| return mapWorldError(err);
     world.setUiRect(panel, .{
         .position = .{ 12.0, 12.0, 0.0 },
-        .size = .{ panel_width, panel_height, 0.0 },
+        .size = .{ panel_size[0], panel_size[1], 0.0 },
         .color = .{ 0.059, 0.09, 0.165 },
     }) catch |err| return mapWorldError(err);
 
     const accent = world.createEntity("machina.editor.debug.accent", "Editor Debug Accent") catch |err| return mapWorldError(err);
     world.setUiRect(accent, .{
         .position = .{ 12.0, 12.0, 0.0 },
-        .size = .{ panel_width, 4.0, 0.0 },
+        .size = .{ panel_size[0], 4.0, 0.0 },
         .color = .{ 0.056, 0.749, 0.823 },
     }) catch |err| return mapWorldError(err);
 
@@ -1068,7 +1255,10 @@ fn extractDebugOverlayInto(
         .value = fps_text,
     }) catch |err| return mapWorldError(err);
 
+    try extractEditorPlaybackControlsInto(world, input);
+
     if (!has_profiles) {
+        try extractEditorInspectorInto(allocator, world, scene_world, input);
         return;
     }
 
@@ -1107,6 +1297,209 @@ fn extractDebugOverlayInto(
             .value = overflow_text,
         }) catch |err| return mapWorldError(err);
     }
+
+    try extractEditorInspectorInto(allocator, world, scene_world, input);
+}
+
+fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) RenderError!void {
+    const play_label = if (input.editor.paused) "PLAY" else "PAUSE";
+    const play_color: [3]f32 = if (input.editor.paused) .{ 0.063, 0.725, 0.506 } else .{ 0.961, 0.62, 0.043 };
+    const play = world.createEntity("machina.editor.controls.play", "Editor Play Button") catch |err| return mapWorldError(err);
+    world.setUiRect(play, .{
+        .position = .{ editor_play_button_x, editor_control_button_y, 0.0 },
+        .size = .{ editor_control_button_width, editor_control_button_height, 0.0 },
+        .color = play_color,
+    }) catch |err| return mapWorldError(err);
+    const play_text = world.createEntity("machina.editor.controls.play.label", "Editor Play Label") catch |err| return mapWorldError(err);
+    world.setUiText(play_text, .{
+        .position = .{ editor_play_button_x + 18.0, editor_control_button_y + 8.0, 0.0 },
+        .size = 1.0,
+        .color = .{ 0.953, 0.969, 0.996 },
+        .value = play_label,
+    }) catch |err| return mapWorldError(err);
+
+    const step = world.createEntity("machina.editor.controls.step", "Editor Step Button") catch |err| return mapWorldError(err);
+    world.setUiRect(step, .{
+        .position = .{ editor_step_button_x, editor_control_button_y, 0.0 },
+        .size = .{ editor_control_button_width, editor_control_button_height, 0.0 },
+        .color = .{ 0.129, 0.161, 0.216 },
+    }) catch |err| return mapWorldError(err);
+    const step_text = world.createEntity("machina.editor.controls.step.label", "Editor Step Label") catch |err| return mapWorldError(err);
+    world.setUiText(step_text, .{
+        .position = .{ editor_step_button_x + 22.0, editor_control_button_y + 8.0, 0.0 },
+        .size = 1.0,
+        .color = .{ 0.889, 0.949, 0.992 },
+        .value = "STEP",
+    }) catch |err| return mapWorldError(err);
+}
+
+fn extractEditorInspectorInto(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    scene_world: *const runtime.World,
+    input: FrameInput,
+) RenderError!void {
+    const panel_x = @max(editorViewportWidth(input) - editor_inspector_panel_width - editor_inspector_panel_margin, editor_inspector_panel_margin);
+    const panel_y = editor_inspector_panel_margin;
+
+    const panel = world.createEntity("machina.editor.inspector.panel", "Editor Inspector Panel") catch |err| return mapWorldError(err);
+    world.setUiRect(panel, .{
+        .position = .{ panel_x, panel_y, 0.0 },
+        .size = .{ editor_inspector_panel_width, editor_inspector_panel_height, 0.0 },
+        .color = .{ 0.059, 0.09, 0.165 },
+    }) catch |err| return mapWorldError(err);
+
+    const accent = world.createEntity("machina.editor.inspector.accent", "Editor Inspector Accent") catch |err| return mapWorldError(err);
+    world.setUiRect(accent, .{
+        .position = .{ panel_x, panel_y, 0.0 },
+        .size = .{ editor_inspector_panel_width, 4.0, 0.0 },
+        .color = .{ 0.056, 0.749, 0.823 },
+    }) catch |err| return mapWorldError(err);
+
+    var row: usize = 0;
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "INSPECTOR", 1.15, .{ 0.93, 0.969, 1.0 });
+    row += 1;
+
+    const counts = std.fmt.allocPrint(allocator, "ENTITIES {d} COMPONENTS {d}", .{
+        input.editor.entity_count,
+        input.editor.component_instance_count,
+    }) catch return RenderError.OutOfMemory;
+    defer allocator.free(counts);
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, counts, editor_inspector_text_size, .{ 0.56, 0.737, 0.949 });
+    row += 1;
+
+    const renderables = std.fmt.allocPrint(allocator, "RENDERABLES {d}", .{input.editor.renderable_count}) catch return RenderError.OutOfMemory;
+    defer allocator.free(renderables);
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, renderables, editor_inspector_text_size, .{ 0.56, 0.737, 0.949 });
+    row += 1;
+
+    const selected = input.editor.selected_entity orelse {
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "NO ENTITY SELECTED", editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+        row += 1;
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "CLICK A MESH", editor_inspector_text_size, .{ 0.647, 0.725, 0.839 });
+        return;
+    };
+
+    const entity = scene_world.entity(selected) catch {
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "SELECTION UNAVAILABLE", editor_inspector_text_size, .{ 0.992, 0.443, 0.443 });
+        return;
+    };
+
+    const handle = std.fmt.allocPrint(allocator, "HANDLE {d}:{d}", .{ selected.index, selected.generation }) catch return RenderError.OutOfMemory;
+    defer allocator.free(handle);
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, handle, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+    row += 1;
+
+    const name = std.fmt.allocPrint(allocator, "NAME {s}", .{entity.name}) catch return RenderError.OutOfMemory;
+    defer allocator.free(name);
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, name, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+    row += 1;
+
+    const id = std.fmt.allocPrint(allocator, "ID {s}", .{entity.id}) catch return RenderError.OutOfMemory;
+    defer allocator.free(id);
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, id, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+    row += 1;
+
+    if (scene_world.getTransform(selected) catch null) |transform_value| {
+        const position = formatInspectorVec3(allocator, "POS", transform_value.position) catch return RenderError.OutOfMemory;
+        defer allocator.free(position);
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, position, editor_inspector_text_size, .{ 0.86, 0.917, 0.996 });
+        row += 1;
+    }
+
+    var overflow = false;
+    var components = scene_world.entityComponents(selected) catch {
+        return;
+    };
+    while (components.next()) |component_id| {
+        if (row >= editor_inspector_max_lines) {
+            overflow = true;
+            break;
+        }
+        const component_line = std.fmt.allocPrint(allocator, "[{s}]", .{component_id}) catch return RenderError.OutOfMemory;
+        defer allocator.free(component_line);
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, component_line, editor_inspector_text_size, .{ 0.253, 0.827, 0.933 });
+        row += 1;
+
+        const field_count = scene_world.componentFieldCount(component_id);
+        for (0..field_count) |field_index| {
+            if (row >= editor_inspector_max_lines) {
+                overflow = true;
+                break;
+            }
+            const field_name = scene_world.componentFieldNameAt(component_id, field_index) orelse continue;
+            const value = scene_world.getComponentFieldValue(selected, component_id, field_name) catch continue;
+            const field_line = formatInspectorFieldValue(allocator, field_name, value) catch return RenderError.OutOfMemory;
+            defer allocator.free(field_line);
+            try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, field_line, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+            row += 1;
+        }
+        if (overflow) {
+            break;
+        }
+    }
+
+    if (overflow and row < editor_inspector_max_lines + 1) {
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "... MORE", editor_inspector_text_size, .{ 0.56, 0.737, 0.949 });
+    }
+}
+
+fn extractEditorInspectorLine(
+    allocator: std.mem.Allocator,
+    world: *runtime.World,
+    row: usize,
+    panel_x: f32,
+    panel_y: f32,
+    value: []const u8,
+    size: f32,
+    color: [3]f32,
+) RenderError!void {
+    const entity_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.line.{d}", .{row}) catch return RenderError.OutOfMemory;
+    defer allocator.free(entity_id);
+    const entity = world.createEntity(entity_id, "Editor Inspector Line") catch |err| return mapWorldError(err);
+    world.setUiText(entity, .{
+        .position = .{
+            panel_x + 16.0,
+            panel_y + 18.0 + @as(f32, @floatFromInt(row)) * editor_inspector_line_stride,
+            0.0,
+        },
+        .size = size,
+        .color = color,
+        .value = value,
+    }) catch |err| return mapWorldError(err);
+}
+
+fn formatInspectorVec3(allocator: std.mem.Allocator, label: []const u8, value: [3]f32) error{OutOfMemory}![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s} {d:.2} {d:.2} {d:.2}", .{ label, value[0], value[1], value[2] });
+}
+
+fn formatInspectorFieldValue(allocator: std.mem.Allocator, field_name: []const u8, value: runtime.ComponentValue) error{OutOfMemory}![]const u8 {
+    return switch (value) {
+        .boolean => |payload| std.fmt.allocPrint(allocator, "  {s} {s}", .{ field_name, if (payload) "TRUE" else "FALSE" }),
+        .int => |payload| std.fmt.allocPrint(allocator, "  {s} {d}", .{ field_name, payload }),
+        .float => |payload| std.fmt.allocPrint(allocator, "  {s} {d:.3}", .{ field_name, payload }),
+        .vec3 => |payload| std.fmt.allocPrint(allocator, "  {s} {d:.2} {d:.2} {d:.2}", .{ field_name, payload[0], payload[1], payload[2] }),
+        .string => |payload| blk: {
+            const max_len: usize = 26;
+            const visible = if (payload.len > max_len) payload[0..max_len] else payload;
+            const suffix = if (payload.len > max_len) "..." else "";
+            break :blk std.fmt.allocPrint(allocator, "  {s} {s}{s}", .{ field_name, visible, suffix });
+        },
+    };
+}
+
+fn editorDebugPanelSize(input: FrameInput) [2]f32 {
+    const profile_rows = @min(input.system_profiles.len, editor_system_profile_max_rows);
+    const has_profiles = input.system_profiles.len > 0;
+    const panel_width: f32 = if (has_profiles) editor_system_panel_width else editor_controls_panel_width;
+    var panel_height: f32 = 108.0;
+    if (has_profiles) {
+        panel_height = 150.0 + @as(f32, @floatFromInt(profile_rows)) * editor_system_row_stride;
+        if (input.system_profiles.len > profile_rows) {
+            panel_height += editor_system_row_stride;
+        }
+    }
+    return .{ panel_width, panel_height };
 }
 
 fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]const u8 {
@@ -2546,6 +2939,206 @@ fn validateDirectionalLight(light: DirectionalLightState) RenderError!Directiona
     return light;
 }
 
+const EditorRay = struct {
+    origin: [3]f32,
+    direction: [3]f32,
+};
+
+fn validatedEditorSelection(world: *const runtime.World, selected: ?runtime.EntityHandle) ?runtime.EntityHandle {
+    const entity = selected orelse return null;
+    _ = world.entity(entity) catch return null;
+    if (!(world.hasComponent(entity, runtime.transform_component_id) catch return null)) {
+        return null;
+    }
+    if (!(world.hasComponent(entity, runtime.geometry_primitive_component_id) catch false) and
+        !(world.hasComponent(entity, runtime.cube_renderer_component_id) catch false))
+    {
+        return null;
+    }
+    return entity;
+}
+
+fn pickRenderableEntity(world: *const runtime.World, input: FrameInput) EditorError!?runtime.EntityHandle {
+    const ray = try editorRayFromInput(world, input);
+    var best_entity: ?runtime.EntityHandle = null;
+    var best_t = std.math.inf(f32);
+
+    var meshes = world.renderableMeshes();
+    while (meshes.next()) |mesh| {
+        const radius = editorPickRadiusForMesh(mesh);
+        const hit_t = intersectRaySphere(ray, mesh.position, radius) orelse continue;
+        if (hit_t >= 0.0 and hit_t < best_t) {
+            best_t = hit_t;
+            best_entity = mesh.entity;
+        }
+    }
+
+    return best_entity;
+}
+
+fn pickEditorGizmoAxis(world: *const runtime.World, selected: runtime.EntityHandle, input: FrameInput) EditorError!EditorAxis {
+    const transform_value = (try world.getTransform(selected)) orelse return .none;
+    const camera = cameraState(world) catch return error.InvalidScene;
+    const origin_screen = projectWorldToScreen(transform_value.position, camera, input) orelse return .none;
+    const axes = [_]struct {
+        axis: EditorAxis,
+        vector: [3]f32,
+    }{
+        .{ .axis = .x, .vector = .{ 1.0, 0.0, 0.0 } },
+        .{ .axis = .y, .vector = .{ 0.0, 1.0, 0.0 } },
+        .{ .axis = .z, .vector = .{ 0.0, 0.0, 1.0 } },
+    };
+
+    var best_axis = EditorAxis.none;
+    var best_distance = editor_gizmo_pick_radius_px;
+    for (axes) |entry| {
+        const end_screen = projectWorldToScreen(addVec3(transform_value.position, scaleVec3(entry.vector, editor_gizmo_axis_length)), camera, input) orelse continue;
+        const distance = distancePointToScreenSegment(input.pointer.position, origin_screen, end_screen);
+        if (distance < best_distance) {
+            best_distance = distance;
+            best_axis = entry.axis;
+        }
+    }
+    return best_axis;
+}
+
+fn dragSelectedEntity(world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!void {
+    const selected = state.selected_entity orelse return;
+    const transform_value = (try world.getTransform(selected)) orelse return;
+    if (!state.has_last_pointer) {
+        state.last_pointer = input.pointer.position;
+        state.has_last_pointer = true;
+        return;
+    }
+
+    const axis = editorAxisVector(state.dragging_axis) orelse return;
+    const camera = cameraState(world) catch return error.InvalidScene;
+    const origin_screen = projectWorldToScreen(transform_value.position, camera, input) orelse return;
+    const axis_screen_end = projectWorldToScreen(addVec3(transform_value.position, scaleVec3(axis, editor_gizmo_axis_length)), camera, input) orelse return;
+    const axis_screen_delta = subtractVec2(axis_screen_end, origin_screen);
+    const axis_screen_length = vec2Length(axis_screen_delta);
+    if (axis_screen_length < 0.001) {
+        state.last_pointer = input.pointer.position;
+        return;
+    }
+
+    const axis_screen = scaleVec2(axis_screen_delta, 1.0 / axis_screen_length);
+    const pointer_delta = subtractVec2(input.pointer.position, state.last_pointer);
+    const projected_pixels = dotVec2(pointer_delta, axis_screen);
+    const camera_distance = vec3Length(subtractVec3(transform_value.position, camera.transform.position));
+    const units_per_pixel = @max(camera_distance, 1.0) * 0.0025;
+    const world_delta = projected_pixels * units_per_pixel;
+    const next_position = addVec3(transform_value.position, scaleVec3(axis, world_delta));
+
+    try world.setVec3(selected, runtime.transform_component_id, "position", next_position);
+    state.last_pointer = input.pointer.position;
+}
+
+fn editorRayFromInput(world: *const runtime.World, input: FrameInput) EditorError!EditorRay {
+    const width = editorViewportWidth(input);
+    const height = editorViewportHeight(input);
+    if (width <= 0.0 or height <= 0.0) {
+        return error.InvalidScene;
+    }
+    const camera = cameraState(world) catch return error.InvalidScene;
+    const aspect = width / height;
+    const tan_half_fov = @tan(std.math.degreesToRadians(camera.fov_y_degrees) * 0.5);
+    const ndc_x = (input.pointer.position[0] / width) * 2.0 - 1.0;
+    const ndc_y = 1.0 - (input.pointer.position[1] / height) * 2.0;
+    const local_direction = normalizeVec3(.{
+        ndc_x * tan_half_fov * aspect,
+        ndc_y * tan_half_fov,
+        -1.0,
+    });
+    return .{
+        .origin = camera.transform.position,
+        .direction = rotateDirection(camera.transform.rotation, local_direction),
+    };
+}
+
+fn projectWorldToScreen(position: [3]f32, camera_value: CameraState, input: FrameInput) ?[2]f32 {
+    const width = editorViewportWidth(input);
+    const height = editorViewportHeight(input);
+    if (width <= 0.0 or height <= 0.0) {
+        return null;
+    }
+    const camera = validateCamera(camera_value) catch return null;
+    const view = cameraViewMatrix(camera.transform);
+    const projection = perspective(std.math.degreesToRadians(camera.fov_y_degrees), width / height, camera.near, camera.far);
+    const clip = transformPoint(matMul(projection, view), .{ position[0], position[1], position[2], 1.0 });
+    if (@abs(clip[3]) < 0.00001) {
+        return null;
+    }
+    const ndc_x = clip[0] / clip[3];
+    const ndc_y = clip[1] / clip[3];
+    if (!std.math.isFinite(ndc_x) or !std.math.isFinite(ndc_y)) {
+        return null;
+    }
+    return .{
+        (ndc_x + 1.0) * 0.5 * width,
+        (1.0 - ndc_y) * 0.5 * height,
+    };
+}
+
+fn intersectRaySphere(ray: EditorRay, center: [3]f32, radius: f32) ?f32 {
+    const oc = subtractVec3(ray.origin, center);
+    const a = dotVec3(ray.direction, ray.direction);
+    const b = 2.0 * dotVec3(oc, ray.direction);
+    const c = dotVec3(oc, oc) - radius * radius;
+    const discriminant = b * b - 4.0 * a * c;
+    if (discriminant < 0.0) {
+        return null;
+    }
+    const root = @sqrt(discriminant);
+    const near_t = (-b - root) / (2.0 * a);
+    if (near_t >= 0.0) {
+        return near_t;
+    }
+    const far_t = (-b + root) / (2.0 * a);
+    return if (far_t >= 0.0) far_t else null;
+}
+
+fn editorPickRadiusForMesh(mesh: runtime.RenderableMesh) f32 {
+    return @max(@max(@abs(mesh.scale[0]), @abs(mesh.scale[1])), @abs(mesh.scale[2])) * 1.25;
+}
+
+fn editorAxisVector(axis: EditorAxis) ?[3]f32 {
+    return switch (axis) {
+        .none => null,
+        .x => .{ 1.0, 0.0, 0.0 },
+        .y => .{ 0.0, 1.0, 0.0 },
+        .z => .{ 0.0, 0.0, 1.0 },
+    };
+}
+
+fn hitEditorPlayButton(position: [2]f32) bool {
+    return pointInsideScreenRect(position, .{ editor_play_button_x, editor_control_button_y }, .{ editor_control_button_width, editor_control_button_height });
+}
+
+fn hitEditorStepButton(position: [2]f32) bool {
+    return pointInsideScreenRect(position, .{ editor_step_button_x, editor_control_button_y }, .{ editor_control_button_width, editor_control_button_height });
+}
+
+fn hitEditorChrome(input: FrameInput) bool {
+    const width = editorViewportWidth(input);
+    const inspector_x = @max(width - editor_inspector_panel_width - editor_inspector_panel_margin, editor_inspector_panel_margin);
+    const debug_panel_size = editorDebugPanelSize(input);
+    return pointInsideScreenRect(input.pointer.position, .{ editor_controls_panel_x, editor_controls_panel_y }, debug_panel_size) or
+        pointInsideScreenRect(input.pointer.position, .{ inspector_x, editor_inspector_panel_margin }, .{ editor_inspector_panel_width, editor_inspector_panel_height });
+}
+
+fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
+    return position[0] >= origin[0] and position[1] >= origin[1] and position[0] <= origin[0] + size[0] and position[1] <= origin[1] + size[1];
+}
+
+fn editorViewportWidth(input: FrameInput) f32 {
+    return if (input.viewport_width > 0.0) input.viewport_width else @as(f32, @floatFromInt(output_width));
+}
+
+fn editorViewportHeight(input: FrameInput) f32 {
+    return if (input.viewport_height > 0.0) input.viewport_height else @as(f32, @floatFromInt(output_height));
+}
+
 fn cameraViewMatrix(transform_value: runtime.Transform) [16]f32 {
     const inverse_translation = translation(
         -transform_value.position[0],
@@ -2576,6 +3169,10 @@ fn lookAt(eye: [3]f32, target: [3]f32, up: [3]f32) [16]f32 {
 
 fn isFiniteVec3(value: [3]f32) bool {
     return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
+}
+
+fn addVec3(left: [3]f32, right: [3]f32) [3]f32 {
+    return .{ left[0] + right[0], left[1] + right[1], left[2] + right[2] };
 }
 
 fn subtractVec3(left: [3]f32, right: [3]f32) [3]f32 {
@@ -2610,6 +3207,59 @@ fn vec3Length(value: [3]f32) f32 {
     return @sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
 }
 
+fn addVec2(left: [2]f32, right: [2]f32) [2]f32 {
+    return .{ left[0] + right[0], left[1] + right[1] };
+}
+
+fn subtractVec2(left: [2]f32, right: [2]f32) [2]f32 {
+    return .{ left[0] - right[0], left[1] - right[1] };
+}
+
+fn scaleVec2(value: [2]f32, scalar: f32) [2]f32 {
+    return .{ value[0] * scalar, value[1] * scalar };
+}
+
+fn dotVec2(left: [2]f32, right: [2]f32) f32 {
+    return left[0] * right[0] + left[1] * right[1];
+}
+
+fn vec2Length(value: [2]f32) f32 {
+    return @sqrt(value[0] * value[0] + value[1] * value[1]);
+}
+
+fn distancePointToScreenSegment(point: [2]f32, start: [2]f32, end: [2]f32) f32 {
+    const segment = subtractVec2(end, start);
+    const segment_len_sq = dotVec2(segment, segment);
+    if (segment_len_sq <= 0.00001) {
+        return vec2Length(subtractVec2(point, start));
+    }
+    const raw_t = dotVec2(subtractVec2(point, start), segment) / segment_len_sq;
+    const t = @max(0.0, @min(1.0, raw_t));
+    const closest = addVec2(start, scaleVec2(segment, t));
+    return vec2Length(subtractVec2(point, closest));
+}
+
+fn rotateDirection(rotation: [3]f32, direction: [3]f32) [3]f32 {
+    const matrix = matMul(
+        rotationZ(rotation[2]),
+        matMul(
+            rotationY(rotation[1]),
+            rotationX(rotation[0]),
+        ),
+    );
+    const rotated = transformPoint(matrix, .{ direction[0], direction[1], direction[2], 0.0 });
+    return normalizeVec3(.{ rotated[0], rotated[1], rotated[2] });
+}
+
+fn transformPoint(matrix: [16]f32, point: [4]f32) [4]f32 {
+    return .{
+        matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12] * point[3],
+        matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13] * point[3],
+        matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14] * point[3],
+        matrix[3] * point[0] + matrix[7] * point[1] + matrix[11] * point[2] + matrix[15] * point[3],
+    };
+}
+
 test "camera state falls back only when no camera component exists" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
@@ -2624,6 +3274,111 @@ test "camera state falls back only when no camera component exists" {
     try world.setTransform(camera_entity, .{ .position = .{ 0.0, 0.0, 6.0 } });
     const resolved = try cameraState(&world);
     try std.testing.expectEqual(@as(f32, 6.0), resolved.transform.position[2]);
+}
+
+test "editor raycast selects nearest renderable mesh" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const far = try world.createEntity("far", "Far");
+    try world.setTransform(far, .{ .position = .{ 0.0, 0.0, -2.0 } });
+    try world.setCubeRenderer(far, .{ .color = .{ 0.2, 0.4, 0.8 } });
+
+    const near = try world.createEntity("near", "Near");
+    try world.setTransform(near, .{ .position = .{ 0.0, 0.0, 0.0 } });
+    try world.setCubeRenderer(near, .{ .color = .{ 0.8, 0.4, 0.2 } });
+
+    var editor_state = EditorState{};
+    const update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 960.0,
+        .viewport_height = 540.0,
+        .pointer = .{
+            .position = .{ 480.0, 270.0 },
+            .has_position = true,
+            .primary_pressed = true,
+            .primary_down = true,
+        },
+    });
+
+    try std.testing.expect(update.consumed_pointer);
+    try std.testing.expect(editor_state.selected_entity != null);
+    try std.testing.expectEqual(near.index, editor_state.selected_entity.?.index);
+    try std.testing.expectEqual(near.generation, editor_state.selected_entity.?.generation);
+}
+
+test "editor gizmo drag mutates selected transform position" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("selected", "Selected");
+    try world.setTransform(entity, .{ .position = .{ 0.0, 0.0, 0.0 } });
+    try world.setCubeRenderer(entity, .{ .color = .{ 0.8, 0.4, 0.2 } });
+
+    var editor_state = EditorState{
+        .selected_entity = entity,
+        .dragging_axis = .x,
+        .last_pointer = .{ 480.0, 270.0 },
+        .has_last_pointer = true,
+    };
+    const update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 960.0,
+        .viewport_height = 540.0,
+        .pointer = .{
+            .position = .{ 520.0, 270.0 },
+            .has_position = true,
+            .primary_down = true,
+        },
+    });
+
+    const transform_value = (try world.getTransform(entity)) orelse return error.TestExpectedEqual;
+    try std.testing.expect(update.consumed_pointer);
+    try std.testing.expect(transform_value.position[0] > 0.0);
+    try std.testing.expectEqual(@as(f32, 0.0), transform_value.position[1]);
+    try std.testing.expectEqual(@as(f32, 0.0), transform_value.position[2]);
+}
+
+test "editor playback controls toggle pause and request single step" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    var editor_state = EditorState{};
+    const pause_update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .pointer = .{
+            .position = .{ editor_play_button_x + 4.0, editor_control_button_y + 4.0 },
+            .has_position = true,
+            .primary_pressed = true,
+            .primary_down = true,
+        },
+    });
+    try std.testing.expect(pause_update.consumed_pointer);
+    try std.testing.expect(editor_state.paused);
+
+    const release_update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .pointer = .{
+            .position = .{ editor_play_button_x + 4.0, editor_control_button_y + 4.0 },
+            .has_position = true,
+            .primary_released = true,
+        },
+    });
+    try std.testing.expect(release_update.consumed_pointer);
+    try std.testing.expect(!editor_state.captured_pointer);
+
+    const step_update = try updateEditorState(&world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .pointer = .{
+            .position = .{ editor_step_button_x + 4.0, editor_control_button_y + 4.0 },
+            .has_position = true,
+            .primary_pressed = true,
+            .primary_down = true,
+        },
+    });
+    try std.testing.expect(step_update.consumed_pointer);
+    try std.testing.expect(step_update.step_once);
+    try std.testing.expect(editor_state.paused);
 }
 
 test "render ECS schedule orders extract prepare queue and draw systems" {
@@ -2974,8 +3729,8 @@ test "debug overlay extracts FPS label when visible" {
     });
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
-    try std.testing.expectEqual(@as(usize, 2), state.world.uiRectCount());
-    try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
+    try std.testing.expectEqual(@as(usize, 6), state.world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 8), state.world.uiTextCount());
 
     const label = state.world.uiTextAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("FPS 60", label.value);
@@ -3020,12 +3775,14 @@ test "debug overlay extracts system profile rows when available" {
         .system_profiles = &profiles,
     });
 
-    try std.testing.expectEqual(@as(usize, 2), state.world.uiRectCount());
-    try std.testing.expectEqual(@as(usize, 4), state.world.uiTextCount());
+    try std.testing.expectEqual(@as(usize, 6), state.world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 11), state.world.uiTextCount());
 
     var saw_header = false;
     var saw_startup = false;
     var saw_update = false;
+    var saw_pause = false;
+    var saw_no_selection = false;
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
         try std.testing.expect(text.size >= 1.0);
@@ -3038,11 +3795,59 @@ test "debug overlay extracts system profile rows when available" {
         if (std.mem.indexOf(u8, text.value, "update rotate_cubes avg 57us last 123us") != null) {
             saw_update = true;
         }
+        if (std.mem.indexOf(u8, text.value, "PAUSE") != null) {
+            saw_pause = true;
+        }
+        if (std.mem.indexOf(u8, text.value, "NO ENTITY SELECTED") != null) {
+            saw_no_selection = true;
+        }
     }
 
     try std.testing.expect(saw_header);
     try std.testing.expect(saw_startup);
     try std.testing.expect(saw_update);
+    try std.testing.expect(saw_pause);
+    try std.testing.expect(saw_no_selection);
+}
+
+test "editor overlay extracts selected entity inspector and translate gizmo" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    const entity = try scene_world.createEntity("selected", "Selected Box");
+    try scene_world.setTransform(entity, .{ .position = .{ 0.25, 0.5, 0.0 } });
+    try scene_world.setCubeRenderer(entity, .{ .color = .{ 0.8, 0.4, 0.2 } });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 960.0,
+        .viewport_height = 540.0,
+        .editor = .{
+            .selected_entity = entity,
+            .entity_count = scene_world.entityCount(),
+            .component_instance_count = scene_world.componentInstanceCount(),
+            .renderable_count = scene_world.renderableMeshCount(),
+        },
+    });
+
+    try std.testing.expectEqual(@as(usize, 4), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 6), state.world.uiRectCount());
+
+    var saw_handle = false;
+    var saw_transform = false;
+    var texts = state.world.uiTexts();
+    while (texts.next()) |text| {
+        if (std.mem.indexOf(u8, text.value, "HANDLE") != null) {
+            saw_handle = true;
+        }
+        if (std.mem.indexOf(u8, text.value, "[machina.transform]") != null) {
+            saw_transform = true;
+        }
+    }
+    try std.testing.expect(saw_handle);
+    try std.testing.expect(saw_transform);
 }
 
 test "render ECS profiles internal systems for editor overlay" {

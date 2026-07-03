@@ -17,6 +17,8 @@ pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
 pub const FrameInput = render.FrameInput;
 pub const PointerInput = render.PointerInput;
+pub const EditorFrameState = render.EditorFrameState;
+pub const EditorState = render.EditorState;
 pub const RenderScene = render.Scene;
 pub const RenderStats = render.Stats;
 pub const RenderVerification = render_verify.Verification;
@@ -230,6 +232,7 @@ pub const LiveProject = struct {
     last_failed_script_stamp: ?SourceFileStamp = null,
     last_failed_native_stamp: ?SourceFileStamp = null,
     last_diagnostic: ?ScriptDiagnostic = null,
+    editor_state: EditorState = .{},
     startup_ran: bool = false,
 
     pub fn init(io: Io, allocator: std.mem.Allocator, root_path: []const u8) !LiveProject {
@@ -287,6 +290,10 @@ pub const LiveProject = struct {
         return self.scripts.systemProfileSnapshots();
     }
 
+    pub fn editorFrameState(self: *const LiveProject) EditorFrameState {
+        return render.editorFrameState(&self.scene.world, self.editor_state);
+    }
+
     pub fn update(self: *LiveProject, delta_seconds: f32) void {
         self.updateWithInput(delta_seconds, .{});
     }
@@ -296,7 +303,22 @@ pub const LiveProject = struct {
         if (!self.runStartup()) {
             return;
         }
-        updateUiCommandEvents(&self.scene.world, input) catch |err| {
+        var routed_input = input;
+        const editor_update = render.updateEditorState(&self.scene.world, &self.editor_state, input) catch |err| {
+            if (std.fmt.allocPrint(self.allocator, "Editor interaction failed: {s}", .{@errorName(err)})) |message| {
+                defer self.allocator.free(message);
+                self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
+            } else |_| {
+                self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, "Editor interaction failed") catch null;
+            }
+            return;
+        };
+        if (editor_update.consumed_pointer) {
+            routed_input.pointer.primary_down = false;
+            routed_input.pointer.primary_pressed = false;
+            routed_input.pointer.primary_released = false;
+        }
+        updateUiCommandEvents(&self.scene.world, routed_input) catch |err| {
             if (std.fmt.allocPrint(self.allocator, "UI command routing failed: {s}", .{@errorName(err)})) |message| {
                 defer self.allocator.free(message);
                 self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
@@ -305,6 +327,9 @@ pub const LiveProject = struct {
             }
             return;
         };
+        if (self.editor_state.paused and !editor_update.step_once) {
+            return;
+        }
         if (!self.scripts.update(&self.scene.world, delta_seconds)) {
             if (self.scripts.last_diagnostic) |diagnostic| {
                 self.last_diagnostic = cloneScriptDiagnostic(self.allocator, diagnostic) catch null;
@@ -2432,6 +2457,75 @@ test "LiveProject update runs the scheduled rotation system" {
     try std.testing.expect(after.rotation[0] > before.rotation[0]);
     try std.testing.expect(after.rotation[1] > before.rotation[1]);
     try std.testing.expectEqual(before.rotation[2], after.rotation[2]);
+}
+
+test "LiveProject editor pause gates scheduled update systems" {
+    const root_path = ".zig-cache/test-live-project-editor-pause";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Game");
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.createDirPath(io, "scripts");
+
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n",
+    });
+    try writeSpinnerScene(io, root_dir);
+    try root_dir.writeFile(io, .{
+        .sub_path = "scripts/gameplay.luau",
+        .data =
+        \\--!strict
+        \\
+        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Spin = ecs.component("spin", {
+        \\  fields = ecs.fields({
+        \\    angular_velocity = "vec3",
+        \\  }),
+        \\})
+        \\local RotatingCubes = ecs.query(Transform, Spin)
+        \\
+        \\ecs.system("rotate_cubes", {
+        \\  query = RotatingCubes,
+        \\  writes = ecs.refs(Transform),
+        \\  run = function(world, dt)
+        \\    for _entity, transform, spin in RotatingCubes:iter(world) do
+        \\      transform.rotation = {
+        \\        transform.rotation[1] + spin.angular_velocity[1] * dt,
+        \\        transform.rotation[2] + spin.angular_velocity[2] * dt,
+        \\        transform.rotation[3] + spin.angular_velocity[3] * dt,
+        \\      }
+        \\    end
+        \\  end,
+        \\})
+        ,
+    });
+
+    var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
+    defer live_project.deinit();
+
+    const entity = live_project.scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
+    const before = (try live_project.scene.world.getTransform(entity)) orelse return error.TestExpectedEqual;
+
+    live_project.editor_state.paused = true;
+    live_project.updateWithInput(0.5, .{});
+
+    const paused_after = (try live_project.scene.world.getTransform(entity)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(before.rotation[0], paused_after.rotation[0]);
+    try std.testing.expectEqual(before.rotation[1], paused_after.rotation[1]);
+    try std.testing.expectEqual(before.rotation[2], paused_after.rotation[2]);
+
+    live_project.editor_state.paused = false;
+    live_project.updateWithInput(0.5, .{});
+
+    const running_after = (try live_project.scene.world.getTransform(entity)) orelse return error.TestExpectedEqual;
+    try std.testing.expect(running_after.rotation[0] > paused_after.rotation[0]);
+    try std.testing.expect(running_after.rotation[1] > paused_after.rotation[1]);
+    try std.testing.expectEqual(paused_after.rotation[2], running_after.rotation[2]);
 }
 
 test "LiveProject emits UI command events before scheduled scripts run" {

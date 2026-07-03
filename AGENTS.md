@@ -60,6 +60,10 @@ Rendering and UI:
 - Command buttons emit transient `machina.ui.command_event` components before update systems run.
 - Headful runs can generate an engine-owned debug overlay in the render ECS world.
 - The debug overlay is hidden by default, `machina run --editor` shows it on startup, Ctrl+Tab toggles it, and the current panel shows FPS plus project/native system timing rows and engine-internal render system timing rows.
+- The editor overlay also owns playback controls, selected-entity inspection, click selection, and the first translate gizmo.
+- Editor selection is generation-aware and should reject stale handles instead of silently selecting whatever now lives at the old dense index.
+- The first click-selection path is CPU renderable-bounds picking; treat triangle-accurate picking, ID-buffer picking, acceleration structures, and selectable non-renderable entities as future design work.
+- The first transform gizmo is world-space translate-only. Do not treat rotation, scale, snapping, local-space axes, hover styling, or undo support as already solved.
 - The renderer owns an internal render world and render-phase schedule built with the same `runtime.World`, component registry, and scheduler implementation as game worlds.
 - Matching geometry and shadow-state renderables are automatically grouped into instanced render batches below the scene authoring surface.
 - Current base color is per-instance and should not split batches.
@@ -132,6 +136,9 @@ Live reload:
 - Keep input and UI interaction state ECS-shaped. SDL or platform event code should translate raw events into frame input; hover, press, focus, command routing, and editor state belong in ECS components/systems.
 - Treat `machina.ui.command_event` as runtime-only transient data. Do not author it in scene files; author `machina.ui.command` on button entities instead.
 - Keep editor/debug UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces; prefer larger sizes for primary readouts and verify compact panels in a headful screenshot or smoke run.
+- Design editor surfaces for large worlds. Prefer selection-first, search, filtering, pagination, or virtualized lists over drawing every entity every frame.
+- Keep editor state engine-owned and live-project authoritative. Playback controls should gate scheduled update systems without creating a renderer-only simulation state.
+- Editor gizmos and editor chrome should be generated as engine-owned render/UI data and should not mutate project scene files or become selectable game entities.
 - Script-defined ECS component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local, qualified dotted ids are for packages/libraries, and `machina.*` is engine-owned. Machina does not infer a default project namespace.
 - Author new Luau component schemas with `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage. If field-schema type inference regresses, fix the Luau type definitions/checker setup or runtime bridge support rather than reverting to marker-value inference.
 - Keep script behavior system-first. Do not introduce arbitrary per-object script callbacks that bypass the component registry or native scheduler.

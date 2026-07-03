@@ -1088,6 +1088,19 @@ pub const World = struct {
         return table.entities.items.len;
     }
 
+    pub fn componentFieldCount(self: World, component_id: []const u8) usize {
+        const table = self.findComponentTable(component_id) orelse return 0;
+        return table.columns.len;
+    }
+
+    pub fn componentFieldNameAt(self: World, component_id: []const u8, field_index: usize) ?[]const u8 {
+        const table = self.findComponentTable(component_id) orelse return null;
+        if (field_index >= table.columns.len) {
+            return null;
+        }
+        return table.columns[field_index].name;
+    }
+
     pub fn entity(self: World, handle: EntityHandle) WorldError!Entity {
         const index = handle.index;
         if (index >= self.entities.items.len) {
@@ -1575,6 +1588,10 @@ pub const World = struct {
 
     fn renderableMeshAtEntity(self: World, handle: EntityHandle) ?RenderableMesh {
         const stored_entity = self.entity(handle) catch return null;
+        const stored_handle = EntityHandle{
+            .index = handle.index,
+            .generation = stored_entity.generation,
+        };
         const transform = (self.getTransform(handle) catch return null) orelse return null;
         const spin = self.getVec3(handle, spin_component_id, "angular_velocity") catch .{ 0.0, 0.0, 0.0 };
         const casts_shadow = self.hasComponent(handle, shadow_caster_component_id) catch false;
@@ -1584,7 +1601,7 @@ pub const World = struct {
             (self.hasComponent(handle, surface_material_component_id) catch false))
         {
             return .{
-                .entity = handle,
+                .entity = stored_handle,
                 .id = stored_entity.id,
                 .name = stored_entity.name,
                 .position = transform.position,
@@ -1602,7 +1619,7 @@ pub const World = struct {
 
         if (self.hasComponent(handle, cube_renderer_component_id) catch false) {
             return .{
-                .entity = handle,
+                .entity = stored_handle,
                 .id = stored_entity.id,
                 .name = stored_entity.name,
                 .position = transform.position,
@@ -2231,6 +2248,28 @@ test "world stores stable entity ids and components" {
     const mesh = world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("box", mesh.primitive);
     try std.testing.expectEqual(@as(f32, 1.0), mesh.base_color[0]);
+    try std.testing.expectEqual(entity.generation, mesh.entity.generation);
+}
+
+test "world exposes component field names for inspection" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("entity-1", "Player");
+    try world.setTransform(entity, .{ .position = .{ 1.0, 2.0, 3.0 } });
+
+    try std.testing.expectEqual(@as(usize, 3), world.componentFieldCount(transform_component_id));
+    try std.testing.expectEqualStrings("position", world.componentFieldNameAt(transform_component_id, 0) orelse return error.TestExpectedEqual);
+    try std.testing.expectEqualStrings("rotation", world.componentFieldNameAt(transform_component_id, 1) orelse return error.TestExpectedEqual);
+    try std.testing.expectEqualStrings("scale", world.componentFieldNameAt(transform_component_id, 2) orelse return error.TestExpectedEqual);
+    try std.testing.expect(world.componentFieldNameAt(transform_component_id, 3) == null);
+    try std.testing.expectEqual(@as(usize, 0), world.componentFieldCount("missing.component"));
+
+    const value = try world.getComponentFieldValue(entity, transform_component_id, "position");
+    switch (value) {
+        .vec3 => |payload| try std.testing.expectEqual(@as(f32, 2.0), payload[1]),
+        else => return error.TestExpectedEqual,
+    }
 }
 
 test "world removes component rows without moving entity handles" {
