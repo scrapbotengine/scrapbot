@@ -74,6 +74,8 @@ ECS runtime:
 - Script systems can spawn/despawn entities and add/remove components through the ECS facade.
 - Structural mutations must respect declared write access.
 - Luau component add/remove/despawn calls are queued during the active system and flushed only after that system returns successfully; do not write examples/tests that expect same-callback queries to see queued structural changes.
+- Native Zig components/systems go through `NativeExtension` and the same `runtime.ComponentRegistry`, `SystemRunner`, schedule, and profiling path as Luau systems; do not add a second ECS or scheduler for native hot paths.
+- Native components register before Luau chunks load; native systems register after Luau components and before Luau systems so both languages can reference each other's component ids.
 - Script system runtime profiling is collected at the scheduler dispatch boundary and exposed as rolling per-system snapshots for editor UI.
 
 Luau scripting:

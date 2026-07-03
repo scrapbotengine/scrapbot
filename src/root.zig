@@ -51,6 +51,12 @@ pub const ScriptError = script.ScriptError;
 pub const ScriptProgram = script.Program;
 pub const ScriptDiagnostic = script.Diagnostic;
 pub const ScriptDiagnosticPosition = script.DiagnosticPosition;
+pub const NativeExtension = script.NativeExtension;
+pub const NativeSystemContext = script.NativeSystemContext;
+pub const NativeSystemFn = script.NativeSystemFn;
+pub const NativeSystemRegistration = script.NativeSystemRegistration;
+pub const loadProjectProgramDetailedWithNative = script.loadProjectProgramDetailedWithNative;
+pub const loadSourceProgramWithNative = script.loadSourceProgramWithNative;
 pub const validateTypeId = runtime.validateTypeId;
 pub const validateProjectTypeId = runtime.validateProjectTypeId;
 pub const validatePackageTypeId = runtime.validatePackageTypeId;
@@ -107,6 +113,7 @@ pub const CheckDetailedResult = union(enum) {
 pub const CheckSystemRunner = enum {
     none,
     luau,
+    native,
 };
 
 pub const CheckSystemSummary = struct {
@@ -903,6 +910,7 @@ fn cloneCheckSystemSummary(allocator: std.mem.Allocator, definition: runtime.Sys
         .runner = switch (definition.runner) {
             .none => .none,
             .luau => .luau,
+            .native => .native,
         },
         .reads = reads,
         .writes = writes,

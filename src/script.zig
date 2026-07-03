@@ -60,6 +60,24 @@ pub const LoadResult = union(enum) {
     diagnostic: Diagnostic,
 };
 
+pub const NativeSystemContext = struct {
+    world: *runtime.World,
+    delta_seconds: f32,
+    system_id: []const u8,
+};
+
+pub const NativeSystemFn = *const fn (*NativeSystemContext) anyerror!void;
+
+pub const NativeSystemRegistration = struct {
+    definition: runtime.SystemDefinition,
+    run: NativeSystemFn,
+};
+
+pub const NativeExtension = struct {
+    components: []const runtime.ComponentDefinition = &.{},
+    systems: []const NativeSystemRegistration = &.{},
+};
+
 const ScriptOrigin = struct {
     index: usize,
     id: []const u8,
@@ -70,6 +88,16 @@ const ScriptOrigin = struct {
     fn deinit(self: ScriptOrigin, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
         allocator.free(self.path);
+    }
+};
+
+const NativeSystemEntry = struct {
+    id: []const u8,
+    run: NativeSystemFn,
+
+    fn deinit(self: *NativeSystemEntry, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        self.* = undefined;
     }
 };
 
@@ -184,6 +212,7 @@ pub const Program = struct {
     active_system: ?*const runtime.ScheduledSystem = null,
     component_origins: std.ArrayList(ScriptOrigin) = .empty,
     system_origins: std.ArrayList(ScriptOrigin) = .empty,
+    native_systems: std.ArrayList(NativeSystemEntry) = .empty,
     system_profiles: std.ArrayList(SystemProfileState) = .empty,
     system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
     queued_script_commands: std.ArrayList(ScriptCommand) = .empty,
@@ -204,6 +233,10 @@ pub const Program = struct {
             origin.deinit(self.allocator);
         }
         self.system_origins.deinit(self.allocator);
+        for (self.native_systems.items) |*native_system| {
+            native_system.deinit(self.allocator);
+        }
+        self.native_systems.deinit(self.allocator);
         for (self.component_origins.items) |origin| {
             origin.deinit(self.allocator);
         }
@@ -244,6 +277,19 @@ pub const Program = struct {
             for (batch.systems) |*system| {
                 switch (system.runner) {
                     .none => self.recordSystemDuration(system.*, phase, 0),
+                    .native => |native_index| {
+                        self.clearHostError();
+                        self.active_system = system;
+                        const started_ns = monotonicTimestampNs();
+                        const system_ok = self.callNativeSystem(system.*, native_index, world, delta_seconds);
+                        self.recordSystemDuration(system.*, phase, elapsedNanosecondsSince(started_ns));
+                        if (!system_ok and self.last_diagnostic == null) {
+                            self.setNativeRuntimeDiagnostic(system.*) catch {};
+                        }
+                        self.active_system = null;
+                        self.clearHostError();
+                        ok = ok and system_ok;
+                    },
                     .luau => |runner_ref| {
                         self.clearHostError();
                         self.active_system = system;
@@ -266,6 +312,30 @@ pub const Program = struct {
             }
         }
         return ok;
+    }
+
+    fn callNativeSystem(
+        self: *Program,
+        system: runtime.ScheduledSystem,
+        native_index: u32,
+        world: *runtime.World,
+        delta_seconds: f32,
+    ) bool {
+        if (native_index >= self.native_systems.items.len) {
+            self.setHostError("native system '{s}' has invalid runner index {d}", .{ system.id, native_index });
+            return false;
+        }
+        const native_system = self.native_systems.items[native_index];
+        var context = NativeSystemContext{
+            .world = world,
+            .delta_seconds = delta_seconds,
+            .system_id = system.id,
+        };
+        native_system.run(&context) catch |err| {
+            self.setHostError("native system '{s}' failed: {s}", .{ system.id, @errorName(err) });
+            return false;
+        };
+        return true;
     }
 
     fn flushQueuedScriptCommands(self: *Program, world: *runtime.World) bool {
@@ -430,6 +500,14 @@ pub const Program = struct {
         });
     }
 
+    fn setNativeRuntimeDiagnostic(self: *Program, system: runtime.ScheduledSystem) !void {
+        self.last_diagnostic = try makeDiagnostic(self.allocator, .{
+            .stage = .runtime,
+            .system_id = system.id,
+            .message = if (self.host_error) |message| message else "native system failed",
+        });
+    }
+
     fn findSystemOrigin(self: Program, system_id: []const u8, runner_ref: u32) ?ScriptOrigin {
         for (self.system_origins.items) |origin| {
             if (origin.runner_ref == runner_ref or std.mem.eql(u8, origin.id, system_id)) {
@@ -459,7 +537,7 @@ pub fn loadProjectProgram(
     root_dir: Io.Dir,
     script_paths: []const []const u8,
 ) !Program {
-    var result = try loadProjectProgramDetailed(io, allocator, root_dir, script_paths);
+    var result = try loadProjectProgramDetailedWithNative(io, allocator, root_dir, script_paths, .{});
     switch (result) {
         .program => |program| return program,
         .diagnostic => |*diagnostic| {
@@ -475,8 +553,24 @@ pub fn loadProjectProgramDetailed(
     root_dir: Io.Dir,
     script_paths: []const []const u8,
 ) !LoadResult {
+    return loadProjectProgramDetailedWithNative(io, allocator, root_dir, script_paths, .{});
+}
+
+pub fn loadProjectProgramDetailedWithNative(
+    io: Io,
+    allocator: std.mem.Allocator,
+    root_dir: Io.Dir,
+    script_paths: []const []const u8,
+    native_extension: NativeExtension,
+) !LoadResult {
     var program = try initProgram(allocator);
     errdefer program.deinit();
+
+    registerNativeComponents(&program, native_extension) catch |err| {
+        const diagnostic = try nativeRegistrationDiagnostic(allocator, null, err);
+        program.deinit();
+        return .{ .diagnostic = diagnostic };
+    };
 
     for (script_paths) |script_path| {
         const contents = try root_dir.readFileAlloc(io, script_path, allocator, .limited(256 * 1024));
@@ -487,7 +581,17 @@ pub fn loadProjectProgramDetailed(
         }
     }
 
-    registerDeclaredTypes(&program) catch |err| {
+    registerDeclaredComponents(&program) catch |err| {
+        const diagnostic = try registrationDiagnostic(&program, err);
+        program.deinit();
+        return .{ .diagnostic = diagnostic };
+    };
+    registerNativeSystems(&program, native_extension) catch |err| {
+        const diagnostic = try nativeRegistrationDiagnostic(allocator, failedNativeSystemId(native_extension, program.native_systems.items.len), err);
+        program.deinit();
+        return .{ .diagnostic = diagnostic };
+    };
+    registerDeclaredSystems(&program) catch |err| {
         const diagnostic = try registrationDiagnostic(&program, err);
         program.deinit();
         return .{ .diagnostic = diagnostic };
@@ -509,14 +613,26 @@ pub fn loadSourceProgram(
     chunk_name: []const u8,
     source: []const u8,
 ) !Program {
+    return loadSourceProgramWithNative(allocator, chunk_name, source, .{});
+}
+
+pub fn loadSourceProgramWithNative(
+    allocator: std.mem.Allocator,
+    chunk_name: []const u8,
+    source: []const u8,
+    native_extension: NativeExtension,
+) !Program {
     var program = try initProgram(allocator);
     errdefer program.deinit();
+    try registerNativeComponents(&program, native_extension);
     if (try loadChunk(&program, chunk_name, source)) |diagnostic| {
         var owned_diagnostic = diagnostic;
         owned_diagnostic.deinit(allocator);
         return ScriptError.InvalidScript;
     }
-    try registerDeclaredTypes(&program);
+    try registerDeclaredComponents(&program);
+    try registerNativeSystems(&program, native_extension);
+    try registerDeclaredSystems(&program);
     program.schedule = try buildRuntimeSchedule(allocator, program.registry);
     try program.initializeSystemProfiles();
     return program;
@@ -603,6 +719,48 @@ fn initProgram(allocator: std.mem.Allocator) !Program {
     };
 }
 
+fn registerNativeComponents(program: *Program, native_extension: NativeExtension) !void {
+    for (native_extension.components) |definition| {
+        try program.registry.registerProjectComponent(definition);
+    }
+}
+
+fn registerNativeSystems(program: *Program, native_extension: NativeExtension) !void {
+    for (native_extension.systems) |registration| {
+        try registerNativeSystem(program, registration);
+    }
+}
+
+fn registerNativeSystem(program: *Program, registration: NativeSystemRegistration) !void {
+    if (program.registry.findSystem(registration.definition.id) != null) {
+        return runtime.RegistryError.DuplicateSystemType;
+    }
+
+    const native_index = std.math.cast(u32, program.native_systems.items.len) orelse return ScriptError.InvalidScript;
+    const owned_id = try program.allocator.dupe(u8, registration.definition.id);
+    errdefer program.allocator.free(owned_id);
+
+    try program.native_systems.append(program.allocator, .{
+        .id = owned_id,
+        .run = registration.run,
+    });
+    errdefer {
+        var removed = program.native_systems.pop().?;
+        removed.deinit(program.allocator);
+    }
+
+    var definition = registration.definition;
+    definition.runner = .{ .native = native_index };
+    try program.registry.registerProjectSystem(definition);
+}
+
+fn failedNativeSystemId(native_extension: NativeExtension, registered_native_systems: usize) ?[]const u8 {
+    if (registered_native_systems < native_extension.systems.len) {
+        return native_extension.systems[registered_native_systems].definition.id;
+    }
+    return null;
+}
+
 fn loadChunk(program: *Program, chunk_name: []const u8, source: []const u8) !?Diagnostic {
     const component_start = c.machina_luau_component_count(program.vm);
     const system_start = c.machina_luau_system_count(program.vm);
@@ -623,7 +781,7 @@ fn loadChunk(program: *Program, chunk_name: []const u8, source: []const u8) !?Di
     return null;
 }
 
-fn registerDeclaredTypes(program: *Program) ScriptError!void {
+fn registerDeclaredComponents(program: *Program) ScriptError!void {
     const component_count = c.machina_luau_component_count(program.vm);
     for (0..component_count) |component_index| {
         var fields: std.ArrayList(runtime.ComponentFieldDefinition) = .empty;
@@ -643,7 +801,9 @@ fn registerDeclaredTypes(program: *Program) ScriptError!void {
             .fields = fields.items,
         });
     }
+}
 
+fn registerDeclaredSystems(program: *Program) ScriptError!void {
     const system_count = c.machina_luau_system_count(program.vm);
     for (0..system_count) |system_index| {
         var reads = try readSystemReads(program.allocator, program.vm, system_index);
@@ -731,6 +891,15 @@ fn registrationDiagnostic(program: *Program, err: anyerror) !Diagnostic {
     return makeDiagnostic(program.allocator, .{
         .stage = .registration,
         .message = message,
+    });
+}
+
+fn nativeRegistrationDiagnostic(allocator: std.mem.Allocator, system_id: ?[]const u8, err: anyerror) !Diagnostic {
+    return makeDiagnostic(allocator, .{
+        .stage = .registration,
+        .path = "native",
+        .system_id = system_id,
+        .message = @errorName(err),
     });
 }
 
@@ -1999,6 +2168,26 @@ fn containsString(values: []const []const u8, needle: []const u8) bool {
     return false;
 }
 
+fn testNativeMoveSystem(context: *NativeSystemContext) anyerror!void {
+    const component_ids = [_][]const u8{ runtime.transform_component_id, "velocity", "boost" };
+    var cursor: usize = 0;
+    while (context.world.queryNext(&component_ids, &cursor)) |entity| {
+        const position = try context.world.getVec3(entity, runtime.transform_component_id, "position");
+        const velocity = try context.world.getVec3(entity, "velocity", "linear");
+        const boost = try context.world.getFloat(entity, "boost", "amount");
+        try context.world.setVec3(entity, runtime.transform_component_id, "position", .{
+            position[0] + velocity[0] * boost * context.delta_seconds,
+            position[1] + velocity[1] * boost * context.delta_seconds,
+            position[2] + velocity[2] * boost * context.delta_seconds,
+        });
+    }
+}
+
+fn testFailingNativeSystem(context: *NativeSystemContext) anyerror!void {
+    _ = context;
+    return error.NativeBoom;
+}
+
 test "luau declarations register components and executable systems" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
@@ -2059,6 +2248,108 @@ test "luau declarations register components and executable systems" {
         try std.testing.expectEqual(@as(u32, 1), profiles[0].sample_count);
         try std.testing.expectEqual(profiles[0].last_ns, profiles[0].rolling_average_ns);
     }
+}
+
+test "native and luau systems share components and scheduling" {
+    const velocity_fields = [_]runtime.ComponentFieldDefinition{
+        .{ .name = "linear", .value_type = .vec3 },
+    };
+    const native_systems = [_]NativeSystemRegistration{
+        .{ .definition = .{
+            .id = "native_move",
+            .phase = .update,
+            .reads = &.{ "velocity", "boost" },
+            .writes = &.{runtime.transform_component_id},
+            .after = &.{"accelerate_velocity"},
+        }, .run = testNativeMoveSystem },
+    };
+    const native_extension = NativeExtension{
+        .components = &.{.{ .id = "velocity", .fields = &velocity_fields }},
+        .systems = &native_systems,
+    };
+
+    var program = try loadSourceProgramWithNative(
+        std.testing.allocator,
+        "test.luau",
+        \\--!strict
+        \\
+        \\local Velocity = ecs.component("velocity")
+        \\local Boost = ecs.component("boost", {
+        \\  fields = ecs.fields({
+        \\    amount = "f32",
+        \\  }),
+        \\})
+        \\local Velocities = ecs.query(Velocity)
+        \\
+        \\ecs.system("accelerate_velocity", {
+        \\  phase = "update",
+        \\  query = Velocities,
+        \\  writes = ecs.refs(Velocity),
+        \\  before = { "native_move" },
+        \\  run = function(world, dt)
+        \\    for _entity, velocity in Velocities:iter(world) do
+        \\      velocity.linear = {
+        \\        velocity.linear[1] + 4.0 * dt,
+        \\        velocity.linear[2],
+        \\        velocity.linear[3],
+        \\      }
+        \\    end
+        \\  end,
+        \\})
+        ,
+        native_extension,
+    );
+    defer program.deinit();
+
+    const native_system = program.registry.findSystem("native_move") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(u32, 0), native_system.runner.native);
+    const luau_system = program.registry.findSystem("accelerate_velocity") orelse return error.TestExpectedEqual;
+    try std.testing.expect(luau_system.runner.luau != 0);
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+    const entity = try world.createEntity("hybrid", "Hybrid");
+    try world.setTransform(entity, .{});
+    try world.setComponent(entity, "velocity", &.{
+        .{ .name = "linear", .value = .{ .vec3 = .{ 1.0, 0.0, 0.0 } } },
+    });
+    try world.setComponent(entity, "boost", &.{
+        .{ .name = "amount", .value = .{ .float = 2.0 } },
+    });
+
+    try std.testing.expect(program.update(&world, 0.5));
+    try std.testing.expectEqual(@as(f32, 3.0), (try world.getVec3(entity, "velocity", "linear"))[0]);
+    try std.testing.expectEqual(@as(f32, 3.0), (try world.getVec3(entity, runtime.transform_component_id, "position"))[0]);
+
+    const profiles = program.systemProfileSnapshots();
+    try std.testing.expectEqual(@as(usize, 2), profiles.len);
+    try std.testing.expectEqual(@as(u32, 1), profiles[0].sample_count);
+    try std.testing.expectEqual(@as(u32, 1), profiles[1].sample_count);
+}
+
+test "native system failures produce runtime diagnostics" {
+    const native_systems = [_]NativeSystemRegistration{
+        .{ .definition = .{
+            .id = "native_fail",
+            .phase = .update,
+        }, .run = testFailingNativeSystem },
+    };
+    var program = try loadSourceProgramWithNative(
+        std.testing.allocator,
+        "test.luau",
+        "--!strict\n",
+        .{ .systems = &native_systems },
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try std.testing.expect(!program.update(&world, 0.1));
+    const diagnostic = program.last_diagnostic orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(DiagnosticStage.runtime, diagnostic.stage);
+    try std.testing.expectEqualStrings("native_fail", diagnostic.system_id orelse return error.TestExpectedEqual);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "NativeBoom") != null);
 }
 
 test "luau systems can spawn despawn add and remove components" {

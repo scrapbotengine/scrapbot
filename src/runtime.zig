@@ -83,6 +83,7 @@ pub const SystemDefinition = struct {
 pub const SystemRunner = union(enum) {
     none,
     luau: u32,
+    native: u32,
 };
 
 pub const SystemProfileSnapshot = struct {
@@ -2156,6 +2157,12 @@ fn systemRunnersEqual(left: SystemRunner, right: SystemRunner) bool {
         .luau => |left_ref| switch (right) {
             .none => false,
             .luau => |right_ref| left_ref == right_ref,
+            .native => false,
+        },
+        .native => |left_ref| switch (right) {
+            .none => false,
+            .luau => false,
+            .native => |right_ref| left_ref == right_ref,
         },
     };
 }

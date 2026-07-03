@@ -30,6 +30,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Entities spawned during a Luau system are rolled back if that system fails before its queued structural commands flush.
 - Scripts can register new component and system types with project-local or qualified non-reserved ids.
 - Engine-owned and script-defined systems declare phases, read/write component access, and optional before/after ordering relationships.
+- Engine-linked native systems use the same registry, schedule, and profiling path as Luau systems.
 - The runtime can build phase-specific system schedule batches from those declarations.
 - The example script-authored system queries entities with `machina.transform` and project-local `spin`, then applies `spin.angular_velocity` to `machina.transform.rotation` during update.
 - Invalid, duplicate, or unsupported entity/component data produces diagnostics suitable for command-line and editor display.
@@ -104,7 +105,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013, ADR-014, ADR-015, ADR-016, ADR-017
+- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-013, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018
 - **FDRs:** FDR-002, FDR-004, FDR-005, FDR-010, FDR-011, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions
