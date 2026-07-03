@@ -85,6 +85,102 @@ color = [0.889, 0.949, 0.992]
 value = "STATUS"
 
 [[entities]]
+id = "nav-scroll-demo"
+name = "Nav Scroll Demo"
+
+[entities.components."machina.ui.rect"]
+position = [44.0, 292.0, 0.0]
+size = [118.0, 124.0, 0.0]
+color = [0.02, 0.027, 0.051]
+
+[entities.components."machina.ui.scroll_view"]
+position = [44.0, 292.0, 0.0]
+size = [118.0, 124.0, 0.0]
+content_offset = [0.0, 24.0, 0.0]
+
+[[entities]]
+id = "nav-scroll-stack"
+name = "Nav Scroll Stack"
+
+[entities.components."machina.ui.vbox"]
+position = [12.0, 10.0, 0.0]
+spacing = 4.0
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-demo"
+order = 0
+
+[[entities]]
+id = "nav-scroll-row-1"
+name = "Nav Scroll Row 1"
+
+[entities.components."machina.ui.text"]
+position = [0.0, 0.0, 0.0]
+size = 1.0
+color = [0.253, 0.827, 0.933]
+value = "SCROLL"
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-stack"
+order = 0
+
+[[entities]]
+id = "nav-scroll-row-2"
+name = "Nav Scroll Row 2"
+
+[entities.components."machina.ui.text"]
+position = [0.0, 0.0, 0.0]
+size = 1.0
+color = [0.889, 0.949, 0.992]
+value = "VBOX"
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-stack"
+order = 1
+
+[[entities]]
+id = "nav-scroll-row-3"
+name = "Nav Scroll Row 3"
+
+[entities.components."machina.ui.text"]
+position = [0.0, 0.0, 0.0]
+size = 1.0
+color = [0.889, 0.949, 0.992]
+value = "ROW 3"
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-stack"
+order = 2
+
+[[entities]]
+id = "nav-scroll-row-4"
+name = "Nav Scroll Row 4"
+
+[entities.components."machina.ui.text"]
+position = [0.0, 0.0, 0.0]
+size = 1.0
+color = [0.647, 0.725, 0.839]
+value = "ROW 4"
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-stack"
+order = 3
+
+[[entities]]
+id = "nav-scroll-row-5"
+name = "Nav Scroll Row 5"
+
+[entities.components."machina.ui.text"]
+position = [0.0, 0.0, 0.0]
+size = 1.0
+color = [0.647, 0.725, 0.839]
+value = "ROW 5"
+
+[entities.components."machina.ui.layout.item"]
+parent = "nav-scroll-stack"
+order = 4
+
+[[entities]]
 id = "content-panel"
 name = "Content Panel"
 

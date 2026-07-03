@@ -42,6 +42,9 @@ pub const ui_button_component_id = "machina.ui.button";
 pub const ui_command_component_id = "machina.ui.command";
 pub const ui_command_event_component_id = "machina.ui.command_event";
 pub const ui_command_event_entity_id = "machina.ui.command_event.current";
+pub const ui_scroll_view_component_id = "machina.ui.scroll_view";
+pub const ui_vbox_component_id = "machina.ui.vbox";
+pub const ui_layout_item_component_id = "machina.ui.layout.item";
 pub const input_entity_id = "machina.input.frame";
 pub const input_pointer_component_id = "machina.input.pointer";
 pub const input_keyboard_component_id = "machina.input.keyboard";
@@ -643,6 +646,37 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .fields = &ui_command_event_fields,
     });
 
+    const ui_scroll_view_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "size", .value_type = .vec3 },
+        .{ .name = "content_offset", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_scroll_view_component_id,
+        .version = 1,
+        .fields = &ui_scroll_view_fields,
+    });
+
+    const ui_vbox_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "spacing", .value_type = .float },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_vbox_component_id,
+        .version = 1,
+        .fields = &ui_vbox_fields,
+    });
+
+    const ui_layout_item_fields = [_]ComponentFieldDefinition{
+        .{ .name = "parent", .value_type = .string },
+        .{ .name = "order", .value_type = .int },
+    };
+    try registry.registerEngineComponent(.{
+        .id = ui_layout_item_component_id,
+        .version = 1,
+        .fields = &ui_layout_item_fields,
+    });
+
     const input_pointer_fields = [_]ComponentFieldDefinition{
         .{ .name = "position", .value_type = .vec3 },
         .{ .name = "has_position", .value_type = .boolean },
@@ -818,6 +852,22 @@ pub const UiTextComponent = struct {
 
 pub const UiCommandComponent = struct {
     command: []const u8,
+};
+
+pub const UiScrollViewComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    size: [3]f32 = .{ 1.0, 1.0, 0.0 },
+    content_offset: [3]f32 = .{ 0.0, 0.0, 0.0 },
+};
+
+pub const UiVBoxComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    spacing: f32 = 0.0,
+};
+
+pub const UiLayoutItemComponent = struct {
+    parent: []const u8,
+    order: i32 = 0,
 };
 
 pub const UiCommandEventComponent = struct {
@@ -1288,6 +1338,31 @@ pub const World = struct {
             .{ .name = "command", .value = .{ .string = command.command } },
         };
         try self.setComponent(handle, ui_command_component_id, &fields);
+    }
+
+    pub fn setUiScrollView(self: *World, handle: EntityHandle, scroll_view: UiScrollViewComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = scroll_view.position } },
+            .{ .name = "size", .value = .{ .vec3 = scroll_view.size } },
+            .{ .name = "content_offset", .value = .{ .vec3 = scroll_view.content_offset } },
+        };
+        try self.setComponent(handle, ui_scroll_view_component_id, &fields);
+    }
+
+    pub fn setUiVBox(self: *World, handle: EntityHandle, vbox: UiVBoxComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = vbox.position } },
+            .{ .name = "spacing", .value = .{ .float = vbox.spacing } },
+        };
+        try self.setComponent(handle, ui_vbox_component_id, &fields);
+    }
+
+    pub fn setUiLayoutItem(self: *World, handle: EntityHandle, item: UiLayoutItemComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "parent", .value = .{ .string = item.parent } },
+            .{ .name = "order", .value = .{ .int = item.order } },
+        };
+        try self.setComponent(handle, ui_layout_item_component_id, &fields);
     }
 
     pub fn setUiCommandEvent(self: *World, handle: EntityHandle, event: UiCommandEventComponent) WorldError!void {
@@ -2824,10 +2899,13 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(ui_button_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_command_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_command_event_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_scroll_view_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_vbox_component_id) != null);
+    try std.testing.expect(registry.findComponent(ui_layout_item_component_id) != null);
     try std.testing.expect(registry.findComponent(input_pointer_component_id) != null);
     try std.testing.expect(registry.findComponent(input_keyboard_component_id) != null);
     try std.testing.expect(registry.findComponent(input_frame_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 17), registry.componentCount());
+    try std.testing.expectEqual(@as(usize, 20), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);

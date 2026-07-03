@@ -10,7 +10,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 ## Behavior
 
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
-- Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, and button command ids.
+- Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, button command ids, scroll views, vertical stacks, and layout child metadata.
 - UI rectangles and text labels use screen-space positions and sizes with a top-left origin.
 - The first UI demo uses Tailwind palette colors for a more disciplined visual baseline.
 - Button markers derive hover, held, and pressed interaction state in headful runs and use that state for button visuals.
@@ -23,10 +23,13 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - When live system profiling data is available, the editor/debug overlay lists active systems with their phase, rolling average runtime over the current profiling window, and last sample runtime.
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
-- The system performance view uses compact fixed-width rows and a clipped smooth-scroll viewport so long system lists remain legible and every system can be reached.
+- The system performance view uses compact fixed-width rows and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached.
 - While the editor/debug overlay is visible, mouse wheel input scrolls the visible system viewport when the system list overflows. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
 - The editor/debug overlay includes a compact input diagnostics row with current wheel delta, pointer position, profiler scroll pixel offset, and scrollable profile count while input routing is still being hardened.
-- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, and script-mutated UI state.
+- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical stacks, and script-mutated UI state.
+- `machina.ui.scroll_view` defines a screen-space viewport with `position`, `size`, and `content_offset` fields. Descendants are offset by `content_offset` and clipped to the viewport.
+- `machina.ui.vbox` defines a vertical stack origin and spacing. Direct children are ordered by `machina.ui.layout.item.order` and stacked by their current primitive height.
+- `machina.ui.layout.item` attaches an entity to a parent entity id and gives it an integer order. Parent ids are stable scene entity ids, not dense runtime handles.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
 - The UI overlay renders after 3D scene content.
@@ -81,11 +84,11 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 **Why:** Measuring at the scheduler boundary keeps the data tied to declared ECS systems and works for human and agent debugging without script instrumentation. It follows ADR-006, ADR-007, and ADR-008.
 **Tradeoff:** The table reports CPU wall time for project and engine-internal render systems. It does not yet include GPU time, parallel worker timing, flame charts, sorting, or drill-down timing history.
 
-### 9. Prove clipped smooth scrolling internally before exposing public layout containers
+### 9. Expose the first layout containers as ECS data
 
-**Decision:** The first overflowing editor list uses an engine-owned target pixel scroll offset, an animated visible pixel offset, a row-height-independent wheel pixel distance, a small vertical layout helper, and an internal render clip component. Machina does not yet expose public `VBox`, `HBox`, or `ScrollContainer` scene components.
-**Why:** Smooth canvas scrolling requires target/display state, fractional content offsets that can settle between rows, frame-time animation, and clipping. The editor needs this behavior immediately, while public layout primitives still need a real ECS component model for children, ordering, clipping, focus, and input routing.
-**Tradeoff:** The editor overlay can prove smooth scrolling and clipping internally before the UI gallery and scene schema gain reusable layout containers.
+**Decision:** Machina exposes `machina.ui.scroll_view`, `machina.ui.vbox`, and `machina.ui.layout.item` as retained ECS components. The editor performance table uses the same public primitives that project scenes can author.
+**Why:** Smooth canvas scrolling requires target/display state, fractional content offsets that can settle between rows, frame-time animation, clipping, and explicit child ordering. Keeping that shape in ECS avoids a renderer-private layout path and gives examples, tools, and future editor surfaces the same data model.
+**Tradeoff:** The first layout model is deliberately small. It has vertical stacking and clipping, but not hbox, flex/grid sizing, padding, focus, scroll bars, virtualization, keyboard navigation, or style inheritance.
 
 ### 10. Treat examples as the primitive gallery
 
@@ -104,8 +107,8 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - How should command ids be namespaced and routed into editor tools or engine services?
 - When should focus and text input become active behavior?
 - What should full keyboard state and text input look like beyond the current modifier/action edge fields?
-- What exact ECS shape should public `VBox`, `HBox`, and `ScrollContainer` primitives use?
-- How should UI containers express clipping, child ordering, padding, spacing, and scroll state?
+- What exact ECS shape should `HBox`, grid/flex sizing, padding, and scroll bars use?
+- How should UI containers express focus, keyboard navigation, virtualization, and style inheritance?
 - What text editing capability is needed before the editor becomes practical?
 - How should the editor expose system-list sorting and drill-down timing history?
 - What should the first user-facing UI primitive library look like beyond raw retained ECS components?

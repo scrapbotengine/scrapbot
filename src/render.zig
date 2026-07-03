@@ -410,6 +410,27 @@ const UiClipRect = struct {
     size: [3]f32,
 };
 
+const UiResolvedLayout = struct {
+    position: [3]f32,
+    clip: ?UiClipRect = null,
+};
+
+const UiLayoutItem = struct {
+    parent: []const u8,
+    order: i32,
+};
+
+const UiScrollView = struct {
+    position: [3]f32,
+    size: [3]f32,
+    content_offset: [3]f32,
+};
+
+const UiVBox = struct {
+    position: [3]f32,
+    spacing: f32,
+};
+
 pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
@@ -925,28 +946,7 @@ const RenderEcsState = struct {
         }
 
         if (input.ui_visible) {
-            var ui_canvas_index: usize = 0;
-            var ui_canvas_cursor: usize = 0;
-            const ui_canvas_query = [_][]const u8{runtime.ui_canvas_component_id};
-            while (scene.world.queryNext(&ui_canvas_query, &ui_canvas_cursor)) |canvas| {
-                const stored_canvas = scene.world.entity(canvas) catch return RenderError.InvalidScene;
-                try extractUiCanvasInto(self.allocator, &next_world, ui_canvas_index, stored_canvas.name);
-                ui_canvas_index += 1;
-            }
-
-            var ui_rect_index: usize = 0;
-            var ui_rects = scene.world.uiRects();
-            while (ui_rects.next()) |rect| {
-                try extractUiRectInto(self.allocator, &next_world, ui_rect_index, rect);
-                ui_rect_index += 1;
-            }
-
-            var ui_text_index: usize = 0;
-            var ui_texts = scene.world.uiTexts();
-            while (ui_texts.next()) |text| {
-                try extractUiTextInto(self.allocator, &next_world, ui_text_index, text);
-                ui_text_index += 1;
-            }
+            try extractSceneUiInto(self.allocator, &next_world, scene.world);
         }
 
         if (input.debug_overlay_visible) {
@@ -974,7 +974,8 @@ const RenderEcsState = struct {
         while (self.world.queryNext(&button_query, &cursor)) |entity| {
             const position = self.world.getVec3(entity, runtime.ui_rect_component_id, "position") catch |err| return mapWorldError(err);
             const size = self.world.getVec3(entity, runtime.ui_rect_component_id, "size") catch |err| return mapWorldError(err);
-            const state = evaluateUiButtonState(input, position, size);
+            const layout = try resolveUiLayout(&self.world, entity, position, size);
+            const state = evaluateUiButtonState(input, layout.position, size, layout.clip);
             try setRenderUiButtonState(&self.world, entity, state);
         }
     }
@@ -1374,55 +1375,64 @@ fn extractEditorGizmoInto(
     }
 }
 
-fn extractUiCanvasInto(
-    allocator: std.mem.Allocator,
-    world: *runtime.World,
-    ui_index: usize,
-    name: []const u8,
-) RenderError!void {
-    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.ui.canvas.{d}", .{ui_index}) catch return RenderError.OutOfMemory;
-    defer allocator.free(entity_id);
+fn extractSceneUiInto(allocator: std.mem.Allocator, render_world: *runtime.World, scene_world: *const runtime.World) RenderError!void {
+    for (0..scene_world.entityCount()) |index| {
+        const source = runtime.EntityHandle{ .index = @intCast(index) };
+        const stored = scene_world.entity(source) catch return RenderError.InvalidScene;
+        if (!hasExtractableUiComponent(scene_world, source)) {
+            continue;
+        }
 
-    const entity = world.createEntity(entity_id, name) catch |err| return mapWorldError(err);
-    world.setUiCanvas(entity) catch |err| return mapWorldError(err);
-}
-
-fn extractUiRectInto(
-    allocator: std.mem.Allocator,
-    world: *runtime.World,
-    ui_index: usize,
-    rect: runtime.UiRect,
-) RenderError!void {
-    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.ui.rect.{d}", .{ui_index}) catch return RenderError.OutOfMemory;
-    defer allocator.free(entity_id);
-
-    const entity = world.createEntity(entity_id, rect.name) catch |err| return mapWorldError(err);
-    world.setUiRect(entity, .{
-        .position = rect.position,
-        .size = rect.size,
-        .color = rect.color,
-    }) catch |err| return mapWorldError(err);
-    if (rect.is_button) {
-        world.setUiButton(entity) catch |err| return mapWorldError(err);
+        const target = render_world.createEntity(stored.id, stored.name) catch |err| return mapWorldError(err);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_canvas_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_rect_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_text_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_button_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_command_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_scroll_view_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_vbox_component_id);
+        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_layout_item_component_id);
     }
 }
 
-fn extractUiTextInto(
-    allocator: std.mem.Allocator,
-    world: *runtime.World,
-    ui_index: usize,
-    text: runtime.UiText,
-) RenderError!void {
-    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.ui.text.{d}", .{ui_index}) catch return RenderError.OutOfMemory;
-    defer allocator.free(entity_id);
+fn hasExtractableUiComponent(world: *const runtime.World, entity: runtime.EntityHandle) bool {
+    return (world.hasComponent(entity, runtime.ui_canvas_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_rect_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_text_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_button_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_command_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_scroll_view_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_vbox_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_layout_item_component_id) catch false);
+}
 
-    const entity = world.createEntity(entity_id, text.name) catch |err| return mapWorldError(err);
-    world.setUiText(entity, .{
-        .position = text.position,
-        .size = text.size,
-        .color = text.color,
-        .value = text.value,
-    }) catch |err| return mapWorldError(err);
+fn copyUiComponent(
+    allocator: std.mem.Allocator,
+    source_world: *const runtime.World,
+    target_world: *runtime.World,
+    source: runtime.EntityHandle,
+    target: runtime.EntityHandle,
+    component_id: []const u8,
+) RenderError!void {
+    if (!(source_world.hasComponent(source, component_id) catch |err| return mapWorldError(err))) {
+        return;
+    }
+
+    var fields: std.ArrayList(runtime.ComponentFieldValue) = .empty;
+    defer fields.deinit(allocator);
+
+    const field_count = source_world.componentFieldCount(component_id);
+    fields.ensureTotalCapacity(allocator, field_count) catch return RenderError.OutOfMemory;
+    for (0..field_count) |field_index| {
+        const field_name = source_world.componentFieldNameAt(component_id, field_index) orelse return RenderError.InvalidScene;
+        const value = source_world.getComponentFieldValue(source, component_id, field_name) catch |err| return mapWorldError(err);
+        fields.appendAssumeCapacity(.{
+            .name = field_name,
+            .value = value,
+        });
+    }
+
+    target_world.setComponent(target, component_id, fields.items) catch |err| return mapWorldError(err);
 }
 
 const EditorVBox = struct {
@@ -1432,7 +1442,7 @@ const EditorVBox = struct {
     x: f32,
     y: f32,
     row_stride: f32,
-    clip: ?UiClipRect = null,
+    layout_parent: ?[]const u8 = null,
     row: usize = 0,
 
     fn init(
@@ -1453,9 +1463,9 @@ const EditorVBox = struct {
         };
     }
 
-    fn withClip(self: EditorVBox, clip: UiClipRect) EditorVBox {
+    fn withLayoutParent(self: EditorVBox, parent: []const u8) EditorVBox {
         var copy = self;
-        copy.clip = clip;
+        copy.layout_parent = parent;
         return copy;
     }
 
@@ -1463,18 +1473,25 @@ const EditorVBox = struct {
         const entity_id = std.fmt.allocPrint(self.allocator, "{s}.{d}", .{ self.id_prefix, self.row }) catch return RenderError.OutOfMemory;
         defer self.allocator.free(entity_id);
         const entity = self.world.createEntity(entity_id, name) catch |err| return mapWorldError(err);
-        self.world.setUiText(entity, .{
-            .position = .{
+        const position = if (self.layout_parent != null)
+            [3]f32{ 0.0, 0.0, 0.0 }
+        else
+            [3]f32{
                 self.x,
                 self.y + @as(f32, @floatFromInt(self.row)) * self.row_stride,
                 0.0,
-            },
+            };
+        self.world.setUiText(entity, .{
+            .position = position,
             .size = size,
             .color = color,
             .value = value,
         }) catch |err| return mapWorldError(err);
-        if (self.clip) |clip| {
-            try setRenderUiClip(self.world, entity, clip);
+        if (self.layout_parent) |parent| {
+            self.world.setUiLayoutItem(entity, .{
+                .parent = parent,
+                .order = @intCast(self.row),
+            }) catch |err| return mapWorldError(err);
         }
         self.row += 1;
     }
@@ -1535,23 +1552,45 @@ fn extractDebugOverlayInto(
         .value = header_text,
     }) catch |err| return mapWorldError(err);
 
-    const visible_range = editorSystemVisibleRange(input);
     const list_clip = editorSystemListClipRect();
+    const system_scroll = world.createEntity("machina.editor.debug.systems.scroll", "Editor Debug Systems Scroll View") catch |err| return mapWorldError(err);
+    world.setUiScrollView(system_scroll, .{
+        .position = list_clip.position,
+        .size = list_clip.size,
+        .content_offset = .{ 0.0, input.editor.system_scroll_y, 0.0 },
+    }) catch |err| return mapWorldError(err);
+
+    const system_stack = world.createEntity("machina.editor.debug.systems.stack", "Editor Debug Systems Stack") catch |err| return mapWorldError(err);
+    const system_row_height = @as(f32, @floatFromInt(ui_font.height)) * editor_system_text_size;
+    world.setUiVBox(system_stack, .{
+        .position = .{
+            28.0 - list_clip.position[0],
+            editor_system_first_row_y - list_clip.position[1],
+            0.0,
+        },
+        .spacing = @max(editor_system_row_stride - system_row_height, 0.0),
+    }) catch |err| return mapWorldError(err);
+    world.setUiLayoutItem(system_stack, .{
+        .parent = "machina.editor.debug.systems.scroll",
+        .order = 0,
+    }) catch |err| return mapWorldError(err);
+
     var system_rows = EditorVBox.init(
         allocator,
         world,
         "machina.editor.debug.systems.row",
-        28.0,
-        editor_system_first_row_y - visible_range.offset_y,
+        0.0,
+        0.0,
         editor_system_row_stride,
-    ).withClip(list_clip);
-    for (input.system_profiles[visible_range.start..visible_range.end]) |profile| {
+    ).withLayoutParent("machina.editor.debug.systems.stack");
+    for (input.system_profiles) |profile| {
         const line_text = formatSystemProfileLine(allocator, profile) catch return RenderError.OutOfMemory;
         defer allocator.free(line_text);
         try system_rows.text("Editor Debug System Row", line_text, editor_system_text_size, .{ 0.889, 0.949, 0.992 });
     }
 
     if (editorSystemNeedsScroll(input.system_profiles.len)) {
+        const visible_range = editorSystemVisibleRange(input);
         const footer_text = std.fmt.allocPrint(allocator, "ROWS {d}-{d}/{d}  WHEEL", .{
             visible_range.start + 1,
             visible_range.end,
@@ -2055,8 +2094,136 @@ fn renderUiClip(world: *const runtime.World, entity: runtime.EntityHandle) Rende
     };
 }
 
-fn evaluateUiButtonState(input: FrameInput, position: [3]f32, size: [3]f32) UiButtonState {
-    const hovered = input.pointer.has_position and runtime.pointInsideUiRect(input.pointer.position, position, size);
+fn uiScrollView(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiScrollView {
+    if (!(world.hasComponent(entity, runtime.ui_scroll_view_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return .{
+        .position = world.getVec3(entity, runtime.ui_scroll_view_component_id, "position") catch |err| return mapWorldError(err),
+        .size = world.getVec3(entity, runtime.ui_scroll_view_component_id, "size") catch |err| return mapWorldError(err),
+        .content_offset = world.getVec3(entity, runtime.ui_scroll_view_component_id, "content_offset") catch |err| return mapWorldError(err),
+    };
+}
+
+fn uiVBox(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiVBox {
+    if (!(world.hasComponent(entity, runtime.ui_vbox_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return .{
+        .position = world.getVec3(entity, runtime.ui_vbox_component_id, "position") catch |err| return mapWorldError(err),
+        .spacing = world.getFloat(entity, runtime.ui_vbox_component_id, "spacing") catch |err| return mapWorldError(err),
+    };
+}
+
+fn uiLayoutItem(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiLayoutItem {
+    if (!(world.hasComponent(entity, runtime.ui_layout_item_component_id) catch |err| return mapWorldError(err))) {
+        return null;
+    }
+    return .{
+        .parent = world.getString(entity, runtime.ui_layout_item_component_id, "parent") catch |err| return mapWorldError(err),
+        .order = world.getInt(entity, runtime.ui_layout_item_component_id, "order") catch |err| return mapWorldError(err),
+    };
+}
+
+fn combineUiClip(a: ?UiClipRect, b: ?UiClipRect) RenderError!?UiClipRect {
+    if (a == null) return b;
+    if (b == null) return a;
+    const left = @max(a.?.position[0], b.?.position[0]);
+    const top = @max(a.?.position[1], b.?.position[1]);
+    const right = @min(a.?.position[0] + a.?.size[0], b.?.position[0] + b.?.size[0]);
+    const bottom = @min(a.?.position[1] + a.?.size[1], b.?.position[1] + b.?.size[1]);
+    if (right <= left or bottom <= top) {
+        return .{ .position = .{ 0.0, 0.0, 0.0 }, .size = .{ 0.0, 0.0, 0.0 } };
+    }
+    return .{
+        .position = .{ left, top, 0.0 },
+        .size = .{ right - left, bottom - top, 0.0 },
+    };
+}
+
+fn resolveUiLayout(world: *const runtime.World, entity: runtime.EntityHandle, local_position: [3]f32, item_size: [3]f32) RenderError!UiResolvedLayout {
+    _ = item_size;
+    var resolved: UiResolvedLayout = .{ .position = local_position };
+    var child = entity;
+
+    const max_depth = 32;
+    for (0..max_depth) |_| {
+        const item = (try uiLayoutItem(world, child)) orelse return resolved;
+        const parent = world.findEntityById(item.parent) orelse return RenderError.InvalidScene;
+
+        if (try uiVBox(world, parent)) |vbox| {
+            resolved.position[0] += vbox.position[0];
+            resolved.position[1] += vbox.position[1] + try uiVBoxChildOffsetY(world, parent, child, item);
+            resolved.position[2] += vbox.position[2];
+        }
+
+        if (try uiScrollView(world, parent)) |scroll_view| {
+            if (!isFiniteVec3(scroll_view.position) or !isFiniteVec3(scroll_view.size) or !isFiniteVec3(scroll_view.content_offset)) {
+                return RenderError.InvalidScene;
+            }
+            resolved.position[0] += scroll_view.position[0] - scroll_view.content_offset[0];
+            resolved.position[1] += scroll_view.position[1] - scroll_view.content_offset[1];
+            resolved.position[2] += scroll_view.position[2] - scroll_view.content_offset[2];
+            resolved.clip = try combineUiClip(resolved.clip, .{
+                .position = scroll_view.position,
+                .size = scroll_view.size,
+            });
+        }
+
+        child = parent;
+    }
+
+    return RenderError.InvalidScene;
+}
+
+fn uiVBoxChildOffsetY(world: *const runtime.World, parent: runtime.EntityHandle, child: runtime.EntityHandle, child_item: UiLayoutItem) RenderError!f32 {
+    const parent_entity = world.entity(parent) catch |err| return mapWorldError(err);
+    const vbox = (try uiVBox(world, parent)) orelse return 0.0;
+    if (!std.math.isFinite(vbox.spacing)) {
+        return RenderError.InvalidScene;
+    }
+
+    var offset: f32 = 0.0;
+    for (0..world.entityCount()) |index| {
+        const sibling = runtime.EntityHandle{ .index = @intCast(index) };
+        const sibling_item = (try uiLayoutItem(world, sibling)) orelse continue;
+        if (!std.mem.eql(u8, sibling_item.parent, parent_entity.id)) {
+            continue;
+        }
+        const before_child = sibling_item.order < child_item.order or
+            (sibling_item.order == child_item.order and sibling.index < child.index);
+        if (!before_child) {
+            continue;
+        }
+        offset += try uiLayoutItemHeight(world, sibling);
+        offset += vbox.spacing;
+    }
+    return offset;
+}
+
+fn uiLayoutItemHeight(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!f32 {
+    if (world.hasComponent(entity, runtime.ui_rect_component_id) catch |err| return mapWorldError(err)) {
+        const size = world.getVec3(entity, runtime.ui_rect_component_id, "size") catch |err| return mapWorldError(err);
+        return size[1];
+    }
+    if (world.hasComponent(entity, runtime.ui_text_component_id) catch |err| return mapWorldError(err)) {
+        const size = world.getFloat(entity, runtime.ui_text_component_id, "size") catch |err| return mapWorldError(err);
+        return @as(f32, @floatFromInt(ui_font.height)) * size;
+    }
+    return 0.0;
+}
+
+fn pointInsideUiClip(point: [2]f32, clip: ?UiClipRect) bool {
+    if (clip) |clip_rect| {
+        return runtime.pointInsideUiRect(point, clip_rect.position, clip_rect.size);
+    }
+    return true;
+}
+
+fn evaluateUiButtonState(input: FrameInput, position: [3]f32, size: [3]f32, clip: ?UiClipRect) UiButtonState {
+    const hovered = input.pointer.has_position and
+        runtime.pointInsideUiRect(input.pointer.position, position, size) and
+        pointInsideUiClip(input.pointer.position, clip);
     return .{
         .hovered = hovered,
         .held = hovered and input.pointer.primary_down,
@@ -4350,6 +4517,54 @@ test "UI hit testing uses half-open screen rects" {
     try std.testing.expect(!runtime.pointInsideUiRect(.{ 31.99, 24.0 }, position, size));
 }
 
+test "UI layout resolves scroll views and vbox rows" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const scroll = try world.createEntity("scroll", "Scroll View");
+    try world.setUiScrollView(scroll, .{
+        .position = .{ 40.0, 50.0, 0.0 },
+        .size = .{ 100.0, 60.0, 0.0 },
+        .content_offset = .{ 0.0, 20.0, 0.0 },
+    });
+
+    const stack = try world.createEntity("stack", "Stack");
+    try world.setUiVBox(stack, .{
+        .position = .{ 8.0, 10.0, 0.0 },
+        .spacing = 4.0,
+    });
+    try world.setUiLayoutItem(stack, .{ .parent = "scroll", .order = 0 });
+
+    const first = try world.createEntity("first", "First");
+    try world.setUiText(first, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .size = 1.0,
+        .value = "FIRST",
+    });
+    try world.setUiLayoutItem(first, .{ .parent = "stack", .order = 0 });
+
+    const second = try world.createEntity("second", "Second");
+    try world.setUiText(second, .{
+        .position = .{ 2.0, 3.0, 0.0 },
+        .size = 1.0,
+        .value = "SECOND",
+    });
+    try world.setUiLayoutItem(second, .{ .parent = "stack", .order = 1 });
+
+    const first_layout = try resolveUiLayout(&world, first, .{ 0.0, 0.0, 0.0 }, .{ 0.0, 32.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 48.0), first_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 40.0), first_layout.position[1], 0.001);
+
+    const second_layout = try resolveUiLayout(&world, second, .{ 2.0, 3.0, 0.0 }, .{ 0.0, 32.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 50.0), second_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 79.0), second_layout.position[1], 0.001);
+    const clip = second_layout.clip orelse return error.TestExpectedEqual;
+    try std.testing.expectApproxEqAbs(@as(f32, 40.0), clip.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 50.0), clip.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 100.0), clip.size[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 60.0), clip.size[1], 0.001);
+}
+
 test "render ECS derives UI button interaction state from frame input" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
@@ -4405,6 +4620,58 @@ test "render ECS derives UI button interaction state from frame input" {
     try std.testing.expect(pressed_state.hovered);
     try std.testing.expect(!pressed_state.held);
     try std.testing.expect(pressed_state.pressed);
+}
+
+test "render ECS hit tests buttons through UI layout clips" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    const scroll = try scene_world.createEntity("scroll", "Scroll View");
+    try scene_world.setUiScrollView(scroll, .{
+        .position = .{ 40.0, 50.0, 0.0 },
+        .size = .{ 60.0, 40.0, 0.0 },
+        .content_offset = .{ 0.0, 0.0, 0.0 },
+    });
+
+    const button = try scene_world.createEntity("button", "Button");
+    try scene_world.setUiRect(button, .{
+        .position = .{ 8.0, 8.0, 0.0 },
+        .size = .{ 30.0, 24.0, 0.0 },
+        .color = .{ 0.1, 0.2, 0.3 },
+    });
+    try scene_world.setUiButton(button);
+    try scene_world.setUiLayoutItem(button, .{ .parent = "scroll", .order = 0 });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .pointer = .{
+            .position = .{ 50.0, 60.0 },
+            .has_position = true,
+            .primary_down = true,
+        },
+    });
+    try state.updateUiInteractions();
+
+    const extracted_button = state.world.findEntityById("button") orelse return error.TestExpectedEqual;
+    const held_state = (try renderUiButtonState(&state.world, extracted_button)) orelse return error.TestExpectedEqual;
+    try std.testing.expect(held_state.hovered);
+    try std.testing.expect(held_state.held);
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .pointer = .{
+            .position = .{ 104.0, 60.0 },
+            .has_position = true,
+            .primary_down = true,
+        },
+    });
+    try state.updateUiInteractions();
+
+    const clipped_button = state.world.findEntityById("button") orelse return error.TestExpectedEqual;
+    const clipped_state = (try renderUiButtonState(&state.world, clipped_button)) orelse return error.TestExpectedEqual;
+    try std.testing.expect(!clipped_state.hovered);
+    try std.testing.expect(!clipped_state.held);
 }
 
 test "hidden UI overlay skips UI extraction but keeps frame input" {
@@ -4684,10 +4951,13 @@ test "debug overlay renders a scrolled system profile window" {
         try std.testing.expect(text.value.len <= 36 or std.mem.indexOf(u8, text.value, "NO ENTITY SELECTED") != null);
     }
 
-    try std.testing.expect(!saw_zero);
+    try std.testing.expect(saw_zero);
     try std.testing.expect(saw_two);
     try std.testing.expect(saw_eight);
     try std.testing.expect(saw_footer);
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_scroll_view_component_id));
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_vbox_component_id));
+    try std.testing.expectEqual(@as(usize, profiles.len + 1), state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id));
 }
 
 test "editor overlay extracts selected entity inspector and translate gizmo" {
@@ -4988,7 +5258,8 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
     var rects = world.uiRects();
     while (rects.next()) |rect| {
         const maybe_button_state = if (rect.is_button) try renderUiButtonState(world, rect.entity) else null;
-        const maybe_clip = try renderUiClip(world, rect.entity);
+        const layout = try resolveUiLayout(world, rect.entity, rect.position, rect.size);
+        const maybe_clip = try combineUiClip(layout.clip, try renderUiClip(world, rect.entity));
         var rect_color = rect.color;
         if (maybe_button_state) |state| {
             if (state.held) {
@@ -5000,7 +5271,7 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
             }
         }
 
-        try appendUiRectClipped(&vertices, allocator, width, height, rect.position, rect.size, rect_color, maybe_clip);
+        try appendUiRectClipped(&vertices, allocator, width, height, layout.position, rect.size, rect_color, maybe_clip);
         if (rect.is_button) {
             var top_color = scaleColor(rect_color, 1.35);
             var bottom_color = scaleColor(rect_color, 0.65);
@@ -5011,13 +5282,13 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
                 }
             }
 
-            try appendUiRectClipped(&vertices, allocator, width, height, rect.position, .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 }, top_color, maybe_clip);
+            try appendUiRectClipped(&vertices, allocator, width, height, layout.position, .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 }, top_color, maybe_clip);
             try appendUiRectClipped(
                 &vertices,
                 allocator,
                 width,
                 height,
-                .{ rect.position[0], rect.position[1] + @max(rect.size[1] - 2.0, 0.0), rect.position[2] },
+                .{ layout.position[0], layout.position[1] + @max(rect.size[1] - 2.0, 0.0), layout.position[2] },
                 .{ rect.size[0], @min(2.0, rect.size[1]), 0.0 },
                 bottom_color,
                 maybe_clip,
@@ -5027,7 +5298,12 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
 
     var texts = world.uiTexts();
     while (texts.next()) |text| {
-        try appendUiText(&vertices, allocator, width, height, text, try renderUiClip(world, text.entity));
+        const text_height = @as(f32, @floatFromInt(ui_font.height)) * text.size;
+        const layout = try resolveUiLayout(world, text.entity, text.position, .{ 0.0, text_height, 0.0 });
+        const maybe_clip = try combineUiClip(layout.clip, try renderUiClip(world, text.entity));
+        var resolved_text = text;
+        resolved_text.position = layout.position;
+        try appendUiText(&vertices, allocator, width, height, resolved_text, maybe_clip);
     }
 
     return vertices;
@@ -5125,8 +5401,11 @@ fn appendUiRectClipped(
     var clipped_position = position;
     var clipped_size = size;
     if (clip) |clip_rect| {
-        if (!isFiniteVec3(clip_rect.position) or !isFiniteVec3(clip_rect.size) or clip_rect.size[0] <= 0.0 or clip_rect.size[1] <= 0.0) {
+        if (!isFiniteVec3(clip_rect.position) or !isFiniteVec3(clip_rect.size)) {
             return RenderError.InvalidScene;
+        }
+        if (clip_rect.size[0] <= 0.0 or clip_rect.size[1] <= 0.0) {
+            return;
         }
         const left_px = @max(position[0], clip_rect.position[0]);
         const top_px = @max(position[1], clip_rect.position[1]);

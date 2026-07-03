@@ -215,6 +215,22 @@ export type MachinaUiCommand = {
     command: string,
 }
 
+export type MachinaUiScrollView = {
+    position: MachinaVec3,
+    size: MachinaVec3,
+    content_offset: MachinaVec3,
+}
+
+export type MachinaUiVBox = {
+    position: MachinaVec3,
+    spacing: number,
+}
+
+export type MachinaUiLayoutItem = {
+    parent: string,
+    order: number,
+}
+
 export type MachinaUiCommandEvent = {
     command: string,
     source: string,

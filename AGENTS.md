@@ -25,7 +25,7 @@ Please add to this list as needed.
 - `examples/spawn_swarm/` demonstrates script-spawned swarm entities with startup-authored renderables and update-driven flock motion.
 - `examples/spawning/` demonstrates script-driven entity spawning from an otherwise empty rendered scene.
 - `examples/ui_overlay/` demonstrates the first engine-native UI primitives rendered from text-authored ECS component data.
-- `examples/ui_gallery/` demonstrates the current retained UI primitive set: panels, text, button markers, command events, and script-mutated UI state.
+- `examples/ui_gallery/` demonstrates the current retained UI primitive set: panels, text, button markers, command events, scroll views, vertical stacks, and script-mutated UI state.
 - `examples/native_motion/` demonstrates a project-local Zig native module declared by the project manifest.
 - `tests/projects/` contains game-shaped project fixtures used only by automated tests. Each runnable fixture has a `test.machina.toml` manifest with frames, timestep, and ECS field assertions.
 - `docs/adr/` records architectural decisions.
@@ -42,7 +42,7 @@ Project data:
 - Projects have a `project.machina.toml` file, a default scene path, and an optional `scripts = [...]` list.
 - Projects may declare one project-local native Zig module with `native = "native/game.zig"`.
 - Scenes are TOML-shaped text files with root `name` and `version` fields plus `[[entities]]` records.
-- Entity data is authored as component tables such as `[entities.components."machina.transform"]`, `[entities.components."machina.geometry.primitive"]`, `[entities.components."machina.material.surface"]`, `[entities.components."machina.camera"]`, `[entities.components."machina.light.directional"]`, shadow markers like `[entities.components."machina.shadow.caster"]`, UI tables like `[entities.components."machina.ui.rect"]`, `[entities.components."machina.ui.text"]`, and `[entities.components."machina.ui.command"]`, and project-local tables like `[entities.components.spin]`.
+- Entity data is authored as component tables such as `[entities.components."machina.transform"]`, `[entities.components."machina.geometry.primitive"]`, `[entities.components."machina.material.surface"]`, `[entities.components."machina.camera"]`, `[entities.components."machina.light.directional"]`, shadow markers like `[entities.components."machina.shadow.caster"]`, UI tables like `[entities.components."machina.ui.rect"]`, `[entities.components."machina.ui.text"]`, `[entities.components."machina.ui.command"]`, `[entities.components."machina.ui.scroll_view"]`, `[entities.components."machina.ui.vbox"]`, and `[entities.components."machina.ui.layout.item"]`, and project-local tables like `[entities.components.spin]`.
 - Scene component ids and fields must validate against the engine/script component registry.
 
 Rendering and UI:
@@ -54,8 +54,11 @@ Rendering and UI:
 - New scene-authored renderables should use `machina.geometry.primitive` plus `machina.material.surface`.
 - `machina.render.cube` is a legacy shortcut that renders as box geometry with inline color.
 - Shadow behavior is authored with `machina.shadow.caster` and `machina.shadow.receiver` marker components.
-- First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.text`, `machina.ui.button`, and `machina.ui.command`.
+- First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.text`, `machina.ui.button`, `machina.ui.command`, `machina.ui.scroll_view`, `machina.ui.vbox`, and `machina.ui.layout.item`.
 - UI renders as a screen-space overlay after 3D content, with fixed-pixel Spleen 16x32-derived built-in text.
+- `machina.ui.scroll_view` provides a clipped screen-space viewport with `position`, `size`, and `content_offset`.
+- `machina.ui.vbox` stacks direct children vertically from its local `position` with `spacing`.
+- `machina.ui.layout.item` attaches an entity to a parent by stable entity id and `order`; do not use dense runtime entity indices as UI parent references.
 - Headful input is translated into ECS frame input.
 - Runtime input is represented as transient engine-owned ECS components on `machina.input.frame`: `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame`.
 - Input components are runtime resources, not scene-authored project data.
@@ -64,7 +67,7 @@ Rendering and UI:
 - Headful runs can generate an engine-owned debug overlay in the render ECS world.
 - The debug overlay is hidden by default, `machina run --editor` shows it on startup, Ctrl+Tab toggles it, and the current panel shows FPS plus project/native system timing rows and engine-internal render system timing rows.
 - The debug overlay displays performance snapshots at a throttled human-readable cadence; keep measuring every frame, but do not make the visible table flicker every frame.
-- The debug overlay performance table uses compact rows and a clipped animated pixel-scroll viewport for long system lists. It should not truncate the list to unreachable rows or regress to row-only, row-snapped, or instant-jump scroll state.
+- The debug overlay performance table uses `machina.ui.scroll_view`, `machina.ui.vbox`, and `machina.ui.layout.item` for its clipped animated pixel-scroll viewport. It should not truncate the list to unreachable rows or regress to row-only, row-snapped, instant-jump scroll state, or private renderer-only list layout.
 - The editor overlay also owns playback controls, selected-entity inspection, click selection, and the first translate gizmo.
 - Editor selection is generation-aware and should reject stale handles instead of silently selecting whatever now lives at the old dense index.
 - The first click-selection path is CPU renderable-bounds picking; treat triangle-accurate picking, ID-buffer picking, acceleration structures, and selectable non-renderable entities as future design work.
@@ -141,6 +144,7 @@ Live reload:
 - Keep input and UI interaction state ECS-shaped. SDL or platform event code should translate raw events into frame input; hover, press, focus, command routing, and editor state belong in ECS components/systems.
 - Do not introduce UI-private or renderer-private input side channels. If a system needs keyboard or pointer state, route it through the shared `machina.input.*` components or explicitly document why that slice cannot yet do so.
 - Treat `machina.ui.command_event` as runtime-only transient data. Do not author it in scene files; author `machina.ui.command` on button entities instead.
+- Prefer reusable retained UI layout primitives over one-off renderer/editor layout shortcuts. Use `machina.ui.scroll_view` for clipped scrollable regions, `machina.ui.vbox` for vertical stacks, and `machina.ui.layout.item` with stable entity-id parents for child ordering.
 - Keep editor/debug UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces; prefer larger sizes for primary readouts and verify compact panels in a headful screenshot or smoke run.
 - Keep editor/debug list rows bounded and readable. Use compact formatting, scrolling, windowing, or pagination for unbounded lists instead of drawing unreachable overflow or hidden `... more` rows.
 - Keep smooth UI scrolling modeled as target pixel/float offsets, animated visible offsets, row-height-independent wheel distances, and clipping. Do not fake smooth scrolling with hidden whole-row windows, row-snapped targets, instant jumps, or by drawing unclipped overflow outside the viewport.
