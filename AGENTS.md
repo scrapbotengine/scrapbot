@@ -68,6 +68,7 @@ Rendering and UI:
 - The debug overlay is hidden by default, `machina run --editor` shows it on startup, Ctrl+Tab toggles it, and the current panel shows FPS plus project/native system timing rows and engine-internal render system timing rows.
 - The debug overlay displays performance snapshots at a throttled human-readable cadence; keep measuring every frame, but do not make the visible table flicker every frame.
 - The debug overlay performance table uses `machina.ui.scroll_view`, `machina.ui.vbox`, and `machina.ui.layout.item` for its clipped animated pixel-scroll viewport. It should not truncate the list to unreachable rows or regress to row-only, row-snapped, instant-jump scroll state, or private renderer-only list layout.
+- The debug overlay performance table should favor readable full system ids and rolling average duration. Do not reintroduce phase prefixes or last-sample columns into the compact row format without a deliberate UI redesign.
 - The editor overlay also owns playback controls, selected-entity inspection, click selection, and the first translate gizmo.
 - Editor selection is generation-aware and should reject stale handles instead of silently selecting whatever now lives at the old dense index.
 - The first click-selection path is CPU renderable-bounds picking; treat triangle-accurate picking, ID-buffer picking, acceleration structures, and selectable non-renderable entities as future design work.

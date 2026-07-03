@@ -38,7 +38,6 @@ const default_window_width = 1280;
 const default_window_height = 720;
 const editor_performance_display_interval_ns: u64 = 333_000_000;
 const editor_system_profile_max_rows = 7;
-const editor_system_profile_id_chars = 12;
 const editor_system_panel_width: f32 = 650.0;
 const editor_debug_fps_size: f32 = 1.6;
 const editor_system_text_size: f32 = 1.0;
@@ -1930,32 +1929,13 @@ fn formatSystemProfileHeader(allocator: std.mem.Allocator, profiles: []const run
 }
 
 fn formatSystemProfileLine(allocator: std.mem.Allocator, profile: runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
-    const phase = systemPhaseLabel(profile.phase);
-    const id_prefix = if (profile.id.len > editor_system_profile_id_chars)
-        profile.id[0 .. editor_system_profile_id_chars - 3]
-    else
-        profile.id;
-    const ellipsis = if (profile.id.len > editor_system_profile_id_chars) "..." else "";
-
     if (profile.sample_count == 0) {
-        return std.fmt.allocPrint(allocator, "{s} {s}{s} avg-- last--", .{
-            phase,
-            id_prefix,
-            ellipsis,
-        });
+        return std.fmt.allocPrint(allocator, "{s} --", .{profile.id});
     }
 
     var average_buffer: [16]u8 = undefined;
-    var last_buffer: [16]u8 = undefined;
     const average = formatDurationShort(&average_buffer, profile.rolling_average_ns);
-    const last = formatDurationShort(&last_buffer, profile.last_ns);
-    return std.fmt.allocPrint(allocator, "{s} {s}{s} avg{s} last{s}", .{
-        phase,
-        id_prefix,
-        ellipsis,
-        average,
-        last,
-    });
+    return std.fmt.allocPrint(allocator, "{s} {s}", .{ profile.id, average });
 }
 
 fn formatDurationShort(buffer: *[16]u8, ns: u64) []const u8 {
@@ -1964,15 +1944,6 @@ fn formatDurationShort(buffer: *[16]u8, ns: u64) []const u8 {
         return std.fmt.bufPrint(buffer, "{d}us", .{micros}) catch "----";
     }
     return std.fmt.bufPrint(buffer, "{d}ms", .{(micros + 500) / 1000}) catch "----";
-}
-
-fn systemPhaseLabel(phase: runtime.SystemPhase) []const u8 {
-    return switch (phase) {
-        .startup => "STA",
-        .update => "UPD",
-        .fixed_update => "FIX",
-        .render => "RND",
-    };
 }
 
 fn nsToMicrosRounded(ns: u64) u64 {
@@ -4883,10 +4854,10 @@ test "debug overlay extracts system profile rows when available" {
         if (std.mem.indexOf(u8, text.value, "SYS 2 AVG 120F SNAP 3HZ") != null) {
             saw_header = true;
         }
-        if (std.mem.indexOf(u8, text.value, "STA spawn_ini... avg-- last--") != null) {
+        if (std.mem.indexOf(u8, text.value, "spawn_initial --") != null) {
             saw_startup = true;
         }
-        if (std.mem.indexOf(u8, text.value, "UPD rotate_cubes avg57us last123us") != null) {
+        if (std.mem.indexOf(u8, text.value, "rotate_cubes 57us") != null) {
             saw_update = true;
         }
         if (std.mem.indexOf(u8, text.value, "PAUSE") != null) {
@@ -4948,7 +4919,6 @@ test "debug overlay renders a scrolled system profile window" {
         if (std.mem.indexOf(u8, text.value, "ROWS 3-9/9  WHEEL") != null) {
             saw_footer = true;
         }
-        try std.testing.expect(text.value.len <= 36 or std.mem.indexOf(u8, text.value, "NO ENTITY SELECTED") != null);
     }
 
     try std.testing.expect(saw_zero);

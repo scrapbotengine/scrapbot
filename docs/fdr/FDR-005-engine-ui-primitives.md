@@ -20,7 +20,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - Headful runs hide the engine-owned editor/debug overlay by default; `machina run --editor` starts with it visible.
 - The first engine-owned editor/debug overlay displays current FPS over the rendered scene.
 - The engine-owned editor/debug overlay also hosts the first editor playback controls and selected-entity inspector; detailed behavior is tracked in FDR-018.
-- When live system profiling data is available, the editor/debug overlay lists active systems with their phase, rolling average runtime over the current profiling window, and last sample runtime.
+- When live system profiling data is available, the editor/debug overlay lists active systems with their full system id and rolling average runtime over the current profiling window.
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
 - The system performance view uses compact fixed-width rows and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached.
