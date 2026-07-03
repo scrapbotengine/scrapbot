@@ -14,7 +14,7 @@ name = "Gallery Shell"
 [entities.components."machina.ui.rect"]
 position = [24.0, 32.0, 0.0]
 size = [592.0, 420.0, 0.0]
-color = [0.059, 0.09, 0.165]
+color = [0.031, 0.041, 0.063]
 
 [[entities]]
 id = "gallery-accent"
@@ -23,7 +23,7 @@ name = "Gallery Accent"
 [entities.components."machina.ui.rect"]
 position = [24.0, 32.0, 0.0]
 size = [592.0, 5.0, 0.0]
-color = [0.056, 0.749, 0.823]
+color = [0.031, 0.431, 0.533]
 
 [[entities]]
 id = "gallery-sidebar"
@@ -32,7 +32,7 @@ name = "Gallery Sidebar"
 [entities.components."machina.ui.rect"]
 position = [24.0, 37.0, 0.0]
 size = [160.0, 415.0, 0.0]
-color = [0.129, 0.161, 0.216]
+color = [0.051, 0.065, 0.094]
 
 [[entities]]
 id = "gallery-title"
@@ -41,7 +41,7 @@ name = "Gallery Title"
 [entities.components."machina.ui.text"]
 position = [48.0, 60.0, 0.0]
 size = 1.25
-color = [0.93, 0.969, 1.0]
+color = [0.886, 0.91, 0.941]
 value = "UI GALLERY"
 
 [[entities]]
@@ -51,7 +51,7 @@ name = "Gallery Subtitle"
 [entities.components."machina.ui.text"]
 position = [48.0, 104.0, 0.0]
 size = 1.0
-color = [0.56, 0.737, 0.949]
+color = [0.58, 0.639, 0.722]
 value = "ECS UI"
 
 [[entities]]
@@ -61,7 +61,7 @@ name = "Nav Panels"
 [entities.components."machina.ui.text"]
 position = [48.0, 164.0, 0.0]
 size = 1.0
-color = [0.889, 0.949, 0.992]
+color = [0.886, 0.91, 0.941]
 value = "PANELS"
 
 [[entities]]
@@ -71,7 +71,7 @@ name = "Nav Buttons"
 [entities.components."machina.ui.text"]
 position = [48.0, 204.0, 0.0]
 size = 1.0
-color = [0.889, 0.949, 0.992]
+color = [0.886, 0.91, 0.941]
 value = "BUTTONS"
 
 [[entities]]
@@ -81,7 +81,7 @@ name = "Nav Status"
 [entities.components."machina.ui.text"]
 position = [48.0, 244.0, 0.0]
 size = 1.0
-color = [0.889, 0.949, 0.992]
+color = [0.886, 0.91, 0.941]
 value = "STATUS"
 
 [[entities]]
@@ -91,7 +91,7 @@ name = "Nav Scroll Demo"
 [entities.components."machina.ui.rect"]
 position = [44.0, 292.0, 0.0]
 size = [118.0, 124.0, 0.0]
-color = [0.02, 0.027, 0.051]
+color = [0.008, 0.012, 0.024]
 
 [entities.components."machina.ui.scroll_view"]
 position = [44.0, 292.0, 0.0]
@@ -117,7 +117,7 @@ name = "Nav Scroll Row 1"
 [entities.components."machina.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
-color = [0.253, 0.827, 0.933]
+color = [0.22, 0.714, 0.82]
 value = "SCROLL"
 
 [entities.components."machina.ui.layout.item"]
@@ -131,7 +131,7 @@ name = "Nav Scroll Row 2"
 [entities.components."machina.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
-color = [0.889, 0.949, 0.992]
+color = [0.886, 0.91, 0.941]
 value = "VBOX"
 
 [entities.components."machina.ui.layout.item"]
@@ -145,7 +145,7 @@ name = "Nav Scroll Row 3"
 [entities.components."machina.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
-color = [0.889, 0.949, 0.992]
+color = [0.886, 0.91, 0.941]
 value = "ROW 3"
 
 [entities.components."machina.ui.layout.item"]
@@ -159,7 +159,7 @@ name = "Nav Scroll Row 4"
 [entities.components."machina.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
-color = [0.647, 0.725, 0.839]
+color = [0.392, 0.455, 0.545]
 value = "ROW 4"
 
 [entities.components."machina.ui.layout.item"]
@@ -173,7 +173,7 @@ name = "Nav Scroll Row 5"
 [entities.components."machina.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
-color = [0.647, 0.725, 0.839]
+color = [0.392, 0.455, 0.545]
 value = "ROW 5"
 
 [entities.components."machina.ui.layout.item"]
@@ -187,7 +187,7 @@ name = "Content Panel"
 [entities.components."machina.ui.rect"]
 position = [208.0, 72.0, 0.0]
 size = [360.0, 152.0, 0.0]
-color = [0.02, 0.027, 0.051]
+color = [0.008, 0.012, 0.024]
 
 [[entities]]
 id = "content-title"
@@ -196,7 +196,7 @@ name = "Content Title"
 [entities.components."machina.ui.text"]
 position = [232.0, 96.0, 0.0]
 size = 1.0
-color = [0.253, 0.827, 0.933]
+color = [0.22, 0.714, 0.82]
 value = "PANELS + TEXT"
 
 [[entities]]
@@ -206,7 +206,7 @@ name = "Content Copy"
 [entities.components."machina.ui.text"]
 position = [232.0, 138.0, 0.0]
 size = 1.0
-color = [0.889, 0.949, 0.992]
+color = [0.886, 0.91, 0.941]
 value = "PIXEL TEXT + RECTS"
 
 [[entities]]
@@ -216,7 +216,7 @@ name = "Content Copy 2"
 [entities.components."machina.ui.text"]
 position = [232.0, 178.0, 0.0]
 size = 1.0
-color = [0.647, 0.725, 0.839]
+color = [0.392, 0.455, 0.545]
 value = "COMPONENT DATA"
 
 [[entities]]
@@ -226,7 +226,7 @@ name = "Primary Button"
 [entities.components."machina.ui.rect"]
 position = [208.0, 260.0, 0.0]
 size = [112.0, 50.0, 0.0]
-color = [0.028, 0.567, 0.827]
+color = [0.028, 0.324, 0.49]
 
 [entities.components."machina.ui.button"]
 
@@ -240,7 +240,7 @@ name = "Primary Button Label"
 [entities.components."machina.ui.text"]
 position = [224.0, 274.0, 0.0]
 size = 1.0
-color = [0.953, 0.969, 0.996]
+color = [0.886, 0.91, 0.941]
 value = "ACTION"
 
 [[entities]]
@@ -250,7 +250,7 @@ name = "Confirm Button"
 [entities.components."machina.ui.rect"]
 position = [336.0, 260.0, 0.0]
 size = [112.0, 50.0, 0.0]
-color = [0.063, 0.725, 0.506]
+color = [0.023, 0.471, 0.314]
 
 [entities.components."machina.ui.button"]
 
@@ -264,7 +264,7 @@ name = "Confirm Button Label"
 [entities.components."machina.ui.text"]
 position = [348.0, 274.0, 0.0]
 size = 1.0
-color = [0.953, 0.969, 0.996]
+color = [0.886, 0.91, 0.941]
 value = "OK"
 
 [[entities]]
@@ -274,7 +274,7 @@ name = "Warning Button"
 [entities.components."machina.ui.rect"]
 position = [464.0, 260.0, 0.0]
 size = [112.0, 50.0, 0.0]
-color = [0.961, 0.62, 0.043]
+color = [0.714, 0.333, 0.031]
 
 [entities.components."machina.ui.button"]
 
@@ -288,7 +288,7 @@ name = "Warning Button Label"
 [entities.components."machina.ui.text"]
 position = [500.0, 274.0, 0.0]
 size = 1.0
-color = [0.953, 0.969, 0.996]
+color = [0.886, 0.91, 0.941]
 value = "WARN"
 
 [[entities]]
@@ -298,7 +298,7 @@ name = "Status Panel"
 [entities.components."machina.ui.rect"]
 position = [208.0, 340.0, 0.0]
 size = [368.0, 72.0, 0.0]
-color = [0.129, 0.161, 0.216]
+color = [0.051, 0.065, 0.094]
 
 [[entities]]
 id = "status-label"
@@ -307,7 +307,7 @@ name = "Status Label"
 [entities.components."machina.ui.text"]
 position = [232.0, 360.0, 0.0]
 size = 1.0
-color = [0.93, 0.969, 1.0]
+color = [0.886, 0.91, 0.941]
 value = "AWAITING COMMAND"
 
 [entities.components.status_label]
@@ -319,7 +319,7 @@ name = "Meter Track"
 [entities.components."machina.ui.rect"]
 position = [232.0, 394.0, 0.0]
 size = [260.0, 18.0, 0.0]
-color = [0.02, 0.027, 0.051]
+color = [0.008, 0.012, 0.024]
 
 [[entities]]
 id = "meter-fill"
@@ -328,6 +328,6 @@ name = "Meter Fill"
 [entities.components."machina.ui.rect"]
 position = [232.0, 394.0, 0.0]
 size = [148.0, 18.0, 0.0]
-color = [0.253, 0.827, 0.933]
+color = [0.22, 0.714, 0.82]
 
 [entities.components.meter_fill]

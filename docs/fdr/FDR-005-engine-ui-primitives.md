@@ -12,7 +12,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
 - Scene entities can define a UI canvas marker, screen-space colored rectangles, fixed-pixel text labels, button markers, button command ids, scroll views, vertical stacks, and layout child metadata.
 - UI rectangles and text labels use screen-space positions and sizes with a top-left origin.
-- The first UI demo uses Tailwind palette colors for a more disciplined visual baseline.
+- The first UI demo uses a subdued dark Tailwind-derived palette: near-black workspaces, slate panels, muted cyan structure accents, restrained semantic control colors, and high-contrast but not pure-white text.
 - Button markers derive hover, held, and pressed interaction state in headful runs and use that state for button visuals.
 - UI interaction consumes transient `machina.input.*` ECS resources instead of reading raw platform events directly.
 - Releasing the primary pointer over a command button emits a transient ECS command event that Luau systems can consume during the same frame.

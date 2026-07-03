@@ -67,6 +67,22 @@ const editor_gizmo_axis_length: f32 = 1.25;
 const editor_gizmo_axis_thickness: f32 = 0.035;
 const editor_gizmo_pick_radius_px: f32 = 18.0;
 
+const editor_palette = struct {
+    const shell = [3]f32{ 0.008, 0.012, 0.024 };
+    const panel = [3]f32{ 0.031, 0.041, 0.063 };
+    const panel_muted = [3]f32{ 0.094, 0.116, 0.151 };
+    const accent = [3]f32{ 0.031, 0.431, 0.533 };
+    const accent_soft = [3]f32{ 0.22, 0.714, 0.82 };
+    const text = [3]f32{ 0.886, 0.91, 0.941 };
+    const text_muted = [3]f32{ 0.58, 0.639, 0.722 };
+    const text_dim = [3]f32{ 0.392, 0.455, 0.545 };
+    const danger = [3]f32{ 0.82, 0.282, 0.282 };
+    const info = [3]f32{ 0.49, 0.745, 0.933 };
+    const primary = [3]f32{ 0.028, 0.324, 0.49 };
+    const success = [3]f32{ 0.023, 0.471, 0.314 };
+    const warning = [3]f32{ 0.714, 0.333, 0.031 };
+};
+
 pub const RenderError = error{
     NoAdapter,
     NoDevice,
@@ -1361,24 +1377,24 @@ fn extractEditorGizmoInto(
             .axis = .x,
             .position_offset = .{ editor_gizmo_axis_length * 0.5, 0.0, 0.0 },
             .scale = .{ editor_gizmo_axis_length, editor_gizmo_axis_thickness, editor_gizmo_axis_thickness },
-            .color = .{ 0.94, 0.267, 0.267 },
-            .active_color = .{ 1.0, 0.455, 0.455 },
+            .color = editor_palette.danger,
+            .active_color = .{ 0.94, 0.42, 0.42 },
         },
         .{
             .id = "y",
             .axis = .y,
             .position_offset = .{ 0.0, editor_gizmo_axis_length * 0.5, 0.0 },
             .scale = .{ editor_gizmo_axis_thickness, editor_gizmo_axis_length, editor_gizmo_axis_thickness },
-            .color = .{ 0.133, 0.773, 0.369 },
-            .active_color = .{ 0.455, 0.914, 0.573 },
+            .color = editor_palette.success,
+            .active_color = .{ 0.176, 0.667, 0.443 },
         },
         .{
             .id = "z",
             .axis = .z,
             .position_offset = .{ 0.0, 0.0, editor_gizmo_axis_length * 0.5 },
             .scale = .{ editor_gizmo_axis_thickness, editor_gizmo_axis_thickness, editor_gizmo_axis_length },
-            .color = .{ 0.231, 0.51, 0.965 },
-            .active_color = .{ 0.576, 0.773, 0.992 },
+            .color = editor_palette.primary,
+            .active_color = editor_palette.accent_soft,
         },
     };
 
@@ -1531,18 +1547,18 @@ fn extractEditorShellInto(world: *runtime.World, input: FrameInput) RenderError!
     world.setUiRect(sidebar_panel, .{
         .position = sidebar.position(),
         .size = sidebar.size3(),
-        .color = .{ 0.02, 0.027, 0.051 },
+        .color = editor_palette.shell,
     }) catch |err| return mapWorldError(err);
 
     const sidebar_accent = world.createEntity("machina.editor.shell.sidebar.accent", "Editor Sidebar Accent") catch |err| return mapWorldError(err);
     world.setUiRect(sidebar_accent, .{
         .position = sidebar.position(),
         .size = .{ sidebar.width, 4.0, 0.0 },
-        .color = .{ 0.056, 0.749, 0.823 },
+        .color = editor_palette.accent,
     }) catch |err| return mapWorldError(err);
 
-    const frame_color = [3]f32{ 0.129, 0.161, 0.216 };
-    const accent_color = [3]f32{ 0.056, 0.749, 0.823 };
+    const frame_color = editor_palette.panel_muted;
+    const accent_color = editor_palette.accent;
     try extractEditorShellRect(world, "machina.editor.shell.viewport.border.top", .{
         .x = game_viewport.x - 4.0,
         .y = game_viewport.y - 4.0,
@@ -1597,14 +1613,14 @@ fn extractDebugOverlayInto(
     world.setUiRect(system_panel, .{
         .position = panel.position(),
         .size = .{ panel_size[0], panel_size[1], 0.0 },
-        .color = .{ 0.059, 0.09, 0.165 },
+        .color = editor_palette.panel,
     }) catch |err| return mapWorldError(err);
 
     const accent = world.createEntity("machina.editor.debug.accent", "Editor Debug Accent") catch |err| return mapWorldError(err);
     world.setUiRect(accent, .{
         .position = panel.position(),
         .size = .{ panel_size[0], 4.0, 0.0 },
-        .color = .{ 0.056, 0.749, 0.823 },
+        .color = editor_palette.accent,
     }) catch |err| return mapWorldError(err);
 
     const fps_text = formatFpsLabel(allocator, input.fps) catch return RenderError.OutOfMemory;
@@ -1614,7 +1630,7 @@ fn extractDebugOverlayInto(
     world.setUiText(label, .{
         .position = .{ panel.x + 16.0, panel.y + 12.0, 0.0 },
         .size = editor_debug_fps_size,
-        .color = .{ 0.93, 0.969, 1.0 },
+        .color = editor_palette.text,
         .value = fps_text,
     }) catch |err| return mapWorldError(err);
 
@@ -1632,7 +1648,7 @@ fn extractDebugOverlayInto(
     world.setUiText(header, .{
         .position = .{ panel.x + 16.0, panel.y + editor_system_header_y, 0.0 },
         .size = editor_system_text_size,
-        .color = .{ 0.56, 0.737, 0.949 },
+        .color = editor_palette.text_muted,
         .value = header_text,
     }) catch |err| return mapWorldError(err);
 
@@ -1670,7 +1686,7 @@ fn extractDebugOverlayInto(
     for (input.system_profiles) |profile| {
         const line_text = formatSystemProfileLine(allocator, profile) catch return RenderError.OutOfMemory;
         defer allocator.free(line_text);
-        try system_rows.text("Editor Debug System Row", line_text, editor_system_text_size, .{ 0.889, 0.949, 0.992 });
+        try system_rows.text("Editor Debug System Row", line_text, editor_system_text_size, editor_palette.text);
     }
 
     if (editorSystemNeedsScroll(input.system_profiles.len)) {
@@ -1685,7 +1701,7 @@ fn extractDebugOverlayInto(
         world.setUiText(footer, .{
             .position = .{ panel.x + 16.0, editorSystemFooterY(input), 0.0 },
             .size = editor_system_text_size,
-            .color = .{ 0.56, 0.737, 0.949 },
+            .color = editor_palette.text_muted,
             .value = footer_text,
         }) catch |err| return mapWorldError(err);
     }
@@ -1702,14 +1718,14 @@ fn extractEditorInputDiagnosticsInto(allocator: std.mem.Allocator, world: *runti
     world.setUiText(entity, .{
         .position = .{ panel.x + 16.0, panel.y + editor_input_debug_y, 0.0 },
         .size = editor_system_text_size,
-        .color = .{ 0.74, 0.879, 0.996 },
+        .color = editor_palette.info,
         .value = input_text,
     }) catch |err| return mapWorldError(err);
 }
 
 fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) RenderError!void {
     const play_label = if (input.editor.paused) "PLAY" else "PAUSE";
-    const play_color: [3]f32 = if (input.editor.paused) .{ 0.063, 0.725, 0.506 } else .{ 0.961, 0.62, 0.043 };
+    const play_color: [3]f32 = if (input.editor.paused) editor_palette.success else editor_palette.warning;
     const play_rect = editorPlayButtonRect(input);
     const play = world.createEntity("machina.editor.controls.play", "Editor Play Button") catch |err| return mapWorldError(err);
     world.setUiRect(play, .{
@@ -1721,7 +1737,7 @@ fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) R
     world.setUiText(play_text, .{
         .position = .{ play_rect.x + 18.0, play_rect.y + 8.0, 0.0 },
         .size = 1.0,
-        .color = .{ 0.953, 0.969, 0.996 },
+        .color = editor_palette.text,
         .value = play_label,
     }) catch |err| return mapWorldError(err);
 
@@ -1730,13 +1746,13 @@ fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) R
     world.setUiRect(step, .{
         .position = step_rect.position(),
         .size = step_rect.size3(),
-        .color = .{ 0.129, 0.161, 0.216 },
+        .color = editor_palette.panel_muted,
     }) catch |err| return mapWorldError(err);
     const step_text = world.createEntity("machina.editor.controls.step.label", "Editor Step Label") catch |err| return mapWorldError(err);
     world.setUiText(step_text, .{
         .position = .{ step_rect.x + 22.0, step_rect.y + 8.0, 0.0 },
         .size = 1.0,
-        .color = .{ 0.889, 0.949, 0.992 },
+        .color = editor_palette.text,
         .value = "STEP",
     }) catch |err| return mapWorldError(err);
 }
@@ -1759,18 +1775,18 @@ fn extractEditorInspectorInto(
     world.setUiRect(panel, .{
         .position = .{ panel_x, panel_y, 0.0 },
         .size = .{ panel_width, @min(panel_height, available_height), 0.0 },
-        .color = .{ 0.059, 0.09, 0.165 },
+        .color = editor_palette.panel,
     }) catch |err| return mapWorldError(err);
 
     const accent = world.createEntity("machina.editor.inspector.accent", "Editor Inspector Accent") catch |err| return mapWorldError(err);
     world.setUiRect(accent, .{
         .position = .{ panel_x, panel_y, 0.0 },
         .size = .{ panel_width, 4.0, 0.0 },
-        .color = .{ 0.056, 0.749, 0.823 },
+        .color = editor_palette.accent,
     }) catch |err| return mapWorldError(err);
 
     var row: usize = 0;
-    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "INSPECTOR", 1.15, .{ 0.93, 0.969, 1.0 });
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "INSPECTOR", 1.15, editor_palette.text);
     row += 1;
 
     const counts = std.fmt.allocPrint(allocator, "ENTITIES {d} COMPONENTS {d}", .{
@@ -1778,45 +1794,45 @@ fn extractEditorInspectorInto(
         input.editor.component_instance_count,
     }) catch return RenderError.OutOfMemory;
     defer allocator.free(counts);
-    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, counts, editor_inspector_text_size, .{ 0.56, 0.737, 0.949 });
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, counts, editor_inspector_text_size, editor_palette.text_muted);
     row += 1;
 
     const renderables = std.fmt.allocPrint(allocator, "RENDERABLES {d}", .{input.editor.renderable_count}) catch return RenderError.OutOfMemory;
     defer allocator.free(renderables);
-    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, renderables, editor_inspector_text_size, .{ 0.56, 0.737, 0.949 });
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, renderables, editor_inspector_text_size, editor_palette.text_muted);
     row += 1;
 
     const selected = input.editor.selected_entity orelse {
-        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "NO ENTITY SELECTED", editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "NO ENTITY SELECTED", editor_inspector_text_size, editor_palette.text);
         row += 1;
-        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "CLICK A MESH", editor_inspector_text_size, .{ 0.647, 0.725, 0.839 });
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "CLICK A MESH", editor_inspector_text_size, editor_palette.text_dim);
         return;
     };
 
     const entity = scene_world.entity(selected) catch {
-        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "SELECTION UNAVAILABLE", editor_inspector_text_size, .{ 0.992, 0.443, 0.443 });
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "SELECTION UNAVAILABLE", editor_inspector_text_size, editor_palette.danger);
         return;
     };
 
     const handle = std.fmt.allocPrint(allocator, "HANDLE {d}:{d}", .{ selected.index, selected.generation }) catch return RenderError.OutOfMemory;
     defer allocator.free(handle);
-    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, handle, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, handle, editor_inspector_text_size, editor_palette.text);
     row += 1;
 
     const name = std.fmt.allocPrint(allocator, "NAME {s}", .{entity.name}) catch return RenderError.OutOfMemory;
     defer allocator.free(name);
-    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, name, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, name, editor_inspector_text_size, editor_palette.text);
     row += 1;
 
     const id = std.fmt.allocPrint(allocator, "ID {s}", .{entity.id}) catch return RenderError.OutOfMemory;
     defer allocator.free(id);
-    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, id, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+    try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, id, editor_inspector_text_size, editor_palette.text);
     row += 1;
 
     if (scene_world.getTransform(selected) catch null) |transform_value| {
         const position = formatInspectorVec3(allocator, "POS", transform_value.position) catch return RenderError.OutOfMemory;
         defer allocator.free(position);
-        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, position, editor_inspector_text_size, .{ 0.86, 0.917, 0.996 });
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, position, editor_inspector_text_size, editor_palette.info);
         row += 1;
     }
 
@@ -1831,7 +1847,7 @@ fn extractEditorInspectorInto(
         }
         const component_line = std.fmt.allocPrint(allocator, "[{s}]", .{component_id}) catch return RenderError.OutOfMemory;
         defer allocator.free(component_line);
-        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, component_line, editor_inspector_text_size, .{ 0.253, 0.827, 0.933 });
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, component_line, editor_inspector_text_size, editor_palette.accent_soft);
         row += 1;
 
         const field_count = scene_world.componentFieldCount(component_id);
@@ -1844,7 +1860,7 @@ fn extractEditorInspectorInto(
             const value = scene_world.getComponentFieldValue(selected, component_id, field_name) catch continue;
             const field_line = formatInspectorFieldValue(allocator, field_name, value) catch return RenderError.OutOfMemory;
             defer allocator.free(field_line);
-            try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, field_line, editor_inspector_text_size, .{ 0.889, 0.949, 0.992 });
+            try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, field_line, editor_inspector_text_size, editor_palette.text);
             row += 1;
         }
         if (overflow) {
@@ -1853,7 +1869,7 @@ fn extractEditorInspectorInto(
     }
 
     if (overflow and row < editor_inspector_max_lines + 1) {
-        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "... MORE", editor_inspector_text_size, .{ 0.56, 0.737, 0.949 });
+        try extractEditorInspectorLine(allocator, world, row, panel_x, panel_y, "... MORE", editor_inspector_text_size, editor_palette.text_muted);
     }
 }
 
@@ -5298,7 +5314,7 @@ test "UI vertex builder reflects button interaction state" {
 
     var hovered_vertices = try buildUiVertices(std.testing.allocator, &world, 640, 480);
     defer hovered_vertices.deinit(std.testing.allocator);
-    try std.testing.expectApproxEqAbs(@as(f32, 0.112), hovered_vertices.items[0].color[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.106), hovered_vertices.items[0].color[0], 0.001);
 
     try setRenderUiButtonState(&world, button, .{ .held = true });
     var held_vertices = try buildUiVertices(std.testing.allocator, &world, 640, 480);
@@ -5467,22 +5483,22 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
         var rect_color = rect.color;
         if (maybe_button_state) |state| {
             if (state.held) {
-                rect_color = scaleColor(rect.color, 0.82);
+                rect_color = scaleColor(rect.color, 0.86);
             } else if (state.pressed) {
-                rect_color = scaleColor(rect.color, 1.18);
+                rect_color = scaleColor(rect.color, 1.1);
             } else if (state.hovered) {
-                rect_color = scaleColor(rect.color, 1.12);
+                rect_color = scaleColor(rect.color, 1.06);
             }
         }
 
         try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, rect.size, rect_color, maybe_clip);
         if (rect.is_button) {
-            var top_color = scaleColor(rect_color, 1.35);
-            var bottom_color = scaleColor(rect_color, 0.65);
+            var top_color = scaleColor(rect_color, 1.16);
+            var bottom_color = scaleColor(rect_color, 0.82);
             if (maybe_button_state) |state| {
                 if (state.held) {
-                    top_color = scaleColor(rect_color, 0.65);
-                    bottom_color = scaleColor(rect_color, 1.35);
+                    top_color = scaleColor(rect_color, 0.82);
+                    bottom_color = scaleColor(rect_color, 1.16);
                 }
             }
 
