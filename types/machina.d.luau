@@ -220,6 +220,29 @@ export type MachinaUiCommandEvent = {
     source: string,
 }
 
+export type MachinaInputPointer = {
+    position: MachinaVec3,
+    has_position: boolean,
+    primary_down: boolean,
+    primary_pressed: boolean,
+    primary_released: boolean,
+    wheel_delta: MachinaVec3,
+}
+
+export type MachinaInputKeyboard = {
+    ctrl_down: boolean,
+    shift_down: boolean,
+    alt_down: boolean,
+    super_down: boolean,
+    editor_toggle_pressed: boolean,
+}
+
+export type MachinaInputFrame = {
+    ui_visible: boolean,
+    debug_overlay_visible: boolean,
+    viewport: MachinaVec3,
+}
+
 export type MachinaEntity = {
     add: <T>(
         self: MachinaEntity,

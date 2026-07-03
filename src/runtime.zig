@@ -42,6 +42,10 @@ pub const ui_button_component_id = "machina.ui.button";
 pub const ui_command_component_id = "machina.ui.command";
 pub const ui_command_event_component_id = "machina.ui.command_event";
 pub const ui_command_event_entity_id = "machina.ui.command_event.current";
+pub const input_entity_id = "machina.input.frame";
+pub const input_pointer_component_id = "machina.input.pointer";
+pub const input_keyboard_component_id = "machina.input.keyboard";
+pub const input_frame_component_id = "machina.input.frame";
 pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
@@ -638,6 +642,44 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .version = 1,
         .fields = &ui_command_event_fields,
     });
+
+    const input_pointer_fields = [_]ComponentFieldDefinition{
+        .{ .name = "position", .value_type = .vec3 },
+        .{ .name = "has_position", .value_type = .boolean },
+        .{ .name = "primary_down", .value_type = .boolean },
+        .{ .name = "primary_pressed", .value_type = .boolean },
+        .{ .name = "primary_released", .value_type = .boolean },
+        .{ .name = "wheel_delta", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = input_pointer_component_id,
+        .version = 1,
+        .fields = &input_pointer_fields,
+    });
+
+    const input_keyboard_fields = [_]ComponentFieldDefinition{
+        .{ .name = "ctrl_down", .value_type = .boolean },
+        .{ .name = "shift_down", .value_type = .boolean },
+        .{ .name = "alt_down", .value_type = .boolean },
+        .{ .name = "super_down", .value_type = .boolean },
+        .{ .name = "editor_toggle_pressed", .value_type = .boolean },
+    };
+    try registry.registerEngineComponent(.{
+        .id = input_keyboard_component_id,
+        .version = 1,
+        .fields = &input_keyboard_fields,
+    });
+
+    const input_frame_fields = [_]ComponentFieldDefinition{
+        .{ .name = "ui_visible", .value_type = .boolean },
+        .{ .name = "debug_overlay_visible", .value_type = .boolean },
+        .{ .name = "viewport", .value_type = .vec3 },
+    };
+    try registry.registerEngineComponent(.{
+        .id = input_frame_component_id,
+        .version = 1,
+        .fields = &input_frame_fields,
+    });
 }
 
 pub const EntityHandle = struct {
@@ -809,6 +851,29 @@ pub const UiText = struct {
     size: f32,
     color: [3]f32,
     value: []const u8,
+};
+
+pub const InputPointerComponent = struct {
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    has_position: bool = false,
+    primary_down: bool = false,
+    primary_pressed: bool = false,
+    primary_released: bool = false,
+    wheel_delta: [3]f32 = .{ 0.0, 0.0, 0.0 },
+};
+
+pub const InputKeyboardComponent = struct {
+    ctrl_down: bool = false,
+    shift_down: bool = false,
+    alt_down: bool = false,
+    super_down: bool = false,
+    editor_toggle_pressed: bool = false,
+};
+
+pub const InputFrameComponent = struct {
+    ui_visible: bool = true,
+    debug_overlay_visible: bool = false,
+    viewport: [3]f32 = .{ 0.0, 0.0, 0.0 },
 };
 
 pub const ComponentValue = union(FieldType) {
@@ -1231,6 +1296,38 @@ pub const World = struct {
             .{ .name = "source", .value = .{ .string = event.source } },
         };
         try self.setComponent(handle, ui_command_event_component_id, &fields);
+    }
+
+    pub fn setInputPointer(self: *World, handle: EntityHandle, pointer: InputPointerComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "position", .value = .{ .vec3 = pointer.position } },
+            .{ .name = "has_position", .value = .{ .boolean = pointer.has_position } },
+            .{ .name = "primary_down", .value = .{ .boolean = pointer.primary_down } },
+            .{ .name = "primary_pressed", .value = .{ .boolean = pointer.primary_pressed } },
+            .{ .name = "primary_released", .value = .{ .boolean = pointer.primary_released } },
+            .{ .name = "wheel_delta", .value = .{ .vec3 = pointer.wheel_delta } },
+        };
+        try self.setComponent(handle, input_pointer_component_id, &fields);
+    }
+
+    pub fn setInputKeyboard(self: *World, handle: EntityHandle, keyboard: InputKeyboardComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "ctrl_down", .value = .{ .boolean = keyboard.ctrl_down } },
+            .{ .name = "shift_down", .value = .{ .boolean = keyboard.shift_down } },
+            .{ .name = "alt_down", .value = .{ .boolean = keyboard.alt_down } },
+            .{ .name = "super_down", .value = .{ .boolean = keyboard.super_down } },
+            .{ .name = "editor_toggle_pressed", .value = .{ .boolean = keyboard.editor_toggle_pressed } },
+        };
+        try self.setComponent(handle, input_keyboard_component_id, &fields);
+    }
+
+    pub fn setInputFrame(self: *World, handle: EntityHandle, frame: InputFrameComponent) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "ui_visible", .value = .{ .boolean = frame.ui_visible } },
+            .{ .name = "debug_overlay_visible", .value = .{ .boolean = frame.debug_overlay_visible } },
+            .{ .name = "viewport", .value = .{ .vec3 = frame.viewport } },
+        };
+        try self.setComponent(handle, input_frame_component_id, &fields);
     }
 
     pub fn setSpin(self: *World, handle: EntityHandle, spin: Spin) WorldError!void {
@@ -2272,6 +2369,35 @@ test "world exposes component field names for inspection" {
     }
 }
 
+test "world stores frame input components on a shared input entity" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const input = try world.createEntity(input_entity_id, "Input Frame");
+    try world.setInputPointer(input, .{
+        .position = .{ 12.0, 34.0, 0.0 },
+        .has_position = true,
+        .primary_down = true,
+        .wheel_delta = .{ 0.0, -2.0, 0.0 },
+    });
+    try world.setInputKeyboard(input, .{
+        .ctrl_down = true,
+        .editor_toggle_pressed = true,
+    });
+    try world.setInputFrame(input, .{
+        .ui_visible = true,
+        .debug_overlay_visible = true,
+        .viewport = .{ 1280.0, 720.0, 0.0 },
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(input_pointer_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(input_keyboard_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(input_frame_component_id));
+    try std.testing.expectEqual(@as(f32, -2.0), (try world.getVec3(input, input_pointer_component_id, "wheel_delta"))[1]);
+    try std.testing.expect(try world.getBoolean(input, input_keyboard_component_id, "editor_toggle_pressed"));
+    try std.testing.expectEqual(@as(f32, 1280.0), (try world.getVec3(input, input_frame_component_id, "viewport"))[0]);
+}
+
 test "world removes component rows without moving entity handles" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
@@ -2698,7 +2824,10 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(ui_button_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_command_component_id) != null);
     try std.testing.expect(registry.findComponent(ui_command_event_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 14), registry.componentCount());
+    try std.testing.expect(registry.findComponent(input_pointer_component_id) != null);
+    try std.testing.expect(registry.findComponent(input_keyboard_component_id) != null);
+    try std.testing.expect(registry.findComponent(input_frame_component_id) != null);
+    try std.testing.expectEqual(@as(usize, 17), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);
@@ -2711,6 +2840,10 @@ test "engine component schemas are registered from runtime" {
     const ui_command_event = registry.findComponent(ui_command_event_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 2), ui_command_event.fields.len);
     try std.testing.expectEqual(FieldType.string, ui_command_event.fields[0].value_type);
+
+    const input_pointer = registry.findComponent(input_pointer_component_id) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(usize, 6), input_pointer.fields.len);
+    try std.testing.expectEqual(FieldType.vec3, input_pointer.fields[5].value_type);
 }
 
 test "system registry validates component access and reload-compatible definitions" {

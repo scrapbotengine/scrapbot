@@ -14,6 +14,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - UI rectangles and text labels use screen-space positions and sizes with a top-left origin.
 - The first UI demo uses Tailwind palette colors for a more disciplined visual baseline.
 - Button markers derive hover, held, and pressed interaction state in headful runs and use that state for button visuals.
+- UI interaction consumes transient `machina.input.*` ECS resources instead of reading raw platform events directly.
 - Releasing the primary pointer over a command button emits a transient ECS command event that Luau systems can consume during the same frame.
 - Headful runs can toggle the engine-owned editor/debug overlay with Ctrl+Tab.
 - Headful runs hide the engine-owned editor/debug overlay by default; `machina run --editor` starts with it visible.
@@ -63,8 +64,8 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 6. Keep input interaction in the ECS path
 
-**Decision:** Platform input is translated into frame input data, UI button visuals are derived by render-phase ECS systems, and command events are emitted into the live project world before update systems run.
-**Why:** This keeps UI behavior aligned with the engine-wide ECS model and avoids a separate immediate-mode renderer input channel.
+**Decision:** Platform input is translated into transient `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame` ECS resources. UI button visuals are derived by render-phase ECS systems, and command events are emitted into the live project world before update systems run.
+**Why:** This keeps UI behavior aligned with the engine-wide ECS model, follows ADR-020, and avoids a separate immediate-mode renderer input channel.
 **Tradeoff:** Command routing is string-id based for now; richer action payloads, focus, text input, and editor service dispatch still need later design.
 
 ### 7. Route button presses through command events
@@ -93,7 +94,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-004, ADR-007, ADR-008, ADR-013
+- **ADRs:** ADR-001, ADR-004, ADR-007, ADR-008, ADR-013, ADR-020
 - **FDRs:** FDR-001, FDR-002, FDR-003, FDR-007, FDR-008, FDR-009, FDR-018
 
 ## Open Questions
@@ -101,6 +102,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - What script-facing API should generate or mutate UI state for runtime tools?
 - How should command ids be namespaced and routed into editor tools or engine services?
 - When should focus and text input become active behavior?
+- What should full keyboard state and text input look like beyond the current modifier/action edge fields?
 - What exact ECS shape should public `VBox`, `HBox`, and `ScrollContainer` primitives use?
 - How should UI containers express clipping, child ordering, padding, spacing, and scroll state?
 - What text editing capability is needed before the editor becomes practical?

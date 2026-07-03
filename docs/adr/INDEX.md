@@ -21,3 +21,4 @@
 | [ADR-017](ADR-017-deferred-script-structural-commands.md) | Deferred Script Structural Commands | 2026-07-03 |
 | [ADR-018](ADR-018-engine-linked-native-ecs-systems.md) | Engine-Linked Native ECS Systems | 2026-07-03 |
 | [ADR-019](ADR-019-project-local-native-zig-modules.md) | Project-Local Native Zig Modules | 2026-07-03 |
+| [ADR-020](ADR-020-transient-ecs-input-resources.md) | Transient ECS Input Resources | 2026-07-03 |

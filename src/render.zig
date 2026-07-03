@@ -23,8 +23,6 @@ const output_size = output_bytes_per_row * output_height;
 const depth_format = wgpu.TextureFormat.depth24_plus;
 const shadow_depth_format = wgpu.TextureFormat.depth32_float;
 const shadow_map_size = 1024;
-const render_input_entity_id = "machina.render.input";
-const render_frame_input_component_id = "machina.render.internal.frame.input";
 const render_ui_button_state_component_id = "machina.render.internal.ui.button_state";
 const render_draw_batch_component_id = "machina.render.internal.draw.batch";
 const render_draw_ui_component_id = "machina.render.internal.draw.ui";
@@ -117,10 +115,24 @@ pub const PointerInput = struct {
     primary_down: bool = false,
     primary_pressed: bool = false,
     primary_released: bool = false,
+    wheel_delta: [2]f32 = .{ 0.0, 0.0 },
 
     fn beginFrame(self: *PointerInput) void {
         self.primary_pressed = false;
         self.primary_released = false;
+        self.wheel_delta = .{ 0.0, 0.0 };
+    }
+};
+
+pub const KeyboardInput = struct {
+    ctrl_down: bool = false,
+    shift_down: bool = false,
+    alt_down: bool = false,
+    super_down: bool = false,
+    editor_toggle_pressed: bool = false,
+
+    fn beginFrame(self: *KeyboardInput) void {
+        self.editor_toggle_pressed = false;
     }
 };
 
@@ -160,11 +172,10 @@ pub const EditorError = runtime.WorldError || error{InvalidScene};
 
 pub const FrameInput = struct {
     pointer: PointerInput = .{},
+    keyboard: KeyboardInput = .{},
     ui_visible: bool = true,
     debug_overlay_visible: bool = false,
-    editor_toggle_pressed: bool = false,
     fps: f32 = 0.0,
-    scroll_delta_y: f32 = 0.0,
     viewport_width: f32 = 0.0,
     viewport_height: f32 = 0.0,
     editor: EditorFrameState = .{},
@@ -172,18 +183,24 @@ pub const FrameInput = struct {
 
     fn beginFrame(self: *FrameInput) void {
         self.pointer.beginFrame();
-        self.editor_toggle_pressed = false;
-        self.scroll_delta_y = 0.0;
+        self.keyboard.beginFrame();
     }
 };
 
 fn toggleDebugOverlay(input: *FrameInput) void {
     input.debug_overlay_visible = !input.debug_overlay_visible;
-    input.editor_toggle_pressed = true;
+    input.keyboard.editor_toggle_pressed = true;
 }
 
 fn isEditorToggleShortcut(key: sdl.SDL_Keycode, modifiers: sdl.SDL_Keymod) bool {
     return key == sdl.SDLK_TAB and (modifiers & sdl.SDL_KMOD_CTRL) != 0;
+}
+
+fn updateKeyboardModifiers(keyboard: *KeyboardInput, modifiers: sdl.SDL_Keymod) void {
+    keyboard.ctrl_down = (modifiers & sdl.SDL_KMOD_CTRL) != 0;
+    keyboard.shift_down = (modifiers & sdl.SDL_KMOD_SHIFT) != 0;
+    keyboard.alt_down = (modifiers & sdl.SDL_KMOD_ALT) != 0;
+    keyboard.super_down = (modifiers & sdl.SDL_KMOD_GUI) != 0;
 }
 
 pub fn editorFrameState(world: *const runtime.World, state: EditorState) EditorFrameState {
@@ -227,8 +244,8 @@ pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: Fram
     }
     clampEditorSystemScroll(state, input.system_profiles.len);
 
-    if (input.scroll_delta_y != 0.0 and (!input.pointer.has_position or hitEditorSystemPanel(input))) {
-        scrollEditorSystemList(state, input.system_profiles.len, input.scroll_delta_y);
+    if (input.pointer.wheel_delta[1] != 0.0 and (!input.pointer.has_position or hitEditorSystemPanel(input))) {
+        scrollEditorSystemList(state, input.system_profiles.len, input.pointer.wheel_delta[1]);
         return .{ .consumed_pointer = true };
     }
 
@@ -477,9 +494,13 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             switch (event.type) {
                 sdl.SDL_EVENT_QUIT => running = false,
                 sdl.SDL_EVENT_KEY_DOWN => {
+                    updateKeyboardModifiers(&input.keyboard, event.key.mod);
                     if (!event.key.repeat and isEditorToggleShortcut(event.key.key, event.key.mod)) {
                         toggleDebugOverlay(&input);
                     }
+                },
+                sdl.SDL_EVENT_KEY_UP => {
+                    updateKeyboardModifiers(&input.keyboard, event.key.mod);
                 },
                 sdl.SDL_EVENT_MOUSE_MOTION => {
                     updatePointerFromWindow(&input.pointer, window, event.motion.x, event.motion.y);
@@ -499,7 +520,9 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
                     }
                 },
                 sdl.SDL_EVENT_MOUSE_WHEEL => {
-                    input.scroll_delta_y += event.wheel.y;
+                    updatePointerFromWindow(&input.pointer, window, event.wheel.mouse_x, event.wheel.mouse_y);
+                    input.pointer.wheel_delta[0] += event.wheel.x;
+                    input.pointer.wheel_delta[1] += event.wheel.y;
                 },
                 sdl.SDL_EVENT_WINDOW_RESIZED,
                 sdl.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED,
@@ -1021,22 +1044,6 @@ const ShadowTarget = struct {
 fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     try runtime.registerEngineComponents(registry);
 
-    const frame_input_fields = [_]runtime.ComponentFieldDefinition{
-        .{ .name = "position", .value_type = .vec3 },
-        .{ .name = "has_position", .value_type = .boolean },
-        .{ .name = "primary_down", .value_type = .boolean },
-        .{ .name = "primary_pressed", .value_type = .boolean },
-        .{ .name = "primary_released", .value_type = .boolean },
-        .{ .name = "ui_visible", .value_type = .boolean },
-        .{ .name = "debug_overlay_visible", .value_type = .boolean },
-        .{ .name = "editor_toggle_pressed", .value_type = .boolean },
-        .{ .name = "fps", .value_type = .float },
-    };
-    try registry.registerEngineComponent(.{
-        .id = render_frame_input_component_id,
-        .version = 1,
-        .fields = &frame_input_fields,
-    });
     const ui_button_state_fields = [_]runtime.ComponentFieldDefinition{
         .{ .name = "hovered", .value_type = .boolean },
         .{ .name = "held", .value_type = .boolean },
@@ -1072,7 +1079,9 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_rect_component_id,
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
-        render_frame_input_component_id,
+        runtime.input_pointer_component_id,
+        runtime.input_keyboard_component_id,
+        runtime.input_frame_component_id,
     };
     try registry.registerEngineSystem(.{
         .id = render_extract_system_id,
@@ -1113,7 +1122,8 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     });
 
     const interact_ui_reads = [_][]const u8{
-        render_frame_input_component_id,
+        runtime.input_pointer_component_id,
+        runtime.input_frame_component_id,
         runtime.ui_rect_component_id,
         runtime.ui_button_component_id,
     };
@@ -1167,7 +1177,9 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_rect_component_id,
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
-        render_frame_input_component_id,
+        runtime.input_pointer_component_id,
+        runtime.input_keyboard_component_id,
+        runtime.input_frame_component_id,
         render_ui_button_state_component_id,
     };
     const after_queue = [_][]const u8{render_queue_ui_system_id};
@@ -1759,37 +1771,59 @@ fn roundedFps(fps: f32) i32 {
     return @intFromFloat(@round(clamped));
 }
 
+pub fn writeFrameInput(world: *runtime.World, input: FrameInput) runtime.WorldError!void {
+    const entity = world.findEntityById(runtime.input_entity_id) orelse try world.createEntity(runtime.input_entity_id, "Input Frame");
+    try world.setInputPointer(entity, .{
+        .position = .{ input.pointer.position[0], input.pointer.position[1], 0.0 },
+        .has_position = input.pointer.has_position,
+        .primary_down = input.pointer.primary_down,
+        .primary_pressed = input.pointer.primary_pressed,
+        .primary_released = input.pointer.primary_released,
+        .wheel_delta = .{ input.pointer.wheel_delta[0], input.pointer.wheel_delta[1], 0.0 },
+    });
+    try world.setInputKeyboard(entity, .{
+        .ctrl_down = input.keyboard.ctrl_down,
+        .shift_down = input.keyboard.shift_down,
+        .alt_down = input.keyboard.alt_down,
+        .super_down = input.keyboard.super_down,
+        .editor_toggle_pressed = input.keyboard.editor_toggle_pressed,
+    });
+    try world.setInputFrame(entity, .{
+        .ui_visible = input.ui_visible,
+        .debug_overlay_visible = input.debug_overlay_visible,
+        .viewport = .{ input.viewport_width, input.viewport_height, 0.0 },
+    });
+}
+
 fn setRenderFrameInput(world: *runtime.World, input: FrameInput) RenderError!void {
-    const entity = world.createEntity(render_input_entity_id, "Render Input") catch |err| return mapWorldError(err);
-    const fields = [_]runtime.ComponentFieldValue{
-        .{ .name = "position", .value = .{ .vec3 = .{ input.pointer.position[0], input.pointer.position[1], 0.0 } } },
-        .{ .name = "has_position", .value = .{ .boolean = input.pointer.has_position } },
-        .{ .name = "primary_down", .value = .{ .boolean = input.pointer.primary_down } },
-        .{ .name = "primary_pressed", .value = .{ .boolean = input.pointer.primary_pressed } },
-        .{ .name = "primary_released", .value = .{ .boolean = input.pointer.primary_released } },
-        .{ .name = "ui_visible", .value = .{ .boolean = input.ui_visible } },
-        .{ .name = "debug_overlay_visible", .value = .{ .boolean = input.debug_overlay_visible } },
-        .{ .name = "editor_toggle_pressed", .value = .{ .boolean = input.editor_toggle_pressed } },
-        .{ .name = "fps", .value = .{ .float = input.fps } },
-    };
-    world.setComponent(entity, render_frame_input_component_id, &fields) catch |err| return mapWorldError(err);
+    writeFrameInput(world, input) catch |err| return mapWorldError(err);
 }
 
 fn renderFrameInput(world: *const runtime.World) RenderError!FrameInput {
-    const entity = world.findEntityById(render_input_entity_id) orelse return RenderError.InvalidScene;
-    const position = world.getVec3(entity, render_frame_input_component_id, "position") catch |err| return mapWorldError(err);
+    const entity = world.findEntityById(runtime.input_entity_id) orelse return RenderError.InvalidScene;
+    const position = world.getVec3(entity, runtime.input_pointer_component_id, "position") catch |err| return mapWorldError(err);
+    const wheel_delta = world.getVec3(entity, runtime.input_pointer_component_id, "wheel_delta") catch |err| return mapWorldError(err);
+    const viewport = world.getVec3(entity, runtime.input_frame_component_id, "viewport") catch |err| return mapWorldError(err);
     return .{
         .pointer = .{
             .position = .{ position[0], position[1] },
-            .has_position = world.getBoolean(entity, render_frame_input_component_id, "has_position") catch |err| return mapWorldError(err),
-            .primary_down = world.getBoolean(entity, render_frame_input_component_id, "primary_down") catch |err| return mapWorldError(err),
-            .primary_pressed = world.getBoolean(entity, render_frame_input_component_id, "primary_pressed") catch |err| return mapWorldError(err),
-            .primary_released = world.getBoolean(entity, render_frame_input_component_id, "primary_released") catch |err| return mapWorldError(err),
+            .has_position = world.getBoolean(entity, runtime.input_pointer_component_id, "has_position") catch |err| return mapWorldError(err),
+            .primary_down = world.getBoolean(entity, runtime.input_pointer_component_id, "primary_down") catch |err| return mapWorldError(err),
+            .primary_pressed = world.getBoolean(entity, runtime.input_pointer_component_id, "primary_pressed") catch |err| return mapWorldError(err),
+            .primary_released = world.getBoolean(entity, runtime.input_pointer_component_id, "primary_released") catch |err| return mapWorldError(err),
+            .wheel_delta = .{ wheel_delta[0], wheel_delta[1] },
         },
-        .ui_visible = world.getBoolean(entity, render_frame_input_component_id, "ui_visible") catch |err| return mapWorldError(err),
-        .debug_overlay_visible = world.getBoolean(entity, render_frame_input_component_id, "debug_overlay_visible") catch |err| return mapWorldError(err),
-        .editor_toggle_pressed = world.getBoolean(entity, render_frame_input_component_id, "editor_toggle_pressed") catch |err| return mapWorldError(err),
-        .fps = world.getFloat(entity, render_frame_input_component_id, "fps") catch |err| return mapWorldError(err),
+        .keyboard = .{
+            .ctrl_down = world.getBoolean(entity, runtime.input_keyboard_component_id, "ctrl_down") catch |err| return mapWorldError(err),
+            .shift_down = world.getBoolean(entity, runtime.input_keyboard_component_id, "shift_down") catch |err| return mapWorldError(err),
+            .alt_down = world.getBoolean(entity, runtime.input_keyboard_component_id, "alt_down") catch |err| return mapWorldError(err),
+            .super_down = world.getBoolean(entity, runtime.input_keyboard_component_id, "super_down") catch |err| return mapWorldError(err),
+            .editor_toggle_pressed = world.getBoolean(entity, runtime.input_keyboard_component_id, "editor_toggle_pressed") catch |err| return mapWorldError(err),
+        },
+        .ui_visible = world.getBoolean(entity, runtime.input_frame_component_id, "ui_visible") catch |err| return mapWorldError(err),
+        .debug_overlay_visible = world.getBoolean(entity, runtime.input_frame_component_id, "debug_overlay_visible") catch |err| return mapWorldError(err),
+        .viewport_width = viewport[0],
+        .viewport_height = viewport[1],
     };
 }
 
@@ -3592,11 +3626,11 @@ test "editor system list scroll state responds to wheel input" {
     var editor_state = EditorState{};
     const down_update = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
-        .scroll_delta_y = -1.0,
         .system_profiles = &profiles,
         .pointer = .{
             .position = .{ editor_controls_panel_x + 12.0, editor_system_first_row_y },
             .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
         },
     });
     try std.testing.expect(down_update.consumed_pointer);
@@ -3604,11 +3638,11 @@ test "editor system list scroll state responds to wheel input" {
 
     const up_update = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
-        .scroll_delta_y = 1.0,
         .system_profiles = &profiles,
         .pointer = .{
             .position = .{ editor_controls_panel_x + 12.0, editor_system_first_row_y },
             .has_position = true,
+            .wheel_delta = .{ 0.0, 1.0 },
         },
     });
     try std.testing.expect(up_update.consumed_pointer);
@@ -3707,7 +3741,9 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
     try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
     try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
-    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(render_frame_input_component_id));
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.input_pointer_component_id));
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.input_keyboard_component_id));
+    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.input_frame_component_id));
     try std.testing.expectEqual(@as(f32, 52.0), (state.world.renderCamera() orelse return error.TestExpectedEqual).fov_y_degrees);
     try std.testing.expectEqual(@as(f32, 1.25), (state.world.renderDirectionalLight() orelse return error.TestExpectedEqual).intensity);
     const extracted_sphere = state.world.renderableMeshAt(1) orelse return error.TestExpectedEqual;
@@ -3928,21 +3964,56 @@ test "hidden UI overlay skips UI extraction but keeps frame input" {
     try std.testing.expect(!input.debug_overlay_visible);
 }
 
+test "frame input round trips through ECS input components" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try writeFrameInput(&world, .{
+        .pointer = .{
+            .position = .{ 44.0, 55.0 },
+            .has_position = true,
+            .primary_down = true,
+            .wheel_delta = .{ 0.0, -3.0 },
+        },
+        .keyboard = .{
+            .ctrl_down = true,
+            .editor_toggle_pressed = true,
+        },
+        .ui_visible = false,
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    });
+
+    const input = try renderFrameInput(&world);
+    try std.testing.expect(input.pointer.has_position);
+    try std.testing.expectEqual(@as(f32, 44.0), input.pointer.position[0]);
+    try std.testing.expectEqual(@as(f32, -3.0), input.pointer.wheel_delta[1]);
+    try std.testing.expect(input.keyboard.ctrl_down);
+    try std.testing.expect(input.keyboard.editor_toggle_pressed);
+    try std.testing.expect(!input.ui_visible);
+    try std.testing.expect(input.debug_overlay_visible);
+    try std.testing.expectEqual(@as(f32, 1280.0), input.viewport_width);
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(runtime.input_pointer_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(runtime.input_keyboard_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(runtime.input_frame_component_id));
+}
+
 test "ctrl-tab debug overlay toggle updates editor visibility only" {
     var input = FrameInput{ .debug_overlay_visible = true };
 
     toggleDebugOverlay(&input);
     try std.testing.expect(!input.debug_overlay_visible);
     try std.testing.expect(input.ui_visible);
-    try std.testing.expect(input.editor_toggle_pressed);
+    try std.testing.expect(input.keyboard.editor_toggle_pressed);
 
     input.beginFrame();
-    try std.testing.expect(!input.editor_toggle_pressed);
+    try std.testing.expect(!input.keyboard.editor_toggle_pressed);
 
     toggleDebugOverlay(&input);
     try std.testing.expect(input.debug_overlay_visible);
     try std.testing.expect(input.ui_visible);
-    try std.testing.expect(input.editor_toggle_pressed);
+    try std.testing.expect(input.keyboard.editor_toggle_pressed);
 
     try std.testing.expect(isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_CTRL));
     try std.testing.expect(isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_LCTRL));
@@ -3972,7 +4043,6 @@ test "debug overlay extracts FPS label when visible" {
     const input = try renderFrameInput(&state.world);
     try std.testing.expect(!input.ui_visible);
     try std.testing.expect(input.debug_overlay_visible);
-    try std.testing.expectApproxEqAbs(@as(f32, 59.6), input.fps, 0.001);
 
     try state.queueUiDraw();
     try std.testing.expectEqual(@as(usize, 1), state.uiDrawCommandCount());

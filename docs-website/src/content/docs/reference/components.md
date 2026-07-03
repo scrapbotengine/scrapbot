@@ -28,6 +28,9 @@ Machina registers these engine component types before project scripts and native
 | `machina.ui.button` | Marker | Adds button interaction behavior to a rect. |
 | `machina.ui.command` | `command: string` | Command id emitted by a button press. |
 | `machina.ui.command_event` | `command: string`, `source: string` | Runtime-only transient event. Do not author in scenes. |
+| `machina.input.pointer` | `position: vec3`, `has_position: bool`, primary button state, `wheel_delta: vec3` | Runtime-only current pointer frame state. Do not author in scenes. |
+| `machina.input.keyboard` | modifier state, `editor_toggle_pressed: bool` | Runtime-only current keyboard frame state. Do not author in scenes. |
+| `machina.input.frame` | `ui_visible: bool`, `debug_overlay_visible: bool`, `viewport: vec3` | Runtime-only frame input state. Do not author in scenes. |
 
 ## Built-In But Project-Local Today
 

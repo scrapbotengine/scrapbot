@@ -35,6 +35,9 @@ pub const UiRect = runtime.UiRectComponent;
 pub const UiText = runtime.UiTextComponent;
 pub const UiCommand = runtime.UiCommandComponent;
 pub const UiCommandEvent = runtime.UiCommandEvent;
+pub const InputPointer = runtime.InputPointerComponent;
+pub const InputKeyboard = runtime.InputKeyboardComponent;
+pub const InputFrame = runtime.InputFrameComponent;
 pub const Spin = runtime.Spin;
 pub const PrimitiveGeometry = geometry.Primitive;
 pub const GeometryMesh = geometry.Mesh;
@@ -65,6 +68,7 @@ pub const validateProjectTypeId = runtime.validateProjectTypeId;
 pub const validatePackageTypeId = runtime.validatePackageTypeId;
 pub const validateEngineTypeId = runtime.validateEngineTypeId;
 pub const verifyRenderBmp = render_verify.verifyBmp;
+pub const writeFrameInput = render.writeFrameInput;
 
 pub const Project = struct {
     root_path: []const u8,
@@ -317,8 +321,18 @@ pub const LiveProject = struct {
             routed_input.pointer.primary_down = false;
             routed_input.pointer.primary_pressed = false;
             routed_input.pointer.primary_released = false;
+            routed_input.pointer.wheel_delta = .{ 0.0, 0.0 };
         }
-        updateUiCommandEvents(&self.scene.world, routed_input) catch |err| {
+        render.writeFrameInput(&self.scene.world, routed_input) catch |err| {
+            if (std.fmt.allocPrint(self.allocator, "Input routing failed: {s}", .{@errorName(err)})) |message| {
+                defer self.allocator.free(message);
+                self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
+            } else |_| {
+                self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, "Input routing failed") catch null;
+            }
+            return;
+        };
+        updateUiCommandEvents(&self.scene.world) catch |err| {
             if (std.fmt.allocPrint(self.allocator, "UI command routing failed: {s}", .{@errorName(err)})) |message| {
                 defer self.allocator.free(message);
                 self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
@@ -620,11 +634,17 @@ const UiCommandHit = struct {
     source: []const u8,
 };
 
-fn updateUiCommandEvents(world: *World, input: FrameInput) !void {
+fn updateUiCommandEvents(world: *World) !void {
     try clearUiCommandEvent(world);
-    if (!input.ui_visible or !input.pointer.has_position or !input.pointer.primary_released) {
+    const input_entity = world.findEntityById(runtime.input_entity_id) orelse return;
+    const ui_visible = try world.getBoolean(input_entity, runtime.input_frame_component_id, "ui_visible");
+    const has_position = try world.getBoolean(input_entity, runtime.input_pointer_component_id, "has_position");
+    const primary_released = try world.getBoolean(input_entity, runtime.input_pointer_component_id, "primary_released");
+    if (!ui_visible or !has_position or !primary_released) {
         return;
     }
+    const pointer_position_vec3 = try world.getVec3(input_entity, runtime.input_pointer_component_id, "position");
+    const pointer_position = [2]f32{ pointer_position_vec3[0], pointer_position_vec3[1] };
 
     var selected: ?UiCommandHit = null;
     var cursor: usize = 0;
@@ -636,7 +656,7 @@ fn updateUiCommandEvents(world: *World, input: FrameInput) !void {
     while (world.queryNext(&command_button_query, &cursor)) |entity| {
         const position = try world.getVec3(entity, runtime.ui_rect_component_id, "position");
         const size = try world.getVec3(entity, runtime.ui_rect_component_id, "size");
-        if (!runtime.pointInsideUiRect(input.pointer.position, position, size)) {
+        if (!runtime.pointInsideUiRect(pointer_position, position, size)) {
             continue;
         }
 

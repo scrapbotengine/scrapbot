@@ -57,6 +57,8 @@ Rendering and UI:
 - First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.text`, `machina.ui.button`, and `machina.ui.command`.
 - UI renders as a screen-space overlay after 3D content, with fixed-pixel Spleen 16x32-derived built-in text.
 - Headful input is translated into ECS frame input.
+- Runtime input is represented as transient engine-owned ECS components on `machina.input.frame`: `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame`.
+- Input components are runtime resources, not scene-authored project data.
 - Button markers derive ECS interaction state for hovered, held, and pressed visuals.
 - Command buttons emit transient `machina.ui.command_event` components before update systems run.
 - Headful runs can generate an engine-owned debug overlay in the render ECS world.
@@ -137,6 +139,7 @@ Live reload:
 - When changing the built-in UI bitmap font, update `third_party/spleen/`, regenerate `src/ui_font.zig` with `tools/generate-ui-font.py`, and update `NOTICE`/FDRs if the source face changes.
 - Route runtime state through the ECS world instead of introducing renderer-specific or script-owned side channels. Engine subsystems may own separate internal worlds and schedules, but they must use the shared runtime ECS implementation rather than creating a parallel ECS model.
 - Keep input and UI interaction state ECS-shaped. SDL or platform event code should translate raw events into frame input; hover, press, focus, command routing, and editor state belong in ECS components/systems.
+- Do not introduce UI-private or renderer-private input side channels. If a system needs keyboard or pointer state, route it through the shared `machina.input.*` components or explicitly document why that slice cannot yet do so.
 - Treat `machina.ui.command_event` as runtime-only transient data. Do not author it in scene files; author `machina.ui.command` on button entities instead.
 - Keep editor/debug UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces; prefer larger sizes for primary readouts and verify compact panels in a headful screenshot or smoke run.
 - Keep editor/debug list rows bounded and readable. Use compact formatting, scrolling, windowing, or pagination for unbounded lists instead of drawing unreachable overflow or hidden `... more` rows.
