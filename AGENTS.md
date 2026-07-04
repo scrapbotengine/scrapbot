@@ -90,6 +90,7 @@ Rendering and UI:
 - Button markers derive ECS interaction state for hovered, held, and pressed visuals.
 - Command buttons emit transient `machina.ui.command_event` components before update systems run.
 - Headful runs can generate an engine-owned editor/debug shell in the render ECS world.
+- Strict rule: editor UI must use the same ECS UI components, layout components, input components, layout resolver, hit-testing, command routing, scrolling behavior, and render systems that project-authored UI uses. Engine-owned editor chrome may generate entities procedurally, but it must not introduce private editor-only UI primitives, private layout math, private input routing, or private render paths when the public `machina.ui.*` / `machina.input.*` ECS model can represent the behavior.
 - The editor/debug shell is hidden by default, `machina run --editor` shows it on startup, and Ctrl+Tab toggles it. The top bar hosts FPS and playback controls, the left sidebar hosts project/native and engine-internal system timing rows, the right sidebar is reserved for selected-entity component inspection/editing, and the bottom bar hosts compact runtime status.
 - The editor shell body is generated as a retained `machina.ui.hgroup`: left sidebar, left splitter, growable game viewport, right splitter, and right sidebar. Splitter drags mutate engine-owned editor state and should keep using the shared retained layout resolver.
 - Editor splitters may render as very thin dividers, but their hover/click target must stay wider than the visible line and should provide visible hover/drag feedback.
@@ -188,6 +189,7 @@ Live reload:
 - For editor input bugs, add deterministic frame-replay coverage in Zig tests. Prefer replaying wheel/key/pointer frame sequences against editor state before relying on manual headful checks.
 - Keep `examples/ui_gallery/` current when adding or materially changing UI primitives.
 - Design editor surfaces for large worlds. Prefer selection-first, search, filtering, pagination, or virtualized lists over drawing every entity every frame.
+- Keep editor UI as a proving ground for public ECS UI, not a special-case UI framework. If editor chrome needs a new control, layout behavior, input rule, or renderer capability, add it as reusable `machina.ui.*`, `machina.input.*`, shared `ui_layout`, or shared render-system behavior first, then consume it from the editor.
 - Keep editor state engine-owned and live-project authoritative. Playback controls should gate scheduled update systems without creating a renderer-only simulation state.
 - Editor gizmos and editor chrome should be generated as engine-owned render/UI data and should not mutate project scene files or become selectable game entities.
 - Script-defined ECS component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local, qualified dotted ids are for packages/libraries, and `machina.*` is engine-owned. Machina does not infer a default project namespace.
