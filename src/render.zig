@@ -3150,8 +3150,6 @@ fn extractEditorComponentInspectorInto(
                 .value = value,
                 .card_width = card_width,
                 .field_y = field_y,
-                .selected = input.editor.selected_property.matches(selected, component_id, field_name),
-                .selected_vec3_lane = input.editor.selected_property.vec3_lane,
                 .text_input = input.editor.text_input,
             });
         }
@@ -3236,8 +3234,6 @@ const EditorPropertyRowSpec = struct {
     value: runtime.ComponentValue,
     card_width: f32,
     field_y: f32,
-    selected: bool,
-    selected_vec3_lane: u2 = 0,
     text_input: EditorTextInputFrame = .{},
 };
 
@@ -3246,21 +3242,6 @@ fn extractEditorPropertyRow(
     world: *runtime.World,
     spec: EditorPropertyRowSpec,
 ) RenderError!void {
-    if (spec.selected) {
-        const selected_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.selected", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
-        defer allocator.free(selected_id);
-        const selected_rect = try extractEditorPanel(world, selected_id, "Editor Component Field Selection", .{
-            .x = editor_inspector_card_padding_x * 0.5,
-            .y = spec.field_y - 4.0,
-            .width = @max(spec.card_width - editor_inspector_card_padding_x, 1.0),
-            .height = editorTextHeight(editor_inspector_text_size) + 8.0,
-        }, editor_palette.panel_muted, editor_button_corner_radius);
-        world.setUiLayoutItem(selected_rect, .{
-            .parent = spec.parent_id,
-            .order = -1,
-        }) catch |err| return mapWorldError(err);
-    }
-
     const label_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.label", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(label_id);
 
@@ -3269,12 +3250,11 @@ fn extractEditorPropertyRow(
     const label_text = fitEditorTextToWidth(allocator, spec.field_name, editor_inspector_text_size, label_max_width) catch return RenderError.OutOfMemory;
     defer allocator.free(label_text);
 
-    const label_color = if (spec.selected) editor_palette.text else editor_palette.text_muted;
     _ = try extractEditorChildText(world, label_id, "Editor Component Field Label", spec.parent_id, .{
         editor_inspector_card_padding_x,
         spec.field_y,
         0.0,
-    }, label_text, editor_inspector_text_size, label_color);
+    }, label_text, editor_inspector_text_size, editor_palette.text_muted);
 
     switch (spec.value) {
         .vec3 => |payload| {
@@ -8238,7 +8218,7 @@ test "editor inspector property inputs edit text and commit with undo" {
     var selected_frame = frame_input;
     selected_frame.editor = editorFrameState(&world, editor_state);
     try render_state.extractSceneWithInput(.{ .world = &world }, selected_frame);
-    try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selected") != null);
+    try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selected") == null);
     const focused_input = render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
     try std.testing.expect(try render_state.world.hasComponent(focused_input, runtime.ui_border_component_id));
     const selection_rect = render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selection.0") orelse return error.TestExpectedEqual;

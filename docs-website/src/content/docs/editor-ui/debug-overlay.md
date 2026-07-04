@@ -44,7 +44,7 @@ The system inspector and selected-entity inspector both use retained sidebar con
 
 Click a visible mesh in the game viewport to select its entity.
 
-The right sidebar shows the selected entity name/id and one component box per attached component. Component fields use a reusable inspector row shape: label on the left, value input boxes on the right, clipping inside the panel, and a visible focus state when selected.
+The right sidebar shows the selected entity name/id and one component box per attached component. Component fields use a reusable inspector row shape: label on the left, value input boxes on the right, and clipping inside the panel. Focus is shown on the input box itself, not as a full-row highlight.
 
 Click a value input to focus it for editing. Focused inputs render a focus-ring border and caret.
 

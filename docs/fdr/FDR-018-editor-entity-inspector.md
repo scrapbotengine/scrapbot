@@ -21,7 +21,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Component boxes are arranged as a retained vertical group with one-pixel separators between boxes.
 - Component titles are fitted to the card width and should not overdraw adjacent content.
 - Component fields render as table-like rows with property labels on the left and values on the right.
-- Component field rows are reusable inspector editing controls: the base row handles label layout, value input placement, focus state, clipping, and selection highlighting, while type-specific behavior decides how a selected value is parsed and committed.
+- Component field rows are reusable inspector editing controls: the base row handles label layout, value input placement, focus state, and clipping, while type-specific behavior decides how a selected value is parsed and committed.
 - Each editable value renders as a darker rounded text input box. `vec3` fields render one input box per lane.
 - Clicking a value input focuses it for editing and gives it a focus-ring border plus a visible caret.
 - Numeric value inputs select their full value when focused so typing can immediately replace the existing number. Select-all-on-focus is treated as an input-control option rather than a global editor rule.
