@@ -7,6 +7,10 @@
         .wgpu_native_zig = .{
             .path = "third_party/wgpu_native_zig",
         },
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.12.0.tar.gz",
+            .hash = "clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5",
+        },
     },
     .paths = .{
         "LICENSE",

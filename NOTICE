@@ -39,6 +39,14 @@ wgpu-native
 - Upstream license files for this release: LICENSE.MIT and LICENSE.APACHE in
   https://github.com/gfx-rs/wgpu-native/tree/v25.0.2.1.
 
+zig-clap
+- Use: command-line argument parsing for the Machina CLI.
+- Source package: Hejsil/zig-clap 0.12.0, fetched by build.zig.zon.
+- License: MIT.
+- Copyright: Copyright (c) Jimmi Holst Christensen.
+- Upstream license file for this release:
+  https://github.com/Hejsil/zig-clap/blob/0.12.0/LICENSE.
+
 Spleen bitmap font
 - Use: source data for the built-in fixed-pixel UI font in src/ui_font.zig.
 - Source in repo: third_party/spleen/spleen-16x32.bdf.

@@ -1,4 +1,5 @@
 const std = @import("std");
+const clap = @import("clap");
 const Io = std.Io;
 const machina = @import("machina");
 
@@ -31,24 +32,34 @@ fn run(
     stdout: *Io.Writer,
     stderr: *Io.Writer,
 ) !u8 {
-    if (args.len <= 1) {
-        try printHelp(stdout);
-        return 0;
-    }
+    const top_level = parseTopLevel(allocator, args[1..]) catch |err| {
+        try printArgumentError(stderr, err);
+        return 1;
+    };
 
-    const command = args[1];
-    if (std.mem.eql(u8, command, "--version") or std.mem.eql(u8, command, "version")) {
+    if (top_level.version) {
         try stdout.print("machina {s}\n", .{machina.version});
         return 0;
     }
 
-    if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "help")) {
+    if (top_level.help or top_level.command == null) {
+        try printHelp(stdout);
+        return 0;
+    }
+
+    const command = top_level.command.?;
+    if (std.mem.eql(u8, command, "version")) {
+        try stdout.print("machina {s}\n", .{machina.version});
+        return 0;
+    }
+
+    if (std.mem.eql(u8, command, "help")) {
         try printHelp(stdout);
         return 0;
     }
 
     if (std.mem.eql(u8, command, "init")) {
-        const options = parseInitOptions(args[2..]) catch |err| {
+        const options = parseInitOptions(allocator, args[2..]) catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
@@ -78,11 +89,12 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "run")) {
-        const target_path = if (args.len >= 3) args[2] else ".";
-        var window_options = parseWindowOptions(args[3..]) catch |err| {
+        const options = parseRunOptions(allocator, args[2..]) catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
+        const target_path = options.target_path;
+        var window_options = options.window_options;
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
         defer machina.freeCheckResult(allocator, result);
         var live_project = machina.LiveProject.init(io, std.heap.smp_allocator, target_path) catch |err| {
@@ -121,7 +133,7 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "render")) {
-        const options = parseRenderOptions(args[2..], "zig-out/machina-cube.bmp") catch |err| {
+        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-cube.bmp") catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
@@ -156,7 +168,7 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "render-test")) {
-        const options = parseRenderOptions(args[2..], "zig-out/machina-render-test.bmp") catch |err| {
+        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-render-test.bmp") catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
@@ -219,6 +231,12 @@ const CheckOutputFormat = enum {
     json,
 };
 
+const TopLevel = struct {
+    version: bool = false,
+    help: bool = false,
+    command: ?[]const u8 = null,
+};
+
 const InitCommandOptions = struct {
     target_path: []const u8 = ".",
 };
@@ -273,6 +291,11 @@ const RenderCommandOptions = struct {
     selected_entity_id: ?[]const u8 = null,
 };
 
+const RunCommandOptions = struct {
+    target_path: []const u8 = ".",
+    window_options: machina.WindowOptions = .{},
+};
+
 fn checkCommand(
     io: Io,
     allocator: std.mem.Allocator,
@@ -280,7 +303,7 @@ fn checkCommand(
     stdout: *Io.Writer,
     stderr: *Io.Writer,
 ) !u8 {
-    const options = parseCheckOptions(args) catch |err| {
+    const options = parseCheckOptions(allocator, args) catch |err| {
         try printArgumentError(stderr, err);
         return 1;
     };
@@ -331,7 +354,7 @@ fn stepCommand(
     stdout: *Io.Writer,
     stderr: *Io.Writer,
 ) !u8 {
-    const options = parseStepOptions(args) catch |err| {
+    const options = parseStepOptions(allocator, args) catch |err| {
         try printArgumentError(stderr, err);
         return 1;
     };
@@ -383,7 +406,7 @@ fn benchCommand(
     stdout: *Io.Writer,
     stderr: *Io.Writer,
 ) !u8 {
-    const options = parseBenchOptions(args) catch |err| {
+    const options = parseBenchOptions(allocator, args) catch |err| {
         try printArgumentError(stderr, err);
         return 1;
     };
@@ -460,7 +483,7 @@ fn testCommand(
     stdout: *Io.Writer,
     stderr: *Io.Writer,
 ) !u8 {
-    const options = parseTestOptions(args) catch |err| {
+    const options = parseTestOptions(allocator, args) catch |err| {
         try printArgumentError(stderr, err);
         return 1;
     };
@@ -632,252 +655,269 @@ fn renderCommandFrameInput(live_project: *machina.LiveProject, options: RenderCo
     };
 }
 
-fn parseWindowOptions(args: []const []const u8) ArgumentError!machina.WindowOptions {
-    var options = machina.WindowOptions{};
-    var index: usize = 0;
-    while (index < args.len) : (index += 1) {
-        const arg = args[index];
-        if (std.mem.eql(u8, arg, "--frames")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFrames;
-            }
-            options.max_frames = std.fmt.parseInt(u32, args[index], 10) catch return ArgumentError.InvalidFrames;
-            if (options.max_frames.? == 0) {
-                return ArgumentError.InvalidFrames;
-            }
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--editor")) {
-            options.editor = true;
-            continue;
-        }
+const clap_parsers = .{
+    .COMMAND = clap.parsers.string,
+    .PATH = clap.parsers.string,
+    .OUTPUT = clap.parsers.string,
+    .ENTITY = clap.parsers.string,
+    .EXTRA = clap.parsers.string,
+    .FORMAT = parseCheckOutputFormat,
+    .FRAMES = parseFrameCount,
+    .SECONDS = parseDeltaSeconds,
+};
 
+const SliceArgIterator = struct {
+    args: []const []const u8,
+    index: usize = 0,
+
+    fn init(args: []const []const u8) SliceArgIterator {
+        return .{ .args = args };
+    }
+
+    pub fn next(self: *SliceArgIterator) ?[]const u8 {
+        if (self.index >= self.args.len) {
+            return null;
+        }
+        defer self.index += 1;
+        return self.args[self.index];
+    }
+};
+
+fn parseTopLevel(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!TopLevel {
+    const params = comptime clap.parseParamsComptime(
+        \\--version
+        \\--help
+        \\<COMMAND>
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+        .terminating_positional = 0,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
+    return .{
+        .version = result.args.version != 0,
+        .help = result.args.help != 0,
+        .command = result.positionals[0],
+    };
+}
+
+fn parseWindowOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!machina.WindowOptions {
+    return (try parseRunOptions(allocator, args)).window_options;
+}
+
+fn parseRunOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!RunCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--frames <FRAMES>
+        \\--editor
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
+    var options = RunCommandOptions{};
+    if (result.positionals[1].len != 0) {
         return ArgumentError.UnknownArgument;
     }
-
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.args.frames) |frames| {
+        options.window_options.max_frames = frames;
+    }
+    options.window_options.editor = result.args.editor != 0;
     return options;
 }
 
-fn parseInitOptions(args: []const []const u8) ArgumentError!InitCommandOptions {
+fn parseInitOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!InitCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
     var options = InitCommandOptions{};
-    var saw_path = false;
-    for (args) |arg| {
-        if (std.mem.startsWith(u8, arg, "--")) {
-            return ArgumentError.UnknownArgument;
-        }
-        if (saw_path) {
-            return ArgumentError.UnknownArgument;
-        }
-        options.target_path = arg;
-        saw_path = true;
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
     }
     return options;
 }
 
-fn parseRenderOptions(args: []const []const u8, default_output_path: []const u8) ArgumentError!RenderCommandOptions {
+fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, default_output_path: []const u8) ArgumentError!RenderCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--editor
+        \\--select <ENTITY>
+        \\<PATH>
+        \\<OUTPUT>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
     var options = RenderCommandOptions{ .output_path = default_output_path };
-    var positional_count: usize = 0;
-    var index: usize = 0;
-    while (index < args.len) : (index += 1) {
-        const arg = args[index];
-        if (std.mem.eql(u8, arg, "--editor")) {
-            options.editor = true;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--select")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.UnknownArgument;
-            }
-            options.selected_entity_id = args[index];
-            options.editor = true;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--select=")) {
-            options.selected_entity_id = arg["--select=".len..];
-            options.editor = true;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--")) {
-            return ArgumentError.UnknownArgument;
-        }
-        switch (positional_count) {
-            0 => options.target_path = arg,
-            1 => options.output_path = arg,
-            else => return ArgumentError.UnknownArgument,
-        }
-        positional_count += 1;
+    if (result.positionals[2].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.positionals[1]) |output| {
+        options.output_path = output;
+    }
+    options.editor = result.args.editor != 0;
+    if (result.args.select) |entity_id| {
+        options.selected_entity_id = entity_id;
+        options.editor = true;
     }
     return options;
 }
 
-fn parseCheckOptions(args: []const []const u8) ArgumentError!CheckOptions {
+fn parseCheckOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!CheckOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--format <FORMAT>
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
     var options = CheckOptions{};
-    var saw_path = false;
-    var index: usize = 0;
-    while (index < args.len) : (index += 1) {
-        const arg = args[index];
-        if (std.mem.eql(u8, arg, "--format")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFormat;
-            }
-            options.format = try parseCheckOutputFormat(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--format=")) {
-            options.format = try parseCheckOutputFormat(arg["--format=".len..]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--")) {
-            return ArgumentError.UnknownArgument;
-        }
-        if (saw_path) {
-            return ArgumentError.UnknownArgument;
-        }
-        options.target_path = arg;
-        saw_path = true;
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.args.format) |format| {
+        options.format = format;
     }
     return options;
 }
 
-fn parseStepOptions(args: []const []const u8) ArgumentError!StepCommandOptions {
+fn parseStepOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!StepCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--frames <FRAMES>
+        \\--dt <SECONDS>
+        \\--format <FORMAT>
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
     var options = StepCommandOptions{};
-    var saw_path = false;
-    var index: usize = 0;
-    while (index < args.len) : (index += 1) {
-        const arg = args[index];
-        if (std.mem.eql(u8, arg, "--frames")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFrames;
-            }
-            options.frames = try parseFrameCount(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--frames=")) {
-            options.frames = try parseFrameCount(arg["--frames=".len..]);
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--dt")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidDelta;
-            }
-            options.delta_seconds = try parseDeltaSeconds(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--dt=")) {
-            options.delta_seconds = try parseDeltaSeconds(arg["--dt=".len..]);
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--format")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFormat;
-            }
-            options.format = try parseCheckOutputFormat(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--format=")) {
-            options.format = try parseCheckOutputFormat(arg["--format=".len..]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--")) {
-            return ArgumentError.UnknownArgument;
-        }
-        if (saw_path) {
-            return ArgumentError.UnknownArgument;
-        }
-        options.target_path = arg;
-        saw_path = true;
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.args.frames) |frames| {
+        options.frames = frames;
+    }
+    if (result.args.dt) |delta_seconds| {
+        options.delta_seconds = delta_seconds;
+    }
+    if (result.args.format) |format| {
+        options.format = format;
     }
     return options;
 }
 
-fn parseBenchOptions(args: []const []const u8) ArgumentError!BenchCommandOptions {
+fn parseBenchOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!BenchCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--frames <FRAMES>
+        \\--dt <SECONDS>
+        \\--format <FORMAT>
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
     var options = BenchCommandOptions{};
-    var saw_path = false;
-    var index: usize = 0;
-    while (index < args.len) : (index += 1) {
-        const arg = args[index];
-        if (std.mem.eql(u8, arg, "--frames")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFrames;
-            }
-            options.frames = try parseFrameCount(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--frames=")) {
-            options.frames = try parseFrameCount(arg["--frames=".len..]);
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--dt")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidDelta;
-            }
-            options.delta_seconds = try parseDeltaSeconds(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--dt=")) {
-            options.delta_seconds = try parseDeltaSeconds(arg["--dt=".len..]);
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--format")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFormat;
-            }
-            options.format = try parseCheckOutputFormat(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--format=")) {
-            options.format = try parseCheckOutputFormat(arg["--format=".len..]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--")) {
-            return ArgumentError.UnknownArgument;
-        }
-        if (saw_path) {
-            return ArgumentError.UnknownArgument;
-        }
-        options.target_path = arg;
-        saw_path = true;
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.args.frames) |frames| {
+        options.frames = frames;
+    }
+    if (result.args.dt) |delta_seconds| {
+        options.delta_seconds = delta_seconds;
+    }
+    if (result.args.format) |format| {
+        options.format = format;
     }
     return options;
 }
 
-fn parseTestOptions(args: []const []const u8) ArgumentError!TestCommandOptions {
+fn parseTestOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!TestCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--format <FORMAT>
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
     var options = TestCommandOptions{};
-    var saw_path = false;
-    var index: usize = 0;
-    while (index < args.len) : (index += 1) {
-        const arg = args[index];
-        if (std.mem.eql(u8, arg, "--format")) {
-            index += 1;
-            if (index >= args.len) {
-                return ArgumentError.InvalidFormat;
-            }
-            options.format = try parseCheckOutputFormat(args[index]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--format=")) {
-            options.format = try parseCheckOutputFormat(arg["--format=".len..]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--")) {
-            return ArgumentError.UnknownArgument;
-        }
-        if (saw_path) {
-            return ArgumentError.UnknownArgument;
-        }
-        options.target_path = arg;
-        saw_path = true;
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.args.format) |format| {
+        options.format = format;
     }
     return options;
+}
+
+fn mapClapArgumentError(err: anyerror) ArgumentError {
+    return switch (err) {
+        ArgumentError.InvalidDelta => ArgumentError.InvalidDelta,
+        ArgumentError.InvalidFrames => ArgumentError.InvalidFrames,
+        ArgumentError.InvalidFormat => ArgumentError.InvalidFormat,
+        else => ArgumentError.UnknownArgument,
+    };
 }
 
 const TestManifestError = error{
@@ -2226,19 +2266,19 @@ test "projectNameFromPath uses final path segment" {
 }
 
 test "parseInitOptions defaults to current directory" {
-    const options = try parseInitOptions(&.{});
+    const options = try parseInitOptions(std.testing.allocator, &.{});
     try std.testing.expectEqualStrings(".", options.target_path);
 }
 
 test "parseInitOptions accepts one target path" {
     const args = [_][]const u8{"games/demo"};
-    const options = try parseInitOptions(&args);
+    const options = try parseInitOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("games/demo", options.target_path);
 }
 
 test "parseInitOptions rejects extra arguments" {
     const args = [_][]const u8{ "games/demo", "extra" };
-    try std.testing.expectError(ArgumentError.UnknownArgument, parseInitOptions(&args));
+    try std.testing.expectError(ArgumentError.UnknownArgument, parseInitOptions(std.testing.allocator, &args));
 }
 
 test "run init command creates a checkable project" {
@@ -2286,14 +2326,14 @@ test "run init command rejects extra arguments" {
 
 test "parseWindowOptions accepts frames and editor flag" {
     const args = [_][]const u8{ "--frames", "12", "--editor" };
-    const options = try parseWindowOptions(&args);
+    const options = try parseWindowOptions(std.testing.allocator, &args);
     try std.testing.expectEqual(@as(u32, 12), options.max_frames.?);
     try std.testing.expect(options.editor);
 }
 
 test "parseRenderOptions accepts editor flag before path" {
     const args = [_][]const u8{ "--editor", "examples/spawn_swarm", "zig-out/spawn-editor.bmp" };
-    const options = try parseRenderOptions(&args, "zig-out/default.bmp");
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
     try std.testing.expect(options.editor);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
     try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
@@ -2301,7 +2341,7 @@ test "parseRenderOptions accepts editor flag before path" {
 
 test "parseRenderOptions accepts editor flag after output" {
     const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.bmp", "--editor" };
-    const options = try parseRenderOptions(&args, "zig-out/default.bmp");
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
     try std.testing.expect(options.editor);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
     try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
@@ -2309,7 +2349,7 @@ test "parseRenderOptions accepts editor flag after output" {
 
 test "parseRenderOptions accepts selected entity" {
     const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.bmp", "--select", "swarm.0" };
-    const options = try parseRenderOptions(&args, "zig-out/default.bmp");
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
     try std.testing.expect(options.editor);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
     try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
@@ -2318,31 +2358,31 @@ test "parseRenderOptions accepts selected entity" {
 
 test "parseRenderOptions rejects extra positionals" {
     const args = [_][]const u8{ "examples/minimal", "one.bmp", "two.bmp" };
-    try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(&args, "zig-out/default.bmp"));
+    try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
 }
 
 test "parseCheckOptions accepts path and json format" {
     const args = [_][]const u8{ "examples/minimal", "--format=json" };
-    const options = try parseCheckOptions(&args);
+    const options = try parseCheckOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("examples/minimal", options.target_path);
     try std.testing.expectEqual(CheckOutputFormat.json, options.format);
 }
 
 test "parseCheckOptions accepts format before path" {
     const args = [_][]const u8{ "--format", "json", "examples/minimal" };
-    const options = try parseCheckOptions(&args);
+    const options = try parseCheckOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("examples/minimal", options.target_path);
     try std.testing.expectEqual(CheckOutputFormat.json, options.format);
 }
 
 test "parseCheckOptions rejects unknown format" {
     const args = [_][]const u8{"--format=yaml"};
-    try std.testing.expectError(ArgumentError.InvalidFormat, parseCheckOptions(&args));
+    try std.testing.expectError(ArgumentError.InvalidFormat, parseCheckOptions(std.testing.allocator, &args));
 }
 
 test "parseStepOptions accepts path frames dt and json format" {
     const args = [_][]const u8{ "examples/minimal", "--frames=60", "--dt", "0.016", "--format=json" };
-    const options = try parseStepOptions(&args);
+    const options = try parseStepOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("examples/minimal", options.target_path);
     try std.testing.expectEqual(@as(u32, 60), options.frames);
     try std.testing.expectApproxEqAbs(@as(f32, 0.016), options.delta_seconds, 0.000001);
@@ -2351,12 +2391,12 @@ test "parseStepOptions accepts path frames dt and json format" {
 
 test "parseStepOptions rejects invalid dt" {
     const args = [_][]const u8{ "--dt", "inf" };
-    try std.testing.expectError(ArgumentError.InvalidDelta, parseStepOptions(&args));
+    try std.testing.expectError(ArgumentError.InvalidDelta, parseStepOptions(std.testing.allocator, &args));
 }
 
 test "parseBenchOptions accepts path frames dt and json format" {
     const args = [_][]const u8{ "examples/spawn_swarm", "--frames=120", "--dt", "0.016", "--format=json" };
-    const options = try parseBenchOptions(&args);
+    const options = try parseBenchOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
     try std.testing.expectEqual(@as(u32, 120), options.frames);
     try std.testing.expectApproxEqAbs(@as(f32, 0.016), options.delta_seconds, 0.000001);
@@ -2364,14 +2404,14 @@ test "parseBenchOptions accepts path frames dt and json format" {
 }
 
 test "parseTestOptions defaults to tests/projects" {
-    const options = try parseTestOptions(&.{});
+    const options = try parseTestOptions(std.testing.allocator, &.{});
     try std.testing.expectEqualStrings("tests/projects", options.target_path);
     try std.testing.expectEqual(CheckOutputFormat.text, options.format);
 }
 
 test "parseTestOptions accepts path and json format" {
     const args = [_][]const u8{ "tests/projects/health_tick", "--format=json" };
-    const options = try parseTestOptions(&args);
+    const options = try parseTestOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("tests/projects/health_tick", options.target_path);
     try std.testing.expectEqual(CheckOutputFormat.json, options.format);
 }

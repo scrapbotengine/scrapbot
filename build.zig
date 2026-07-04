@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const clap_dep = b.dependency("clap", .{});
 
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
@@ -38,6 +39,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "machina", .module = machina_mod },
+                .{ .name = "clap", .module = clap_dep.module("clap") },
             },
         }),
     });
