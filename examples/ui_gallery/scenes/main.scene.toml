@@ -24,16 +24,6 @@ color = [0.148, 0.2, 0.282]
 thickness = 1.0
 
 [[entities]]
-id = "gallery-accent"
-name = "Gallery Accent"
-
-[entities.components."machina.ui.rect"]
-position = [24.0, 32.0, 0.0]
-size = [592.0, 5.0, 0.0]
-color = [0.031, 0.431, 0.533]
-corner_radius = 2.0
-
-[[entities]]
 id = "gallery-sidebar"
 name = "Gallery Sidebar"
 

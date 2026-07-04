@@ -44,7 +44,7 @@ const editor_left_sidebar_min_width: f32 = 260.0;
 const editor_right_sidebar_target_width: f32 = 460.0;
 const editor_right_sidebar_min_width: f32 = 300.0;
 const editor_min_game_viewport_width: f32 = 320.0;
-const editor_splitter_width: f32 = 8.0;
+const editor_splitter_width: f32 = 2.0;
 const editor_performance_display_interval_ns: u64 = 333_000_000;
 const editor_debug_fps_size: f32 = 1.6;
 const editor_system_text_size: f32 = 1.0;
@@ -1800,13 +1800,12 @@ fn extractEditorShellInto(world: *runtime.World, input: FrameInput) RenderError!
     try extractEditorShellLayoutRect(world, "machina.editor.shell.right_sidebar", "Editor Right Sidebar", layout.right.size3(), 4, editor_palette.panel);
 
     const frame_color = editor_palette.panel_muted;
-    const accent_color = editor_palette.accent;
     try extractEditorShellRect(world, "machina.editor.shell.viewport.border.top", .{
         .x = game_viewport.x,
         .y = game_viewport.y,
         .width = game_viewport.width,
         .height = 2.0,
-    }, accent_color);
+    }, frame_color);
     try extractEditorShellRect(world, "machina.editor.shell.viewport.border.bottom", .{
         .x = game_viewport.x,
         .y = game_viewport.y + game_viewport.height - 2.0,
@@ -1901,14 +1900,6 @@ fn extractDebugOverlayInto(
         .size = .{ panel_size[0], panel_size[1], 0.0 },
         .color = editor_palette.panel,
         .corner_radius = editor_panel_corner_radius,
-    }) catch |err| return mapWorldError(err);
-
-    const accent = world.createEntity("machina.editor.debug.accent", "Editor Debug Accent") catch |err| return mapWorldError(err);
-    world.setUiRect(accent, .{
-        .position = panel.position(),
-        .size = .{ panel_size[0], 4.0, 0.0 },
-        .color = editor_palette.accent,
-        .corner_radius = 2.0,
     }) catch |err| return mapWorldError(err);
 
     if (!has_profiles) {
@@ -2108,14 +2099,6 @@ fn extractEditorComponentInspectorInto(
         .size = .{ panel_width, panel_height, 0.0 },
         .color = editor_palette.panel,
         .corner_radius = 0.0,
-    }) catch |err| return mapWorldError(err);
-
-    const accent = world.createEntity("machina.editor.inspector.accent", "Editor Inspector Accent") catch |err| return mapWorldError(err);
-    world.setUiRect(accent, .{
-        .position = .{ panel_x, panel_y, 0.0 },
-        .size = .{ panel_width, 4.0, 0.0 },
-        .color = editor_palette.accent,
-        .corner_radius = 2.0,
     }) catch |err| return mapWorldError(err);
 
     try extractEditorText(world, "machina.editor.inspector.title", "Editor Inspector Title", .{
@@ -5935,8 +5918,9 @@ test "debug overlay extracts FPS label when visible" {
     });
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
-    try std.testing.expect(state.world.uiRectCount() >= 14);
     try std.testing.expect(state.world.uiTextCount() >= 8);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.accent") == null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.accent") == null);
 
     const label = state.world.findEntityById("machina.editor.debug.fps") orelse return error.TestExpectedEqual;
     const fps_value = try state.world.getString(label, runtime.ui_text_component_id, "value");
@@ -6015,7 +5999,9 @@ test "editor shell body uses hgroup slot for the game viewport" {
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_hgroup_component_id));
     const game_slot = state.world.findEntityById("machina.editor.shell.game_viewport") orelse return error.TestExpectedEqual;
     const slot_rect = try ui_layout.resolvedItemRect(&state.world, game_slot);
+    const left_splitter = editorSplitterRect(input, .left) orelse return error.TestExpectedEqual;
     const viewport = editorGameViewport(input);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), left_splitter.width, 0.001);
     try std.testing.expectApproxEqAbs(viewport.x, slot_rect.position[0], 0.001);
     try std.testing.expectApproxEqAbs(viewport.y, slot_rect.position[1], 0.001);
     try std.testing.expectApproxEqAbs(viewport.width, slot_rect.size[0], 0.001);
@@ -6110,8 +6096,9 @@ test "debug overlay extracts system profile rows when available" {
         .system_profiles = &profiles,
     });
 
-    try std.testing.expect(state.world.uiRectCount() >= 14);
     try std.testing.expect(state.world.uiTextCount() >= 11);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.panel") != null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.accent") == null);
 
     var saw_header = false;
     var saw_startup = false;
@@ -6222,7 +6209,8 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     });
 
     try std.testing.expectEqual(@as(usize, 4), state.world.renderableMeshCount());
-    try std.testing.expect(state.world.uiRectCount() >= 16);
+    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.panel") != null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.accent") == null);
 
     var saw_transform = false;
     var saw_position_value = false;
