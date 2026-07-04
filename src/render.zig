@@ -62,7 +62,7 @@ const render_system_profile_window_frames: usize = 120;
 const editor_control_button_width: f32 = 104.0;
 const editor_control_button_height: f32 = 36.0;
 const editor_control_button_gap: f32 = 14.0;
-const editor_panel_corner_radius: f32 = 8.0;
+const editor_panel_corner_radius: f32 = 6.0;
 const editor_button_corner_radius: f32 = 6.0;
 const editor_command_play_toggle = "machina.editor.play_toggle";
 const editor_command_step = "machina.editor.step";
@@ -2265,7 +2265,7 @@ fn extractEditorComponentInspectorInto(
         .y = panel_y,
         .width = panel_width,
         .height = panel_height,
-    }, editor_palette.panel, 0.0);
+    }, editor_palette.panel, editor_panel_corner_radius);
 
     try extractEditorText(world, "machina.editor.inspector.title", "Editor Inspector Title", .{
         panel_x + editor_panel_padding_x,
@@ -2348,7 +2348,7 @@ fn extractEditorComponentInspectorInto(
             .y = 0.0,
             .width = card_width,
             .height = card_height,
-        }, editor_palette.shell, 0.0);
+        }, editor_palette.shell, editor_panel_corner_radius);
         world.setUiLayoutItem(card, .{
             .parent = stack_id,
             .order = stack_order,
