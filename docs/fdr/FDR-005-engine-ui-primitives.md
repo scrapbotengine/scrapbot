@@ -44,6 +44,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - `machina.ui.progress_bar` stores value, max, and fill color. It renders as a fill inside the entity's rect.
 - `machina.ui.separator` renders a thin semantic divider through the same UI vertex path as rectangles.
 - Retained UI layout and hit testing are resolved through a shared engine module used by both rendering and scene UI input. Render positions, hover/press state, command dispatch, scrolling, clipping, and scene canvas viewport scaling should not maintain separate semantics.
+- Mouse-wheel scroll routing is component-based: code asks the shared retained UI router for the `machina.ui.scroll_view` under the pointer, receives the bounded next offset, and then applies or mirrors that result. Scene-authored scroll views apply it directly; the editor system list generates a small scroll-view routing world and mirrors the routed offset into its animated editor state.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
 - The UI overlay renders after 3D scene content.

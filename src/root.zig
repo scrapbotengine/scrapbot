@@ -316,7 +316,7 @@ pub const LiveProject = struct {
         editor_input.system_profile_count_hint = editor_input.system_profiles.len + render_profile_count;
 
         var routed_input = editor_input;
-        const editor_update = render.updateEditorState(&self.scene.world, &self.editor_state, editor_input) catch |err| {
+        const editor_update = render.updateEditorState(self.allocator, &self.scene.world, &self.editor_state, editor_input) catch |err| {
             if (std.fmt.allocPrint(self.allocator, "Editor interaction failed: {s}", .{@errorName(err)})) |message| {
                 defer self.allocator.free(message);
                 self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;
@@ -663,30 +663,7 @@ fn updateSceneUiScrollViews(world: *World) !void {
 
     const pointer_position_vec3 = try world.getVec3(input_entity, runtime.input_pointer_component_id, "position");
     const pointer_position = try sceneUiPointerPosition(world, input_entity, .{ pointer_position_vec3[0], pointer_position_vec3[1] });
-    var selected: ?runtime.EntityHandle = null;
-
-    var cursor: usize = 0;
-    const scroll_query = [_][]const u8{runtime.ui_scroll_view_component_id};
-    while (world.queryNext(&scroll_query, &cursor)) |entity| {
-        const scroll_view = try uiScrollView(world, entity) orelse continue;
-        const hit_rect = try resolveUiRect(world, entity, scroll_view.position, scroll_view.size);
-        const clip = try combineUiClip(hit_rect.clip, .{ .position = hit_rect.position, .size = hit_rect.size });
-        if (!ui_layout.pointInsideRect(pointer_position, hit_rect.position, hit_rect.size, clip)) {
-            continue;
-        }
-        selected = entity;
-    }
-
-    const entity = selected orelse return;
-    const scroll_view = try uiScrollView(world, entity) orelse return;
-    const max_scroll_y = try uiScrollMaxY(world, entity, scroll_view);
-    const delta_pixels = -wheel_delta[1] * 24.0;
-    if (delta_pixels == 0.0) {
-        return;
-    }
-    var next_offset = scroll_view.content_offset;
-    next_offset[1] = std.math.clamp(next_offset[1] + delta_pixels, 0.0, max_scroll_y);
-    try world.setVec3(entity, runtime.ui_scroll_view_component_id, "content_offset", next_offset);
+    _ = try routeUiScrollWheelAt(world, pointer_position, wheel_delta[1], 24.0);
 }
 
 fn updateUiCommandEvents(world: *World) !void {
@@ -727,10 +704,6 @@ fn updateUiCommandEvents(world: *World) !void {
     }
 }
 
-fn uiScrollView(world: *World, entity: runtime.EntityHandle) !?ui_layout.ScrollView {
-    return ui_layout.scrollView(world, entity) catch |err| return mapLayoutError(err);
-}
-
 fn resolveUiLayout(world: *World, entity: runtime.EntityHandle, local_position: [3]f32) !ui_layout.ResolvedLayout {
     return ui_layout.resolve(world, entity, local_position) catch |err| return mapLayoutError(err);
 }
@@ -741,10 +714,6 @@ fn resolveUiRect(world: *World, entity: runtime.EntityHandle, local_position: [3
 
 fn hitTestUiRect(world: *World, entity: runtime.EntityHandle, local_position: [3]f32, size: [3]f32, point: [2]f32) !?ui_layout.ResolvedRect {
     return ui_layout.hitTestRect(world, entity, local_position, size, point) catch |err| return mapLayoutError(err);
-}
-
-fn combineUiClip(a: ?ui_layout.ClipRect, b: ?ui_layout.ClipRect) !?ui_layout.ClipRect {
-    return ui_layout.combineClip(a, b) catch |err| return mapLayoutError(err);
 }
 
 fn sceneUiPointerPosition(world: *World, input_entity: runtime.EntityHandle, pointer_position: [2]f32) ![2]f32 {
@@ -765,8 +734,8 @@ fn sceneUiTarget(viewport: [3]f32, debug_overlay_visible: bool) ui_layout.Target
     return .{ .width = viewport[0], .height = viewport[1] };
 }
 
-fn uiScrollMaxY(world: *World, scroll_entity: runtime.EntityHandle, scroll_view: ui_layout.ScrollView) anyerror!f32 {
-    return ui_layout.scrollMaxY(world, scroll_entity, scroll_view) catch |err| return mapLayoutError(err);
+fn routeUiScrollWheelAt(world: *World, pointer_position: [2]f32, wheel_delta_y: f32, pixels_per_wheel: f32) anyerror!?ui_layout.ScrollWheelRoute {
+    return ui_layout.applyScrollWheelAt(world, pointer_position, wheel_delta_y, pixels_per_wheel) catch |err| return mapLayoutError(err);
 }
 
 fn mapLayoutError(err: anyerror) anyerror {

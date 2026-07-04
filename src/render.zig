@@ -273,35 +273,30 @@ fn clampEditorSystemScroll(state: *EditorState, profile_count: usize) void {
     state.system_scroll_y = std.math.clamp(state.system_scroll_y, 0.0, max_scroll_y);
 }
 
-fn scrollEditorSystemList(state: *EditorState, profile_count: usize, scroll_delta_y: f32) void {
-    const max_scroll_y = editorSystemMaxScrollY(profile_count);
-    if (max_scroll_y == 0.0) {
+fn applyEditorSystemScrollRoute(state: *EditorState, route: ui_layout.ScrollWheelRoute, wheel_delta_y: f32) void {
+    if (route.max_offset_y == 0.0) {
         state.system_scroll_y = 0.0;
         state.system_scroll_target_y = 0.0;
         return;
     }
 
-    if (state.system_scroll_boundary != .none) {
+    if (state.system_scroll_boundary == .top and wheel_delta_y > 0.0) {
         return;
     }
-
-    const delta_pixels = -scroll_delta_y * editor_system_scroll_pixels_per_wheel;
-    if (delta_pixels == 0.0) {
+    if (state.system_scroll_boundary == .bottom and wheel_delta_y < 0.0) {
         return;
     }
+    state.system_scroll_boundary = .none;
 
-    const target = state.system_scroll_target_y + delta_pixels;
-    if (target <= 0.0) {
-        state.system_scroll_target_y = 0.0;
+    state.system_scroll_target_y = route.next_offset[1];
+    if (route.next_offset[1] <= 0.0 and wheel_delta_y > 0.0) {
         state.system_scroll_boundary = .top;
         return;
     }
-    if (target >= max_scroll_y) {
-        state.system_scroll_target_y = max_scroll_y;
+    if (route.next_offset[1] >= route.max_offset_y and wheel_delta_y < 0.0) {
         state.system_scroll_boundary = .bottom;
         return;
     }
-    state.system_scroll_target_y = target;
 }
 
 fn animateEditorSystemScroll(state: *EditorState, delta_seconds: f32) void {
@@ -326,7 +321,7 @@ fn animateEditorSystemScroll(state: *EditorState, delta_seconds: f32) void {
     state.system_scroll_y += remaining * alpha;
 }
 
-pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!EditorUpdate {
+pub fn updateEditorState(allocator: std.mem.Allocator, world: *runtime.World, state: *EditorState, input: FrameInput) EditorError!EditorUpdate {
     state.selected_entity = validatedEditorSelection(world, state.selected_entity);
     if (!input.debug_overlay_visible) {
         state.dragging_axis = .none;
@@ -338,16 +333,21 @@ pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: Fram
     clampEditorSystemScroll(state, profile_count);
 
     const wheel_y = input.pointer.wheel_delta[1];
-    const over_system_scroll_area = editorSystemNeedsScroll(profile_count) and
+    const system_scroll_route = if (wheel_y != 0.0 and
+        editorSystemNeedsScroll(profile_count) and
         input.pointer.has_position and
-        hitEditorSystemScrollArea(input);
+        !std.math.isNan(input.pointer.position[0]) and
+        !std.math.isNan(input.pointer.position[1]))
+        try routeEditorSystemScrollWheel(allocator, state, input, profile_count, wheel_y)
+    else
+        null;
 
-    if (wheel_y == 0.0 or !over_system_scroll_area) {
+    if (wheel_y == 0.0 or system_scroll_route == null) {
         state.system_scroll_boundary = .none;
     }
 
-    if (wheel_y != 0.0 and over_system_scroll_area) {
-        scrollEditorSystemList(state, profile_count, wheel_y);
+    if (system_scroll_route) |route| {
+        applyEditorSystemScrollRoute(state, route, wheel_y);
         animateEditorSystemScroll(state, input.delta_seconds);
         return .{ .consumed_pointer = true };
     }
@@ -3928,29 +3928,51 @@ fn hitEditorChrome(input: FrameInput) bool {
     return editorSidebarRect(input).contains(input.pointer.position);
 }
 
-fn hitEditorSystemScrollArea(input: FrameInput) bool {
+fn routeEditorSystemScrollWheel(
+    allocator: std.mem.Allocator,
+    state: *const EditorState,
+    input: FrameInput,
+    profile_count: usize,
+    wheel_delta_y: f32,
+) EditorError!?ui_layout.ScrollWheelRoute {
+    var input_world = runtime.World.init(allocator);
+    defer input_world.deinit();
+
     const list_clip = editorSystemListClipRect(input);
-    const list_rect = ScreenRect{
-        .x = list_clip.position[0],
-        .y = list_clip.position[1],
-        .width = list_clip.size[0],
-        .height = list_clip.size[1],
-    };
-    if (list_rect.contains(input.pointer.position)) {
-        return true;
-    }
+    const hit_width = list_clip.size[0] + editor_scrollbar_gap + editor_scrollbar_width;
+    const scroll = try input_world.createEntity("machina.editor.debug.systems.scroll", "Editor Debug Systems Scroll View");
+    try input_world.setUiScrollView(scroll, .{
+        .position = list_clip.position,
+        .size = .{ hit_width, list_clip.size[1], 0.0 },
+        .content_offset = .{ 0.0, state.system_scroll_target_y, 0.0 },
+    });
 
-    if (!editorSystemNeedsScroll(editorSystemProfileScrollCount(input))) {
-        return false;
-    }
+    const content = try input_world.createEntity("machina.editor.debug.systems.scroll.content", "Editor Debug Systems Scroll Content");
+    try input_world.setUiSpacer(content, .{
+        .size = .{
+            list_clip.size[0],
+            @as(f32, @floatFromInt(profile_count)) * editor_system_row_stride,
+            0.0,
+        },
+    });
+    try input_world.setUiLayoutItem(content, .{
+        .parent = "machina.editor.debug.systems.scroll",
+        .order = 0,
+    });
 
-    const scrollbar_rect = ScreenRect{
-        .x = list_clip.position[0] + list_clip.size[0] + editor_scrollbar_gap,
-        .y = list_clip.position[1],
-        .width = editor_scrollbar_width,
-        .height = list_clip.size[1],
+    return ui_layout.routeScrollWheelAt(&input_world, input.pointer.position, wheel_delta_y, editor_system_scroll_pixels_per_wheel) catch |err| return mapEditorLayoutError(err);
+}
+
+fn mapEditorLayoutError(err: anyerror) EditorError {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.DuplicateEntityId => error.DuplicateEntityId,
+        error.InvalidEntity => error.InvalidEntity,
+        error.UnknownComponent => error.UnknownComponent,
+        error.UnknownField => error.UnknownField,
+        error.InvalidFieldType => error.InvalidFieldType,
+        else => error.InvalidScene,
     };
-    return scrollbar_rect.contains(input.pointer.position);
 }
 
 fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
@@ -4183,7 +4205,7 @@ test "editor raycast selects nearest renderable mesh" {
         .viewport_height = 540.0,
     };
     const game_viewport = editorGameViewport(input);
-    const update = try updateEditorState(&world, &editor_state, .{
+    const update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = input.debug_overlay_visible,
         .viewport_width = input.viewport_width,
         .viewport_height = input.viewport_height,
@@ -4221,7 +4243,7 @@ test "editor gizmo drag mutates selected transform position" {
     };
     const game_viewport = editorGameViewport(input);
     editor_state.last_pointer = .{ game_viewport.x + game_viewport.width * 0.5, game_viewport.y + game_viewport.height * 0.5 };
-    const update = try updateEditorState(&world, &editor_state, .{
+    const update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = input.debug_overlay_visible,
         .viewport_width = input.viewport_width,
         .viewport_height = input.viewport_height,
@@ -4246,7 +4268,7 @@ test "editor playback controls toggle pause and request single step" {
     var editor_state = EditorState{};
     const frame_input = FrameInput{ .debug_overlay_visible = true };
     const play_rect = editorPlayButtonRect(frame_input);
-    const pause_update = try updateEditorState(&world, &editor_state, .{
+    const pause_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .pointer = .{
             .position = .{ play_rect.x + 4.0, play_rect.y + 4.0 },
@@ -4258,7 +4280,7 @@ test "editor playback controls toggle pause and request single step" {
     try std.testing.expect(pause_update.consumed_pointer);
     try std.testing.expect(editor_state.paused);
 
-    const release_update = try updateEditorState(&world, &editor_state, .{
+    const release_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .pointer = .{
             .position = .{ play_rect.x + 4.0, play_rect.y + 4.0 },
@@ -4270,7 +4292,7 @@ test "editor playback controls toggle pause and request single step" {
     try std.testing.expect(!editor_state.captured_pointer);
 
     const step_rect = editorStepButtonRect(frame_input);
-    const step_update = try updateEditorState(&world, &editor_state, .{
+    const step_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .pointer = .{
             .position = .{ step_rect.x + 4.0, step_rect.y + 4.0 },
@@ -4311,7 +4333,7 @@ test "editor system list scroll state responds to wheel input" {
 
     var editor_state = EditorState{};
     const pointer = editorSystemListHitTestPoint(&profiles, 0);
-    const down_update = try updateEditorState(&world, &editor_state, .{
+    const down_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4326,7 +4348,7 @@ test "editor system list scroll state responds to wheel input" {
     try std.testing.expect(editor_state.system_scroll_y > 0.0);
     try std.testing.expect(editor_state.system_scroll_y < editor_state.system_scroll_target_y);
 
-    const up_update = try updateEditorState(&world, &editor_state, .{
+    const up_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4357,7 +4379,7 @@ test "editor system list wheel scroll ignores pointer outside list" {
     };
 
     var editor_state = EditorState{ .system_scroll_boundary = .bottom };
-    const update = try updateEditorState(&world, &editor_state, .{
+    const update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4383,7 +4405,7 @@ test "editor system list uses profile count hint for render-added rows" {
     };
 
     var editor_state = EditorState{};
-    const update = try updateEditorState(&world, &editor_state, .{
+    const update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4417,7 +4439,7 @@ test "editor system list uses fixed wheel direction" {
 
     var editor_state = EditorState{};
     const pointer = editorSystemListHitTestPoint(&profiles, 0);
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4429,13 +4451,13 @@ test "editor system list uses fixed wheel direction" {
     });
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), editor_state.system_scroll_target_y, 0.001);
 
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
     });
 
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4447,13 +4469,13 @@ test "editor system list uses fixed wheel direction" {
     });
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
 
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
     });
 
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4483,7 +4505,7 @@ test "editor system list supports fractional pixel scroll" {
     };
 
     var editor_state = EditorState{};
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4522,7 +4544,7 @@ test "editor system list animates toward scroll target" {
     };
 
     var editor_state = EditorState{};
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 0.016,
         .system_profiles = &profiles,
@@ -4538,7 +4560,7 @@ test "editor system list animates toward scroll target" {
     try std.testing.expect(editor_state.system_scroll_y < editor_state.system_scroll_target_y);
 
     const previous_scroll_y = editor_state.system_scroll_y;
-    _ = try updateEditorState(&world, &editor_state, .{
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
@@ -4555,7 +4577,7 @@ fn replayEditorScrollFrames(
 ) !void {
     const pointer = editorSystemListHitTestPoint(profiles, 0);
     for (wheel_deltas) |delta| {
-        _ = try updateEditorState(world, editor_state, .{
+        _ = try updateEditorState(std.testing.allocator, world, editor_state, .{
             .debug_overlay_visible = true,
             .delta_seconds = 1.0,
             .system_profiles = profiles,
@@ -4601,7 +4623,7 @@ test "editor system list replay applies fractional scroll away from the bottom" 
     try std.testing.expectApproxEqAbs(bounced_target - editor_system_scroll_pixels_per_wheel, editor_state.system_scroll_target_y, 0.001);
 }
 
-test "editor system list replay stays pinned through large boundary bounce stream" {
+test "editor system list replay handles mixed wheel directions without sticky boundary" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
 
@@ -4622,15 +4644,11 @@ test "editor system list replay stays pinned through large boundary bounce strea
         -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, -0.75, 2.0, -1.0,
     };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &frames);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_row_stride * 2.0), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 31.5), editor_state.system_scroll_target_y, 0.001);
 
     const deliberate_reverse_after_idle = [_]f32{ 0.0, 1.0 };
     try replayEditorScrollFrames(&world, &editor_state, &profiles, &deliberate_reverse_after_idle);
-    try std.testing.expectApproxEqAbs(
-        editorSystemMaxScrollY(profiles.len) - editor_system_scroll_pixels_per_wheel,
-        editor_state.system_scroll_target_y,
-        0.001,
-    );
+    try std.testing.expectApproxEqAbs(@as(f32, 13.5), editor_state.system_scroll_target_y, 0.001);
 }
 
 test "render ECS schedule orders extract prepare queue and draw systems" {

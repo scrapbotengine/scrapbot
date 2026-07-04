@@ -58,6 +58,13 @@ pub const ScrollView = struct {
     content_offset: [3]f32,
 };
 
+pub const ScrollWheelRoute = struct {
+    entity: runtime.EntityHandle,
+    current_offset: [3]f32,
+    next_offset: [3]f32,
+    max_offset_y: f32,
+};
+
 pub const VBox = struct {
     position: [3]f32,
     spacing: f32,
@@ -344,6 +351,66 @@ pub fn scrollMaxY(world: *const runtime.World, scroll_entity: runtime.EntityHand
     return @max(content_size[1] - scroll_view.size[1], 0.0);
 }
 
+pub fn scrollViewAt(world: *const runtime.World, point: [2]f32) Error!?runtime.EntityHandle {
+    var selected: ?runtime.EntityHandle = null;
+
+    var cursor: usize = 0;
+    const scroll_query = [_][]const u8{runtime.ui_scroll_view_component_id};
+    while (world.queryNext(&scroll_query, &cursor)) |entity| {
+        const scroll_view = (try scrollView(world, entity)) orelse continue;
+        const hit_rect = try resolvedRect(world, entity, scroll_view.position, scroll_view.size);
+        const clip = try combineClip(hit_rect.clip, .{ .position = hit_rect.position, .size = hit_rect.size });
+        if (!pointInsideRect(point, hit_rect.position, hit_rect.size, clip)) {
+            continue;
+        }
+        selected = entity;
+    }
+
+    return selected;
+}
+
+pub fn routeScrollWheelAt(
+    world: *const runtime.World,
+    point: [2]f32,
+    wheel_delta_y: f32,
+    pixels_per_wheel: f32,
+) Error!?ScrollWheelRoute {
+    if (wheel_delta_y == 0.0 or pixels_per_wheel == 0.0) {
+        return null;
+    }
+
+    const entity = (try scrollViewAt(world, point)) orelse return null;
+    const scroll_view_value = (try scrollView(world, entity)) orelse return null;
+    const max_scroll_y = try scrollMaxY(world, entity, scroll_view_value);
+    if (max_scroll_y == 0.0) {
+        return null;
+    }
+    const delta_pixels = -wheel_delta_y * pixels_per_wheel;
+    if (delta_pixels == 0.0) {
+        return null;
+    }
+
+    var next_offset = scroll_view_value.content_offset;
+    next_offset[1] = std.math.clamp(next_offset[1] + delta_pixels, 0.0, max_scroll_y);
+    return .{
+        .entity = entity,
+        .current_offset = scroll_view_value.content_offset,
+        .next_offset = next_offset,
+        .max_offset_y = max_scroll_y,
+    };
+}
+
+pub fn applyScrollWheelAt(
+    world: *runtime.World,
+    point: [2]f32,
+    wheel_delta_y: f32,
+    pixels_per_wheel: f32,
+) Error!?ScrollWheelRoute {
+    const route = (try routeScrollWheelAt(world, point, wheel_delta_y, pixels_per_wheel)) orelse return null;
+    try world.setVec3(route.entity, runtime.ui_scroll_view_component_id, "content_offset", route.next_offset);
+    return route;
+}
+
 pub fn itemSize(world: *const runtime.World, entity: runtime.EntityHandle) Error![3]f32 {
     var size = try itemNaturalSize(world, entity);
     if (try layoutItem(world, entity)) |item| {
@@ -568,4 +635,41 @@ fn stackDirectionIsHorizontal(direction: []const u8) Error!bool {
 
 fn isFiniteVec3(value: [3]f32) bool {
     return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
+}
+
+test "scroll wheel routing targets the scroll view under the pointer" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const scroll = try world.createEntity("scroll", "Scroll");
+    try world.setUiScrollView(scroll, .{
+        .position = .{ 10.0, 20.0, 0.0 },
+        .size = .{ 120.0, 40.0, 0.0 },
+        .content_offset = .{ 0.0, 0.0, 0.0 },
+    });
+
+    const content = try world.createEntity("content", "Content");
+    try world.setUiSpacer(content, .{ .size = .{ 120.0, 100.0, 0.0 } });
+    try world.setUiLayoutItem(content, .{ .parent = "scroll", .order = 0 });
+
+    const missed = try routeScrollWheelAt(&world, .{ 200.0, 200.0 }, -1.0, 24.0);
+    try std.testing.expect(missed == null);
+
+    const static_scroll = try world.createEntity("static-scroll", "Static Scroll");
+    try world.setUiScrollView(static_scroll, .{
+        .position = .{ 200.0, 20.0, 0.0 },
+        .size = .{ 120.0, 100.0, 0.0 },
+        .content_offset = .{ 0.0, 0.0, 0.0 },
+    });
+    const static_content = try world.createEntity("static-content", "Static Content");
+    try world.setUiSpacer(static_content, .{ .size = .{ 120.0, 60.0, 0.0 } });
+    try world.setUiLayoutItem(static_content, .{ .parent = "static-scroll", .order = 0 });
+    const no_overflow = try routeScrollWheelAt(&world, .{ 210.0, 30.0 }, -1.0, 24.0);
+    try std.testing.expect(no_overflow == null);
+
+    const route = (try applyScrollWheelAt(&world, .{ 20.0, 30.0 }, -2.0, 24.0)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(scroll.index, route.entity.index);
+    try std.testing.expectApproxEqAbs(@as(f32, 48.0), route.next_offset[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 60.0), route.max_offset_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 48.0), (try world.getVec3(scroll, runtime.ui_scroll_view_component_id, "content_offset"))[1], 0.001);
 }
