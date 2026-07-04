@@ -1,0 +1,4 @@
+interface:
+  display_name: "Todo List"
+  short_description: "Maintain a lightweight docs/TODO.md task list"
+  default_prompt: "Use $todo-list to track outstanding work in docs/TODO.md while you implement this feature."
