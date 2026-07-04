@@ -31,6 +31,12 @@
       "skillPath": "skills/fix-branch-name/SKILL.md",
       "computedHash": "bbae48e70c430847c93794af61f23c7112ddeddabc08760c75733137c0a352a5"
     },
+    "glossary": {
+      "source": "hmans/skills",
+      "sourceType": "github",
+      "skillPath": "skills/glossary/SKILL.md",
+      "computedHash": "fc41a17a295c228fd9fbab91b40a68a807ceb1ef367873f27dc213d7cb51b3e9"
+    },
     "technical-writing": {
       "source": "hmans/skills",
       "sourceType": "github",
