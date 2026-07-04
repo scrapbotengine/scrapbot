@@ -39,6 +39,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    configureCompileArtifact(exe, target);
     linkWgpuPlatform(exe, target);
     linkWindowPlatform(exe, target, window_platform);
 
@@ -55,6 +56,7 @@ pub fn build(b: *std.Build) void {
     const mod_tests = b.addTest(.{
         .root_module = machina_mod,
     });
+    configureCompileArtifact(mod_tests, target);
     linkWgpuPlatform(mod_tests, target);
     linkWindowPlatform(mod_tests, target, window_platform);
     const run_mod_tests = b.addRunArtifact(mod_tests);
@@ -62,6 +64,7 @@ pub fn build(b: *std.Build) void {
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });
+    configureCompileArtifact(exe_tests, target);
     linkWgpuPlatform(exe_tests, target);
     linkWindowPlatform(exe_tests, target, window_platform);
     const run_exe_tests = b.addRunArtifact(exe_tests);
@@ -69,6 +72,12 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+}
+
+fn configureCompileArtifact(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
+    if (target.result.os.tag == .windows and target.result.abi == .msvc) {
+        compile.bundle_compiler_rt = false;
+    }
 }
 
 fn linkLuau(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
