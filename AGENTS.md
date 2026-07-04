@@ -164,6 +164,7 @@ Live reload:
 - Keep editor/debug and example UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces; prefer larger sizes for primary readouts and verify compact panels in a headful screenshot, offscreen render artifact, or smoke run.
 - Keep editor/debug list rows bounded and readable. Use compact formatting, scrolling, windowing, or pagination for unbounded lists instead of drawing unreachable overflow or hidden `... more` rows.
 - Keep smooth UI scrolling modeled as target pixel/float offsets, animated visible offsets, row-height-independent wheel distances, and clipping. Do not fake smooth scrolling with hidden whole-row windows, row-snapped targets, instant jumps, or by drawing unclipped overflow outside the viewport.
+- Keep editor wheel input scoped to the hovered scrollable editor surface. When editor chrome is visible, scene-authored scroll views inside the game viewport must still receive wheel input unless the pointer is over editor chrome that intentionally consumes it.
 - For editor input bugs, add deterministic frame-replay coverage in Zig tests. Prefer replaying wheel/key/pointer frame sequences against editor state before relying on manual headful checks.
 - Keep `examples/ui_gallery/` current when adding or materially changing UI primitives.
 - Design editor surfaces for large worlds. Prefer selection-first, search, filtering, pagination, or virtualized lists over drawing every entity every frame.

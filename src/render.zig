@@ -337,12 +337,17 @@ pub fn updateEditorState(world: *runtime.World, state: *EditorState, input: Fram
     const profile_count = editorSystemProfileScrollCount(input);
     clampEditorSystemScroll(state, profile_count);
 
-    if (input.pointer.wheel_delta[1] == 0.0) {
+    const wheel_y = input.pointer.wheel_delta[1];
+    const over_system_scroll_area = editorSystemNeedsScroll(profile_count) and
+        input.pointer.has_position and
+        hitEditorSystemScrollArea(input);
+
+    if (wheel_y == 0.0 or !over_system_scroll_area) {
         state.system_scroll_boundary = .none;
     }
 
-    if (input.pointer.wheel_delta[1] != 0.0 and editorSystemNeedsScroll(profile_count)) {
-        scrollEditorSystemList(state, profile_count, input.pointer.wheel_delta[1]);
+    if (wheel_y != 0.0 and over_system_scroll_area) {
+        scrollEditorSystemList(state, profile_count, wheel_y);
         animateEditorSystemScroll(state, input.delta_seconds);
         return .{ .consumed_pointer = true };
     }
@@ -3923,8 +3928,29 @@ fn hitEditorChrome(input: FrameInput) bool {
     return editorSidebarRect(input).contains(input.pointer.position);
 }
 
-fn hitEditorSystemPanel(input: FrameInput) bool {
-    return editorSidebarRect(input).contains(input.pointer.position);
+fn hitEditorSystemScrollArea(input: FrameInput) bool {
+    const list_clip = editorSystemListClipRect(input);
+    const list_rect = ScreenRect{
+        .x = list_clip.position[0],
+        .y = list_clip.position[1],
+        .width = list_clip.size[0],
+        .height = list_clip.size[1],
+    };
+    if (list_rect.contains(input.pointer.position)) {
+        return true;
+    }
+
+    if (!editorSystemNeedsScroll(editorSystemProfileScrollCount(input))) {
+        return false;
+    }
+
+    const scrollbar_rect = ScreenRect{
+        .x = list_clip.position[0] + list_clip.size[0] + editor_scrollbar_gap,
+        .y = list_clip.position[1],
+        .width = editor_scrollbar_width,
+        .height = list_clip.size[1],
+    };
+    return scrollbar_rect.contains(input.pointer.position);
 }
 
 fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
@@ -4258,6 +4284,15 @@ test "editor playback controls toggle pause and request single step" {
     try std.testing.expect(editor_state.paused);
 }
 
+pub fn editorSystemListHitTestPoint(profiles: []const runtime.SystemProfileSnapshot, profile_count_hint: usize) [2]f32 {
+    const list_clip = editorSystemListClipRect(.{
+        .debug_overlay_visible = true,
+        .system_profiles = profiles,
+        .system_profile_count_hint = profile_count_hint,
+    });
+    return .{ list_clip.position[0] + 4.0, list_clip.position[1] + 4.0 };
+}
+
 test "editor system list scroll state responds to wheel input" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
@@ -4275,11 +4310,14 @@ test "editor system list scroll state responds to wheel input" {
     };
 
     var editor_state = EditorState{};
+    const pointer = editorSystemListHitTestPoint(&profiles, 0);
     const down_update = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
         .pointer = .{
+            .position = pointer,
+            .has_position = true,
             .wheel_delta = .{ 0.0, -1.0 },
         },
     });
@@ -4293,6 +4331,8 @@ test "editor system list scroll state responds to wheel input" {
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
         .pointer = .{
+            .position = pointer,
+            .has_position = true,
             .wheel_delta = .{ 0.0, 1.0 },
         },
     });
@@ -4300,7 +4340,7 @@ test "editor system list scroll state responds to wheel input" {
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), editor_state.system_scroll_target_y, 0.001);
 }
 
-test "editor system list wheel scroll does not depend on pointer hit testing" {
+test "editor system list wheel scroll ignores pointer outside list" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
 
@@ -4316,7 +4356,7 @@ test "editor system list wheel scroll does not depend on pointer hit testing" {
         .{ .id = "system.8", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
     };
 
-    var editor_state = EditorState{};
+    var editor_state = EditorState{ .system_scroll_boundary = .bottom };
     const update = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
@@ -4328,8 +4368,9 @@ test "editor system list wheel scroll does not depend on pointer hit testing" {
         },
     });
 
-    try std.testing.expect(update.consumed_pointer);
-    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expect(!update.consumed_pointer);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), editor_state.system_scroll_target_y, 0.001);
+    try std.testing.expectEqual(EditorScrollBoundary.none, editor_state.system_scroll_boundary);
 }
 
 test "editor system list uses profile count hint for render-added rows" {
@@ -4347,7 +4388,11 @@ test "editor system list uses profile count hint for render-added rows" {
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
         .system_profile_count_hint = 9,
-        .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
+        .pointer = .{
+            .position = editorSystemListHitTestPoint(&profiles, 9),
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
     });
 
     try std.testing.expect(update.consumed_pointer);
@@ -4371,11 +4416,16 @@ test "editor system list uses fixed wheel direction" {
     };
 
     var editor_state = EditorState{};
+    const pointer = editorSystemListHitTestPoint(&profiles, 0);
     _ = try updateEditorState(&world, &editor_state, .{
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
-        .pointer = .{ .wheel_delta = .{ 0.0, 1.0 } },
+        .pointer = .{
+            .position = pointer,
+            .has_position = true,
+            .wheel_delta = .{ 0.0, 1.0 },
+        },
     });
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), editor_state.system_scroll_target_y, 0.001);
 
@@ -4389,7 +4439,11 @@ test "editor system list uses fixed wheel direction" {
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
-        .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
+        .pointer = .{
+            .position = pointer,
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
     });
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
 
@@ -4403,7 +4457,11 @@ test "editor system list uses fixed wheel direction" {
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
-        .pointer = .{ .wheel_delta = .{ 0.0, 1.0 } },
+        .pointer = .{
+            .position = pointer,
+            .has_position = true,
+            .wheel_delta = .{ 0.0, 1.0 },
+        },
     });
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), editor_state.system_scroll_target_y, 0.001);
 }
@@ -4429,7 +4487,11 @@ test "editor system list supports fractional pixel scroll" {
         .debug_overlay_visible = true,
         .delta_seconds = 1.0,
         .system_profiles = &profiles,
-        .pointer = .{ .wheel_delta = .{ 0.0, -0.5 } },
+        .pointer = .{
+            .position = editorSystemListHitTestPoint(&profiles, 0),
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -0.5 },
+        },
     });
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel / 2.0), editor_state.system_scroll_target_y, 0.001);
     editor_state.system_scroll_y = editor_state.system_scroll_target_y;
@@ -4464,7 +4526,11 @@ test "editor system list animates toward scroll target" {
         .debug_overlay_visible = true,
         .delta_seconds = 0.016,
         .system_profiles = &profiles,
-        .pointer = .{ .wheel_delta = .{ 0.0, -1.0 } },
+        .pointer = .{
+            .position = editorSystemListHitTestPoint(&profiles, 0),
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
     });
 
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), editor_state.system_scroll_target_y, 0.001);
@@ -4487,12 +4553,17 @@ fn replayEditorScrollFrames(
     profiles: []const runtime.SystemProfileSnapshot,
     wheel_deltas: []const f32,
 ) !void {
+    const pointer = editorSystemListHitTestPoint(profiles, 0);
     for (wheel_deltas) |delta| {
         _ = try updateEditorState(world, editor_state, .{
             .debug_overlay_visible = true,
             .delta_seconds = 1.0,
             .system_profiles = profiles,
-            .pointer = .{ .wheel_delta = .{ 0.0, delta } },
+            .pointer = .{
+                .position = pointer,
+                .has_position = true,
+                .wheel_delta = .{ 0.0, delta },
+            },
         });
     }
 }

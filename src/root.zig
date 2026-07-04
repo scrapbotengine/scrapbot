@@ -2691,10 +2691,13 @@ test "LiveProject editor scrolling uses render system profile count hint" {
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
 
+    const profiles = [_]SystemProfileSnapshot{};
     live_project.updateWithInput(0.016, .{
         .debug_overlay_visible = true,
         .system_profile_count_hint = 9,
         .pointer = .{
+            .position = render.editorSystemListHitTestPoint(&profiles, 9),
+            .has_position = true,
             .wheel_delta = .{ 0.0, -1.0 },
         },
     });
@@ -3057,6 +3060,27 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
     });
 
     try std.testing.expectApproxEqAbs(@as(f32, 24.0), (try live_project.scene.world.getVec3(scroll, runtime.ui_scroll_view_component_id, "content_offset"))[1], 0.001);
+
+    try live_project.scene.world.setVec3(scroll, runtime.ui_scroll_view_component_id, "content_offset", .{ 0.0, 0.0, 0.0 });
+    const editor_bounds = render.editorGameViewportBounds(.{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    });
+    live_project.updateWithInput(0.016, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .system_profile_count_hint = 9,
+        .pointer = .{
+            .position = .{ editor_bounds.x + 20.0, editor_bounds.y + 20.0 },
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
+    });
+
+    try std.testing.expectApproxEqAbs(@as(f32, 24.0), (try live_project.scene.world.getVec3(scroll, runtime.ui_scroll_view_component_id, "content_offset"))[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), live_project.editor_state.system_scroll_target_y, 0.001);
 }
 
 test "stepProjectDetailed runs requested frames headlessly" {
