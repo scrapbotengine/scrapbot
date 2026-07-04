@@ -10,7 +10,13 @@ Machina is an experimental, text-first game engine written in Zig. The engine is
 - Run your project by running `machina run` in your project directory.
 - Press Ctrl+Tab in a headful run to toggle the engine editor shell; `machina run --editor` shows it by default. The editor shell contains a game viewport plus sidebar UI for FPS, playback, inspection, and live project/engine system timings.
 
-Please add to this list as needed.
+Please see `docs/fdr/INDEX.md` for a complete list of features and `docs/adr/INDEX.md` for a complete list of architectural decisions.
+
+## Design Directives
+
+- This is an ECS-based engine. Implement functionalities as combinations of components and systems. Prefer reusable components/systems over one-off per-entity logic. Avoid introducing per-entity script callbacks that bypass the ECS model.
+- Implement behaviors in a reusable manner. Example: an entity reacting to input events should be implemented using a system that queries for entities with the relevant components, rather than hardcoding the behavior into the entity (or engine) itself.
+- The engine itself must be implemented in Zig, either in ECS systems and components, or in the engine's core. Luau is only for project-local scripting. Do not implement engine features in Luau.
 
 ## Project Shape
 
