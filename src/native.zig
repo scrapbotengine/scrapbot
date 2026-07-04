@@ -10,6 +10,18 @@ const native_build_dir = ".machina/native";
 const native_api_cache_path = native_build_dir ++ "/machina_native.zig";
 const native_api_source = @embedFile("native_api.zig");
 
+pub const NativeOptimizeMode = enum {
+    debug,
+    release_fast,
+
+    fn zigName(self: NativeOptimizeMode) []const u8 {
+        return switch (self) {
+            .debug => "Debug",
+            .release_fast => "ReleaseFast",
+        };
+    }
+};
+
 pub const LoadResult = union(enum) {
     extension: LoadedExtension,
     diagnostic: script.Diagnostic,
@@ -72,23 +84,69 @@ pub fn loadProjectExtensionDetailed(
     const output_path = try dynamicOutputPath(allocator, source_stamp);
     defer allocator.free(output_path);
 
-    if (try buildDynamicLibrary(io, allocator, project_root_path, native_source_path, output_path)) |build_diagnostic| {
+    if (try buildDynamicLibrary(io, allocator, project_root_path, native_source_path, output_path, .debug)) |build_diagnostic| {
         return .{ .diagnostic = build_diagnostic };
     }
 
     const library_path = try std.fs.path.join(allocator, &.{ project_root_path, output_path });
+    return loadExtensionLibrary(allocator, library_path, native_source_path);
+}
+
+pub fn buildProjectDynamicLibraryDetailed(
+    io: Io,
+    allocator: std.mem.Allocator,
+    project_root_path: []const u8,
+    native_source_path: []const u8,
+    output_path: []const u8,
+    optimize: NativeOptimizeMode,
+) !?script.Diagnostic {
+    const cwd = Io.Dir.cwd();
+    const root_dir = try cwd.openDir(io, project_root_path, .{});
+    defer root_dir.close(io);
+
+    try root_dir.createDirPath(io, native_build_dir);
+    try root_dir.writeFile(io, .{
+        .sub_path = native_api_cache_path,
+        .data = native_api_source,
+    });
+
+    return buildDynamicLibrary(io, allocator, project_root_path, native_source_path, output_path, optimize);
+}
+
+pub fn loadProjectArtifactDetailed(
+    allocator: std.mem.Allocator,
+    project_root_path: []const u8,
+    artifact_path: []const u8,
+) !LoadResult {
+    const library_path = try std.fs.path.join(allocator, &.{ project_root_path, artifact_path });
+    return loadExtensionLibrary(allocator, library_path, artifact_path);
+}
+
+pub fn dynamicLibraryFileName() []const u8 {
+    return switch (builtin.os.tag) {
+        .windows => "machina_project.dll",
+        .macos, .ios => "libmachina_project.dylib",
+        else => "libmachina_project.so",
+    };
+}
+
+fn loadExtensionLibrary(
+    allocator: std.mem.Allocator,
+    library_path: []u8,
+    diagnostic_path: []const u8,
+) !LoadResult {
     errdefer allocator.free(library_path);
 
     var library = openDynamicLibrary(allocator, library_path) catch |err| {
         allocator.free(library_path);
-        return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, native_source_path, "failed to open native library: {s}", .{@errorName(err)}) };
+        return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, diagnostic_path, "failed to open native library: {s}", .{@errorName(err)}) };
     };
     errdefer library.close();
 
     const register = library.lookup(native_api.RegisterFn, "machina_register") orelse {
         library.close();
         allocator.free(library_path);
-        return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, native_source_path, "native library does not export machina_register", .{}) };
+        return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, diagnostic_path, "native library does not export machina_register", .{}) };
     };
 
     var builder = NativeRegistrationBuilder{ .allocator = allocator };
@@ -103,7 +161,7 @@ pub fn loadProjectExtensionDetailed(
         library.close();
         allocator.free(library_path);
         const message = if (builder.error_message) |message| message else "machina_register returned failure";
-        return .{ .diagnostic = try makeDiagnostic(allocator, .native_registration, native_source_path, "{s}", .{message}) };
+        return .{ .diagnostic = try makeDiagnostic(allocator, .native_registration, diagnostic_path, "{s}", .{message}) };
     }
 
     const components = try builder.components.toOwnedSlice(allocator);
@@ -151,6 +209,7 @@ fn buildDynamicLibrary(
     project_root_path: []const u8,
     native_source_path: []const u8,
     output_path: []const u8,
+    optimize: NativeOptimizeMode,
 ) !?script.Diagnostic {
     const emit_arg = try std.fmt.allocPrint(allocator, "-femit-bin={s}", .{output_path});
     defer allocator.free(emit_arg);
@@ -164,7 +223,7 @@ fn buildDynamicLibrary(
         "build-lib",
         "-dynamic",
         "-O",
-        "Debug",
+        optimize.zigName(),
         emit_arg,
         "--cache-dir",
         native_build_dir ++ "/zig-cache",

@@ -83,6 +83,8 @@ Headless commands are first-class. They exist so humans, editors, CI, and coding
 
 During development, a project-local native module is built as a dynamic library under `.machina/native/`.
 
+Packaged projects may contain a generated `native_artifact` path in `project.machina.toml`. When present, Machina loads that prebuilt library instead of rebuilding the source module.
+
 That cache is an implementation detail of the development loop:
 
 - Do not commit generated `.machina/` directories.

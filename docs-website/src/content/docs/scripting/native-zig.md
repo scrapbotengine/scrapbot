@@ -122,4 +122,6 @@ Failed native builds, loads, or registrations keep the last-known-good program a
 
 ## Static Build Direction
 
-Dynamic loading is the development loop. The registration entry point and source-level API are designed so future `machina build` can statically link the same project-native source on platforms where dynamic code loading is impossible or forbidden.
+Dynamic loading is the development loop. `machina build` currently packages host-platform bundles with a prebuilt native dynamic library artifact, so the bundled project can load native systems without rebuilding source on the target machine.
+
+The registration entry point and source-level API are still designed for a future SDK/static build path that can statically link the same project-native source on platforms where dynamic code loading is impossible or forbidden.
