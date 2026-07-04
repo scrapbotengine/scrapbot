@@ -77,6 +77,7 @@ pub fn build(b: *std.Build) void {
 fn configureCompileArtifact(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
     if (target.result.os.tag == .windows and target.result.abi == .msvc) {
         compile.bundle_compiler_rt = false;
+        compile.bundle_ubsan_rt = false;
     }
 }
 
