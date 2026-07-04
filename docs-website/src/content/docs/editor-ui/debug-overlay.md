@@ -38,7 +38,7 @@ When editor chrome is visible, scene content and scene-authored UI render into t
 
 The shell body is generated as a retained `machina.ui.hgroup`: left sidebar, left splitter, growable game viewport, right splitter, and right sidebar. Splitter drag state is engine-owned, but layout resolution still flows through the shared retained UI path.
 
-The system inspector and selected-entity inspector both use retained sidebar content with consistent internal padding. The system list is one table panel with aligned text rows and one-pixel separators. Component boxes fill the right sidebar width and keep labels and values aligned instead of drawing loose overlay text.
+The system inspector and selected-entity inspector both use retained sidebar content with consistent internal padding. The system list is one table panel with aligned text rows, not separate row panels. Component boxes fill the right sidebar width and keep labels and values aligned instead of drawing loose overlay text.
 
 ## UI Is ECS Data
 

@@ -2054,21 +2054,6 @@ fn extractDebugOverlayInto(
 
     for (input.system_profiles, 0..) |profile, profile_index| {
         const row_y = @as(f32, @floatFromInt(profile_index)) * editor_system_row_stride;
-        if (profile_index > 0) {
-            const separator_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.separator.{d}", .{profile_index}) catch return RenderError.OutOfMemory;
-            defer allocator.free(separator_id);
-            const separator = world.createEntity(separator_id, "Editor System Separator") catch |err| return mapWorldError(err);
-            world.setUiSeparator(separator, .{
-                .position = .{ 0.0, row_y, 0.0 },
-                .size = .{ row_width, editor_inspector_separator_height, 0.0 },
-                .color = editor_palette.panel_muted,
-            }) catch |err| return mapWorldError(err);
-            world.setUiLayoutItem(separator, .{
-                .parent = "machina.editor.debug.systems.table",
-                .order = @intCast(profile_index),
-            }) catch |err| return mapWorldError(err);
-        }
-
         const duration_text = formatSystemProfileDuration(allocator, profile) catch return RenderError.OutOfMemory;
         defer allocator.free(duration_text);
         const duration_width = editorTextWidth(duration_text, editor_system_text_size);
@@ -6466,7 +6451,6 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expect(saw_no_selection);
 
     const table = state.world.findEntityById("machina.editor.debug.systems.table") orelse return error.TestExpectedEqual;
-    const row1_separator = state.world.findEntityById("machina.editor.debug.systems.separator.1") orelse return error.TestExpectedEqual;
     const row0_label = state.world.findEntityById("machina.editor.debug.systems.row.0.label") orelse return error.TestExpectedEqual;
     const row0_duration = state.world.findEntityById("machina.editor.debug.systems.row.0.duration") orelse return error.TestExpectedEqual;
     const row1_label = state.world.findEntityById("machina.editor.debug.systems.row.1.label") orelse return error.TestExpectedEqual;
@@ -6477,7 +6461,7 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expectApproxEqAbs(editor_system_row_stride * 2.0, table_size[1], 0.001);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.1") == null);
-    try std.testing.expectApproxEqAbs(editor_inspector_separator_height, (try state.world.getVec3(row1_separator, runtime.ui_separator_component_id, "size"))[1], 0.001);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.separator.1") == null);
     try std.testing.expectEqualStrings("spawn_initial", try state.world.getString(row0_label, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("--", try state.world.getString(row0_duration, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("rotate_cubes", try state.world.getString(row1_label, runtime.ui_text_component_id, "value"));
@@ -6519,9 +6503,10 @@ test "debug overlay renders a scrolled system profile window" {
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.8.label") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.table") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.separator.1") == null);
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_scroll_view_component_id));
     try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(runtime.ui_vbox_component_id));
-    try std.testing.expect(state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id) >= profiles.len * 2 + 2);
+    try std.testing.expect(state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id) >= profiles.len * 2 + 1);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.track") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.thumb") != null);
 }
