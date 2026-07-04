@@ -1,7 +1,7 @@
 # FDR-018: Editor Entity Inspector
 
 **Status:** Active
-**Last reviewed:** 2026-07-04
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -15,6 +15,9 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Playback controls are generated as retained `machina.ui.button` + `machina.ui.command` entities and routed through shared retained UI command hit testing.
 - Pausing stops scheduled update systems while keeping startup, diagnostics, rendering, and editor interaction available.
 - Clicking a visible renderable mesh selects that entity.
+- The left sidebar shows a live list of entities currently in the world below the systems list.
+- Entity-list rows show the entity name, a component count, and highlight the selected entity.
+- Clicking an entity-list row selects that generation-aware entity handle and updates the right-sidebar component inspector.
 - The bottom bar shows live world counts and viewport size.
 - The right sidebar is reserved for selected-entity component inspection and component field editing.
 - The selected entity inspector shows the selected entity name/id and renders one full-width component box per attached component. Boxes use consistent sidebar padding and display current field values read through ECS component reflection.
@@ -32,7 +35,6 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Ctrl+Z undoes inspector field edits, and Ctrl+Shift+Z or Ctrl+Y redoes them.
 - Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files.
 - String fields can be edited through the same text input control, subject to the current fixed input-buffer length.
-- The inspector does not show a full entity list by default.
 - A selected renderable gets a world-space translate gizmo with X, Y, and Z handles.
 - Dragging a gizmo axis mutates the selected entity's transform position.
 - Selection uses generation-aware entity handles so stale selections are rejected instead of silently aliasing another entity.
@@ -40,17 +42,17 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 ## Design Decisions
 
-### 1. Keep the first inspector selection-first
+### 1. Keep browsing lightweight
 
-**Decision:** The first inspector shows the selected entity plus aggregate counts, not a full live entity table.
-**Why:** Projects may have many entities. Selection-first inspection gives immediate utility without making every editor frame enumerate and render a large list.
-**Tradeoff:** Browsing, search, filters, hierarchy views, and virtualized entity lists still need later design.
+**Decision:** The editor exposes a compact live entity list in the left sidebar and keeps component details in the right sidebar for the selected entity.
+**Why:** Developers need a basic way to inspect non-renderable or hard-to-click entities without turning the first inspector into a full hierarchy editor.
+**Tradeoff:** The list is intentionally shallow. Search, filters, hierarchy grouping, scene-file provenance, and richer virtualization still need later design.
 
 ### 2. Use renderable picking as the first selection mechanism
 
-**Decision:** Clicking a mesh selects the nearest renderable entity hit by a CPU-side picking ray.
-**Why:** Mesh clicking is the most direct first editor interaction and works without requiring a hierarchy panel.
-**Tradeoff:** The current picker uses renderable bounds rather than triangle-accurate mesh acceleration, so dense or oddly shaped meshes can select coarsely until a real picking acceleration structure exists.
+**Decision:** Clicking a mesh selects the nearest renderable entity hit by a CPU-side picking ray, while clicking a row in the entity list selects that entity directly.
+**Why:** Mesh clicking is the most direct first editor interaction for visible objects, and the entity list covers resources, non-renderables, and occluded objects.
+**Tradeoff:** The current picker uses renderable bounds rather than triangle-accurate mesh acceleration, and the entity list does not yet provide hierarchy or search.
 
 ### 3. Gate gameplay updates through editor playback state
 
@@ -101,7 +103,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 ## Open Questions
 
-- What virtualized/searchable entity browser should complement click selection?
+- What searchable or hierarchical entity browser should grow out of the compact entity list?
 - Should picking move from bounding volumes to per-mesh acceleration, ID-buffer selection, or a hybrid?
 - How should editor mutations persist back into text scene files while preserving live reload's last-known-good behavior?
 - How should undo/redo become a project-wide transaction model that can group drags, text edits, component add/remove, and multi-entity changes?

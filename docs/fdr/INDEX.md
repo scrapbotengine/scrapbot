@@ -6,7 +6,7 @@
 | [FDR-002](FDR-002-text-based-scene-authoring.md) | Text-Based Scene Authoring | Active | 2026-07-03 |
 | [FDR-003](FDR-003-headless-validation-and-test-runner.md) | Headless Validation and Test Runner | Active | 2026-07-02 |
 | [FDR-004](FDR-004-script-components.md) | Script Components | Planned | 2026-07-01 |
-| [FDR-005](FDR-005-engine-ui-primitives.md) | Engine UI Primitives | Active | 2026-07-03 |
+| [FDR-005](FDR-005-engine-ui-primitives.md) | Engine UI Primitives | Active | 2026-07-05 |
 | [FDR-006](FDR-006-asset-import-and-cache.md) | Asset Import and Cache | Planned | 2026-07-01 |
 | [FDR-007](FDR-007-offscreen-demo-rendering.md) | Offscreen Demo Rendering | Active | 2026-07-02 |
 | [FDR-008](FDR-008-headful-demo-window.md) | Headful Demo Window | Active | 2026-07-03 |
@@ -19,5 +19,5 @@
 | [FDR-015](FDR-015-built-in-geometry-and-materials.md) | Built-In Geometry and Materials | Active | 2026-07-02 |
 | [FDR-016](FDR-016-render-batching.md) | Render Batching | Active | 2026-07-02 |
 | [FDR-017](FDR-017-shadow-components.md) | Shadow Components | Active | 2026-07-02 |
-| [FDR-018](FDR-018-editor-entity-inspector.md) | Editor Entity Inspector | Active | 2026-07-04 |
+| [FDR-018](FDR-018-editor-entity-inspector.md) | Editor Entity Inspector | Active | 2026-07-05 |
 | [FDR-019](FDR-019-host-game-builds.md) | Host Game Builds | Active | 2026-07-04 |

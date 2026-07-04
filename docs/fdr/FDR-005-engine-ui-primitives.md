@@ -1,7 +1,7 @@
 # FDR-005: Engine UI Primitives
 
 **Status:** Active
-**Last reviewed:** 2026-07-04
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -25,14 +25,14 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - Headful runs hide the engine-owned editor/debug overlay by default; `machina run --editor` starts with it visible.
 - The engine-owned editor/debug shell displays current FPS in a top bar.
 - In editor mode, 3D scene content and scene-authored game UI render into the full remaining viewport between the top bar, bottom bar, left sidebar, and right sidebar. The editor viewport is not forced to 16:9.
-- The left sidebar hosts the system performance inspector. The right sidebar is reserved for selected-entity component inspection and eventual component editing. The sidebars are separated from the game viewport by draggable splitters. Splitters render as thin dividers, use public non-rendering hit-area command buttons for wider hover/click targets, change color when hovered or dragged, and use the platform east-west resize cursor in headful runs.
+- The left sidebar hosts the system performance inspector and, below it, a live entity list for the current ECS world. The right sidebar is reserved for selected-entity component inspection and eventual component editing. The sidebars are separated from the game viewport by draggable splitters. Splitters render as thin dividers, use public non-rendering hit-area command buttons for wider hover/click targets, change color when hovered or dragged, and use the platform east-west resize cursor in headful runs.
 - The engine-owned editor/debug shell also hosts the first editor playback controls and selected-entity inspector; detailed behavior is tracked in FDR-018.
 - When live system profiling data is available, the editor/debug overlay lists active systems with their full system id and rolling average runtime over the current profiling window.
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
 - The system performance view uses one retained table panel with aligned text rows, consistent sidebar padding, and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached without inline pagination text.
 - The system performance view shows a generated scrollbar when its clipped system list overflows.
-- While the editor/debug overlay is visible, mouse wheel input scrolls the visible system viewport only when the pointer is over that viewport or its scrollbar and the system list overflows. Wheel input over the game viewport remains available to scene-authored scroll views. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
+- While the editor/debug overlay is visible, mouse wheel input scrolls the visible systems, entity-list, or inspector viewport only when the pointer is over that viewport or its scrollbar and the target list overflows. Wheel input over the game viewport remains available to scene-authored scroll views. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
 - The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical stacks, horizontal groups, horizontal stacks, spacers, centered text blocks, toggles, progress bars, separators, and script-mutated UI state.
 - `machina.ui.scroll_view` defines a screen-space viewport with `position`, `size`, and `content_offset` fields. Descendants are offset by `content_offset` and clipped to the viewport.
 - In live headful runs, scene-authored scroll views under the pointer update their `content_offset` from mouse wheel input before project update systems run.
@@ -48,7 +48,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - `machina.ui.progress_bar` stores value, max, and fill color. It renders as a fill inside the entity's rect.
 - `machina.ui.separator` renders a thin semantic divider through the same UI vertex path as rectangles.
 - Retained UI layout and hit testing are resolved through a shared engine module used by both rendering and scene UI input. Render positions, hover/press state, command dispatch, scrolling, clipping, and scene canvas viewport scaling should not maintain separate semantics.
-- Mouse-wheel scroll routing is component-based: code asks the shared retained UI router for the `machina.ui.scroll_view` under the pointer, receives the bounded next offset, and then applies or mirrors that result. Scene-authored scroll views apply it directly; the editor system list generates a small scroll-view routing world and mirrors the routed offset into its animated editor state.
+- Mouse-wheel scroll routing is component-based: code asks the shared retained UI router for the `machina.ui.scroll_view` under the pointer, receives the bounded next offset, and then applies or mirrors that result. Scene-authored scroll views apply it directly; editor lists generate small scroll-view routing worlds and mirror the routed offset into animated editor state.
 - UI can be used for runtime diagnostics before a full editor exists.
 - UI definitions that are part of projects or tools follow the text-first project model.
 - The UI overlay renders after 3D scene content.
