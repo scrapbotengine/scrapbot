@@ -803,8 +803,13 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\rotation = [0.0, 0.0, 0.0]
             \\scale = [1.0, 1.0, 1.0]
             \\
-            \\[entities.components."machina.render.cube"]
-            \\color = [0.0, 0.56, 1.0]
+            \\[entities.components."machina.geometry.primitive"]
+            \\primitive = "box"
+            \\segments = 0
+            \\rings = 0
+            \\
+            \\[entities.components."machina.material.surface"]
+            \\base_color = [0.0, 0.56, 1.0]
             \\
             \\[[entities]]
             \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0002"
@@ -1957,6 +1962,17 @@ test "initProject creates project metadata and default scene" {
     try std.testing.expect(fileExists(io, root_dir, default_scene_path));
 }
 
+test "initProject refuses to overwrite an existing project" {
+    const root_path = ".zig-cache/test-init-project-existing";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Demo");
+    try std.testing.expectError(ProjectError.AlreadyExists, initProject(io, std.testing.allocator, root_path, "Demo"));
+}
+
 test "checkProject validates a project directory" {
     const root_path = ".zig-cache/test-check-project";
     const io = Io.Threaded.global_single_threaded.io();
@@ -1991,12 +2007,13 @@ test "loadDefaultScene reads cube entities from scene data" {
 
     try std.testing.expectEqualStrings("Main", scene.name);
     try std.testing.expectEqual(@as(usize, 3), scene.entityCount());
-    try std.testing.expectEqual(@as(usize, 1), scene.renderableCubeCount());
+    try std.testing.expectEqual(@as(usize, 1), scene.renderableMeshCount());
 
     const entity = scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
-    const cube = scene.world.renderableCubeAt(0) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqual(entity.index, cube.entity.index);
-    try std.testing.expectEqual(@as(f32, 0.56), cube.color[1]);
+    const mesh = scene.world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(entity.index, mesh.entity.index);
+    try std.testing.expectEqualStrings("box", mesh.primitive);
+    try std.testing.expectEqual(@as(f32, 0.56), mesh.base_color[1]);
 
     const camera = scene.world.renderCamera() orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("Main Camera", camera.name);

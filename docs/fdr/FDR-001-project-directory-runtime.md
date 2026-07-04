@@ -12,7 +12,10 @@ The project directory runtime lets users and agents run the `machina` binary ins
 - Users can launch Machina commands from a project directory.
 - Users can pass an explicit project path when they do not want to rely on the current working directory.
 - The runtime locates project metadata, resolves project-relative paths, and reports clear diagnostics when the directory is not a valid project.
-- Users can initialize a new project with `machina init [path]`.
+- Users can initialize a new project with `machina init [path]`, defaulting to the current directory.
+- `machina init` creates the target directory when needed, writes `project.machina.toml`, and writes the default scene at `scenes/main.scene.toml`.
+- Fresh projects contain a small script-free scene with a cube, camera, and directional light using the current scene-authored renderable components.
+- `machina init` does not overwrite an existing project; it fails if `project.machina.toml` already exists in the target directory.
 - Interactive and headless commands use the same project loading rules.
 - Commands that write files keep generated artifacts separate from authoritative source files.
 

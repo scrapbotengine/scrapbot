@@ -48,13 +48,16 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "init")) {
-        const target_path = if (args.len >= 3) args[2] else ".";
-        const name = projectNameFromPath(target_path);
-        machina.initProject(io, allocator, target_path, name) catch |err| {
-            try printProjectError(stderr, target_path, err);
+        const options = parseInitOptions(args[2..]) catch |err| {
+            try printArgumentError(stderr, err);
             return 1;
         };
-        try stdout.print("Initialized Machina project at {s}\n", .{target_path});
+        const name = projectNameFromPath(options.target_path);
+        machina.initProject(io, allocator, options.target_path, name) catch |err| {
+            try printProjectError(stderr, options.target_path, err);
+            return 1;
+        };
+        try stdout.print("Initialized Machina project at {s}\n", .{options.target_path});
         return 0;
     }
 
@@ -214,6 +217,10 @@ fn run(
 const CheckOutputFormat = enum {
     text,
     json,
+};
+
+const InitCommandOptions = struct {
+    target_path: []const u8 = ".",
 };
 
 const CheckOptions = struct {
@@ -649,6 +656,22 @@ fn parseWindowOptions(args: []const []const u8) ArgumentError!machina.WindowOpti
         return ArgumentError.UnknownArgument;
     }
 
+    return options;
+}
+
+fn parseInitOptions(args: []const []const u8) ArgumentError!InitCommandOptions {
+    var options = InitCommandOptions{};
+    var saw_path = false;
+    for (args) |arg| {
+        if (std.mem.startsWith(u8, arg, "--")) {
+            return ArgumentError.UnknownArgument;
+        }
+        if (saw_path) {
+            return ArgumentError.UnknownArgument;
+        }
+        options.target_path = arg;
+        saw_path = true;
+    }
     return options;
 }
 
@@ -2200,6 +2223,65 @@ test "projectNameFromPath uses final path segment" {
     try std.testing.expectEqualStrings("demo", projectNameFromPath("games/demo"));
     try std.testing.expectEqualStrings("demo", projectNameFromPath("games/demo/"));
     try std.testing.expectEqualStrings("Machina Project", projectNameFromPath("."));
+}
+
+test "parseInitOptions defaults to current directory" {
+    const options = try parseInitOptions(&.{});
+    try std.testing.expectEqualStrings(".", options.target_path);
+}
+
+test "parseInitOptions accepts one target path" {
+    const args = [_][]const u8{"games/demo"};
+    const options = try parseInitOptions(&args);
+    try std.testing.expectEqualStrings("games/demo", options.target_path);
+}
+
+test "parseInitOptions rejects extra arguments" {
+    const args = [_][]const u8{ "games/demo", "extra" };
+    try std.testing.expectError(ArgumentError.UnknownArgument, parseInitOptions(&args));
+}
+
+test "run init command creates a checkable project" {
+    const root_path = ".zig-cache/test-cli-init-project";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    var stdout_buffer: [512]u8 = undefined;
+    var stdout = Io.Writer.fixed(&stdout_buffer);
+    var stderr_buffer: [512]u8 = undefined;
+    var stderr = Io.Writer.fixed(&stderr_buffer);
+    const args = [_][]const u8{ "machina", "init", root_path };
+
+    const exit_code = try run(io, std.testing.allocator, &args, &stdout, &stderr);
+    try std.testing.expectEqual(@as(u8, 0), exit_code);
+    try std.testing.expectEqualStrings("Initialized Machina project at " ++ root_path ++ "\n", stdout.buffered());
+    try std.testing.expectEqualStrings("", stderr.buffered());
+
+    const result = try machina.checkProject(io, std.testing.allocator, root_path);
+    defer machina.freeCheckResult(std.testing.allocator, result);
+    try std.testing.expectEqualStrings("test-cli-init-project", result.project.name);
+}
+
+test "run init command rejects extra arguments" {
+    const root_path = ".zig-cache/test-cli-init-extra";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    var stdout_buffer: [512]u8 = undefined;
+    var stdout = Io.Writer.fixed(&stdout_buffer);
+    var stderr_buffer: [512]u8 = undefined;
+    var stderr = Io.Writer.fixed(&stderr_buffer);
+    const args = [_][]const u8{ "machina", "init", root_path, "extra" };
+
+    const exit_code = try run(io, std.testing.allocator, &args, &stdout, &stderr);
+    try std.testing.expectEqual(@as(u8, 1), exit_code);
+    try std.testing.expectEqualStrings("", stdout.buffered());
+    try std.testing.expectEqualStrings("unknown argument\n", stderr.buffered());
+    try std.testing.expectError(machina.ProjectError.InvalidProject, machina.checkProject(io, std.testing.allocator, root_path));
 }
 
 test "parseWindowOptions accepts frames and editor flag" {

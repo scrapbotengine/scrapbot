@@ -27,7 +27,7 @@ Usage:
 | --- | --- |
 | `machina --version` | Print the CLI version. |
 | `machina help` | Print command usage. |
-| `machina init [path]` | Create a new project. |
+| `machina init [path]` | Create a fresh project in the current or specified directory. |
 | `machina check [path]` | Validate project, scene, scripts, native code, and schedule. |
 | `machina step [path]` | Run deterministic headless simulation frames. |
 | `machina bench [path]` | Run headless benchmark smoke coverage. |
@@ -46,6 +46,32 @@ These commands support `--format text|json`:
 - `test`
 
 Use JSON for editor, CI, and agent integrations.
+
+## Init
+
+```sh
+mkdir mygame
+cd mygame
+machina init
+```
+
+`machina init` creates a project in the current directory by default. The usual workflow is to create a project directory, enter it, and run `machina init`.
+
+Passing a path also works:
+
+```sh
+machina init games/hello-machina
+```
+
+Machina creates the target directory when needed and uses the final path segment as the project name.
+
+A fresh project contains:
+
+- `project.machina.toml`
+- `scenes/main.scene.toml`
+- a script-free scene with a cube, camera, and directional light
+
+The command is non-destructive. If `project.machina.toml` already exists in the target directory, `machina init` fails instead of overwriting project files.
 
 ## Render Options
 

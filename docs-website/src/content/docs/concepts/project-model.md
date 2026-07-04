@@ -32,6 +32,8 @@ project/
 
 Only the manifest and scene are required. Scripts and native modules are optional.
 
+Use `machina init [path]` to create this required shape. The command writes a manifest and default scene, creates the target directory when needed, and refuses to overwrite an existing `project.machina.toml`.
+
 ## Text-First Runtime Data
 
 Machina keeps core project state text-based:

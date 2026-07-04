@@ -81,18 +81,36 @@ For Debug safety checks, use:
 mise build-debug
 ```
 
+## Create a Project
+
+Create a project directory and run `machina init` inside it:
+
+```sh
+mkdir mygame
+cd mygame
+machina init
+```
+
+The command writes `project.machina.toml` and `scenes/main.scene.toml`. The generated scene is script-free and contains a cube, camera, and directional light, so it can be validated immediately:
+
+```sh
+machina check
+```
+
+`machina init` does not overwrite an existing project. If the target directory already contains `project.machina.toml`, the command fails.
+
 ## Run a Project
 
 Run the showcase example in a headful window:
 
 ```sh
-mise machina run examples/showcase
+machina run examples/showcase
 ```
 
 Show the editor/debug overlay on startup:
 
 ```sh
-mise machina run examples/showcase --editor
+machina run examples/showcase --editor
 ```
 
 In a headful run, press `Ctrl+Tab` to toggle the overlay. The overlay shows FPS plus rolling system timings for project systems and engine-internal render systems.
@@ -102,20 +120,20 @@ In a headful run, press `Ctrl+Tab` to toggle the overlay. The overlay shows FPS 
 Check project metadata, scene data, script declarations, native registrations, and schedule construction:
 
 ```sh
-mise machina check examples/showcase
+machina check examples/showcase
 ```
 
 Step a project headlessly:
 
 ```sh
-mise machina step examples/showcase --frames 8 --dt 0.05
+machina step examples/showcase --frames 8 --dt 0.05
 ```
 
 JSON output is available for agent and editor workflows:
 
 ```sh
-mise machina check examples/showcase --format json
-mise machina step examples/showcase --frames 8 --format json
+machina check examples/showcase --format json
+machina step examples/showcase --frames 8 --format json
 ```
 
 ## Render and Verify
@@ -123,13 +141,13 @@ mise machina step examples/showcase --frames 8 --format json
 Render one deterministic BMP artifact:
 
 ```sh
-mise machina render examples/showcase zig-out/showcase.bmp
+machina render examples/showcase zig-out/showcase.bmp
 ```
 
 Run an offscreen render verification:
 
 ```sh
-mise machina render-test examples/showcase zig-out/showcase-render-test.bmp
+machina render-test examples/showcase zig-out/showcase-render-test.bmp
 ```
 
 Render tests check that a frame is nonblank and has expected visible foreground content. They are the preferred automation surface for renderer changes.
