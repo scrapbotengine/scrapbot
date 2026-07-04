@@ -88,6 +88,7 @@ Machina is an experimental, text-first game engine written in Zig with embedded 
 - Use `machina bench` for headless performance smoke coverage; keep renderable and render-batch counts useful enough to catch batching regressions.
 - Use `mise build` for normal optimized builds.
 - Use `mise build-debug` or `zig build test` when Debug safety checks matter.
+- Do not run `zig build test` and `mise test` concurrently. The current tests use shared fixed temp project paths, so parallel invocations can collide and produce misleading filesystem failures.
 - For rendering, shader, scene-driven render data, or visual expectation changes, use `.agents/skills/machina-render-verification`.
 - For script diagnostics, Luau bridge error reporting, `machina check` output, script reload/runtime failure handling, or editor/agent diagnostic surfaces, use `.agents/skills/machina-script-diagnostics`.
 - For editor layout changes, prefer engine-generated offscreen artifacts with `machina render --editor`; use `--select <entity-id>` when selected-entity inspector state matters.

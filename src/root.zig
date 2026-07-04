@@ -370,6 +370,7 @@ pub const LiveProject = struct {
 
         var routed_input = editor_input;
         const editor_update = render.updateEditorState(self.allocator, &self.scene.world, &self.editor_state, editor_input) catch |err| {
+            std.log.err("editor interaction failed: {s}", .{@errorName(err)});
             if (std.fmt.allocPrint(self.allocator, "Editor interaction failed: {s}", .{@errorName(err)})) |message| {
                 defer self.allocator.free(message);
                 self.last_diagnostic = makeSyntheticRuntimeDiagnostic(self.allocator, message) catch null;

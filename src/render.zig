@@ -777,13 +777,19 @@ fn applyEditorTextInputEdits(world: *runtime.World, state: *EditorState, input: 
 
 fn focusEditorTextInput(world: *const runtime.World, state: *EditorState, selection: EditorFieldSelection, options: EditorTextInputFocusOptions) EditorError!void {
     const value = world.getComponentFieldValue(selection.entity, selection.componentId(), selection.fieldName()) catch return;
-    const original = EditorStoredValue.from(value) orelse return error.InvalidScene;
+    const original = EditorStoredValue.from(value) orelse {
+        std.log.err("editor text input focus skipped for {s}.{s}: value cannot be stored", .{ selection.componentId(), selection.fieldName() });
+        return;
+    };
     var text_input = EditorTextInputState{
         .active = true,
         .selection = selection,
         .original_value = original,
     };
-    const text = formatEditorInputValue(&text_input.buffer, value, selection.vec3_lane) orelse return error.InvalidScene;
+    const text = formatEditorInputValue(&text_input.buffer, value, selection.vec3_lane) orelse {
+        std.log.err("editor text input focus skipped for {s}.{s}: value cannot be formatted", .{ selection.componentId(), selection.fieldName() });
+        return;
+    };
     text_input.len = text.len;
     text_input.cursor = text.len;
     text_input.selection_anchor = if (options.select_all_on_focus) 0 else text.len;
@@ -1969,33 +1975,61 @@ const RenderEcsState = struct {
         var next_world = runtime.World.init(self.allocator);
         errdefer next_world.deinit();
 
-        try setRenderFrameInput(&next_world, input);
+        setRenderFrameInput(&next_world, input) catch |err| {
+            std.log.err("render extract failed while setting frame input: {s}", .{@errorName(err)});
+            return err;
+        };
 
         var mesh_index: usize = 0;
         var meshes = scene.world.renderableMeshes();
         while (meshes.next()) |mesh| {
-            try extractMeshInto(self.allocator, &next_world, mesh_index, mesh);
+            extractMeshInto(self.allocator, &next_world, mesh_index, mesh) catch |err| {
+                std.log.err("render extract failed while extracting mesh {d}: {s}", .{ mesh_index, @errorName(err) });
+                return err;
+            };
             mesh_index += 1;
         }
 
         if (input.debug_overlay_visible) {
-            try extractEditorGizmoInto(self.allocator, &next_world, scene.world, input);
+            extractEditorGizmoInto(self.allocator, &next_world, scene.world, input) catch |err| {
+                std.log.err("render extract failed while extracting editor gizmo: {s}", .{@errorName(err)});
+                return err;
+            };
         }
 
         if (input.ui_visible) {
-            try extractSceneUiInto(self.allocator, &next_world, scene.world);
+            extractSceneUiInto(self.allocator, &next_world, scene.world) catch |err| {
+                std.log.err("render extract failed while extracting scene UI: {s}", .{@errorName(err)});
+                return err;
+            };
         }
 
         if (input.debug_overlay_visible) {
-            try extractDebugOverlayInto(self.allocator, &next_world, input, scene.world);
+            extractDebugOverlayInto(self.allocator, &next_world, input, scene.world) catch |err| {
+                std.log.err("render extract failed while extracting editor overlay: {s}", .{@errorName(err)});
+                return err;
+            };
         }
 
-        var render_camera = try cameraState(scene.world);
+        var render_camera = cameraState(scene.world) catch |err| {
+            std.log.err("render extract failed while resolving camera: {s}", .{@errorName(err)});
+            return err;
+        };
         if (input.camera_override) |camera_transform| {
             render_camera.transform = camera_transform;
         }
-        try extractCameraInto(&next_world, render_camera);
-        try extractDirectionalLightInto(&next_world, try directionalLightState(scene.world));
+        extractCameraInto(&next_world, render_camera) catch |err| {
+            std.log.err("render extract failed while extracting camera: {s}", .{@errorName(err)});
+            return err;
+        };
+        const light = directionalLightState(scene.world) catch |err| {
+            std.log.err("render extract failed while resolving directional light: {s}", .{@errorName(err)});
+            return err;
+        };
+        extractDirectionalLightInto(&next_world, light) catch |err| {
+            std.log.err("render extract failed while extracting directional light: {s}", .{@errorName(err)});
+            return err;
+        };
 
         self.world.deinit();
         self.world = next_world;
@@ -4309,9 +4343,9 @@ const MeshDemo = struct {
         context: RenderSystemContext,
         maybe_plan: *?BatchPlan,
     ) RenderError!void {
-        if (std.mem.eql(u8, system.id, render_extract_system_id)) {
-            try self.render_state.extractSceneWithInput(context.frame.scene, context.frame.input);
-        } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) {
+        const result: RenderError!void = if (std.mem.eql(u8, system.id, render_extract_system_id)) blk: {
+            break :blk self.render_state.extractSceneWithInput(context.frame.scene, context.frame.input);
+        } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) blk: {
             var plan = try BatchPlan.build(self.allocator, &self.render_state.world);
             var plan_transferred = false;
             errdefer if (!plan_transferred) {
@@ -4321,20 +4355,25 @@ const MeshDemo = struct {
             try self.updateBatchInstances(context.queue, plan, context.frame);
             maybe_plan.* = plan;
             plan_transferred = true;
-        } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) {
+            break :blk {};
+        } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) blk: {
             const plan = maybe_plan.* orelse return RenderError.InvalidScene;
-            try self.render_state.queueBatchDraws(plan.batches.len);
-        } else if (std.mem.eql(u8, system.id, render_interact_ui_system_id)) {
-            try self.render_state.updateUiInteractions();
-        } else if (std.mem.eql(u8, system.id, render_prepare_ui_system_id)) {
-            try self.prepareUiDrawResources(context.device, context.queue, context.frame);
-        } else if (std.mem.eql(u8, system.id, render_queue_ui_system_id)) {
-            try self.render_state.queueUiDraw();
-        } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) {
-            try self.drawQueuedBatches(context);
+            break :blk self.render_state.queueBatchDraws(plan.batches.len);
+        } else if (std.mem.eql(u8, system.id, render_interact_ui_system_id)) blk: {
+            break :blk self.render_state.updateUiInteractions();
+        } else if (std.mem.eql(u8, system.id, render_prepare_ui_system_id)) blk: {
+            break :blk self.prepareUiDrawResources(context.device, context.queue, context.frame);
+        } else if (std.mem.eql(u8, system.id, render_queue_ui_system_id)) blk: {
+            break :blk self.render_state.queueUiDraw();
+        } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) blk: {
+            break :blk self.drawQueuedBatches(context);
         } else {
             return RenderError.InvalidScene;
-        }
+        };
+        result catch |err| {
+            std.log.err("render system '{s}' failed: {s}", .{ system.id, @errorName(err) });
+            return err;
+        };
     }
 
     fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
@@ -8206,6 +8245,8 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(try render_state.world.hasComponent(selection_rect, runtime.ui_rect_component_id));
     try std.testing.expect((try render_state.world.getVec3(selection_rect, runtime.ui_rect_component_id, "size"))[0] > 1.0);
     try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.caret.0") != null);
+    var focused_vertices = try buildUiVertices(std.testing.allocator, &render_state.world, 1280, 720);
+    focused_vertices.deinit(std.testing.allocator);
 
     var replace_selected = FrameInput{
         .debug_overlay_visible = true,
@@ -8382,6 +8423,25 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(editor_state.text_input.active);
     try std.testing.expect(!editor_state.text_input.hasSelection());
     try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.cursor);
+
+    try focusEditorTextInput(&world, &editor_state, try makeEditorFieldSelection(entity, runtime.geometry_primitive_component_id, "segments", 0), .{ .select_all_on_focus = true });
+    try std.testing.expect(editor_state.text_input.active);
+    try std.testing.expectEqualStrings("16", editor_state.text_input.text());
+    try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.selection_anchor);
+    try std.testing.expect(editor_state.text_input.hasSelection());
+
+    var scalar_render_state = try RenderEcsState.init(std.testing.allocator);
+    defer scalar_render_state.deinit();
+    var scalar_frame = frame_input;
+    scalar_frame.editor = editorFrameState(&world, editor_state);
+    try scalar_render_state.extractSceneWithInput(.{ .world = &world }, scalar_frame);
+    const scalar_input = scalar_render_state.world.findEntityById("machina.editor.inspector.component.1.field.1.input") orelse return error.TestExpectedEqual;
+    try std.testing.expect(try scalar_render_state.world.hasComponent(scalar_input, runtime.ui_border_component_id));
+    const scalar_selection = scalar_render_state.world.findEntityById("machina.editor.inspector.component.1.field.1.selection") orelse return error.TestExpectedEqual;
+    try std.testing.expect(try scalar_render_state.world.hasComponent(scalar_selection, runtime.ui_rect_component_id));
+    var scalar_vertices = try buildUiVertices(std.testing.allocator, &scalar_render_state.world, 1280, 720);
+    scalar_vertices.deinit(std.testing.allocator);
 }
 
 test "render ECS profiles internal systems for editor overlay" {
@@ -8861,6 +8921,21 @@ fn appendUiRectClipped(
         size[1] <= 0.0 or
         corner_radius < 0.0)
     {
+        std.log.err(
+            "invalid UI rect: position={d:.3},{d:.3},{d:.3} size={d:.3},{d:.3},{d:.3} color={d:.3},{d:.3},{d:.3} radius={d:.3}",
+            .{
+                position[0],
+                position[1],
+                position[2],
+                size[0],
+                size[1],
+                size[2],
+                color[0],
+                color[1],
+                color[2],
+                corner_radius,
+            },
+        );
         return RenderError.InvalidScene;
     }
 
