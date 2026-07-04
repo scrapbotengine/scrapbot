@@ -91,7 +91,7 @@ cd mygame
 machina init
 ```
 
-The command writes `project.machina.toml` and `scenes/main.scene.toml`. The generated scene is script-free and contains a cube, camera, and directional light, so it can be validated immediately:
+The command writes `project.machina.toml` and `scenes/main.scene.toml`. The generated scene is script-free and contains a renderer singleton, cube, camera, and directional light, so it can be validated immediately:
 
 ```sh
 machina check

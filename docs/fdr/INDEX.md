@@ -2,8 +2,8 @@
 
 | # | Feature | Status | Last reviewed |
 |---|---------|--------|---------------|
-| [FDR-001](FDR-001-project-directory-runtime.md) | Project Directory Runtime | Active | 2026-07-01 |
-| [FDR-002](FDR-002-text-based-scene-authoring.md) | Text-Based Scene Authoring | Active | 2026-07-03 |
+| [FDR-001](FDR-001-project-directory-runtime.md) | Project Directory Runtime | Active | 2026-07-05 |
+| [FDR-002](FDR-002-text-based-scene-authoring.md) | Text-Based Scene Authoring | Active | 2026-07-05 |
 | [FDR-003](FDR-003-headless-validation-and-test-runner.md) | Headless Validation and Test Runner | Active | 2026-07-02 |
 | [FDR-004](FDR-004-script-components.md) | Script Components | Planned | 2026-07-01 |
 | [FDR-005](FDR-005-engine-ui-primitives.md) | Engine UI Primitives | Active | 2026-07-03 |
@@ -21,3 +21,4 @@
 | [FDR-017](FDR-017-shadow-components.md) | Shadow Components | Active | 2026-07-02 |
 | [FDR-018](FDR-018-editor-entity-inspector.md) | Editor Entity Inspector | Active | 2026-07-04 |
 | [FDR-019](FDR-019-host-game-builds.md) | Host Game Builds | Active | 2026-07-04 |
+| [FDR-020](FDR-020-postprocess-and-hdr-render-settings.md) | Postprocess and HDR Render Settings | Active | 2026-07-05 |

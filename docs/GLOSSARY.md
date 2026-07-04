@@ -150,6 +150,8 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Render world** - The renderer-owned ECS world that receives extracted render data, prepared resources, draw-command entities, and render-phase systems. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md) and [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
 
+**Renderer singleton** - The scene-authored `machina.renderer` component that configures HDR color, tone mapping, antialiasing, bloom, chromatic aberration, and vignette for the game view. See [FDR-020](fdr/FDR-020-postprocess-and-hdr-render-settings.md).
+
 **Renderable** - An entity with the ECS data needed to draw visible geometry, currently centered on `machina.transform`, `machina.geometry.primitive`, and `machina.material.surface`. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
 
 **Built-in primitive** - Engine-generated geometry selected through `machina.geometry.primitive`, such as box, plane, sphere, UV sphere, or ico sphere. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).

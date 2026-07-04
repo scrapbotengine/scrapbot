@@ -1,7 +1,7 @@
 # FDR-002: Text-Based Scene Authoring
 
 **Status:** Active
-**Last reviewed:** 2026-07-03
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -13,7 +13,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 - Scene files describe entities, names, component data, and eventually hierarchy, references to assets, scripts, prefabs, and other project resources.
 - The initial scene format uses TOML-shaped text files, starting with `scenes/main.scene.toml`.
 - The current entity schema uses `[[entities]]` records with stable text ids and names, then component data under `[entities.components.<id>]` tables.
-- Engine component tables currently include `[entities.components."machina.transform"]` with `position`, `rotation`, and `scale` `vec3` fields; `[entities.components."machina.geometry.primitive"]` for built-in primitive selection; `[entities.components."machina.material.surface"]` with base color; legacy `[entities.components."machina.render.cube"]` with a `color` `vec3` field; `[entities.components."machina.camera"]` with projection fields; `[entities.components."machina.light.directional"]` with directional light fields; marker tables for `[entities.components."machina.shadow.caster"]` and `[entities.components."machina.shadow.receiver"]`; and UI tables such as `[entities.components."machina.ui.canvas"]`, `[entities.components."machina.ui.rect"]` with `position`, `size`, `color`, and `corner_radius`, `[entities.components."machina.ui.text"]`, `[entities.components."machina.ui.button"]`, `[entities.components."machina.ui.command"]`, `[entities.components."machina.ui.scroll_view"]`, `[entities.components."machina.ui.vbox"]`, `[entities.components."machina.ui.hgroup"]`, `[entities.components."machina.ui.stack"]`, `[entities.components."machina.ui.layout.item"]`, `[entities.components."machina.ui.spacer"]`, `[entities.components."machina.ui.text_block"]`, `[entities.components."machina.ui.toggle"]`, `[entities.components."machina.ui.progress_bar"]`, and `[entities.components."machina.ui.separator"]`.
+- Engine component tables currently include `[entities.components."machina.transform"]` with `position`, `rotation`, and `scale` `vec3` fields; `[entities.components."machina.geometry.primitive"]` for built-in primitive selection; `[entities.components."machina.material.surface"]` with base color; `[entities.components."machina.renderer"]` for the scene renderer singleton; legacy `[entities.components."machina.render.cube"]` with a `color` `vec3` field; `[entities.components."machina.camera"]` with projection fields; `[entities.components."machina.light.directional"]` with directional light fields; marker tables for `[entities.components."machina.shadow.caster"]` and `[entities.components."machina.shadow.receiver"]`; and UI tables such as `[entities.components."machina.ui.canvas"]`, `[entities.components."machina.ui.rect"]` with `position`, `size`, `color`, and `corner_radius`, `[entities.components."machina.ui.text"]`, `[entities.components."machina.ui.button"]`, `[entities.components."machina.ui.command"]`, `[entities.components."machina.ui.scroll_view"]`, `[entities.components."machina.ui.vbox"]`, `[entities.components."machina.ui.hgroup"]`, `[entities.components."machina.ui.stack"]`, `[entities.components."machina.ui.layout.item"]`, `[entities.components."machina.ui.spacer"]`, `[entities.components."machina.ui.text_block"]`, `[entities.components."machina.ui.toggle"]`, `[entities.components."machina.ui.progress_bar"]`, and `[entities.components."machina.ui.separator"]`.
 - Runtime-only components such as `machina.ui.command_event` and `machina.input.*` are engine-owned transient data and should not be authored in scene files.
 - Project and package component tables may appear in scenes after scripts register matching component schemas.
 - Scene references are forward-slash, project-relative paths and may not escape the project directory.
@@ -45,7 +45,7 @@ Text-based scene authoring defines how projects describe scenes, entities, compo
 ## Related
 
 - **ADRs:** ADR-001, ADR-006, ADR-008, ADR-009
-- **FDRs:** FDR-001, FDR-004, FDR-005, FDR-006, FDR-009, FDR-010, FDR-014, FDR-015, FDR-017
+- **FDRs:** FDR-001, FDR-004, FDR-005, FDR-006, FDR-009, FDR-010, FDR-014, FDR-015, FDR-017, FDR-020
 
 ## Open Questions
 

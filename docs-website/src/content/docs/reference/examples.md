@@ -10,7 +10,7 @@ description: A map of the example projects and test fixtures included with Machi
 | `examples/minimal/` | Canonical smoke-test project. |
 | `examples/showcase/` | Text-authored renderables, typed Luau systems, camera, lighting, and offscreen verification. |
 | `examples/batching/` | Automatic renderer batching with many compatible renderables. |
-| `examples/spawn_swarm/` | Startup-spawned swarm, animation, batching, shadows, and editor profiling. |
+| `examples/spawn_swarm/` | Startup-spawned swarm, animation, batching, shadows, renderer singleton postprocess settings, and editor profiling. |
 | `examples/spawning/` | Script-driven entity spawning from an otherwise empty rendered scene. |
 | `examples/comet_garden/` | Startup spawning, deferred lifecycle commands, culling, and buffer-backed query views. |
 | `examples/ui_overlay/` | Retained ECS UI primitives and built-in bitmap text. |

@@ -50,7 +50,7 @@ Assets can still be binary. The text-first rule applies to authored project stru
 
 When Machina loads a project, it builds one component registry and schedule from engine, native, and script declarations:
 
-1. Register engine components such as `machina.transform`, `machina.geometry.primitive`, and `machina.ui.text`.
+1. Register engine components such as `machina.transform`, `machina.geometry.primitive`, `machina.renderer`, and `machina.ui.text`.
 2. Build and load the optional project-local native module.
 3. Register native components.
 4. Load Luau scripts so they can reference native components.

@@ -178,6 +178,23 @@ export type MachinaSurfaceMaterial = {
     base_color: MachinaVec3,
 }
 
+export type MachinaRenderer = {
+    hdr: boolean,
+    tone_mapping: string,
+    exposure: number,
+    postprocess_enabled: boolean,
+    antialiasing: string,
+    bloom_enabled: boolean,
+    bloom_threshold: number,
+    bloom_intensity: number,
+    bloom_radius: number,
+    vignette_enabled: boolean,
+    vignette_strength: number,
+    vignette_radius: number,
+    chromatic_aberration_enabled: boolean,
+    chromatic_aberration_strength: number,
+}
+
 export type MachinaCamera = {
     fov_y_degrees: number,
     near: number,

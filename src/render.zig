@@ -24,6 +24,7 @@ const output_size = output_bytes_per_row * output_height;
 const depth_format = wgpu.TextureFormat.depth24_plus;
 const shadow_depth_format = wgpu.TextureFormat.depth32_float;
 const shadow_map_size = 1024;
+const bloom_level_count = 5;
 const render_ui_button_state_component_id = "machina.render.internal.ui.button_state";
 const render_ui_clip_component_id = "machina.render.internal.ui.clip";
 const render_draw_batch_component_id = "machina.render.internal.draw.batch";
@@ -151,9 +152,123 @@ pub const WindowOptions = struct {
     frame_update: ?FrameUpdateHook = null,
 };
 
+pub const AntialiasingMode = enum {
+    none,
+    fxaa,
+};
+
+pub const VignetteConfig = struct {
+    enabled: bool = false,
+    strength: f32 = 0.28,
+    radius: f32 = 0.78,
+};
+
+pub const ChromaticAberrationConfig = struct {
+    enabled: bool = false,
+    strength: f32 = 0.003,
+};
+
+pub const BloomConfig = struct {
+    enabled: bool = false,
+    threshold: f32 = 1.0,
+    intensity: f32 = 0.18,
+    radius: f32 = 1.0,
+};
+
+pub const PostProcessConfig = struct {
+    enabled: bool = false,
+    antialiasing: AntialiasingMode = .none,
+    vignette: VignetteConfig = .{},
+    chromatic_aberration: ChromaticAberrationConfig = .{},
+    bloom: BloomConfig = .{},
+
+    pub fn isActive(self: PostProcessConfig) bool {
+        return self.enabled and
+            (self.antialiasing == .fxaa or
+                self.vignette.enabled or
+                self.chromatic_aberration.enabled or
+                self.bloom.enabled);
+    }
+};
+
+pub const ToneMappingMode = enum {
+    none,
+    reinhard,
+    aces,
+};
+
+pub const ColorConfig = struct {
+    hdr: bool = false,
+    exposure: f32 = 0.0,
+    tone_mapping: ToneMappingMode = .none,
+};
+
+pub const RenderConfig = struct {
+    color: ColorConfig = .{},
+    postprocess: PostProcessConfig = .{},
+
+    pub fn requiresPostProcess(self: RenderConfig) bool {
+        return self.postprocess.isActive() or self.color.hdr or self.color.tone_mapping != .none or self.color.exposure != 0.0;
+    }
+
+    pub fn bloomActive(self: RenderConfig) bool {
+        return self.postprocess.enabled and self.postprocess.bloom.enabled and self.postprocess.bloom.intensity > 0.0;
+    }
+
+    pub fn sceneTextureFormat(self: RenderConfig, target_format: wgpu.TextureFormat) wgpu.TextureFormat {
+        if (self.requiresPostProcess() and self.color.hdr) {
+            return .rgba16_float;
+        }
+        return target_format;
+    }
+};
+
 pub const Scene = struct {
     world: *const runtime.World,
 };
+
+fn renderConfigFromWorld(world: *const runtime.World) RenderConfig {
+    const settings = world.rendererSettings() orelse return .{};
+    return .{
+        .color = .{
+            .hdr = settings.hdr,
+            .exposure = settings.exposure,
+            .tone_mapping = parseToneMappingMode(settings.tone_mapping) orelse .none,
+        },
+        .postprocess = .{
+            .enabled = settings.postprocess_enabled,
+            .antialiasing = parseAntialiasingMode(settings.antialiasing) orelse .none,
+            .vignette = .{
+                .enabled = settings.vignette_enabled,
+                .strength = settings.vignette_strength,
+                .radius = settings.vignette_radius,
+            },
+            .chromatic_aberration = .{
+                .enabled = settings.chromatic_aberration_enabled,
+                .strength = settings.chromatic_aberration_strength,
+            },
+            .bloom = .{
+                .enabled = settings.bloom_enabled,
+                .threshold = settings.bloom_threshold,
+                .intensity = settings.bloom_intensity,
+                .radius = settings.bloom_radius,
+            },
+        },
+    };
+}
+
+fn parseAntialiasingMode(value: []const u8) ?AntialiasingMode {
+    if (std.mem.eql(u8, value, "none")) return .none;
+    if (std.mem.eql(u8, value, "fxaa")) return .fxaa;
+    return null;
+}
+
+fn parseToneMappingMode(value: []const u8) ?ToneMappingMode {
+    if (std.mem.eql(u8, value, "none")) return .none;
+    if (std.mem.eql(u8, value, "reinhard")) return .reinhard;
+    if (std.mem.eql(u8, value, "aces")) return .aces;
+    return null;
+}
 
 pub const SceneReloadHook = struct {
     context: *anyopaque,
@@ -1742,6 +1857,8 @@ const InstanceConfig = struct {
     light_view_projection: [16]f32,
 };
 
+const BloomViews = [bloom_level_count]*wgpu.TextureView;
+
 const CameraState = struct {
     transform: runtime.Transform = .{ .position = .{ 0.0, 0.0, 4.8 } },
     fov_y_degrees: f32 = 48.0,
@@ -1981,6 +2098,10 @@ const RenderEcsState = struct {
             std.log.err("render extract failed while setting frame input: {s}", .{@errorName(err)});
             return err;
         };
+        extractRendererInto(&next_world, scene.world) catch |err| {
+            std.log.err("render extract failed while extracting renderer settings: {s}", .{@errorName(err)});
+            return err;
+        };
 
         var mesh_index: usize = 0;
         var meshes = scene.world.renderableMeshes();
@@ -2182,6 +2303,62 @@ const DepthTarget = struct {
     }
 };
 
+const PostProcessTarget = struct {
+    texture: ?*wgpu.Texture = null,
+    view: ?*wgpu.TextureView = null,
+    width: u32 = 0,
+    height: u32 = 0,
+
+    fn ensure(
+        self: *PostProcessTarget,
+        device: *wgpu.Device,
+        width: u32,
+        height: u32,
+        format: wgpu.TextureFormat,
+    ) RenderError!void {
+        if (self.texture != null and self.width == width and self.height == height) {
+            return;
+        }
+
+        self.deinit();
+        const texture = device.createTexture(&wgpu.TextureDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess scene texture"),
+            .size = .{
+                .width = width,
+                .height = height,
+                .depth_or_array_layers = 1,
+            },
+            .format = format,
+            .usage = wgpu.TextureUsages.render_attachment | wgpu.TextureUsages.texture_binding,
+        }) orelse return RenderError.NoDevice;
+        errdefer texture.release();
+
+        const view = texture.createView(&wgpu.TextureViewDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess scene view"),
+            .mip_level_count = 1,
+            .array_layer_count = 1,
+        }) orelse return RenderError.NoDevice;
+        errdefer view.release();
+
+        self.* = .{
+            .texture = texture,
+            .view = view,
+            .width = width,
+            .height = height,
+        };
+    }
+
+    fn deinit(self: *PostProcessTarget) void {
+        if (self.view) |view| {
+            view.release();
+        }
+        if (self.texture) |texture| {
+            texture.release();
+        }
+        self.* = .{};
+    }
+};
+
 const ShadowTarget = struct {
     texture: ?*wgpu.Texture = null,
     view: ?*wgpu.TextureView = null,
@@ -2262,6 +2439,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.transform_component_id,
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
+        runtime.renderer_component_id,
         runtime.camera_component_id,
         runtime.directional_light_component_id,
         runtime.shadow_caster_component_id,
@@ -2389,6 +2567,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     const draw_reads = [_][]const u8{
         render_draw_batch_component_id,
         render_draw_ui_component_id,
+        runtime.renderer_component_id,
         runtime.transform_component_id,
         runtime.geometry_primitive_component_id,
         runtime.surface_material_component_id,
@@ -2516,6 +2695,7 @@ fn extractEditorGizmoInto(
 }
 
 fn extractSceneUiInto(allocator: std.mem.Allocator, render_world: *runtime.World, scene_world: *const runtime.World) RenderError!void {
+    _ = allocator;
     for (0..scene_world.entityCount()) |index| {
         const source = runtime.EntityHandle{ .index = @intCast(index) };
         const stored = scene_world.entity(source) catch return RenderError.InvalidScene;
@@ -2523,25 +2703,39 @@ fn extractSceneUiInto(allocator: std.mem.Allocator, render_world: *runtime.World
             continue;
         }
 
-        const target = render_world.createEntity(stored.id, stored.name) catch |err| return mapWorldError(err);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_canvas_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_rect_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_border_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_text_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_button_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_hit_area_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_command_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_scroll_view_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_vbox_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_hgroup_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_stack_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_layout_item_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_spacer_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_text_block_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_toggle_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_progress_bar_component_id);
-        try copyUiComponent(allocator, scene_world, render_world, source, target, runtime.ui_separator_component_id);
+        const target = render_world.findEntityById(stored.id) orelse
+            (render_world.createEntity(stored.id, stored.name) catch |err| return mapWorldError(err));
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_canvas_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_rect_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_border_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_text_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_button_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_hit_area_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_command_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_scroll_view_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_vbox_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_hgroup_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_stack_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_layout_item_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_spacer_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_text_block_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_toggle_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_progress_bar_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_separator_component_id);
     }
+}
+
+fn extractRendererInto(render_world: *runtime.World, scene_world: *const runtime.World) RenderError!void {
+    var cursor: usize = 0;
+    const query = [_][]const u8{runtime.renderer_component_id};
+    const source = scene_world.queryNext(&query, &cursor) orelse return;
+    if (scene_world.queryNext(&query, &cursor) != null) {
+        return RenderError.InvalidScene;
+    }
+    const stored = scene_world.entity(source) catch return RenderError.InvalidScene;
+    const target = render_world.findEntityById(stored.id) orelse
+        (render_world.createEntity(stored.id, stored.name) catch |err| return mapWorldError(err));
+    try copyComponent(scene_world, render_world, source, target, runtime.renderer_component_id);
 }
 
 fn hasExtractableUiComponent(world: *const runtime.World, entity: runtime.EntityHandle) bool {
@@ -2564,8 +2758,7 @@ fn hasExtractableUiComponent(world: *const runtime.World, entity: runtime.Entity
         (world.hasComponent(entity, runtime.ui_separator_component_id) catch false);
 }
 
-fn copyUiComponent(
-    allocator: std.mem.Allocator,
+fn copyComponent(
     source_world: *const runtime.World,
     target_world: *runtime.World,
     source: runtime.EntityHandle,
@@ -2577,6 +2770,7 @@ fn copyUiComponent(
     }
 
     var fields: std.ArrayList(runtime.ComponentFieldValue) = .empty;
+    const allocator = target_world.allocator;
     defer fields.deinit(allocator);
 
     const field_count = source_world.componentFieldCount(component_id);
@@ -4099,17 +4293,35 @@ const UiDrawResources = struct {
 
 const MeshDemo = struct {
     allocator: std.mem.Allocator,
+    texture_format: wgpu.TextureFormat,
+    scene_texture_format: wgpu.TextureFormat,
     pipeline: *wgpu.RenderPipeline,
     shadow_pipeline: *wgpu.RenderPipeline,
     ui_pipeline: *wgpu.RenderPipeline,
+    postprocess_pipeline: *wgpu.RenderPipeline,
+    bloom_extract_pipeline: *wgpu.RenderPipeline,
+    bloom_blur_pipeline: *wgpu.RenderPipeline,
     bind_group_layout: *wgpu.BindGroupLayout,
+    postprocess_bind_group_layout: *wgpu.BindGroupLayout,
+    bloom_bind_group_layout: *wgpu.BindGroupLayout,
     pipeline_layout: *wgpu.PipelineLayout,
     shadow_pipeline_layout: *wgpu.PipelineLayout,
     ui_pipeline_layout: *wgpu.PipelineLayout,
+    postprocess_pipeline_layout: *wgpu.PipelineLayout,
+    bloom_pipeline_layout: *wgpu.PipelineLayout,
     frame_uniform_buffer: *wgpu.Buffer,
+    postprocess_uniform_buffer: *wgpu.Buffer,
+    bloom_extract_uniform_buffer: *wgpu.Buffer,
+    bloom_blur_x_uniform_buffer: *wgpu.Buffer,
+    bloom_blur_y_uniform_buffer: *wgpu.Buffer,
     bind_group: *wgpu.BindGroup,
     shadow_target: ShadowTarget,
     shadow_sampler: *wgpu.Sampler,
+    postprocess_sampler: *wgpu.Sampler,
+    postprocess_target: PostProcessTarget = .{},
+    bloom_extract_targets: [bloom_level_count]PostProcessTarget = [_]PostProcessTarget{.{}} ** bloom_level_count,
+    bloom_ping_targets: [bloom_level_count]PostProcessTarget = [_]PostProcessTarget{.{}} ** bloom_level_count,
+    bloom_pong_targets: [bloom_level_count]PostProcessTarget = [_]PostProcessTarget{.{}} ** bloom_level_count,
     render_state: RenderEcsState,
     batches: []BatchResources,
     ui_draw: UiDrawResources = .{},
@@ -4121,6 +4333,9 @@ const MeshDemo = struct {
         texture_format: wgpu.TextureFormat,
         scene: Scene,
     ) RenderError!MeshDemo {
+        const initial_render_config = renderConfigFromWorld(scene.world);
+        const scene_texture_format = initial_render_config.sceneTextureFormat(texture_format);
+
         const bind_group_layout_entries = [_]wgpu.BindGroupLayoutEntry{
             .{
                 .binding = 0,
@@ -4153,6 +4368,110 @@ const MeshDemo = struct {
         }) orelse return RenderError.NoDevice;
         errdefer bind_group_layout.release();
 
+        const postprocess_bind_group_layout_entries = [_]wgpu.BindGroupLayoutEntry{
+            .{
+                .binding = 0,
+                .visibility = wgpu.ShaderStages.fragment,
+                .buffer = .{
+                    .type = .uniform,
+                    .min_binding_size = @sizeOf(PostProcessUniforms),
+                },
+            },
+            .{
+                .binding = 1,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 2,
+                .visibility = wgpu.ShaderStages.fragment,
+                .sampler = .{
+                    .type = .filtering,
+                },
+            },
+            .{
+                .binding = 3,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 4,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 5,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 6,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 7,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+        };
+        const postprocess_bind_group_layout = device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess bind group layout"),
+            .entry_count = postprocess_bind_group_layout_entries.len,
+            .entries = &postprocess_bind_group_layout_entries,
+        }) orelse return RenderError.NoDevice;
+        errdefer postprocess_bind_group_layout.release();
+
+        const bloom_bind_group_layout_entries = [_]wgpu.BindGroupLayoutEntry{
+            .{
+                .binding = 0,
+                .visibility = wgpu.ShaderStages.fragment,
+                .buffer = .{
+                    .type = .uniform,
+                    .min_binding_size = @sizeOf(PostProcessUniforms),
+                },
+            },
+            .{
+                .binding = 1,
+                .visibility = wgpu.ShaderStages.fragment,
+                .texture = .{
+                    .sample_type = .float,
+                    .view_dimension = .@"2d",
+                },
+            },
+            .{
+                .binding = 2,
+                .visibility = wgpu.ShaderStages.fragment,
+                .sampler = .{
+                    .type = .filtering,
+                },
+            },
+        };
+        const bloom_bind_group_layout = device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina bloom bind group layout"),
+            .entry_count = bloom_bind_group_layout_entries.len,
+            .entries = &bloom_bind_group_layout_entries,
+        }) orelse return RenderError.NoDevice;
+        errdefer bloom_bind_group_layout.release();
+
         const frame_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
             .label = wgpu.StringView.fromSlice("Machina frame uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
@@ -4161,8 +4480,45 @@ const MeshDemo = struct {
         }) orelse return RenderError.NoDevice;
         errdefer frame_uniform_buffer.release();
 
+        const postprocess_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess uniforms"),
+            .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
+            .size = @sizeOf(PostProcessUniforms),
+            .mapped_at_creation = @as(u32, @intFromBool(false)),
+        }) orelse return RenderError.NoDevice;
+        errdefer postprocess_uniform_buffer.release();
+
+        const bloom_extract_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina bloom extract uniforms"),
+            .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
+            .size = @sizeOf(PostProcessUniforms),
+            .mapped_at_creation = @as(u32, @intFromBool(false)),
+        }) orelse return RenderError.NoDevice;
+        errdefer bloom_extract_uniform_buffer.release();
+
+        const bloom_blur_x_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina bloom horizontal blur uniforms"),
+            .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
+            .size = @sizeOf(PostProcessUniforms),
+            .mapped_at_creation = @as(u32, @intFromBool(false)),
+        }) orelse return RenderError.NoDevice;
+        errdefer bloom_blur_x_uniform_buffer.release();
+
+        const bloom_blur_y_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina bloom vertical blur uniforms"),
+            .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
+            .size = @sizeOf(PostProcessUniforms),
+            .mapped_at_creation = @as(u32, @intFromBool(false)),
+        }) orelse return RenderError.NoDevice;
+        errdefer bloom_blur_y_uniform_buffer.release();
+
         var initial_uniforms = try frameUniforms(.{});
         writeUniforms(queue, frame_uniform_buffer, &initial_uniforms);
+        var initial_postprocess_uniforms = postProcessUniforms(initial_render_config, 1, 1);
+        writePostProcessUniforms(queue, postprocess_uniform_buffer, &initial_postprocess_uniforms);
+        writePostProcessUniforms(queue, bloom_extract_uniform_buffer, &initial_postprocess_uniforms);
+        writePostProcessUniforms(queue, bloom_blur_x_uniform_buffer, &initial_postprocess_uniforms);
+        writePostProcessUniforms(queue, bloom_blur_y_uniform_buffer, &initial_postprocess_uniforms);
 
         var shadow_target = try ShadowTarget.create(device);
         errdefer shadow_target.deinit();
@@ -4178,6 +4534,17 @@ const MeshDemo = struct {
             .compare = .less_equal,
         }) orelse return RenderError.NoDevice;
         errdefer shadow_sampler.release();
+
+        const postprocess_sampler = device.createSampler(&wgpu.SamplerDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess sampler"),
+            .address_mode_u = .clamp_to_edge,
+            .address_mode_v = .clamp_to_edge,
+            .address_mode_w = .clamp_to_edge,
+            .mag_filter = .linear,
+            .min_filter = .linear,
+            .mipmap_filter = .nearest,
+        }) orelse return RenderError.NoDevice;
+        errdefer postprocess_sampler.release();
 
         const bind_group_entries = [_]wgpu.BindGroupEntry{
             .{
@@ -4217,7 +4584,7 @@ const MeshDemo = struct {
         }) orelse return RenderError.NoDevice;
         errdefer pipeline_layout.release();
 
-        const pipeline = try createMeshPipeline(device, texture_format, pipeline_layout);
+        const pipeline = try createMeshPipeline(device, scene_texture_format, pipeline_layout);
         errdefer pipeline.release();
 
         const empty_bind_group_layouts = [_]*wgpu.BindGroupLayout{};
@@ -4241,19 +4608,58 @@ const MeshDemo = struct {
         const ui_pipeline = try createUiPipeline(device, texture_format, ui_pipeline_layout);
         errdefer ui_pipeline.release();
 
+        const postprocess_bind_group_layouts = [_]*wgpu.BindGroupLayout{postprocess_bind_group_layout};
+        const postprocess_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess pipeline layout"),
+            .bind_group_layout_count = postprocess_bind_group_layouts.len,
+            .bind_group_layouts = &postprocess_bind_group_layouts,
+        }) orelse return RenderError.NoDevice;
+        errdefer postprocess_pipeline_layout.release();
+
+        const postprocess_pipeline = try createPostProcessPipeline(device, texture_format, postprocess_pipeline_layout);
+        errdefer postprocess_pipeline.release();
+
+        const bloom_bind_group_layouts = [_]*wgpu.BindGroupLayout{bloom_bind_group_layout};
+        const bloom_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina bloom pipeline layout"),
+            .bind_group_layout_count = bloom_bind_group_layouts.len,
+            .bind_group_layouts = &bloom_bind_group_layouts,
+        }) orelse return RenderError.NoDevice;
+        errdefer bloom_pipeline_layout.release();
+
+        const bloom_extract_pipeline = try createBloomExtractPipeline(device, scene_texture_format, bloom_pipeline_layout);
+        errdefer bloom_extract_pipeline.release();
+
+        const bloom_blur_pipeline = try createBloomBlurPipeline(device, scene_texture_format, bloom_pipeline_layout);
+        errdefer bloom_blur_pipeline.release();
+
         return .{
             .allocator = allocator,
+            .texture_format = texture_format,
+            .scene_texture_format = scene_texture_format,
             .pipeline = pipeline,
             .shadow_pipeline = shadow_pipeline,
             .ui_pipeline = ui_pipeline,
+            .postprocess_pipeline = postprocess_pipeline,
+            .bloom_extract_pipeline = bloom_extract_pipeline,
+            .bloom_blur_pipeline = bloom_blur_pipeline,
             .bind_group_layout = bind_group_layout,
+            .postprocess_bind_group_layout = postprocess_bind_group_layout,
+            .bloom_bind_group_layout = bloom_bind_group_layout,
             .pipeline_layout = pipeline_layout,
             .shadow_pipeline_layout = shadow_pipeline_layout,
             .ui_pipeline_layout = ui_pipeline_layout,
+            .postprocess_pipeline_layout = postprocess_pipeline_layout,
+            .bloom_pipeline_layout = bloom_pipeline_layout,
             .frame_uniform_buffer = frame_uniform_buffer,
+            .postprocess_uniform_buffer = postprocess_uniform_buffer,
+            .bloom_extract_uniform_buffer = bloom_extract_uniform_buffer,
+            .bloom_blur_x_uniform_buffer = bloom_blur_x_uniform_buffer,
+            .bloom_blur_y_uniform_buffer = bloom_blur_y_uniform_buffer,
             .bind_group = bind_group,
             .shadow_target = shadow_target,
             .shadow_sampler = shadow_sampler,
+            .postprocess_sampler = postprocess_sampler,
             .render_state = render_state,
             .batches = batches,
         };
@@ -4267,14 +4673,36 @@ const MeshDemo = struct {
         self.allocator.free(self.batches);
         self.bind_group.release();
         self.frame_uniform_buffer.release();
+        self.postprocess_uniform_buffer.release();
+        self.bloom_extract_uniform_buffer.release();
+        self.bloom_blur_x_uniform_buffer.release();
+        self.bloom_blur_y_uniform_buffer.release();
+        self.postprocess_target.deinit();
+        for (&self.bloom_extract_targets) |*target| {
+            target.deinit();
+        }
+        for (&self.bloom_ping_targets) |*target| {
+            target.deinit();
+        }
+        for (&self.bloom_pong_targets) |*target| {
+            target.deinit();
+        }
+        self.postprocess_sampler.release();
         self.shadow_sampler.release();
         self.shadow_target.deinit();
         self.pipeline.release();
         self.shadow_pipeline.release();
         self.ui_pipeline.release();
+        self.postprocess_pipeline.release();
+        self.bloom_extract_pipeline.release();
+        self.bloom_blur_pipeline.release();
         self.pipeline_layout.release();
         self.shadow_pipeline_layout.release();
         self.ui_pipeline_layout.release();
+        self.postprocess_pipeline_layout.release();
+        self.bloom_pipeline_layout.release();
+        self.bloom_bind_group_layout.release();
+        self.postprocess_bind_group_layout.release();
         self.bind_group_layout.release();
         self.ui_draw.deinit();
     }
@@ -4461,9 +4889,22 @@ const MeshDemo = struct {
 
         try self.drawShadowPass(encoder, draw_batch_indices.items);
 
+        const render_config = renderConfigFromWorld(&self.render_state.world);
+        const postprocess_active = render_config.requiresPostProcess();
+        const bloom_active = render_config.bloomActive();
+        const scene_target_view = if (postprocess_active) blk: {
+            try self.postprocess_target.ensure(
+                context.device,
+                context.frame.width,
+                context.frame.height,
+                self.scene_texture_format,
+            );
+            break :blk self.postprocess_target.view orelse return RenderError.NoDevice;
+        } else context.target_view;
+
         const color_attachments = [_]wgpu.ColorAttachment{
             .{
-                .view = context.target_view,
+                .view = scene_target_view,
                 .clear_value = .{
                     .r = 0.0006,
                     .g = 0.0018,
@@ -4503,6 +4944,14 @@ const MeshDemo = struct {
             render_pass.drawIndexed(batch.index_count, batch.instance_count, 0, 0, 0);
         }
         render_pass.end();
+
+        if (postprocess_active) {
+            const bloom_views = if (bloom_active)
+                try self.drawBloomPasses(render_config, context.device, encoder, context.queue, scene_target_view, context.frame.width, context.frame.height)
+            else
+                emptyBloomViews(scene_target_view);
+            try self.drawPostProcessPass(render_config, encoder, context.device, context.queue, context.target_view, scene_target_view, bloom_views, context.frame.width, context.frame.height);
+        }
 
         if (should_draw_ui) {
             try self.drawUiPass(encoder, context.target_view);
@@ -4567,6 +5016,163 @@ const MeshDemo = struct {
         const vertex_buffer = self.ui_draw.vertex_buffer orelse return RenderError.NoDevice;
         render_pass.setVertexBuffer(0, vertex_buffer, 0, self.ui_draw.vertex_buffer_size);
         render_pass.draw(self.ui_draw.vertex_count, 1, 0, 0);
+        render_pass.end();
+    }
+
+    fn drawPostProcessPass(
+        self: *MeshDemo,
+        render_config: RenderConfig,
+        encoder: *wgpu.CommandEncoder,
+        device: *wgpu.Device,
+        queue: *wgpu.Queue,
+        target_view: *wgpu.TextureView,
+        scene_view: *wgpu.TextureView,
+        bloom_views: BloomViews,
+        width: u32,
+        height: u32,
+    ) RenderError!void {
+        var uniforms = postProcessUniforms(render_config, width, height);
+        writePostProcessUniforms(queue, self.postprocess_uniform_buffer, &uniforms);
+        const bind_group = try createCompositeBindGroup(
+            device,
+            self.postprocess_bind_group_layout,
+            self.postprocess_uniform_buffer,
+            scene_view,
+            bloom_views,
+            self.postprocess_sampler,
+        );
+        defer bind_group.release();
+
+        const color_attachments = [_]wgpu.ColorAttachment{
+            .{
+                .view = target_view,
+                .clear_value = .{
+                    .r = 0.0,
+                    .g = 0.0,
+                    .b = 0.0,
+                    .a = 1.0,
+                },
+            },
+        };
+        const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
+            .label = wgpu.StringView.fromSlice("Machina postprocess pass"),
+            .color_attachment_count = color_attachments.len,
+            .color_attachments = &color_attachments,
+        }) orelse return RenderError.NoDevice;
+        defer render_pass.release();
+
+        render_pass.setPipeline(self.postprocess_pipeline);
+        render_pass.setBindGroup(0, bind_group, 0, null);
+        render_pass.draw(3, 1, 0, 0);
+        render_pass.end();
+    }
+
+    fn drawBloomPasses(
+        self: *MeshDemo,
+        render_config: RenderConfig,
+        device: *wgpu.Device,
+        encoder: *wgpu.CommandEncoder,
+        queue: *wgpu.Queue,
+        scene_view: *wgpu.TextureView,
+        width: u32,
+        height: u32,
+    ) RenderError!BloomViews {
+        var views: BloomViews = undefined;
+        var source_view = scene_view;
+        for (0..bloom_level_count) |level| {
+            const divisor = @as(u32, 1) << @intCast(level + 1);
+            const bloom_width = @max(width / divisor, 1);
+            const bloom_height = @max(height / divisor, 1);
+            try self.bloom_extract_targets[level].ensure(device, bloom_width, bloom_height, self.scene_texture_format);
+            try self.bloom_ping_targets[level].ensure(device, bloom_width, bloom_height, self.scene_texture_format);
+            try self.bloom_pong_targets[level].ensure(device, bloom_width, bloom_height, self.scene_texture_format);
+
+            var extract_uniforms = postProcessUniforms(render_config, width, height);
+            extract_uniforms.params4 = .{ @floatFromInt(level), 0.0, 0.0, 0.0 };
+            writePostProcessUniforms(queue, self.bloom_extract_uniform_buffer, &extract_uniforms);
+            try self.drawBloomSamplePass(
+                device,
+                encoder,
+                self.bloom_extract_pipeline,
+                self.bloom_extract_uniform_buffer,
+                source_view,
+                self.bloom_extract_targets[level].view orelse return RenderError.NoDevice,
+                "Machina bloom extract/downsample pass",
+            );
+
+            var blur_x_uniforms = postProcessUniforms(render_config, width, height);
+            blur_x_uniforms.params4 = .{ 1.0, 0.0, @floatFromInt(level), 0.0 };
+            writePostProcessUniforms(queue, self.bloom_blur_x_uniform_buffer, &blur_x_uniforms);
+            try self.drawBloomSamplePass(
+                device,
+                encoder,
+                self.bloom_blur_pipeline,
+                self.bloom_blur_x_uniform_buffer,
+                self.bloom_extract_targets[level].view orelse return RenderError.NoDevice,
+                self.bloom_ping_targets[level].view orelse return RenderError.NoDevice,
+                "Machina bloom horizontal blur pass",
+            );
+
+            var blur_y_uniforms = postProcessUniforms(render_config, width, height);
+            blur_y_uniforms.params4 = .{ 0.0, 1.0, @floatFromInt(level), 0.0 };
+            writePostProcessUniforms(queue, self.bloom_blur_y_uniform_buffer, &blur_y_uniforms);
+            try self.drawBloomSamplePass(
+                device,
+                encoder,
+                self.bloom_blur_pipeline,
+                self.bloom_blur_y_uniform_buffer,
+                self.bloom_ping_targets[level].view orelse return RenderError.NoDevice,
+                self.bloom_pong_targets[level].view orelse return RenderError.NoDevice,
+                "Machina bloom vertical blur pass",
+            );
+
+            views[level] = self.bloom_pong_targets[level].view orelse return RenderError.NoDevice;
+            source_view = views[level];
+        }
+
+        return views;
+    }
+
+    fn drawBloomSamplePass(
+        self: *MeshDemo,
+        device: *wgpu.Device,
+        encoder: *wgpu.CommandEncoder,
+        pipeline: *wgpu.RenderPipeline,
+        uniform_buffer: *wgpu.Buffer,
+        source_view: *wgpu.TextureView,
+        target_view: *wgpu.TextureView,
+        label: []const u8,
+    ) RenderError!void {
+        const bind_group = try createSingleTextureBindGroup(
+            device,
+            self.bloom_bind_group_layout,
+            uniform_buffer,
+            source_view,
+            self.postprocess_sampler,
+        );
+        defer bind_group.release();
+
+        const color_attachments = [_]wgpu.ColorAttachment{
+            .{
+                .view = target_view,
+                .clear_value = .{
+                    .r = 0.0,
+                    .g = 0.0,
+                    .b = 0.0,
+                    .a = 1.0,
+                },
+            },
+        };
+        const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
+            .label = wgpu.StringView.fromSlice(label),
+            .color_attachment_count = color_attachments.len,
+            .color_attachments = &color_attachments,
+        }) orelse return RenderError.NoDevice;
+        defer render_pass.release();
+
+        render_pass.setPipeline(pipeline);
+        render_pass.setBindGroup(0, bind_group, 0, null);
+        render_pass.draw(3, 1, 0, 0);
         render_pass.end();
     }
 };
@@ -5091,6 +5697,172 @@ fn createUiPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pi
     }) orelse return RenderError.NoDevice;
 }
 
+fn createPostProcessPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
+    const shader_module = device.createShaderModule(&wgpu.shaderModuleWGSLDescriptor(.{
+        .code = @embedFile("shaders/postprocess.wgsl"),
+    })) orelse return RenderError.NoDevice;
+    defer shader_module.release();
+
+    const vertex_buffers = [_]wgpu.VertexBufferLayout{};
+    const color_targets = [_]wgpu.ColorTargetState{
+        .{
+            .format = texture_format,
+        },
+    };
+
+    return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
+        .label = wgpu.StringView.fromSlice("Machina postprocess pipeline"),
+        .layout = pipeline_layout,
+        .vertex = .{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice("vs_main"),
+            .buffer_count = vertex_buffers.len,
+            .buffers = &vertex_buffers,
+        },
+        .primitive = .{},
+        .fragment = &wgpu.FragmentState{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice("fs_main"),
+            .target_count = color_targets.len,
+            .targets = &color_targets,
+        },
+        .multisample = .{},
+    }) orelse return RenderError.NoDevice;
+}
+
+fn createBloomExtractPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
+    return createFullscreenPipeline(device, texture_format, pipeline_layout, "Machina bloom extract pipeline", @embedFile("shaders/bloom.wgsl"), "fs_extract");
+}
+
+fn createBloomBlurPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
+    return createFullscreenPipeline(device, texture_format, pipeline_layout, "Machina bloom blur pipeline", @embedFile("shaders/bloom.wgsl"), "fs_blur");
+}
+
+fn createFullscreenPipeline(
+    device: *wgpu.Device,
+    texture_format: wgpu.TextureFormat,
+    pipeline_layout: *wgpu.PipelineLayout,
+    label: []const u8,
+    shader_code: []const u8,
+    fragment_entry: []const u8,
+) RenderError!*wgpu.RenderPipeline {
+    const shader_module = device.createShaderModule(&wgpu.shaderModuleWGSLDescriptor(.{
+        .code = shader_code,
+    })) orelse return RenderError.NoDevice;
+    defer shader_module.release();
+
+    const vertex_buffers = [_]wgpu.VertexBufferLayout{};
+    const color_targets = [_]wgpu.ColorTargetState{
+        .{
+            .format = texture_format,
+        },
+    };
+
+    return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
+        .label = wgpu.StringView.fromSlice(label),
+        .layout = pipeline_layout,
+        .vertex = .{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice("vs_main"),
+            .buffer_count = vertex_buffers.len,
+            .buffers = &vertex_buffers,
+        },
+        .primitive = .{},
+        .fragment = &wgpu.FragmentState{
+            .module = shader_module,
+            .entry_point = wgpu.StringView.fromSlice(fragment_entry),
+            .target_count = color_targets.len,
+            .targets = &color_targets,
+        },
+        .multisample = .{},
+    }) orelse return RenderError.NoDevice;
+}
+
+fn createSingleTextureBindGroup(
+    device: *wgpu.Device,
+    layout: *wgpu.BindGroupLayout,
+    uniform_buffer: *wgpu.Buffer,
+    texture_view: *wgpu.TextureView,
+    sampler: *wgpu.Sampler,
+) RenderError!*wgpu.BindGroup {
+    const bind_group_entries = [_]wgpu.BindGroupEntry{
+        .{
+            .binding = 0,
+            .buffer = uniform_buffer,
+            .size = @sizeOf(PostProcessUniforms),
+        },
+        .{
+            .binding = 1,
+            .texture_view = texture_view,
+        },
+        .{
+            .binding = 2,
+            .sampler = sampler,
+        },
+    };
+    return device.createBindGroup(&wgpu.BindGroupDescriptor{
+        .label = wgpu.StringView.fromSlice("Machina texture pass bind group"),
+        .layout = layout,
+        .entry_count = bind_group_entries.len,
+        .entries = &bind_group_entries,
+    }) orelse return RenderError.NoDevice;
+}
+
+fn createCompositeBindGroup(
+    device: *wgpu.Device,
+    layout: *wgpu.BindGroupLayout,
+    uniform_buffer: *wgpu.Buffer,
+    scene_view: *wgpu.TextureView,
+    bloom_views: BloomViews,
+    sampler: *wgpu.Sampler,
+) RenderError!*wgpu.BindGroup {
+    const bind_group_entries = [_]wgpu.BindGroupEntry{
+        .{
+            .binding = 0,
+            .buffer = uniform_buffer,
+            .size = @sizeOf(PostProcessUniforms),
+        },
+        .{
+            .binding = 1,
+            .texture_view = scene_view,
+        },
+        .{
+            .binding = 2,
+            .sampler = sampler,
+        },
+        .{
+            .binding = 3,
+            .texture_view = bloom_views[0],
+        },
+        .{
+            .binding = 4,
+            .texture_view = bloom_views[1],
+        },
+        .{
+            .binding = 5,
+            .texture_view = bloom_views[2],
+        },
+        .{
+            .binding = 6,
+            .texture_view = bloom_views[3],
+        },
+        .{
+            .binding = 7,
+            .texture_view = bloom_views[4],
+        },
+    };
+    return device.createBindGroup(&wgpu.BindGroupDescriptor{
+        .label = wgpu.StringView.fromSlice("Machina postprocess composite bind group"),
+        .layout = layout,
+        .entry_count = bind_group_entries.len,
+        .entries = &bind_group_entries,
+    }) orelse return RenderError.NoDevice;
+}
+
+fn emptyBloomViews(view: *wgpu.TextureView) BloomViews {
+    return [_]*wgpu.TextureView{view} ** bloom_level_count;
+}
+
 fn createStaticBuffer(device: *wgpu.Device, label: []const u8, usage: wgpu.BufferUsage, data: []const u8) RenderError!*wgpu.Buffer {
     const buffer = device.createBuffer(&wgpu.BufferDescriptor{
         .label = wgpu.StringView.fromSlice(label),
@@ -5111,6 +5883,11 @@ fn writeUniforms(queue: *wgpu.Queue, buffer: *wgpu.Buffer, uniforms: *const Fram
     queue.writeBuffer(buffer, 0, bytes.ptr, bytes.len);
 }
 
+fn writePostProcessUniforms(queue: *wgpu.Queue, buffer: *wgpu.Buffer, uniforms: *const PostProcessUniforms) void {
+    const bytes = std.mem.asBytes(uniforms);
+    queue.writeBuffer(buffer, 0, bytes.ptr, bytes.len);
+}
+
 fn frameUniforms(light_value: DirectionalLightState) RenderError!FrameUniforms {
     const light = try validateDirectionalLight(light_value);
     const normalized_light = normalizeVec3(light.direction);
@@ -5119,6 +5896,42 @@ fn frameUniforms(light_value: DirectionalLightState) RenderError!FrameUniforms {
         .light_dir = .{ normalized_light[0], normalized_light[1], normalized_light[2], 0.0 },
         .light_color = .{ light.color[0], light.color[1], light.color[2], 1.0 },
         .lighting = .{ light.ambient, light.intensity, 0.0, 0.0 },
+    };
+}
+
+fn postProcessUniforms(config: RenderConfig, width: u32, height: u32) PostProcessUniforms {
+    const safe_width = @max(width, 1);
+    const safe_height = @max(height, 1);
+    return .{
+        .params0 = .{
+            1.0 / @as(f32, @floatFromInt(safe_width)),
+            1.0 / @as(f32, @floatFromInt(safe_height)),
+            if (config.postprocess.enabled and config.postprocess.antialiasing == .fxaa) 1.0 else 0.0,
+            if (config.postprocess.enabled and config.postprocess.chromatic_aberration.enabled) config.postprocess.chromatic_aberration.strength else 0.0,
+        },
+        .params1 = .{
+            if (config.postprocess.enabled and config.postprocess.vignette.enabled) 1.0 else 0.0,
+            config.postprocess.vignette.strength,
+            config.postprocess.vignette.radius,
+            0.0,
+        },
+        .params2 = .{
+            if (config.postprocess.enabled and config.postprocess.bloom.enabled) 1.0 else 0.0,
+            config.postprocess.bloom.threshold,
+            config.postprocess.bloom.intensity,
+            config.postprocess.bloom.radius,
+        },
+        .params3 = .{
+            if (config.color.hdr) 1.0 else 0.0,
+            config.color.exposure,
+            switch (config.color.tone_mapping) {
+                .none => 0.0,
+                .reinhard => 1.0,
+                .aces => 2.0,
+            },
+            0.0,
+        },
+        .params4 = .{ 0.0, 0.0, 0.0, 0.0 },
     };
 }
 
@@ -9072,6 +9885,14 @@ const FrameUniforms = extern struct {
     light_dir: [4]f32,
     light_color: [4]f32,
     lighting: [4]f32,
+};
+
+const PostProcessUniforms = extern struct {
+    params0: [4]f32,
+    params1: [4]f32,
+    params2: [4]f32,
+    params3: [4]f32,
+    params4: [4]f32,
 };
 
 const InstanceAttributes = extern struct {

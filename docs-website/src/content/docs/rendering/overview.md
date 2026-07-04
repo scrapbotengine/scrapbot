@@ -10,6 +10,7 @@ The public scene authoring model is ECS data:
 - `machina.transform`
 - `machina.geometry.primitive`
 - `machina.material.surface`
+- `machina.renderer`
 - `machina.camera`
 - `machina.light.directional`
 - `machina.shadow.caster`
@@ -31,6 +32,49 @@ Each frame, render systems:
 7. Draw queued meshes and UI.
 
 The editor/debug overlay includes render-system timings from this internal render schedule.
+
+## Renderer Settings
+
+Scenes can include one `machina.renderer` component to configure the game-view render pipeline:
+
+```toml
+[[entities]]
+id = "machina.renderer"
+name = "Renderer"
+
+[entities.components."machina.renderer"]
+hdr = true
+tone_mapping = "aces"
+exposure = 0.0
+postprocess_enabled = true
+antialiasing = "fxaa"
+bloom_enabled = true
+bloom_threshold = 0.85
+bloom_intensity = 0.12
+bloom_radius = 1.0
+vignette_enabled = true
+vignette_strength = 0.24
+vignette_radius = 0.82
+chromatic_aberration_enabled = true
+chromatic_aberration_strength = 0.0025
+```
+
+Only one renderer component may appear in a scene. `machina init` writes this singleton into the generated default scene.
+
+Supported color settings:
+
+- `hdr`: render scene color into an internal `rgba16_float` texture before final output.
+- `tone_mapping`: `none`, `reinhard`, or `aces`.
+- `exposure`: exposure compensation before tone mapping.
+
+Supported postprocess settings:
+
+- `antialiasing`: `none` or `fxaa`.
+- `bloom_enabled`, `bloom_threshold`, `bloom_intensity`, `bloom_radius`.
+- `vignette_enabled`, `vignette_strength`, `vignette_radius`.
+- `chromatic_aberration_enabled`, `chromatic_aberration_strength`.
+
+Scripts can query and write `machina.renderer` like any other component, so gameplay systems can animate exposure or effect strengths. HDR texture format is selected when the render target is created; changing `hdr` at runtime needs renderer recreation or scene reload in the current slice.
 
 ## Headful and Offscreen
 

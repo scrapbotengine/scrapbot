@@ -1,7 +1,7 @@
 # FDR-001: Project Directory Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-01
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -14,7 +14,8 @@ The project directory runtime lets users and agents run the `machina` binary ins
 - The runtime locates project metadata, resolves project-relative paths, and reports clear diagnostics when the directory is not a valid project.
 - Users can initialize a new project with `machina init [path]`, defaulting to the current directory.
 - `machina init` creates the target directory when needed, writes `project.machina.toml`, and writes the default scene at `scenes/main.scene.toml`.
-- Fresh projects contain a small script-free scene with a cube, camera, and directional light using the current scene-authored renderable components.
+- Fresh projects contain a small script-free scene with a renderer singleton, cube, camera, and directional light using the current scene-authored components.
+- Fresh default scenes include a preconfigured `machina.renderer` HDR, color, and postprocess profile.
 - `machina init` does not overwrite an existing project; it fails if `project.machina.toml` already exists in the target directory.
 - Interactive and headless commands use the same project loading rules.
 - Commands that write files keep generated artifacts separate from authoritative source files.
@@ -36,7 +37,7 @@ The project directory runtime lets users and agents run the `machina` binary ins
 ## Related
 
 - **ADRs:** ADR-001, ADR-003
-- **FDRs:** FDR-002, FDR-003, FDR-006
+- **FDRs:** FDR-002, FDR-003, FDR-006, FDR-020
 
 ## Open Questions
 

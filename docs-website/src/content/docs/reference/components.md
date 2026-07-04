@@ -12,6 +12,7 @@ Machina registers these engine component types before project scripts and native
 | `machina.transform` | `position: vec3`, `rotation: vec3`, `scale: vec3` | Spatial transform used by rendering and gameplay. |
 | `machina.geometry.primitive` | `primitive: string`, `segments: int`, `rings: int` | Built-in geometry generator selector. |
 | `machina.material.surface` | `base_color: vec3` | Current surface material data. |
+| `machina.renderer` | `hdr: bool`, `tone_mapping: string`, `exposure: f32`, `postprocess_enabled: bool`, `antialiasing: string`, bloom/vignette/chromatic aberration fields | Scene renderer singleton. Author at most one per scene. |
 | `machina.render.cube` | `color: vec3` | Legacy cube renderer shortcut. Prefer geometry + material. |
 | `machina.camera` | `fov_y_degrees: f32`, `near: f32`, `far: f32` | Scene-driven camera data. |
 | `machina.light.directional` | `direction: vec3`, `color: vec3`, `intensity: f32`, `ambient: f32` | Scene-driven directional light data. |
