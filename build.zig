@@ -15,11 +15,13 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
+    const sanitize_c: ?std.zig.SanitizeC = if (target.result.os.tag == .windows and target.result.abi == .msvc) .off else null;
 
     const machina_mod = b.addModule("machina", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .sanitize_c = sanitize_c,
         .imports = &.{
             .{ .name = "wgpu", .module = wgpu_dep.module("wgpu") },
         },
