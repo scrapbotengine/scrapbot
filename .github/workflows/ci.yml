@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Install SDL3
+        run: brew install sdl3
+      - name: Build and test
+        run: zig build test
+      - name: Build CLI
+        run: zig build -Doptimize=ReleaseFast
+      - name: Project tests
+        run: ./zig-out/bin/machina test tests/projects
+      - name: Render smoke
+        run: ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp
+      - name: Headful smoke
+        run: ./zig-out/bin/machina run examples/minimal --frames 2
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl3-dev libvulkan1 mesa-vulkan-drivers xvfb
+      - name: Build and test
+        run: zig build test
+      - name: Build CLI
+        run: zig build -Doptimize=ReleaseFast
+      - name: Project tests
+        run: ./zig-out/bin/machina test tests/projects
+      - name: Render smoke
+        run: ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.bmp
+      - name: Headful smoke
+        run: xvfb-run -a ./zig-out/bin/machina run examples/minimal --frames 2
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Install SDL3
+        shell: pwsh
+        run: vcpkg install sdl3:x64-windows
+      - name: Build and test
+        shell: pwsh
+        run: zig build test -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" -Dsdl3_library_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib"
+      - name: Build CLI
+        shell: pwsh
+        run: zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast -Dsdl3_include_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" -Dsdl3_library_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib"
+      - name: Stage SDL3 runtime
+        shell: pwsh
+        run: Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\SDL3.dll" zig-out\bin\
+      - name: Project tests
+        shell: pwsh
+        run: .\zig-out\bin\machina.exe test tests/projects
+      - name: Render smoke
+        shell: pwsh
+        run: .\zig-out\bin\machina.exe render-test examples/minimal zig-out/minimal-render-test.bmp
+      - name: Headful smoke
+        shell: pwsh
+        run: .\zig-out\bin\machina.exe run examples/minimal --frames 2

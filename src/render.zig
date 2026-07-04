@@ -7,9 +7,12 @@ const ui_layout = @import("ui_layout.zig");
 const ui_font = @import("ui_font.zig");
 const wgpu = @import("wgpu");
 
-const sdl = if (builtin.os.tag == .macos) @cImport({
+const is_supported_window_platform = builtin.os.tag == .macos or builtin.os.tag == .linux or builtin.os.tag == .windows;
+const sdl = if (is_supported_window_platform) @cImport({
     @cInclude("SDL3/SDL.h");
-    @cInclude("SDL3/SDL_metal.h");
+    if (builtin.os.tag == .macos) {
+        @cInclude("SDL3/SDL_metal.h");
+    }
 }) else struct {};
 
 const output_width = 640;
@@ -105,6 +108,7 @@ pub const RenderError = error{
     WindowCreateFailed,
     MetalViewCreateFailed,
     MetalLayerMissing,
+    NativeWindowHandleMissing,
     BufferMapFailed,
     OutOfMemory,
     InvalidScene,
@@ -701,8 +705,133 @@ pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const 
     try write24BitBmp(io, allocator, output_path, mapped[0..output_size]);
 }
 
+const WindowSurface = switch (builtin.os.tag) {
+    .macos => MacWindowSurface,
+    .linux => LinuxWindowSurface,
+    .windows => WindowsWindowSurface,
+    else => UnsupportedWindowSurface,
+};
+
+const UnsupportedWindowSurface = struct {
+    surface: *wgpu.Surface,
+
+    fn create(_: *wgpu.Instance, _: *sdl.SDL_Window) RenderError!UnsupportedWindowSurface {
+        return RenderError.WindowingUnsupported;
+    }
+
+    fn deinit(_: *UnsupportedWindowSurface) void {}
+};
+
+const MacWindowSurface = struct {
+    surface: *wgpu.Surface,
+    metal_view: sdl.SDL_MetalView,
+
+    fn create(instance: *wgpu.Instance, window: *sdl.SDL_Window) RenderError!MacWindowSurface {
+        const metal_view = sdl.SDL_Metal_CreateView(window) orelse return RenderError.MetalViewCreateFailed;
+        errdefer sdl.SDL_Metal_DestroyView(metal_view);
+
+        const metal_layer = sdl.SDL_Metal_GetLayer(metal_view) orelse return RenderError.MetalLayerMissing;
+        var surface_descriptor = wgpu.surfaceDescriptorFromMetalLayer(.{
+            .label = "Machina window surface",
+            .layer = metal_layer,
+        });
+        const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+        return .{
+            .surface = surface,
+            .metal_view = metal_view,
+        };
+    }
+
+    fn deinit(self: *MacWindowSurface) void {
+        self.surface.unconfigure();
+        self.surface.release();
+        sdl.SDL_Metal_DestroyView(self.metal_view);
+        self.* = undefined;
+    }
+};
+
+const LinuxWindowSurface = struct {
+    surface: *wgpu.Surface,
+
+    fn create(instance: *wgpu.Instance, window: *sdl.SDL_Window) RenderError!LinuxWindowSurface {
+        const props = sdl.SDL_GetWindowProperties(window);
+        if (props == 0) {
+            return RenderError.NativeWindowHandleMissing;
+        }
+
+        const wayland_display = sdl.SDL_GetPointerProperty(props, sdl.SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, null);
+        const wayland_surface = sdl.SDL_GetPointerProperty(props, sdl.SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, null);
+        if (wayland_display != null and wayland_surface != null) {
+            var surface_descriptor = wgpu.surfaceDescriptorFromWaylandSurface(.{
+                .label = "Machina window surface",
+                .display = wayland_display.?,
+                .surface = wayland_surface.?,
+            });
+            const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+            return .{ .surface = surface };
+        }
+
+        const x11_display = sdl.SDL_GetPointerProperty(props, sdl.SDL_PROP_WINDOW_X11_DISPLAY_POINTER, null);
+        const x11_window = sdl.SDL_GetNumberProperty(props, sdl.SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+        if (x11_display != null and x11_window > 0) {
+            var surface_descriptor = wgpu.surfaceDescriptorFromXlibWindow(.{
+                .label = "Machina window surface",
+                .display = x11_display.?,
+                .window = @intCast(x11_window),
+            });
+            const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+            return .{ .surface = surface };
+        }
+
+        return RenderError.NativeWindowHandleMissing;
+    }
+
+    fn deinit(self: *LinuxWindowSurface) void {
+        self.surface.unconfigure();
+        self.surface.release();
+        self.* = undefined;
+    }
+};
+
+const WindowsWindowSurface = struct {
+    surface: *wgpu.Surface,
+
+    fn create(instance: *wgpu.Instance, window: *sdl.SDL_Window) RenderError!WindowsWindowSurface {
+        const props = sdl.SDL_GetWindowProperties(window);
+        if (props == 0) {
+            return RenderError.NativeWindowHandleMissing;
+        }
+
+        const hinstance = sdl.SDL_GetPointerProperty(props, sdl.SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, null) orelse
+            return RenderError.NativeWindowHandleMissing;
+        const hwnd = sdl.SDL_GetPointerProperty(props, sdl.SDL_PROP_WINDOW_WIN32_HWND_POINTER, null) orelse
+            return RenderError.NativeWindowHandleMissing;
+        var surface_descriptor = wgpu.surfaceDescriptorFromWindowsHWND(.{
+            .label = "Machina window surface",
+            .hinstance = hinstance,
+            .hwnd = hwnd,
+        });
+        const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+        return .{ .surface = surface };
+    }
+
+    fn deinit(self: *WindowsWindowSurface) void {
+        self.surface.unconfigure();
+        self.surface.release();
+        self.* = undefined;
+    }
+};
+
+fn platformWindowFlags() sdl.SDL_WindowFlags {
+    var flags: sdl.SDL_WindowFlags = sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    if (builtin.os.tag == .macos) {
+        flags |= sdl.SDL_WINDOW_METAL;
+    }
+    return flags;
+}
+
 pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: WindowOptions, initial_scene: Scene) !void {
-    if (builtin.os.tag != .macos) {
+    if (!is_supported_window_platform) {
         return RenderError.WindowingUnsupported;
     }
 
@@ -714,25 +843,16 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     }
     defer sdl.SDL_Quit();
 
-    const window_flags = @as(sdl.SDL_WindowFlags, sdl.SDL_WINDOW_METAL | sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    const window_flags = platformWindowFlags();
     const window = sdl.SDL_CreateWindow(title_z.ptr, default_window_width, default_window_height, window_flags) orelse return RenderError.WindowCreateFailed;
     defer sdl.SDL_DestroyWindow(window);
-
-    const metal_view = sdl.SDL_Metal_CreateView(window) orelse return RenderError.MetalViewCreateFailed;
-    defer sdl.SDL_Metal_DestroyView(metal_view);
-
-    const metal_layer = sdl.SDL_Metal_GetLayer(metal_view) orelse return RenderError.MetalLayerMissing;
 
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
 
-    var surface_descriptor = wgpu.surfaceDescriptorFromMetalLayer(.{
-        .label = "Machina window surface",
-        .layer = metal_layer,
-    });
-    const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
-    defer surface.release();
-    defer surface.unconfigure();
+    var window_surface = try WindowSurface.create(instance, window);
+    defer window_surface.deinit();
+    const surface = window_surface.surface;
 
     var gpu = try openGpu(instance, surface);
     defer gpu.deinit();

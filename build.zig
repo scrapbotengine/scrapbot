@@ -3,6 +3,10 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const window_platform = WindowPlatformConfig{
+        .sdl_include_path = b.option([]const u8, "sdl3_include_path", "Path containing the SDL3 include directory"),
+        .sdl_library_path = b.option([]const u8, "sdl3_library_path", "Path containing the SDL3 library"),
+    };
 
     const wgpu_dep = b.dependency("wgpu_native_zig", .{
         .target = target,
@@ -35,7 +39,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     linkWgpuPlatform(exe, target);
-    linkWindowPlatform(exe, target);
+    linkWindowPlatform(exe, target, window_platform);
 
     b.installArtifact(exe);
 
@@ -51,14 +55,14 @@ pub fn build(b: *std.Build) void {
         .root_module = machina_mod,
     });
     linkWgpuPlatform(mod_tests, target);
-    linkWindowPlatform(mod_tests, target);
+    linkWindowPlatform(mod_tests, target, window_platform);
     const run_mod_tests = b.addRunArtifact(mod_tests);
 
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });
     linkWgpuPlatform(exe_tests, target);
-    linkWindowPlatform(exe_tests, target);
+    linkWindowPlatform(exe_tests, target, window_platform);
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
     const test_step = b.step("test", "Run tests");
@@ -156,10 +160,32 @@ fn linkWgpuPlatform(compile: *std.Build.Step.Compile, target: std.Build.Resolved
     }
 }
 
-fn linkWindowPlatform(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
-    if (target.result.os.tag == .macos) {
-        compile.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
-        compile.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
-        compile.root_module.linkSystemLibrary("SDL3", .{});
+const WindowPlatformConfig = struct {
+    sdl_include_path: ?[]const u8 = null,
+    sdl_library_path: ?[]const u8 = null,
+};
+
+fn linkWindowPlatform(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, config: WindowPlatformConfig) void {
+    if (config.sdl_include_path) |path| {
+        compile.root_module.addIncludePath(.{ .cwd_relative = path });
+    }
+    if (config.sdl_library_path) |path| {
+        compile.root_module.addLibraryPath(.{ .cwd_relative = path });
+    }
+
+    switch (target.result.os.tag) {
+        .macos => {
+            if (config.sdl_include_path == null) {
+                compile.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+            }
+            if (config.sdl_library_path == null) {
+                compile.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+            }
+            compile.root_module.linkSystemLibrary("SDL3", .{});
+        },
+        .linux, .windows => {
+            compile.root_module.linkSystemLibrary("SDL3", .{});
+        },
+        else => {},
     }
 }

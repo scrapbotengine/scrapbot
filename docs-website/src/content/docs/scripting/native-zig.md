@@ -11,6 +11,8 @@ native = "native/game.zig"
 
 During development, Machina builds that source file as a dynamic library under `.machina/native/`, loads it, and calls `machina_register`.
 
+Dynamic native module loading is supported on macOS, Linux, and Windows MSVC. Windows GNU is not a primary support target for this development loop.
+
 ## Registration Entry Point
 
 ```zig

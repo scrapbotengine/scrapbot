@@ -9,7 +9,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 
 ## Behavior
 
-- Users can run `machina run [path]` against a valid project.
+- Users can run `machina run [path]` against a valid project on supported desktop platforms with SDL3 available.
 - The command validates the project before opening a window.
 - The renderer opens a 16:9 visible window and presents the project's default scene until the window is closed.
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
@@ -42,11 +42,11 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 **Why:** The editor overlay and UI examples need enough room to be legible while preserving the common 16:9 shape used by current render examples.
 **Tradeoff:** Smaller screens may need users to resize the window manually until project/window settings exist.
 
-### 3. Use SDL3 for the first window backend
+### 3. Use SDL3 for the desktop window backend
 
-**Decision:** The first macOS window path uses SDL3 to create a Metal-capable window and obtain a `CAMetalLayer` for `wgpu-native`.
+**Decision:** Desktop windowing uses SDL3 to create a native platform window. Machina creates the matching `wgpu-native` surface from SDL-provided native handles: Metal on macOS, Wayland/X11 on Linux, and Win32 HWND/HINSTANCE on Windows MSVC.
 **Why:** SDL3 gives Machina a small C ABI windowing layer with cross-platform reach while keeping platform details behind the renderer boundary described in ADR-005.
-**Tradeoff:** The current build assumes Homebrew SDL3 on macOS. Dependency discovery and packaging need to become first-class before this is portable.
+**Tradeoff:** The first portable slice expects SDL3 to be installed as a system dependency. Bundled runtime packaging remains future work.
 
 ### 4. Keep the frame cap as a runtime option
 
@@ -79,6 +79,6 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 
 ## Open Questions
 
-- How should SDL3 be discovered on non-Homebrew macOS installations and other platforms?
 - Should `run` eventually select scenes and windows from project configuration instead of fixed defaults?
 - How should renderer failures be surfaced as structured diagnostics instead of coarse error names?
+- How should release packaging bundle SDL3 and any required runtime libraries per platform?
