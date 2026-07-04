@@ -62,6 +62,8 @@ const editor_control_button_height: f32 = 36.0;
 const editor_control_button_gap: f32 = 14.0;
 const editor_panel_corner_radius: f32 = 8.0;
 const editor_button_corner_radius: f32 = 6.0;
+const editor_command_play_toggle = "machina.editor.play_toggle";
+const editor_command_step = "machina.editor.step";
 const editor_inspector_panel_height: f32 = 548.0;
 const editor_inspector_empty_panel_height: f32 = 178.0;
 const editor_inspector_text_size: f32 = 1.0;
@@ -369,15 +371,18 @@ pub fn updateEditorState(allocator: std.mem.Allocator, world: *runtime.World, st
     }
 
     if (input.pointer.primary_pressed) {
-        if (hitEditorPlayButton(input)) {
-            state.paused = !state.paused;
+        if (try routeEditorCommandAt(allocator, input)) |command| {
             state.captured_pointer = true;
-            return .{ .consumed_pointer = true };
-        }
-        if (hitEditorStepButton(input)) {
-            state.paused = true;
-            state.captured_pointer = true;
-            return .{ .consumed_pointer = true, .step_once = true };
+            return switch (command) {
+                .play_toggle => blk: {
+                    state.paused = !state.paused;
+                    break :blk .{ .consumed_pointer = true };
+                },
+                .step => blk: {
+                    state.paused = true;
+                    break :blk .{ .consumed_pointer = true, .step_once = true };
+                },
+            };
         }
         if (hitEditorChrome(input)) {
             state.captured_pointer = true;
@@ -1762,8 +1767,8 @@ fn extractDebugOverlayInto(
 fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) RenderError!void {
     const play_label = if (input.editor.paused) "PLAY" else "PAUSE";
     const play_color: [3]f32 = if (input.editor.paused) editor_palette.success else editor_palette.warning;
-    try extractEditorButtonInto(world, "machina.editor.controls.play", "Editor Play", editorPlayButtonRect(input), play_label, play_color);
-    try extractEditorButtonInto(world, "machina.editor.controls.step", "Editor Step", editorStepButtonRect(input), "STEP", editor_palette.panel_muted);
+    try extractEditorButtonInto(world, "machina.editor.controls.play", "Editor Play", editorPlayButtonRect(input), play_label, play_color, editor_command_play_toggle);
+    try extractEditorButtonInto(world, "machina.editor.controls.step", "Editor Step", editorStepButtonRect(input), "STEP", editor_palette.panel_muted, editor_command_step);
 }
 
 fn extractEditorButtonInto(
@@ -1773,6 +1778,7 @@ fn extractEditorButtonInto(
     rect: ScreenRect,
     label: []const u8,
     color: [3]f32,
+    command: []const u8,
 ) RenderError!void {
     const button = world.createEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiRect(button, .{
@@ -1782,6 +1788,7 @@ fn extractEditorButtonInto(
         .corner_radius = editor_button_corner_radius,
     }) catch |err| return mapWorldError(err);
     world.setUiButton(button) catch |err| return mapWorldError(err);
+    world.setUiCommand(button, .{ .command = command }) catch |err| return mapWorldError(err);
 
     var label_id_buffer: [96]u8 = undefined;
     const label_id = std.fmt.bufPrint(&label_id_buffer, "{s}.label", .{id}) catch return RenderError.InvalidScene;
@@ -3913,12 +3920,52 @@ fn editorStepButtonRect(input: FrameInput) ScreenRect {
     };
 }
 
-fn hitEditorPlayButton(input: FrameInput) bool {
-    return editorPlayButtonRect(input).contains(input.pointer.position);
+const EditorCommand = enum {
+    play_toggle,
+    step,
+};
+
+fn routeEditorCommandAt(allocator: std.mem.Allocator, input: FrameInput) EditorError!?EditorCommand {
+    if (!input.pointer.has_position or
+        std.math.isNan(input.pointer.position[0]) or
+        std.math.isNan(input.pointer.position[1]))
+    {
+        return null;
+    }
+
+    var input_world = runtime.World.init(allocator);
+    defer input_world.deinit();
+
+    try addEditorCommandButtonForRouting(&input_world, "machina.editor.controls.play", "Editor Play", editorPlayButtonRect(input), editor_command_play_toggle);
+    try addEditorCommandButtonForRouting(&input_world, "machina.editor.controls.step", "Editor Step", editorStepButtonRect(input), editor_command_step);
+
+    const hit = ui_layout.commandAt(&input_world, input.pointer.position) catch |err| return mapEditorLayoutError(err);
+    const command = hit orelse return null;
+    if (std.mem.eql(u8, command.command, editor_command_play_toggle)) {
+        return .play_toggle;
+    }
+    if (std.mem.eql(u8, command.command, editor_command_step)) {
+        return .step;
+    }
+    return null;
 }
 
-fn hitEditorStepButton(input: FrameInput) bool {
-    return editorStepButtonRect(input).contains(input.pointer.position);
+fn addEditorCommandButtonForRouting(
+    world: *runtime.World,
+    id: []const u8,
+    name: []const u8,
+    rect: ScreenRect,
+    command: []const u8,
+) EditorError!void {
+    const button = try world.createEntity(id, name);
+    try world.setUiRect(button, .{
+        .position = rect.position(),
+        .size = rect.size3(),
+        .color = .{ 0.0, 0.0, 0.0 },
+        .corner_radius = editor_button_corner_radius,
+    });
+    try world.setUiButton(button);
+    try world.setUiCommand(button, .{ .command = command });
 }
 
 fn hitEditorChrome(input: FrameInput) bool {
@@ -5408,6 +5455,7 @@ test "debug overlay extracts FPS label when visible" {
     try std.testing.expect(play_position[1] >= label.position[1] + editorTextHeight(label.size) + editor_panel_section_gap - 0.001);
     try std.testing.expectEqual(@as(f32, editor_button_corner_radius), try state.world.getFloat(play_button, runtime.ui_rect_component_id, "corner_radius"));
     try std.testing.expect(try state.world.hasComponent(play_button, runtime.ui_button_component_id));
+    try std.testing.expectEqualStrings(editor_command_play_toggle, try state.world.getString(play_button, runtime.ui_command_component_id, "command"));
 
     const play_label = state.world.findEntityById("machina.editor.controls.play.label") orelse return error.TestExpectedEqual;
     const play_label_position = try state.world.getVec3(play_label, runtime.ui_text_component_id, "position");
@@ -5587,6 +5635,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
 
     var saw_handle = false;
     var saw_transform = false;
+    var saw_position_value = false;
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
         if (std.mem.indexOf(u8, text.value, "HANDLE") != null) {
@@ -5595,9 +5644,13 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
         if (std.mem.indexOf(u8, text.value, "[machina.transform]") != null) {
             saw_transform = true;
         }
+        if (std.mem.indexOf(u8, text.value, "position 0.25 0.50 0.00") != null) {
+            saw_position_value = true;
+        }
     }
     try std.testing.expect(saw_handle);
     try std.testing.expect(saw_transform);
+    try std.testing.expect(saw_position_value);
 }
 
 test "render ECS profiles internal systems for editor overlay" {

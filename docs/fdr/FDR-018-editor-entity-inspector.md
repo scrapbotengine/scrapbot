@@ -1,7 +1,7 @@
 # FDR-018: Editor Entity Inspector
 
 **Status:** Active
-**Last reviewed:** 2026-07-03
+**Last reviewed:** 2026-07-04
 
 ## Overview
 
@@ -12,9 +12,10 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - The editor shell is hidden by default and can be shown with `machina run --editor` or toggled in a headful run with Ctrl+Tab.
 - When the editor shell is visible, the game renders into a dedicated 16:9 viewport and editor controls render outside it in a right sidebar.
 - The editor shell includes playback controls for pause/resume and single-frame stepping.
+- Playback controls are generated as retained `machina.ui.button` + `machina.ui.command` entities and routed through shared retained UI command hit testing.
 - Pausing stops scheduled update systems while keeping startup, diagnostics, rendering, and editor interaction available.
 - Clicking a visible renderable mesh selects that entity.
-- The inspector shows live world counts, selected entity handle, name, id, position, and a capped component/field listing.
+- The Inspector V2 proof shows live world counts, selected entity handle, name, id, position, and a capped component/field listing read through ECS component reflection.
 - The inspector does not show a full entity list by default.
 - A selected renderable gets a world-space translate gizmo with X, Y, and Z handles.
 - Dragging a gizmo axis mutates the selected entity's transform position.
@@ -52,6 +53,12 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 **Decision:** Inspector rows read selected entity components and fields from the shared ECS world.
 **Why:** Editor inspection should reflect the actual runtime state used by scripts, native systems, rendering, and tests. This follows ADR-013 and ADR-016.
 **Tradeoff:** The first field listing is display-only and capped. Editable fields need validation, undo, type-specific widgets, and reload-safe write rules.
+
+### 6. Route editor controls through retained UI commands
+
+**Decision:** Pause/play and step use the same retained command hit-testing helper as scene UI command buttons, while applying the command directly to editor state instead of emitting project-world UI command events.
+**Why:** Editor chrome should exercise the same UI ownership path as game UI without leaking editor service commands into project scripts.
+**Tradeoff:** This proves command ownership for buttons, but focus, capture, bubbling, keyboard activation, disabled controls, and typed editor command payloads still need a richer UI event model.
 
 ## Related
 

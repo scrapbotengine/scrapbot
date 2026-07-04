@@ -77,6 +77,7 @@ Rendering and UI:
 - `machina.ui.progress_bar`, `machina.ui.toggle`, `machina.ui.separator`, and `machina.ui.spacer` are semantic UI components layered over the same ECS render path; prefer these over hand-rolled rect-only conventions when they match the intent.
 - Scene-authored UI input routing must use the retained layout model (`scroll_view`, `vbox`, `stack`, and `layout.item`) for hit testing and scroll handling. Do not hit-test raw `machina.ui.rect.position` unless you have first resolved parent layout and clipping.
 - Rendering, scene UI input, scroll handling, button command dispatch, button hover/press visuals, and canvas viewport scaling should call through `src/ui_layout.zig` rather than carrying duplicate layout or hit-test math.
+- Retained command buttons should route through `ui_layout.commandAt` after any needed viewport/design-space conversion. Do not add one-off editor or example button rectangle checks when generated `machina.ui.rect` + `machina.ui.button` + `machina.ui.command` data can represent the control.
 - Headful input is translated into ECS frame input.
 - Runtime input is represented as transient engine-owned ECS components on `machina.input.frame`: `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame`.
 - Input components are runtime resources, not scene-authored project data.
@@ -168,6 +169,7 @@ Live reload:
 - Prefer reusable retained UI layout primitives over one-off renderer/editor layout shortcuts. Use `machina.ui.scroll_view` for clipped scrollable regions, `machina.ui.vbox` for vertical stacks, and `machina.ui.layout.item` with stable entity-id parents for child ordering.
 - Keep retained UI layout and hit-test behavior centralized in `src/ui_layout.zig`; renderer and input paths may wrap it for local errors, but should not fork layout resolution semantics.
 - Route scroll-wheel handling through `ui_layout.routeScrollWheelAt`/`applyScrollWheelAt` against retained `machina.ui.scroll_view` data. Do not add editor-only or example-only scroll hit tests when a generated UI component can represent the target.
+- Route button command handling through `ui_layout.commandAt` against retained `machina.ui.rect`, `machina.ui.button`, and `machina.ui.command` data. Editor chrome may consume editor commands directly, but it should still use generated retained UI components for hit ownership.
 - Keep editor/debug and example UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces; prefer larger sizes for primary readouts and verify compact panels in a headful screenshot, offscreen render artifact, or smoke run.
 - Keep editor/debug list rows bounded and readable. Use compact formatting, scrolling, windowing, or pagination for unbounded lists instead of drawing unreachable overflow or hidden `... more` rows.
 - Keep smooth UI scrolling modeled as target pixel/float offsets, animated visible offsets, row-height-independent wheel distances, and clipping. Do not fake smooth scrolling with hidden whole-row windows, row-snapped targets, instant jumps, or by drawing unclipped overflow outside the viewport.

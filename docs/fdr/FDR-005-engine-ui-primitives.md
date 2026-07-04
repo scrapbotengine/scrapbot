@@ -20,6 +20,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - Button markers derive hover, held, and pressed interaction state in headful runs and use that state for button visuals.
 - UI interaction consumes transient `machina.input.*` ECS resources instead of reading raw platform events directly.
 - Releasing the primary pointer over a command button emits a transient ECS command event that Luau systems can consume during the same frame.
+- Command button hit routing is centralized in the retained UI layout module. Scene-authored command events and engine-owned editor command controls resolve the same rect layout and clipping rules before dispatch.
 - Headful runs can toggle the engine-owned editor/debug overlay with Ctrl+Tab.
 - Headful runs hide the engine-owned editor/debug overlay by default; `machina run --editor` starts with it visible.
 - The first engine-owned editor/debug shell displays current FPS beside the rendered scene.
@@ -101,7 +102,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 6b. Share UI hit testing between rendering and input routing
 
-**Decision:** Button hover/held/pressed visuals, scene command dispatch, and scene scroll routing use shared `src/ui_layout.zig` hit-test helpers.
+**Decision:** Button hover/held/pressed visuals, scene command dispatch, editor command controls, and scene scroll routing use shared `src/ui_layout.zig` hit-test helpers.
 **Why:** A control should not look hovered through one coordinate path and dispatch through another. Keeping rect resolution, clipping, and hit tests together gives future focus/capture work one place to extend.
 **Tradeoff:** Hit routing still selects the last matching entity in the current ECS iteration order. Z-order, disabled state, focus ownership, pointer capture, bubbling, and modal layers remain future design work.
 
@@ -109,7 +110,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 **Decision:** Button entities can author a command id, and a successful release emits a one-frame command event containing the command id and source entity id.
 **Why:** This gives scripts and future editor systems a simple ECS-native way to react to UI without embedding callbacks in scene data.
-**Tradeoff:** The current event shape is intentionally small and does not yet model bubbling, capture, disabled state, modifiers, or typed payloads.
+**Tradeoff:** The current event shape is intentionally small and does not yet model bubbling, capture, disabled state, modifiers, typed payloads, or persistent focus. Engine-owned editor commands may consume routed hits directly instead of emitting project-world `machina.ui.command_event` data.
 
 ### 8. Profile systems at the scheduler boundary
 

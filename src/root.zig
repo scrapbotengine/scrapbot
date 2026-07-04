@@ -653,11 +653,6 @@ pub const LiveProject = struct {
     }
 };
 
-const UiCommandHit = struct {
-    command: []const u8,
-    source: []const u8,
-};
-
 fn updateSceneUiScrollViews(world: *World) !void {
     const input_entity = world.findEntityById(runtime.input_entity_id) orelse return;
     const ui_visible = try world.getBoolean(input_entity, runtime.input_frame_component_id, "ui_visible");
@@ -684,42 +679,9 @@ fn updateUiCommandEvents(world: *World) !void {
     const pointer_position_vec3 = try world.getVec3(input_entity, runtime.input_pointer_component_id, "position");
     const pointer_position = try sceneUiPointerPosition(world, input_entity, .{ pointer_position_vec3[0], pointer_position_vec3[1] });
 
-    var selected: ?UiCommandHit = null;
-    var cursor: usize = 0;
-    const command_button_query = [_][]const u8{
-        runtime.ui_rect_component_id,
-        runtime.ui_button_component_id,
-        runtime.ui_command_component_id,
-    };
-    while (world.queryNext(&command_button_query, &cursor)) |entity| {
-        const position = try world.getVec3(entity, runtime.ui_rect_component_id, "position");
-        const size = try world.getVec3(entity, runtime.ui_rect_component_id, "size");
-        if ((try hitTestUiRect(world, entity, position, size, pointer_position)) == null) {
-            continue;
-        }
-
-        const stored_entity = try world.entity(entity);
-        selected = .{
-            .command = try world.getString(entity, runtime.ui_command_component_id, "command"),
-            .source = stored_entity.id,
-        };
-    }
-
-    if (selected) |hit| {
+    if (try routeUiCommandAt(world, pointer_position)) |hit| {
         try emitUiCommandEvent(world, hit.command, hit.source);
     }
-}
-
-fn resolveUiLayout(world: *World, entity: runtime.EntityHandle, local_position: [3]f32) !ui_layout.ResolvedLayout {
-    return ui_layout.resolve(world, entity, local_position) catch |err| return mapLayoutError(err);
-}
-
-fn resolveUiRect(world: *World, entity: runtime.EntityHandle, local_position: [3]f32, size: [3]f32) !ui_layout.ResolvedRect {
-    return ui_layout.resolvedRect(world, entity, local_position, size) catch |err| return mapLayoutError(err);
-}
-
-fn hitTestUiRect(world: *World, entity: runtime.EntityHandle, local_position: [3]f32, size: [3]f32, point: [2]f32) !?ui_layout.ResolvedRect {
-    return ui_layout.hitTestRect(world, entity, local_position, size, point) catch |err| return mapLayoutError(err);
 }
 
 fn sceneUiPointerPosition(world: *World, input_entity: runtime.EntityHandle, pointer_position: [2]f32) ![2]f32 {
@@ -742,6 +704,10 @@ fn sceneUiTarget(viewport: [3]f32, debug_overlay_visible: bool) ui_layout.Target
 
 fn routeUiScrollWheelAt(world: *World, pointer_position: [2]f32, wheel_delta_y: f32, pixels_per_wheel: f32) anyerror!?ui_layout.ScrollWheelRoute {
     return ui_layout.applyScrollWheelAt(world, pointer_position, wheel_delta_y, pixels_per_wheel) catch |err| return mapLayoutError(err);
+}
+
+fn routeUiCommandAt(world: *World, pointer_position: [2]f32) anyerror!?ui_layout.CommandHit {
+    return ui_layout.commandAt(world, pointer_position) catch |err| return mapLayoutError(err);
 }
 
 fn mapLayoutError(err: anyerror) anyerror {

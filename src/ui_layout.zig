@@ -65,6 +65,13 @@ pub const ScrollWheelRoute = struct {
     max_offset_y: f32,
 };
 
+pub const CommandHit = struct {
+    entity: runtime.EntityHandle,
+    source: []const u8,
+    command: []const u8,
+    rect: ResolvedRect,
+};
+
 pub const VBox = struct {
     position: [3]f32,
     spacing: f32,
@@ -258,6 +265,29 @@ pub fn hitTestResolvedRect(point: [2]f32, rect: ResolvedRect) bool {
 pub fn hitTestRect(world: *const runtime.World, entity: runtime.EntityHandle, local_position: [3]f32, size: [3]f32, point: [2]f32) Error!?ResolvedRect {
     const rect = try resolvedRect(world, entity, local_position, size);
     return if (hitTestResolvedRect(point, rect)) rect else null;
+}
+
+pub fn commandAt(world: *const runtime.World, point: [2]f32) Error!?CommandHit {
+    var selected: ?CommandHit = null;
+    var cursor: usize = 0;
+    const command_query = [_][]const u8{
+        runtime.ui_rect_component_id,
+        runtime.ui_button_component_id,
+        runtime.ui_command_component_id,
+    };
+    while (world.queryNext(&command_query, &cursor)) |entity| {
+        const position = try world.getVec3(entity, runtime.ui_rect_component_id, "position");
+        const size = try world.getVec3(entity, runtime.ui_rect_component_id, "size");
+        const rect = (try hitTestRect(world, entity, position, size, point)) orelse continue;
+        const command = try world.getString(entity, runtime.ui_command_component_id, "command");
+        selected = .{
+            .entity = entity,
+            .source = rect.id,
+            .command = command,
+            .rect = rect,
+        };
+    }
+    return selected;
 }
 
 pub fn pointerToDesign(world: *const runtime.World, target: Target, pointer_position: [2]f32) Error![2]f32 {
@@ -672,4 +702,44 @@ test "scroll wheel routing targets the scroll view under the pointer" {
     try std.testing.expectApproxEqAbs(@as(f32, 48.0), route.next_offset[1], 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 60.0), route.max_offset_y, 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 48.0), (try world.getVec3(scroll, runtime.ui_scroll_view_component_id, "content_offset"))[1], 0.001);
+}
+
+test "command routing targets the topmost command button under the pointer" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const toolbar = try world.createEntity("toolbar", "Toolbar");
+    try world.setUiStack(toolbar, .{
+        .position = .{ 100.0, 20.0, 0.0 },
+        .spacing = 0.0,
+        .direction = "horizontal",
+        .padding = .{ 0.0, 0.0, 0.0 },
+    });
+
+    const first = try world.createEntity("first", "First");
+    try world.setUiRect(first, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .size = .{ 80.0, 40.0, 0.0 },
+        .color = .{ 0.0, 0.0, 0.0 },
+    });
+    try world.setUiButton(first);
+    try world.setUiCommand(first, .{ .command = "first_command" });
+    try world.setUiLayoutItem(first, .{ .parent = "toolbar", .order = 0 });
+
+    const second = try world.createEntity("second", "Second");
+    try world.setUiRect(second, .{
+        .position = .{ -80.0, 0.0, 0.0 },
+        .size = .{ 80.0, 40.0, 0.0 },
+        .color = .{ 0.0, 0.0, 0.0 },
+    });
+    try world.setUiButton(second);
+    try world.setUiCommand(second, .{ .command = "second_command" });
+    try world.setUiLayoutItem(second, .{ .parent = "toolbar", .order = 1 });
+
+    try std.testing.expect((try commandAt(&world, .{ 12.0, 12.0 })) == null);
+
+    const hit = (try commandAt(&world, .{ 120.0, 30.0 })) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(second.index, hit.entity.index);
+    try std.testing.expectEqualStrings("second", hit.source);
+    try std.testing.expectEqualStrings("second_command", hit.command);
 }

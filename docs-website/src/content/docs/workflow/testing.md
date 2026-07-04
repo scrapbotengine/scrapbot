@@ -82,6 +82,25 @@ field = "content_offset"
 equals_vec3 = [0.0, 48.0, 0.0]
 ```
 
+Pointer button frames can also verify retained UI command routing:
+
+```toml
+frames = 1
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+viewport = [1280.0, 720.0]
+pointer = [180.0, 148.0]
+primary_released = true
+
+[[expect.field]]
+entity = "flag"
+component = "flag"
+field = "active"
+equals_bool = true
+```
+
 Run all project tests:
 
 ```sh
