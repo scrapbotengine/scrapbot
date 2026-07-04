@@ -73,9 +73,9 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 ### 6. Route editor controls through retained UI commands
 
-**Decision:** Pause/play and step use the same retained command hit-testing helper as scene UI command buttons, while applying the command directly to editor state instead of emitting project-world UI command events.
+**Decision:** Pause/play, step, splitter hit targets, and the systems scroll view are generated as retained UI data and routed through the shared composed pointer route. Editor commands apply directly to editor state instead of emitting project-world UI command events.
 **Why:** Editor chrome should exercise the same UI ownership path as game UI without leaking editor service commands into project scripts.
-**Tradeoff:** This proves command ownership for buttons, but focus, capture, bubbling, keyboard activation, disabled controls, and typed editor command payloads still need a richer UI event model.
+**Tradeoff:** This proves first command and scroll ownership, but persistent focus, cross-frame pointer capture, bubbling, keyboard activation, disabled controls, and typed editor command payloads still need a richer UI event model.
 
 ## Related
 

@@ -40,6 +40,8 @@ The shell body is generated as a retained `machina.ui.hgroup`: left sidebar, lef
 
 The system inspector and selected-entity inspector both use retained sidebar content with consistent internal padding. The system list is one table panel with aligned text rows, not separate row panels. Component boxes fill the right sidebar width and keep labels and values aligned instead of drawing loose overlay text.
 
+Editor chrome pointer ownership is resolved through the same retained UI routing used by project UI. Playback buttons, splitter hit areas, and the systems scroll view are generated as ordinary `machina.ui.*` entities, then routed through the shared pointer route instead of private editor hit-test ladders.
+
 ## UI Is ECS Data
 
 The editor shell is generated into the render ECS world, but the same retained UI primitives are available to projects:
@@ -109,7 +111,7 @@ Buttons are ECS-shaped too:
 command = "open.debug.panel"
 ```
 
-When a command button is pressed, Machina emits transient `machina.ui.command_event` data into the live project world before update systems run.
+When a command button is pressed, Machina emits transient `machina.ui.command_event` data into the live project world before update systems run. Editor chrome can consume editor-owned commands directly, but it still uses retained `machina.ui.button` + `machina.ui.command` routing for hit ownership.
 
 Do not author `machina.ui.command_event` in scene files. It is runtime-only transient data.
 

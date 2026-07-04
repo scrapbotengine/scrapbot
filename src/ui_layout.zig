@@ -70,6 +70,27 @@ pub const ScrollWheelRoute = struct {
     max_offset_y: f32,
 };
 
+pub const PointerCapture = enum {
+    none,
+    command,
+    scroll,
+};
+
+pub const PointerRoutingInput = struct {
+    position: [2]f32,
+    wheel_delta_y: f32 = 0.0,
+    pixels_per_wheel: f32 = 0.0,
+    primary_pressed: bool = false,
+    primary_down: bool = false,
+    primary_released: bool = false,
+};
+
+pub const PointerRoute = struct {
+    command: ?CommandHit = null,
+    scroll: ?ScrollWheelRoute = null,
+    capture: PointerCapture = .none,
+};
+
 pub const CommandHit = struct {
     entity: runtime.EntityHandle,
     source: []const u8,
@@ -348,6 +369,20 @@ pub fn commandAt(world: *const runtime.World, point: [2]f32) Error!?CommandHit {
         };
     }
     return selected;
+}
+
+pub fn routePointer(world: *const runtime.World, input: PointerRoutingInput) Error!PointerRoute {
+    var route = PointerRoute{};
+    route.command = try commandAt(world, input.position);
+    route.scroll = try routeScrollWheelAt(world, input.position, input.wheel_delta_y, input.pixels_per_wheel);
+
+    if (route.scroll != null) {
+        route.capture = .scroll;
+    } else if (route.command != null and (input.primary_pressed or input.primary_down or input.primary_released)) {
+        route.capture = .command;
+    }
+
+    return route;
 }
 
 pub fn pointerToDesign(world: *const runtime.World, target: Target, pointer_position: [2]f32) Error![2]f32 {
@@ -952,6 +987,64 @@ test "command routing preserves order across rects and hit areas" {
     const hit = (try commandAt(&world, .{ 20.0, 20.0 })) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(visual_button.index, hit.entity.index);
     try std.testing.expectEqualStrings("visual_button", hit.command);
+}
+
+test "pointer routing reports command capture" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const button = try world.createEntity("button", "Button");
+    try world.setUiRect(button, .{
+        .position = .{ 10.0, 10.0, 0.0 },
+        .size = .{ 100.0, 40.0, 0.0 },
+        .color = .{ 0.0, 0.0, 0.0 },
+    });
+    try world.setUiButton(button);
+    try world.setUiCommand(button, .{ .command = "button.press" });
+
+    const route = try routePointer(&world, .{
+        .position = .{ 20.0, 20.0 },
+        .primary_pressed = true,
+    });
+    try std.testing.expect(route.command != null);
+    try std.testing.expect(route.scroll == null);
+    try std.testing.expectEqual(PointerCapture.command, route.capture);
+    try std.testing.expectEqualStrings("button.press", route.command.?.command);
+}
+
+test "pointer routing gives scroll wheel capture precedence" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const scroll = try world.createEntity("scroll", "Scroll");
+    try world.setUiScrollView(scroll, .{
+        .position = .{ 10.0, 10.0, 0.0 },
+        .size = .{ 100.0, 40.0, 0.0 },
+        .content_offset = .{ 0.0, 0.0, 0.0 },
+    });
+    const content = try world.createEntity("content", "Content");
+    try world.setUiSpacer(content, .{ .size = .{ 100.0, 120.0, 0.0 } });
+    try world.setUiLayoutItem(content, .{ .parent = "scroll", .order = 0 });
+
+    const button = try world.createEntity("button", "Button");
+    try world.setUiRect(button, .{
+        .position = .{ 10.0, 10.0, 0.0 },
+        .size = .{ 100.0, 40.0, 0.0 },
+        .color = .{ 0.0, 0.0, 0.0 },
+    });
+    try world.setUiButton(button);
+    try world.setUiCommand(button, .{ .command = "button.press" });
+
+    const route = try routePointer(&world, .{
+        .position = .{ 20.0, 20.0 },
+        .wheel_delta_y = -1.0,
+        .pixels_per_wheel = 24.0,
+        .primary_pressed = true,
+    });
+    try std.testing.expect(route.command != null);
+    try std.testing.expect(route.scroll != null);
+    try std.testing.expectEqual(PointerCapture.scroll, route.capture);
+    try std.testing.expectApproxEqAbs(@as(f32, 24.0), route.scroll.?.next_offset[1], 0.001);
 }
 
 test "hgroup distributes grow space across horizontal children" {

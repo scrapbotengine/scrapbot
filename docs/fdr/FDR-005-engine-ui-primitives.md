@@ -93,9 +93,9 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 6. Keep input interaction in the ECS path
 
-**Decision:** Platform input is translated into transient `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame` ECS resources. UI button visuals are derived by render-phase ECS systems, and command events are emitted into the live project world before update systems run.
+**Decision:** Platform input is translated into transient `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame` ECS resources. UI button visuals are derived by render-phase ECS systems, pointer ownership can be resolved through `ui_layout.routePointer`, and command events are emitted into the live project world before update systems run.
 **Why:** This keeps UI behavior aligned with the engine-wide ECS model, follows ADR-020, and avoids a separate immediate-mode renderer input channel.
-**Tradeoff:** Command routing is string-id based for now; richer action payloads, focus, text input, and editor service dispatch still need later design.
+**Tradeoff:** Command routing is string-id based for now; richer action payloads, persistent focus, text input, keyboard navigation, bubbling, modal layers, and editor service dispatch still need later design.
 
 ### 6a. Resolve retained layout for scene UI input
 
@@ -105,9 +105,15 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 6b. Share UI hit testing between rendering and input routing
 
-**Decision:** Button hover/held/pressed visuals, scene command dispatch, editor command controls, and scene scroll routing use shared `src/ui_layout.zig` hit-test helpers.
+**Decision:** Button hover/held/pressed visuals, scene command dispatch, editor command controls, scene scroll routing, and editor chrome pointer ownership use shared `src/ui_layout.zig` hit-test helpers.
 **Why:** A control should not look hovered through one coordinate path and dispatch through another. Keeping rect resolution, clipping, and hit tests together gives future focus/capture work one place to extend.
 **Tradeoff:** Hit routing still selects the last matching entity in the current ECS iteration order. Z-order, disabled state, focus ownership, pointer capture, bubbling, and modal layers remain future design work.
+
+### 6c. Add a composed pointer route foundation
+
+**Decision:** `ui_layout.routePointer` composes retained command and scroll routing into one result that reports the command hit, scroll route, and current capture intent.
+**Why:** Editor chrome and game UI both need one answer to "who owns this pointer frame?" as soon as controls can overlap or compete for wheel, press, drag, and release behavior. A public composed route keeps focus/capture work in one ECS-shaped API instead of growing independent editor, renderer, and scene hit-test ladders.
+**Tradeoff:** The first route only distinguishes command and scroll capture. It does not yet persist capture across frames, model keyboard focus, disabled controls, hover enter/leave events, bubbling/capture phases, or text input ownership.
 
 ### 7. Route button presses through command events
 
@@ -125,7 +131,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 **Decision:** The editor system inspector uses a scroll view containing one retained table panel. The table owns the system-id text and right-aligned rolling average duration text; system rows do not get individual panels or row divider entities.
 **Why:** The system list is one table of profiling data, not a stack of separate cards. This keeps it readable in a fixed sidebar without phase prefixes, last-sample churn, or uneven overlay text.
-**Tradeoff:** The compact row does not yet support sorting, filtering, grouped phases, hover detail, or expandable timing history.
+**Tradeoff:** The compact row does not yet support sorting, filtering, grouped phases, hover detail, or expandable timing history. Reusable editor helpers currently emit retained ECS primitives, but they are not a full public widget library yet.
 
 ### 9. Expose the first layout containers as ECS data
 

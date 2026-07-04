@@ -475,25 +475,30 @@ pub fn updateEditorState(allocator: std.mem.Allocator, world: *runtime.World, st
     }
 
     if (input.pointer.primary_pressed) {
-        if (try routeEditorSplitterAt(allocator, input)) |splitter| {
-            state.dragging_splitter = splitter;
-            state.captured_pointer = true;
-            state.last_pointer = input.pointer.position;
-            state.has_last_pointer = true;
-            return .{ .consumed_pointer = true };
-        }
-        if (try routeEditorCommandAt(allocator, input)) |command| {
-            state.captured_pointer = true;
-            return switch (command) {
-                .play_toggle => blk: {
-                    state.paused = !state.paused;
-                    break :blk .{ .consumed_pointer = true };
+        if (try routeEditorUi(allocator, state.system_scroll_target_y, input, profile_count)) |route| {
+            switch (route) {
+                .splitter => |splitter| {
+                    state.dragging_splitter = splitter;
+                    state.captured_pointer = true;
+                    state.last_pointer = input.pointer.position;
+                    state.has_last_pointer = true;
+                    return .{ .consumed_pointer = true };
                 },
-                .step => blk: {
-                    state.paused = true;
-                    break :blk .{ .consumed_pointer = true, .step_once = true };
+                .command => |command| {
+                    state.captured_pointer = true;
+                    return switch (command) {
+                        .play_toggle => blk: {
+                            state.paused = !state.paused;
+                            break :blk .{ .consumed_pointer = true };
+                        },
+                        .step => blk: {
+                            state.paused = true;
+                            break :blk .{ .consumed_pointer = true, .step_once = true };
+                        },
+                    };
                 },
-            };
+                .system_scroll => {},
+            }
         }
         if (hitEditorChrome(input)) {
             state.captured_pointer = true;
@@ -2043,13 +2048,12 @@ fn extractDebugOverlayInto(
     const canvas = world.createEntity("machina.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
     world.setUiCanvas(canvas, .{}) catch |err| return mapWorldError(err);
 
-    const system_panel = world.createEntity("machina.editor.debug.panel", "Editor Debug Panel") catch |err| return mapWorldError(err);
-    world.setUiRect(system_panel, .{
-        .position = panel.position(),
-        .size = .{ panel_size[0], panel_size[1], 0.0 },
-        .color = editor_palette.panel,
-        .corner_radius = editor_panel_corner_radius,
-    }) catch |err| return mapWorldError(err);
+    _ = try extractEditorPanel(world, "machina.editor.debug.panel", "Editor Debug Panel", .{
+        .x = panel.x,
+        .y = panel.y,
+        .width = panel_size[0],
+        .height = panel_size[1],
+    }, editor_palette.panel, editor_panel_corner_radius);
 
     if (!has_profiles) {
         try extractEditorComponentInspectorInto(allocator, world, scene_world, input);
@@ -2104,23 +2108,19 @@ fn extractDebugOverlayInto(
 
         const label_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}.label", .{profile_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(label_id);
-        try extractEditorText(world, label_id, "Editor System Row Label", .{
+        _ = try extractEditorChildText(world, label_id, "Editor System Row Label", "machina.editor.debug.systems.table", .{
             editor_inspector_card_padding_x,
             row_y + 2.0,
             0.0,
         }, label_text, editor_system_text_size, editor_palette.text);
-        const label = world.findEntityById(label_id) orelse return RenderError.InvalidScene;
-        world.setUiLayoutItem(label, .{ .parent = "machina.editor.debug.systems.table" }) catch |err| return mapWorldError(err);
 
         const duration_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}.duration", .{profile_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(duration_id);
-        try extractEditorText(world, duration_id, "Editor System Row Duration", .{
+        _ = try extractEditorChildText(world, duration_id, "Editor System Row Duration", "machina.editor.debug.systems.table", .{
             duration_x,
             row_y + 2.0,
             0.0,
         }, duration_text, editor_system_text_size, editor_palette.text_muted);
-        const duration = world.findEntityById(duration_id) orelse return RenderError.InvalidScene;
-        world.setUiLayoutItem(duration, .{ .parent = "machina.editor.debug.systems.table" }) catch |err| return mapWorldError(err);
     }
 
     try extractEditorSystemScrollbarInto(world, input, list_clip);
@@ -2173,33 +2173,31 @@ fn extractEditorBottomBarInto(allocator: std.mem.Allocator, world: *runtime.Worl
 fn extractEditorPlaybackControlsInto(world: *runtime.World, input: FrameInput) RenderError!void {
     const play_label = if (input.editor.paused) "PLAY" else "PAUSE";
     const play_color: [3]f32 = if (input.editor.paused) editor_palette.success else editor_palette.warning;
-    try extractEditorButtonInto(world, "machina.editor.controls.play", "Editor Play", editorPlayButtonRect(input), play_label, play_color, editor_command_play_toggle);
-    try extractEditorButtonInto(world, "machina.editor.controls.step", "Editor Step", editorStepButtonRect(input), "STEP", editor_palette.panel_muted, editor_command_step);
+    const buttons = editorPlaybackButtonSpecs(input);
+    try extractEditorButtonInto(world, buttons[0], play_label, play_color);
+    try extractEditorButtonInto(world, buttons[1], "STEP", editor_palette.panel_muted);
 }
 
 fn extractEditorButtonInto(
     world: *runtime.World,
-    id: []const u8,
-    name: []const u8,
-    rect: ScreenRect,
+    spec: EditorButtonSpec,
     label: []const u8,
     color: [3]f32,
-    command: []const u8,
 ) RenderError!void {
-    const button = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const button = world.createEntity(spec.id, spec.name) catch |err| return mapWorldError(err);
     world.setUiRect(button, .{
-        .position = rect.position(),
-        .size = rect.size3(),
+        .position = spec.rect.position(),
+        .size = spec.rect.size3(),
         .color = color,
         .corner_radius = editor_button_corner_radius,
     }) catch |err| return mapWorldError(err);
     world.setUiButton(button) catch |err| return mapWorldError(err);
-    world.setUiCommand(button, .{ .command = command }) catch |err| return mapWorldError(err);
+    world.setUiCommand(button, .{ .command = spec.command }) catch |err| return mapWorldError(err);
 
     var label_id_buffer: [96]u8 = undefined;
-    const label_id = std.fmt.bufPrint(&label_id_buffer, "{s}.label", .{id}) catch return RenderError.InvalidScene;
+    const label_id = std.fmt.bufPrint(&label_id_buffer, "{s}.label", .{spec.id}) catch return RenderError.InvalidScene;
     var label_name_buffer: [96]u8 = undefined;
-    const label_name = std.fmt.bufPrint(&label_name_buffer, "{s} Label", .{name}) catch return RenderError.InvalidScene;
+    const label_name = std.fmt.bufPrint(&label_name_buffer, "{s} Label", .{spec.name}) catch return RenderError.InvalidScene;
     const text = world.createEntity(label_id, label_name) catch |err| return mapWorldError(err);
     world.setUiText(text, .{
         .position = .{ 0.0, 0.0, 0.0 },
@@ -2208,12 +2206,12 @@ fn extractEditorButtonInto(
         .value = label,
     }) catch |err| return mapWorldError(err);
     world.setUiTextBlock(text, .{
-        .size = rect.size3(),
+        .size = spec.rect.size3(),
         .horizontal_align = "center",
         .vertical_align = "center",
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(text, .{
-        .parent = id,
+        .parent = spec.id,
         .order = 0,
     }) catch |err| return mapWorldError(err);
 }
@@ -2262,13 +2260,12 @@ fn extractEditorComponentInspectorInto(
     const panel_width = sidebar.width;
     const panel_height = sidebar.height;
 
-    const panel = world.createEntity("machina.editor.inspector.panel", "Editor Inspector Panel") catch |err| return mapWorldError(err);
-    world.setUiRect(panel, .{
-        .position = .{ panel_x, panel_y, 0.0 },
-        .size = .{ panel_width, panel_height, 0.0 },
-        .color = editor_palette.panel,
-        .corner_radius = 0.0,
-    }) catch |err| return mapWorldError(err);
+    _ = try extractEditorPanel(world, "machina.editor.inspector.panel", "Editor Inspector Panel", .{
+        .x = panel_x,
+        .y = panel_y,
+        .width = panel_width,
+        .height = panel_height,
+    }, editor_palette.panel, 0.0);
 
     try extractEditorText(world, "machina.editor.inspector.title", "Editor Inspector Title", .{
         panel_x + editor_panel_padding_x,
@@ -2346,13 +2343,12 @@ fn extractEditorComponentInspectorInto(
             @as(f32, @floatFromInt(field_count)) * field_stride;
         const card_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}", .{component_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(card_id);
-        const card = world.createEntity(card_id, "Editor Component Card") catch |err| return mapWorldError(err);
-        world.setUiRect(card, .{
-            .position = .{ 0.0, 0.0, 0.0 },
-            .size = .{ card_width, card_height, 0.0 },
-            .color = editor_palette.shell,
-            .corner_radius = 0.0,
-        }) catch |err| return mapWorldError(err);
+        const card = try extractEditorPanel(world, card_id, "Editor Component Card", .{
+            .x = 0.0,
+            .y = 0.0,
+            .width = card_width,
+            .height = card_height,
+        }, editor_palette.shell, 0.0);
         world.setUiLayoutItem(card, .{
             .parent = stack_id,
             .order = stack_order,
@@ -2364,13 +2360,11 @@ fn extractEditorComponentInspectorInto(
         const title_max_width = @max(card_width - editor_inspector_card_padding_x * 2.0, 1.0);
         const title_value = fitEditorTextToWidth(allocator, component_id, editor_inspector_text_size, title_max_width) catch return RenderError.OutOfMemory;
         defer allocator.free(title_value);
-        try extractEditorText(world, title_id, "Editor Component Title", .{
+        _ = try extractEditorChildText(world, title_id, "Editor Component Title", card_id, .{
             editor_inspector_card_padding_x,
             editor_inspector_card_padding_y,
             0.0,
         }, title_value, editor_inspector_text_size, editor_palette.accent_soft);
-        const title = world.findEntityById(title_id) orelse return RenderError.InvalidScene;
-        world.setUiLayoutItem(title, .{ .parent = card_id }) catch |err| return mapWorldError(err);
 
         for (0..field_count) |field_index| {
             const field_name = scene_world.componentFieldNameAt(component_id, field_index) orelse continue;
@@ -2391,21 +2385,17 @@ fn extractEditorComponentInspectorInto(
             const fitted_value_text = fitEditorTextToWidth(allocator, value_text, editor_inspector_text_size, value_max_width) catch return RenderError.OutOfMemory;
             defer allocator.free(fitted_value_text);
 
-            try extractEditorText(world, label_id, "Editor Component Field Label", .{
+            _ = try extractEditorChildText(world, label_id, "Editor Component Field Label", card_id, .{
                 editor_inspector_card_padding_x,
                 field_y,
                 0.0,
             }, label_text, editor_inspector_text_size, editor_palette.text_muted);
-            const label = world.findEntityById(label_id) orelse return RenderError.InvalidScene;
-            world.setUiLayoutItem(label, .{ .parent = card_id }) catch |err| return mapWorldError(err);
 
-            try extractEditorText(world, value_id, "Editor Component Field Value", .{
+            _ = try extractEditorChildText(world, value_id, "Editor Component Field Value", card_id, .{
                 value_x,
                 field_y,
                 0.0,
             }, fitted_value_text, editor_inspector_text_size, editor_palette.text);
-            const field_value = world.findEntityById(value_id) orelse return RenderError.InvalidScene;
-            world.setUiLayoutItem(field_value, .{ .parent = card_id }) catch |err| return mapWorldError(err);
         }
 
         component_index += 1;
@@ -2428,6 +2418,40 @@ fn extractEditorText(
         .color = color,
         .value = value,
     }) catch |err| return mapWorldError(err);
+}
+
+fn extractEditorPanel(
+    world: *runtime.World,
+    id: []const u8,
+    name: []const u8,
+    rect: ScreenRect,
+    color: [3]f32,
+    corner_radius: f32,
+) RenderError!runtime.EntityHandle {
+    const panel = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    world.setUiRect(panel, .{
+        .position = rect.position(),
+        .size = rect.size3(),
+        .color = color,
+        .corner_radius = corner_radius,
+    }) catch |err| return mapWorldError(err);
+    return panel;
+}
+
+fn extractEditorChildText(
+    world: *runtime.World,
+    id: []const u8,
+    name: []const u8,
+    parent: []const u8,
+    position: [3]f32,
+    value: []const u8,
+    size: f32,
+    color: [3]f32,
+) RenderError!runtime.EntityHandle {
+    try extractEditorText(world, id, name, position, value, size, color);
+    const entity = world.findEntityById(id) orelse return RenderError.InvalidScene;
+    world.setUiLayoutItem(entity, .{ .parent = parent }) catch |err| return mapWorldError(err);
+    return entity;
 }
 
 fn formatInspectorFieldValue(allocator: std.mem.Allocator, value: runtime.ComponentValue) error{OutOfMemory}![]const u8 {
@@ -4477,7 +4501,57 @@ const EditorCommand = enum {
     step,
 };
 
-fn routeEditorSplitterAt(allocator: std.mem.Allocator, input: FrameInput) EditorError!?EditorSplitter {
+const EditorUiRoute = union(enum) {
+    command: EditorCommand,
+    splitter: EditorSplitter,
+    system_scroll: ui_layout.ScrollWheelRoute,
+};
+
+const EditorButtonSpec = struct {
+    id: []const u8,
+    name: []const u8,
+    rect: ScreenRect,
+    command: []const u8,
+};
+
+fn editorPlaybackButtonSpecs(input: FrameInput) [2]EditorButtonSpec {
+    return .{
+        .{
+            .id = "machina.editor.controls.play",
+            .name = "Editor Play",
+            .rect = editorPlayButtonRect(input),
+            .command = editor_command_play_toggle,
+        },
+        .{
+            .id = "machina.editor.controls.step",
+            .name = "Editor Step",
+            .rect = editorStepButtonRect(input),
+            .command = editor_command_step,
+        },
+    };
+}
+
+fn decodeEditorCommand(command: []const u8) ?EditorCommand {
+    if (std.mem.eql(u8, command, editor_command_play_toggle)) {
+        return .play_toggle;
+    }
+    if (std.mem.eql(u8, command, editor_command_step)) {
+        return .step;
+    }
+    return null;
+}
+
+fn decodeEditorSplitter(command: []const u8) ?EditorSplitter {
+    if (std.mem.eql(u8, command, editor_command_splitter_left)) {
+        return .left;
+    }
+    if (std.mem.eql(u8, command, editor_command_splitter_right)) {
+        return .right;
+    }
+    return null;
+}
+
+fn routeEditorUi(allocator: std.mem.Allocator, system_scroll_target_y: f32, input: FrameInput, profile_count: usize) EditorError!?EditorUiRoute {
     if (!input.debug_overlay_visible or
         !input.pointer.has_position or
         std.math.isNan(input.pointer.position[0]) or
@@ -4489,61 +4563,75 @@ fn routeEditorSplitterAt(allocator: std.mem.Allocator, input: FrameInput) Editor
     var input_world = runtime.World.init(allocator);
     defer input_world.deinit();
 
-    try addEditorSplitterHitTargetForRouting(&input_world, input, .left);
-    try addEditorSplitterHitTargetForRouting(&input_world, input, .right);
+    try addEditorChromeControlsForRouting(&input_world, system_scroll_target_y, input, profile_count);
 
-    const hit = ui_layout.commandAt(&input_world, input.pointer.position) catch |err| return mapEditorLayoutError(err);
-    const command = hit orelse return null;
-    if (std.mem.eql(u8, command.command, editor_command_splitter_left)) {
-        return .left;
+    const route = ui_layout.routePointer(&input_world, .{
+        .position = input.pointer.position,
+        .wheel_delta_y = input.pointer.wheel_delta[1],
+        .pixels_per_wheel = editor_system_scroll_pixels_per_wheel,
+        .primary_pressed = input.pointer.primary_pressed,
+        .primary_down = input.pointer.primary_down,
+        .primary_released = input.pointer.primary_released,
+    }) catch |err| return mapEditorLayoutError(err);
+
+    if (route.scroll) |scroll_route| {
+        return .{ .system_scroll = scroll_route };
     }
-    if (std.mem.eql(u8, command.command, editor_command_splitter_right)) {
-        return .right;
+    if (route.command) |command_hit| {
+        if (decodeEditorSplitter(command_hit.command)) |splitter| {
+            return .{ .splitter = splitter };
+        }
+        if (decodeEditorCommand(command_hit.command)) |command| {
+            return .{ .command = command };
+        }
     }
     return null;
 }
 
+fn routeEditorSplitterAt(allocator: std.mem.Allocator, input: FrameInput) EditorError!?EditorSplitter {
+    const route = (try routeEditorUi(allocator, input.editor.system_scroll_y, input, editorSystemProfileScrollCount(input))) orelse return null;
+    return switch (route) {
+        .splitter => |splitter| splitter,
+        else => null,
+    };
+}
+
 fn routeEditorCommandAt(allocator: std.mem.Allocator, input: FrameInput) EditorError!?EditorCommand {
-    if (!input.pointer.has_position or
-        std.math.isNan(input.pointer.position[0]) or
-        std.math.isNan(input.pointer.position[1]))
-    {
-        return null;
-    }
+    const route = (try routeEditorUi(allocator, input.editor.system_scroll_y, input, editorSystemProfileScrollCount(input))) orelse return null;
+    return switch (route) {
+        .command => |command| command,
+        else => null,
+    };
+}
 
-    var input_world = runtime.World.init(allocator);
-    defer input_world.deinit();
-
-    try addEditorCommandButtonForRouting(&input_world, "machina.editor.controls.play", "Editor Play", editorPlayButtonRect(input), editor_command_play_toggle);
-    try addEditorCommandButtonForRouting(&input_world, "machina.editor.controls.step", "Editor Step", editorStepButtonRect(input), editor_command_step);
-
-    const hit = ui_layout.commandAt(&input_world, input.pointer.position) catch |err| return mapEditorLayoutError(err);
-    const command = hit orelse return null;
-    if (std.mem.eql(u8, command.command, editor_command_play_toggle)) {
-        return .play_toggle;
+fn addEditorChromeControlsForRouting(
+    world: *runtime.World,
+    system_scroll_target_y: f32,
+    input: FrameInput,
+    profile_count: usize,
+) EditorError!void {
+    const buttons = editorPlaybackButtonSpecs(input);
+    for (buttons) |button| {
+        try addEditorCommandButtonForRouting(world, button);
     }
-    if (std.mem.eql(u8, command.command, editor_command_step)) {
-        return .step;
-    }
-    return null;
+    try addEditorSplitterHitTargetForRouting(world, input, .left);
+    try addEditorSplitterHitTargetForRouting(world, input, .right);
+    try addEditorSystemScrollForRouting(world, system_scroll_target_y, input, profile_count);
 }
 
 fn addEditorCommandButtonForRouting(
     world: *runtime.World,
-    id: []const u8,
-    name: []const u8,
-    rect: ScreenRect,
-    command: []const u8,
+    spec: EditorButtonSpec,
 ) EditorError!void {
-    const button = try world.createEntity(id, name);
+    const button = try world.createEntity(spec.id, spec.name);
     try world.setUiRect(button, .{
-        .position = rect.position(),
-        .size = rect.size3(),
+        .position = spec.rect.position(),
+        .size = spec.rect.size3(),
         .color = .{ 0.0, 0.0, 0.0 },
         .corner_radius = editor_button_corner_radius,
     });
     try world.setUiButton(button);
-    try world.setUiCommand(button, .{ .command = command });
+    try world.setUiCommand(button, .{ .command = spec.command });
 }
 
 fn addEditorSplitterHitTargetForRouting(
@@ -4576,6 +4664,39 @@ fn addEditorSplitterHitTargetForRouting(
     try world.setUiCommand(hit, .{ .command = command });
 }
 
+fn addEditorSystemScrollForRouting(
+    world: *runtime.World,
+    system_scroll_target_y: f32,
+    input: FrameInput,
+    profile_count: usize,
+) EditorError!void {
+    if (!editorSystemNeedsScrollForInput(input, profile_count)) {
+        return;
+    }
+
+    const list_clip = editorSystemListClipRect(input);
+    const hit_width = list_clip.size[0] + editor_scrollbar_gap + editor_scrollbar_width;
+    const scroll = try world.createEntity("machina.editor.debug.systems.scroll", "Editor Debug Systems Scroll View");
+    try world.setUiScrollView(scroll, .{
+        .position = list_clip.position,
+        .size = .{ hit_width, list_clip.size[1], 0.0 },
+        .content_offset = .{ 0.0, system_scroll_target_y, 0.0 },
+    });
+
+    const content = try world.createEntity("machina.editor.debug.systems.scroll.content", "Editor Debug Systems Scroll Content");
+    try world.setUiSpacer(content, .{
+        .size = .{
+            list_clip.size[0],
+            @as(f32, @floatFromInt(profile_count)) * editor_system_row_stride,
+            0.0,
+        },
+    });
+    try world.setUiLayoutItem(content, .{
+        .parent = "machina.editor.debug.systems.scroll",
+        .order = 0,
+    });
+}
+
 fn hitEditorChrome(input: FrameInput) bool {
     if (!input.debug_overlay_visible) {
         return false;
@@ -4590,32 +4711,13 @@ fn routeEditorSystemScrollWheel(
     profile_count: usize,
     wheel_delta_y: f32,
 ) EditorError!?ui_layout.ScrollWheelRoute {
-    var input_world = runtime.World.init(allocator);
-    defer input_world.deinit();
-
-    const list_clip = editorSystemListClipRect(input);
-    const hit_width = list_clip.size[0] + editor_scrollbar_gap + editor_scrollbar_width;
-    const scroll = try input_world.createEntity("machina.editor.debug.systems.scroll", "Editor Debug Systems Scroll View");
-    try input_world.setUiScrollView(scroll, .{
-        .position = list_clip.position,
-        .size = .{ hit_width, list_clip.size[1], 0.0 },
-        .content_offset = .{ 0.0, state.system_scroll_target_y, 0.0 },
-    });
-
-    const content = try input_world.createEntity("machina.editor.debug.systems.scroll.content", "Editor Debug Systems Scroll Content");
-    try input_world.setUiSpacer(content, .{
-        .size = .{
-            list_clip.size[0],
-            @as(f32, @floatFromInt(profile_count)) * editor_system_row_stride,
-            0.0,
-        },
-    });
-    try input_world.setUiLayoutItem(content, .{
-        .parent = "machina.editor.debug.systems.scroll",
-        .order = 0,
-    });
-
-    return ui_layout.routeScrollWheelAt(&input_world, input.pointer.position, wheel_delta_y, editor_system_scroll_pixels_per_wheel) catch |err| return mapEditorLayoutError(err);
+    var route_input = input;
+    route_input.pointer.wheel_delta[1] = wheel_delta_y;
+    const route = (try routeEditorUi(allocator, state.system_scroll_target_y, route_input, profile_count)) orelse return null;
+    return switch (route) {
+        .system_scroll => |scroll| scroll,
+        else => null,
+    };
 }
 
 fn mapEditorLayoutError(err: anyerror) EditorError {
@@ -5168,6 +5270,69 @@ test "editor playback controls toggle pause and request single step" {
     try std.testing.expect(step_update.consumed_pointer);
     try std.testing.expect(step_update.step_once);
     try std.testing.expect(editor_state.paused);
+}
+
+test "editor chrome routes pointer through one retained ui route" {
+    const profiles = [_]runtime.SystemProfileSnapshot{
+        .{ .id = "system.0", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.1", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.2", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.3", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.4", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.5", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.6", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.7", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+        .{ .id = "system.8", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
+    };
+    const frame_input = FrameInput{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .system_profiles = &profiles,
+        .system_profile_count_hint = 20,
+    };
+    const play_rect = editorPlayButtonRect(frame_input);
+    const command_route = (try routeEditorUi(std.testing.allocator, 0.0, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .system_profiles = &profiles,
+        .pointer = .{
+            .position = .{ play_rect.x + 4.0, play_rect.y + 4.0 },
+            .has_position = true,
+            .primary_pressed = true,
+        },
+    }, profiles.len)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(EditorCommand.play_toggle, command_route.command);
+
+    const left_splitter = editorSplitterRect(frame_input, .left) orelse return error.TestExpectedEqual;
+    const splitter_route = (try routeEditorUi(std.testing.allocator, 0.0, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .system_profiles = &profiles,
+        .pointer = .{
+            .position = .{ left_splitter.x + left_splitter.width + 3.0, left_splitter.y + 40.0 },
+            .has_position = true,
+            .primary_pressed = true,
+        },
+    }, profiles.len)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(EditorSplitter.left, splitter_route.splitter);
+
+    const scroll_point = editorSystemListHitTestPoint(&profiles, 20);
+    const scroll_route = (try routeEditorUi(std.testing.allocator, 0.0, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .system_profiles = &profiles,
+        .system_profile_count_hint = 20,
+        .pointer = .{
+            .position = scroll_point,
+            .has_position = true,
+            .wheel_delta = .{ 0.0, -1.0 },
+        },
+    }, 20)) orelse return error.TestExpectedEqual;
+    try std.testing.expectApproxEqAbs(@as(f32, editor_system_scroll_pixels_per_wheel), scroll_route.system_scroll.next_offset[1], 0.001);
 }
 
 pub fn editorSystemListHitTestPoint(profiles: []const runtime.SystemProfileSnapshot, profile_count_hint: usize) [2]f32 {
