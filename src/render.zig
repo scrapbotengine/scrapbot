@@ -1680,7 +1680,8 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         input.viewport_width = @floatFromInt(width);
         input.viewport_height = @floatFromInt(height);
         input.system_profile_count_hint = demo.renderSystemProfileCount();
-        const should_enable_relative_mouse = flyCameraInputActive(input);
+        _ = updateFlyCameraCapture(&fly_camera, input);
+        const should_enable_relative_mouse = flyCameraInputActive(fly_camera, input);
         if (should_enable_relative_mouse != relative_mouse_enabled) {
             _ = sdl.machina_sdl_set_window_relative_mouse_mode(window, @intFromBool(should_enable_relative_mouse));
             relative_mouse_enabled = should_enable_relative_mouse;
@@ -1750,6 +1751,7 @@ const CameraState = struct {
 
 const FlyCameraState = struct {
     initialized: bool = false,
+    captured_look: bool = false,
     transform: runtime.Transform = .{},
 
     fn reset(self: *FlyCameraState) void {
@@ -5206,7 +5208,7 @@ fn liveRunDeltaSecondsFromElapsedNs(elapsed_ns: u64) f32 {
 }
 
 fn updateFlyCamera(state: *FlyCameraState, world: *const runtime.World, input: FrameInput, delta_seconds: f32) RenderError!?runtime.Transform {
-    const active = flyCameraInputActive(input);
+    const active = updateFlyCameraCapture(state, input);
     if (!state.initialized and !active) {
         return null;
     }
@@ -5265,10 +5267,24 @@ fn updateFlyCamera(state: *FlyCameraState, world: *const runtime.World, input: F
     return state.transform;
 }
 
-fn flyCameraInputActive(input: FrameInput) bool {
-    if (!input.pointer.secondary_down) {
+fn updateFlyCameraCapture(state: *FlyCameraState, input: FrameInput) bool {
+    if (!input.pointer.secondary_down or input.pointer.secondary_released) {
+        state.captured_look = false;
         return false;
     }
+
+    if (input.pointer.secondary_pressed and flyCameraCaptureStartAllowed(input)) {
+        state.captured_look = true;
+    }
+
+    return flyCameraInputActive(state.*, input);
+}
+
+fn flyCameraInputActive(state: FlyCameraState, input: FrameInput) bool {
+    return state.captured_look and input.pointer.secondary_down;
+}
+
+fn flyCameraCaptureStartAllowed(input: FrameInput) bool {
     if (!input.debug_overlay_visible) {
         return true;
     }
@@ -6293,6 +6309,7 @@ test "fly camera initializes from scene camera and moves while secondary mouse i
     const moved = (try updateFlyCamera(&state, &world, .{
         .pointer = .{
             .secondary_down = true,
+            .secondary_pressed = true,
             .delta = .{ 10.0, -5.0 },
         },
         .keyboard = .{
@@ -6302,6 +6319,7 @@ test "fly camera initializes from scene camera and moves while secondary mouse i
     }, 0.05)) orelse return error.TestExpectedEqual;
 
     try std.testing.expect(state.initialized);
+    try std.testing.expect(state.captured_look);
     try std.testing.expect(moved.position[2] < 6.0);
     try std.testing.expect(moved.position[1] > 1.0);
     try std.testing.expect(moved.rotation[1] < 0.0);
@@ -6324,6 +6342,7 @@ test "fly camera ignores right mouse held over editor sidebar" {
             .position = .{ 1240.0, 80.0 },
             .has_position = true,
             .secondary_down = true,
+            .secondary_pressed = true,
             .delta = .{ 100.0, 0.0 },
         },
         .keyboard = .{ .move_forward = true },
@@ -6331,6 +6350,69 @@ test "fly camera ignores right mouse held over editor sidebar" {
 
     try std.testing.expect(ignored == null);
     try std.testing.expect(!state.initialized);
+    try std.testing.expect(!state.captured_look);
+}
+
+test "fly camera remains captured after starting in editor game viewport" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const camera_entity = try world.createEntity("camera", "Camera");
+    try world.setTransform(camera_entity, .{ .position = .{ 0.0, 1.0, 6.0 } });
+    try world.setCamera(camera_entity, .{});
+
+    var state = FlyCameraState{};
+    const base_input = FrameInput{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    };
+    const game_viewport = editorGameViewport(base_input);
+    const started = (try updateFlyCamera(&state, &world, .{
+        .debug_overlay_visible = true,
+        .viewport_width = base_input.viewport_width,
+        .viewport_height = base_input.viewport_height,
+        .pointer = .{
+            .position = .{ game_viewport.x + game_viewport.width * 0.5, game_viewport.y + game_viewport.height * 0.5 },
+            .has_position = true,
+            .secondary_down = true,
+            .secondary_pressed = true,
+            .delta = .{ 10.0, 0.0 },
+        },
+    }, 0.016)) orelse return error.TestExpectedEqual;
+
+    try std.testing.expect(state.initialized);
+    try std.testing.expect(state.captured_look);
+
+    const continued = (try updateFlyCamera(&state, &world, .{
+        .debug_overlay_visible = true,
+        .viewport_width = base_input.viewport_width,
+        .viewport_height = base_input.viewport_height,
+        .pointer = .{
+            .position = .{ 1240.0, 80.0 },
+            .has_position = true,
+            .secondary_down = true,
+            .delta = .{ 30.0, 0.0 },
+        },
+    }, 0.016)) orelse return error.TestExpectedEqual;
+
+    try std.testing.expect(state.captured_look);
+    try std.testing.expect(continued.rotation[1] < started.rotation[1]);
+
+    const released = (try updateFlyCamera(&state, &world, .{
+        .debug_overlay_visible = true,
+        .viewport_width = base_input.viewport_width,
+        .viewport_height = base_input.viewport_height,
+        .pointer = .{
+            .position = .{ 1240.0, 80.0 },
+            .has_position = true,
+            .secondary_released = true,
+            .delta = .{ 100.0, 0.0 },
+        },
+    }, 0.016)) orelse return error.TestExpectedEqual;
+
+    try std.testing.expect(!state.captured_look);
+    try std.testing.expectApproxEqAbs(continued.rotation[1], released.rotation[1], 0.0001);
 }
 
 test "editor raycast selects nearest renderable mesh" {
