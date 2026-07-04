@@ -79,7 +79,7 @@ pub fn loadProjectExtensionDetailed(
     const library_path = try std.fs.path.join(allocator, &.{ project_root_path, output_path });
     errdefer allocator.free(library_path);
 
-    var library = std.DynLib.open(library_path) catch |err| {
+    var library = openDynamicLibrary(allocator, library_path) catch |err| {
         allocator.free(library_path);
         return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, native_source_path, "failed to open native library: {s}", .{@errorName(err)}) };
     };
@@ -203,6 +203,13 @@ fn buildDynamicLibrary(
     else
         "zig build-lib failed without output";
     return try makeDiagnostic(allocator, .native_build, native_source_path, "{s}", .{detail});
+}
+
+fn openDynamicLibrary(allocator: std.mem.Allocator, path: []const u8) !script.PlatformDynLib {
+    return switch (builtin.os.tag) {
+        .windows => script.PlatformDynLib.open(allocator, path),
+        else => std.DynLib.open(path),
+    };
 }
 
 const NativeRegistrationBuilder = struct {

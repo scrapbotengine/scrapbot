@@ -7,9 +7,9 @@ const ui_layout = @import("ui_layout.zig");
 const ui_font = @import("ui_font.zig");
 const wgpu = @import("wgpu");
 
-const sdl = if (builtin.os.tag == .macos) @cImport({
-    @cInclude("SDL3/SDL.h");
-    @cInclude("SDL3/SDL_metal.h");
+const is_supported_window_platform = builtin.os.tag == .macos or builtin.os.tag == .linux or builtin.os.tag == .windows;
+const sdl = if (is_supported_window_platform) @cImport({
+    @cInclude("sdl_bridge.h");
 }) else struct {};
 
 const output_width = 640;
@@ -109,6 +109,7 @@ pub const RenderError = error{
     WindowCreateFailed,
     MetalViewCreateFailed,
     MetalLayerMissing,
+    NativeWindowHandleMissing,
     BufferMapFailed,
     OutOfMemory,
     InvalidScene,
@@ -274,44 +275,32 @@ fn toggleDebugOverlay(input: *FrameInput) void {
     input.keyboard.editor_toggle_pressed = true;
 }
 
-fn isEditorToggleShortcut(key: sdl.SDL_Keycode, modifiers: sdl.SDL_Keymod) bool {
-    return key == sdl.SDLK_TAB and (modifiers & sdl.SDL_KMOD_CTRL) != 0;
+fn isEditorToggleShortcut(key: sdl.MachinaSdlKey, ctrl_down: bool) bool {
+    return key == sdl.MACHINA_SDL_KEY_TAB and ctrl_down;
 }
 
-fn updateKeyboardModifiers(keyboard: *KeyboardInput, modifiers: sdl.SDL_Keymod) void {
-    keyboard.ctrl_down = (modifiers & sdl.SDL_KMOD_CTRL) != 0;
-    keyboard.shift_down = (modifiers & sdl.SDL_KMOD_SHIFT) != 0;
-    keyboard.alt_down = (modifiers & sdl.SDL_KMOD_ALT) != 0;
-    keyboard.super_down = (modifiers & sdl.SDL_KMOD_GUI) != 0;
+fn updateKeyboardModifiers(keyboard: *KeyboardInput, event: sdl.MachinaSdlEvent) void {
+    keyboard.ctrl_down = event.ctrl_down != 0;
+    keyboard.shift_down = event.shift_down != 0;
+    keyboard.alt_down = event.alt_down != 0;
+    keyboard.super_down = event.super_down != 0;
     keyboard.move_down = keyboard.ctrl_down;
 }
 
-fn updateKeyboardKeyState(keyboard: *KeyboardInput, key: sdl.SDL_Keycode, down: bool) void {
-    if (key == sdl.SDLK_W) {
+fn updateKeyboardKeyState(keyboard: *KeyboardInput, key: sdl.MachinaSdlKey, down: bool) void {
+    if (key == sdl.MACHINA_SDL_KEY_W) {
         keyboard.move_forward = down;
-    } else if (key == sdl.SDLK_S) {
+    } else if (key == sdl.MACHINA_SDL_KEY_S) {
         keyboard.move_back = down;
-    } else if (key == sdl.SDLK_A) {
+    } else if (key == sdl.MACHINA_SDL_KEY_A) {
         keyboard.move_left = down;
-    } else if (key == sdl.SDLK_D) {
+    } else if (key == sdl.MACHINA_SDL_KEY_D) {
         keyboard.move_right = down;
-    } else if (key == sdl.SDLK_SPACE) {
+    } else if (key == sdl.MACHINA_SDL_KEY_SPACE) {
         keyboard.move_up = down;
-    } else if (key == sdl.SDLK_LCTRL or key == sdl.SDLK_RCTRL) {
+    } else if (key == sdl.MACHINA_SDL_KEY_LCTRL or key == sdl.MACHINA_SDL_KEY_RCTRL) {
         keyboard.move_down = down;
     }
-}
-
-fn normalizedMouseWheelDelta(wheel: anytype) [2]f32 {
-    var delta = [2]f32{
-        if (wheel.x != 0.0) wheel.x else @as(f32, @floatFromInt(wheel.integer_x)),
-        if (wheel.y != 0.0) wheel.y else @as(f32, @floatFromInt(wheel.integer_y)),
-    };
-    if (wheel.direction == sdl.SDL_MOUSEWHEEL_FLIPPED) {
-        delta[0] = -delta[0];
-        delta[1] = -delta[1];
-    }
-    return delta;
 }
 
 pub fn editorFrameState(world: *const runtime.World, state: EditorState) EditorFrameState {
@@ -714,38 +703,136 @@ pub fn renderDemoBmpWithInput(io: Io, allocator: std.mem.Allocator, output_path:
     try write24BitBmp(io, allocator, output_path, mapped[0..output_size]);
 }
 
+const WindowSurface = switch (builtin.os.tag) {
+    .macos => MacWindowSurface,
+    .linux => LinuxWindowSurface,
+    .windows => WindowsWindowSurface,
+    else => UnsupportedWindowSurface,
+};
+
+const UnsupportedWindowSurface = struct {
+    surface: *wgpu.Surface,
+
+    fn create(_: *wgpu.Instance, _: *anyopaque) RenderError!UnsupportedWindowSurface {
+        return RenderError.WindowingUnsupported;
+    }
+
+    fn deinit(_: *UnsupportedWindowSurface) void {}
+};
+
+const MacWindowSurface = struct {
+    surface: *wgpu.Surface,
+    metal_view: *anyopaque,
+
+    fn create(instance: *wgpu.Instance, window: *anyopaque) RenderError!MacWindowSurface {
+        const metal_view = sdl.machina_sdl_create_metal_view(window) orelse return RenderError.MetalViewCreateFailed;
+        errdefer sdl.machina_sdl_destroy_metal_view(metal_view);
+
+        const metal_layer = sdl.machina_sdl_get_metal_layer(metal_view) orelse return RenderError.MetalLayerMissing;
+        var surface_descriptor = wgpu.surfaceDescriptorFromMetalLayer(.{
+            .label = "Machina window surface",
+            .layer = metal_layer,
+        });
+        const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+        return .{
+            .surface = surface,
+            .metal_view = metal_view,
+        };
+    }
+
+    fn deinit(self: *MacWindowSurface) void {
+        self.surface.unconfigure();
+        self.surface.release();
+        sdl.machina_sdl_destroy_metal_view(self.metal_view);
+        self.* = undefined;
+    }
+};
+
+const LinuxWindowSurface = struct {
+    surface: *wgpu.Surface,
+
+    fn create(instance: *wgpu.Instance, window: *anyopaque) RenderError!LinuxWindowSurface {
+        var wayland_display: ?*anyopaque = null;
+        var wayland_surface: ?*anyopaque = null;
+        if (sdl.machina_sdl_get_wayland_handles(window, &wayland_display, &wayland_surface) != 0) {
+            var surface_descriptor = wgpu.surfaceDescriptorFromWaylandSurface(.{
+                .label = "Machina window surface",
+                .display = wayland_display orelse return RenderError.NativeWindowHandleMissing,
+                .surface = wayland_surface orelse return RenderError.NativeWindowHandleMissing,
+            });
+            const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+            return .{ .surface = surface };
+        }
+
+        var x11_display: ?*anyopaque = null;
+        var x11_window: u64 = 0;
+        if (sdl.machina_sdl_get_x11_handles(window, &x11_display, &x11_window) != 0) {
+            var surface_descriptor = wgpu.surfaceDescriptorFromXlibWindow(.{
+                .label = "Machina window surface",
+                .display = x11_display orelse return RenderError.NativeWindowHandleMissing,
+                .window = x11_window,
+            });
+            const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+            return .{ .surface = surface };
+        }
+
+        return RenderError.NativeWindowHandleMissing;
+    }
+
+    fn deinit(self: *LinuxWindowSurface) void {
+        self.surface.unconfigure();
+        self.surface.release();
+        self.* = undefined;
+    }
+};
+
+const WindowsWindowSurface = struct {
+    surface: *wgpu.Surface,
+
+    fn create(instance: *wgpu.Instance, window: *anyopaque) RenderError!WindowsWindowSurface {
+        var hinstance: ?*anyopaque = null;
+        var hwnd: ?*anyopaque = null;
+        if (sdl.machina_sdl_get_win32_handles(window, &hinstance, &hwnd) == 0) {
+            return RenderError.NativeWindowHandleMissing;
+        }
+        var surface_descriptor = wgpu.surfaceDescriptorFromWindowsHWND(.{
+            .label = "Machina window surface",
+            .hinstance = hinstance orelse return RenderError.NativeWindowHandleMissing,
+            .hwnd = hwnd orelse return RenderError.NativeWindowHandleMissing,
+        });
+        const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
+        return .{ .surface = surface };
+    }
+
+    fn deinit(self: *WindowsWindowSurface) void {
+        self.surface.unconfigure();
+        self.surface.release();
+        self.* = undefined;
+    }
+};
+
 pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: WindowOptions, initial_scene: Scene) !void {
-    if (builtin.os.tag != .macos) {
+    if (!is_supported_window_platform) {
         return RenderError.WindowingUnsupported;
     }
 
     const title_z = try allocator.dupeZ(u8, title);
     defer allocator.free(title_z);
 
-    if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
+    if (sdl.machina_sdl_init_video() == 0) {
         return RenderError.SdlInitFailed;
     }
-    defer sdl.SDL_Quit();
+    defer sdl.machina_sdl_quit();
 
-    const window_flags = @as(sdl.SDL_WindowFlags, sdl.SDL_WINDOW_METAL | sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    const window = sdl.SDL_CreateWindow(title_z.ptr, default_window_width, default_window_height, window_flags) orelse return RenderError.WindowCreateFailed;
-    defer sdl.SDL_DestroyWindow(window);
-
-    const metal_view = sdl.SDL_Metal_CreateView(window) orelse return RenderError.MetalViewCreateFailed;
-    defer sdl.SDL_Metal_DestroyView(metal_view);
-
-    const metal_layer = sdl.SDL_Metal_GetLayer(metal_view) orelse return RenderError.MetalLayerMissing;
+    const window = sdl.machina_sdl_create_window(title_z.ptr, default_window_width, default_window_height) orelse return RenderError.WindowCreateFailed;
+    defer sdl.machina_sdl_destroy_window(window);
 
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
 
-    var surface_descriptor = wgpu.surfaceDescriptorFromMetalLayer(.{
-        .label = "Machina window surface",
-        .layer = metal_layer,
-    });
-    const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
-    defer surface.release();
-    defer surface.unconfigure();
+    var window_surface = try WindowSurface.create(instance, window);
+    defer window_surface.deinit();
+    const surface = window_surface.surface;
 
     var gpu = try openGpu(instance, surface);
     defer gpu.deinit();
@@ -774,65 +861,61 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     var frame_count: u32 = 0;
     var input: FrameInput = .{ .debug_overlay_visible = options.editor };
     var relative_mouse_enabled = false;
-    const resize_ew_cursor: ?*sdl.SDL_Cursor = sdl.SDL_CreateSystemCursor(sdl.SDL_SYSTEM_CURSOR_EW_RESIZE);
-    defer if (resize_ew_cursor) |cursor| sdl.SDL_DestroyCursor(cursor);
+    const resize_ew_cursor: ?*anyopaque = sdl.machina_sdl_create_resize_ew_cursor();
+    defer if (resize_ew_cursor) |cursor| sdl.machina_sdl_destroy_cursor(cursor);
     var active_cursor_kind: EditorCursorKind = .default;
-    var last_frame_ticks = sdl.SDL_GetTicksNS();
+    var last_frame_ticks = sdl.machina_sdl_get_ticks_ns();
     var last_performance_display_ticks: u64 = 0;
     var smoothed_fps: f32 = 0.0;
     var displayed_fps: f32 = 0.0;
     while (running) {
         input.beginFrame();
 
-        var event: sdl.SDL_Event = undefined;
-        while (sdl.SDL_PollEvent(&event)) {
-            switch (event.type) {
-                sdl.SDL_EVENT_QUIT => running = false,
-                sdl.SDL_EVENT_KEY_DOWN => {
-                    updateKeyboardKeyState(&input.keyboard, event.key.key, true);
-                    updateKeyboardModifiers(&input.keyboard, event.key.mod);
-                    if (!event.key.repeat and isEditorToggleShortcut(event.key.key, event.key.mod)) {
+        var event: sdl.MachinaSdlEvent = undefined;
+        while (sdl.machina_sdl_poll_event(&event) != 0) {
+            switch (event.kind) {
+                sdl.MACHINA_SDL_EVENT_QUIT => running = false,
+                sdl.MACHINA_SDL_EVENT_KEY_DOWN => {
+                    updateKeyboardKeyState(&input.keyboard, event.key, true);
+                    updateKeyboardModifiers(&input.keyboard, event);
+                    if (event.repeat == 0 and isEditorToggleShortcut(event.key, event.ctrl_down != 0)) {
                         toggleDebugOverlay(&input);
                     }
                 },
-                sdl.SDL_EVENT_KEY_UP => {
-                    updateKeyboardKeyState(&input.keyboard, event.key.key, false);
-                    updateKeyboardModifiers(&input.keyboard, event.key.mod);
+                sdl.MACHINA_SDL_EVENT_KEY_UP => {
+                    updateKeyboardKeyState(&input.keyboard, event.key, false);
+                    updateKeyboardModifiers(&input.keyboard, event);
                 },
-                sdl.SDL_EVENT_MOUSE_MOTION => {
-                    updatePointerFromWindow(&input.pointer, window, event.motion.x, event.motion.y);
-                    input.pointer.delta[0] += event.motion.xrel;
-                    input.pointer.delta[1] += event.motion.yrel;
+                sdl.MACHINA_SDL_EVENT_MOUSE_MOTION => {
+                    updatePointerFromWindow(&input.pointer, window, event.x, event.y);
+                    input.pointer.delta[0] += event.xrel;
+                    input.pointer.delta[1] += event.yrel;
                 },
-                sdl.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                    updatePointerFromWindow(&input.pointer, window, event.button.x, event.button.y);
-                    if (event.button.button == sdl.SDL_BUTTON_LEFT) {
+                sdl.MACHINA_SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                    updatePointerFromWindow(&input.pointer, window, event.x, event.y);
+                    if (event.button == sdl.machina_sdl_button_left()) {
                         input.pointer.primary_down = true;
                         input.pointer.primary_pressed = true;
-                    } else if (event.button.button == sdl.SDL_BUTTON_RIGHT) {
+                    } else if (event.button == sdl.machina_sdl_button_right()) {
                         input.pointer.secondary_down = true;
                         input.pointer.secondary_pressed = true;
                     }
                 },
-                sdl.SDL_EVENT_MOUSE_BUTTON_UP => {
-                    updatePointerFromWindow(&input.pointer, window, event.button.x, event.button.y);
-                    if (event.button.button == sdl.SDL_BUTTON_LEFT) {
+                sdl.MACHINA_SDL_EVENT_MOUSE_BUTTON_UP => {
+                    updatePointerFromWindow(&input.pointer, window, event.x, event.y);
+                    if (event.button == sdl.machina_sdl_button_left()) {
                         input.pointer.primary_down = false;
                         input.pointer.primary_released = true;
-                    } else if (event.button.button == sdl.SDL_BUTTON_RIGHT) {
+                    } else if (event.button == sdl.machina_sdl_button_right()) {
                         input.pointer.secondary_down = false;
                         input.pointer.secondary_released = true;
                     }
                 },
-                sdl.SDL_EVENT_MOUSE_WHEEL => {
-                    const wheel_delta = normalizedMouseWheelDelta(event.wheel);
-                    input.pointer.wheel_delta[0] += wheel_delta[0];
-                    input.pointer.wheel_delta[1] += wheel_delta[1];
+                sdl.MACHINA_SDL_EVENT_MOUSE_WHEEL => {
+                    input.pointer.wheel_delta[0] += event.wheel_x;
+                    input.pointer.wheel_delta[1] += event.wheel_y;
                 },
-                sdl.SDL_EVENT_WINDOW_RESIZED,
-                sdl.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED,
-                sdl.SDL_EVENT_WINDOW_METAL_VIEW_RESIZED,
-                => {
+                sdl.MACHINA_SDL_EVENT_WINDOW_RESIZED => {
                     try configureSurfaceFromWindow(surface, gpu.device, window, surface_format, &width, &height);
                     try depth.ensure(gpu.device, width, height);
                 },
@@ -844,7 +927,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             break;
         }
 
-        const frame_ticks = sdl.SDL_GetTicksNS();
+        const frame_ticks = sdl.machina_sdl_get_ticks_ns();
         if (frame_ticks > last_frame_ticks) {
             const elapsed_ns = frame_ticks - last_frame_ticks;
             last_frame_ticks = frame_ticks;
@@ -874,7 +957,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         input.system_profile_count_hint = demo.renderSystemProfileCount();
         const should_enable_relative_mouse = flyCameraInputActive(input);
         if (should_enable_relative_mouse != relative_mouse_enabled) {
-            _ = sdl.SDL_SetWindowRelativeMouseMode(window, should_enable_relative_mouse);
+            _ = sdl.machina_sdl_set_window_relative_mouse_mode(window, @intFromBool(should_enable_relative_mouse));
             relative_mouse_enabled = should_enable_relative_mouse;
         }
         input.camera_override = updateFlyCamera(&fly_camera, scene.world, input, delta_seconds) catch null;
@@ -904,10 +987,10 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             }
         }
 
-        sdl.SDL_Delay(1);
+        sdl.machina_sdl_delay_ms(1);
     }
     if (relative_mouse_enabled) {
-        _ = sdl.SDL_SetWindowRelativeMouseMode(window, false);
+        _ = sdl.machina_sdl_set_window_relative_mouse_mode(window, 0);
     }
 }
 
@@ -3591,15 +3674,15 @@ fn chooseSurfaceFormat(capabilities: wgpu.SurfaceCapabilities) ?wgpu.TextureForm
     return capabilities.formats[0];
 }
 
-fn updatePointerFromWindow(pointer: *PointerInput, window: *sdl.SDL_Window, x: f32, y: f32) void {
+fn updatePointerFromWindow(pointer: *PointerInput, window: *anyopaque, x: f32, y: f32) void {
     var window_width: c_int = 0;
     var window_height: c_int = 0;
     var pixel_width: c_int = 0;
     var pixel_height: c_int = 0;
 
-    const has_window_size = sdl.SDL_GetWindowSize(window, &window_width, &window_height);
-    const has_pixel_size = sdl.SDL_GetWindowSizeInPixels(window, &pixel_width, &pixel_height);
-    if (!has_window_size or !has_pixel_size or window_width <= 0 or window_height <= 0) {
+    const has_window_size = sdl.machina_sdl_get_window_size(window, &window_width, &window_height);
+    const has_pixel_size = sdl.machina_sdl_get_window_size_in_pixels(window, &pixel_width, &pixel_height);
+    if (has_window_size == 0 or has_pixel_size == 0 or window_width <= 0 or window_height <= 0) {
         pointer.position = .{ x, y };
         pointer.has_position = true;
         return;
@@ -3614,14 +3697,14 @@ fn updatePointerFromWindow(pointer: *PointerInput, window: *sdl.SDL_Window, x: f
 fn configureSurfaceFromWindow(
     surface: *wgpu.Surface,
     device: *wgpu.Device,
-    window: *sdl.SDL_Window,
+    window: *anyopaque,
     format: wgpu.TextureFormat,
     current_width: *u32,
     current_height: *u32,
 ) !void {
     var pixel_width: c_int = 0;
     var pixel_height: c_int = 0;
-    if (!sdl.SDL_GetWindowSizeInPixels(window, &pixel_width, &pixel_height)) {
+    if (sdl.machina_sdl_get_window_size_in_pixels(window, &pixel_width, &pixel_height) == 0) {
         return RenderError.SurfaceFailed;
     }
 
@@ -4678,14 +4761,14 @@ fn editorCursorKind(input: FrameInput) EditorCursorKind {
     return .default;
 }
 
-fn setEditorCursor(kind: EditorCursorKind, resize_ew_cursor: ?*sdl.SDL_Cursor) void {
+fn setEditorCursor(kind: EditorCursorKind, resize_ew_cursor: ?*anyopaque) void {
     switch (kind) {
-        .default => _ = sdl.SDL_SetCursor(sdl.SDL_GetDefaultCursor()),
+        .default => sdl.machina_sdl_set_default_cursor(),
         .resize_ew => {
             if (resize_ew_cursor) |cursor| {
-                _ = sdl.SDL_SetCursor(cursor);
+                sdl.machina_sdl_set_cursor(cursor);
             } else {
-                _ = sdl.SDL_SetCursor(sdl.SDL_GetDefaultCursor());
+                sdl.machina_sdl_set_default_cursor();
             }
         },
     }
@@ -6094,29 +6177,9 @@ test "ctrl-tab debug overlay toggle updates editor visibility only" {
     try std.testing.expect(input.ui_visible);
     try std.testing.expect(input.keyboard.editor_toggle_pressed);
 
-    try std.testing.expect(isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_CTRL));
-    try std.testing.expect(isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_LCTRL));
-    try std.testing.expect(!isEditorToggleShortcut(sdl.SDLK_TAB, sdl.SDL_KMOD_NONE));
-    try std.testing.expect(!isEditorToggleShortcut(sdl.SDLK_F1, sdl.SDL_KMOD_NONE));
-}
-
-test "mouse wheel deltas normalize flipped direction and integer fallback" {
-    const Wheel = struct {
-        x: f32 = 0.0,
-        y: f32 = 0.0,
-        direction: sdl.SDL_MouseWheelDirection = sdl.SDL_MOUSEWHEEL_NORMAL,
-        integer_x: i32 = 0,
-        integer_y: i32 = 0,
-    };
-
-    const normal = normalizedMouseWheelDelta(Wheel{ .y = -1.0 });
-    try std.testing.expectEqual(@as(f32, -1.0), normal[1]);
-
-    const flipped = normalizedMouseWheelDelta(Wheel{ .y = 1.0, .direction = sdl.SDL_MOUSEWHEEL_FLIPPED });
-    try std.testing.expectEqual(@as(f32, -1.0), flipped[1]);
-
-    const integer_fallback = normalizedMouseWheelDelta(Wheel{ .integer_y = -2 });
-    try std.testing.expectEqual(@as(f32, -2.0), integer_fallback[1]);
+    try std.testing.expect(isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_TAB, true));
+    try std.testing.expect(!isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_TAB, false));
+    try std.testing.expect(!isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_F1, true));
 }
 
 test "debug overlay extracts FPS label when visible" {

@@ -5,6 +5,66 @@ description: Build the CLI, run an example project, and verify a scene with Mach
 
 Machina uses `mise` for local tool versions and task shortcuts.
 
+## Platform Setup
+
+Machina builds with Zig and uses SDL3 for `machina run`. Install SDL3 before building the headful runner.
+
+### macOS
+
+Install SDL3 with Homebrew:
+
+```sh
+brew install sdl3
+```
+
+Then build normally:
+
+```sh
+mise build
+```
+
+### Linux
+
+Install SDL3 plus a Vulkan runtime. On Ubuntu or Debian systems with SDL3 packages:
+
+```sh
+sudo apt install libsdl3-dev
+```
+
+For CI or headless machines that need render and bounded window smoke coverage, also install Vulkan software drivers and Xvfb:
+
+```sh
+sudo apt install libvulkan1 mesa-vulkan-drivers xvfb
+```
+
+Then build normally:
+
+```sh
+mise build
+```
+
+### Windows
+
+Use the MSVC toolchain and install SDL3 with vcpkg:
+
+```powershell
+vcpkg install sdl3:x64-windows
+```
+
+Build with the Windows MSVC target and pass the vcpkg SDL3 paths:
+
+```powershell
+zig build -Dtarget=x86_64-windows-msvc `
+  -Dsdl3_include_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" `
+  -Dsdl3_library_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib"
+```
+
+Copy `SDL3.dll` from the vcpkg `bin` directory next to `machina.exe` before running the CLI:
+
+```powershell
+Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\SDL3.dll" zig-out\bin\
+```
+
 ## Build the CLI
 
 From the repository root:
