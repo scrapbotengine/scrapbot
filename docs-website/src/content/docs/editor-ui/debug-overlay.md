@@ -48,12 +48,15 @@ The right sidebar shows the selected entity name/id and one component box per at
 
 Click a value input to focus it for editing. Focused inputs render a focus-ring border and caret.
 
+Numeric inputs select their full value on focus, so typing immediately replaces the existing number. Other inputs can choose different focus behavior.
+
 The current editing slice supports primitive runtime text edits:
 
 - Typed text inserts into the focused input.
-- Left and Right move the caret.
-- Home and End jump to the start or end of the input.
-- Backspace and Delete remove text around the caret.
+- Left and Right move the caret; Shift+Left and Shift+Right extend the text selection.
+- Home and End jump to the start or end of the input; Shift+Home and Shift+End extend the text selection.
+- Ctrl+A selects all input text.
+- Backspace and Delete remove text around the caret or remove the selected text.
 - `vec3` values render one input box per lane.
 - Enter commits the edited text into the live ECS field.
 - Moving focus away also commits the edited text.

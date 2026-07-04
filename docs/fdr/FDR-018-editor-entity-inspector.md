@@ -24,8 +24,10 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Component field rows are reusable inspector editing controls: the base row handles label layout, value input placement, focus state, clipping, and selection highlighting, while type-specific behavior decides how a selected value is parsed and committed.
 - Each editable value renders as a darker rounded text input box. `vec3` fields render one input box per lane.
 - Clicking a value input focuses it for editing and gives it a focus-ring border plus a visible caret.
+- Numeric value inputs select their full value when focused so typing can immediately replace the existing number. Select-all-on-focus is treated as an input-control option rather than a global editor rule.
 - Focused inputs accept typed text through the platform text-input path.
-- Focused inputs support left/right caret movement, Home, End, Backspace, and Delete.
+- Focused inputs support left/right caret movement, Home, End, Backspace, Delete, Ctrl+A select all, and Shift+movement text selection.
+- Typing, Backspace, and Delete replace or remove the selected range when text is selected.
 - Field changes are staged in the input buffer and apply only when the user presses Enter or the input loses focus.
 - Ctrl+Z undoes inspector field edits, and Ctrl+Shift+Z or Ctrl+Y redoes them.
 - Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files.

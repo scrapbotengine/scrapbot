@@ -93,6 +93,7 @@ const editor_inspector_input_height: f32 = 28.0;
 const editor_inspector_input_corner_radius: f32 = 5.0;
 const editor_inspector_input_border_thickness: f32 = 1.0;
 const editor_inspector_caret_width: f32 = 2.0;
+const editor_inspector_selection_padding_y: f32 = 4.0;
 const editor_component_id_buffer_len = 128;
 const editor_field_name_buffer_len = 64;
 const editor_input_text_buffer_len = 128;
@@ -106,6 +107,7 @@ const editor_palette = struct {
     const panel = [3]f32{ 0.031, 0.041, 0.063 };
     const panel_muted = [3]f32{ 0.094, 0.116, 0.151 };
     const input = [3]f32{ 0.016, 0.023, 0.039 };
+    const input_selection = [3]f32{ 0.063, 0.255, 0.337 };
     const accent = [3]f32{ 0.031, 0.431, 0.533 };
     const accent_soft = [3]f32{ 0.22, 0.714, 0.82 };
     const text = [3]f32{ 0.886, 0.91, 0.941 };
@@ -206,6 +208,7 @@ pub const KeyboardInput = struct {
     editor_backspace_pressed: bool = false,
     editor_delete_pressed: bool = false,
     editor_enter_pressed: bool = false,
+    editor_select_all_pressed: bool = false,
 
     fn beginFrame(self: *KeyboardInput) void {
         self.editor_toggle_pressed = false;
@@ -218,6 +221,7 @@ pub const KeyboardInput = struct {
         self.editor_backspace_pressed = false;
         self.editor_delete_pressed = false;
         self.editor_enter_pressed = false;
+        self.editor_select_all_pressed = false;
     }
 };
 
@@ -328,10 +332,23 @@ const EditorTextInputState = struct {
     buffer: [editor_input_text_buffer_len]u8 = [_]u8{0} ** editor_input_text_buffer_len,
     len: usize = 0,
     cursor: usize = 0,
+    selection_anchor: usize = 0,
     original_value: EditorStoredValue = .{ .boolean = false },
 
     fn text(self: *const EditorTextInputState) []const u8 {
         return self.buffer[0..self.len];
+    }
+
+    fn selectionStart(self: *const EditorTextInputState) usize {
+        return @min(self.cursor, self.selection_anchor);
+    }
+
+    fn selectionEnd(self: *const EditorTextInputState) usize {
+        return @max(self.cursor, self.selection_anchor);
+    }
+
+    fn hasSelection(self: *const EditorTextInputState) bool {
+        return self.cursor != self.selection_anchor;
     }
 
     fn matches(self: *const EditorTextInputState, selection: EditorFieldSelection) bool {
@@ -345,14 +362,31 @@ const EditorTextInputFrame = struct {
     buffer: [editor_input_text_buffer_len]u8 = [_]u8{0} ** editor_input_text_buffer_len,
     len: usize = 0,
     cursor: usize = 0,
+    selection_anchor: usize = 0,
 
     fn text(self: *const EditorTextInputFrame) []const u8 {
         return self.buffer[0..self.len];
     }
 
+    fn selectionStart(self: *const EditorTextInputFrame) usize {
+        return @min(self.cursor, self.selection_anchor);
+    }
+
+    fn selectionEnd(self: *const EditorTextInputFrame) usize {
+        return @max(self.cursor, self.selection_anchor);
+    }
+
+    fn hasSelection(self: *const EditorTextInputFrame) bool {
+        return self.cursor != self.selection_anchor;
+    }
+
     fn matches(self: *const EditorTextInputFrame, selection: EditorFieldSelection) bool {
         return self.active and self.selection.sameInput(selection);
     }
+};
+
+const EditorTextInputFocusOptions = struct {
+    select_all_on_focus: bool = false,
 };
 
 pub const EditorState = struct {
@@ -518,6 +552,8 @@ fn updateEditorKeyboardActions(keyboard: *KeyboardInput, event: sdl.MachinaSdlEv
         keyboard.editor_delete_pressed = true;
     } else if (event.key == sdl.MACHINA_SDL_KEY_RETURN and event.repeat == 0) {
         keyboard.editor_enter_pressed = true;
+    } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_A and event.ctrl_down != 0) {
+        keyboard.editor_select_all_pressed = true;
     } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_Z and event.ctrl_down != 0 and event.shift_down == 0) {
         keyboard.editor_undo_pressed = true;
     } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_Z and event.ctrl_down != 0 and event.shift_down != 0) {
@@ -556,6 +592,7 @@ fn editorTextInputFrame(world: *const runtime.World, selected: ?runtime.EntityHa
         .selection = validated.selection,
         .len = validated.len,
         .cursor = validated.cursor,
+        .selection_anchor = validated.selection_anchor,
     };
     @memcpy(frame.buffer[0..validated.len], validated.buffer[0..validated.len]);
     return frame;
@@ -691,20 +728,32 @@ fn applyEditorTextInputEdits(world: *runtime.World, state: *EditorState, input: 
     }
 
     var consumed = false;
+    if (input.keyboard.editor_select_all_pressed) {
+        selectAllEditorTextInput(&state.text_input);
+        consumed = true;
+    }
     if (input.keyboard.editor_home_pressed) {
-        state.text_input.cursor = 0;
+        moveEditorTextInputCursor(&state.text_input, 0, input.keyboard.shift_down);
         consumed = true;
     }
     if (input.keyboard.editor_end_pressed) {
-        state.text_input.cursor = state.text_input.len;
+        moveEditorTextInputCursor(&state.text_input, state.text_input.len, input.keyboard.shift_down);
         consumed = true;
     }
     if (input.keyboard.editor_left_pressed) {
-        state.text_input.cursor = previousEditorTextCursor(state.text_input.text(), state.text_input.cursor);
+        const next_cursor = if (!input.keyboard.shift_down and state.text_input.hasSelection())
+            state.text_input.selectionStart()
+        else
+            previousEditorTextCursor(state.text_input.text(), state.text_input.cursor);
+        moveEditorTextInputCursor(&state.text_input, next_cursor, input.keyboard.shift_down);
         consumed = true;
     }
     if (input.keyboard.editor_right_pressed) {
-        state.text_input.cursor = nextEditorTextCursor(state.text_input.text(), state.text_input.cursor);
+        const next_cursor = if (!input.keyboard.shift_down and state.text_input.hasSelection())
+            state.text_input.selectionEnd()
+        else
+            nextEditorTextCursor(state.text_input.text(), state.text_input.cursor);
+        moveEditorTextInputCursor(&state.text_input, next_cursor, input.keyboard.shift_down);
         consumed = true;
     }
     if (input.keyboard.editor_backspace_pressed) {
@@ -726,7 +775,7 @@ fn applyEditorTextInputEdits(world: *runtime.World, state: *EditorState, input: 
     return consumed;
 }
 
-fn focusEditorTextInput(world: *const runtime.World, state: *EditorState, selection: EditorFieldSelection) EditorError!void {
+fn focusEditorTextInput(world: *const runtime.World, state: *EditorState, selection: EditorFieldSelection, options: EditorTextInputFocusOptions) EditorError!void {
     const value = world.getComponentFieldValue(selection.entity, selection.componentId(), selection.fieldName()) catch return;
     const original = EditorStoredValue.from(value) orelse return error.InvalidScene;
     var text_input = EditorTextInputState{
@@ -737,8 +786,21 @@ fn focusEditorTextInput(world: *const runtime.World, state: *EditorState, select
     const text = formatEditorInputValue(&text_input.buffer, value, selection.vec3_lane) orelse return error.InvalidScene;
     text_input.len = text.len;
     text_input.cursor = text.len;
+    text_input.selection_anchor = if (options.select_all_on_focus) 0 else text.len;
     state.text_input = text_input;
     state.selected_property = selection;
+}
+
+fn editorTextInputFocusOptionsForProperty(world: *const runtime.World, selection: EditorFieldSelection) EditorTextInputFocusOptions {
+    const value = world.getComponentFieldValue(selection.entity, selection.componentId(), selection.fieldName()) catch return .{};
+    return .{ .select_all_on_focus = editorComponentValueSelectsAllOnFocus(value) };
+}
+
+fn editorComponentValueSelectsAllOnFocus(value: runtime.ComponentValue) bool {
+    return switch (value) {
+        .int, .float, .vec3 => true,
+        .boolean, .string => false,
+    };
 }
 
 fn commitEditorTextInput(world: *runtime.World, state: *EditorState) EditorError!void {
@@ -812,6 +874,7 @@ fn parseEditorBool(text: []const u8) !bool {
 }
 
 fn editorTextInputInsert(input: *EditorTextInputState, value: []const u8) void {
+    editorTextInputDeleteSelection(input);
     for (value) |byte| {
         if (input.len >= input.buffer.len) {
             break;
@@ -820,11 +883,16 @@ fn editorTextInputInsert(input: *EditorTextInputState, value: []const u8) void {
         input.buffer[input.cursor] = byte;
         input.len += 1;
         input.cursor += 1;
+        input.selection_anchor = input.cursor;
     }
     @memset(input.buffer[input.len..], 0);
 }
 
 fn editorTextInputBackspace(input: *EditorTextInputState) void {
+    if (input.hasSelection()) {
+        editorTextInputDeleteSelection(input);
+        return;
+    }
     if (input.cursor == 0) {
         return;
     }
@@ -832,17 +900,49 @@ fn editorTextInputBackspace(input: *EditorTextInputState) void {
     std.mem.copyForwards(u8, input.buffer[previous .. input.len - (input.cursor - previous)], input.buffer[input.cursor..input.len]);
     input.len -= input.cursor - previous;
     input.cursor = previous;
+    input.selection_anchor = input.cursor;
     @memset(input.buffer[input.len..], 0);
 }
 
 fn editorTextInputDelete(input: *EditorTextInputState) void {
+    if (input.hasSelection()) {
+        editorTextInputDeleteSelection(input);
+        return;
+    }
     if (input.cursor >= input.len) {
         return;
     }
     const next = nextEditorTextCursor(input.text(), input.cursor);
     std.mem.copyForwards(u8, input.buffer[input.cursor .. input.len - (next - input.cursor)], input.buffer[next..input.len]);
     input.len -= next - input.cursor;
+    input.selection_anchor = input.cursor;
     @memset(input.buffer[input.len..], 0);
+}
+
+fn editorTextInputDeleteSelection(input: *EditorTextInputState) void {
+    if (!input.hasSelection()) {
+        return;
+    }
+    const start = input.selectionStart();
+    const end = input.selectionEnd();
+    std.mem.copyForwards(u8, input.buffer[start .. input.len - (end - start)], input.buffer[end..input.len]);
+    input.len -= end - start;
+    input.cursor = start;
+    input.selection_anchor = start;
+    @memset(input.buffer[input.len..], 0);
+}
+
+fn moveEditorTextInputCursor(input: *EditorTextInputState, next_cursor: usize, extend_selection: bool) void {
+    const clamped = @min(next_cursor, input.len);
+    input.cursor = clamped;
+    if (!extend_selection) {
+        input.selection_anchor = clamped;
+    }
+}
+
+fn selectAllEditorTextInput(input: *EditorTextInputState) void {
+    input.selection_anchor = 0;
+    input.cursor = input.len;
 }
 
 fn previousEditorTextCursor(text: []const u8, cursor: usize) usize {
@@ -1115,7 +1215,7 @@ pub fn updateEditorState(allocator: std.mem.Allocator, world: *runtime.World, st
             }
         }
         if (picked_property) |property| {
-            try focusEditorTextInput(world, state, property);
+            try focusEditorTextInput(world, state, property, editorTextInputFocusOptionsForProperty(world, property));
             state.captured_pointer = true;
             return .{ .consumed_pointer = true };
         }
@@ -3161,6 +3261,7 @@ fn extractEditorPropertyRow(
                     .text = value_text,
                     .focused = is_focused,
                     .cursor = if (is_focused) spec.text_input.cursor else value_text.len,
+                    .selection_anchor = if (is_focused) spec.text_input.selection_anchor else value_text.len,
                 });
             }
         },
@@ -3178,6 +3279,7 @@ fn extractEditorPropertyRow(
                 .text = value_text,
                 .focused = is_focused,
                 .cursor = if (is_focused) spec.text_input.cursor else value_text.len,
+                .selection_anchor = if (is_focused) spec.text_input.selection_anchor else value_text.len,
             });
         },
     }
@@ -3190,6 +3292,7 @@ const EditorPropertyInputBoxSpec = struct {
     text: []const u8,
     focused: bool,
     cursor: usize,
+    selection_anchor: usize,
 };
 
 fn extractEditorPropertyInputBox(
@@ -3226,14 +3329,48 @@ fn extractEditorPropertyInputBox(
         }) catch |err| return mapWorldError(err);
     }
 
+    const selection_start = @min(input.cursor, input.selection_anchor);
+    const selection_end = @max(input.cursor, input.selection_anchor);
+    if (input.focused and selection_start < selection_end) {
+        const selection_id = if (input.lane) |lane|
+            std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.selection.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
+        else
+            std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.selection", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+        defer allocator.free(selection_id);
+        const start_x = std.math.clamp(
+            editor_inspector_input_padding_x + editorTextWidth(input.text[0..@min(selection_start, input.text.len)], editor_inspector_text_size),
+            editor_inspector_input_padding_x,
+            @max(input.width - editor_inspector_input_padding_x, editor_inspector_input_padding_x),
+        );
+        const end_x = std.math.clamp(
+            editor_inspector_input_padding_x + editorTextWidth(input.text[0..@min(selection_end, input.text.len)], editor_inspector_text_size),
+            editor_inspector_input_padding_x,
+            @max(input.width - editor_inspector_input_padding_x, editor_inspector_input_padding_x),
+        );
+        const selection = try extractEditorPanel(world, selection_id, "Editor Property Text Selection", .{
+            .x = start_x,
+            .y = editor_inspector_selection_padding_y,
+            .width = @max(end_x - start_x, 1.0),
+            .height = editorTextHeight(editor_inspector_text_size) - editor_inspector_selection_padding_y * 0.5,
+        }, editor_palette.input_selection, 2.0);
+        world.setUiLayoutItem(selection, .{
+            .parent = input_id,
+            .order = 0,
+        }) catch |err| return mapWorldError(err);
+    }
+
     const text_max_width = @max(input.width - editor_inspector_input_padding_x * 2.0, 1.0);
     const fitted_text = fitEditorTextToWidth(allocator, input.text, editor_inspector_text_size, text_max_width) catch return RenderError.OutOfMemory;
     defer allocator.free(fitted_text);
-    _ = try extractEditorChildText(world, value_id, "Editor Property Text Input Value", input_id, .{
+    const text_entity = try extractEditorChildText(world, value_id, "Editor Property Text Input Value", input_id, .{
         editor_inspector_input_padding_x,
         2.0,
         0.0,
     }, fitted_text, editor_inspector_text_size, if (input.focused) editor_palette.text else editor_palette.text_muted);
+    world.setUiLayoutItem(text_entity, .{
+        .parent = input_id,
+        .order = 1,
+    }) catch |err| return mapWorldError(err);
 
     if (input.focused) {
         const cursor_x = std.math.clamp(
@@ -5208,6 +5345,7 @@ fn validatedEditorTextInput(world: *const runtime.World, selected: ?runtime.Enti
     var validated = input;
     validated.selection = selection;
     validated.cursor = @min(validated.cursor, validated.len);
+    validated.selection_anchor = @min(validated.selection_anchor, validated.len);
     return validated;
 }
 
@@ -8053,6 +8191,8 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(editor_state.text_input.active);
     try std.testing.expectEqualStrings("0.250", editor_state.text_input.text());
     try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.selection_anchor);
+    try std.testing.expect(editor_state.text_input.hasSelection());
 
     var render_state = try RenderEcsState.init(std.testing.allocator);
     defer render_state.deinit();
@@ -8062,16 +8202,38 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selected") != null);
     const focused_input = render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
     try std.testing.expect(try render_state.world.hasComponent(focused_input, runtime.ui_border_component_id));
+    const selection_rect = render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selection.0") orelse return error.TestExpectedEqual;
+    try std.testing.expect(try render_state.world.hasComponent(selection_rect, runtime.ui_rect_component_id));
+    try std.testing.expect((try render_state.world.getVec3(selection_rect, runtime.ui_rect_component_id, "size"))[0] > 1.0);
     try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.caret.0") != null);
 
-    const home_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
+    var replace_selected = FrameInput{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
-        .keyboard = .{ .editor_home_pressed = true },
+    };
+    replace_selected.appendTextInput("1.250");
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, replace_selected);
+    try std.testing.expectEqualStrings("1.250", editor_state.text_input.text());
+    try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.cursor);
+    try std.testing.expectEqual(editor_state.text_input.cursor, editor_state.text_input.selection_anchor);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.25), (try world.getVec3(entity, runtime.transform_component_id, "position"))[0], 0.001);
+
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .keyboard = .{ .shift_down = true, .editor_left_pressed = true },
     });
-    try std.testing.expect(home_update.consumed_pointer);
-    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.cursor);
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .keyboard = .{ .shift_down = true, .editor_left_pressed = true },
+    });
+    try std.testing.expectEqual(@as(usize, 3), editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 5), editor_state.text_input.selection_anchor);
+    try std.testing.expect(editor_state.text_input.hasSelection());
 
     _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
@@ -8079,45 +8241,27 @@ test "editor inspector property inputs edit text and commit with undo" {
         .viewport_height = 720.0,
         .keyboard = .{ .editor_delete_pressed = true },
     });
-    try std.testing.expectEqualStrings(".250", editor_state.text_input.text());
-    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.cursor);
+    try std.testing.expectEqualStrings("1.2", editor_state.text_input.text());
+    try std.testing.expectEqual(@as(usize, 3), editor_state.text_input.cursor);
+    try std.testing.expectEqual(editor_state.text_input.cursor, editor_state.text_input.selection_anchor);
 
-    var restore_zero = FrameInput{
+    var insert_tail = FrameInput{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
     };
-    restore_zero.appendTextInput("0");
-    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, restore_zero);
-    try std.testing.expectEqualStrings("0.250", editor_state.text_input.text());
-    try std.testing.expectEqual(@as(usize, 1), editor_state.text_input.cursor);
-
-    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
-        .debug_overlay_visible = true,
-        .viewport_width = 1280.0,
-        .viewport_height = 720.0,
-        .keyboard = .{ .editor_backspace_pressed = true },
-    });
-    try std.testing.expectEqualStrings(".250", editor_state.text_input.text());
-    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.cursor);
-
-    var insert_one = FrameInput{
-        .debug_overlay_visible = true,
-        .viewport_width = 1280.0,
-        .viewport_height = 720.0,
-    };
-    insert_one.appendTextInput("1");
-    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, insert_one);
+    insert_tail.appendTextInput("50");
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, insert_tail);
     try std.testing.expectEqualStrings("1.250", editor_state.text_input.text());
-    try std.testing.expectEqual(@as(usize, 1), editor_state.text_input.cursor);
 
     _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
-        .keyboard = .{ .editor_right_pressed = true },
+        .keyboard = .{ .shift_down = true, .editor_home_pressed = true },
     });
-    try std.testing.expectEqual(@as(usize, 2), editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 5), editor_state.text_input.selection_anchor);
 
     _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
@@ -8125,29 +8269,54 @@ test "editor inspector property inputs edit text and commit with undo" {
         .viewport_height = 720.0,
         .keyboard = .{ .editor_left_pressed = true },
     });
-    try std.testing.expectEqual(@as(usize, 1), editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.selection_anchor);
 
     _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
-        .keyboard = .{ .editor_end_pressed = true },
+        .keyboard = .{ .editor_select_all_pressed = true },
     });
+    try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.selection_anchor);
+
     _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
         .keyboard = .{ .editor_backspace_pressed = true },
     });
-    try std.testing.expectEqualStrings("1.25", editor_state.text_input.text());
+    try std.testing.expectEqualStrings("", editor_state.text_input.text());
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.cursor);
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.selection_anchor);
 
-    var append_zero = FrameInput{
+    var restore_value = FrameInput{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
     };
-    append_zero.appendTextInput("0");
-    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, append_zero);
+    restore_value.appendTextInput("0.750");
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, restore_value);
+    try std.testing.expectEqualStrings("0.750", editor_state.text_input.text());
+
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .keyboard = .{ .editor_select_all_pressed = true },
+    });
+    try std.testing.expect(editor_state.text_input.hasSelection());
+    try std.testing.expectEqual(@as(usize, 0), editor_state.text_input.selectionStart());
+    try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.selectionEnd());
+
+    var overwrite_selected = FrameInput{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    };
+    overwrite_selected.appendTextInput("1.250");
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, overwrite_selected);
     try std.testing.expectEqualStrings("1.250", editor_state.text_input.text());
     try std.testing.expectApproxEqAbs(@as(f32, 0.25), (try world.getVec3(entity, runtime.transform_component_id, "position"))[0], 0.001);
 
@@ -8185,10 +8354,15 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expectEqual(@as(usize, 1), editor_state.undo_len);
     try std.testing.expectEqual(@as(usize, 0), editor_state.redo_len);
 
-    try focusEditorTextInput(&world, &editor_state, try makeEditorFieldSelection(entity, runtime.transform_component_id, "position", 1));
-    @memcpy(editor_state.text_input.buffer[0.."2.500".len], "2.500");
-    editor_state.text_input.len = "2.500".len;
-    editor_state.text_input.cursor = editor_state.text_input.len;
+    try focusEditorTextInput(&world, &editor_state, try makeEditorFieldSelection(entity, runtime.transform_component_id, "position", 1), .{ .select_all_on_focus = true });
+    try std.testing.expect(editor_state.text_input.hasSelection());
+    var edit_y = FrameInput{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    };
+    edit_y.appendTextInput("2.500");
+    _ = try updateEditorState(std.testing.allocator, &world, &editor_state, edit_y);
     const blur_update = try updateEditorState(std.testing.allocator, &world, &editor_state, .{
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
@@ -8203,6 +8377,11 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(blur_update.consumed_pointer);
     try std.testing.expect(!editor_state.text_input.active);
     try std.testing.expectApproxEqAbs(@as(f32, 2.5), (try world.getVec3(entity, runtime.transform_component_id, "position"))[1], 0.001);
+
+    try focusEditorTextInput(&world, &editor_state, try makeEditorFieldSelection(entity, runtime.geometry_primitive_component_id, "primitive", 0), .{ .select_all_on_focus = false });
+    try std.testing.expect(editor_state.text_input.active);
+    try std.testing.expect(!editor_state.text_input.hasSelection());
+    try std.testing.expectEqual(editor_state.text_input.len, editor_state.text_input.cursor);
 }
 
 test "render ECS profiles internal systems for editor overlay" {
