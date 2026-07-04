@@ -94,6 +94,8 @@ The bundle contains `bin/machina`, a copied `project/` directory, a `run` launch
 
 The first build format targets the current OS and architecture only. Cross-platform export, app signing, and fully static project-native executables are future packaging work.
 
+For platform-specific bundle notes, see [Building Games](/workflow/building-games/).
+
 ## Render Options
 
 ```sh
