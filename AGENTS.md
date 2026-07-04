@@ -100,7 +100,7 @@ Rendering and UI:
 - The debug overlay performance table uses `machina.ui.scroll_view`, `machina.ui.vbox`, and `machina.ui.layout.item` for its clipped animated pixel-scroll viewport. It should not truncate the list to unreachable rows or regress to row-only, row-snapped, instant-jump scroll state, or private renderer-only list layout.
 - The debug overlay performance table should show a visible scrollbar when the system list overflows. Keep it generated as normal ECS UI rect data rather than a renderer-side overlay.
 - The debug overlay performance table should favor readable full system ids and rolling average duration. Do not reintroduce phase prefixes or last-sample columns into the compact row format without a deliberate UI redesign.
-- Editor sidebars should use consistent panel padding. System timing rows and component inspector boxes should be retained full-width rows/boxes with one-pixel separators, not floating cards with uneven gutters.
+- Editor sidebars should use consistent panel padding. The system inspector is one retained table inside one panel, with aligned text rows and separators; do not render each system as its own panel. Component inspector boxes remain full-width stacked boxes with one-pixel separators.
 - The editor overlay also owns playback controls, selected-entity inspection, click selection, and the first translate gizmo.
 - Editor selection is generation-aware and should reject stale handles instead of silently selecting whatever now lives at the old dense index.
 - The first click-selection path is CPU renderable-bounds picking; treat triangle-accurate picking, ID-buffer picking, acceleration structures, and selectable non-renderable entities as future design work.

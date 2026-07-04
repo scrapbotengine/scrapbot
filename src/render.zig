@@ -2034,53 +2034,40 @@ fn extractDebugOverlayInto(
         .content_offset = .{ 0.0, input.editor.system_scroll_y, 0.0 },
     }) catch |err| return mapWorldError(err);
 
-    const system_stack = world.createEntity("machina.editor.debug.systems.stack", "Editor Debug Systems Stack") catch |err| return mapWorldError(err);
-    world.setUiVBox(system_stack, .{
+    const row_width = list_clip.size[0];
+    const table_height = @as(f32, @floatFromInt(input.system_profiles.len)) * editor_system_row_stride;
+    const system_table = world.createEntity("machina.editor.debug.systems.table", "Editor Debug Systems Table") catch |err| return mapWorldError(err);
+    world.setUiRect(system_table, .{
         .position = .{
             0.0,
             editorSystemRowsY(input) - list_clip.position[1],
             0.0,
         },
-        .spacing = 0.0,
+        .size = .{ row_width, table_height, 0.0 },
+        .color = editor_palette.shell,
+        .corner_radius = 0.0,
     }) catch |err| return mapWorldError(err);
-    world.setUiLayoutItem(system_stack, .{
+    world.setUiLayoutItem(system_table, .{
         .parent = "machina.editor.debug.systems.scroll",
         .order = 0,
     }) catch |err| return mapWorldError(err);
 
-    const row_width = list_clip.size[0];
-    var stack_order: i32 = 0;
     for (input.system_profiles, 0..) |profile, profile_index| {
+        const row_y = @as(f32, @floatFromInt(profile_index)) * editor_system_row_stride;
         if (profile_index > 0) {
             const separator_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.separator.{d}", .{profile_index}) catch return RenderError.OutOfMemory;
             defer allocator.free(separator_id);
             const separator = world.createEntity(separator_id, "Editor System Separator") catch |err| return mapWorldError(err);
             world.setUiSeparator(separator, .{
-                .position = .{ 0.0, 0.0, 0.0 },
+                .position = .{ 0.0, row_y, 0.0 },
                 .size = .{ row_width, editor_inspector_separator_height, 0.0 },
                 .color = editor_palette.panel_muted,
             }) catch |err| return mapWorldError(err);
             world.setUiLayoutItem(separator, .{
-                .parent = "machina.editor.debug.systems.stack",
-                .order = stack_order,
+                .parent = "machina.editor.debug.systems.table",
+                .order = @intCast(profile_index),
             }) catch |err| return mapWorldError(err);
-            stack_order += 1;
         }
-
-        const row_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}", .{profile_index}) catch return RenderError.OutOfMemory;
-        defer allocator.free(row_id);
-        const row = world.createEntity(row_id, "Editor System Row") catch |err| return mapWorldError(err);
-        world.setUiRect(row, .{
-            .position = .{ 0.0, 0.0, 0.0 },
-            .size = .{ row_width, editor_system_row_stride, 0.0 },
-            .color = editor_palette.shell,
-            .corner_radius = 0.0,
-        }) catch |err| return mapWorldError(err);
-        world.setUiLayoutItem(row, .{
-            .parent = "machina.editor.debug.systems.stack",
-            .order = stack_order,
-        }) catch |err| return mapWorldError(err);
-        stack_order += 1;
 
         const duration_text = formatSystemProfileDuration(allocator, profile) catch return RenderError.OutOfMemory;
         defer allocator.free(duration_text);
@@ -2094,21 +2081,21 @@ fn extractDebugOverlayInto(
         defer allocator.free(label_id);
         try extractEditorText(world, label_id, "Editor System Row Label", .{
             editor_inspector_card_padding_x,
-            2.0,
+            row_y + 2.0,
             0.0,
         }, label_text, editor_system_text_size, editor_palette.text);
         const label = world.findEntityById(label_id) orelse return RenderError.InvalidScene;
-        world.setUiLayoutItem(label, .{ .parent = row_id }) catch |err| return mapWorldError(err);
+        world.setUiLayoutItem(label, .{ .parent = "machina.editor.debug.systems.table" }) catch |err| return mapWorldError(err);
 
         const duration_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}.duration", .{profile_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(duration_id);
         try extractEditorText(world, duration_id, "Editor System Row Duration", .{
             duration_x,
-            2.0,
+            row_y + 2.0,
             0.0,
         }, duration_text, editor_system_text_size, editor_palette.text_muted);
         const duration = world.findEntityById(duration_id) orelse return RenderError.InvalidScene;
-        world.setUiLayoutItem(duration, .{ .parent = row_id }) catch |err| return mapWorldError(err);
+        world.setUiLayoutItem(duration, .{ .parent = "machina.editor.debug.systems.table" }) catch |err| return mapWorldError(err);
     }
 
     try extractEditorSystemScrollbarInto(world, input, list_clip);
@@ -6478,16 +6465,18 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expect(saw_pause);
     try std.testing.expect(saw_no_selection);
 
-    const row0 = state.world.findEntityById("machina.editor.debug.systems.row.0") orelse return error.TestExpectedEqual;
-    const row1 = state.world.findEntityById("machina.editor.debug.systems.row.1") orelse return error.TestExpectedEqual;
+    const table = state.world.findEntityById("machina.editor.debug.systems.table") orelse return error.TestExpectedEqual;
     const row1_separator = state.world.findEntityById("machina.editor.debug.systems.separator.1") orelse return error.TestExpectedEqual;
     const row0_label = state.world.findEntityById("machina.editor.debug.systems.row.0.label") orelse return error.TestExpectedEqual;
     const row0_duration = state.world.findEntityById("machina.editor.debug.systems.row.0.duration") orelse return error.TestExpectedEqual;
     const row1_label = state.world.findEntityById("machina.editor.debug.systems.row.1.label") orelse return error.TestExpectedEqual;
     const row1_duration = state.world.findEntityById("machina.editor.debug.systems.row.1.duration") orelse return error.TestExpectedEqual;
     const list_clip = editorSystemListClipRect(frame_input);
-    try std.testing.expectApproxEqAbs(list_clip.size[0], (try state.world.getVec3(row0, runtime.ui_rect_component_id, "size"))[0], 0.001);
-    try std.testing.expectApproxEqAbs(editor_system_row_stride, (try state.world.getVec3(row1, runtime.ui_rect_component_id, "size"))[1], 0.001);
+    const table_size = try state.world.getVec3(table, runtime.ui_rect_component_id, "size");
+    try std.testing.expectApproxEqAbs(list_clip.size[0], table_size[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_system_row_stride * 2.0, table_size[1], 0.001);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.1") == null);
     try std.testing.expectApproxEqAbs(editor_inspector_separator_height, (try state.world.getVec3(row1_separator, runtime.ui_separator_component_id, "size"))[1], 0.001);
     try std.testing.expectEqualStrings("spawn_initial", try state.world.getString(row0_label, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("--", try state.world.getString(row0_duration, runtime.ui_text_component_id, "value"));
@@ -6528,9 +6517,11 @@ test "debug overlay renders a scrolled system profile window" {
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0.label") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.2.label") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.8.label") != null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.table") != null);
+    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_scroll_view_component_id));
-    try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_vbox_component_id));
-    try std.testing.expect(state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id) >= profiles.len + 3);
+    try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(runtime.ui_vbox_component_id));
+    try std.testing.expect(state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id) >= profiles.len * 2 + 2);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.track") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.thumb") != null);
 }

@@ -30,7 +30,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - When live system profiling data is available, the editor/debug overlay lists active systems with their full system id and rolling average runtime over the current profiling window.
 - The editor/debug overlay also lists engine-internal render systems profiled through the render ECS schedule.
 - The visible performance table updates at a throttled human-readable cadence while profiling continues to sample scheduled systems every frame.
-- The system performance view uses retained full-width row boxes, one-pixel separators, consistent sidebar padding, and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached without inline pagination text.
+- The system performance view uses one retained table panel with aligned text rows, one-pixel separators, consistent sidebar padding, and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached without inline pagination text.
 - The system performance view shows a generated scrollbar when its clipped system list overflows.
 - While the editor/debug overlay is visible, mouse wheel input scrolls the visible system viewport only when the pointer is over that viewport or its scrollbar and the system list overflows. Wheel input over the game viewport remains available to scene-authored scroll views. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
 - The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical stacks, horizontal groups, horizontal stacks, spacers, centered text blocks, toggles, progress bars, separators, and script-mutated UI state.
@@ -120,10 +120,10 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 **Why:** Measuring at the scheduler boundary keeps the data tied to declared ECS systems and works for human and agent debugging without script instrumentation. It follows ADR-006, ADR-007, and ADR-008.
 **Tradeoff:** The table reports CPU wall time for project and engine-internal render systems. It does not yet include GPU time, parallel worker timing, flame charts, sorting, or drill-down timing history.
 
-### 8a. Render system rows as retained panel rows
+### 8a. Render system rows inside one retained table
 
-**Decision:** The editor system inspector uses a scroll view containing full-width retained row boxes with one-pixel separators, left-aligned system ids, and right-aligned rolling average duration.
-**Why:** The system list should visually match the component inspector and remain readable in a fixed sidebar without phase prefixes, last-sample churn, or uneven overlay text.
+**Decision:** The editor system inspector uses a scroll view containing one retained table panel. The table owns the system-id text, right-aligned rolling average duration text, and one-pixel row separators.
+**Why:** The system list is one table of profiling data, not a stack of separate cards. This keeps it readable in a fixed sidebar without phase prefixes, last-sample churn, or uneven overlay text.
 **Tradeoff:** The compact row does not yet support sorting, filtering, grouped phases, hover detail, or expandable timing history.
 
 ### 9. Expose the first layout containers as ECS data
