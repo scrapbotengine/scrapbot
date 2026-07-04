@@ -11,7 +11,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 - The engine can render text-authored UI overlays in offscreen renders and interactive windows.
 - Scene entities can define a UI canvas, screen-space colored rectangles, rounded borders, fixed-pixel text labels, button markers, button command ids, scroll views, vertical stacks, direction-aware stacks, layout child metadata, spacers, text blocks, toggles, progress bars, and separators.
-- `machina.ui.canvas` stores `design_size` and `scale_mode`. `scale_mode = "none"` preserves raw screen pixels. `scale_mode = "fit"` scales and centers scene-authored UI into the current viewport while preserving aspect ratio. `scale_mode = "fill"` scales enough to cover the viewport.
+- `machina.ui.canvas` stores `design_size` and `scale_mode`. `scale_mode = "none"` preserves raw screen pixels. `scale_mode = "fit"` scales and centers scene-authored UI into the current scene UI target while preserving aspect ratio. `scale_mode = "fill"` scales enough to cover that target. The target is the full window in normal runs and the editor game viewport while the editor shell is visible.
 - UI rectangles use screen-space positions and sizes with a top-left origin, plus an optional `corner_radius` field in pixels. Missing `corner_radius` values default to `0.0` for compatibility with older scene data.
 - UI rectangle corners render through the UI shader using rounded-rectangle SDF coverage with alpha blending. Text glyph quads use the same UI pipeline with `corner_radius = 0.0`.
 - `machina.ui.border` adds a data-authored border to a rect with `color` and `thickness`. Borders render through the same rounded-rectangle SDF path by drawing an outer rounded rect and an inset fill rect.

@@ -22,7 +22,7 @@ Machina registers these engine component types before project scripts and native
 
 | Component | Fields | Notes |
 | --- | --- | --- |
-| `machina.ui.canvas` | `design_size: vec3`, `scale_mode: string` | UI canvas root. `scale_mode` can be `none`, `fit`, or `fill`; old marker-style scenes default to `none`. |
+| `machina.ui.canvas` | `design_size: vec3`, `scale_mode: string` | UI canvas root. `scale_mode` can be `none`, `fit`, or `fill`; old marker-style scenes default to `none`. Fit/fill target the full window normally and the editor game viewport when editor chrome is visible. |
 | `machina.ui.rect` | `position: vec3`, `size: vec3`, `color: vec3`, `corner_radius: f32` | Screen-space rectangle with optional rounded corners. |
 | `machina.ui.border` | `color: vec3`, `thickness: f32` | Uniform rounded border for a rect. |
 | `machina.ui.text` | `position: vec3`, `size: f32`, `color: vec3`, `value: string` | Screen-space bitmap text. |

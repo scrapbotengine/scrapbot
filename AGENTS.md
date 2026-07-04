@@ -56,6 +56,7 @@ Rendering and UI:
 - Shadow behavior is authored with `machina.shadow.caster` and `machina.shadow.receiver` marker components.
 - First-slice UI uses retained scene components: `machina.ui.canvas`, `machina.ui.rect`, `machina.ui.border`, `machina.ui.text`, `machina.ui.button`, `machina.ui.command`, `machina.ui.scroll_view`, `machina.ui.vbox`, `machina.ui.stack`, `machina.ui.layout.item`, `machina.ui.spacer`, `machina.ui.text_block`, `machina.ui.toggle`, `machina.ui.progress_bar`, and `machina.ui.separator`.
 - `machina.ui.canvas` can opt into viewport adaptation with `design_size` and `scale_mode`; prefer this over hand-tuning scenes for one window size.
+- Canvas scaling targets the active scene UI region: the full window in normal runs and the editor game viewport while editor chrome is visible. Keep render transforms, input hit-testing, and clipping in sync.
 - Layout containers support padding, and `machina.ui.layout.item` supports symmetric margins. Prefer layout primitives for breathing room instead of scattering absolute offsets.
 - `machina.ui.rect` has `position`, `size`, `color`, and `corner_radius` fields. Missing scene-authored `corner_radius` values default to `0.0` for compatibility.
 - Rounded UI corners render through the shared UI shader with SDF coverage and alpha blending. Do not add renderer-only corner geometry or per-example hacks for rounded panels/buttons.

@@ -195,6 +195,13 @@ pub const EditorUpdate = struct {
     step_once: bool = false,
 };
 
+pub const EditorViewportBounds = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+};
+
 pub const EditorError = runtime.WorldError || error{InvalidScene};
 
 pub const FrameInput = struct {
@@ -1055,13 +1062,13 @@ const RenderEcsState = struct {
             const position = self.world.getVec3(entity, runtime.ui_rect_component_id, "position") catch |err| return mapWorldError(err);
             const size = self.world.getVec3(entity, runtime.ui_rect_component_id, "size") catch |err| return mapWorldError(err);
             const layout = try resolveUiLayout(&self.world, entity, position, size);
-            const viewport_layout = try resolveUiScreenLayout(input, stored_entity.id, layout, size);
             const canvas_transform = if (input.viewport_width > 0.0 and input.viewport_height > 0.0)
                 try sceneUiCanvasTransform(&self.world, input, input.viewport_width, input.viewport_height)
             else
                 UiCanvasTransform{};
-            const screen_layout = applyUiCanvasLayout(canvas_transform, stored_entity.id, input, viewport_layout);
-            const screen_size = if (input.debug_overlay_visible or isEditorUiEntityId(stored_entity.id)) size else scaleUiSize(canvas_transform, size);
+            const canvas_layout = applyUiCanvasLayout(canvas_transform, stored_entity.id, layout);
+            const screen_size = if (isEditorUiEntityId(stored_entity.id)) size else scaleUiSize(canvas_transform, size);
+            const screen_layout = try resolveUiScreenLayout(input, stored_entity.id, canvas_layout, screen_size);
             const state = evaluateUiButtonState(input, screen_layout.position, screen_size, screen_layout.clip);
             try setRenderUiButtonState(&self.world, entity, state);
         }
@@ -2439,8 +2446,6 @@ fn resolveUiScreenLayout(input: FrameInput, entity_id: []const u8, layout: UiRes
 
     const viewport = editorGameViewport(input);
     var screen_layout = layout;
-    screen_layout.position[0] += viewport.x;
-    screen_layout.position[1] += viewport.y;
     screen_layout.clip = try combineUiClip(screen_layout.clip, .{
         .position = viewport.position(),
         .size = .{ viewport.width, viewport.height, item_size[2] },
@@ -2449,16 +2454,20 @@ fn resolveUiScreenLayout(input: FrameInput, entity_id: []const u8, layout: UiRes
 }
 
 fn sceneUiCanvasTransform(world: *const runtime.World, input: FrameInput, width: f32, height: f32) RenderError!UiCanvasTransform {
-    if (input.debug_overlay_visible) {
-        return .{};
-    }
+    const target = if (input.debug_overlay_visible)
+        editorGameViewport(input)
+    else
+        ScreenRect{ .x = 0.0, .y = 0.0, .width = width, .height = height };
 
     for (0..world.entityCount()) |index| {
         const entity = runtime.EntityHandle{ .index = @intCast(index) };
         const canvas = (try uiCanvas(world, entity)) orelse continue;
-        return try resolveUiCanvasTransform(canvas, width, height);
+        var transform = try resolveUiCanvasTransform(canvas, target.width, target.height);
+        transform.offset[0] += target.x;
+        transform.offset[1] += target.y;
+        return transform;
     }
-    return .{};
+    return .{ .offset = .{ target.x, target.y } };
 }
 
 fn resolveUiCanvasTransform(canvas: UiCanvas, width: f32, height: f32) RenderError!UiCanvasTransform {
@@ -2485,8 +2494,8 @@ fn resolveUiCanvasTransform(canvas: UiCanvas, width: f32, height: f32) RenderErr
     };
 }
 
-fn applyUiCanvasLayout(transform: UiCanvasTransform, entity_id: []const u8, input: FrameInput, layout: UiResolvedLayout) UiResolvedLayout {
-    if (input.debug_overlay_visible or isEditorUiEntityId(entity_id)) {
+fn applyUiCanvasLayout(transform: UiCanvasTransform, entity_id: []const u8, layout: UiResolvedLayout) UiResolvedLayout {
+    if (isEditorUiEntityId(entity_id)) {
         return layout;
     }
     var out = layout;
@@ -4342,6 +4351,16 @@ fn editorGameViewport(input: FrameInput) ScreenRect {
     };
 }
 
+pub fn editorGameViewportBounds(input: FrameInput) EditorViewportBounds {
+    const viewport = editorGameViewport(input);
+    return .{
+        .x = viewport.x,
+        .y = viewport.y,
+        .width = viewport.width,
+        .height = viewport.height,
+    };
+}
+
 fn cameraViewMatrix(transform_value: runtime.Transform) [16]f32 {
     const inverse_translation = translation(
         -transform_value.position[0],
@@ -5267,8 +5286,11 @@ test "UI canvas fit scaling transforms scene UI vertices" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
 
-    const input = try world.createEntity(runtime.input_entity_id, "Input");
-    try world.setInputFrame(input, .{ .viewport = .{ 200.0, 100.0, 0.0 }, .ui_visible = true });
+    try writeFrameInput(&world, .{
+        .viewport_width = 200.0,
+        .viewport_height = 100.0,
+        .ui_visible = true,
+    });
 
     const canvas = try world.createEntity("canvas", "Canvas");
     try world.setUiCanvas(canvas, .{
@@ -5293,6 +5315,46 @@ test "UI canvas fit scaling transforms scene UI vertices" {
     try std.testing.expect(vertices.items.len >= 12);
     try std.testing.expectApproxEqAbs(@as(f32, -0.4), vertices.items[0].position[0], 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 0.8), vertices.items[0].position[1], 0.001);
+}
+
+test "UI canvas fit scaling targets editor game viewport when editor is visible" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try writeFrameInput(&world, .{
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .ui_visible = true,
+        .debug_overlay_visible = true,
+    });
+
+    const canvas = try world.createEntity("canvas", "Canvas");
+    try world.setUiCanvas(canvas, .{
+        .design_size = .{ 100.0, 100.0, 0.0 },
+        .scale_mode = "fit",
+    });
+
+    const panel = try world.createEntity("panel", "Panel");
+    try world.setUiRect(panel, .{
+        .position = .{ 10.0, 10.0, 0.0 },
+        .size = .{ 20.0, 10.0, 0.0 },
+        .color = .{ 0.1, 0.2, 0.3 },
+    });
+
+    var vertices = try buildUiVertices(std.testing.allocator, &world, 1280, 720);
+    defer vertices.deinit(std.testing.allocator);
+
+    const viewport = editorGameViewport(.{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    });
+    const scale = @min(viewport.width / 100.0, viewport.height / 100.0);
+    const expected_x = viewport.x + (viewport.width - 100.0 * scale) * 0.5 + 10.0 * scale;
+    const expected_y = viewport.y + (viewport.height - 100.0 * scale) * 0.5 + 10.0 * scale;
+
+    try std.testing.expectApproxEqAbs(screenToClipX(expected_x, 1280), vertices.items[0].position[0], 0.001);
+    try std.testing.expectApproxEqAbs(screenToClipY(expected_y, 720), vertices.items[0].position[1], 0.001);
 }
 
 test "UI vertex builder renders progress fills and separators" {
@@ -6019,10 +6081,10 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
     while (rects.next()) |rect| {
         const maybe_button_state = if (rect.is_button) try renderUiButtonState(world, rect.entity) else null;
         const layout = try resolveUiLayout(world, rect.entity, rect.position, rect.size);
-        const viewport_layout = try resolveUiScreenLayout(input, rect.id, layout, rect.size);
-        const screen_layout = applyUiCanvasLayout(canvas_transform, rect.id, input, viewport_layout);
-        const screen_size = if (input.debug_overlay_visible or isEditorUiEntityId(rect.id)) rect.size else scaleUiSize(canvas_transform, rect.size);
-        const style_scale: f32 = if (input.debug_overlay_visible or isEditorUiEntityId(rect.id)) 1.0 else canvas_transform.scale;
+        const canvas_layout = applyUiCanvasLayout(canvas_transform, rect.id, layout);
+        const screen_size = if (isEditorUiEntityId(rect.id)) rect.size else scaleUiSize(canvas_transform, rect.size);
+        const screen_layout = try resolveUiScreenLayout(input, rect.id, canvas_layout, screen_size);
+        const style_scale: f32 = if (isEditorUiEntityId(rect.id)) 1.0 else canvas_transform.scale;
         const screen_radius = rect.corner_radius * style_scale;
         const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity));
         var rect_color = rect.color;
@@ -6052,9 +6114,9 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
     var separators = world.uiSeparators();
     while (separators.next()) |separator| {
         const layout = try resolveUiLayout(world, separator.entity, separator.position, separator.size);
-        const viewport_layout = try resolveUiScreenLayout(input, separator.id, layout, separator.size);
-        const screen_layout = applyUiCanvasLayout(canvas_transform, separator.id, input, viewport_layout);
-        const screen_size = if (input.debug_overlay_visible or isEditorUiEntityId(separator.id)) separator.size else scaleUiSize(canvas_transform, separator.size);
+        const canvas_layout = applyUiCanvasLayout(canvas_transform, separator.id, layout);
+        const screen_size = if (isEditorUiEntityId(separator.id)) separator.size else scaleUiSize(canvas_transform, separator.size);
+        const screen_layout = try resolveUiScreenLayout(input, separator.id, canvas_layout, screen_size);
         const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity));
         try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, screen_size, separator.color, 0.0, maybe_clip);
     }
@@ -6063,14 +6125,15 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
     while (texts.next()) |text| {
         const item_size = try uiLayoutItemSize(world, text.entity);
         const layout = try resolveUiLayout(world, text.entity, text.position, item_size);
-        const viewport_layout = try resolveUiScreenLayout(input, text.id, layout, item_size);
-        const screen_layout = applyUiCanvasLayout(canvas_transform, text.id, input, viewport_layout);
+        const canvas_layout = applyUiCanvasLayout(canvas_transform, text.id, layout);
+        const screen_item_size = if (isEditorUiEntityId(text.id)) item_size else scaleUiSize(canvas_transform, item_size);
+        const screen_layout = try resolveUiScreenLayout(input, text.id, canvas_layout, screen_item_size);
         const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity));
         var resolved_text = text;
-        if (input.debug_overlay_visible or isEditorUiEntityId(text.id)) {
+        if (isEditorUiEntityId(text.id)) {
             resolved_text.position = try resolveUiTextPosition(world, text.entity, text, screen_layout.position);
         } else {
-            const design_position = try resolveUiTextPosition(world, text.entity, text, viewport_layout.position);
+            const design_position = try resolveUiTextPosition(world, text.entity, text, layout.position);
             resolved_text.position = scaleUiVec3(canvas_transform, design_position);
             resolved_text.size *= canvas_transform.scale;
         }

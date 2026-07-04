@@ -904,29 +904,42 @@ fn pointInsideUiClip(point: [2]f32, clip: ?UiClipRect) bool {
 
 fn sceneUiPointerPosition(world: *World, input_entity: runtime.EntityHandle, pointer_position: [2]f32) ![2]f32 {
     const debug_overlay_visible = try world.getBoolean(input_entity, runtime.input_frame_component_id, "debug_overlay_visible");
-    if (debug_overlay_visible) {
-        return pointer_position;
-    }
-
     const viewport = try world.getVec3(input_entity, runtime.input_frame_component_id, "viewport");
-    const transform = try sceneUiCanvasTransform(world, viewport);
+    const transform = try sceneUiCanvasTransform(world, viewport, debug_overlay_visible);
     return .{
         (pointer_position[0] - transform.offset[0]) / transform.scale,
         (pointer_position[1] - transform.offset[1]) / transform.scale,
     };
 }
 
-fn sceneUiCanvasTransform(world: *World, viewport: [3]f32) !UiCanvasTransform {
+fn sceneUiCanvasTransform(world: *World, viewport: [3]f32, debug_overlay_visible: bool) !UiCanvasTransform {
     if (viewport[0] <= 0.0 or viewport[1] <= 0.0) {
         return .{};
     }
 
+    const target = if (debug_overlay_visible) blk: {
+        const bounds = render.editorGameViewportBounds(.{
+            .debug_overlay_visible = true,
+            .viewport_width = viewport[0],
+            .viewport_height = viewport[1],
+        });
+        break :blk bounds;
+    } else render.EditorViewportBounds{
+        .x = 0.0,
+        .y = 0.0,
+        .width = viewport[0],
+        .height = viewport[1],
+    };
+
     for (0..world.entityCount()) |index| {
         const entity = runtime.EntityHandle{ .index = @intCast(index) };
         const canvas = (try uiCanvas(world, entity)) orelse continue;
-        return try resolveUiCanvasTransform(canvas, viewport[0], viewport[1]);
+        var transform = try resolveUiCanvasTransform(canvas, target.width, target.height);
+        transform.offset[0] += target.x;
+        transform.offset[1] += target.y;
+        return transform;
     }
-    return .{};
+    return .{ .offset = .{ target.x, target.y } };
 }
 
 fn resolveUiCanvasTransform(canvas: UiCanvas, width: f32, height: f32) !UiCanvasTransform {
@@ -3071,6 +3084,40 @@ test "LiveProject editor scrolling uses render system profile count hint" {
     try std.testing.expectApproxEqAbs(@as(f32, 18.0), live_project.editor_state.system_scroll_target_y, 0.001);
     try std.testing.expect(live_project.editor_state.system_scroll_y > 0.0);
     try std.testing.expect(live_project.editor_state.system_scroll_y < live_project.editor_state.system_scroll_target_y);
+}
+
+test "scene UI pointer transform targets editor game viewport when editor is visible" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const input = try world.createEntity(runtime.input_entity_id, "Input");
+    try world.setInputFrame(input, .{
+        .viewport = .{ 1280.0, 720.0, 0.0 },
+        .ui_visible = true,
+        .debug_overlay_visible = true,
+    });
+
+    const canvas = try world.createEntity("canvas", "Canvas");
+    try world.setUiCanvas(canvas, .{
+        .design_size = .{ 640.0, 480.0, 0.0 },
+        .scale_mode = "fit",
+    });
+
+    const bounds = render.editorGameViewportBounds(.{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    });
+    const scale = @min(bounds.width / 640.0, bounds.height / 480.0);
+    const design_point = [2]f32{ 48.0, 36.0 };
+    const pointer = [2]f32{
+        bounds.x + (bounds.width - 640.0 * scale) * 0.5 + design_point[0] * scale,
+        bounds.y + (bounds.height - 480.0 * scale) * 0.5 + design_point[1] * scale,
+    };
+
+    const resolved = try sceneUiPointerPosition(&world, input, pointer);
+    try std.testing.expectApproxEqAbs(design_point[0], resolved[0], 0.001);
+    try std.testing.expectApproxEqAbs(design_point[1], resolved[1], 0.001);
 }
 
 test "LiveProject emits UI command events before scheduled scripts run" {
