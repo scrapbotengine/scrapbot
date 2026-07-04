@@ -54,6 +54,7 @@ const editor_panel_section_gap: f32 = 18.0;
 const editor_panel_label_gap: f32 = 10.0;
 const editor_panel_bottom_padding: f32 = 18.0;
 const editor_system_row_stride: f32 = 36.0;
+const editor_system_row_padding_x: f32 = 12.0;
 const editor_system_scroll_pixels_per_wheel: f32 = 18.0;
 const editor_system_scroll_smoothing: f32 = 22.0;
 const editor_scrollbar_width: f32 = 6.0;
@@ -62,8 +63,8 @@ const render_system_profile_window_frames: usize = 120;
 const editor_control_button_width: f32 = 104.0;
 const editor_control_button_height: f32 = 36.0;
 const editor_control_button_gap: f32 = 14.0;
-const editor_panel_corner_radius: f32 = 8.0;
-const editor_sidebar_panel_margin: f32 = 4.0;
+const editor_panel_corner_radius: f32 = 16.0;
+const editor_sidebar_panel_margin: f32 = 6.0;
 const editor_button_corner_radius: f32 = 6.0;
 const editor_command_play_toggle = "machina.editor.play_toggle";
 const editor_command_step = "machina.editor.step";
@@ -1910,13 +1911,13 @@ fn extractEditorShellInto(allocator: std.mem.Allocator, world: *runtime.World, i
         .padding = .{ 0.0, 0.0, 0.0 },
     }) catch |err| return mapWorldError(err);
 
-    try extractEditorShellLayoutRect(world, "machina.editor.shell.left_sidebar", "Editor Left Sidebar", layout.left.size3(), 0, editor_palette.shell);
+    try extractEditorShellLayoutRect(world, "machina.editor.shell.left_sidebar", "Editor Left Sidebar", layout.left.size3(), 0, editor_palette.panel);
     try extractEditorShellLayoutSeparator(world, "machina.editor.shell.splitter.left", "Editor Left Splitter", layout.left_splitter.size3(), 1, editorSplitterColor(input, .left, hovered_splitter));
     try extractEditorSplitterHitTarget(world, input, .left);
     try extractEditorShellLayoutSpacer(world, "machina.editor.shell.game_viewport", "Editor Game Viewport Slot", .{ editor_min_game_viewport_width, body.height, 0.0 }, 2, 1.0);
     try extractEditorShellLayoutSeparator(world, "machina.editor.shell.splitter.right", "Editor Right Splitter", layout.right_splitter.size3(), 3, editorSplitterColor(input, .right, hovered_splitter));
     try extractEditorSplitterHitTarget(world, input, .right);
-    try extractEditorShellLayoutRect(world, "machina.editor.shell.right_sidebar", "Editor Right Sidebar", layout.right.size3(), 4, editor_palette.shell);
+    try extractEditorShellLayoutRect(world, "machina.editor.shell.right_sidebar", "Editor Right Sidebar", layout.right.size3(), 4, editor_palette.panel);
 
     const frame_color = editor_palette.panel_muted;
     try extractEditorShellRect(world, "machina.editor.shell.viewport.border.top", .{
@@ -2054,7 +2055,7 @@ fn extractDebugOverlayInto(
         .y = panel.y,
         .width = panel_size[0],
         .height = panel_size[1],
-    }, editor_palette.panel, editor_panel_corner_radius);
+    }, editor_palette.panel, 0.0);
 
     if (!has_profiles) {
         try extractEditorComponentInspectorInto(allocator, world, scene_world, input);
@@ -2102,15 +2103,15 @@ fn extractDebugOverlayInto(
         const duration_text = formatSystemProfileDuration(allocator, profile) catch return RenderError.OutOfMemory;
         defer allocator.free(duration_text);
         const duration_width = editorTextWidth(duration_text, editor_system_text_size);
-        const duration_x = @max(row_width - editor_inspector_card_padding_x - duration_width, editor_inspector_card_padding_x);
-        const label_max_width = @max(duration_x - editor_inspector_card_padding_x - editor_inspector_field_column_gap, 1.0);
+        const duration_x = @max(row_width - editor_system_row_padding_x - duration_width, editor_system_row_padding_x);
+        const label_max_width = @max(duration_x - editor_system_row_padding_x - editor_inspector_field_column_gap, 1.0);
         const label_text = fitEditorTextToWidth(allocator, profile.id, editor_system_text_size, label_max_width) catch return RenderError.OutOfMemory;
         defer allocator.free(label_text);
 
         const label_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}.label", .{profile_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(label_id);
         _ = try extractEditorChildText(world, label_id, "Editor System Row Label", "machina.editor.debug.systems.table", .{
-            editor_inspector_card_padding_x,
+            editor_system_row_padding_x,
             row_y + 2.0,
             0.0,
         }, label_text, editor_system_text_size, editor_palette.text);
@@ -2266,7 +2267,7 @@ fn extractEditorComponentInspectorInto(
         .y = panel_y,
         .width = panel_width,
         .height = panel_height,
-    }, editor_palette.panel, editor_panel_corner_radius);
+    }, editor_palette.panel, 0.0);
 
     try extractEditorText(world, "machina.editor.inspector.title", "Editor Inspector Title", .{
         panel_x + editor_panel_padding_x,
@@ -6482,7 +6483,7 @@ test "debug overlay extracts FPS label when visible" {
     const debug_panel_x = state.world.getVec3(debug_panel, runtime.ui_rect_component_id, "position") catch |err| return mapWorldError(err);
     const debug_panel_radius = try state.world.getFloat(debug_panel, runtime.ui_rect_component_id, "corner_radius");
     try std.testing.expectApproxEqAbs(expected_left_panel.x, debug_panel_x[0], 0.001);
-    try std.testing.expectApproxEqAbs(editor_panel_corner_radius, debug_panel_radius, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), debug_panel_radius, 0.001);
     try std.testing.expect(state.world.findEntityById("machina.editor.shell.top_bar") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.shell.bottom_bar") != null);
     const left_sidebar_entity = state.world.findEntityById("machina.editor.shell.left_sidebar") orelse return error.TestExpectedEqual;
@@ -6490,10 +6491,9 @@ test "debug overlay extracts FPS label when visible" {
     const left_sidebar_color = try state.world.getVec3(left_sidebar_entity, runtime.ui_rect_component_id, "color");
     const debug_panel_color = try state.world.getVec3(debug_panel, runtime.ui_rect_component_id, "color");
     for (0..3) |channel| {
-        try std.testing.expectApproxEqAbs(editor_palette.shell[channel], left_sidebar_color[channel], 0.001);
+        try std.testing.expectApproxEqAbs(editor_palette.panel[channel], left_sidebar_color[channel], 0.001);
         try std.testing.expectApproxEqAbs(editor_palette.panel[channel], debug_panel_color[channel], 0.001);
     }
-    try std.testing.expect(left_sidebar_color[0] != debug_panel_color[0]);
     try std.testing.expect(state.world.findEntityById("machina.editor.shell.viewport.frame") == null);
     const bottom = editorBottomBarRect(input);
     const status = state.world.findEntityById("machina.editor.bottom.status") orelse return error.TestExpectedEqual;
