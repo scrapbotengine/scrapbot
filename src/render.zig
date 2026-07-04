@@ -47,6 +47,8 @@ const editor_min_game_viewport_width: f32 = 320.0;
 const editor_splitter_width: f32 = 2.0;
 const editor_splitter_hit_width: f32 = 12.0;
 const editor_performance_display_interval_ns: u64 = 333_000_000;
+const live_run_default_delta_seconds: f32 = 1.0 / 60.0;
+const live_run_max_delta_seconds: f32 = 0.1;
 const editor_system_text_size: f32 = 1.0;
 const editor_panel_padding_x: f32 = 16.0;
 const editor_panel_padding_y: f32 = 22.0;
@@ -920,8 +922,8 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         }
 
         const frame_ticks = sdl.machina_sdl_get_ticks_ns();
+        const elapsed_ns = if (frame_ticks > last_frame_ticks) frame_ticks - last_frame_ticks else 0;
         if (frame_ticks > last_frame_ticks) {
-            const elapsed_ns = frame_ticks - last_frame_ticks;
             last_frame_ticks = frame_ticks;
             const instant_fps = 1_000_000_000.0 / @as(f32, @floatFromInt(elapsed_ns));
             smoothed_fps = if (smoothed_fps == 0.0) instant_fps else smoothed_fps * 0.9 + instant_fps * 0.1;
@@ -942,7 +944,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             }
         }
 
-        const delta_seconds: f32 = 0.025;
+        const delta_seconds = liveRunDeltaSecondsFromElapsedNs(elapsed_ns);
         input.delta_seconds = delta_seconds;
         input.viewport_width = @floatFromInt(width);
         input.viewport_height = @floatFromInt(height);
@@ -4191,6 +4193,19 @@ fn cameraStateForInput(world: *const runtime.World, input: FrameInput) RenderErr
     return validateCamera(camera);
 }
 
+fn liveRunDeltaSecondsFromElapsedNs(elapsed_ns: u64) f32 {
+    if (elapsed_ns == 0) {
+        return live_run_default_delta_seconds;
+    }
+
+    const elapsed_seconds = @as(f64, @floatFromInt(elapsed_ns)) / @as(f64, @floatFromInt(std.time.ns_per_s));
+    if (!std.math.isFinite(elapsed_seconds) or elapsed_seconds <= 0.0) {
+        return live_run_default_delta_seconds;
+    }
+
+    return @floatCast(@min(elapsed_seconds, @as(f64, live_run_max_delta_seconds)));
+}
+
 fn updateFlyCamera(state: *FlyCameraState, world: *const runtime.World, input: FrameInput, delta_seconds: f32) RenderError!?runtime.Transform {
     const active = flyCameraInputActive(input);
     if (!state.initialized and !active) {
@@ -6414,6 +6429,21 @@ test "ctrl-tab debug overlay toggle updates editor visibility only" {
     try std.testing.expect(isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_TAB, true));
     try std.testing.expect(!isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_TAB, false));
     try std.testing.expect(!isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_F1, true));
+}
+
+test "live run delta conversion uses measured elapsed seconds" {
+    const delta = liveRunDeltaSecondsFromElapsedNs(16_666_667);
+    try std.testing.expectApproxEqAbs(@as(f32, 1.0 / 60.0), delta, 0.000001);
+}
+
+test "live run delta conversion falls back for non-advancing ticks" {
+    const delta = liveRunDeltaSecondsFromElapsedNs(0);
+    try std.testing.expectApproxEqAbs(live_run_default_delta_seconds, delta, 0.000001);
+}
+
+test "live run delta conversion clamps large spikes" {
+    const delta = liveRunDeltaSecondsFromElapsedNs(2 * std.time.ns_per_s);
+    try std.testing.expectApproxEqAbs(live_run_max_delta_seconds, delta, 0.000001);
 }
 
 test "debug overlay extracts FPS label when visible" {

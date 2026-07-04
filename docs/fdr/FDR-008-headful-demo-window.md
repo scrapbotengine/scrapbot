@@ -20,6 +20,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 - Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
 - UI rectangles and text labels render after 3D scene content as an overlay.
 - Users can run `machina run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
+- Headful live updates use measured elapsed frame time capped at a short spike limit; headless `step`, `bench`, and `test` runs remain deterministic and use their explicit `--dt` or manifest timestep.
 - In headful runs, holding the right mouse button enables a fly camera. Mouse movement changes view direction; W/A/S/D moves relative to the camera; Space moves up; Ctrl moves down. While active, the SDL window uses relative mouse mode so view rotation can continue at window edges.
 - The fly camera initializes from the scene-authored camera and applies as a render-only camera override. It does not mutate scene files or live scene camera components.
 - When the editor/debug overlay is visible, fly-camera input only applies while the pointer is over the game viewport.
@@ -54,19 +55,25 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 **Why:** A visible window normally runs until closed, but development agents and CI need a bounded smoke-test path that still initializes the same surface and presentation code.
 **Tradeoff:** The option is an engine-runner concern rather than project data, so it should remain a CLI/runtime flag.
 
-### 5. Keep editor visibility as a runtime option
+### 5. Use measured elapsed time for live updates
+
+**Decision:** Headful `machina run` advances scripts, editor animation, and fly-camera motion with elapsed frame time measured from the window loop, clamped to a short maximum.
+**Why:** Interactive runs should reflect real presentation cadence instead of moving a fixed amount per presented frame. The clamp prevents debugger pauses, reload stalls, or OS scheduling hiccups from injecting a large gameplay step.
+**Tradeoff:** Live window runs are intentionally not deterministic across machines or frame rates. Deterministic scenarios should continue to use `machina step`, `machina bench`, or `machina test` with explicit timesteps.
+
+### 6. Keep editor visibility as a runtime option
 
 **Decision:** `--editor` is supported on the headful run command and starts the engine-owned editor/debug overlay visible.
 **Why:** Normal gameplay runs should show the game first, while editor sessions need immediate tooling chrome without mutating project data.
 **Tradeoff:** Early editor state is controlled by runner flags until editor session persistence is designed.
 
-### 6. Share the renderer ECS path with offscreen rendering
+### 7. Share the renderer ECS path with offscreen rendering
 
 **Decision:** Headful rendering extracts, prepares, queues, and draws through the same renderer-owned ECS world and schedule as offscreen rendering.
 **Why:** Visible windows and headless snapshots should exercise the same rendering architecture wherever possible. This follows ADR-013.
 **Tradeoff:** Backend resource lifetime is still managed by the renderer facade until native/internal component storage exists.
 
-### 7. Add a render-only fly camera for headful exploration
+### 8. Add a render-only fly camera for headful exploration
 
 **Decision:** The headful runner owns a fly-camera transform initialized from the current scene camera. While right mouse is held, pointer delta and semantic movement input update that transform; rendering receives it as a frame camera override.
 **Why:** Dense scenes such as `spawn_swarm` need interactive navigation before a full editor camera/tool mode exists. Keeping this as a render-only override gives immediate inspection value without changing project scene data or requiring a gameplay camera component model.
