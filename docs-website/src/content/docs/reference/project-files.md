@@ -30,6 +30,26 @@ name = "Main"
 version = 1
 
 [[entities]]
+id = "machina.renderer"
+name = "Renderer"
+
+[entities.components."machina.renderer"]
+hdr = true
+tone_mapping = "aces"
+exposure = 0.0
+postprocess_enabled = true
+antialiasing = "fxaa"
+bloom_enabled = true
+bloom_threshold = 0.85
+bloom_intensity = 0.12
+bloom_radius = 1.0
+vignette_enabled = true
+vignette_strength = 0.24
+vignette_radius = 0.82
+chromatic_aberration_enabled = true
+chromatic_aberration_strength = 0.0025
+
+[[entities]]
 id = "entity-id"
 name = "Entity Name"
 

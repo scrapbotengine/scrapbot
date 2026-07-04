@@ -31,6 +31,7 @@ pub const transform_component_id = "machina.transform";
 pub const cube_renderer_component_id = "machina.render.cube";
 pub const geometry_primitive_component_id = "machina.geometry.primitive";
 pub const surface_material_component_id = "machina.material.surface";
+pub const renderer_component_id = "machina.renderer";
 pub const camera_component_id = "machina.camera";
 pub const directional_light_component_id = "machina.light.directional";
 pub const shadow_caster_component_id = "machina.shadow.caster";
@@ -570,6 +571,28 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .fields = &material_fields,
     });
 
+    const renderer_fields = [_]ComponentFieldDefinition{
+        .{ .name = "hdr", .value_type = .boolean },
+        .{ .name = "tone_mapping", .value_type = .string },
+        .{ .name = "exposure", .value_type = .float },
+        .{ .name = "postprocess_enabled", .value_type = .boolean },
+        .{ .name = "antialiasing", .value_type = .string },
+        .{ .name = "bloom_enabled", .value_type = .boolean },
+        .{ .name = "bloom_threshold", .value_type = .float },
+        .{ .name = "bloom_intensity", .value_type = .float },
+        .{ .name = "bloom_radius", .value_type = .float },
+        .{ .name = "vignette_enabled", .value_type = .boolean },
+        .{ .name = "vignette_strength", .value_type = .float },
+        .{ .name = "vignette_radius", .value_type = .float },
+        .{ .name = "chromatic_aberration_enabled", .value_type = .boolean },
+        .{ .name = "chromatic_aberration_strength", .value_type = .float },
+    };
+    try registry.registerEngineComponent(.{
+        .id = renderer_component_id,
+        .version = 1,
+        .fields = &renderer_fields,
+    });
+
     const camera_fields = [_]ComponentFieldDefinition{
         .{ .name = "fov_y_degrees", .value_type = .float },
         .{ .name = "near", .value_type = .float },
@@ -959,6 +982,26 @@ pub const RenderDirectionalLight = struct {
     color: [3]f32,
     intensity: f32,
     ambient: f32,
+};
+
+pub const RendererSettings = struct {
+    entity: EntityHandle,
+    id: []const u8,
+    name: []const u8,
+    hdr: bool,
+    tone_mapping: []const u8,
+    exposure: f32,
+    postprocess_enabled: bool,
+    antialiasing: []const u8,
+    bloom_enabled: bool,
+    bloom_threshold: f32,
+    bloom_intensity: f32,
+    bloom_radius: f32,
+    vignette_enabled: bool,
+    vignette_strength: f32,
+    vignette_radius: f32,
+    chromatic_aberration_enabled: bool,
+    chromatic_aberration_strength: f32,
 };
 
 pub const UiRectComponent = struct {
@@ -1500,6 +1543,26 @@ pub const World = struct {
             .{ .name = "ambient", .value = .{ .float = light.ambient } },
         };
         try self.setComponent(handle, directional_light_component_id, &fields);
+    }
+
+    pub fn setRendererSettings(self: *World, handle: EntityHandle, renderer: RendererSettings) WorldError!void {
+        const fields = [_]ComponentFieldValue{
+            .{ .name = "hdr", .value = .{ .boolean = renderer.hdr } },
+            .{ .name = "tone_mapping", .value = .{ .string = renderer.tone_mapping } },
+            .{ .name = "exposure", .value = .{ .float = renderer.exposure } },
+            .{ .name = "postprocess_enabled", .value = .{ .boolean = renderer.postprocess_enabled } },
+            .{ .name = "antialiasing", .value = .{ .string = renderer.antialiasing } },
+            .{ .name = "bloom_enabled", .value = .{ .boolean = renderer.bloom_enabled } },
+            .{ .name = "bloom_threshold", .value = .{ .float = renderer.bloom_threshold } },
+            .{ .name = "bloom_intensity", .value = .{ .float = renderer.bloom_intensity } },
+            .{ .name = "bloom_radius", .value = .{ .float = renderer.bloom_radius } },
+            .{ .name = "vignette_enabled", .value = .{ .boolean = renderer.vignette_enabled } },
+            .{ .name = "vignette_strength", .value = .{ .float = renderer.vignette_strength } },
+            .{ .name = "vignette_radius", .value = .{ .float = renderer.vignette_radius } },
+            .{ .name = "chromatic_aberration_enabled", .value = .{ .boolean = renderer.chromatic_aberration_enabled } },
+            .{ .name = "chromatic_aberration_strength", .value = .{ .float = renderer.chromatic_aberration_strength } },
+        };
+        try self.setComponent(handle, renderer_component_id, &fields);
     }
 
     pub fn setShadowCaster(self: *World, handle: EntityHandle) WorldError!void {
@@ -2208,6 +2271,32 @@ pub const World = struct {
             .color = self.getVec3(handle, directional_light_component_id, "color") catch return null,
             .intensity = self.getFloat(handle, directional_light_component_id, "intensity") catch return null,
             .ambient = self.getFloat(handle, directional_light_component_id, "ambient") catch return null,
+        };
+    }
+
+    pub fn rendererSettings(self: World) ?RendererSettings {
+        var cursor: usize = 0;
+        const component_ids = [_][]const u8{renderer_component_id};
+        const handle = self.queryNext(&component_ids, &cursor) orelse return null;
+        const stored_entity = self.entity(handle) catch return null;
+        return .{
+            .entity = handle,
+            .id = stored_entity.id,
+            .name = stored_entity.name,
+            .hdr = self.getBoolean(handle, renderer_component_id, "hdr") catch return null,
+            .tone_mapping = self.getString(handle, renderer_component_id, "tone_mapping") catch return null,
+            .exposure = self.getFloat(handle, renderer_component_id, "exposure") catch return null,
+            .postprocess_enabled = self.getBoolean(handle, renderer_component_id, "postprocess_enabled") catch return null,
+            .antialiasing = self.getString(handle, renderer_component_id, "antialiasing") catch return null,
+            .bloom_enabled = self.getBoolean(handle, renderer_component_id, "bloom_enabled") catch return null,
+            .bloom_threshold = self.getFloat(handle, renderer_component_id, "bloom_threshold") catch return null,
+            .bloom_intensity = self.getFloat(handle, renderer_component_id, "bloom_intensity") catch return null,
+            .bloom_radius = self.getFloat(handle, renderer_component_id, "bloom_radius") catch return null,
+            .vignette_enabled = self.getBoolean(handle, renderer_component_id, "vignette_enabled") catch return null,
+            .vignette_strength = self.getFloat(handle, renderer_component_id, "vignette_strength") catch return null,
+            .vignette_radius = self.getFloat(handle, renderer_component_id, "vignette_radius") catch return null,
+            .chromatic_aberration_enabled = self.getBoolean(handle, renderer_component_id, "chromatic_aberration_enabled") catch return null,
+            .chromatic_aberration_strength = self.getFloat(handle, renderer_component_id, "chromatic_aberration_strength") catch return null,
         };
     }
 
@@ -3340,7 +3429,8 @@ test "engine component schemas are registered from runtime" {
     try std.testing.expect(registry.findComponent(input_pointer_component_id) != null);
     try std.testing.expect(registry.findComponent(input_keyboard_component_id) != null);
     try std.testing.expect(registry.findComponent(input_frame_component_id) != null);
-    try std.testing.expectEqual(@as(usize, 29), registry.componentCount());
+    try std.testing.expect(registry.findComponent(renderer_component_id) != null);
+    try std.testing.expectEqual(@as(usize, 30), registry.componentCount());
 
     const transform = registry.findComponent(transform_component_id) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), transform.fields.len);

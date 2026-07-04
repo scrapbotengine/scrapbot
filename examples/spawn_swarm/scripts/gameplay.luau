@@ -3,6 +3,7 @@
 local Transform = ecs.component<<MachinaTransform>>("machina.transform")
 local Geometry = ecs.component<<MachinaGeometryPrimitive>>("machina.geometry.primitive")
 local Material = ecs.component<<MachinaSurfaceMaterial>>("machina.material.surface")
+local Renderer = ecs.component<<MachinaRenderer>>("machina.renderer")
 local ShadowCaster = ecs.component<<MachinaShadowCaster>>("machina.shadow.caster")
 local ShadowReceiver = ecs.component<<MachinaShadowReceiver>>("machina.shadow.receiver")
 
@@ -16,22 +17,23 @@ local SwarmMotion = ecs.component("swarm_motion", {
 })
 
 local Swarm = ecs.query(Transform, SwarmMotion)
+local Renderers = ecs.query(Renderer)
 local elapsed = 0
 
 local function palette(index: number): { number }
   local bucket = index % 6
   if bucket == 0 then
-    return { 1.0, 0.42, 0.08 }
+    return { 2.15, 0.55, 0.12 }
   elseif bucket == 1 then
-    return { 0.08, 0.58, 1.0 }
+    return { 0.14, 0.86, 2.3 }
   elseif bucket == 2 then
-    return { 0.48, 0.92, 0.38 }
+    return { 0.58, 1.85, 0.42 }
   elseif bucket == 3 then
-    return { 1.0, 0.82, 0.18 }
+    return { 2.45, 1.65, 0.25 }
   elseif bucket == 4 then
-    return { 0.8, 0.44, 1.0 }
+    return { 1.35, 0.62, 2.18 }
   else
-    return { 0.04, 0.86, 0.78 }
+    return { 0.1, 1.72, 1.5 }
   end
 end
 
@@ -64,9 +66,25 @@ ecs.system("spawn_swarm", {
       rings = 0,
     })
     floor:add(Material, {
-      base_color = { 0.12, 0.18, 0.26 },
+      base_color = { 0.055, 0.078, 0.12 },
     })
     floor:add(ShadowReceiver)
+
+    local core = world.spawn("swarm-core", "Swarm Core")
+    core:add(Transform, {
+      position = { 0.0, 1.02, -0.72 },
+      rotation = { 0.0, 0.0, 0.0 },
+      scale = { 0.34, 0.34, 0.34 },
+    })
+    core:add(Geometry, {
+      primitive = "uv_sphere",
+      segments = 24,
+      rings = 12,
+    })
+    core:add(Material, {
+      base_color = { 3.4, 1.85, 0.48 },
+    })
+    core:add(ShadowCaster)
 
     local index = 0
     for ring = 1, 8 do
@@ -153,5 +171,23 @@ ecs.system("animate_swarm", {
 
     view:write_vec3(Transform, "position", positions)
     view:write_vec3(Transform, "rotation", rotations)
+  end,
+})
+
+ecs.system("animate_render_pipeline", {
+  phase = "update",
+  query = Renderers,
+  writes = ecs.refs(Renderer),
+  after = { "animate_swarm" },
+  run = function(world, _dt)
+    local bloom = 0.52 + math.sin(elapsed * 0.62) * 0.08
+    local vignette = 0.34 + math.sin(elapsed * 0.41 + 1.2) * 0.035
+    local aberration = 0.0027 + math.sin(elapsed * 0.53 + 0.6) * 0.0008
+
+    for _entity, renderer in Renderers:iter(world) do
+      renderer.bloom_intensity = bloom
+      renderer.vignette_strength = vignette
+      renderer.chromatic_aberration_strength = aberration
+    end
   end,
 })

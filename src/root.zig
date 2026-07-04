@@ -34,6 +34,7 @@ pub const GeometryPrimitive = runtime.GeometryPrimitive;
 pub const SurfaceMaterial = runtime.SurfaceMaterial;
 pub const Camera = runtime.Camera;
 pub const DirectionalLight = runtime.DirectionalLight;
+pub const RendererSettings = runtime.RendererSettings;
 pub const UiRect = runtime.UiRectComponent;
 pub const UiText = runtime.UiTextComponent;
 pub const UiCommand = runtime.UiCommandComponent;
@@ -341,7 +342,7 @@ pub const LiveProject = struct {
     }
 
     pub fn renderScene(self: *const LiveProject) RenderScene {
-        return self.scene.renderScene();
+        return .{ .world = &self.scene.world };
     }
 
     pub fn systemProfileSnapshots(self: *LiveProject) []const SystemProfileSnapshot {
@@ -840,6 +841,26 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             .data =
             \\name = "Main"
             \\version = 1
+            \\
+            \\[[entities]]
+            \\id = "machina.renderer"
+            \\name = "Renderer"
+            \\
+            \\[entities.components."machina.renderer"]
+            \\hdr = true
+            \\tone_mapping = "aces"
+            \\exposure = 0.0
+            \\postprocess_enabled = true
+            \\antialiasing = "fxaa"
+            \\bloom_enabled = true
+            \\bloom_threshold = 0.85
+            \\bloom_intensity = 0.12
+            \\bloom_radius = 1.0
+            \\vignette_enabled = true
+            \\vignette_strength = 0.24
+            \\vignette_radius = 0.82
+            \\chromatic_aberration_enabled = true
+            \\chromatic_aberration_strength = 0.0025
             \\
             \\[[entities]]
             \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001"
@@ -2131,6 +2152,9 @@ const SceneParser = struct {
         if (self.world.entityCount() == 0) {
             return ProjectError.MissingSceneContent;
         }
+        if (self.world.componentInstanceCountFor(runtime.renderer_component_id) > 1) {
+            return ProjectError.InvalidSceneEntity;
+        }
 
         const world = self.world;
         self.world = World.init(self.allocator);
@@ -2154,6 +2178,7 @@ const SceneParser = struct {
             if (!componentHasEveryDefinedField(component.*, definition.*)) {
                 return ProjectError.InvalidSceneEntity;
             }
+            try validateSceneComponentValues(component.*);
             try self.world.setComponent(handle, component.id, component.fields.items);
         }
     }
@@ -2170,7 +2195,90 @@ fn addSceneComponentDefaults(allocator: std.mem.Allocator, component: *Component
         try addSceneComponentDefaultField(allocator, component, "grow", .{ .float = 0.0 });
         try addSceneComponentDefaultField(allocator, component, "align", .{ .string = "start" });
         try addSceneComponentDefaultField(allocator, component, "margin", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
+    } else if (std.mem.eql(u8, component.id, runtime.renderer_component_id)) {
+        try addSceneComponentDefaultField(allocator, component, "hdr", .{ .boolean = true });
+        try addSceneComponentDefaultField(allocator, component, "tone_mapping", .{ .string = "aces" });
+        try addSceneComponentDefaultField(allocator, component, "exposure", .{ .float = 0.0 });
+        try addSceneComponentDefaultField(allocator, component, "postprocess_enabled", .{ .boolean = true });
+        try addSceneComponentDefaultField(allocator, component, "antialiasing", .{ .string = "fxaa" });
+        try addSceneComponentDefaultField(allocator, component, "bloom_enabled", .{ .boolean = true });
+        try addSceneComponentDefaultField(allocator, component, "bloom_threshold", .{ .float = 0.85 });
+        try addSceneComponentDefaultField(allocator, component, "bloom_intensity", .{ .float = 0.12 });
+        try addSceneComponentDefaultField(allocator, component, "bloom_radius", .{ .float = 1.0 });
+        try addSceneComponentDefaultField(allocator, component, "vignette_enabled", .{ .boolean = true });
+        try addSceneComponentDefaultField(allocator, component, "vignette_strength", .{ .float = 0.24 });
+        try addSceneComponentDefaultField(allocator, component, "vignette_radius", .{ .float = 0.82 });
+        try addSceneComponentDefaultField(allocator, component, "chromatic_aberration_enabled", .{ .boolean = true });
+        try addSceneComponentDefaultField(allocator, component, "chromatic_aberration_strength", .{ .float = 0.0025 });
     }
+}
+
+fn validateSceneComponentValues(component: ComponentDraft) !void {
+    if (!std.mem.eql(u8, component.id, runtime.renderer_component_id)) {
+        return;
+    }
+
+    const tone_mapping = componentString(component, "tone_mapping") orelse return ProjectError.InvalidSceneEntity;
+    if (!isOneOf(tone_mapping, &.{ "none", "reinhard", "aces" })) {
+        return ProjectError.InvalidSceneEntity;
+    }
+    const antialiasing = componentString(component, "antialiasing") orelse return ProjectError.InvalidSceneEntity;
+    if (!isOneOf(antialiasing, &.{ "none", "fxaa" })) {
+        return ProjectError.InvalidSceneEntity;
+    }
+
+    try validateFiniteFloat(component, "exposure", null);
+    try validateFiniteFloat(component, "bloom_threshold", 0.0);
+    try validateFiniteFloat(component, "bloom_intensity", 0.0);
+    try validateFiniteFloat(component, "bloom_radius", 0.0);
+    try validateFiniteFloat(component, "vignette_strength", 0.0);
+    try validateFiniteFloat(component, "vignette_radius", 0.0001);
+    try validateFiniteFloat(component, "chromatic_aberration_strength", 0.0);
+}
+
+fn validateFiniteFloat(component: ComponentDraft, field_name: []const u8, min_value: ?f32) !void {
+    const value = componentFloat(component, field_name) orelse return ProjectError.InvalidSceneEntity;
+    if (!std.math.isFinite(value)) {
+        return ProjectError.InvalidSceneEntity;
+    }
+    if (min_value) |minimum| {
+        if (value < minimum) {
+            return ProjectError.InvalidSceneEntity;
+        }
+    }
+}
+
+fn componentString(component: ComponentDraft, field_name: []const u8) ?[]const u8 {
+    for (component.fields.items) |field| {
+        if (std.mem.eql(u8, field.name, field_name)) {
+            return switch (field.value) {
+                .string => |value| value,
+                else => null,
+            };
+        }
+    }
+    return null;
+}
+
+fn componentFloat(component: ComponentDraft, field_name: []const u8) ?f32 {
+    for (component.fields.items) |field| {
+        if (std.mem.eql(u8, field.name, field_name)) {
+            return switch (field.value) {
+                .float => |value| value,
+                else => null,
+            };
+        }
+    }
+    return null;
+}
+
+fn isOneOf(value: []const u8, candidates: []const []const u8) bool {
+    for (candidates) |candidate| {
+        if (std.mem.eql(u8, value, candidate)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn addSceneComponentDefaultField(allocator: std.mem.Allocator, component: *ComponentDraft, name: []const u8, value: runtime.ComponentValue) !void {
@@ -2627,6 +2735,18 @@ test "initProject creates project metadata and default scene" {
 
     try std.testing.expect(fileExists(io, root_dir, project_file_name));
     try std.testing.expect(fileExists(io, root_dir, default_scene_path));
+
+    const project = try loadProject(io, std.testing.allocator, root_path);
+    defer freeProject(std.testing.allocator, project);
+
+    var scene = try loadDefaultScene(io, std.testing.allocator, project);
+    defer freeScene(std.testing.allocator, scene);
+    const renderer_settings = scene.world.rendererSettings() orelse return error.TestExpectedEqual;
+    try std.testing.expect(renderer_settings.hdr);
+    try std.testing.expectEqualStrings("aces", renderer_settings.tone_mapping);
+    try std.testing.expect(renderer_settings.postprocess_enabled);
+    try std.testing.expectEqualStrings("fxaa", renderer_settings.antialiasing);
+    try std.testing.expect(renderer_settings.bloom_enabled);
 }
 
 test "initProject refuses to overwrite an existing project" {
@@ -2676,6 +2796,64 @@ test "loadProject accepts packaged native artifact metadata" {
     defer freeProject(std.testing.allocator, project);
     try std.testing.expectEqualStrings("native/game.zig", project.native.?);
     try std.testing.expectEqualStrings(".machina/build/native/libmachina_project.dylib", project.native_artifact.?);
+}
+
+test "loadDefaultScene parses renderer singleton settings" {
+    const root_path = ".zig-cache/test-load-scene-renderer-settings";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Game");
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.writeFile(io, .{ .sub_path = default_scene_path, .data =
+        \\name = "Main"
+        \\version = 1
+        \\
+        \\[[entities]]
+        \\id = "machina.renderer"
+        \\name = "Renderer"
+        \\
+        \\[entities.components."machina.renderer"]
+        \\hdr = true
+        \\tone_mapping = "reinhard"
+        \\exposure = 0.5
+        \\postprocess_enabled = true
+        \\antialiasing = "fxaa"
+        \\bloom_enabled = true
+        \\bloom_threshold = 0.8
+        \\bloom_intensity = 0.3
+        \\bloom_radius = 2.0
+        \\vignette_enabled = true
+        \\vignette_strength = 0.4
+        \\vignette_radius = 0.75
+        \\chromatic_aberration_enabled = true
+        \\chromatic_aberration_strength = 0.01
+        \\
+    });
+
+    const project = try loadProject(io, std.testing.allocator, root_path);
+    defer freeProject(std.testing.allocator, project);
+    var scene = try loadDefaultScene(io, std.testing.allocator, project);
+    defer freeScene(std.testing.allocator, scene);
+
+    const renderer_settings = scene.world.rendererSettings() orelse return error.TestExpectedEqual;
+    try std.testing.expect(renderer_settings.hdr);
+    try std.testing.expectEqualStrings("reinhard", renderer_settings.tone_mapping);
+    try std.testing.expectEqual(@as(f32, 0.5), renderer_settings.exposure);
+    try std.testing.expect(renderer_settings.postprocess_enabled);
+    try std.testing.expectEqualStrings("fxaa", renderer_settings.antialiasing);
+    try std.testing.expect(renderer_settings.vignette_enabled);
+    try std.testing.expectEqual(@as(f32, 0.4), renderer_settings.vignette_strength);
+    try std.testing.expectEqual(@as(f32, 0.75), renderer_settings.vignette_radius);
+    try std.testing.expect(renderer_settings.chromatic_aberration_enabled);
+    try std.testing.expectEqual(@as(f32, 0.01), renderer_settings.chromatic_aberration_strength);
+    try std.testing.expect(renderer_settings.bloom_enabled);
+    try std.testing.expectEqual(@as(f32, 0.8), renderer_settings.bloom_threshold);
+    try std.testing.expectEqual(@as(f32, 0.3), renderer_settings.bloom_intensity);
+    try std.testing.expectEqual(@as(f32, 2.0), renderer_settings.bloom_radius);
 }
 
 test "buildNativeArtifactProjectPath uses project metadata separators" {
@@ -2834,7 +3012,7 @@ test "loadDefaultScene reads cube entities from scene data" {
     defer freeScene(std.testing.allocator, scene);
 
     try std.testing.expectEqualStrings("Main", scene.name);
-    try std.testing.expectEqual(@as(usize, 3), scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 4), scene.entityCount());
     try std.testing.expectEqual(@as(usize, 1), scene.renderableMeshCount());
 
     const entity = scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
@@ -3206,7 +3384,7 @@ test "LiveProject reloads changed active scene and keeps last good state on fail
 
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
-    try std.testing.expectEqual(@as(usize, 3), live_project.scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 4), live_project.scene.entityCount());
     try std.testing.expectEqual(ReloadResult.unchanged, try live_project.pollLoadedSources());
 
     const root_dir = try cwd.openDir(io, root_path, .{});
@@ -4215,7 +4393,7 @@ test "LiveProject reloads project metadata and follows default scene changes" {
     var live_project = try LiveProject.init(io, std.testing.allocator, root_path);
     defer live_project.deinit();
     try std.testing.expectEqualStrings(default_scene_path, live_project.project.default_scene);
-    try std.testing.expectEqual(@as(usize, 3), live_project.scene.entityCount());
+    try std.testing.expectEqual(@as(usize, 4), live_project.scene.entityCount());
 
     try root_dir.writeFile(io, .{
         .sub_path = project_file_name,
