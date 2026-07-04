@@ -62,7 +62,8 @@ const render_system_profile_window_frames: usize = 120;
 const editor_control_button_width: f32 = 104.0;
 const editor_control_button_height: f32 = 36.0;
 const editor_control_button_gap: f32 = 14.0;
-const editor_panel_corner_radius: f32 = 6.0;
+const editor_panel_corner_radius: f32 = 8.0;
+const editor_sidebar_panel_margin: f32 = 4.0;
 const editor_button_corner_radius: f32 = 6.0;
 const editor_command_play_toggle = "machina.editor.play_toggle";
 const editor_command_step = "machina.editor.step";
@@ -2254,7 +2255,7 @@ fn extractEditorComponentInspectorInto(
     scene_world: *const runtime.World,
     input: FrameInput,
 ) RenderError!void {
-    const sidebar = editorRightSidebarRect(input);
+    const sidebar = editorSidebarPanelRect(editorRightSidebarRect(input));
     const panel_x = sidebar.x;
     const panel_y = sidebar.y;
     const panel_width = sidebar.width;
@@ -2520,18 +2521,25 @@ fn editorSystemRowsYOffset() f32 {
 }
 
 fn editorDebugPanelSize(input: FrameInput) [2]f32 {
-    const sidebar = editorLeftSidebarRect(input);
-    return .{ sidebar.width, sidebar.height };
+    const panel = editorSidebarPanelRect(editorLeftSidebarRect(input));
+    return .{ panel.width, panel.height };
 }
 
 fn editorSystemPanelRect(input: FrameInput) ScreenRect {
-    const sidebar = editorLeftSidebarRect(input);
-    const size = editorDebugPanelSize(input);
+    return editorSidebarPanelRect(editorLeftSidebarRect(input));
+}
+
+fn editorSidebarPanelRect(sidebar: ScreenRect) ScreenRect {
+    return insetScreenRect(sidebar, editor_sidebar_panel_margin);
+}
+
+fn insetScreenRect(rect: ScreenRect, inset: f32) ScreenRect {
+    const clamped = @max(inset, 0.0);
     return .{
-        .x = sidebar.x,
-        .y = sidebar.y,
-        .width = size[0],
-        .height = size[1],
+        .x = rect.x + clamped,
+        .y = rect.y + clamped,
+        .width = @max(rect.width - clamped * 2.0, 1.0),
+        .height = @max(rect.height - clamped * 2.0, 1.0),
     };
 }
 
@@ -6469,9 +6477,12 @@ test "debug overlay extracts FPS label when visible" {
     try std.testing.expect(!input.ui_visible);
     try std.testing.expect(input.debug_overlay_visible);
     const left_sidebar = editorLeftSidebarRect(input);
+    const expected_left_panel = editorSidebarPanelRect(left_sidebar);
     const debug_panel = state.world.findEntityById("machina.editor.debug.panel") orelse return error.TestExpectedEqual;
     const debug_panel_x = state.world.getVec3(debug_panel, runtime.ui_rect_component_id, "position") catch |err| return mapWorldError(err);
-    try std.testing.expectApproxEqAbs(left_sidebar.x, debug_panel_x[0], 0.001);
+    const debug_panel_radius = try state.world.getFloat(debug_panel, runtime.ui_rect_component_id, "corner_radius");
+    try std.testing.expectApproxEqAbs(expected_left_panel.x, debug_panel_x[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_panel_corner_radius, debug_panel_radius, 0.001);
     try std.testing.expect(state.world.findEntityById("machina.editor.shell.top_bar") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.shell.bottom_bar") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.shell.left_sidebar") != null);
@@ -6842,7 +6853,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try std.testing.expectEqualStrings("position", try state.world.getString(transform_position_label, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("0.25 0.50 0.00", try state.world.getString(transform_position_value, runtime.ui_text_component_id, "value"));
     const separator_size = try state.world.getVec3(separator, runtime.ui_separator_component_id, "size");
-    const sidebar = editorRightSidebarRect(frame_input);
+    const sidebar = editorSidebarPanelRect(editorRightSidebarRect(frame_input));
     const resolved_card_layout = try resolveUiLayout(&state.world, geometry_card, card_position);
     const resolved_separator_layout = try resolveUiLayout(&state.world, separator, try state.world.getVec3(separator, runtime.ui_separator_component_id, "position"));
     const transform_card = state.world.findEntityById("machina.editor.inspector.component.0") orelse return error.TestExpectedEqual;
@@ -6852,6 +6863,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), card_position[0], 0.001);
     try std.testing.expectApproxEqAbs(sidebar.width, card_size[0], 0.001);
     try std.testing.expectApproxEqAbs(sidebar.x, resolved_card_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_panel_corner_radius, try state.world.getFloat(geometry_card, runtime.ui_rect_component_id, "corner_radius"), 0.001);
     try std.testing.expectApproxEqAbs(editor_inspector_separator_height, separator_size[1], 0.001);
     try std.testing.expectApproxEqAbs(sidebar.width, separator_size[0], 0.001);
     try std.testing.expectApproxEqAbs(resolved_transform_card_layout.position[1] + transform_card_size[1], resolved_separator_layout.position[1], 0.001);
