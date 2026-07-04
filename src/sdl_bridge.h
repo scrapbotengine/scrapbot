@@ -13,6 +13,7 @@ typedef enum MachinaSdlEventKind {
     MACHINA_SDL_EVENT_MOUSE_BUTTON_UP = 6,
     MACHINA_SDL_EVENT_MOUSE_WHEEL = 7,
     MACHINA_SDL_EVENT_WINDOW_RESIZED = 8,
+    MACHINA_SDL_EVENT_TEXT_INPUT = 9,
 } MachinaSdlEventKind;
 
 typedef enum MachinaSdlKey {
@@ -30,6 +31,13 @@ typedef enum MachinaSdlKey {
     MACHINA_SDL_KEY_Y = 11,
     MACHINA_SDL_KEY_EQUALS = 12,
     MACHINA_SDL_KEY_MINUS = 13,
+    MACHINA_SDL_KEY_LEFT = 14,
+    MACHINA_SDL_KEY_RIGHT = 15,
+    MACHINA_SDL_KEY_HOME = 16,
+    MACHINA_SDL_KEY_END = 17,
+    MACHINA_SDL_KEY_BACKSPACE = 18,
+    MACHINA_SDL_KEY_DELETE = 19,
+    MACHINA_SDL_KEY_RETURN = 20,
 } MachinaSdlKey;
 
 typedef struct MachinaSdlEvent {
@@ -47,6 +55,7 @@ typedef struct MachinaSdlEvent {
     float wheel_x;
     float wheel_y;
     int button;
+    char text[64];
 } MachinaSdlEvent;
 
 int machina_sdl_init_video(void);
@@ -72,6 +81,7 @@ int machina_sdl_poll_event(MachinaSdlEvent *out_event);
 int machina_sdl_get_window_size(void *window, int *width, int *height);
 int machina_sdl_get_window_size_in_pixels(void *window, int *width, int *height);
 int machina_sdl_set_window_relative_mouse_mode(void *window, int enabled);
+int machina_sdl_start_text_input(void *window);
 void machina_sdl_delay_ms(uint32_t ms);
 
 int machina_sdl_button_left(void);

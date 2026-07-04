@@ -44,6 +44,22 @@ static MachinaSdlKey machina_sdl_key(SDL_Keycode key) {
         case SDLK_MINUS:
         case SDLK_KP_MINUS:
             return MACHINA_SDL_KEY_MINUS;
+        case SDLK_LEFT:
+            return MACHINA_SDL_KEY_LEFT;
+        case SDLK_RIGHT:
+            return MACHINA_SDL_KEY_RIGHT;
+        case SDLK_HOME:
+            return MACHINA_SDL_KEY_HOME;
+        case SDLK_END:
+            return MACHINA_SDL_KEY_END;
+        case SDLK_BACKSPACE:
+            return MACHINA_SDL_KEY_BACKSPACE;
+        case SDLK_DELETE:
+            return MACHINA_SDL_KEY_DELETE;
+        case SDLK_RETURN:
+        case SDLK_RETURN2:
+        case SDLK_KP_ENTER:
+            return MACHINA_SDL_KEY_RETURN;
         default:
             return MACHINA_SDL_KEY_UNKNOWN;
     }
@@ -203,6 +219,12 @@ int machina_sdl_poll_event(MachinaSdlEvent *out_event) {
                 out_event->wheel_y = -out_event->wheel_y;
             }
             break;
+        case SDL_EVENT_TEXT_INPUT:
+            out_event->kind = MACHINA_SDL_EVENT_TEXT_INPUT;
+            if (event.text.text != NULL) {
+                SDL_strlcpy(out_event->text, event.text.text, sizeof(out_event->text));
+            }
+            break;
         case SDL_EVENT_WINDOW_RESIZED:
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         case SDL_EVENT_WINDOW_METAL_VIEW_RESIZED:
@@ -226,6 +248,10 @@ int machina_sdl_get_window_size_in_pixels(void *window, int *width, int *height)
 
 int machina_sdl_set_window_relative_mouse_mode(void *window, int enabled) {
     return SDL_SetWindowRelativeMouseMode(machina_sdl_window(window), enabled != 0) ? 1 : 0;
+}
+
+int machina_sdl_start_text_input(void *window) {
+    return SDL_StartTextInput(machina_sdl_window(window)) ? 1 : 0;
 }
 
 void machina_sdl_delay_ms(uint32_t ms) {

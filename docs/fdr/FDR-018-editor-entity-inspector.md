@@ -21,13 +21,17 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Component boxes are arranged as a retained vertical group with one-pixel separators between boxes.
 - Component titles are fitted to the card width and should not overdraw adjacent content.
 - Component fields render as table-like rows with property labels on the left and values on the right.
-- Component field rows are reusable inspector editing controls: the base row handles label/value layout, focus state, clipping, and selection highlighting, while type-specific behavior decides how a selected value is displayed and edited.
-- Clicking a component field row focuses that property for editing.
-- Numeric and boolean focused properties can be nudged from the keyboard. `+`/`=` increments or enables the value, `-` decrements or disables the value, Shift uses a smaller floating-point step, and Alt uses a larger floating-point step.
-- `vec3` fields select one lane from the value column and nudge that lane only.
+- Component field rows are reusable inspector editing controls: the base row handles label layout, value input placement, focus state, and clipping, while type-specific behavior decides how a selected value is parsed and committed.
+- Each editable value renders as a darker rounded text input box. `vec3` fields render one input box per lane.
+- Clicking a value input focuses it for editing and gives it a focus-ring border plus a visible caret.
+- Numeric value inputs select their full value when focused so typing can immediately replace the existing number. Select-all-on-focus is treated as an input-control option rather than a global editor rule.
+- Focused inputs accept typed text through the platform text-input path.
+- Focused inputs support left/right caret movement, Home, End, Backspace, Delete, Ctrl+A select all, and Shift+movement text selection.
+- Typing, Backspace, and Delete replace or remove the selected range when text is selected.
+- Field changes are staged in the input buffer and apply only when the user presses Enter or the input loses focus.
 - Ctrl+Z undoes inspector field edits, and Ctrl+Shift+Z or Ctrl+Y redoes them.
 - Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files.
-- String fields are displayed but remain read-only until the editor has a text-input primitive and validation flow.
+- String fields can be edited through the same text input control, subject to the current fixed input-buffer length.
 - The inspector does not show a full entity list by default.
 - A selected renderable gets a world-space translate gizmo with X, Y, and Z handles.
 - Dragging a gizmo axis mutates the selected entity's transform position.
@@ -64,13 +68,13 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 **Decision:** Inspector component cards read selected entity components and fields from the shared ECS world, and focused primitive fields write back through the same runtime component field APIs.
 **Why:** Editor inspection and editing should reflect the actual runtime state used by scripts, native systems, rendering, and tests. This follows ADR-013 and ADR-016.
-**Tradeoff:** The first editing path is deliberately keyboard-nudge based. Freeform text input, drag sliders, typed validation widgets, scene persistence, reload transaction integration, and command grouping still need later design.
+**Tradeoff:** The first editing path is deliberately text-input based and commits on Enter or blur. Drag sliders, rich typed widgets, validation diagnostics, scene persistence, reload transaction integration, and command grouping still need later design.
 
 ### 5a. Keep component boxes bounded
 
 **Decision:** Inspector component boxes fill the right sidebar width, stack in a retained vertical group, use one-pixel separators, and render fields as left-label/right-value rows. Component titles and field rows use consistent internal padding and are clipped to the available width for the built-in bitmap font. Overflowing component stacks live inside the inspector scroll view.
 **Why:** Component ids can be long qualified strings, especially engine-owned `machina.*` ids, and editor chrome must remain legible without text escaping rounded cards.
-**Tradeoff:** Truncated ids and values need future hover, copy, tooltip, or expandable-detail affordances before the inspector is comfortable for deeper editing.
+**Tradeoff:** Truncated ids and values need future hover, copy, tooltip, horizontal scrolling, or expandable-detail affordances before the inspector is comfortable for deeper editing.
 
 ### 5b. Reserve the right sidebar for selected-entity components
 

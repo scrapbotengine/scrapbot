@@ -44,19 +44,26 @@ The system inspector and selected-entity inspector both use retained sidebar con
 
 Click a visible mesh in the game viewport to select its entity.
 
-The right sidebar shows the selected entity name/id and one component box per attached component. Component fields use a reusable inspector row shape: label on the left, value on the right, clipping inside the panel, and a visible focus state when selected.
+The right sidebar shows the selected entity name/id and one component box per attached component. Component fields use a reusable inspector row shape: label on the left, value input boxes on the right, and clipping inside the panel. Focus is shown on the input box itself, not as a full-row highlight.
 
-Click a field row to focus it for editing. The current editing slice supports primitive runtime edits:
+Click a value input to focus it for editing. Focused inputs render a focus-ring border and caret.
 
-- `+` or `=` increments numeric values and enables booleans.
-- `-` decrements numeric values and disables booleans.
-- Shift uses a smaller floating-point step.
-- Alt uses a larger floating-point step.
-- `vec3` values focus one lane from the value column and nudge that lane only.
+Numeric inputs select their full value on focus, so typing immediately replaces the existing number. Other inputs can choose different focus behavior.
+
+The current editing slice supports primitive runtime text edits:
+
+- Typed text inserts into the focused input.
+- Left and Right move the caret; Shift+Left and Shift+Right extend the text selection.
+- Home and End jump to the start or end of the input; Shift+Home and Shift+End extend the text selection.
+- Ctrl+A selects all input text.
+- Backspace and Delete remove text around the caret or remove the selected text.
+- `vec3` values render one input box per lane.
+- Enter commits the edited text into the live ECS field.
+- Moving focus away also commits the edited text.
 - Ctrl+Z undoes inspector field edits.
 - Ctrl+Shift+Z or Ctrl+Y redoes inspector field edits.
 
-Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files, and string fields are still read-only until the editor has a proper text-input primitive.
+Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files.
 
 Editor chrome pointer ownership is resolved through the same retained UI routing used by project UI. Playback buttons, splitter hit areas, and the systems scroll view are generated as ordinary `machina.ui.*` entities, then routed through the shared pointer route instead of private editor hit-test ladders.
 
