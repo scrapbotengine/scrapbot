@@ -35,3 +35,8 @@ run = "mise machina bench examples/spawn_swarm --frames 240"
 [tasks.machina]
 description = "Build and run the machina CLI"
 run = "mise build && ./zig-out/bin/machina"
+
+[tasks.docs-website]
+description = "Run the docs website in development mode"
+dir = "docs-website"
+run = "pnpm dev --host 127.0.0.1 --port $CONDUCTOR_PORT"

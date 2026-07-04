@@ -88,6 +88,10 @@ fn run(
         return try testCommand(io, allocator, args[2..], stdout, stderr);
     }
 
+    if (std.mem.eql(u8, command, "build")) {
+        return try buildCommand(io, allocator, args[2..], stdout, stderr);
+    }
+
     if (std.mem.eql(u8, command, "run")) {
         const options = parseRunOptions(allocator, args[2..]) catch |err| {
             try printArgumentError(stderr, err);
@@ -284,6 +288,14 @@ const TestCommandOptions = struct {
     format: CheckOutputFormat = .text,
 };
 
+const BuildCommandOptions = struct {
+    target_path: []const u8 = ".",
+    output_root: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    force: bool = false,
+    format: CheckOutputFormat = .text,
+};
+
 const RenderCommandOptions = struct {
     target_path: []const u8 = ".",
     output_path: []const u8,
@@ -326,6 +338,9 @@ fn checkCommand(
                     try stdout.print("Scripts: {d}\n", .{ok.project.scripts.len});
                     if (ok.project.native) |native_path| {
                         try stdout.print("Native: {s}\n", .{native_path});
+                    }
+                    if (ok.project.native_artifact) |native_artifact_path| {
+                        try stdout.print("Native artifact: {s}\n", .{native_artifact_path});
                     }
                     try stdout.print("Update batches: {d}, systems: {d}\n", .{
                         ok.schedule.batchCount(),
@@ -543,6 +558,68 @@ fn testCommand(
     return if (summary.failed_cases == 0) 0 else 1;
 }
 
+fn buildCommand(
+    io: Io,
+    allocator: std.mem.Allocator,
+    args: []const []const u8,
+    stdout: *Io.Writer,
+    stderr: *Io.Writer,
+) !u8 {
+    const options = parseBuildOptions(allocator, args) catch |err| {
+        try printArgumentError(stderr, err);
+        return 1;
+    };
+
+    var check_result = machina.checkProjectDetailed(io, allocator, options.target_path) catch |err| {
+        switch (options.format) {
+            .text => try printProjectError(stderr, options.target_path, err),
+            .json => try printProjectErrorJson(stdout, options.target_path, err),
+        }
+        return 1;
+    };
+    switch (check_result) {
+        .ok => |ok| machina.freeCheckResult(allocator, ok),
+        .invalid => |*diagnostic| {
+            defer diagnostic.deinit(allocator);
+            switch (options.format) {
+                .text => try printScriptDiagnostic(stderr, options.target_path, diagnostic.*),
+                .json => try printScriptDiagnosticJson(stdout, options.target_path, diagnostic.*),
+            }
+            return 1;
+        },
+    }
+
+    var build_result = machina.buildProjectDetailed(io, allocator, options.target_path, .{
+        .output_root = options.output_root,
+        .name = options.name,
+        .force = options.force,
+    }) catch |err| {
+        switch (options.format) {
+            .text => try printProjectError(stderr, options.target_path, err),
+            .json => try printProjectErrorJson(stdout, options.target_path, err),
+        }
+        return 1;
+    };
+    const result = switch (build_result) {
+        .ok => |ok| ok,
+        .invalid => |*diagnostic| {
+            defer diagnostic.deinit(allocator);
+            switch (options.format) {
+                .text => try printScriptDiagnostic(stderr, options.target_path, diagnostic.*),
+                .json => try printScriptDiagnosticJson(stdout, options.target_path, diagnostic.*),
+            }
+            return 1;
+        },
+    };
+    defer result.deinit(allocator);
+
+    switch (options.format) {
+        .text => try printBuildOkText(stdout, result),
+        .json => try printBuildOkJson(stdout, result),
+    }
+    return 0;
+}
+
 fn checkProjectForCommand(
     io: Io,
     allocator: std.mem.Allocator,
@@ -575,6 +652,7 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina step [path] [--frames N] [--dt seconds] [--format text|json]
         \\  machina bench [path] [--frames N] [--dt seconds] [--format text|json]
         \\  machina test [tests-path|project-path] [--format text|json]
+        \\  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
         \\  machina run [path] [--frames N] [--editor]
         \\  machina render [--editor] [--select entity-id] [path] [output.bmp]
         \\  machina render-test [--editor] [--select entity-id] [path] [output.bmp]
@@ -659,6 +737,7 @@ const clap_parsers = .{
     .COMMAND = clap.parsers.string,
     .PATH = clap.parsers.string,
     .OUTPUT = clap.parsers.string,
+    .NAME = clap.parsers.string,
     .ENTITY = clap.parsers.string,
     .EXTRA = clap.parsers.string,
     .FORMAT = parseCheckOutputFormat,
@@ -905,6 +984,42 @@ fn parseTestOptions(allocator: std.mem.Allocator, args: []const []const u8) Argu
     if (result.positionals[0]) |path| {
         options.target_path = path;
     }
+    if (result.args.format) |format| {
+        options.format = format;
+    }
+    return options;
+}
+
+fn parseBuildOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!BuildCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--output <OUTPUT>
+        \\--name <NAME>
+        \\--force
+        \\--format <FORMAT>
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
+    var options = BuildCommandOptions{};
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    if (result.args.output) |output| {
+        options.output_root = output;
+    }
+    if (result.args.name) |name| {
+        options.name = name;
+    }
+    options.force = result.args.force != 0;
     if (result.args.format) |format| {
         options.format = format;
     }
@@ -1757,6 +1872,7 @@ fn projectErrorMessage(err: anyerror) []const u8 {
     return switch (err) {
         machina.ProjectError.AlreadyExists => "project already exists",
         machina.ProjectError.InvalidProject => "not a valid Machina project",
+        machina.ProjectError.InvalidBuildOutput => "invalid build output path",
         machina.ProjectError.MissingProjectFile => "missing project.machina.toml",
         machina.ProjectError.MissingDefaultScene => "missing default scene",
         machina.ProjectError.UnsupportedProjectVersion => "unsupported project version",
@@ -1829,6 +1945,20 @@ fn printBenchOkText(writer: *Io.Writer, result: BenchResult) !void {
         result.ui_rect_count,
         result.ui_text_count,
     });
+}
+
+fn printBuildOkText(writer: *Io.Writer, result: machina.BuildResult) !void {
+    try writer.print("Build OK: {s}\n", .{result.project_name});
+    try writer.print("Bundle: {s}\n", .{result.bundle_path});
+    try writer.print("Project: {s}\n", .{result.project_path});
+    try writer.print("Runtime: {s}\n", .{result.runtime_path});
+    try writer.print("Launcher: {s}\n", .{result.launcher_path});
+    if (result.native_artifact) |path| {
+        try writer.print("Native artifact: {s}\n", .{path});
+    }
+    if (result.sdl3_warning) |warning| {
+        try writer.print("Warning: {s}\n", .{warning});
+    }
 }
 
 fn printStepFailureText(writer: *Io.Writer, root_path: []const u8, failure: machina.StepRuntimeError) !void {
@@ -2091,6 +2221,33 @@ fn printBenchOkJson(writer: *Io.Writer, result: BenchResult) !void {
     try writer.writeAll("}}\n");
 }
 
+fn printBuildOkJson(writer: *Io.Writer, result: machina.BuildResult) !void {
+    try writer.writeAll("{\"ok\":true,\"project\":");
+    try writeJsonString(writer, result.project_name);
+    try writer.writeAll(",\"bundle\":");
+    try writeJsonString(writer, result.bundle_path);
+    try writer.writeAll(",\"project_path\":");
+    try writeJsonString(writer, result.project_path);
+    try writer.writeAll(",\"runtime\":");
+    try writeJsonString(writer, result.runtime_path);
+    try writer.writeAll(",\"launcher\":");
+    try writeJsonString(writer, result.launcher_path);
+    try writer.writeAll(",\"native_artifact\":");
+    if (result.native_artifact) |path| {
+        try writeJsonString(writer, path);
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.print(",\"sdl3_bundled\":{}", .{result.sdl3_bundled});
+    try writer.writeAll(",\"sdl3_warning\":");
+    if (result.sdl3_warning) |warning| {
+        try writeJsonString(writer, warning);
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll("}\n");
+}
+
 fn printProjectSummaryJson(writer: *Io.Writer, project: machina.Project) !void {
     try writer.writeAll("{\"name\":");
     try writeJsonString(writer, project.name);
@@ -2100,6 +2257,10 @@ fn printProjectSummaryJson(writer: *Io.Writer, project: machina.Project) !void {
     if (project.native) |native_path| {
         try writer.writeAll(",\"native\":");
         try writeJsonString(writer, native_path);
+    }
+    if (project.native_artifact) |native_artifact_path| {
+        try writer.writeAll(",\"native_artifact\":");
+        try writeJsonString(writer, native_artifact_path);
     }
     try writer.writeAll("}");
 }
@@ -2414,6 +2575,27 @@ test "parseTestOptions accepts path and json format" {
     const options = try parseTestOptions(std.testing.allocator, &args);
     try std.testing.expectEqualStrings("tests/projects/health_tick", options.target_path);
     try std.testing.expectEqual(CheckOutputFormat.json, options.format);
+}
+
+test "parseBuildOptions accepts path output name force and json format" {
+    const args = [_][]const u8{ "examples/minimal", "--output=zig-out/packages", "--name", "minimal-demo", "--force", "--format=json" };
+    const options = try parseBuildOptions(std.testing.allocator, &args);
+    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
+    try std.testing.expectEqualStrings("zig-out/packages", options.output_root.?);
+    try std.testing.expectEqualStrings("minimal-demo", options.name.?);
+    try std.testing.expect(options.force);
+    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
+}
+
+test "parseBuildOptions defaults output root to project build directory" {
+    const options = try parseBuildOptions(std.testing.allocator, &.{});
+    try std.testing.expectEqualStrings(".", options.target_path);
+    try std.testing.expect(options.output_root == null);
+}
+
+test "parseBuildOptions rejects extra positionals" {
+    const args = [_][]const u8{ "examples/minimal", "extra" };
+    try std.testing.expectError(ArgumentError.UnknownArgument, parseBuildOptions(std.testing.allocator, &args));
 }
 
 test "parseTestManifest reads field assertions" {

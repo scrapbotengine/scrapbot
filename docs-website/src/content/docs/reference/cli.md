@@ -16,6 +16,7 @@ Usage:
   machina step [path] [--frames N] [--dt seconds] [--format text|json]
   machina bench [path] [--frames N] [--dt seconds] [--format text|json]
   machina test [tests-path|project-path] [--format text|json]
+  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
   machina run [path] [--frames N] [--editor]
   machina render [--editor] [--select entity-id] [path] [output.bmp]
   machina render-test [--editor] [--select entity-id] [path] [output.bmp]
@@ -32,6 +33,7 @@ Usage:
 | `machina step [path]` | Run deterministic headless simulation frames. |
 | `machina bench [path]` | Run headless benchmark smoke coverage. |
 | `machina test [path]` | Run game-shaped project tests. |
+| `machina build [path]` | Package a host-platform runnable bundle. |
 | `machina run [path]` | Run a headful interactive project. |
 | `machina render [--editor] [--select entity-id] [path] [output.bmp]` | Render one offscreen BMP artifact. |
 | `machina render-test [--editor] [--select entity-id] [path] [output.bmp]` | Render and verify visible output. |
@@ -44,6 +46,7 @@ These commands support `--format text|json`:
 - `step`
 - `bench`
 - `test`
+- `build`
 
 Use JSON for editor, CI, and agent integrations.
 
@@ -72,6 +75,26 @@ A fresh project contains:
 - a script-free scene with a cube, camera, and directional light
 
 The command is non-destructive. If `project.machina.toml` already exists in the target directory, `machina init` fails instead of overwriting project files.
+
+## Build Options
+
+```sh
+machina build examples/showcase
+machina build examples/native_motion --output zig-out/packages --name native-motion --force
+```
+
+`machina build` validates the project and writes a host-platform bundle. The default output root is `build` inside the project directory, and the default bundle name is based on the project name and host platform.
+
+- `--output DIR` chooses the output root.
+- `--name NAME` chooses the bundle directory name.
+- `--force` replaces an existing Machina-generated bundle.
+- `--format json` emits machine-readable build output.
+
+The bundle contains `bin/machina`, a copied `project/` directory, a `run` launcher, and `machina-build.json`. Project-local native Zig modules are compiled into a packaged `native_artifact`, so the bundled project does not need Zig installed to load native systems. When SDL3 is discoverable locally, it is copied into `lib/` and the launcher adds that directory to the platform library search path.
+
+The first build format targets the current OS and architecture only. Cross-platform export, app signing, and fully static project-native executables are future packaging work.
+
+For platform-specific bundle notes, see [Building Games](/workflow/building-games/).
 
 ## Render Options
 

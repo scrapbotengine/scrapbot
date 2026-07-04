@@ -5,9 +5,6 @@ setup = "mise trust && mise install && mise setup"
 run_mode = "concurrent"
 
 [scripts.run.docs]
-command = "pnpm dev --host 127.0.0.1 --port $CONDUCTOR_PORT"
+command = "mise docs-website"
 default = true
 icon = "book-open"
-
-[scripts.run.docs.options]
-cwd = "docs-website"

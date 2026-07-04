@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const render = @import("render.zig");
 const render_verify = @import("render_verify.zig");
@@ -78,6 +79,7 @@ pub const Project = struct {
     default_scene: []const u8,
     scripts: []const []const u8,
     native: ?[]const u8 = null,
+    native_artifact: ?[]const u8 = null,
 };
 
 pub const Scene = struct {
@@ -192,6 +194,50 @@ pub const StepRuntimeError = struct {
 pub const StepDetailedResult = union(enum) {
     ok: StepOk,
     runtime_error: StepRuntimeError,
+    invalid: ScriptDiagnostic,
+};
+
+pub const build_default_output_dir_name = "build";
+const build_bundle_marker = ".machina-build-bundle";
+const build_project_dir = "project";
+const build_bin_dir = "bin";
+const build_lib_dir = "lib";
+const build_manifest_path = "machina-build.json";
+const build_native_artifact_dir = ".machina/build/native";
+
+pub const BuildOptions = struct {
+    output_root: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    force: bool = false,
+};
+
+pub const BuildResult = struct {
+    project_name: []const u8,
+    bundle_path: []const u8,
+    project_path: []const u8,
+    runtime_path: []const u8,
+    launcher_path: []const u8,
+    native_artifact: ?[]const u8 = null,
+    sdl3_bundled: bool = false,
+    sdl3_warning: ?[]const u8 = null,
+
+    pub fn deinit(self: BuildResult, allocator: std.mem.Allocator) void {
+        allocator.free(self.project_name);
+        allocator.free(self.bundle_path);
+        allocator.free(self.project_path);
+        allocator.free(self.runtime_path);
+        allocator.free(self.launcher_path);
+        if (self.native_artifact) |path| {
+            allocator.free(path);
+        }
+        if (self.sdl3_warning) |message| {
+            allocator.free(message);
+        }
+    }
+};
+
+pub const BuildDetailedResult = union(enum) {
+    ok: BuildResult,
     invalid: ScriptDiagnostic,
 };
 
@@ -740,6 +786,7 @@ pub const LiveScene = LiveProject;
 pub const ProjectError = error{
     AlreadyExists,
     InvalidProject,
+    InvalidBuildOutput,
     MissingProjectFile,
     MissingDefaultScene,
     UnsupportedProjectVersion,
@@ -993,6 +1040,171 @@ pub fn stepProjectDetailed(
     } };
 }
 
+pub fn buildProject(
+    io: Io,
+    allocator: std.mem.Allocator,
+    root_path: []const u8,
+    options: BuildOptions,
+) !BuildResult {
+    var result = try buildProjectDetailed(io, allocator, root_path, options);
+    switch (result) {
+        .ok => |ok| return ok,
+        .invalid => |*diagnostic| {
+            diagnostic.deinit(allocator);
+            return ProjectError.InvalidScript;
+        },
+    }
+}
+
+pub fn buildProjectDetailed(
+    io: Io,
+    allocator: std.mem.Allocator,
+    root_path: []const u8,
+    options: BuildOptions,
+) !BuildDetailedResult {
+    const project = try loadProject(io, allocator, root_path);
+    defer freeProject(allocator, project);
+
+    const bundle_name = if (options.name) |name|
+        try allocator.dupe(u8, name)
+    else
+        try defaultBuildBundleName(allocator, project.name);
+    defer allocator.free(bundle_name);
+    if (!isSafeBundleName(bundle_name)) {
+        return ProjectError.InvalidProjectName;
+    }
+
+    const cwd = Io.Dir.cwd();
+    const output_root = if (options.output_root) |path|
+        try allocator.dupe(u8, path)
+    else
+        try std.fs.path.join(allocator, &.{ project.root_path, build_default_output_dir_name });
+    defer allocator.free(output_root);
+
+    const bundle_path = try std.fs.path.join(allocator, &.{ output_root, bundle_name });
+    var keep_bundle_path = false;
+    defer if (!keep_bundle_path) allocator.free(bundle_path);
+    if (fileExists(io, cwd, bundle_path)) {
+        if (!options.force or !isMachinaBuildBundle(io, cwd, bundle_path)) {
+            return ProjectError.AlreadyExists;
+        }
+        try cwd.deleteTree(io, bundle_path);
+    }
+    var keep_bundle_tree = false;
+    defer if (!keep_bundle_tree) cwd.deleteTree(io, bundle_path) catch {};
+
+    try cwd.createDirPath(io, bundle_path);
+    const bundle_dir = try cwd.openDir(io, bundle_path, .{});
+    defer bundle_dir.close(io);
+    try bundle_dir.writeFile(io, .{
+        .sub_path = build_bundle_marker,
+        .data = "machina build bundle\n",
+    });
+    try bundle_dir.createDirPath(io, build_project_dir);
+    try bundle_dir.createDirPath(io, build_bin_dir);
+    try bundle_dir.createDirPath(io, build_lib_dir);
+
+    const project_bundle_path = try std.fs.path.join(allocator, &.{ bundle_path, build_project_dir });
+    var keep_project_bundle_path = false;
+    defer if (!keep_project_bundle_path) allocator.free(project_bundle_path);
+    const output_root_entry_to_skip = try outputRootEntryToSkip(allocator, io, project.root_path, output_root, bundle_path);
+    defer if (output_root_entry_to_skip) |entry| allocator.free(entry);
+    try copyProjectTree(io, allocator, project.root_path, project_bundle_path, output_root_entry_to_skip);
+
+    const runtime_source_path = try std.process.executablePathAlloc(io, allocator);
+    defer allocator.free(runtime_source_path);
+    const runtime_name = executableFileName();
+    const runtime_bundle_path = try std.fs.path.join(allocator, &.{ bundle_path, build_bin_dir, runtime_name });
+    var keep_runtime_bundle_path = false;
+    defer if (!keep_runtime_bundle_path) allocator.free(runtime_bundle_path);
+    try cwd.copyFile(runtime_source_path, cwd, runtime_bundle_path, io, .{ .make_path = true, .replace = true });
+
+    var native_artifact: ?[]u8 = null;
+    var keep_native_artifact = false;
+    defer if (!keep_native_artifact) {
+        if (native_artifact) |path| allocator.free(path);
+    };
+    if (project.native) |native_path| {
+        const native_artifact_project_path = try buildNativeArtifactProjectPath(allocator);
+        var keep_native_artifact_project_path = false;
+        defer if (!keep_native_artifact_project_path) allocator.free(native_artifact_project_path);
+        {
+            const project_bundle_dir = try cwd.openDir(io, project_bundle_path, .{});
+            defer project_bundle_dir.close(io);
+            try project_bundle_dir.createDirPath(io, build_native_artifact_dir);
+        }
+        const native_output_path = try std.fs.path.join(allocator, &.{ project_bundle_path, native_artifact_project_path });
+        defer allocator.free(native_output_path);
+        const absolute_native_output_path = try absoluteCwdPath(allocator, io, native_output_path);
+        defer allocator.free(absolute_native_output_path);
+        if (try native.buildProjectDynamicLibraryDetailed(io, allocator, project.root_path, native_path, absolute_native_output_path, .release_fast)) |diagnostic| {
+            return .{ .invalid = diagnostic };
+        }
+        try rewritePackagedProjectManifest(io, allocator, project_bundle_path, native_artifact_project_path);
+        native_artifact = native_artifact_project_path;
+        keep_native_artifact_project_path = true;
+    } else if (project.native_artifact) |artifact_path| {
+        try copyPackagedNativeArtifact(io, allocator, cwd, project.root_path, project_bundle_path, artifact_path);
+        native_artifact = try allocator.dupe(u8, artifact_path);
+    }
+
+    const packaged_check = try checkProjectDetailed(io, allocator, project_bundle_path);
+    switch (packaged_check) {
+        .ok => |ok| freeCheckResult(allocator, ok),
+        .invalid => |diagnostic| return .{ .invalid = diagnostic },
+    }
+
+    const launcher_name = launcherFileName();
+    const launcher_path = try std.fs.path.join(allocator, &.{ bundle_path, launcher_name });
+    var keep_launcher_path = false;
+    defer if (!keep_launcher_path) allocator.free(launcher_path);
+    try writeLauncher(io, bundle_dir, launcher_name);
+
+    const sdl3_bundled = try copyDiscoverableSdl3(io, cwd, bundle_dir);
+    const sdl3_warning = if (sdl3_bundled)
+        null
+    else
+        try allocator.dupe(u8, "SDL3 was not copied; the target machine must provide a compatible SDL3 runtime library.");
+    var keep_sdl3_warning = false;
+    defer if (!keep_sdl3_warning) {
+        if (sdl3_warning) |message| allocator.free(message);
+    };
+
+    try writeBuildManifest(io, allocator, bundle_dir, .{
+        .project_name = project.name,
+        .bundle_path = bundle_path,
+        .runtime_path = runtime_bundle_path,
+        .project_path = project_bundle_path,
+        .native_artifact = native_artifact,
+        .sdl3_bundled = sdl3_bundled,
+        .sdl3_warning = sdl3_warning,
+    });
+
+    const result_project_name = try allocator.dupe(u8, project.name);
+    errdefer allocator.free(result_project_name);
+
+    const result = BuildResult{
+        .project_name = result_project_name,
+        .bundle_path = bundle_path,
+        .project_path = project_bundle_path,
+        .runtime_path = runtime_bundle_path,
+        .launcher_path = launcher_path,
+        .native_artifact = native_artifact,
+        .sdl3_bundled = sdl3_bundled,
+        .sdl3_warning = sdl3_warning,
+    };
+
+    keep_bundle_tree = true;
+    keep_bundle_path = true;
+    keep_project_bundle_path = true;
+    keep_runtime_bundle_path = true;
+    keep_launcher_path = true;
+    keep_native_artifact = true;
+    keep_sdl3_warning = true;
+
+    return .{ .ok = result };
+}
+
 fn stepInputForFrame(input_frames: []const StepInputFrame, frame: u32) FrameInput {
     for (input_frames) |input_frame| {
         if (input_frame.frame == frame) {
@@ -1000,6 +1212,440 @@ fn stepInputForFrame(input_frames: []const StepInputFrame, frame: u32) FrameInpu
         }
     }
     return .{};
+}
+
+fn defaultBuildBundleName(allocator: std.mem.Allocator, project_name: []const u8) ![]u8 {
+    const sanitized = try sanitizeBundleSegment(allocator, project_name);
+    defer allocator.free(sanitized);
+    return std.fmt.allocPrint(allocator, "{s}-{s}", .{ sanitized, hostTriple() });
+}
+
+fn buildNativeArtifactProjectPath(allocator: std.mem.Allocator) ![]u8 {
+    return std.mem.join(allocator, "/", &.{ build_native_artifact_dir, native.dynamicLibraryFileName() });
+}
+
+fn sanitizeBundleSegment(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    var last_dash = false;
+    for (value) |byte| {
+        const next = if (std.ascii.isAlphanumeric(byte))
+            std.ascii.toLower(byte)
+        else if (byte == '.' or byte == '_')
+            byte
+        else
+            '-';
+        if (next == '-') {
+            if (last_dash) {
+                continue;
+            }
+            last_dash = true;
+        } else {
+            last_dash = false;
+        }
+        try out.append(allocator, next);
+    }
+
+    while (out.items.len > 0 and out.items[out.items.len - 1] == '-') {
+        _ = out.pop();
+    }
+    while (out.items.len > 0 and out.items[0] == '-') {
+        _ = out.orderedRemove(0);
+    }
+    if (out.items.len == 0) {
+        try out.appendSlice(allocator, "machina-project");
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn hostTriple() []const u8 {
+    return switch (builtin.os.tag) {
+        .windows => switch (builtin.abi) {
+            .msvc => switch (builtin.cpu.arch) {
+                .x86_64 => "x86_64-windows-msvc",
+                .aarch64 => "aarch64-windows-msvc",
+                else => "windows-msvc",
+            },
+            else => switch (builtin.cpu.arch) {
+                .x86_64 => "x86_64-windows-gnu",
+                else => "windows",
+            },
+        },
+        else => switch (builtin.cpu.arch) {
+            .aarch64 => switch (builtin.os.tag) {
+                .macos => "aarch64-macos",
+                .linux => "aarch64-linux",
+                else => "aarch64",
+            },
+            .x86_64 => switch (builtin.os.tag) {
+                .macos => "x86_64-macos",
+                .linux => "x86_64-linux",
+                else => "x86_64",
+            },
+            else => @tagName(builtin.os.tag),
+        },
+    };
+}
+
+fn isSafeBundleName(name: []const u8) bool {
+    if (name.len == 0 or std.fs.path.isAbsolute(name) or std.mem.indexOfScalar(u8, name, '/') != null or std.mem.indexOfScalar(u8, name, '\\') != null) {
+        return false;
+    }
+    return !std.mem.eql(u8, name, ".") and !std.mem.eql(u8, name, "..");
+}
+
+fn isMachinaBuildBundle(io: Io, cwd: Io.Dir, bundle_path: []const u8) bool {
+    const marker_path = std.fs.path.join(std.heap.smp_allocator, &.{ bundle_path, build_bundle_marker }) catch return false;
+    defer std.heap.smp_allocator.free(marker_path);
+    return fileExists(io, cwd, marker_path);
+}
+
+fn absoluteCwdPath(allocator: std.mem.Allocator, io: Io, path: []const u8) ![]u8 {
+    if (std.fs.path.isAbsolute(path)) {
+        return std.fs.path.resolve(allocator, &.{path});
+    }
+    const cwd_path = try std.process.currentPathAlloc(io, allocator);
+    defer allocator.free(cwd_path);
+    return std.fs.path.resolve(allocator, &.{ cwd_path, path });
+}
+
+fn outputRootEntryToSkip(
+    allocator: std.mem.Allocator,
+    io: Io,
+    project_root_path: []const u8,
+    output_root: []const u8,
+    bundle_path: []const u8,
+) !?[]u8 {
+    const project_abs = try absoluteCwdPath(allocator, io, project_root_path);
+    defer allocator.free(project_abs);
+    const output_abs = try absoluteCwdPath(allocator, io, output_root);
+    defer allocator.free(output_abs);
+    const bundle_abs = try absoluteCwdPath(allocator, io, bundle_path);
+    defer allocator.free(bundle_abs);
+
+    const project_clean = trimTrailingPathSeparators(project_abs);
+    const output_clean = trimTrailingPathSeparators(output_abs);
+    const bundle_clean = trimTrailingPathSeparators(bundle_abs);
+
+    if (!pathIsInside(bundle_clean, project_clean)) {
+        return null;
+    }
+
+    if (pathsEqual(output_clean, project_clean)) {
+        const bundle_inside_project = bundle_clean[project_clean.len + 1 ..];
+        const first_separator = std.mem.indexOfAny(u8, bundle_inside_project, "/\\") orelse bundle_inside_project.len;
+        if (first_separator == 0) {
+            return null;
+        }
+        return try allocator.dupe(u8, bundle_inside_project[0..first_separator]);
+    }
+
+    if (!pathIsInside(output_clean, project_clean)) {
+        return null;
+    }
+
+    const inside_project = output_clean[project_clean.len + 1 ..];
+    const first_separator = std.mem.indexOfAny(u8, inside_project, "/\\") orelse inside_project.len;
+    if (first_separator == 0) {
+        return null;
+    }
+    if (first_separator != inside_project.len) {
+        return ProjectError.InvalidBuildOutput;
+    }
+    return try allocator.dupe(u8, inside_project[0..first_separator]);
+}
+
+fn pathsEqual(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
+
+fn pathIsInside(path: []const u8, parent: []const u8) bool {
+    return path.len > parent.len and
+        std.mem.startsWith(u8, path, parent) and
+        isPathSeparator(path[parent.len]);
+}
+
+fn trimTrailingPathSeparators(path: []const u8) []const u8 {
+    var end = path.len;
+    while (end > 1 and isPathSeparator(path[end - 1])) {
+        end -= 1;
+    }
+    return path[0..end];
+}
+
+fn isPathSeparator(byte: u8) bool {
+    return byte == '/' or byte == '\\';
+}
+
+fn copyProjectTree(io: Io, allocator: std.mem.Allocator, source_root_path: []const u8, dest_root_path: []const u8, skip_root_entry: ?[]const u8) !void {
+    const cwd = Io.Dir.cwd();
+    const source_root = try cwd.openDir(io, source_root_path, .{ .iterate = true });
+    defer source_root.close(io);
+    try cwd.createDirPath(io, dest_root_path);
+    const dest_root = try cwd.openDir(io, dest_root_path, .{});
+    defer dest_root.close(io);
+    try copyProjectDirContents(io, allocator, source_root, dest_root, skip_root_entry, true);
+}
+
+fn copyProjectDirContents(
+    io: Io,
+    allocator: std.mem.Allocator,
+    source_dir: Io.Dir,
+    dest_dir: Io.Dir,
+    skip_root_entry: ?[]const u8,
+    root_level: bool,
+) !void {
+    var iterator = source_dir.iterate();
+    while (try iterator.next(io)) |entry| {
+        if (root_level and shouldSkipProjectRootEntry(entry.name, skip_root_entry)) {
+            continue;
+        }
+        switch (entry.kind) {
+            .directory => {
+                try dest_dir.createDirPath(io, entry.name);
+                const child_source = try source_dir.openDir(io, entry.name, .{ .iterate = true });
+                defer child_source.close(io);
+                const child_dest = try dest_dir.openDir(io, entry.name, .{});
+                defer child_dest.close(io);
+                try copyProjectDirContents(io, allocator, child_source, child_dest, skip_root_entry, false);
+            },
+            .file => try source_dir.copyFile(entry.name, dest_dir, entry.name, io, .{ .replace = true }),
+            else => {},
+        }
+    }
+}
+
+fn shouldSkipProjectRootEntry(name: []const u8, skip_root_entry: ?[]const u8) bool {
+    if (skip_root_entry) |entry| {
+        if (std.mem.eql(u8, name, entry)) {
+            return true;
+        }
+    }
+    return std.mem.eql(u8, name, ".machina") or
+        std.mem.eql(u8, name, ".git") or
+        std.mem.eql(u8, name, ".zig-cache") or
+        std.mem.eql(u8, name, "zig-cache") or
+        std.mem.eql(u8, name, "zig-out");
+}
+
+fn copyPackagedNativeArtifact(
+    io: Io,
+    allocator: std.mem.Allocator,
+    cwd: Io.Dir,
+    project_root_path: []const u8,
+    project_bundle_path: []const u8,
+    artifact_path: []const u8,
+) !void {
+    const source_path = try std.fs.path.join(allocator, &.{ project_root_path, artifact_path });
+    defer allocator.free(source_path);
+    const dest_path = try std.fs.path.join(allocator, &.{ project_bundle_path, artifact_path });
+    defer allocator.free(dest_path);
+
+    if (std.fs.path.dirname(dest_path)) |dest_dir_path| {
+        try cwd.createDirPath(io, dest_dir_path);
+    }
+    try cwd.copyFile(source_path, cwd, dest_path, io, .{ .make_path = true, .replace = true });
+}
+
+fn rewritePackagedProjectManifest(
+    io: Io,
+    allocator: std.mem.Allocator,
+    project_bundle_path: []const u8,
+    native_artifact_path: []const u8,
+) !void {
+    const cwd = Io.Dir.cwd();
+    const project_dir = try cwd.openDir(io, project_bundle_path, .{});
+    defer project_dir.close(io);
+
+    const contents = try project_dir.readFileAlloc(io, project_file_name, allocator, .limited(64 * 1024));
+    defer allocator.free(contents);
+    const escaped_artifact = try encodeTomlBasicString(allocator, native_artifact_path);
+    defer allocator.free(escaped_artifact);
+
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, contents, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        const is_native_artifact = if (std.mem.indexOfScalar(u8, trimmed, '=')) |eq_index|
+            std.mem.eql(u8, std.mem.trim(u8, trimmed[0..eq_index], " \t"), "native_artifact")
+        else
+            false;
+        if (!is_native_artifact) {
+            try out.appendSlice(allocator, line);
+            try out.append(allocator, '\n');
+        }
+    }
+    try out.print(allocator, "native_artifact = \"{s}\"\n", .{escaped_artifact});
+
+    try project_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = out.items,
+    });
+}
+
+fn executableFileName() []const u8 {
+    return switch (builtin.os.tag) {
+        .windows => "machina.exe",
+        else => "machina",
+    };
+}
+
+fn launcherFileName() []const u8 {
+    return switch (builtin.os.tag) {
+        .windows => "run.cmd",
+        else => "run",
+    };
+}
+
+fn writeLauncher(io: Io, bundle_dir: Io.Dir, launcher_name: []const u8) !void {
+    const contents = switch (builtin.os.tag) {
+        .windows =>
+        \\@echo off
+        \\set "SCRIPT_DIR=%~dp0"
+        \\set "PATH=%SCRIPT_DIR%lib;%SCRIPT_DIR%bin;%PATH%"
+        \\"%SCRIPT_DIR%bin\machina.exe" run "%SCRIPT_DIR%project" %*
+        \\
+        ,
+        .macos =>
+        \\#!/bin/sh
+        \\set -eu
+        \\DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+        \\export DYLD_LIBRARY_PATH="$DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+        \\exec "$DIR/bin/machina" run "$DIR/project" "$@"
+        \\
+        ,
+        .linux =>
+        \\#!/bin/sh
+        \\set -eu
+        \\DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+        \\export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        \\exec "$DIR/bin/machina" run "$DIR/project" "$@"
+        \\
+        ,
+        else =>
+        \\#!/bin/sh
+        \\set -eu
+        \\DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+        \\exec "$DIR/bin/machina" run "$DIR/project" "$@"
+        \\
+        ,
+    };
+    const flags: Io.Dir.CreateFileOptions = switch (builtin.os.tag) {
+        .windows => .{},
+        else => .{ .permissions = .fromMode(0o755) },
+    };
+    try bundle_dir.writeFile(io, .{
+        .sub_path = launcher_name,
+        .data = contents,
+        .flags = flags,
+    });
+}
+
+fn copyDiscoverableSdl3(io: Io, cwd: Io.Dir, bundle_dir: Io.Dir) !bool {
+    var copied = false;
+    for (sdl3CandidatePaths()) |candidate| {
+        if (std.fs.path.basename(candidate).len == 0) {
+            continue;
+        }
+        if (!fileExists(io, cwd, candidate)) {
+            continue;
+        }
+        const dest_path = try std.fs.path.join(std.heap.smp_allocator, &.{ build_lib_dir, std.fs.path.basename(candidate) });
+        defer std.heap.smp_allocator.free(dest_path);
+        try cwd.copyFile(candidate, bundle_dir, dest_path, io, .{ .make_path = true, .replace = true });
+        copied = true;
+    }
+    return copied;
+}
+
+fn sdl3CandidatePaths() []const []const u8 {
+    return switch (builtin.os.tag) {
+        .macos => &.{
+            "/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib",
+            "/opt/homebrew/opt/sdl3/lib/libSDL3.dylib",
+            "/opt/homebrew/lib/libSDL3.0.dylib",
+            "/opt/homebrew/lib/libSDL3.dylib",
+            "/usr/local/opt/sdl3/lib/libSDL3.0.dylib",
+            "/usr/local/opt/sdl3/lib/libSDL3.dylib",
+            "/usr/local/lib/libSDL3.0.dylib",
+            "/usr/local/lib/libSDL3.dylib",
+        },
+        .linux => &.{
+            "/usr/lib/libSDL3.so.0",
+            "/usr/lib/libSDL3.so",
+            "/usr/lib/x86_64-linux-gnu/libSDL3.so.0",
+            "/usr/lib/x86_64-linux-gnu/libSDL3.so",
+            "/usr/lib/aarch64-linux-gnu/libSDL3.so.0",
+            "/usr/lib/aarch64-linux-gnu/libSDL3.so",
+        },
+        .windows => &.{
+            "SDL3.dll",
+        },
+        else => &.{},
+    };
+}
+
+const BuildManifestInput = struct {
+    project_name: []const u8,
+    bundle_path: []const u8,
+    runtime_path: []const u8,
+    project_path: []const u8,
+    native_artifact: ?[]const u8,
+    sdl3_bundled: bool,
+    sdl3_warning: ?[]const u8,
+};
+
+fn writeBuildManifest(io: Io, allocator: std.mem.Allocator, bundle_dir: Io.Dir, input: BuildManifestInput) !void {
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+
+    try out.appendSlice(allocator, "{\n");
+    try out.appendSlice(allocator, "  \"schema\": \"machina.build.v1\",\n");
+    try out.appendSlice(allocator, "  \"project\": ");
+    try appendJsonString(allocator, &out, input.project_name);
+    try out.appendSlice(allocator, ",\n  \"host\": ");
+    try appendJsonString(allocator, &out, hostTriple());
+    try out.appendSlice(allocator, ",\n  \"bundle_path\": ");
+    try appendJsonString(allocator, &out, input.bundle_path);
+    try out.appendSlice(allocator, ",\n  \"runtime_path\": ");
+    try appendJsonString(allocator, &out, input.runtime_path);
+    try out.appendSlice(allocator, ",\n  \"project_path\": ");
+    try appendJsonString(allocator, &out, input.project_path);
+    try out.appendSlice(allocator, ",\n  \"native_artifact\": ");
+    if (input.native_artifact) |path| {
+        try appendJsonString(allocator, &out, path);
+    } else {
+        try out.appendSlice(allocator, "null");
+    }
+    try out.print(allocator, ",\n  \"sdl3_bundled\": {},\n  \"sdl3_warning\": ", .{input.sdl3_bundled});
+    if (input.sdl3_warning) |message| {
+        try appendJsonString(allocator, &out, message);
+    } else {
+        try out.appendSlice(allocator, "null");
+    }
+    try out.appendSlice(allocator, "\n}\n");
+
+    try bundle_dir.writeFile(io, .{
+        .sub_path = build_manifest_path,
+        .data = out.items,
+    });
+}
+
+fn appendJsonString(allocator: std.mem.Allocator, out: *std.ArrayList(u8), value: []const u8) !void {
+    try out.append(allocator, '"');
+    for (value) |byte| {
+        switch (byte) {
+            '\\' => try out.appendSlice(allocator, "\\\\"),
+            '"' => try out.appendSlice(allocator, "\\\""),
+            '\n' => try out.appendSlice(allocator, "\\n"),
+            '\r' => try out.appendSlice(allocator, "\\r"),
+            '\t' => try out.appendSlice(allocator, "\\t"),
+            else => try out.append(allocator, byte),
+        }
+    }
+    try out.append(allocator, '"');
 }
 
 pub fn freeCheckResult(allocator: std.mem.Allocator, result: CheckResult) void {
@@ -1040,6 +1686,9 @@ pub fn freeProject(allocator: std.mem.Allocator, project: Project) void {
     freeStringList(allocator, project.scripts);
     if (project.native) |native_path| {
         allocator.free(native_path);
+    }
+    if (project.native_artifact) |native_artifact_path| {
+        allocator.free(native_artifact_path);
     }
 }
 
@@ -1232,6 +1881,9 @@ fn statProjectScripts(io: Io, allocator: std.mem.Allocator, project: Project) ![
 }
 
 fn statProjectNative(io: Io, allocator: std.mem.Allocator, project: Project) !?LoadedSource {
+    if (project.native_artifact != null) {
+        return null;
+    }
     const native_path = project.native orelse return null;
     const owned_path = try allocator.dupe(u8, native_path);
     errdefer allocator.free(owned_path);
@@ -1301,6 +1953,14 @@ fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
         }
     }
 
+    const native_artifact_path = try readOptionalString(allocator, contents, "native_artifact");
+    errdefer if (native_artifact_path) |path| allocator.free(path);
+    if (native_artifact_path) |path| {
+        if (!isSafeProjectRelativePath(path)) {
+            return ProjectError.InvalidScript;
+        }
+    }
+
     const version_value = readRequiredInt(contents, "version") orelse return ProjectError.UnsupportedProjectVersion;
     if (version_value != 1) {
         return ProjectError.UnsupportedProjectVersion;
@@ -1312,6 +1972,7 @@ fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
         .default_scene = default_scene,
         .scripts = scripts,
         .native = native_path,
+        .native_artifact = native_artifact_path,
     };
 }
 
@@ -1331,7 +1992,13 @@ pub fn loadProjectScriptsDetailed(io: Io, allocator: std.mem.Allocator, project:
     const root_dir = try cwd.openDir(io, project.root_path, .{});
     defer root_dir.close(io);
 
-    var native_extension: ?native.LoadedExtension = if (project.native) |native_path| blk: {
+    var native_extension: ?native.LoadedExtension = if (project.native_artifact) |artifact_path| blk: {
+        const native_result = try native.loadProjectArtifactDetailed(allocator, project.root_path, artifact_path);
+        break :blk switch (native_result) {
+            .extension => |extension| extension,
+            .diagnostic => |diagnostic| return .{ .diagnostic = diagnostic },
+        };
+    } else if (project.native) |native_path| blk: {
         const source_stamp = try statProjectResource(io, project, native_path, ProjectError.MissingScript);
         const native_result = try native.loadProjectExtensionDetailed(io, allocator, project.root_path, native_path, source_stamp);
         break :blk switch (native_result) {
@@ -1988,6 +2655,167 @@ test "checkProject validates a project directory" {
     try std.testing.expectEqualStrings("Game", result.project.name);
     try std.testing.expectEqualStrings(default_scene_path, result.project.default_scene);
     try std.testing.expectEqual(@as(usize, 0), result.schedule.systemCount());
+}
+
+test "loadProject accepts packaged native artifact metadata" {
+    const root_path = ".zig-cache/test-load-project-native-artifact";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Game");
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\nnative_artifact = \".machina/build/native/libmachina_project.dylib\"\n",
+    });
+
+    const project = try loadProject(io, std.testing.allocator, root_path);
+    defer freeProject(std.testing.allocator, project);
+    try std.testing.expectEqualStrings("native/game.zig", project.native.?);
+    try std.testing.expectEqualStrings(".machina/build/native/libmachina_project.dylib", project.native_artifact.?);
+}
+
+test "buildNativeArtifactProjectPath uses project metadata separators" {
+    const path = try buildNativeArtifactProjectPath(std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expect(std.mem.startsWith(u8, path, ".machina/build/native/"));
+    try std.testing.expect(std.mem.indexOfScalar(u8, path, '\\') == null);
+}
+
+test "copyPackagedNativeArtifact copies artifact from excluded machina cache" {
+    const root_path = ".zig-cache/test-copy-packaged-native-artifact-source";
+    const bundle_project_path = ".zig-cache/test-copy-packaged-native-artifact-bundle/project";
+    const artifact_path = ".machina/build/native/libmachina_project.test";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    cwd.deleteTree(io, ".zig-cache/test-copy-packaged-native-artifact-bundle") catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, ".zig-cache/test-copy-packaged-native-artifact-bundle") catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Artifact Native");
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.createDirPath(io, build_native_artifact_dir);
+    try root_dir.writeFile(io, .{
+        .sub_path = artifact_path,
+        .data = "native artifact bytes",
+    });
+    try cwd.createDirPath(io, bundle_project_path);
+
+    try copyPackagedNativeArtifact(io, std.testing.allocator, cwd, root_path, bundle_project_path, artifact_path);
+
+    const packaged_artifact_path = try std.fs.path.join(std.testing.allocator, &.{ bundle_project_path, artifact_path });
+    defer std.testing.allocator.free(packaged_artifact_path);
+    try std.testing.expect(fileExists(io, cwd, packaged_artifact_path));
+}
+
+test "buildProject creates a host bundle for a simple project" {
+    const root_path = ".zig-cache/test-build-project-source";
+    const output_root = ".zig-cache/test-build-project-output";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    cwd.deleteTree(io, output_root) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, output_root) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Demo Game");
+    const result = try buildProject(io, std.testing.allocator, root_path, .{
+        .output_root = output_root,
+        .name = "demo-game-test",
+    });
+    defer result.deinit(std.testing.allocator);
+
+    try std.testing.expect(fileExists(io, cwd, result.launcher_path));
+    try std.testing.expect(fileExists(io, cwd, result.runtime_path));
+    const packaged_manifest = try std.fs.path.join(std.testing.allocator, &.{ result.project_path, project_file_name });
+    defer std.testing.allocator.free(packaged_manifest);
+    try std.testing.expect(fileExists(io, cwd, packaged_manifest));
+    const build_manifest = try std.fs.path.join(std.testing.allocator, &.{ result.bundle_path, build_manifest_path });
+    defer std.testing.allocator.free(build_manifest);
+    try std.testing.expect(fileExists(io, cwd, build_manifest));
+
+    const launcher_contents = try cwd.readFileAlloc(io, result.launcher_path, std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(launcher_contents);
+    switch (builtin.os.tag) {
+        .windows => try std.testing.expect(std.mem.indexOf(u8, launcher_contents, "PATH=%SCRIPT_DIR%lib;%SCRIPT_DIR%bin;%PATH%") != null),
+        .macos => try std.testing.expect(std.mem.indexOf(u8, launcher_contents, "DYLD_LIBRARY_PATH") != null),
+        .linux => try std.testing.expect(std.mem.indexOf(u8, launcher_contents, "LD_LIBRARY_PATH") != null),
+        else => {},
+    }
+}
+
+test "buildProject default output skips absolute in-project output tree" {
+    const root_path = ".zig-cache/test-build-project-absolute-source";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Demo Absolute");
+    const absolute_root_path = try absoluteCwdPath(std.testing.allocator, io, root_path);
+    defer std.testing.allocator.free(absolute_root_path);
+
+    const result = try buildProject(io, std.testing.allocator, absolute_root_path, .{
+        .name = "demo-absolute-test",
+    });
+    defer result.deinit(std.testing.allocator);
+
+    const expected_bundle_path = try std.fs.path.join(std.testing.allocator, &.{
+        absolute_root_path,
+        build_default_output_dir_name,
+        "demo-absolute-test",
+    });
+    defer std.testing.allocator.free(expected_bundle_path);
+    try std.testing.expectEqualStrings(expected_bundle_path, result.bundle_path);
+
+    const copied_output_root = try std.fs.path.join(std.testing.allocator, &.{ result.project_path, build_default_output_dir_name });
+    defer std.testing.allocator.free(copied_output_root);
+    try std.testing.expect(!fileExists(io, cwd, copied_output_root));
+}
+
+test "buildProject output at project root skips bundle directory" {
+    const root_path = ".zig-cache/test-build-project-root-output";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Root Output");
+    const absolute_root_path = try absoluteCwdPath(std.testing.allocator, io, root_path);
+    defer std.testing.allocator.free(absolute_root_path);
+
+    const result = try buildProject(io, std.testing.allocator, absolute_root_path, .{
+        .output_root = absolute_root_path,
+        .name = "root-output-test",
+    });
+    defer result.deinit(std.testing.allocator);
+
+    const copied_bundle_root = try std.fs.path.join(std.testing.allocator, &.{ result.project_path, "root-output-test" });
+    defer std.testing.allocator.free(copied_bundle_root);
+    try std.testing.expect(!fileExists(io, cwd, copied_bundle_root));
+}
+
+test "buildProject rejects nested in-project output root" {
+    const root_path = ".zig-cache/test-build-project-nested-output";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try initProject(io, std.testing.allocator, root_path, "Nested Output");
+    const nested_output_root = try std.fs.path.join(std.testing.allocator, &.{ root_path, "assets", "build" });
+    defer std.testing.allocator.free(nested_output_root);
+
+    try std.testing.expectError(ProjectError.InvalidBuildOutput, buildProject(io, std.testing.allocator, root_path, .{
+        .output_root = nested_output_root,
+        .name = "nested-output-test",
+    }));
 }
 
 test "loadDefaultScene reads cube entities from scene data" {

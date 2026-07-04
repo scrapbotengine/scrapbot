@@ -29,7 +29,8 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 - Interactive workflows can reload Luau scripts without rebuilding native code.
 - Interactive workflows reload project-local native source by rebuilding the dynamic library, re-registering the ECS program, validating the current scene, and swapping only on success.
 - Failed native builds, loads, or registrations keep the last-known-good native program active and report structured diagnostics.
-- Future shipping builds should call the same registration entrypoint through static linking where dynamic code loading is impossible or forbidden.
+- Host game builds package project-local native code as a prebuilt artifact so the target machine does not need to rebuild it.
+- Future static shipping builds should call the same registration entrypoint through static linking where dynamic code loading is impossible or forbidden.
 
 ## Design Decisions
 
@@ -89,7 +90,7 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 ## Open Questions
 
 - How are native module ABI compatibility and Zig compiler version compatibility handled across installed engine builds?
-- What is the `machina build` static-link workflow for platforms that forbid dynamic code loading?
+- What SDK shape should support static-link builds for platforms that forbid dynamic code loading?
 - How do Luau and Zig share component storage layouts without leaking unstable engine internals?
 - What tooling proves that a Zig port preserves behavior from the original Luau system?
 - Which bulk/native storage view APIs are worth exposing without compromising storage encapsulation?

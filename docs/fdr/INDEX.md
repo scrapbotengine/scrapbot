@@ -20,3 +20,4 @@
 | [FDR-016](FDR-016-render-batching.md) | Render Batching | Active | 2026-07-02 |
 | [FDR-017](FDR-017-shadow-components.md) | Shadow Components | Active | 2026-07-02 |
 | [FDR-018](FDR-018-editor-entity-inspector.md) | Editor Entity Inspector | Active | 2026-07-04 |
+| [FDR-019](FDR-019-host-game-builds.md) | Host Game Builds | Active | 2026-07-04 |

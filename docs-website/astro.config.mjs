@@ -44,6 +44,7 @@ export default defineConfig({
 					label: 'Workflow',
 					items: [
 						{ label: 'Live Reload', slug: 'workflow/live-reload' },
+						{ label: 'Building Games', slug: 'workflow/building-games' },
 						{ label: 'Testing and Verification', slug: 'workflow/testing' },
 						{ label: 'Diagnostics', slug: 'workflow/diagnostics' },
 					],
