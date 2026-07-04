@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
     });
     machina_mod.addOptions("build_options", build_options);
     linkLuau(b, machina_mod);
+    addSdlBridge(b, machina_mod, target);
 
     const exe = b.addExecutable(.{
         .name = "machina",
@@ -157,6 +158,18 @@ fn linkWgpuPlatform(compile: *std.Build.Step.Compile, target: std.Build.Resolved
         compile.root_module.linkFramework("Foundation", .{});
         compile.root_module.linkFramework("QuartzCore", .{});
         compile.root_module.linkFramework("Metal", .{});
+    }
+}
+
+fn addSdlBridge(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    switch (target.result.os.tag) {
+        .macos, .linux, .windows => module.addCSourceFiles(.{
+            .root = b.path(""),
+            .language = .c,
+            .flags = &.{"-std=c11"},
+            .files = &.{"src/sdl_bridge.c"},
+        }),
+        else => {},
     }
 }
 
