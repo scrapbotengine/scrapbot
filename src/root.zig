@@ -14,15 +14,13 @@ pub const project_file_name = "project.toml";
 pub const legacy_project_file_name = "project.machina.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
 
-pub const renderDemoBmp = render.renderDemoBmp;
-pub const renderDemoBmpWithInput = render.renderDemoBmpWithInput;
-pub const renderDemoBmpFrames = render.renderDemoBmpFrames;
+pub const renderDemoImage = render.renderDemoImage;
 pub const renderDemoImageWithInput = render.renderDemoImageWithInput;
 pub const renderDemoImageFrames = render.renderDemoImageFrames;
 pub const renderStats = render.stats;
 pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
-pub const BmpRenderOptions = render.BmpRenderOptions;
+pub const ImageRenderOptions = render.ImageRenderOptions;
 pub const FrameUpdateHook = render.FrameUpdateHook;
 pub const FrameInput = render.FrameInput;
 pub const PointerInput = render.PointerInput;
@@ -80,8 +78,7 @@ pub const validateTypeId = runtime.validateTypeId;
 pub const validateProjectTypeId = runtime.validateProjectTypeId;
 pub const validatePackageTypeId = runtime.validatePackageTypeId;
 pub const validateEngineTypeId = runtime.validateEngineTypeId;
-pub const verifyRenderBmp = render_verify.verifyBmp;
-pub const compareRenderBmp = render_verify.compareBmp;
+pub const verifyRenderImage = render_verify.verifyImage;
 pub const compareRenderImage = render_verify.compareImage;
 pub const writeFrameInput = render.writeFrameInput;
 

@@ -18,8 +18,8 @@ Usage:
   machina test [tests-path|project-path] [--format text|json]
   machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
   machina run [path] [--frames N] [--editor]
-  machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
-  machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
+  machina render [--editor] [--select entity-id] [--frames N] [path] [output.png]
+  machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.png]
   machina visual-test [--editor] [--select entity-id] [--frames N] [--update] <path> <expected.png> [actual.png]
 ```
 
@@ -36,8 +36,8 @@ Usage:
 | `machina test [path]` | Run game-shaped project tests. |
 | `machina build [path]` | Package a host-platform runnable bundle. |
 | `machina run [path]` | Run a headful interactive project. |
-| `machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` | Render one or more offscreen frames to a BMP artifact. |
-| `machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` | Render and verify visible output. |
+| `machina render [--editor] [--select entity-id] [--frames N] [path] [output.png]` | Render one or more offscreen frames to a PNG artifact. |
+| `machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.png]` | Render and verify visible output. |
 | `machina visual-test [--editor] [--select entity-id] [--frames N] [--update] <path> <expected.png> [actual.png]` | Render and compare a golden visual fixture. |
 
 ## Format Options
@@ -102,8 +102,8 @@ For platform-specific bundle notes, see [Building Games](/workflow/building-game
 ## Render Options
 
 ```sh
-machina render examples/native_motion zig-out/native-motion.bmp
-machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.bmp
+machina render examples/native_motion zig-out/native-motion.png
+machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
 ```
 
 - `--editor` renders the engine editor shell into the offscreen frame.

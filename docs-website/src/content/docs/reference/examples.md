@@ -21,21 +21,21 @@ Showcase:
 machina check examples/showcase
 machina step examples/showcase --frames 8 --dt 0.05
 machina run examples/showcase --frames 240
-machina render-test examples/showcase zig-out/showcase-render-test.bmp
+machina render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Spawn Swarm:
 
 ```sh
 machina bench examples/spawn_swarm --frames 240
-machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.bmp
+machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
 ```
 
 Native Motion:
 
 ```sh
 machina run examples/native_motion
-machina render-test examples/native_motion zig-out/native-motion-render-test.bmp
+machina render-test examples/native_motion zig-out/native-motion-render-test.png
 ```
 
 ## Test Fixtures

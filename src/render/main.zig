@@ -175,7 +175,7 @@ pub const WindowOptions = struct {
     frame_update: ?FrameUpdateHook = null,
 };
 
-pub const BmpRenderOptions = struct {
+pub const ImageRenderOptions = struct {
     frames: u32 = 1,
     delta_seconds: f32 = live_run_default_delta_seconds,
     frame_input: FrameInput = .{},
@@ -1555,23 +1555,15 @@ const UiProgressBar = struct {
     fill_color: [3]f32,
 };
 
-pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
-    try renderDemoBmpWithInput(io, allocator, output_path, scene, .{});
-}
-
-pub fn renderDemoBmpWithInput(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, frame_input: FrameInput) !void {
-    try renderDemoBmpFrames(io, allocator, output_path, scene, .{ .frame_input = frame_input });
-}
-
-pub fn renderDemoBmpFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
-    try renderDemoOutputFrames(io, allocator, output_path, scene, options, .bmp);
+pub fn renderDemoImage(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
+    try renderDemoImageWithInput(io, allocator, output_path, scene, .{});
 }
 
 pub fn renderDemoImageWithInput(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, frame_input: FrameInput) !void {
     try renderDemoImageFrames(io, allocator, output_path, scene, .{ .frame_input = frame_input });
 }
 
-pub fn renderDemoImageFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
+pub fn renderDemoImageFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: ImageRenderOptions) !void {
     try renderDemoOutputFrames(io, allocator, output_path, scene, options, try imageFormatFromPath(output_path));
 }
 
@@ -1592,7 +1584,7 @@ fn renderDemoOutputFrames(
     allocator: std.mem.Allocator,
     output_path: []const u8,
     scene: Scene,
-    options: BmpRenderOptions,
+    options: ImageRenderOptions,
     output_format: RenderOutputFormat,
 ) !void {
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;

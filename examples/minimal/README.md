@@ -8,7 +8,7 @@ project-local ECS components and update systems.
 mise machina check examples/minimal
 mise machina run examples/minimal
 mise machina run examples/minimal --frames 120
-mise machina render examples/minimal zig-out/minimal-cube.bmp
-mise machina render-test examples/minimal zig-out/minimal-render-test.bmp
+mise machina render examples/minimal zig-out/minimal-cube.png
+mise machina render-test examples/minimal zig-out/minimal-render-test.png
 mise render-test
 ```

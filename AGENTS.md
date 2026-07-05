@@ -114,7 +114,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Luau declaration boundary and script ECS registration: `src/script.zig`
 - WebGPU renderer and SDL-backed headful window path: `src/render.zig`
 - Shared retained UI layout and input resolution: `src/ui_layout.zig`
-- Offscreen BMP verification: `src/render_verify.zig`
+- Offscreen image verification: `src/render_verify.zig`
 - WGSL shaders embedded into the binary: `src/shaders/`
 - Canonical smoke-test project: `examples/minimal/`
 - Retained UI primitive gallery: `examples/ui_gallery/`

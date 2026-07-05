@@ -168,7 +168,7 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Draw-command entity** - An internal render-world entity queued by render preparation to represent a batch or UI draw operation before GPU submission. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md) and [FDR-016](fdr/FDR-016-render-batching.md).
 
-**Render verification** - The offscreen BMP, pixel-analysis, and golden-image comparison workflow used to catch rendering regressions in automation. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md), [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md), and `.agents/skills/machina-render-verification/SKILL.md`.
+**Render verification** - The offscreen PNG, pixel-analysis, and golden-image comparison workflow used to catch rendering regressions in automation. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md), [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md), and `.agents/skills/machina-render-verification/SKILL.md`.
 
 ## Records
 

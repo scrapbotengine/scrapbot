@@ -125,22 +125,22 @@ Benchmark output includes scene counts, renderable counts, render batch counts, 
 
 ## Render Tests
 
-Render one BMP:
+Render one PNG:
 
 ```sh
-machina render examples/showcase zig-out/showcase.bmp
+machina render examples/showcase zig-out/showcase.png
 ```
 
 Render an editor/inspector state without clicking in a headful window:
 
 ```sh
-machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.bmp
+machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
 ```
 
 Render and verify visible output:
 
 ```sh
-machina render-test examples/showcase zig-out/showcase-render-test.bmp
+machina render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Render tests are deterministic and should be used before relying on headful screenshots for renderer or editor-layout work.

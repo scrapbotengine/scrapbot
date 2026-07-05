@@ -27,7 +27,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 - The engine-owned editor/debug overlay is hidden by default; users can press Ctrl+Tab to toggle it.
 - Users can run `machina run [path] --editor` to start with the editor/debug overlay visible.
 - In editor mode, the game viewport fills the remaining area between editor chrome regions instead of preserving the default window's 16:9 aspect ratio.
-- `machina render [path] [output.bmp]` remains the headless/offscreen snapshot command.
+- `machina render [path] [output.png]` remains the headless/offscreen snapshot command.
 
 ## Design Decisions
 
