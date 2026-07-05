@@ -6,5 +6,9 @@ run_mode = "concurrent"
 
 [scripts.run.docs]
 command = "mise docs-website"
-default = true
 icon = "book-open"
+
+[scripts.run.spawn_swarm]
+command = "mise machina run examples/spawn_swarm"
+default = true
+icon = "play"
