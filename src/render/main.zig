@@ -6,12 +6,85 @@ const png = @import("../png.zig");
 const runtime = @import("../runtime.zig");
 const ui_layout = @import("../ui_layout.zig");
 const ui_font = @import("../ui_font.zig");
+const editor_state_types = @import("../editor/state.zig");
+const editor_layout = @import("../editor/layout.zig");
+const render_math = @import("math.zig");
 const wgpu = @import("wgpu");
 
 const is_supported_window_platform = builtin.os.tag == .macos or builtin.os.tag == .linux or builtin.os.tag == .windows;
 const sdl = if (is_supported_window_platform) @cImport({
     @cInclude("sdl_bridge.h");
 }) else struct {};
+
+const cameraViewMatrix = render_math.cameraViewMatrix;
+const lookAt = render_math.lookAt;
+const isFiniteVec3 = render_math.isFiniteVec3;
+const addVec3 = render_math.addVec3;
+const subtractVec3 = render_math.subtractVec3;
+const scaleVec3 = render_math.scaleVec3;
+const dotVec3 = render_math.dotVec3;
+const normalizeVec3 = render_math.normalizeVec3;
+const vec3Length = render_math.vec3Length;
+const subtractVec2 = render_math.subtractVec2;
+const scaleVec2 = render_math.scaleVec2;
+const dotVec2 = render_math.dotVec2;
+const vec2Length = render_math.vec2Length;
+const distancePointToScreenSegment = render_math.distancePointToScreenSegment;
+const rotateDirection = render_math.rotateDirection;
+const transformPoint = render_math.transformPoint;
+const perspective = render_math.perspective;
+const orthographic = render_math.orthographic;
+const translation = render_math.translation;
+const scaling = render_math.scaling;
+const rotationX = render_math.rotationX;
+const rotationY = render_math.rotationY;
+const rotationZ = render_math.rotationZ;
+const matMul = render_math.matMul;
+const editor_component_id_buffer_len = editor_state_types.component_id_buffer_len;
+const editor_field_name_buffer_len = editor_state_types.field_name_buffer_len;
+const editor_input_text_buffer_len = editor_state_types.input_text_buffer_len;
+const editor_undo_capacity = editor_state_types.undo_capacity;
+pub const EditorAxis = editor_state_types.EditorAxis;
+const EditorFieldSelection = editor_state_types.EditorFieldSelection;
+const EditorStoredValue = editor_state_types.EditorStoredValue;
+const EditorFieldEditCommand = editor_state_types.EditorFieldEditCommand;
+const EditorTextInputState = editor_state_types.EditorTextInputState;
+const EditorTextInputFrame = editor_state_types.EditorTextInputFrame;
+const EditorTextInputFocusOptions = editor_state_types.EditorTextInputFocusOptions;
+pub const EditorState = editor_state_types.EditorState;
+pub const EditorSplitter = editor_state_types.EditorSplitter;
+const EditorScrollBoundary = editor_state_types.EditorScrollBoundary;
+pub const EditorFrameState = editor_state_types.EditorFrameState;
+pub const EditorUpdate = editor_state_types.EditorUpdate;
+pub const EditorViewportBounds = editor_state_types.EditorViewportBounds;
+pub const EditorError = editor_state_types.EditorError;
+
+const EditorCursorKind = enum {
+    default,
+    resize_ew,
+};
+const ScreenRect = editor_layout.ScreenRect;
+const scaleScreenRect = editor_layout.scaleScreenRect;
+const pointInsideScreenRect = editor_layout.pointInsideScreenRect;
+const editorViewportWidth = editor_layout.viewportWidth;
+const editorViewportHeight = editor_layout.viewportHeight;
+const EditorSideWidths = editor_layout.SideWidths;
+const EditorBodyLayout = editor_layout.BodyLayout;
+const editorDefaultSideWidths = editor_layout.defaultSideWidths;
+const editorSideWidths = editor_layout.sideWidths;
+const clampEditorSideWidths = editor_layout.clampSideWidths;
+const editorTopBarRect = editor_layout.topBarRect;
+const editorBottomBarRect = editor_layout.bottomBarRect;
+const editorBodyRect = editor_layout.bodyRect;
+const editorBodyLayout = editor_layout.bodyLayout;
+const editorLeftSidebarRect = editor_layout.leftSidebarRect;
+const editorRightSidebarRect = editor_layout.rightSidebarRect;
+const editorSplitterRect = editor_layout.splitterRect;
+const editorSplitterHitRect = editor_layout.splitterHitRect;
+const editorGameViewport = editor_layout.gameViewport;
+pub const editorGameViewportBounds = editor_layout.gameViewportBounds;
+const editorPlayButtonRect = editor_layout.playButtonRect;
+const editorStepButtonRect = editor_layout.stepButtonRect;
 
 pub const default_output_width = 640;
 pub const default_output_height = 480;
@@ -32,20 +105,20 @@ const render_queue_ui_system_id = "scrapbot.render.queue_ui";
 const render_draw_meshes_system_id = "scrapbot.render.draw_meshes";
 const default_window_width = 1280;
 const default_window_height = 720;
-const editor_top_bar_height: f32 = 60.0;
-const editor_bottom_bar_height: f32 = 64.0;
-const editor_left_sidebar_target_width: f32 = 456.0;
-const editor_left_sidebar_min_width: f32 = 280.0;
-const editor_right_sidebar_target_width: f32 = 560.0;
-const editor_right_sidebar_min_width: f32 = 360.0;
-const editor_min_game_viewport_width: f32 = 320.0;
-const editor_splitter_width: f32 = 2.0;
-const editor_splitter_hit_width: f32 = 12.0;
+const editor_top_bar_height = editor_layout.top_bar_height;
+const editor_bottom_bar_height = editor_layout.bottom_bar_height;
+const editor_left_sidebar_target_width = editor_layout.left_sidebar_target_width;
+const editor_left_sidebar_min_width = editor_layout.left_sidebar_min_width;
+const editor_right_sidebar_target_width = editor_layout.right_sidebar_target_width;
+const editor_right_sidebar_min_width = editor_layout.right_sidebar_min_width;
+const editor_min_game_viewport_width = editor_layout.min_game_viewport_width;
+const editor_splitter_width = editor_layout.splitter_width;
+const editor_splitter_hit_width = editor_layout.splitter_hit_width;
 const editor_performance_display_interval_ns: u64 = 333_000_000;
 const live_run_default_delta_seconds: f32 = 1.0 / 60.0;
 const live_run_max_delta_seconds: f32 = 0.1;
 const editor_system_text_size: f32 = 1.0;
-const editor_panel_padding_x: f32 = 20.0;
+const editor_panel_padding_x = editor_layout.panel_padding_x;
 const editor_panel_padding_y: f32 = 24.0;
 const editor_panel_section_gap: f32 = 20.0;
 const editor_panel_label_gap: f32 = 12.0;
@@ -69,9 +142,9 @@ const editor_system_panel_min_height: f32 = 180.0;
 const editor_scrollbar_width: f32 = 8.0;
 const editor_scrollbar_gap: f32 = 12.0;
 const render_system_profile_window_frames: usize = 120;
-const editor_control_button_width: f32 = 104.0;
-const editor_control_button_height: f32 = 36.0;
-const editor_control_button_gap: f32 = 16.0;
+const editor_control_button_width = editor_layout.control_button_width;
+const editor_control_button_height = editor_layout.control_button_height;
+const editor_control_button_gap = editor_layout.control_button_gap;
 const editor_bar_text_offset_y: f32 = 16.0;
 const editor_top_fps_x: f32 = 152.0;
 const editor_panel_corner_radius: f32 = 16.0;
@@ -112,10 +185,6 @@ const editor_inspector_toggle_width: f32 = 64.0;
 const editor_inspector_swatch_size: f32 = 32.0;
 const editor_inspector_lane_label_width: f32 = 16.0;
 const editor_inspector_lane_label_gap: f32 = 4.0;
-const editor_component_id_buffer_len = 128;
-const editor_field_name_buffer_len = 64;
-const editor_input_text_buffer_len = 128;
-const editor_undo_capacity = 64;
 const editor_geometry_primitives = [_][]const u8{ "box", "plane", "uv_sphere", "ico_sphere" };
 const editor_color_channels = [_][3]f32{
     .{ 0.941, 0.267, 0.267 },
@@ -376,245 +445,6 @@ pub const KeyboardInput = struct {
         self.editor_select_all_pressed = false;
     }
 };
-
-pub const EditorAxis = enum {
-    none,
-    x,
-    y,
-    z,
-};
-
-const EditorFieldSelection = struct {
-    active: bool = false,
-    entity: runtime.EntityHandle = .{ .index = 0, .generation = 0 },
-    component_id: [editor_component_id_buffer_len]u8 = [_]u8{0} ** editor_component_id_buffer_len,
-    component_id_len: usize = 0,
-    field_name: [editor_field_name_buffer_len]u8 = [_]u8{0} ** editor_field_name_buffer_len,
-    field_name_len: usize = 0,
-    vec3_lane: u2 = 0,
-
-    fn componentId(self: *const EditorFieldSelection) []const u8 {
-        return self.component_id[0..self.component_id_len];
-    }
-
-    fn fieldName(self: *const EditorFieldSelection) []const u8 {
-        return self.field_name[0..self.field_name_len];
-    }
-
-    fn matches(self: *const EditorFieldSelection, entity: runtime.EntityHandle, component_id: []const u8, field_name: []const u8) bool {
-        return self.active and
-            self.entity.index == entity.index and
-            self.entity.generation == entity.generation and
-            std.mem.eql(u8, self.componentId(), component_id) and
-            std.mem.eql(u8, self.fieldName(), field_name);
-    }
-
-    fn sameInput(self: *const EditorFieldSelection, other: EditorFieldSelection) bool {
-        return self.active and
-            other.active and
-            self.entity.index == other.entity.index and
-            self.entity.generation == other.entity.generation and
-            self.vec3_lane == other.vec3_lane and
-            std.mem.eql(u8, self.componentId(), other.componentId()) and
-            std.mem.eql(u8, self.fieldName(), other.fieldName());
-    }
-};
-
-const EditorStoredValue = union(runtime.FieldType) {
-    boolean: bool,
-    int: i32,
-    float: f32,
-    vec3: [3]f32,
-    string: struct {
-        buffer: [editor_input_text_buffer_len]u8 = [_]u8{0} ** editor_input_text_buffer_len,
-        len: usize = 0,
-    },
-
-    fn from(value: runtime.ComponentValue) ?EditorStoredValue {
-        return switch (value) {
-            .boolean => |payload| .{ .boolean = payload },
-            .int => |payload| .{ .int = payload },
-            .float => |payload| .{ .float = payload },
-            .vec3 => |payload| .{ .vec3 = payload },
-            .string => |payload| blk: {
-                if (payload.len > editor_input_text_buffer_len) {
-                    break :blk null;
-                }
-                var stored = EditorStoredValue{ .string = .{} };
-                @memcpy(stored.string.buffer[0..payload.len], payload);
-                stored.string.len = payload.len;
-                break :blk stored;
-            },
-        };
-    }
-
-    fn componentValue(self: *const EditorStoredValue) runtime.ComponentValue {
-        return switch (self.*) {
-            .boolean => |payload| .{ .boolean = payload },
-            .int => |payload| .{ .int = payload },
-            .float => |payload| .{ .float = payload },
-            .vec3 => |payload| .{ .vec3 = payload },
-            .string => .{ .string = self.string.buffer[0..self.string.len] },
-        };
-    }
-};
-
-const EditorFieldEditCommand = struct {
-    active: bool = false,
-    entity: runtime.EntityHandle = .{ .index = 0, .generation = 0 },
-    component_id: [editor_component_id_buffer_len]u8 = [_]u8{0} ** editor_component_id_buffer_len,
-    component_id_len: usize = 0,
-    field_name: [editor_field_name_buffer_len]u8 = [_]u8{0} ** editor_field_name_buffer_len,
-    field_name_len: usize = 0,
-    old_value: EditorStoredValue = .{ .boolean = false },
-    new_value: EditorStoredValue = .{ .boolean = false },
-
-    fn componentId(self: *const EditorFieldEditCommand) []const u8 {
-        return self.component_id[0..self.component_id_len];
-    }
-
-    fn fieldName(self: *const EditorFieldEditCommand) []const u8 {
-        return self.field_name[0..self.field_name_len];
-    }
-};
-
-const EditorTextInputState = struct {
-    active: bool = false,
-    selection: EditorFieldSelection = .{},
-    buffer: [editor_input_text_buffer_len]u8 = [_]u8{0} ** editor_input_text_buffer_len,
-    len: usize = 0,
-    cursor: usize = 0,
-    selection_anchor: usize = 0,
-    original_value: EditorStoredValue = .{ .boolean = false },
-
-    fn text(self: *const EditorTextInputState) []const u8 {
-        return self.buffer[0..self.len];
-    }
-
-    fn selectionStart(self: *const EditorTextInputState) usize {
-        return @min(self.cursor, self.selection_anchor);
-    }
-
-    fn selectionEnd(self: *const EditorTextInputState) usize {
-        return @max(self.cursor, self.selection_anchor);
-    }
-
-    fn hasSelection(self: *const EditorTextInputState) bool {
-        return self.cursor != self.selection_anchor;
-    }
-
-    fn matches(self: *const EditorTextInputState, selection: EditorFieldSelection) bool {
-        return self.active and self.selection.sameInput(selection);
-    }
-};
-
-const EditorTextInputFrame = struct {
-    active: bool = false,
-    selection: EditorFieldSelection = .{},
-    buffer: [editor_input_text_buffer_len]u8 = [_]u8{0} ** editor_input_text_buffer_len,
-    len: usize = 0,
-    cursor: usize = 0,
-    selection_anchor: usize = 0,
-
-    fn text(self: *const EditorTextInputFrame) []const u8 {
-        return self.buffer[0..self.len];
-    }
-
-    fn selectionStart(self: *const EditorTextInputFrame) usize {
-        return @min(self.cursor, self.selection_anchor);
-    }
-
-    fn selectionEnd(self: *const EditorTextInputFrame) usize {
-        return @max(self.cursor, self.selection_anchor);
-    }
-
-    fn hasSelection(self: *const EditorTextInputFrame) bool {
-        return self.cursor != self.selection_anchor;
-    }
-
-    fn matches(self: *const EditorTextInputFrame, selection: EditorFieldSelection) bool {
-        return self.active and self.selection.sameInput(selection);
-    }
-};
-
-const EditorTextInputFocusOptions = struct {
-    select_all_on_focus: bool = false,
-};
-
-pub const EditorState = struct {
-    paused: bool = false,
-    selected_entity: ?runtime.EntityHandle = null,
-    selected_property: EditorFieldSelection = .{},
-    text_input: EditorTextInputState = .{},
-    dragging_axis: EditorAxis = .none,
-    dragging_splitter: EditorSplitter = .none,
-    captured_pointer: bool = false,
-    system_scroll_y: f32 = 0.0,
-    system_scroll_target_y: f32 = 0.0,
-    system_scroll_boundary: EditorScrollBoundary = .none,
-    entity_scroll_y: f32 = 0.0,
-    entity_scroll_target_y: f32 = 0.0,
-    entity_scroll_boundary: EditorScrollBoundary = .none,
-    inspector_scroll_y: f32 = 0.0,
-    inspector_scroll_target_y: f32 = 0.0,
-    inspector_scroll_boundary: EditorScrollBoundary = .none,
-    left_sidebar_width: f32 = 0.0,
-    right_sidebar_width: f32 = 0.0,
-    last_pointer: [2]f32 = .{ 0.0, 0.0 },
-    has_last_pointer: bool = false,
-    undo_stack: [editor_undo_capacity]EditorFieldEditCommand = [_]EditorFieldEditCommand{.{}} ** editor_undo_capacity,
-    undo_len: usize = 0,
-    redo_stack: [editor_undo_capacity]EditorFieldEditCommand = [_]EditorFieldEditCommand{.{}} ** editor_undo_capacity,
-    redo_len: usize = 0,
-};
-
-pub const EditorSplitter = enum {
-    none,
-    left,
-    right,
-};
-
-const EditorCursorKind = enum {
-    default,
-    resize_ew,
-};
-
-const EditorScrollBoundary = enum {
-    none,
-    top,
-    bottom,
-};
-
-pub const EditorFrameState = struct {
-    paused: bool = false,
-    selected_entity: ?runtime.EntityHandle = null,
-    selected_property: EditorFieldSelection = .{},
-    text_input: EditorTextInputFrame = .{},
-    dragging_axis: EditorAxis = .none,
-    dragging_splitter: EditorSplitter = .none,
-    system_scroll_y: f32 = 0.0,
-    entity_scroll_y: f32 = 0.0,
-    inspector_scroll_y: f32 = 0.0,
-    left_sidebar_width: f32 = 0.0,
-    right_sidebar_width: f32 = 0.0,
-    entity_count: usize = 0,
-    component_instance_count: usize = 0,
-    renderable_count: usize = 0,
-};
-
-pub const EditorUpdate = struct {
-    consumed_pointer: bool = false,
-    step_once: bool = false,
-};
-
-pub const EditorViewportBounds = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-};
-
-pub const EditorError = runtime.WorldError || error{InvalidScene};
 
 pub const FrameInput = struct {
     pointer: PointerInput = .{},
@@ -1565,34 +1395,6 @@ const UiButtonState = struct {
 };
 
 const UiClipRect = ui_layout.ClipRect;
-
-const ScreenRect = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-
-    fn position(self: ScreenRect) [3]f32 {
-        return .{ self.x, self.y, 0.0 };
-    }
-
-    fn size3(self: ScreenRect) [3]f32 {
-        return .{ self.width, self.height, 0.0 };
-    }
-
-    fn contains(self: ScreenRect, point: [2]f32) bool {
-        return pointInsideScreenRect(point, .{ self.x, self.y }, .{ self.width, self.height });
-    }
-};
-
-fn scaleScreenRect(rect: ScreenRect, scale: f32) ScreenRect {
-    return .{
-        .x = rect.x * scale,
-        .y = rect.y * scale,
-        .width = rect.width * scale,
-        .height = rect.height * scale,
-    };
-}
 
 const UiCanvasTransform = ui_layout.CanvasTransform;
 
@@ -7171,26 +6973,6 @@ fn editorAxisVector(axis: EditorAxis) ?[3]f32 {
     };
 }
 
-fn editorPlayButtonRect(input: FrameInput) ScreenRect {
-    const top = editorTopBarRect(input);
-    return .{
-        .x = @max(top.width - editor_panel_padding_x - editor_control_button_width * 2.0 - editor_control_button_gap, editor_panel_padding_x),
-        .y = top.y + (top.height - editor_control_button_height) * 0.5,
-        .width = editor_control_button_width,
-        .height = editor_control_button_height,
-    };
-}
-
-fn editorStepButtonRect(input: FrameInput) ScreenRect {
-    const play = editorPlayButtonRect(input);
-    return .{
-        .x = play.x + play.width + editor_control_button_gap,
-        .y = play.y,
-        .width = editor_control_button_width,
-        .height = editor_control_button_height,
-    };
-}
-
 const EditorCommand = enum {
     play_toggle,
     step,
@@ -7671,174 +7453,6 @@ fn mapEditorLayoutError(err: anyerror) EditorError {
     };
 }
 
-fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
-    return position[0] >= origin[0] and position[1] >= origin[1] and position[0] <= origin[0] + size[0] and position[1] <= origin[1] + size[1];
-}
-
-fn editorViewportWidth(input: FrameInput) f32 {
-    return if (input.viewport_width > 0.0) input.viewport_width else @as(f32, @floatFromInt(default_output_width));
-}
-
-fn editorViewportHeight(input: FrameInput) f32 {
-    return if (input.viewport_height > 0.0) input.viewport_height else @as(f32, @floatFromInt(default_output_height));
-}
-
-const EditorSideWidths = struct {
-    left: f32,
-    right: f32,
-};
-
-const EditorBodyLayout = struct {
-    body: ScreenRect,
-    left: ScreenRect,
-    left_splitter: ScreenRect,
-    game: ScreenRect,
-    right_splitter: ScreenRect,
-    right: ScreenRect,
-};
-
-fn editorDefaultSideWidths(window_width: f32) EditorSideWidths {
-    if (window_width <= 0.0) {
-        return .{ .left = editor_left_sidebar_target_width, .right = editor_right_sidebar_target_width };
-    }
-    var left = std.math.clamp(window_width * 0.25, editor_left_sidebar_min_width, editor_left_sidebar_target_width);
-    var right = std.math.clamp(window_width * 0.32, editor_right_sidebar_min_width, editor_right_sidebar_target_width);
-    const max_side_total = @max(window_width - editor_min_game_viewport_width, 1.0);
-    if (left + right > max_side_total) {
-        const scale = max_side_total / (left + right);
-        left = @max(left * scale, 1.0);
-        right = @max(right * scale, 1.0);
-    }
-    return .{ .left = left, .right = right };
-}
-
-fn editorSideWidths(input: FrameInput) EditorSideWidths {
-    const window_width = editorViewportWidth(input);
-    var widths = editorDefaultSideWidths(window_width);
-    if (input.editor.left_sidebar_width > 0.0) {
-        widths.left = input.editor.left_sidebar_width;
-    }
-    if (input.editor.right_sidebar_width > 0.0) {
-        widths.right = input.editor.right_sidebar_width;
-    }
-    return clampEditorSideWidths(widths, window_width);
-}
-
-fn clampEditorSideWidths(widths: EditorSideWidths, window_width: f32) EditorSideWidths {
-    const max_side_total = @max(window_width - editor_min_game_viewport_width - editor_splitter_width * 2.0, 1.0);
-    var left = std.math.clamp(widths.left, @min(editor_left_sidebar_min_width, max_side_total), max_side_total);
-    var right = std.math.clamp(widths.right, @min(editor_right_sidebar_min_width, max_side_total), max_side_total);
-    if (left + right > max_side_total) {
-        const scale = max_side_total / (left + right);
-        left = @max(left * scale, 1.0);
-        right = @max(right * scale, 1.0);
-    }
-    return .{ .left = left, .right = right };
-}
-
-fn editorTopBarRect(input: FrameInput) ScreenRect {
-    const window_width = editorViewportWidth(input);
-    return .{
-        .x = 0.0,
-        .y = 0.0,
-        .width = @max(window_width, 1.0),
-        .height = editor_top_bar_height,
-    };
-}
-
-fn editorBottomBarRect(input: FrameInput) ScreenRect {
-    const window_width = editorViewportWidth(input);
-    const window_height = editorViewportHeight(input);
-    return .{
-        .x = 0.0,
-        .y = @max(window_height - editor_bottom_bar_height, editor_top_bar_height),
-        .width = @max(window_width, 1.0),
-        .height = editor_bottom_bar_height,
-    };
-}
-
-fn editorBodyRect(input: FrameInput) ScreenRect {
-    const window_width = editorViewportWidth(input);
-    const window_height = editorViewportHeight(input);
-    return .{
-        .x = 0.0,
-        .y = editor_top_bar_height,
-        .width = @max(window_width, 1.0),
-        .height = @max(window_height - editor_top_bar_height - editor_bottom_bar_height, 1.0),
-    };
-}
-
-fn editorBodyLayout(input: FrameInput) EditorBodyLayout {
-    const body = editorBodyRect(input);
-    const widths = editorSideWidths(input);
-    const left = ScreenRect{
-        .x = body.x,
-        .y = body.y,
-        .width = widths.left,
-        .height = body.height,
-    };
-    const left_splitter = ScreenRect{
-        .x = left.x + left.width,
-        .y = body.y,
-        .width = editor_splitter_width,
-        .height = body.height,
-    };
-    const right = ScreenRect{
-        .x = body.x + body.width - widths.right,
-        .y = body.y,
-        .width = widths.right,
-        .height = body.height,
-    };
-    const right_splitter = ScreenRect{
-        .x = right.x - editor_splitter_width,
-        .y = body.y,
-        .width = editor_splitter_width,
-        .height = body.height,
-    };
-    const game = ScreenRect{
-        .x = left_splitter.x + left_splitter.width,
-        .y = body.y,
-        .width = @max(right_splitter.x - (left_splitter.x + left_splitter.width), 1.0),
-        .height = body.height,
-    };
-    return .{
-        .body = body,
-        .left = left,
-        .left_splitter = left_splitter,
-        .game = game,
-        .right_splitter = right_splitter,
-        .right = right,
-    };
-}
-
-fn editorLeftSidebarRect(input: FrameInput) ScreenRect {
-    return editorBodyLayout(input).left;
-}
-
-fn editorRightSidebarRect(input: FrameInput) ScreenRect {
-    return editorBodyLayout(input).right;
-}
-
-fn editorSplitterRect(input: FrameInput, splitter: EditorSplitter) ?ScreenRect {
-    const layout = editorBodyLayout(input);
-    return switch (splitter) {
-        .none => null,
-        .left => layout.left_splitter,
-        .right => layout.right_splitter,
-    };
-}
-
-fn editorSplitterHitRect(input: FrameInput, splitter: EditorSplitter) ?ScreenRect {
-    const visual = editorSplitterRect(input, splitter) orelse return null;
-    const extra_width = @max(editor_splitter_hit_width - visual.width, 0.0);
-    return .{
-        .x = visual.x - extra_width * 0.5,
-        .y = visual.y,
-        .width = visual.width + extra_width,
-        .height = visual.height,
-    };
-}
-
 fn editorSplitterColor(input: FrameInput, splitter: EditorSplitter, hovered_splitter: ?EditorSplitter) [3]f32 {
     if (input.editor.dragging_splitter == splitter) {
         return editor_palette.text_muted;
@@ -7877,152 +7491,6 @@ fn setEditorCursor(kind: EditorCursorKind, resize_ew_cursor: ?*anyopaque) void {
             }
         },
     }
-}
-
-fn editorGameViewport(input: FrameInput) ScreenRect {
-    const window_width = editorViewportWidth(input);
-    const window_height = editorViewportHeight(input);
-    if (!input.debug_overlay_visible) {
-        return .{
-            .x = 0.0,
-            .y = 0.0,
-            .width = @max(window_width, 1.0),
-            .height = @max(window_height, 1.0),
-        };
-    }
-
-    return editorBodyLayout(input).game;
-}
-
-pub fn editorGameViewportBounds(input: FrameInput) EditorViewportBounds {
-    const viewport = editorGameViewport(input);
-    return .{
-        .x = viewport.x,
-        .y = viewport.y,
-        .width = viewport.width,
-        .height = viewport.height,
-    };
-}
-
-fn cameraViewMatrix(transform_value: runtime.Transform) [16]f32 {
-    const inverse_translation = translation(
-        -transform_value.position[0],
-        -transform_value.position[1],
-        -transform_value.position[2],
-    );
-    return matMul(
-        rotationX(-transform_value.rotation[0]),
-        matMul(
-            rotationY(-transform_value.rotation[1]),
-            matMul(rotationZ(-transform_value.rotation[2]), inverse_translation),
-        ),
-    );
-}
-
-fn lookAt(eye: [3]f32, target: [3]f32, up: [3]f32) [16]f32 {
-    const z = normalizeVec3(subtractVec3(eye, target));
-    const x = normalizeVec3(crossVec3(up, z));
-    const y = crossVec3(z, x);
-
-    return .{
-        x[0],             y[0],             z[0],             0.0,
-        x[1],             y[1],             z[1],             0.0,
-        x[2],             y[2],             z[2],             0.0,
-        -dotVec3(x, eye), -dotVec3(y, eye), -dotVec3(z, eye), 1.0,
-    };
-}
-
-fn isFiniteVec3(value: [3]f32) bool {
-    return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
-}
-
-fn addVec3(left: [3]f32, right: [3]f32) [3]f32 {
-    return .{ left[0] + right[0], left[1] + right[1], left[2] + right[2] };
-}
-
-fn subtractVec3(left: [3]f32, right: [3]f32) [3]f32 {
-    return .{ left[0] - right[0], left[1] - right[1], left[2] - right[2] };
-}
-
-fn scaleVec3(value: [3]f32, scalar: f32) [3]f32 {
-    return .{ value[0] * scalar, value[1] * scalar, value[2] * scalar };
-}
-
-fn dotVec3(left: [3]f32, right: [3]f32) f32 {
-    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
-}
-
-fn crossVec3(left: [3]f32, right: [3]f32) [3]f32 {
-    return .{
-        left[1] * right[2] - left[2] * right[1],
-        left[2] * right[0] - left[0] * right[2],
-        left[0] * right[1] - left[1] * right[0],
-    };
-}
-
-fn normalizeVec3(value: [3]f32) [3]f32 {
-    const length = vec3Length(value);
-    if (length == 0.0) {
-        return .{ 0.0, 0.0, 1.0 };
-    }
-    return .{ value[0] / length, value[1] / length, value[2] / length };
-}
-
-fn vec3Length(value: [3]f32) f32 {
-    return @sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
-}
-
-fn addVec2(left: [2]f32, right: [2]f32) [2]f32 {
-    return .{ left[0] + right[0], left[1] + right[1] };
-}
-
-fn subtractVec2(left: [2]f32, right: [2]f32) [2]f32 {
-    return .{ left[0] - right[0], left[1] - right[1] };
-}
-
-fn scaleVec2(value: [2]f32, scalar: f32) [2]f32 {
-    return .{ value[0] * scalar, value[1] * scalar };
-}
-
-fn dotVec2(left: [2]f32, right: [2]f32) f32 {
-    return left[0] * right[0] + left[1] * right[1];
-}
-
-fn vec2Length(value: [2]f32) f32 {
-    return @sqrt(value[0] * value[0] + value[1] * value[1]);
-}
-
-fn distancePointToScreenSegment(point: [2]f32, start: [2]f32, end: [2]f32) f32 {
-    const segment = subtractVec2(end, start);
-    const segment_len_sq = dotVec2(segment, segment);
-    if (segment_len_sq <= 0.00001) {
-        return vec2Length(subtractVec2(point, start));
-    }
-    const raw_t = dotVec2(subtractVec2(point, start), segment) / segment_len_sq;
-    const t = @max(0.0, @min(1.0, raw_t));
-    const closest = addVec2(start, scaleVec2(segment, t));
-    return vec2Length(subtractVec2(point, closest));
-}
-
-fn rotateDirection(rotation: [3]f32, direction: [3]f32) [3]f32 {
-    const matrix = matMul(
-        rotationZ(rotation[2]),
-        matMul(
-            rotationY(rotation[1]),
-            rotationX(rotation[0]),
-        ),
-    );
-    const rotated = transformPoint(matrix, .{ direction[0], direction[1], direction[2], 0.0 });
-    return normalizeVec3(.{ rotated[0], rotated[1], rotated[2] });
-}
-
-fn transformPoint(matrix: [16]f32, point: [4]f32) [4]f32 {
-    return .{
-        matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12] * point[3],
-        matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13] * point[3],
-        matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14] * point[3],
-        matrix[3] * point[0] + matrix[7] * point[1] + matrix[11] * point[2] + matrix[15] * point[3],
-    };
 }
 
 test "camera state falls back only when no camera component exists" {
@@ -10824,90 +10292,6 @@ fn addBatchTestRenderable(
     if (shadow_flags.receives_shadow) {
         try world.setShadowReceiver(entity);
     }
-}
-
-fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) [16]f32 {
-    const f = 1.0 / @tan(fovy_radians * 0.5);
-    return .{
-        f / aspect, 0.0, 0.0,                         0.0,
-        0.0,        f,   0.0,                         0.0,
-        0.0,        0.0, far / (near - far),          -1.0,
-        0.0,        0.0, (far * near) / (near - far), 0.0,
-    };
-}
-
-fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) [16]f32 {
-    return .{
-        2.0 / (right - left),             0.0,                              0.0,                 0.0,
-        0.0,                              2.0 / (top - bottom),             0.0,                 0.0,
-        0.0,                              0.0,                              1.0 / (near - far),  0.0,
-        -(right + left) / (right - left), -(top + bottom) / (top - bottom), near / (near - far), 1.0,
-    };
-}
-
-fn translation(x: f32, y: f32, z: f32) [16]f32 {
-    return .{
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        x,   y,   z,   1.0,
-    };
-}
-
-fn scaling(x: f32, y: f32, z: f32) [16]f32 {
-    return .{
-        x,   0.0, 0.0, 0.0,
-        0.0, y,   0.0, 0.0,
-        0.0, 0.0, z,   0.0,
-        0.0, 0.0, 0.0, 1.0,
-    };
-}
-
-fn rotationX(angle: f32) [16]f32 {
-    const c = @cos(angle);
-    const s = @sin(angle);
-    return .{
-        1.0, 0.0, 0.0, 0.0,
-        0.0, c,   s,   0.0,
-        0.0, -s,  c,   0.0,
-        0.0, 0.0, 0.0, 1.0,
-    };
-}
-
-fn rotationY(angle: f32) [16]f32 {
-    const c = @cos(angle);
-    const s = @sin(angle);
-    return .{
-        c,   0.0, -s,  0.0,
-        0.0, 1.0, 0.0, 0.0,
-        s,   0.0, c,   0.0,
-        0.0, 0.0, 0.0, 1.0,
-    };
-}
-
-fn rotationZ(angle: f32) [16]f32 {
-    const c = @cos(angle);
-    const s = @sin(angle);
-    return .{
-        c,   s,   0.0, 0.0,
-        -s,  c,   0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    };
-}
-
-fn matMul(a: [16]f32, b: [16]f32) [16]f32 {
-    var out: [16]f32 = undefined;
-    for (0..4) |column| {
-        for (0..4) |row| {
-            var sum: f32 = 0.0;
-            for (0..4) |k| {
-                sum += a[k * 4 + row] * b[column * 4 + k];
-            }
-            out[column * 4 + row] = sum;
-        }
-    }
-    return out;
 }
 
 fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, width: u32, height: u32) RenderError!std.ArrayList(UiVertex) {
