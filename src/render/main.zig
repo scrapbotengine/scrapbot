@@ -13,15 +13,8 @@ const sdl = if (is_supported_window_platform) @cImport({
     @cInclude("sdl_bridge.h");
 }) else struct {};
 
-const output_width = 640;
-const output_height = 480;
-const output_extent = wgpu.Extent3D{
-    .width = output_width,
-    .height = output_height,
-    .depth_or_array_layers = 1,
-};
-const output_bytes_per_row = 4 * output_width;
-const output_size = output_bytes_per_row * output_height;
+pub const default_output_width = 640;
+pub const default_output_height = 480;
 const depth_format = wgpu.TextureFormat.depth24_plus;
 const shadow_depth_format = wgpu.TextureFormat.depth32_float;
 const shadow_map_size = 1024;
@@ -39,9 +32,9 @@ const render_queue_ui_system_id = "machina.render.queue_ui";
 const render_draw_meshes_system_id = "machina.render.draw_meshes";
 const default_window_width = 1280;
 const default_window_height = 720;
-const editor_top_bar_height: f32 = 56.0;
-const editor_bottom_bar_height: f32 = 60.0;
-const editor_left_sidebar_target_width: f32 = 440.0;
+const editor_top_bar_height: f32 = 60.0;
+const editor_bottom_bar_height: f32 = 64.0;
+const editor_left_sidebar_target_width: f32 = 456.0;
 const editor_left_sidebar_min_width: f32 = 280.0;
 const editor_right_sidebar_target_width: f32 = 560.0;
 const editor_right_sidebar_min_width: f32 = 360.0;
@@ -52,35 +45,37 @@ const editor_performance_display_interval_ns: u64 = 333_000_000;
 const live_run_default_delta_seconds: f32 = 1.0 / 60.0;
 const live_run_max_delta_seconds: f32 = 0.1;
 const editor_system_text_size: f32 = 1.0;
-const editor_panel_padding_x: f32 = 16.0;
-const editor_panel_padding_y: f32 = 22.0;
-const editor_panel_section_gap: f32 = 18.0;
-const editor_panel_label_gap: f32 = 10.0;
-const editor_panel_bottom_padding: f32 = 18.0;
-const editor_system_row_stride: f32 = 40.0;
-const editor_system_row_label_padding_x: f32 = 16.0;
-const editor_system_row_duration_padding_x: f32 = 16.0;
+const editor_panel_padding_x: f32 = 20.0;
+const editor_panel_padding_y: f32 = 24.0;
+const editor_panel_section_gap: f32 = 20.0;
+const editor_panel_label_gap: f32 = 12.0;
+const editor_panel_bottom_padding: f32 = 20.0;
+const editor_system_row_stride: f32 = 44.0;
+const editor_system_row_label_padding_x: f32 = 20.0;
+const editor_system_row_duration_padding_x: f32 = 20.0;
 const editor_system_field_column_gap: f32 = 4.0;
-const editor_system_card_padding_y: f32 = 16.0;
+const editor_system_card_padding_y: f32 = 20.0;
 const editor_system_scroll_pixels_per_wheel: f32 = 18.0;
 const editor_system_scroll_smoothing: f32 = 22.0;
 const editor_entity_text_size: f32 = 1.0;
-const editor_entity_row_stride: f32 = 34.0;
-const editor_entity_row_label_padding_x: f32 = 16.0;
-const editor_entity_row_component_padding_x: f32 = 16.0;
+const editor_entity_row_stride: f32 = 36.0;
+const editor_entity_row_label_padding_x: f32 = 20.0;
+const editor_entity_row_component_padding_x: f32 = 20.0;
 const editor_entity_field_column_gap: f32 = 4.0;
-const editor_entity_card_padding_y: f32 = 14.0;
-const editor_left_panel_gap: f32 = 8.0;
+const editor_entity_card_padding_y: f32 = 16.0;
+const editor_left_panel_gap: f32 = 12.0;
 const editor_entity_panel_min_height: f32 = 160.0;
 const editor_system_panel_min_height: f32 = 180.0;
-const editor_scrollbar_width: f32 = 6.0;
-const editor_scrollbar_gap: f32 = 10.0;
+const editor_scrollbar_width: f32 = 8.0;
+const editor_scrollbar_gap: f32 = 12.0;
 const render_system_profile_window_frames: usize = 120;
 const editor_control_button_width: f32 = 104.0;
 const editor_control_button_height: f32 = 36.0;
-const editor_control_button_gap: f32 = 14.0;
+const editor_control_button_gap: f32 = 16.0;
+const editor_bar_text_offset_y: f32 = 16.0;
+const editor_top_fps_x: f32 = 152.0;
 const editor_panel_corner_radius: f32 = 16.0;
-const editor_sidebar_panel_margin: f32 = 6.0;
+const editor_sidebar_panel_margin: f32 = 8.0;
 const editor_button_corner_radius: f32 = 6.0;
 const editor_command_play_toggle = "machina.editor.play_toggle";
 const editor_command_step = "machina.editor.step";
@@ -90,24 +85,32 @@ const fly_camera_move_speed: f32 = 6.0;
 const fly_camera_look_sensitivity: f32 = 0.0035;
 const fly_camera_max_pitch: f32 = std.math.degreesToRadians(89.0);
 const editor_inspector_text_size: f32 = 1.0;
-const editor_inspector_line_stride: f32 = 28.0;
-const editor_inspector_field_row_stride: f32 = 32.0;
-const editor_inspector_card_gap: f32 = 0.0;
+const editor_inspector_line_stride: f32 = 32.0;
+const editor_inspector_field_row_margin_y: f32 = 2.0;
+const editor_inspector_card_gap: f32 = 4.0;
 const editor_inspector_separator_height: f32 = 1.0;
-const editor_inspector_card_padding_x: f32 = 16.0;
-const editor_inspector_card_padding_y: f32 = 16.0;
-const editor_inspector_field_column_gap: f32 = 8.0;
+const editor_inspector_card_padding_x: f32 = 20.0;
+const editor_inspector_card_padding_y: f32 = 20.0;
+const editor_inspector_field_column_gap: f32 = 12.0;
 const editor_inspector_column_min_width: f32 = 140.0;
-const editor_inspector_input_padding_x: f32 = 4.0;
-const editor_inspector_input_gap: f32 = 6.0;
-const editor_inspector_input_height: f32 = 28.0;
-const editor_inspector_input_corner_radius: f32 = 5.0;
+const editor_inspector_input_padding_x: f32 = 2.0;
+const editor_inspector_input_padding_y: f32 = 2.0;
+const editor_inspector_input_gap: f32 = 8.0;
 const editor_inspector_input_border_thickness: f32 = 1.0;
+const editor_inspector_input_text_offset_x: f32 = editor_inspector_input_border_thickness + editor_inspector_input_padding_x;
+const editor_inspector_input_text_offset_y: f32 = editor_inspector_input_border_thickness + editor_inspector_input_padding_y;
+const editor_inspector_input_height: f32 = @as(f32, @floatFromInt(ui_font.height)) * editor_inspector_text_size + editor_inspector_input_text_offset_y * 2.0;
+const editor_inspector_input_cell_padding: f32 = 2.0;
+const editor_inspector_field_row_height: f32 = editor_inspector_input_height + editor_inspector_input_cell_padding * 2.0;
+const editor_inspector_field_row_stride: f32 = editor_inspector_field_row_height + editor_inspector_field_row_margin_y;
+const editor_inspector_input_corner_radius: f32 = 8.0;
 const editor_inspector_caret_width: f32 = 2.0;
+const editor_inspector_field_control_offset_y: f32 = -4.0;
+const editor_inspector_field_text_offset_y: f32 = -editor_inspector_field_control_offset_y + editor_inspector_input_cell_padding;
 const editor_inspector_selection_padding_y: f32 = 4.0;
-const editor_inspector_toggle_width: f32 = 60.0;
-const editor_inspector_swatch_size: f32 = 28.0;
-const editor_inspector_lane_label_width: f32 = 14.0;
+const editor_inspector_toggle_width: f32 = 64.0;
+const editor_inspector_swatch_size: f32 = 32.0;
+const editor_inspector_lane_label_width: f32 = 16.0;
 const editor_inspector_lane_label_gap: f32 = 4.0;
 const editor_component_id_buffer_len = 128;
 const editor_field_name_buffer_len = 64;
@@ -178,6 +181,8 @@ pub const WindowOptions = struct {
 pub const BmpRenderOptions = struct {
     frames: u32 = 1,
     delta_seconds: f32 = live_run_default_delta_seconds,
+    width: u32 = default_output_width,
+    height: u32 = default_output_height,
     frame_input: FrameInput = .{},
     frame_update: ?FrameUpdateHook = null,
 };
@@ -1595,6 +1600,20 @@ fn renderDemoOutputFrames(
     options: BmpRenderOptions,
     output_format: RenderOutputFormat,
 ) !void {
+    if (options.width == 0 or options.height == 0) {
+        return RenderError.InvalidScene;
+    }
+    const output_extent = wgpu.Extent3D{
+        .width = options.width,
+        .height = options.height,
+        .depth_or_array_layers = 1,
+    };
+    const output_bytes_per_row = alignedOutputBytesPerRow(options.width);
+    if (output_bytes_per_row > std.math.maxInt(u32)) {
+        return RenderError.InvalidScene;
+    }
+    const output_size = output_bytes_per_row * @as(usize, options.height);
+
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
 
@@ -1620,7 +1639,7 @@ fn renderDemoOutputFrames(
     var demo = try MeshDemo.create(allocator, gpu.device, gpu.queue, texture_format, scene);
     defer demo.deinit();
 
-    var depth = try DepthTarget.create(gpu.device, output_width, output_height);
+    var depth = try DepthTarget.create(gpu.device, options.width, options.height);
     defer depth.deinit();
 
     const staging_buffer = gpu.device.createBuffer(&wgpu.BufferDescriptor{
@@ -1636,16 +1655,16 @@ fn renderDemoOutputFrames(
     while (frame_index < frame_count) : (frame_index += 1) {
         var input = options.frame_input;
         input.delta_seconds = options.delta_seconds;
-        input.viewport_width = @floatFromInt(output_width);
-        input.viewport_height = @floatFromInt(output_height);
+        input.viewport_width = @floatFromInt(options.width);
+        input.viewport_height = @floatFromInt(options.height);
         input.system_profile_count_hint = demo.renderSystemProfileCount();
         if (options.frame_update) |frame_update| {
             frame_update.step(frame_update.context, options.delta_seconds, &input);
         }
 
         try demo.draw(gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, .{
-            .width = output_width,
-            .height = output_height,
+            .width = options.width,
+            .height = options.height,
             .scene = scene,
             .input = input,
         });
@@ -1664,8 +1683,8 @@ fn renderDemoOutputFrames(
         },
         &wgpu.TexelCopyBufferInfo{
             .layout = .{
-                .bytes_per_row = output_bytes_per_row,
-                .rows_per_image = output_height,
+                .bytes_per_row = @intCast(output_bytes_per_row),
+                .rows_per_image = options.height,
             },
             .buffer = staging_buffer,
         },
@@ -1701,8 +1720,8 @@ fn renderDemoOutputFrames(
     defer staging_buffer.unmap();
 
     switch (output_format) {
-        .bmp => try write24BitBmp(io, allocator, output_path, mapped[0..output_size]),
-        .png => try write24BitPng(io, allocator, output_path, mapped[0..output_size]),
+        .bmp => try write24BitBmp(io, allocator, output_path, mapped[0..output_size], options.width, options.height, output_bytes_per_row),
+        .png => try write24BitPng(io, allocator, output_path, mapped[0..output_size], options.width, options.height, output_bytes_per_row),
     }
 }
 
@@ -3267,7 +3286,7 @@ fn extractEditorTopBarInto(allocator: std.mem.Allocator, world: *runtime.World, 
     const top = editorTopBarRect(input);
     const title = world.createEntity("machina.editor.top.title", "Editor Top Title") catch |err| return mapWorldError(err);
     world.setUiText(title, .{
-        .position = .{ editor_panel_padding_x, top.y + 14.0, 0.0 },
+        .position = .{ editor_panel_padding_x, top.y + editor_bar_text_offset_y, 0.0 },
         .size = 1.0,
         .color = editor_palette.text_muted,
         .value = "MACHINA",
@@ -3277,7 +3296,7 @@ fn extractEditorTopBarInto(allocator: std.mem.Allocator, world: *runtime.World, 
     defer allocator.free(fps_text);
     const fps = world.createEntity("machina.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
     world.setUiText(fps, .{
-        .position = .{ 150.0, top.y + 14.0, 0.0 },
+        .position = .{ editor_top_fps_x, top.y + editor_bar_text_offset_y, 0.0 },
         .size = editor_system_text_size,
         .color = editor_palette.text,
         .value = fps_text,
@@ -3299,7 +3318,7 @@ fn extractEditorBottomBarInto(allocator: std.mem.Allocator, world: *runtime.Worl
     defer allocator.free(status);
     const status_text = world.createEntity("machina.editor.bottom.status", "Editor Bottom Status") catch |err| return mapWorldError(err);
     world.setUiText(status_text, .{
-        .position = .{ editor_panel_padding_x, bottom.y + 14.0, 0.0 },
+        .position = .{ editor_panel_padding_x, bottom.y + editor_bar_text_offset_y, 0.0 },
         .size = editor_system_text_size,
         .color = editor_palette.text_muted,
         .value = status,
@@ -3752,11 +3771,12 @@ fn extractEditorPropertyRow(
 
     const row = world.createEntity(row_id, "Editor Component Field Table") catch |err| return mapWorldError(err);
     world.setUiTable(row, .{
-        .position = .{ editor_inspector_card_padding_x, spec.field_y - 4.0, 0.0 },
-        .size = .{ @max(spec.card_width - editor_inspector_card_padding_x * 2.0, 1.0), editor_inspector_input_height, 0.0 },
+        .position = .{ editor_inspector_card_padding_x, spec.field_y + editor_inspector_field_control_offset_y - editor_inspector_input_cell_padding, 0.0 },
+        .size = .{ @max(spec.card_width - editor_inspector_card_padding_x * 2.0, 1.0), editor_inspector_field_row_height, 0.0 },
         .columns = 2,
-        .row_height = editor_inspector_input_height,
+        .row_height = editor_inspector_field_row_height,
         .column_gap = editor_inspector_field_column_gap,
+        .row_gap = editor_inspector_field_row_margin_y,
         .first_column_ratio = 0.5,
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(row, .{
@@ -3765,7 +3785,7 @@ fn extractEditorPropertyRow(
     }) catch |err| return mapWorldError(err);
 
     const label_cell = world.createEntity(label_cell_id, "Editor Component Field Label Cell") catch |err| return mapWorldError(err);
-    world.setUiSpacer(label_cell, .{ .size = .{ 0.0, editor_inspector_input_height, 0.0 } }) catch |err| return mapWorldError(err);
+    world.setUiSpacer(label_cell, .{ .size = .{ 0.0, editor_inspector_field_row_height, 0.0 } }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(label_cell, .{
         .parent = row_id,
         .order = 0,
@@ -3773,7 +3793,7 @@ fn extractEditorPropertyRow(
     }) catch |err| return mapWorldError(err);
 
     const value_cell = world.createEntity(value_cell_id, "Editor Component Field Value Cell") catch |err| return mapWorldError(err);
-    world.setUiSpacer(value_cell, .{ .size = .{ 0.0, editor_inspector_input_height, 0.0 } }) catch |err| return mapWorldError(err);
+    world.setUiSpacer(value_cell, .{ .size = .{ 0.0, editor_inspector_field_row_height, 0.0 } }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(value_cell, .{
         .parent = row_id,
         .order = 1,
@@ -3791,23 +3811,24 @@ fn extractEditorPropertyRow(
 
     _ = try extractEditorChildText(world, label_id, "Editor Component Field Label", label_cell_id, .{
         0.0,
-        4.0,
+        editor_inspector_field_text_offset_y,
         0.0,
     }, label_text, editor_inspector_text_size, editor_palette.text_muted);
 
     var value_spec = spec;
     value_spec.parent_id = value_cell_id;
     value_spec.card_width = value_rect.size[0];
-    value_spec.field_y = 4.0;
+    value_spec.field_y = -editor_inspector_field_control_offset_y + editor_inspector_input_cell_padding;
 
     switch (spec.value) {
         .vec3 => |payload| {
             const value_row_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.value_row", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
             defer allocator.free(value_row_id);
+            const padded_value_width = @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0);
             const value_row = world.createEntity(value_row_id, "Editor Property Vec3 Value Row") catch |err| return mapWorldError(err);
             world.setUiHGroup(value_row, .{
-                .position = .{ 0.0, 0.0, 0.0 },
-                .size = .{ value_rect.size[0], editor_inspector_input_height, 0.0 },
+                .position = .{ editor_inspector_input_cell_padding, 0.0, 0.0 },
+                .size = .{ padded_value_width, editor_inspector_field_row_height, 0.0 },
                 .spacing = editor_inspector_input_gap,
             }) catch |err| return mapWorldError(err);
             world.setUiLayoutItem(value_row, .{
@@ -3820,7 +3841,7 @@ fn extractEditorPropertyRow(
             const child_count: f32 = if (is_color) 7.0 else 6.0;
             const spacing_total = @max(child_count - 1.0, 0.0) * editor_inspector_input_gap;
             const swatch_total_width = if (is_color) editor_inspector_swatch_size else 0.0;
-            const lane_width = @max((value_rect.size[0] - swatch_total_width - editor_inspector_lane_label_width * 3.0 - spacing_total) / 3.0, 1.0);
+            const lane_width = @max((padded_value_width - swatch_total_width - editor_inspector_lane_label_width * 3.0 - spacing_total) / 3.0, 1.0);
             var order: i32 = 0;
             if (is_color) {
                 try extractEditorColorSwatch(allocator, world, value_spec, .{
@@ -3860,16 +3881,16 @@ fn extractEditorPropertyRow(
         },
         .boolean => |payload| {
             try extractEditorBooleanToggle(allocator, world, value_spec, .{
-                .x = 0.0,
-                .width = @min(editor_inspector_toggle_width, @max(value_rect.size[0], 1.0)),
+                .x = editor_inspector_input_cell_padding,
+                .width = @min(editor_inspector_toggle_width, @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0)),
                 .value = payload,
             });
         },
         .string => |payload| {
             if (editorFieldIsPrimitiveSelector(spec.component_id, spec.field_name)) {
                 try extractEditorPrimitiveSelector(allocator, world, value_spec, .{
-                    .x = 0.0,
-                    .width = @max(value_rect.size[0], 1.0),
+                    .x = editor_inspector_input_cell_padding,
+                    .width = @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0),
                     .value = payload,
                 });
             } else {
@@ -3881,8 +3902,8 @@ fn extractEditorPropertyRow(
                     formatEditorInputValue(&value_buffer, spec.value, 0) orelse "";
                 try extractEditorPropertyInputBox(allocator, world, value_spec, .{
                     .lane = null,
-                    .x = 0.0,
-                    .width = @max(value_rect.size[0], 1.0),
+                    .x = editor_inspector_input_cell_padding,
+                    .width = @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0),
                     .text = value_text,
                     .focused = is_focused,
                     .cursor = if (is_focused) spec.text_input.cursor else value_text.len,
@@ -3899,8 +3920,8 @@ fn extractEditorPropertyRow(
                 formatEditorInputValue(&value_buffer, spec.value, 0) orelse "";
             try extractEditorPropertyInputBox(allocator, world, value_spec, .{
                 .lane = null,
-                .x = 0.0,
-                .width = @max(value_rect.size[0], 1.0),
+                .x = editor_inspector_input_cell_padding,
+                .width = @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0),
                 .text = value_text,
                 .focused = is_focused,
                 .cursor = if (is_focused) spec.text_input.cursor else value_text.len,
@@ -3946,7 +3967,7 @@ fn extractEditorVec3LaneLabel(
         .order = label.order,
         .min_size = .{ editor_inspector_lane_label_width, editor_inspector_input_height, 0.0 },
         .preferred_size = .{ editor_inspector_lane_label_width, editor_inspector_input_height, 0.0 },
-        .@"align" = "fill",
+        .@"align" = "start",
     }) catch |err| return mapWorldError(err);
 }
 
@@ -3971,7 +3992,7 @@ fn extractEditorBooleanToggle(
     const color = if (toggle.value) editor_palette.input_active else editor_palette.input;
     const toggle_entity = try extractEditorPanel(world, toggle_id, "Editor Property Boolean Toggle", .{
         .x = toggle.x,
-        .y = row.field_y - 4.0,
+        .y = row.field_y + editor_inspector_field_control_offset_y,
         .width = toggle.width,
         .height = editor_inspector_input_height,
     }, color, editor_inspector_input_corner_radius);
@@ -3979,7 +4000,7 @@ fn extractEditorBooleanToggle(
         .parent = row.parent_id,
         .order = toggle.order,
         .preferred_size = .{ toggle.width, editor_inspector_input_height, 0.0 },
-        .@"align" = "fill",
+        .@"align" = "start",
     }) catch |err| return mapWorldError(err);
     world.setUiBorder(toggle_entity, .{
         .color = if (toggle.value) editor_palette.accent_soft else editor_palette.text_dim,
@@ -3988,10 +4009,10 @@ fn extractEditorBooleanToggle(
 
     const label = if (toggle.value) "ON" else "OFF";
     const label_width = editorTextWidth(label, editor_inspector_text_size);
-    const label_x = @max((toggle.width - label_width) * 0.5, editor_inspector_input_padding_x);
+    const label_x = @max((toggle.width - label_width) * 0.5, editor_inspector_input_text_offset_x);
     const text = try extractEditorChildText(world, label_id, "Editor Property Boolean Toggle Label", toggle_id, .{
         label_x,
-        2.0,
+        editor_inspector_input_text_offset_y,
         0.0,
     }, label, editor_inspector_text_size, editor_palette.text);
     world.setUiLayoutItem(text, .{
@@ -4020,7 +4041,7 @@ fn extractEditorPrimitiveSelector(
 
     const box = try extractEditorPanel(world, selector_id, "Editor Property Primitive Selector", .{
         .x = selector.x,
-        .y = row.field_y - 4.0,
+        .y = row.field_y + editor_inspector_field_control_offset_y,
         .width = selector.width,
         .height = editor_inspector_input_height,
     }, editor_palette.input, editor_inspector_input_corner_radius);
@@ -4030,7 +4051,7 @@ fn extractEditorPrimitiveSelector(
         .preferred_size = .{ selector.width, editor_inspector_input_height, 0.0 },
         .grow = 1.0,
         .shrink = 1.0,
-        .@"align" = "fill",
+        .@"align" = "start",
     }) catch |err| return mapWorldError(err);
     world.setUiBorder(box, .{
         .color = editor_palette.text_dim,
@@ -4039,11 +4060,11 @@ fn extractEditorPrimitiveSelector(
 
     const label = std.fmt.allocPrint(allocator, "{s} >", .{selector.value}) catch return RenderError.OutOfMemory;
     defer allocator.free(label);
-    const fitted = fitEditorTextToWidth(allocator, label, editor_inspector_text_size, @max(selector.width - editor_inspector_input_padding_x * 2.0, 1.0)) catch return RenderError.OutOfMemory;
+    const fitted = fitEditorTextToWidth(allocator, label, editor_inspector_text_size, @max(selector.width - editor_inspector_input_text_offset_x * 2.0, 1.0)) catch return RenderError.OutOfMemory;
     defer allocator.free(fitted);
     const text = try extractEditorChildText(world, value_id, "Editor Property Primitive Selector Value", selector_id, .{
-        editor_inspector_input_padding_x,
-        2.0,
+        editor_inspector_input_text_offset_x,
+        editor_inspector_input_text_offset_y,
         0.0,
     }, fitted, editor_inspector_text_size, editor_palette.text);
     world.setUiLayoutItem(text, .{
@@ -4073,7 +4094,7 @@ fn extractEditorColorSwatch(
     };
     const entity = try extractEditorPanel(world, swatch_id, "Editor Property Color Swatch", .{
         .x = swatch.x,
-        .y = row.field_y - 4.0,
+        .y = row.field_y + editor_inspector_field_control_offset_y,
         .width = editor_inspector_swatch_size,
         .height = editor_inspector_input_height,
     }, safe_color, editor_inspector_input_corner_radius);
@@ -4081,7 +4102,7 @@ fn extractEditorColorSwatch(
         .parent = row.parent_id,
         .order = swatch.order,
         .preferred_size = .{ editor_inspector_swatch_size, editor_inspector_input_height, 0.0 },
-        .@"align" = "fill",
+        .@"align" = "start",
     }) catch |err| return mapWorldError(err);
     world.setUiBorder(entity, .{
         .color = editor_palette.text_dim,
@@ -4108,7 +4129,7 @@ fn extractEditorPropertyInputBox(
 
     const box = try extractEditorPanel(world, input_id, "Editor Property Text Input", .{
         .x = input.x,
-        .y = row.field_y - 4.0,
+        .y = row.field_y + editor_inspector_field_control_offset_y,
         .width = input.width,
         .height = editor_inspector_input_height,
     }, editor_palette.input, editor_inspector_input_corner_radius);
@@ -4119,7 +4140,7 @@ fn extractEditorPropertyInputBox(
         .preferred_size = .{ input.width, editor_inspector_input_height, 0.0 },
         .grow = 1.0,
         .shrink = 1.0,
-        .@"align" = "fill",
+        .@"align" = "start",
     }) catch |err| return mapWorldError(err);
     if (input.focused) {
         world.setUiBorder(box, .{
@@ -4137,20 +4158,20 @@ fn extractEditorPropertyInputBox(
             std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.selection", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
         defer allocator.free(selection_id);
         const start_x = std.math.clamp(
-            editor_inspector_input_padding_x + editorTextWidth(input.text[0..@min(selection_start, input.text.len)], editor_inspector_text_size),
-            editor_inspector_input_padding_x,
-            @max(input.width - editor_inspector_input_padding_x, editor_inspector_input_padding_x),
+            editor_inspector_input_text_offset_x + editorTextWidth(input.text[0..@min(selection_start, input.text.len)], editor_inspector_text_size),
+            editor_inspector_input_text_offset_x,
+            @max(input.width - editor_inspector_input_text_offset_x, editor_inspector_input_text_offset_x),
         );
         const end_x = std.math.clamp(
-            editor_inspector_input_padding_x + editorTextWidth(input.text[0..@min(selection_end, input.text.len)], editor_inspector_text_size),
-            editor_inspector_input_padding_x,
-            @max(input.width - editor_inspector_input_padding_x, editor_inspector_input_padding_x),
+            editor_inspector_input_text_offset_x + editorTextWidth(input.text[0..@min(selection_end, input.text.len)], editor_inspector_text_size),
+            editor_inspector_input_text_offset_x,
+            @max(input.width - editor_inspector_input_text_offset_x, editor_inspector_input_text_offset_x),
         );
         const selection = try extractEditorPanel(world, selection_id, "Editor Property Text Selection", .{
             .x = start_x,
-            .y = editor_inspector_selection_padding_y,
+            .y = editor_inspector_input_text_offset_y,
             .width = @max(end_x - start_x, 1.0),
-            .height = editorTextHeight(editor_inspector_text_size) - editor_inspector_selection_padding_y * 0.5,
+            .height = editorTextHeight(editor_inspector_text_size),
         }, editor_palette.input_selection, 2.0);
         world.setUiLayoutItem(selection, .{
             .parent = input_id,
@@ -4158,12 +4179,12 @@ fn extractEditorPropertyInputBox(
         }) catch |err| return mapWorldError(err);
     }
 
-    const text_max_width = @max(input.width - editor_inspector_input_padding_x * 2.0, 1.0);
+    const text_max_width = @max(input.width - editor_inspector_input_text_offset_x * 2.0, 1.0);
     const fitted_text = fitEditorTextToWidth(allocator, input.text, editor_inspector_text_size, text_max_width) catch return RenderError.OutOfMemory;
     defer allocator.free(fitted_text);
     const text_entity = try extractEditorChildText(world, value_id, "Editor Property Text Input Value", input_id, .{
-        editor_inspector_input_padding_x,
-        2.0,
+        editor_inspector_input_text_offset_x,
+        editor_inspector_input_text_offset_y,
         0.0,
     }, fitted_text, editor_inspector_text_size, if (input.focused) editor_palette.text else editor_palette.text_muted);
     world.setUiLayoutItem(text_entity, .{
@@ -4173,9 +4194,9 @@ fn extractEditorPropertyInputBox(
 
     if (input.focused) {
         const cursor_x = std.math.clamp(
-            editor_inspector_input_padding_x + editorTextWidth(input.text[0..@min(input.cursor, input.text.len)], editor_inspector_text_size),
-            editor_inspector_input_padding_x,
-            @max(input.width - editor_inspector_input_padding_x, editor_inspector_input_padding_x),
+            editor_inspector_input_text_offset_x + editorTextWidth(input.text[0..@min(input.cursor, input.text.len)], editor_inspector_text_size),
+            editor_inspector_input_text_offset_x,
+            @max(input.width - editor_inspector_input_text_offset_x, editor_inspector_input_text_offset_x),
         );
         const caret_id = if (input.lane) |lane|
             std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.caret.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
@@ -4184,9 +4205,9 @@ fn extractEditorPropertyInputBox(
         defer allocator.free(caret_id);
         const caret = try extractEditorPanel(world, caret_id, "Editor Property Text Input Caret", .{
             .x = cursor_x,
-            .y = 4.0,
+            .y = editor_inspector_input_text_offset_y,
             .width = editor_inspector_caret_width,
-            .height = editorTextHeight(editor_inspector_text_size) - 4.0,
+            .height = editorTextHeight(editor_inspector_text_size),
         }, editor_palette.accent_soft, 0.0);
         world.setUiLayoutItem(caret, .{
             .parent = input_id,
@@ -4303,7 +4324,7 @@ fn editorEntityPanelHeight(total_height: f32) f32 {
     }
     const max_entity_height = @max(total_height * 0.5, 1.0);
     const min_entity_height = @min(editor_entity_panel_min_height, max_entity_height);
-    var entity_height = std.math.clamp(total_height * 0.38, min_entity_height, max_entity_height);
+    var entity_height = std.math.clamp(total_height * 0.4, min_entity_height, max_entity_height);
     const min_system = @min(editor_system_panel_min_height, @max(total_height - editor_left_panel_gap - 1.0, 1.0));
     if (total_height - editor_left_panel_gap - entity_height < min_system) {
         entity_height = @max(total_height - editor_left_panel_gap - min_system, 1.0);
@@ -4509,6 +4530,7 @@ fn editorInspectorComponentContentHeight(scene_world: *const runtime.World, sele
     var component_index: usize = 0;
     while (components.next()) |component_id| {
         if (component_index > 0) {
+            height += editor_inspector_card_gap * 2.0;
             height += editor_inspector_separator_height;
         }
         height += editorInspectorComponentCardHeight(scene_world, component_id);
@@ -7466,7 +7488,9 @@ fn pickEditorInspectorProperty(world: *const runtime.World, input: FrameInput) E
     var components = world.entityComponents(selected) catch return null;
     while (components.next()) |component_id| {
         if (component_index > 0) {
+            content_y += editor_inspector_card_gap;
             content_y += editor_inspector_separator_height;
+            content_y += editor_inspector_card_gap;
         }
         const card_y = content_y;
         const field_count = world.componentFieldCount(component_id);
@@ -7476,13 +7500,24 @@ fn pickEditorInspectorProperty(world: *const runtime.World, input: FrameInput) E
             const field_y = clip.position[1] + card_y + field_start_y + @as(f32, @floatFromInt(field_index)) * editor_inspector_field_row_stride;
             const row_rect = ScreenRect{
                 .x = clip.position[0],
-                .y = field_y - 4.0,
+                .y = field_y + editor_inspector_field_control_offset_y - editor_inspector_input_cell_padding,
                 .width = card_width,
-                .height = editor_inspector_input_height,
+                .height = editor_inspector_field_row_height,
             };
             if (row_rect.contains(input.pointer.position)) {
                 const value = world.getComponentFieldValue(selected, component_id, field_name) catch return null;
-                return try makeEditorFieldSelection(selected, component_id, field_name, pickEditorPropertyVec3Lane(value, field_name, input.pointer.position[0], clip.position[0] + field_layout.value_x, field_layout.value_width));
+                return try makeEditorFieldSelection(
+                    selected,
+                    component_id,
+                    field_name,
+                    pickEditorPropertyVec3Lane(
+                        value,
+                        field_name,
+                        input.pointer.position[0],
+                        clip.position[0] + field_layout.value_x + editor_inspector_input_cell_padding,
+                        @max(field_layout.value_width - editor_inspector_input_cell_padding * 2.0, 1.0),
+                    ),
+                );
             }
         }
         content_y += editorInspectorComponentCardHeight(world, component_id);
@@ -7496,11 +7531,25 @@ fn pickEditorPropertyVec3Lane(value: runtime.ComponentValue, field_name: []const
     return switch (value) {
         .vec3 => blk: {
             const is_color = editorFieldLooksLikeColor(field_name);
-            const swatch_total_width = if (is_color) editor_inspector_swatch_size + editor_inspector_input_gap else 0.0;
-            const lane_total_width = @max(value_width - swatch_total_width, 1.0);
-            const lane_slot_width = @max(lane_total_width / 3.0, 1.0);
-            const local_x = std.math.clamp(pointer_x - value_screen_x - swatch_total_width, 0.0, lane_total_width - 0.001);
-            break :blk @intCast(@min(@as(i32, @intFromFloat(@floor(local_x / lane_slot_width))), 2));
+            const child_count: f32 = if (is_color) 7.0 else 6.0;
+            const spacing_total = @max(child_count - 1.0, 0.0) * editor_inspector_input_gap;
+            const swatch_total_width = if (is_color) editor_inspector_swatch_size else 0.0;
+            const lane_width = @max((value_width - swatch_total_width - editor_inspector_lane_label_width * 3.0 - spacing_total) / 3.0, 1.0);
+            var x = value_screen_x;
+            if (is_color) {
+                if (pointer_x < x + editor_inspector_swatch_size + editor_inspector_input_gap) {
+                    break :blk 0;
+                }
+                x += editor_inspector_swatch_size + editor_inspector_input_gap;
+            }
+            for (0..3) |lane_index| {
+                const slot_end = x + editor_inspector_lane_label_width + editor_inspector_input_gap + lane_width;
+                if (pointer_x < slot_end or lane_index == 2) {
+                    break :blk @intCast(lane_index);
+                }
+                x = slot_end + editor_inspector_input_gap;
+            }
+            break :blk 2;
         },
         else => 0,
     };
@@ -7564,11 +7613,11 @@ fn pointInsideScreenRect(position: [2]f32, origin: [2]f32, size: [2]f32) bool {
 }
 
 fn editorViewportWidth(input: FrameInput) f32 {
-    return if (input.viewport_width > 0.0) input.viewport_width else @as(f32, @floatFromInt(output_width));
+    return if (input.viewport_width > 0.0) input.viewport_width else @as(f32, @floatFromInt(default_output_width));
 }
 
 fn editorViewportHeight(input: FrameInput) f32 {
-    return if (input.viewport_height > 0.0) input.viewport_height else @as(f32, @floatFromInt(output_height));
+    return if (input.viewport_height > 0.0) input.viewport_height else @as(f32, @floatFromInt(default_output_height));
 }
 
 const EditorSideWidths = struct {
@@ -7589,7 +7638,7 @@ fn editorDefaultSideWidths(window_width: f32) EditorSideWidths {
     if (window_width <= 0.0) {
         return .{ .left = editor_left_sidebar_target_width, .right = editor_right_sidebar_target_width };
     }
-    var left = std.math.clamp(window_width * 0.24, editor_left_sidebar_min_width, editor_left_sidebar_target_width);
+    var left = std.math.clamp(window_width * 0.25, editor_left_sidebar_min_width, editor_left_sidebar_target_width);
     var right = std.math.clamp(window_width * 0.32, editor_right_sidebar_min_width, editor_right_sidebar_target_width);
     const max_side_total = @max(window_width - editor_min_game_viewport_width, 1.0);
     if (left + right > max_side_total) {
@@ -9405,7 +9454,7 @@ test "debug overlay extracts FPS label when visible" {
     const status = state.world.findEntityById("machina.editor.bottom.status") orelse return error.TestExpectedEqual;
     const status_position = try state.world.getVec3(status, runtime.ui_text_component_id, "position");
     const status_size = try state.world.getFloat(status, runtime.ui_text_component_id, "size");
-    try std.testing.expectApproxEqAbs(bottom.y + 14.0, status_position[1], 0.001);
+    try std.testing.expectApproxEqAbs(bottom.y + editor_bar_text_offset_y, status_position[1], 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_text_size), status_size, 0.001);
     try std.testing.expect(status_position[1] + editorTextHeight(status_size) <= bottom.y + bottom.height);
 
@@ -9916,13 +9965,17 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     const geometry_title = state.world.findEntityById("machina.editor.inspector.component.1.title") orelse return error.TestExpectedEqual;
     const transform_position_label = state.world.findEntityById("machina.editor.inspector.component.0.field.0.label") orelse return error.TestExpectedEqual;
     const transform_x_label = state.world.findEntityById("machina.editor.inspector.component.0.field.0.lane_label.0") orelse return error.TestExpectedEqual;
+    const transform_position_row = state.world.findEntityById("machina.editor.inspector.component.0.field.0.row") orelse return error.TestExpectedEqual;
     const transform_position_input_0 = state.world.findEntityById("machina.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
     const transform_position_value_0 = state.world.findEntityById("machina.editor.inspector.component.0.field.0.value.0") orelse return error.TestExpectedEqual;
+    const transform_rotation_row = state.world.findEntityById("machina.editor.inspector.component.0.field.1.row") orelse return error.TestExpectedEqual;
+    const geometry_field_row = state.world.findEntityById("machina.editor.inspector.component.1.field.0.row") orelse return error.TestExpectedEqual;
     const geometry_field_label = state.world.findEntityById("machina.editor.inspector.component.1.field.0.label") orelse return error.TestExpectedEqual;
     const geometry_field_label_cell = state.world.findEntityById("machina.editor.inspector.component.1.field.0.label_cell") orelse return error.TestExpectedEqual;
     const geometry_field_value_cell = state.world.findEntityById("machina.editor.inspector.component.1.field.0.value_cell") orelse return error.TestExpectedEqual;
     const geometry_field_input = state.world.findEntityById("machina.editor.inspector.component.1.field.0.select") orelse return error.TestExpectedEqual;
     const geometry_field_value = state.world.findEntityById("machina.editor.inspector.component.1.field.0.select.value") orelse return error.TestExpectedEqual;
+    const geometry_next_row = state.world.findEntityById("machina.editor.inspector.component.1.field.1.row") orelse return error.TestExpectedEqual;
     const material_swatch = state.world.findEntityById("machina.editor.inspector.component.2.field.0.swatch") orelse return error.TestExpectedEqual;
     const material_red = state.world.findEntityById("machina.editor.inspector.component.2.field.0.lane_label.0") orelse return error.TestExpectedEqual;
     const material_green = state.world.findEntityById("machina.editor.inspector.component.2.field.0.lane_label.1") orelse return error.TestExpectedEqual;
@@ -9938,6 +9991,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     const label_position = try state.world.getVec3(geometry_field_label, runtime.ui_text_component_id, "position");
     const input_position = try state.world.getVec3(geometry_field_input, runtime.ui_rect_component_id, "position");
     const value_position = try state.world.getVec3(geometry_field_value, runtime.ui_text_component_id, "position");
+    const transform_lane_value_position = try state.world.getVec3(transform_position_value_0, runtime.ui_text_component_id, "position");
     const label_value = try state.world.getString(geometry_field_label, runtime.ui_text_component_id, "value");
     const field_value = try state.world.getString(geometry_field_value, runtime.ui_text_component_id, "value");
     try std.testing.expectEqualStrings("position", try state.world.getString(transform_position_label, runtime.ui_text_component_id, "value"));
@@ -9967,22 +10021,62 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try std.testing.expectApproxEqAbs(editor_panel_corner_radius, try state.world.getFloat(geometry_card, runtime.ui_rect_component_id, "corner_radius"), 0.001);
     try std.testing.expectApproxEqAbs(editor_inspector_separator_height, separator_size[1], 0.001);
     try std.testing.expectApproxEqAbs(sidebar.width, separator_size[0], 0.001);
-    try std.testing.expectApproxEqAbs(resolved_transform_card_layout.position[1] + transform_card_size[1], resolved_separator_layout.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(resolved_transform_card_layout.position[1] + transform_card_size[1] + editor_inspector_card_gap, resolved_separator_layout.position[1], 0.001);
     try std.testing.expect(title_position[1] >= card_position[1] + editor_inspector_card_padding_y);
     try std.testing.expect(title_position[1] + editorTextHeight(title_size) <= card_position[1] + card_size[1] - editor_inspector_card_padding_y);
     try std.testing.expect(editorTextWidth(title_value, title_size) <= card_size[0] - editor_inspector_card_padding_x * 2.0);
     const field_layout = editorInspectorFieldLayout(card_size[0]);
+    const row_position = try state.world.getVec3(geometry_field_row, runtime.ui_table_component_id, "position");
+    const row_layout = try resolveUiLayout(&state.world, geometry_field_row, row_position);
+    const row_size = try uiLayoutItemSize(&state.world, geometry_field_row);
+    const next_row_position = try state.world.getVec3(geometry_next_row, runtime.ui_table_component_id, "position");
+    const next_row_layout = try resolveUiLayout(&state.world, geometry_next_row, next_row_position);
+    const transform_position_row_position = try state.world.getVec3(transform_position_row, runtime.ui_table_component_id, "position");
+    const transform_position_row_layout = try resolveUiLayout(&state.world, transform_position_row, transform_position_row_position);
+    const transform_position_row_size = try uiLayoutItemSize(&state.world, transform_position_row);
+    const transform_rotation_row_position = try state.world.getVec3(transform_rotation_row, runtime.ui_table_component_id, "position");
+    const transform_rotation_row_layout = try resolveUiLayout(&state.world, transform_rotation_row, transform_rotation_row_position);
     const label_cell_rect = try ui_layout.resolvedItemRect(&state.world, geometry_field_label_cell);
     const value_cell_rect = try ui_layout.resolvedItemRect(&state.world, geometry_field_value_cell);
-    const input_rect = try ui_layout.resolvedItemRect(&state.world, geometry_field_input);
+    const input_layout = try resolveUiLayout(&state.world, geometry_field_input, input_position);
+    const input_size = try uiLayoutItemSize(&state.world, geometry_field_input);
+    const value_text_layout = try resolveUiLayout(&state.world, geometry_field_value, value_position);
+    const transform_position_input_position = try state.world.getVec3(transform_position_input_0, runtime.ui_rect_component_id, "position");
+    const transform_position_lane_layout = try resolveUiLayout(&state.world, transform_position_input_0, transform_position_input_position);
+    const transform_lane_text_layout = try resolveUiLayout(&state.world, transform_position_value_0, transform_lane_value_position);
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), label_position[0], 0.001);
     try std.testing.expectApproxEqAbs(resolved_card_layout.position[0] + field_layout.label_x, label_cell_rect.position[0], 0.001);
     try std.testing.expectApproxEqAbs(field_layout.label_width, label_cell_rect.size[0], 0.001);
     try std.testing.expectApproxEqAbs(resolved_card_layout.position[0] + field_layout.value_x, value_cell_rect.position[0], 0.001);
     try std.testing.expectApproxEqAbs(field_layout.value_width, value_cell_rect.size[0], 0.001);
-    try std.testing.expectApproxEqAbs(value_cell_rect.position[0], input_rect.position[0], 0.001);
-    try std.testing.expectApproxEqAbs(@as(f32, 0.0), input_position[0], 0.001);
-    try std.testing.expectApproxEqAbs(editor_inspector_input_padding_x, value_position[0], 0.001);
+    try std.testing.expectApproxEqAbs(value_cell_rect.position[0] + editor_inspector_input_cell_padding, input_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_cell_padding, input_position[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), editor_inspector_input_padding_x, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), editor_inspector_input_padding_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), editor_inspector_input_cell_padding, 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_border_thickness + editor_inspector_input_padding_x, editor_inspector_input_text_offset_x, 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_border_thickness + editor_inspector_input_padding_y, editor_inspector_input_text_offset_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), editor_inspector_field_row_margin_y, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 8.0), editor_inspector_input_corner_radius, 0.001);
+    try std.testing.expect(input_size[1] >= editorTextHeight(editor_inspector_text_size) + editor_inspector_input_text_offset_y * 2.0);
+    try std.testing.expectApproxEqAbs(editor_inspector_field_row_height, row_size[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_cell_padding, input_layout.position[0] - value_cell_rect.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_cell_padding, (value_cell_rect.position[0] + value_cell_rect.size[0]) - (input_layout.position[0] + input_size[0]), 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_cell_padding, input_layout.position[1] - row_layout.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_cell_padding, (row_layout.position[1] + row_size[1]) - (input_layout.position[1] + input_size[1]), 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_field_row_margin_y, next_row_layout.position[1] - (row_layout.position[1] + row_size[1]), 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_cell_padding, transform_position_lane_layout.position[1] - transform_position_row_layout.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_field_row_margin_y, transform_rotation_row_layout.position[1] - (transform_position_row_layout.position[1] + transform_position_row_size[1]), 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_x, value_position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_y, value_position[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_x, transform_lane_value_position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_y, transform_lane_value_position[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_x, value_text_layout.position[0] - input_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_y, value_text_layout.position[1] - input_layout.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_x, transform_lane_text_layout.position[0] - transform_position_lane_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_text_offset_y, transform_lane_text_layout.position[1] - transform_position_lane_layout.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_corner_radius, try state.world.getFloat(geometry_field_input, runtime.ui_rect_component_id, "corner_radius"), 0.001);
+    try std.testing.expectApproxEqAbs(editor_inspector_input_corner_radius, try state.world.getFloat(transform_position_input_0, runtime.ui_rect_component_id, "corner_radius"), 0.001);
     try std.testing.expectEqualStrings("primitive", label_value);
     try std.testing.expectEqualStrings("uv_sphere >", field_value);
 }
@@ -10096,24 +10190,32 @@ test "editor inspector field rows split labels and editors evenly" {
     try std.testing.expectApproxEqAbs(editorInspectorFieldLayout(editorInspectorScrollClipRect(wide_input).size[0]).label_width, wide_label_cell_rect.size[0], 0.001);
     try std.testing.expectApproxEqAbs(wide_value_cell_rect.position[0], wide_input_rect.position[0], 0.001);
 
+    const inspector_scroll_y = 220.0;
     var editor_state = EditorState{
         .selected_entity = entity,
         .right_sidebar_width = wide_input.editor.right_sidebar_width,
+        .inspector_scroll_y = inspector_scroll_y,
+        .inspector_scroll_target_y = inspector_scroll_y,
     };
     const clip = editorInspectorScrollClipRect(wide_input);
     const field_layout = editorInspectorFieldLayout(clip.size[0]);
     const field_y = clip.position[1] +
+        -inspector_scroll_y +
         editor_inspector_card_padding_y +
         editorTextHeight(editor_inspector_text_size) +
         editor_panel_label_gap +
         13.0 * editor_inspector_field_row_stride;
+    const row_y = field_y + editor_inspector_field_control_offset_y - editor_inspector_input_cell_padding;
     const update = try updateEditorState(std.testing.allocator, &scene_world, &editor_state, .{
         .debug_overlay_visible = true,
         .viewport_width = wide_input.viewport_width,
         .viewport_height = wide_input.viewport_height,
         .editor = wide_input.editor,
         .pointer = .{
-            .position = .{ clip.position[0] + field_layout.value_x + 4.0, field_y + 2.0 },
+            .position = .{
+                clip.position[0] + field_layout.value_x + editor_inspector_input_cell_padding + editor_inspector_input_text_offset_x,
+                row_y + editor_inspector_field_row_height * 0.5,
+            },
             .has_position = true,
             .primary_pressed = true,
             .primary_down = true,
@@ -11059,36 +11161,41 @@ fn handleBufferMap(status: wgpu.MapAsyncStatus, _: wgpu.StringView, userdata1: ?
     map_status.* = status;
 }
 
-fn write24BitBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, bgra_data: []const u8) !void {
-    const bytes = try allocator.alloc(u8, bmpFileSize());
+fn write24BitBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, bgra_data: []const u8, width: u32, height: u32, source_bytes_per_row: usize) !void {
+    const width_usize = @as(usize, width);
+    const height_usize = @as(usize, height);
+    const file_size = bmpFileSize(width, height);
+    const bytes = try allocator.alloc(u8, file_size);
     defer allocator.free(bytes);
     @memset(bytes, 0);
 
     var cursor: usize = 0;
     putBytes(bytes, &cursor, "BM");
-    putInt(u32, bytes, &cursor, bmpFileSize());
+    putInt(u32, bytes, &cursor, file_size);
     putInt(u32, bytes, &cursor, 0);
     putInt(u32, bytes, &cursor, 54);
     putInt(u32, bytes, &cursor, 40);
-    putInt(u32, bytes, &cursor, output_width);
-    putInt(u32, bytes, &cursor, output_height);
+    putInt(u32, bytes, &cursor, width);
+    putInt(u32, bytes, &cursor, height);
     putInt(u16, bytes, &cursor, 1);
     putInt(u16, bytes, &cursor, 24);
     cursor += 4 * 6;
 
-    var line_buffer = [_]u8{0} ** bmp_bytes_per_line;
-    const bgra_pixels_per_line = output_width * 4;
-    for (0..output_height) |i_y| {
-        const y = output_height - i_y - 1;
-        const line_offset = y * bgra_pixels_per_line;
-        for (0..output_width) |x| {
+    const bytes_per_line = bmpBytesPerLine(width);
+    const line_buffer = try allocator.alloc(u8, bytes_per_line);
+    defer allocator.free(line_buffer);
+    for (0..height_usize) |i_y| {
+        @memset(line_buffer, 0);
+        const y = height_usize - i_y - 1;
+        const line_offset = y * source_bytes_per_row;
+        for (0..width_usize) |x| {
             const bgr_pixel_offset = x * 3;
             const bgra_pixel_offset = line_offset + (x * 4);
             line_buffer[bgr_pixel_offset] = bgra_data[bgra_pixel_offset];
             line_buffer[bgr_pixel_offset + 1] = bgra_data[bgra_pixel_offset + 1];
             line_buffer[bgr_pixel_offset + 2] = bgra_data[bgra_pixel_offset + 2];
         }
-        putBytes(bytes, &cursor, &line_buffer);
+        putBytes(bytes, &cursor, line_buffer);
     }
 
     try Io.Dir.cwd().writeFile(io, .{
@@ -11097,16 +11204,17 @@ fn write24BitBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, 
     });
 }
 
-fn write24BitPng(io: Io, allocator: std.mem.Allocator, output_path: []const u8, bgra_data: []const u8) !void {
-    const rgb_data = try allocator.alloc(u8, output_width * output_height * 3);
+fn write24BitPng(io: Io, allocator: std.mem.Allocator, output_path: []const u8, bgra_data: []const u8, width: u32, height: u32, source_bytes_per_row: usize) !void {
+    const width_usize = @as(usize, width);
+    const height_usize = @as(usize, height);
+    const rgb_data = try allocator.alloc(u8, width_usize * height_usize * 3);
     defer allocator.free(rgb_data);
 
-    const bgra_pixels_per_line = output_width * 4;
-    const rgb_pixels_per_line = output_width * 3;
-    for (0..output_height) |y| {
-        const bgra_line_offset = y * bgra_pixels_per_line;
+    const rgb_pixels_per_line = width_usize * 3;
+    for (0..height_usize) |y| {
+        const bgra_line_offset = y * source_bytes_per_row;
         const rgb_line_offset = y * rgb_pixels_per_line;
-        for (0..output_width) |x| {
+        for (0..width_usize) |x| {
             const bgra_pixel_offset = bgra_line_offset + x * 4;
             const rgb_pixel_offset = rgb_line_offset + x * 3;
             rgb_data[rgb_pixel_offset] = bgra_data[bgra_pixel_offset + 2];
@@ -11115,7 +11223,7 @@ fn write24BitPng(io: Io, allocator: std.mem.Allocator, output_path: []const u8, 
         }
     }
 
-    try png.writeRgb24(io, allocator, output_path, output_width, output_height, rgb_data);
+    try png.writeRgb24(io, allocator, output_path, width, height, rgb_data);
 }
 
 fn putBytes(output: []u8, cursor: *usize, bytes: []const u8) void {
@@ -11129,12 +11237,18 @@ fn putInt(comptime T: type, output: []u8, cursor: *usize, value: anytype) void {
     cursor.* += size;
 }
 
-const bmp_colors_per_line = output_width * 3;
-const bmp_bytes_per_line = if (bmp_colors_per_line & 0x00000003 == 0)
-    bmp_colors_per_line
-else
-    (bmp_colors_per_line | 0x00000003) + 1;
+fn alignedOutputBytesPerRow(width: u32) usize {
+    return std.mem.alignForward(usize, @as(usize, width) * 4, 256);
+}
 
-fn bmpFileSize() usize {
-    return 54 + (bmp_bytes_per_line * output_height);
+fn bmpBytesPerLine(width: u32) usize {
+    const colors_per_line = @as(usize, width) * 3;
+    return if (colors_per_line & 0x00000003 == 0)
+        colors_per_line
+    else
+        (colors_per_line | 0x00000003) + 1;
+}
+
+fn bmpFileSize(width: u32, height: u32) usize {
+    return 54 + (bmpBytesPerLine(width) * @as(usize, height));
 }

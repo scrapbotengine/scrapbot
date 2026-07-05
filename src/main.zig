@@ -199,6 +199,8 @@ fn run(
         };
         machina.renderDemoBmpFrames(io, allocator, options.output_path, live_project.renderScene(), .{
             .frames = options.frames,
+            .width = options.width,
+            .height = options.height,
             .frame_input = renderCommandFrameInput(&live_project, options),
             .frame_update = if (options.frames > 1) .{
                 .context = &frame_context,
@@ -251,6 +253,8 @@ fn run(
         };
         machina.renderDemoBmpFrames(io, allocator, options.output_path, live_project.renderScene(), .{
             .frames = options.frames,
+            .width = options.width,
+            .height = options.height,
             .frame_input = renderCommandFrameInput(&live_project, options),
             .frame_update = if (options.frames > 1) .{
                 .context = &frame_context,
@@ -326,6 +330,8 @@ fn run(
         };
         machina.renderDemoImageFrames(io, allocator, render_output, live_project.renderScene(), .{
             .frames = options.render.frames,
+            .width = options.render.width,
+            .height = options.render.height,
             .frame_input = renderCommandFrameInput(&live_project, options.render),
             .frame_update = if (options.render.frames > 1) .{
                 .context = &frame_context,
@@ -455,6 +461,8 @@ const RenderCommandOptions = struct {
     target_path: []const u8 = ".",
     output_path: []const u8,
     frames: u32 = 1,
+    width: u32 = machina.default_output_width,
+    height: u32 = machina.default_output_height,
     editor: bool = false,
     selected_entity_id: ?[]const u8 = null,
 };
@@ -824,9 +832,9 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina test [tests-path|project-path] [--format text|json]
         \\  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
         \\  machina run [path] [--frames N] [--editor]
-        \\  machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
-        \\  machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
-        \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--update] <path> <expected.png> [actual.png]
+        \\  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]
+        \\  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]
+        \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--update] <path> <expected.png> [actual.png]
         \\
     );
 }
@@ -834,6 +842,7 @@ fn printHelp(writer: *Io.Writer) !void {
 const ArgumentError = error{
     InvalidDelta,
     InvalidFrames,
+    InvalidRenderSize,
     InvalidFormat,
     MissingExpected,
     UnknownArgument,
@@ -938,6 +947,7 @@ const clap_parsers = .{
     .EXTRA = clap.parsers.string,
     .FORMAT = parseCheckOutputFormat,
     .FRAMES = parseFrameCount,
+    .PIXELS = parseRenderDimension,
     .SECONDS = parseDeltaSeconds,
 };
 
@@ -1038,6 +1048,8 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
         \\--editor
         \\--select <ENTITY>
         \\--frames <FRAMES>
+        \\--width <PIXELS>
+        \\--height <PIXELS>
         \\<PATH>
         \\<OUTPUT>
         \\<EXTRA>...
@@ -1067,6 +1079,12 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
     if (result.args.frames) |frames| {
         options.frames = frames;
     }
+    if (result.args.width) |width| {
+        options.width = width;
+    }
+    if (result.args.height) |height| {
+        options.height = height;
+    }
     return options;
 }
 
@@ -1075,6 +1093,8 @@ fn parseVisualTestOptions(allocator: std.mem.Allocator, args: []const []const u8
         \\--editor
         \\--select <ENTITY>
         \\--frames <FRAMES>
+        \\--width <PIXELS>
+        \\--height <PIXELS>
         \\--update
         \\<PATH>
         \\<OUTPUT>
@@ -1103,6 +1123,12 @@ fn parseVisualTestOptions(allocator: std.mem.Allocator, args: []const []const u8
     }
     if (result.args.frames) |frames| {
         render.frames = frames;
+    }
+    if (result.args.width) |width| {
+        render.width = width;
+    }
+    if (result.args.height) |height| {
+        render.height = height;
     }
 
     return .{
@@ -1272,6 +1298,7 @@ fn mapClapArgumentError(err: anyerror) ArgumentError {
     return switch (err) {
         ArgumentError.InvalidDelta => ArgumentError.InvalidDelta,
         ArgumentError.InvalidFrames => ArgumentError.InvalidFrames,
+        ArgumentError.InvalidRenderSize => ArgumentError.InvalidRenderSize,
         ArgumentError.InvalidFormat => ArgumentError.InvalidFormat,
         ArgumentError.MissingExpected => ArgumentError.MissingExpected,
         else => ArgumentError.UnknownArgument,
@@ -2046,6 +2073,14 @@ fn parseFrameCount(value: []const u8) ArgumentError!u32 {
     return frames;
 }
 
+fn parseRenderDimension(value: []const u8) ArgumentError!u32 {
+    const pixels = std.fmt.parseInt(u32, value, 10) catch return ArgumentError.InvalidRenderSize;
+    if (pixels == 0) {
+        return ArgumentError.InvalidRenderSize;
+    }
+    return pixels;
+}
+
 fn parseDeltaSeconds(value: []const u8) ArgumentError!f32 {
     const delta_seconds = std.fmt.parseFloat(f32, value) catch return ArgumentError.InvalidDelta;
     if (!std.math.isFinite(delta_seconds) or delta_seconds <= 0.0) {
@@ -2068,6 +2103,7 @@ fn printArgumentError(writer: *Io.Writer, err: ArgumentError) !void {
     const message = switch (err) {
         ArgumentError.InvalidDelta => "--dt expects a positive finite number",
         ArgumentError.InvalidFrames => "--frames expects a positive integer",
+        ArgumentError.InvalidRenderSize => "--width and --height expect positive integer pixels",
         ArgumentError.InvalidFormat => "--format expects text or json",
         ArgumentError.MissingExpected => "visual-test expects an expected image path",
         ArgumentError.UnknownArgument => "unknown argument",
@@ -2781,6 +2817,20 @@ test "parseRenderOptions accepts frame count" {
     try std.testing.expectEqualStrings("zig-out/ui-gallery.bmp", options.output_path);
 }
 
+test "parseRenderOptions accepts render dimensions" {
+    const args = [_][]const u8{ "--width", "1400", "--height=1000", "examples/spawn_swarm", "zig-out/spawn-editor.png" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
+    try std.testing.expectEqual(@as(u32, 1400), options.width);
+    try std.testing.expectEqual(@as(u32, 1000), options.height);
+    try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
+    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
+}
+
+test "parseRenderOptions rejects zero render dimension" {
+    const args = [_][]const u8{ "--width=0", "examples/minimal" };
+    try std.testing.expectError(ArgumentError.InvalidRenderSize, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
+}
+
 test "parseRenderOptions rejects extra positionals" {
     const args = [_][]const u8{ "examples/minimal", "one.bmp", "two.bmp" };
     try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
@@ -2797,11 +2847,13 @@ test "parseVisualTestOptions accepts expected and actual paths" {
 }
 
 test "parseVisualTestOptions supports update and selected entity" {
-    const args = [_][]const u8{ "--update", "--select", "cube-1", "tests/golden/basic", "tests/golden/basic/expected.png" };
+    const args = [_][]const u8{ "--update", "--select", "cube-1", "--width=1280", "--height", "720", "tests/golden/basic", "tests/golden/basic/expected.png" };
     const options = try parseVisualTestOptions(std.testing.allocator, &args);
     try std.testing.expect(options.update);
     try std.testing.expect(options.render.editor);
     try std.testing.expectEqualStrings("cube-1", options.render.selected_entity_id.?);
+    try std.testing.expectEqual(@as(u32, 1280), options.render.width);
+    try std.testing.expectEqual(@as(u32, 720), options.render.height);
     try std.testing.expectEqualStrings("zig-out/machina-visual-test.png", options.render.output_path);
 }
 

@@ -9,11 +9,12 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ## Behavior
 
-- Users can run `machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` against a valid project.
-- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` to render offscreen and verify the generated BMP.
+- Users can run `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]` against a valid project.
+- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]` to render offscreen and verify the generated BMP.
 - The command validates the project before rendering.
 - The command loads the project's default scene and draws one frame of its renderable mesh and UI overlay entities into an offscreen texture by default.
 - When `--frames N` is greater than one, the command reuses the same offscreen GPU resources, runs fixed `1/60` updates, renders each frame, and writes or verifies the final frame.
+- `--width` and `--height` override the default `640x480` offscreen target so editor chrome and inspector details can be verified at useful review sizes.
 - `--editor` renders the engine editor shell into the offscreen frame; `--select` implies editor rendering and preselects the named scene entity for inspector verification.
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
 - Legacy cube entities remain supported and render as box geometry with inline color material data.
@@ -57,6 +58,12 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 **Decision:** `machina render` and `machina render-test` support `--frames N` for fixed-step offscreen frame sequences while reusing the same WebGPU device, render target, and renderer state.
 **Why:** Setup-only render checks miss leaks and regressions that occur during repeated update/render loops. A bounded offscreen sequence keeps automation deterministic without requiring a platform window.
 **Tradeoff:** Multi-frame offscreen rendering still does not prove SDL presentation behavior or GPU driver-level leak freedom.
+
+### 6. Let offscreen renders choose output dimensions
+
+**Decision:** `machina render`, `machina render-test`, and `machina visual-test` accept positive integer `--width` and `--height` options. The defaults remain `640x480`.
+**Why:** Small fixed render targets are fine for broad smoke coverage but can clip editor sidebars and hide detailed inspector controls. Configurable dimensions let agents create reviewable artifacts that match the UI area being debugged.
+**Tradeoff:** Larger offscreen renders cost more GPU memory and readback time, so smoke tests should keep using small defaults unless the scenario needs more pixels.
 
 ## Related
 

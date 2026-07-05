@@ -21,7 +21,6 @@
 - [ ] Persist inspector edits back to text scene files.
 - [ ] Add validation diagnostics for failed inspector edits.
 - [ ] Add visual tests for inspector editing widgets.
-- [ ] Make offscreen editor renders configurable beyond 640x480.
 - [ ] Polish selected-entity header truncation and copy behavior.
 - [ ] Keep `examples/ui_gallery/` current with inspector control primitives.
 
