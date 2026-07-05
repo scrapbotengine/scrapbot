@@ -1,57 +1,436 @@
 ---
 title: Engine Components
-description: Built-in Machina component ids and fields.
+description: Built-in Machina component ids, fields, defaults, and authoring rules.
 ---
 
-Machina registers these engine component types before project scripts and native modules are validated.
+Machina registers these engine component types before project scripts and native modules are validated. Scene files can author most `machina.*` components directly under `entities.components`; runtime-only components are documented here so scripts and tools can read their field names and types consistently.
 
-## Rendering Components
+Most component fields are required in scene TOML. The exceptions are listed in the **Scene default** column below. If a component field has no scene default, omitting it makes the scene invalid.
 
-| Component | Fields | Notes |
+## Authoring Rules
+
+- Engine-owned component ids use the `machina.*` namespace.
+- Single lowercase ASCII ids such as `spin` are project-local.
+- Qualified dotted ids outside `machina.*` are reserved for packages or libraries.
+- Runtime-only components such as `machina.input.*` and `machina.ui.command_event` are written by the engine during execution; do not author them in scene files.
+- `machina.renderer` is a scene singleton. A scene with more than one renderer component is invalid.
+- New scene renderables should use `machina.geometry.primitive` plus `machina.material.surface`; `machina.render.cube` is a legacy shortcut.
+
+## Rendering
+
+Renderable 3D entities usually combine `machina.transform`, `machina.geometry.primitive`, and `machina.material.surface`.
+
+```toml
+[[entities]]
+id = "blue-box"
+name = "Blue Box"
+
+[entities.components."machina.transform"]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.0, 0.56, 1.0]
+```
+
+### `machina.transform`
+
+Spatial transform used by rendering and gameplay systems.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | World-space position. |
+| `rotation` | `vec3` | Required | Euler rotation data used by current render paths. |
+| `scale` | `vec3` | Required | Per-axis scale. |
+
+### `machina.geometry.primitive`
+
+Selects a built-in generated mesh.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `primitive` | `string` | Required | `box`, `plane`, `sphere`, `uv_sphere`, `uvsphere`, `ico_sphere`, or `icosphere`. |
+| `segments` | `int` | Required | Sphere resolution input. Use `0` for primitives that ignore it. |
+| `rings` | `int` | Required | UV sphere ring count. Use `0` for primitives that ignore it. |
+
+Prefer canonical names in new scenes: `box`, `plane`, `uv_sphere`, and `ico_sphere`.
+
+### `machina.material.surface`
+
+Surface material data for primitive geometry.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `base_color` | `vec3` | Required | RGB values. Existing examples use `0.0` to `1.0` color components. |
+
+### `machina.render.cube`
+
+Legacy cube renderer shortcut.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `color` | `vec3` | Required | RGB color for the legacy cube path. |
+
+Use `machina.geometry.primitive` plus `machina.material.surface` in new scene data.
+
+### `machina.camera`
+
+Camera projection data. Pair with `machina.transform` on the same entity.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `fov_y_degrees` | `float` | Required | Vertical field of view in degrees. |
+| `near` | `float` | Required | Near clipping plane. |
+| `far` | `float` | Required | Far clipping plane. |
+
+If no camera entity is present, the renderer uses a fallback camera.
+
+### `machina.light.directional`
+
+Scene-driven directional light data.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `direction` | `vec3` | Required | Direction vector for the light. |
+| `color` | `vec3` | Required | RGB light color. |
+| `intensity` | `float` | Required | Direct light strength. |
+| `ambient` | `float` | Required | Ambient contribution. |
+
+If no directional light is present, the renderer uses a fallback light.
+
+### `machina.shadow.caster`
+
+Marker component. Entities with this component cast shadows.
+
+### `machina.shadow.receiver`
+
+Marker component. Entities with this component receive shadows.
+
+## Renderer Settings
+
+`machina.renderer` configures the game-view render pipeline. A scene can author at most one renderer component.
+
+```toml
+[[entities]]
+id = "machina.renderer"
+name = "Renderer"
+
+[entities.components."machina.renderer"]
+hdr = true
+tone_mapping = "aces"
+exposure = 0.0
+postprocess_enabled = true
+antialiasing = "fxaa"
+bloom_enabled = true
+bloom_threshold = 0.85
+bloom_intensity = 0.12
+bloom_radius = 1.0
+vignette_enabled = true
+vignette_strength = 0.24
+vignette_radius = 0.82
+chromatic_aberration_enabled = true
+chromatic_aberration_strength = 0.0025
+```
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `hdr` | `boolean` | `true` | Uses an internal HDR scene target when the render target is created. |
+| `tone_mapping` | `string` | `"aces"` | `none`, `reinhard`, or `aces`. |
+| `exposure` | `float` | `0.0` | Exposure compensation before tone mapping. Must be finite. |
+| `postprocess_enabled` | `boolean` | `true` | Enables built-in postprocess effects. |
+| `antialiasing` | `string` | `"fxaa"` | `none` or `fxaa`. |
+| `bloom_enabled` | `boolean` | `true` | Enables bloom. |
+| `bloom_threshold` | `float` | `0.85` | Brightness threshold. Must be finite and non-negative. |
+| `bloom_intensity` | `float` | `0.12` | Bloom blend strength. Must be finite and non-negative. |
+| `bloom_radius` | `float` | `1.0` | Bloom radius input. Must be finite and non-negative. |
+| `vignette_enabled` | `boolean` | `true` | Enables vignette. |
+| `vignette_strength` | `float` | `0.24` | Vignette strength. Must be finite and non-negative. |
+| `vignette_radius` | `float` | `0.82` | Vignette radius. Must be finite and at least `0.0001`. |
+| `chromatic_aberration_enabled` | `boolean` | `true` | Enables chromatic aberration. |
+| `chromatic_aberration_strength` | `float` | `0.0025` | Effect strength. Must be finite and non-negative. |
+
+Runtime systems can read and write these fields through normal ECS access. Most changes affect later frames immediately. Changing `hdr` requires the render target to be recreated before the new HDR setting is visible.
+
+## Retained UI
+
+Scene-authored UI is retained ECS data. Rendering, clipping, command routing, hover and pressed button state, scroll routing, and canvas scaling all resolve through the same retained layout path.
+
+```toml
+[[entities]]
+id = "panel"
+name = "Panel"
+
+[entities.components."machina.ui.canvas"]
+design_size = [640.0, 480.0, 0.0]
+scale_mode = "fit"
+
+[entities.components."machina.ui.rect"]
+position = [16.0, 16.0, 0.0]
+size = [240.0, 96.0, 0.0]
+color = [0.059, 0.09, 0.165]
+corner_radius = 6.0
+
+[entities.components."machina.ui.border"]
+color = [0.148, 0.2, 0.282]
+thickness = 1.0
+```
+
+UI positions and sizes are screen-space values with a top-left origin. `vec3` fields use the first two components for 2D layout in current UI primitives.
+
+### `machina.ui.canvas`
+
+Canvas root for scene UI scaling.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `design_size` | `vec3` | `[0.0, 0.0, 0.0]` | Design-space width and height. |
+| `scale_mode` | `string` | `"none"` | `none`, `fit`, or `fill`. |
+
+`fit` scales and centers the design size inside the target viewport. `fill` scales enough to cover it. The target is the full window in normal runs and the editor game viewport while editor chrome is visible.
+
+### `machina.ui.rect`
+
+Screen-space rectangle.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Top-left position. |
+| `size` | `vec3` | Required | Width and height. |
+| `color` | `vec3` | Required | RGB fill color. |
+| `corner_radius` | `float` | `0.0` | Uniform rounded-corner radius in pixels. |
+
+### `machina.ui.border`
+
+Uniform border for a `machina.ui.rect` on the same entity.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `color` | `vec3` | Required | RGB border color. |
+| `thickness` | `float` | Required | Border thickness in pixels. |
+
+### `machina.ui.text`
+
+Screen-space bitmap text.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Top-left text position before layout parenting. |
+| `size` | `float` | Required | Bitmap font scale. Do not use below `1.0` for editor surfaces. |
+| `color` | `vec3` | Required | RGB text color. |
+| `value` | `string` | Required | Text content. |
+
+### `machina.ui.button`
+
+Marker component. Adds button interaction state to a UI entity. A command button normally combines `machina.ui.rect`, `machina.ui.button`, and `machina.ui.command`.
+
+### `machina.ui.hit_area`
+
+Optional non-rendering interaction rectangle.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Top-left hit area position before layout parenting. |
+| `size` | `vec3` | Required | Width and height. |
+
+When present on a button entity, the hit area is preferred over the visual rect for command routing.
+
+### `machina.ui.command`
+
+Command id emitted by a command button.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `command` | `string` | Required | Command identifier consumed by scripts or editor systems. |
+
+Command ids are plain strings. Use stable, descriptive ids such as `menu.open` or `inventory.toggle`.
+
+### `machina.ui.command_event`
+
+Runtime-only transient command event. Do not author this component in scene files.
+
+| Field | Type | Notes |
 | --- | --- | --- |
-| `machina.transform` | `position: vec3`, `rotation: vec3`, `scale: vec3` | Spatial transform used by rendering and gameplay. |
-| `machina.geometry.primitive` | `primitive: string`, `segments: int`, `rings: int` | Built-in geometry generator selector. |
-| `machina.material.surface` | `base_color: vec3` | Current surface material data. |
-| `machina.renderer` | `hdr: bool`, `tone_mapping: string`, `exposure: f32`, `postprocess_enabled: bool`, `antialiasing: string`, bloom/vignette/chromatic aberration fields | Scene renderer singleton. Author at most one per scene. |
-| `machina.render.cube` | `color: vec3` | Legacy cube renderer shortcut. Prefer geometry + material. |
-| `machina.camera` | `fov_y_degrees: f32`, `near: f32`, `far: f32` | Scene-driven camera data. |
-| `machina.light.directional` | `direction: vec3`, `color: vec3`, `intensity: f32`, `ambient: f32` | Scene-driven directional light data. |
-| `machina.shadow.caster` | Marker | Entity casts shadows. |
-| `machina.shadow.receiver` | Marker | Entity receives shadows. |
+| `command` | `string` | Command id from the pressed button. |
+| `source` | `string` | Source entity id. |
 
-## UI Components
+The engine emits command events into the live project world before update systems run.
 
-| Component | Fields | Notes |
+### `machina.ui.scroll_view`
+
+Clipped scroll viewport.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Top-left viewport position. |
+| `size` | `vec3` | Required | Viewport width and height. |
+| `content_offset` | `vec3` | Required | Current scroll offset in pixels. |
+
+Descendant layout items are offset by `content_offset` and clipped to the viewport. Mouse wheel input updates scene-authored scroll views under the pointer in headful runs.
+
+### `machina.ui.vbox`
+
+Vertical stack container.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Stack origin. |
+| `spacing` | `float` | Required | Pixels between ordered direct children. |
+
+Direct children attach with `machina.ui.layout.item`.
+
+### `machina.ui.hgroup`
+
+Horizontal group with proportional grow-width distribution.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Group origin. |
+| `size` | `vec3` | Required | Group width and height. |
+| `spacing` | `float` | Required | Pixels between ordered direct children. |
+| `padding` | `vec3` | Required | Symmetric padding used by current layout. |
+
+Children with positive `machina.ui.layout.item.grow` receive proportional extra width after fixed widths, minimum sizes, padding, and spacing are accounted for.
+
+### `machina.ui.stack`
+
+Direction-aware stack container.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Stack origin. |
+| `spacing` | `float` | Required | Pixels between ordered direct children. |
+| `direction` | `string` | Required | `vertical`, `column`, `horizontal`, or `row`. |
+| `padding` | `vec3` | Required | Symmetric padding used by current layout. |
+
+`vertical` and `column` stack top to bottom. `horizontal` and `row` stack left to right.
+
+### `machina.ui.layout.item`
+
+Attaches an entity to a retained layout parent by stable scene entity id.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `parent` | `string` | Required | Parent entity id, not a dense runtime handle. |
+| `order` | `int` | Required | Sort key among direct children. |
+| `min_size` | `vec3` | `[0.0, 0.0, 0.0]` | Minimum layout size. |
+| `grow` | `float` | `0.0` | Grow ratio for `machina.ui.hgroup` children. |
+| `align` | `string` | `"start"` | `start`, `center`, `end`, or `fill`. |
+| `margin` | `vec3` | `[0.0, 0.0, 0.0]` | Symmetric margin used by current layout. |
+
+Children can target layout containers such as `machina.ui.vbox`, `machina.ui.hgroup`, `machina.ui.stack`, and `machina.ui.scroll_view`. They can also target non-container UI rects, text, or separators to inherit that parent's resolved position. This is the preferred pattern for button labels and compact composite controls.
+
+### `machina.ui.spacer`
+
+Non-rendering layout item.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `size` | `vec3` | Required | Spacer width and height. |
+
+### `machina.ui.text_block`
+
+Content box and alignment metadata for a `machina.ui.text` entity.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `size` | `vec3` | Required | Text content box width and height. |
+| `horizontal_align` | `string` | Required | `start`, `center`, or `end`. |
+| `vertical_align` | `string` | Required | `start`, `center`, or `end`. |
+
+Use `machina.ui.text_block` when a label should be centered or end-aligned inside a button or panel region.
+
+### `machina.ui.toggle`
+
+Checked state for toggle-like controls.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `checked` | `boolean` | Required | Influences current rect/button visuals. |
+
+This component does not toggle itself automatically. Scripts or editor systems own mutation for now.
+
+### `machina.ui.progress_bar`
+
+Progress fill rendered inside the entity's rect.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `value` | `float` | Required | Current value. |
+| `max` | `float` | Required | Maximum value. |
+| `fill_color` | `vec3` | Required | RGB fill color. |
+
+Pair with `machina.ui.rect` for the progress bar track.
+
+### `machina.ui.separator`
+
+Thin semantic divider.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `position` | `vec3` | Required | Top-left separator position before layout parenting. |
+| `size` | `vec3` | Required | Width and height. |
+| `color` | `vec3` | Required | RGB separator color. |
+
+## Runtime Input Resources
+
+The platform input layer writes these ECS resources every frame. They are runtime-only and should not be authored in scene files.
+
+### `machina.input.pointer`
+
+| Field | Type | Notes |
 | --- | --- | --- |
-| `machina.ui.canvas` | `design_size: vec3`, `scale_mode: string` | UI canvas root. `scale_mode` can be `none`, `fit`, or `fill`; old marker-style scenes default to `none`. Fit/fill target the full window normally and the editor game viewport when editor chrome is visible. |
-| `machina.ui.rect` | `position: vec3`, `size: vec3`, `color: vec3`, `corner_radius: f32` | Screen-space rectangle with optional rounded corners. |
-| `machina.ui.border` | `color: vec3`, `thickness: f32` | Uniform rounded border for a rect. |
-| `machina.ui.text` | `position: vec3`, `size: f32`, `color: vec3`, `value: string` | Screen-space bitmap text. |
-| `machina.ui.button` | Marker | Adds button interaction behavior to a rect. |
-| `machina.ui.hit_area` | `position: vec3`, `size: vec3` | Optional non-rendering interaction rectangle for a button. Use it when the hit target should differ from the visual rect. |
-| `machina.ui.command` | `command: string` | Command id emitted by a button press. |
-| `machina.ui.command_event` | `command: string`, `source: string` | Runtime-only transient event. Do not author in scenes. |
-| `machina.ui.scroll_view` | `position: vec3`, `size: vec3`, `content_offset: vec3` | Clips and offsets descendant layout items. |
-| `machina.ui.vbox` | `position: vec3`, `spacing: f32` | Vertical layout container. |
-| `machina.ui.hgroup` | `position: vec3`, `size: vec3`, `spacing: f32`, `padding: vec3` | Horizontal layout container with proportional grow-width distribution. |
-| `machina.ui.stack` | `position: vec3`, `spacing: f32`, `direction: string`, `padding: vec3` | Direction-aware layout container. `direction` supports `vertical`, `column`, `horizontal`, and `row`. |
-| `machina.ui.layout.item` | `parent: string`, `order: int`, `min_size: vec3`, `grow: f32`, `align: string`, `margin: vec3` | Attaches an entity to a layout parent by stable scene id. Children can also target a non-container UI rect/text/separator to inherit that parent's resolved position. `grow` distributes extra width in `machina.ui.hgroup`. |
-| `machina.ui.spacer` | `size: vec3` | Non-rendering layout item. |
-| `machina.ui.text_block` | `size: vec3`, `horizontal_align: string`, `vertical_align: string` | Gives a text entity a content box with `start`, `center`, or `end` alignment. |
-| `machina.ui.toggle` | `checked: bool` | State marker that influences rect/button visuals. Scripts own mutation for now. |
-| `machina.ui.progress_bar` | `value: f32`, `max: f32`, `fill_color: vec3` | Renders a fill inside the entity's rect. |
-| `machina.ui.separator` | `position: vec3`, `size: vec3`, `color: vec3` | Thin semantic divider. |
-| `machina.input.pointer` | `position: vec3`, `delta: vec3`, `has_position: bool`, primary/secondary button state, `wheel_delta: vec3` | Runtime-only current pointer frame state. Do not author in scenes. |
-| `machina.input.keyboard` | modifier state, movement key state, `editor_toggle_pressed: bool` | Runtime-only current keyboard frame state. Do not author in scenes. |
-| `machina.input.frame` | `ui_visible: bool`, `debug_overlay_visible: bool`, `viewport: vec3` | Runtime-only frame input state. Do not author in scenes. |
+| `position` | `vec3` | Current pointer position. |
+| `delta` | `vec3` | Pointer movement since the previous frame. |
+| `has_position` | `boolean` | Whether `position` is valid for this frame. |
+| `primary_down` | `boolean` | Primary pointer button is held. |
+| `primary_pressed` | `boolean` | Primary pointer button pressed this frame. |
+| `primary_released` | `boolean` | Primary pointer button released this frame. |
+| `secondary_down` | `boolean` | Secondary pointer button is held. |
+| `secondary_pressed` | `boolean` | Secondary pointer button pressed this frame. |
+| `secondary_released` | `boolean` | Secondary pointer button released this frame. |
+| `wheel_delta` | `vec3` | Mouse-wheel delta for scroll routing. |
 
-Retained UI layout is resolved consistently for rendering and input. Scene UI hit testing, button hover/press visuals, command dispatch, scroll handling, clipping, and canvas fit/fill scaling use the same `scroll_view`, `vbox`, `hgroup`, `stack`, and `layout.item` semantics that render the controls. Command buttons are ordinary retained UI entities: `machina.ui.rect` + `machina.ui.button` + `machina.ui.command`, or `machina.ui.hit_area` + `machina.ui.button` + `machina.ui.command` when the control needs a non-rendering hit target.
+### `machina.input.keyboard`
 
-## Built-In But Project-Local Today
-
-| Component | Fields | Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `spin` | `angular_velocity: vec3` | Current simple spin component used by examples and runtime helpers. |
+| `ctrl_down` | `boolean` | Ctrl modifier is held. |
+| `shift_down` | `boolean` | Shift modifier is held. |
+| `alt_down` | `boolean` | Alt modifier is held. |
+| `super_down` | `boolean` | Super modifier is held. |
+| `move_forward` | `boolean` | Forward movement action is active. |
+| `move_back` | `boolean` | Back movement action is active. |
+| `move_left` | `boolean` | Left movement action is active. |
+| `move_right` | `boolean` | Right movement action is active. |
+| `move_up` | `boolean` | Up movement action is active. |
+| `move_down` | `boolean` | Down movement action is active. |
+| `editor_toggle_pressed` | `boolean` | Editor visibility toggle was pressed this frame. |
+
+### `machina.input.frame`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `ui_visible` | `boolean` | Engine-owned editor/debug UI is visible. |
+| `debug_overlay_visible` | `boolean` | Debug overlay visibility flag. |
+| `viewport` | `vec3` | Current game viewport size. |
+
+## Project-Local Example Component
+
+### `spin`
+
+The examples currently use a project-local `spin` component.
+
+| Field | Type | Scene default | Notes |
+| --- | --- | --- | --- |
+| `angular_velocity` | `vec3` | Required | Example rotation speed used by scripts and native examples. |
+
+`spin` is not engine-owned. It exists only in projects that register it through their scripts or native module.
 
 ## Field Types
 
@@ -62,10 +441,3 @@ Retained UI layout is resolved consistently for rendering and input. Scene UI hi
 | `float`, `f32` | 32-bit float |
 | `vec3` | Three `f32` values |
 | `string` | Engine-owned string |
-
-## Component ID Rules
-
-- Single lowercase ASCII segments such as `spin` are project-local.
-- Dotted ids are for packages and libraries.
-- `machina.*` is engine-owned.
-- Machina does not infer a default project namespace.

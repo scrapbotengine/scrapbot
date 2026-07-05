@@ -9,6 +9,7 @@
 - [x] Built-in primitive geometry, surface materials, camera, light, and shadow components.
 - [x] Engine-owned ECS UI primitives, editor shell, playback controls, system profiler, entity picking, translate gizmo, and component inspector.
 - [x] Automated test coverage through `machina test`, render tests, benchmarks, Luau checks, and game-shaped fixtures.
+- [x] Built-in component reference covering rendering, renderer settings, retained UI, runtime input resources, and example project-local components.
 - [x] ADRs, FDRs, glossary, docs website, NOTICE, and local agent skills.
 
 ## Next Slice
@@ -48,7 +49,6 @@
 - [ ] Add disabled, hovered, active, focused, and invalid visual states.
 - [ ] Add reusable UI themes and density settings.
 - [ ] Add controller input support after keyboard and mouse stabilize.
-- [ ] Document the public UI component API.
 
 ## ECS And Scheduling
 
