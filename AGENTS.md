@@ -135,6 +135,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 
 - Use Conventional Commits for commit messages and PR titles.
 - PR bodies should contain a descriptive list of changes.
+- Write PR bodies to a Markdown file and pass it with `gh pr create --body-file` or `gh pr edit --body-file`. Do not inline multiline PR bodies with escaped `\n`; verify the saved body with `gh pr view --json body`.
 - Prefer small vertical slices that leave `main` working.
 - Use `examples/minimal/` as the smoke-test fixture and update it when the supported scene schema changes.
 - Keep `examples/ui_gallery/` current when adding or materially changing UI primitives.

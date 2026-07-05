@@ -253,6 +253,34 @@ const QueuedRemoveComponent = struct {
     }
 };
 
+const QueuedComponentSnapshot = struct {
+    entity: runtime.EntityHandle,
+    component_id: []u8,
+    fields: []QueuedComponentFieldValue,
+
+    fn deinit(self: *QueuedComponentSnapshot, allocator: std.mem.Allocator) void {
+        allocator.free(self.component_id);
+        for (self.fields) |*field| {
+            field.deinit(allocator);
+        }
+        allocator.free(self.fields);
+        self.* = undefined;
+    }
+};
+
+const AppliedScriptCommand = union(enum) {
+    remove_added_component: QueuedRemoveComponent,
+    restore_component: QueuedComponentSnapshot,
+
+    fn deinit(self: *AppliedScriptCommand, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .remove_added_component => |*payload| payload.deinit(allocator),
+            .restore_component => |*payload| payload.deinit(allocator),
+        }
+        self.* = undefined;
+    }
+};
+
 pub const Program = struct {
     allocator: std.mem.Allocator,
     registry: runtime.ComponentRegistry,
@@ -408,11 +436,36 @@ pub const Program = struct {
         defer self.clearQueuedScriptCommands();
         defer self.immediate_script_spawns.clearRetainingCapacity();
 
+        if (!self.preflightQueuedScriptCommands(world)) {
+            self.rollbackImmediateScriptSpawns(world);
+            return false;
+        }
+
+        var applied_commands: std.ArrayList(AppliedScriptCommand) = .empty;
+        defer self.clearAppliedScriptCommands(&applied_commands);
+
         for (self.queued_script_commands.items) |*command| {
             switch (command.*) {
                 .add_component => |payload| {
+                    const previous = self.snapshotComponent(world, payload.entity, payload.component_id) catch {
+                        self.setHostError("system '{s}' failed to snapshot component '{s}' on entity {d}", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                        });
+                        self.rollbackAppliedScriptCommands(world, &applied_commands);
+                        self.rollbackImmediateScriptSpawns(world);
+                        return false;
+                    };
+
                     const fields = self.allocator.alloc(runtime.ComponentFieldValue, payload.fields.len) catch {
                         self.setHostError("system '{s}' failed to allocate queued add fields", .{self.activeSystemId()});
+                        if (previous) |snapshot| {
+                            var cleanup = snapshot;
+                            cleanup.deinit(self.allocator);
+                        }
+                        self.rollbackAppliedScriptCommands(world, &applied_commands);
+                        self.rollbackImmediateScriptSpawns(world);
                         return false;
                     };
                     defer self.allocator.free(fields);
@@ -426,11 +479,167 @@ pub const Program = struct {
                             payload.entity.index,
                             @errorName(err),
                         });
+                        if (previous) |snapshot| {
+                            var cleanup = snapshot;
+                            cleanup.deinit(self.allocator);
+                        }
+                        self.rollbackAppliedScriptCommands(world, &applied_commands);
+                        self.rollbackImmediateScriptSpawns(world);
+                        return false;
+                    };
+                    if (previous) |snapshot| {
+                        var rollback_snapshot = snapshot;
+                        applied_commands.append(self.allocator, .{ .restore_component = rollback_snapshot }) catch {
+                            rollback_snapshot.deinit(self.allocator);
+                            self.setHostError("system '{s}' failed to record rollback for component '{s}' on entity {d}: {s}", .{
+                                self.activeSystemId(),
+                                payload.component_id,
+                                payload.entity.index,
+                                @errorName(error.OutOfMemory),
+                            });
+                            self.rollbackAppliedScriptCommands(world, &applied_commands);
+                            self.rollbackImmediateScriptSpawns(world);
+                            return false;
+                        };
+                    } else {
+                        const owned_component_id = self.allocator.dupe(u8, payload.component_id) catch {
+                            self.setHostError("system '{s}' failed to record rollback for component '{s}' on entity {d}: {s}", .{
+                                self.activeSystemId(),
+                                payload.component_id,
+                                payload.entity.index,
+                                @errorName(error.OutOfMemory),
+                            });
+                            self.rollbackAppliedScriptCommands(world, &applied_commands);
+                            self.rollbackImmediateScriptSpawns(world);
+                            return false;
+                        };
+                        applied_commands.append(self.allocator, .{ .remove_added_component = .{
+                            .entity = payload.entity,
+                            .component_id = owned_component_id,
+                        } }) catch {
+                            self.allocator.free(owned_component_id);
+                            self.setHostError("system '{s}' failed to record rollback for component '{s}' on entity {d}: {s}", .{
+                                self.activeSystemId(),
+                                payload.component_id,
+                                payload.entity.index,
+                                @errorName(error.OutOfMemory),
+                            });
+                            self.rollbackAppliedScriptCommands(world, &applied_commands);
+                            self.rollbackImmediateScriptSpawns(world);
+                            return false;
+                        };
+                    }
+                },
+                .remove_component => |payload| {
+                    const previous = self.snapshotComponent(world, payload.entity, payload.component_id) catch {
+                        self.setHostError("system '{s}' failed to snapshot component '{s}' on entity {d}", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                        });
+                        self.rollbackAppliedScriptCommands(world, &applied_commands);
+                        self.rollbackImmediateScriptSpawns(world);
+                        return false;
+                    };
+
+                    const removed = world.removeComponent(payload.entity, payload.component_id) catch |err| {
+                        self.setHostError("system '{s}' failed to flush remove component '{s}' from entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                            @errorName(err),
+                        });
+                        if (previous) |snapshot| {
+                            var cleanup = snapshot;
+                            cleanup.deinit(self.allocator);
+                        }
+                        self.rollbackAppliedScriptCommands(world, &applied_commands);
+                        self.rollbackImmediateScriptSpawns(world);
+                        return false;
+                    };
+                    if (removed) {
+                        if (previous) |snapshot| {
+                            var rollback_snapshot = snapshot;
+                            applied_commands.append(self.allocator, .{ .restore_component = rollback_snapshot }) catch {
+                                rollback_snapshot.deinit(self.allocator);
+                                self.setHostError("system '{s}' failed to record rollback for component '{s}' on entity {d}: {s}", .{
+                                    self.activeSystemId(),
+                                    payload.component_id,
+                                    payload.entity.index,
+                                    @errorName(error.OutOfMemory),
+                                });
+                                self.rollbackAppliedScriptCommands(world, &applied_commands);
+                                self.rollbackImmediateScriptSpawns(world);
+                                return false;
+                            };
+                        }
+                    } else if (previous) |snapshot| {
+                        var cleanup = snapshot;
+                        cleanup.deinit(self.allocator);
+                    }
+                },
+                .despawn_entity => {},
+            }
+        }
+
+        for (self.queued_script_commands.items) |command| {
+            switch (command) {
+                .add_component, .remove_component => {},
+                .despawn_entity => |entity| {
+                    _ = world.removeEntity(entity) catch |err| {
+                        self.setHostError("system '{s}' failed to flush despawn entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            entity.index,
+                            @errorName(err),
+                        });
+                        self.rollbackAppliedScriptCommands(world, &applied_commands);
+                        self.rollbackImmediateScriptSpawns(world);
                         return false;
                     };
                 },
+            }
+        }
+        return true;
+    }
+
+    fn preflightQueuedScriptCommands(self: *Program, world: *runtime.World) bool {
+        var despawned_entities: std.ArrayList(runtime.EntityHandle) = .empty;
+        defer despawned_entities.deinit(self.allocator);
+
+        for (self.queued_script_commands.items) |command| {
+            switch (command) {
+                .add_component => |payload| {
+                    if (containsEntityHandle(despawned_entities.items, payload.entity)) {
+                        self.setHostError("system '{s}' tried to add component '{s}' to entity {d} after it was queued for despawn", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                        });
+                        return false;
+                    }
+                    _ = world.entity(payload.entity) catch |err| {
+                        self.setHostError("system '{s}' failed to flush add component '{s}' to entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                            @errorName(err),
+                        });
+                        return false;
+                    };
+                    if (!self.validateQueuedAddComponent(payload)) {
+                        return false;
+                    }
+                },
                 .remove_component => |payload| {
-                    _ = world.removeComponent(payload.entity, payload.component_id) catch |err| {
+                    if (containsEntityHandle(despawned_entities.items, payload.entity)) {
+                        self.setHostError("system '{s}' tried to remove component '{s}' from entity {d} after it was queued for despawn", .{
+                            self.activeSystemId(),
+                            payload.component_id,
+                            payload.entity.index,
+                        });
+                        return false;
+                    }
+                    _ = world.entity(payload.entity) catch |err| {
                         self.setHostError("system '{s}' failed to flush remove component '{s}' from entity {d}: {s}", .{
                             self.activeSystemId(),
                             payload.component_id,
@@ -441,11 +650,26 @@ pub const Program = struct {
                     };
                 },
                 .despawn_entity => |entity| {
-                    _ = world.removeEntity(entity) catch |err| {
+                    if (containsEntityHandle(despawned_entities.items, entity)) {
+                        self.setHostError("system '{s}' tried to despawn entity {d} more than once", .{
+                            self.activeSystemId(),
+                            entity.index,
+                        });
+                        return false;
+                    }
+                    _ = world.entity(entity) catch |err| {
                         self.setHostError("system '{s}' failed to flush despawn entity {d}: {s}", .{
                             self.activeSystemId(),
                             entity.index,
                             @errorName(err),
+                        });
+                        return false;
+                    };
+                    despawned_entities.append(self.allocator, entity) catch {
+                        self.setHostError("system '{s}' failed to preflight despawn entity {d}: {s}", .{
+                            self.activeSystemId(),
+                            entity.index,
+                            @errorName(error.OutOfMemory),
                         });
                         return false;
                     };
@@ -455,13 +679,139 @@ pub const Program = struct {
         return true;
     }
 
-    fn discardQueuedScriptCommands(self: *Program, world: *runtime.World) void {
-        self.clearQueuedScriptCommands();
+    fn validateQueuedAddComponent(self: *Program, payload: QueuedAddComponent) bool {
+        const definition = self.registry.findComponent(payload.component_id) orelse {
+            self.setHostError("system '{s}' tried to add unknown component '{s}'", .{
+                self.activeSystemId(),
+                payload.component_id,
+            });
+            return false;
+        };
+        if (payload.fields.len != definition.fields.len) {
+            self.setHostError("system '{s}' tried to add component '{s}' with {d} fields, expected {d}", .{
+                self.activeSystemId(),
+                payload.component_id,
+                payload.fields.len,
+                definition.fields.len,
+            });
+            return false;
+        }
+
+        for (definition.fields) |field_definition| {
+            var found = false;
+            for (payload.fields) |field| {
+                if (!std.mem.eql(u8, field.name, field_definition.name)) {
+                    continue;
+                }
+                if (found) {
+                    self.setHostError("system '{s}' tried to add duplicate field '{s}.{s}'", .{
+                        self.activeSystemId(),
+                        payload.component_id,
+                        field.name,
+                    });
+                    return false;
+                }
+                found = true;
+                if (std.meta.activeTag(field.value) != field_definition.value_type) {
+                    self.setHostError("system '{s}' tried to add field '{s}.{s}' with the wrong type", .{
+                        self.activeSystemId(),
+                        payload.component_id,
+                        field.name,
+                    });
+                    return false;
+                }
+            }
+            if (!found) {
+                self.setHostError("system '{s}' tried to add component '{s}' without field '{s}'", .{
+                    self.activeSystemId(),
+                    payload.component_id,
+                    field_definition.name,
+                });
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn snapshotComponent(
+        self: *Program,
+        world: *runtime.World,
+        entity: runtime.EntityHandle,
+        component_id: []const u8,
+    ) !?QueuedComponentSnapshot {
+        if (!(try world.hasComponent(entity, component_id))) {
+            return null;
+        }
+
+        const field_count = world.componentFieldCount(component_id);
+        const fields = try self.allocator.alloc(QueuedComponentFieldValue, field_count);
+        var initialized_fields: usize = 0;
+        errdefer {
+            for (fields[0..initialized_fields]) |*field| {
+                field.deinit(self.allocator);
+            }
+            self.allocator.free(fields);
+        }
+
+        for (fields, 0..) |*out_field, index| {
+            const field_name = world.componentFieldNameAt(component_id, index) orelse return error.UnknownField;
+            const owned_name = try self.allocator.dupe(u8, field_name);
+            const owned_value = cloneComponentValue(self.allocator, try world.getComponentFieldValue(entity, component_id, field_name)) catch |err| {
+                self.allocator.free(owned_name);
+                return err;
+            };
+            out_field.* = .{
+                .name = owned_name,
+                .value = owned_value,
+            };
+            initialized_fields += 1;
+        }
+
+        return .{
+            .entity = entity,
+            .component_id = try self.allocator.dupe(u8, component_id),
+            .fields = fields,
+        };
+    }
+
+    fn rollbackAppliedScriptCommands(self: *Program, world: *runtime.World, applied_commands: *std.ArrayList(AppliedScriptCommand)) void {
+        var index = applied_commands.items.len;
+        while (index > 0) {
+            index -= 1;
+            switch (applied_commands.items[index]) {
+                .remove_added_component => |payload| {
+                    _ = world.removeComponent(payload.entity, payload.component_id) catch {};
+                },
+                .restore_component => |snapshot| {
+                    const fields = self.allocator.alloc(runtime.ComponentFieldValue, snapshot.fields.len) catch continue;
+                    defer self.allocator.free(fields);
+                    for (snapshot.fields, 0..) |field, field_index| {
+                        fields[field_index] = field.asRuntime();
+                    }
+                    world.setComponent(snapshot.entity, snapshot.component_id, fields) catch {};
+                },
+            }
+        }
+    }
+
+    fn clearAppliedScriptCommands(self: *Program, applied_commands: *std.ArrayList(AppliedScriptCommand)) void {
+        for (applied_commands.items) |*command| {
+            command.deinit(self.allocator);
+        }
+        applied_commands.deinit(self.allocator);
+    }
+
+    fn rollbackImmediateScriptSpawns(self: *Program, world: *runtime.World) void {
         var index = self.immediate_script_spawns.items.len;
         while (index > 0) {
             index -= 1;
             _ = world.removeEntity(self.immediate_script_spawns.items[index]) catch {};
         }
+    }
+
+    fn discardQueuedScriptCommands(self: *Program, world: *runtime.World) void {
+        self.clearQueuedScriptCommands();
+        self.rollbackImmediateScriptSpawns(world);
         self.immediate_script_spawns.clearRetainingCapacity();
     }
 
@@ -565,7 +915,7 @@ pub const Program = struct {
 
     fn setRuntimeDiagnostic(self: *Program, system: runtime.ScheduledSystem, runner_ref: u32) !void {
         const origin = self.findSystemOrigin(system.id, runner_ref);
-        const message = lastLuauError(self.vm);
+        const message = if (self.host_error) |message| message else lastLuauError(self.vm);
         const location = parseLuauDiagnosticPosition(message) orelse if (origin) |found| found.start else null;
         self.last_diagnostic = try makeDiagnostic(self.allocator, .{
             .stage = .runtime,
@@ -2982,6 +3332,15 @@ fn containsString(values: []const []const u8, needle: []const u8) bool {
     return false;
 }
 
+fn containsEntityHandle(values: []const runtime.EntityHandle, needle: runtime.EntityHandle) bool {
+    for (values) |value| {
+        if (value.index == needle.index and value.generation == needle.generation) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn testNativeMoveSystem(context: *NativeSystemContext) callconv(.c) c_int {
     const component_ids = [_][*:0]const u8{ "machina.transform", "velocity", "boost" };
     var cursor: usize = 0;
@@ -3426,6 +3785,48 @@ test "luau structural commands roll back immediate spawns when a system fails" {
     try std.testing.expect(!program.startup(&world));
     try std.testing.expectEqual(@as(usize, 0), world.entityCount());
     try std.testing.expect(world.findEntityById("rolled-back") == null);
+}
+
+test "luau structural command flush failure rolls back system mutations" {
+    var program = try loadSourceProgram(
+        std.testing.allocator,
+        "test.luau",
+        \\--!strict
+        \\
+        \\local Marker = ecs.component("marker", {
+        \\  fields = ecs.fields({
+        \\    value = "int",
+        \\  }),
+        \\})
+        \\
+        \\ecs.system("conflicting_flush", {
+        \\  phase = "startup",
+        \\  writes = ecs.refs(Marker),
+        \\  run = function(world, _dt)
+        \\    local survivor = world.spawn("survivor", "Survivor")
+        \\    survivor:add(Marker, { value = 1 })
+        \\    local doomed = world.spawn("doomed", "Doomed")
+        \\    doomed:add(Marker, { value = 2 })
+        \\    doomed:despawn()
+        \\    doomed:add(Marker, { value = 3 })
+        \\  end,
+        \\})
+        ,
+    );
+    defer program.deinit();
+
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try std.testing.expect(!program.startup(&world));
+    try std.testing.expectEqual(@as(usize, 0), world.entityCount());
+    try std.testing.expect(world.findEntityById("survivor") == null);
+    try std.testing.expect(world.findEntityById("doomed") == null);
+
+    const diagnostic = program.last_diagnostic orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(DiagnosticStage.runtime, diagnostic.stage);
+    try std.testing.expectEqualStrings("conflicting_flush", diagnostic.system_id orelse return error.TestExpectedEqual);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "after it was queued for despawn") != null);
 }
 
 test "luau queued component adds become visible after system boundary" {
