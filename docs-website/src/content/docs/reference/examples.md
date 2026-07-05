@@ -60,3 +60,9 @@ Run all fixtures:
 ```sh
 machina test tests/projects
 ```
+
+`tests/golden/` contains focused offscreen visual fixtures with checked-in PNG baselines. Run them with:
+
+```sh
+machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+```

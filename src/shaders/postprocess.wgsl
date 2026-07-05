@@ -88,6 +88,14 @@ fn bloom(uv: vec2<f32>, color: vec3<f32>) -> vec3<f32> {
     return color + glow * intensity;
 }
 
+fn composed_scene(uv: vec2<f32>, texel: vec2<f32>) -> vec3<f32> {
+    var color = sample_scene(uv);
+    if post.params0.z > 0.5 {
+        color = fxaa(uv, texel);
+    }
+    return bloom(uv, color);
+}
+
 fn chromatic_aberration(uv: vec2<f32>, texel: vec2<f32>, color: vec3<f32>) -> vec3<f32> {
     let strength = post.params0.w;
     if strength <= 0.0 {
@@ -95,13 +103,17 @@ fn chromatic_aberration(uv: vec2<f32>, texel: vec2<f32>, color: vec3<f32>) -> ve
     }
 
     let from_center = uv - vec2<f32>(0.5);
-    let direction = normalize(from_center + vec2<f32>(0.0001));
     let distance = length(from_center) * 2.0;
-    let offset = direction * strength * distance * vec2<f32>(1.0, 0.75) + texel * strength * 40.0;
+    if distance <= 0.0001 {
+        return color;
+    }
+
+    let direction = from_center / length(from_center);
+    let offset = direction * strength * distance * vec2<f32>(1.0, 0.75);
     return vec3<f32>(
-        sample_scene(uv + offset).r,
+        composed_scene(uv + offset, texel).r,
         color.g,
-        sample_scene(uv - offset).b,
+        composed_scene(uv - offset, texel).b,
     );
 }
 
@@ -142,11 +154,7 @@ fn tone_map(color: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let texel = post.params0.xy;
-    var color = sample_scene(input.uv);
-    if post.params0.z > 0.5 {
-        color = fxaa(input.uv, texel);
-    }
-    color = bloom(input.uv, color);
+    var color = composed_scene(input.uv, texel);
     color = chromatic_aberration(input.uv, texel, color);
     color = tone_map(color);
     color = vignette(input.uv, color);

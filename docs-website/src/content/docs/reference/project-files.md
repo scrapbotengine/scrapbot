@@ -109,6 +109,17 @@ field = "position"
 equals_vec3 = [3.0, -1.5, 0.75]
 ```
 
+## Golden Visual Fixtures
+
+Golden visual fixtures are complete Machina projects under `tests/golden/` plus a checked-in expected PNG.
+
+```sh
+machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+machina visual-test --update tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png
+```
+
+Use `--update` only when the current renderer output is the new intended baseline.
+
 Supported expected values:
 
 - `equals_bool`

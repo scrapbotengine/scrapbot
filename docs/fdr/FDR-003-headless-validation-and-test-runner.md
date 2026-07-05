@@ -20,6 +20,9 @@ The headless validation and test runner lets users, CI systems, and agents check
 - `machina test --format=json` reports each project case, simulation summary, per-field expected/actual assertion data, diagnostics, and a suite summary.
 - `test.machina.toml` may include `[[input.frame]]` records with one-based frame numbers, pointer position, wheel delta, viewport size, editor visibility, button state, keyboard state, and system profile count hints. These frames run through the same frame input, editor, scene UI scroll, command-event, and script-update routing used by live projects.
 - `machina render-test [path] [output.bmp] [--frames N]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation. Multi-frame render tests run fixed `1/60` updates and verify the final frame.
+- `machina visual-test [path] [expected.png] [actual.png] [--frames N]` renders the default scene offscreen, compares the output image against a checked-in golden image with bounded tolerance, reports max channel delta, mean channel delta, and changed-pixel ratio, and returns non-zero when tolerances are exceeded. Multi-frame visual tests run fixed `1/60` updates and compare the final frame.
+- `machina visual-test --update [path] [expected.png]` deliberately refreshes a golden image from the current renderer output. Baseline updates are explicit and reviewable.
+- Golden visual fixture projects live under `tests/golden/`. They are focused renderer fixtures, not user-facing examples.
 - `MACHINA_LEAK_CHECK=1` enables an internal engine heap leak guard for bounded CLI validation commands. It checks Machina-owned Zig allocations and fails the command when command-scoped allocations leak.
 - Future headless test commands can exercise scene and script live reload deterministically.
 - Users can run project validation without initializing graphical presentation.
@@ -43,17 +46,23 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 ### 3. Prefer offscreen render assertions for visual checks
 
-**Decision:** The first visual verification command uses offscreen BMP output and pixel analysis instead of screenshotting a headful window.
+**Decision:** The first broad visual verification command uses offscreen BMP output and pixel analysis instead of screenshotting a headful window.
 **Why:** Offscreen rendering is easier to run in agent and CI workflows, and parsing the output artifact can catch regressions like missing foreground content or collapsed multi-object renders.
-**Tradeoff:** Pixel analysis is still coarse and does not replace future golden-image or semantic render tests.
+**Tradeoff:** Pixel analysis is still coarse and does not replace targeted golden-image or semantic render tests.
 
-### 4. Add deterministic stepping and manifest assertions before full test scripting
+### 4. Add focused golden visual fixtures for renderer-sensitive output
+
+**Decision:** Golden visual tests use complete text-authored projects under `tests/golden/`, checked-in PNG baselines, explicit `--update` regeneration, and tolerant image comparison instead of byte-for-byte equality.
+**Why:** Renderer-sensitive features such as postprocess, UI layout, editor chrome, shadows, and clipping need stronger regression checks than foreground coverage. Keeping each fixture as a normal project preserves the same source-text workflow and startup behavior as other tests.
+**Tradeoff:** Golden fixtures can still vary across graphics backends and GPUs, so they should stay focused, small, and tolerance-based. Broad example smoke coverage remains on `render-test`.
+
+### 5. Add deterministic stepping and manifest assertions before full test scripting
 
 **Decision:** Script and interaction behavior tests use a small `test.machina.toml` manifest with frame count, timestep, optional deterministic input frames, and ECS field equality assertions instead of introducing a full test scripting DSL.
 **Why:** Agents and CI need a small, reliable way to prove script systems, retained UI routing, and editor/game input ownership mutate ECS state and surface runtime diagnostics. Keeping the replay frames and assertions text-first makes them easy to inspect and patch. This follows ADR-003 and ADR-006.
 **Tradeoff:** The manifest currently supports direct component field equality and frame-level input replay, not arbitrary predicates, setup/teardown hooks, platform event fuzzing, or multi-scene flows.
 
-### 5. Keep gameplay test fixtures separate from examples
+### 6. Keep gameplay test fixtures separate from examples
 
 **Decision:** Game-shaped automated fixtures live in `tests/projects/`, not under `examples/`.
 **Why:** Examples are user-facing smoke projects, while tests need purpose-built scenes and scripts that can change to cover edge cases without implying supported sample content.

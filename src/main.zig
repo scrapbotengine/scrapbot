@@ -286,6 +286,100 @@ fn run(
         return 0;
     }
 
+    if (std.mem.eql(u8, command, "visual-test")) {
+        const options = parseVisualTestOptions(allocator, args[2..]) catch |err| {
+            try printArgumentError(stderr, err);
+            return 1;
+        };
+        const result = try checkProjectForCommand(io, allocator, options.render.target_path, stderr) orelse return 1;
+        defer machina.freeCheckResult(allocator, result);
+        var live_project = machina.LiveProject.init(io, allocator, options.render.target_path) catch |err| {
+            try printProjectError(stderr, options.render.target_path, err);
+            return 1;
+        };
+        defer live_project.deinit();
+        if (!live_project.runStartup()) {
+            if (live_project.lastDiagnostic()) |diagnostic| {
+                try printScriptDiagnostic(stderr, options.render.target_path, diagnostic.*);
+            }
+            return 1;
+        }
+
+        if (options.render.selected_entity_id) |entity_id| {
+            if (live_project.scene.world.findEntityById(entity_id) == null) {
+                try stderr.print("visual-test selected entity not found: {s}\n", .{entity_id});
+                return 1;
+            }
+        }
+
+        if (!options.update and try sameResolvedPath(allocator, options.expected_path, options.render.output_path)) {
+            try stderr.print("visual-test actual output must differ from expected path; use --update to refresh {s}\n", .{options.expected_path});
+            return 1;
+        }
+
+        const render_output = if (options.update) options.expected_path else options.render.output_path;
+        var frame_context = RenderFrameContext{
+            .live_project = &live_project,
+            .stderr = stderr,
+            .target_path = options.render.target_path,
+            .selected_entity_id = options.render.selected_entity_id,
+        };
+        machina.renderDemoImageFrames(io, allocator, render_output, live_project.renderScene(), .{
+            .frames = options.render.frames,
+            .frame_input = renderCommandFrameInput(&live_project, options.render),
+            .frame_update = if (options.render.frames > 1) .{
+                .context = &frame_context,
+                .step = stepRenderLiveProject,
+            } else null,
+        }) catch |err| {
+            try stderr.print("visual-test render failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+        if (frame_context.failed) {
+            return 1;
+        }
+
+        if (options.update) {
+            try stdout.print("Updated golden fixture: {s}\n", .{options.expected_path});
+            return 0;
+        }
+
+        const comparison_options = machina.RenderComparisonOptions{};
+        const comparison = machina.compareRenderImage(io, allocator, options.expected_path, options.render.output_path, comparison_options) catch |err| {
+            try stderr.print("visual-test comparison failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+        const ok = comparison.passed(comparison_options);
+        const changed_percent = comparison.changed_pixel_ratio * 100.0;
+        try stdout.print(
+            "Visual test {s}: {d}x{d}, max delta: {d}, mean delta: {d:.3}, changed pixels: {d}/{d} ({d:.3}%)\n",
+            .{
+                if (ok) "OK" else "FAILED",
+                comparison.width,
+                comparison.height,
+                comparison.max_channel_delta,
+                comparison.mean_channel_delta,
+                comparison.changed_pixels,
+                comparison.pixels,
+                changed_percent,
+            },
+        );
+        try stdout.print("Expected: {s}\n", .{options.expected_path});
+        try stdout.print("Actual: {s}\n", .{options.render.output_path});
+        if (!ok) {
+            try stderr.print(
+                "visual-test exceeded tolerances: max delta <= {d}, mean delta <= {d:.3}, changed pixels <= {d:.3}%\n",
+                .{
+                    comparison_options.max_channel_delta,
+                    comparison_options.max_mean_channel_delta,
+                    comparison_options.max_changed_pixel_ratio * 100.0,
+                },
+            );
+            return 1;
+        }
+        return 0;
+    }
+
     try stderr.print("Unknown command: {s}\n\n", .{command});
     try printHelp(stderr);
     return 1;
@@ -363,6 +457,12 @@ const RenderCommandOptions = struct {
     frames: u32 = 1,
     editor: bool = false,
     selected_entity_id: ?[]const u8 = null,
+};
+
+const VisualTestCommandOptions = struct {
+    render: RenderCommandOptions,
+    expected_path: []const u8,
+    update: bool = false,
 };
 
 const RunCommandOptions = struct {
@@ -702,6 +802,14 @@ fn checkProjectForCommand(
     }
 }
 
+fn sameResolvedPath(allocator: std.mem.Allocator, left: []const u8, right: []const u8) !bool {
+    const resolved_left = try std.fs.path.resolve(allocator, &.{left});
+    defer allocator.free(resolved_left);
+    const resolved_right = try std.fs.path.resolve(allocator, &.{right});
+    defer allocator.free(resolved_right);
+    return std.mem.eql(u8, resolved_left, resolved_right);
+}
+
 fn printHelp(writer: *Io.Writer) !void {
     try writer.writeAll(
         \\machina - agent-native game engine
@@ -718,6 +826,7 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina run [path] [--frames N] [--editor]
         \\  machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
         \\  machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
+        \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--update] <path> <expected.png> [actual.png]
         \\
     );
 }
@@ -726,6 +835,7 @@ const ArgumentError = error{
     InvalidDelta,
     InvalidFrames,
     InvalidFormat,
+    MissingExpected,
     UnknownArgument,
 };
 
@@ -960,6 +1070,48 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
     return options;
 }
 
+fn parseVisualTestOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!VisualTestCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--editor
+        \\--select <ENTITY>
+        \\--frames <FRAMES>
+        \\--update
+        \\<PATH>
+        \\<OUTPUT>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
+    if (result.positionals[2].len > 1) {
+        return ArgumentError.UnknownArgument;
+    }
+    const target_path = result.positionals[0] orelse return ArgumentError.UnknownArgument;
+    const expected_path = result.positionals[1] orelse return ArgumentError.MissingExpected;
+    var render = RenderCommandOptions{
+        .target_path = target_path,
+        .output_path = if (result.positionals[2].len == 1) result.positionals[2][0] else "zig-out/machina-visual-test.png",
+    };
+    render.editor = result.args.editor != 0;
+    if (result.args.select) |entity_id| {
+        render.selected_entity_id = entity_id;
+        render.editor = true;
+    }
+    if (result.args.frames) |frames| {
+        render.frames = frames;
+    }
+
+    return .{
+        .render = render,
+        .expected_path = expected_path,
+        .update = result.args.update != 0,
+    };
+}
+
 fn parseCheckOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!CheckOptions {
     const params = comptime clap.parseParamsComptime(
         \\--format <FORMAT>
@@ -1121,6 +1273,7 @@ fn mapClapArgumentError(err: anyerror) ArgumentError {
         ArgumentError.InvalidDelta => ArgumentError.InvalidDelta,
         ArgumentError.InvalidFrames => ArgumentError.InvalidFrames,
         ArgumentError.InvalidFormat => ArgumentError.InvalidFormat,
+        ArgumentError.MissingExpected => ArgumentError.MissingExpected,
         else => ArgumentError.UnknownArgument,
     };
 }
@@ -1916,6 +2069,7 @@ fn printArgumentError(writer: *Io.Writer, err: ArgumentError) !void {
         ArgumentError.InvalidDelta => "--dt expects a positive finite number",
         ArgumentError.InvalidFrames => "--frames expects a positive integer",
         ArgumentError.InvalidFormat => "--format expects text or json",
+        ArgumentError.MissingExpected => "visual-test expects an expected image path",
         ArgumentError.UnknownArgument => "unknown argument",
     };
     try writer.print("{s}\n", .{message});
@@ -2630,6 +2784,35 @@ test "parseRenderOptions accepts frame count" {
 test "parseRenderOptions rejects extra positionals" {
     const args = [_][]const u8{ "examples/minimal", "one.bmp", "two.bmp" };
     try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
+}
+
+test "parseVisualTestOptions accepts expected and actual paths" {
+    const args = [_][]const u8{ "--frames=4", "tests/golden/postprocess_effects", "tests/golden/postprocess_effects/expected.png", "zig-out/postprocess-actual.png" };
+    const options = try parseVisualTestOptions(std.testing.allocator, &args);
+    try std.testing.expectEqualStrings("tests/golden/postprocess_effects", options.render.target_path);
+    try std.testing.expectEqualStrings("tests/golden/postprocess_effects/expected.png", options.expected_path);
+    try std.testing.expectEqualStrings("zig-out/postprocess-actual.png", options.render.output_path);
+    try std.testing.expectEqual(@as(u32, 4), options.render.frames);
+    try std.testing.expect(!options.update);
+}
+
+test "parseVisualTestOptions supports update and selected entity" {
+    const args = [_][]const u8{ "--update", "--select", "cube-1", "tests/golden/basic", "tests/golden/basic/expected.png" };
+    const options = try parseVisualTestOptions(std.testing.allocator, &args);
+    try std.testing.expect(options.update);
+    try std.testing.expect(options.render.editor);
+    try std.testing.expectEqualStrings("cube-1", options.render.selected_entity_id.?);
+    try std.testing.expectEqualStrings("zig-out/machina-visual-test.png", options.render.output_path);
+}
+
+test "parseVisualTestOptions requires expected path" {
+    const args = [_][]const u8{"tests/golden/basic"};
+    try std.testing.expectError(ArgumentError.MissingExpected, parseVisualTestOptions(std.testing.allocator, &args));
+}
+
+test "sameResolvedPath detects equivalent relative paths" {
+    try std.testing.expect(try sameResolvedPath(std.testing.allocator, "tests/golden/postprocess_effects/expected.png", "./tests/golden/postprocess_effects/expected.png"));
+    try std.testing.expect(!try sameResolvedPath(std.testing.allocator, "tests/golden/postprocess_effects/expected.png", "zig-out/postprocess-effects-actual.png"));
 }
 
 test "parseCheckOptions accepts path and json format" {

@@ -1,0 +1,80 @@
+name = "Postprocess Golden"
+version = 1
+
+[[entities]]
+id = "machina.renderer"
+name = "Renderer"
+
+[entities.components."machina.renderer"]
+hdr = true
+tone_mapping = "aces"
+exposure = 0.0
+postprocess_enabled = true
+antialiasing = "none"
+bloom_enabled = false
+bloom_threshold = 1.0
+bloom_intensity = 0.0
+bloom_radius = 1.0
+vignette_enabled = true
+vignette_strength = 0.74
+vignette_radius = 0.72
+chromatic_aberration_enabled = true
+chromatic_aberration_strength = 0.025
+
+[[entities]]
+id = "probe-panel"
+name = "Probe Panel"
+
+[entities.components."machina.transform"]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [7.2, 5.2, 0.05]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [1.6, 1.6, 1.6]
+
+[[entities]]
+id = "blue-edge"
+name = "Blue Edge"
+
+[entities.components."machina.transform"]
+position = [1.15, 0.0, 0.18]
+rotation = [0.0, 0.0, 0.0]
+scale = [0.12, 2.1, 0.08]
+
+[entities.components."machina.geometry.primitive"]
+primitive = "box"
+segments = 0
+rings = 0
+
+[entities.components."machina.material.surface"]
+base_color = [0.05, 0.2, 3.2]
+
+[[entities]]
+id = "probe-camera"
+name = "Probe Camera"
+
+[entities.components."machina.transform"]
+position = [0.0, 0.0, 6.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+[entities.components."machina.camera"]
+fov_y_degrees = 42.0
+near = 0.1
+far = 100.0
+
+[[entities]]
+id = "probe-light"
+name = "Probe Light"
+
+[entities.components."machina.light.directional"]
+direction = [0.0, 0.0, 1.0]
+color = [1.0, 1.0, 1.0]
+intensity = 1.0
+ambient = 0.85

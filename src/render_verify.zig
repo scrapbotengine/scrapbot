@@ -1,5 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
+const png = @import("png.zig");
 
 pub const VerificationOptions = struct {
     min_foreground_pixels: usize = 1_000,
@@ -17,11 +18,38 @@ pub const Verification = struct {
     cool_pixels: usize,
 };
 
+pub const ComparisonOptions = struct {
+    max_channel_delta: u8 = 8,
+    max_mean_channel_delta: f32 = 1.5,
+    max_changed_pixel_ratio: f32 = 0.02,
+    changed_pixel_delta: u8 = 2,
+};
+
+pub const Comparison = struct {
+    width: u32,
+    height: u32,
+    pixels: usize,
+    max_channel_delta: u8,
+    mean_channel_delta: f32,
+    changed_pixels: usize,
+    changed_pixel_ratio: f32,
+
+    pub fn passed(self: Comparison, options: ComparisonOptions) bool {
+        return self.max_channel_delta <= options.max_channel_delta and
+            self.mean_channel_delta <= options.max_mean_channel_delta and
+            self.changed_pixel_ratio <= options.max_changed_pixel_ratio;
+    }
+};
+
 pub const VerificationError = error{
     InvalidBmp,
     MissingForeground,
     MissingVisibleComponents,
     MissingColorGroups,
+};
+
+pub const ComparisonError = VerificationError || error{
+    ImageSizeMismatch,
 };
 
 pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options: VerificationOptions) !Verification {
@@ -118,6 +146,101 @@ pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options
     };
 }
 
+pub fn compareImage(
+    io: Io,
+    allocator: std.mem.Allocator,
+    expected_path: []const u8,
+    actual_path: []const u8,
+    options: ComparisonOptions,
+) !Comparison {
+    var expected = try loadRgbImage(io, allocator, expected_path);
+    defer expected.deinit(allocator);
+    var actual = try loadRgbImage(io, allocator, actual_path);
+    defer actual.deinit(allocator);
+    if (expected.width != actual.width or expected.height != actual.height) {
+        return ComparisonError.ImageSizeMismatch;
+    }
+
+    var max_channel_delta: u8 = 0;
+    var total_channel_delta: u64 = 0;
+    var changed_pixels: usize = 0;
+
+    const pixel_count = expected.width * expected.height;
+    for (0..pixel_count) |index| {
+        const expected_rgb = expected.pixel(index);
+        const actual_rgb = actual.pixel(index);
+        var pixel_changed = false;
+        const deltas = [_]u8{
+            absDiffU8(expected_rgb[0], actual_rgb[0]),
+            absDiffU8(expected_rgb[1], actual_rgb[1]),
+            absDiffU8(expected_rgb[2], actual_rgb[2]),
+        };
+        for (deltas) |delta| {
+            max_channel_delta = @max(max_channel_delta, delta);
+            total_channel_delta += delta;
+            if (delta > options.changed_pixel_delta) {
+                pixel_changed = true;
+            }
+        }
+        if (pixel_changed) {
+            changed_pixels += 1;
+        }
+    }
+
+    const channel_count = pixel_count * 3;
+    return .{
+        .width = @intCast(expected.width),
+        .height = @intCast(expected.height),
+        .pixels = pixel_count,
+        .max_channel_delta = max_channel_delta,
+        .mean_channel_delta = @as(f32, @floatFromInt(total_channel_delta)) / @as(f32, @floatFromInt(channel_count)),
+        .changed_pixels = changed_pixels,
+        .changed_pixel_ratio = @as(f32, @floatFromInt(changed_pixels)) / @as(f32, @floatFromInt(pixel_count)),
+    };
+}
+
+pub fn compareBmp(
+    io: Io,
+    allocator: std.mem.Allocator,
+    expected_path: []const u8,
+    actual_path: []const u8,
+    options: ComparisonOptions,
+) !Comparison {
+    return compareImage(io, allocator, expected_path, actual_path, options);
+}
+
+fn loadRgbImage(io: Io, allocator: std.mem.Allocator, path: []const u8) !png.RgbImage {
+    const extension = std.fs.path.extension(path);
+    if (std.ascii.eqlIgnoreCase(extension, ".png")) {
+        return png.readRgb24(io, allocator, path);
+    }
+    if (std.ascii.eqlIgnoreCase(extension, ".bmp")) {
+        return loadBmpRgb(io, allocator, path);
+    }
+    return png.Error.UnsupportedPng;
+}
+
+fn loadBmpRgb(io: Io, allocator: std.mem.Allocator, path: []const u8) !png.RgbImage {
+    const data = try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024));
+    defer allocator.free(data);
+
+    const bmp = try BmpView.parse(data);
+    const pixels = try allocator.alloc(u8, bmp.pixel_count * 3);
+    errdefer allocator.free(pixels);
+    for (0..bmp.pixel_count) |index| {
+        const rgb = bmp.rgb(index);
+        const offset = index * 3;
+        pixels[offset] = rgb[0];
+        pixels[offset + 1] = rgb[1];
+        pixels[offset + 2] = rgb[2];
+    }
+    return .{
+        .width = bmp.width,
+        .height = bmp.height,
+        .pixels = pixels,
+    };
+}
+
 const BmpView = struct {
     data: []const u8,
     pixel_offset: usize,
@@ -192,7 +315,20 @@ const BmpView = struct {
         const file_y = self.height - y - 1;
         return self.pixel_offset + file_y * self.row_stride + x * 3;
     }
+
+    fn rgb(self: BmpView, index: usize) [3]u8 {
+        const pixel = self.pixelOffset(index);
+        return .{
+            self.data[pixel + 2],
+            self.data[pixel + 1],
+            self.data[pixel],
+        };
+    }
 };
+
+fn absDiffU8(left: u8, right: u8) u8 {
+    return if (left >= right) left - right else right - left;
+}
 
 fn readU16(data: []const u8, offset: usize) ?u16 {
     if (offset + 2 > data.len) {

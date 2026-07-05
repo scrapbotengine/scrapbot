@@ -102,7 +102,7 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Diagnostic stage** - The lifecycle point where a script or native failure occurred, such as `load`, `native_build`, `native_load`, `native_registration`, `registration`, `schedule`, or `runtime`. See [FDR-013](fdr/FDR-013-script-diagnostics.md).
 
-**Headless command** - A command such as `machina check`, `machina step`, `machina bench`, `machina test`, or `machina render-test` that validates, executes, measures, or verifies a project without opening an interactive window. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
+**Headless command** - A command such as `machina check`, `machina step`, `machina bench`, `machina test`, `machina render-test`, or `machina visual-test` that validates, executes, measures, or verifies a project without opening an interactive window. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
 
 **Test project** - A complete text-authored Machina project under `tests/projects/` used for automated behavior fixtures instead of as a user-facing example. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
 
@@ -168,7 +168,7 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Draw-command entity** - An internal render-world entity queued by render preparation to represent a batch or UI draw operation before GPU submission. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md) and [FDR-016](fdr/FDR-016-render-batching.md).
 
-**Render verification** - The offscreen BMP and pixel-analysis workflow used to catch rendering regressions in automation. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md), [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md), and `.agents/skills/machina-render-verification/SKILL.md`.
+**Render verification** - The offscreen BMP, pixel-analysis, and golden-image comparison workflow used to catch rendering regressions in automation. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md), [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md), and `.agents/skills/machina-render-verification/SKILL.md`.
 
 ## Records
 

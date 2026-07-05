@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 const geometry = @import("../geometry.zig");
+const png = @import("../png.zig");
 const runtime = @import("../runtime.zig");
 const ui_layout = @import("../ui_layout.zig");
 const ui_font = @import("../ui_font.zig");
@@ -157,6 +158,7 @@ pub const RenderError = error{
     BufferMapFailed,
     OutOfMemory,
     InvalidScene,
+    UnsupportedImageFormat,
 };
 
 pub const Stats = struct {
@@ -1562,6 +1564,37 @@ pub fn renderDemoBmpWithInput(io: Io, allocator: std.mem.Allocator, output_path:
 }
 
 pub fn renderDemoBmpFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
+    try renderDemoOutputFrames(io, allocator, output_path, scene, options, .bmp);
+}
+
+pub fn renderDemoImageWithInput(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, frame_input: FrameInput) !void {
+    try renderDemoImageFrames(io, allocator, output_path, scene, .{ .frame_input = frame_input });
+}
+
+pub fn renderDemoImageFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
+    try renderDemoOutputFrames(io, allocator, output_path, scene, options, try imageFormatFromPath(output_path));
+}
+
+const RenderOutputFormat = enum {
+    bmp,
+    png,
+};
+
+fn imageFormatFromPath(path: []const u8) RenderError!RenderOutputFormat {
+    const extension = std.fs.path.extension(path);
+    if (std.ascii.eqlIgnoreCase(extension, ".bmp")) return .bmp;
+    if (std.ascii.eqlIgnoreCase(extension, ".png")) return .png;
+    return RenderError.UnsupportedImageFormat;
+}
+
+fn renderDemoOutputFrames(
+    io: Io,
+    allocator: std.mem.Allocator,
+    output_path: []const u8,
+    scene: Scene,
+    options: BmpRenderOptions,
+    output_format: RenderOutputFormat,
+) !void {
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
 
@@ -1667,7 +1700,10 @@ pub fn renderDemoBmpFrames(io: Io, allocator: std.mem.Allocator, output_path: []
     const mapped: [*]u8 = @ptrCast(@alignCast(staging_buffer.getMappedRange(0, output_size) orelse return RenderError.BufferMapFailed));
     defer staging_buffer.unmap();
 
-    try write24BitBmp(io, allocator, output_path, mapped[0..output_size]);
+    switch (output_format) {
+        .bmp => try write24BitBmp(io, allocator, output_path, mapped[0..output_size]),
+        .png => try write24BitPng(io, allocator, output_path, mapped[0..output_size]),
+    }
 }
 
 const WindowSurface = switch (builtin.os.tag) {
@@ -11059,6 +11095,27 @@ fn write24BitBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, 
         .sub_path = output_path,
         .data = bytes,
     });
+}
+
+fn write24BitPng(io: Io, allocator: std.mem.Allocator, output_path: []const u8, bgra_data: []const u8) !void {
+    const rgb_data = try allocator.alloc(u8, output_width * output_height * 3);
+    defer allocator.free(rgb_data);
+
+    const bgra_pixels_per_line = output_width * 4;
+    const rgb_pixels_per_line = output_width * 3;
+    for (0..output_height) |y| {
+        const bgra_line_offset = y * bgra_pixels_per_line;
+        const rgb_line_offset = y * rgb_pixels_per_line;
+        for (0..output_width) |x| {
+            const bgra_pixel_offset = bgra_line_offset + x * 4;
+            const rgb_pixel_offset = rgb_line_offset + x * 3;
+            rgb_data[rgb_pixel_offset] = bgra_data[bgra_pixel_offset + 2];
+            rgb_data[rgb_pixel_offset + 1] = bgra_data[bgra_pixel_offset + 1];
+            rgb_data[rgb_pixel_offset + 2] = bgra_data[bgra_pixel_offset];
+        }
+    }
+
+    try png.writeRgb24(io, allocator, output_path, output_width, output_height, rgb_data);
 }
 
 fn putBytes(output: []u8, cursor: *usize, bytes: []const u8) void {

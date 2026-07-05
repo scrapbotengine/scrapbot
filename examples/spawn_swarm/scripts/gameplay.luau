@@ -3,7 +3,6 @@
 local Transform = ecs.component<<MachinaTransform>>("machina.transform")
 local Geometry = ecs.component<<MachinaGeometryPrimitive>>("machina.geometry.primitive")
 local Material = ecs.component<<MachinaSurfaceMaterial>>("machina.material.surface")
-local Renderer = ecs.component<<MachinaRenderer>>("machina.renderer")
 local ShadowCaster = ecs.component<<MachinaShadowCaster>>("machina.shadow.caster")
 local ShadowReceiver = ecs.component<<MachinaShadowReceiver>>("machina.shadow.receiver")
 
@@ -17,7 +16,6 @@ local SwarmMotion = ecs.component("swarm_motion", {
 })
 
 local Swarm = ecs.query(Transform, SwarmMotion)
-local Renderers = ecs.query(Renderer)
 local elapsed = 0
 
 local function palette(index: number): { number }
@@ -171,23 +169,5 @@ ecs.system("animate_swarm", {
 
     view:write_vec3(Transform, "position", positions)
     view:write_vec3(Transform, "rotation", rotations)
-  end,
-})
-
-ecs.system("animate_render_pipeline", {
-  phase = "update",
-  query = Renderers,
-  writes = ecs.refs(Renderer),
-  after = { "animate_swarm" },
-  run = function(world, _dt)
-    local bloom = 0.52 + math.sin(elapsed * 0.62) * 0.08
-    local vignette = 0.34 + math.sin(elapsed * 0.41 + 1.2) * 0.035
-    local aberration = 0.0027 + math.sin(elapsed * 0.53 + 0.6) * 0.0008
-
-    for _entity, renderer in Renderers:iter(world) do
-      renderer.bloom_intensity = bloom
-      renderer.vignette_strength = vignette
-      renderer.chromatic_aberration_strength = aberration
-    end
   end,
 })

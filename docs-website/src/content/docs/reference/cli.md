@@ -20,6 +20,7 @@ Usage:
   machina run [path] [--frames N] [--editor]
   machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
   machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
+  machina visual-test [--editor] [--select entity-id] [--frames N] [--update] <path> <expected.png> [actual.png]
 ```
 
 ## Commands
@@ -37,6 +38,7 @@ Usage:
 | `machina run [path]` | Run a headful interactive project. |
 | `machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` | Render one or more offscreen frames to a BMP artifact. |
 | `machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` | Render and verify visible output. |
+| `machina visual-test [--editor] [--select entity-id] [--frames N] [--update] <path> <expected.png> [actual.png]` | Render and compare a golden visual fixture. |
 
 ## Format Options
 
@@ -107,6 +109,17 @@ machina render --editor --select native-cyan-box examples/native_motion zig-out/
 - `--editor` renders the engine editor shell into the offscreen frame.
 - `--select entity-id` implies `--editor` and preselects a scene entity for inspector layout verification.
 - `--frames N` renders multiple fixed-step offscreen frames and writes the final frame. The default is one startup frame.
+
+## Visual Test Options
+
+```sh
+machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+machina visual-test --update tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png
+```
+
+`visual-test` renders the project offscreen, compares the actual image against a checked-in golden image, and reports max channel delta, mean channel delta, and changed-pixel ratio. Use `--update` only when the current renderer output is the intended new baseline.
+
+- `--frames N` renders multiple fixed-step offscreen frames and compares or updates the final frame. The default is one startup frame.
 
 ## Run Options
 
