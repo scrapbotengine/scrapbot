@@ -1,7 +1,7 @@
 # FDR-008: Headful Demo Window
 
 **Status:** Active
-**Last reviewed:** 2026-07-04
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -20,6 +20,7 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 - Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
 - UI rectangles and text labels render after 3D scene content as an overlay.
 - Users can run `machina run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
+- Users can run `machina run [path] --hidden --frames N` to create the SDL window and WebGPU presentation surface without showing a normal visible window. `--hidden` requires `--frames` so invisible runs remain bounded.
 - Headful live updates use measured elapsed frame time capped at a short spike limit; headless `step`, `bench`, and `test` runs remain deterministic and use their explicit `--dt` or manifest timestep.
 - In headful runs, holding the right mouse button enables a fly camera. Mouse movement changes view direction; W/A/S/D moves relative to the camera; Space moves up; Ctrl moves down. While active, the SDL window uses relative mouse mode so view rotation can continue at window edges.
 - The fly camera initializes from the scene-authored camera and applies as a render-only camera override. It does not mutate scene files or live scene camera components.
@@ -54,6 +55,12 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 **Decision:** `--frames N` is supported on the headful run command.
 **Why:** A visible window normally runs until closed, but development agents and CI need a bounded smoke-test path that still initializes the same surface and presentation code.
 **Tradeoff:** The option is an engine-runner concern rather than project data, so it should remain a CLI/runtime flag.
+
+### 4a. Support hidden bounded surface smoke tests
+
+**Decision:** `--hidden` is supported on the headful run command when paired with `--frames N`.
+**Why:** Agents and CI sometimes need to exercise SDL window creation, native surface extraction, WebGPU surface configuration, and presentation without interrupting a developer's desktop with a briefly appearing window.
+**Tradeoff:** Hidden runs are automation smoke tests, not interactive sessions. Requiring `--frames` prevents an invisible run from continuing indefinitely with no window for the user to close.
 
 ### 5. Use measured elapsed time for live updates
 

@@ -60,7 +60,7 @@ typedef struct MachinaSdlEvent {
 
 int machina_sdl_init_video(void);
 void machina_sdl_quit(void);
-void *machina_sdl_create_window(const char *title, int width, int height);
+void *machina_sdl_create_window(const char *title, int width, int height, int hidden);
 void machina_sdl_destroy_window(void *window);
 
 void *machina_sdl_create_metal_view(void *window);

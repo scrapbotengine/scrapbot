@@ -144,7 +144,7 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **`wgpu-native`** - The native WebGPU implementation used by Machina's renderer behind engine-owned rendering boundaries. See [ADR-004](adr/ADR-004-webgpu-graphics-through-wgpu-native.md) and [ADR-005](adr/ADR-005-narrow-backend-boundaries-for-external-native-libraries.md).
 
-**Headful run** - Interactive execution through `machina run`, which opens an SDL-backed window, presents frames, and can show editor chrome. See [FDR-008](fdr/FDR-008-headful-demo-window.md).
+**Headful run** - Interactive execution through `machina run`, which opens an SDL-backed window, presents frames, and can show editor chrome. Bounded `--hidden --frames N` runs exercise the same window/surface path without showing a normal visible window. See [FDR-008](fdr/FDR-008-headful-demo-window.md).
 
 **Offscreen rendering** - Rendering a project to an image artifact without opening a platform window, used by `machina render` and `machina render-test`. See [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
 

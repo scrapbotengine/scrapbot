@@ -147,6 +147,7 @@ pub const Stats = struct {
 pub const WindowOptions = struct {
     max_frames: ?u32 = null,
     editor: bool = false,
+    hidden: bool = false,
     scene_reload: ?SceneReloadHook = null,
     frame_update: ?FrameUpdateHook = null,
 };

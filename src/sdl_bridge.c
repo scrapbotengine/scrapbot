@@ -80,11 +80,14 @@ void machina_sdl_quit(void) {
     SDL_Quit();
 }
 
-void *machina_sdl_create_window(const char *title, int width, int height) {
+void *machina_sdl_create_window(const char *title, int width, int height, int hidden) {
     SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #if defined(__APPLE__)
     flags |= SDL_WINDOW_METAL;
 #endif
+    if (hidden) {
+        flags |= SDL_WINDOW_HIDDEN;
+    }
     return SDL_CreateWindow(title, width, height, flags);
 }
 

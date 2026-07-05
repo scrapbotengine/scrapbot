@@ -174,6 +174,7 @@ pub const Stats = struct {
 pub const WindowOptions = struct {
     max_frames: ?u32 = null,
     editor: bool = false,
+    hidden: bool = false,
     scene_reload: ?SceneReloadHook = null,
     frame_update: ?FrameUpdateHook = null,
 };
@@ -1882,7 +1883,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     }
     defer sdl.machina_sdl_quit();
 
-    const window = sdl.machina_sdl_create_window(title_z.ptr, default_window_width, default_window_height) orelse return RenderError.WindowCreateFailed;
+    const window = sdl.machina_sdl_create_window(title_z.ptr, default_window_width, default_window_height, @intFromBool(options.hidden)) orelse return RenderError.WindowCreateFailed;
     defer sdl.machina_sdl_destroy_window(window);
     _ = sdl.machina_sdl_start_text_input(window);
 

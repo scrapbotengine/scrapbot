@@ -106,7 +106,8 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - For script diagnostics, Luau bridge error reporting, `machina check` output, script reload/runtime failure handling, or editor/agent diagnostic surfaces, use `.agents/skills/machina-script-diagnostics`.
 - For editor layout changes, prefer engine-generated offscreen artifacts with `machina render --editor`; use `--select <entity-id>` when selected-entity inspector state matters.
 - When a render example depends on startup-spawned content, run startup before offscreen verification and keep the example covered by `mise test`.
-- For `machina run` window-loop, surface, or live-reload changes, run a bounded headful smoke test such as `mise machina run examples/minimal --frames 2`.
+- Do not run visible `machina run` smoke tests by default. Prefer headless commands, offscreen render verification, and hidden bounded surface smoke tests such as `mise machina run examples/minimal --hidden --frames 2`; ask the user before launching a visible Machina window unless they explicitly requested one.
+- For `machina run` window-loop, surface, or live-reload changes, run a bounded hidden surface smoke test such as `mise machina run examples/minimal --hidden --frames 2`; use a visible headful run only when hidden presentation is insufficient.
 - For editor input bugs, add deterministic frame-replay coverage in Zig tests before relying on manual headful checks.
 - When investigating performance, compare optimized and Debug builds, and separate headless update cost from headful render/presentation cost before changing engine architecture.
 

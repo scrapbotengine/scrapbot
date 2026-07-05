@@ -9,7 +9,7 @@
 | [FDR-005](FDR-005-engine-ui-primitives.md) | Engine UI Primitives | Active | 2026-07-05 |
 | [FDR-006](FDR-006-asset-import-and-cache.md) | Asset Import and Cache | Planned | 2026-07-01 |
 | [FDR-007](FDR-007-offscreen-demo-rendering.md) | Offscreen Demo Rendering | Active | 2026-07-02 |
-| [FDR-008](FDR-008-headful-demo-window.md) | Headful Demo Window | Active | 2026-07-03 |
+| [FDR-008](FDR-008-headful-demo-window.md) | Headful Demo Window | Active | 2026-07-05 |
 | [FDR-009](FDR-009-entity-component-runtime.md) | Entity Component Runtime | Active | 2026-07-03 |
 | [FDR-010](FDR-010-live-reload-for-scenes-and-scripts.md) | Live Reload for Scenes, Scripts, and Native Modules | Active | 2026-07-03 |
 | [FDR-011](FDR-011-script-ecs-registration.md) | Script ECS Registration | Active | 2026-07-03 |

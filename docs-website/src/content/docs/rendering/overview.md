@@ -84,11 +84,18 @@ Headful runs create a platform window and present to a surface:
 machina run examples/showcase --editor
 ```
 
+For bounded surface smoke tests that should not show a normal visible window, pair `--hidden` with a frame limit:
+
+```sh
+machina run examples/showcase --hidden --frames 2
+```
+
 Offscreen rendering writes PNG artifacts:
 
 ```sh
 machina render examples/showcase zig-out/showcase.png
 machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
+machina render --editor --width 2560 --height 1800 --pixel-scale 2 examples/minimal zig-out/editor-hidpi.png
 ```
 
 Offscreen verification checks for visible rendered content:
@@ -97,7 +104,7 @@ Offscreen verification checks for visible rendered content:
 machina render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
-Use offscreen verification before relying on visible-window inspection for renderer or editor-layout changes. `--editor` includes engine chrome in the offscreen frame, and `--select` preselects an entity for inspector verification.
+Use offscreen verification before relying on visible-window inspection for renderer or editor-layout changes. `--editor` includes engine chrome in the offscreen frame, `--select` preselects an entity for inspector verification, and `--pixel-scale` makes HiDPI physical/logical pixel assumptions explicit in generated artifacts.
 
 ## Camera and Lighting
 
