@@ -9,12 +9,13 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ## Behavior
 
-- Users can run `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]` against a valid project.
-- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]` to render offscreen and verify the generated image.
+- Users can run `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` against a valid project.
+- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` to render offscreen and verify the generated image.
 - The command validates the project before rendering.
 - The command loads the project's default scene and draws one frame of its renderable mesh and UI overlay entities into an offscreen texture by default.
 - When `--frames N` is greater than one, the command reuses the same offscreen GPU resources, runs fixed `1/60` updates, renders each frame, and writes or verifies the final frame.
-- `--width` and `--height` override the default `640x480` offscreen target so editor chrome and inspector details can be verified at useful review sizes.
+- `--width` and `--height` override the default `640x480` physical offscreen target so editor chrome and inspector details can be verified at useful review sizes.
+- `--pixel-scale` sets physical pixels per logical pixel for offscreen frame input. Command output and a `.metadata.json` sidecar next to the image report both the physical artifact size and the logical viewport size, for example a `1280x900` render at `--pixel-scale 2` is labeled as a `640x450` logical viewport.
 - `--editor` renders the engine editor shell into the offscreen frame; `--select` implies editor rendering and preselects the named scene entity for inspector verification.
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
 - Legacy cube entities remain supported and render as box geometry with inline color material data.
@@ -65,6 +66,12 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 **Why:** Small fixed render targets are fine for broad smoke coverage but can clip editor sidebars and hide detailed inspector controls. Configurable dimensions let agents create reviewable artifacts that match the UI area being debugged.
 **Tradeoff:** Larger offscreen renders cost more GPU memory and readback time, so smoke tests should keep using small defaults unless the scenario needs more pixels.
 
+### 7. Make offscreen DPI explicit
+
+**Decision:** `machina render`, `machina render-test`, and `machina visual-test` accept a positive finite `--pixel-scale` option. `--width` and `--height` remain physical artifact pixels, while frame input viewport dimensions are logical pixels derived as physical size divided by pixel scale.
+**Why:** Editor chrome spacing, input padding, rounded corners, and hit testing are authored in logical pixels, but review artifacts are physical pixel images. Explicit scale labels prevent `@2x` screenshots from making a two-logical-pixel inset look like one CSS/display pixel.
+**Tradeoff:** The image file itself is still a plain PNG/BMP without embedded custom metadata. The adjacent JSON sidecar must travel with the image until a richer snapshot manifest or embedded metadata format exists.
+
 ## Related
 
 - **ADRs:** ADR-004, ADR-005, ADR-013
@@ -72,5 +79,5 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ## Open Questions
 
-- Should render snapshots gain an additional custom metadata sidecar for editor and agent workflows?
+- Should render snapshots move from the current adjacent metadata sidecar to embedded metadata or a richer snapshot manifest?
 - Should render snapshots become part of `machina check`, a separate test command, or stay as a standalone render command?

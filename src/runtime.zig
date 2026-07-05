@@ -877,6 +877,7 @@ pub fn registerEngineComponents(registry: *ComponentRegistry) !void {
         .{ .name = "ui_visible", .value_type = .boolean },
         .{ .name = "debug_overlay_visible", .value_type = .boolean },
         .{ .name = "viewport", .value_type = .vec3 },
+        .{ .name = "pixel_scale", .value_type = .float },
     };
     try registry.registerEngineComponent(.{
         .id = input_frame_component_id,
@@ -1214,6 +1215,7 @@ pub const InputFrameComponent = struct {
     ui_visible: bool = true,
     debug_overlay_visible: bool = false,
     viewport: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    pixel_scale: f32 = 1.0,
 };
 
 pub const ComponentValue = union(FieldType) {
@@ -1835,6 +1837,7 @@ pub const World = struct {
             .{ .name = "ui_visible", .value = .{ .boolean = frame.ui_visible } },
             .{ .name = "debug_overlay_visible", .value = .{ .boolean = frame.debug_overlay_visible } },
             .{ .name = "viewport", .value = .{ .vec3 = frame.viewport } },
+            .{ .name = "pixel_scale", .value = .{ .float = frame.pixel_scale } },
         };
         try self.setComponent(handle, input_frame_component_id, &fields);
     }
@@ -2988,6 +2991,7 @@ test "world stores frame input components on a shared input entity" {
         .ui_visible = true,
         .debug_overlay_visible = true,
         .viewport = .{ 1280.0, 720.0, 0.0 },
+        .pixel_scale = 2.0,
     });
 
     try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(input_pointer_component_id));
@@ -3000,6 +3004,7 @@ test "world stores frame input components on a shared input entity" {
     try std.testing.expect(try world.getBoolean(input, input_keyboard_component_id, "move_down"));
     try std.testing.expect(try world.getBoolean(input, input_keyboard_component_id, "editor_toggle_pressed"));
     try std.testing.expectEqual(@as(f32, 1280.0), (try world.getVec3(input, input_frame_component_id, "viewport"))[0]);
+    try std.testing.expectEqual(@as(f32, 2.0), try world.getFloat(input, input_frame_component_id, "pixel_scale"));
 }
 
 test "world removes component rows without moving entity handles" {

@@ -24,6 +24,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - Headful runs can toggle the engine-owned editor/debug overlay with Ctrl+Tab.
 - Headful runs hide the engine-owned editor/debug overlay by default; `machina run --editor` starts with it visible.
 - The engine-owned editor/debug shell displays current FPS in a top bar and keeps its chrome spacing on a 4px grid.
+- Editor chrome constants are renderer-space pixels in headful windows so existing Retina visual density is preserved. Offscreen rendering can set an explicit `machina.input.frame.pixel_scale` for DPI verification; final UI vertices are scaled into physical render-target pixels after retained layout resolution only when that scale is greater than `1.0`.
 - In editor mode, 3D scene content and scene-authored game UI render into the full remaining viewport between the top bar, bottom bar, left sidebar, and right sidebar. The editor viewport is not forced to 16:9.
 - The left sidebar hosts the system performance inspector and, below it, a live entity list for the current ECS world. The right sidebar is reserved for selected-entity component inspection and eventual component editing. The sidebars are separated from the game viewport by draggable splitters. Splitters render as thin dividers, use public non-rendering hit-area command buttons for wider hover/click targets, change color when hovered or dragged, and use the platform east-west resize cursor in headful runs.
 - The engine-owned editor/debug shell also hosts the first editor playback controls and selected-entity inspector; detailed behavior is tracked in FDR-018.
@@ -94,7 +95,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 6. Keep input interaction in the ECS path
 
-**Decision:** Platform input is translated into transient `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame` ECS resources. UI button visuals are derived by render-phase ECS systems, pointer ownership can be resolved through `ui_layout.routePointer`, and command events are emitted into the live project world before update systems run.
+**Decision:** Platform input is translated into transient `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame` ECS resources. Headful input currently reports the backing-pixel viewport with `pixel_scale = 1.0` to preserve established editor density, while offscreen tests may use `machina.input.frame.pixel_scale` to record physical pixels per logical pixel for rendering and verification. UI button visuals are derived by render-phase ECS systems, pointer ownership can be resolved through `ui_layout.routePointer`, and command events are emitted into the live project world before update systems run.
 **Why:** This keeps UI behavior aligned with the engine-wide ECS model, follows ADR-020, and avoids a separate immediate-mode renderer input channel.
 **Tradeoff:** Command routing is string-id based for now; richer action payloads, persistent focus, text input, keyboard navigation, bubbling, modal layers, and editor service dispatch still need later design.
 

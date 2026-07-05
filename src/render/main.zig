@@ -184,6 +184,7 @@ pub const ImageRenderOptions = struct {
     delta_seconds: f32 = live_run_default_delta_seconds,
     width: u32 = default_output_width,
     height: u32 = default_output_height,
+    pixel_scale: f32 = 1.0,
     frame_input: FrameInput = .{},
     frame_update: ?FrameUpdateHook = null,
 };
@@ -624,6 +625,7 @@ pub const FrameInput = struct {
     delta_seconds: f32 = 0.0,
     viewport_width: f32 = 0.0,
     viewport_height: f32 = 0.0,
+    pixel_scale: f32 = 1.0,
     camera_override: ?runtime.Transform = null,
     editor: EditorFrameState = .{},
     system_profiles: []const runtime.SystemProfileSnapshot = &.{},
@@ -655,6 +657,41 @@ pub const FrameInput = struct {
         return self.text_input[0..self.text_input_len];
     }
 };
+
+fn normalizedPixelScale(pixel_scale: f32) f32 {
+    if (!std.math.isFinite(pixel_scale) or pixel_scale <= 0.0) {
+        return 1.0;
+    }
+    return pixel_scale;
+}
+
+fn framePixelScale(input: FrameInput) f32 {
+    return normalizedPixelScale(input.pixel_scale);
+}
+
+fn logicalPixelsFromPhysical(physical_pixels: u32, pixel_scale: f32) f32 {
+    return @as(f32, @floatFromInt(physical_pixels)) / normalizedPixelScale(pixel_scale);
+}
+
+fn frameInputWithOutputMetrics(input: FrameInput, physical_width: u32, physical_height: u32, pixel_scale: f32) FrameInput {
+    var next = input;
+    next.pixel_scale = normalizedPixelScale(pixel_scale);
+    next.viewport_width = logicalPixelsFromPhysical(physical_width, next.pixel_scale);
+    next.viewport_height = logicalPixelsFromPhysical(physical_height, next.pixel_scale);
+    return next;
+}
+
+fn frameInputWithDefaultOutputMetrics(input: FrameInput, physical_width: u32, physical_height: u32) FrameInput {
+    var next = input;
+    next.pixel_scale = framePixelScale(input);
+    if (next.viewport_width <= 0.0) {
+        next.viewport_width = logicalPixelsFromPhysical(physical_width, next.pixel_scale);
+    }
+    if (next.viewport_height <= 0.0) {
+        next.viewport_height = logicalPixelsFromPhysical(physical_height, next.pixel_scale);
+    }
+    return next;
+}
 
 fn toggleDebugOverlay(input: *FrameInput) void {
     input.debug_overlay_visible = !input.debug_overlay_visible;
@@ -1548,6 +1585,15 @@ const ScreenRect = struct {
     }
 };
 
+fn scaleScreenRect(rect: ScreenRect, scale: f32) ScreenRect {
+    return .{
+        .x = rect.x * scale,
+        .y = rect.y * scale,
+        .width = rect.width * scale,
+        .height = rect.height * scale,
+    };
+}
+
 const UiCanvasTransform = ui_layout.CanvasTransform;
 
 const UiBorder = struct {
@@ -1646,10 +1692,8 @@ fn renderDemoOutputFrames(
     const frame_count = @max(options.frames, 1);
     var frame_index: u32 = 0;
     while (frame_index < frame_count) : (frame_index += 1) {
-        var input = options.frame_input;
+        var input = frameInputWithOutputMetrics(options.frame_input, options.width, options.height, options.pixel_scale);
         input.delta_seconds = options.delta_seconds;
-        input.viewport_width = @floatFromInt(options.width);
-        input.viewport_height = @floatFromInt(options.height);
         input.system_profile_count_hint = demo.renderSystemProfileCount();
         if (options.frame_update) |frame_update| {
             frame_update.step(frame_update.context, options.delta_seconds, &input);
@@ -1974,6 +2018,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         input.delta_seconds = delta_seconds;
         input.viewport_width = @floatFromInt(width);
         input.viewport_height = @floatFromInt(height);
+        input.pixel_scale = 1.0;
         input.system_profile_count_hint = demo.renderSystemProfileCount();
         _ = updateFlyCameraCapture(&fly_camera, input);
         const should_enable_relative_mouse = flyCameraInputActive(fly_camera, input);
@@ -2022,10 +2067,8 @@ const FrameConfig = struct {
     input: FrameInput = .{},
 
     fn gameViewport(self: FrameConfig) ScreenRect {
-        var input = self.input;
-        input.viewport_width = @floatFromInt(self.width);
-        input.viewport_height = @floatFromInt(self.height);
-        return editorGameViewport(input);
+        const logical = editorGameViewport(frameInputWithDefaultOutputMetrics(self.input, self.width, self.height));
+        return scaleScreenRect(logical, framePixelScale(self.input));
     }
 };
 
@@ -4654,6 +4697,7 @@ pub fn writeFrameInput(world: *runtime.World, input: FrameInput) runtime.WorldEr
         .ui_visible = input.ui_visible,
         .debug_overlay_visible = input.debug_overlay_visible,
         .viewport = .{ input.viewport_width, input.viewport_height, 0.0 },
+        .pixel_scale = framePixelScale(input),
     });
 }
 
@@ -4697,6 +4741,7 @@ fn renderFrameInput(world: *const runtime.World) RenderError!FrameInput {
         .debug_overlay_visible = world.getBoolean(entity, runtime.input_frame_component_id, "debug_overlay_visible") catch |err| return mapWorldError(err),
         .viewport_width = viewport[0],
         .viewport_height = viewport[1],
+        .pixel_scale = normalizedPixelScale(world.getFloat(entity, runtime.input_frame_component_id, "pixel_scale") catch |err| return mapWorldError(err)),
     };
 }
 
@@ -4810,6 +4855,25 @@ fn scaleUiVec3(transform: UiCanvasTransform, value: [3]f32) [3]f32 {
 
 fn scaleUiSize(transform: UiCanvasTransform, value: [3]f32) [3]f32 {
     return ui_layout.scaleSize(transform, value);
+}
+
+fn scaleUiVec3By(value: [3]f32, scale: f32) [3]f32 {
+    return .{ value[0] * scale, value[1] * scale, value[2] * scale };
+}
+
+fn scaleUiClipBy(clip: ?UiClipRect, scale: f32) ?UiClipRect {
+    const value = clip orelse return null;
+    return .{
+        .position = scaleUiVec3By(value.position, scale),
+        .size = scaleUiVec3By(value.size, scale),
+    };
+}
+
+fn scaleUiResolvedLayoutBy(layout: ui_layout.ResolvedLayout, scale: f32) ui_layout.ResolvedLayout {
+    return .{
+        .position = scaleUiVec3By(layout.position, scale),
+        .clip = scaleUiClipBy(layout.clip, scale),
+    };
 }
 
 fn uiLayoutItemSize(world: *const runtime.World, entity: runtime.EntityHandle) RenderError![3]f32 {
@@ -8843,6 +8907,38 @@ test "UI vertex builder expands rects and fixed pixel text" {
     try std.testing.expect(vertices.items[0].position[1] > 0.8);
 }
 
+test "UI vertex builder scales editor logical pixels to physical pixels" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try writeFrameInput(&world, .{
+        .viewport_width = 640.0,
+        .viewport_height = 360.0,
+        .pixel_scale = 2.0,
+        .debug_overlay_visible = true,
+    });
+
+    const input = try world.createEntity("machina.editor.test.input", "Editor Test Input");
+    try world.setUiRect(input, .{
+        .position = .{ 10.0, 12.0, 0.0 },
+        .size = .{ 32.0, 16.0, 0.0 },
+        .color = .{ 0.2, 0.3, 0.4 },
+        .corner_radius = 8.0,
+    });
+
+    var vertices = try buildUiVertices(std.testing.allocator, &world, 1280, 720);
+    defer vertices.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 6), vertices.items.len);
+    try std.testing.expectApproxEqAbs(screenToClipX(20.0, 1280), vertices.items[0].position[0], 0.001);
+    try std.testing.expectApproxEqAbs(screenToClipY(24.0, 720), vertices.items[0].position[1], 0.001);
+    try std.testing.expectApproxEqAbs(screenToClipX(84.0, 1280), vertices.items[1].position[0], 0.001);
+    try std.testing.expectApproxEqAbs(screenToClipY(56.0, 720), vertices.items[2].position[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 64.0), vertices.items[0].rect_size_radius[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 32.0), vertices.items[0].rect_size_radius[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 16.0), vertices.items[0].rect_size_radius[2], 0.001);
+}
+
 test "UI hit testing uses half-open screen rects" {
     const position = [3]f32{ 32.0, 24.0, 0.0 };
     const size = [3]f32{ 120.0, 48.0, 0.0 };
@@ -9101,6 +9197,7 @@ test "UI canvas fit scaling targets editor game viewport when editor is visible"
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
+        .pixel_scale = 2.0,
     });
     const scale = @min(viewport.width / 100.0, viewport.height / 100.0);
     const expected_x = viewport.x + (viewport.width - 100.0 * scale) * 0.5 + 10.0 * scale;
@@ -9312,6 +9409,7 @@ test "frame input round trips through ECS input components" {
         .debug_overlay_visible = true,
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
+        .pixel_scale = 2.0,
     });
 
     const input = try renderFrameInput(&world);
@@ -9328,6 +9426,7 @@ test "frame input round trips through ECS input components" {
     try std.testing.expect(!input.ui_visible);
     try std.testing.expect(input.debug_overlay_visible);
     try std.testing.expectEqual(@as(f32, 1280.0), input.viewport_width);
+    try std.testing.expectEqual(@as(f32, 2.0), input.pixel_scale);
     try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(runtime.input_pointer_component_id));
     try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(runtime.input_keyboard_component_id));
     try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(runtime.input_frame_component_id));
@@ -10816,8 +10915,10 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
         return RenderError.InvalidScene;
     }
 
-    const input = renderFrameInput(world) catch FrameInput{};
-    const canvas_transform = try sceneUiCanvasTransform(world, input, @floatFromInt(width), @floatFromInt(height));
+    const stored_input = renderFrameInput(world) catch FrameInput{};
+    const input = frameInputWithDefaultOutputMetrics(stored_input, width, height);
+    const pixel_scale = framePixelScale(input);
+    const canvas_transform = try sceneUiCanvasTransform(world, input, input.viewport_width, input.viewport_height);
     var vertices: std.ArrayList(UiVertex) = .empty;
     errdefer vertices.deinit(allocator);
 
@@ -10829,9 +10930,11 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
         const canvas_layout = applyUiCanvasLayout(canvas_transform, rect.id, layout);
         const screen_size = if (isEditorUiEntityId(rect.id)) item_size else scaleUiSize(canvas_transform, item_size);
         const screen_layout = try resolveUiScreenLayout(input, rect.id, canvas_layout, screen_size);
-        const style_scale: f32 = if (isEditorUiEntityId(rect.id)) 1.0 else canvas_transform.scale;
+        const physical_layout = scaleUiResolvedLayoutBy(screen_layout, pixel_scale);
+        const physical_size = scaleUiVec3By(screen_size, pixel_scale);
+        const style_scale: f32 = (if (isEditorUiEntityId(rect.id)) 1.0 else canvas_transform.scale) * pixel_scale;
         const screen_radius = rect.corner_radius * style_scale;
-        const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity));
+        const maybe_clip = scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity)), pixel_scale);
         var rect_color = rect.color;
         if (maybe_button_state) |state| {
             if (state.held) {
@@ -10846,12 +10949,12 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
             rect_color = scaleColor(rect_color, 1.18);
         }
 
-        try appendStyledUiRect(&vertices, allocator, world, width, height, rect.entity, screen_layout.position, screen_size, rect_color, screen_radius, style_scale, maybe_clip);
+        try appendStyledUiRect(&vertices, allocator, world, width, height, rect.entity, physical_layout.position, physical_size, rect_color, screen_radius, style_scale, maybe_clip);
         if (try uiProgressBar(world, rect.entity)) |progress| {
             const ratio = try uiProgressRatio(progress);
             if (ratio > 0.0) {
-                const fill_size = [3]f32{ screen_size[0] * ratio, screen_size[1], screen_size[2] };
-                try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, fill_size, progress.fill_color, screen_radius, maybe_clip);
+                const fill_size = [3]f32{ physical_size[0] * ratio, physical_size[1], physical_size[2] };
+                try appendUiRectClipped(&vertices, allocator, width, height, physical_layout.position, fill_size, progress.fill_color, screen_radius, maybe_clip);
             }
         }
     }
@@ -10863,8 +10966,10 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
         const canvas_layout = applyUiCanvasLayout(canvas_transform, separator.id, layout);
         const screen_size = if (isEditorUiEntityId(separator.id)) item_size else scaleUiSize(canvas_transform, item_size);
         const screen_layout = try resolveUiScreenLayout(input, separator.id, canvas_layout, screen_size);
-        const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity));
-        try appendUiRectClipped(&vertices, allocator, width, height, screen_layout.position, screen_size, separator.color, 0.0, maybe_clip);
+        const physical_layout = scaleUiResolvedLayoutBy(screen_layout, pixel_scale);
+        const physical_size = scaleUiVec3By(screen_size, pixel_scale);
+        const maybe_clip = scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity)), pixel_scale);
+        try appendUiRectClipped(&vertices, allocator, width, height, physical_layout.position, physical_size, separator.color, 0.0, maybe_clip);
     }
 
     var texts = world.uiTexts();
@@ -10874,7 +10979,7 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
         const canvas_layout = applyUiCanvasLayout(canvas_transform, text.id, layout);
         const screen_item_size = if (isEditorUiEntityId(text.id)) item_size else scaleUiSize(canvas_transform, item_size);
         const screen_layout = try resolveUiScreenLayout(input, text.id, canvas_layout, screen_item_size);
-        const maybe_clip = try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity));
+        const maybe_clip = scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity)), pixel_scale);
         var resolved_text = text;
         if (isEditorUiEntityId(text.id)) {
             resolved_text.position = try resolveUiTextPosition(world, text.entity, text, screen_layout.position);
@@ -10883,6 +10988,8 @@ fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, wi
             resolved_text.position = scaleUiVec3(canvas_transform, design_position);
             resolved_text.size *= canvas_transform.scale;
         }
+        resolved_text.position = scaleUiVec3By(resolved_text.position, pixel_scale);
+        resolved_text.size *= pixel_scale;
         try appendUiText(&vertices, allocator, width, height, resolved_text, maybe_clip);
     }
 

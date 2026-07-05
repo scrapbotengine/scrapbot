@@ -26,7 +26,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Component titles are fitted to the card width and should not overdraw adjacent content.
 - Component fields render as table-like rows with property labels on the left and values on the right.
 - Component field rows are reusable inspector editing controls: the base row is a retained table that handles configurable label/value sizing, value input placement, focus state, and clipping, while type-specific behavior decides how a selected value is parsed and committed.
-- Each editable value renders as a darker rounded text input box with 2px text padding and rounded corners. `vec3` fields render one input box per lane.
+- Each editable value renders as a darker rounded text input box with 2 logical pixels of text padding and rounded corners. `vec3` fields render one input box per lane.
 - `vec3` fields render one input box per lane, each preceded by a colored lane label: red `X`, green `Y`, and blue `Z`.
 - Color-like `vec3` fields additionally render a color swatch next to the lane input boxes.
 - Boolean fields render as click-to-toggle controls.
@@ -85,7 +85,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 ### 5a. Keep component boxes bounded
 
-**Decision:** Inspector component boxes fill the right sidebar width, stack in a retained vertical group, use one-pixel separators, and render fields as left-label/right-value rows. Field rows are retained `machina.ui.table` entities with two columns and `first_column_ratio = 0.5`, so the table controls the current 50/50 title/editor split after padding and gap. Component titles and field rows use consistent 4px-grid spacing, while typed input controls use tighter 2px text padding and 2px row gaps for readability. Overflowing component stacks live inside the inspector scroll view.
+**Decision:** Inspector component boxes fill the right sidebar width, stack in a retained vertical group, use one-pixel separators, and render fields as left-label/right-value rows. Field rows are retained `machina.ui.table` entities with two columns and `first_column_ratio = 0.5`, so the table controls the current 50/50 title/editor split after padding and gap. Component titles and field rows use consistent logical 4px-grid spacing, while typed input controls use tighter 2 logical pixels of text padding and 2 logical pixel row gaps for readability. Overflowing component stacks live inside the inspector scroll view.
 **Why:** Component ids can be long qualified strings, especially engine-owned `machina.*` ids, and editor chrome must remain legible without text escaping rounded cards.
 **Tradeoff:** Truncated ids and values need future hover, copy, tooltip, horizontal scrolling, or expandable-detail affordances before the inspector is comfortable for deeper editing.
 

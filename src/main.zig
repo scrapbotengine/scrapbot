@@ -201,6 +201,7 @@ fn run(
             .frames = options.frames,
             .width = options.width,
             .height = options.height,
+            .pixel_scale = options.pixel_scale,
             .frame_input = renderCommandFrameInput(&live_project, options),
             .frame_update = if (options.frames > 1) .{
                 .context = &frame_context,
@@ -214,7 +215,8 @@ fn run(
             return 1;
         }
 
-        try stdout.print("Rendered artifact: {s}\n", .{options.output_path});
+        try writeRenderArtifactMetadata(io, allocator, options.output_path, options);
+        try printRenderArtifact(stdout, "Rendered artifact", options.output_path, options);
         return 0;
     }
 
@@ -255,6 +257,7 @@ fn run(
             .frames = options.frames,
             .width = options.width,
             .height = options.height,
+            .pixel_scale = options.pixel_scale,
             .frame_input = renderCommandFrameInput(&live_project, options),
             .frame_update = if (options.frames > 1) .{
                 .context = &frame_context,
@@ -277,16 +280,20 @@ fn run(
         };
 
         try stdout.print(
-            "Render test OK: {d}x{d}, foreground pixels: {d}, visible components: {d}, color groups: {d}\n",
+            "Render test OK: physical {d}x{d}, logical {d:.1}x{d:.1} @{d:.2}x, foreground pixels: {d}, visible components: {d}, color groups: {d}\n",
             .{
                 verification.width,
                 verification.height,
+                logicalRenderWidth(options),
+                logicalRenderHeight(options),
+                options.pixel_scale,
                 verification.foreground_pixels,
                 verification.visible_components,
                 verification.color_groups,
             },
         );
-        try stdout.print("Rendered artifact: {s}\n", .{options.output_path});
+        try writeRenderArtifactMetadata(io, allocator, options.output_path, options);
+        try printRenderArtifact(stdout, "Rendered artifact", options.output_path, options);
         return 0;
     }
 
@@ -332,6 +339,7 @@ fn run(
             .frames = options.render.frames,
             .width = options.render.width,
             .height = options.render.height,
+            .pixel_scale = options.render.pixel_scale,
             .frame_input = renderCommandFrameInput(&live_project, options.render),
             .frame_update = if (options.render.frames > 1) .{
                 .context = &frame_context,
@@ -346,6 +354,7 @@ fn run(
         }
 
         if (options.update) {
+            try writeRenderArtifactMetadata(io, allocator, render_output, options.render);
             try stdout.print("Updated golden fixture: {s}\n", .{options.expected_path});
             return 0;
         }
@@ -372,6 +381,7 @@ fn run(
         );
         try stdout.print("Expected: {s}\n", .{options.expected_path});
         try stdout.print("Actual: {s}\n", .{options.render.output_path});
+        try writeRenderArtifactMetadata(io, allocator, options.render.output_path, options.render);
         if (!ok) {
             try stderr.print(
                 "visual-test exceeded tolerances: max delta <= {d}, mean delta <= {d:.3}, changed pixels <= {d:.3}%\n",
@@ -463,6 +473,7 @@ const RenderCommandOptions = struct {
     frames: u32 = 1,
     width: u32 = machina.default_output_width,
     height: u32 = machina.default_output_height,
+    pixel_scale: f32 = 1.0,
     editor: bool = false,
     selected_entity_id: ?[]const u8 = null,
 };
@@ -832,9 +843,9 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina test [tests-path|project-path] [--format text|json]
         \\  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
         \\  machina run [path] [--frames N] [--editor] [--hidden]
-        \\  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]
-        \\  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]
-        \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--update] <path> <expected.png> [actual.png]
+        \\  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+        \\  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+        \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
         \\
     );
 }
@@ -843,6 +854,7 @@ const ArgumentError = error{
     InvalidDelta,
     InvalidFrames,
     InvalidRenderSize,
+    InvalidPixelScale,
     InvalidFormat,
     HiddenRequiresFrames,
     MissingExpected,
@@ -949,6 +961,7 @@ const clap_parsers = .{
     .FORMAT = parseCheckOutputFormat,
     .FRAMES = parseFrameCount,
     .PIXELS = parseRenderDimension,
+    .SCALE = parsePixelScale,
     .SECONDS = parseDeltaSeconds,
 };
 
@@ -1056,6 +1069,7 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
         \\--frames <FRAMES>
         \\--width <PIXELS>
         \\--height <PIXELS>
+        \\--pixel-scale <SCALE>
         \\<PATH>
         \\<OUTPUT>
         \\<EXTRA>...
@@ -1091,6 +1105,9 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
     if (result.args.height) |height| {
         options.height = height;
     }
+    if (result.args.@"pixel-scale") |pixel_scale| {
+        options.pixel_scale = pixel_scale;
+    }
     return options;
 }
 
@@ -1101,6 +1118,7 @@ fn parseVisualTestOptions(allocator: std.mem.Allocator, args: []const []const u8
         \\--frames <FRAMES>
         \\--width <PIXELS>
         \\--height <PIXELS>
+        \\--pixel-scale <SCALE>
         \\--update
         \\<PATH>
         \\<OUTPUT>
@@ -1135,6 +1153,9 @@ fn parseVisualTestOptions(allocator: std.mem.Allocator, args: []const []const u8
     }
     if (result.args.height) |height| {
         render.height = height;
+    }
+    if (result.args.@"pixel-scale") |pixel_scale| {
+        render.pixel_scale = pixel_scale;
     }
 
     return .{
@@ -1305,6 +1326,7 @@ fn mapClapArgumentError(err: anyerror) ArgumentError {
         ArgumentError.InvalidDelta => ArgumentError.InvalidDelta,
         ArgumentError.InvalidFrames => ArgumentError.InvalidFrames,
         ArgumentError.InvalidRenderSize => ArgumentError.InvalidRenderSize,
+        ArgumentError.InvalidPixelScale => ArgumentError.InvalidPixelScale,
         ArgumentError.InvalidFormat => ArgumentError.InvalidFormat,
         ArgumentError.MissingExpected => ArgumentError.MissingExpected,
         else => ArgumentError.UnknownArgument,
@@ -1732,6 +1754,10 @@ fn readInputFrameProperty(
         draft.input.viewport_height = parsed[1];
         return;
     }
+    if (std.mem.eql(u8, key, "pixel_scale")) {
+        draft.input.pixel_scale = parsePixelScale(value) catch return TestManifestError.InvalidTestManifest;
+        return;
+    }
     if (std.mem.eql(u8, key, "pointer") or std.mem.eql(u8, key, "pointer_position")) {
         const parsed = try parseTestVec2(value);
         draft.input.pointer.position = parsed;
@@ -2087,6 +2113,14 @@ fn parseRenderDimension(value: []const u8) ArgumentError!u32 {
     return pixels;
 }
 
+fn parsePixelScale(value: []const u8) ArgumentError!f32 {
+    const pixel_scale = std.fmt.parseFloat(f32, value) catch return ArgumentError.InvalidPixelScale;
+    if (!std.math.isFinite(pixel_scale) or pixel_scale <= 0.0) {
+        return ArgumentError.InvalidPixelScale;
+    }
+    return pixel_scale;
+}
+
 fn parseDeltaSeconds(value: []const u8) ArgumentError!f32 {
     const delta_seconds = std.fmt.parseFloat(f32, value) catch return ArgumentError.InvalidDelta;
     if (!std.math.isFinite(delta_seconds) or delta_seconds <= 0.0) {
@@ -2110,12 +2144,68 @@ fn printArgumentError(writer: *Io.Writer, err: ArgumentError) !void {
         ArgumentError.InvalidDelta => "--dt expects a positive finite number",
         ArgumentError.InvalidFrames => "--frames expects a positive integer",
         ArgumentError.InvalidRenderSize => "--width and --height expect positive integer pixels",
+        ArgumentError.InvalidPixelScale => "--pixel-scale expects a positive finite number",
         ArgumentError.InvalidFormat => "--format expects text or json",
         ArgumentError.HiddenRequiresFrames => "--hidden requires --frames",
         ArgumentError.MissingExpected => "visual-test expects an expected image path",
         ArgumentError.UnknownArgument => "unknown argument",
     };
     try writer.print("{s}\n", .{message});
+}
+
+fn logicalRenderWidth(options: RenderCommandOptions) f32 {
+    return @as(f32, @floatFromInt(options.width)) / options.pixel_scale;
+}
+
+fn logicalRenderHeight(options: RenderCommandOptions) f32 {
+    return @as(f32, @floatFromInt(options.height)) / options.pixel_scale;
+}
+
+fn printRenderArtifact(writer: *Io.Writer, label: []const u8, path: []const u8, options: RenderCommandOptions) !void {
+    try writer.print(
+        "{s}: {s} (physical {d}x{d}, logical {d:.1}x{d:.1} @{d:.2}x)\n",
+        .{
+            label,
+            path,
+            options.width,
+            options.height,
+            logicalRenderWidth(options),
+            logicalRenderHeight(options),
+            options.pixel_scale,
+        },
+    );
+}
+
+fn renderArtifactMetadataPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}.metadata.json", .{path});
+}
+
+fn writeRenderArtifactMetadata(io: Io, allocator: std.mem.Allocator, path: []const u8, options: RenderCommandOptions) !void {
+    const metadata_path = try renderArtifactMetadataPath(allocator, path);
+    defer allocator.free(metadata_path);
+    const metadata = try std.fmt.allocPrint(
+        allocator,
+        \\{{
+        \\  "artifact": "{s}",
+        \\  "physical_width": {d},
+        \\  "physical_height": {d},
+        \\  "logical_width": {d:.3},
+        \\  "logical_height": {d:.3},
+        \\  "pixel_scale": {d:.3}
+        \\}}
+        \\
+    ,
+        .{
+            path,
+            options.width,
+            options.height,
+            logicalRenderWidth(options),
+            logicalRenderHeight(options),
+            options.pixel_scale,
+        },
+    );
+    defer allocator.free(metadata);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = metadata_path, .data = metadata });
 }
 
 fn expectedColorGroups(scene: machina.Scene) usize {
@@ -2846,9 +2936,22 @@ test "parseRenderOptions accepts render dimensions" {
     try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
 }
 
+test "parseRenderOptions accepts pixel scale" {
+    const args = [_][]const u8{ "--width=1280", "--height=900", "--pixel-scale=2", "examples/minimal" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
+    try std.testing.expectEqual(@as(u32, 1280), options.width);
+    try std.testing.expectEqual(@as(u32, 900), options.height);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), options.pixel_scale, 0.000001);
+}
+
 test "parseRenderOptions rejects zero render dimension" {
     const args = [_][]const u8{ "--width=0", "examples/minimal" };
     try std.testing.expectError(ArgumentError.InvalidRenderSize, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
+}
+
+test "parseRenderOptions rejects invalid pixel scale" {
+    const args = [_][]const u8{ "--pixel-scale=0", "examples/minimal" };
+    try std.testing.expectError(ArgumentError.InvalidPixelScale, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png"));
 }
 
 test "parseRenderOptions rejects extra positionals" {
@@ -2866,15 +2969,22 @@ test "parseVisualTestOptions accepts expected and actual paths" {
     try std.testing.expect(!options.update);
 }
 
-test "parseVisualTestOptions supports update and selected entity" {
-    const args = [_][]const u8{ "--update", "--select", "cube-1", "--width=1280", "--height", "720", "tests/golden/basic", "tests/golden/basic/expected.png" };
+test "parseVisualTestOptions supports update selected entity and pixel scale" {
+    const args = [_][]const u8{ "--update", "--select", "cube-1", "--width=1280", "--height", "720", "--pixel-scale", "2", "tests/golden/basic", "tests/golden/basic/expected.png" };
     const options = try parseVisualTestOptions(std.testing.allocator, &args);
     try std.testing.expect(options.update);
     try std.testing.expect(options.render.editor);
     try std.testing.expectEqualStrings("cube-1", options.render.selected_entity_id.?);
     try std.testing.expectEqual(@as(u32, 1280), options.render.width);
     try std.testing.expectEqual(@as(u32, 720), options.render.height);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), options.render.pixel_scale, 0.000001);
     try std.testing.expectEqualStrings("zig-out/machina-visual-test.png", options.render.output_path);
+}
+
+test "render artifact metadata path appends sidecar suffix" {
+    const path = try renderArtifactMetadataPath(std.testing.allocator, "zig-out/editor.png");
+    defer std.testing.allocator.free(path);
+    try std.testing.expectEqualStrings("zig-out/editor.png.metadata.json", path);
 }
 
 test "parseVisualTestOptions requires expected path" {
@@ -2972,6 +3082,7 @@ test "parseTestManifest reads field assertions" {
         \\frame = 2
         \\debug_overlay_visible = true
         \\viewport = [1280.0, 720.0]
+        \\pixel_scale = 2.0
         \\pointer = [36.0, 190.0]
         \\pointer_delta = [3.0, -2.0]
         \\secondary_down = true
@@ -3001,6 +3112,7 @@ test "parseTestManifest reads field assertions" {
     try std.testing.expectEqual(@as(u32, 2), manifest.input_frames[0].frame);
     try std.testing.expect(manifest.input_frames[0].input.debug_overlay_visible);
     try std.testing.expectApproxEqAbs(@as(f32, 1280.0), manifest.input_frames[0].input.viewport_width, 0.000001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), manifest.input_frames[0].input.pixel_scale, 0.000001);
     try std.testing.expectApproxEqAbs(@as(f32, 36.0), manifest.input_frames[0].input.pointer.position[0], 0.000001);
     try std.testing.expectApproxEqAbs(@as(f32, 3.0), manifest.input_frames[0].input.pointer.delta[0], 0.000001);
     try std.testing.expect(manifest.input_frames[0].input.pointer.secondary_down);
