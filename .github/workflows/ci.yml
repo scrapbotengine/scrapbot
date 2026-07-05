@@ -66,14 +66,18 @@ jobs:
           Invoke-WebRequest -Uri "https://www.libsdl.org/release/SDL3-devel-$sdlVersion-VC.zip" -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $installDir
           $sdlRoot = Join-Path $installDir "SDL3-$sdlVersion"
+          $sdlLinkDir = Join-Path $installDir "link"
+          New-Item -ItemType Directory -Path $sdlLinkDir | Out-Null
+          Copy-Item "$sdlRoot\lib\x64\SDL3.lib" $sdlLinkDir
           Add-Content -Path $env:GITHUB_ENV -Value "SDL_ROOT=$sdlRoot"
+          Add-Content -Path $env:GITHUB_ENV -Value "SDL_LINK_DIR=$sdlLinkDir"
           Add-Content -Path $env:GITHUB_PATH -Value "$sdlRoot\lib\x64"
       - name: Build and test
         shell: pwsh
-        run: zig build test -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_ROOT\lib\x64"
+        run: zig build test -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
       - name: Build CLI
         shell: pwsh
-        run: zig build -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_ROOT\lib\x64"
+        run: zig build -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
       - name: Stage SDL3 runtime
         shell: pwsh
         run: Copy-Item "$env:SDL_ROOT\lib\x64\SDL3.dll" zig-out\bin\
@@ -89,4 +93,4 @@ jobs:
       - name: Build ReleaseFast CLI
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
-        run: zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_ROOT\lib\x64"
+        run: zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
