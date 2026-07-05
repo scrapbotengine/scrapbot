@@ -3698,6 +3698,7 @@ test "luau systems can spawn despawn add and remove components" {
     try std.testing.expect(program.startup(&world));
     const spawned = world.findEntityById("spawned-one") orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 1), world.entityCount());
+    try std.testing.expectEqual(runtime.EntityProvenance.spawned, (try world.entity(spawned)).provenance);
     try std.testing.expect(try world.hasComponent(spawned, runtime.transform_component_id));
     try std.testing.expect(try world.hasComponent(spawned, "spawned"));
     try std.testing.expect(!try world.hasComponent(spawned, "temporary"));

@@ -24,7 +24,7 @@ Ctrl+Tab
 The current shell uses:
 
 - A top bar with FPS and playback controls.
-- A left sidebar with active project system count, rolling average runtime over the profiling window, project Luau/native systems, engine-internal render systems, one retained system table, and a visible scrollbar when the system list overflows.
+- A left sidebar with active project system count, rolling average runtime over the profiling window, project Luau/native systems, engine-internal render systems, a live entity list, one retained system table, and visible scrollbars when lists overflow.
 - A right sidebar reserved for selected-entity component inspection/editing.
 - A bottom bar with compact runtime status.
 - A game viewport that fills all remaining space between those editor regions.
@@ -39,6 +39,8 @@ When editor chrome is visible, scene content and scene-authored UI render into t
 The shell body is generated as a retained `machina.ui.hgroup`: left sidebar, left splitter, growable game viewport, right splitter, and right sidebar. Splitter drag state is engine-owned, but layout resolution still flows through the shared retained UI path.
 
 The system inspector and selected-entity inspector both use retained sidebar content with consistent internal padding. The system list is one table panel with aligned text rows, not separate row panels. Component boxes fill the right sidebar width and keep labels and values aligned instead of drawing loose overlay text.
+
+The left entity list shows all live entities in the current world. Scene-authored entities use the normal row text color. Runtime-spawned entities use muted row text so they are visually distinct before scene-saving and entity-editing workflows start relying on that distinction.
 
 ## Selected-Entity Inspector
 

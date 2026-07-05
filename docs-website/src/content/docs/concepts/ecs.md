@@ -6,6 +6,7 @@ description: How Machina stores components, schedules systems, and keeps scripti
 Machina's runtime is built around entities, components, and systems.
 
 - Entities are stable handles with index and generation.
+- Entities track whether they came from authored scene data or were spawned at runtime.
 - Components are typed data tables.
 - Systems declare phase, reads, writes, and ordering constraints.
 - The scheduler builds batches from those declarations.
@@ -77,6 +78,8 @@ Machina uses those declarations for:
 ## Structural Mutations
 
 Systems can spawn/despawn entities and add/remove components through ECS APIs.
+
+Entities created by `world.spawn` or native spawn APIs are runtime-spawned entities. They live in the same ECS world as scene-authored entities, but they are not authored scene TOML data.
 
 Structural mutations are intentionally staged:
 

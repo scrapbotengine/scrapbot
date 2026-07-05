@@ -29,6 +29,8 @@ Use ids that are:
 - Meaningful in diagnostics.
 - Unique within a scene.
 
+Entities loaded from scene TOML are authored entities. Runtime systems can also spawn entities while the project runs; those spawned entities share the same ECS world, but they are not scene-authored data.
+
 ## Component Tables
 
 Component tables live under `entities.components`.
@@ -102,7 +104,7 @@ rings = 16
 base_color = [1.0, 0.5, 0.08]
 ```
 
-## Runtime-Spawed Scenes
+## Runtime-Spawned Scenes
 
 Scenes can also start nearly empty and let startup systems build the world.
 
@@ -112,4 +114,4 @@ That pattern is useful for:
 - Tests that prove lifecycle APIs.
 - Scenes with many similar entities.
 
-Startup-spawned data is still ECS data. It participates in validation, rendering, batching, tests, and diagnostics after the startup systems run.
+Startup-spawned data is still ECS data. It participates in rendering, batching, tests, and diagnostics after the startup systems run, but it is not persisted as scene TOML unless a future editor save flow explicitly authors it.
