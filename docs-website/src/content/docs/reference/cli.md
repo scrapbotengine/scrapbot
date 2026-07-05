@@ -18,8 +18,8 @@ Usage:
   machina test [tests-path|project-path] [--format text|json]
   machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
   machina run [path] [--frames N] [--editor]
-  machina render [--editor] [--select entity-id] [path] [output.bmp]
-  machina render-test [--editor] [--select entity-id] [path] [output.bmp]
+  machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
+  machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
 ```
 
 ## Commands
@@ -35,8 +35,8 @@ Usage:
 | `machina test [path]` | Run game-shaped project tests. |
 | `machina build [path]` | Package a host-platform runnable bundle. |
 | `machina run [path]` | Run a headful interactive project. |
-| `machina render [--editor] [--select entity-id] [path] [output.bmp]` | Render one offscreen BMP artifact. |
-| `machina render-test [--editor] [--select entity-id] [path] [output.bmp]` | Render and verify visible output. |
+| `machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` | Render one or more offscreen frames to a BMP artifact. |
+| `machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]` | Render and verify visible output. |
 
 ## Format Options
 
@@ -105,6 +105,7 @@ machina render --editor --select native-cyan-box examples/native_motion zig-out/
 
 - `--editor` renders the engine editor shell into the offscreen frame.
 - `--select entity-id` implies `--editor` and preselects a scene entity for inspector layout verification.
+- `--frames N` renders multiple fixed-step offscreen frames and writes the final frame. The default is one startup frame.
 
 ## Run Options
 

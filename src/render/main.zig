@@ -173,6 +173,13 @@ pub const WindowOptions = struct {
     frame_update: ?FrameUpdateHook = null,
 };
 
+pub const BmpRenderOptions = struct {
+    frames: u32 = 1,
+    delta_seconds: f32 = live_run_default_delta_seconds,
+    frame_input: FrameInput = .{},
+    frame_update: ?FrameUpdateHook = null,
+};
+
 pub const AntialiasingMode = enum {
     none,
     fxaa,
@@ -1551,6 +1558,10 @@ pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const 
 }
 
 pub fn renderDemoBmpWithInput(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, frame_input: FrameInput) !void {
+    try renderDemoBmpFrames(io, allocator, output_path, scene, .{ .frame_input = frame_input });
+}
+
+pub fn renderDemoBmpFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
 
@@ -1587,16 +1598,26 @@ pub fn renderDemoBmpWithInput(io: Io, allocator: std.mem.Allocator, output_path:
     }) orelse return RenderError.NoDevice;
     defer staging_buffer.release();
 
-    var input = frame_input;
-    input.viewport_width = @floatFromInt(output_width);
-    input.viewport_height = @floatFromInt(output_height);
+    const frame_count = @max(options.frames, 1);
+    var frame_index: u32 = 0;
+    while (frame_index < frame_count) : (frame_index += 1) {
+        var input = options.frame_input;
+        input.delta_seconds = options.delta_seconds;
+        input.viewport_width = @floatFromInt(output_width);
+        input.viewport_height = @floatFromInt(output_height);
+        input.system_profile_count_hint = demo.renderSystemProfileCount();
+        if (options.frame_update) |frame_update| {
+            frame_update.step(frame_update.context, options.delta_seconds, &input);
+        }
 
-    try demo.draw(gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, .{
-        .width = output_width,
-        .height = output_height,
-        .scene = scene,
-        .input = input,
-    });
+        try demo.draw(gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, .{
+            .width = output_width,
+            .height = output_height,
+            .scene = scene,
+            .input = input,
+        });
+        instance.processEvents();
+    }
 
     const encoder = gpu.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
         .label = wgpu.StringView.fromSlice("Machina mesh copy encoder"),

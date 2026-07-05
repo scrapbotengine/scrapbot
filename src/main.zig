@@ -4,8 +4,8 @@ const Io = std.Io;
 const machina = @import("machina");
 
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.arena.allocator();
-    const args = try init.minimal.args.toSlice(allocator);
+    const arena_allocator = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(arena_allocator);
 
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_file_writer: Io.File.Writer = .init(.stdout(), init.io, &stdout_buffer);
@@ -15,13 +15,42 @@ pub fn main(init: std.process.Init) !void {
     var stderr_file_writer: Io.File.Writer = .init(.stderr(), init.io, &stderr_buffer);
     const stderr = &stderr_file_writer.interface;
 
-    const exit_code = try run(init.io, allocator, args, stdout, stderr);
+    const exit_code = if (leakCheckEnabled(init))
+        try runLeakChecked(init.io, args, stdout, stderr)
+    else
+        try run(init.io, arena_allocator, args, stdout, stderr);
 
     try stdout.flush();
     try stderr.flush();
 
     if (exit_code != 0) {
         std.process.exit(exit_code);
+    }
+}
+
+fn leakCheckEnabled(init: std.process.Init) bool {
+    const value = init.environ_map.get("MACHINA_LEAK_CHECK") orelse return false;
+    return std.mem.eql(u8, value, "1");
+}
+
+fn runLeakChecked(
+    io: Io,
+    args: []const []const u8,
+    stdout: *Io.Writer,
+    stderr: *Io.Writer,
+) !u8 {
+    var debug_allocator: std.heap.DebugAllocator(.{
+        .safety = true,
+        .stack_trace_frames = if (std.debug.sys_can_stack_trace) 8 else 0,
+    }) = .init;
+    const allocator = debug_allocator.allocator();
+    const exit_code = try run(io, allocator, args, stdout, stderr);
+    switch (debug_allocator.deinit()) {
+        .ok => return exit_code,
+        .leak => {
+            try stderr.writeAll("memory leak detected by MACHINA_LEAK_CHECK\n");
+            return 1;
+        },
     }
 }
 
@@ -162,10 +191,26 @@ fn run(
             }
         }
 
-        machina.renderDemoBmpWithInput(io, allocator, options.output_path, live_project.renderScene(), renderCommandFrameInput(&live_project, options)) catch |err| {
+        var frame_context = RenderFrameContext{
+            .live_project = &live_project,
+            .stderr = stderr,
+            .target_path = options.target_path,
+            .selected_entity_id = options.selected_entity_id,
+        };
+        machina.renderDemoBmpFrames(io, allocator, options.output_path, live_project.renderScene(), .{
+            .frames = options.frames,
+            .frame_input = renderCommandFrameInput(&live_project, options),
+            .frame_update = if (options.frames > 1) .{
+                .context = &frame_context,
+                .step = stepRenderLiveProject,
+            } else null,
+        }) catch |err| {
             try stderr.print("render failed: {s}\n", .{@errorName(err)});
             return 1;
         };
+        if (frame_context.failed) {
+            return 1;
+        }
 
         try stdout.print("Rendered artifact: {s}\n", .{options.output_path});
         return 0;
@@ -198,10 +243,26 @@ fn run(
             }
         }
 
-        machina.renderDemoBmpWithInput(io, allocator, options.output_path, live_project.renderScene(), renderCommandFrameInput(&live_project, options)) catch |err| {
+        var frame_context = RenderFrameContext{
+            .live_project = &live_project,
+            .stderr = stderr,
+            .target_path = options.target_path,
+            .selected_entity_id = options.selected_entity_id,
+        };
+        machina.renderDemoBmpFrames(io, allocator, options.output_path, live_project.renderScene(), .{
+            .frames = options.frames,
+            .frame_input = renderCommandFrameInput(&live_project, options),
+            .frame_update = if (options.frames > 1) .{
+                .context = &frame_context,
+                .step = stepRenderLiveProject,
+            } else null,
+        }) catch |err| {
             try stderr.print("render-test render failed: {s}\n", .{@errorName(err)});
             return 1;
         };
+        if (frame_context.failed) {
+            return 1;
+        }
 
         const verification = machina.verifyRenderBmp(io, allocator, options.output_path, .{
             .min_visible_components = 1,
@@ -299,6 +360,7 @@ const BuildCommandOptions = struct {
 const RenderCommandOptions = struct {
     target_path: []const u8 = ".",
     output_path: []const u8,
+    frames: u32 = 1,
     editor: bool = false,
     selected_entity_id: ?[]const u8 = null,
 };
@@ -426,7 +488,7 @@ fn benchCommand(
         return 1;
     };
 
-    var live_project = machina.LiveProject.init(io, std.heap.smp_allocator, options.target_path) catch |err| {
+    var live_project = machina.LiveProject.init(io, allocator, options.target_path) catch |err| {
         switch (options.format) {
             .text => try printProjectError(stderr, options.target_path, err),
             .json => try printProjectErrorJson(stdout, options.target_path, err),
@@ -654,8 +716,8 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina test [tests-path|project-path] [--format text|json]
         \\  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
         \\  machina run [path] [--frames N] [--editor]
-        \\  machina render [--editor] [--select entity-id] [path] [output.bmp]
-        \\  machina render-test [--editor] [--select entity-id] [path] [output.bmp]
+        \\  machina render [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
+        \\  machina render-test [--editor] [--select entity-id] [--frames N] [path] [output.bmp]
         \\
     );
 }
@@ -671,6 +733,14 @@ const SceneReloadContext = struct {
     live_project: *machina.LiveProject,
     stderr: *Io.Writer,
     target_path: []const u8,
+};
+
+const RenderFrameContext = struct {
+    live_project: *machina.LiveProject,
+    stderr: *Io.Writer,
+    target_path: []const u8,
+    selected_entity_id: ?[]const u8,
+    failed: bool = false,
 };
 
 fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
@@ -718,19 +788,35 @@ fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *machina.
     }
 }
 
+fn stepRenderLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *machina.FrameInput) void {
+    const context: *RenderFrameContext = @ptrCast(@alignCast(raw_context));
+    context.live_project.updateWithInput(delta_seconds, input.*);
+    input.editor = renderCommandEditorFrame(context.live_project, context.selected_entity_id);
+    input.system_profiles = context.live_project.systemProfileSnapshots();
+    if (context.live_project.lastDiagnostic()) |diagnostic| {
+        context.failed = true;
+        printScriptDiagnostic(context.stderr, context.target_path, diagnostic.*) catch {};
+        context.stderr.flush() catch {};
+    }
+}
+
 fn renderCommandFrameInput(live_project: *machina.LiveProject, options: RenderCommandOptions) machina.FrameInput {
-    const selected_entity = if (options.selected_entity_id) |id| live_project.scene.world.findEntityById(id) else null;
-    if (!options.editor and selected_entity == null) {
+    const editor = renderCommandEditorFrame(live_project, options.selected_entity_id);
+    if (!options.editor and editor.selected_entity == null) {
         return .{};
     }
-    var editor = live_project.editorFrameState();
-    editor.selected_entity = selected_entity;
     return .{
         .debug_overlay_visible = true,
         .fps = 60.0,
         .editor = editor,
         .system_profiles = live_project.systemProfileSnapshots(),
     };
+}
+
+fn renderCommandEditorFrame(live_project: *machina.LiveProject, selected_entity_id: ?[]const u8) machina.EditorFrameState {
+    var editor = live_project.editorFrameState();
+    editor.selected_entity = if (selected_entity_id) |id| live_project.scene.world.findEntityById(id) else null;
+    return editor;
 }
 
 const clap_parsers = .{
@@ -841,6 +927,7 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
     const params = comptime clap.parseParamsComptime(
         \\--editor
         \\--select <ENTITY>
+        \\--frames <FRAMES>
         \\<PATH>
         \\<OUTPUT>
         \\<EXTRA>...
@@ -866,6 +953,9 @@ fn parseRenderOptions(allocator: std.mem.Allocator, args: []const []const u8, de
     if (result.args.select) |entity_id| {
         options.selected_entity_id = entity_id;
         options.editor = true;
+    }
+    if (result.args.frames) |frames| {
+        options.frames = frames;
     }
     return options;
 }
@@ -2515,6 +2605,14 @@ test "parseRenderOptions accepts selected entity" {
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
     try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
     try std.testing.expectEqualStrings("swarm.0", options.selected_entity_id.?);
+}
+
+test "parseRenderOptions accepts frame count" {
+    const args = [_][]const u8{ "--frames=60", "examples/ui_gallery", "zig-out/ui-gallery.bmp" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
+    try std.testing.expectEqual(@as(u32, 60), options.frames);
+    try std.testing.expectEqualStrings("examples/ui_gallery", options.target_path);
+    try std.testing.expectEqualStrings("zig-out/ui-gallery.bmp", options.output_path);
 }
 
 test "parseRenderOptions rejects extra positionals" {

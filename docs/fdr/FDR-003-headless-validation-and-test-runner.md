@@ -1,7 +1,7 @@
 # FDR-003: Headless Validation and Test Runner
 
 **Status:** Active
-**Last reviewed:** 2026-07-02
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -19,7 +19,8 @@ The headless validation and test runner lets users, CI systems, and agents check
 - `machina test [tests-path|project-path]` discovers text-authored test projects, reads each project's `test.machina.toml`, steps the project headlessly, replays optional deterministic input frames, and checks declared ECS field expectations.
 - `machina test --format=json` reports each project case, simulation summary, per-field expected/actual assertion data, diagnostics, and a suite summary.
 - `test.machina.toml` may include `[[input.frame]]` records with one-based frame numbers, pointer position, wheel delta, viewport size, editor visibility, button state, keyboard state, and system profile count hints. These frames run through the same frame input, editor, scene UI scroll, command-event, and script-update routing used by live projects.
-- `machina render-test [path] [output.bmp]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation.
+- `machina render-test [path] [output.bmp] [--frames N]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation. Multi-frame render tests run fixed `1/60` updates and verify the final frame.
+- `MACHINA_LEAK_CHECK=1` enables an internal engine heap leak guard for bounded CLI validation commands. It checks Machina-owned Zig allocations and fails the command when command-scoped allocations leak.
 - Future headless test commands can exercise scene and script live reload deterministically.
 - Users can run project validation without initializing graphical presentation.
 - Validation failures produce command-line diagnostics and non-zero process exit codes.

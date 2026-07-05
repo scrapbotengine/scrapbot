@@ -15,9 +15,12 @@ pub const default_scene_path = "scenes/main.scene.toml";
 
 pub const renderDemoBmp = render.renderDemoBmp;
 pub const renderDemoBmpWithInput = render.renderDemoBmpWithInput;
+pub const renderDemoBmpFrames = render.renderDemoBmpFrames;
 pub const renderStats = render.stats;
 pub const runDemoWindow = render.runDemoWindow;
 pub const WindowOptions = render.WindowOptions;
+pub const BmpRenderOptions = render.BmpRenderOptions;
+pub const FrameUpdateHook = render.FrameUpdateHook;
 pub const FrameInput = render.FrameInput;
 pub const PointerInput = render.PointerInput;
 pub const EditorFrameState = render.EditorFrameState;

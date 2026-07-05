@@ -145,6 +145,8 @@ machina render-test examples/showcase zig-out/showcase-render-test.bmp
 
 Render tests are deterministic and should be used before relying on headful screenshots for renderer or editor-layout work.
 
+For engine heap leak coverage, automation can run bounded commands with `MACHINA_LEAK_CHECK=1`. This is an internal validation switch used by the default test workflow; it checks Machina-owned Zig allocations and is not a replacement for OS, driver, or GPU leak tools.
+
 ## Full Suite
 
 The repository-level suite is:
