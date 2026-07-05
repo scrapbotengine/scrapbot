@@ -254,11 +254,84 @@ size = [304.0, 2.0, 0.0]
 color = [0.031, 0.431, 0.533]
 
 [[entities]]
+id = "layout-demo-row"
+name = "Layout Demo Row"
+
+[entities.components."machina.ui.table"]
+position = [232.0, 228.0, 0.0]
+size = [304.0, 28.0, 0.0]
+columns = 2
+row_height = 28.0
+column_gap = 8.0
+row_gap = 0.0
+padding = [0.0, 0.0, 0.0]
+first_column_ratio = 0.5
+
+[[entities]]
+id = "layout-demo-label-cell"
+name = "Layout Demo Label Cell"
+
+[entities.components."machina.ui.spacer"]
+size = [0.0, 28.0, 0.0]
+
+[entities.components."machina.ui.layout.item"]
+parent = "layout-demo-row"
+order = 0
+align = "fill"
+
+[[entities]]
+id = "layout-demo-label"
+name = "Layout Demo Label"
+
+[entities.components."machina.ui.text"]
+position = [0.0, 4.0, 0.0]
+size = 1.0
+color = [0.392, 0.455, 0.545]
+value = "LAYOUT"
+
+[entities.components."machina.ui.layout.item"]
+parent = "layout-demo-label-cell"
+order = 0
+
+[[entities]]
+id = "layout-demo-value"
+name = "Layout Demo Value"
+
+[entities.components."machina.ui.rect"]
+position = [0.0, 0.0, 0.0]
+size = [0.0, 28.0, 0.0]
+color = [0.024, 0.031, 0.047]
+corner_radius = 4.0
+
+[entities.components."machina.ui.border"]
+color = [0.148, 0.2, 0.282]
+thickness = 1.0
+
+[entities.components."machina.ui.layout.item"]
+parent = "layout-demo-row"
+order = 1
+align = "fill"
+
+[[entities]]
+id = "layout-demo-value-text"
+name = "Layout Demo Value Text"
+
+[entities.components."machina.ui.text"]
+position = [8.0, 4.0, 0.0]
+size = 1.0
+color = [0.886, 0.91, 0.941]
+value = "Table split"
+
+[entities.components."machina.ui.layout.item"]
+parent = "layout-demo-value"
+order = 0
+
+[[entities]]
 id = "action-stack"
 name = "Action Stack"
 
 [entities.components."machina.ui.stack"]
-position = [208.0, 260.0, 0.0]
+position = [208.0, 276.0, 0.0]
 spacing = 16.0
 direction = "horizontal"
 padding = [0.0, 0.0, 0.0]
@@ -401,7 +474,7 @@ id = "status-panel"
 name = "Status Panel"
 
 [entities.components."machina.ui.rect"]
-position = [208.0, 340.0, 0.0]
+position = [208.0, 356.0, 0.0]
 size = [368.0, 72.0, 0.0]
 color = [0.051, 0.065, 0.094]
 corner_radius = 6.0
@@ -415,7 +488,7 @@ id = "status-label"
 name = "Status Label"
 
 [entities.components."machina.ui.text"]
-position = [232.0, 360.0, 0.0]
+position = [232.0, 376.0, 0.0]
 size = 1.0
 color = [0.886, 0.91, 0.941]
 value = "AWAITING COMMAND"
@@ -427,7 +500,7 @@ id = "meter-track"
 name = "Meter Track"
 
 [entities.components."machina.ui.rect"]
-position = [232.0, 394.0, 0.0]
+position = [232.0, 410.0, 0.0]
 size = [260.0, 18.0, 0.0]
 color = [0.008, 0.012, 0.024]
 corner_radius = 4.0

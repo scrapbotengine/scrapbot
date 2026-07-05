@@ -9,6 +9,9 @@ Button labels are parented to their button rects with `machina.ui.layout.item`,
 so they inherit the button's resolved layout instead of duplicating absolute
 positions. This is the preferred pattern for small composite controls.
 
+The content area includes a responsive table form row that demonstrates
+`machina.ui.table` column split control.
+
 The primary action button also has a `machina.ui.hit_area` that is slightly
 larger than its visible rect, demonstrating how thin or compact controls can
 keep ergonomic pointer targets without adding invisible renderer-only widgets.

@@ -2192,9 +2192,19 @@ fn addSceneComponentDefaults(allocator: std.mem.Allocator, component: *Component
         try addSceneComponentDefaultField(allocator, component, "scale_mode", .{ .string = "none" });
     } else if (std.mem.eql(u8, component.id, runtime.ui_rect_component_id)) {
         try addSceneComponentDefaultField(allocator, component, "corner_radius", .{ .float = 0.0 });
+    } else if (std.mem.eql(u8, component.id, runtime.ui_table_component_id)) {
+        try addSceneComponentDefaultField(allocator, component, "columns", .{ .int = 2 });
+        try addSceneComponentDefaultField(allocator, component, "row_height", .{ .float = 1.0 });
+        try addSceneComponentDefaultField(allocator, component, "column_gap", .{ .float = 0.0 });
+        try addSceneComponentDefaultField(allocator, component, "row_gap", .{ .float = 0.0 });
+        try addSceneComponentDefaultField(allocator, component, "padding", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
+        try addSceneComponentDefaultField(allocator, component, "first_column_ratio", .{ .float = 0.5 });
     } else if (std.mem.eql(u8, component.id, runtime.ui_layout_item_component_id)) {
         try addSceneComponentDefaultField(allocator, component, "min_size", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
+        try addSceneComponentDefaultField(allocator, component, "preferred_size", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
+        try addSceneComponentDefaultField(allocator, component, "max_size", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
         try addSceneComponentDefaultField(allocator, component, "grow", .{ .float = 0.0 });
+        try addSceneComponentDefaultField(allocator, component, "shrink", .{ .float = 0.0 });
         try addSceneComponentDefaultField(allocator, component, "align", .{ .string = "start" });
         try addSceneComponentDefaultField(allocator, component, "margin", .{ .vec3 = .{ 0.0, 0.0, 0.0 } });
     } else if (std.mem.eql(u8, component.id, runtime.renderer_component_id)) {
