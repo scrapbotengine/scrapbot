@@ -10,7 +10,7 @@ wheel_delta = [0.0, -1.0]
 frame = 2
 debug_overlay_visible = true
 viewport = [1280.0, 720.0]
-pointer = [328.0, 76.0]
+pointer = [342.0, 80.0]
 wheel_delta = [0.0, -1.0]
 system_profile_count_hint = 9
 
