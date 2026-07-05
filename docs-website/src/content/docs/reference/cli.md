@@ -70,11 +70,12 @@ Machina creates the target directory when needed and uses the final path segment
 
 A fresh project contains:
 
-- `project.machina.toml`
+- `project.toml`
 - `scenes/main.scene.toml`
+- `assets/.gitkeep`
 - a script-free scene with a cube, camera, and directional light
 
-The command is non-destructive. If `project.machina.toml` already exists in the target directory, `machina init` fails instead of overwriting project files.
+The command is non-destructive. If `project.toml` or legacy `project.machina.toml` already exists in the target directory, `machina init` fails instead of overwriting project files.
 
 ## Build Options
 

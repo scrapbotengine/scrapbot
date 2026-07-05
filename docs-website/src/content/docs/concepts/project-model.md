@@ -3,9 +3,9 @@ title: Project Model
 description: How Machina projects, scenes, scripts, native modules, and generated files fit together.
 ---
 
-A Machina project is a directory with a `project.machina.toml` manifest.
+A Machina project is a directory with a `project.toml` manifest.
 
-The manifest names the project, points at the default scene, lists scripts, and may declare one project-local native Zig module:
+The manifest names the project, points at the default scene, and may list scripts or declare one project-local native Zig module:
 
 ```toml
 name = "Showcase"
@@ -21,18 +21,20 @@ A typical project looks like this:
 
 ```txt
 project/
-  project.machina.toml
+  project.toml
   scenes/
     main.scene.toml
+  assets/
+    .gitkeep
   scripts/
     gameplay.luau
   native/
     game.zig
 ```
 
-Only the manifest and scene are required. Scripts and native modules are optional.
+Only the manifest and scene are required. `assets/.gitkeep` preserves the conventional asset directory in newly initialized projects. Scripts and native modules are optional.
 
-Use `machina init [path]` to create this required shape. The command writes a manifest and default scene, creates the target directory when needed, and refuses to overwrite an existing `project.machina.toml`.
+Use `machina init [path]` to create this required shape. The command writes a manifest, default scene, and asset placeholder; creates the target directory when needed; and refuses to overwrite an existing `project.toml` or legacy `project.machina.toml`.
 
 ## Text-First Runtime Data
 
@@ -83,7 +85,7 @@ Headless commands are first-class. They exist so humans, editors, CI, and coding
 
 During development, a project-local native module is built as a dynamic library under `.machina/native/`.
 
-Packaged projects may contain a generated `native_artifact` path in `project.machina.toml`. When present, Machina loads that prebuilt library instead of rebuilding the source module.
+Packaged projects may contain a generated `native_artifact` path in `project.toml`. When present, Machina loads that prebuilt library instead of rebuilding the source module.
 
 That cache is an implementation detail of the development loop:
 

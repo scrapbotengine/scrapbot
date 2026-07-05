@@ -18,7 +18,7 @@ Valid edits swap into the running renderer. Invalid edits keep the last-known-go
 
 | Source | Reload behavior |
 | --- | --- |
-| `project.machina.toml` | Reloads project metadata and may switch default scene/scripts/native source. |
+| `project.toml` | Reloads project metadata and may switch default scene/scripts/native source. |
 | Scene TOML | Revalidates and swaps scene data on success. |
 | Luau scripts | Rebuilds script declarations and systems. |
 | Native Zig source | Rebuilds dynamic library, reloads registrations, rebuilds schedule, then validates scene. |

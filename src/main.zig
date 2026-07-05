@@ -1239,7 +1239,8 @@ fn childIsTestProject(io: Io, parent_dir: Io.Dir, child_name: []const u8) bool {
 }
 
 fn isTestProject(io: Io, dir: Io.Dir) bool {
-    return pathExists(io, dir, machina.project_file_name) and pathExists(io, dir, "test.machina.toml");
+    const has_project_manifest = pathExists(io, dir, machina.project_file_name) or pathExists(io, dir, machina.legacy_project_file_name);
+    return has_project_manifest and pathExists(io, dir, "test.machina.toml");
 }
 
 fn pathExists(io: Io, dir: Io.Dir, path: []const u8) bool {
@@ -1873,7 +1874,7 @@ fn projectErrorMessage(err: anyerror) []const u8 {
         machina.ProjectError.AlreadyExists => "project already exists",
         machina.ProjectError.InvalidProject => "not a valid Machina project",
         machina.ProjectError.InvalidBuildOutput => "invalid build output path",
-        machina.ProjectError.MissingProjectFile => "missing project.machina.toml",
+        machina.ProjectError.MissingProjectFile => "missing project.toml",
         machina.ProjectError.MissingDefaultScene => "missing default scene",
         machina.ProjectError.UnsupportedProjectVersion => "unsupported project version",
         machina.ProjectError.InvalidProjectName => "invalid project name",
@@ -2459,6 +2460,17 @@ test "run init command creates a checkable project" {
     try std.testing.expectEqual(@as(u8, 0), exit_code);
     try std.testing.expectEqualStrings("Initialized Machina project at " ++ root_path ++ "\n", stdout.buffered());
     try std.testing.expectEqualStrings("", stderr.buffered());
+
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try std.testing.expect(pathExists(io, root_dir, machina.project_file_name));
+    try std.testing.expect(pathExists(io, root_dir, "scenes/main.scene.toml"));
+    try std.testing.expect(pathExists(io, root_dir, "assets/.gitkeep"));
+    try std.testing.expect(!pathExists(io, root_dir, "native/game.zig"));
+
+    const metadata = try root_dir.readFileAlloc(io, machina.project_file_name, std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(metadata);
+    try std.testing.expect(std.mem.indexOf(u8, metadata, "\n# native = \"native/game.zig\"\n") != null);
 
     const result = try machina.checkProject(io, std.testing.allocator, root_path);
     defer machina.freeCheckResult(std.testing.allocator, result);

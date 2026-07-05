@@ -10,7 +10,7 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Project directory runtime** - The command model where Machina commands discover and operate on a project from the current directory or an explicit project path. See [FDR-001](fdr/FDR-001-project-directory-runtime.md).
 
-**Project metadata** - The `project.machina.toml` file that declares project-level settings such as `default_scene`, `scripts`, and an optional `native` module path. See [FDR-001](fdr/FDR-001-project-directory-runtime.md) and [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
+**Project metadata** - The `project.toml` file that declares project-level settings such as `default_scene`, `scripts`, and an optional `native` module path. See [FDR-001](fdr/FDR-001-project-directory-runtime.md) and [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
 
 **Scene** - A text-authored TOML file that declares entities and component tables, starting from the default `scenes/main.scene.toml` convention. See [FDR-002](fdr/FDR-002-text-based-scene-authoring.md).
 

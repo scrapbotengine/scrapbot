@@ -37,7 +37,7 @@ Use `step` for narrow ECS and script debugging.
 
 Each test project has:
 
-- `project.machina.toml`
+- `project.toml`
 - A scene.
 - Optional scripts.
 - Optional native module.

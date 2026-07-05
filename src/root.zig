@@ -10,7 +10,8 @@ const script = @import("script.zig");
 const ui_layout = @import("ui_layout.zig");
 
 pub const version = "0.1.0-dev";
-pub const project_file_name = "project.machina.toml";
+pub const project_file_name = "project.toml";
+pub const legacy_project_file_name = "project.machina.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
 
 pub const renderDemoBmp = render.renderDemoBmp;
@@ -813,18 +814,19 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
     const root_dir = try cwd.openDir(io, root_path, .{});
     defer root_dir.close(io);
 
-    if (fileExists(io, root_dir, project_file_name)) {
+    if (fileExists(io, root_dir, project_file_name) or fileExists(io, root_dir, legacy_project_file_name)) {
         return ProjectError.AlreadyExists;
     }
 
     try root_dir.createDirPath(io, "scenes");
+    try root_dir.createDirPath(io, "assets");
 
     const escaped_name = try encodeTomlBasicString(allocator, name);
     defer allocator.free(escaped_name);
 
     const project_contents = try std.fmt.allocPrint(
         allocator,
-        "name = \"{s}\"\nversion = 1\ndefault_scene = \"{s}\"\n",
+        "name = \"{s}\"\nversion = 1\ndefault_scene = \"{s}\"\n\n# native = \"native/game.zig\"\n",
         .{ escaped_name, default_scene_path },
     );
     defer allocator.free(project_contents);
@@ -906,6 +908,14 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\ambient = 0.18
             \\
             ,
+            .flags = .{ .exclusive = true },
+        });
+    }
+
+    {
+        try root_dir.writeFile(io, .{
+            .sub_path = "assets/.gitkeep",
+            .data = "",
             .flags = .{ .exclusive = true },
         });
     }
@@ -1481,7 +1491,8 @@ fn rewritePackagedProjectManifest(
     const project_dir = try cwd.openDir(io, project_bundle_path, .{});
     defer project_dir.close(io);
 
-    const contents = try project_dir.readFileAlloc(io, project_file_name, allocator, .limited(64 * 1024));
+    const metadata_file_name = projectMetadataFileName(io, project_dir) orelse return ProjectError.MissingProjectFile;
+    const contents = try project_dir.readFileAlloc(io, metadata_file_name, allocator, .limited(64 * 1024));
     defer allocator.free(contents);
     const escaped_artifact = try encodeTomlBasicString(allocator, native_artifact_path);
     defer allocator.free(escaped_artifact);
@@ -1503,7 +1514,7 @@ fn rewritePackagedProjectManifest(
     try out.print(allocator, "native_artifact = \"{s}\"\n", .{escaped_artifact});
 
     try project_dir.writeFile(io, .{
-        .sub_path = project_file_name,
+        .sub_path = metadata_file_name,
         .data = out.items,
     });
 }
@@ -1870,7 +1881,8 @@ fn statProjectFile(io: Io, root_path: []const u8) !SourceFileStamp {
     };
     defer root_dir.close(io);
 
-    return statFile(io, root_dir, project_file_name, ProjectError.MissingProjectFile);
+    const metadata_file_name = projectMetadataFileName(io, root_dir) orelse return ProjectError.MissingProjectFile;
+    return statFile(io, root_dir, metadata_file_name, ProjectError.MissingProjectFile);
 }
 
 fn statProjectResource(io: Io, project: Project, path: []const u8, missing_error: ProjectError) !SourceFileStamp {
@@ -1945,7 +1957,8 @@ pub fn freeScene(allocator: std.mem.Allocator, scene: Scene) void {
 }
 
 fn loadProjectFile(io: Io, allocator: std.mem.Allocator, root_path: []const u8, root_dir: Io.Dir) !Project {
-    const contents = root_dir.readFileAlloc(io, project_file_name, allocator, .limited(64 * 1024)) catch |err| switch (err) {
+    const metadata_file_name = projectMetadataFileName(io, root_dir) orelse return ProjectError.MissingProjectFile;
+    const contents = root_dir.readFileAlloc(io, metadata_file_name, allocator, .limited(64 * 1024)) catch |err| switch (err) {
         error.FileNotFound => return ProjectError.MissingProjectFile,
         else => return err,
     };
@@ -2723,6 +2736,16 @@ fn fileExists(io: Io, dir: Io.Dir, path: []const u8) bool {
     return true;
 }
 
+fn projectMetadataFileName(io: Io, root_dir: Io.Dir) ?[]const u8 {
+    if (fileExists(io, root_dir, project_file_name)) {
+        return project_file_name;
+    }
+    if (fileExists(io, root_dir, legacy_project_file_name)) {
+        return legacy_project_file_name;
+    }
+    return null;
+}
+
 test "initProject creates project metadata and default scene" {
     const root_path = ".zig-cache/test-init-project";
     const io = Io.Threaded.global_single_threaded.io();
@@ -2736,7 +2759,13 @@ test "initProject creates project metadata and default scene" {
     defer root_dir.close(io);
 
     try std.testing.expect(fileExists(io, root_dir, project_file_name));
+    try std.testing.expect(fileExists(io, root_dir, "assets/.gitkeep"));
     try std.testing.expect(fileExists(io, root_dir, default_scene_path));
+    try std.testing.expect(!fileExists(io, root_dir, "native/game.zig"));
+
+    const metadata = try root_dir.readFileAlloc(io, project_file_name, std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(metadata);
+    try std.testing.expect(std.mem.indexOf(u8, metadata, "\n# native = \"native/game.zig\"\n") != null);
 
     const project = try loadProject(io, std.testing.allocator, root_path);
     defer freeProject(std.testing.allocator, project);
@@ -2751,6 +2780,54 @@ test "initProject creates project metadata and default scene" {
     try std.testing.expect(renderer_settings.bloom_enabled);
 }
 
+test "loadProject accepts legacy project metadata filename" {
+    const root_path = ".zig-cache/test-load-legacy-project-file";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try cwd.createDirPath(io, root_path);
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.writeFile(io, .{
+        .sub_path = legacy_project_file_name,
+        .data = "name = \"Legacy Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n",
+    });
+
+    const project = try loadProject(io, std.testing.allocator, root_path);
+    defer freeProject(std.testing.allocator, project);
+
+    try std.testing.expectEqualStrings("Legacy Game", project.name);
+    try std.testing.expectEqualStrings(default_scene_path, project.default_scene);
+}
+
+test "loadProject prefers project.toml over legacy project metadata" {
+    const root_path = ".zig-cache/test-load-project-file-precedence";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try cwd.createDirPath(io, root_path);
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.writeFile(io, .{
+        .sub_path = legacy_project_file_name,
+        .data = "name = \"Legacy Game\"\nversion = 1\ndefault_scene = \"scenes/legacy.scene.toml\"\n",
+    });
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Canonical Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n",
+    });
+
+    const project = try loadProject(io, std.testing.allocator, root_path);
+    defer freeProject(std.testing.allocator, project);
+
+    try std.testing.expectEqualStrings("Canonical Game", project.name);
+    try std.testing.expectEqualStrings(default_scene_path, project.default_scene);
+}
+
 test "initProject refuses to overwrite an existing project" {
     const root_path = ".zig-cache/test-init-project-existing";
     const io = Io.Threaded.global_single_threaded.io();
@@ -2759,6 +2836,24 @@ test "initProject refuses to overwrite an existing project" {
     defer cwd.deleteTree(io, root_path) catch {};
 
     try initProject(io, std.testing.allocator, root_path, "Demo");
+    try std.testing.expectError(ProjectError.AlreadyExists, initProject(io, std.testing.allocator, root_path, "Demo"));
+}
+
+test "initProject refuses to overwrite a legacy project" {
+    const root_path = ".zig-cache/test-init-project-existing-legacy";
+    const io = Io.Threaded.global_single_threaded.io();
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(io, root_path) catch {};
+    defer cwd.deleteTree(io, root_path) catch {};
+
+    try cwd.createDirPath(io, root_path);
+    const root_dir = try cwd.openDir(io, root_path, .{});
+    defer root_dir.close(io);
+    try root_dir.writeFile(io, .{
+        .sub_path = legacy_project_file_name,
+        .data = "name = \"Legacy Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n",
+    });
+
     try std.testing.expectError(ProjectError.AlreadyExists, initProject(io, std.testing.allocator, root_path, "Demo"));
 }
 

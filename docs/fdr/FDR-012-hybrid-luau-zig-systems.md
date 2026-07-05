@@ -12,7 +12,7 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 - Developers can define components in Luau or Zig.
 - Developers can define systems in Luau or Zig.
 - Engine-linked Zig code can provide a `NativeExtension` with component and system registrations.
-- Project-local Zig code can be declared with `native = "native/game.zig"` in `project.machina.toml`.
+- Project-local Zig code can be declared with `native = "native/game.zig"` in `project.toml`.
 - Project-local native modules export `machina_register(api)` and import the engine-provided `machina_native` API.
 - During development, project-local native modules are built to `.machina/native/`, loaded as dynamic libraries, and kept alive for the lifetime of the script program that registered their callbacks.
 - Native components are registered before Luau scripts load, allowing Luau code to reference them with `ecs.component("id")`.

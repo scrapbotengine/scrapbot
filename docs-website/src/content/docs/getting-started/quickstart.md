@@ -91,13 +91,13 @@ cd mygame
 machina init
 ```
 
-The command writes `project.machina.toml` and `scenes/main.scene.toml`. The generated scene is script-free and contains a renderer singleton, cube, camera, and directional light, so it can be validated immediately:
+The command writes `project.toml`, `scenes/main.scene.toml`, and `assets/.gitkeep`. The generated scene is script-free and contains a renderer singleton, cube, camera, and directional light, so it can be validated immediately:
 
 ```sh
 machina check
 ```
 
-`machina init` does not overwrite an existing project. If the target directory already contains `project.machina.toml`, the command fails.
+`machina init` does not overwrite an existing project. If the target directory already contains `project.toml` or legacy `project.machina.toml`, the command fails.
 
 ## Run a Project
 

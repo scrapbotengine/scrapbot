@@ -10,7 +10,7 @@ Dynamic native code loading is useful for the development loop, but some targets
 
 ## Decision
 
-Machina supports project-local native Zig modules declared in `project.machina.toml`:
+Machina supports project-local native Zig modules declared in `project.toml`:
 
 ```toml
 native = "native/game.zig"
