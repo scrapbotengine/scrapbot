@@ -73,9 +73,29 @@ pub fn build(b: *std.Build) void {
     linkWindowPlatform(exe_tests, target, window_platform);
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
+    const native_reload_check = b.addExecutable(.{
+        .name = "native-reload-check",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/native-reload-check.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "machina", .module = machina_mod },
+            },
+        }),
+    });
+    configureCompileArtifact(native_reload_check, target);
+    linkWgpuPlatform(native_reload_check, target);
+    linkWindowPlatform(native_reload_check, target, window_platform);
+    const run_native_reload_check = b.addRunArtifact(native_reload_check);
+
+    const native_reload_test_step = b.step("native-reload-test", "Run native reload integration check");
+    native_reload_test_step.dependOn(&run_native_reload_check.step);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_native_reload_check.step);
 }
 
 fn configureCompileArtifact(compile: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {

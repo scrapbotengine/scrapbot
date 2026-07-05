@@ -60,6 +60,7 @@ pub const RegistryError = runtime.RegistryError;
 pub const ScriptError = script.ScriptError;
 pub const ScriptProgram = script.Program;
 pub const ScriptDiagnostic = script.Diagnostic;
+pub const ScriptDiagnosticStage = script.DiagnosticStage;
 pub const ScriptDiagnosticPosition = script.DiagnosticPosition;
 pub const NativeExtension = script.NativeExtension;
 pub const NativeSystemContext = script.NativeSystemContext;

@@ -68,7 +68,6 @@
 - [ ] Improve Luau diagnostics for typed query and component declaration failures.
 - [ ] Add Luau type definitions for new editor and UI APIs.
 - [ ] Add richer script reload diagnostics in the editor UI.
-- [ ] Add native-module hot reload tests that exercise failure recovery.
 - [ ] Add static-link packaging for project-native Zig modules.
 - [ ] Add project-native examples for custom components and systems.
 - [ ] Add native API helpers for additional field types.
