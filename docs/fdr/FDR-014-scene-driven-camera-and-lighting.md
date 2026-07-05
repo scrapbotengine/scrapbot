@@ -9,15 +9,15 @@ Scene-driven camera and lighting let projects describe the view and first direct
 
 ## Behavior
 
-- Scenes may author a camera with `machina.camera` on an entity that also has `machina.transform`.
+- Scenes may author a camera with `scrapbot.camera` on an entity that also has `scrapbot.transform`.
 - Camera transforms define the rendered view position and rotation.
 - Camera projection data includes vertical field of view, near plane, and far plane.
-- Scenes may author a directional light with `machina.light.directional`.
+- Scenes may author a directional light with `scrapbot.light.directional`.
 - Directional light data includes direction, color, intensity, and ambient contribution.
 - The renderer uses the first available camera and first available directional light in the ECS world.
 - Rendering extracts the selected camera and directional light into the internal render ECS world before drawing.
 - Scenes without camera or directional light components still render with compatibility defaults matching the original demo view and light.
-- Camera and light component fields participate in normal scene validation, live reload, script type hints, and `machina test` field assertions.
+- Camera and light component fields participate in normal scene validation, live reload, script type hints, and `scrapbot test` field assertions.
 
 ## Design Decisions
 

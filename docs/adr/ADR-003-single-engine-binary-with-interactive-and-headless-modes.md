@@ -4,13 +4,13 @@
 
 ## Context
 
-Machina should be usable as an interactive engine/editor and as a command-line tool that can run inside build scripts, tests, CI jobs, and agent workflows. A project should not require separate editor, runner, importer, validator, and build executables with inconsistent behavior.
+Scrapbot should be usable as an interactive engine/editor and as a command-line tool that can run inside build scripts, tests, CI jobs, and agent workflows. A project should not require separate editor, runner, importer, validator, and build executables with inconsistent behavior.
 
 Agentic workflows particularly benefit from a deterministic binary that can be launched in a project directory, inspect and mutate files, validate project state, run tests, and produce build artifacts without opening a graphical window.
 
 ## Decision
 
-Machina is distributed primarily as a single `machina` binary. The binary supports interactive modes such as running a project and launching the editor, and headless modes such as validation, asset import, testing, snapshot rendering, and building.
+Scrapbot is distributed primarily as a single `scrapbot` binary. The binary supports interactive modes such as running a project and launching the editor, and headless modes such as validation, asset import, testing, snapshot rendering, and building.
 
 The current working directory is a first-class project selection mechanism. Commands may also accept explicit project paths.
 

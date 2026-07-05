@@ -3,34 +3,34 @@ title: Project-Local Zig
 description: Register native Zig components and systems that interoperate with Luau and scenes.
 ---
 
-Machina projects can declare one project-local native Zig module:
+Scrapbot projects can declare one project-local native Zig module:
 
 ```toml
 native = "native/game.zig"
 ```
 
-During development, Machina builds that source file as a dynamic library under `.machina/native/`, loads it, and calls `machina_register`.
+During development, Scrapbot builds that source file as a dynamic library under `.scrapbot/native/`, loads it, and calls `scrapbot_register`.
 
 Dynamic native module loading is supported on macOS, Linux, and Windows MSVC. Windows GNU is not a primary support target for this development loop.
 
 ## Registration Entry Point
 
 ```zig
-const machina = @import("machina_native");
+const scrapbot = @import("scrapbot_native");
 
-export fn machina_register(api: *const machina.RegisterApi) callconv(.c) c_int {
-    machina.registerComponent(api, .{
+export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int {
+    scrapbot.registerComponent(api, .{
         .id = "velocity",
         .fields = &.{
             .{ .name = "linear", .field_type = .vec3 },
         },
     }) catch return 0;
 
-    machina.registerSystem(api, .{
+    scrapbot.registerSystem(api, .{
         .id = "native_move",
         .phase = .update,
         .reads = &.{ "velocity", "boost" },
-        .writes = &.{"machina.transform"},
+        .writes = &.{"scrapbot.transform"},
         .run = nativeMove,
     }) catch return 0;
 
@@ -38,24 +38,24 @@ export fn machina_register(api: *const machina.RegisterApi) callconv(.c) c_int {
 }
 ```
 
-Project native code imports the generated `machina_native` API. It does not import engine internals.
+Project native code imports the generated `scrapbot_native` API. It does not import engine internals.
 
 ## Native System Callback
 
 ```zig
-fn nativeMove(context: *machina.SystemContext) callconv(.c) c_int {
-    const query = [_][*:0]const u8{ "machina.transform", "velocity", "boost" };
+fn nativeMove(context: *scrapbot.SystemContext) callconv(.c) c_int {
+    const query = [_][*:0]const u8{ "scrapbot.transform", "velocity", "boost" };
     var cursor: usize = 0;
 
-    while (machina.queryNext(context, query[0..], &cursor) catch return 0) |entity| {
-        const position = machina.getVec3(context, entity, "machina.transform", "position") catch return 0;
-        const linear = machina.getVec3(context, entity, "velocity", "linear") catch return 0;
-        const boost = machina.getF32(context, entity, "boost", "amount") catch return 0;
+    while (scrapbot.queryNext(context, query[0..], &cursor) catch return 0) |entity| {
+        const position = scrapbot.getVec3(context, entity, "scrapbot.transform", "position") catch return 0;
+        const linear = scrapbot.getVec3(context, entity, "velocity", "linear") catch return 0;
+        const boost = scrapbot.getF32(context, entity, "boost", "amount") catch return 0;
 
-        machina.setVec3(
+        scrapbot.setVec3(
             context,
             entity,
-            "machina.transform",
+            "scrapbot.transform",
             "position",
             position.addScaled(linear, boost * context.delta_seconds),
         ) catch return 0;
@@ -92,20 +92,20 @@ The host checks declared reads and writes at query, read, write, and lifecycle c
 
 ## Add Components from Zig
 
-Use typed `machina.FieldValue` values:
+Use typed `scrapbot.FieldValue` values:
 
 ```zig
-const entity = machina.spawnEntity(context, "native-survivor", "Native Survivor") catch return 0;
+const entity = scrapbot.spawnEntity(context, "native-survivor", "Native Survivor") catch return 0;
 
-const fields = [_]machina.FieldValue{
-    machina.FieldValue.int("count", 7),
-    machina.FieldValue.boolean("enabled", true),
-    machina.FieldValue.float("speed", 1.75),
-    machina.FieldValue.vec3("direction", .{ .x = 3.0, .y = 2.0, .z = 1.0 }),
-    machina.FieldValue.string("label", "spawned"),
+const fields = [_]scrapbot.FieldValue{
+    scrapbot.FieldValue.int("count", 7),
+    scrapbot.FieldValue.boolean("enabled", true),
+    scrapbot.FieldValue.float("speed", 1.75),
+    scrapbot.FieldValue.vec3("direction", .{ .x = 3.0, .y = 2.0, .z = 1.0 }),
+    scrapbot.FieldValue.string("label", "spawned"),
 };
 
-machina.addComponent(context, entity, "native_payload", fields[0..]) catch return 0;
+scrapbot.addComponent(context, entity, "native_payload", fields[0..]) catch return 0;
 ```
 
 Structural commands use the same semantics as Luau:
@@ -116,12 +116,12 @@ Structural commands use the same semantics as Luau:
 
 ## Live Reload
 
-When native source changes during `machina run`, Machina rebuilds and reloads the module, rebuilds the ECS program, validates the current scene, and swaps only if every stage succeeds.
+When native source changes during `scrapbot run`, Scrapbot rebuilds and reloads the module, rebuilds the ECS program, validates the current scene, and swaps only if every stage succeeds.
 
 Failed native builds, loads, or registrations keep the last-known-good program active and report diagnostics.
 
 ## Static Build Direction
 
-Dynamic loading is the development loop. `machina build` currently packages host-platform bundles with a prebuilt native dynamic library artifact, so the bundled project can load native systems without rebuilding source on the target machine.
+Dynamic loading is the development loop. `scrapbot build` currently packages host-platform bundles with a prebuilt native dynamic library artifact, so the bundled project can load native systems without rebuilding source on the target machine.
 
 The registration entry point and source-level API are still designed for a future SDK/static build path that can statically link the same project-native source on platforms where dynamic code loading is impossible or forbidden.

@@ -19,8 +19,8 @@ Diagnostics report Luau, script-ECS, and project-native failures in a form that 
 - Diagnostics include a human-readable message from Luau, Zig build output, the engine validation layer, or the host ECS access bridge.
 - Successful subsequent operations clear stale live diagnostics.
 - Command-line commands render diagnostics as text.
-- `machina check` can render validation diagnostics as JSON for editor panels, automation, and agent workflows.
-- `machina step` can render runtime system diagnostics as JSON alongside the final scene and simulation summaries.
+- `scrapbot check` can render validation diagnostics as JSON for editor panels, automation, and agent workflows.
+- `scrapbot step` can render runtime system diagnostics as JSON alongside the final scene and simulation summaries.
 
 ## Design Decisions
 
@@ -50,7 +50,7 @@ Diagnostics report Luau, script-ECS, and project-native failures in a form that 
 
 ### 5. Provide JSON through headless command surfaces
 
-**Decision:** Machine-readable diagnostics are exposed through `machina check --format=json` and `machina step --format=json` before interactive run/reload output.
+**Decision:** Machine-readable diagnostics are exposed through `scrapbot check --format=json` and `scrapbot step --format=json` before interactive run/reload output.
 **Why:** Project validation and deterministic stepping are stable headless surfaces used by agents, tests, and editor integrations. Live run output can stay optimized for human stderr until the editor API is clearer.
 **Tradeoff:** Interactive reload diagnostics are not yet emitted as structured events.
 
@@ -67,6 +67,6 @@ Diagnostics report Luau, script-ECS, and project-native failures in a form that 
 
 ## Open Questions
 
-- What stable diagnostic codes should Machina expose for editor and agent tooling?
+- What stable diagnostic codes should Scrapbot expose for editor and agent tooling?
 - How should Luau stack traces and full source ranges be represented?
 - Should interactive live reload expose structured diagnostic events in addition to stderr text?

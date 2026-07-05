@@ -5,7 +5,7 @@ version = 1
 id = "scroll"
 name = "Scroll"
 
-[entities.components."machina.ui.scroll_view"]
+[entities.components."scrapbot.ui.scroll_view"]
 position = [10.0, 10.0, 0.0]
 size = [120.0, 40.0, 0.0]
 content_offset = [0.0, 0.0, 0.0]
@@ -14,13 +14,13 @@ content_offset = [0.0, 0.0, 0.0]
 id = "stack"
 name = "Stack"
 
-[entities.components."machina.ui.vgroup"]
+[entities.components."scrapbot.ui.vgroup"]
 position = [0.0, 0.0, 0.0]
 size = [120.0, 96.0, 0.0]
 spacing = 0.0
 padding = [0.0, 0.0, 0.0]
 
-[entities.components."machina.ui.layout.item"]
+[entities.components."scrapbot.ui.layout.item"]
 parent = "scroll"
 order = 0
 
@@ -28,13 +28,13 @@ order = 0
 id = "row-1"
 name = "Row 1"
 
-[entities.components."machina.ui.text"]
+[entities.components."scrapbot.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "ROW 1"
 
-[entities.components."machina.ui.layout.item"]
+[entities.components."scrapbot.ui.layout.item"]
 parent = "stack"
 order = 0
 
@@ -42,13 +42,13 @@ order = 0
 id = "row-2"
 name = "Row 2"
 
-[entities.components."machina.ui.text"]
+[entities.components."scrapbot.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "ROW 2"
 
-[entities.components."machina.ui.layout.item"]
+[entities.components."scrapbot.ui.layout.item"]
 parent = "stack"
 order = 1
 
@@ -56,13 +56,13 @@ order = 1
 id = "row-3"
 name = "Row 3"
 
-[entities.components."machina.ui.text"]
+[entities.components."scrapbot.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "ROW 3"
 
-[entities.components."machina.ui.layout.item"]
+[entities.components."scrapbot.ui.layout.item"]
 parent = "stack"
 order = 2
 
@@ -70,12 +70,12 @@ order = 2
 id = "row-4"
 name = "Row 4"
 
-[entities.components."machina.ui.text"]
+[entities.components."scrapbot.ui.text"]
 position = [0.0, 0.0, 0.0]
 size = 1.0
 color = [1.0, 1.0, 1.0]
 value = "ROW 4"
 
-[entities.components."machina.ui.layout.item"]
+[entities.components."scrapbot.ui.layout.item"]
 parent = "stack"
 order = 3

@@ -1,6 +1,6 @@
 --!strict
 
-local CommandEvent = ecs.component<<MachinaUiCommandEvent>>("machina.ui.command_event")
+local CommandEvent = ecs.component<<ScrapbotUiCommandEvent>>("scrapbot.ui.command_event")
 local Flag = ecs.component("flag", {
   fields = ecs.fields({
     active = "boolean",

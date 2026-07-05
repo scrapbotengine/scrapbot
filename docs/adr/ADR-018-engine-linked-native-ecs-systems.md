@@ -4,13 +4,13 @@
 
 ## Context
 
-Machina's long-term scripting model should let developers prototype systems in Luau and port measured hot paths to Zig without changing entity ids, component ids, scene data, or scheduler semantics.
+Scrapbot's long-term scripting model should let developers prototype systems in Luau and port measured hot paths to Zig without changing entity ids, component ids, scene data, or scheduler semantics.
 
-Dynamic per-game native modules are still a large commitment: they need an ABI, platform-specific loading rules, reload lifecycle, symbol compatibility, and diagnostics. Machina needs an interop slice before locking down that module boundary.
+Dynamic per-game native modules are still a large commitment: they need an ABI, platform-specific loading rules, reload lifecycle, symbol compatibility, and diagnostics. Scrapbot needs an interop slice before locking down that module boundary.
 
 ## Decision
 
-Machina supports engine-linked native ECS systems through a `NativeExtension` registration surface.
+Scrapbot supports engine-linked native ECS systems through a `NativeExtension` registration surface.
 
 - Native extensions can register project components.
 - Native extensions can register project systems with the same id, phase, read/write access, and before/after ordering model as Luau systems.

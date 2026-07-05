@@ -1,11 +1,11 @@
 ---
 title: Luau Systems
-description: Register components and systems in Luau, then run gameplay through Machina's ECS scheduler.
+description: Register components and systems in Luau, then run gameplay through Scrapbot's ECS scheduler.
 ---
 
-Luau is Machina's scripting language for gameplay logic.
+Luau is Scrapbot's scripting language for gameplay logic.
 
-Machina expects scripts to be system-first:
+Scrapbot expects scripts to be system-first:
 
 - Define components.
 - Define query objects.
@@ -26,7 +26,7 @@ local Spin = ecs.component("spin", {
 })
 ```
 
-Machina infers editor-facing Luau payload types from the field schema.
+Scrapbot infers editor-facing Luau payload types from the field schema.
 
 You can also provide an explicit payload type:
 
@@ -49,9 +49,9 @@ local HealthComponent = ecs.component<<Health>>("health", {
 Engine components can be referenced by id and built-in type:
 
 ```lua
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-local Geometry = ecs.component<<MachinaGeometryPrimitive>>("machina.geometry.primitive")
-local Material = ecs.component<<MachinaSurfaceMaterial>>("machina.material.surface")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+local Geometry = ecs.component<<ScrapbotGeometryPrimitive>>("scrapbot.geometry.primitive")
+local Material = ecs.component<<ScrapbotSurfaceMaterial>>("scrapbot.material.surface")
 ```
 
 ## Build Queries

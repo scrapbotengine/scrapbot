@@ -5,12 +5,12 @@
 
 ## Overview
 
-Offscreen demo rendering proves that Machina can initialize the WebGPU backend, create GPU resources, render through a graphics pipeline, read pixels back, and write an inspectable image artifact without opening a window.
+Offscreen demo rendering proves that Scrapbot can initialize the WebGPU backend, create GPU resources, render through a graphics pipeline, read pixels back, and write an inspectable image artifact without opening a window.
 
 ## Behavior
 
-- Users can run `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` against a valid project.
-- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` to render offscreen and verify the generated image.
+- Users can run `scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` against a valid project.
+- Users can run `scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` to render offscreen and verify the generated image.
 - The command validates the project before rendering.
 - The command loads the project's default scene and draws one frame of its renderable mesh and UI overlay entities into an offscreen texture by default.
 - When `--frames N` is greater than one, the command reuses the same offscreen GPU resources, runs fixed `1/60` updates, renders each frame, and writes or verifies the final frame.
@@ -38,7 +38,7 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ### 2. Keep the external binding behind a renderer module
 
-**Decision:** `wgpu-native` binding usage is isolated behind Machina's renderer code.
+**Decision:** `wgpu-native` binding usage is isolated behind Scrapbot's renderer code.
 **Why:** The Zig binding currently needs compatibility patches for the active Zig toolchain, and the official `wgpu-native` release stream moves independently. This follows ADR-005.
 **Tradeoff:** The renderer module must expose deliberate engine-owned APIs as rendering grows.
 
@@ -50,25 +50,25 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ### 4. Let offscreen rendering exercise editor frame input
 
-**Decision:** `machina render` and `machina render-test` can render editor chrome and selected-entity inspector state by supplying editor-shaped frame input to the same offscreen renderer.
+**Decision:** `scrapbot render` and `scrapbot render-test` can render editor chrome and selected-entity inspector state by supplying editor-shaped frame input to the same offscreen renderer.
 **Why:** Agent and CI workflows need to verify editor layout bugs without relying on OS window screenshots or manual clicks.
 **Tradeoff:** The first selected-entity option is an inspection/debugging affordance, not a general editor automation API.
 
 ### 5. Let offscreen rendering run bounded frame sequences
 
-**Decision:** `machina render` and `machina render-test` support `--frames N` for fixed-step offscreen frame sequences while reusing the same WebGPU device, render target, and renderer state.
+**Decision:** `scrapbot render` and `scrapbot render-test` support `--frames N` for fixed-step offscreen frame sequences while reusing the same WebGPU device, render target, and renderer state.
 **Why:** Setup-only render checks miss leaks and regressions that occur during repeated update/render loops. A bounded offscreen sequence keeps automation deterministic without requiring a platform window.
 **Tradeoff:** Multi-frame offscreen rendering still does not prove SDL presentation behavior or GPU driver-level leak freedom.
 
 ### 6. Let offscreen renders choose output dimensions
 
-**Decision:** `machina render`, `machina render-test`, and `machina visual-test` accept positive integer `--width` and `--height` options. The defaults remain `640x480`.
+**Decision:** `scrapbot render`, `scrapbot render-test`, and `scrapbot visual-test` accept positive integer `--width` and `--height` options. The defaults remain `640x480`.
 **Why:** Small fixed render targets are fine for broad smoke coverage but can clip editor sidebars and hide detailed inspector controls. Configurable dimensions let agents create reviewable artifacts that match the UI area being debugged.
 **Tradeoff:** Larger offscreen renders cost more GPU memory and readback time, so smoke tests should keep using small defaults unless the scenario needs more pixels.
 
 ### 7. Make offscreen DPI explicit
 
-**Decision:** `machina render`, `machina render-test`, and `machina visual-test` accept a positive finite `--pixel-scale` option. `--width` and `--height` remain physical artifact pixels, while frame input viewport dimensions are logical pixels derived as physical size divided by pixel scale.
+**Decision:** `scrapbot render`, `scrapbot render-test`, and `scrapbot visual-test` accept a positive finite `--pixel-scale` option. `--width` and `--height` remain physical artifact pixels, while frame input viewport dimensions are logical pixels derived as physical size divided by pixel scale.
 **Why:** Editor chrome spacing, input padding, rounded corners, and hit testing are authored in logical pixels, but review artifacts are physical pixel images. Explicit scale labels prevent `@2x` screenshots from making a two-logical-pixel inset look like one CSS/display pixel.
 **Tradeoff:** The image file itself is still a plain PNG/BMP without embedded custom metadata. The adjacent JSON sidecar must travel with the image until a richer snapshot manifest or embedded metadata format exists.
 
@@ -80,4 +80,4 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 ## Open Questions
 
 - Should render snapshots move from the current adjacent metadata sidecar to embedded metadata or a richer snapshot manifest?
-- Should render snapshots become part of `machina check`, a separate test command, or stay as a standalone render command?
+- Should render snapshots become part of `scrapbot check`, a separate test command, or stay as a standalone render command?

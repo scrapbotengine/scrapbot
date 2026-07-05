@@ -1,6 +1,6 @@
 --!strict
 
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
 
 local Velocity = ecs.component("velocity", {
   fields = ecs.fields({

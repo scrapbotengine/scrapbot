@@ -28,7 +28,7 @@ pub const UiDrawResources = struct {
         const bytes = std.mem.sliceAsBytes(vertices);
         if (self.vertex_buffer == null or self.vertex_buffer_size < bytes.len) {
             const buffer = device.createBuffer(&wgpu.BufferDescriptor{
-                .label = wgpu.StringView.fromSlice("Machina UI vertex buffer"),
+                .label = wgpu.StringView.fromSlice("Scrapbot UI vertex buffer"),
                 .usage = wgpu.BufferUsages.vertex | wgpu.BufferUsages.copy_dst,
                 .size = @intCast(bytes.len),
                 .mapped_at_creation = @as(u32, @intFromBool(false)),

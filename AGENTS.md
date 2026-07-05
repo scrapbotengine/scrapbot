@@ -1,13 +1,13 @@
-# Machina Agent Guide
+# Scrapbot Agent Guide
 
-Machina is an experimental, text-first game engine written in Zig with embedded Luau for project-local scripting. This file is the authoritative home for rules agents must follow before changing code. ADRs, FDRs, and skills are further reading, not replacements for these rules.
+Scrapbot is an experimental, text-first game engine written in Zig with embedded Luau for project-local scripting. This file is the authoritative home for rules agents must follow before changing code. ADRs, FDRs, and skills are further reading, not replacements for these rules.
 
 ## Project Goals
 
 - Keep project state inspectable, editable, and reviewable as source text wherever possible.
 - Use binary files only for assets, generated data, vendored dependencies, and build outputs.
 - Keep the engine friendly to agent workflows: small vertical slices, clear diffs, deterministic checks, and documented decisions.
-- Run projects with `machina run` from the project directory. `machina run --editor` starts with the editor shell visible; Ctrl+Tab toggles it in headful runs.
+- Run projects with `scrapbot run` from the project directory. `scrapbot run --editor` starts with the editor shell visible; Ctrl+Tab toggles it in headful runs.
 
 ## Features
 
@@ -33,39 +33,39 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 ## Project and Scene Data
 
 - Keep project and scene data text-based, inspectable, and diffable.
-- Projects use `project.machina.toml`, a default scene path, optional `scripts = [...]`, and at most one project-local native Zig module declared with `native = "native/game.zig"`.
+- Projects use `project.scrapbot.toml`, a default scene path, optional `scripts = [...]`, and at most one project-local native Zig module declared with `native = "native/game.zig"`.
 - Scenes are TOML files with root `name` and `version` fields plus `[[entities]]` records containing component tables.
 - Scene-authored component ids and fields must validate against the engine, script, and native component registry.
-- New scene-authored renderables should use `machina.geometry.primitive` plus `machina.material.surface`; treat `machina.render.cube` as a legacy shortcut.
-- Input components such as `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame` are runtime resources, not scene-authored data.
-- Treat `machina.ui.command_event` as runtime-only transient data. Author `machina.ui.command` on button entities instead.
-- Do not commit generated `.machina/` project-native build caches.
+- New scene-authored renderables should use `scrapbot.geometry.primitive` plus `scrapbot.material.surface`; treat `scrapbot.render.cube` as a legacy shortcut.
+- Input components such as `scrapbot.input.pointer`, `scrapbot.input.keyboard`, and `scrapbot.input.frame` are runtime resources, not scene-authored data.
+- Treat `scrapbot.ui.command_event` as runtime-only transient data. Author `scrapbot.ui.command` on button entities instead.
+- Do not commit generated `.scrapbot/` project-native build caches.
 
 ## ECS, Scripting, and Native Modules
 
 - `src/runtime.zig` owns the shared `World`, component registry, component tables, and schedule planning model.
 - Systems must declare phase plus read/write component access before participating in scheduling.
 - Structural mutations must happen inside scheduled systems through the ECS APIs. Adding or removing a component requires declared write access to that component; despawning requires write access to every component currently attached to the entity.
-- Script-defined component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local; qualified dotted ids are for packages or libraries; `machina.*` is engine-owned.
+- Script-defined component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local; qualified dotted ids are for packages or libraries; `scrapbot.*` is engine-owned.
 - New Luau component schemas should use `ecs.fields({ field = "type" })`. Do not use `ecs.schema(...)` or `ecs.vec3()` in new examples, features, or tests except for explicit compatibility coverage.
 - Keep the public script API system-first: scripts declare component access, and the native engine owns scheduling, validation, reload transactions, diagnostics, and future parallelization.
 - In hot Luau loops, cache component fields in locals before reusing them. Repeated field access crosses the host ECS bridge, and repeated vec3 field access allocates tables.
 - For large measured Luau loops, prefer explicit `Query:view(world)` bulk `f32`/`vec3` buffers over per-entity proxy access only when the buffer complexity is justified.
 - Measure Luau bridge hot-loop optimizations before keeping them. Query-local field-index caching has already regressed versus the simpler resolved-row path in `spawn_swarm`.
-- Project-local native Zig code imports `machina_native`, exports `machina_register(api)`, and uses the access-checked host API. Do not expose or depend on raw `runtime.World` from project native modules.
+- Project-local native Zig code imports `scrapbot_native`, exports `scrapbot_register(api)`, and uses the access-checked host API. Do not expose or depend on raw `runtime.World` from project native modules.
 - Native systems and components must use the same component registry, scheduler, profiling path, and deferred mutation semantics as Luau systems.
 
 ## UI, Input, and Editor Rules
 
 - Keep input and UI interaction state ECS-shaped. SDL or platform event code translates raw events into frame input; hover, press, focus, command routing, and editor state belong in ECS components/systems.
-- Route UI layout, hit testing, scroll handling, button commands, hover/press visuals, canvas viewport scaling, editor chrome, and editor controls through public `machina.ui.*`, `machina.input.*`, and `src/ui_layout.zig`.
+- Route UI layout, hit testing, scroll handling, button commands, hover/press visuals, canvas viewport scaling, editor chrome, and editor controls through public `scrapbot.ui.*`, `scrapbot.input.*`, and `src/ui_layout.zig`.
 - Do not add renderer-private, editor-private, or example-private UI/input paths when retained ECS UI can represent the behavior.
 - Use `ui_layout.routePointer` as the default entry point when a feature needs command, scroll, and capture ownership from one pointer frame. Keep lower-level `commandAt`, `routeScrollWheelAt`, and `applyScrollWheelAt` consistent with it.
 - Route retained command buttons through `ui_layout.commandAt` or `routePointer` after any needed viewport/design-space conversion.
-- Route scroll-wheel handling through `ui_layout.routePointer`, `routeScrollWheelAt`, or `applyScrollWheelAt` against retained `machina.ui.scroll_view` data.
-- Scene-authored UI input routing must use the retained layout model before hit testing. Do not hit-test raw `machina.ui.rect.position` unless parent layout and clipping have been resolved.
+- Route scroll-wheel handling through `ui_layout.routePointer`, `routeScrollWheelAt`, or `applyScrollWheelAt` against retained `scrapbot.ui.scroll_view` data.
+- Scene-authored UI input routing must use the retained layout model before hit testing. Do not hit-test raw `scrapbot.ui.rect.position` unless parent layout and clipping have been resolved.
 - Prefer reusable retained layout primitives over one-off renderer/editor layout shortcuts: `scroll_view` for clipped scrolling, `vgroup` for resizable vertical regions, `hgroup` for resizable horizontal regions, `stack` for simple directional stacking, and `layout.item` with stable entity-id parents for child ordering.
-- If editor chrome needs a new control, layout behavior, input rule, or renderer capability, add it as reusable `machina.ui.*`, `machina.input.*`, shared `ui_layout`, or shared render-system behavior first, then consume it from the editor.
+- If editor chrome needs a new control, layout behavior, input rule, or renderer capability, add it as reusable `scrapbot.ui.*`, `scrapbot.input.*`, shared `ui_layout`, or shared render-system behavior first, then consume it from the editor.
 - Engine-owned editor chrome may generate retained ECS UI entities procedurally, but must not introduce private UI primitives, layout math, input routing, or render paths when public ECS UI can represent the behavior.
 - Editor gizmos and editor chrome should be generated as engine-owned render/UI data and must not mutate project scene files or become selectable game entities.
 - Keep editor/debug and example UI text legible at normal viewing sizes. Do not use built-in bitmap UI text below `1.0` scale for editor surfaces.
@@ -78,7 +78,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Rendering uses `wgpu-native`; keep backend details behind engine-owned render boundaries.
 - Offscreen rendering is the preferred automation surface for visual verification.
 - Renderable meshes, UI primitives, active camera fallback, lights, shadows, batching, and editor render data should resolve from ECS world data where possible.
-- Do not add renderer-only UI geometry or per-example hacks for behavior represented by shared `machina.ui.*` components.
+- Do not add renderer-only UI geometry or per-example hacks for behavior represented by shared `scrapbot.ui.*` components.
 - When changing the built-in UI bitmap font, update `third_party/spleen/`, regenerate `src/ui_font.zig` with `tools/generate-ui-font.py`, and update `NOTICE` and FDRs if the source face changes.
 - Keep `NOTICE` current when adding, removing, replacing, or redistributing third-party code, assets, generated data, fonts, tools, native libraries, or fetched binary dependencies.
 
@@ -91,23 +91,23 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Update ADRs when changing architecture, backend choices, runtime model, or persistent implementation strategy.
 - Update FDRs when changing feature behavior, command behavior, scene schema, validation semantics, diagnostics, examples that define supported behavior, or user-visible workflows.
 - Update `docs/fdr/INDEX.md` and `docs/adr/INDEX.md` when adding records.
-- Keep `machina check --format=json` useful for editor and agent workflows. Add fields compatibly; do not remove or rename existing successful-output metadata without an explicit compatibility decision.
+- Keep `scrapbot check --format=json` useful for editor and agent workflows. Add fields compatibly; do not remove or rename existing successful-output metadata without an explicit compatibility decision.
 - Runtime script host API failures should report the active system plus relevant component/field context. Avoid generic bridge errors when Zig can identify the denied access or failed mutation.
 
 ## Verification Rules
 
-- Use `machina test` for automated gameplay and UI input replay fixture coverage.
-- Use `machina step` for narrow deterministic script/ECS debugging and runtime diagnostic checks.
-- Use `machina bench` for headless performance smoke coverage; keep renderable and render-batch counts useful enough to catch batching regressions.
+- Use `scrapbot test` for automated gameplay and UI input replay fixture coverage.
+- Use `scrapbot step` for narrow deterministic script/ECS debugging and runtime diagnostic checks.
+- Use `scrapbot bench` for headless performance smoke coverage; keep renderable and render-batch counts useful enough to catch batching regressions.
 - Use `mise build` for normal optimized builds.
 - Use `mise build-debug` or `zig build test` when Debug safety checks matter.
 - Do not run `zig build test` and `mise test` concurrently. The current tests use shared fixed temp project paths, so parallel invocations can collide and produce misleading filesystem failures.
-- For rendering, shader, scene-driven render data, or visual expectation changes, use `.agents/skills/machina-render-verification`.
-- For script diagnostics, Luau bridge error reporting, `machina check` output, script reload/runtime failure handling, or editor/agent diagnostic surfaces, use `.agents/skills/machina-script-diagnostics`.
-- For editor layout changes, prefer engine-generated offscreen artifacts with `machina render --editor`; use `--select <entity-id>` when selected-entity inspector state matters.
+- For rendering, shader, scene-driven render data, or visual expectation changes, use `.agents/skills/scrapbot-render-verification`.
+- For script diagnostics, Luau bridge error reporting, `scrapbot check` output, script reload/runtime failure handling, or editor/agent diagnostic surfaces, use `.agents/skills/scrapbot-script-diagnostics`.
+- For editor layout changes, prefer engine-generated offscreen artifacts with `scrapbot render --editor`; use `--select <entity-id>` when selected-entity inspector state matters.
 - When a render example depends on startup-spawned content, run startup before offscreen verification and keep the example covered by `mise test`.
-- Do not run visible `machina run` smoke tests by default. Prefer headless commands, offscreen render verification, and hidden bounded surface smoke tests such as `mise machina run examples/minimal --hidden --frames 2`; ask the user before launching a visible Machina window unless they explicitly requested one.
-- For `machina run` window-loop, surface, or live-reload changes, run a bounded hidden surface smoke test such as `mise machina run examples/minimal --hidden --frames 2`; use a visible headful run only when hidden presentation is insufficient.
+- Do not run visible `scrapbot run` smoke tests by default. Prefer headless commands, offscreen render verification, and hidden bounded surface smoke tests such as `mise scrapbot run examples/minimal --hidden --frames 2`; ask the user before launching a visible Scrapbot window unless they explicitly requested one.
+- For `scrapbot run` window-loop, surface, or live-reload changes, run a bounded hidden surface smoke test such as `mise scrapbot run examples/minimal --hidden --frames 2`; use a visible headful run only when hidden presentation is insufficient.
 - For editor input bugs, add deterministic frame-replay coverage in Zig tests before relying on manual headful checks.
 - When investigating performance, compare optimized and Debug builds, and separate headless update cost from headful render/presentation cost before changing engine architecture.
 

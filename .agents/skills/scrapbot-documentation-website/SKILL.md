@@ -1,9 +1,9 @@
 ---
-name: machina-documentation-website
-description: Use when adding, changing, reviewing, or documenting Machina's docs website, especially built-in engine components, scene-authored component schemas, runtime-only components/resources, docs-website content pages, Starlight navigation, or docs validation. Trigger this alongside feature work whenever a Machina component id, field, default, authoring rule, runtime-only rule, UI primitive, input resource, renderer setting, camera/light/shadow component, geometry/material component, or project-local example component changes.
+name: scrapbot-documentation-website
+description: Use when adding, changing, reviewing, or documenting Scrapbot's docs website, especially built-in engine components, scene-authored component schemas, runtime-only components/resources, docs-website content pages, Starlight navigation, or docs validation. Trigger this alongside feature work whenever a Scrapbot component id, field, default, authoring rule, runtime-only rule, UI primitive, input resource, renderer setting, camera/light/shadow component, geometry/material component, or project-local example component changes.
 ---
 
-# Machina Documentation Website
+# Scrapbot Documentation Website
 
 ## Principle
 
@@ -34,13 +34,13 @@ Use `pnpm install` only when dependencies are missing or stale. For local previe
 
 For each component, document enough for a user or agent to author valid scene data without reading Zig:
 
-- Component id exactly as registered, such as `machina.ui.rect`.
+- Component id exactly as registered, such as `scrapbot.ui.rect`.
 - Field names, scene/schema types, and important defaults.
 - Whether the component is scene-authored, runtime-only, legacy, singleton, marker-only, or engine-owned.
 - Valid string or enum-like values, such as canvas scale modes or stack directions.
 - Required companion components or common composition patterns.
 - Behavioral notes that affect authoring, validation, rendering, input routing, or live reload.
-- Migration guidance when replacing legacy components, such as preferring geometry plus material over `machina.render.cube`.
+- Migration guidance when replacing legacy components, such as preferring geometry plus material over `scrapbot.render.cube`.
 
 Do not expose backend implementation details or private renderer/editor paths. Keep the docs at the engine API level.
 
@@ -56,11 +56,11 @@ Do not expose backend implementation details or private renderer/editor paths. K
 ## Writing Style
 
 - Write user-facing docs, not implementation notes.
-- Explain behavior in terms of what project authors can do, what Machina does, and what effect users will see.
+- Explain behavior in terms of what project authors can do, what Scrapbot does, and what effect users will see.
 - Do not use internal planning or implementation phrases in docs-website content, such as "current slice", "renderer path", "Zig source", "private path", "future slice", or "implementation detail".
 - Mention source files, engine internals, or backend mechanics only when the documentation is explicitly for contributors; component reference pages should stay at the public engine API level.
 - Prefer concrete examples and compact tables for reference pages.
 - Call out runtime-only components clearly so users do not author them in scene files.
-- Preserve Machina terminology from `docs/GLOSSARY.md`.
+- Preserve Scrapbot terminology from `docs/GLOSSARY.md`.
 - Keep examples aligned with current scene syntax and component registration rules.
 - Avoid promising roadmap items as shipped behavior; move future work to `docs/TODO.md` when it needs tracking.

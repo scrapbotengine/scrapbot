@@ -13,7 +13,7 @@ version = 1
 id = "player"
 name = "Player"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
@@ -35,10 +35,10 @@ Entities loaded from scene TOML are authored entities. Runtime systems can also 
 
 Component tables live under `entities.components`.
 
-Engine component ids are qualified under `machina.*`:
+Engine component ids are qualified under `scrapbot.*`:
 
 ```toml
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "uv_sphere"
 segments = 32
 rings = 16
@@ -51,7 +51,7 @@ Project-local component ids can be single lowercase ASCII segments:
 angular_velocity = [0.0, 1.2, 0.0]
 ```
 
-Qualified dotted ids are reserved for packages and libraries. `machina.*` is engine-owned.
+Qualified dotted ids are reserved for packages and libraries. `scrapbot.*` is engine-owned.
 
 ## Validation
 
@@ -66,22 +66,22 @@ The registry includes:
 Run validation with:
 
 ```sh
-machina check path/to/project
+scrapbot check path/to/project
 ```
 
 Use JSON output when integrating with editor or agent workflows:
 
 ```sh
-machina check path/to/project --format json
+scrapbot check path/to/project --format json
 ```
 
 ## Scene-Driven Rendering
 
 Renderable scene entities usually combine:
 
-- `machina.transform`
-- `machina.geometry.primitive`
-- `machina.material.surface`
+- `scrapbot.transform`
+- `scrapbot.geometry.primitive`
+- `scrapbot.material.surface`
 
 Example:
 
@@ -90,17 +90,17 @@ Example:
 id = "warm-sphere"
 name = "Warm Sphere"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [-1.42, -0.24, -0.48]
 rotation = [0.15, 0.1, 0.25]
 scale = [0.46, 0.46, 0.46]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "uv_sphere"
 segments = 32
 rings = 16
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [1.0, 0.5, 0.08]
 ```
 

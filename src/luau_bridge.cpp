@@ -36,10 +36,10 @@ struct SystemDecl
     int line = 0;
 };
 
-struct machina_luau
+struct scrapbot_luau
 {
     lua_State* state = nullptr;
-    machina_luau_callbacks callbacks = {};
+    scrapbot_luau_callbacks callbacks = {};
     void* callback_context = nullptr;
     void* active_world = nullptr;
     uint64_t active_call_generation = 0;
@@ -49,21 +49,21 @@ struct machina_luau
     std::string last_error;
 };
 
-static const char* ENTITY_PROXY_METATABLE = "machina.entity_proxy";
-static const char* COMPONENT_PROXY_METATABLE = "machina.component_proxy";
-static const char* QUERY_PLAN_METATABLE = "machina.query_plan";
-static const char* QUERY_VIEW_METATABLE = "machina.query_view";
+static const char* ENTITY_PROXY_METATABLE = "scrapbot.entity_proxy";
+static const char* COMPONENT_PROXY_METATABLE = "scrapbot.component_proxy";
+static const char* QUERY_PLAN_METATABLE = "scrapbot.query_plan";
+static const char* QUERY_VIEW_METATABLE = "scrapbot.query_view";
 
 struct EntityProxyState
 {
-    machina_luau* vm = nullptr;
+    scrapbot_luau* vm = nullptr;
     uint32_t entity = 0;
     uint32_t entity_generation = 0;
 };
 
 struct ComponentProxyState
 {
-    machina_luau* vm = nullptr;
+    scrapbot_luau* vm = nullptr;
     uint32_t entity = 0;
     uint32_t entity_generation = 0;
     std::string component_id;
@@ -74,7 +74,7 @@ struct ComponentProxyState
 
 struct QueryState
 {
-    machina_luau* vm = nullptr;
+    scrapbot_luau* vm = nullptr;
     std::vector<std::string> component_ids;
     std::vector<const char*> component_id_ptrs;
     std::vector<uint32_t> component_table_indices;
@@ -101,7 +101,7 @@ struct QueryState
 
 struct QueryPlanState
 {
-    machina_luau* vm = nullptr;
+    scrapbot_luau* vm = nullptr;
     std::vector<std::string> component_ids;
     std::vector<const char*> component_id_ptrs;
     std::vector<uint32_t> component_table_indices;
@@ -133,7 +133,7 @@ struct QueryPlanState
 
 struct QueryViewState
 {
-    machina_luau* vm = nullptr;
+    scrapbot_luau* vm = nullptr;
     std::vector<std::string> component_ids;
     std::vector<const char*> component_id_ptrs;
     std::vector<uint32_t> component_table_indices;
@@ -169,17 +169,17 @@ struct QueryViewState
     }
 };
 
-static machina_luau* vm_from_upvalue(lua_State* state)
+static scrapbot_luau* vm_from_upvalue(lua_State* state)
 {
-    return static_cast<machina_luau*>(lua_tolightuserdata(state, lua_upvalueindex(1)));
+    return static_cast<scrapbot_luau*>(lua_tolightuserdata(state, lua_upvalueindex(1)));
 }
 
-static void set_error(machina_luau* vm, const char* message)
+static void set_error(scrapbot_luau* vm, const char* message)
 {
     vm->last_error = message ? message : "unknown Luau error";
 }
 
-static const char* host_error_message(machina_luau* vm, const char* fallback)
+static const char* host_error_message(scrapbot_luau* vm, const char* fallback)
 {
     if (vm && vm->callbacks.host_error)
     {
@@ -190,7 +190,7 @@ static const char* host_error_message(machina_luau* vm, const char* fallback)
     return fallback;
 }
 
-static void raise_host_error(lua_State* state, machina_luau* vm, const char* fallback)
+static void raise_host_error(lua_State* state, scrapbot_luau* vm, const char* fallback)
 {
     luaL_error(state, "%s", host_error_message(vm, fallback));
 }
@@ -212,7 +212,7 @@ static void push_schema_marker(lua_State* state, const char* field_type)
 {
     lua_newtable(state);
     lua_pushstring(state, field_type);
-    lua_setfield(state, -2, "__machina_schema_field_type");
+    lua_setfield(state, -2, "__scrapbot_schema_field_type");
     lua_setreadonly(state, -1, 1);
 }
 
@@ -221,8 +221,8 @@ static void push_component_handle(lua_State* state, const std::string& id)
     lua_newtable(state);
     lua_pushlstring(state, id.c_str(), id.size());
     lua_setfield(state, -2, "id");
-    lua_pushcclosure(state, component_type_brand, "component.__machina_component_type", 0);
-    lua_setfield(state, -2, "__machina_component_type");
+    lua_pushcclosure(state, component_type_brand, "component.__scrapbot_component_type", 0);
+    lua_setfield(state, -2, "__scrapbot_component_type");
     lua_setreadonly(state, -1, 1);
 }
 
@@ -267,7 +267,7 @@ static void prepare_query(lua_State* state, QueryState* query)
         query->empty = true;
 }
 
-static uint64_t query_plan_generation(machina_luau* vm)
+static uint64_t query_plan_generation(scrapbot_luau* vm)
 {
     if (!vm || !vm->callbacks.query_plan_generation || !vm->active_world)
         return 0;
@@ -279,7 +279,7 @@ static void prepare_query_plan(lua_State* state, QueryPlanState* plan)
     if (!plan || !plan->vm)
         return;
 
-    machina_luau* vm = plan->vm;
+    scrapbot_luau* vm = plan->vm;
     const uint64_t generation = query_plan_generation(vm);
     if (plan->prepared && plan->world == vm->active_world && plan->generation == generation)
         return;
@@ -475,7 +475,7 @@ static void append_query_reads(SystemDecl& system, const std::vector<std::string
 
 static int ecs_component(lua_State* state)
 {
-    machina_luau* vm = vm_from_upvalue(state);
+    scrapbot_luau* vm = vm_from_upvalue(state);
     const std::string id = check_string(state, 1);
 
     if (!lua_isnoneornil(state, 2))
@@ -559,7 +559,7 @@ static int ecs_fields(lua_State* state)
 static std::string check_schema_marker_type(lua_State* state, int index)
 {
     luaL_checktype(state, index, LUA_TTABLE);
-    lua_getfield(state, index, "__machina_schema_field_type");
+    lua_getfield(state, index, "__scrapbot_schema_field_type");
     size_t len = 0;
     const char* value = luaL_checklstring(state, -1, &len);
     std::string field_type(value, len);
@@ -606,7 +606,7 @@ static void ensure_query_plan_metatable(lua_State* state)
         lua_setreadonly(state, -1, 1);
 }
 
-static void push_query_plan(lua_State* state, machina_luau* vm, const std::vector<std::string>& component_ids)
+static void push_query_plan(lua_State* state, scrapbot_luau* vm, const std::vector<std::string>& component_ids)
 {
     void* storage = lua_newuserdatadtor(state, sizeof(QueryPlanState), query_plan_dtor);
     QueryPlanState* plan = new (storage) QueryPlanState();
@@ -619,13 +619,13 @@ static void push_query_plan(lua_State* state, machina_luau* vm, const std::vecto
 
 static QueryPlanState* query_plan_from_query_object(lua_State* state, int query_index)
 {
-    lua_getfield(state, query_index, "__machina_query_plan");
+    lua_getfield(state, query_index, "__scrapbot_query_plan");
     QueryPlanState* plan = static_cast<QueryPlanState*>(luaL_checkudata(state, -1, QUERY_PLAN_METATABLE));
     lua_pop(state, 1);
     return plan;
 }
 
-static void push_query_object(lua_State* state, machina_luau* vm, const std::vector<std::string>& component_ids)
+static void push_query_object(lua_State* state, scrapbot_luau* vm, const std::vector<std::string>& component_ids)
 {
     lua_newtable(state);
 
@@ -648,14 +648,14 @@ static void push_query_object(lua_State* state, machina_luau* vm, const std::vec
     lua_setfield(state, -2, "view");
 
     push_query_plan(state, vm, component_ids);
-    lua_setfield(state, -2, "__machina_query_plan");
+    lua_setfield(state, -2, "__scrapbot_query_plan");
 
     lua_setreadonly(state, -1, 1);
 }
 
 static int ecs_query(lua_State* state)
 {
-    machina_luau* vm = vm_from_upvalue(state);
+    scrapbot_luau* vm = vm_from_upvalue(state);
     const int component_count = lua_gettop(state);
     if (component_count <= 0)
         luaL_error(state, "ecs.query expects at least one component id");
@@ -672,7 +672,7 @@ static int ecs_query(lua_State* state)
 
 static int ecs_system(lua_State* state)
 {
-    machina_luau* vm = vm_from_upvalue(state);
+    scrapbot_luau* vm = vm_from_upvalue(state);
     SystemDecl system;
     system.id = check_string(state, 1);
     system.line = caller_line(state);
@@ -724,24 +724,24 @@ static bool read_vec3(lua_State* state, int index, float value[3])
     return true;
 }
 
-static void push_field_value(lua_State* state, const machina_luau_field_value& value)
+static void push_field_value(lua_State* state, const scrapbot_luau_field_value& value)
 {
     switch (value.tag)
     {
-    case MACHINA_LUAU_FIELD_BOOLEAN:
+    case SCRAPBOT_LUAU_FIELD_BOOLEAN:
         lua_pushboolean(state, value.boolean_value != 0);
         return;
-    case MACHINA_LUAU_FIELD_INT:
+    case SCRAPBOT_LUAU_FIELD_INT:
         lua_pushinteger(state, value.int_value);
         return;
-    case MACHINA_LUAU_FIELD_FLOAT:
-    case MACHINA_LUAU_FIELD_NUMBER:
+    case SCRAPBOT_LUAU_FIELD_FLOAT:
+    case SCRAPBOT_LUAU_FIELD_NUMBER:
         lua_pushnumber(state, value.number_value);
         return;
-    case MACHINA_LUAU_FIELD_VEC3:
+    case SCRAPBOT_LUAU_FIELD_VEC3:
         push_vec3(state, value.vec3_value);
         return;
-    case MACHINA_LUAU_FIELD_STRING:
+    case SCRAPBOT_LUAU_FIELD_STRING:
         lua_pushlstring(state, value.string_data ? value.string_data : "", value.string_len);
         return;
     default:
@@ -750,27 +750,27 @@ static void push_field_value(lua_State* state, const machina_luau_field_value& v
     }
 }
 
-static void read_field_value(lua_State* state, int index, machina_luau_field_value* value)
+static void read_field_value(lua_State* state, int index, scrapbot_luau_field_value* value)
 {
     std::memset(value, 0, sizeof(*value));
 
     if (lua_isboolean(state, index))
     {
-        value->tag = MACHINA_LUAU_FIELD_BOOLEAN;
+        value->tag = SCRAPBOT_LUAU_FIELD_BOOLEAN;
         value->boolean_value = lua_toboolean(state, index);
         return;
     }
 
     if (lua_isnumber(state, index))
     {
-        value->tag = MACHINA_LUAU_FIELD_NUMBER;
+        value->tag = SCRAPBOT_LUAU_FIELD_NUMBER;
         value->number_value = lua_tonumber(state, index);
         return;
     }
 
     if (lua_isstring(state, index))
     {
-        value->tag = MACHINA_LUAU_FIELD_STRING;
+        value->tag = SCRAPBOT_LUAU_FIELD_STRING;
         size_t len = 0;
         value->string_data = luaL_checklstring(state, index, &len);
         value->string_len = len;
@@ -779,7 +779,7 @@ static void read_field_value(lua_State* state, int index, machina_luau_field_val
 
     if (lua_istable(state, index))
     {
-        value->tag = MACHINA_LUAU_FIELD_VEC3;
+        value->tag = SCRAPBOT_LUAU_FIELD_VEC3;
         read_vec3(state, index, value->vec3_value);
         return;
     }
@@ -787,9 +787,9 @@ static void read_field_value(lua_State* state, int index, machina_luau_field_val
     luaL_error(state, "component field write received unsupported value type");
 }
 
-static std::vector<machina_luau_component_field_value> read_component_field_values(lua_State* state, int index)
+static std::vector<scrapbot_luau_component_field_value> read_component_field_values(lua_State* state, int index)
 {
-    std::vector<machina_luau_component_field_value> fields;
+    std::vector<scrapbot_luau_component_field_value> fields;
     if (lua_isnoneornil(state, index))
         return fields;
 
@@ -800,7 +800,7 @@ static std::vector<machina_luau_component_field_value> read_component_field_valu
     {
         size_t name_len = 0;
         const char* name = luaL_checklstring(state, -2, &name_len);
-        machina_luau_component_field_value field = {};
+        scrapbot_luau_component_field_value field = {};
         field.name = name;
         field.name_len = name_len;
         read_field_value(state, -1, &field.value);
@@ -846,7 +846,7 @@ static int entity_proxy_add(lua_State* state)
     EntityProxyState* proxy = entity_proxy_from_upvalue(state);
     const int first_arg = entity_method_first_arg(state);
     const std::string component_id = check_component_id(state, first_arg);
-    const std::vector<machina_luau_component_field_value> fields = read_component_field_values(state, first_arg + 1);
+    const std::vector<scrapbot_luau_component_field_value> fields = read_component_field_values(state, first_arg + 1);
     if (!proxy->vm->callbacks.add_component || !proxy->vm->callbacks.add_component(proxy->vm->callback_context, proxy->vm->active_world, proxy->entity, proxy->entity_generation, component_id.c_str(), fields.data(), fields.size()))
         raise_host_error(state, proxy->vm, "entity.add access denied or failed");
     return 0;
@@ -915,7 +915,7 @@ static void ensure_entity_proxy_metatable(lua_State* state)
     }
 }
 
-static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity, uint32_t entity_generation)
+static void push_entity(lua_State* state, scrapbot_luau* vm, uint32_t entity, uint32_t entity_generation)
 {
     void* storage = lua_newuserdatadtor(state, sizeof(EntityProxyState), entity_proxy_dtor);
     EntityProxyState* proxy = new (storage) EntityProxyState();
@@ -929,7 +929,7 @@ static void push_entity(lua_State* state, machina_luau* vm, uint32_t entity, uin
 static int component_proxy_index(lua_State* state)
 {
     ComponentProxyState* proxy = component_proxy_from_arg(state, 1);
-    machina_luau* vm = proxy->vm;
+    scrapbot_luau* vm = proxy->vm;
     const uint32_t entity = proxy->entity;
     const uint32_t entity_generation = proxy->entity_generation;
     const char* component_id = proxy->component_id.c_str();
@@ -941,7 +941,7 @@ static int component_proxy_index(lua_State* state)
         return 1;
     }
 
-    machina_luau_field_value value = {};
+    scrapbot_luau_field_value value = {};
     if (proxy->has_resolved_row && vm->callbacks.get_field_resolved)
     {
         if (!vm->callbacks.get_field_resolved(
@@ -967,12 +967,12 @@ static int component_proxy_index(lua_State* state)
 static int component_proxy_newindex(lua_State* state)
 {
     ComponentProxyState* proxy = component_proxy_from_arg(state, 1);
-    machina_luau* vm = proxy->vm;
+    scrapbot_luau* vm = proxy->vm;
     const uint32_t entity = proxy->entity;
     const uint32_t entity_generation = proxy->entity_generation;
     const char* component_id = proxy->component_id.c_str();
     const char* field_name = luaL_checkstring(state, 2);
-    machina_luau_field_value value = {};
+    scrapbot_luau_field_value value = {};
     read_field_value(state, 3, &value);
     if (proxy->has_resolved_row && vm->callbacks.set_field_resolved)
     {
@@ -1009,7 +1009,7 @@ static void ensure_component_proxy_metatable(lua_State* state)
 
 static void push_component_proxy(
     lua_State* state,
-    machina_luau* vm,
+    scrapbot_luau* vm,
     uint32_t entity,
     uint32_t entity_generation,
     const std::string& component_id,
@@ -1074,7 +1074,7 @@ static int query_view_read_f32(lua_State* state)
 {
     QueryViewState* view = query_view_from_arg(state, 1);
     check_query_view_active(state, view);
-    machina_luau* vm = view->vm;
+    scrapbot_luau* vm = view->vm;
     const size_t component_index = query_view_component_index(state, view, 2);
     const char* field_name = luaL_checkstring(state, 3);
     const size_t entity_count = view->entity_count();
@@ -1109,7 +1109,7 @@ static int query_view_write_f32(lua_State* state)
 {
     QueryViewState* view = query_view_from_arg(state, 1);
     check_query_view_active(state, view);
-    machina_luau* vm = view->vm;
+    scrapbot_luau* vm = view->vm;
     const size_t component_index = query_view_component_index(state, view, 2);
     const char* field_name = luaL_checkstring(state, 3);
 
@@ -1146,7 +1146,7 @@ static int query_view_read_vec3(lua_State* state)
 {
     QueryViewState* view = query_view_from_arg(state, 1);
     check_query_view_active(state, view);
-    machina_luau* vm = view->vm;
+    scrapbot_luau* vm = view->vm;
     const size_t component_index = query_view_component_index(state, view, 2);
     const char* field_name = luaL_checkstring(state, 3);
     const size_t entity_count = view->entity_count();
@@ -1182,7 +1182,7 @@ static int query_view_write_vec3(lua_State* state)
 {
     QueryViewState* view = query_view_from_arg(state, 1);
     check_query_view_active(state, view);
-    machina_luau* vm = view->vm;
+    scrapbot_luau* vm = view->vm;
     const size_t component_index = query_view_component_index(state, view, 2);
     const char* field_name = luaL_checkstring(state, 3);
 
@@ -1239,7 +1239,7 @@ static void ensure_query_view_metatable(lua_State* state)
 static void push_query_view(lua_State* state, QueryPlanState* plan)
 {
     prepare_query_plan(state, plan);
-    machina_luau* vm = plan->vm;
+    scrapbot_luau* vm = plan->vm;
     if (!vm->callbacks.prepare_query || !vm->callbacks.query_next_prepared)
         luaL_error(state, "query views require prepared query support");
 
@@ -1306,7 +1306,7 @@ static void push_query_view(lua_State* state, QueryPlanState* plan)
     lua_setmetatable(state, -2);
 }
 
-static void push_query_iterator(lua_State* state, machina_luau* vm, const std::vector<std::string>& component_ids)
+static void push_query_iterator(lua_State* state, scrapbot_luau* vm, const std::vector<std::string>& component_ids)
 {
     void* storage = lua_newuserdatadtor(state, sizeof(QueryState), query_state_dtor);
     QueryState* query = new (storage) QueryState();
@@ -1401,7 +1401,7 @@ static int query_iterator(lua_State* state)
 
 static int query_object_iter(lua_State* state)
 {
-    machina_luau* vm = vm_from_upvalue(state);
+    scrapbot_luau* vm = vm_from_upvalue(state);
     luaL_checktype(state, 1, LUA_TTABLE);
     if (lua_isnoneornil(state, 2))
         luaL_error(state, "query:iter expects a world");
@@ -1420,7 +1420,7 @@ static int query_object_iter(lua_State* state)
 
 static int query_object_view(lua_State* state)
 {
-    machina_luau* vm = vm_from_upvalue(state);
+    scrapbot_luau* vm = vm_from_upvalue(state);
     luaL_checktype(state, 1, LUA_TTABLE);
     if (lua_isnoneornil(state, 2))
         luaL_error(state, "query:view expects a world");
@@ -1439,7 +1439,7 @@ static int query_object_view(lua_State* state)
 
 static int world_query(lua_State* state)
 {
-    machina_luau* vm = vm_from_upvalue(state);
+    scrapbot_luau* vm = vm_from_upvalue(state);
     const int component_count = lua_gettop(state);
     if (component_count <= 0)
         luaL_error(state, "world.query expects at least one component id");
@@ -1456,7 +1456,7 @@ static int world_query(lua_State* state)
     return 1;
 }
 
-static void install_ecs(lua_State* state, machina_luau* vm)
+static void install_ecs(lua_State* state, scrapbot_luau* vm)
 {
     lua_newtable(state);
 
@@ -1488,7 +1488,7 @@ static void install_ecs(lua_State* state, machina_luau* vm)
     lua_setglobal(state, "ecs");
 }
 
-static void push_world(lua_State* state, machina_luau* vm)
+static void push_world(lua_State* state, scrapbot_luau* vm)
 {
     lua_newtable(state);
     lua_pushlightuserdata(state, vm);
@@ -1497,7 +1497,7 @@ static void push_world(lua_State* state, machina_luau* vm)
 
     lua_pushlightuserdata(state, vm);
     lua_pushcclosure(state, [](lua_State* state) -> int {
-        machina_luau* vm = vm_from_upvalue(state);
+        scrapbot_luau* vm = vm_from_upvalue(state);
         const char* id = luaL_checkstring(state, 1);
         const char* name = luaL_optstring(state, 2, id);
         uint32_t entity = 0;
@@ -1512,9 +1512,9 @@ static void push_world(lua_State* state, machina_luau* vm)
     lua_setreadonly(state, -1, 1);
 }
 
-machina_luau* machina_luau_create(machina_luau_callbacks callbacks)
+scrapbot_luau* scrapbot_luau_create(scrapbot_luau_callbacks callbacks)
 {
-    machina_luau* vm = new machina_luau();
+    scrapbot_luau* vm = new scrapbot_luau();
     vm->callbacks = callbacks;
     vm->state = luaL_newstate();
     if (!vm->state)
@@ -1529,7 +1529,7 @@ machina_luau* machina_luau_create(machina_luau_callbacks callbacks)
     return vm;
 }
 
-void machina_luau_destroy(machina_luau* vm)
+void scrapbot_luau_destroy(scrapbot_luau* vm)
 {
     if (!vm)
         return;
@@ -1539,13 +1539,13 @@ void machina_luau_destroy(machina_luau* vm)
     delete vm;
 }
 
-void machina_luau_set_callback_context(machina_luau* vm, void* context)
+void scrapbot_luau_set_callback_context(scrapbot_luau* vm, void* context)
 {
     if (vm)
         vm->callback_context = context;
 }
 
-int machina_luau_load(machina_luau* vm, const char* chunk_name, const char* source, size_t source_len)
+int scrapbot_luau_load(scrapbot_luau* vm, const char* chunk_name, const char* source, size_t source_len)
 {
     if (!vm || !vm->state)
         return 0;
@@ -1579,71 +1579,71 @@ int machina_luau_load(machina_luau* vm, const char* chunk_name, const char* sour
     return 1;
 }
 
-const char* machina_luau_last_error(const machina_luau* vm)
+const char* scrapbot_luau_last_error(const scrapbot_luau* vm)
 {
     return vm ? vm->last_error.c_str() : "missing Luau VM";
 }
 
-size_t machina_luau_component_count(const machina_luau* vm)
+size_t scrapbot_luau_component_count(const scrapbot_luau* vm)
 {
     return vm ? vm->components.size() : 0;
 }
 
-const char* machina_luau_component_id(const machina_luau* vm, size_t component_index)
+const char* scrapbot_luau_component_id(const scrapbot_luau* vm, size_t component_index)
 {
     return vm && component_index < vm->components.size() ? vm->components[component_index].id.c_str() : nullptr;
 }
 
-uint32_t machina_luau_component_version(const machina_luau* vm, size_t component_index)
+uint32_t scrapbot_luau_component_version(const scrapbot_luau* vm, size_t component_index)
 {
     return vm && component_index < vm->components.size() ? vm->components[component_index].version : 1;
 }
 
-int machina_luau_component_line(const machina_luau* vm, size_t component_index)
+int scrapbot_luau_component_line(const scrapbot_luau* vm, size_t component_index)
 {
     return vm && component_index < vm->components.size() ? vm->components[component_index].line : 0;
 }
 
-size_t machina_luau_component_field_count(const machina_luau* vm, size_t component_index)
+size_t scrapbot_luau_component_field_count(const scrapbot_luau* vm, size_t component_index)
 {
     return vm && component_index < vm->components.size() ? vm->components[component_index].fields.size() : 0;
 }
 
-const char* machina_luau_component_field_name(const machina_luau* vm, size_t component_index, size_t field_index)
+const char* scrapbot_luau_component_field_name(const scrapbot_luau* vm, size_t component_index, size_t field_index)
 {
     if (!vm || component_index >= vm->components.size() || field_index >= vm->components[component_index].fields.size())
         return nullptr;
     return vm->components[component_index].fields[field_index].name.c_str();
 }
 
-const char* machina_luau_component_field_type(const machina_luau* vm, size_t component_index, size_t field_index)
+const char* scrapbot_luau_component_field_type(const scrapbot_luau* vm, size_t component_index, size_t field_index)
 {
     if (!vm || component_index >= vm->components.size() || field_index >= vm->components[component_index].fields.size())
         return nullptr;
     return vm->components[component_index].fields[field_index].type.c_str();
 }
 
-size_t machina_luau_system_count(const machina_luau* vm)
+size_t scrapbot_luau_system_count(const scrapbot_luau* vm)
 {
     return vm ? vm->systems.size() : 0;
 }
 
-const char* machina_luau_system_id(const machina_luau* vm, size_t system_index)
+const char* scrapbot_luau_system_id(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? vm->systems[system_index].id.c_str() : nullptr;
 }
 
-const char* machina_luau_system_phase(const machina_luau* vm, size_t system_index)
+const char* scrapbot_luau_system_phase(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? vm->systems[system_index].phase.c_str() : nullptr;
 }
 
-uint32_t machina_luau_system_runner_ref(const machina_luau* vm, size_t system_index)
+uint32_t scrapbot_luau_system_runner_ref(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? vm->systems[system_index].runner_ref : 0;
 }
 
-int machina_luau_system_line(const machina_luau* vm, size_t system_index)
+int scrapbot_luau_system_line(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? vm->systems[system_index].line : 0;
 }
@@ -1658,67 +1658,67 @@ static const char* string_list_item(const std::vector<std::string>* values, size
     return values && item_index < values->size() ? (*values)[item_index].c_str() : nullptr;
 }
 
-static const std::vector<std::string>* system_reads(const machina_luau* vm, size_t system_index)
+static const std::vector<std::string>* system_reads(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? &vm->systems[system_index].reads : nullptr;
 }
 
-static const std::vector<std::string>* system_writes(const machina_luau* vm, size_t system_index)
+static const std::vector<std::string>* system_writes(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? &vm->systems[system_index].writes : nullptr;
 }
 
-static const std::vector<std::string>* system_before(const machina_luau* vm, size_t system_index)
+static const std::vector<std::string>* system_before(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? &vm->systems[system_index].before : nullptr;
 }
 
-static const std::vector<std::string>* system_after(const machina_luau* vm, size_t system_index)
+static const std::vector<std::string>* system_after(const scrapbot_luau* vm, size_t system_index)
 {
     return vm && system_index < vm->systems.size() ? &vm->systems[system_index].after : nullptr;
 }
 
-size_t machina_luau_system_reads_count(const machina_luau* vm, size_t system_index)
+size_t scrapbot_luau_system_reads_count(const scrapbot_luau* vm, size_t system_index)
 {
     return string_list_count(system_reads(vm, system_index));
 }
 
-const char* machina_luau_system_reads_item(const machina_luau* vm, size_t system_index, size_t item_index)
+const char* scrapbot_luau_system_reads_item(const scrapbot_luau* vm, size_t system_index, size_t item_index)
 {
     return string_list_item(system_reads(vm, system_index), item_index);
 }
 
-size_t machina_luau_system_writes_count(const machina_luau* vm, size_t system_index)
+size_t scrapbot_luau_system_writes_count(const scrapbot_luau* vm, size_t system_index)
 {
     return string_list_count(system_writes(vm, system_index));
 }
 
-const char* machina_luau_system_writes_item(const machina_luau* vm, size_t system_index, size_t item_index)
+const char* scrapbot_luau_system_writes_item(const scrapbot_luau* vm, size_t system_index, size_t item_index)
 {
     return string_list_item(system_writes(vm, system_index), item_index);
 }
 
-size_t machina_luau_system_before_count(const machina_luau* vm, size_t system_index)
+size_t scrapbot_luau_system_before_count(const scrapbot_luau* vm, size_t system_index)
 {
     return string_list_count(system_before(vm, system_index));
 }
 
-const char* machina_luau_system_before_item(const machina_luau* vm, size_t system_index, size_t item_index)
+const char* scrapbot_luau_system_before_item(const scrapbot_luau* vm, size_t system_index, size_t item_index)
 {
     return string_list_item(system_before(vm, system_index), item_index);
 }
 
-size_t machina_luau_system_after_count(const machina_luau* vm, size_t system_index)
+size_t scrapbot_luau_system_after_count(const scrapbot_luau* vm, size_t system_index)
 {
     return string_list_count(system_after(vm, system_index));
 }
 
-const char* machina_luau_system_after_item(const machina_luau* vm, size_t system_index, size_t item_index)
+const char* scrapbot_luau_system_after_item(const scrapbot_luau* vm, size_t system_index, size_t item_index)
 {
     return string_list_item(system_after(vm, system_index), item_index);
 }
 
-int machina_luau_call_system(machina_luau* vm, uint32_t runner_ref, void* world, double delta_seconds)
+int scrapbot_luau_call_system(scrapbot_luau* vm, uint32_t runner_ref, void* world, double delta_seconds)
 {
     if (!vm || !vm->state || runner_ref == 0)
         return 1;

@@ -13,8 +13,8 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 - Developers can define systems in Luau or Zig.
 - Engine-linked Zig code can provide a `NativeExtension` with component and system registrations.
 - Project-local Zig code can be declared with `native = "native/game.zig"` in `project.toml`.
-- Project-local native modules export `machina_register(api)` and import the engine-provided `machina_native` API.
-- During development, project-local native modules are built to `.machina/native/`, loaded as dynamic libraries, and kept alive for the lifetime of the script program that registered their callbacks.
+- Project-local native modules export `scrapbot_register(api)` and import the engine-provided `scrapbot_native` API.
+- During development, project-local native modules are built to `.scrapbot/native/`, loaded as dynamic libraries, and kept alive for the lifetime of the script program that registered their callbacks.
 - Native components are registered before Luau scripts load, allowing Luau code to reference them with `ecs.component("id")`.
 - Native systems are registered after Luau components, allowing Zig systems to read and write script-defined components.
 - Luau-authored and Zig-authored systems participate in the same ECS schedule.
@@ -72,7 +72,7 @@ Hybrid Luau and Zig systems let game developers define ECS components and system
 
 ### 7. Add project-local native modules through a narrow host API
 
-**Decision:** Game projects can declare one Zig source file with `native = "native/game.zig"`. Machina builds it as a dynamic library during development, calls `machina_register`, and exposes only the `machina_native` registration/runtime facade.
+**Decision:** Game projects can declare one Zig source file with `native = "native/game.zig"`. Scrapbot builds it as a dynamic library during development, calls `scrapbot_register`, and exposes only the `scrapbot_native` registration/runtime facade.
 **Why:** Project code should own its native hot paths without depending on engine internals or creating a second ECS. The narrow facade preserves the same scheduler access rules used by Luau and keeps a future static-link build path viable. This follows ADR-019.
 **Tradeoff:** The facade must grow deliberately through typed callbacks and tests. It now supports scalar/string/vector field access plus structural lifecycle commands, but it still does not expose raw storage views, native pointers, or arbitrary engine internals.
 

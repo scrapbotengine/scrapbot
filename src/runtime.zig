@@ -26,40 +26,40 @@ pub const ScheduleError = error{
     CyclicSystemOrder,
 };
 
-const engine_namespace = "machina";
-pub const transform_component_id = "machina.transform";
-pub const cube_renderer_component_id = "machina.render.cube";
-pub const geometry_primitive_component_id = "machina.geometry.primitive";
-pub const surface_material_component_id = "machina.material.surface";
-pub const renderer_component_id = "machina.renderer";
-pub const camera_component_id = "machina.camera";
-pub const directional_light_component_id = "machina.light.directional";
-pub const shadow_caster_component_id = "machina.shadow.caster";
-pub const shadow_receiver_component_id = "machina.shadow.receiver";
-pub const ui_canvas_component_id = "machina.ui.canvas";
-pub const ui_rect_component_id = "machina.ui.rect";
-pub const ui_border_component_id = "machina.ui.border";
-pub const ui_text_component_id = "machina.ui.text";
-pub const ui_button_component_id = "machina.ui.button";
-pub const ui_hit_area_component_id = "machina.ui.hit_area";
-pub const ui_command_component_id = "machina.ui.command";
-pub const ui_command_event_component_id = "machina.ui.command_event";
-pub const ui_command_event_entity_id = "machina.ui.command_event.current";
-pub const ui_scroll_view_component_id = "machina.ui.scroll_view";
-pub const ui_vgroup_component_id = "machina.ui.vgroup";
-pub const ui_hgroup_component_id = "machina.ui.hgroup";
-pub const ui_table_component_id = "machina.ui.table";
-pub const ui_stack_component_id = "machina.ui.stack";
-pub const ui_layout_item_component_id = "machina.ui.layout.item";
-pub const ui_spacer_component_id = "machina.ui.spacer";
-pub const ui_text_block_component_id = "machina.ui.text_block";
-pub const ui_toggle_component_id = "machina.ui.toggle";
-pub const ui_progress_bar_component_id = "machina.ui.progress_bar";
-pub const ui_separator_component_id = "machina.ui.separator";
-pub const input_entity_id = "machina.input.frame";
-pub const input_pointer_component_id = "machina.input.pointer";
-pub const input_keyboard_component_id = "machina.input.keyboard";
-pub const input_frame_component_id = "machina.input.frame";
+const engine_namespace = "scrapbot";
+pub const transform_component_id = "scrapbot.transform";
+pub const cube_renderer_component_id = "scrapbot.render.cube";
+pub const geometry_primitive_component_id = "scrapbot.geometry.primitive";
+pub const surface_material_component_id = "scrapbot.material.surface";
+pub const renderer_component_id = "scrapbot.renderer";
+pub const camera_component_id = "scrapbot.camera";
+pub const directional_light_component_id = "scrapbot.light.directional";
+pub const shadow_caster_component_id = "scrapbot.shadow.caster";
+pub const shadow_receiver_component_id = "scrapbot.shadow.receiver";
+pub const ui_canvas_component_id = "scrapbot.ui.canvas";
+pub const ui_rect_component_id = "scrapbot.ui.rect";
+pub const ui_border_component_id = "scrapbot.ui.border";
+pub const ui_text_component_id = "scrapbot.ui.text";
+pub const ui_button_component_id = "scrapbot.ui.button";
+pub const ui_hit_area_component_id = "scrapbot.ui.hit_area";
+pub const ui_command_component_id = "scrapbot.ui.command";
+pub const ui_command_event_component_id = "scrapbot.ui.command_event";
+pub const ui_command_event_entity_id = "scrapbot.ui.command_event.current";
+pub const ui_scroll_view_component_id = "scrapbot.ui.scroll_view";
+pub const ui_vgroup_component_id = "scrapbot.ui.vgroup";
+pub const ui_hgroup_component_id = "scrapbot.ui.hgroup";
+pub const ui_table_component_id = "scrapbot.ui.table";
+pub const ui_stack_component_id = "scrapbot.ui.stack";
+pub const ui_layout_item_component_id = "scrapbot.ui.layout.item";
+pub const ui_spacer_component_id = "scrapbot.ui.spacer";
+pub const ui_text_block_component_id = "scrapbot.ui.text_block";
+pub const ui_toggle_component_id = "scrapbot.ui.toggle";
+pub const ui_progress_bar_component_id = "scrapbot.ui.progress_bar";
+pub const ui_separator_component_id = "scrapbot.ui.separator";
+pub const input_entity_id = "scrapbot.input.frame";
+pub const input_pointer_component_id = "scrapbot.input.pointer";
+pub const input_keyboard_component_id = "scrapbot.input.keyboard";
+pub const input_frame_component_id = "scrapbot.input.frame";
 pub const spin_component_id = "spin";
 
 pub const FieldType = enum {
@@ -3403,14 +3403,14 @@ test "type ids distinguish project-local, package, and engine namespaces" {
     try validateProjectTypeId("com.acme.stamina");
     try validateProjectTypeId("game.stamina");
     try validatePackageTypeId("com.acme.stamina");
-    try validateEngineTypeId("machina.transform");
+    try validateEngineTypeId("scrapbot.transform");
 
     try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("Com.Acme.Stamina"));
     try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("com.acme-stamina"));
     try std.testing.expectError(TypeIdError.InvalidTypeId, validateProjectTypeId("com..stamina"));
     try std.testing.expectError(TypeIdError.InvalidTypeId, validatePackageTypeId("stamina"));
-    try std.testing.expectError(TypeIdError.ReservedTypeId, validateProjectTypeId("machina.transform"));
-    try std.testing.expectError(TypeIdError.ReservedTypeId, validatePackageTypeId("machina.transform"));
+    try std.testing.expectError(TypeIdError.ReservedTypeId, validateProjectTypeId("scrapbot.transform"));
+    try std.testing.expectError(TypeIdError.ReservedTypeId, validatePackageTypeId("scrapbot.transform"));
     try std.testing.expectError(TypeIdError.ReservedTypeId, validateEngineTypeId("stamina"));
     try std.testing.expectError(TypeIdError.ReservedTypeId, validateEngineTypeId("com.acme.stamina"));
 }
@@ -3479,12 +3479,12 @@ test "component registry separates project, package, and engine registrations" {
         .version = 1,
     });
     try std.testing.expectError(RegistryError.ReservedTypeId, registry.registerProjectComponent(.{
-        .id = "machina.transform",
+        .id = "scrapbot.transform",
         .version = 1,
     }));
 
     try registry.registerEngineComponent(.{
-        .id = "machina.transform",
+        .id = "scrapbot.transform",
         .version = 1,
     });
     try std.testing.expectEqual(@as(usize, 3), registry.componentCount());
@@ -3611,9 +3611,9 @@ test "system registry validates component access and reload-compatible definitio
 
     try registry.registerProjectComponent(.{ .id = "stamina", .version = 1 });
     try registry.registerPackageComponent(.{ .id = "com.acme.mana", .version = 1 });
-    try registry.registerEngineComponent(.{ .id = "machina.transform", .version = 1 });
+    try registry.registerEngineComponent(.{ .id = "scrapbot.transform", .version = 1 });
 
-    const reads = [_][]const u8{ "machina.transform", "stamina" };
+    const reads = [_][]const u8{ "scrapbot.transform", "stamina" };
     const writes = [_][]const u8{"stamina"};
     const after = [_][]const u8{"input"};
     try registry.registerProjectSystem(.{
@@ -3651,7 +3651,7 @@ test "system registry validates component access and reload-compatible definitio
         .writes = &writes,
     }));
     try std.testing.expectError(RegistryError.ReservedTypeId, registry.registerProjectSystem(.{
-        .id = "machina.script_system",
+        .id = "scrapbot.script_system",
     }));
 }
 

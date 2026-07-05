@@ -1,5 +1,5 @@
 ---
-name: machina-feature-development
+name: scrapbot-feature-development
 description: Use when adding new features, or changing existing features, in this codebase. Includes important workflow information for feature development.
 ---
 

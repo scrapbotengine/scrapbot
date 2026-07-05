@@ -1,8 +1,8 @@
 --!strict
 
-local CommandEvent = ecs.component<<MachinaUiCommandEvent>>("machina.ui.command_event")
-local UiText = ecs.component<<MachinaUiText>>("machina.ui.text")
-local UiProgressBar = ecs.component<<MachinaUiProgressBar>>("machina.ui.progress_bar")
+local CommandEvent = ecs.component<<ScrapbotUiCommandEvent>>("scrapbot.ui.command_event")
+local UiText = ecs.component<<ScrapbotUiText>>("scrapbot.ui.text")
+local UiProgressBar = ecs.component<<ScrapbotUiProgressBar>>("scrapbot.ui.progress_bar")
 
 local StatusLabel = ecs.component("status_label", {
   fields = ecs.fields({}),

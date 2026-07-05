@@ -1,21 +1,21 @@
 ---
 title: Rendering Overview
-description: How Machina turns ECS scene data into WebGPU rendering.
+description: How Scrapbot turns ECS scene data into WebGPU rendering.
 ---
 
-Machina renders through `wgpu-native` behind an engine-owned renderer boundary.
+Scrapbot renders through `wgpu-native` behind an engine-owned renderer boundary.
 
 The public scene authoring model is ECS data:
 
-- `machina.transform`
-- `machina.geometry.primitive`
-- `machina.material.surface`
-- `machina.renderer`
-- `machina.camera`
-- `machina.light.directional`
-- `machina.shadow.caster`
-- `machina.shadow.receiver`
-- UI components such as `machina.ui.rect` and `machina.ui.text`
+- `scrapbot.transform`
+- `scrapbot.geometry.primitive`
+- `scrapbot.material.surface`
+- `scrapbot.renderer`
+- `scrapbot.camera`
+- `scrapbot.light.directional`
+- `scrapbot.shadow.caster`
+- `scrapbot.shadow.receiver`
+- UI components such as `scrapbot.ui.rect` and `scrapbot.ui.text`
 
 ## Render Flow
 
@@ -35,14 +35,14 @@ The editor/debug overlay includes render-system timings from this internal rende
 
 ## Renderer Settings
 
-Scenes can include one `machina.renderer` component to configure the game-view render pipeline:
+Scenes can include one `scrapbot.renderer` component to configure the game-view render pipeline:
 
 ```toml
 [[entities]]
-id = "machina.renderer"
+id = "scrapbot.renderer"
 name = "Renderer"
 
-[entities.components."machina.renderer"]
+[entities.components."scrapbot.renderer"]
 hdr = true
 tone_mapping = "aces"
 exposure = 0.0
@@ -59,7 +59,7 @@ chromatic_aberration_enabled = true
 chromatic_aberration_strength = 0.0025
 ```
 
-Only one renderer component may appear in a scene. `machina init` writes this singleton into the generated default scene.
+Only one renderer component may appear in a scene. `scrapbot init` writes this singleton into the generated default scene.
 
 Supported color settings:
 
@@ -74,43 +74,43 @@ Supported postprocess settings:
 - `vignette_enabled`, `vignette_strength`, `vignette_radius`.
 - `chromatic_aberration_enabled`, `chromatic_aberration_strength`.
 
-Scripts can query and write `machina.renderer` like any other component, so gameplay systems can animate exposure or effect strengths. HDR texture format is selected when the render target is created; changing `hdr` at runtime needs renderer recreation or scene reload in the current slice.
+Scripts can query and write `scrapbot.renderer` like any other component, so gameplay systems can animate exposure or effect strengths. HDR texture format is selected when the render target is created; changing `hdr` at runtime needs renderer recreation or scene reload in the current slice.
 
 ## Headful and Offscreen
 
 Headful runs create a platform window and present to a surface:
 
 ```sh
-machina run examples/showcase --editor
+scrapbot run examples/showcase --editor
 ```
 
 For bounded surface smoke tests that should not show a normal visible window, pair `--hidden` with a frame limit:
 
 ```sh
-machina run examples/showcase --hidden --frames 2
+scrapbot run examples/showcase --hidden --frames 2
 ```
 
 Offscreen rendering writes PNG artifacts:
 
 ```sh
-machina render examples/showcase zig-out/showcase.png
-machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
-machina render --editor --width 2560 --height 1800 --pixel-scale 2 examples/minimal zig-out/editor-hidpi.png
+scrapbot render examples/showcase zig-out/showcase.png
+scrapbot render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
+scrapbot render --editor --width 2560 --height 1800 --pixel-scale 2 examples/minimal zig-out/editor-hidpi.png
 ```
 
 Offscreen verification checks for visible rendered content:
 
 ```sh
-machina render-test examples/showcase zig-out/showcase-render-test.png
+scrapbot render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Use offscreen verification before relying on visible-window inspection for renderer or editor-layout changes. `--editor` includes engine chrome in the offscreen frame, `--select` preselects an entity for inspector verification, and `--pixel-scale` makes HiDPI physical/logical pixel assumptions explicit in generated artifacts.
 
 ## Camera and Lighting
 
-If a scene provides a camera entity with `machina.transform` and `machina.camera`, the renderer uses it.
+If a scene provides a camera entity with `scrapbot.transform` and `scrapbot.camera`, the renderer uses it.
 
-If a scene provides a directional light with `machina.light.directional`, the renderer uses it.
+If a scene provides a directional light with `scrapbot.light.directional`, the renderer uses it.
 
 Fallback camera and light defaults exist so simple scenes can render before they author explicit camera/light data.
 

@@ -6,11 +6,11 @@
 
 Resolved query plans made `Query:iter(world)` cheaper, but high-cardinality Luau systems still paid a host call for every component field read and write. The `spawn_swarm` example made this visible: hundreds of animated entities spent most update time crossing the Luau/native bridge even though the data being touched was simple `f32` and `vec3` columns.
 
-Machina needs a scalable Luau hot-loop path that still uses the shared ECS runtime, scheduler access validation, and safe resolved-row checks. We do not want script systems to receive native pointers or own component storage directly.
+Scrapbot needs a scalable Luau hot-loop path that still uses the shared ECS runtime, scheduler access validation, and safe resolved-row checks. We do not want script systems to receive native pointers or own component storage directly.
 
 ## Decision
 
-Machina will expose explicit buffer-backed query views through typed query objects:
+Scrapbot will expose explicit buffer-backed query views through typed query objects:
 
 - `Query:view(world)` captures the current matched entity set and resolved component rows for the active system invocation.
 - `view:count()` returns the captured entity count.

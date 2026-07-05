@@ -128,7 +128,7 @@ pub fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureForm
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -212,7 +212,7 @@ pub fn createShadowPipeline(device: *wgpu.Device, pipeline_layout: *wgpu.Pipelin
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina shadow pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot shadow pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -272,7 +272,7 @@ pub fn createUiPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina UI pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot UI pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,

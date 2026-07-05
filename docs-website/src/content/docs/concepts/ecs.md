@@ -1,9 +1,9 @@
 ---
 title: ECS Runtime
-description: How Machina stores components, schedules systems, and keeps scripting and rendering on one runtime model.
+description: How Scrapbot stores components, schedules systems, and keeps scripting and rendering on one runtime model.
 ---
 
-Machina's runtime is built around entities, components, and systems.
+Scrapbot's runtime is built around entities, components, and systems.
 
 - Entities are stable handles with index and generation.
 - Entities track whether they came from authored scene data or were spawned at runtime.
@@ -67,7 +67,7 @@ Systems must declare component access before they run.
 - Manual reads can be added with `reads = ecs.refs(...)`.
 - Ordering uses `before = { ... }` and `after = { ... }`.
 
-Machina uses those declarations for:
+Scrapbot uses those declarations for:
 
 - Schedule construction.
 - Conflict detection.

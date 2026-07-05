@@ -40,7 +40,7 @@ pub const DepthTarget = struct {
         self.deinit();
 
         const texture = device.createTexture(&wgpu.TextureDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh depth texture"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh depth texture"),
             .size = .{
                 .width = width,
                 .height = height,
@@ -52,7 +52,7 @@ pub const DepthTarget = struct {
         errdefer texture.release();
 
         const view = texture.createView(&wgpu.TextureViewDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh depth view"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh depth view"),
             .mip_level_count = 1,
             .array_layer_count = 1,
         }) orelse return RenderError.NoDevice;
@@ -80,7 +80,7 @@ pub const ShadowTarget = struct {
 
     pub fn create(device: *wgpu.Device) RenderError!ShadowTarget {
         const texture = device.createTexture(&wgpu.TextureDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow map texture"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow map texture"),
             .size = .{
                 .width = shadow_map_size,
                 .height = shadow_map_size,
@@ -92,7 +92,7 @@ pub const ShadowTarget = struct {
         errdefer texture.release();
 
         const view = texture.createView(&wgpu.TextureViewDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow map view"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow map view"),
             .mip_level_count = 1,
             .array_layer_count = 1,
             .aspect = .depth_only,

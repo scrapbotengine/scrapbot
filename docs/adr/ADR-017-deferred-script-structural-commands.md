@@ -6,7 +6,7 @@
 
 Script systems can spawn entities, add/remove components, and despawn entities. Immediate structural mutation during a system makes query membership change while the system is still executing, which complicates scheduler safety, future parallel execution, and rollback after script errors.
 
-Machina needs script mutation semantics that keep scheduled systems as the authority for structural changes while still allowing ergonomic startup/gameplay code.
+Scrapbot needs script mutation semantics that keep scheduled systems as the authority for structural changes while still allowing ergonomic startup/gameplay code.
 
 ## Decision
 
@@ -26,6 +26,6 @@ Script systems no longer observe their own component add/remove/despawn commands
 
 Failed systems no longer leave behind entities they spawned before throwing, and queued component mutations do not partially apply before a script runtime error.
 
-Flush-time host failures are still fail-fast diagnostics, not full world transactions. If a future command flush can fail after applying earlier commands, Machina should either make those failures impossible through preflight validation or add a world transaction/snapshot layer before promising all-or-nothing flush rollback.
+Flush-time host failures are still fail-fast diagnostics, not full world transactions. If a future command flush can fail after applying earlier commands, Scrapbot should either make those failures impossible through preflight validation or add a world transaction/snapshot layer before promising all-or-nothing flush rollback.
 
 The immediate-spawn plus queued-component model is a pragmatic bridge. A fuller command buffer can eventually represent spawn as a pure queued operation with temporary script handles, and can choose stricter batch/phase flush boundaries once scheduler parallelism needs it.

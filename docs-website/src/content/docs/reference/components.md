@@ -1,45 +1,45 @@
 ---
 title: Engine Components
-description: Built-in Machina component ids, fields, defaults, and authoring rules.
+description: Built-in Scrapbot component ids, fields, defaults, and authoring rules.
 ---
 
-Machina registers these engine component types before project scripts and native modules are validated. Scene files can author most `machina.*` components directly under `entities.components`; runtime-only components are documented here so scripts and tools can read their field names and types consistently.
+Scrapbot registers these engine component types before project scripts and native modules are validated. Scene files can author most `scrapbot.*` components directly under `entities.components`; runtime-only components are documented here so scripts and tools can read their field names and types consistently.
 
 Most component fields are required in scene TOML. The exceptions are listed in the **Scene default** column below. If a component field has no scene default, omitting it makes the scene invalid.
 
 ## Authoring Rules
 
-- Engine-owned component ids use the `machina.*` namespace.
+- Engine-owned component ids use the `scrapbot.*` namespace.
 - Single lowercase ASCII ids such as `spin` are project-local.
-- Qualified dotted ids outside `machina.*` are reserved for packages or libraries.
-- Runtime-only components such as `machina.input.*` and `machina.ui.command_event` are written by the engine during execution; do not author them in scene files.
-- `machina.renderer` is a scene singleton. A scene with more than one renderer component is invalid.
-- New scene renderables should use `machina.geometry.primitive` plus `machina.material.surface`; `machina.render.cube` is a legacy shortcut.
+- Qualified dotted ids outside `scrapbot.*` are reserved for packages or libraries.
+- Runtime-only components such as `scrapbot.input.*` and `scrapbot.ui.command_event` are written by the engine during execution; do not author them in scene files.
+- `scrapbot.renderer` is a scene singleton. A scene with more than one renderer component is invalid.
+- New scene renderables should use `scrapbot.geometry.primitive` plus `scrapbot.material.surface`; `scrapbot.render.cube` is a legacy shortcut.
 
 ## Rendering
 
-Renderable 3D entities usually combine `machina.transform`, `machina.geometry.primitive`, and `machina.material.surface`.
+Renderable 3D entities usually combine `scrapbot.transform`, `scrapbot.geometry.primitive`, and `scrapbot.material.surface`.
 
 ```toml
 [[entities]]
 id = "blue-box"
 name = "Blue Box"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "box"
 segments = 0
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.0, 0.56, 1.0]
 ```
 
-### `machina.transform`
+### `scrapbot.transform`
 
 Spatial transform used by rendering and gameplay systems.
 
@@ -49,7 +49,7 @@ Spatial transform used by rendering and gameplay systems.
 | `rotation` | `vec3` | Required | Euler rotation data used by current render paths. |
 | `scale` | `vec3` | Required | Per-axis scale. |
 
-### `machina.geometry.primitive`
+### `scrapbot.geometry.primitive`
 
 Selects a built-in generated mesh.
 
@@ -61,7 +61,7 @@ Selects a built-in generated mesh.
 
 Prefer canonical names in new scenes: `box`, `plane`, `uv_sphere`, and `ico_sphere`.
 
-### `machina.material.surface`
+### `scrapbot.material.surface`
 
 Surface material data for primitive geometry.
 
@@ -69,7 +69,7 @@ Surface material data for primitive geometry.
 | --- | --- | --- | --- |
 | `base_color` | `vec3` | Required | RGB values. Existing examples use `0.0` to `1.0` color components. |
 
-### `machina.render.cube`
+### `scrapbot.render.cube`
 
 Legacy cube renderer shortcut.
 
@@ -77,11 +77,11 @@ Legacy cube renderer shortcut.
 | --- | --- | --- | --- |
 | `color` | `vec3` | Required | RGB color for the legacy cube path. |
 
-Use `machina.geometry.primitive` plus `machina.material.surface` in new scene data.
+Use `scrapbot.geometry.primitive` plus `scrapbot.material.surface` in new scene data.
 
-### `machina.camera`
+### `scrapbot.camera`
 
-Camera projection data. Pair with `machina.transform` on the same entity.
+Camera projection data. Pair with `scrapbot.transform` on the same entity.
 
 | Field | Type | Scene default | Notes |
 | --- | --- | --- | --- |
@@ -91,7 +91,7 @@ Camera projection data. Pair with `machina.transform` on the same entity.
 
 If no camera entity is present, the renderer uses a fallback camera.
 
-### `machina.light.directional`
+### `scrapbot.light.directional`
 
 Scene-driven directional light data.
 
@@ -104,24 +104,24 @@ Scene-driven directional light data.
 
 If no directional light is present, the renderer uses a fallback light.
 
-### `machina.shadow.caster`
+### `scrapbot.shadow.caster`
 
 Marker component. Entities with this component cast shadows.
 
-### `machina.shadow.receiver`
+### `scrapbot.shadow.receiver`
 
 Marker component. Entities with this component receive shadows.
 
 ## Renderer Settings
 
-`machina.renderer` configures the game-view render pipeline. A scene can author at most one renderer component.
+`scrapbot.renderer` configures the game-view render pipeline. A scene can author at most one renderer component.
 
 ```toml
 [[entities]]
-id = "machina.renderer"
+id = "scrapbot.renderer"
 name = "Renderer"
 
-[entities.components."machina.renderer"]
+[entities.components."scrapbot.renderer"]
 hdr = true
 tone_mapping = "aces"
 exposure = 0.0
@@ -166,24 +166,24 @@ Scene-authored UI is retained ECS data. Rendering, clipping, command routing, ho
 id = "panel"
 name = "Panel"
 
-[entities.components."machina.ui.canvas"]
+[entities.components."scrapbot.ui.canvas"]
 design_size = [640.0, 480.0, 0.0]
 scale_mode = "fit"
 
-[entities.components."machina.ui.rect"]
+[entities.components."scrapbot.ui.rect"]
 position = [16.0, 16.0, 0.0]
 size = [240.0, 96.0, 0.0]
 color = [0.059, 0.09, 0.165]
 corner_radius = 6.0
 
-[entities.components."machina.ui.border"]
+[entities.components."scrapbot.ui.border"]
 color = [0.148, 0.2, 0.282]
 thickness = 1.0
 ```
 
 UI positions and sizes are screen-space values with a top-left origin. `vec3` fields use the first two components for 2D layout in current UI primitives.
 
-### `machina.ui.canvas`
+### `scrapbot.ui.canvas`
 
 Canvas root for scene UI scaling.
 
@@ -194,7 +194,7 @@ Canvas root for scene UI scaling.
 
 `fit` scales and centers the design size inside the target viewport. `fill` scales enough to cover it. The target is the full window in normal runs and the editor game viewport while editor chrome is visible.
 
-### `machina.ui.rect`
+### `scrapbot.ui.rect`
 
 Screen-space rectangle.
 
@@ -205,16 +205,16 @@ Screen-space rectangle.
 | `color` | `vec3` | Required | RGB fill color. |
 | `corner_radius` | `float` | `0.0` | Uniform rounded-corner radius in pixels. |
 
-### `machina.ui.border`
+### `scrapbot.ui.border`
 
-Uniform border for a `machina.ui.rect` on the same entity.
+Uniform border for a `scrapbot.ui.rect` on the same entity.
 
 | Field | Type | Scene default | Notes |
 | --- | --- | --- | --- |
 | `color` | `vec3` | Required | RGB border color. |
 | `thickness` | `float` | Required | Border thickness in pixels. |
 
-### `machina.ui.text`
+### `scrapbot.ui.text`
 
 Screen-space bitmap text.
 
@@ -225,11 +225,11 @@ Screen-space bitmap text.
 | `color` | `vec3` | Required | RGB text color. |
 | `value` | `string` | Required | Text content. |
 
-### `machina.ui.button`
+### `scrapbot.ui.button`
 
-Marker component. Adds button interaction state to a UI entity. A command button normally combines `machina.ui.rect`, `machina.ui.button`, and `machina.ui.command`.
+Marker component. Adds button interaction state to a UI entity. A command button normally combines `scrapbot.ui.rect`, `scrapbot.ui.button`, and `scrapbot.ui.command`.
 
-### `machina.ui.hit_area`
+### `scrapbot.ui.hit_area`
 
 Optional non-rendering interaction rectangle.
 
@@ -240,7 +240,7 @@ Optional non-rendering interaction rectangle.
 
 When present on a button entity, the hit area is preferred over the visual rect for command routing.
 
-### `machina.ui.command`
+### `scrapbot.ui.command`
 
 Command id emitted by a command button.
 
@@ -250,7 +250,7 @@ Command id emitted by a command button.
 
 Command ids are plain strings. Use stable, descriptive ids such as `menu.open` or `inventory.toggle`.
 
-### `machina.ui.command_event`
+### `scrapbot.ui.command_event`
 
 Runtime-only transient command event. Do not author this component in scene files.
 
@@ -261,7 +261,7 @@ Runtime-only transient command event. Do not author this component in scene file
 
 The engine emits command events into the live project world before update systems run.
 
-### `machina.ui.scroll_view`
+### `scrapbot.ui.scroll_view`
 
 Clipped scroll viewport.
 
@@ -273,7 +273,7 @@ Clipped scroll viewport.
 
 Descendant layout items are offset by `content_offset` and clipped to the viewport. Mouse wheel input updates scene-authored scroll views under the pointer in headful runs.
 
-### `machina.ui.vgroup`
+### `scrapbot.ui.vgroup`
 
 Vertical group with proportional grow-height distribution.
 
@@ -284,9 +284,9 @@ Vertical group with proportional grow-height distribution.
 | `spacing` | `float` | Required | Pixels between ordered direct children. |
 | `padding` | `vec3` | Required | Symmetric padding used by current layout. |
 
-Children with positive `machina.ui.layout.item.grow` receive proportional extra height after fixed heights, minimum sizes, padding, and spacing are accounted for. `align = fill` fills the available width.
+Children with positive `scrapbot.ui.layout.item.grow` receive proportional extra height after fixed heights, minimum sizes, padding, and spacing are accounted for. `align = fill` fills the available width.
 
-### `machina.ui.hgroup`
+### `scrapbot.ui.hgroup`
 
 Horizontal group with proportional grow-width distribution.
 
@@ -297,9 +297,9 @@ Horizontal group with proportional grow-width distribution.
 | `spacing` | `float` | Required | Pixels between ordered direct children. |
 | `padding` | `vec3` | Required | Symmetric padding used by current layout. |
 
-Children with positive `machina.ui.layout.item.grow` receive proportional extra width after fixed widths, minimum sizes, padding, and spacing are accounted for. `align = fill` fills the available height.
+Children with positive `scrapbot.ui.layout.item.grow` receive proportional extra width after fixed widths, minimum sizes, padding, and spacing are accounted for. `align = fill` fills the available height.
 
-### `machina.ui.stack`
+### `scrapbot.ui.stack`
 
 Direction-aware stack container.
 
@@ -312,7 +312,7 @@ Direction-aware stack container.
 
 `vertical` and `column` stack top to bottom. `horizontal` and `row` stack left to right.
 
-### `machina.ui.layout.item`
+### `scrapbot.ui.layout.item`
 
 Attaches an entity to a retained layout parent by stable scene entity id.
 
@@ -323,14 +323,14 @@ Attaches an entity to a retained layout parent by stable scene entity id.
 | `min_size` | `vec3` | `[0.0, 0.0, 0.0]` | Minimum layout size. |
 | `preferred_size` | `vec3` | `[0.0, 0.0, 0.0]` | Preferred layout size when non-zero. |
 | `max_size` | `vec3` | `[0.0, 0.0, 0.0]` | Maximum layout size when non-zero. |
-| `grow` | `float` | `0.0` | Grow ratio for `machina.ui.hgroup` and `machina.ui.vgroup` children. |
-| `shrink` | `float` | `0.0` | Shrink ratio for `machina.ui.hgroup` and `machina.ui.vgroup` children. |
+| `grow` | `float` | `0.0` | Grow ratio for `scrapbot.ui.hgroup` and `scrapbot.ui.vgroup` children. |
+| `shrink` | `float` | `0.0` | Shrink ratio for `scrapbot.ui.hgroup` and `scrapbot.ui.vgroup` children. |
 | `align` | `string` | `"start"` | `start`, `center`, `end`, or `fill`. |
 | `margin` | `vec3` | `[0.0, 0.0, 0.0]` | Symmetric margin used by current layout. |
 
-Children can target layout containers such as `machina.ui.vgroup`, `machina.ui.hgroup`, `machina.ui.stack`, and `machina.ui.scroll_view`. They can also target non-container UI rects, text, or separators to inherit that parent's resolved position. This is the preferred pattern for button labels and compact composite controls.
+Children can target layout containers such as `scrapbot.ui.vgroup`, `scrapbot.ui.hgroup`, `scrapbot.ui.stack`, and `scrapbot.ui.scroll_view`. They can also target non-container UI rects, text, or separators to inherit that parent's resolved position. This is the preferred pattern for button labels and compact composite controls.
 
-### `machina.ui.spacer`
+### `scrapbot.ui.spacer`
 
 Non-rendering layout item.
 
@@ -338,9 +338,9 @@ Non-rendering layout item.
 | --- | --- | --- | --- |
 | `size` | `vec3` | Required | Spacer width and height. |
 
-### `machina.ui.text_block`
+### `scrapbot.ui.text_block`
 
-Content box and alignment metadata for a `machina.ui.text` entity.
+Content box and alignment metadata for a `scrapbot.ui.text` entity.
 
 | Field | Type | Scene default | Notes |
 | --- | --- | --- | --- |
@@ -348,9 +348,9 @@ Content box and alignment metadata for a `machina.ui.text` entity.
 | `horizontal_align` | `string` | Required | `start`, `center`, or `end`. |
 | `vertical_align` | `string` | Required | `start`, `center`, or `end`. |
 
-Use `machina.ui.text_block` when a label should be centered or end-aligned inside a button or panel region.
+Use `scrapbot.ui.text_block` when a label should be centered or end-aligned inside a button or panel region.
 
-### `machina.ui.toggle`
+### `scrapbot.ui.toggle`
 
 Checked state for toggle-like controls.
 
@@ -360,7 +360,7 @@ Checked state for toggle-like controls.
 
 This component does not toggle itself automatically. Scripts or editor systems own mutation for now.
 
-### `machina.ui.progress_bar`
+### `scrapbot.ui.progress_bar`
 
 Progress fill rendered inside the entity's rect.
 
@@ -370,9 +370,9 @@ Progress fill rendered inside the entity's rect.
 | `max` | `float` | Required | Maximum value. |
 | `fill_color` | `vec3` | Required | RGB fill color. |
 
-Pair with `machina.ui.rect` for the progress bar track.
+Pair with `scrapbot.ui.rect` for the progress bar track.
 
-### `machina.ui.separator`
+### `scrapbot.ui.separator`
 
 Thin semantic divider.
 
@@ -386,7 +386,7 @@ Thin semantic divider.
 
 The platform input layer writes these ECS resources every frame. They are runtime-only and should not be authored in scene files.
 
-### `machina.input.pointer`
+### `scrapbot.input.pointer`
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -401,7 +401,7 @@ The platform input layer writes these ECS resources every frame. They are runtim
 | `secondary_released` | `boolean` | Secondary pointer button released this frame. |
 | `wheel_delta` | `vec3` | Mouse-wheel delta for scroll routing. |
 
-### `machina.input.keyboard`
+### `scrapbot.input.keyboard`
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -417,7 +417,7 @@ The platform input layer writes these ECS resources every frame. They are runtim
 | `move_down` | `boolean` | Down movement action is active. |
 | `editor_toggle_pressed` | `boolean` | Editor visibility toggle was pressed this frame. |
 
-### `machina.input.frame`
+### `scrapbot.input.frame`
 
 | Field | Type | Notes |
 | --- | --- | --- |

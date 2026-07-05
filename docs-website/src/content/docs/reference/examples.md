@@ -1,6 +1,6 @@
 ---
 title: Example Projects
-description: A map of the example projects and test fixtures included with Machina.
+description: A map of the example projects and test fixtures included with Scrapbot.
 ---
 
 ## Examples
@@ -18,24 +18,24 @@ description: A map of the example projects and test fixtures included with Machi
 Showcase:
 
 ```sh
-machina check examples/showcase
-machina step examples/showcase --frames 8 --dt 0.05
-machina run examples/showcase --frames 240
-machina render-test examples/showcase zig-out/showcase-render-test.png
+scrapbot check examples/showcase
+scrapbot step examples/showcase --frames 8 --dt 0.05
+scrapbot run examples/showcase --frames 240
+scrapbot render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Spawn Swarm:
 
 ```sh
-machina bench examples/spawn_swarm --frames 240
-machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
+scrapbot bench examples/spawn_swarm --frames 240
+scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
 ```
 
 Native Motion:
 
 ```sh
-machina run examples/native_motion
-machina render-test examples/native_motion zig-out/native-motion-render-test.png
+scrapbot run examples/native_motion
+scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
 ```
 
 ## Test Fixtures
@@ -58,11 +58,11 @@ machina render-test examples/native_motion zig-out/native-motion-render-test.png
 Run all fixtures:
 
 ```sh
-machina test tests/projects
+scrapbot test tests/projects
 ```
 
 `tests/golden/` contains focused offscreen visual fixtures with checked-in PNG baselines. Run them with:
 
 ```sh
-machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
 ```

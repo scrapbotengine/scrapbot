@@ -9,21 +9,21 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 ## Behavior
 
-- `machina check [path]` validates project metadata, project scripts, script-declared ECS types, schedule construction, and the default scene.
-- `machina check [path] --format=json` reports project metadata and the validated schedule batches, including phases, system ids, runner kinds, read/write sets, and before/after ordering declarations.
-- `machina step [path] [--frames N] [--dt seconds]` loads the default scene, runs startup once, runs the update schedule headlessly for the requested frame count, and reports final scene and simulation counts.
-- `machina step [path] --format=json` reports project metadata, final scene summary, simulation summary, schedule batches, and structured runtime diagnostics when a system fails.
-- `machina bench [path] [--frames N] [--dt seconds]` loads a project once, measures startup and repeated update frames without opening a window, and reports elapsed timing data plus headless render-planning statistics.
-- `machina bench [path] --format=json` reports benchmark timing, renderable count, render batch count, and UI primitive counts for scripts, agents, and CI logs.
-- Automated scenario fixtures live under `tests/projects/` and use complete text-authored Machina projects rather than sharing example projects.
-- `machina test [tests-path|project-path]` discovers text-authored test projects, reads each project's `test.machina.toml`, steps the project headlessly, replays optional deterministic input frames, and checks declared ECS field expectations.
-- `machina test --format=json` reports each project case, simulation summary, per-field expected/actual assertion data, diagnostics, and a suite summary.
-- `test.machina.toml` may include `[[input.frame]]` records with one-based frame numbers, pointer position, wheel delta, viewport size, editor visibility, button state, keyboard state, and system profile count hints. These frames run through the same frame input, editor, scene UI scroll, command-event, and script-update routing used by live projects.
-- `machina render-test [path] [output.png] [--frames N] [--width PX] [--height PX] [--pixel-scale S]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies image shape, foreground coverage, visible components, and expected warm/cool color groups for automation. Multi-frame render tests run fixed `1/60` updates and verify the final frame.
-- `machina visual-test [path] [expected.png] [actual.png] [--frames N] [--width PX] [--height PX] [--pixel-scale S]` renders the default scene offscreen, compares the output image against a checked-in golden image with bounded tolerance, reports max channel delta, mean channel delta, and changed-pixel ratio, and returns non-zero when tolerances are exceeded. Multi-frame visual tests run fixed `1/60` updates and compare the final frame.
-- `machina visual-test --update [path] [expected.png]` deliberately refreshes a golden image from the current renderer output. Baseline updates are explicit and reviewable.
+- `scrapbot check [path]` validates project metadata, project scripts, script-declared ECS types, schedule construction, and the default scene.
+- `scrapbot check [path] --format=json` reports project metadata and the validated schedule batches, including phases, system ids, runner kinds, read/write sets, and before/after ordering declarations.
+- `scrapbot step [path] [--frames N] [--dt seconds]` loads the default scene, runs startup once, runs the update schedule headlessly for the requested frame count, and reports final scene and simulation counts.
+- `scrapbot step [path] --format=json` reports project metadata, final scene summary, simulation summary, schedule batches, and structured runtime diagnostics when a system fails.
+- `scrapbot bench [path] [--frames N] [--dt seconds]` loads a project once, measures startup and repeated update frames without opening a window, and reports elapsed timing data plus headless render-planning statistics.
+- `scrapbot bench [path] --format=json` reports benchmark timing, renderable count, render batch count, and UI primitive counts for scripts, agents, and CI logs.
+- Automated scenario fixtures live under `tests/projects/` and use complete text-authored Scrapbot projects rather than sharing example projects.
+- `scrapbot test [tests-path|project-path]` discovers text-authored test projects, reads each project's `test.scrapbot.toml`, steps the project headlessly, replays optional deterministic input frames, and checks declared ECS field expectations.
+- `scrapbot test --format=json` reports each project case, simulation summary, per-field expected/actual assertion data, diagnostics, and a suite summary.
+- `test.scrapbot.toml` may include `[[input.frame]]` records with one-based frame numbers, pointer position, wheel delta, viewport size, editor visibility, button state, keyboard state, and system profile count hints. These frames run through the same frame input, editor, scene UI scroll, command-event, and script-update routing used by live projects.
+- `scrapbot render-test [path] [output.png] [--frames N] [--width PX] [--height PX] [--pixel-scale S]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies image shape, foreground coverage, visible components, and expected warm/cool color groups for automation. Multi-frame render tests run fixed `1/60` updates and verify the final frame.
+- `scrapbot visual-test [path] [expected.png] [actual.png] [--frames N] [--width PX] [--height PX] [--pixel-scale S]` renders the default scene offscreen, compares the output image against a checked-in golden image with bounded tolerance, reports max channel delta, mean channel delta, and changed-pixel ratio, and returns non-zero when tolerances are exceeded. Multi-frame visual tests run fixed `1/60` updates and compare the final frame.
+- `scrapbot visual-test --update [path] [expected.png]` deliberately refreshes a golden image from the current renderer output. Baseline updates are explicit and reviewable.
 - Golden visual fixture projects live under `tests/golden/`. They are focused renderer fixtures, not user-facing examples.
-- `MACHINA_LEAK_CHECK=1` enables an internal engine heap leak guard for bounded CLI validation commands. It checks Machina-owned Zig allocations and fails the command when command-scoped allocations leak.
+- `SCRAPBOT_LEAK_CHECK=1` enables an internal engine heap leak guard for bounded CLI validation commands. It checks Scrapbot-owned Zig allocations and fails the command when command-scoped allocations leak.
 - Future headless test commands can exercise scene and script live reload deterministically.
 - Users can run project validation without initializing graphical presentation.
 - Validation failures produce command-line diagnostics and non-zero process exit codes.
@@ -58,7 +58,7 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 ### 5. Add deterministic stepping and manifest assertions before full test scripting
 
-**Decision:** Script and interaction behavior tests use a small `test.machina.toml` manifest with frame count, timestep, optional deterministic input frames, and ECS field equality assertions instead of introducing a full test scripting DSL.
+**Decision:** Script and interaction behavior tests use a small `test.scrapbot.toml` manifest with frame count, timestep, optional deterministic input frames, and ECS field equality assertions instead of introducing a full test scripting DSL.
 **Why:** Agents and CI need a small, reliable way to prove script systems, retained UI routing, and editor/game input ownership mutate ECS state and surface runtime diagnostics. Keeping the replay frames and assertions text-first makes them easy to inspect and patch. This follows ADR-003 and ADR-006.
 **Tradeoff:** The manifest currently supports direct component field equality and frame-level input replay, not arbitrary predicates, setup/teardown hooks, platform event fuzzing, or multi-scene flows.
 

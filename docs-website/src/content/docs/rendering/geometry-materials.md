@@ -5,14 +5,14 @@ description: Author renderable meshes with built-in geometry primitives and surf
 
 The preferred renderable path is:
 
-- `machina.transform`
-- `machina.geometry.primitive`
-- `machina.material.surface`
+- `scrapbot.transform`
+- `scrapbot.geometry.primitive`
+- `scrapbot.material.surface`
 
 ## Transform
 
 ```toml
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
@@ -29,7 +29,7 @@ Fields:
 ## Geometry Primitive
 
 ```toml
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "uv_sphere"
 segments = 32
 rings = 16
@@ -46,7 +46,7 @@ Fields:
 ## Surface Material
 
 ```toml
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.0, 0.56, 1.0]
 ```
 
@@ -61,7 +61,7 @@ Fields:
 Box:
 
 ```toml
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "box"
 segments = 0
 rings = 0
@@ -70,7 +70,7 @@ rings = 0
 Plane:
 
 ```toml
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "plane"
 segments = 0
 rings = 0
@@ -79,7 +79,7 @@ rings = 0
 UV sphere:
 
 ```toml
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "uv_sphere"
 segments = 32
 rings = 16
@@ -88,7 +88,7 @@ rings = 16
 Ico sphere:
 
 ```toml
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "ico_sphere"
 segments = 2
 rings = 0
@@ -96,11 +96,11 @@ rings = 0
 
 ## Legacy Cube Renderer
 
-`machina.render.cube` still exists as a legacy shortcut:
+`scrapbot.render.cube` still exists as a legacy shortcut:
 
 ```toml
-[entities.components."machina.render.cube"]
+[entities.components."scrapbot.render.cube"]
 color = [0.2, 0.8, 1.0]
 ```
 
-New scenes should prefer `machina.geometry.primitive` plus `machina.material.surface`.
+New scenes should prefer `scrapbot.geometry.primitive` plus `scrapbot.material.surface`.

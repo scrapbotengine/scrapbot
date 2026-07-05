@@ -1,11 +1,11 @@
 ---
 title: Live Reload
-description: How Machina reloads project metadata, scenes, scripts, and native modules while preserving last-known-good state.
+description: How Scrapbot reloads project metadata, scenes, scripts, and native modules while preserving last-known-good state.
 ---
 
-Live reload is a core Machina runtime capability.
+Live reload is a core Scrapbot runtime capability.
 
-During `machina run`, Machina tracks:
+During `scrapbot run`, Scrapbot tracks:
 
 - Project metadata.
 - The active scene file.
@@ -42,11 +42,11 @@ Script-only reloads do not replay startup over existing live world state. This a
 
 ## Native Reloads
 
-For project-local native code, Machina:
+For project-local native code, Scrapbot:
 
-1. Rebuilds the dynamic library into `.machina/native/`.
+1. Rebuilds the dynamic library into `.scrapbot/native/`.
 2. Opens the library.
-3. Calls `machina_register`.
+3. Calls `scrapbot_register`.
 4. Rebuilds the ECS registry and schedule.
 5. Validates the current scene against the new registry.
 6. Swaps only if all stages succeed.

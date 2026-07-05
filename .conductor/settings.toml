@@ -9,6 +9,6 @@ command = "mise docs-website"
 icon = "book-open"
 
 [scripts.run.example]
-command = "mise machina run examples/spawn_swarm"
+command = "mise scrapbot run examples/spawn_swarm"
 default = true
 icon = "play"

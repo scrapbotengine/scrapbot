@@ -6,7 +6,7 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	integrations: [
 		starlight({
-			title: 'Machina Engine',
+			title: 'Scrapbot Engine',
 			sidebar: [
 				{
 					label: 'Getting Started',

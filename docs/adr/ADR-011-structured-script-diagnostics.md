@@ -4,13 +4,13 @@
 
 ## Context
 
-Machina executes project Luau scripts during project validation, live reload, and runtime update. Before structured diagnostics, these failures collapsed into generic project errors such as "invalid script" or silent failed update frames. That made the edit-run loop too opaque for humans, editor UI, and coding agents.
+Scrapbot executes project Luau scripts during project validation, live reload, and runtime update. Before structured diagnostics, these failures collapsed into generic project errors such as "invalid script" or silent failed update frames. That made the edit-run loop too opaque for humans, editor UI, and coding agents.
 
 Script failures happen at different boundaries: loading Luau source, registering ECS declarations, building schedules, and running systems. Each boundary needs enough context to identify the failing file and system while still preserving last-known-good runtime state.
 
 ## Decision
 
-Machina will represent script failures as structured diagnostics with a stage, optional source path, optional system id, optional source positions, and message.
+Scrapbot will represent script failures as structured diagnostics with a stage, optional source path, optional system id, optional source positions, and message.
 
 Project validation, live reload, and runtime update paths will preserve this diagnostic data instead of flattening it immediately into generic errors. Command-line output can render the diagnostic as text, while editor and machine-readable surfaces can consume the same structure through JSON output.
 

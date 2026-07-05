@@ -1,13 +1,13 @@
 ---
 title: Quickstart
-description: Build the CLI, run an example project, and verify a scene with Machina's headless tools.
+description: Build the CLI, run an example project, and verify a scene with Scrapbot's headless tools.
 ---
 
-Machina uses `mise` for local tool versions and task shortcuts.
+Scrapbot uses `mise` for local tool versions and task shortcuts.
 
 ## Platform Setup
 
-Machina builds with Zig and uses SDL3 for `machina run`. Install SDL3 before building the headful runner.
+Scrapbot builds with Zig and uses SDL3 for `scrapbot run`. Install SDL3 before building the headful runner.
 
 ### macOS
 
@@ -59,7 +59,7 @@ zig build -Dtarget=x86_64-windows-msvc `
   -Dsdl3_library_path="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib"
 ```
 
-Copy `SDL3.dll` from the vcpkg `bin` directory next to `machina.exe` before running the CLI:
+Copy `SDL3.dll` from the vcpkg `bin` directory next to `scrapbot.exe` before running the CLI:
 
 ```powershell
 Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\SDL3.dll" zig-out\bin\
@@ -73,7 +73,7 @@ From the repository root:
 mise build
 ```
 
-This builds the optimized `machina` CLI into `zig-out/bin/machina`.
+This builds the optimized `scrapbot` CLI into `zig-out/bin/scrapbot`.
 
 For Debug safety checks, use:
 
@@ -83,34 +83,34 @@ mise build-debug
 
 ## Create a Project
 
-Create a project directory and run `machina init` inside it:
+Create a project directory and run `scrapbot init` inside it:
 
 ```sh
 mkdir mygame
 cd mygame
-machina init
+scrapbot init
 ```
 
 The command writes `project.toml`, `scenes/main.scene.toml`, and `assets/.gitkeep`. The generated scene is script-free and contains a renderer singleton, cube, camera, and directional light, so it can be validated immediately:
 
 ```sh
-machina check
+scrapbot check
 ```
 
-`machina init` does not overwrite an existing project. If the target directory already contains `project.toml` or legacy `project.machina.toml`, the command fails.
+`scrapbot init` does not overwrite an existing project. If the target directory already contains `project.toml` or legacy `project.scrapbot.toml`, the command fails.
 
 ## Run a Project
 
 Run the showcase example in a headful window:
 
 ```sh
-machina run examples/showcase
+scrapbot run examples/showcase
 ```
 
 Show the editor/debug overlay on startup:
 
 ```sh
-machina run examples/showcase --editor
+scrapbot run examples/showcase --editor
 ```
 
 In a headful run, press `Ctrl+Tab` to toggle the overlay. The overlay shows FPS plus rolling system timings for project systems and engine-internal render systems.
@@ -120,20 +120,20 @@ In a headful run, press `Ctrl+Tab` to toggle the overlay. The overlay shows FPS 
 Check project metadata, scene data, script declarations, native registrations, and schedule construction:
 
 ```sh
-machina check examples/showcase
+scrapbot check examples/showcase
 ```
 
 Step a project headlessly:
 
 ```sh
-machina step examples/showcase --frames 8 --dt 0.05
+scrapbot step examples/showcase --frames 8 --dt 0.05
 ```
 
 JSON output is available for agent and editor workflows:
 
 ```sh
-machina check examples/showcase --format json
-machina step examples/showcase --frames 8 --format json
+scrapbot check examples/showcase --format json
+scrapbot step examples/showcase --frames 8 --format json
 ```
 
 ## Render and Verify
@@ -141,13 +141,13 @@ machina step examples/showcase --frames 8 --format json
 Render one deterministic PNG artifact:
 
 ```sh
-machina render examples/showcase zig-out/showcase.png
+scrapbot render examples/showcase zig-out/showcase.png
 ```
 
 Run an offscreen render verification:
 
 ```sh
-machina render-test examples/showcase zig-out/showcase-render-test.png
+scrapbot render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Render tests check that a frame is nonblank and has expected visible foreground content. They are the preferred automation surface for renderer changes.

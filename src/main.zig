@@ -1,7 +1,7 @@
 const std = @import("std");
 const clap = @import("clap");
 const Io = std.Io;
-const machina = @import("machina");
+const scrapbot = @import("scrapbot");
 
 pub fn main(init: std.process.Init) !void {
     const arena_allocator = init.arena.allocator();
@@ -29,7 +29,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn leakCheckEnabled(init: std.process.Init) bool {
-    const value = init.environ_map.get("MACHINA_LEAK_CHECK") orelse return false;
+    const value = init.environ_map.get("SCRAPBOT_LEAK_CHECK") orelse return false;
     return std.mem.eql(u8, value, "1");
 }
 
@@ -48,7 +48,7 @@ fn runLeakChecked(
     switch (debug_allocator.deinit()) {
         .ok => return exit_code,
         .leak => {
-            try stderr.writeAll("memory leak detected by MACHINA_LEAK_CHECK\n");
+            try stderr.writeAll("memory leak detected by SCRAPBOT_LEAK_CHECK\n");
             return 1;
         },
     }
@@ -67,7 +67,7 @@ fn run(
     };
 
     if (top_level.version) {
-        try stdout.print("machina {s}\n", .{machina.version});
+        try stdout.print("scrapbot {s}\n", .{scrapbot.version});
         return 0;
     }
 
@@ -78,7 +78,7 @@ fn run(
 
     const command = top_level.command.?;
     if (std.mem.eql(u8, command, "version")) {
-        try stdout.print("machina {s}\n", .{machina.version});
+        try stdout.print("scrapbot {s}\n", .{scrapbot.version});
         return 0;
     }
 
@@ -93,11 +93,11 @@ fn run(
             return 1;
         };
         const name = projectNameFromPath(options.target_path);
-        machina.initProject(io, allocator, options.target_path, name) catch |err| {
+        scrapbot.initProject(io, allocator, options.target_path, name) catch |err| {
             try printProjectError(stderr, options.target_path, err);
             return 1;
         };
-        try stdout.print("Initialized Machina project at {s}\n", .{options.target_path});
+        try stdout.print("Initialized Scrapbot project at {s}\n", .{options.target_path});
         return 0;
     }
 
@@ -129,8 +129,8 @@ fn run(
         const target_path = options.target_path;
         var window_options = options.window_options;
         const result = try checkProjectForCommand(io, allocator, target_path, stderr) orelse return 1;
-        defer machina.freeCheckResult(allocator, result);
-        var live_project = machina.LiveProject.init(io, std.heap.smp_allocator, target_path) catch |err| {
+        defer scrapbot.freeCheckResult(allocator, result);
+        var live_project = scrapbot.LiveProject.init(io, std.heap.smp_allocator, target_path) catch |err| {
             try printProjectError(stderr, target_path, err);
             return 1;
         };
@@ -158,7 +158,7 @@ fn run(
             live_project.scripts.schedule.batchCount(),
         });
 
-        machina.runDemoWindow(allocator, result.project.name, window_options, live_project.renderScene()) catch |err| {
+        scrapbot.runDemoWindow(allocator, result.project.name, window_options, live_project.renderScene()) catch |err| {
             try stderr.print("run failed: {s}\n", .{@errorName(err)});
             return 1;
         };
@@ -166,13 +166,13 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "render")) {
-        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-cube.png") catch |err| {
+        const options = parseRenderOptions(allocator, args[2..], "zig-out/scrapbot-cube.png") catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
         const result = try checkProjectForCommand(io, allocator, options.target_path, stderr) orelse return 1;
-        defer machina.freeCheckResult(allocator, result);
-        var live_project = machina.LiveProject.init(io, allocator, options.target_path) catch |err| {
+        defer scrapbot.freeCheckResult(allocator, result);
+        var live_project = scrapbot.LiveProject.init(io, allocator, options.target_path) catch |err| {
             try printProjectError(stderr, options.target_path, err);
             return 1;
         };
@@ -197,7 +197,7 @@ fn run(
             .target_path = options.target_path,
             .selected_entity_id = options.selected_entity_id,
         };
-        machina.renderDemoImageFrames(io, allocator, options.output_path, live_project.renderScene(), .{
+        scrapbot.renderDemoImageFrames(io, allocator, options.output_path, live_project.renderScene(), .{
             .frames = options.frames,
             .width = options.width,
             .height = options.height,
@@ -221,13 +221,13 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "render-test")) {
-        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-render-test.png") catch |err| {
+        const options = parseRenderOptions(allocator, args[2..], "zig-out/scrapbot-render-test.png") catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
         const result = try checkProjectForCommand(io, allocator, options.target_path, stderr) orelse return 1;
-        defer machina.freeCheckResult(allocator, result);
-        var live_project = machina.LiveProject.init(io, allocator, options.target_path) catch |err| {
+        defer scrapbot.freeCheckResult(allocator, result);
+        var live_project = scrapbot.LiveProject.init(io, allocator, options.target_path) catch |err| {
             try printProjectError(stderr, options.target_path, err);
             return 1;
         };
@@ -253,7 +253,7 @@ fn run(
             .target_path = options.target_path,
             .selected_entity_id = options.selected_entity_id,
         };
-        machina.renderDemoImageFrames(io, allocator, options.output_path, live_project.renderScene(), .{
+        scrapbot.renderDemoImageFrames(io, allocator, options.output_path, live_project.renderScene(), .{
             .frames = options.frames,
             .width = options.width,
             .height = options.height,
@@ -271,7 +271,7 @@ fn run(
             return 1;
         }
 
-        const verification = machina.verifyRenderImage(io, allocator, options.output_path, .{
+        const verification = scrapbot.verifyRenderImage(io, allocator, options.output_path, .{
             .min_visible_components = 1,
             .min_color_groups = expectedColorGroups(scene),
         }) catch |err| {
@@ -303,8 +303,8 @@ fn run(
             return 1;
         };
         const result = try checkProjectForCommand(io, allocator, options.render.target_path, stderr) orelse return 1;
-        defer machina.freeCheckResult(allocator, result);
-        var live_project = machina.LiveProject.init(io, allocator, options.render.target_path) catch |err| {
+        defer scrapbot.freeCheckResult(allocator, result);
+        var live_project = scrapbot.LiveProject.init(io, allocator, options.render.target_path) catch |err| {
             try printProjectError(stderr, options.render.target_path, err);
             return 1;
         };
@@ -335,7 +335,7 @@ fn run(
             .target_path = options.render.target_path,
             .selected_entity_id = options.render.selected_entity_id,
         };
-        machina.renderDemoImageFrames(io, allocator, render_output, live_project.renderScene(), .{
+        scrapbot.renderDemoImageFrames(io, allocator, render_output, live_project.renderScene(), .{
             .frames = options.render.frames,
             .width = options.render.width,
             .height = options.render.height,
@@ -359,8 +359,8 @@ fn run(
             return 0;
         }
 
-        const comparison_options = machina.RenderComparisonOptions{};
-        const comparison = machina.compareRenderImage(io, allocator, options.expected_path, options.render.output_path, comparison_options) catch |err| {
+        const comparison_options = scrapbot.RenderComparisonOptions{};
+        const comparison = scrapbot.compareRenderImage(io, allocator, options.expected_path, options.render.output_path, comparison_options) catch |err| {
             try stderr.print("visual-test comparison failed: {s}\n", .{@errorName(err)});
             return 1;
         };
@@ -471,8 +471,8 @@ const RenderCommandOptions = struct {
     target_path: []const u8 = ".",
     output_path: []const u8,
     frames: u32 = 1,
-    width: u32 = machina.default_output_width,
-    height: u32 = machina.default_output_height,
+    width: u32 = scrapbot.default_output_width,
+    height: u32 = scrapbot.default_output_height,
     pixel_scale: f32 = 1.0,
     editor: bool = false,
     selected_entity_id: ?[]const u8 = null,
@@ -486,7 +486,7 @@ const VisualTestCommandOptions = struct {
 
 const RunCommandOptions = struct {
     target_path: []const u8 = ".",
-    window_options: machina.WindowOptions = .{},
+    window_options: scrapbot.WindowOptions = .{},
 };
 
 fn checkCommand(
@@ -501,7 +501,7 @@ fn checkCommand(
         return 1;
     };
 
-    var result = machina.checkProjectDetailed(io, allocator, options.target_path) catch |err| {
+    var result = scrapbot.checkProjectDetailed(io, allocator, options.target_path) catch |err| {
         switch (options.format) {
             .text => try printProjectError(stderr, options.target_path, err),
             .json => try printProjectErrorJson(stdout, options.target_path, err),
@@ -511,7 +511,7 @@ fn checkCommand(
 
     switch (result) {
         .ok => |ok| {
-            defer machina.freeCheckResult(allocator, ok);
+            defer scrapbot.freeCheckResult(allocator, ok);
             switch (options.format) {
                 .text => {
                     try stdout.print("Project OK: {s}\n", .{ok.project.name});
@@ -555,7 +555,7 @@ fn stepCommand(
         return 1;
     };
 
-    const result = machina.stepProjectDetailed(io, allocator, options.target_path, .{
+    const result = scrapbot.stepProjectDetailed(io, allocator, options.target_path, .{
         .frames = options.frames,
         .delta_seconds = options.delta_seconds,
     }) catch |err| {
@@ -565,7 +565,7 @@ fn stepCommand(
         }
         return 1;
     };
-    defer machina.freeStepDetailedResult(allocator, result);
+    defer scrapbot.freeStepDetailedResult(allocator, result);
 
     switch (result) {
         .ok => |ok| {
@@ -607,7 +607,7 @@ fn benchCommand(
         return 1;
     };
 
-    var live_project = machina.LiveProject.init(io, allocator, options.target_path) catch |err| {
+    var live_project = scrapbot.LiveProject.init(io, allocator, options.target_path) catch |err| {
         switch (options.format) {
             .text => try printProjectError(stderr, options.target_path, err),
             .json => try printProjectErrorJson(stdout, options.target_path, err),
@@ -642,7 +642,7 @@ fn benchCommand(
     }
     const update_ns: u64 = @intCast(Io.Clock.awake.now(io).nanoseconds - update_start);
 
-    const render_stats = machina.renderStats(allocator, live_project.renderScene()) catch |err| {
+    const render_stats = scrapbot.renderStats(allocator, live_project.renderScene()) catch |err| {
         switch (options.format) {
             .text => try stderr.print("bench render stats failed: {s}\n", .{@errorName(err)}),
             .json => try printProjectErrorJson(stdout, options.target_path, err),
@@ -701,7 +701,7 @@ fn testCommand(
 
     if (project_paths.len == 0) {
         switch (options.format) {
-            .text => try stderr.print("{s}: no Machina test projects found\n", .{options.target_path}),
+            .text => try stderr.print("{s}: no Scrapbot test projects found\n", .{options.target_path}),
             .json => {
                 try stdout.writeAll("{\"ok\":false,\"error\":\"NoTestProjects\",\"root\":");
                 try writeJsonString(stdout, options.target_path);
@@ -751,7 +751,7 @@ fn buildCommand(
         return 1;
     };
 
-    var check_result = machina.checkProjectDetailed(io, allocator, options.target_path) catch |err| {
+    var check_result = scrapbot.checkProjectDetailed(io, allocator, options.target_path) catch |err| {
         switch (options.format) {
             .text => try printProjectError(stderr, options.target_path, err),
             .json => try printProjectErrorJson(stdout, options.target_path, err),
@@ -759,7 +759,7 @@ fn buildCommand(
         return 1;
     };
     switch (check_result) {
-        .ok => |ok| machina.freeCheckResult(allocator, ok),
+        .ok => |ok| scrapbot.freeCheckResult(allocator, ok),
         .invalid => |*diagnostic| {
             defer diagnostic.deinit(allocator);
             switch (options.format) {
@@ -770,7 +770,7 @@ fn buildCommand(
         },
     }
 
-    var build_result = machina.buildProjectDetailed(io, allocator, options.target_path, .{
+    var build_result = scrapbot.buildProjectDetailed(io, allocator, options.target_path, .{
         .output_root = options.output_root,
         .name = options.name,
         .force = options.force,
@@ -806,8 +806,8 @@ fn checkProjectForCommand(
     allocator: std.mem.Allocator,
     target_path: []const u8,
     stderr: *Io.Writer,
-) !?machina.CheckResult {
-    var result = machina.checkProjectDetailed(io, allocator, target_path) catch |err| {
+) !?scrapbot.CheckResult {
+    var result = scrapbot.checkProjectDetailed(io, allocator, target_path) catch |err| {
         try printProjectError(stderr, target_path, err);
         return null;
     };
@@ -831,21 +831,21 @@ fn sameResolvedPath(allocator: std.mem.Allocator, left: []const u8, right: []con
 
 fn printHelp(writer: *Io.Writer) !void {
     try writer.writeAll(
-        \\machina - agent-native game engine
+        \\scrapbot - agent-native game engine
         \\
         \\Usage:
-        \\  machina --version
-        \\  machina help
-        \\  machina init [path]
-        \\  machina check [path] [--format text|json]
-        \\  machina step [path] [--frames N] [--dt seconds] [--format text|json]
-        \\  machina bench [path] [--frames N] [--dt seconds] [--format text|json]
-        \\  machina test [tests-path|project-path] [--format text|json]
-        \\  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
-        \\  machina run [path] [--frames N] [--editor] [--hidden]
-        \\  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-        \\  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-        \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
+        \\  scrapbot --version
+        \\  scrapbot help
+        \\  scrapbot init [path]
+        \\  scrapbot check [path] [--format text|json]
+        \\  scrapbot step [path] [--frames N] [--dt seconds] [--format text|json]
+        \\  scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
+        \\  scrapbot test [tests-path|project-path] [--format text|json]
+        \\  scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
+        \\  scrapbot run [path] [--frames N] [--editor] [--hidden]
+        \\  scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+        \\  scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+        \\  scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
         \\
     );
 }
@@ -862,20 +862,20 @@ const ArgumentError = error{
 };
 
 const SceneReloadContext = struct {
-    live_project: *machina.LiveProject,
+    live_project: *scrapbot.LiveProject,
     stderr: *Io.Writer,
     target_path: []const u8,
 };
 
 const RenderFrameContext = struct {
-    live_project: *machina.LiveProject,
+    live_project: *scrapbot.LiveProject,
     stderr: *Io.Writer,
     target_path: []const u8,
     selected_entity_id: ?[]const u8,
     failed: bool = false,
 };
 
-fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
+fn pollSceneReload(raw_context: *anyopaque) ?scrapbot.RenderScene {
     const context: *SceneReloadContext = @ptrCast(@alignCast(raw_context));
     const result = context.live_project.pollLoadedSources() catch |err| {
         printProjectError(context.stderr, context.target_path, err) catch {};
@@ -909,7 +909,7 @@ fn pollSceneReload(raw_context: *anyopaque) ?machina.RenderScene {
     }
 }
 
-fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *machina.FrameInput) void {
+fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *scrapbot.FrameInput) void {
     const context: *SceneReloadContext = @ptrCast(@alignCast(raw_context));
     context.live_project.updateWithInput(delta_seconds, input.*);
     input.editor = context.live_project.editorFrameState();
@@ -920,7 +920,7 @@ fn stepLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *machina.
     }
 }
 
-fn stepRenderLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *machina.FrameInput) void {
+fn stepRenderLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *scrapbot.FrameInput) void {
     const context: *RenderFrameContext = @ptrCast(@alignCast(raw_context));
     context.live_project.updateWithInput(delta_seconds, input.*);
     input.editor = renderCommandEditorFrame(context.live_project, context.selected_entity_id);
@@ -932,7 +932,7 @@ fn stepRenderLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *ma
     }
 }
 
-fn renderCommandFrameInput(live_project: *machina.LiveProject, options: RenderCommandOptions) machina.FrameInput {
+fn renderCommandFrameInput(live_project: *scrapbot.LiveProject, options: RenderCommandOptions) scrapbot.FrameInput {
     const editor = renderCommandEditorFrame(live_project, options.selected_entity_id);
     if (!options.editor and editor.selected_entity == null) {
         return .{};
@@ -945,7 +945,7 @@ fn renderCommandFrameInput(live_project: *machina.LiveProject, options: RenderCo
     };
 }
 
-fn renderCommandEditorFrame(live_project: *machina.LiveProject, selected_entity_id: ?[]const u8) machina.EditorFrameState {
+fn renderCommandEditorFrame(live_project: *scrapbot.LiveProject, selected_entity_id: ?[]const u8) scrapbot.EditorFrameState {
     var editor = live_project.editorFrameState();
     editor.selected_entity = if (selected_entity_id) |id| live_project.scene.world.findEntityById(id) else null;
     return editor;
@@ -1003,7 +1003,7 @@ fn parseTopLevel(allocator: std.mem.Allocator, args: []const []const u8) Argumen
     };
 }
 
-fn parseWindowOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!machina.WindowOptions {
+fn parseWindowOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!scrapbot.WindowOptions {
     return (try parseRunOptions(allocator, args)).window_options;
 }
 
@@ -1138,7 +1138,7 @@ fn parseVisualTestOptions(allocator: std.mem.Allocator, args: []const []const u8
     const expected_path = result.positionals[1] orelse return ArgumentError.MissingExpected;
     var render = RenderCommandOptions{
         .target_path = target_path,
-        .output_path = if (result.positionals[2].len == 1) result.positionals[2][0] else "zig-out/machina-visual-test.png",
+        .output_path = if (result.positionals[2].len == 1) result.positionals[2][0] else "zig-out/scrapbot-visual-test.png",
     };
     render.editor = result.args.editor != 0;
     if (result.args.select) |entity_id| {
@@ -1351,7 +1351,7 @@ const ExpectedFieldValue = union(enum) {
         }
     }
 
-    fn matches(self: ExpectedFieldValue, actual: machina.ComponentValue) bool {
+    fn matches(self: ExpectedFieldValue, actual: scrapbot.ComponentValue) bool {
         return switch (self) {
             .boolean => |expected| switch (actual) {
                 .boolean => |found| found == expected,
@@ -1394,7 +1394,7 @@ const TestExpectation = struct {
 const TestManifest = struct {
     frames: u32 = 1,
     delta_seconds: f32 = 1.0 / 60.0,
-    input_frames: []machina.StepInputFrame = &.{},
+    input_frames: []scrapbot.StepInputFrame = &.{},
     expectations: []TestExpectation = &.{},
 
     fn deinit(self: *TestManifest, allocator: std.mem.Allocator) void {
@@ -1441,9 +1441,9 @@ const TestExpectationDraft = struct {
 
 const TestInputFrameDraft = struct {
     frame: ?u32 = null,
-    input: machina.FrameInput = .{},
+    input: scrapbot.FrameInput = .{},
 
-    fn take(self: *TestInputFrameDraft) TestManifestError!machina.StepInputFrame {
+    fn take(self: *TestInputFrameDraft) TestManifestError!scrapbot.StepInputFrame {
         const frame = self.frame orelse return TestManifestError.InvalidTestManifest;
         self.frame = null;
         return .{
@@ -1484,7 +1484,7 @@ const TestSuiteSummary = struct {
 
 const ExpectationEvaluation = struct {
     passed: bool,
-    actual: ?machina.ComponentValue = null,
+    actual: ?scrapbot.ComponentValue = null,
     err: ?anyerror = null,
 };
 
@@ -1537,8 +1537,8 @@ fn childIsTestProject(io: Io, parent_dir: Io.Dir, child_name: []const u8) bool {
 }
 
 fn isTestProject(io: Io, dir: Io.Dir) bool {
-    const has_project_manifest = pathExists(io, dir, machina.project_file_name) or pathExists(io, dir, machina.legacy_project_file_name);
-    return has_project_manifest and pathExists(io, dir, "test.machina.toml");
+    const has_project_manifest = pathExists(io, dir, scrapbot.project_file_name) or pathExists(io, dir, scrapbot.legacy_project_file_name);
+    return has_project_manifest and pathExists(io, dir, "test.scrapbot.toml");
 }
 
 fn pathExists(io: Io, dir: Io.Dir, path: []const u8) bool {
@@ -1566,7 +1566,7 @@ fn loadTestManifest(
     const project_dir = try cwd.openDir(io, project_path, .{});
     defer project_dir.close(io);
 
-    const contents = try project_dir.readFileAlloc(io, "test.machina.toml", allocator, .limited(64 * 1024));
+    const contents = try project_dir.readFileAlloc(io, "test.scrapbot.toml", allocator, .limited(64 * 1024));
     defer allocator.free(contents);
 
     return parseTestManifest(allocator, contents);
@@ -1574,7 +1574,7 @@ fn loadTestManifest(
 
 fn parseTestManifest(allocator: std.mem.Allocator, contents: []const u8) !TestManifest {
     var manifest = TestManifest{};
-    var input_frames: std.ArrayList(machina.StepInputFrame) = .empty;
+    var input_frames: std.ArrayList(scrapbot.StepInputFrame) = .empty;
     var expectations: std.ArrayList(TestExpectation) = .empty;
     errdefer {
         input_frames.deinit(allocator);
@@ -1657,7 +1657,7 @@ fn appendExpectationDraft(
 
 fn appendInputFrameDraft(
     allocator: std.mem.Allocator,
-    input_frames: *std.ArrayList(machina.StepInputFrame),
+    input_frames: *std.ArrayList(scrapbot.StepInputFrame),
     draft: *?TestInputFrameDraft,
 ) !void {
     if (draft.*) |*active| {
@@ -1981,7 +1981,7 @@ fn runTestCase(
     var manifest = loadTestManifest(io, allocator, project_path) catch |err| {
         const stats = TestCaseStats{ .failed = true };
         switch (format) {
-            .text => try stdout.print("FAIL {s}: test.machina.toml {s}\n", .{ name, @errorName(err) }),
+            .text => try stdout.print("FAIL {s}: test.scrapbot.toml {s}\n", .{ name, @errorName(err) }),
             .json => try printTestCaseLoadFailureJson(stdout, name, project_path, "manifest", err),
         }
         return stats;
@@ -1989,7 +1989,7 @@ fn runTestCase(
     defer manifest.deinit(allocator);
 
     var stats = TestCaseStats{ .assertions = @intCast(manifest.expectations.len) };
-    const result = machina.stepProjectDetailed(io, allocator, project_path, .{
+    const result = scrapbot.stepProjectDetailed(io, allocator, project_path, .{
         .frames = manifest.frames,
         .delta_seconds = manifest.delta_seconds,
         .input_frames = manifest.input_frames,
@@ -2001,7 +2001,7 @@ fn runTestCase(
         }
         return stats;
     };
-    defer machina.freeStepDetailedResult(allocator, result);
+    defer scrapbot.freeStepDetailedResult(allocator, result);
 
     switch (result) {
         .ok => |ok| {
@@ -2039,7 +2039,7 @@ fn runTestCase(
 fn evaluateTestCaseOk(
     name: []const u8,
     project_path: []const u8,
-    ok: machina.StepOk,
+    ok: scrapbot.StepOk,
     manifest: TestManifest,
     format: CheckOutputFormat,
     stdout: *Io.Writer,
@@ -2072,7 +2072,7 @@ fn evaluateTestCaseOk(
     }
 }
 
-fn evaluateExpectation(world: machina.World, expectation: TestExpectation) ExpectationEvaluation {
+fn evaluateExpectation(world: scrapbot.World, expectation: TestExpectation) ExpectationEvaluation {
     const entity = world.findEntityById(expectation.entity) orelse return .{
         .passed = false,
         .err = error.UnknownEntity,
@@ -2208,7 +2208,7 @@ fn writeRenderArtifactMetadata(io: Io, allocator: std.mem.Allocator, path: []con
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = metadata_path, .data = metadata });
 }
 
-fn expectedColorGroups(scene: machina.Scene) usize {
+fn expectedColorGroups(scene: scrapbot.Scene) usize {
     var has_warm = false;
     var has_cool = false;
     var meshes = scene.world.renderableMeshes();
@@ -2248,25 +2248,25 @@ fn printProjectError(writer: *Io.Writer, root_path: []const u8, err: anyerror) !
 
 fn projectErrorMessage(err: anyerror) []const u8 {
     return switch (err) {
-        machina.ProjectError.AlreadyExists => "project already exists",
-        machina.ProjectError.InvalidProject => "not a valid Machina project",
-        machina.ProjectError.InvalidBuildOutput => "invalid build output path",
-        machina.ProjectError.MissingProjectFile => "missing project.toml",
-        machina.ProjectError.MissingDefaultScene => "missing default scene",
-        machina.ProjectError.UnsupportedProjectVersion => "unsupported project version",
-        machina.ProjectError.InvalidProjectName => "invalid project name",
-        machina.ProjectError.InvalidDefaultScene => "invalid default scene",
-        machina.ProjectError.InvalidSceneEntity => "invalid scene entity",
-        machina.ProjectError.DuplicateSceneEntityId => "duplicate scene entity id",
-        machina.ProjectError.InvalidSceneNumber => "invalid scene number",
-        machina.ProjectError.MissingSceneContent => "missing scene content",
-        machina.ProjectError.MissingScript => "missing script",
-        machina.ProjectError.InvalidScript => "invalid script",
+        scrapbot.ProjectError.AlreadyExists => "project already exists",
+        scrapbot.ProjectError.InvalidProject => "not a valid Scrapbot project",
+        scrapbot.ProjectError.InvalidBuildOutput => "invalid build output path",
+        scrapbot.ProjectError.MissingProjectFile => "missing project.toml",
+        scrapbot.ProjectError.MissingDefaultScene => "missing default scene",
+        scrapbot.ProjectError.UnsupportedProjectVersion => "unsupported project version",
+        scrapbot.ProjectError.InvalidProjectName => "invalid project name",
+        scrapbot.ProjectError.InvalidDefaultScene => "invalid default scene",
+        scrapbot.ProjectError.InvalidSceneEntity => "invalid scene entity",
+        scrapbot.ProjectError.DuplicateSceneEntityId => "duplicate scene entity id",
+        scrapbot.ProjectError.InvalidSceneNumber => "invalid scene number",
+        scrapbot.ProjectError.MissingSceneContent => "missing scene content",
+        scrapbot.ProjectError.MissingScript => "missing script",
+        scrapbot.ProjectError.InvalidScript => "invalid script",
         else => "unexpected project error",
     };
 }
 
-fn printScriptDiagnostic(writer: *Io.Writer, root_path: []const u8, diagnostic: machina.ScriptDiagnostic) !void {
+fn printScriptDiagnostic(writer: *Io.Writer, root_path: []const u8, diagnostic: scrapbot.ScriptDiagnostic) !void {
     try writer.print("{s}: {s}", .{ root_path, diagnostic.stage.label() });
     if (diagnostic.path) |path| {
         try writer.print(" in {s}", .{path});
@@ -2283,7 +2283,7 @@ fn printScriptDiagnostic(writer: *Io.Writer, root_path: []const u8, diagnostic: 
     try writer.print(": {s}\n", .{diagnostic.message});
 }
 
-fn printStepOkText(writer: *Io.Writer, ok: machina.StepOk) !void {
+fn printStepOkText(writer: *Io.Writer, ok: scrapbot.StepOk) !void {
     try writer.print("Step OK: {s}\n", .{ok.project.name});
     try writer.print("Scene: {s}\n", .{ok.scene.name});
     try writer.print("Frames: {d}/{d}, dt: {d}\n", .{
@@ -2325,7 +2325,7 @@ fn printBenchOkText(writer: *Io.Writer, result: BenchResult) !void {
     });
 }
 
-fn printBuildOkText(writer: *Io.Writer, result: machina.BuildResult) !void {
+fn printBuildOkText(writer: *Io.Writer, result: scrapbot.BuildResult) !void {
     try writer.print("Build OK: {s}\n", .{result.project_name});
     try writer.print("Bundle: {s}\n", .{result.bundle_path});
     try writer.print("Project: {s}\n", .{result.project_path});
@@ -2339,7 +2339,7 @@ fn printBuildOkText(writer: *Io.Writer, result: machina.BuildResult) !void {
     }
 }
 
-fn printStepFailureText(writer: *Io.Writer, root_path: []const u8, failure: machina.StepRuntimeError) !void {
+fn printStepFailureText(writer: *Io.Writer, root_path: []const u8, failure: scrapbot.StepRuntimeError) !void {
     try writer.print("{s}: step failed after {d}/{d} frames, dt: {d}\n", .{
         root_path,
         failure.summary.completed_frames,
@@ -2378,7 +2378,7 @@ fn printExpectedFieldValueText(writer: *Io.Writer, value: ExpectedFieldValue) !v
     }
 }
 
-fn printComponentValueText(writer: *Io.Writer, value: machina.ComponentValue) !void {
+fn printComponentValueText(writer: *Io.Writer, value: scrapbot.ComponentValue) !void {
     switch (value) {
         .boolean => |payload| try writer.writeAll(if (payload) "true" else "false"),
         .int => |payload| try writer.print("{d}", .{payload}),
@@ -2435,7 +2435,7 @@ fn printTestCaseDiagnosticFailureJson(
     writer: *Io.Writer,
     name: []const u8,
     project_path: []const u8,
-    diagnostic: machina.ScriptDiagnostic,
+    diagnostic: scrapbot.ScriptDiagnostic,
 ) !void {
     try writer.writeAll("{\"name\":");
     try writeJsonString(writer, name);
@@ -2450,7 +2450,7 @@ fn printTestCaseRuntimeFailureJson(
     writer: *Io.Writer,
     name: []const u8,
     project_path: []const u8,
-    failure: machina.StepRuntimeError,
+    failure: scrapbot.StepRuntimeError,
 ) !void {
     try writer.writeAll("{\"name\":");
     try writeJsonString(writer, name);
@@ -2467,7 +2467,7 @@ fn printTestCaseOkJson(
     writer: *Io.Writer,
     name: []const u8,
     project_path: []const u8,
-    ok: machina.StepOk,
+    ok: scrapbot.StepOk,
     manifest: TestManifest,
     stats: *TestCaseStats,
 ) !void {
@@ -2531,7 +2531,7 @@ fn printExpectedFieldValueJson(writer: *Io.Writer, value: ExpectedFieldValue) !v
     }
 }
 
-fn printComponentValueJson(writer: *Io.Writer, value: machina.ComponentValue) !void {
+fn printComponentValueJson(writer: *Io.Writer, value: scrapbot.ComponentValue) !void {
     switch (value) {
         .boolean => |payload| try writer.writeAll(if (payload) "true" else "false"),
         .int => |payload| try writer.print("{d}", .{payload}),
@@ -2541,7 +2541,7 @@ fn printComponentValueJson(writer: *Io.Writer, value: machina.ComponentValue) !v
     }
 }
 
-fn printCheckOkJson(writer: *Io.Writer, result: machina.CheckResult) !void {
+fn printCheckOkJson(writer: *Io.Writer, result: scrapbot.CheckResult) !void {
     try writer.writeAll("{\"ok\":true,\"project\":");
     try printProjectSummaryJson(writer, result.project);
     try writer.writeAll(",\"schedule\":");
@@ -2549,7 +2549,7 @@ fn printCheckOkJson(writer: *Io.Writer, result: machina.CheckResult) !void {
     try writer.writeAll("}\n");
 }
 
-fn printStepOkJson(writer: *Io.Writer, ok: machina.StepOk) !void {
+fn printStepOkJson(writer: *Io.Writer, ok: scrapbot.StepOk) !void {
     try writer.writeAll("{\"ok\":true,\"project\":");
     try printProjectSummaryJson(writer, ok.project);
     try writer.writeAll(",\"scene\":");
@@ -2561,7 +2561,7 @@ fn printStepOkJson(writer: *Io.Writer, ok: machina.StepOk) !void {
     try writer.writeAll("}\n");
 }
 
-fn printStepFailureJson(writer: *Io.Writer, root_path: []const u8, failure: machina.StepRuntimeError) !void {
+fn printStepFailureJson(writer: *Io.Writer, root_path: []const u8, failure: scrapbot.StepRuntimeError) !void {
     try writer.writeAll("{\"ok\":false,\"project\":");
     try printProjectSummaryJson(writer, failure.project);
     try writer.writeAll(",\"scene\":");
@@ -2599,7 +2599,7 @@ fn printBenchOkJson(writer: *Io.Writer, result: BenchResult) !void {
     try writer.writeAll("}}\n");
 }
 
-fn printBuildOkJson(writer: *Io.Writer, result: machina.BuildResult) !void {
+fn printBuildOkJson(writer: *Io.Writer, result: scrapbot.BuildResult) !void {
     try writer.writeAll("{\"ok\":true,\"project\":");
     try writeJsonString(writer, result.project_name);
     try writer.writeAll(",\"bundle\":");
@@ -2626,7 +2626,7 @@ fn printBuildOkJson(writer: *Io.Writer, result: machina.BuildResult) !void {
     try writer.writeAll("}\n");
 }
 
-fn printProjectSummaryJson(writer: *Io.Writer, project: machina.Project) !void {
+fn printProjectSummaryJson(writer: *Io.Writer, project: scrapbot.Project) !void {
     try writer.writeAll("{\"name\":");
     try writeJsonString(writer, project.name);
     try writer.writeAll(",\"default_scene\":");
@@ -2643,7 +2643,7 @@ fn printProjectSummaryJson(writer: *Io.Writer, project: machina.Project) !void {
     try writer.writeAll("}");
 }
 
-fn printSceneSummaryJson(writer: *Io.Writer, scene: machina.Scene) !void {
+fn printSceneSummaryJson(writer: *Io.Writer, scene: scrapbot.Scene) !void {
     try writer.writeAll("{\"name\":");
     try writeJsonString(writer, scene.name);
     try writer.print(",\"entities\":{d},\"component_instances\":{d},\"renderable_cubes\":{d}}}", .{
@@ -2653,7 +2653,7 @@ fn printSceneSummaryJson(writer: *Io.Writer, scene: machina.Scene) !void {
     });
 }
 
-fn printStepSummaryJson(writer: *Io.Writer, summary: machina.StepSummary) !void {
+fn printStepSummaryJson(writer: *Io.Writer, summary: scrapbot.StepSummary) !void {
     try writer.print("{{\"frames\":{d},\"completed_frames\":{d},\"dt\":{d}}}", .{
         summary.frames,
         summary.completed_frames,
@@ -2661,7 +2661,7 @@ fn printStepSummaryJson(writer: *Io.Writer, summary: machina.StepSummary) !void 
     });
 }
 
-fn printCheckScheduleJson(writer: *Io.Writer, schedule: machina.CheckSchedule) !void {
+fn printCheckScheduleJson(writer: *Io.Writer, schedule: scrapbot.CheckSchedule) !void {
     try writer.writeAll("{\"batches\":[");
     for (schedule.batches, 0..) |batch, batch_index| {
         if (batch_index != 0) {
@@ -2681,7 +2681,7 @@ fn printCheckScheduleJson(writer: *Io.Writer, schedule: machina.CheckSchedule) !
     try writer.writeAll("]}");
 }
 
-fn printCheckSystemJson(writer: *Io.Writer, system: machina.CheckSystemSummary) !void {
+fn printCheckSystemJson(writer: *Io.Writer, system: scrapbot.CheckSystemSummary) !void {
     try writer.writeAll("{\"id\":");
     try writeJsonString(writer, system.id);
     try writer.writeAll(",\"phase\":");
@@ -2720,13 +2720,13 @@ fn printProjectErrorJson(writer: *Io.Writer, root_path: []const u8, err: anyerro
     try writer.writeAll("}\n");
 }
 
-fn printScriptDiagnosticJson(writer: *Io.Writer, root_path: []const u8, diagnostic: machina.ScriptDiagnostic) !void {
+fn printScriptDiagnosticJson(writer: *Io.Writer, root_path: []const u8, diagnostic: scrapbot.ScriptDiagnostic) !void {
     try writer.writeAll("{\"ok\":false,\"diagnostic\":");
     try printScriptDiagnosticObjectJson(writer, root_path, diagnostic);
     try writer.writeAll("}\n");
 }
 
-fn printScriptDiagnosticObjectJson(writer: *Io.Writer, root_path: []const u8, diagnostic: machina.ScriptDiagnostic) !void {
+fn printScriptDiagnosticObjectJson(writer: *Io.Writer, root_path: []const u8, diagnostic: scrapbot.ScriptDiagnostic) !void {
     try writer.writeAll("{");
     try writer.writeAll("\"stage\":");
     try writeJsonString(writer, @tagName(diagnostic.stage));
@@ -2753,7 +2753,7 @@ fn printScriptDiagnosticObjectJson(writer: *Io.Writer, root_path: []const u8, di
     try writer.writeAll("}");
 }
 
-fn printDiagnosticPositionJson(writer: *Io.Writer, position: machina.ScriptDiagnosticPosition) !void {
+fn printDiagnosticPositionJson(writer: *Io.Writer, position: scrapbot.ScriptDiagnosticPosition) !void {
     try writer.print("{{\"line\":{d}", .{position.line});
     if (position.column) |column| {
         try writer.print(",\"column\":{d}", .{column});
@@ -2785,7 +2785,7 @@ fn writeJsonString(writer: *Io.Writer, value: []const u8) !void {
 fn projectNameFromPath(path: []const u8) []const u8 {
     const trimmed = trimTrailingSlashes(path);
     if (trimmed.len == 0 or std.mem.eql(u8, trimmed, ".")) {
-        return "Machina Project";
+        return "Scrapbot Project";
     }
     return std.fs.path.basename(trimmed);
 }
@@ -2801,7 +2801,7 @@ fn trimTrailingSlashes(path: []const u8) []const u8 {
 test "projectNameFromPath uses final path segment" {
     try std.testing.expectEqualStrings("demo", projectNameFromPath("games/demo"));
     try std.testing.expectEqualStrings("demo", projectNameFromPath("games/demo/"));
-    try std.testing.expectEqualStrings("Machina Project", projectNameFromPath("."));
+    try std.testing.expectEqualStrings("Scrapbot Project", projectNameFromPath("."));
 }
 
 test "parseInitOptions defaults to current directory" {
@@ -2831,26 +2831,26 @@ test "run init command creates a checkable project" {
     var stdout = Io.Writer.fixed(&stdout_buffer);
     var stderr_buffer: [512]u8 = undefined;
     var stderr = Io.Writer.fixed(&stderr_buffer);
-    const args = [_][]const u8{ "machina", "init", root_path };
+    const args = [_][]const u8{ "scrapbot", "init", root_path };
 
     const exit_code = try run(io, std.testing.allocator, &args, &stdout, &stderr);
     try std.testing.expectEqual(@as(u8, 0), exit_code);
-    try std.testing.expectEqualStrings("Initialized Machina project at " ++ root_path ++ "\n", stdout.buffered());
+    try std.testing.expectEqualStrings("Initialized Scrapbot project at " ++ root_path ++ "\n", stdout.buffered());
     try std.testing.expectEqualStrings("", stderr.buffered());
 
     const root_dir = try cwd.openDir(io, root_path, .{});
     defer root_dir.close(io);
-    try std.testing.expect(pathExists(io, root_dir, machina.project_file_name));
+    try std.testing.expect(pathExists(io, root_dir, scrapbot.project_file_name));
     try std.testing.expect(pathExists(io, root_dir, "scenes/main.scene.toml"));
     try std.testing.expect(pathExists(io, root_dir, "assets/.gitkeep"));
     try std.testing.expect(!pathExists(io, root_dir, "native/game.zig"));
 
-    const metadata = try root_dir.readFileAlloc(io, machina.project_file_name, std.testing.allocator, .limited(64 * 1024));
+    const metadata = try root_dir.readFileAlloc(io, scrapbot.project_file_name, std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(metadata);
     try std.testing.expect(std.mem.indexOf(u8, metadata, "\n# native = \"native/game.zig\"\n") != null);
 
-    const result = try machina.checkProject(io, std.testing.allocator, root_path);
-    defer machina.freeCheckResult(std.testing.allocator, result);
+    const result = try scrapbot.checkProject(io, std.testing.allocator, root_path);
+    defer scrapbot.freeCheckResult(std.testing.allocator, result);
     try std.testing.expectEqualStrings("test-cli-init-project", result.project.name);
 }
 
@@ -2865,13 +2865,13 @@ test "run init command rejects extra arguments" {
     var stdout = Io.Writer.fixed(&stdout_buffer);
     var stderr_buffer: [512]u8 = undefined;
     var stderr = Io.Writer.fixed(&stderr_buffer);
-    const args = [_][]const u8{ "machina", "init", root_path, "extra" };
+    const args = [_][]const u8{ "scrapbot", "init", root_path, "extra" };
 
     const exit_code = try run(io, std.testing.allocator, &args, &stdout, &stderr);
     try std.testing.expectEqual(@as(u8, 1), exit_code);
     try std.testing.expectEqualStrings("", stdout.buffered());
     try std.testing.expectEqualStrings("unknown argument\n", stderr.buffered());
-    try std.testing.expectError(machina.ProjectError.InvalidProject, machina.checkProject(io, std.testing.allocator, root_path));
+    try std.testing.expectError(scrapbot.ProjectError.InvalidProject, scrapbot.checkProject(io, std.testing.allocator, root_path));
 }
 
 test "parseWindowOptions accepts frames, editor, and hidden flags" {
@@ -2978,7 +2978,7 @@ test "parseVisualTestOptions supports update selected entity and pixel scale" {
     try std.testing.expectEqual(@as(u32, 1280), options.render.width);
     try std.testing.expectEqual(@as(u32, 720), options.render.height);
     try std.testing.expectApproxEqAbs(@as(f32, 2.0), options.render.pixel_scale, 0.000001);
-    try std.testing.expectEqualStrings("zig-out/machina-visual-test.png", options.render.output_path);
+    try std.testing.expectEqualStrings("zig-out/scrapbot-visual-test.png", options.render.output_path);
 }
 
 test "render artifact metadata path appends sidecar suffix" {
@@ -3142,7 +3142,7 @@ test "parseTestManifest rejects duplicate input frames" {
         \\
         \\[[expect.field]]
         \\entity = "scroll"
-        \\component = "machina.ui.scroll_view"
+        \\component = "scrapbot.ui.scroll_view"
         \\field = "content_offset"
         \\equals_vec3 = [0.0, 0.0, 0.0]
         \\
@@ -3171,21 +3171,21 @@ test "printCheckOkJson includes schedule summary" {
 
     const scripts = [_][]const u8{"scripts/gameplay.luau"};
     const reads = [_][]const u8{"spin"};
-    const writes = [_][]const u8{"machina.transform"};
-    const system = machina.CheckSystemSummary{
+    const writes = [_][]const u8{"scrapbot.transform"};
+    const system = scrapbot.CheckSystemSummary{
         .id = "autorotate",
         .phase = .update,
         .runner = .luau,
         .reads = &reads,
         .writes = &writes,
     };
-    const systems = [_]machina.CheckSystemSummary{system};
-    const batch = machina.CheckScheduleBatch{
+    const systems = [_]scrapbot.CheckSystemSummary{system};
+    const batch = scrapbot.CheckScheduleBatch{
         .phase = .update,
         .systems = &systems,
     };
-    const batches = [_]machina.CheckScheduleBatch{batch};
-    const result = machina.CheckResult{
+    const batches = [_]scrapbot.CheckScheduleBatch{batch};
+    const result = scrapbot.CheckResult{
         .project = .{
             .root_path = "examples/minimal",
             .name = "Minimal",
@@ -3198,7 +3198,7 @@ test "printCheckOkJson includes schedule summary" {
     try printCheckOkJson(&writer, result);
 
     try std.testing.expectEqualStrings(
-        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"machina.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
+        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"scrapbot.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
         writer.buffered(),
     );
 }
@@ -3207,9 +3207,9 @@ test "printStepOkJson includes simulation and scene summary" {
     var output_buffer: [1536]u8 = undefined;
     var writer = Io.Writer.fixed(&output_buffer);
 
-    var scene = machina.Scene{
+    var scene = scrapbot.Scene{
         .name = "Main",
-        .world = machina.World.init(std.testing.allocator),
+        .world = scrapbot.World.init(std.testing.allocator),
     };
     defer scene.world.deinit();
     const entity = try scene.world.createEntity("entity-1", "Entity");
@@ -3218,21 +3218,21 @@ test "printStepOkJson includes simulation and scene summary" {
 
     const scripts = [_][]const u8{"scripts/gameplay.luau"};
     const reads = [_][]const u8{"spin"};
-    const writes = [_][]const u8{"machina.transform"};
-    const system = machina.CheckSystemSummary{
+    const writes = [_][]const u8{"scrapbot.transform"};
+    const system = scrapbot.CheckSystemSummary{
         .id = "autorotate",
         .phase = .update,
         .runner = .luau,
         .reads = &reads,
         .writes = &writes,
     };
-    const systems = [_]machina.CheckSystemSummary{system};
-    const batch = machina.CheckScheduleBatch{
+    const systems = [_]scrapbot.CheckSystemSummary{system};
+    const batch = scrapbot.CheckScheduleBatch{
         .phase = .update,
         .systems = &systems,
     };
-    const batches = [_]machina.CheckScheduleBatch{batch};
-    const ok = machina.StepOk{
+    const batches = [_]scrapbot.CheckScheduleBatch{batch};
+    const ok = scrapbot.StepOk{
         .project = .{
             .root_path = "examples/minimal",
             .name = "Minimal",
@@ -3251,7 +3251,7 @@ test "printStepOkJson includes simulation and scene summary" {
     try printStepOkJson(&writer, ok);
 
     try std.testing.expectEqualStrings(
-        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"scene\":{\"name\":\"Main\",\"entities\":1,\"component_instances\":2,\"renderable_cubes\":0},\"simulation\":{\"frames\":2,\"completed_frames\":2,\"dt\":0.5},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"machina.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
+        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"scene\":{\"name\":\"Main\",\"entities\":1,\"component_instances\":2,\"renderable_cubes\":0},\"simulation\":{\"frames\":2,\"completed_frames\":2,\"dt\":0.5},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"scrapbot.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
         writer.buffered(),
     );
 }

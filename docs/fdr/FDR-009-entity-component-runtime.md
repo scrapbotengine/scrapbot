@@ -34,14 +34,14 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Engine-owned and script-defined systems declare phases, read/write component access, and optional before/after ordering relationships.
 - Engine-linked native systems use the same registry, schedule, and profiling path as Luau systems.
 - The runtime can build phase-specific system schedule batches from those declarations.
-- The example script-authored system queries entities with `machina.transform` and project-local `spin`, then applies `spin.angular_velocity` to `machina.transform.rotation` during update.
+- The example script-authored system queries entities with `scrapbot.transform` and project-local `spin`, then applies `spin.angular_velocity` to `scrapbot.transform.rotation` during update.
 - Invalid, duplicate, or unsupported entity/component data produces diagnostics suitable for command-line and editor display.
 
 ## Design Decisions
 
 ### 1. Make components and systems the project mental model
 
-**Decision:** Machina teaches users, scripts, agents, and editor tools to think in entities, components, and systems.
+**Decision:** Scrapbot teaches users, scripts, agents, and editor tools to think in entities, components, and systems.
 **Why:** A shared component-system model keeps scene data, scripting, validation, and editor inspection aligned. It follows ADR-008.
 **Tradeoff:** The engine needs component schema and API design earlier than a hardcoded demo renderer would.
 
@@ -59,7 +59,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 
 ### 4. Distinguish local and qualified script extension ids
 
-**Decision:** Script-defined component and system types use project-local single-segment ids or qualified dotted ids, with `machina.*` reserved for engine-owned types.
+**Decision:** Script-defined component and system types use project-local single-segment ids or qualified dotted ids, with `scrapbot.*` reserved for engine-owned types.
 **Why:** Component and system references need to be ergonomic in local projects and stable across packages, reloads, and diagnostics. It follows ADR-010.
 **Tradeoff:** Promoting a local type into a reusable package requires an explicit id migration.
 

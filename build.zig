@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
     build_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
     const sanitize_c: ?std.zig.SanitizeC = if (target.result.os.tag == .windows and target.result.abi == .msvc) .off else null;
 
-    const machina_mod = b.addModule("machina", .{
+    const scrapbot_mod = b.addModule("scrapbot", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -27,18 +27,18 @@ pub fn build(b: *std.Build) void {
             .{ .name = "wgpu", .module = wgpu_dep.module("wgpu") },
         },
     });
-    machina_mod.addOptions("build_options", build_options);
-    linkLuau(b, machina_mod, target);
-    addSdlBridge(b, machina_mod, target);
+    scrapbot_mod.addOptions("build_options", build_options);
+    linkLuau(b, scrapbot_mod, target);
+    addSdlBridge(b, scrapbot_mod, target);
 
     const exe = b.addExecutable(.{
-        .name = "machina",
+        .name = "scrapbot",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "machina", .module = machina_mod },
+                .{ .name = "scrapbot", .module = scrapbot_mod },
                 .{ .name = "clap", .module = clap_dep.module("clap") },
             },
         }),
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    const run_step = b.step("run", "Run machina");
+    const run_step = b.step("run", "Run scrapbot");
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
@@ -58,7 +58,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const mod_tests = b.addTest(.{
-        .root_module = machina_mod,
+        .root_module = scrapbot_mod,
     });
     configureCompileArtifact(mod_tests, target);
     linkWgpuPlatform(mod_tests, target);
@@ -80,7 +80,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "machina", .module = machina_mod },
+                .{ .name = "scrapbot", .module = scrapbot_mod },
             },
         }),
     });

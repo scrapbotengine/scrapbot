@@ -1,14 +1,14 @@
-Machina Notices
+Scrapbot Notices
 
-This file tracks Machina's project notice plus third-party software, data,
+This file tracks Scrapbot's project notice plus third-party software, data,
 generated source, and direct external binary dependencies that are vendored into
-this repository or used by Machina's build. Keep the referenced license texts in
+this repository or used by Scrapbot's build. Keep the referenced license texts in
 the repository whenever the source/data is committed here.
 
-Before distributing Machina binaries, audit linked/fetched binary artifacts for
+Before distributing Scrapbot binaries, audit linked/fetched binary artifacts for
 transitive dependency notices as part of release packaging.
 
-Machina
+Scrapbot
 - Use: experimental text-first game engine.
 - License: Apache License 2.0.
 - Copyright: Copyright 2026 Hendrik Mans.
@@ -40,7 +40,7 @@ wgpu-native
   https://github.com/gfx-rs/wgpu-native/tree/v25.0.2.1.
 
 zig-clap
-- Use: command-line argument parsing for the Machina CLI.
+- Use: command-line argument parsing for the Scrapbot CLI.
 - Source package: Hejsil/zig-clap 0.12.0, fetched by build.zig.zon.
 - License: MIT.
 - Copyright: Copyright (c) Jimmi Holst Christensen.

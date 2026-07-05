@@ -12,7 +12,7 @@ active = true
 id = "door-1"
 name = "Hangar Door"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]

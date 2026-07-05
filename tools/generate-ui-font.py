@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Machina's built-in UI bitmap font table from a BDF font."""
+"""Generate Scrapbot's built-in UI bitmap font table from a BDF font."""
 
 from __future__ import annotations
 

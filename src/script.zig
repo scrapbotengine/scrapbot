@@ -285,7 +285,7 @@ pub const Program = struct {
     allocator: std.mem.Allocator,
     registry: runtime.ComponentRegistry,
     schedule: runtime.SystemSchedule,
-    vm: *c.machina_luau,
+    vm: *c.scrapbot_luau,
     active_system: ?*const runtime.ScheduledSystem = null,
     component_origins: std.ArrayList(ScriptOrigin) = .empty,
     system_origins: std.ArrayList(ScriptOrigin) = .empty,
@@ -325,7 +325,7 @@ pub const Program = struct {
         self.component_origins.deinit(self.allocator);
         self.schedule.deinit();
         self.registry.deinit();
-        c.machina_luau_destroy(self.vm);
+        c.scrapbot_luau_destroy(self.vm);
         self.* = undefined;
     }
 
@@ -348,7 +348,7 @@ pub const Program = struct {
     fn runPhase(self: *Program, world: *runtime.World, phase: runtime.SystemPhase, delta_seconds: f32) bool {
         self.clearLastDiagnostic();
         self.clearHostError();
-        c.machina_luau_set_callback_context(self.vm, self);
+        c.scrapbot_luau_set_callback_context(self.vm, self);
 
         var ok = true;
         for (self.schedule.batches) |batch| {
@@ -381,7 +381,7 @@ pub const Program = struct {
                         self.clearHostError();
                         self.active_system = system;
                         const started_ns = monotonicTimestampNs();
-                        var system_ok = c.machina_luau_call_system(self.vm, runner_ref, world, delta_seconds) != 0;
+                        var system_ok = c.scrapbot_luau_call_system(self.vm, runner_ref, world, delta_seconds) != 0;
                         if (system_ok) {
                             system_ok = self.flushQueuedScriptCommands(world);
                         } else {
@@ -1109,7 +1109,7 @@ pub fn buildRuntimeSchedule(
 }
 
 fn initProgram(allocator: std.mem.Allocator) !Program {
-    const callbacks = c.machina_luau_callbacks{
+    const callbacks = c.scrapbot_luau_callbacks{
         .query_next = queryNextCallback,
         .prepare_query = prepareQueryCallback,
         .query_next_prepared = queryNextPreparedCallback,
@@ -1130,12 +1130,12 @@ fn initProgram(allocator: std.mem.Allocator) !Program {
         .remove_component = removeComponentCallback,
         .host_error = hostErrorCallback,
     };
-    const vm = c.machina_luau_create(callbacks) orelse return ScriptError.InvalidScript;
+    const vm = c.scrapbot_luau_create(callbacks) orelse return ScriptError.InvalidScript;
 
     var registry = runtime.ComponentRegistry.init(allocator);
     errdefer {
         registry.deinit();
-        c.machina_luau_destroy(vm);
+        c.scrapbot_luau_destroy(vm);
     }
     try runtime.registerEngineComponents(&registry);
 
@@ -1190,12 +1190,12 @@ fn failedNativeSystemId(native_extension: NativeExtension, registered_native_sys
 }
 
 fn loadChunk(program: *Program, chunk_name: []const u8, source: []const u8) !?Diagnostic {
-    const component_start = c.machina_luau_component_count(program.vm);
-    const system_start = c.machina_luau_system_count(program.vm);
+    const component_start = c.scrapbot_luau_component_count(program.vm);
+    const system_start = c.scrapbot_luau_system_count(program.vm);
     const chunk_name_z = try program.allocator.dupeZ(u8, chunk_name);
     defer program.allocator.free(chunk_name_z);
 
-    if (c.machina_luau_load(program.vm, chunk_name_z.ptr, source.ptr, source.len) == 0) {
+    if (c.scrapbot_luau_load(program.vm, chunk_name_z.ptr, source.ptr, source.len) == 0) {
         const message = lastLuauError(program.vm);
         return try makeDiagnostic(program.allocator, .{
             .stage = .load,
@@ -1210,29 +1210,29 @@ fn loadChunk(program: *Program, chunk_name: []const u8, source: []const u8) !?Di
 }
 
 fn registerDeclaredComponents(program: *Program) ScriptError!void {
-    const component_count = c.machina_luau_component_count(program.vm);
+    const component_count = c.scrapbot_luau_component_count(program.vm);
     for (0..component_count) |component_index| {
         var fields: std.ArrayList(runtime.ComponentFieldDefinition) = .empty;
         defer fields.deinit(program.allocator);
 
-        const field_count = c.machina_luau_component_field_count(program.vm, component_index);
+        const field_count = c.scrapbot_luau_component_field_count(program.vm, component_index);
         for (0..field_count) |field_index| {
             try fields.append(program.allocator, .{
-                .name = try spanC(c.machina_luau_component_field_name(program.vm, component_index, field_index)),
-                .value_type = try parseFieldType(try spanC(c.machina_luau_component_field_type(program.vm, component_index, field_index))),
+                .name = try spanC(c.scrapbot_luau_component_field_name(program.vm, component_index, field_index)),
+                .value_type = try parseFieldType(try spanC(c.scrapbot_luau_component_field_type(program.vm, component_index, field_index))),
             });
         }
 
         try program.registry.registerProjectComponent(.{
-            .id = try spanC(c.machina_luau_component_id(program.vm, component_index)),
-            .version = c.machina_luau_component_version(program.vm, component_index),
+            .id = try spanC(c.scrapbot_luau_component_id(program.vm, component_index)),
+            .version = c.scrapbot_luau_component_version(program.vm, component_index),
             .fields = fields.items,
         });
     }
 }
 
 fn registerDeclaredSystems(program: *Program) ScriptError!void {
-    const system_count = c.machina_luau_system_count(program.vm);
+    const system_count = c.scrapbot_luau_system_count(program.vm);
     for (0..system_count) |system_index| {
         var reads = try readSystemReads(program.allocator, program.vm, system_index);
         defer reads.deinit(program.allocator);
@@ -1243,10 +1243,10 @@ fn registerDeclaredSystems(program: *Program) ScriptError!void {
         var after = try readSystemAfter(program.allocator, program.vm, system_index);
         defer after.deinit(program.allocator);
 
-        const runner_ref = c.machina_luau_system_runner_ref(program.vm, system_index);
+        const runner_ref = c.scrapbot_luau_system_runner_ref(program.vm, system_index);
         try program.registry.registerProjectSystem(.{
-            .id = try spanC(c.machina_luau_system_id(program.vm, system_index)),
-            .phase = try parseSystemPhase(try spanC(c.machina_luau_system_phase(program.vm, system_index))),
+            .id = try spanC(c.scrapbot_luau_system_id(program.vm, system_index)),
+            .phase = try parseSystemPhase(try spanC(c.scrapbot_luau_system_phase(program.vm, system_index))),
             .reads = reads.items,
             .writes = writes.items,
             .before = before.items,
@@ -1257,15 +1257,15 @@ fn registerDeclaredSystems(program: *Program) ScriptError!void {
 }
 
 fn recordOrigins(program: *Program, path: []const u8, component_start: usize, system_start: usize) !void {
-    const component_count = c.machina_luau_component_count(program.vm);
+    const component_count = c.scrapbot_luau_component_count(program.vm);
     for (component_start..component_count) |component_index| {
         {
-            const id = try spanC(c.machina_luau_component_id(program.vm, component_index));
+            const id = try spanC(c.scrapbot_luau_component_id(program.vm, component_index));
             const owned_id = try program.allocator.dupe(u8, id);
             errdefer program.allocator.free(owned_id);
             const owned_path = try program.allocator.dupe(u8, path);
             errdefer program.allocator.free(owned_path);
-            const line = c.machina_luau_component_line(program.vm, component_index);
+            const line = c.scrapbot_luau_component_line(program.vm, component_index);
             try program.component_origins.append(program.allocator, .{
                 .index = component_index,
                 .id = owned_id,
@@ -1275,21 +1275,21 @@ fn recordOrigins(program: *Program, path: []const u8, component_start: usize, sy
         }
     }
 
-    const system_count = c.machina_luau_system_count(program.vm);
+    const system_count = c.scrapbot_luau_system_count(program.vm);
     for (system_start..system_count) |system_index| {
         {
-            const id = try spanC(c.machina_luau_system_id(program.vm, system_index));
+            const id = try spanC(c.scrapbot_luau_system_id(program.vm, system_index));
             const owned_id = try program.allocator.dupe(u8, id);
             errdefer program.allocator.free(owned_id);
             const owned_path = try program.allocator.dupe(u8, path);
             errdefer program.allocator.free(owned_path);
-            const line = c.machina_luau_system_line(program.vm, system_index);
+            const line = c.scrapbot_luau_system_line(program.vm, system_index);
             try program.system_origins.append(program.allocator, .{
                 .index = system_index,
                 .id = owned_id,
                 .path = owned_path,
                 .start = diagnosticPositionFromLine(line),
-                .runner_ref = c.machina_luau_system_runner_ref(program.vm, system_index),
+                .runner_ref = c.scrapbot_luau_system_runner_ref(program.vm, system_index),
             });
         }
     }
@@ -1355,8 +1355,8 @@ fn makeDiagnostic(allocator: std.mem.Allocator, draft: DiagnosticDraft) !Diagnos
     };
 }
 
-fn lastLuauError(vm: *c.machina_luau) []const u8 {
-    return std.mem.span(c.machina_luau_last_error(vm));
+fn lastLuauError(vm: *c.scrapbot_luau) []const u8 {
+    return std.mem.span(c.scrapbot_luau_last_error(vm));
 }
 
 fn diagnosticPositionFromLine(line: c_int) ?DiagnosticPosition {
@@ -1393,38 +1393,38 @@ fn parseLuauDiagnosticPosition(message: []const u8) ?DiagnosticPosition {
     return null;
 }
 
-fn readSystemReads(allocator: std.mem.Allocator, vm: *c.machina_luau, system_index: usize) !std.ArrayList([]const u8) {
+fn readSystemReads(allocator: std.mem.Allocator, vm: *c.scrapbot_luau, system_index: usize) !std.ArrayList([]const u8) {
     var values: std.ArrayList([]const u8) = .empty;
     errdefer values.deinit(allocator);
-    for (0..c.machina_luau_system_reads_count(vm, system_index)) |item_index| {
-        try values.append(allocator, try spanC(c.machina_luau_system_reads_item(vm, system_index, item_index)));
+    for (0..c.scrapbot_luau_system_reads_count(vm, system_index)) |item_index| {
+        try values.append(allocator, try spanC(c.scrapbot_luau_system_reads_item(vm, system_index, item_index)));
     }
     return values;
 }
 
-fn readSystemWrites(allocator: std.mem.Allocator, vm: *c.machina_luau, system_index: usize) !std.ArrayList([]const u8) {
+fn readSystemWrites(allocator: std.mem.Allocator, vm: *c.scrapbot_luau, system_index: usize) !std.ArrayList([]const u8) {
     var values: std.ArrayList([]const u8) = .empty;
     errdefer values.deinit(allocator);
-    for (0..c.machina_luau_system_writes_count(vm, system_index)) |item_index| {
-        try values.append(allocator, try spanC(c.machina_luau_system_writes_item(vm, system_index, item_index)));
+    for (0..c.scrapbot_luau_system_writes_count(vm, system_index)) |item_index| {
+        try values.append(allocator, try spanC(c.scrapbot_luau_system_writes_item(vm, system_index, item_index)));
     }
     return values;
 }
 
-fn readSystemBefore(allocator: std.mem.Allocator, vm: *c.machina_luau, system_index: usize) !std.ArrayList([]const u8) {
+fn readSystemBefore(allocator: std.mem.Allocator, vm: *c.scrapbot_luau, system_index: usize) !std.ArrayList([]const u8) {
     var values: std.ArrayList([]const u8) = .empty;
     errdefer values.deinit(allocator);
-    for (0..c.machina_luau_system_before_count(vm, system_index)) |item_index| {
-        try values.append(allocator, try spanC(c.machina_luau_system_before_item(vm, system_index, item_index)));
+    for (0..c.scrapbot_luau_system_before_count(vm, system_index)) |item_index| {
+        try values.append(allocator, try spanC(c.scrapbot_luau_system_before_item(vm, system_index, item_index)));
     }
     return values;
 }
 
-fn readSystemAfter(allocator: std.mem.Allocator, vm: *c.machina_luau, system_index: usize) !std.ArrayList([]const u8) {
+fn readSystemAfter(allocator: std.mem.Allocator, vm: *c.scrapbot_luau, system_index: usize) !std.ArrayList([]const u8) {
     var values: std.ArrayList([]const u8) = .empty;
     errdefer values.deinit(allocator);
-    for (0..c.machina_luau_system_after_count(vm, system_index)) |item_index| {
-        try values.append(allocator, try spanC(c.machina_luau_system_after_item(vm, system_index, item_index)));
+    for (0..c.scrapbot_luau_system_after_count(vm, system_index)) |item_index| {
+        try values.append(allocator, try spanC(c.scrapbot_luau_system_after_item(vm, system_index, item_index)));
     }
     return values;
 }
@@ -2527,7 +2527,7 @@ fn setVec3Callback(
     return 1;
 }
 
-fn writeLuauFieldValue(out_value: *c.machina_luau_field_value, value: runtime.ComponentValue) void {
+fn writeLuauFieldValue(out_value: *c.scrapbot_luau_field_value, value: runtime.ComponentValue) void {
     out_value.* = .{
         .tag = 0,
         .boolean_value = 0,
@@ -2540,23 +2540,23 @@ fn writeLuauFieldValue(out_value: *c.machina_luau_field_value, value: runtime.Co
 
     switch (value) {
         .boolean => |payload| {
-            out_value.tag = c.MACHINA_LUAU_FIELD_BOOLEAN;
+            out_value.tag = c.SCRAPBOT_LUAU_FIELD_BOOLEAN;
             out_value.boolean_value = if (payload) 1 else 0;
         },
         .int => |payload| {
-            out_value.tag = c.MACHINA_LUAU_FIELD_INT;
+            out_value.tag = c.SCRAPBOT_LUAU_FIELD_INT;
             out_value.int_value = payload;
         },
         .float => |payload| {
-            out_value.tag = c.MACHINA_LUAU_FIELD_FLOAT;
+            out_value.tag = c.SCRAPBOT_LUAU_FIELD_FLOAT;
             out_value.number_value = payload;
         },
         .vec3 => |payload| {
-            out_value.tag = c.MACHINA_LUAU_FIELD_VEC3;
+            out_value.tag = c.SCRAPBOT_LUAU_FIELD_VEC3;
             out_value.vec3_value = payload;
         },
         .string => |payload| {
-            out_value.tag = c.MACHINA_LUAU_FIELD_STRING;
+            out_value.tag = c.SCRAPBOT_LUAU_FIELD_STRING;
             out_value.string_data = payload.ptr;
             out_value.string_len = payload.len;
         },
@@ -2570,7 +2570,7 @@ fn getFieldCallback(
     entity_generation: u32,
     raw_component_id: ?[*:0]const u8,
     raw_field_name: ?[*:0]const u8,
-    raw_out_value: ?*c.machina_luau_field_value,
+    raw_out_value: ?*c.scrapbot_luau_field_value,
 ) callconv(.c) c_int {
     const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
     const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
@@ -2609,7 +2609,7 @@ fn getFieldResolvedCallback(
     component_table_index: u32,
     component_row_index: u32,
     raw_field_name: ?[*:0]const u8,
-    raw_out_value: ?*c.machina_luau_field_value,
+    raw_out_value: ?*c.scrapbot_luau_field_value,
 ) callconv(.c) c_int {
     const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
     const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
@@ -2649,7 +2649,7 @@ fn setFieldCallback(
     entity_generation: u32,
     raw_component_id: ?[*:0]const u8,
     raw_field_name: ?[*:0]const u8,
-    raw_value: ?*const c.machina_luau_field_value,
+    raw_value: ?*const c.scrapbot_luau_field_value,
 ) callconv(.c) c_int {
     const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
     const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
@@ -2696,7 +2696,7 @@ fn setFieldResolvedCallback(
     component_table_index: u32,
     component_row_index: u32,
     raw_field_name: ?[*:0]const u8,
-    raw_value: ?*const c.machina_luau_field_value,
+    raw_value: ?*const c.scrapbot_luau_field_value,
 ) callconv(.c) c_int {
     const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
     const world: *runtime.World = @ptrCast(@alignCast(raw_world orelse return 0));
@@ -2830,7 +2830,7 @@ fn addComponentCallback(
     entity_index: u32,
     entity_generation: u32,
     raw_component_id: ?[*:0]const u8,
-    raw_fields: ?[*]const c.machina_luau_component_field_value,
+    raw_fields: ?[*]const c.scrapbot_luau_component_field_value,
     field_count: usize,
 ) callconv(.c) c_int {
     const program: *Program = @ptrCast(@alignCast(raw_context orelse return 0));
@@ -2861,7 +2861,7 @@ fn addComponentCallback(
         });
         return 0;
     };
-    const raw_slice = if (field_count == 0) &[_]c.machina_luau_component_field_value{} else (raw_fields orelse return 0)[0..field_count];
+    const raw_slice = if (field_count == 0) &[_]c.scrapbot_luau_component_field_value{} else (raw_fields orelse return 0)[0..field_count];
     const fields = program.allocator.alloc(QueuedComponentFieldValue, field_count) catch {
         program.setHostError("system '{s}' failed to allocate component fields for '{s}'", .{
             program.activeSystemId(),
@@ -3109,19 +3109,19 @@ fn componentValueFromLuau(
     entity: runtime.EntityHandle,
     component_id: []const u8,
     field_name: []const u8,
-    value: *const c.machina_luau_field_value,
+    value: *const c.scrapbot_luau_field_value,
 ) !runtime.ComponentValue {
     return switch (value.tag) {
-        c.MACHINA_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
-        c.MACHINA_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
-        c.MACHINA_LUAU_FIELD_VEC3 => blk: {
+        c.SCRAPBOT_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
+        c.SCRAPBOT_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
+        c.SCRAPBOT_LUAU_FIELD_VEC3 => blk: {
             const vec3 = value.vec3_value;
             if (!std.math.isFinite(vec3[0]) or !std.math.isFinite(vec3[1]) or !std.math.isFinite(vec3[2])) {
                 return ScriptError.InvalidScript;
             }
             break :blk .{ .vec3 = .{ vec3[0], vec3[1], vec3[2] } };
         },
-        c.MACHINA_LUAU_FIELD_NUMBER => blk: {
+        c.SCRAPBOT_LUAU_FIELD_NUMBER => blk: {
             if (!std.math.isFinite(value.number_value)) {
                 return ScriptError.InvalidScript;
             }
@@ -3142,19 +3142,19 @@ fn componentValueFromLuauResolved(
     entity: runtime.EntityHandle,
     resolved: runtime.ResolvedComponentRow,
     field_name: []const u8,
-    value: *const c.machina_luau_field_value,
+    value: *const c.scrapbot_luau_field_value,
 ) !runtime.ComponentValue {
     return switch (value.tag) {
-        c.MACHINA_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
-        c.MACHINA_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
-        c.MACHINA_LUAU_FIELD_VEC3 => blk: {
+        c.SCRAPBOT_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
+        c.SCRAPBOT_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
+        c.SCRAPBOT_LUAU_FIELD_VEC3 => blk: {
             const vec3 = value.vec3_value;
             if (!std.math.isFinite(vec3[0]) or !std.math.isFinite(vec3[1]) or !std.math.isFinite(vec3[2])) {
                 return ScriptError.InvalidScript;
             }
             break :blk .{ .vec3 = .{ vec3[0], vec3[1], vec3[2] } };
         },
-        c.MACHINA_LUAU_FIELD_NUMBER => blk: {
+        c.SCRAPBOT_LUAU_FIELD_NUMBER => blk: {
             if (!std.math.isFinite(value.number_value)) {
                 return ScriptError.InvalidScript;
             }
@@ -3170,18 +3170,18 @@ fn componentValueFromLuauResolved(
     };
 }
 
-fn componentValueFromLuauType(field_type: runtime.FieldType, value: *const c.machina_luau_field_value) !runtime.ComponentValue {
+fn componentValueFromLuauType(field_type: runtime.FieldType, value: *const c.scrapbot_luau_field_value) !runtime.ComponentValue {
     return switch (field_type) {
         .boolean => switch (value.tag) {
-            c.MACHINA_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
+            c.SCRAPBOT_LUAU_FIELD_BOOLEAN => .{ .boolean = value.boolean_value != 0 },
             else => ScriptError.InvalidScript,
         },
         .string => switch (value.tag) {
-            c.MACHINA_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
+            c.SCRAPBOT_LUAU_FIELD_STRING => .{ .string = stringFromLuau(value) },
             else => ScriptError.InvalidScript,
         },
         .vec3 => switch (value.tag) {
-            c.MACHINA_LUAU_FIELD_VEC3 => blk: {
+            c.SCRAPBOT_LUAU_FIELD_VEC3 => blk: {
                 const vec3 = value.vec3_value;
                 if (!std.math.isFinite(vec3[0]) or !std.math.isFinite(vec3[1]) or !std.math.isFinite(vec3[2])) {
                     return ScriptError.InvalidScript;
@@ -3191,13 +3191,13 @@ fn componentValueFromLuauType(field_type: runtime.FieldType, value: *const c.mac
             else => ScriptError.InvalidScript,
         },
         .int => switch (value.tag) {
-            c.MACHINA_LUAU_FIELD_NUMBER => .{ .int = try i32FromLuauNumber(value.number_value) },
-            c.MACHINA_LUAU_FIELD_INT => .{ .int = value.int_value },
+            c.SCRAPBOT_LUAU_FIELD_NUMBER => .{ .int = try i32FromLuauNumber(value.number_value) },
+            c.SCRAPBOT_LUAU_FIELD_INT => .{ .int = value.int_value },
             else => ScriptError.InvalidScript,
         },
         .float => switch (value.tag) {
-            c.MACHINA_LUAU_FIELD_NUMBER => .{ .float = try f32FromLuauNumber(value.number_value) },
-            c.MACHINA_LUAU_FIELD_FLOAT => .{ .float = @floatCast(value.number_value) },
+            c.SCRAPBOT_LUAU_FIELD_NUMBER => .{ .float = try f32FromLuauNumber(value.number_value) },
+            c.SCRAPBOT_LUAU_FIELD_FLOAT => .{ .float = @floatCast(value.number_value) },
             else => ScriptError.InvalidScript,
         },
     };
@@ -3248,7 +3248,7 @@ fn findComponentField(definition: runtime.ComponentDefinition, field_name: []con
     return null;
 }
 
-fn stringFromLuau(value: *const c.machina_luau_field_value) []const u8 {
+fn stringFromLuau(value: *const c.scrapbot_luau_field_value) []const u8 {
     if (value.string_len == 0) {
         return "";
     }
@@ -3342,13 +3342,13 @@ fn containsEntityHandle(values: []const runtime.EntityHandle, needle: runtime.En
 }
 
 fn testNativeMoveSystem(context: *NativeSystemContext) callconv(.c) c_int {
-    const component_ids = [_][*:0]const u8{ "machina.transform", "velocity", "boost" };
+    const component_ids = [_][*:0]const u8{ "scrapbot.transform", "velocity", "boost" };
     var cursor: usize = 0;
     while (native_api.queryNext(context, component_ids[0..], &cursor) catch return 0) |entity| {
-        const position = native_api.getVec3(context, entity, "machina.transform", "position") catch return 0;
+        const position = native_api.getVec3(context, entity, "scrapbot.transform", "position") catch return 0;
         const velocity = native_api.getVec3(context, entity, "velocity", "linear") catch return 0;
         const boost = native_api.getF32(context, entity, "boost", "amount") catch return 0;
-        native_api.setVec3(context, entity, "machina.transform", "position", position.addScaled(velocity, boost * context.delta_seconds)) catch return 0;
+        native_api.setVec3(context, entity, "scrapbot.transform", "position", position.addScaled(velocity, boost * context.delta_seconds)) catch return 0;
     }
     return 1;
 }
@@ -3412,7 +3412,7 @@ test "luau declarations register components and executable systems" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -3443,7 +3443,7 @@ test "luau declarations register components and executable systems" {
     try std.testing.expectEqual(@as(usize, 1), system.reads.len);
     try std.testing.expectEqualStrings("spin", system.reads[0]);
     try std.testing.expectEqual(@as(usize, 1), system.writes.len);
-    try std.testing.expectEqualStrings("machina.transform", system.writes[0]);
+    try std.testing.expectEqualStrings("scrapbot.transform", system.writes[0]);
     {
         const profiles = program.systemProfileSnapshots();
         try std.testing.expectEqual(@as(usize, 1), profiles.len);
@@ -3657,7 +3657,7 @@ test "luau systems can spawn despawn add and remove components" {
         "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spawned = ecs.component("spawned", {
         \\  fields = ecs.fields({
         \\    value = "int",
@@ -3891,8 +3891,8 @@ test "luau component handles can reference engine components without registratio
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-        \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+        \\local RenderCube = ecs.component<<ScrapbotRenderCube>>("scrapbot.render.cube")
         \\
         \\ecs.system("observe_cubes", {
         \\  reads = ecs.refs(Transform, RenderCube),
@@ -3908,12 +3908,12 @@ test "luau component handles expose a guarded type brand function" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-        \\if type(Transform.__machina_component_type) ~= "function" then
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+        \\if type(Transform.__scrapbot_component_type) ~= "function" then
         \\  error("component type brand is missing")
         \\end
         \\local ok = pcall(function()
-        \\  Transform.__machina_component_type()
+        \\  Transform.__scrapbot_component_type()
         \\end)
         \\if ok then
         \\  error("component type brand should not be callable gameplay API")
@@ -3926,8 +3926,8 @@ test "luau refs helper erases component handles for system declarations" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-        \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+        \\local RenderCube = ecs.component<<ScrapbotRenderCube>>("scrapbot.render.cube")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -3942,8 +3942,8 @@ test "luau refs helper erases component handles for system declarations" {
 
     const system = program.registry.findSystem("observe_everything") orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 3), system.reads.len);
-    try std.testing.expectEqualStrings("machina.transform", system.reads[0]);
-    try std.testing.expectEqualStrings("machina.render.cube", system.reads[1]);
+    try std.testing.expectEqualStrings("scrapbot.transform", system.reads[0]);
+    try std.testing.expectEqualStrings("scrapbot.render.cube", system.reads[1]);
     try std.testing.expectEqualStrings("spin", system.reads[2]);
 }
 
@@ -3952,7 +3952,7 @@ test "luau fields helper preserves component declaration fields" {
         \\--!strict
         \\
         \\type Spin = {
-        \\  angular_velocity: MachinaVec3,
+        \\  angular_velocity: ScrapbotVec3,
         \\}
         \\
         \\local _Spin = ecs.component<<Spin>>("spin", {
@@ -4322,8 +4322,8 @@ test "luau query objects infer system reads from unwritten query components" {
     var program = try loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-        \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+        \\local RenderCube = ecs.component<<ScrapbotRenderCube>>("scrapbot.render.cube")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -4341,16 +4341,16 @@ test "luau query objects infer system reads from unwritten query components" {
     const system = program.registry.findSystem("rotate_cubes") orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 2), system.reads.len);
     try std.testing.expectEqualStrings("spin", system.reads[0]);
-    try std.testing.expectEqualStrings("machina.render.cube", system.reads[1]);
+    try std.testing.expectEqualStrings("scrapbot.render.cube", system.reads[1]);
     try std.testing.expectEqual(@as(usize, 1), system.writes.len);
-    try std.testing.expectEqualStrings("machina.transform", system.writes[0]);
+    try std.testing.expectEqualStrings("scrapbot.transform", system.writes[0]);
 }
 
 test "luau query objects reject duplicate component refs" {
     try std.testing.expectError(ScriptError.InvalidScript, loadSourceProgram(std.testing.allocator, "test.luau",
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local _BadQuery = ecs.query(Transform, Transform)
     ));
 }
@@ -4361,7 +4361,7 @@ test "luau world mutation requires declared system access" {
         \\
         \\type Marker = {}
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -4394,7 +4394,7 @@ test "luau world mutation requires declared system access" {
     try std.testing.expectEqual(DiagnosticStage.runtime, diagnostic.stage);
     try std.testing.expectEqualStrings("bad_rotate", diagnostic.system_id orelse return error.TestExpectedEqual);
     try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "bad_rotate") != null);
-    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "machina.transform.rotation") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "scrapbot.transform.rotation") != null);
     try std.testing.expect(std.mem.indexOf(u8, diagnostic.message, "writes") != null);
     const transform = (try world.getTransform(entity)) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(f32, 0.0), transform.rotation[0]);
@@ -4406,7 +4406,7 @@ test "luau world query requires declared component access" {
         \\
         \\type Marker = {}
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -4421,7 +4421,7 @@ test "luau world query requires declared component access" {
         \\  writes = ecs.refs(Transform),
         \\  run = function(world, dt)
         \\    for entity, marker in Markers:iter(world) do
-        \\      entity.set_vec3("machina.transform", "rotation", { dt, 0, 0 })
+        \\      entity.set_vec3("scrapbot.transform", "rotation", { dt, 0, 0 })
         \\    end
         \\  end,
         \\})
@@ -4452,11 +4452,11 @@ test "script runtime schedule includes startup and update batches" {
     try registry.registerProjectSystem(.{
         .id = "spawn_initial",
         .phase = .startup,
-        .writes = &.{"machina.transform"},
+        .writes = &.{"scrapbot.transform"},
     });
     try registry.registerProjectSystem(.{
         .id = "read_transform",
-        .reads = &.{"machina.transform"},
+        .reads = &.{"scrapbot.transform"},
     });
     try registry.registerProjectSystem(.{
         .id = "observe_stamina",
@@ -4464,7 +4464,7 @@ test "script runtime schedule includes startup and update batches" {
     });
     try registry.registerProjectSystem(.{
         .id = "regen_stamina",
-        .reads = &.{"machina.transform"},
+        .reads = &.{"scrapbot.transform"},
         .writes = &.{"stamina"},
     });
 

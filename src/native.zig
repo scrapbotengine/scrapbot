@@ -6,8 +6,8 @@ const native_api = @import("native_api.zig");
 const runtime = @import("runtime.zig");
 const script = @import("script.zig");
 
-const native_build_dir = ".machina/native";
-const native_api_cache_path = native_build_dir ++ "/machina_native.zig";
+const native_build_dir = ".scrapbot/native";
+const native_api_cache_path = native_build_dir ++ "/scrapbot_native.zig";
 const native_api_source = @embedFile("native_api.zig");
 
 pub const NativeOptimizeMode = enum {
@@ -124,9 +124,9 @@ pub fn loadProjectArtifactDetailed(
 
 pub fn dynamicLibraryFileName() []const u8 {
     return switch (builtin.os.tag) {
-        .windows => "machina_project.dll",
-        .macos, .ios => "libmachina_project.dylib",
-        else => "libmachina_project.so",
+        .windows => "scrapbot_project.dll",
+        .macos, .ios => "libscrapbot_project.dylib",
+        else => "libscrapbot_project.so",
     };
 }
 
@@ -143,10 +143,10 @@ fn loadExtensionLibrary(
     };
     errdefer library.close();
 
-    const register = library.lookup(native_api.RegisterFn, "machina_register") orelse {
+    const register = library.lookup(native_api.RegisterFn, "scrapbot_register") orelse {
         library.close();
         allocator.free(library_path);
-        return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, diagnostic_path, "native library does not export machina_register", .{}) };
+        return .{ .diagnostic = try makeDiagnostic(allocator, .native_load, diagnostic_path, "native library does not export scrapbot_register", .{}) };
     };
 
     var builder = NativeRegistrationBuilder{ .allocator = allocator };
@@ -160,7 +160,7 @@ fn loadExtensionLibrary(
     if (register(&register_api) == 0) {
         library.close();
         allocator.free(library_path);
-        const message = if (builder.error_message) |message| message else "machina_register returned failure";
+        const message = if (builder.error_message) |message| message else "scrapbot_register returned failure";
         return .{ .diagnostic = try makeDiagnostic(allocator, .native_registration, diagnostic_path, "{s}", .{message}) };
     }
 
@@ -215,7 +215,7 @@ fn buildDynamicLibrary(
     defer allocator.free(emit_arg);
     const root_module_arg = try std.fmt.allocPrint(allocator, "-Mroot={s}", .{native_source_path});
     defer allocator.free(root_module_arg);
-    const native_api_module_arg = try std.fmt.allocPrint(allocator, "-Mmachina_native={s}", .{native_api_cache_path});
+    const native_api_module_arg = try std.fmt.allocPrint(allocator, "-Mscrapbot_native={s}", .{native_api_cache_path});
     defer allocator.free(native_api_module_arg);
 
     const argv = [_][]const u8{
@@ -230,7 +230,7 @@ fn buildDynamicLibrary(
         "--global-cache-dir",
         native_build_dir ++ "/zig-global-cache",
         "--dep",
-        "machina_native",
+        "scrapbot_native",
         root_module_arg,
         native_api_module_arg,
     };
@@ -419,7 +419,7 @@ fn toRuntimeSystemPhase(value: native_api.SystemPhase) runtime.SystemPhase {
 fn dynamicOutputPath(allocator: std.mem.Allocator, source_stamp: anytype) ![]u8 {
     return std.fmt.allocPrint(
         allocator,
-        native_build_dir ++ "/{s}machina_project_{d}_{d}{s}",
+        native_build_dir ++ "/{s}scrapbot_project_{d}_{d}{s}",
         .{
             dynamicLibraryPrefix(),
             source_stamp.size,

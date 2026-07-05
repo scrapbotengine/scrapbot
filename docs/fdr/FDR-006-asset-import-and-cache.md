@@ -5,7 +5,7 @@
 
 ## Overview
 
-Asset import and cache handling lets projects keep source assets in ordinary files while Machina generates runtime-ready artifacts as needed. It exists so binary source assets can coexist with a text-first project model without making generated data authoritative.
+Asset import and cache handling lets projects keep source assets in ordinary files while Scrapbot generates runtime-ready artifacts as needed. It exists so binary source assets can coexist with a text-first project model without making generated data authoritative.
 
 ## Behavior
 

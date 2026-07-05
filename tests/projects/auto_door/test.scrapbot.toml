@@ -15,6 +15,6 @@ equals_float = 1.0
 
 [[expect.field]]
 entity = "door-1"
-component = "machina.transform"
+component = "scrapbot.transform"
 field = "rotation"
 equals_vec3 = [0.0, 0.0, 1.5708]

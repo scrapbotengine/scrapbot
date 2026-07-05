@@ -1,11 +1,11 @@
 ---
-name: machina-render-verification
-description: Use when changing Machina rendering, WGSL shaders, scene-driven render data, or visual test expectations. Provides the offscreen render verification workflow and explains what render-test can and cannot prove.
+name: scrapbot-render-verification
+description: Use when changing Scrapbot rendering, WGSL shaders, scene-driven render data, or visual test expectations. Provides the offscreen render verification workflow and explains what render-test can and cannot prove.
 ---
 
 # Render Verification
 
-Machina verifies rendering primarily through offscreen PNG output. Use this workflow for renderer, shader, scene-data, or visual-regression work.
+Scrapbot verifies rendering primarily through offscreen PNG output. Use this workflow for renderer, shader, scene-data, or visual-regression work.
 
 ## Workflow
 
@@ -16,7 +16,7 @@ Machina verifies rendering primarily through offscreen PNG output. Use this work
 
 ## Verification Surface
 
-`machina render-test [project] [output.png]`:
+`scrapbot render-test [project] [output.png]`:
 
 - validates and loads the project scene,
 - renders the scene offscreen,

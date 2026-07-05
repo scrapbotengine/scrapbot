@@ -16,6 +16,6 @@ system_profile_count_hint = 9
 
 [[expect.field]]
 entity = "scroll"
-component = "machina.ui.scroll_view"
+component = "scrapbot.ui.scroll_view"
 field = "content_offset"
 equals_vec3 = [0.0, 48.0, 0.0]

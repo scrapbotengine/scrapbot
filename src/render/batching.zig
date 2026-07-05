@@ -151,10 +151,10 @@ pub const BatchResources = struct {
 
         const vertex_bytes = std.mem.sliceAsBytes(mesh.vertices);
         const index_bytes = std.mem.sliceAsBytes(mesh.indices);
-        const vertex_buffer = try backend.createStaticBuffer(device, "Machina mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
+        const vertex_buffer = try backend.createStaticBuffer(device, "Scrapbot mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
         errdefer vertex_buffer.release();
 
-        const index_buffer = try backend.createStaticBuffer(device, "Machina mesh index buffer", wgpu.BufferUsages.index, index_bytes);
+        const index_buffer = try backend.createStaticBuffer(device, "Scrapbot mesh index buffer", wgpu.BufferUsages.index, index_bytes);
         errdefer index_buffer.release();
 
         if (entry.render_indices.len > std.math.maxInt(u32)) {
@@ -162,7 +162,7 @@ pub const BatchResources = struct {
         }
         const instance_buffer_size = @sizeOf(InstanceAttributes) * entry.render_indices.len;
         const instance_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh instance buffer"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh instance buffer"),
             .usage = wgpu.BufferUsages.vertex | wgpu.BufferUsages.copy_dst,
             .size = @intCast(instance_buffer_size),
             .mapped_at_creation = @as(u32, @intFromBool(false)),

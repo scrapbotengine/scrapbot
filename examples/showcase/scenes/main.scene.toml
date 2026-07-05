@@ -5,17 +5,17 @@ version = 1
 id = "showcase-core-cube"
 name = "Core Cube"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [0.68, 0.68, 0.68]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "box"
 segments = 0
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.0, 0.56, 1.0]
 
 [entities.components.spin]
@@ -31,17 +31,17 @@ phase = 0.0
 id = "showcase-warm-sphere"
 name = "Warm UV Sphere"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [-1.42, -0.24, -0.48]
 rotation = [0.15, 0.1, 0.25]
 scale = [0.46, 0.46, 0.46]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "uv_sphere"
 segments = 32
 rings = 16
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [1.0, 0.5, 0.08]
 
 [entities.components.spin]
@@ -57,17 +57,17 @@ phase = 1.4
 id = "showcase-mint-icosphere"
 name = "Mint Ico Sphere"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [1.36, 0.15, -0.34]
 rotation = [0.0, 0.4, 0.12]
 scale = [0.5, 0.5, 0.5]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "ico_sphere"
 segments = 2
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.08, 0.92, 0.58]
 
 [entities.components.spin]
@@ -83,17 +83,17 @@ phase = 2.6
 id = "showcase-ruby-plane"
 name = "Ruby Plane"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.12, 0.92, -0.92]
 rotation = [1.5708, 0.0, 0.2]
 scale = [0.42, 0.42, 0.42]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "plane"
 segments = 0
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.95, 0.08, 0.24]
 
 [entities.components.spin]
@@ -109,12 +109,12 @@ phase = 0.7
 id = "showcase-camera"
 name = "Showcase Camera"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.25, 6.4]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
 
-[entities.components."machina.camera"]
+[entities.components."scrapbot.camera"]
 fov_y_degrees = 52.0
 near = 0.1
 far = 100.0
@@ -123,7 +123,7 @@ far = 100.0
 id = "showcase-key-light"
 name = "Showcase Key Light"
 
-[entities.components."machina.light.directional"]
+[entities.components."scrapbot.light.directional"]
 direction = [0.28, 0.78, 0.56]
 color = [1.0, 0.94, 0.86]
 intensity = 0.95

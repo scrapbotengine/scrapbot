@@ -29,27 +29,27 @@ jobs:
       - name: Leak-checked tests
         run: |
           set -euo pipefail
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina check examples/minimal
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina step examples/minimal --frames=3 --format=json
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina test tests/projects/health_tick
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina bench examples/spawn_swarm --frames=60 --format=json
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
       - name: Project and benchmark tests
         run: |
           set -euo pipefail
-          ./zig-out/bin/machina test tests/projects
-          ./zig-out/bin/machina bench examples/spawn_swarm --frames 60 --format=json
+          ./zig-out/bin/scrapbot test tests/projects
+          ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json
       - name: Render and visual tests
         run: |
           set -euo pipefail
-          ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.png
-          ./zig-out/bin/machina render-test examples/showcase zig-out/showcase-render-test.png
-          ./zig-out/bin/machina render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          ./zig-out/bin/machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          ./zig-out/bin/machina render-test examples/native_motion zig-out/native-motion-render-test.png
-          ./zig-out/bin/machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+          ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
+          ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
       - name: Headful smoke
-        run: ./zig-out/bin/machina run examples/minimal --hidden --frames 2
+        run: ./zig-out/bin/scrapbot run examples/minimal --hidden --frames 2
 
   linux:
     runs-on: ubuntu-latest
@@ -72,27 +72,27 @@ jobs:
       - name: Leak-checked tests
         run: |
           set -euo pipefail
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina check examples/minimal
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina step examples/minimal --frames=3 --format=json
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina test tests/projects/health_tick
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina bench examples/spawn_swarm --frames=60 --format=json
-          MACHINA_LEAK_CHECK=1 ./zig-out/bin/machina render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json
+          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
       - name: Project and benchmark tests
         run: |
           set -euo pipefail
-          ./zig-out/bin/machina test tests/projects
-          ./zig-out/bin/machina bench examples/spawn_swarm --frames 60 --format=json
+          ./zig-out/bin/scrapbot test tests/projects
+          ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json
       - name: Render and visual tests
         run: |
           set -euo pipefail
-          ./zig-out/bin/machina render-test examples/minimal zig-out/minimal-render-test.png
-          ./zig-out/bin/machina render-test examples/showcase zig-out/showcase-render-test.png
-          ./zig-out/bin/machina render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          ./zig-out/bin/machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          ./zig-out/bin/machina render-test examples/native_motion zig-out/native-motion-render-test.png
-          ./zig-out/bin/machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+          ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
+          ./zig-out/bin/scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
+          ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
       - name: Headful smoke
-        run: xvfb-run -a ./zig-out/bin/machina run examples/minimal --hidden --frames 2
+        run: xvfb-run -a ./zig-out/bin/scrapbot run examples/minimal --hidden --frames 2
 
   windows:
     runs-on: windows-latest
@@ -130,42 +130,42 @@ jobs:
       - name: Leak-checked tests
         shell: pwsh
         run: |
-          function Invoke-Machina {
-            & .\zig-out\bin\machina.exe @args
+          function Invoke-Scrapbot {
+            & .\zig-out\bin\scrapbot.exe @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-          $env:MACHINA_LEAK_CHECK = "1"
-          Invoke-Machina check examples/minimal
-          Invoke-Machina step examples/minimal --frames=3 --format=json
-          Invoke-Machina test tests/projects/health_tick
-          Invoke-Machina bench examples/spawn_swarm --frames=60 --format=json
-          Invoke-Machina render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
-          Remove-Item Env:\MACHINA_LEAK_CHECK
+          $env:SCRAPBOT_LEAK_CHECK = "1"
+          Invoke-Scrapbot check examples/minimal
+          Invoke-Scrapbot step examples/minimal --frames=3 --format=json
+          Invoke-Scrapbot test tests/projects/health_tick
+          Invoke-Scrapbot bench examples/spawn_swarm --frames=60 --format=json
+          Invoke-Scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
+          Remove-Item Env:\SCRAPBOT_LEAK_CHECK
       - name: Project and benchmark tests
         shell: pwsh
         run: |
-          function Invoke-Machina {
-            & .\zig-out\bin\machina.exe @args
+          function Invoke-Scrapbot {
+            & .\zig-out\bin\scrapbot.exe @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-          Invoke-Machina test tests/projects
-          Invoke-Machina bench examples/spawn_swarm --frames 60 --format=json
+          Invoke-Scrapbot test tests/projects
+          Invoke-Scrapbot bench examples/spawn_swarm --frames 60 --format=json
       - name: Render and visual tests
         shell: pwsh
         run: |
-          function Invoke-Machina {
-            & .\zig-out\bin\machina.exe @args
+          function Invoke-Scrapbot {
+            & .\zig-out\bin\scrapbot.exe @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-          Invoke-Machina render-test examples/minimal zig-out/minimal-render-test.png
-          Invoke-Machina render-test examples/showcase zig-out/showcase-render-test.png
-          Invoke-Machina render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          Invoke-Machina render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          Invoke-Machina render-test examples/native_motion zig-out/native-motion-render-test.png
-          Invoke-Machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+          Invoke-Scrapbot render-test examples/minimal zig-out/minimal-render-test.png
+          Invoke-Scrapbot render-test examples/showcase zig-out/showcase-render-test.png
+          Invoke-Scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
+          Invoke-Scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
+          Invoke-Scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
+          Invoke-Scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
       - name: Headful smoke
         shell: pwsh
-        run: .\zig-out\bin\machina.exe run examples/minimal --hidden --frames 2
+        run: .\zig-out\bin\scrapbot.exe run examples/minimal --hidden --frames 2

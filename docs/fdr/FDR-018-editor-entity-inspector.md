@@ -5,14 +5,14 @@
 
 ## Overview
 
-The editor entity inspector lets a developer inspect and lightly manipulate live scene entities while a project is running headfully. It exists as the first game-facing editor workflow built on Machina's engine-hosted UI, shared ECS runtime, and live project update loop.
+The editor entity inspector lets a developer inspect and lightly manipulate live scene entities while a project is running headfully. It exists as the first game-facing editor workflow built on Scrapbot's engine-hosted UI, shared ECS runtime, and live project update loop.
 
 ## Behavior
 
-- The editor shell is hidden by default and can be shown with `machina run --editor` or toggled in a headful run with Ctrl+Tab.
+- The editor shell is hidden by default and can be shown with `scrapbot run --editor` or toggled in a headful run with Ctrl+Tab.
 - When the editor shell is visible, the game renders into the full remaining viewport between the editor top bar, bottom bar, left sidebar, and right sidebar.
 - The editor shell includes playback controls for pause/resume and single-frame stepping.
-- Playback controls are generated as retained `machina.ui.button` + `machina.ui.command` entities and routed through shared retained UI command hit testing.
+- Playback controls are generated as retained `scrapbot.ui.button` + `scrapbot.ui.command` entities and routed through shared retained UI command hit testing.
 - Pausing stops scheduled update systems while keeping startup, diagnostics, rendering, and editor interaction available.
 - Clicking a visible renderable mesh selects that entity.
 - The left sidebar shows a live list of entities currently in the world below the systems list.
@@ -30,7 +30,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - `vec3` fields render one input box per lane, each preceded by a colored lane label: red `X`, green `Y`, and blue `Z`.
 - Color-like `vec3` fields additionally render a color swatch next to the lane input boxes.
 - Boolean fields render as click-to-toggle controls.
-- Known enum-like string fields render as selectors. The first selector is `machina.geometry.primitive.primitive`, which cycles through built-in primitive names.
+- Known enum-like string fields render as selectors. The first selector is `scrapbot.geometry.primitive.primitive`, which cycles through built-in primitive names.
 - Clicking a value input focuses it for editing and gives it a focus-ring border plus a visible caret.
 - Numeric value inputs select their full value when focused so typing can immediately replace the existing number. Select-all-on-focus is treated as an input-control option rather than a global editor rule.
 - Focused inputs accept typed text through the platform text-input path.
@@ -85,8 +85,8 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 ### 5a. Keep component boxes bounded
 
-**Decision:** Inspector component boxes fill the right sidebar width, stack in a retained vertical group, use one-pixel separators, and render fields as left-label/right-value rows. Field rows are retained `machina.ui.table` entities with two columns and `first_column_ratio = 0.5`, so the table controls the current 50/50 title/editor split after padding and gap. Component titles and field rows use consistent logical 4px-grid spacing, while typed input controls use tighter 2 logical pixels of text padding and 2 logical pixel row gaps for readability. Overflowing component stacks live inside the inspector scroll view.
-**Why:** Component ids can be long qualified strings, especially engine-owned `machina.*` ids, and editor chrome must remain legible without text escaping rounded cards.
+**Decision:** Inspector component boxes fill the right sidebar width, stack in a retained vertical group, use one-pixel separators, and render fields as left-label/right-value rows. Field rows are retained `scrapbot.ui.table` entities with two columns and `first_column_ratio = 0.5`, so the table controls the current 50/50 title/editor split after padding and gap. Component titles and field rows use consistent logical 4px-grid spacing, while typed input controls use tighter 2 logical pixels of text padding and 2 logical pixel row gaps for readability. Overflowing component stacks live inside the inspector scroll view.
+**Why:** Component ids can be long qualified strings, especially engine-owned `scrapbot.*` ids, and editor chrome must remain legible without text escaping rounded cards.
 **Tradeoff:** Truncated ids and values need future hover, copy, tooltip, horizontal scrolling, or expandable-detail affordances before the inspector is comfortable for deeper editing.
 
 ### 5b. Reserve the right sidebar for selected-entity components

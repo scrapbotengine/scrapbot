@@ -1,4 +1,4 @@
-# Machina Engine Contributing Guide
+# Scrapbot Engine Contributing Guide
 
 ## This is an Agentic-First Codebase
 

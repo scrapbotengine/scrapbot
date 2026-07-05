@@ -1,4 +1,4 @@
-# Machina
+# Scrapbot
 
 A compact, experimental, and probably mostly useless game engine that tries to answer the question: what if a game engine was 100% agentically engineered, and structured specifically so agents can help you build your game?
 

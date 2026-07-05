@@ -5,7 +5,7 @@
 
 ## Overview
 
-Render batching lets Machina draw many scene-authored entities that share compatible geometry and pipeline-affecting render state as a single instanced render batch. It keeps the ECS authoring model simple while giving renderer internals a scalable path for scenes with repeated objects.
+Render batching lets Scrapbot draw many scene-authored entities that share compatible geometry and pipeline-affecting render state as a single instanced render batch. It keeps the ECS authoring model simple while giving renderer internals a scalable path for scenes with repeated objects.
 
 ## Behavior
 
@@ -38,8 +38,8 @@ Render batching lets Machina draw many scene-authored entities that share compat
 ### 3. Keep batching inside the render ECS schedule
 
 **Decision:** Batches are planned during render preparation and queued as internal render-world draw command entities.
-**Why:** Renderer data flow should keep using Machina's shared ECS scheduler instead of reintroducing an ad hoc object list. This follows ADR-013.
-**Tradeoff:** GPU buffers remain renderer-owned side resources until Machina has explicit native/internal component storage for non-serializable values.
+**Why:** Renderer data flow should keep using Scrapbot's shared ECS scheduler instead of reintroducing an ad hoc object list. This follows ADR-013.
+**Tradeoff:** GPU buffers remain renderer-owned side resources until Scrapbot has explicit native/internal component storage for non-serializable values.
 
 ### 4. Plan batches from a one-pass renderable snapshot
 

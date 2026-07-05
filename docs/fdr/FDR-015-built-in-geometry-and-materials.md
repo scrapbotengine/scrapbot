@@ -5,16 +5,16 @@
 
 ## Overview
 
-Built-in geometry and materials let projects render simple 3D forms from text-authored ECS component data before Machina has an asset import pipeline. They give examples, tests, scripts, and future editor tooling a common way to describe visible objects without hardcoding everything as cubes.
+Built-in geometry and materials let projects render simple 3D forms from text-authored ECS component data before Scrapbot has an asset import pipeline. They give examples, tests, scripts, and future editor tooling a common way to describe visible objects without hardcoding everything as cubes.
 
 ## Behavior
 
-- Scene entities can author `machina.geometry.primitive` to select a built-in primitive.
+- Scene entities can author `scrapbot.geometry.primitive` to select a built-in primitive.
 - Built-in primitives include `box`, `plane`, `sphere`, `uv_sphere`, and `ico_sphere`.
 - Primitive geometry supports simple resolution fields for sphere-like primitives.
-- Scene entities can author `machina.material.surface` to provide a base color.
-- Renderable entities use `machina.transform`, geometry, and material component data.
-- Existing `machina.render.cube` entities remain valid and render as box geometry with an inline base-color material.
+- Scene entities can author `scrapbot.material.surface` to provide a base color.
+- Renderable entities use `scrapbot.transform`, geometry, and material component data.
+- Existing `scrapbot.render.cube` entities remain valid and render as box geometry with an inline base-color material.
 - Generated geometry provides normals for the existing directional lighting model.
 - Renderables with matching built-in geometry parameters and compatible pipeline-affecting render state can share one instanced render batch; base color is carried per instance.
 - The showcase example renders multiple built-in primitive types through the geometry/material path.
@@ -29,13 +29,13 @@ Built-in geometry and materials let projects render simple 3D forms from text-au
 
 ### 2. Keep primitives built in until asset import exists
 
-**Decision:** Machina generates common primitives directly in the engine before loading mesh assets from disk.
+**Decision:** Scrapbot generates common primitives directly in the engine before loading mesh assets from disk.
 **Why:** Built-ins are enough for tests, examples, editor experiments, and early gameplay while FDR-006 remains planned.
 **Tradeoff:** Generated geometry is intentionally limited and not a replacement for real mesh assets.
 
 ### 3. Preserve legacy cube scenes
 
-**Decision:** `machina.render.cube` remains supported as a compatibility shortcut.
+**Decision:** `scrapbot.render.cube` remains supported as a compatibility shortcut.
 **Why:** Existing examples, tests, and early project files should continue to run while new scenes move to geometry/material components.
 **Tradeoff:** The codebase temporarily carries legacy cube naming and renderable-count APIs until a migration removes or retires the shortcut.
 

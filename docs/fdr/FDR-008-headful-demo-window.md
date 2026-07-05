@@ -5,11 +5,11 @@
 
 ## Overview
 
-Headful demo rendering proves that Machina can create a platform window, hand its native surface to WebGPU, configure a presentable surface, and draw visible frames through the same renderer foundation used by offscreen rendering.
+Headful demo rendering proves that Scrapbot can create a platform window, hand its native surface to WebGPU, configure a presentable surface, and draw visible frames through the same renderer foundation used by offscreen rendering.
 
 ## Behavior
 
-- Users can run `machina run [path]` against a valid project on supported desktop platforms with SDL3 available.
+- Users can run `scrapbot run [path]` against a valid project on supported desktop platforms with SDL3 available.
 - The command validates the project before opening a window.
 - The renderer opens a 16:9 visible window and presents the project's default scene until the window is closed.
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
@@ -19,22 +19,22 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 - Renderables with matching geometry and compatible pipeline-affecting render state are drawn through automatic instanced render batches.
 - Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
 - UI rectangles and text labels render after 3D scene content as an overlay.
-- Users can run `machina run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
-- Users can run `machina run [path] --hidden --frames N` to create the SDL window and WebGPU presentation surface without showing a normal visible window. `--hidden` requires `--frames` so invisible runs remain bounded.
+- Users can run `scrapbot run [path] --frames N` to exit after a fixed number of frames for smoke tests and automation.
+- Users can run `scrapbot run [path] --hidden --frames N` to create the SDL window and WebGPU presentation surface without showing a normal visible window. `--hidden` requires `--frames` so invisible runs remain bounded.
 - Headful live updates use measured elapsed frame time capped at a short spike limit; headless `step`, `bench`, and `test` runs remain deterministic and use their explicit `--dt` or manifest timestep.
 - In headful runs, holding the right mouse button enables a fly camera. Mouse movement changes view direction; W/A/S/D moves relative to the camera; Space moves up; Ctrl moves down. While active, the SDL window uses relative mouse mode so view rotation can continue at window edges.
 - The fly camera initializes from the scene-authored camera and applies as a render-only camera override. It does not mutate scene files or live scene camera components.
 - When the editor/debug overlay is visible, fly-camera input only applies while the pointer is over the game viewport.
 - The engine-owned editor/debug overlay is hidden by default; users can press Ctrl+Tab to toggle it.
-- Users can run `machina run [path] --editor` to start with the editor/debug overlay visible.
+- Users can run `scrapbot run [path] --editor` to start with the editor/debug overlay visible.
 - In editor mode, the game viewport fills the remaining area between editor chrome regions instead of preserving the default window's 16:9 aspect ratio.
-- `machina render [path] [output.png]` remains the headless/offscreen snapshot command.
+- `scrapbot render [path] [output.png]` remains the headless/offscreen snapshot command.
 
 ## Design Decisions
 
 ### 1. Make `run` the first headful command
 
-**Decision:** `machina run` opens a visible rendering window instead of only loading and printing project state.
+**Decision:** `scrapbot run` opens a visible rendering window instead of only loading and printing project state.
 **Why:** Running a project should exercise the interactive runtime path. The previous command was only a placeholder, so changing it now avoids accumulating a false contract.
 **Tradeoff:** Headful execution now depends on platform windowing support and may not run in every CI environment.
 
@@ -46,8 +46,8 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 
 ### 3. Use SDL3 for the desktop window backend
 
-**Decision:** Desktop windowing uses SDL3 to create a native platform window. Machina creates the matching `wgpu-native` surface from SDL-provided native handles: Metal on macOS, Wayland/X11 on Linux, and Win32 HWND/HINSTANCE on Windows MSVC.
-**Why:** SDL3 gives Machina a small C ABI windowing layer with cross-platform reach while keeping platform details behind the renderer boundary described in ADR-005.
+**Decision:** Desktop windowing uses SDL3 to create a native platform window. Scrapbot creates the matching `wgpu-native` surface from SDL-provided native handles: Metal on macOS, Wayland/X11 on Linux, and Win32 HWND/HINSTANCE on Windows MSVC.
+**Why:** SDL3 gives Scrapbot a small C ABI windowing layer with cross-platform reach while keeping platform details behind the renderer boundary described in ADR-005.
 **Tradeoff:** The first portable slice expects SDL3 to be installed as a system dependency. Bundled runtime packaging remains future work.
 
 ### 4. Keep the frame cap as a runtime option
@@ -64,9 +64,9 @@ Headful demo rendering proves that Machina can create a platform window, hand it
 
 ### 5. Use measured elapsed time for live updates
 
-**Decision:** Headful `machina run` advances scripts, editor animation, and fly-camera motion with elapsed frame time measured from the window loop, clamped to a short maximum.
+**Decision:** Headful `scrapbot run` advances scripts, editor animation, and fly-camera motion with elapsed frame time measured from the window loop, clamped to a short maximum.
 **Why:** Interactive runs should reflect real presentation cadence instead of moving a fixed amount per presented frame. The clamp prevents debugger pauses, reload stalls, or OS scheduling hiccups from injecting a large gameplay step.
-**Tradeoff:** Live window runs are intentionally not deterministic across machines or frame rates. Deterministic scenarios should continue to use `machina step`, `machina bench`, or `machina test` with explicit timesteps.
+**Tradeoff:** Live window runs are intentionally not deterministic across machines or frame rates. Deterministic scenarios should continue to use `scrapbot step`, `scrapbot bench`, or `scrapbot test` with explicit timesteps.
 
 ### 6. Keep editor visibility as a runtime option
 

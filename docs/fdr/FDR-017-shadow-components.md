@@ -9,8 +9,8 @@ Shadow components let scene authors opt renderable entities into casting and rec
 
 ## Behavior
 
-- Scene entities can add `machina.shadow.caster` to make a renderable participate in the shadow map.
-- Scene entities can add `machina.shadow.receiver` to make a renderable sample the shadow map during lighting.
+- Scene entities can add `scrapbot.shadow.caster` to make a renderable participate in the shadow map.
+- Scene entities can add `scrapbot.shadow.receiver` to make a renderable sample the shadow map during lighting.
 - The components are marker components with no fields.
 - Shadow casting and receiving are independent; an entity may cast, receive, both, or neither.
 - The current renderer supports shadows from the first directional light.
@@ -22,8 +22,8 @@ Shadow components let scene authors opt renderable entities into casting and rec
 
 ### 1. Use ECS marker components
 
-**Decision:** Shadow behavior is expressed with `machina.shadow.caster` and `machina.shadow.receiver` marker components.
-**Why:** This mirrors familiar `castShadow`/`receiveShadow` authoring while staying aligned with Machina's component-first scene model. It follows ADR-008 and ADR-013.
+**Decision:** Shadow behavior is expressed with `scrapbot.shadow.caster` and `scrapbot.shadow.receiver` marker components.
+**Why:** This mirrors familiar `castShadow`/`receiveShadow` authoring while staying aligned with Scrapbot's component-first scene model. It follows ADR-008 and ADR-013.
 **Tradeoff:** Component presence is all-or-nothing for now; per-object shadow bias, opacity, and quality controls remain future work.
 
 ### 2. Start with directional-light shadow mapping

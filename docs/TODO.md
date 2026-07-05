@@ -8,7 +8,7 @@
 - [x] WebGPU renderer with headful SDL windows, offscreen render verification, batching, shadows, and postprocess settings.
 - [x] Built-in primitive geometry, surface materials, camera, light, and shadow components.
 - [x] Engine-owned ECS UI primitives, editor shell, playback controls, system profiler, entity picking, translate gizmo, and component inspector.
-- [x] Automated test coverage through `machina test`, render tests, benchmarks, Luau checks, and game-shaped fixtures.
+- [x] Automated test coverage through `scrapbot test`, render tests, benchmarks, Luau checks, and game-shaped fixtures.
 - [x] Built-in component reference covering rendering, renderer settings, retained UI, runtime input resources, and example project-local components.
 - [x] ADRs, FDRs, glossary, docs website, NOTICE, and local agent skills.
 
@@ -93,7 +93,7 @@
 - [ ] Decide scene edit persistence and formatting rules.
 - [ ] Add asset references to text scene and project files.
 - [ ] Add project templates for common game shapes.
-- [ ] Add `machina build` packaging for runnable game bundles.
+- [ ] Add `scrapbot build` packaging for runnable game bundles.
 - [ ] Add static native-link builds for restricted targets.
 - [ ] Add project settings for default window and render quality.
 - [ ] Add stable generated-file and cache cleanup commands.

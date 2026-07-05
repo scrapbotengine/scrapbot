@@ -1,44 +1,44 @@
 ---
 title: CLI Reference
-description: Commands exposed by the Machina CLI.
+description: Commands exposed by the Scrapbot CLI.
 ---
 
-Machina is operated through one CLI binary.
+Scrapbot is operated through one CLI binary.
 
 ```txt
-machina - agent-native game engine
+scrapbot - agent-native game engine
 
 Usage:
-  machina --version
-  machina help
-  machina init [path]
-  machina check [path] [--format text|json]
-  machina step [path] [--frames N] [--dt seconds] [--format text|json]
-  machina bench [path] [--frames N] [--dt seconds] [--format text|json]
-  machina test [tests-path|project-path] [--format text|json]
-  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
-  machina run [path] [--frames N] [--editor] [--hidden]
-  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
+  scrapbot --version
+  scrapbot help
+  scrapbot init [path]
+  scrapbot check [path] [--format text|json]
+  scrapbot step [path] [--frames N] [--dt seconds] [--format text|json]
+  scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
+  scrapbot test [tests-path|project-path] [--format text|json]
+  scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
+  scrapbot run [path] [--frames N] [--editor] [--hidden]
+  scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
 ```
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `machina --version` | Print the CLI version. |
-| `machina help` | Print command usage. |
-| `machina init [path]` | Create a fresh project in the current or specified directory. |
-| `machina check [path]` | Validate project, scene, scripts, native code, and schedule. |
-| `machina step [path]` | Run deterministic headless simulation frames. |
-| `machina bench [path]` | Run headless benchmark smoke coverage. |
-| `machina test [path]` | Run game-shaped project tests. |
-| `machina build [path]` | Package a host-platform runnable bundle. |
-| `machina run [path]` | Run a headful interactive project. |
-| `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` | Render one or more offscreen frames to a PNG artifact. |
-| `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` | Render and verify visible output. |
-| `machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]` | Render and compare a golden visual fixture. |
+| `scrapbot --version` | Print the CLI version. |
+| `scrapbot help` | Print command usage. |
+| `scrapbot init [path]` | Create a fresh project in the current or specified directory. |
+| `scrapbot check [path]` | Validate project, scene, scripts, native code, and schedule. |
+| `scrapbot step [path]` | Run deterministic headless simulation frames. |
+| `scrapbot bench [path]` | Run headless benchmark smoke coverage. |
+| `scrapbot test [path]` | Run game-shaped project tests. |
+| `scrapbot build [path]` | Package a host-platform runnable bundle. |
+| `scrapbot run [path]` | Run a headful interactive project. |
+| `scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` | Render one or more offscreen frames to a PNG artifact. |
+| `scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` | Render and verify visible output. |
+| `scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]` | Render and compare a golden visual fixture. |
 
 ## Format Options
 
@@ -57,18 +57,18 @@ Use JSON for editor, CI, and agent integrations.
 ```sh
 mkdir mygame
 cd mygame
-machina init
+scrapbot init
 ```
 
-`machina init` creates a project in the current directory by default. The usual workflow is to create a project directory, enter it, and run `machina init`.
+`scrapbot init` creates a project in the current directory by default. The usual workflow is to create a project directory, enter it, and run `scrapbot init`.
 
 Passing a path also works:
 
 ```sh
-machina init games/hello-machina
+scrapbot init games/hello-scrapbot
 ```
 
-Machina creates the target directory when needed and uses the final path segment as the project name.
+Scrapbot creates the target directory when needed and uses the final path segment as the project name.
 
 A fresh project contains:
 
@@ -77,23 +77,23 @@ A fresh project contains:
 - `assets/.gitkeep`
 - a script-free scene with a cube, camera, and directional light
 
-The command is non-destructive. If `project.toml` or legacy `project.machina.toml` already exists in the target directory, `machina init` fails instead of overwriting project files.
+The command is non-destructive. If `project.toml` or legacy `project.scrapbot.toml` already exists in the target directory, `scrapbot init` fails instead of overwriting project files.
 
 ## Build Options
 
 ```sh
-machina build examples/showcase
-machina build examples/native_motion --output zig-out/packages --name native-motion --force
+scrapbot build examples/showcase
+scrapbot build examples/native_motion --output zig-out/packages --name native-motion --force
 ```
 
-`machina build` validates the project and writes a host-platform bundle. The default output root is `build` inside the project directory, and the default bundle name is based on the project name and host platform.
+`scrapbot build` validates the project and writes a host-platform bundle. The default output root is `build` inside the project directory, and the default bundle name is based on the project name and host platform.
 
 - `--output DIR` chooses the output root.
 - `--name NAME` chooses the bundle directory name.
-- `--force` replaces an existing Machina-generated bundle.
+- `--force` replaces an existing Scrapbot-generated bundle.
 - `--format json` emits machine-readable build output.
 
-The bundle contains `bin/machina`, a copied `project/` directory, a `run` launcher, and `machina-build.json`. Project-local native Zig modules are compiled into a packaged `native_artifact`, so the bundled project does not need Zig installed to load native systems. When SDL3 is discoverable locally, it is copied into `lib/` and the launcher adds that directory to the platform library search path.
+The bundle contains `bin/scrapbot`, a copied `project/` directory, a `run` launcher, and `scrapbot-build.json`. Project-local native Zig modules are compiled into a packaged `native_artifact`, so the bundled project does not need Zig installed to load native systems. When SDL3 is discoverable locally, it is copied into `lib/` and the launcher adds that directory to the platform library search path.
 
 The first build format targets the current OS and architecture only. Cross-platform export, app signing, and fully static project-native executables are future packaging work.
 
@@ -102,10 +102,10 @@ For platform-specific bundle notes, see [Building Games](/workflow/building-game
 ## Render Options
 
 ```sh
-machina render examples/native_motion zig-out/native-motion.png
-machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
-machina render examples/showcase --width 1280 --height 720 zig-out/showcase.png
-machina render --editor --width 2560 --height 1800 --pixel-scale 2 examples/minimal zig-out/editor-hidpi.png
+scrapbot render examples/native_motion zig-out/native-motion.png
+scrapbot render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
+scrapbot render examples/showcase --width 1280 --height 720 zig-out/showcase.png
+scrapbot render --editor --width 2560 --height 1800 --pixel-scale 2 examples/minimal zig-out/editor-hidpi.png
 ```
 
 - `--editor` renders the engine editor shell into the offscreen frame.
@@ -117,8 +117,8 @@ machina render --editor --width 2560 --height 1800 --pixel-scale 2 examples/mini
 ## Visual Test Options
 
 ```sh
-machina visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
-machina visual-test --update tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png
+scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+scrapbot visual-test --update tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png
 ```
 
 `visual-test` renders the project offscreen, compares the actual image against a checked-in golden image, and reports max channel delta, mean channel delta, and changed-pixel ratio. Use `--update` only when the current renderer output is the intended new baseline.
@@ -130,9 +130,9 @@ machina visual-test --update tests/golden/postprocess_effects tests/golden/postp
 ## Run Options
 
 ```sh
-machina run examples/showcase --frames 240
-machina run examples/showcase --editor
-machina run examples/showcase --hidden --frames 2
+scrapbot run examples/showcase --frames 240
+scrapbot run examples/showcase --editor
+scrapbot run examples/showcase --hidden --frames 2
 ```
 
 - `--frames N` exits after a bounded number of frames.
@@ -149,5 +149,5 @@ machina run examples/showcase --hidden --frames 2
 Example:
 
 ```sh
-machina step examples/showcase --frames 8 --dt 0.05
+scrapbot step examples/showcase --frames 8 --dt 0.05
 ```

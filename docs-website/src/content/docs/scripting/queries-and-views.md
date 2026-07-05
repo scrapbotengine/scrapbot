@@ -3,7 +3,7 @@ title: Queries and Views
 description: Use typed query iteration for ergonomics and buffer-backed views for hot Luau loops.
 ---
 
-Machina provides two Luau query surfaces:
+Scrapbot provides two Luau query surfaces:
 
 - `Query:iter(world)` for ergonomic typed component proxy iteration.
 - `Query:view(world)` for high-cardinality hot loops that need bulk `f32` or `vec3` access.

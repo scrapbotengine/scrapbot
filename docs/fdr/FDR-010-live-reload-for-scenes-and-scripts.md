@@ -10,7 +10,7 @@ Live reload lets users, editor tools, and agents change scene, script, and proje
 ## Behavior
 
 - Interactive runs detect changed scene, script, and project-local native source files.
-- The current implementation polls project metadata, the active scene, project-listed scripts, and `native = "native/game.zig"` during `machina run`, including changes to the project's `default_scene`.
+- The current implementation polls project metadata, the active scene, project-listed scripts, and `native = "native/game.zig"` during `scrapbot run`, including changes to the project's `default_scene`.
 - Reloaded files are parsed and validated before they replace active runtime state.
 - Compatible scene changes replace the active scene world after validation.
 - Script reloads validate Luau source, execute script ECS registration, rebuild the component registry, and rebuild schedule batches.
@@ -57,6 +57,6 @@ Live reload lets users, editor tools, and agents change scene, script, and proje
 
 ## Open Questions
 
-- Which file watching backend should Machina use on each platform?
+- Which file watching backend should Scrapbot use on each platform?
 - How should script state be preserved or reset across reloads?
 - What schema migration support is required for live scene reload?

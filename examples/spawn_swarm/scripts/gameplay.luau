@@ -1,10 +1,10 @@
 --!strict
 
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-local Geometry = ecs.component<<MachinaGeometryPrimitive>>("machina.geometry.primitive")
-local Material = ecs.component<<MachinaSurfaceMaterial>>("machina.material.surface")
-local ShadowCaster = ecs.component<<MachinaShadowCaster>>("machina.shadow.caster")
-local ShadowReceiver = ecs.component<<MachinaShadowReceiver>>("machina.shadow.receiver")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+local Geometry = ecs.component<<ScrapbotGeometryPrimitive>>("scrapbot.geometry.primitive")
+local Material = ecs.component<<ScrapbotSurfaceMaterial>>("scrapbot.material.surface")
+local ShadowCaster = ecs.component<<ScrapbotShadowCaster>>("scrapbot.shadow.caster")
+local ShadowReceiver = ecs.component<<ScrapbotShadowReceiver>>("scrapbot.shadow.receiver")
 
 local SwarmMotion = ecs.component("swarm_motion", {
   fields = ecs.fields({

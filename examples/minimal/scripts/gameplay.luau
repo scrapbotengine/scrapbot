@@ -1,8 +1,8 @@
 --!strict
 
 
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+local RenderCube = ecs.component<<ScrapbotRenderCube>>("scrapbot.render.cube")
 local AutoRotate = ecs.component("spin", {
   fields = ecs.fields({
     angular_velocity = "vec3",

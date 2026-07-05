@@ -1,8 +1,8 @@
 --!strict
 
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-local Geometry = ecs.component<<MachinaGeometryPrimitive>>("machina.geometry.primitive")
-local Material = ecs.component<<MachinaSurfaceMaterial>>("machina.material.surface")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+local Geometry = ecs.component<<ScrapbotGeometryPrimitive>>("scrapbot.geometry.primitive")
+local Material = ecs.component<<ScrapbotSurfaceMaterial>>("scrapbot.material.surface")
 
 local Renderables = ecs.query(Transform, Geometry, Material)
 local elapsed = 0

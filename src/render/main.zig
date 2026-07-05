@@ -19,17 +19,17 @@ const depth_format = wgpu.TextureFormat.depth24_plus;
 const shadow_depth_format = wgpu.TextureFormat.depth32_float;
 const shadow_map_size = 1024;
 const bloom_level_count = 5;
-const render_ui_button_state_component_id = "machina.render.internal.ui.button_state";
-const render_ui_clip_component_id = "machina.render.internal.ui.clip";
-const render_draw_batch_component_id = "machina.render.internal.draw.batch";
-const render_draw_ui_component_id = "machina.render.internal.draw.ui";
-const render_extract_system_id = "machina.render.extract";
-const render_prepare_meshes_system_id = "machina.render.prepare_meshes";
-const render_queue_meshes_system_id = "machina.render.queue_meshes";
-const render_interact_ui_system_id = "machina.render.interact_ui";
-const render_prepare_ui_system_id = "machina.render.prepare_ui";
-const render_queue_ui_system_id = "machina.render.queue_ui";
-const render_draw_meshes_system_id = "machina.render.draw_meshes";
+const render_ui_button_state_component_id = "scrapbot.render.internal.ui.button_state";
+const render_ui_clip_component_id = "scrapbot.render.internal.ui.clip";
+const render_draw_batch_component_id = "scrapbot.render.internal.draw.batch";
+const render_draw_ui_component_id = "scrapbot.render.internal.draw.ui";
+const render_extract_system_id = "scrapbot.render.extract";
+const render_prepare_meshes_system_id = "scrapbot.render.prepare_meshes";
+const render_queue_meshes_system_id = "scrapbot.render.queue_meshes";
+const render_interact_ui_system_id = "scrapbot.render.interact_ui";
+const render_prepare_ui_system_id = "scrapbot.render.prepare_ui";
+const render_queue_ui_system_id = "scrapbot.render.queue_ui";
+const render_draw_meshes_system_id = "scrapbot.render.draw_meshes";
 const default_window_width = 1280;
 const default_window_height = 720;
 const editor_top_bar_height: f32 = 60.0;
@@ -77,10 +77,10 @@ const editor_top_fps_x: f32 = 152.0;
 const editor_panel_corner_radius: f32 = 16.0;
 const editor_sidebar_panel_margin: f32 = 8.0;
 const editor_button_corner_radius: f32 = 6.0;
-const editor_command_play_toggle = "machina.editor.play_toggle";
-const editor_command_step = "machina.editor.step";
-const editor_command_splitter_left = "machina.editor.splitter.left";
-const editor_command_splitter_right = "machina.editor.splitter.right";
+const editor_command_play_toggle = "scrapbot.editor.play_toggle";
+const editor_command_step = "scrapbot.editor.step";
+const editor_command_splitter_left = "scrapbot.editor.splitter.left";
+const editor_command_splitter_right = "scrapbot.editor.splitter.right";
 const fly_camera_move_speed: f32 = 6.0;
 const fly_camera_look_sensitivity: f32 = 0.0035;
 const fly_camera_max_pitch: f32 = std.math.degreesToRadians(89.0);
@@ -698,11 +698,11 @@ fn toggleDebugOverlay(input: *FrameInput) void {
     input.keyboard.editor_toggle_pressed = true;
 }
 
-fn isEditorToggleShortcut(key: sdl.MachinaSdlKey, ctrl_down: bool) bool {
-    return key == sdl.MACHINA_SDL_KEY_TAB and ctrl_down;
+fn isEditorToggleShortcut(key: sdl.ScrapbotSdlKey, ctrl_down: bool) bool {
+    return key == sdl.SCRAPBOT_SDL_KEY_TAB and ctrl_down;
 }
 
-fn updateKeyboardModifiers(keyboard: *KeyboardInput, event: sdl.MachinaSdlEvent) void {
+fn updateKeyboardModifiers(keyboard: *KeyboardInput, event: sdl.ScrapbotSdlEvent) void {
     keyboard.ctrl_down = event.ctrl_down != 0;
     keyboard.shift_down = event.shift_down != 0;
     keyboard.alt_down = event.alt_down != 0;
@@ -710,47 +710,47 @@ fn updateKeyboardModifiers(keyboard: *KeyboardInput, event: sdl.MachinaSdlEvent)
     keyboard.move_down = keyboard.ctrl_down;
 }
 
-fn updateKeyboardKeyState(keyboard: *KeyboardInput, key: sdl.MachinaSdlKey, down: bool) void {
-    if (key == sdl.MACHINA_SDL_KEY_W) {
+fn updateKeyboardKeyState(keyboard: *KeyboardInput, key: sdl.ScrapbotSdlKey, down: bool) void {
+    if (key == sdl.SCRAPBOT_SDL_KEY_W) {
         keyboard.move_forward = down;
-    } else if (key == sdl.MACHINA_SDL_KEY_S) {
+    } else if (key == sdl.SCRAPBOT_SDL_KEY_S) {
         keyboard.move_back = down;
-    } else if (key == sdl.MACHINA_SDL_KEY_A) {
+    } else if (key == sdl.SCRAPBOT_SDL_KEY_A) {
         keyboard.move_left = down;
-    } else if (key == sdl.MACHINA_SDL_KEY_D) {
+    } else if (key == sdl.SCRAPBOT_SDL_KEY_D) {
         keyboard.move_right = down;
-    } else if (key == sdl.MACHINA_SDL_KEY_SPACE) {
+    } else if (key == sdl.SCRAPBOT_SDL_KEY_SPACE) {
         keyboard.move_up = down;
-    } else if (key == sdl.MACHINA_SDL_KEY_LCTRL or key == sdl.MACHINA_SDL_KEY_RCTRL) {
+    } else if (key == sdl.SCRAPBOT_SDL_KEY_LCTRL or key == sdl.SCRAPBOT_SDL_KEY_RCTRL) {
         keyboard.move_down = down;
     }
 }
 
-fn updateEditorKeyboardActions(keyboard: *KeyboardInput, event: sdl.MachinaSdlEvent) void {
-    if (event.kind != sdl.MACHINA_SDL_EVENT_KEY_DOWN) {
+fn updateEditorKeyboardActions(keyboard: *KeyboardInput, event: sdl.ScrapbotSdlEvent) void {
+    if (event.kind != sdl.SCRAPBOT_SDL_EVENT_KEY_DOWN) {
         return;
     }
-    if (event.key == sdl.MACHINA_SDL_KEY_LEFT) {
+    if (event.key == sdl.SCRAPBOT_SDL_KEY_LEFT) {
         keyboard.editor_left_pressed = true;
-    } else if (event.key == sdl.MACHINA_SDL_KEY_RIGHT) {
+    } else if (event.key == sdl.SCRAPBOT_SDL_KEY_RIGHT) {
         keyboard.editor_right_pressed = true;
-    } else if (event.key == sdl.MACHINA_SDL_KEY_HOME) {
+    } else if (event.key == sdl.SCRAPBOT_SDL_KEY_HOME) {
         keyboard.editor_home_pressed = true;
-    } else if (event.key == sdl.MACHINA_SDL_KEY_END) {
+    } else if (event.key == sdl.SCRAPBOT_SDL_KEY_END) {
         keyboard.editor_end_pressed = true;
-    } else if (event.key == sdl.MACHINA_SDL_KEY_BACKSPACE) {
+    } else if (event.key == sdl.SCRAPBOT_SDL_KEY_BACKSPACE) {
         keyboard.editor_backspace_pressed = true;
-    } else if (event.key == sdl.MACHINA_SDL_KEY_DELETE) {
+    } else if (event.key == sdl.SCRAPBOT_SDL_KEY_DELETE) {
         keyboard.editor_delete_pressed = true;
-    } else if (event.key == sdl.MACHINA_SDL_KEY_RETURN and event.repeat == 0) {
+    } else if (event.key == sdl.SCRAPBOT_SDL_KEY_RETURN and event.repeat == 0) {
         keyboard.editor_enter_pressed = true;
-    } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_A and event.ctrl_down != 0) {
+    } else if (event.repeat == 0 and event.key == sdl.SCRAPBOT_SDL_KEY_A and event.ctrl_down != 0) {
         keyboard.editor_select_all_pressed = true;
-    } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_Z and event.ctrl_down != 0 and event.shift_down == 0) {
+    } else if (event.repeat == 0 and event.key == sdl.SCRAPBOT_SDL_KEY_Z and event.ctrl_down != 0 and event.shift_down == 0) {
         keyboard.editor_undo_pressed = true;
-    } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_Z and event.ctrl_down != 0 and event.shift_down != 0) {
+    } else if (event.repeat == 0 and event.key == sdl.SCRAPBOT_SDL_KEY_Z and event.ctrl_down != 0 and event.shift_down != 0) {
         keyboard.editor_redo_pressed = true;
-    } else if (event.repeat == 0 and event.key == sdl.MACHINA_SDL_KEY_Y and event.ctrl_down != 0) {
+    } else if (event.repeat == 0 and event.key == sdl.SCRAPBOT_SDL_KEY_Y and event.ctrl_down != 0) {
         keyboard.editor_redo_pressed = true;
     }
 }
@@ -1661,7 +1661,7 @@ fn renderDemoOutputFrames(
 
     const texture_format = wgpu.TextureFormat.bgra8_unorm_srgb;
     const target_texture = gpu.device.createTexture(&wgpu.TextureDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh target"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh target"),
         .size = output_extent,
         .format = texture_format,
         .usage = wgpu.TextureUsages.render_attachment | wgpu.TextureUsages.copy_src,
@@ -1669,7 +1669,7 @@ fn renderDemoOutputFrames(
     defer target_texture.release();
 
     const target_view = target_texture.createView(&wgpu.TextureViewDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh target view"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh target view"),
         .mip_level_count = 1,
         .array_layer_count = 1,
     }) orelse return RenderError.NoDevice;
@@ -1682,7 +1682,7 @@ fn renderDemoOutputFrames(
     defer depth.deinit();
 
     const staging_buffer = gpu.device.createBuffer(&wgpu.BufferDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh staging buffer"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh staging buffer"),
         .usage = wgpu.BufferUsages.map_read | wgpu.BufferUsages.copy_dst,
         .size = output_size,
         .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -1709,7 +1709,7 @@ fn renderDemoOutputFrames(
     }
 
     const encoder = gpu.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh copy encoder"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh copy encoder"),
     }) orelse return RenderError.NoDevice;
     defer encoder.release();
 
@@ -1729,7 +1729,7 @@ fn renderDemoOutputFrames(
     );
 
     const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh copy command buffer"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh copy command buffer"),
     }) orelse return RenderError.NoDevice;
     defer command_buffer.release();
 
@@ -1784,12 +1784,12 @@ const MacWindowSurface = struct {
     metal_view: *anyopaque,
 
     fn create(instance: *wgpu.Instance, window: *anyopaque) RenderError!MacWindowSurface {
-        const metal_view = sdl.machina_sdl_create_metal_view(window) orelse return RenderError.MetalViewCreateFailed;
-        errdefer sdl.machina_sdl_destroy_metal_view(metal_view);
+        const metal_view = sdl.scrapbot_sdl_create_metal_view(window) orelse return RenderError.MetalViewCreateFailed;
+        errdefer sdl.scrapbot_sdl_destroy_metal_view(metal_view);
 
-        const metal_layer = sdl.machina_sdl_get_metal_layer(metal_view) orelse return RenderError.MetalLayerMissing;
+        const metal_layer = sdl.scrapbot_sdl_get_metal_layer(metal_view) orelse return RenderError.MetalLayerMissing;
         var surface_descriptor = wgpu.surfaceDescriptorFromMetalLayer(.{
-            .label = "Machina window surface",
+            .label = "Scrapbot window surface",
             .layer = metal_layer,
         });
         const surface = instance.createSurface(&surface_descriptor) orelse return RenderError.NoSurface;
@@ -1802,7 +1802,7 @@ const MacWindowSurface = struct {
     fn deinit(self: *MacWindowSurface) void {
         self.surface.unconfigure();
         self.surface.release();
-        sdl.machina_sdl_destroy_metal_view(self.metal_view);
+        sdl.scrapbot_sdl_destroy_metal_view(self.metal_view);
         self.* = undefined;
     }
 };
@@ -1813,9 +1813,9 @@ const LinuxWindowSurface = struct {
     fn create(instance: *wgpu.Instance, window: *anyopaque) RenderError!LinuxWindowSurface {
         var wayland_display: ?*anyopaque = null;
         var wayland_surface: ?*anyopaque = null;
-        if (sdl.machina_sdl_get_wayland_handles(window, &wayland_display, &wayland_surface) != 0) {
+        if (sdl.scrapbot_sdl_get_wayland_handles(window, &wayland_display, &wayland_surface) != 0) {
             var surface_descriptor = wgpu.surfaceDescriptorFromWaylandSurface(.{
-                .label = "Machina window surface",
+                .label = "Scrapbot window surface",
                 .display = wayland_display orelse return RenderError.NativeWindowHandleMissing,
                 .surface = wayland_surface orelse return RenderError.NativeWindowHandleMissing,
             });
@@ -1825,9 +1825,9 @@ const LinuxWindowSurface = struct {
 
         var x11_display: ?*anyopaque = null;
         var x11_window: u64 = 0;
-        if (sdl.machina_sdl_get_x11_handles(window, &x11_display, &x11_window) != 0) {
+        if (sdl.scrapbot_sdl_get_x11_handles(window, &x11_display, &x11_window) != 0) {
             var surface_descriptor = wgpu.surfaceDescriptorFromXlibWindow(.{
-                .label = "Machina window surface",
+                .label = "Scrapbot window surface",
                 .display = x11_display orelse return RenderError.NativeWindowHandleMissing,
                 .window = x11_window,
             });
@@ -1851,11 +1851,11 @@ const WindowsWindowSurface = struct {
     fn create(instance: *wgpu.Instance, window: *anyopaque) RenderError!WindowsWindowSurface {
         var hinstance: ?*anyopaque = null;
         var hwnd: ?*anyopaque = null;
-        if (sdl.machina_sdl_get_win32_handles(window, &hinstance, &hwnd) == 0) {
+        if (sdl.scrapbot_sdl_get_win32_handles(window, &hinstance, &hwnd) == 0) {
             return RenderError.NativeWindowHandleMissing;
         }
         var surface_descriptor = wgpu.surfaceDescriptorFromWindowsHWND(.{
-            .label = "Machina window surface",
+            .label = "Scrapbot window surface",
             .hinstance = hinstance orelse return RenderError.NativeWindowHandleMissing,
             .hwnd = hwnd orelse return RenderError.NativeWindowHandleMissing,
         });
@@ -1878,14 +1878,14 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     const title_z = try allocator.dupeZ(u8, title);
     defer allocator.free(title_z);
 
-    if (sdl.machina_sdl_init_video() == 0) {
+    if (sdl.scrapbot_sdl_init_video() == 0) {
         return RenderError.SdlInitFailed;
     }
-    defer sdl.machina_sdl_quit();
+    defer sdl.scrapbot_sdl_quit();
 
-    const window = sdl.machina_sdl_create_window(title_z.ptr, default_window_width, default_window_height, @intFromBool(options.hidden)) orelse return RenderError.WindowCreateFailed;
-    defer sdl.machina_sdl_destroy_window(window);
-    _ = sdl.machina_sdl_start_text_input(window);
+    const window = sdl.scrapbot_sdl_create_window(title_z.ptr, default_window_width, default_window_height, @intFromBool(options.hidden)) orelse return RenderError.WindowCreateFailed;
+    defer sdl.scrapbot_sdl_destroy_window(window);
+    _ = sdl.scrapbot_sdl_start_text_input(window);
 
     const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
     defer instance.release();
@@ -1921,21 +1921,21 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
     var frame_count: u32 = 0;
     var input: FrameInput = .{ .debug_overlay_visible = options.editor };
     var relative_mouse_enabled = false;
-    const resize_ew_cursor: ?*anyopaque = sdl.machina_sdl_create_resize_ew_cursor();
-    defer if (resize_ew_cursor) |cursor| sdl.machina_sdl_destroy_cursor(cursor);
+    const resize_ew_cursor: ?*anyopaque = sdl.scrapbot_sdl_create_resize_ew_cursor();
+    defer if (resize_ew_cursor) |cursor| sdl.scrapbot_sdl_destroy_cursor(cursor);
     var active_cursor_kind: EditorCursorKind = .default;
-    var last_frame_ticks = sdl.machina_sdl_get_ticks_ns();
+    var last_frame_ticks = sdl.scrapbot_sdl_get_ticks_ns();
     var last_performance_display_ticks: u64 = 0;
     var smoothed_fps: f32 = 0.0;
     var displayed_fps: f32 = 0.0;
     while (running) {
         input.beginFrame();
 
-        var event: sdl.MachinaSdlEvent = undefined;
-        while (sdl.machina_sdl_poll_event(&event) != 0) {
+        var event: sdl.ScrapbotSdlEvent = undefined;
+        while (sdl.scrapbot_sdl_poll_event(&event) != 0) {
             switch (event.kind) {
-                sdl.MACHINA_SDL_EVENT_QUIT => running = false,
-                sdl.MACHINA_SDL_EVENT_KEY_DOWN => {
+                sdl.SCRAPBOT_SDL_EVENT_QUIT => running = false,
+                sdl.SCRAPBOT_SDL_EVENT_KEY_DOWN => {
                     updateKeyboardKeyState(&input.keyboard, event.key, true);
                     updateKeyboardModifiers(&input.keyboard, event);
                     updateEditorKeyboardActions(&input.keyboard, event);
@@ -1943,43 +1943,43 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
                         toggleDebugOverlay(&input);
                     }
                 },
-                sdl.MACHINA_SDL_EVENT_KEY_UP => {
+                sdl.SCRAPBOT_SDL_EVENT_KEY_UP => {
                     updateKeyboardKeyState(&input.keyboard, event.key, false);
                     updateKeyboardModifiers(&input.keyboard, event);
                 },
-                sdl.MACHINA_SDL_EVENT_MOUSE_MOTION => {
+                sdl.SCRAPBOT_SDL_EVENT_MOUSE_MOTION => {
                     updatePointerFromWindow(&input.pointer, window, event.x, event.y);
                     input.pointer.delta[0] += event.xrel;
                     input.pointer.delta[1] += event.yrel;
                 },
-                sdl.MACHINA_SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                sdl.SCRAPBOT_SDL_EVENT_MOUSE_BUTTON_DOWN => {
                     updatePointerFromWindow(&input.pointer, window, event.x, event.y);
-                    if (event.button == sdl.machina_sdl_button_left()) {
+                    if (event.button == sdl.scrapbot_sdl_button_left()) {
                         input.pointer.primary_down = true;
                         input.pointer.primary_pressed = true;
-                    } else if (event.button == sdl.machina_sdl_button_right()) {
+                    } else if (event.button == sdl.scrapbot_sdl_button_right()) {
                         input.pointer.secondary_down = true;
                         input.pointer.secondary_pressed = true;
                     }
                 },
-                sdl.MACHINA_SDL_EVENT_MOUSE_BUTTON_UP => {
+                sdl.SCRAPBOT_SDL_EVENT_MOUSE_BUTTON_UP => {
                     updatePointerFromWindow(&input.pointer, window, event.x, event.y);
-                    if (event.button == sdl.machina_sdl_button_left()) {
+                    if (event.button == sdl.scrapbot_sdl_button_left()) {
                         input.pointer.primary_down = false;
                         input.pointer.primary_released = true;
-                    } else if (event.button == sdl.machina_sdl_button_right()) {
+                    } else if (event.button == sdl.scrapbot_sdl_button_right()) {
                         input.pointer.secondary_down = false;
                         input.pointer.secondary_released = true;
                     }
                 },
-                sdl.MACHINA_SDL_EVENT_MOUSE_WHEEL => {
+                sdl.SCRAPBOT_SDL_EVENT_MOUSE_WHEEL => {
                     input.pointer.wheel_delta[0] += event.wheel_x;
                     input.pointer.wheel_delta[1] += event.wheel_y;
                 },
-                sdl.MACHINA_SDL_EVENT_TEXT_INPUT => {
+                sdl.SCRAPBOT_SDL_EVENT_TEXT_INPUT => {
                     input.appendTextInput(std.mem.sliceTo(event.text[0..], 0));
                 },
-                sdl.MACHINA_SDL_EVENT_WINDOW_RESIZED => {
+                sdl.SCRAPBOT_SDL_EVENT_WINDOW_RESIZED => {
                     try configureSurfaceFromWindow(surface, gpu.device, window, surface_format, &width, &height);
                     try depth.ensure(gpu.device, width, height);
                 },
@@ -1991,7 +1991,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             break;
         }
 
-        const frame_ticks = sdl.machina_sdl_get_ticks_ns();
+        const frame_ticks = sdl.scrapbot_sdl_get_ticks_ns();
         const elapsed_ns = if (frame_ticks > last_frame_ticks) frame_ticks - last_frame_ticks else 0;
         if (frame_ticks > last_frame_ticks) {
             last_frame_ticks = frame_ticks;
@@ -2023,7 +2023,7 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
         _ = updateFlyCameraCapture(&fly_camera, input);
         const should_enable_relative_mouse = flyCameraInputActive(fly_camera, input);
         if (should_enable_relative_mouse != relative_mouse_enabled) {
-            _ = sdl.machina_sdl_set_window_relative_mouse_mode(window, @intFromBool(should_enable_relative_mouse));
+            _ = sdl.scrapbot_sdl_set_window_relative_mouse_mode(window, @intFromBool(should_enable_relative_mouse));
             relative_mouse_enabled = should_enable_relative_mouse;
         }
         input.camera_override = updateFlyCamera(&fly_camera, scene.world, input, delta_seconds) catch null;
@@ -2053,10 +2053,10 @@ pub fn runDemoWindow(allocator: std.mem.Allocator, title: []const u8, options: W
             }
         }
 
-        sdl.machina_sdl_delay_ms(1);
+        sdl.scrapbot_sdl_delay_ms(1);
     }
     if (relative_mouse_enabled) {
-        _ = sdl.machina_sdl_set_window_relative_mouse_mode(window, 0);
+        _ = sdl.scrapbot_sdl_set_window_relative_mouse_mode(window, 0);
     }
 }
 
@@ -2428,7 +2428,7 @@ const RenderEcsState = struct {
             if (batch_index > std.math.maxInt(i32)) {
                 return RenderError.InvalidScene;
             }
-            const entity_id = std.fmt.allocPrint(self.allocator, "machina.render.draw.batch.{d}", .{batch_index}) catch return RenderError.OutOfMemory;
+            const entity_id = std.fmt.allocPrint(self.allocator, "scrapbot.render.draw.batch.{d}", .{batch_index}) catch return RenderError.OutOfMemory;
             defer self.allocator.free(entity_id);
 
             const entity = self.world.createEntity(entity_id, "Batch Draw") catch |err| return mapWorldError(err);
@@ -2443,7 +2443,7 @@ const RenderEcsState = struct {
         if (self.world.uiRectCount() == 0 and self.world.uiTextCount() == 0) {
             return;
         }
-        const entity = self.world.createEntity("machina.render.draw.ui", "UI Draw") catch |err| return mapWorldError(err);
+        const entity = self.world.createEntity("scrapbot.render.draw.ui", "UI Draw") catch |err| return mapWorldError(err);
         self.world.setComponent(entity, render_draw_ui_component_id, &.{}) catch |err| return mapWorldError(err);
     }
 
@@ -2492,7 +2492,7 @@ const DepthTarget = struct {
         self.deinit();
 
         const texture = device.createTexture(&wgpu.TextureDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh depth texture"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh depth texture"),
             .size = .{
                 .width = width,
                 .height = height,
@@ -2504,7 +2504,7 @@ const DepthTarget = struct {
         errdefer texture.release();
 
         const view = texture.createView(&wgpu.TextureViewDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh depth view"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh depth view"),
             .mip_level_count = 1,
             .array_layer_count = 1,
         }) orelse return RenderError.NoDevice;
@@ -2545,7 +2545,7 @@ const PostProcessTarget = struct {
 
         self.deinit();
         const texture = device.createTexture(&wgpu.TextureDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess scene texture"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess scene texture"),
             .size = .{
                 .width = width,
                 .height = height,
@@ -2557,7 +2557,7 @@ const PostProcessTarget = struct {
         errdefer texture.release();
 
         const view = texture.createView(&wgpu.TextureViewDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess scene view"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess scene view"),
             .mip_level_count = 1,
             .array_layer_count = 1,
         }) orelse return RenderError.NoDevice;
@@ -2588,7 +2588,7 @@ const ShadowTarget = struct {
 
     fn create(device: *wgpu.Device) RenderError!ShadowTarget {
         const texture = device.createTexture(&wgpu.TextureDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow map texture"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow map texture"),
             .size = .{
                 .width = shadow_map_size,
                 .height = shadow_map_size,
@@ -2600,7 +2600,7 @@ const ShadowTarget = struct {
         errdefer texture.release();
 
         const view = texture.createView(&wgpu.TextureViewDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow map view"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow map view"),
             .mip_level_count = 1,
             .array_layer_count = 1,
             .aspect = .depth_only,
@@ -2835,7 +2835,7 @@ fn extractMeshInto(
     render_index: usize,
     mesh: runtime.RenderableMesh,
 ) RenderError!void {
-    const entity_id = std.fmt.allocPrint(allocator, "machina.render.extract.mesh.{d}", .{render_index}) catch return RenderError.OutOfMemory;
+    const entity_id = std.fmt.allocPrint(allocator, "scrapbot.render.extract.mesh.{d}", .{render_index}) catch return RenderError.OutOfMemory;
     defer allocator.free(entity_id);
 
     const entity = world.createEntity(entity_id, mesh.name) catch |err| return mapWorldError(err);
@@ -2904,7 +2904,7 @@ fn extractEditorGizmoInto(
     };
 
     for (axes) |entry| {
-        const entity_id = std.fmt.allocPrint(allocator, "machina.editor.gizmo.{s}", .{entry.id}) catch return RenderError.OutOfMemory;
+        const entity_id = std.fmt.allocPrint(allocator, "scrapbot.editor.gizmo.{s}", .{entry.id}) catch return RenderError.OutOfMemory;
         defer allocator.free(entity_id);
         const entity = world.createEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
         world.setTransform(entity, .{
@@ -3087,10 +3087,10 @@ fn extractEditorShellInto(allocator: std.mem.Allocator, world: *runtime.World, i
     const game_viewport = editorGameViewport(input);
     const hovered_splitter = routeEditorSplitterAt(allocator, input) catch null;
 
-    try extractEditorShellRect(world, "machina.editor.shell.top_bar", top, editor_palette.shell);
-    try extractEditorShellRect(world, "machina.editor.shell.bottom_bar", bottom, editor_palette.shell);
+    try extractEditorShellRect(world, "scrapbot.editor.shell.top_bar", top, editor_palette.shell);
+    try extractEditorShellRect(world, "scrapbot.editor.shell.bottom_bar", bottom, editor_palette.shell);
 
-    const body_group = world.createEntity("machina.editor.shell.body", "Editor Body HGroup") catch |err| return mapWorldError(err);
+    const body_group = world.createEntity("scrapbot.editor.shell.body", "Editor Body HGroup") catch |err| return mapWorldError(err);
     world.setUiHGroup(body_group, .{
         .position = body.position(),
         .size = body.size3(),
@@ -3098,16 +3098,16 @@ fn extractEditorShellInto(allocator: std.mem.Allocator, world: *runtime.World, i
         .padding = .{ 0.0, 0.0, 0.0 },
     }) catch |err| return mapWorldError(err);
 
-    try extractEditorShellLayoutRect(world, "machina.editor.shell.left_sidebar", "Editor Left Sidebar", layout.left.size3(), 0, editor_palette.panel);
-    try extractEditorShellLayoutSplitter(world, input, "machina.editor.shell.splitter.left", "Editor Left Splitter", layout.left_splitter.size3(), 1, .left, hovered_splitter);
+    try extractEditorShellLayoutRect(world, "scrapbot.editor.shell.left_sidebar", "Editor Left Sidebar", layout.left.size3(), 0, editor_palette.panel);
+    try extractEditorShellLayoutSplitter(world, input, "scrapbot.editor.shell.splitter.left", "Editor Left Splitter", layout.left_splitter.size3(), 1, .left, hovered_splitter);
     try extractEditorSplitterHitTarget(world, input, .left);
-    try extractEditorShellLayoutSpacer(world, "machina.editor.shell.game_viewport", "Editor Game Viewport Slot", .{ editor_min_game_viewport_width, body.height, 0.0 }, 2, 1.0);
-    try extractEditorShellLayoutSplitter(world, input, "machina.editor.shell.splitter.right", "Editor Right Splitter", layout.right_splitter.size3(), 3, .right, hovered_splitter);
+    try extractEditorShellLayoutSpacer(world, "scrapbot.editor.shell.game_viewport", "Editor Game Viewport Slot", .{ editor_min_game_viewport_width, body.height, 0.0 }, 2, 1.0);
+    try extractEditorShellLayoutSplitter(world, input, "scrapbot.editor.shell.splitter.right", "Editor Right Splitter", layout.right_splitter.size3(), 3, .right, hovered_splitter);
     try extractEditorSplitterHitTarget(world, input, .right);
-    try extractEditorShellLayoutRect(world, "machina.editor.shell.right_sidebar", "Editor Right Sidebar", layout.right.size3(), 4, editor_palette.panel);
+    try extractEditorShellLayoutRect(world, "scrapbot.editor.shell.right_sidebar", "Editor Right Sidebar", layout.right.size3(), 4, editor_palette.panel);
 
     const frame_color = editor_palette.panel_muted;
-    try extractEditorShellRect(world, "machina.editor.shell.viewport.border.bottom", .{
+    try extractEditorShellRect(world, "scrapbot.editor.shell.viewport.border.bottom", .{
         .x = game_viewport.x,
         .y = game_viewport.y + game_viewport.height - 2.0,
         .width = game_viewport.width,
@@ -3120,8 +3120,8 @@ fn extractEditorSplitterHitTarget(world: *runtime.World, input: FrameInput, spli
     const hit_rect = editorSplitterHitRect(input, splitter) orelse return;
     const id = switch (splitter) {
         .none => return,
-        .left => "machina.editor.shell.splitter.left.hit_area",
-        .right => "machina.editor.shell.splitter.right.hit_area",
+        .left => "scrapbot.editor.shell.splitter.left.hit_area",
+        .right => "scrapbot.editor.shell.splitter.right.hit_area",
     };
     const name = switch (splitter) {
         .none => return,
@@ -3130,8 +3130,8 @@ fn extractEditorSplitterHitTarget(world: *runtime.World, input: FrameInput, spli
     };
     const parent = switch (splitter) {
         .none => return,
-        .left => "machina.editor.shell.splitter.left",
-        .right => "machina.editor.shell.splitter.right",
+        .left => "scrapbot.editor.shell.splitter.left",
+        .right => "scrapbot.editor.shell.splitter.right",
     };
     const command = switch (splitter) {
         .none => return,
@@ -3170,7 +3170,7 @@ fn extractEditorShellLayoutRect(world: *runtime.World, id: []const u8, name: []c
         .corner_radius = 0.0,
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(entity, .{
-        .parent = "machina.editor.shell.body",
+        .parent = "scrapbot.editor.shell.body",
         .order = order,
         .@"align" = "fill",
     }) catch |err| return mapWorldError(err);
@@ -3184,7 +3184,7 @@ fn extractEditorShellLayoutSeparator(world: *runtime.World, id: []const u8, name
         .color = color,
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(entity, .{
-        .parent = "machina.editor.shell.body",
+        .parent = "scrapbot.editor.shell.body",
         .order = order,
         .@"align" = "fill",
     }) catch |err| return mapWorldError(err);
@@ -3212,7 +3212,7 @@ fn extractEditorShellLayoutSpacer(world: *runtime.World, id: []const u8, name: [
     const entity = world.createEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiSpacer(entity, .{ .size = .{ 0.0, 0.0, 0.0 } }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(entity, .{
-        .parent = "machina.editor.shell.body",
+        .parent = "scrapbot.editor.shell.body",
         .order = order,
         .min_size = min_size,
         .grow = grow,
@@ -3234,10 +3234,10 @@ fn extractDebugOverlayInto(
     const panel_size = editorDebugPanelSize(input);
     const panel = editorSystemPanelRect(input);
 
-    const canvas = world.createEntity("machina.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
+    const canvas = world.createEntity("scrapbot.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
     world.setUiCanvas(canvas, .{}) catch |err| return mapWorldError(err);
 
-    _ = try extractEditorPanel(world, "machina.editor.debug.panel", "Editor Debug Panel", .{
+    _ = try extractEditorPanel(world, "scrapbot.editor.debug.panel", "Editor Debug Panel", .{
         .x = panel.x,
         .y = panel.y,
         .width = panel_size[0],
@@ -3252,7 +3252,7 @@ fn extractDebugOverlayInto(
 
     const header_text = formatSystemProfileHeader(allocator, input.system_profiles) catch return RenderError.OutOfMemory;
     defer allocator.free(header_text);
-    const header = world.createEntity("machina.editor.debug.systems.header", "Editor Debug Systems Header") catch |err| return mapWorldError(err);
+    const header = world.createEntity("scrapbot.editor.debug.systems.header", "Editor Debug Systems Header") catch |err| return mapWorldError(err);
     world.setUiText(header, .{
         .position = editorPanelTextPosition(panel, editorSystemHeaderY(input) - panel.y),
         .size = editor_system_text_size,
@@ -3261,7 +3261,7 @@ fn extractDebugOverlayInto(
     }) catch |err| return mapWorldError(err);
 
     const list_clip = editorSystemListClipRect(input);
-    const system_scroll = world.createEntity("machina.editor.debug.systems.scroll", "Editor Debug Systems Scroll View") catch |err| return mapWorldError(err);
+    const system_scroll = world.createEntity("scrapbot.editor.debug.systems.scroll", "Editor Debug Systems Scroll View") catch |err| return mapWorldError(err);
     world.setUiScrollView(system_scroll, .{
         .position = list_clip.position,
         .size = list_clip.size,
@@ -3270,7 +3270,7 @@ fn extractDebugOverlayInto(
 
     const row_width = list_clip.size[0];
     const table_height = editorSystemTableContentHeight(input.system_profiles.len);
-    const system_table = world.createEntity("machina.editor.debug.systems.table", "Editor Debug Systems Table") catch |err| return mapWorldError(err);
+    const system_table = world.createEntity("scrapbot.editor.debug.systems.table", "Editor Debug Systems Table") catch |err| return mapWorldError(err);
     world.setUiRect(system_table, .{
         .position = .{
             0.0,
@@ -3282,7 +3282,7 @@ fn extractDebugOverlayInto(
         .corner_radius = editor_panel_corner_radius,
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(system_table, .{
-        .parent = "machina.editor.debug.systems.scroll",
+        .parent = "scrapbot.editor.debug.systems.scroll",
         .order = 0,
     }) catch |err| return mapWorldError(err);
 
@@ -3296,17 +3296,17 @@ fn extractDebugOverlayInto(
         const label_text = fitEditorTextToWidth(allocator, profile.id, editor_system_text_size, label_max_width) catch return RenderError.OutOfMemory;
         defer allocator.free(label_text);
 
-        const label_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}.label", .{profile_index}) catch return RenderError.OutOfMemory;
+        const label_id = std.fmt.allocPrint(allocator, "scrapbot.editor.debug.systems.row.{d}.label", .{profile_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(label_id);
-        _ = try extractEditorChildText(world, label_id, "Editor System Row Label", "machina.editor.debug.systems.table", .{
+        _ = try extractEditorChildText(world, label_id, "Editor System Row Label", "scrapbot.editor.debug.systems.table", .{
             editor_system_row_label_padding_x,
             row_y,
             0.0,
         }, label_text, editor_system_text_size, editor_palette.text);
 
-        const duration_id = std.fmt.allocPrint(allocator, "machina.editor.debug.systems.row.{d}.duration", .{profile_index}) catch return RenderError.OutOfMemory;
+        const duration_id = std.fmt.allocPrint(allocator, "scrapbot.editor.debug.systems.row.{d}.duration", .{profile_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(duration_id);
-        _ = try extractEditorChildText(world, duration_id, "Editor System Row Duration", "machina.editor.debug.systems.table", .{
+        _ = try extractEditorChildText(world, duration_id, "Editor System Row Duration", "scrapbot.editor.debug.systems.table", .{
             duration_x,
             row_y,
             0.0,
@@ -3320,17 +3320,17 @@ fn extractDebugOverlayInto(
 
 fn extractEditorTopBarInto(allocator: std.mem.Allocator, world: *runtime.World, input: FrameInput) RenderError!void {
     const top = editorTopBarRect(input);
-    const title = world.createEntity("machina.editor.top.title", "Editor Top Title") catch |err| return mapWorldError(err);
+    const title = world.createEntity("scrapbot.editor.top.title", "Editor Top Title") catch |err| return mapWorldError(err);
     world.setUiText(title, .{
         .position = .{ editor_panel_padding_x, top.y + editor_bar_text_offset_y, 0.0 },
         .size = 1.0,
         .color = editor_palette.text_muted,
-        .value = "MACHINA",
+        .value = "SCRAPBOT",
     }) catch |err| return mapWorldError(err);
 
     const fps_text = formatFpsLabel(allocator, input.fps) catch return RenderError.OutOfMemory;
     defer allocator.free(fps_text);
-    const fps = world.createEntity("machina.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
+    const fps = world.createEntity("scrapbot.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
     world.setUiText(fps, .{
         .position = .{ editor_top_fps_x, top.y + editor_bar_text_offset_y, 0.0 },
         .size = editor_system_text_size,
@@ -3352,7 +3352,7 @@ fn extractEditorBottomBarInto(allocator: std.mem.Allocator, world: *runtime.Worl
         @as(u32, @intFromFloat(@round(viewport.height))),
     }) catch return RenderError.OutOfMemory;
     defer allocator.free(status);
-    const status_text = world.createEntity("machina.editor.bottom.status", "Editor Bottom Status") catch |err| return mapWorldError(err);
+    const status_text = world.createEntity("scrapbot.editor.bottom.status", "Editor Bottom Status") catch |err| return mapWorldError(err);
     world.setUiText(status_text, .{
         .position = .{ editor_panel_padding_x, bottom.y + editor_bar_text_offset_y, 0.0 },
         .size = editor_system_text_size,
@@ -3415,7 +3415,7 @@ fn extractEditorSystemScrollbarInto(world: *runtime.World, input: FrameInput, li
 
     const track_height = list_clip.size[1];
     const track_x = list_clip.position[0] + list_clip.size[0] + editor_scrollbar_gap;
-    const track = world.createEntity("machina.editor.debug.systems.scrollbar.track", "Editor System Scrollbar Track") catch |err| return mapWorldError(err);
+    const track = world.createEntity("scrapbot.editor.debug.systems.scrollbar.track", "Editor System Scrollbar Track") catch |err| return mapWorldError(err);
     world.setUiRect(track, .{
         .position = .{ track_x, list_clip.position[1], 0.0 },
         .size = .{ editor_scrollbar_width, track_height, 0.0 },
@@ -3430,7 +3430,7 @@ fn extractEditorSystemScrollbarInto(world: *runtime.World, input: FrameInput, li
     const scroll_t = if (max_scroll > 0.0) std.math.clamp(input.editor.system_scroll_y / max_scroll, 0.0, 1.0) else 0.0;
     const thumb_y = list_clip.position[1] + (track_height - thumb_height) * scroll_t;
 
-    const thumb = world.createEntity("machina.editor.debug.systems.scrollbar.thumb", "Editor System Scrollbar Thumb") catch |err| return mapWorldError(err);
+    const thumb = world.createEntity("scrapbot.editor.debug.systems.scrollbar.thumb", "Editor System Scrollbar Thumb") catch |err| return mapWorldError(err);
     world.setUiRect(thumb, .{
         .position = .{ track_x, thumb_y, 0.0 },
         .size = .{ editor_scrollbar_width, thumb_height, 0.0 },
@@ -3446,19 +3446,19 @@ fn extractEditorEntityListInto(
     input: FrameInput,
 ) RenderError!void {
     const panel = editorEntityPanelRect(input);
-    _ = try extractEditorPanel(world, "machina.editor.entities.panel", "Editor Entities Panel", panel, editor_palette.panel, 0.0);
+    _ = try extractEditorPanel(world, "scrapbot.editor.entities.panel", "Editor Entities Panel", panel, editor_palette.panel, 0.0);
 
     const header_text = std.fmt.allocPrint(allocator, "ENTITIES {d}", .{scene_world.entityCount()}) catch return RenderError.OutOfMemory;
     defer allocator.free(header_text);
-    try extractEditorText(world, "machina.editor.entities.header", "Editor Entities Header", editorPanelTextPosition(panel, editorSystemHeaderYOffset()), header_text, editor_entity_text_size, editor_palette.text_muted);
+    try extractEditorText(world, "scrapbot.editor.entities.header", "Editor Entities Header", editorPanelTextPosition(panel, editorSystemHeaderYOffset()), header_text, editor_entity_text_size, editor_palette.text_muted);
 
     if (scene_world.entityCount() == 0) {
-        try extractEditorText(world, "machina.editor.entities.empty", "Editor Entities Empty", editorPanelTextPosition(panel, editorSystemRowsYOffset()), "NO ENTITIES", editor_entity_text_size, editor_palette.text_dim);
+        try extractEditorText(world, "scrapbot.editor.entities.empty", "Editor Entities Empty", editorPanelTextPosition(panel, editorSystemRowsYOffset()), "NO ENTITIES", editor_entity_text_size, editor_palette.text_dim);
         return;
     }
 
     const list_clip = editorEntityListClipRect(scene_world, input);
-    const entity_scroll = world.createEntity("machina.editor.entities.scroll", "Editor Entities Scroll View") catch |err| return mapWorldError(err);
+    const entity_scroll = world.createEntity("scrapbot.editor.entities.scroll", "Editor Entities Scroll View") catch |err| return mapWorldError(err);
     world.setUiScrollView(entity_scroll, .{
         .position = list_clip.position,
         .size = list_clip.size,
@@ -3467,7 +3467,7 @@ fn extractEditorEntityListInto(
 
     const row_width = list_clip.size[0];
     const table_height = editorEntityTableContentHeight(scene_world.entityCount());
-    const entity_table = world.createEntity("machina.editor.entities.table", "Editor Entities Table") catch |err| return mapWorldError(err);
+    const entity_table = world.createEntity("scrapbot.editor.entities.table", "Editor Entities Table") catch |err| return mapWorldError(err);
     world.setUiRect(entity_table, .{
         .position = .{ 0.0, 0.0, 0.0 },
         .size = .{ row_width, table_height, 0.0 },
@@ -3475,7 +3475,7 @@ fn extractEditorEntityListInto(
         .corner_radius = editor_panel_corner_radius,
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(entity_table, .{
-        .parent = "machina.editor.entities.scroll",
+        .parent = "scrapbot.editor.entities.scroll",
         .order = 0,
     }) catch |err| return mapWorldError(err);
 
@@ -3486,7 +3486,7 @@ fn extractEditorEntityListInto(
         const row_y = editor_entity_card_padding_y + @as(f32, @floatFromInt(entity_index)) * editor_entity_row_stride;
         const is_selected = editorEntityHandlesEqual(input.editor.selected_entity, handle);
         if (is_selected) {
-            const highlight_id = std.fmt.allocPrint(allocator, "machina.editor.entities.row.{d}.highlight", .{entity_index}) catch return RenderError.OutOfMemory;
+            const highlight_id = std.fmt.allocPrint(allocator, "scrapbot.editor.entities.row.{d}.highlight", .{entity_index}) catch return RenderError.OutOfMemory;
             defer allocator.free(highlight_id);
             const highlight = try extractEditorPanel(world, highlight_id, "Editor Entity Row Highlight", .{
                 .x = 0.0,
@@ -3495,7 +3495,7 @@ fn extractEditorEntityListInto(
                 .height = editor_entity_row_stride,
             }, editor_palette.panel_muted, editor_button_corner_radius);
             world.setUiLayoutItem(highlight, .{
-                .parent = "machina.editor.entities.table",
+                .parent = "scrapbot.editor.entities.table",
                 .order = @intCast(entity_index),
             }) catch |err| return mapWorldError(err);
         }
@@ -3510,7 +3510,7 @@ fn extractEditorEntityListInto(
         const label_text = fitEditorTextToWidth(allocator, raw_label, editor_entity_text_size, label_max_width) catch return RenderError.OutOfMemory;
         defer allocator.free(label_text);
 
-        const label_id = std.fmt.allocPrint(allocator, "machina.editor.entities.row.{d}.label", .{entity_index}) catch return RenderError.OutOfMemory;
+        const label_id = std.fmt.allocPrint(allocator, "scrapbot.editor.entities.row.{d}.label", .{entity_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(label_id);
         const row_label_color = if (entity.provenance == .spawned)
             editor_palette.text_dim
@@ -3518,15 +3518,15 @@ fn extractEditorEntityListInto(
             editor_palette.accent_soft
         else
             editor_palette.text;
-        _ = try extractEditorChildText(world, label_id, "Editor Entity Row Label", "machina.editor.entities.table", .{
+        _ = try extractEditorChildText(world, label_id, "Editor Entity Row Label", "scrapbot.editor.entities.table", .{
             editor_entity_row_label_padding_x,
             row_y,
             0.0,
         }, label_text, editor_entity_text_size, row_label_color);
 
-        const component_id = std.fmt.allocPrint(allocator, "machina.editor.entities.row.{d}.components", .{entity_index}) catch return RenderError.OutOfMemory;
+        const component_id = std.fmt.allocPrint(allocator, "scrapbot.editor.entities.row.{d}.components", .{entity_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(component_id);
-        _ = try extractEditorChildText(world, component_id, "Editor Entity Row Component Count", "machina.editor.entities.table", .{
+        _ = try extractEditorChildText(world, component_id, "Editor Entity Row Component Count", "scrapbot.editor.entities.table", .{
             component_x,
             row_y,
             0.0,
@@ -3543,7 +3543,7 @@ fn extractEditorEntityScrollbarInto(world: *runtime.World, scene_world: *const r
 
     const track_height = list_clip.size[1];
     const track_x = list_clip.position[0] + list_clip.size[0] + editor_scrollbar_gap;
-    const track = world.createEntity("machina.editor.entities.scrollbar.track", "Editor Entities Scrollbar Track") catch |err| return mapWorldError(err);
+    const track = world.createEntity("scrapbot.editor.entities.scrollbar.track", "Editor Entities Scrollbar Track") catch |err| return mapWorldError(err);
     world.setUiRect(track, .{
         .position = .{ track_x, list_clip.position[1], 0.0 },
         .size = .{ editor_scrollbar_width, track_height, 0.0 },
@@ -3558,7 +3558,7 @@ fn extractEditorEntityScrollbarInto(world: *runtime.World, scene_world: *const r
     const scroll_t = if (max_scroll > 0.0) std.math.clamp(input.editor.entity_scroll_y / max_scroll, 0.0, 1.0) else 0.0;
     const thumb_y = list_clip.position[1] + (track_height - thumb_height) * scroll_t;
 
-    const thumb = world.createEntity("machina.editor.entities.scrollbar.thumb", "Editor Entities Scrollbar Thumb") catch |err| return mapWorldError(err);
+    const thumb = world.createEntity("scrapbot.editor.entities.scrollbar.thumb", "Editor Entities Scrollbar Thumb") catch |err| return mapWorldError(err);
     world.setUiRect(thumb, .{
         .position = .{ track_x, thumb_y, 0.0 },
         .size = .{ editor_scrollbar_width, thumb_height, 0.0 },
@@ -3579,26 +3579,26 @@ fn extractEditorComponentInspectorInto(
     const panel_width = sidebar.width;
     const panel_height = sidebar.height;
 
-    _ = try extractEditorPanel(world, "machina.editor.inspector.panel", "Editor Inspector Panel", .{
+    _ = try extractEditorPanel(world, "scrapbot.editor.inspector.panel", "Editor Inspector Panel", .{
         .x = panel_x,
         .y = panel_y,
         .width = panel_width,
         .height = panel_height,
     }, editor_palette.panel, 0.0);
 
-    try extractEditorText(world, "machina.editor.inspector.title", "Editor Inspector Title", .{
+    try extractEditorText(world, "scrapbot.editor.inspector.title", "Editor Inspector Title", .{
         panel_x + editor_panel_padding_x,
         panel_y + editor_panel_padding_y,
         0.0,
     }, "COMPONENTS", editor_inspector_text_size, editor_palette.text);
 
     const selected = input.editor.selected_entity orelse {
-        try extractEditorText(world, "machina.editor.inspector.empty", "Editor Inspector Empty", .{
+        try extractEditorText(world, "scrapbot.editor.inspector.empty", "Editor Inspector Empty", .{
             panel_x + editor_panel_padding_x,
             panel_y + editor_panel_padding_y + editor_inspector_line_stride * 2.0,
             0.0,
         }, "NO ENTITY SELECTED", editor_inspector_text_size, editor_palette.text);
-        try extractEditorText(world, "machina.editor.inspector.empty.hint", "Editor Inspector Empty Hint", .{
+        try extractEditorText(world, "scrapbot.editor.inspector.empty.hint", "Editor Inspector Empty Hint", .{
             panel_x + editor_panel_padding_x,
             panel_y + editor_panel_padding_y + editor_inspector_line_stride * 3.0,
             0.0,
@@ -3607,7 +3607,7 @@ fn extractEditorComponentInspectorInto(
     };
 
     const entity = scene_world.entity(selected) catch {
-        try extractEditorText(world, "machina.editor.inspector.unavailable", "Editor Inspector Unavailable", .{
+        try extractEditorText(world, "scrapbot.editor.inspector.unavailable", "Editor Inspector Unavailable", .{
             panel_x + editor_panel_padding_x,
             panel_y + editor_panel_padding_y + editor_inspector_line_stride * 2.0,
             0.0,
@@ -3617,14 +3617,14 @@ fn extractEditorComponentInspectorInto(
 
     const entity_header = std.fmt.allocPrint(allocator, "{s}  {s}", .{ entity.name, entity.id }) catch return RenderError.OutOfMemory;
     defer allocator.free(entity_header);
-    try extractEditorText(world, "machina.editor.inspector.entity", "Editor Inspector Entity", .{
+    try extractEditorText(world, "scrapbot.editor.inspector.entity", "Editor Inspector Entity", .{
         panel_x + editor_panel_padding_x,
         panel_y + editor_panel_padding_y + editor_inspector_line_stride,
         0.0,
     }, entity_header, editor_inspector_text_size, editor_palette.text_muted);
 
     const scroll_clip = editorInspectorScrollClipRect(input);
-    const scroll = world.createEntity("machina.editor.inspector.scroll", "Editor Inspector Scroll View") catch |err| return mapWorldError(err);
+    const scroll = world.createEntity("scrapbot.editor.inspector.scroll", "Editor Inspector Scroll View") catch |err| return mapWorldError(err);
     world.setUiScrollView(scroll, .{
         .position = scroll_clip.position,
         .size = scroll_clip.size,
@@ -3632,7 +3632,7 @@ fn extractEditorComponentInspectorInto(
     }) catch |err| return mapWorldError(err);
 
     const card_width = @max(scroll_clip.size[0], 1.0);
-    const stack_id = "machina.editor.inspector.components";
+    const stack_id = "scrapbot.editor.inspector.components";
     const stack = world.createEntity(stack_id, "Editor Component Stack") catch |err| return mapWorldError(err);
     world.setUiVGroup(stack, .{
         .position = .{ 0.0, 0.0, 0.0 },
@@ -3645,7 +3645,7 @@ fn extractEditorComponentInspectorInto(
         .padding = .{ 0.0, 0.0, 0.0 },
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(stack, .{
-        .parent = "machina.editor.inspector.scroll",
+        .parent = "scrapbot.editor.inspector.scroll",
         .order = 0,
     }) catch |err| return mapWorldError(err);
 
@@ -3657,7 +3657,7 @@ fn extractEditorComponentInspectorInto(
     };
     while (components.next()) |component_id| {
         if (component_index > 0) {
-            const separator_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.separator.{d}", .{component_index}) catch return RenderError.OutOfMemory;
+            const separator_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.separator.{d}", .{component_index}) catch return RenderError.OutOfMemory;
             defer allocator.free(separator_id);
             const separator = world.createEntity(separator_id, "Editor Component Separator") catch |err| return mapWorldError(err);
             world.setUiSeparator(separator, .{
@@ -3674,7 +3674,7 @@ fn extractEditorComponentInspectorInto(
 
         const field_count = scene_world.componentFieldCount(component_id);
         const card_height = editorInspectorComponentCardHeight(scene_world, component_id);
-        const card_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}", .{component_index}) catch return RenderError.OutOfMemory;
+        const card_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}", .{component_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(card_id);
         const card = try extractEditorPanel(world, card_id, "Editor Component Card", .{
             .x = 0.0,
@@ -3688,7 +3688,7 @@ fn extractEditorComponentInspectorInto(
         }) catch |err| return mapWorldError(err);
         stack_order += 1;
 
-        const title_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.title", .{component_index}) catch return RenderError.OutOfMemory;
+        const title_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.title", .{component_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(title_id);
         const title_max_width = @max(card_width - editor_inspector_card_padding_x * 2.0, 1.0);
         const title_value = fitEditorTextToWidth(allocator, component_id, editor_inspector_text_size, title_max_width) catch return RenderError.OutOfMemory;
@@ -3804,11 +3804,11 @@ fn extractEditorPropertyRow(
     world: *runtime.World,
     spec: EditorPropertyRowSpec,
 ) RenderError!void {
-    const row_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.row", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
+    const row_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.row", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(row_id);
-    const label_cell_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.label_cell", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
+    const label_cell_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.label_cell", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(label_cell_id);
-    const value_cell_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.value_cell", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
+    const value_cell_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.value_cell", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(value_cell_id);
 
     const row = world.createEntity(row_id, "Editor Component Field Table") catch |err| return mapWorldError(err);
@@ -3842,7 +3842,7 @@ fn extractEditorPropertyRow(
         .@"align" = "fill",
     }) catch |err| return mapWorldError(err);
 
-    const label_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.label", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
+    const label_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.label", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(label_id);
 
     const label_rect = ui_layout.resolvedItemRect(world, label_cell) catch |err| return mapLayoutError(err);
@@ -3864,7 +3864,7 @@ fn extractEditorPropertyRow(
 
     switch (spec.value) {
         .vec3 => |payload| {
-            const value_row_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.value_row", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
+            const value_row_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.value_row", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
             defer allocator.free(value_row_id);
             const padded_value_width = @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0);
             const value_row = world.createEntity(value_row_id, "Editor Property Vec3 Value Row") catch |err| return mapWorldError(err);
@@ -3997,7 +3997,7 @@ fn extractEditorVec3LaneLabel(
     row: EditorPropertyRowSpec,
     label: EditorVec3LaneLabelSpec,
 ) RenderError!void {
-    const label_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.lane_label.{d}", .{ row.component_index, row.field_index, label.lane }) catch return RenderError.OutOfMemory;
+    const label_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.lane_label.{d}", .{ row.component_index, row.field_index, label.lane }) catch return RenderError.OutOfMemory;
     defer allocator.free(label_id);
     const text = try extractEditorChildText(world, label_id, "Editor Property Vec3 Lane Label", row.parent_id, .{
         label.x,
@@ -4026,9 +4026,9 @@ fn extractEditorBooleanToggle(
     row: EditorPropertyRowSpec,
     toggle: EditorBooleanToggleSpec,
 ) RenderError!void {
-    const toggle_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.toggle", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+    const toggle_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.toggle", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(toggle_id);
-    const label_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.toggle.label", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+    const label_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.toggle.label", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(label_id);
 
     const color = if (toggle.value) editor_palette.input_active else editor_palette.input;
@@ -4076,9 +4076,9 @@ fn extractEditorPrimitiveSelector(
     row: EditorPropertyRowSpec,
     selector: EditorPrimitiveSelectorSpec,
 ) RenderError!void {
-    const selector_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.select", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+    const selector_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.select", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(selector_id);
-    const value_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.select.value", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+    const value_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.select.value", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(value_id);
 
     const box = try extractEditorPanel(world, selector_id, "Editor Property Primitive Selector", .{
@@ -4127,7 +4127,7 @@ fn extractEditorColorSwatch(
     row: EditorPropertyRowSpec,
     swatch: EditorColorSwatchSpec,
 ) RenderError!void {
-    const swatch_id = std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.swatch", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+    const swatch_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.swatch", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(swatch_id);
     const safe_color = [3]f32{
         clamp01(swatch.color[0]),
@@ -4159,14 +4159,14 @@ fn extractEditorPropertyInputBox(
     input: EditorPropertyInputBoxSpec,
 ) RenderError!void {
     const input_id = if (input.lane) |lane|
-        std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.input.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
+        std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.input.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
     else
-        std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.input", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+        std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.input", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(input_id);
     const value_id = if (input.lane) |lane|
-        std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.value.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
+        std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.value.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
     else
-        std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.value", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+        std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.value", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(value_id);
 
     const box = try extractEditorPanel(world, input_id, "Editor Property Text Input", .{
@@ -4195,9 +4195,9 @@ fn extractEditorPropertyInputBox(
     const selection_end = @max(input.cursor, input.selection_anchor);
     if (input.focused and selection_start < selection_end) {
         const selection_id = if (input.lane) |lane|
-            std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.selection.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
+            std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.selection.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
         else
-            std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.selection", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+            std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.selection", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
         defer allocator.free(selection_id);
         const start_x = std.math.clamp(
             editor_inspector_input_text_offset_x + editorTextWidth(input.text[0..@min(selection_start, input.text.len)], editor_inspector_text_size),
@@ -4241,9 +4241,9 @@ fn extractEditorPropertyInputBox(
             @max(input.width - editor_inspector_input_text_offset_x, editor_inspector_input_text_offset_x),
         );
         const caret_id = if (input.lane) |lane|
-            std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.caret.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
+            std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.caret.{d}", .{ row.component_index, row.field_index, lane }) catch return RenderError.OutOfMemory
         else
-            std.fmt.allocPrint(allocator, "machina.editor.inspector.component.{d}.field.{d}.caret", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
+            std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.caret", .{ row.component_index, row.field_index }) catch return RenderError.OutOfMemory;
         defer allocator.free(caret_id);
         const caret = try extractEditorPanel(world, caret_id, "Editor Property Text Input Caret", .{
             .x = cursor_x,
@@ -4839,7 +4839,7 @@ fn sceneUiTarget(input: FrameInput, width: f32, height: f32) ui_layout.Target {
 }
 
 fn isEditorUiEntityId(entity_id: []const u8) bool {
-    return std.mem.startsWith(u8, entity_id, "machina.editor.");
+    return std.mem.startsWith(u8, entity_id, "scrapbot.editor.");
 }
 
 fn applyUiCanvasLayout(transform: UiCanvasTransform, entity_id: []const u8, layout: ui_layout.ResolvedLayout) ui_layout.ResolvedLayout {
@@ -4902,7 +4902,7 @@ fn evaluateUiButtonState(input: FrameInput, position: [3]f32, size: [3]f32, clip
 }
 
 fn extractCameraInto(world: *runtime.World, camera: CameraState) RenderError!void {
-    const entity = world.createEntity("machina.render.extract.camera", "Render Camera") catch |err| return mapWorldError(err);
+    const entity = world.createEntity("scrapbot.render.extract.camera", "Render Camera") catch |err| return mapWorldError(err);
     world.setTransform(entity, camera.transform) catch |err| return mapWorldError(err);
     world.setCamera(entity, .{
         .fov_y_degrees = camera.fov_y_degrees,
@@ -4912,7 +4912,7 @@ fn extractCameraInto(world: *runtime.World, camera: CameraState) RenderError!voi
 }
 
 fn extractDirectionalLightInto(world: *runtime.World, light: DirectionalLightState) RenderError!void {
-    const entity = world.createEntity("machina.render.extract.directional_light", "Render Directional Light") catch |err| return mapWorldError(err);
+    const entity = world.createEntity("scrapbot.render.extract.directional_light", "Render Directional Light") catch |err| return mapWorldError(err);
     world.setDirectionalLight(entity, .{
         .direction = light.direction,
         .color = light.color,
@@ -5088,7 +5088,7 @@ const UiDrawResources = struct {
         const bytes = std.mem.sliceAsBytes(vertices);
         if (self.vertex_buffer == null or self.vertex_buffer_size < bytes.len) {
             const buffer = device.createBuffer(&wgpu.BufferDescriptor{
-                .label = wgpu.StringView.fromSlice("Machina UI vertex buffer"),
+                .label = wgpu.StringView.fromSlice("Scrapbot UI vertex buffer"),
                 .usage = wgpu.BufferUsages.vertex | wgpu.BufferUsages.copy_dst,
                 .size = @intCast(bytes.len),
                 .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -5182,7 +5182,7 @@ const MeshDemo = struct {
             },
         };
         const bind_group_layout = device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh bind group layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh bind group layout"),
             .entry_count = bind_group_layout_entries.len,
             .entries = &bind_group_layout_entries,
         }) orelse return RenderError.NoDevice;
@@ -5254,7 +5254,7 @@ const MeshDemo = struct {
             },
         };
         const postprocess_bind_group_layout = device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess bind group layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess bind group layout"),
             .entry_count = postprocess_bind_group_layout_entries.len,
             .entries = &postprocess_bind_group_layout_entries,
         }) orelse return RenderError.NoDevice;
@@ -5286,14 +5286,14 @@ const MeshDemo = struct {
             },
         };
         const bloom_bind_group_layout = device.createBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina bloom bind group layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot bloom bind group layout"),
             .entry_count = bloom_bind_group_layout_entries.len,
             .entries = &bloom_bind_group_layout_entries,
         }) orelse return RenderError.NoDevice;
         errdefer bloom_bind_group_layout.release();
 
         const frame_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina frame uniforms"),
+            .label = wgpu.StringView.fromSlice("Scrapbot frame uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
             .size = @sizeOf(FrameUniforms),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -5301,7 +5301,7 @@ const MeshDemo = struct {
         errdefer frame_uniform_buffer.release();
 
         const postprocess_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess uniforms"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
             .size = @sizeOf(PostProcessUniforms),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -5309,7 +5309,7 @@ const MeshDemo = struct {
         errdefer postprocess_uniform_buffer.release();
 
         const bloom_extract_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina bloom extract uniforms"),
+            .label = wgpu.StringView.fromSlice("Scrapbot bloom extract uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
             .size = @sizeOf(PostProcessUniforms),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -5317,7 +5317,7 @@ const MeshDemo = struct {
         errdefer bloom_extract_uniform_buffer.release();
 
         const bloom_blur_x_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina bloom horizontal blur uniforms"),
+            .label = wgpu.StringView.fromSlice("Scrapbot bloom horizontal blur uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
             .size = @sizeOf(PostProcessUniforms),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -5325,7 +5325,7 @@ const MeshDemo = struct {
         errdefer bloom_blur_x_uniform_buffer.release();
 
         const bloom_blur_y_uniform_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina bloom vertical blur uniforms"),
+            .label = wgpu.StringView.fromSlice("Scrapbot bloom vertical blur uniforms"),
             .usage = wgpu.BufferUsages.uniform | wgpu.BufferUsages.copy_dst,
             .size = @sizeOf(PostProcessUniforms),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -5344,7 +5344,7 @@ const MeshDemo = struct {
         errdefer shadow_target.deinit();
 
         const shadow_sampler = device.createSampler(&wgpu.SamplerDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow comparison sampler"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow comparison sampler"),
             .address_mode_u = .clamp_to_edge,
             .address_mode_v = .clamp_to_edge,
             .address_mode_w = .clamp_to_edge,
@@ -5356,7 +5356,7 @@ const MeshDemo = struct {
         errdefer shadow_sampler.release();
 
         const postprocess_sampler = device.createSampler(&wgpu.SamplerDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess sampler"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess sampler"),
             .address_mode_u = .clamp_to_edge,
             .address_mode_v = .clamp_to_edge,
             .address_mode_w = .clamp_to_edge,
@@ -5382,7 +5382,7 @@ const MeshDemo = struct {
             },
         };
         const bind_group = device.createBindGroup(&wgpu.BindGroupDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina frame bind group"),
+            .label = wgpu.StringView.fromSlice("Scrapbot frame bind group"),
             .layout = bind_group_layout,
             .entry_count = bind_group_entries.len,
             .entries = &bind_group_entries,
@@ -5398,7 +5398,7 @@ const MeshDemo = struct {
 
         const bind_group_layouts = [_]*wgpu.BindGroupLayout{bind_group_layout};
         const pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh pipeline layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh pipeline layout"),
             .bind_group_layout_count = bind_group_layouts.len,
             .bind_group_layouts = &bind_group_layouts,
         }) orelse return RenderError.NoDevice;
@@ -5409,7 +5409,7 @@ const MeshDemo = struct {
 
         const empty_bind_group_layouts = [_]*wgpu.BindGroupLayout{};
         const shadow_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow pipeline layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow pipeline layout"),
             .bind_group_layout_count = empty_bind_group_layouts.len,
             .bind_group_layouts = &empty_bind_group_layouts,
         }) orelse return RenderError.NoDevice;
@@ -5419,7 +5419,7 @@ const MeshDemo = struct {
         errdefer shadow_pipeline.release();
 
         const ui_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina UI pipeline layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot UI pipeline layout"),
             .bind_group_layout_count = empty_bind_group_layouts.len,
             .bind_group_layouts = &empty_bind_group_layouts,
         }) orelse return RenderError.NoDevice;
@@ -5430,7 +5430,7 @@ const MeshDemo = struct {
 
         const postprocess_bind_group_layouts = [_]*wgpu.BindGroupLayout{postprocess_bind_group_layout};
         const postprocess_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess pipeline layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess pipeline layout"),
             .bind_group_layout_count = postprocess_bind_group_layouts.len,
             .bind_group_layouts = &postprocess_bind_group_layouts,
         }) orelse return RenderError.NoDevice;
@@ -5441,7 +5441,7 @@ const MeshDemo = struct {
 
         const bloom_bind_group_layouts = [_]*wgpu.BindGroupLayout{bloom_bind_group_layout};
         const bloom_pipeline_layout = device.createPipelineLayout(&wgpu.PipelineLayoutDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina bloom pipeline layout"),
+            .label = wgpu.StringView.fromSlice("Scrapbot bloom pipeline layout"),
             .bind_group_layout_count = bloom_bind_group_layouts.len,
             .bind_group_layouts = &bloom_bind_group_layouts,
         }) orelse return RenderError.NoDevice;
@@ -5703,7 +5703,7 @@ const MeshDemo = struct {
         const should_draw_ui = self.render_state.uiDrawCommandCount() > 0 and self.ui_draw.vertex_count > 0;
 
         const encoder = context.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh command encoder"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh command encoder"),
         }) orelse return RenderError.NoDevice;
         defer encoder.release();
 
@@ -5778,7 +5778,7 @@ const MeshDemo = struct {
         }
 
         const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh command buffer"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh command buffer"),
         }) orelse return RenderError.NoDevice;
         defer command_buffer.release();
 
@@ -5796,7 +5796,7 @@ const MeshDemo = struct {
         };
         const color_attachments = [_]wgpu.ColorAttachment{};
         const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina shadow pass"),
+            .label = wgpu.StringView.fromSlice("Scrapbot shadow pass"),
             .color_attachment_count = color_attachments.len,
             .color_attachments = &color_attachments,
             .depth_stencil_attachment = &depth_attachment,
@@ -5826,7 +5826,7 @@ const MeshDemo = struct {
             },
         };
         const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina UI pass"),
+            .label = wgpu.StringView.fromSlice("Scrapbot UI pass"),
             .color_attachment_count = color_attachments.len,
             .color_attachments = &color_attachments,
         }) orelse return RenderError.NoDevice;
@@ -5875,7 +5875,7 @@ const MeshDemo = struct {
             },
         };
         const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina postprocess pass"),
+            .label = wgpu.StringView.fromSlice("Scrapbot postprocess pass"),
             .color_attachment_count = color_attachments.len,
             .color_attachments = &color_attachments,
         }) orelse return RenderError.NoDevice;
@@ -5917,7 +5917,7 @@ const MeshDemo = struct {
                 self.bloom_extract_uniform_buffer,
                 source_view,
                 self.bloom_extract_targets[level].view orelse return RenderError.NoDevice,
-                "Machina bloom extract/downsample pass",
+                "Scrapbot bloom extract/downsample pass",
             );
 
             var blur_x_uniforms = postProcessUniforms(render_config, width, height);
@@ -5930,7 +5930,7 @@ const MeshDemo = struct {
                 self.bloom_blur_x_uniform_buffer,
                 self.bloom_extract_targets[level].view orelse return RenderError.NoDevice,
                 self.bloom_ping_targets[level].view orelse return RenderError.NoDevice,
-                "Machina bloom horizontal blur pass",
+                "Scrapbot bloom horizontal blur pass",
             );
 
             var blur_y_uniforms = postProcessUniforms(render_config, width, height);
@@ -5943,7 +5943,7 @@ const MeshDemo = struct {
                 self.bloom_blur_y_uniform_buffer,
                 self.bloom_ping_targets[level].view orelse return RenderError.NoDevice,
                 self.bloom_pong_targets[level].view orelse return RenderError.NoDevice,
-                "Machina bloom vertical blur pass",
+                "Scrapbot bloom vertical blur pass",
             );
 
             views[level] = self.bloom_pong_targets[level].view orelse return RenderError.NoDevice;
@@ -6024,10 +6024,10 @@ const BatchResources = struct {
 
         const vertex_bytes = std.mem.sliceAsBytes(mesh.vertices);
         const index_bytes = std.mem.sliceAsBytes(mesh.indices);
-        const vertex_buffer = try createStaticBuffer(device, "Machina mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
+        const vertex_buffer = try createStaticBuffer(device, "Scrapbot mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
         errdefer vertex_buffer.release();
 
-        const index_buffer = try createStaticBuffer(device, "Machina mesh index buffer", wgpu.BufferUsages.index, index_bytes);
+        const index_buffer = try createStaticBuffer(device, "Scrapbot mesh index buffer", wgpu.BufferUsages.index, index_bytes);
         errdefer index_buffer.release();
 
         if (entry.render_indices.len > std.math.maxInt(u32)) {
@@ -6035,7 +6035,7 @@ const BatchResources = struct {
         }
         const instance_buffer_size = @sizeOf(InstanceAttributes) * entry.render_indices.len;
         const instance_buffer = device.createBuffer(&wgpu.BufferDescriptor{
-            .label = wgpu.StringView.fromSlice("Machina mesh instance buffer"),
+            .label = wgpu.StringView.fromSlice("Scrapbot mesh instance buffer"),
             .usage = wgpu.BufferUsages.vertex | wgpu.BufferUsages.copy_dst,
             .size = @intCast(instance_buffer_size),
             .mapped_at_creation = @as(u32, @intFromBool(false)),
@@ -6154,8 +6154,8 @@ fn updatePointerFromWindow(pointer: *PointerInput, window: *anyopaque, x: f32, y
     var pixel_width: c_int = 0;
     var pixel_height: c_int = 0;
 
-    const has_window_size = sdl.machina_sdl_get_window_size(window, &window_width, &window_height);
-    const has_pixel_size = sdl.machina_sdl_get_window_size_in_pixels(window, &pixel_width, &pixel_height);
+    const has_window_size = sdl.scrapbot_sdl_get_window_size(window, &window_width, &window_height);
+    const has_pixel_size = sdl.scrapbot_sdl_get_window_size_in_pixels(window, &pixel_width, &pixel_height);
     if (has_window_size == 0 or has_pixel_size == 0 or window_width <= 0 or window_height <= 0) {
         pointer.position = .{ x, y };
         pointer.has_position = true;
@@ -6178,7 +6178,7 @@ fn configureSurfaceFromWindow(
 ) !void {
     var pixel_width: c_int = 0;
     var pixel_height: c_int = 0;
-    if (sdl.machina_sdl_get_window_size_in_pixels(window, &pixel_width, &pixel_height) == 0) {
+    if (sdl.scrapbot_sdl_get_window_size_in_pixels(window, &pixel_width, &pixel_height) == 0) {
         return RenderError.SurfaceFailed;
     }
 
@@ -6222,7 +6222,7 @@ fn drawMeshToSurface(
     defer texture.release();
 
     const view = texture.createView(&wgpu.TextureViewDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina surface texture view"),
+        .label = wgpu.StringView.fromSlice("Scrapbot surface texture view"),
         .mip_level_count = 1,
         .array_layer_count = 1,
     }) orelse return RenderError.NoDevice;
@@ -6354,7 +6354,7 @@ fn createMeshPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, 
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina mesh pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot mesh pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -6438,7 +6438,7 @@ fn createShadowPipeline(device: *wgpu.Device, pipeline_layout: *wgpu.PipelineLay
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina shadow pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot shadow pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -6498,7 +6498,7 @@ fn createUiPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pi
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina UI pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot UI pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -6531,7 +6531,7 @@ fn createPostProcessPipeline(device: *wgpu.Device, texture_format: wgpu.TextureF
     };
 
     return device.createRenderPipeline(&wgpu.RenderPipelineDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina postprocess pipeline"),
+        .label = wgpu.StringView.fromSlice("Scrapbot postprocess pipeline"),
         .layout = pipeline_layout,
         .vertex = .{
             .module = shader_module,
@@ -6551,11 +6551,11 @@ fn createPostProcessPipeline(device: *wgpu.Device, texture_format: wgpu.TextureF
 }
 
 fn createBloomExtractPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
-    return createFullscreenPipeline(device, texture_format, pipeline_layout, "Machina bloom extract pipeline", @embedFile("../shaders/bloom.wgsl"), "fs_extract");
+    return createFullscreenPipeline(device, texture_format, pipeline_layout, "Scrapbot bloom extract pipeline", @embedFile("../shaders/bloom.wgsl"), "fs_extract");
 }
 
 fn createBloomBlurPipeline(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeline_layout: *wgpu.PipelineLayout) RenderError!*wgpu.RenderPipeline {
-    return createFullscreenPipeline(device, texture_format, pipeline_layout, "Machina bloom blur pipeline", @embedFile("../shaders/bloom.wgsl"), "fs_blur");
+    return createFullscreenPipeline(device, texture_format, pipeline_layout, "Scrapbot bloom blur pipeline", @embedFile("../shaders/bloom.wgsl"), "fs_blur");
 }
 
 fn createFullscreenPipeline(
@@ -6621,7 +6621,7 @@ fn createSingleTextureBindGroup(
         },
     };
     return device.createBindGroup(&wgpu.BindGroupDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina texture pass bind group"),
+        .label = wgpu.StringView.fromSlice("Scrapbot texture pass bind group"),
         .layout = layout,
         .entry_count = bind_group_entries.len,
         .entries = &bind_group_entries,
@@ -6672,7 +6672,7 @@ fn createCompositeBindGroup(
         },
     };
     return device.createBindGroup(&wgpu.BindGroupDescriptor{
-        .label = wgpu.StringView.fromSlice("Machina postprocess composite bind group"),
+        .label = wgpu.StringView.fromSlice("Scrapbot postprocess composite bind group"),
         .layout = layout,
         .entry_count = bind_group_entries.len,
         .entries = &bind_group_entries,
@@ -7215,13 +7215,13 @@ const EditorButtonSpec = struct {
 fn editorPlaybackButtonSpecs(input: FrameInput) [2]EditorButtonSpec {
     return .{
         .{
-            .id = "machina.editor.controls.play",
+            .id = "scrapbot.editor.controls.play",
             .name = "Editor Play",
             .rect = editorPlayButtonRect(input),
             .command = editor_command_play_toggle,
         },
         .{
-            .id = "machina.editor.controls.step",
+            .id = "scrapbot.editor.controls.step",
             .name = "Editor Step",
             .rect = editorStepButtonRect(input),
             .command = editor_command_step,
@@ -7239,7 +7239,7 @@ fn decodeEditorCommand(command: []const u8) ?EditorCommand {
     return null;
 }
 
-const editor_entity_select_command_prefix = "machina.editor.entity.select.";
+const editor_entity_select_command_prefix = "scrapbot.editor.entity.select.";
 
 fn formatEditorEntitySelectCommand(buffer: []u8, handle: runtime.EntityHandle) ?[]const u8 {
     return std.fmt.bufPrint(buffer, "{s}{d}.{d}", .{ editor_entity_select_command_prefix, handle.index, handle.generation }) catch null;
@@ -7304,13 +7304,13 @@ fn routeEditorUi(
 
     if (route.scroll) |scroll_route| {
         const scroll_entity = input_world.entity(scroll_route.entity) catch return error.InvalidScene;
-        if (std.mem.eql(u8, scroll_entity.id, "machina.editor.debug.systems.scroll")) {
+        if (std.mem.eql(u8, scroll_entity.id, "scrapbot.editor.debug.systems.scroll")) {
             return .{ .system_scroll = scroll_route };
         }
-        if (std.mem.eql(u8, scroll_entity.id, "machina.editor.entities.scroll")) {
+        if (std.mem.eql(u8, scroll_entity.id, "scrapbot.editor.entities.scroll")) {
             return .{ .entity_scroll = scroll_route };
         }
-        if (std.mem.eql(u8, scroll_entity.id, "machina.editor.inspector.scroll")) {
+        if (std.mem.eql(u8, scroll_entity.id, "scrapbot.editor.inspector.scroll")) {
             return .{ .inspector_scroll = scroll_route };
         }
         return null;
@@ -7389,8 +7389,8 @@ fn addEditorSplitterHitTargetForRouting(
 ) EditorError!void {
     const id = switch (splitter) {
         .none => return,
-        .left => "machina.editor.shell.splitter.left.hit_area",
-        .right => "machina.editor.shell.splitter.right.hit_area",
+        .left => "scrapbot.editor.shell.splitter.left.hit_area",
+        .right => "scrapbot.editor.shell.splitter.right.hit_area",
     };
     const name = switch (splitter) {
         .none => return,
@@ -7424,14 +7424,14 @@ fn addEditorSystemScrollForRouting(
 
     const list_clip = editorSystemListClipRect(input);
     const hit_width = list_clip.size[0] + editor_scrollbar_gap + editor_scrollbar_width;
-    const scroll = try world.createEntity("machina.editor.debug.systems.scroll", "Editor Debug Systems Scroll View");
+    const scroll = try world.createEntity("scrapbot.editor.debug.systems.scroll", "Editor Debug Systems Scroll View");
     try world.setUiScrollView(scroll, .{
         .position = list_clip.position,
         .size = .{ hit_width, list_clip.size[1], 0.0 },
         .content_offset = .{ 0.0, system_scroll_target_y, 0.0 },
     });
 
-    const content = try world.createEntity("machina.editor.debug.systems.scroll.content", "Editor Debug Systems Scroll Content");
+    const content = try world.createEntity("scrapbot.editor.debug.systems.scroll.content", "Editor Debug Systems Scroll Content");
     try world.setUiSpacer(content, .{
         .size = .{
             list_clip.size[0],
@@ -7440,7 +7440,7 @@ fn addEditorSystemScrollForRouting(
         },
     });
     try world.setUiLayoutItem(content, .{
-        .parent = "machina.editor.debug.systems.scroll",
+        .parent = "scrapbot.editor.debug.systems.scroll",
         .order = 0,
     });
 }
@@ -7457,14 +7457,14 @@ fn addEditorEntityListForRouting(
 
     const list_clip = editorEntityListClipRect(scene_world, input);
     const hit_width = list_clip.size[0] + if (editorEntityNeedsScroll(scene_world, input)) editor_scrollbar_gap + editor_scrollbar_width else 0.0;
-    const scroll = try world.createEntity("machina.editor.entities.scroll", "Editor Entities Scroll View");
+    const scroll = try world.createEntity("scrapbot.editor.entities.scroll", "Editor Entities Scroll View");
     try world.setUiScrollView(scroll, .{
         .position = list_clip.position,
         .size = .{ hit_width, list_clip.size[1], 0.0 },
         .content_offset = .{ 0.0, entity_scroll_target_y, 0.0 },
     });
 
-    const content = try world.createEntity("machina.editor.entities.scroll.content", "Editor Entities Scroll Content");
+    const content = try world.createEntity("scrapbot.editor.entities.scroll.content", "Editor Entities Scroll Content");
     try world.setUiSpacer(content, .{
         .size = .{
             list_clip.size[0],
@@ -7473,7 +7473,7 @@ fn addEditorEntityListForRouting(
         },
     });
     try world.setUiLayoutItem(content, .{
-        .parent = "machina.editor.entities.scroll",
+        .parent = "scrapbot.editor.entities.scroll",
         .order = 0,
     });
 
@@ -7482,7 +7482,7 @@ fn addEditorEntityListForRouting(
     const range = editorEntityVisibleRange(scene_world, route_input);
     for (range.start..range.end) |entity_index| {
         const handle = editorEntityHandleAt(scene_world, entity_index) orelse continue;
-        const id = std.fmt.allocPrint(world.allocator, "machina.editor.entities.row.{d}.hit", .{entity_index}) catch return error.OutOfMemory;
+        const id = std.fmt.allocPrint(world.allocator, "scrapbot.editor.entities.row.{d}.hit", .{entity_index}) catch return error.OutOfMemory;
         defer world.allocator.free(id);
         var command_buffer: [96]u8 = undefined;
         const command = formatEditorEntitySelectCommand(&command_buffer, handle) orelse return error.InvalidScene;
@@ -7498,7 +7498,7 @@ fn addEditorEntityListForRouting(
         try world.setUiButton(hit);
         try world.setUiCommand(hit, .{ .command = command });
         try world.setUiLayoutItem(hit, .{
-            .parent = "machina.editor.entities.scroll",
+            .parent = "scrapbot.editor.entities.scroll",
             .order = @intCast(entity_index + 1),
         });
     }
@@ -7515,14 +7515,14 @@ fn addEditorInspectorScrollForRouting(
     }
 
     const clip = editorInspectorScrollClipRect(input);
-    const scroll = try world.createEntity("machina.editor.inspector.scroll", "Editor Inspector Scroll View");
+    const scroll = try world.createEntity("scrapbot.editor.inspector.scroll", "Editor Inspector Scroll View");
     try world.setUiScrollView(scroll, .{
         .position = clip.position,
         .size = clip.size,
         .content_offset = .{ 0.0, inspector_scroll_target_y, 0.0 },
     });
 
-    const content = try world.createEntity("machina.editor.inspector.scroll.content", "Editor Inspector Scroll Content");
+    const content = try world.createEntity("scrapbot.editor.inspector.scroll.content", "Editor Inspector Scroll Content");
     try world.setUiSpacer(content, .{
         .size = .{
             clip.size[0],
@@ -7531,7 +7531,7 @@ fn addEditorInspectorScrollForRouting(
         },
     });
     try world.setUiLayoutItem(content, .{
-        .parent = "machina.editor.inspector.scroll",
+        .parent = "scrapbot.editor.inspector.scroll",
         .order = 0,
     });
 }
@@ -7868,12 +7868,12 @@ fn editorCursorKind(allocator: std.mem.Allocator, input: FrameInput) EditorError
 
 fn setEditorCursor(kind: EditorCursorKind, resize_ew_cursor: ?*anyopaque) void {
     switch (kind) {
-        .default => sdl.machina_sdl_set_default_cursor(),
+        .default => sdl.scrapbot_sdl_set_default_cursor(),
         .resize_ew => {
             if (resize_ew_cursor) |cursor| {
-                sdl.machina_sdl_set_cursor(cursor);
+                sdl.scrapbot_sdl_set_cursor(cursor);
             } else {
-                sdl.machina_sdl_set_default_cursor();
+                sdl.scrapbot_sdl_set_default_cursor();
             }
         },
     }
@@ -8918,7 +8918,7 @@ test "UI vertex builder scales editor logical pixels to physical pixels" {
         .debug_overlay_visible = true,
     });
 
-    const input = try world.createEntity("machina.editor.test.input", "Editor Test Input");
+    const input = try world.createEntity("scrapbot.editor.test.input", "Editor Test Input");
     try world.setUiRect(input, .{
         .position = .{ 10.0, 12.0, 0.0 },
         .size = .{ 32.0, 16.0, 0.0 },
@@ -9448,9 +9448,9 @@ test "ctrl-tab debug overlay toggle updates editor visibility only" {
     try std.testing.expect(input.ui_visible);
     try std.testing.expect(input.keyboard.editor_toggle_pressed);
 
-    try std.testing.expect(isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_TAB, true));
-    try std.testing.expect(!isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_TAB, false));
-    try std.testing.expect(!isEditorToggleShortcut(sdl.MACHINA_SDL_KEY_F1, true));
+    try std.testing.expect(isEditorToggleShortcut(sdl.SCRAPBOT_SDL_KEY_TAB, true));
+    try std.testing.expect(!isEditorToggleShortcut(sdl.SCRAPBOT_SDL_KEY_TAB, false));
+    try std.testing.expect(!isEditorToggleShortcut(sdl.SCRAPBOT_SDL_KEY_F1, true));
 }
 
 test "live run delta conversion uses measured elapsed seconds" {
@@ -9482,33 +9482,33 @@ test "debug overlay extracts FPS label when visible" {
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
     try std.testing.expect(state.world.uiTextCount() >= 8);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.accent") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.accent") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.accent") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.accent") == null);
 
-    const label = state.world.findEntityById("machina.editor.debug.fps") orelse return error.TestExpectedEqual;
+    const label = state.world.findEntityById("scrapbot.editor.debug.fps") orelse return error.TestExpectedEqual;
     const fps_value = try state.world.getString(label, runtime.ui_text_component_id, "value");
     const fps_position = try state.world.getVec3(label, runtime.ui_text_component_id, "position");
     const fps_size = try state.world.getFloat(label, runtime.ui_text_component_id, "size");
     try std.testing.expectEqualStrings("FPS 60", fps_value);
     try std.testing.expectApproxEqAbs(@as(f32, editor_system_text_size), fps_size, 0.001);
 
-    const play_button = state.world.findEntityById("machina.editor.controls.play") orelse return error.TestExpectedEqual;
+    const play_button = state.world.findEntityById("scrapbot.editor.controls.play") orelse return error.TestExpectedEqual;
     const play_position = try state.world.getVec3(play_button, runtime.ui_rect_component_id, "position");
     try std.testing.expect(play_position[0] > fps_position[0] + editorTextWidth(fps_value, fps_size));
     try std.testing.expectEqual(@as(f32, editor_button_corner_radius), try state.world.getFloat(play_button, runtime.ui_rect_component_id, "corner_radius"));
     try std.testing.expect(try state.world.hasComponent(play_button, runtime.ui_button_component_id));
     try std.testing.expectEqualStrings(editor_command_play_toggle, try state.world.getString(play_button, runtime.ui_command_component_id, "command"));
 
-    const play_label = state.world.findEntityById("machina.editor.controls.play.label") orelse return error.TestExpectedEqual;
+    const play_label = state.world.findEntityById("scrapbot.editor.controls.play.label") orelse return error.TestExpectedEqual;
     const play_label_position = try state.world.getVec3(play_label, runtime.ui_text_component_id, "position");
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), play_label_position[0], 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), play_label_position[1], 0.001);
     const play_label_item = (try ui_layout.layoutItem(&state.world, play_label)) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqualStrings("machina.editor.controls.play", play_label_item.parent);
+    try std.testing.expectEqualStrings("scrapbot.editor.controls.play", play_label_item.parent);
     const resolved_play_label = try resolveUiLayout(&state.world, play_label, play_label_position);
     const play_label_text = runtime.UiText{
         .entity = play_label,
-        .id = "machina.editor.controls.play.label",
+        .id = "scrapbot.editor.controls.play.label",
         .name = "Editor Play Label",
         .position = play_label_position,
         .size = try state.world.getFloat(play_label, runtime.ui_text_component_id, "size"),
@@ -9531,27 +9531,27 @@ test "debug overlay extracts FPS label when visible" {
     try std.testing.expect(input.debug_overlay_visible);
     const left_sidebar = editorLeftSidebarRect(input);
     const expected_left_panel = editorSidebarPanelRect(left_sidebar);
-    const debug_panel = state.world.findEntityById("machina.editor.debug.panel") orelse return error.TestExpectedEqual;
+    const debug_panel = state.world.findEntityById("scrapbot.editor.debug.panel") orelse return error.TestExpectedEqual;
     const debug_panel_x = state.world.getVec3(debug_panel, runtime.ui_rect_component_id, "position") catch |err| return mapWorldError(err);
     const debug_panel_radius = try state.world.getFloat(debug_panel, runtime.ui_rect_component_id, "corner_radius");
     try std.testing.expectApproxEqAbs(expected_left_panel.x, debug_panel_x[0], 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), debug_panel_radius, 0.001);
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.top_bar") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.bottom_bar") != null);
-    const left_sidebar_entity = state.world.findEntityById("machina.editor.shell.left_sidebar") orelse return error.TestExpectedEqual;
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.right_sidebar") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.top_bar") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.bottom_bar") != null);
+    const left_sidebar_entity = state.world.findEntityById("scrapbot.editor.shell.left_sidebar") orelse return error.TestExpectedEqual;
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.right_sidebar") != null);
     const left_sidebar_color = try state.world.getVec3(left_sidebar_entity, runtime.ui_rect_component_id, "color");
     const debug_panel_color = try state.world.getVec3(debug_panel, runtime.ui_rect_component_id, "color");
     for (0..3) |channel| {
         try std.testing.expectApproxEqAbs(editor_palette.panel[channel], left_sidebar_color[channel], 0.001);
         try std.testing.expectApproxEqAbs(editor_palette.panel[channel], debug_panel_color[channel], 0.001);
     }
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.viewport.frame") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.viewport.border.top") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.viewport.border.left") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.shell.viewport.border.right") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.viewport.frame") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.viewport.border.top") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.viewport.border.left") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.shell.viewport.border.right") == null);
     const bottom = editorBottomBarRect(input);
-    const status = state.world.findEntityById("machina.editor.bottom.status") orelse return error.TestExpectedEqual;
+    const status = state.world.findEntityById("scrapbot.editor.bottom.status") orelse return error.TestExpectedEqual;
     const status_position = try state.world.getVec3(status, runtime.ui_text_component_id, "position");
     const status_size = try state.world.getFloat(status, runtime.ui_text_component_id, "size");
     try std.testing.expectApproxEqAbs(bottom.y + editor_bar_text_offset_y, status_position[1], 0.001);
@@ -9580,7 +9580,7 @@ test "editor shell body uses hgroup slot for the game viewport" {
     try state.extractSceneWithInput(.{ .world = &scene_world }, input);
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_hgroup_component_id));
-    const game_slot = state.world.findEntityById("machina.editor.shell.game_viewport") orelse return error.TestExpectedEqual;
+    const game_slot = state.world.findEntityById("scrapbot.editor.shell.game_viewport") orelse return error.TestExpectedEqual;
     const slot_rect = try ui_layout.resolvedItemRect(&state.world, game_slot);
     const left_splitter = editorSplitterRect(input, .left) orelse return error.TestExpectedEqual;
     const viewport = editorGameViewport(input);
@@ -9589,10 +9589,10 @@ test "editor shell body uses hgroup slot for the game viewport" {
     try std.testing.expectApproxEqAbs(viewport.y, slot_rect.position[1], 0.001);
     try std.testing.expectApproxEqAbs(viewport.width, slot_rect.size[0], 0.001);
     try std.testing.expectApproxEqAbs(viewport.height, slot_rect.size[1], 0.001);
-    const inactive_splitter = state.world.findEntityById("machina.editor.shell.splitter.left") orelse return error.TestExpectedEqual;
+    const inactive_splitter = state.world.findEntityById("scrapbot.editor.shell.splitter.left") orelse return error.TestExpectedEqual;
     try std.testing.expect(try state.world.hasComponent(inactive_splitter, runtime.ui_spacer_component_id));
     try std.testing.expect(!(try state.world.hasComponent(inactive_splitter, runtime.ui_separator_component_id)));
-    const splitter_hit_area = state.world.findEntityById("machina.editor.shell.splitter.left.hit_area") orelse return error.TestExpectedEqual;
+    const splitter_hit_area = state.world.findEntityById("scrapbot.editor.shell.splitter.left.hit_area") orelse return error.TestExpectedEqual;
     try std.testing.expect(try state.world.hasComponent(splitter_hit_area, runtime.ui_hit_area_component_id));
     try std.testing.expect(try state.world.hasComponent(splitter_hit_area, runtime.ui_button_component_id));
     try std.testing.expect(try state.world.hasComponent(splitter_hit_area, runtime.ui_command_component_id));
@@ -9616,7 +9616,7 @@ test "editor shell body uses hgroup slot for the game viewport" {
     });
     const hit = (try ui_layout.commandAt(&hover_state.world, hover_point)) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings(editor_command_splitter_left, hit.command);
-    const hover_splitter = hover_state.world.findEntityById("machina.editor.shell.splitter.left") orelse return error.TestExpectedEqual;
+    const hover_splitter = hover_state.world.findEntityById("scrapbot.editor.shell.splitter.left") orelse return error.TestExpectedEqual;
     const hover_color = try hover_state.world.getVec3(hover_splitter, runtime.ui_separator_component_id, "color");
     for (0..3) |channel| {
         try std.testing.expectApproxEqAbs(editor_palette.text_dim[channel], hover_color[channel], 0.001);
@@ -9763,8 +9763,8 @@ test "debug overlay extracts system profile rows when available" {
     try state.extractSceneWithInput(.{ .world = &scene_world }, frame_input);
 
     try std.testing.expect(state.world.uiTextCount() >= 11);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.panel") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.accent") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.panel") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.accent") == null);
 
     var saw_header = false;
     var saw_pause = false;
@@ -9789,18 +9789,18 @@ test "debug overlay extracts system profile rows when available" {
     try std.testing.expect(saw_pause);
     try std.testing.expect(saw_no_selection);
 
-    const table = state.world.findEntityById("machina.editor.debug.systems.table") orelse return error.TestExpectedEqual;
-    const row0_label = state.world.findEntityById("machina.editor.debug.systems.row.0.label") orelse return error.TestExpectedEqual;
-    const row0_duration = state.world.findEntityById("machina.editor.debug.systems.row.0.duration") orelse return error.TestExpectedEqual;
-    const row1_label = state.world.findEntityById("machina.editor.debug.systems.row.1.label") orelse return error.TestExpectedEqual;
-    const row1_duration = state.world.findEntityById("machina.editor.debug.systems.row.1.duration") orelse return error.TestExpectedEqual;
+    const table = state.world.findEntityById("scrapbot.editor.debug.systems.table") orelse return error.TestExpectedEqual;
+    const row0_label = state.world.findEntityById("scrapbot.editor.debug.systems.row.0.label") orelse return error.TestExpectedEqual;
+    const row0_duration = state.world.findEntityById("scrapbot.editor.debug.systems.row.0.duration") orelse return error.TestExpectedEqual;
+    const row1_label = state.world.findEntityById("scrapbot.editor.debug.systems.row.1.label") orelse return error.TestExpectedEqual;
+    const row1_duration = state.world.findEntityById("scrapbot.editor.debug.systems.row.1.duration") orelse return error.TestExpectedEqual;
     const list_clip = editorSystemListClipRect(frame_input);
     const table_size = try state.world.getVec3(table, runtime.ui_rect_component_id, "size");
     try std.testing.expectApproxEqAbs(list_clip.size[0], table_size[0], 0.001);
     try std.testing.expectApproxEqAbs(editorSystemTableContentHeight(2), table_size[1], 0.001);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.1") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.separator.1") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.row.0") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.row.1") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.separator.1") == null);
     try std.testing.expectEqualStrings("spawn_initial", try state.world.getString(row0_label, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("--", try state.world.getString(row0_duration, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("rotate_cubes", try state.world.getString(row1_label, runtime.ui_text_component_id, "value"));
@@ -9833,14 +9833,14 @@ test "debug overlay extracts entity list below system list" {
     };
     try state.extractSceneWithInput(.{ .world = &scene_world }, frame_input);
 
-    const system_panel = state.world.findEntityById("machina.editor.debug.panel") orelse return error.TestExpectedEqual;
-    const entity_panel = state.world.findEntityById("machina.editor.entities.panel") orelse return error.TestExpectedEqual;
-    const entity_header = state.world.findEntityById("machina.editor.entities.header") orelse return error.TestExpectedEqual;
-    const row0_label = state.world.findEntityById("machina.editor.entities.row.0.label") orelse return error.TestExpectedEqual;
-    const row1_label = state.world.findEntityById("machina.editor.entities.row.1.label") orelse return error.TestExpectedEqual;
-    const row1_components = state.world.findEntityById("machina.editor.entities.row.1.components") orelse return error.TestExpectedEqual;
-    const row2_label = state.world.findEntityById("machina.editor.entities.row.2.label") orelse return error.TestExpectedEqual;
-    try std.testing.expect(state.world.findEntityById("machina.editor.entities.row.2.highlight") != null);
+    const system_panel = state.world.findEntityById("scrapbot.editor.debug.panel") orelse return error.TestExpectedEqual;
+    const entity_panel = state.world.findEntityById("scrapbot.editor.entities.panel") orelse return error.TestExpectedEqual;
+    const entity_header = state.world.findEntityById("scrapbot.editor.entities.header") orelse return error.TestExpectedEqual;
+    const row0_label = state.world.findEntityById("scrapbot.editor.entities.row.0.label") orelse return error.TestExpectedEqual;
+    const row1_label = state.world.findEntityById("scrapbot.editor.entities.row.1.label") orelse return error.TestExpectedEqual;
+    const row1_components = state.world.findEntityById("scrapbot.editor.entities.row.1.components") orelse return error.TestExpectedEqual;
+    const row2_label = state.world.findEntityById("scrapbot.editor.entities.row.2.label") orelse return error.TestExpectedEqual;
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.entities.row.2.highlight") != null);
 
     const system_position = try state.world.getVec3(system_panel, runtime.ui_rect_component_id, "position");
     const system_size = try state.world.getVec3(system_panel, runtime.ui_rect_component_id, "size");
@@ -9946,9 +9946,9 @@ test "editor renders inspector for non-renderable entity list selection" {
         .editor = .{ .selected_entity = resource },
     });
 
-    const entity_label = state.world.findEntityById("machina.editor.inspector.entity") orelse return error.TestExpectedEqual;
+    const entity_label = state.world.findEntityById("scrapbot.editor.inspector.entity") orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("Resource  resource", try state.world.getString(entity_label, runtime.ui_text_component_id, "value"));
-    try std.testing.expect(state.world.findEntityById("machina.editor.gizmo.x") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.gizmo.x") == null);
 }
 
 test "editor render skips stale selected entity handles" {
@@ -9964,8 +9964,8 @@ test "editor render skips stale selected entity handles" {
         .editor = .{ .selected_entity = .{ .index = 99, .generation = 99 } },
     });
 
-    try std.testing.expect(state.world.findEntityById("machina.editor.gizmo.x") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.unavailable") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.gizmo.x") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.unavailable") != null);
 }
 
 test "debug overlay renders a scrolled system profile window" {
@@ -9998,17 +9998,17 @@ test "debug overlay renders a scrolled system profile window" {
         try std.testing.expect(std.mem.indexOf(u8, text.value, "ROWS ") == null);
     }
 
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0.label") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.2.label") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.8.label") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.table") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.separator.1") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.row.0.label") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.row.2.label") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.row.8.label") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.table") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.row.0") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.separator.1") == null);
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_scroll_view_component_id));
     try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(runtime.ui_vgroup_component_id));
     try std.testing.expect(state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id) >= profiles.len * 2 + 1);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.track") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.thumb") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.scrollbar.track") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.debug.systems.scrollbar.thumb") != null);
 }
 
 test "editor overlay extracts selected entity inspector and translate gizmo" {
@@ -10041,8 +10041,8 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try state.extractSceneWithInput(.{ .world = &scene_world }, frame_input);
 
     try std.testing.expectEqual(@as(usize, 4), state.world.renderableMeshCount());
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.panel") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.accent") == null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.panel") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.accent") == null);
 
     var saw_entity_header = false;
     var texts = state.world.uiTexts();
@@ -10052,37 +10052,37 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
         }
     }
     try std.testing.expect(saw_entity_header);
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.components") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.components") != null);
     try std.testing.expect(try state.world.hasComponent(
-        state.world.findEntityById("machina.editor.inspector.components") orelse return error.TestExpectedEqual,
+        state.world.findEntityById("scrapbot.editor.inspector.components") orelse return error.TestExpectedEqual,
         runtime.ui_vgroup_component_id,
     ));
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.component.0") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.component.1") != null);
-    try std.testing.expect(state.world.findEntityById("machina.editor.inspector.component.separator.1") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.component.0") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.component.1") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.component.separator.1") != null);
 
-    const geometry_card = state.world.findEntityById("machina.editor.inspector.component.1") orelse return error.TestExpectedEqual;
-    const geometry_title = state.world.findEntityById("machina.editor.inspector.component.1.title") orelse return error.TestExpectedEqual;
-    const transform_position_label = state.world.findEntityById("machina.editor.inspector.component.0.field.0.label") orelse return error.TestExpectedEqual;
-    const transform_x_label = state.world.findEntityById("machina.editor.inspector.component.0.field.0.lane_label.0") orelse return error.TestExpectedEqual;
-    const transform_position_row = state.world.findEntityById("machina.editor.inspector.component.0.field.0.row") orelse return error.TestExpectedEqual;
-    const transform_position_input_0 = state.world.findEntityById("machina.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
-    const transform_position_value_0 = state.world.findEntityById("machina.editor.inspector.component.0.field.0.value.0") orelse return error.TestExpectedEqual;
-    const transform_rotation_row = state.world.findEntityById("machina.editor.inspector.component.0.field.1.row") orelse return error.TestExpectedEqual;
-    const geometry_field_row = state.world.findEntityById("machina.editor.inspector.component.1.field.0.row") orelse return error.TestExpectedEqual;
-    const geometry_field_label = state.world.findEntityById("machina.editor.inspector.component.1.field.0.label") orelse return error.TestExpectedEqual;
-    const geometry_field_label_cell = state.world.findEntityById("machina.editor.inspector.component.1.field.0.label_cell") orelse return error.TestExpectedEqual;
-    const geometry_field_value_cell = state.world.findEntityById("machina.editor.inspector.component.1.field.0.value_cell") orelse return error.TestExpectedEqual;
-    const geometry_field_input = state.world.findEntityById("machina.editor.inspector.component.1.field.0.select") orelse return error.TestExpectedEqual;
-    const geometry_field_value = state.world.findEntityById("machina.editor.inspector.component.1.field.0.select.value") orelse return error.TestExpectedEqual;
-    const geometry_next_row = state.world.findEntityById("machina.editor.inspector.component.1.field.1.row") orelse return error.TestExpectedEqual;
-    const material_swatch = state.world.findEntityById("machina.editor.inspector.component.2.field.0.swatch") orelse return error.TestExpectedEqual;
-    const material_red = state.world.findEntityById("machina.editor.inspector.component.2.field.0.lane_label.0") orelse return error.TestExpectedEqual;
-    const material_green = state.world.findEntityById("machina.editor.inspector.component.2.field.0.lane_label.1") orelse return error.TestExpectedEqual;
-    const material_blue = state.world.findEntityById("machina.editor.inspector.component.2.field.0.lane_label.2") orelse return error.TestExpectedEqual;
-    const toggle_input = state.world.findEntityById("machina.editor.inspector.component.3.field.0.toggle") orelse return error.TestExpectedEqual;
-    const toggle_value = state.world.findEntityById("machina.editor.inspector.component.3.field.0.toggle.label") orelse return error.TestExpectedEqual;
-    const separator = state.world.findEntityById("machina.editor.inspector.component.separator.1") orelse return error.TestExpectedEqual;
+    const geometry_card = state.world.findEntityById("scrapbot.editor.inspector.component.1") orelse return error.TestExpectedEqual;
+    const geometry_title = state.world.findEntityById("scrapbot.editor.inspector.component.1.title") orelse return error.TestExpectedEqual;
+    const transform_position_label = state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.label") orelse return error.TestExpectedEqual;
+    const transform_x_label = state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.lane_label.0") orelse return error.TestExpectedEqual;
+    const transform_position_row = state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.row") orelse return error.TestExpectedEqual;
+    const transform_position_input_0 = state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
+    const transform_position_value_0 = state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.value.0") orelse return error.TestExpectedEqual;
+    const transform_rotation_row = state.world.findEntityById("scrapbot.editor.inspector.component.0.field.1.row") orelse return error.TestExpectedEqual;
+    const geometry_field_row = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.0.row") orelse return error.TestExpectedEqual;
+    const geometry_field_label = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.0.label") orelse return error.TestExpectedEqual;
+    const geometry_field_label_cell = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.0.label_cell") orelse return error.TestExpectedEqual;
+    const geometry_field_value_cell = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.0.value_cell") orelse return error.TestExpectedEqual;
+    const geometry_field_input = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.0.select") orelse return error.TestExpectedEqual;
+    const geometry_field_value = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.0.select.value") orelse return error.TestExpectedEqual;
+    const geometry_next_row = state.world.findEntityById("scrapbot.editor.inspector.component.1.field.1.row") orelse return error.TestExpectedEqual;
+    const material_swatch = state.world.findEntityById("scrapbot.editor.inspector.component.2.field.0.swatch") orelse return error.TestExpectedEqual;
+    const material_red = state.world.findEntityById("scrapbot.editor.inspector.component.2.field.0.lane_label.0") orelse return error.TestExpectedEqual;
+    const material_green = state.world.findEntityById("scrapbot.editor.inspector.component.2.field.0.lane_label.1") orelse return error.TestExpectedEqual;
+    const material_blue = state.world.findEntityById("scrapbot.editor.inspector.component.2.field.0.lane_label.2") orelse return error.TestExpectedEqual;
+    const toggle_input = state.world.findEntityById("scrapbot.editor.inspector.component.3.field.0.toggle") orelse return error.TestExpectedEqual;
+    const toggle_value = state.world.findEntityById("scrapbot.editor.inspector.component.3.field.0.toggle.label") orelse return error.TestExpectedEqual;
+    const separator = state.world.findEntityById("scrapbot.editor.inspector.component.separator.1") orelse return error.TestExpectedEqual;
     const card_position = try state.world.getVec3(geometry_card, runtime.ui_rect_component_id, "position");
     const card_size = try state.world.getVec3(geometry_card, runtime.ui_rect_component_id, "size");
     const title_position = try state.world.getVec3(geometry_title, runtime.ui_text_component_id, "position");
@@ -10111,7 +10111,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     const sidebar = editorSidebarPanelRect(editorRightSidebarRect(frame_input));
     const resolved_card_layout = try resolveUiLayout(&state.world, geometry_card, card_position);
     const resolved_separator_layout = try resolveUiLayout(&state.world, separator, try state.world.getVec3(separator, runtime.ui_separator_component_id, "position"));
-    const transform_card = state.world.findEntityById("machina.editor.inspector.component.0") orelse return error.TestExpectedEqual;
+    const transform_card = state.world.findEntityById("scrapbot.editor.inspector.component.0") orelse return error.TestExpectedEqual;
     const transform_card_size = try state.world.getVec3(transform_card, runtime.ui_rect_component_id, "size");
     const resolved_transform_card_layout = try resolveUiLayout(&state.world, transform_card, try state.world.getVec3(transform_card, runtime.ui_rect_component_id, "position"));
 
@@ -10209,11 +10209,11 @@ test "editor inspector component stack resolves inside scroll view clip" {
     };
     try state.extractSceneWithInput(.{ .world = &scene_world }, frame_input);
 
-    const scroll = state.world.findEntityById("machina.editor.inspector.scroll") orelse return error.TestExpectedEqual;
-    const stack = state.world.findEntityById("machina.editor.inspector.components") orelse return error.TestExpectedEqual;
-    const first_card = state.world.findEntityById("machina.editor.inspector.component.0") orelse return error.TestExpectedEqual;
+    const scroll = state.world.findEntityById("scrapbot.editor.inspector.scroll") orelse return error.TestExpectedEqual;
+    const stack = state.world.findEntityById("scrapbot.editor.inspector.components") orelse return error.TestExpectedEqual;
+    const first_card = state.world.findEntityById("scrapbot.editor.inspector.component.0") orelse return error.TestExpectedEqual;
     try std.testing.expect(try state.world.hasComponent(scroll, runtime.ui_scroll_view_component_id));
-    try std.testing.expectEqualStrings("machina.editor.inspector.scroll", try state.world.getString(stack, runtime.ui_layout_item_component_id, "parent"));
+    try std.testing.expectEqualStrings("scrapbot.editor.inspector.scroll", try state.world.getString(stack, runtime.ui_layout_item_component_id, "parent"));
 
     const clip = editorInspectorScrollClipRect(frame_input);
     const card_position = try state.world.getVec3(first_card, runtime.ui_rect_component_id, "position");
@@ -10260,7 +10260,7 @@ test "editor inspector field rows split labels and editors evenly" {
         .editor = .{ .selected_entity = entity },
     };
     try default_state.extractSceneWithInput(.{ .world = &scene_world }, default_input);
-    const default_label = default_state.world.findEntityById("machina.editor.inspector.component.0.field.13.label") orelse return error.TestExpectedEqual;
+    const default_label = default_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.13.label") orelse return error.TestExpectedEqual;
     const default_label_text = try default_state.world.getString(default_label, runtime.ui_text_component_id, "value");
     try std.testing.expect(std.mem.indexOf(u8, default_label_text, "...") != null);
 
@@ -10276,10 +10276,10 @@ test "editor inspector field rows split labels and editors evenly" {
         },
     };
     try wide_state.extractSceneWithInput(.{ .world = &scene_world }, wide_input);
-    const wide_label = wide_state.world.findEntityById("machina.editor.inspector.component.0.field.13.label") orelse return error.TestExpectedEqual;
-    const wide_label_cell = wide_state.world.findEntityById("machina.editor.inspector.component.0.field.13.label_cell") orelse return error.TestExpectedEqual;
-    const wide_value_cell = wide_state.world.findEntityById("machina.editor.inspector.component.0.field.13.value_cell") orelse return error.TestExpectedEqual;
-    const wide_input_box = wide_state.world.findEntityById("machina.editor.inspector.component.0.field.13.input") orelse return error.TestExpectedEqual;
+    const wide_label = wide_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.13.label") orelse return error.TestExpectedEqual;
+    const wide_label_cell = wide_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.13.label_cell") orelse return error.TestExpectedEqual;
+    const wide_value_cell = wide_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.13.value_cell") orelse return error.TestExpectedEqual;
+    const wide_input_box = wide_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.13.input") orelse return error.TestExpectedEqual;
     const wide_label_text = try wide_state.world.getString(wide_label, runtime.ui_text_component_id, "value");
     try std.testing.expectEqualStrings("chromatic_aberration_strength", wide_label_text);
 
@@ -10418,13 +10418,13 @@ test "editor inspector property inputs edit text and commit with undo" {
     var selected_frame = frame_input;
     selected_frame.editor = editorFrameState(&world, editor_state);
     try render_state.extractSceneWithInput(.{ .world = &world }, selected_frame);
-    try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selected") == null);
-    const focused_input = render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
+    try std.testing.expect(render_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.selected") == null);
+    const focused_input = render_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.input.0") orelse return error.TestExpectedEqual;
     try std.testing.expect(try render_state.world.hasComponent(focused_input, runtime.ui_border_component_id));
-    const selection_rect = render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.selection.0") orelse return error.TestExpectedEqual;
+    const selection_rect = render_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.selection.0") orelse return error.TestExpectedEqual;
     try std.testing.expect(try render_state.world.hasComponent(selection_rect, runtime.ui_rect_component_id));
     try std.testing.expect((try render_state.world.getVec3(selection_rect, runtime.ui_rect_component_id, "size"))[0] > 1.0);
-    try std.testing.expect(render_state.world.findEntityById("machina.editor.inspector.component.0.field.0.caret.0") != null);
+    try std.testing.expect(render_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.caret.0") != null);
     var focused_vertices = try buildUiVertices(std.testing.allocator, &render_state.world, 1280, 720);
     focused_vertices.deinit(std.testing.allocator);
 
@@ -10652,9 +10652,9 @@ test "editor inspector property inputs edit text and commit with undo" {
     var scalar_frame = frame_input;
     scalar_frame.editor = editorFrameState(&world, editor_state);
     try scalar_render_state.extractSceneWithInput(.{ .world = &world }, scalar_frame);
-    const scalar_input = scalar_render_state.world.findEntityById("machina.editor.inspector.component.1.field.1.input") orelse return error.TestExpectedEqual;
+    const scalar_input = scalar_render_state.world.findEntityById("scrapbot.editor.inspector.component.1.field.1.input") orelse return error.TestExpectedEqual;
     try std.testing.expect(try scalar_render_state.world.hasComponent(scalar_input, runtime.ui_border_component_id));
-    const scalar_selection = scalar_render_state.world.findEntityById("machina.editor.inspector.component.1.field.1.selection") orelse return error.TestExpectedEqual;
+    const scalar_selection = scalar_render_state.world.findEntityById("scrapbot.editor.inspector.component.1.field.1.selection") orelse return error.TestExpectedEqual;
     try std.testing.expect(try scalar_render_state.world.hasComponent(scalar_selection, runtime.ui_rect_component_id));
     var scalar_vertices = try buildUiVertices(std.testing.allocator, &scalar_render_state.world, 1280, 720);
     scalar_vertices.deinit(std.testing.allocator);

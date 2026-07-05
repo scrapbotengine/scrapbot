@@ -3,7 +3,7 @@ dt = 1.0
 
 [[expect.field]]
 entity = "projectile-1"
-component = "machina.transform"
+component = "scrapbot.transform"
 field = "position"
 equals_vec3 = [6.0, 0.0, 0.0]
 

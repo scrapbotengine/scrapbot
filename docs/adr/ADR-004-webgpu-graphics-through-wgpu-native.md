@@ -4,21 +4,21 @@
 
 ## Context
 
-Machina needs a cross-platform graphics foundation without directly owning Vulkan, Metal, Direct3D, and OpenGL backends at the start of the project. A direct backend strategy would consume too much early engineering effort before the engine has proven its runtime, project model, scripting, and editor architecture.
+Scrapbot needs a cross-platform graphics foundation without directly owning Vulkan, Metal, Direct3D, and OpenGL backends at the start of the project. A direct backend strategy would consume too much early engineering effort before the engine has proven its runtime, project model, scripting, and editor architecture.
 
 `wgpu-native` provides a native WebGPU implementation based on `wgpu-core` and exposes C headers and native libraries. This allows a Zig engine to use a modern cross-platform graphics API through a C ABI boundary without making Rust the engine implementation language.
 
 ## Decision
 
-Machina uses WebGPU for its initial rendering abstraction and accesses it through `wgpu-native`.
+Scrapbot uses WebGPU for its initial rendering abstraction and accesses it through `wgpu-native`.
 
-The engine owns a Zig renderer backend wrapper around `wgpu-native`. Application, scene, UI, and asset systems depend on Machina renderer concepts, not directly on `wgpu-native` types.
+The engine owns a Zig renderer backend wrapper around `wgpu-native`. Application, scene, UI, and asset systems depend on Scrapbot renderer concepts, not directly on `wgpu-native` types.
 
 The initial integration uses a vendored Zig binding package for `wgpu-native`, patched for the repository's current Zig toolchain. This binding remains an implementation detail of the renderer module.
 
 ## Consequences
 
-Machina can build a renderer on a modern cross-platform graphics model while avoiding direct backend implementation work.
+Scrapbot can build a renderer on a modern cross-platform graphics model while avoiding direct backend implementation work.
 
 The project takes on native dependency packaging, version pinning, header translation, platform library loading, and wrapper maintenance. `wgpu-native` release changes may require binding and build updates.
 

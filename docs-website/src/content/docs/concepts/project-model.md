@@ -1,9 +1,9 @@
 ---
 title: Project Model
-description: How Machina projects, scenes, scripts, native modules, and generated files fit together.
+description: How Scrapbot projects, scenes, scripts, native modules, and generated files fit together.
 ---
 
-A Machina project is a directory with a `project.toml` manifest.
+A Scrapbot project is a directory with a `project.toml` manifest.
 
 The manifest names the project, points at the default scene, and may list scripts or declare one project-local native Zig module:
 
@@ -34,25 +34,25 @@ project/
 
 Only the manifest and scene are required. `assets/.gitkeep` preserves the conventional asset directory in newly initialized projects. Scripts and native modules are optional.
 
-Use `machina init [path]` to create this required shape. The command writes a manifest, default scene, and asset placeholder; creates the target directory when needed; and refuses to overwrite an existing `project.toml` or legacy `project.machina.toml`.
+Use `scrapbot init [path]` to create this required shape. The command writes a manifest, default scene, and asset placeholder; creates the target directory when needed; and refuses to overwrite an existing `project.toml` or legacy `project.scrapbot.toml`.
 
 ## Text-First Runtime Data
 
-Machina keeps core project state text-based:
+Scrapbot keeps core project state text-based:
 
 - Project manifests are TOML.
 - Scenes are TOML.
 - Gameplay scripts are Luau.
 - Native systems are Zig source files.
-- Generated caches live under `.machina/` and should not be committed.
+- Generated caches live under `.scrapbot/` and should not be committed.
 
 Assets can still be binary. The text-first rule applies to authored project structure and runtime data, not to images, audio, or future imported assets.
 
 ## Load Order
 
-When Machina loads a project, it builds one component registry and schedule from engine, native, and script declarations:
+When Scrapbot loads a project, it builds one component registry and schedule from engine, native, and script declarations:
 
-1. Register engine components such as `machina.transform`, `machina.geometry.primitive`, `machina.renderer`, and `machina.ui.text`.
+1. Register engine components such as `scrapbot.transform`, `scrapbot.geometry.primitive`, `scrapbot.renderer`, and `scrapbot.ui.text`.
 2. Build and load the optional project-local native module.
 3. Register native components.
 4. Load Luau scripts so they can reference native components.
@@ -69,26 +69,26 @@ This order lets Luau reference native-defined components and lets native systems
 The same project can run in several modes:
 
 ```sh
-machina check .
-machina step . --frames 60
-machina bench . --frames 240
-machina test .
-machina run . --editor
-machina render . output.png
-machina render --editor --select some-entity . editor-output.png
-machina render-test . output.png
+scrapbot check .
+scrapbot step . --frames 60
+scrapbot bench . --frames 240
+scrapbot test .
+scrapbot run . --editor
+scrapbot render . output.png
+scrapbot render --editor --select some-entity . editor-output.png
+scrapbot render-test . output.png
 ```
 
 Headless commands are first-class. They exist so humans, editors, CI, and coding agents can inspect behavior without driving a window.
 
 ## Generated Native Cache
 
-During development, a project-local native module is built as a dynamic library under `.machina/native/`.
+During development, a project-local native module is built as a dynamic library under `.scrapbot/native/`.
 
-Packaged projects may contain a generated `native_artifact` path in `project.toml`. When present, Machina loads that prebuilt library instead of rebuilding the source module.
+Packaged projects may contain a generated `native_artifact` path in `project.toml`. When present, Scrapbot loads that prebuilt library instead of rebuilding the source module.
 
 That cache is an implementation detail of the development loop:
 
-- Do not commit generated `.machina/` directories.
+- Do not commit generated `.scrapbot/` directories.
 - Keep native source in the project, usually `native/game.zig`.
 - Future shipping builds are expected to statically link the same registration source on targets that cannot load dynamic code.

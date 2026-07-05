@@ -1,5 +1,5 @@
 const std = @import("std");
-const machina = @import("machina");
+const scrapbot = @import("scrapbot");
 
 const Io = std.Io;
 
@@ -16,13 +16,13 @@ pub fn main(init: std.process.Init) !void {
     cwd.deleteTree(io, root_path) catch {};
     defer cwd.deleteTree(io, root_path) catch {};
 
-    try machina.initProject(io, allocator, root_path, "Native Reload Check");
+    try scrapbot.initProject(io, allocator, root_path, "Native Reload Check");
     const root_dir = try cwd.openDir(io, root_path, .{});
     defer root_dir.close(io);
     try root_dir.createDirPath(io, "native");
 
     try root_dir.writeFile(io, .{
-        .sub_path = machina.project_file_name,
+        .sub_path = scrapbot.project_file_name,
         .data = "name = \"Native Reload Check\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\n",
     });
     try writeScene(io, root_dir);
@@ -62,17 +62,17 @@ pub fn main(init: std.process.Init) !void {
     try expectPositionX(&live_project.scene.world, 14.0);
 }
 
-fn initLiveProject(io: Io, allocator: std.mem.Allocator) !machina.LiveProject {
-    return machina.LiveProject.init(io, allocator, root_path) catch |err| {
+fn initLiveProject(io: Io, allocator: std.mem.Allocator) !scrapbot.LiveProject {
+    return scrapbot.LiveProject.init(io, allocator, root_path) catch |err| {
         try printCheckDiagnostic(io, allocator);
         return err;
     };
 }
 
 fn printCheckDiagnostic(io: Io, allocator: std.mem.Allocator) !void {
-    var result = try machina.checkProjectDetailed(io, allocator, root_path);
+    var result = try scrapbot.checkProjectDetailed(io, allocator, root_path);
     switch (result) {
-        .ok => |ok| machina.freeCheckResult(allocator, ok),
+        .ok => |ok| scrapbot.freeCheckResult(allocator, ok),
         .invalid => |*diagnostic| {
             defer diagnostic.deinit(allocator);
             std.debug.print("initial project check failed: {s}", .{@tagName(diagnostic.stage)});
@@ -86,7 +86,7 @@ fn printCheckDiagnostic(io: Io, allocator: std.mem.Allocator) !void {
 
 fn writeScene(io: Io, root_dir: Io.Dir) !void {
     try root_dir.writeFile(io, .{
-        .sub_path = machina.default_scene_path,
+        .sub_path = scrapbot.default_scene_path,
         .data =
         \\name = "Main"
         \\version = 1
@@ -95,7 +95,7 @@ fn writeScene(io: Io, root_dir: Io.Dir) !void {
         \\id = "native-mover"
         \\name = "Native Mover"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -113,13 +113,13 @@ fn writeNativeModule(io: Io, root_dir: Io.Dir, allocator: std.mem.Allocator, mul
     try root_dir.writeFile(io, .{ .sub_path = native_path, .data = source });
 }
 
-fn expectReloadFailure(live_project: *machina.LiveProject, expected_stage: machina.ScriptDiagnosticStage) !void {
+fn expectReloadFailure(live_project: *scrapbot.LiveProject, expected_stage: scrapbot.ScriptDiagnosticStage) !void {
     const result = live_project.pollLoadedSources();
     if (result) |_| {
         std.debug.print("native reload unexpectedly succeeded for {s}\n", .{@tagName(expected_stage)});
         return CheckError.CheckFailed;
     } else |err| {
-        if (err != machina.ProjectError.InvalidScript) {
+        if (err != scrapbot.ProjectError.InvalidScript) {
             return err;
         }
     }
@@ -134,7 +134,7 @@ fn expectReloadFailure(live_project: *machina.LiveProject, expected_stage: machi
     try expectEqualUsize(1, live_project.scripts.schedule.systemCount(), "native system count after failed reload");
 }
 
-fn expectUnchanged(result: machina.ReloadResult, label: []const u8) !void {
+fn expectUnchanged(result: scrapbot.ReloadResult, label: []const u8) !void {
     switch (result) {
         .unchanged => {},
         .reloaded => {
@@ -144,7 +144,7 @@ fn expectUnchanged(result: machina.ReloadResult, label: []const u8) !void {
     }
 }
 
-fn expectPositionX(world: *machina.World, expected: f32) !void {
+fn expectPositionX(world: *scrapbot.World, expected: f32) !void {
     const mover = world.findEntityById(mover_id) orelse {
         std.debug.print("missing entity '{s}'\n", .{mover_id});
         return CheckError.CheckFailed;
@@ -181,22 +181,22 @@ fn expect(condition: bool, comptime format: []const u8, args: anytype) !void {
 }
 
 const native_module_prefix =
-    \\const machina = @import("machina_native");
+    \\const scrapbot = @import("scrapbot_native");
     \\
-    \\const tick_fields = [_]machina.ComponentField{
+    \\const tick_fields = [_]scrapbot.ComponentField{
     \\    .{ .name = "speed", .field_type = .float },
     \\};
     \\
     \\const tick_reads = [_][*:0]const u8{"native_tick"};
-    \\const tick_writes = [_][*:0]const u8{"machina.transform"};
+    \\const tick_writes = [_][*:0]const u8{"scrapbot.transform"};
     \\
-    \\export fn machina_register(api: *const machina.RegisterApi) callconv(.c) c_int {
-    \\    machina.registerComponent(api, .{
+    \\export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int {
+    \\    scrapbot.registerComponent(api, .{
     \\        .id = "native_tick",
     \\        .fields = tick_fields[0..],
     \\    }) catch return 0;
     \\
-    \\    machina.registerSystem(api, .{
+    \\    scrapbot.registerSystem(api, .{
     \\        .id = "native_tick_move",
     \\        .phase = .update,
     \\        .reads = tick_reads[0..],
@@ -207,13 +207,13 @@ const native_module_prefix =
     \\    return 1;
     \\}
     \\
-    \\fn nativeTickMove(context: *machina.SystemContext) callconv(.c) c_int {
-    \\    const query = [_][*:0]const u8{ "machina.transform", "native_tick" };
+    \\fn nativeTickMove(context: *scrapbot.SystemContext) callconv(.c) c_int {
+    \\    const query = [_][*:0]const u8{ "scrapbot.transform", "native_tick" };
     \\    var cursor: usize = 0;
-    \\    while (machina.queryNext(context, query[0..], &cursor) catch return 0) |entity| {
-    \\        const position = machina.getVec3(context, entity, "machina.transform", "position") catch return 0;
-    \\        const speed = machina.getF32(context, entity, "native_tick", "speed") catch return 0;
-    \\        machina.setVec3(context, entity, "machina.transform", "position", .{
+    \\    while (scrapbot.queryNext(context, query[0..], &cursor) catch return 0) |entity| {
+    \\        const position = scrapbot.getVec3(context, entity, "scrapbot.transform", "position") catch return 0;
+    \\        const speed = scrapbot.getF32(context, entity, "native_tick", "speed") catch return 0;
+    \\        scrapbot.setVec3(context, entity, "scrapbot.transform", "position", .{
     \\            .x = position.x + speed * context.delta_seconds *
 ;
 
@@ -228,34 +228,34 @@ const native_module_suffix =
 ;
 
 const native_module_build_error =
-    \\const machina = @import("machina_native");
+    \\const scrapbot = @import("scrapbot_native");
     \\
-    \\export fn machina_register(api: *const machina.RegisterApi) callconv(.c) c_int {
+    \\export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int {
     \\    _ = api;
     \\    return does_not_compile;
     \\}
 ;
 
 const native_module_missing_register =
-    \\export fn not_machina_register() callconv(.c) c_int {
+    \\export fn not_scrapbot_register() callconv(.c) c_int {
     \\    return 1;
     \\}
 ;
 
 const native_module_registration_error =
-    \\const machina = @import("machina_native");
+    \\const scrapbot = @import("scrapbot_native");
     \\
-    \\const partial_fields = [_]machina.ComponentField{
+    \\const partial_fields = [_]scrapbot.ComponentField{
     \\    .{ .name = "value", .field_type = .float },
     \\};
     \\const partial_reads = [_][*:0]const u8{"partial_component"};
     \\
-    \\export fn machina_register(api: *const machina.RegisterApi) callconv(.c) c_int {
-    \\    machina.registerComponent(api, .{
+    \\export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int {
+    \\    scrapbot.registerComponent(api, .{
     \\        .id = "partial_component",
     \\        .fields = partial_fields[0..],
     \\    }) catch return 0;
-    \\    machina.registerSystem(api, .{
+    \\    scrapbot.registerSystem(api, .{
     \\        .id = "partial_system",
     \\        .phase = .update,
     \\        .reads = partial_reads[0..],
@@ -264,7 +264,7 @@ const native_module_registration_error =
     \\    return 0;
     \\}
     \\
-    \\fn partialSystem(context: *machina.SystemContext) callconv(.c) c_int {
+    \\fn partialSystem(context: *scrapbot.SystemContext) callconv(.c) c_int {
     \\    _ = context;
     \\    return 1;
     \\}

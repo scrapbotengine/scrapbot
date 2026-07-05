@@ -4,13 +4,13 @@
 
 ## Context
 
-Machina is intended to be a game engine that works well for both humans and coding agents. Traditional game engines often hide important project state in binary scene files, editor-only databases, opaque import metadata, or mutation-heavy workflows that are difficult to review, merge, validate, and repair.
+Scrapbot is intended to be a game engine that works well for both humans and coding agents. Traditional game engines often hide important project state in binary scene files, editor-only databases, opaque import metadata, or mutation-heavy workflows that are difficult to review, merge, validate, and repair.
 
 For agentic workflows to be practical, project state needs to be inspectable without launching the editor, editable with ordinary file tools, stable under version control, and validated by deterministic commands. Binary files are still appropriate for source assets such as images, audio, models, and fonts, and for generated caches, but not for engine-authored project structure.
 
 ## Decision
 
-Machina projects use a text-first project model. Engine-authored state such as scenes, prefabs, materials, UI layouts, input maps, scripts, build settings, and project metadata is stored in documented text formats with stable schemas.
+Scrapbot projects use a text-first project model. Engine-authored state such as scenes, prefabs, materials, UI layouts, input maps, scripts, build settings, and project metadata is stored in documented text formats with stable schemas.
 
 Binary data is limited to source assets and generated artifacts. Generated artifacts live outside the authoritative project model and must be reproducible from source files or safely disposable.
 

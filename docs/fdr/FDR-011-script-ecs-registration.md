@@ -5,14 +5,14 @@
 
 ## Overview
 
-Script ECS registration lets project and package scripts define new component and system types that participate in Machina's entity component runtime. It exists so gameplay code can extend the engine model without native recompilation while still preserving validation, reload safety, and editor visibility.
+Script ECS registration lets project and package scripts define new component and system types that participate in Scrapbot's entity component runtime. It exists so gameplay code can extend the engine model without native recompilation while still preserving validation, reload safety, and editor visibility.
 
 ## Behavior
 
 - Project scripts can register component and system types with project-local ids or qualified ids.
 - Package scripts can register component and system types only with qualified ids.
-- Engine-owned ids use the reserved `machina.*` namespace.
-- Machina does not infer a default project namespace.
+- Engine-owned ids use the reserved `scrapbot.*` namespace.
+- Scrapbot does not infer a default project namespace.
 - Project metadata lists script files in a root-level `scripts = [...]` array.
 - Script files use Luau source files executed by the embedded Luau VM.
 - Project scripts are type-checked as strict Luau in the repository editor configuration.
@@ -27,7 +27,7 @@ Script ECS registration lets project and package scripts define new component an
 - Systems may declare ordering relationships by system id.
 - The native runtime builds phase-specific schedule batches from declared read/write access and before/after dependencies.
 - Systems that only read compatible component sets can share a batch; write conflicts or order dependencies force later batches.
-- `machina check --format=json` exposes the validated schedule so editor tools and agents can inspect phases, system batches, runner kinds, access declarations, and ordering relationships without running a window.
+- `scrapbot check --format=json` exposes the validated schedule so editor tools and agents can inspect phases, system batches, runner kinds, access declarations, and ordering relationships without running a window.
 - Script-authored systems can provide Luau `run` callbacks that execute during the native schedule.
 - Script system callbacks receive an engine-provided world facade instead of direct component storage ownership.
 - Script systems can call the world facade to spawn entities.
@@ -61,7 +61,7 @@ Script ECS registration lets project and package scripts define new component an
 
 ### 1. Distinguish local and package ids
 
-**Decision:** Project code may use single-segment local ids or qualified ids, while package code must use qualified ids. `machina.*` is reserved for engine-owned types.
+**Decision:** Project code may use single-segment local ids or qualified ids, while package code must use qualified ids. `scrapbot.*` is reserved for engine-owned types.
 **Why:** Local ids keep project authoring lightweight, while qualified ids make package boundaries, scene references, diagnostics, and reload behavior stable. It follows ADR-010.
 **Tradeoff:** Moving a local project component into a reusable package requires an explicit id migration.
 
@@ -97,8 +97,8 @@ Script ECS registration lets project and package scripts define new component an
 
 ### 7. Vendor the initial Luau runtime behind the scripting boundary
 
-**Decision:** Machina vendors the embeddable Luau compiler and VM source subset and wraps it behind a small C ABI bridge.
-**Why:** Homebrew provides Luau command-line tools but not the embeddable library surface Machina needs. Keeping Luau behind the scripting boundary follows ADR-005 and lets the Zig runtime avoid depending on Luau internals directly.
+**Decision:** Scrapbot vendors the embeddable Luau compiler and VM source subset and wraps it behind a small C ABI bridge.
+**Why:** Homebrew provides Luau command-line tools but not the embeddable library surface Scrapbot needs. Keeping Luau behind the scripting boundary follows ADR-005 and lets the Zig runtime avoid depending on Luau internals directly.
 **Tradeoff:** The repository carries third-party source and must periodically update the vendored subset deliberately.
 
 ### 8. Treat startup as scene generation

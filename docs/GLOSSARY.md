@@ -1,14 +1,14 @@
-# Machina Glossary
+# Scrapbot Glossary
 
-This glossary defines recurring Machina terms in the project's context. It is a naming reference, not a tutorial or API reference; follow the linked ADRs, FDRs, and source files for full behavior.
+This glossary defines recurring Scrapbot terms in the project's context. It is a naming reference, not a tutorial or API reference; follow the linked ADRs, FDRs, and source files for full behavior.
 
 ## Project Model
 
-**Machina** - A text-first game engine implemented in Zig, with project-local Luau and optional Zig native modules for gameplay behavior. See [ADR-001](adr/ADR-001-agent-native-text-first-project-model.md), [ADR-002](adr/ADR-002-zig-as-engine-implementation-language.md), and [ADR-006](adr/ADR-006-embeddable-scripting-language-for-game-logic.md).
+**Scrapbot** - A text-first game engine implemented in Zig, with project-local Luau and optional Zig native modules for gameplay behavior. See [ADR-001](adr/ADR-001-agent-native-text-first-project-model.md), [ADR-002](adr/ADR-002-zig-as-engine-implementation-language.md), and [ADR-006](adr/ADR-006-embeddable-scripting-language-for-game-logic.md).
 
 **Text-first project model** - The rule that engine-authored project state lives in inspectable, reviewable text files while binary files are limited to source assets, generated artifacts, vendored dependencies, and build outputs. See [ADR-001](adr/ADR-001-agent-native-text-first-project-model.md).
 
-**Project directory runtime** - The command model where Machina commands discover and operate on a project from the current directory or an explicit project path. See [FDR-001](fdr/FDR-001-project-directory-runtime.md).
+**Project directory runtime** - The command model where Scrapbot commands discover and operate on a project from the current directory or an explicit project path. See [FDR-001](fdr/FDR-001-project-directory-runtime.md).
 
 **Project metadata** - The `project.toml` file that declares project-level settings such as `default_scene`, `scripts`, and an optional `native` module path. See [FDR-001](fdr/FDR-001-project-directory-runtime.md) and [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
 
@@ -18,13 +18,13 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Scene entity id** - A stable text id on a scene entity, used for diagnostics, component lookup, editor selection, and future reload patching. See [FDR-002](fdr/FDR-002-text-based-scene-authoring.md) and [FDR-010](fdr/FDR-010-live-reload-for-scenes-and-scripts.md).
 
-**Runtime resource** - Engine-owned state that is created during execution rather than authored in scene files, such as `machina.input.*` and `machina.ui.command_event`. See [ADR-020](adr/ADR-020-transient-ecs-input-resources.md) and [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**Runtime resource** - Engine-owned state that is created during execution rather than authored in scene files, such as `scrapbot.input.*` and `scrapbot.ui.command_event`. See [ADR-020](adr/ADR-020-transient-ecs-input-resources.md) and [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
 **Asset cache** - Planned generated runtime-ready artifacts derived from authoritative source assets, kept outside the source project model. See [FDR-006](fdr/FDR-006-asset-import-and-cache.md).
 
 ## ECS Runtime
 
-**ECS (Entity Component System)** - Machina's shared runtime model for game state: entities carry components, and systems operate over declared component access. See [ADR-008](adr/ADR-008-component-system-runtime-model.md) and [FDR-009](fdr/FDR-009-entity-component-runtime.md).
+**ECS (Entity Component System)** - Scrapbot's shared runtime model for game state: entities carry components, and systems operate over declared component access. See [ADR-008](adr/ADR-008-component-system-runtime-model.md) and [FDR-009](fdr/FDR-009-entity-component-runtime.md).
 
 **World** - A runtime container for entity identity, component storage, component validation, queries, mutation APIs, and system schedules. See [ADR-008](adr/ADR-008-component-system-runtime-model.md) and `src/runtime.zig`.
 
@@ -40,9 +40,9 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **SoA (Structure of Arrays)** - The component storage layout where each component field is stored in its own typed column rather than one struct per entity. See [ADR-008](adr/ADR-008-component-system-runtime-model.md).
 
-**Component id** - The stable string identifier for an ECS component type, such as `machina.transform`, `spin`, or `com.example.stamina`. See [ADR-010](adr/ADR-010-local-and-qualified-ids-for-script-ecs-extensions.md).
+**Component id** - The stable string identifier for an ECS component type, such as `scrapbot.transform`, `spin`, or `com.example.stamina`. See [ADR-010](adr/ADR-010-local-and-qualified-ids-for-script-ecs-extensions.md).
 
-**Engine-owned id** - A reserved `machina.*` component or system id owned by the engine. See [ADR-010](adr/ADR-010-local-and-qualified-ids-for-script-ecs-extensions.md).
+**Engine-owned id** - A reserved `scrapbot.*` component or system id owned by the engine. See [ADR-010](adr/ADR-010-local-and-qualified-ids-for-script-ecs-extensions.md).
 
 **Project-local id** - A single lowercase ASCII identifier segment, such as `spin`, valid only inside one project. See [ADR-010](adr/ADR-010-local-and-qualified-ids-for-script-ecs-extensions.md).
 
@@ -66,7 +66,7 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 ## Scripting and Native Extensions
 
-**Luau** - Machina's embedded scripting language for project-local gameplay logic, declaration loading, and runtime systems. See [ADR-006](adr/ADR-006-embeddable-scripting-language-for-game-logic.md).
+**Luau** - Scrapbot's embedded scripting language for project-local gameplay logic, declaration loading, and runtime systems. See [ADR-006](adr/ADR-006-embeddable-scripting-language-for-game-logic.md).
 
 **Script ECS registration** - The process where Luau scripts define components, systems, access sets, phases, queries, and ordering through engine-provided `ecs.*` APIs. See [FDR-011](fdr/FDR-011-script-ecs-registration.md).
 
@@ -82,9 +82,9 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **`ecs.fields(...)`** - The preferred Luau component field-schema declaration form, used by runtime validation and editor payload type inference. See [ADR-012](adr/ADR-012-luau-type-functions-for-ecs-editor-types.md).
 
-**Project-local native module** - A project-owned Zig source file declared with `native = "native/game.zig"` and loaded through Machina's native host boundary during development. See [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
+**Project-local native module** - A project-owned Zig source file declared with `native = "native/game.zig"` and loaded through Scrapbot's native host boundary during development. See [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
 
-**`machina_native`** - The generated Zig API module imported by project-local native code to register components/systems and use access-checked host callbacks. See [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
+**`scrapbot_native`** - The generated Zig API module imported by project-local native code to register components/systems and use access-checked host callbacks. See [ADR-019](adr/ADR-019-project-local-native-zig-modules.md).
 
 **Native extension** - An engine-linked Zig registration surface for native ECS components and systems, used before and alongside project-local native modules. See [ADR-018](adr/ADR-018-engine-linked-native-ecs-systems.md).
 
@@ -102,33 +102,33 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 **Diagnostic stage** - The lifecycle point where a script or native failure occurred, such as `load`, `native_build`, `native_load`, `native_registration`, `registration`, `schedule`, or `runtime`. See [FDR-013](fdr/FDR-013-script-diagnostics.md).
 
-**Headless command** - A command such as `machina check`, `machina step`, `machina bench`, `machina test`, `machina render-test`, or `machina visual-test` that validates, executes, measures, or verifies a project without opening an interactive window. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
+**Headless command** - A command such as `scrapbot check`, `scrapbot step`, `scrapbot bench`, `scrapbot test`, `scrapbot render-test`, or `scrapbot visual-test` that validates, executes, measures, or verifies a project without opening an interactive window. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
 
-**Test project** - A complete text-authored Machina project under `tests/projects/` used for automated behavior fixtures instead of as a user-facing example. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
+**Test project** - A complete text-authored Scrapbot project under `tests/projects/` used for automated behavior fixtures instead of as a user-facing example. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
 
-**`test.machina.toml`** - A test manifest that declares deterministic frame counts, input replay frames, and ECS field assertions for `machina test`. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
+**`test.scrapbot.toml`** - A test manifest that declares deterministic frame counts, input replay frames, and ECS field assertions for `scrapbot test`. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md).
 
 ## UI, Input, and Editor
 
-**Engine-hosted UI** - Machina UI built from engine-owned retained ECS primitives instead of a separate external editor application stack. See [ADR-007](adr/ADR-007-engine-hosted-ui-for-editor-tooling.md) and [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**Engine-hosted UI** - Scrapbot UI built from engine-owned retained ECS primitives instead of a separate external editor application stack. See [ADR-007](adr/ADR-007-engine-hosted-ui-for-editor-tooling.md) and [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
 **Retained UI** - UI represented as persistent ECS component data, such as canvas, rect, text, command, scroll view, and layout components. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**UI canvas** - A `machina.ui.canvas` component that defines a design size and scaling mode for scene-authored UI. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**UI canvas** - A `scrapbot.ui.canvas` component that defines a design size and scaling mode for scene-authored UI. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**UI command** - A `machina.ui.command` authored on a button entity to identify the action emitted when the button is released successfully. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**UI command** - A `scrapbot.ui.command` authored on a button entity to identify the action emitted when the button is released successfully. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**UI command event** - A transient `machina.ui.command_event` emitted for one frame after routed command activation; it is runtime-only and not scene-authored data. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**UI command event** - A transient `scrapbot.ui.command_event` emitted for one frame after routed command activation; it is runtime-only and not scene-authored data. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**Hit area** - A non-rendering `machina.ui.hit_area` rectangle used when a control's interaction target should differ from its visual rectangle. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**Hit area** - A non-rendering `scrapbot.ui.hit_area` rectangle used when a control's interaction target should differ from its visual rectangle. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**Layout item** - A `machina.ui.layout.item` component that attaches a UI entity to a stable parent entity id with order, sizing, alignment, and margin metadata. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**Layout item** - A `scrapbot.ui.layout.item` component that attaches a UI entity to a stable parent entity id with order, sizing, alignment, and margin metadata. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**Scroll view** - A retained `machina.ui.scroll_view` viewport with content offset and clipping behavior for scene or editor UI. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
+**Scroll view** - A retained `scrapbot.ui.scroll_view` viewport with content offset and clipping behavior for scene or editor UI. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
 **`ui_layout.routePointer`** - The shared retained UI routing entry point that composes command hits, scroll routing, and pointer capture intent. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md) and `src/ui_layout.zig`.
 
-**Transient input resources** - Current-frame input stored as engine-owned ECS resources such as `machina.input.pointer`, `machina.input.keyboard`, and `machina.input.frame`. See [ADR-020](adr/ADR-020-transient-ecs-input-resources.md).
+**Transient input resources** - Current-frame input stored as engine-owned ECS resources such as `scrapbot.input.pointer`, `scrapbot.input.keyboard`, and `scrapbot.input.frame`. See [ADR-020](adr/ADR-020-transient-ecs-input-resources.md).
 
 **Editor shell** - The engine-owned editor/debug overlay with chrome regions, playback controls, performance data, selected-entity inspection, and viewport routing. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md) and [FDR-018](fdr/FDR-018-editor-entity-inspector.md).
 
@@ -142,33 +142,33 @@ This glossary defines recurring Machina terms in the project's context. It is a 
 
 ## Rendering
 
-**`wgpu-native`** - The native WebGPU implementation used by Machina's renderer behind engine-owned rendering boundaries. See [ADR-004](adr/ADR-004-webgpu-graphics-through-wgpu-native.md) and [ADR-005](adr/ADR-005-narrow-backend-boundaries-for-external-native-libraries.md).
+**`wgpu-native`** - The native WebGPU implementation used by Scrapbot's renderer behind engine-owned rendering boundaries. See [ADR-004](adr/ADR-004-webgpu-graphics-through-wgpu-native.md) and [ADR-005](adr/ADR-005-narrow-backend-boundaries-for-external-native-libraries.md).
 
-**Headful run** - Interactive execution through `machina run`, which opens an SDL-backed window, presents frames, and can show editor chrome. Bounded `--hidden --frames N` runs exercise the same window/surface path without showing a normal visible window. See [FDR-008](fdr/FDR-008-headful-demo-window.md).
+**Headful run** - Interactive execution through `scrapbot run`, which opens an SDL-backed window, presents frames, and can show editor chrome. Bounded `--hidden --frames N` runs exercise the same window/surface path without showing a normal visible window. See [FDR-008](fdr/FDR-008-headful-demo-window.md).
 
-**Offscreen rendering** - Rendering a project to an image artifact without opening a platform window, used by `machina render` and `machina render-test`. See [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
+**Offscreen rendering** - Rendering a project to an image artifact without opening a platform window, used by `scrapbot render` and `scrapbot render-test`. See [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
 
 **Render world** - The renderer-owned ECS world that receives extracted render data, prepared resources, draw-command entities, and render-phase systems. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md) and [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
 
-**Renderer singleton** - The scene-authored `machina.renderer` component that configures HDR color, tone mapping, antialiasing, bloom, chromatic aberration, and vignette for the game view. See [FDR-020](fdr/FDR-020-postprocess-and-hdr-render-settings.md).
+**Renderer singleton** - The scene-authored `scrapbot.renderer` component that configures HDR color, tone mapping, antialiasing, bloom, chromatic aberration, and vignette for the game view. See [FDR-020](fdr/FDR-020-postprocess-and-hdr-render-settings.md).
 
-**Renderable** - An entity with the ECS data needed to draw visible geometry, currently centered on `machina.transform`, `machina.geometry.primitive`, and `machina.material.surface`. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
+**Renderable** - An entity with the ECS data needed to draw visible geometry, currently centered on `scrapbot.transform`, `scrapbot.geometry.primitive`, and `scrapbot.material.surface`. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
 
-**Built-in primitive** - Engine-generated geometry selected through `machina.geometry.primitive`, such as box, plane, sphere, UV sphere, or ico sphere. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
+**Built-in primitive** - Engine-generated geometry selected through `scrapbot.geometry.primitive`, such as box, plane, sphere, UV sphere, or ico sphere. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
 
-**Surface material** - The first material component, `machina.material.surface`, which currently carries base color for scene-driven rendering. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
+**Surface material** - The first material component, `scrapbot.material.surface`, which currently carries base color for scene-driven rendering. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
 
-**Legacy cube** - The compatibility shortcut `machina.render.cube`, still accepted but superseded for new scene-authored renderables by geometry plus material components. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
+**Legacy cube** - The compatibility shortcut `scrapbot.render.cube`, still accepted but superseded for new scene-authored renderables by geometry plus material components. See [FDR-015](fdr/FDR-015-built-in-geometry-and-materials.md).
 
 **Scene-driven camera and lighting** - Camera and directional light rendering state authored as ECS components instead of renderer-only constants. See [FDR-014](fdr/FDR-014-scene-driven-camera-and-lighting.md).
 
-**Shadow marker** - A marker component such as `machina.shadow.caster` or `machina.shadow.receiver` that opts a renderable into shadow casting or receiving. See [FDR-017](fdr/FDR-017-shadow-components.md).
+**Shadow marker** - A marker component such as `scrapbot.shadow.caster` or `scrapbot.shadow.receiver` that opts a renderable into shadow casting or receiving. See [FDR-017](fdr/FDR-017-shadow-components.md).
 
 **Render batch** - A renderer-planned group of compatible renderables drawn as one instanced batch while preserving per-entity transform and base color. See [FDR-016](fdr/FDR-016-render-batching.md).
 
 **Draw-command entity** - An internal render-world entity queued by render preparation to represent a batch or UI draw operation before GPU submission. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md) and [FDR-016](fdr/FDR-016-render-batching.md).
 
-**Render verification** - The offscreen PNG, pixel-analysis, and golden-image comparison workflow used to catch rendering regressions in automation. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md), [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md), and `.agents/skills/machina-render-verification/SKILL.md`.
+**Render verification** - The offscreen PNG, pixel-analysis, and golden-image comparison workflow used to catch rendering regressions in automation. See [FDR-003](fdr/FDR-003-headless-validation-and-test-runner.md), [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md), and `.agents/skills/scrapbot-render-verification/SKILL.md`.
 
 ## Records
 

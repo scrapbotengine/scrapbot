@@ -5,15 +5,15 @@ version = 1
 id = "animated-box"
 name = "Animated Box"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "box"
 segments = 0
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.0, 0.0, 1.0]

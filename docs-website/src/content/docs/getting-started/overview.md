@@ -1,9 +1,9 @@
 ---
 title: Overview
-description: A high-level tour of Machina's text-first, ECS-native engine model.
+description: A high-level tour of Scrapbot's text-first, ECS-native engine model.
 ---
 
-Machina is an experimental game engine built around a simple idea: engine state should be understandable as text and behavior should be organized as systems over data.
+Scrapbot is an experimental game engine built around a simple idea: engine state should be understandable as text and behavior should be organized as systems over data.
 
 That goal shapes the whole stack:
 
@@ -17,7 +17,7 @@ That goal shapes the whole stack:
 
 ## Current Engine Shape
 
-Machina is implemented in Zig and exposes one `machina` CLI binary.
+Scrapbot is implemented in Zig and exposes one `scrapbot` CLI binary.
 
 The current runtime supports:
 
@@ -35,7 +35,7 @@ The current runtime supports:
 
 ## Philosophy
 
-Machina favors explicit data over hidden editor state.
+Scrapbot favors explicit data over hidden editor state.
 
 A cube in a scene is not a private binary object. It is an entity with a transform, a geometry primitive, and a material:
 
@@ -44,17 +44,17 @@ A cube in a scene is not a private binary object. It is an entity with a transfo
 id = "showcase-core-cube"
 name = "Core Cube"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [0.68, 0.68, 0.68]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "box"
 segments = 0
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.0, 0.56, 1.0]
 ```
 
@@ -63,7 +63,7 @@ A behavior is not an implicit object callback. It is a named system with declare
 ```lua
 --!strict
 
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
 
 local Spin = ecs.component("spin", {
   fields = ecs.fields({
@@ -93,7 +93,7 @@ This makes projects easier for humans, tools, and coding agents to inspect and c
 
 ## Where To Go Next
 
-- New to Machina: start with [Quickstart](/getting-started/quickstart/).
+- New to Scrapbot: start with [Quickstart](/getting-started/quickstart/).
 - Want to understand the runtime: read [ECS Runtime](/concepts/ecs/).
 - Writing gameplay: read [Luau Systems](/scripting/luau/).
 - Working on performance: read [Queries and Views](/scripting/queries-and-views/) and [Project-Local Zig](/scripting/native-zig/).

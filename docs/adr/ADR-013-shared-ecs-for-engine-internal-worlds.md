@@ -4,17 +4,17 @@
 
 ## Context
 
-Machina's game state, scenes, scripts, tests, and future editor already use one entity-component-system runtime. Rendering originally read scene components directly and kept renderer-specific object arrays as the effective draw model. That would create a second, informal ECS if internal engine paths grew separate storage, scheduling, and query rules.
+Scrapbot's game state, scenes, scripts, tests, and future editor already use one entity-component-system runtime. Rendering originally read scene components directly and kept renderer-specific object arrays as the effective draw model. That would create a second, informal ECS if internal engine paths grew separate storage, scheduling, and query rules.
 
 The renderer still needs backend-owned resources such as `wgpu` buffers, bind groups, textures, and pipelines. Those handles should not become user-authored scene data or script-visible component fields, but the data flow that decides what gets rendered should still use the engine ECS model.
 
 ## Decision
 
-Machina uses the same `runtime.World`, `runtime.ComponentRegistry`, and `runtime.SystemSchedule` implementation for engine-internal worlds as it uses for game worlds.
+Scrapbot uses the same `runtime.World`, `runtime.ComponentRegistry`, and `runtime.SystemSchedule` implementation for engine-internal worlds as it uses for game worlds.
 
 The renderer owns a render world and a render-phase schedule. Each frame, render systems extract renderable scene data from the game world into the render world, prepare renderer resources, queue draw-command entities, and draw by querying that render world.
 
-Engine-internal render components and systems use reserved `machina.*` type ids. Backend handles remain renderer-owned side resources until Machina has explicit native/internal component storage with lifecycle rules for non-serializable values.
+Engine-internal render components and systems use reserved `scrapbot.*` type ids. Backend handles remain renderer-owned side resources until Scrapbot has explicit native/internal component storage with lifecycle rules for non-serializable values.
 
 Render systems are profiled at the render scheduler boundary and exposed to the same editor performance overlay stream as project systems. The overlay currently displays render timings from the last completed frame alongside current project system timings.
 

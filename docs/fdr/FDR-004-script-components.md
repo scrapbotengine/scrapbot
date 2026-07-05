@@ -10,7 +10,7 @@ Script components let scenes attach scripted behavior to entities. They exist so
 ## Behavior
 
 - Scene files can reference script files as components on entities.
-- Script files define behavior that can participate in engine lifecycle events exposed by Machina.
+- Script files define behavior that can participate in engine lifecycle events exposed by Scrapbot.
 - Script load, compile, and runtime errors are reported with file and location information.
 - Script components can be validated in headless mode.
 - Script components can access supported entity and component operations through the scripting API.
@@ -29,8 +29,8 @@ Script components let scenes attach scripted behavior to entities. They exist so
 ### 2. Use Luau as the scripting target
 
 **Decision:** Script components target Luau.
-**Why:** Luau gives Machina a game-oriented scripting language with room for sandboxing, type annotations, editor diagnostics, and agent-readable source. It follows ADR-006.
-**Tradeoff:** Machina needs a clear backend boundary for Luau packaging, binding, and cross-platform builds.
+**Why:** Luau gives Scrapbot a game-oriented scripting language with room for sandboxing, type annotations, editor diagnostics, and agent-readable source. It follows ADR-006.
+**Tradeoff:** Scrapbot needs a clear backend boundary for Luau packaging, binding, and cross-platform builds.
 
 ### 3. Bind scripts through the entity component runtime
 
@@ -40,7 +40,7 @@ Script components let scenes attach scripted behavior to entities. They exist so
 
 ### 4. Distinguish local and qualified ids for script-defined ECS types
 
-**Decision:** Script-defined component and system registrations use explicit ids: local single-segment ids for project-only types, qualified dotted ids for packages, and `machina.*` for engine-owned types.
+**Decision:** Script-defined component and system registrations use explicit ids: local single-segment ids for project-only types, qualified dotted ids for packages, and `scrapbot.*` for engine-owned types.
 **Why:** This keeps local authoring lightweight while making package boundaries and reload compatibility explicit. It follows ADR-010.
 **Tradeoff:** Project-local ids require explicit migration if they become reusable package types.
 

@@ -1,6 +1,6 @@
-# Machina Documentation Website
+# Scrapbot Documentation Website
 
-This is the Astro Starlight documentation site for Machina Engine.
+This is the Astro Starlight documentation site for Scrapbot Engine.
 
 ## Development
 

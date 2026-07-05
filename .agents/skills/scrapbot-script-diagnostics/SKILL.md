@@ -1,17 +1,17 @@
 ---
-name: machina-script-diagnostics
-description: Use when changing Machina script diagnostics, Luau bridge error reporting, `machina check` diagnostic output, script reload/runtime failure handling, Luau declaration origins, or editor/agent-facing diagnostic surfaces.
+name: scrapbot-script-diagnostics
+description: Use when changing Scrapbot script diagnostics, Luau bridge error reporting, `scrapbot check` diagnostic output, script reload/runtime failure handling, Luau declaration origins, or editor/agent-facing diagnostic surfaces.
 ---
 
 # Script Diagnostics
 
-Use this workflow for changes that affect how Machina reports script load, registration, schedule, reload, or runtime failures.
+Use this workflow for changes that affect how Scrapbot reports script load, registration, schedule, reload, or runtime failures.
 
 ## Core Expectations
 
 - Preserve last-known-good behavior: failed script validation, reload, or runtime execution must not destroy the active project state.
 - Keep diagnostics structured below command output. Text and JSON rendering should be command-surface concerns.
-- Keep `machina check --format=json` stable for editor and agent workflows.
+- Keep `scrapbot check --format=json` stable for editor and agent workflows.
 - Prefer adding structured diagnostic fields over requiring tools to scrape human-readable messages.
 - Update [ADR-011](../../../docs/adr/ADR-011-structured-script-diagnostics.md) when the diagnostic architecture or ownership model changes.
 - Update [FDR-013](../../../docs/fdr/FDR-013-script-diagnostics.md) when user-visible diagnostic behavior changes.
@@ -30,7 +30,7 @@ Run the normal script-diagnostics checks:
 1. `mise build`
 2. `mise test`
 3. For editor type-surface changes, run `mise luau-check`.
-4. `./zig-out/bin/machina check examples/minimal --format=json`
+4. `./zig-out/bin/scrapbot check examples/minimal --format=json`
 5. Create a temporary copy of `examples/minimal`, break `scripts/gameplay.luau`, and verify:
    - text output is human-readable,
    - JSON output contains `ok: false`,

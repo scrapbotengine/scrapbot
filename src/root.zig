@@ -11,7 +11,7 @@ const ui_layout = @import("ui_layout.zig");
 
 pub const version = "0.1.0-dev";
 pub const project_file_name = "project.toml";
-pub const legacy_project_file_name = "project.machina.toml";
+pub const legacy_project_file_name = "project.scrapbot.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
 
 pub const renderDemoImage = render.renderDemoImage;
@@ -209,12 +209,12 @@ pub const StepDetailedResult = union(enum) {
 };
 
 pub const build_default_output_dir_name = "build";
-const build_bundle_marker = ".machina-build-bundle";
+const build_bundle_marker = ".scrapbot-build-bundle";
 const build_project_dir = "project";
 const build_bin_dir = "bin";
 const build_lib_dir = "lib";
-const build_manifest_path = "machina-build.json";
-const build_native_artifact_dir = ".machina/build/native";
+const build_manifest_path = "scrapbot-build.json";
+const build_native_artifact_dir = ".scrapbot/build/native";
 
 pub const BuildOptions = struct {
     output_root: ?[]const u8 = null,
@@ -855,10 +855,10 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\version = 1
             \\
             \\[[entities]]
-            \\id = "machina.renderer"
+            \\id = "scrapbot.renderer"
             \\name = "Renderer"
             \\
-            \\[entities.components."machina.renderer"]
+            \\[entities.components."scrapbot.renderer"]
             \\hdr = true
             \\tone_mapping = "aces"
             \\exposure = 0.0
@@ -878,29 +878,29 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001"
             \\name = "Demo Cube"
             \\
-            \\[entities.components."machina.transform"]
+            \\[entities.components."scrapbot.transform"]
             \\position = [0.0, 0.0, 0.0]
             \\rotation = [0.0, 0.0, 0.0]
             \\scale = [1.0, 1.0, 1.0]
             \\
-            \\[entities.components."machina.geometry.primitive"]
+            \\[entities.components."scrapbot.geometry.primitive"]
             \\primitive = "box"
             \\segments = 0
             \\rings = 0
             \\
-            \\[entities.components."machina.material.surface"]
+            \\[entities.components."scrapbot.material.surface"]
             \\base_color = [0.0, 0.56, 1.0]
             \\
             \\[[entities]]
             \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0002"
             \\name = "Main Camera"
             \\
-            \\[entities.components."machina.transform"]
+            \\[entities.components."scrapbot.transform"]
             \\position = [0.0, 0.0, 4.8]
             \\rotation = [0.0, 0.0, 0.0]
             \\scale = [1.0, 1.0, 1.0]
             \\
-            \\[entities.components."machina.camera"]
+            \\[entities.components."scrapbot.camera"]
             \\fov_y_degrees = 48.0
             \\near = 0.1
             \\far = 100.0
@@ -909,7 +909,7 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0003"
             \\name = "Key Light"
             \\
-            \\[entities.components."machina.light.directional"]
+            \\[entities.components."scrapbot.light.directional"]
             \\direction = [0.35, 0.68, 0.64]
             \\color = [1.0, 1.0, 1.0]
             \\intensity = 0.78
@@ -1126,7 +1126,7 @@ pub fn buildProjectDetailed(
     var keep_bundle_path = false;
     defer if (!keep_bundle_path) allocator.free(bundle_path);
     if (fileExists(io, cwd, bundle_path)) {
-        if (!options.force or !isMachinaBuildBundle(io, cwd, bundle_path)) {
+        if (!options.force or !isScrapbotBuildBundle(io, cwd, bundle_path)) {
             return ProjectError.AlreadyExists;
         }
         try cwd.deleteTree(io, bundle_path);
@@ -1139,7 +1139,7 @@ pub fn buildProjectDetailed(
     defer bundle_dir.close(io);
     try bundle_dir.writeFile(io, .{
         .sub_path = build_bundle_marker,
-        .data = "machina build bundle\n",
+        .data = "scrapbot build bundle\n",
     });
     try bundle_dir.createDirPath(io, build_project_dir);
     try bundle_dir.createDirPath(io, build_bin_dir);
@@ -1295,7 +1295,7 @@ fn sanitizeBundleSegment(allocator: std.mem.Allocator, value: []const u8) ![]u8 
         _ = out.orderedRemove(0);
     }
     if (out.items.len == 0) {
-        try out.appendSlice(allocator, "machina-project");
+        try out.appendSlice(allocator, "scrapbot-project");
     }
     return out.toOwnedSlice(allocator);
 }
@@ -1336,7 +1336,7 @@ fn isSafeBundleName(name: []const u8) bool {
     return !std.mem.eql(u8, name, ".") and !std.mem.eql(u8, name, "..");
 }
 
-fn isMachinaBuildBundle(io: Io, cwd: Io.Dir, bundle_path: []const u8) bool {
+fn isScrapbotBuildBundle(io: Io, cwd: Io.Dir, bundle_path: []const u8) bool {
     const marker_path = std.fs.path.join(std.heap.smp_allocator, &.{ bundle_path, build_bundle_marker }) catch return false;
     defer std.heap.smp_allocator.free(marker_path);
     return fileExists(io, cwd, marker_path);
@@ -1463,7 +1463,7 @@ fn shouldSkipProjectRootEntry(name: []const u8, skip_root_entry: ?[]const u8) bo
             return true;
         }
     }
-    return std.mem.eql(u8, name, ".machina") or
+    return std.mem.eql(u8, name, ".scrapbot") or
         std.mem.eql(u8, name, ".git") or
         std.mem.eql(u8, name, ".zig-cache") or
         std.mem.eql(u8, name, "zig-cache") or
@@ -1529,8 +1529,8 @@ fn rewritePackagedProjectManifest(
 
 fn executableFileName() []const u8 {
     return switch (builtin.os.tag) {
-        .windows => "machina.exe",
-        else => "machina",
+        .windows => "scrapbot.exe",
+        else => "scrapbot",
     };
 }
 
@@ -1547,7 +1547,7 @@ fn writeLauncher(io: Io, bundle_dir: Io.Dir, launcher_name: []const u8) !void {
         \\@echo off
         \\set "SCRIPT_DIR=%~dp0"
         \\set "PATH=%SCRIPT_DIR%lib;%SCRIPT_DIR%bin;%PATH%"
-        \\"%SCRIPT_DIR%bin\machina.exe" run "%SCRIPT_DIR%project" %*
+        \\"%SCRIPT_DIR%bin\scrapbot.exe" run "%SCRIPT_DIR%project" %*
         \\
         ,
         .macos =>
@@ -1555,7 +1555,7 @@ fn writeLauncher(io: Io, bundle_dir: Io.Dir, launcher_name: []const u8) !void {
         \\set -eu
         \\DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
         \\export DYLD_LIBRARY_PATH="$DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-        \\exec "$DIR/bin/machina" run "$DIR/project" "$@"
+        \\exec "$DIR/bin/scrapbot" run "$DIR/project" "$@"
         \\
         ,
         .linux =>
@@ -1563,14 +1563,14 @@ fn writeLauncher(io: Io, bundle_dir: Io.Dir, launcher_name: []const u8) !void {
         \\set -eu
         \\DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
         \\export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-        \\exec "$DIR/bin/machina" run "$DIR/project" "$@"
+        \\exec "$DIR/bin/scrapbot" run "$DIR/project" "$@"
         \\
         ,
         else =>
         \\#!/bin/sh
         \\set -eu
         \\DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-        \\exec "$DIR/bin/machina" run "$DIR/project" "$@"
+        \\exec "$DIR/bin/scrapbot" run "$DIR/project" "$@"
         \\
         ,
     };
@@ -1644,7 +1644,7 @@ fn writeBuildManifest(io: Io, allocator: std.mem.Allocator, bundle_dir: Io.Dir, 
     defer out.deinit(allocator);
 
     try out.appendSlice(allocator, "{\n");
-    try out.appendSlice(allocator, "  \"schema\": \"machina.build.v1\",\n");
+    try out.appendSlice(allocator, "  \"schema\": \"scrapbot.build.v1\",\n");
     try out.appendSlice(allocator, "  \"project\": ");
     try appendJsonString(allocator, &out, input.project_name);
     try out.appendSlice(allocator, ",\n  \"host\": ");
@@ -2904,13 +2904,13 @@ test "loadProject accepts packaged native artifact metadata" {
     defer root_dir.close(io);
     try root_dir.writeFile(io, .{
         .sub_path = project_file_name,
-        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\nnative_artifact = \".machina/build/native/libmachina_project.dylib\"\n",
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\nnative_artifact = \".scrapbot/build/native/libscrapbot_project.dylib\"\n",
     });
 
     const project = try loadProject(io, std.testing.allocator, root_path);
     defer freeProject(std.testing.allocator, project);
     try std.testing.expectEqualStrings("native/game.zig", project.native.?);
-    try std.testing.expectEqualStrings(".machina/build/native/libmachina_project.dylib", project.native_artifact.?);
+    try std.testing.expectEqualStrings(".scrapbot/build/native/libscrapbot_project.dylib", project.native_artifact.?);
 }
 
 test "loadDefaultScene parses renderer singleton settings" {
@@ -2928,10 +2928,10 @@ test "loadDefaultScene parses renderer singleton settings" {
         \\version = 1
         \\
         \\[[entities]]
-        \\id = "machina.renderer"
+        \\id = "scrapbot.renderer"
         \\name = "Renderer"
         \\
-        \\[entities.components."machina.renderer"]
+        \\[entities.components."scrapbot.renderer"]
         \\hdr = true
         \\tone_mapping = "reinhard"
         \\exposure = 0.5
@@ -2975,14 +2975,14 @@ test "buildNativeArtifactProjectPath uses project metadata separators" {
     const path = try buildNativeArtifactProjectPath(std.testing.allocator);
     defer std.testing.allocator.free(path);
 
-    try std.testing.expect(std.mem.startsWith(u8, path, ".machina/build/native/"));
+    try std.testing.expect(std.mem.startsWith(u8, path, ".scrapbot/build/native/"));
     try std.testing.expect(std.mem.indexOfScalar(u8, path, '\\') == null);
 }
 
-test "copyPackagedNativeArtifact copies artifact from excluded machina cache" {
+test "copyPackagedNativeArtifact copies artifact from excluded scrapbot cache" {
     const root_path = ".zig-cache/test-copy-packaged-native-artifact-source";
     const bundle_project_path = ".zig-cache/test-copy-packaged-native-artifact-bundle/project";
-    const artifact_path = ".machina/build/native/libmachina_project.test";
+    const artifact_path = ".scrapbot/build/native/libscrapbot_project.test";
     const io = Io.Threaded.global_single_threaded.io();
     const cwd = Io.Dir.cwd();
     cwd.deleteTree(io, root_path) catch {};
@@ -3177,7 +3177,7 @@ test "loadDefaultScene stores script-declared component tables" {
     try std.testing.expectEqual(@as(f32, 1.0), angular_velocity[0]);
 
     var cursor: usize = 0;
-    const query = [_][]const u8{ "machina.transform", "spin" };
+    const query = [_][]const u8{ "scrapbot.transform", "spin" };
     try std.testing.expectEqual(entity.index, (scene.world.queryNext(&query, &cursor) orelse return error.TestExpectedEqual).index);
     try std.testing.expect(scene.world.queryNext(&query, &cursor) == null);
 }
@@ -3221,7 +3221,7 @@ test "checkProject rejects duplicate component fields in scene data" {
         \\id = "dupe-field"
         \\name = "Dupe Field"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\position = [1.0, 0.0, 0.0]
         \\
@@ -3255,7 +3255,7 @@ test "checkProject rejects missing required component fields in scene data" {
         \\id = "missing-field"
         \\name = "Missing Field"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\
@@ -3289,7 +3289,7 @@ test "checkProject rejects invalid scene numeric data" {
         \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001"
         \\name = "Bad Cube"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, nope, 0.0]
         \\
         ,
@@ -3322,7 +3322,7 @@ test "checkProject rejects duplicate scene entity ids" {
         \\id = "same-id"
         \\name = "One"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3331,7 +3331,7 @@ test "checkProject rejects duplicate scene entity ids" {
         \\id = "same-id"
         \\name = "Two"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3371,7 +3371,7 @@ test "checkProject validates script declarations and builds a system schedule" {
         \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001"
         \\name = "Spinner"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3386,8 +3386,8 @@ test "checkProject validates script declarations and builds a system schedule" {
         .data =
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
-        \\local RenderCube = ecs.component<<MachinaRenderCube>>("machina.render.cube")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+        \\local RenderCube = ecs.component<<ScrapbotRenderCube>>("scrapbot.render.cube")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -3444,7 +3444,7 @@ test "checkProject rejects invalid script declarations" {
     try root_dir.writeFile(io, .{
         .sub_path = "scripts/gameplay.luau",
         .data =
-        \\ecs.component("machina.bad", {
+        \\ecs.component("scrapbot.bad", {
         \\  fields = ecs.fields({
         \\    value = "f32",
         \\  }),
@@ -3516,7 +3516,7 @@ test "LiveProject reloads changed active scene and keeps last good state on fail
         \\id = "one"
         \\name = "One"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3525,7 +3525,7 @@ test "LiveProject reloads changed active scene and keeps last good state on fail
         \\id = "two"
         \\name = "Two"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3549,7 +3549,7 @@ test "LiveProject reloads changed active scene and keeps last good state on fail
         \\id = "same"
         \\name = "One"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3558,7 +3558,7 @@ test "LiveProject reloads changed active scene and keeps last good state on fail
         \\id = "same"
         \\name = "Two"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -3655,7 +3655,7 @@ test "LiveProject reloads changed scripts and keeps last good registry on failur
     try root_dir.writeFile(io, .{
         .sub_path = "scripts/gameplay.luau",
         .data =
-        \\ecs.component("machina.bad", {
+        \\ecs.component("scrapbot.bad", {
         \\  fields = ecs.fields({
         \\    value = "f32",
         \\  }),
@@ -3695,7 +3695,7 @@ test "LiveProject update runs the scheduled rotation system" {
         .data =
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -3755,7 +3755,7 @@ test "LiveProject editor pause gates scheduled update systems" {
         .data =
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spin = ecs.component("spin", {
         \\  fields = ecs.fields({
         \\    angular_velocity = "vec3",
@@ -3890,7 +3890,7 @@ test "LiveProject emits UI command events before scheduled scripts run" {
         \\id = "canvas"
         \\name = "Canvas"
         \\
-        \\[entities.components."machina.ui.canvas"]
+        \\[entities.components."scrapbot.ui.canvas"]
         \\design_size = [640.0, 480.0, 0.0]
         \\scale_mode = "fit"
         \\
@@ -3898,14 +3898,14 @@ test "LiveProject emits UI command events before scheduled scripts run" {
         \\id = "button"
         \\name = "Button"
         \\
-        \\[entities.components."machina.ui.rect"]
+        \\[entities.components."scrapbot.ui.rect"]
         \\position = [32.0, 24.0, 0.0]
         \\size = [120.0, 48.0, 0.0]
         \\color = [0.0, 0.2, 0.4]
         \\
-        \\[entities.components."machina.ui.button"]
+        \\[entities.components."scrapbot.ui.button"]
         \\
-        \\[entities.components."machina.ui.command"]
+        \\[entities.components."scrapbot.ui.command"]
         \\command = "activate_flag"
         \\
         \\[[entities]]
@@ -3922,7 +3922,7 @@ test "LiveProject emits UI command events before scheduled scripts run" {
         .data =
         \\--!strict
         \\
-        \\local CommandEvent = ecs.component<<MachinaUiCommandEvent>>("machina.ui.command_event")
+        \\local CommandEvent = ecs.component<<ScrapbotUiCommandEvent>>("scrapbot.ui.command_event")
         \\local Flag = ecs.component("flag", {
         \\  fields = ecs.fields({
         \\    active = "boolean",
@@ -4003,7 +4003,7 @@ test "LiveProject routes UI command hits through retained layout" {
         \\id = "toolbar"
         \\name = "Toolbar"
         \\
-        \\[entities.components."machina.ui.stack"]
+        \\[entities.components."scrapbot.ui.stack"]
         \\position = [100.0, 24.0, 0.0]
         \\spacing = 12.0
         \\direction = "horizontal"
@@ -4013,18 +4013,18 @@ test "LiveProject routes UI command hits through retained layout" {
         \\id = "button"
         \\name = "Button"
         \\
-        \\[entities.components."machina.ui.rect"]
+        \\[entities.components."scrapbot.ui.rect"]
         \\position = [0.0, 0.0, 0.0]
         \\size = [120.0, 48.0, 0.0]
         \\color = [0.0, 0.2, 0.4]
         \\
-        \\[entities.components."machina.ui.button"]
+        \\[entities.components."scrapbot.ui.button"]
         \\
-        \\[entities.components."machina.ui.layout.item"]
+        \\[entities.components."scrapbot.ui.layout.item"]
         \\parent = "toolbar"
         \\order = 0
         \\
-        \\[entities.components."machina.ui.command"]
+        \\[entities.components."scrapbot.ui.command"]
         \\command = "activate_flag"
         \\
         \\[[entities]]
@@ -4041,7 +4041,7 @@ test "LiveProject routes UI command hits through retained layout" {
         .data =
         \\--!strict
         \\
-        \\local CommandEvent = ecs.component<<MachinaUiCommandEvent>>("machina.ui.command_event")
+        \\local CommandEvent = ecs.component<<ScrapbotUiCommandEvent>>("scrapbot.ui.command_event")
         \\local Flag = ecs.component("flag", {
         \\  fields = ecs.fields({
         \\    active = "boolean",
@@ -4106,7 +4106,7 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
         \\id = "scroll"
         \\name = "Scroll"
         \\
-        \\[entities.components."machina.ui.scroll_view"]
+        \\[entities.components."scrapbot.ui.scroll_view"]
         \\position = [10.0, 10.0, 0.0]
         \\size = [100.0, 40.0, 0.0]
         \\content_offset = [0.0, 0.0, 0.0]
@@ -4115,13 +4115,13 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
         \\id = "stack"
         \\name = "Stack"
         \\
-        \\[entities.components."machina.ui.vgroup"]
+        \\[entities.components."scrapbot.ui.vgroup"]
         \\position = [0.0, 0.0, 0.0]
         \\size = [100.0, 96.0, 0.0]
         \\spacing = 0.0
         \\padding = [0.0, 0.0, 0.0]
         \\
-        \\[entities.components."machina.ui.layout.item"]
+        \\[entities.components."scrapbot.ui.layout.item"]
         \\parent = "scroll"
         \\order = 0
         \\
@@ -4129,13 +4129,13 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
         \\id = "row-1"
         \\name = "Row 1"
         \\
-        \\[entities.components."machina.ui.text"]
+        \\[entities.components."scrapbot.ui.text"]
         \\position = [0.0, 0.0, 0.0]
         \\size = 1.0
         \\color = [1.0, 1.0, 1.0]
         \\value = "ROW 1"
         \\
-        \\[entities.components."machina.ui.layout.item"]
+        \\[entities.components."scrapbot.ui.layout.item"]
         \\parent = "stack"
         \\order = 0
         \\
@@ -4143,13 +4143,13 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
         \\id = "row-2"
         \\name = "Row 2"
         \\
-        \\[entities.components."machina.ui.text"]
+        \\[entities.components."scrapbot.ui.text"]
         \\position = [0.0, 0.0, 0.0]
         \\size = 1.0
         \\color = [1.0, 1.0, 1.0]
         \\value = "ROW 2"
         \\
-        \\[entities.components."machina.ui.layout.item"]
+        \\[entities.components."scrapbot.ui.layout.item"]
         \\parent = "stack"
         \\order = 1
         \\
@@ -4157,13 +4157,13 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
         \\id = "row-3"
         \\name = "Row 3"
         \\
-        \\[entities.components."machina.ui.text"]
+        \\[entities.components."scrapbot.ui.text"]
         \\position = [0.0, 0.0, 0.0]
         \\size = 1.0
         \\color = [1.0, 1.0, 1.0]
         \\value = "ROW 3"
         \\
-        \\[entities.components."machina.ui.layout.item"]
+        \\[entities.components."scrapbot.ui.layout.item"]
         \\parent = "stack"
         \\order = 2
         \\
@@ -4282,7 +4282,7 @@ test "stepProjectDetailed returns runtime diagnostics and final world state" {
             try std.testing.expectEqual(@as(u32, 0), failure.summary.completed_frames);
             try std.testing.expectEqual(script.DiagnosticStage.runtime, failure.diagnostic.stage);
             try std.testing.expectEqualStrings("rotate_cubes", failure.diagnostic.system_id orelse return error.TestExpectedEqual);
-            try std.testing.expect(std.mem.indexOf(u8, failure.diagnostic.message, "machina.transform.rotation") != null);
+            try std.testing.expect(std.mem.indexOf(u8, failure.diagnostic.message, "scrapbot.transform.rotation") != null);
 
             const entity = failure.scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
             const transform = (try failure.scene.world.getTransform(entity)) orelse return error.TestExpectedEqual;
@@ -4491,7 +4491,7 @@ test "LiveProject reloads project metadata and follows default scene changes" {
         \\id = "alternate-one"
         \\name = "Alternate One"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -4500,7 +4500,7 @@ test "LiveProject reloads project metadata and follows default scene changes" {
         \\id = "alternate-two"
         \\name = "Alternate Two"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -4546,7 +4546,7 @@ test "LiveProject reloads project metadata and follows default scene changes" {
         \\id = "alternate-one"
         \\name = "Alternate One"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -4570,7 +4570,7 @@ test "LiveProject reloads project metadata and follows default scene changes" {
         \\id = "recovered-one"
         \\name = "Recovered One"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]
@@ -4672,7 +4672,7 @@ fn writeRotateScript(io: Io, root_dir: Io.Dir, delta_expression: []const u8) !vo
         &buffer,
         \\--!strict
         \\
-        \\local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+        \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
         \\local Spin = ecs.component("spin", {{
         \\  fields = ecs.fields({{
         \\    angular_velocity = "vec3",
@@ -4743,7 +4743,7 @@ fn writeSpinnerScene(io: Io, root_dir: Io.Dir) !void {
         \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001"
         \\name = "Spinner"
         \\
-        \\[entities.components."machina.transform"]
+        \\[entities.components."scrapbot.transform"]
         \\position = [0.0, 0.0, 0.0]
         \\rotation = [0.0, 0.0, 0.0]
         \\scale = [1.0, 1.0, 1.0]

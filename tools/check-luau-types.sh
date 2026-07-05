@@ -29,14 +29,14 @@ find_luau_lsp() {
 }
 
 luau_lsp="$(find_luau_lsp)"
-definitions="${repo_root}/types/machina.d.luau"
+definitions="${repo_root}/types/scrapbot.d.luau"
 luaurc="${repo_root}/.luaurc"
 
 analyze() {
   "${luau_lsp}" analyze \
     --platform=standard \
     --flag:LuauSolverV2=true \
-    "--definitions:machina=${definitions}" \
+    "--definitions:scrapbot=${definitions}" \
     --base-luaurc "${luaurc}" \
     "$@"
 }
@@ -52,7 +52,7 @@ trap 'rm -rf "${tmpdir}"' EXIT
 
 valid_script="${tmpdir}/typed-query-valid.luau"
 cat > "${valid_script}" <<'LUA'
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
 local Spin = ecs.component("spin", {
   fields = ecs.fields({
     angular_velocity = "vec3",
@@ -69,7 +69,7 @@ ecs.system("typed_query", {
   writes = ecs.refs(Transform),
   run = function(world, dt)
     for _entity, transform, spin in RotatingCubes:iter(world) do
-      local _rotation: MachinaVec3 = transform.rotation
+      local _rotation: ScrapbotVec3 = transform.rotation
       local _angular_speed: number = spin.angular_velocity[1] * dt
       local _label: string = spin.label
       local _enabled: boolean = spin.enabled
@@ -88,7 +88,7 @@ analyze "${valid_script}"
 
 invalid_script="${tmpdir}/typed-query-invalid.luau"
 cat > "${invalid_script}" <<'LUA'
-local Transform = ecs.component<<MachinaTransform>>("machina.transform")
+local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
 local Spin = ecs.component("spin", {
   fields = ecs.fields({
     angular_velocity = "vec3",
@@ -148,8 +148,8 @@ local Spin = ecs.component("spin", {
   }),
 })
 
-local spin = Spin.__machina_component_type()
-local _angular_velocity: MachinaVec3 = spin.angular_velocity
+local spin = Spin.__scrapbot_component_type()
+local _angular_velocity: ScrapbotVec3 = spin.angular_velocity
 LUA
 
 analyze "${valid_schema_script}"
@@ -157,7 +157,7 @@ analyze "${valid_schema_script}"
 invalid_fields_script="${tmpdir}/typed-fields-invalid.luau"
 cat > "${invalid_fields_script}" <<'LUA'
 type Spin = {
-  angular_velocity: MachinaVec3,
+  angular_velocity: ScrapbotVec3,
 }
 
 local _Spin = ecs.component<<Spin>>("spin", {

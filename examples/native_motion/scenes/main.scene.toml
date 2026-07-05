@@ -5,17 +5,17 @@ version = 1
 id = "native-cyan-box"
 name = "Native Cyan Box"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [-2.2, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [0.7, 0.7, 0.7]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "box"
 segments = 0
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [0.05, 0.78, 1.0]
 
 [entities.components.motion]
@@ -31,17 +31,17 @@ amount = 1.0
 id = "native-yellow-sphere"
 name = "Native Yellow Sphere"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.32, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [0.58, 0.58, 0.58]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "uv_sphere"
 segments = 24
 rings = 12
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [1.0, 0.8, 0.12]
 
 [entities.components.motion]
@@ -57,17 +57,17 @@ amount = 1.8
 id = "native-pink-ico"
 name = "Native Pink Ico"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [2.0, -0.18, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [0.62, 0.62, 0.62]
 
-[entities.components."machina.geometry.primitive"]
+[entities.components."scrapbot.geometry.primitive"]
 primitive = "ico_sphere"
 segments = 2
 rings = 0
 
-[entities.components."machina.material.surface"]
+[entities.components."scrapbot.material.surface"]
 base_color = [1.0, 0.35, 0.72]
 
 [entities.components.motion]
@@ -83,12 +83,12 @@ amount = 1.2
 id = "native-motion-camera"
 name = "Native Motion Camera"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.55, 6.8]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
 
-[entities.components."machina.camera"]
+[entities.components."scrapbot.camera"]
 fov_y_degrees = 52.0
 near = 0.1
 far = 100.0
@@ -97,7 +97,7 @@ far = 100.0
 id = "native-motion-key-light"
 name = "Native Motion Key Light"
 
-[entities.components."machina.light.directional"]
+[entities.components."scrapbot.light.directional"]
 direction = [0.28, 0.78, 0.56]
 color = [1.0, 0.96, 0.88]
 intensity = 1.05

@@ -5,24 +5,24 @@ version = 1
 id = "cube-1"
 name = "Lit Cube"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
 
-[entities.components."machina.render.cube"]
+[entities.components."scrapbot.render.cube"]
 color = [0.2, 0.7, 1.0]
 
 [[entities]]
 id = "camera-1"
 name = "Scene Camera"
 
-[entities.components."machina.transform"]
+[entities.components."scrapbot.transform"]
 position = [0.0, 0.0, 5.5]
 rotation = [0.0, 0.0, 0.0]
 scale = [1.0, 1.0, 1.0]
 
-[entities.components."machina.camera"]
+[entities.components."scrapbot.camera"]
 fov_y_degrees = 42.0
 near = 0.2
 far = 150.0
@@ -31,7 +31,7 @@ far = 150.0
 id = "light-1"
 name = "Scene Key Light"
 
-[entities.components."machina.light.directional"]
+[entities.components."scrapbot.light.directional"]
 direction = [-0.2, 0.8, 0.6]
 color = [1.0, 0.95, 0.9]
 intensity = 1.1

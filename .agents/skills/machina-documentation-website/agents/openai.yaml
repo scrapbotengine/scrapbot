@@ -1,4 +1,0 @@
-interface:
-  display_name: "Machina Documentation Website"
-  short_description: "Document Machina docs website changes"
-  default_prompt: "Use $machina-documentation-website to document new built-in Machina components in the docs website."

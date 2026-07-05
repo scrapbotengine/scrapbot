@@ -3,6 +3,6 @@
   "luau-lsp.fflags.enableNewSolver": true,
   "luau-lsp.sourcemap.enabled": false,
   "luau-lsp.types.definitionFiles": {
-    "machina": "types/machina.d.luau"
+    "scrapbot": "types/scrapbot.d.luau"
   }
 }
