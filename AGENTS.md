@@ -13,6 +13,11 @@ Machina is an experimental, text-first game engine written in Zig with embedded 
 
 Please refer to the `README.md` for a high-level overview of the engine's features and roadmap. Detailed features, design decisions, and implementation details are documented in ADRs and FDRs in `docs/adr/` and `docs/fdr/`.
 
+## Project Status
+
+- This project is in super-early development.
+- Breaking changes are 100% acceptable and we don't need to make changes backward-compatible unless specifically requested by the user.
+
 ## Non-Negotiable Design Rules
 
 - The engine is implemented in Zig. Luau is for project-local game scripting only; do not implement engine features in Luau.
@@ -59,7 +64,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Route retained command buttons through `ui_layout.commandAt` or `routePointer` after any needed viewport/design-space conversion.
 - Route scroll-wheel handling through `ui_layout.routePointer`, `routeScrollWheelAt`, or `applyScrollWheelAt` against retained `machina.ui.scroll_view` data.
 - Scene-authored UI input routing must use the retained layout model before hit testing. Do not hit-test raw `machina.ui.rect.position` unless parent layout and clipping have been resolved.
-- Prefer reusable retained layout primitives over one-off renderer/editor layout shortcuts: `scroll_view` for clipped scrolling, `vbox` for vertical stacks, `hgroup` for resizable horizontal regions, `stack` for general layout, and `layout.item` with stable entity-id parents for child ordering.
+- Prefer reusable retained layout primitives over one-off renderer/editor layout shortcuts: `scroll_view` for clipped scrolling, `vgroup` for resizable vertical regions, `hgroup` for resizable horizontal regions, `stack` for simple directional stacking, and `layout.item` with stable entity-id parents for child ordering.
 - If editor chrome needs a new control, layout behavior, input rule, or renderer capability, add it as reusable `machina.ui.*`, `machina.input.*`, shared `ui_layout`, or shared render-system behavior first, then consume it from the editor.
 - Engine-owned editor chrome may generate retained ECS UI entities procedurally, but must not introduce private UI primitives, layout math, input routing, or render paths when public ECS UI can represent the behavior.
 - Editor gizmos and editor chrome should be generated as engine-owned render/UI data and must not mutate project scene files or become selectable game entities.
@@ -114,7 +119,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Luau declaration boundary and script ECS registration: `src/script.zig`
 - WebGPU renderer and SDL-backed headful window path: `src/render.zig`
 - Shared retained UI layout and input resolution: `src/ui_layout.zig`
-- Offscreen BMP verification: `src/render_verify.zig`
+- Offscreen image verification: `src/render_verify.zig`
 - WGSL shaders embedded into the binary: `src/shaders/`
 - Canonical smoke-test project: `examples/minimal/`
 - Retained UI primitive gallery: `examples/ui_gallery/`

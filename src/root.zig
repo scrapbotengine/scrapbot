@@ -14,9 +14,7 @@ pub const project_file_name = "project.toml";
 pub const legacy_project_file_name = "project.machina.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
 
-pub const renderDemoBmp = render.renderDemoBmp;
-pub const renderDemoBmpWithInput = render.renderDemoBmpWithInput;
-pub const renderDemoBmpFrames = render.renderDemoBmpFrames;
+pub const renderDemoImage = render.renderDemoImage;
 pub const renderDemoImageWithInput = render.renderDemoImageWithInput;
 pub const renderDemoImageFrames = render.renderDemoImageFrames;
 pub const renderStats = render.stats;
@@ -24,7 +22,7 @@ pub const runDemoWindow = render.runDemoWindow;
 pub const default_output_width = render.default_output_width;
 pub const default_output_height = render.default_output_height;
 pub const WindowOptions = render.WindowOptions;
-pub const BmpRenderOptions = render.BmpRenderOptions;
+pub const ImageRenderOptions = render.ImageRenderOptions;
 pub const FrameUpdateHook = render.FrameUpdateHook;
 pub const FrameInput = render.FrameInput;
 pub const PointerInput = render.PointerInput;
@@ -82,8 +80,7 @@ pub const validateTypeId = runtime.validateTypeId;
 pub const validateProjectTypeId = runtime.validateProjectTypeId;
 pub const validatePackageTypeId = runtime.validatePackageTypeId;
 pub const validateEngineTypeId = runtime.validateEngineTypeId;
-pub const verifyRenderBmp = render_verify.verifyBmp;
-pub const compareRenderBmp = render_verify.compareBmp;
+pub const verifyRenderImage = render_verify.verifyImage;
 pub const compareRenderImage = render_verify.compareImage;
 pub const writeFrameInput = render.writeFrameInput;
 
@@ -4118,9 +4115,11 @@ test "LiveProject scrolls scene-authored scroll views under pointer" {
         \\id = "stack"
         \\name = "Stack"
         \\
-        \\[entities.components."machina.ui.vbox"]
+        \\[entities.components."machina.ui.vgroup"]
         \\position = [0.0, 0.0, 0.0]
+        \\size = [100.0, 96.0, 0.0]
         \\spacing = 0.0
+        \\padding = [0.0, 0.0, 0.0]
         \\
         \\[entities.components."machina.ui.layout.item"]
         \\parent = "scroll"

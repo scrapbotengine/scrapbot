@@ -19,7 +19,7 @@ The headless validation and test runner lets users, CI systems, and agents check
 - `machina test [tests-path|project-path]` discovers text-authored test projects, reads each project's `test.machina.toml`, steps the project headlessly, replays optional deterministic input frames, and checks declared ECS field expectations.
 - `machina test --format=json` reports each project case, simulation summary, per-field expected/actual assertion data, diagnostics, and a suite summary.
 - `test.machina.toml` may include `[[input.frame]]` records with one-based frame numbers, pointer position, wheel delta, viewport size, editor visibility, button state, keyboard state, and system profile count hints. These frames run through the same frame input, editor, scene UI scroll, command-event, and script-update routing used by live projects.
-- `machina render-test [path] [output.bmp] [--frames N] [--width PX] [--height PX]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies BMP shape, foreground coverage, visible components, and expected warm/cool color groups for automation. Multi-frame render tests run fixed `1/60` updates and verify the final frame.
+- `machina render-test [path] [output.png] [--frames N] [--width PX] [--height PX]` renders the default scene offscreen, including UI overlays, reads the output image back, and verifies image shape, foreground coverage, visible components, and expected warm/cool color groups for automation. Multi-frame render tests run fixed `1/60` updates and verify the final frame.
 - `machina visual-test [path] [expected.png] [actual.png] [--frames N] [--width PX] [--height PX]` renders the default scene offscreen, compares the output image against a checked-in golden image with bounded tolerance, reports max channel delta, mean channel delta, and changed-pixel ratio, and returns non-zero when tolerances are exceeded. Multi-frame visual tests run fixed `1/60` updates and compare the final frame.
 - `machina visual-test --update [path] [expected.png]` deliberately refreshes a golden image from the current renderer output. Baseline updates are explicit and reviewable.
 - Golden visual fixture projects live under `tests/golden/`. They are focused renderer fixtures, not user-facing examples.
@@ -46,7 +46,7 @@ The headless validation and test runner lets users, CI systems, and agents check
 
 ### 3. Prefer offscreen render assertions for visual checks
 
-**Decision:** The first broad visual verification command uses offscreen BMP output and pixel analysis instead of screenshotting a headful window.
+**Decision:** The broad visual verification command uses offscreen PNG output by default and pixel analysis instead of screenshotting a headful window.
 **Why:** Offscreen rendering is easier to run in agent and CI workflows, and parsing the output artifact can catch regressions like missing foreground content or collapsed multi-object renders.
 **Tradeoff:** Pixel analysis is still coarse and does not replace targeted golden-image or semantic render tests.
 

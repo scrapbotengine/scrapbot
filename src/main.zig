@@ -166,7 +166,7 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "render")) {
-        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-cube.bmp") catch |err| {
+        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-cube.png") catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
@@ -197,7 +197,7 @@ fn run(
             .target_path = options.target_path,
             .selected_entity_id = options.selected_entity_id,
         };
-        machina.renderDemoBmpFrames(io, allocator, options.output_path, live_project.renderScene(), .{
+        machina.renderDemoImageFrames(io, allocator, options.output_path, live_project.renderScene(), .{
             .frames = options.frames,
             .width = options.width,
             .height = options.height,
@@ -219,7 +219,7 @@ fn run(
     }
 
     if (std.mem.eql(u8, command, "render-test")) {
-        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-render-test.bmp") catch |err| {
+        const options = parseRenderOptions(allocator, args[2..], "zig-out/machina-render-test.png") catch |err| {
             try printArgumentError(stderr, err);
             return 1;
         };
@@ -251,7 +251,7 @@ fn run(
             .target_path = options.target_path,
             .selected_entity_id = options.selected_entity_id,
         };
-        machina.renderDemoBmpFrames(io, allocator, options.output_path, live_project.renderScene(), .{
+        machina.renderDemoImageFrames(io, allocator, options.output_path, live_project.renderScene(), .{
             .frames = options.frames,
             .width = options.width,
             .height = options.height,
@@ -268,7 +268,7 @@ fn run(
             return 1;
         }
 
-        const verification = machina.verifyRenderBmp(io, allocator, options.output_path, .{
+        const verification = machina.verifyRenderImage(io, allocator, options.output_path, .{
             .min_visible_components = 1,
             .min_color_groups = expectedColorGroups(scene),
         }) catch |err| {
@@ -832,8 +832,8 @@ fn printHelp(writer: *Io.Writer) !void {
         \\  machina test [tests-path|project-path] [--format text|json]
         \\  machina build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
         \\  machina run [path] [--frames N] [--editor]
-        \\  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]
-        \\  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]
+        \\  machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]
+        \\  machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]
         \\  machina visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--update] <path> <expected.png> [actual.png]
         \\
     );
@@ -2785,36 +2785,43 @@ test "parseWindowOptions accepts frames and editor flag" {
 }
 
 test "parseRenderOptions accepts editor flag before path" {
-    const args = [_][]const u8{ "--editor", "examples/spawn_swarm", "zig-out/spawn-editor.bmp" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
+    const args = [_][]const u8{ "--editor", "examples/spawn_swarm", "zig-out/spawn-editor.png" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
     try std.testing.expect(options.editor);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
+    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
 }
 
 test "parseRenderOptions accepts editor flag after output" {
-    const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.bmp", "--editor" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
+    const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.png", "--editor" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
     try std.testing.expect(options.editor);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
+    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
 }
 
 test "parseRenderOptions accepts selected entity" {
-    const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.bmp", "--select", "swarm.0" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
+    const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.png", "--select", "swarm.0" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
     try std.testing.expect(options.editor);
     try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.bmp", options.output_path);
+    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
     try std.testing.expectEqualStrings("swarm.0", options.selected_entity_id.?);
 }
 
 test "parseRenderOptions accepts frame count" {
-    const args = [_][]const u8{ "--frames=60", "examples/ui_gallery", "zig-out/ui-gallery.bmp" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
+    const args = [_][]const u8{ "--frames=60", "examples/ui_gallery", "zig-out/ui-gallery.png" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
     try std.testing.expectEqual(@as(u32, 60), options.frames);
     try std.testing.expectEqualStrings("examples/ui_gallery", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/ui-gallery.bmp", options.output_path);
+    try std.testing.expectEqualStrings("zig-out/ui-gallery.png", options.output_path);
+}
+
+test "parseRenderOptions accepts explicit bmp output" {
+    const args = [_][]const u8{ "examples/minimal", "zig-out/minimal-render-test.bmp" };
+    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
+    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
+    try std.testing.expectEqualStrings("zig-out/minimal-render-test.bmp", options.output_path);
 }
 
 test "parseRenderOptions accepts render dimensions" {
@@ -2833,7 +2840,7 @@ test "parseRenderOptions rejects zero render dimension" {
 
 test "parseRenderOptions rejects extra positionals" {
     const args = [_][]const u8{ "examples/minimal", "one.bmp", "two.bmp" };
-    try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
+    try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png"));
 }
 
 test "parseVisualTestOptions accepts expected and actual paths" {

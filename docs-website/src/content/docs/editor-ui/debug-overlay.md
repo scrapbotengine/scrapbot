@@ -87,7 +87,7 @@ The editor shell is generated into the render ECS world, but the same retained U
 - `machina.ui.hit_area`
 - `machina.ui.command`
 - `machina.ui.scroll_view`
-- `machina.ui.vbox`
+- `machina.ui.vgroup`
 - `machina.ui.hgroup`
 - `machina.ui.stack`
 - `machina.ui.layout.item`

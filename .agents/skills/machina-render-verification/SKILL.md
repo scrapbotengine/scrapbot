@@ -5,7 +5,7 @@ description: Use when changing Machina rendering, WGSL shaders, scene-driven ren
 
 # Render Verification
 
-Machina verifies rendering primarily through offscreen BMP output. Use this workflow for renderer, shader, scene-data, or visual-regression work.
+Machina verifies rendering primarily through offscreen PNG output. Use this workflow for renderer, shader, scene-data, or visual-regression work.
 
 ## Workflow
 
@@ -16,12 +16,12 @@ Machina verifies rendering primarily through offscreen BMP output. Use this work
 
 ## Verification Surface
 
-`machina render-test [project] [output.bmp]`:
+`machina render-test [project] [output.png]`:
 
 - validates and loads the project scene,
 - renders the scene offscreen,
-- reads the BMP artifact back,
-- verifies BMP shape,
+- reads the image artifact back,
+- verifies image shape,
 - checks foreground pixel coverage,
 - checks visible connected components,
 - checks expected warm/cool color groups derived from scene material colors.

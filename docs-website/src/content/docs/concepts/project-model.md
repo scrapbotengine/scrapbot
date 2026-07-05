@@ -74,9 +74,9 @@ machina step . --frames 60
 machina bench . --frames 240
 machina test .
 machina run . --editor
-machina render . output.bmp
-machina render --editor --select some-entity . editor-output.bmp
-machina render-test . output.bmp
+machina render . output.png
+machina render --editor --select some-entity . editor-output.png
+machina render-test . output.png
 ```
 
 Headless commands are first-class. They exist so humans, editors, CI, and coding agents can inspect behavior without driving a window.

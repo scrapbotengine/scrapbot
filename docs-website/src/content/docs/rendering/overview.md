@@ -84,17 +84,17 @@ Headful runs create a platform window and present to a surface:
 machina run examples/showcase --editor
 ```
 
-Offscreen rendering writes BMP artifacts:
+Offscreen rendering writes PNG artifacts:
 
 ```sh
-machina render examples/showcase zig-out/showcase.bmp
-machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.bmp
+machina render examples/showcase zig-out/showcase.png
+machina render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
 ```
 
 Offscreen verification checks for visible rendered content:
 
 ```sh
-machina render-test examples/showcase zig-out/showcase-render-test.bmp
+machina render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Use offscreen verification before relying on visible-window inspection for renderer or editor-layout changes. `--editor` includes engine chrome in the offscreen frame, and `--select` preselects an entity for inspector verification.

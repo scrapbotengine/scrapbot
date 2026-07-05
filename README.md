@@ -107,6 +107,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] UI scrolling
   - [x] Canvas scaling
   - [x] Built-in bitmap UI text
+  - [ ] SDF-based font rendering
   - [x] UI gallery
 - Controls
   - [ ] Reusable editor controls

@@ -18,6 +18,6 @@ keep ergonomic pointer targets without adding invisible renderer-only widgets.
 
 ```sh
 mise machina check examples/ui_gallery
-mise machina render examples/ui_gallery zig-out/ui-gallery.bmp
-mise machina render-test examples/ui_gallery zig-out/ui-gallery-render-test.bmp
+mise machina render examples/ui_gallery zig-out/ui-gallery.png
+mise machina render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
 ```

@@ -273,16 +273,18 @@ Clipped scroll viewport.
 
 Descendant layout items are offset by `content_offset` and clipped to the viewport. Mouse wheel input updates scene-authored scroll views under the pointer in headful runs.
 
-### `machina.ui.vbox`
+### `machina.ui.vgroup`
 
-Vertical stack container.
+Vertical group with proportional grow-height distribution.
 
 | Field | Type | Scene default | Notes |
 | --- | --- | --- | --- |
-| `position` | `vec3` | Required | Stack origin. |
+| `position` | `vec3` | Required | Group origin. |
+| `size` | `vec3` | Required | Group width and height. |
 | `spacing` | `float` | Required | Pixels between ordered direct children. |
+| `padding` | `vec3` | Required | Symmetric padding used by current layout. |
 
-Direct children attach with `machina.ui.layout.item`.
+Children with positive `machina.ui.layout.item.grow` receive proportional extra height after fixed heights, minimum sizes, padding, and spacing are accounted for. `align = fill` fills the available width.
 
 ### `machina.ui.hgroup`
 
@@ -295,7 +297,7 @@ Horizontal group with proportional grow-width distribution.
 | `spacing` | `float` | Required | Pixels between ordered direct children. |
 | `padding` | `vec3` | Required | Symmetric padding used by current layout. |
 
-Children with positive `machina.ui.layout.item.grow` receive proportional extra width after fixed widths, minimum sizes, padding, and spacing are accounted for.
+Children with positive `machina.ui.layout.item.grow` receive proportional extra width after fixed widths, minimum sizes, padding, and spacing are accounted for. `align = fill` fills the available height.
 
 ### `machina.ui.stack`
 
@@ -319,11 +321,14 @@ Attaches an entity to a retained layout parent by stable scene entity id.
 | `parent` | `string` | Required | Parent entity id, not a dense runtime handle. |
 | `order` | `int` | Required | Sort key among direct children. |
 | `min_size` | `vec3` | `[0.0, 0.0, 0.0]` | Minimum layout size. |
-| `grow` | `float` | `0.0` | Grow ratio for `machina.ui.hgroup` children. |
+| `preferred_size` | `vec3` | `[0.0, 0.0, 0.0]` | Preferred layout size when non-zero. |
+| `max_size` | `vec3` | `[0.0, 0.0, 0.0]` | Maximum layout size when non-zero. |
+| `grow` | `float` | `0.0` | Grow ratio for `machina.ui.hgroup` and `machina.ui.vgroup` children. |
+| `shrink` | `float` | `0.0` | Shrink ratio for `machina.ui.hgroup` and `machina.ui.vgroup` children. |
 | `align` | `string` | `"start"` | `start`, `center`, `end`, or `fill`. |
 | `margin` | `vec3` | `[0.0, 0.0, 0.0]` | Symmetric margin used by current layout. |
 
-Children can target layout containers such as `machina.ui.vbox`, `machina.ui.hgroup`, `machina.ui.stack`, and `machina.ui.scroll_view`. They can also target non-container UI rects, text, or separators to inherit that parent's resolved position. This is the preferred pattern for button labels and compact composite controls.
+Children can target layout containers such as `machina.ui.vgroup`, `machina.ui.hgroup`, `machina.ui.stack`, and `machina.ui.scroll_view`. They can also target non-container UI rects, text, or separators to inherit that parent's resolved position. This is the preferred pattern for button labels and compact composite controls.
 
 ### `machina.ui.spacer`
 

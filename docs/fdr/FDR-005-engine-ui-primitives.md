@@ -33,14 +33,14 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - The system performance view uses one retained table panel with aligned text rows, consistent 4px-grid sidebar padding, and a scene-shaped clipped smooth-scroll viewport so long system lists remain legible and every system can be reached without inline pagination text.
 - The system performance view shows a generated scrollbar when its clipped system list overflows.
 - While the editor/debug overlay is visible, mouse wheel input scrolls the visible systems, entity-list, or inspector viewport only when the pointer is over that viewport or its scrollbar and the target list overflows. Wheel input over the game viewport remains available to scene-authored scroll views. Scroll state uses a target pixel offset plus an animated visible pixel offset, and wheel distance is intentionally independent from row height so content can settle between rows.
-- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical stacks, horizontal groups, tables, horizontal stacks, spacers, centered text blocks, toggles, progress bars, separators, and script-mutated UI state.
+- The UI gallery example demonstrates the retained primitive set with panels, text, buttons, command events, scroll views, vertical groups, horizontal groups, tables, directional stacks, spacers, centered text blocks, toggles, progress bars, separators, and script-mutated UI state.
 - `machina.ui.scroll_view` defines a screen-space viewport with `position`, `size`, and `content_offset` fields. Descendants are offset by `content_offset` and clipped to the viewport.
 - In live headful runs, scene-authored scroll views under the pointer update their `content_offset` from mouse wheel input before project update systems run.
-- `machina.ui.vbox` defines a vertical stack origin and spacing. Direct children are ordered by `machina.ui.layout.item.order` and stacked by their current primitive height.
+- `machina.ui.vgroup` defines a vertical group with `position`, `size`, `spacing`, and `padding`. Direct children are ordered by `machina.ui.layout.item.order`, start from natural or preferred heights, shrink toward minimum heights when space is tight, and receive proportional extra height from positive `grow` values while respecting maximum heights.
 - `machina.ui.hgroup` defines a horizontal group with `position`, `size`, `spacing`, and `padding`. Direct children are ordered by `machina.ui.layout.item.order`, start from natural or preferred widths, shrink toward minimum widths when space is tight, and receive proportional extra width from positive `grow` values while respecting maximum widths.
 - `machina.ui.table` defines a row-major layout grid with `position`, `size`, `columns`, `row_height`, `column_gap`, `row_gap`, `padding`, and `first_column_ratio`. Direct children are ordered by `machina.ui.layout.item.order`; `order % columns` selects the column and `order / columns` selects the row. For two-column tables, `first_column_ratio = 0.5` creates an even title/editor split.
 - `machina.ui.stack` defines a direction-aware stack origin, spacing, direction, and padding. Supported directions are `vertical`, `column`, `horizontal`, and `row`.
-- `machina.ui.layout.item` attaches an entity to a parent entity id and gives it integer order, minimum, preferred, and maximum size hints, grow and shrink ratios, cross-axis alignment metadata, and symmetric x/y/z margin. Parent ids are stable scene entity ids, not dense runtime handles. Hgroups use these hints for main-axis negotiation; older stack/vbox paths use the resulting item size.
+- `machina.ui.layout.item` attaches an entity to a parent entity id and gives it integer order, minimum, preferred, and maximum size hints, grow and shrink ratios, cross-axis alignment metadata, and symmetric x/y/z margin. Parent ids are stable scene entity ids, not dense runtime handles. Hgroups and vgroups use these hints for main-axis negotiation; stack paths use the resulting item size.
 - `machina.ui.layout.item` can also parent a child to a non-container UI rect, text, or separator. In that case the child inherits the parent's resolved position and continues through the parent's layout chain. This is the preferred pattern for button labels and small composite controls.
 - `machina.ui.spacer` participates in layout without rendering.
 - `machina.ui.text_block` gives a text entity a content box and horizontal/vertical `start`, `center`, or `end` alignment.
@@ -100,7 +100,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 6a. Resolve retained layout for scene UI input
 
-**Decision:** Project UI input routing resolves `scroll_view`, `vbox`, `stack`, and `layout.item` before hit-testing command buttons or scrolling viewports.
+**Decision:** Project UI input routing resolves `scroll_view`, `vgroup`, `hgroup`, `stack`, and `layout.item` before hit-testing command buttons or scrolling viewports.
 **Why:** Scene-authored controls can be local to layout containers, so raw component positions are not authoritative screen positions. Rendering, command events, and scroll interaction must agree on the retained layout model.
 **Tradeoff:** `src/ui_layout.zig` is now the shared resolver for rendering and scene UI input, but the retained layout model is still intentionally compact and does not yet provide full constraint solving, focus, scroll bars, or style inheritance.
 
@@ -136,15 +136,15 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 ### 9. Expose the first layout containers as ECS data
 
-**Decision:** Machina exposes `machina.ui.scroll_view`, `machina.ui.vbox`, `machina.ui.hgroup`, and `machina.ui.layout.item` as retained ECS components. The editor performance table and editor shell body use the same public primitives that project scenes can author.
+**Decision:** Machina exposes `machina.ui.scroll_view`, `machina.ui.vgroup`, `machina.ui.hgroup`, and `machina.ui.layout.item` as retained ECS components. The editor performance table and editor shell body use the same public primitives that project scenes can author.
 **Why:** Smooth canvas scrolling requires target/display state, fractional content offsets that can settle between rows, frame-time animation, clipping, and explicit child ordering. Keeping that shape in ECS avoids a renderer-private layout path and gives examples, tools, and future editor surfaces the same data model.
-**Tradeoff:** The first layout model is deliberately small. It has vertical stacking, horizontal groups, padding, and clipping, but not full flex/grid sizing, focus, scroll bars, virtualization, keyboard navigation, or style inheritance.
+**Tradeoff:** The first layout model is deliberately small. It has vertical and horizontal groups, directional stacks, padding, and clipping, but not full flex/grid sizing, focus, scroll bars, virtualization, keyboard navigation, or style inheritance.
 
 ### 9a. Add a Machina-native control library shape
 
 **Decision:** Machina expands the retained UI model with `machina.ui.stack`, `machina.ui.spacer`, `machina.ui.text_block`, `machina.ui.toggle`, `machina.ui.progress_bar`, and `machina.ui.separator` instead of adopting Godot's exact control names.
 **Why:** Godot's UI model is useful inspiration: content controls, layout containers, child sizing metadata, and themeable semantic controls. Machina still needs component names and behavior that fit ECS authoring, text scenes, and future agent workflows.
-**Tradeoff:** This is not a full widget toolkit yet. `grow` ratios are stored but not space-distributing; toggles do not self-mutate; text input, focus, keyboard navigation, scroll bars, style inheritance, and reusable composite widgets remain future work.
+**Tradeoff:** This is not a full widget toolkit yet. Grow and shrink sizing is limited to retained groups; toggles do not self-mutate; text input, focus, keyboard navigation, scroll bars, style inheritance, and reusable composite widgets remain future work.
 
 ### 9b. Make canvas scale, margin, and border first-class retained data
 
@@ -170,6 +170,12 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 **Why:** Resizable editor regions should exercise and harden the same ECS UI layout path that projects can use. This avoids a private renderer-only layout model for one of the editor's most important surfaces.
 **Tradeoff:** Splitter persistence, collapsed panels, minimum-size negotiation across nested groups, cursor styling, keyboard resizing, and user-configured workspace layouts remain future work.
 
+### 9f. Pair hgroup with vgroup
+
+**Decision:** Machina replaces `machina.ui.vbox` with `machina.ui.vgroup`. Vgroups use the same `position`, `size`, `spacing`, `padding`, and `machina.ui.layout.item` grow/shrink negotiation as hgroups, but distribute space along the vertical axis. Simple vertical stacks use `machina.ui.stack`.
+**Why:** A `hgroup`/`vgroup` pair is easier to author and reason about than mixing `hgroup` with a differently shaped `vbox`, and the editor inspector needs bounded vertical group sizing for scrollable component content.
+**Tradeoff:** This is a breaking scene schema change. Old scenes authoring `machina.ui.vbox` must migrate to `machina.ui.vgroup` with explicit `size` and `padding`, or to `machina.ui.stack` when they only need natural directional stacking.
+
 ### 10. Treat examples as the primitive gallery
 
 **Decision:** The UI gallery example is the proving ground for retained UI primitives until Machina has a richer widget/layout library.
@@ -187,7 +193,7 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 - How should command ids be namespaced and routed into editor tools or engine services?
 - When should focus and text input become active behavior?
 - What should full keyboard state and text input look like beyond the current modifier/action edge fields?
-- What exact ECS shape should grid/flex sizing, scroll bars, asymmetric margins/padding, and grow-ratio space distribution beyond `machina.ui.hgroup` use?
+- What exact ECS shape should grid/flex sizing, scroll bars, asymmetric margins/padding, and grow-ratio space distribution beyond `machina.ui.hgroup` and `machina.ui.vgroup` use?
 - How should UI containers express focus, keyboard navigation, virtualization, and style inheritance?
 - What text editing capability is needed before the editor becomes practical?
 - How should the editor expose system-list sorting and drill-down timing history?

@@ -10,6 +10,6 @@ the built-in geometry/material component path.
 mise machina check examples/showcase
 mise machina step examples/showcase --frames 8 --dt 0.05
 mise machina run examples/showcase --frames 240
-mise machina render examples/showcase zig-out/showcase.bmp
-mise machina render-test examples/showcase zig-out/showcase-render-test.bmp
+mise machina render examples/showcase zig-out/showcase.png
+mise machina render-test examples/showcase zig-out/showcase-render-test.png
 ```

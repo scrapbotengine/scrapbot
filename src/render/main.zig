@@ -178,7 +178,7 @@ pub const WindowOptions = struct {
     frame_update: ?FrameUpdateHook = null,
 };
 
-pub const BmpRenderOptions = struct {
+pub const ImageRenderOptions = struct {
     frames: u32 = 1,
     delta_seconds: f32 = live_run_default_delta_seconds,
     width: u32 = default_output_width,
@@ -1560,23 +1560,15 @@ const UiProgressBar = struct {
     fill_color: [3]f32,
 };
 
-pub fn renderDemoBmp(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
-    try renderDemoBmpWithInput(io, allocator, output_path, scene, .{});
-}
-
-pub fn renderDemoBmpWithInput(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, frame_input: FrameInput) !void {
-    try renderDemoBmpFrames(io, allocator, output_path, scene, .{ .frame_input = frame_input });
-}
-
-pub fn renderDemoBmpFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
-    try renderDemoOutputFrames(io, allocator, output_path, scene, options, .bmp);
+pub fn renderDemoImage(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene) !void {
+    try renderDemoImageWithInput(io, allocator, output_path, scene, .{});
 }
 
 pub fn renderDemoImageWithInput(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, frame_input: FrameInput) !void {
     try renderDemoImageFrames(io, allocator, output_path, scene, .{ .frame_input = frame_input });
 }
 
-pub fn renderDemoImageFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: BmpRenderOptions) !void {
+pub fn renderDemoImageFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: ImageRenderOptions) !void {
     try renderDemoOutputFrames(io, allocator, output_path, scene, options, try imageFormatFromPath(output_path));
 }
 
@@ -1597,7 +1589,7 @@ fn renderDemoOutputFrames(
     allocator: std.mem.Allocator,
     output_path: []const u8,
     scene: Scene,
-    options: BmpRenderOptions,
+    options: ImageRenderOptions,
     output_format: RenderOutputFormat,
 ) !void {
     if (options.width == 0 or options.height == 0) {
@@ -2638,7 +2630,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_button_component_id,
         runtime.ui_command_component_id,
         runtime.ui_scroll_view_component_id,
-        runtime.ui_vbox_component_id,
+        runtime.ui_vgroup_component_id,
         runtime.ui_hgroup_component_id,
         runtime.ui_table_component_id,
         runtime.ui_stack_component_id,
@@ -2696,7 +2688,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_rect_component_id,
         runtime.ui_button_component_id,
         runtime.ui_scroll_view_component_id,
-        runtime.ui_vbox_component_id,
+        runtime.ui_vgroup_component_id,
         runtime.ui_hgroup_component_id,
         runtime.ui_table_component_id,
         runtime.ui_stack_component_id,
@@ -2717,7 +2709,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
         runtime.ui_scroll_view_component_id,
-        runtime.ui_vbox_component_id,
+        runtime.ui_vgroup_component_id,
         runtime.ui_hgroup_component_id,
         runtime.ui_table_component_id,
         runtime.ui_stack_component_id,
@@ -2769,7 +2761,7 @@ fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
         runtime.ui_text_component_id,
         runtime.ui_button_component_id,
         runtime.ui_scroll_view_component_id,
-        runtime.ui_vbox_component_id,
+        runtime.ui_vgroup_component_id,
         runtime.ui_hgroup_component_id,
         runtime.ui_table_component_id,
         runtime.ui_stack_component_id,
@@ -2905,7 +2897,7 @@ fn extractSceneUiInto(allocator: std.mem.Allocator, render_world: *runtime.World
         try copyComponent(scene_world, render_world, source, target, runtime.ui_hit_area_component_id);
         try copyComponent(scene_world, render_world, source, target, runtime.ui_command_component_id);
         try copyComponent(scene_world, render_world, source, target, runtime.ui_scroll_view_component_id);
-        try copyComponent(scene_world, render_world, source, target, runtime.ui_vbox_component_id);
+        try copyComponent(scene_world, render_world, source, target, runtime.ui_vgroup_component_id);
         try copyComponent(scene_world, render_world, source, target, runtime.ui_hgroup_component_id);
         try copyComponent(scene_world, render_world, source, target, runtime.ui_table_component_id);
         try copyComponent(scene_world, render_world, source, target, runtime.ui_stack_component_id);
@@ -2940,7 +2932,7 @@ fn hasExtractableUiComponent(world: *const runtime.World, entity: runtime.Entity
         (world.hasComponent(entity, runtime.ui_hit_area_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_command_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_scroll_view_component_id) catch false) or
-        (world.hasComponent(entity, runtime.ui_vbox_component_id) catch false) or
+        (world.hasComponent(entity, runtime.ui_vgroup_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_hgroup_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_table_component_id) catch false) or
         (world.hasComponent(entity, runtime.ui_stack_component_id) catch false) or
@@ -2981,7 +2973,7 @@ fn copyComponent(
     target_world.setComponent(target, component_id, fields.items) catch |err| return mapWorldError(err);
 }
 
-const EditorVBox = struct {
+const EditorVGroup = struct {
     allocator: std.mem.Allocator,
     world: *runtime.World,
     id_prefix: []const u8,
@@ -2998,7 +2990,7 @@ const EditorVBox = struct {
         x: f32,
         y: f32,
         row_stride: f32,
-    ) EditorVBox {
+    ) EditorVGroup {
         return .{
             .allocator = allocator,
             .world = world,
@@ -3009,13 +3001,13 @@ const EditorVBox = struct {
         };
     }
 
-    fn withLayoutParent(self: EditorVBox, parent: []const u8) EditorVBox {
+    fn withLayoutParent(self: EditorVGroup, parent: []const u8) EditorVGroup {
         var copy = self;
         copy.layout_parent = parent;
         return copy;
     }
 
-    fn text(self: *EditorVBox, name: []const u8, value: []const u8, size: f32, color: [3]f32) RenderError!void {
+    fn text(self: *EditorVGroup, name: []const u8, value: []const u8, size: f32, color: [3]f32) RenderError!void {
         const entity_id = std.fmt.allocPrint(self.allocator, "{s}.{d}", .{ self.id_prefix, self.row }) catch return RenderError.OutOfMemory;
         defer self.allocator.free(entity_id);
         const entity = self.world.createEntity(entity_id, name) catch |err| return mapWorldError(err);
@@ -3595,18 +3587,24 @@ fn extractEditorComponentInspectorInto(
         .content_offset = .{ 0.0, input.editor.inspector_scroll_y, 0.0 },
     }) catch |err| return mapWorldError(err);
 
+    const card_width = @max(scroll_clip.size[0], 1.0);
     const stack_id = "machina.editor.inspector.components";
     const stack = world.createEntity(stack_id, "Editor Component Stack") catch |err| return mapWorldError(err);
-    world.setUiVBox(stack, .{
+    world.setUiVGroup(stack, .{
         .position = .{ 0.0, 0.0, 0.0 },
+        .size = .{
+            card_width,
+            editorInspectorComponentContentHeight(scene_world, input.editor.selected_entity),
+            0.0,
+        },
         .spacing = editor_inspector_card_gap,
+        .padding = .{ 0.0, 0.0, 0.0 },
     }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(stack, .{
         .parent = "machina.editor.inspector.scroll",
         .order = 0,
     }) catch |err| return mapWorldError(err);
 
-    const card_width = @max(scroll_clip.size[0], 1.0);
     const field_stride = editor_inspector_field_row_stride;
     var component_index: usize = 0;
     var stack_order: i32 = 0;
@@ -8854,7 +8852,7 @@ test "UI hit testing uses half-open screen rects" {
     try std.testing.expect(!runtime.pointInsideUiRect(.{ 31.99, 24.0 }, position, size));
 }
 
-test "UI layout resolves scroll views and vbox rows" {
+test "UI layout resolves scroll views and vgroup rows" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();
 
@@ -8866,9 +8864,11 @@ test "UI layout resolves scroll views and vbox rows" {
     });
 
     const stack = try world.createEntity("stack", "Stack");
-    try world.setUiVBox(stack, .{
+    try world.setUiVGroup(stack, .{
         .position = .{ 8.0, 10.0, 0.0 },
+        .size = .{ 100.0, 96.0, 0.0 },
         .spacing = 4.0,
+        .padding = .{ 0.0, 0.0, 0.0 },
     });
     try world.setUiLayoutItem(stack, .{ .parent = "scroll", .order = 0 });
 
@@ -9905,7 +9905,7 @@ test "debug overlay renders a scrolled system profile window" {
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.row.0") == null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.separator.1") == null);
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_scroll_view_component_id));
-    try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(runtime.ui_vbox_component_id));
+    try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(runtime.ui_vgroup_component_id));
     try std.testing.expect(state.world.componentInstanceCountFor(runtime.ui_layout_item_component_id) >= profiles.len * 2 + 1);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.track") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.debug.systems.scrollbar.thumb") != null);
@@ -9955,7 +9955,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try std.testing.expect(state.world.findEntityById("machina.editor.inspector.components") != null);
     try std.testing.expect(try state.world.hasComponent(
         state.world.findEntityById("machina.editor.inspector.components") orelse return error.TestExpectedEqual,
-        runtime.ui_vbox_component_id,
+        runtime.ui_vgroup_component_id,
     ));
     try std.testing.expect(state.world.findEntityById("machina.editor.inspector.component.0") != null);
     try std.testing.expect(state.world.findEntityById("machina.editor.inspector.component.1") != null);

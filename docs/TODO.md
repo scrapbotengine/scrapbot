@@ -41,10 +41,11 @@
 
 - [ ] Formalize reusable editor controls as UI component patterns.
 - [ ] Add margin, padding, border, and gap layout primitives.
-- [ ] Add scrollable vbox and hbox containers as first-class primitives.
+- [ ] Add scrollable vgroup and hgroup containers as first-class primitives.
 - [ ] Add dropdown, slider, checkbox, text area, and color picker controls.
 - [ ] Add keyboard focus traversal for retained UI.
 - [ ] Add text copy, paste, and clipboard support.
+- [ ] Add SDF-based font rendering for scalable UI and editor text.
 - [ ] Add disabled, hovered, active, focused, and invalid visual states.
 - [ ] Add reusable UI themes and density settings.
 - [ ] Add controller input support after keyboard and mouse stabilize.

@@ -42,7 +42,7 @@ pub const Comparison = struct {
 };
 
 pub const VerificationError = error{
-    InvalidBmp,
+    InvalidImage,
     MissingForeground,
     MissingVisibleComponents,
     MissingColorGroups,
@@ -52,16 +52,16 @@ pub const ComparisonError = VerificationError || error{
     ImageSizeMismatch,
 };
 
-pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options: VerificationOptions) !Verification {
-    const data = try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024));
-    defer allocator.free(data);
+pub fn verifyImage(io: Io, allocator: std.mem.Allocator, path: []const u8, options: VerificationOptions) !Verification {
+    var image = try loadRgbImage(io, allocator, path);
+    defer image.deinit(allocator);
 
-    const bmp = try BmpView.parse(data);
-    var visited = try allocator.alloc(bool, bmp.pixel_count);
+    const pixel_count = image.width * image.height;
+    var visited = try allocator.alloc(bool, pixel_count);
     defer allocator.free(visited);
     @memset(visited, false);
 
-    var stack = try allocator.alloc(usize, bmp.pixel_count);
+    var stack = try allocator.alloc(usize, pixel_count);
     defer allocator.free(stack);
 
     var foreground_pixels: usize = 0;
@@ -69,13 +69,13 @@ pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options
     var warm_pixels: usize = 0;
     var cool_pixels: usize = 0;
 
-    for (0..bmp.pixel_count) |start| {
+    for (0..pixel_count) |start| {
         if (visited[start]) {
             continue;
         }
 
         visited[start] = true;
-        if (!bmp.isForeground(start)) {
+        if (!isForegroundRgb(image.pixel(start))) {
             continue;
         }
 
@@ -86,21 +86,22 @@ pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options
         while (stack_len > 0) {
             stack_len -= 1;
             const index = stack[stack_len];
+            const rgb = image.pixel(index);
             component_area += 1;
-            if (bmp.isWarm(index)) {
+            if (isWarmRgb(rgb)) {
                 warm_pixels += 1;
             }
-            if (bmp.isCool(index)) {
+            if (isCoolRgb(rgb)) {
                 cool_pixels += 1;
             }
 
-            const x = index % bmp.width;
-            const y = index / bmp.width;
+            const x = index % image.width;
+            const y = index / image.width;
             const neighbors = [_]?usize{
                 if (x > 0) index - 1 else null,
-                if (x + 1 < bmp.width) index + 1 else null,
-                if (y > 0) index - bmp.width else null,
-                if (y + 1 < bmp.height) index + bmp.width else null,
+                if (x + 1 < image.width) index + 1 else null,
+                if (y > 0) index - image.width else null,
+                if (y + 1 < image.height) index + image.width else null,
             };
 
             for (neighbors) |maybe_neighbor| {
@@ -109,7 +110,7 @@ pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options
                     continue;
                 }
                 visited[neighbor] = true;
-                if (!bmp.isForeground(neighbor)) {
+                if (!isForegroundRgb(image.pixel(neighbor))) {
                     continue;
                 }
                 stack[stack_len] = neighbor;
@@ -136,8 +137,8 @@ pub fn verifyBmp(io: Io, allocator: std.mem.Allocator, path: []const u8, options
     }
 
     return .{
-        .width = @intCast(bmp.width),
-        .height = @intCast(bmp.height),
+        .width = @intCast(image.width),
+        .height = @intCast(image.height),
         .foreground_pixels = foreground_pixels,
         .visible_components = visible_components,
         .color_groups = color_groups,
@@ -199,16 +200,6 @@ pub fn compareImage(
     };
 }
 
-pub fn compareBmp(
-    io: Io,
-    allocator: std.mem.Allocator,
-    expected_path: []const u8,
-    actual_path: []const u8,
-    options: ComparisonOptions,
-) !Comparison {
-    return compareImage(io, allocator, expected_path, actual_path, options);
-}
-
 fn loadRgbImage(io: Io, allocator: std.mem.Allocator, path: []const u8) !png.RgbImage {
     const extension = std.fs.path.extension(path);
     if (std.ascii.eqlIgnoreCase(extension, ".png")) {
@@ -251,19 +242,19 @@ const BmpView = struct {
 
     fn parse(data: []const u8) VerificationError!BmpView {
         if (data.len < 54 or data[0] != 'B' or data[1] != 'M') {
-            return VerificationError.InvalidBmp;
+            return VerificationError.InvalidImage;
         }
 
-        const pixel_offset = readU32(data, 10) orelse return VerificationError.InvalidBmp;
-        const dib_header_size = readU32(data, 14) orelse return VerificationError.InvalidBmp;
-        const width = readU32(data, 18) orelse return VerificationError.InvalidBmp;
-        const height = readU32(data, 22) orelse return VerificationError.InvalidBmp;
-        const planes = readU16(data, 26) orelse return VerificationError.InvalidBmp;
-        const bits_per_pixel = readU16(data, 28) orelse return VerificationError.InvalidBmp;
-        const compression = readU32(data, 30) orelse return VerificationError.InvalidBmp;
+        const pixel_offset = readU32(data, 10) orelse return VerificationError.InvalidImage;
+        const dib_header_size = readU32(data, 14) orelse return VerificationError.InvalidImage;
+        const width = readU32(data, 18) orelse return VerificationError.InvalidImage;
+        const height = readU32(data, 22) orelse return VerificationError.InvalidImage;
+        const planes = readU16(data, 26) orelse return VerificationError.InvalidImage;
+        const bits_per_pixel = readU16(data, 28) orelse return VerificationError.InvalidImage;
+        const compression = readU32(data, 30) orelse return VerificationError.InvalidImage;
 
         if (dib_header_size < 40 or width == 0 or height == 0 or planes != 1 or bits_per_pixel != 24 or compression != 0) {
-            return VerificationError.InvalidBmp;
+            return VerificationError.InvalidImage;
         }
 
         const width_usize: usize = @intCast(width);
@@ -271,7 +262,7 @@ const BmpView = struct {
         const row_stride = ((width_usize * 3) + 3) & ~@as(usize, 3);
         const required_len = @as(usize, @intCast(pixel_offset)) + row_stride * height_usize;
         if (required_len > data.len) {
-            return VerificationError.InvalidBmp;
+            return VerificationError.InvalidImage;
         }
 
         return .{
@@ -282,31 +273,6 @@ const BmpView = struct {
             .row_stride = row_stride,
             .pixel_count = width_usize * height_usize,
         };
-    }
-
-    fn isForeground(self: BmpView, index: usize) bool {
-        const x = index % self.width;
-        const y = index / self.width;
-        const file_y = self.height - y - 1;
-        const pixel = self.pixel_offset + file_y * self.row_stride + x * 3;
-        const b = self.data[pixel];
-        const g = self.data[pixel + 1];
-        const r = self.data[pixel + 2];
-        return @max(r, @max(g, b)) >= 55;
-    }
-
-    fn isWarm(self: BmpView, index: usize) bool {
-        const pixel = self.pixelOffset(index);
-        const b = self.data[pixel];
-        const r = self.data[pixel + 2];
-        return r >= 55 and r > b +| 25;
-    }
-
-    fn isCool(self: BmpView, index: usize) bool {
-        const pixel = self.pixelOffset(index);
-        const b = self.data[pixel];
-        const r = self.data[pixel + 2];
-        return b >= 55 and b > r +| 25;
     }
 
     fn pixelOffset(self: BmpView, index: usize) usize {
@@ -325,6 +291,18 @@ const BmpView = struct {
         };
     }
 };
+
+fn isForegroundRgb(pixel: [3]u8) bool {
+    return @max(pixel[0], @max(pixel[1], pixel[2])) >= 55;
+}
+
+fn isWarmRgb(pixel: [3]u8) bool {
+    return pixel[0] >= 55 and pixel[0] > pixel[2] +| 25;
+}
+
+fn isCoolRgb(pixel: [3]u8) bool {
+    return pixel[2] >= 55 and pixel[2] > pixel[0] +| 25;
+}
 
 fn absDiffU8(left: u8, right: u8) u8 {
     return if (left >= right) left - right else right - left;

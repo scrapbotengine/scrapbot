@@ -106,9 +106,11 @@ content_offset = [0.0, 24.0, 0.0]
 id = "nav-scroll-stack"
 name = "Nav Scroll Stack"
 
-[entities.components."machina.ui.vbox"]
+[entities.components."machina.ui.vgroup"]
 position = [12.0, 10.0, 0.0]
+size = [94.0, 156.0, 0.0]
 spacing = 4.0
+padding = [0.0, 0.0, 0.0]
 
 [entities.components."machina.ui.layout.item"]
 parent = "nav-scroll-demo"
@@ -137,7 +139,7 @@ name = "Nav Scroll Row 2"
 position = [0.0, 0.0, 0.0]
 size = 1.0
 color = [0.886, 0.91, 0.941]
-value = "VBOX"
+value = "VGROUP"
 
 [entities.components."machina.ui.layout.item"]
 parent = "nav-scroll-stack"
@@ -160,15 +162,22 @@ order = 3
 margin = [4.0, 2.0, 0.0]
 
 [[entities]]
-id = "nav-scroll-spacer"
-name = "Nav Scroll Spacer"
+id = "nav-scroll-grow-fill"
+name = "Nav Scroll Grow Fill"
 
-[entities.components."machina.ui.spacer"]
+[entities.components."machina.ui.rect"]
+position = [0.0, 0.0, 0.0]
 size = [1.0, 12.0, 0.0]
+color = [0.031, 0.431, 0.533]
+corner_radius = 2.0
 
 [entities.components."machina.ui.layout.item"]
 parent = "nav-scroll-stack"
 order = 2
+min_size = [1.0, 12.0, 0.0]
+max_size = [0.0, 36.0, 0.0]
+grow = 1.0
+align = "fill"
 
 [[entities]]
 id = "nav-scroll-row-4"

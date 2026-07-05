@@ -9,8 +9,8 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ## Behavior
 
-- Users can run `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]` against a valid project.
-- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.bmp]` to render offscreen and verify the generated BMP.
+- Users can run `machina render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]` against a valid project.
+- Users can run `machina render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [path] [output.png]` to render offscreen and verify the generated image.
 - The command validates the project before rendering.
 - The command loads the project's default scene and draws one frame of its renderable mesh and UI overlay entities into an offscreen texture by default.
 - When `--frames N` is greater than one, the command reuses the same offscreen GPU resources, runs fixed `1/60` updates, renders each frame, and writes or verifies the final frame.
@@ -23,8 +23,8 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 - UI rectangles and text labels render after 3D scene content as an overlay.
 - The renderer extracts scene data into an internal render ECS world, batches matching renderables, queues batch draw commands as render-world entities, and executes the render path through a render-phase system schedule.
 - Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
-- The rendered pixels are copied back to CPU memory and written as a 24-bit BMP file.
-- Render verification parses the BMP and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene material and UI colors.
+- The rendered pixels are copied back to CPU memory and written as a PNG file by default. Explicit `.bmp` output paths remain supported for compatibility.
+- Render verification parses the image and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene material and UI colors.
 - The command works without a platform window. Editor chrome rendering is optional and driven through normal frame input.
 
 ## Design Decisions
@@ -72,5 +72,5 @@ Offscreen demo rendering proves that Machina can initialize the WebGPU backend, 
 
 ## Open Questions
 
-- Should the renderer output BMP, PNG, or a custom snapshot format long term?
+- Should render snapshots gain an additional custom metadata sidecar for editor and agent workflows?
 - Should render snapshots become part of `machina check`, a separate test command, or stay as a standalone render command?

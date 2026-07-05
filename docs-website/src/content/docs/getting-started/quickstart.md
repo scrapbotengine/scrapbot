@@ -138,16 +138,16 @@ machina step examples/showcase --frames 8 --format json
 
 ## Render and Verify
 
-Render one deterministic BMP artifact:
+Render one deterministic PNG artifact:
 
 ```sh
-machina render examples/showcase zig-out/showcase.bmp
+machina render examples/showcase zig-out/showcase.png
 ```
 
 Run an offscreen render verification:
 
 ```sh
-machina render-test examples/showcase zig-out/showcase-render-test.bmp
+machina render-test examples/showcase zig-out/showcase-render-test.png
 ```
 
 Render tests check that a frame is nonblank and has expected visible foreground content. They are the preferred automation surface for renderer changes.
