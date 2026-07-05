@@ -868,6 +868,15 @@ pub const EntityHandle = struct {
     generation: u32 = 0,
 };
 
+pub const EntityProvenance = enum {
+    authored,
+    spawned,
+};
+
+const CreateEntityOptions = struct {
+    provenance: EntityProvenance = .spawned,
+};
+
 pub const ResolvedComponentRow = struct {
     table_index: u32,
     row_index: u32,
@@ -877,6 +886,7 @@ pub const Entity = struct {
     id: []const u8,
     name: []const u8,
     generation: u32 = 0,
+    provenance: EntityProvenance = .spawned,
 };
 
 pub const EntityComponentIterator = struct {
@@ -1398,6 +1408,14 @@ pub const World = struct {
     }
 
     pub fn createEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
+        return self.createEntityWithOptions(id, name, .{});
+    }
+
+    pub fn createAuthoredEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
+        return self.createEntityWithOptions(id, name, .{ .provenance = .authored });
+    }
+
+    fn createEntityWithOptions(self: *World, id: []const u8, name: []const u8, options: CreateEntityOptions) !EntityHandle {
         if (self.findEntityById(id) != null) {
             return WorldError.DuplicateEntityId;
         }
@@ -1416,6 +1434,7 @@ pub const World = struct {
             .id = owned_id,
             .name = owned_name,
             .generation = generation,
+            .provenance = options.provenance,
         });
         errdefer _ = self.entities.pop();
 
@@ -2860,6 +2879,17 @@ test "world stores stable entity ids and components" {
     try std.testing.expectEqualStrings("box", mesh.primitive);
     try std.testing.expectEqual(@as(f32, 1.0), mesh.base_color[0]);
     try std.testing.expectEqual(entity.generation, mesh.entity.generation);
+}
+
+test "world tracks entity provenance" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const spawned = try world.createEntity("spawned", "Spawned");
+    const authored = try world.createAuthoredEntity("authored", "Authored");
+
+    try std.testing.expectEqual(EntityProvenance.spawned, (try world.entity(spawned)).provenance);
+    try std.testing.expectEqual(EntityProvenance.authored, (try world.entity(authored)).provenance);
 }
 
 test "world exposes component field names for inspection" {

@@ -2170,7 +2170,7 @@ const SceneParser = struct {
         if (!entity.id_seen or !entity.name_seen or entity.components.items.len == 0) {
             return ProjectError.InvalidSceneEntity;
         }
-        const handle = self.world.createEntity(entity.id, entity.name) catch |err| switch (err) {
+        const handle = self.world.createAuthoredEntity(entity.id, entity.name) catch |err| switch (err) {
             runtime.WorldError.DuplicateEntityId => return ProjectError.DuplicateSceneEntityId,
             else => return err,
         };
@@ -3018,6 +3018,7 @@ test "loadDefaultScene reads cube entities from scene data" {
     try std.testing.expectEqual(@as(usize, 1), scene.renderableMeshCount());
 
     const entity = scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(runtime.EntityProvenance.authored, (try scene.world.entity(entity)).provenance);
     const mesh = scene.world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(entity.index, mesh.entity.index);
     try std.testing.expectEqualStrings("box", mesh.primitive);

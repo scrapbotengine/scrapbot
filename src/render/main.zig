@@ -3394,11 +3394,17 @@ fn extractEditorEntityListInto(
 
         const label_id = std.fmt.allocPrint(allocator, "machina.editor.entities.row.{d}.label", .{entity_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(label_id);
+        const row_label_color = if (entity.provenance == .spawned)
+            editor_palette.text_dim
+        else if (is_selected)
+            editor_palette.accent_soft
+        else
+            editor_palette.text;
         _ = try extractEditorChildText(world, label_id, "Editor Entity Row Label", "machina.editor.entities.table", .{
             editor_entity_row_label_padding_x,
             row_y,
             0.0,
-        }, label_text, editor_entity_text_size, if (is_selected) editor_palette.accent_soft else editor_palette.text);
+        }, label_text, editor_entity_text_size, row_label_color);
 
         const component_id = std.fmt.allocPrint(allocator, "machina.editor.entities.row.{d}.components", .{entity_index}) catch return RenderError.OutOfMemory;
         defer allocator.free(component_id);
@@ -9493,10 +9499,12 @@ test "debug overlay extracts entity list below system list" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
 
-    const player = try scene_world.createEntity("player", "Player");
+    const player = try scene_world.createAuthoredEntity("player", "Player");
     try scene_world.setTransform(player, .{});
     const crate = try scene_world.createEntity("crate", "Crate");
     try scene_world.setTransform(crate, .{});
+    const camera = try scene_world.createAuthoredEntity("camera", "Camera");
+    try scene_world.setTransform(camera, .{});
 
     const profiles = [_]runtime.SystemProfileSnapshot{
         .{ .id = "tick", .phase = .update, .sample_count = 1, .window_size = 120, .last_ns = 1, .rolling_average_ns = 1 },
@@ -9509,7 +9517,7 @@ test "debug overlay extracts entity list below system list" {
         .viewport_width = 1280.0,
         .viewport_height = 720.0,
         .system_profiles = &profiles,
-        .editor = .{ .selected_entity = crate },
+        .editor = .{ .selected_entity = camera },
     };
     try state.extractSceneWithInput(.{ .world = &scene_world }, frame_input);
 
@@ -9519,16 +9527,24 @@ test "debug overlay extracts entity list below system list" {
     const row0_label = state.world.findEntityById("machina.editor.entities.row.0.label") orelse return error.TestExpectedEqual;
     const row1_label = state.world.findEntityById("machina.editor.entities.row.1.label") orelse return error.TestExpectedEqual;
     const row1_components = state.world.findEntityById("machina.editor.entities.row.1.components") orelse return error.TestExpectedEqual;
-    try std.testing.expect(state.world.findEntityById("machina.editor.entities.row.1.highlight") != null);
+    const row2_label = state.world.findEntityById("machina.editor.entities.row.2.label") orelse return error.TestExpectedEqual;
+    try std.testing.expect(state.world.findEntityById("machina.editor.entities.row.2.highlight") != null);
 
     const system_position = try state.world.getVec3(system_panel, runtime.ui_rect_component_id, "position");
     const system_size = try state.world.getVec3(system_panel, runtime.ui_rect_component_id, "size");
     const entity_position = try state.world.getVec3(entity_panel, runtime.ui_rect_component_id, "position");
+    const row0_color = try state.world.getVec3(row0_label, runtime.ui_text_component_id, "color");
+    const row1_color = try state.world.getVec3(row1_label, runtime.ui_text_component_id, "color");
+    const row2_color = try state.world.getVec3(row2_label, runtime.ui_text_component_id, "color");
     try std.testing.expect(entity_position[1] >= system_position[1] + system_size[1] + editor_left_panel_gap - 0.001);
-    try std.testing.expectEqualStrings("ENTITIES 2", try state.world.getString(entity_header, runtime.ui_text_component_id, "value"));
+    try std.testing.expectEqualStrings("ENTITIES 3", try state.world.getString(entity_header, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("Player", try state.world.getString(row0_label, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("Crate", try state.world.getString(row1_label, runtime.ui_text_component_id, "value"));
+    try std.testing.expectEqualStrings("Camera", try state.world.getString(row2_label, runtime.ui_text_component_id, "value"));
     try std.testing.expectEqualStrings("1C", try state.world.getString(row1_components, runtime.ui_text_component_id, "value"));
+    try std.testing.expectEqual(editor_palette.text, row0_color);
+    try std.testing.expectEqual(editor_palette.text_dim, row1_color);
+    try std.testing.expectEqual(editor_palette.accent_soft, row2_color);
 }
 
 test "editor entity list scroll state responds to wheel input" {

@@ -17,6 +17,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Clicking a visible renderable mesh selects that entity.
 - The left sidebar shows a live list of entities currently in the world below the systems list.
 - Entity-list rows show the entity name, a component count, and highlight the selected entity.
+- Spawned runtime entities use muted row text in the entity list so they are visually distinct from authored scene entities.
 - Clicking an entity-list row selects that generation-aware entity handle and updates the right-sidebar component inspector.
 - The bottom bar shows live world counts and viewport size.
 - The right sidebar is reserved for selected-entity component inspection and component field editing.
@@ -50,7 +51,13 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 **Decision:** The editor exposes a compact live entity list in the left sidebar and keeps component details in the right sidebar for the selected entity.
 **Why:** Developers need a basic way to inspect non-renderable or hard-to-click entities without turning the first inspector into a full hierarchy editor.
-**Tradeoff:** The list is intentionally shallow. Search, filters, hierarchy grouping, scene-file provenance, and richer virtualization still need later design.
+**Tradeoff:** The list is intentionally shallow. Search, filters, hierarchy grouping, and richer virtualization still need later design.
+
+### 1a. Show entity provenance without adding new scene data
+
+**Decision:** The entity list visualizes runtime-spawned entities with muted text while leaving authored scene entities at the normal row color.
+**Why:** Future scene persistence and entity editing need an early, visible distinction between state that lives in scene TOML and state created while the project runs.
+**Tradeoff:** The first visualization is deliberately subtle. It does not yet expose filters, badges, persistence actions, or component-level dirty state.
 
 ### 2. Use renderable picking as the first selection mechanism
 

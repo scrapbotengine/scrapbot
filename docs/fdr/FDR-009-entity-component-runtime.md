@@ -1,7 +1,7 @@
 # FDR-009: Entity Component Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-03
+**Last reviewed:** 2026-07-05
 
 ## Overview
 
@@ -10,6 +10,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 ## Behavior
 
 - Entities have stable ids suitable for text scene files, diagnostics, editor selection, and reload patching.
+- Entities track whether they came from authored scene data or were spawned at runtime.
 - Components hold structured data and are validated against engine-owned or script-registered schemas.
 - Systems operate over component queries rather than over renderer-specific or script-owned object lists.
 - Scene files author entity and component data as text component tables.
@@ -24,6 +25,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Reusable script query objects cache prepared component table plans across invocations and invalidate them when the active world or world query-plan generation changes.
 - Script query views can snapshot a matched entity set and bulk-transfer `f32` or `vec3` fields through Luau buffers for high-cardinality hot loops.
 - Scripts can spawn and despawn entities through the ECS facade.
+- Script and native spawned entities are runtime-spawned by default rather than authored scene data.
 - Scripts can add and remove registered components through the ECS facade.
 - Script-driven structural mutations are checked against the active system's declared write access.
 - Script component add/remove/despawn operations are queued during a Luau system and flushed after the system returns successfully.
@@ -102,6 +104,12 @@ The entity component runtime is the shared low-level model for game state. It gi
 **Decision:** Luau component add/remove/despawn operations are command-buffered during a system callback and flushed after the callback succeeds. Immediate spawns are tracked and rolled back if the callback fails before flush.
 **Why:** Structural mutation changes query membership and should occur at a scheduler boundary instead of mid-system. This keeps runtime behavior closer to future parallel scheduling and gives failed script systems cleaner rollback semantics. It follows ADR-017.
 **Tradeoff:** Scripts cannot query their own queued component mutations until a later system or frame, and fully queued spawn handles still need a future temporary-handle design.
+
+### 12. Track entity provenance in the runtime record
+
+**Decision:** Each entity records whether it is authored scene data or spawned runtime state.
+**Why:** Scene saving and editor entity-management features need to know which live entities are eligible for persistence without inferring that from component shape, id format, or script behavior.
+**Tradeoff:** Provenance is an entity-level distinction only. Component-level authored-vs-runtime differences and persistence policies still need future design before partial scene saves are supported.
 
 ## Related
 
