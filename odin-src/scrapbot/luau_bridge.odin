@@ -38,6 +38,29 @@ Luau_Bridge_Query_Next_Proc :: #type proc "c" (
 	out_entity_generation: ^u32,
 ) -> c.int
 
+Luau_Bridge_Prepare_Query_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_ids: [^]cstring,
+	component_count: c.size_t,
+	out_component_table_indices: [^]u32,
+	out_driver_table_index: ^u32,
+) -> c.int
+
+Luau_Bridge_Query_Next_Prepared_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_table_indices: [^]u32,
+	component_count: c.size_t,
+	driver_table_index: u32,
+	cursor: ^u32,
+	out_entity: ^u32,
+	out_entity_generation: ^u32,
+	out_component_rows: [^]u32,
+) -> c.int
+
+Luau_Bridge_Query_Plan_Generation_Proc :: #type proc "c" (ctx: rawptr, world: rawptr) -> u64
+
 Luau_Bridge_Field_Tag :: enum c.int {
 	Boolean = 1,
 	Int = 2,
@@ -67,12 +90,36 @@ Luau_Bridge_Get_Field_Proc :: #type proc "c" (
 	out_value: ^Luau_Bridge_Field_Value,
 ) -> c.int
 
+Luau_Bridge_Get_Field_Resolved_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	component_table_index: u32,
+	component_row_index: u32,
+	field_name: cstring,
+	out_value: ^Luau_Bridge_Field_Value,
+) -> c.int
+
 Luau_Bridge_Set_Field_Proc :: #type proc "c" (
 	ctx: rawptr,
 	world: rawptr,
 	entity: u32,
 	entity_generation: u32,
 	component_id: cstring,
+	field_name: cstring,
+	value: ^Luau_Bridge_Field_Value,
+) -> c.int
+
+Luau_Bridge_Set_Field_Resolved_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	component_table_index: u32,
+	component_row_index: u32,
 	field_name: cstring,
 	value: ^Luau_Bridge_Field_Value,
 ) -> c.int
@@ -141,9 +188,9 @@ Luau_Bridge_Host_Error_Proc :: #type proc "c" (ctx: rawptr) -> cstring
 
 Luau_Bridge_Callbacks :: struct {
 	query_next:                 Luau_Bridge_Query_Next_Proc,
-	prepare_query:              rawptr,
-	query_next_prepared:        rawptr,
-	query_plan_generation:      rawptr,
+	prepare_query:              Luau_Bridge_Prepare_Query_Proc,
+	query_next_prepared:        Luau_Bridge_Query_Next_Prepared_Proc,
+	query_plan_generation:      Luau_Bridge_Query_Plan_Generation_Proc,
 	read_f32_view:              rawptr,
 	write_f32_view:             rawptr,
 	read_vec3_view:             rawptr,
@@ -151,9 +198,9 @@ Luau_Bridge_Callbacks :: struct {
 	get_vec3:                   Luau_Bridge_Get_Vec3_Proc,
 	set_vec3:                   Luau_Bridge_Set_Vec3_Proc,
 	get_field:                  Luau_Bridge_Get_Field_Proc,
-	get_field_resolved:         rawptr,
+	get_field_resolved:         Luau_Bridge_Get_Field_Resolved_Proc,
 	set_field:                  Luau_Bridge_Set_Field_Proc,
-	set_field_resolved:         rawptr,
+	set_field_resolved:         Luau_Bridge_Set_Field_Resolved_Proc,
 	spawn_entity:               Luau_Bridge_Spawn_Entity_Proc,
 	despawn_entity:             Luau_Bridge_Despawn_Entity_Proc,
 	add_component:              Luau_Bridge_Add_Component_Proc,
@@ -575,10 +622,15 @@ script_program_set_host_error :: proc(program: ^Script_Program, message: string)
 luau_bridge_callbacks :: proc() -> Luau_Bridge_Callbacks {
 	return Luau_Bridge_Callbacks{
 		query_next = luau_bridge_query_next,
+		prepare_query = luau_bridge_prepare_query,
+		query_next_prepared = luau_bridge_query_next_prepared,
+		query_plan_generation = luau_bridge_query_plan_generation,
 		get_vec3 = luau_bridge_get_vec3,
 		set_vec3 = luau_bridge_set_vec3,
 		get_field = luau_bridge_get_field,
+		get_field_resolved = luau_bridge_get_field_resolved,
 		set_field = luau_bridge_set_field,
+		set_field_resolved = luau_bridge_set_field_resolved,
 		spawn_entity = luau_bridge_spawn_entity,
 		despawn_entity = luau_bridge_despawn_entity,
 		add_component = luau_bridge_add_component,
@@ -602,41 +654,12 @@ luau_bridge_query_next :: proc "c" (
 		return -1
 	}
 	context = program.odin_context
-	count := int(component_count)
-	if count <= 0 || count > 32 {
-		script_program_set_host_error(program, "world query has invalid component count")
+	ids, ids_ok := luau_bridge_component_ids(program, component_ids, component_count)
+	if !ids_ok {
 		return -1
 	}
-	ids := make([]string, count)
-	if ids == nil {
-		script_program_set_host_error(program, "world query failed to allocate component list")
-		return -1
-	}
+	defer luau_bridge_component_ids_free(ids)
 	defer delete(ids)
-	for index := 0; index < count; index += 1 {
-		id := clone_luau_cstring(component_ids[index])
-		if id == "" {
-			for copied in ids[:index] {
-				if copied != "" do delete(copied)
-			}
-			script_program_set_host_error(program, "world query has invalid component id")
-			return -1
-		}
-		if !script_program_active_system_allows_read(program, id) {
-			delete(id)
-			for copied in ids[:index] {
-				if copied != "" do delete(copied)
-			}
-			script_program_set_host_error(program, "system tried to query a component without declaring read access")
-			return -1
-		}
-		ids[index] = id
-	}
-	defer {
-		for id in ids {
-			if id != "" do delete(id)
-		}
-	}
 
 	cursor_value := int(cursor^)
 	entity, found := runtime_world_query_next(runtime_world^, ids, &cursor_value)
@@ -647,6 +670,130 @@ luau_bridge_query_next :: proc "c" (
 	out_entity^ = entity.index
 	out_entity_generation^ = entity.generation
 	return 1
+}
+
+luau_bridge_prepare_query :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_ids: [^]cstring,
+	component_count: c.size_t,
+	out_component_table_indices: [^]u32,
+	out_driver_table_index: ^u32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || component_ids == nil || out_component_table_indices == nil || out_driver_table_index == nil {
+		return -1
+	}
+	context = program.odin_context
+	ids, ids_ok := luau_bridge_component_ids(program, component_ids, component_count)
+	if !ids_ok {
+		return -1
+	}
+	defer luau_bridge_component_ids_free(ids)
+	defer delete(ids)
+
+	indices := out_component_table_indices[:len(ids)]
+	driver_index, found, err := runtime_world_prepare_query(runtime_world^, ids, indices)
+	if err != .None {
+		script_program_set_host_error(program, "world query prepare failed")
+		return -1
+	}
+	if !found {
+		return 0
+	}
+	out_driver_table_index^ = driver_index
+	return 1
+}
+
+luau_bridge_query_next_prepared :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_table_indices: [^]u32,
+	component_count: c.size_t,
+	driver_table_index: u32,
+	cursor: ^u32,
+	out_entity: ^u32,
+	out_entity_generation: ^u32,
+	out_component_rows: [^]u32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || component_table_indices == nil || cursor == nil || out_entity == nil || out_entity_generation == nil || out_component_rows == nil {
+		return -1
+	}
+	context = program.odin_context
+	count := int(component_count)
+	if count <= 0 || count > 32 {
+		script_program_set_host_error(program, "prepared world query has invalid component count")
+		return -1
+	}
+	indices := component_table_indices[:count]
+	rows := out_component_rows[:count]
+	cursor_value := int(cursor^)
+	entity, found, err := runtime_world_query_next_prepared(runtime_world^, indices, driver_table_index, &cursor_value, rows)
+	cursor^ = u32(cursor_value)
+	if err != .None {
+		script_program_set_host_error(program, "prepared world query iteration failed")
+		return -1
+	}
+	if !found {
+		return 0
+	}
+	out_entity^ = entity.index
+	out_entity_generation^ = entity.generation
+	return 1
+}
+
+luau_bridge_query_plan_generation :: proc "c" (ctx: rawptr, world: rawptr) -> u64 {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	return runtime_world_query_plan_generation(runtime_world^)
+}
+
+luau_bridge_component_ids :: proc(
+	program: ^Script_Program,
+	component_ids: [^]cstring,
+	component_count: c.size_t,
+) -> ([]string, bool) {
+	count := int(component_count)
+	if count <= 0 || count > 32 || component_ids == nil {
+		script_program_set_host_error(program, "world query has invalid component count")
+		return nil, false
+	}
+	ids := make([]string, count)
+	if ids == nil {
+		script_program_set_host_error(program, "world query failed to allocate component list")
+		return nil, false
+	}
+	for index := 0; index < count; index += 1 {
+		id := clone_luau_cstring(component_ids[index])
+		if id == "" {
+			luau_bridge_component_ids_free(ids[:index])
+			delete(ids)
+			script_program_set_host_error(program, "world query has invalid component id")
+			return nil, false
+		}
+		if !script_program_active_system_allows_read(program, id) {
+			delete(id)
+			luau_bridge_component_ids_free(ids[:index])
+			delete(ids)
+			script_program_set_host_error(program, "system tried to query a component without declaring read access")
+			return nil, false
+		}
+		ids[index] = id
+	}
+	return ids, true
+}
+
+luau_bridge_component_ids_free :: proc(ids: []string) {
+	for id in ids {
+		if id != "" do delete(id)
+	}
 }
 
 luau_bridge_get_field :: proc "c" (
@@ -684,6 +831,54 @@ luau_bridge_get_field :: proc "c" (
 	luau_value, ok := luau_bridge_field_value_from_runtime(value)
 	if !ok {
 		script_program_set_host_error(program, "component field read returned unsupported value")
+		return 0
+	}
+	out_value^ = luau_value
+	return 1
+}
+
+luau_bridge_get_field_resolved :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	component_table_index: u32,
+	component_row_index: u32,
+	field_name: cstring,
+	out_value: ^Luau_Bridge_Field_Value,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || out_value == nil {
+		return 0
+	}
+	context = program.odin_context
+	component := clone_luau_cstring(component_id)
+	field := clone_luau_cstring(field_name)
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	if component == "" || field == "" {
+		script_program_set_host_error(program, "resolved component field read has invalid field identity")
+		return 0
+	}
+	if !script_program_active_system_allows_read(program, component) {
+		script_program_set_host_error(program, "system tried to read a resolved component field without declaring read access")
+		return 0
+	}
+	value, err := runtime_world_get_component_field_value_resolved(
+		runtime_world^,
+		Entity_Handle{index = entity, generation = entity_generation},
+		Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = component_row_index},
+		field,
+	)
+	if err != .None {
+		script_program_set_host_error(program, "resolved component field read failed")
+		return 0
+	}
+	luau_value, ok := luau_bridge_field_value_from_runtime(value)
+	if !ok {
+		script_program_set_host_error(program, "resolved component field read returned unsupported value")
 		return 0
 	}
 	out_value^ = luau_value
@@ -731,6 +926,65 @@ luau_bridge_set_field :: proc "c" (
 	runtime_component_value_free(runtime_value)
 	if err != .None {
 		script_program_set_host_error(program, "component field write failed")
+		return 0
+	}
+	return 1
+}
+
+luau_bridge_set_field_resolved :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	component_table_index: u32,
+	component_row_index: u32,
+	field_name: cstring,
+	value: ^Luau_Bridge_Field_Value,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || value == nil {
+		return 0
+	}
+	context = program.odin_context
+	component := clone_luau_cstring(component_id)
+	field := clone_luau_cstring(field_name)
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	if component == "" || field == "" {
+		script_program_set_host_error(program, "resolved component field write has invalid field identity")
+		return 0
+	}
+	if !script_program_active_system_allows_write(program, component) {
+		script_program_set_host_error(program, "system tried to write a resolved component field without declaring write access")
+		return 0
+	}
+	current, current_err := runtime_world_get_component_field_value_resolved(
+		runtime_world^,
+		Entity_Handle{index = entity, generation = entity_generation},
+		Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = component_row_index},
+		field,
+	)
+	if current_err != .None {
+		script_program_set_host_error(program, "resolved component field write failed")
+		return 0
+	}
+	runtime_value, value_ok := luau_bridge_field_value_to_runtime(value^, current.value_type)
+	if !value_ok {
+		script_program_set_host_error(program, "resolved component field write value has unsupported type")
+		return 0
+	}
+	err := runtime_world_set_component_field_value_resolved(
+		runtime_world,
+		Entity_Handle{index = entity, generation = entity_generation},
+		Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = component_row_index},
+		field,
+		runtime_value,
+	)
+	runtime_component_value_free(runtime_value)
+	if err != .None {
+		script_program_set_host_error(program, "resolved component field write failed")
 		return 0
 	}
 	return 1

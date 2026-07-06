@@ -103,6 +103,11 @@ Runtime_Component_Table :: struct {
 	columns:        []Runtime_Component_Column,
 }
 
+Runtime_Resolved_Component_Row :: struct {
+	table_index: u32,
+	row_index:   u32,
+}
+
 Runtime_System_Phase :: enum {
 	Startup,
 	Update,
@@ -178,6 +183,7 @@ Runtime_World :: struct {
 	entities:               [dynamic]Runtime_Entity,
 	component_tables:       [dynamic]Runtime_Component_Table,
 	next_entity_generation: u32,
+	query_plan_generation:  u64,
 }
 
 Runtime_Deferred_Command_Kind :: enum {
@@ -1334,6 +1340,7 @@ runtime_world_free :: proc(world: ^Runtime_World) {
 	world.component_tables = nil
 	world.entities = nil
 	world.next_entity_generation = 1
+	world.query_plan_generation = 1
 }
 
 runtime_world_entity_count :: proc(world: Runtime_World) -> int {
@@ -1386,6 +1393,7 @@ runtime_world_create_entity_with_provenance :: proc(
 	for &table in world.component_tables {
 		append(&table.rows_by_entity, -1)
 	}
+	runtime_world_bump_query_plan_generation(world)
 	return handle, .None
 }
 
@@ -1502,7 +1510,11 @@ runtime_world_set_component :: proc(
 	if table.rows_by_entity[entity_index] >= 0 {
 		return runtime_world_update_component_row(table, table.rows_by_entity[entity_index], fields)
 	}
-	return runtime_world_append_component_row(table, handle, entity_index, fields)
+	err := runtime_world_append_component_row(table, handle, entity_index, fields)
+	if err == .None {
+		runtime_world_bump_query_plan_generation(world)
+	}
+	return err
 }
 
 runtime_world_append_component_row :: proc(
@@ -1598,6 +1610,7 @@ runtime_world_remove_component :: proc(world: ^Runtime_World, handle: Entity_Han
 	for &column in table.columns {
 		runtime_component_column_swap_remove(&column, row)
 	}
+	runtime_world_bump_query_plan_generation(world)
 	return true, .None
 }
 
@@ -1693,6 +1706,129 @@ runtime_world_set_component_field_value :: proc(
 	return .None
 }
 
+runtime_world_prepare_query :: proc(
+	world: Runtime_World,
+	component_ids: []string,
+	out_component_table_indices: []u32,
+) -> (u32, bool, Runtime_Error) {
+	if len(component_ids) == 0 || len(out_component_table_indices) < len(component_ids) {
+		return 0, false, .Unknown_Component
+	}
+	driver_table_index := u32(0)
+	driver_len := 0
+	for component_id, index in component_ids {
+		table_index, found := runtime_world_component_table_index(world, component_id)
+		if !found {
+			return 0, false, .None
+		}
+		out_component_table_indices[index] = u32(table_index)
+		table := world.component_tables[table_index]
+		if index == 0 || len(table.entities) < driver_len {
+			driver_table_index = u32(table_index)
+			driver_len = len(table.entities)
+		}
+	}
+	return driver_table_index, true, .None
+}
+
+runtime_world_query_next_prepared :: proc(
+	world: Runtime_World,
+	component_table_indices: []u32,
+	driver_table_index: u32,
+	cursor: ^int,
+	out_component_rows: []u32,
+) -> (Entity_Handle, bool, Runtime_Error) {
+	if len(component_table_indices) == 0 || len(out_component_rows) < len(component_table_indices) {
+		return Entity_Handle{}, false, .Unknown_Component
+	}
+	driver, driver_ok := runtime_world_component_table_at(world, driver_table_index)
+	if !driver_ok {
+		return Entity_Handle{}, false, .Unknown_Component
+	}
+	for cursor^ < len(driver.entities) {
+		handle := driver.entities[cursor^]
+		cursor^ += 1
+		matches := true
+		for table_index, index in component_table_indices {
+			table, table_ok := runtime_world_component_table_at(world, table_index)
+			if !table_ok {
+				return Entity_Handle{}, false, .Unknown_Component
+			}
+			row, row_found := runtime_component_table_row_for_entity(table^, handle)
+			if !row_found {
+				matches = false
+				break
+			}
+			out_component_rows[index] = u32(row)
+		}
+		if matches {
+			return handle, true, .None
+		}
+	}
+	return Entity_Handle{}, false, .None
+}
+
+runtime_world_get_component_field_value_resolved :: proc(
+	world: Runtime_World,
+	handle: Entity_Handle,
+	resolved: Runtime_Resolved_Component_Row,
+	field_name: string,
+) -> (Runtime_Component_Value, Runtime_Error) {
+	_, index_err := runtime_world_entity_index(world, handle)
+	if index_err != .None {
+		return Runtime_Component_Value{}, index_err
+	}
+	table, table_ok := runtime_world_component_table_at(world, resolved.table_index)
+	if !table_ok {
+		return Runtime_Component_Value{}, .Unknown_Component
+	}
+	row, row_found := runtime_component_table_resolved_row_for_entity(table^, handle, int(resolved.row_index))
+	if !row_found {
+		return Runtime_Component_Value{}, .Unknown_Component
+	}
+	column_index, column_found := runtime_component_table_field_index(table^, field_name)
+	if !column_found {
+		return Runtime_Component_Value{}, .Unknown_Field
+	}
+	return table.columns[column_index].values[row], .None
+}
+
+runtime_world_set_component_field_value_resolved :: proc(
+	world: ^Runtime_World,
+	handle: Entity_Handle,
+	resolved: Runtime_Resolved_Component_Row,
+	field_name: string,
+	value: Runtime_Component_Value,
+) -> Runtime_Error {
+	_, index_err := runtime_world_entity_index(world^, handle)
+	if index_err != .None {
+		return index_err
+	}
+	table, table_ok := runtime_world_component_table_at_mut(world, resolved.table_index)
+	if !table_ok {
+		return .Unknown_Component
+	}
+	row, row_found := runtime_component_table_resolved_row_for_entity(table^, handle, int(resolved.row_index))
+	if !row_found {
+		return .Unknown_Component
+	}
+	column_index, column_found := runtime_component_table_field_index(table^, field_name)
+	if !column_found {
+		return .Unknown_Field
+	}
+	column := &table.columns[column_index]
+	if value.value_type != column.value_type {
+		return .Invalid_Field_Type
+	}
+	cloned, clone_err := runtime_component_value_clone(value)
+	if clone_err != .None {
+		return clone_err
+	}
+	runtime_component_value_free(column.values[row])
+	column.values[row] = cloned
+	return .None
+}
+
 runtime_world_query_next :: proc(world: Runtime_World, component_ids: []string, cursor: ^int) -> (Entity_Handle, bool) {
 	driver, driver_found := runtime_world_query_driver_table(world, component_ids)
 	if !driver_found {
@@ -1707,6 +1843,53 @@ runtime_world_query_next :: proc(world: Runtime_World, component_ids: []string, 
 		}
 	}
 	return Entity_Handle{}, false
+}
+
+runtime_component_table_resolved_row_for_entity :: proc(table: Runtime_Component_Table, handle: Entity_Handle, resolved_row: int) -> (int, bool) {
+	if resolved_row >= 0 && resolved_row < len(table.entities) {
+		candidate := table.entities[resolved_row]
+		if candidate.index == handle.index && candidate.generation == handle.generation {
+			return resolved_row, true
+		}
+	}
+	entity_index := int(handle.index)
+	if entity_index < 0 || entity_index >= len(table.rows_by_entity) {
+		return -1, false
+	}
+	row := table.rows_by_entity[entity_index]
+	if row < 0 || row >= len(table.entities) {
+		return -1, false
+	}
+	candidate := table.entities[row]
+	if candidate.index != handle.index || candidate.generation != handle.generation {
+		return -1, false
+	}
+	return row, true
+}
+
+runtime_world_component_table_index :: proc(world: Runtime_World, component_id: string) -> (int, bool) {
+	for table, index in world.component_tables {
+		if table.id == component_id {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
+runtime_world_component_table_at :: proc(world: Runtime_World, table_index: u32) -> (^Runtime_Component_Table, bool) {
+	index := int(table_index)
+	if index < 0 || index >= len(world.component_tables) {
+		return nil, false
+	}
+	return &world.component_tables[index], true
+}
+
+runtime_world_component_table_at_mut :: proc(world: ^Runtime_World, table_index: u32) -> (^Runtime_Component_Table, bool) {
+	index := int(table_index)
+	if index < 0 || index >= len(world.component_tables) {
+		return nil, false
+	}
+	return &world.component_tables[index], true
 }
 
 runtime_world_query_driver_table :: proc(world: Runtime_World, component_ids: []string) -> (table: ^Runtime_Component_Table, ok: bool) {
@@ -2059,7 +2242,25 @@ runtime_world_remove_entity :: proc(world: ^Runtime_World, handle: Entity_Handle
 			pop(&table.rows_by_entity)
 		}
 	}
+	runtime_world_bump_query_plan_generation(world)
 	return .None
+}
+
+runtime_world_query_plan_generation :: proc(world: Runtime_World) -> u64 {
+	if world.query_plan_generation == 0 {
+		return 1
+	}
+	return world.query_plan_generation
+}
+
+runtime_world_bump_query_plan_generation :: proc(world: ^Runtime_World) {
+	if world.query_plan_generation == 0 {
+		world.query_plan_generation = 1
+	}
+	world.query_plan_generation += 1
+	if world.query_plan_generation == 0 {
+		world.query_plan_generation = 1
+	}
 }
 
 runtime_world_entity_index :: proc(world: Runtime_World, handle: Entity_Handle) -> (int, Runtime_Error) {

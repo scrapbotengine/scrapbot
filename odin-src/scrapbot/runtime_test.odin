@@ -349,6 +349,125 @@ test_runtime_world_queries_entities_with_component_sets :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_runtime_prepared_query_returns_resolved_component_rows :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	first, first_err := runtime_world_create_entity(&world, "first", "First")
+	testing.expect_value(t, first_err, Runtime_Error.None)
+	second, second_err := runtime_world_create_entity(&world, "second", "Second")
+	testing.expect_value(t, second_err, Runtime_Error.None)
+
+	health_fields := [1]Runtime_Component_Field_Value{{name = "current", value = runtime_component_value_int(10)}}
+	tag_fields := [1]Runtime_Component_Field_Value{{name = "name", value = runtime_component_value_string("enemy")}}
+	testing.expect_value(t, runtime_world_set_component(&world, first, "health", health_fields[:]), Runtime_Error.None)
+	testing.expect_value(t, runtime_world_set_component(&world, second, "health", health_fields[:]), Runtime_Error.None)
+	testing.expect_value(t, runtime_world_set_component(&world, second, "tag", tag_fields[:]), Runtime_Error.None)
+
+	component_ids := []string{"health", "tag"}
+	table_indices := [2]u32{}
+	driver_index, query_found, prepare_err := runtime_world_prepare_query(world, component_ids, table_indices[:])
+	testing.expect_value(t, prepare_err, Runtime_Error.None)
+	testing.expect_value(t, query_found, true)
+
+	cursor := 0
+	rows := [2]u32{}
+	match, found, query_err := runtime_world_query_next_prepared(world, table_indices[:], driver_index, &cursor, rows[:])
+	testing.expect_value(t, query_err, Runtime_Error.None)
+	testing.expect_value(t, found, true)
+	testing.expect_value(t, match.index, second.index)
+	testing.expect_value(t, match.generation, second.generation)
+
+	health_value, health_err := runtime_world_get_component_field_value_resolved(
+		world,
+		match,
+		Runtime_Resolved_Component_Row{table_index = table_indices[0], row_index = rows[0]},
+		"current",
+	)
+	testing.expect_value(t, health_err, Runtime_Error.None)
+	testing.expect_value(t, health_value.int_value, 10)
+
+	updated_health := runtime_component_value_int(42)
+	testing.expect_value(t, runtime_world_set_component_field_value_resolved(
+		&world,
+		match,
+		Runtime_Resolved_Component_Row{table_index = table_indices[0], row_index = rows[0]},
+		"current",
+		updated_health,
+	), Runtime_Error.None)
+	health_value, health_err = runtime_world_get_component_field_value(world, second, "health", "current")
+	testing.expect_value(t, health_err, Runtime_Error.None)
+	testing.expect_value(t, health_value.int_value, 42)
+
+	_, found, query_err = runtime_world_query_next_prepared(world, table_indices[:], driver_index, &cursor, rows[:])
+	testing.expect_value(t, query_err, Runtime_Error.None)
+	testing.expect_value(t, found, false)
+}
+
+@(test)
+test_runtime_resolved_rows_reject_stale_component_rows :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	first, first_err := runtime_world_create_entity(&world, "first", "First")
+	testing.expect_value(t, first_err, Runtime_Error.None)
+	second, second_err := runtime_world_create_entity(&world, "second", "Second")
+	testing.expect_value(t, second_err, Runtime_Error.None)
+
+	first_health := [1]Runtime_Component_Field_Value{{name = "current", value = runtime_component_value_int(1)}}
+	second_health := [1]Runtime_Component_Field_Value{{name = "current", value = runtime_component_value_int(2)}}
+	testing.expect_value(t, runtime_world_set_component(&world, first, "health", first_health[:]), Runtime_Error.None)
+	testing.expect_value(t, runtime_world_set_component(&world, second, "health", second_health[:]), Runtime_Error.None)
+
+	component_ids := []string{"health"}
+	table_indices := [1]u32{}
+	driver_index, query_found, prepare_err := runtime_world_prepare_query(world, component_ids, table_indices[:])
+	testing.expect_value(t, prepare_err, Runtime_Error.None)
+	testing.expect_value(t, query_found, true)
+	cursor := 0
+	rows := [1]u32{}
+	queried, found, query_err := runtime_world_query_next_prepared(world, table_indices[:], driver_index, &cursor, rows[:])
+	testing.expect_value(t, query_err, Runtime_Error.None)
+	testing.expect_value(t, found, true)
+	testing.expect_value(t, queried.index, first.index)
+	stale_row := Runtime_Resolved_Component_Row{table_index = table_indices[0], row_index = rows[0]}
+	stale_second_row := Runtime_Resolved_Component_Row{table_index = table_indices[0], row_index = 1}
+
+	removed, remove_err := runtime_world_remove_component(&world, first, "health")
+	testing.expect_value(t, remove_err, Runtime_Error.None)
+	testing.expect_value(t, removed, true)
+	testing.expect_value(t, runtime_world_set_component_field_value_resolved(&world, second, stale_second_row, "current", runtime_component_value_int(20)), Runtime_Error.None)
+	second_value, second_value_err := runtime_world_get_component_field_value(world, second, "health", "current")
+	testing.expect_value(t, second_value_err, Runtime_Error.None)
+	testing.expect_value(t, second_value.int_value, 20)
+	_, stale_err := runtime_world_get_component_field_value_resolved(world, first, stale_row, "current")
+	testing.expect_value(t, stale_err, Runtime_Error.Unknown_Component)
+}
+
+@(test)
+test_runtime_query_plan_generation_changes_after_structural_mutation :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	initial := runtime_world_query_plan_generation(world)
+	entity, entity_err := runtime_world_create_entity(&world, "entity", "Entity")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	after_entity := runtime_world_query_plan_generation(world)
+	testing.expect(t, after_entity != initial)
+
+	marker_fields := [1]Runtime_Component_Field_Value{{name = "value", value = runtime_component_value_int(1)}}
+	testing.expect_value(t, runtime_world_set_component(&world, entity, "marker", marker_fields[:]), Runtime_Error.None)
+	after_component := runtime_world_query_plan_generation(world)
+	testing.expect(t, after_component != after_entity)
+
+	removed, remove_err := runtime_world_remove_component(&world, entity, "marker")
+	testing.expect_value(t, remove_err, Runtime_Error.None)
+	testing.expect_value(t, removed, true)
+	after_remove := runtime_world_query_plan_generation(world)
+	testing.expect(t, after_remove != after_component)
+}
+
+@(test)
 test_runtime_world_removes_components_and_repairs_entity_rows :: proc(t: ^testing.T) {
 	world := runtime_world_init()
 	defer runtime_world_free(&world)
