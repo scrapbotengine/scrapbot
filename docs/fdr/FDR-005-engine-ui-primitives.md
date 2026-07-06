@@ -103,11 +103,11 @@ Engine UI primitives provide the controls and layout capabilities needed for run
 
 **Decision:** Project UI input routing resolves `scroll_view`, `vgroup`, `hgroup`, `stack`, and `layout.item` before hit-testing command buttons or scrolling viewports.
 **Why:** Scene-authored controls can be local to layout containers, so raw component positions are not authoritative screen positions. Rendering, command events, and scroll interaction must agree on the retained layout model.
-**Tradeoff:** `src/ui_layout.zig` is now the shared resolver for rendering and scene UI input, but the retained layout model is still intentionally compact and does not yet provide full constraint solving, focus, scroll bars, or style inheritance.
+**Tradeoff:** `src/ui/layout.zig` is now the shared resolver for rendering and scene UI input, exposed through the `src/ui_layout.zig` facade, but the retained layout model is still intentionally compact and does not yet provide full constraint solving, focus, scroll bars, or style inheritance.
 
 ### 6b. Share UI hit testing between rendering and input routing
 
-**Decision:** Button hover/held/pressed visuals, scene command dispatch, editor command controls, scene scroll routing, and editor chrome pointer ownership use shared `src/ui_layout.zig` hit-test helpers.
+**Decision:** Button hover/held/pressed visuals, scene command dispatch, editor command controls, scene scroll routing, and editor chrome pointer ownership use shared `src/ui/layout.zig` hit-test helpers through the `src/ui_layout.zig` facade.
 **Why:** A control should not look hovered through one coordinate path and dispatch through another. Keeping rect resolution, clipping, and hit tests together gives future focus/capture work one place to extend.
 **Tradeoff:** Hit routing still selects the last matching entity in the current ECS iteration order. Z-order, disabled state, focus ownership, pointer capture, bubbling, and modal layers remain future design work.
 

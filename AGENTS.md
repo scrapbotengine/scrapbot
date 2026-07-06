@@ -43,7 +43,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 
 ## ECS, Scripting, and Native Modules
 
-- `src/runtime.zig` owns the shared `World`, component registry, component tables, and schedule planning model.
+- `src/runtime/main.zig` owns the shared `World`, component registry, component tables, and schedule planning model; `src/runtime.zig` is the compatibility facade.
 - Systems must declare phase plus read/write component access before participating in scheduling.
 - Structural mutations must happen inside scheduled systems through the ECS APIs. Adding or removing a component requires declared write access to that component; despawning requires write access to every component currently attached to the entity.
 - Script-defined component and system types use explicit ids. Single lowercase ASCII identifier segments are project-local; qualified dotted ids are for packages or libraries; `scrapbot.*` is engine-owned.
@@ -58,7 +58,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 ## UI, Input, and Editor Rules
 
 - Keep input and UI interaction state ECS-shaped. SDL or platform event code translates raw events into frame input; hover, press, focus, command routing, and editor state belong in ECS components/systems.
-- Route UI layout, hit testing, scroll handling, button commands, hover/press visuals, canvas viewport scaling, editor chrome, and editor controls through public `scrapbot.ui.*`, `scrapbot.input.*`, and `src/ui_layout.zig`.
+- Route UI layout, hit testing, scroll handling, button commands, hover/press visuals, canvas viewport scaling, editor chrome, and editor controls through public `scrapbot.ui.*`, `scrapbot.input.*`, and `src/ui/layout.zig` via the `src/ui_layout.zig` facade.
 - Do not add renderer-private, editor-private, or example-private UI/input paths when retained ECS UI can represent the behavior.
 - Use `ui_layout.routePointer` as the default entry point when a feature needs command, scroll, and capture ownership from one pointer frame. Keep lower-level `commandAt`, `routeScrollWheelAt`, and `applyScrollWheelAt` consistent with it.
 - Route retained command buttons through `ui_layout.commandAt` or `routePointer` after any needed viewport/design-space conversion.
@@ -79,7 +79,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Offscreen rendering is the preferred automation surface for visual verification.
 - Renderable meshes, UI primitives, active camera fallback, lights, shadows, batching, and editor render data should resolve from ECS world data where possible.
 - Do not add renderer-only UI geometry or per-example hacks for behavior represented by shared `scrapbot.ui.*` components.
-- When changing the built-in UI bitmap font, update `third_party/spleen/`, regenerate `src/ui_font.zig` with `tools/generate-ui-font.py`, and update `NOTICE` and FDRs if the source face changes.
+- When changing the built-in UI bitmap font, update `third_party/spleen/`, regenerate `src/ui/font.zig` with `tools/generate-ui-font.py`, and update `NOTICE` and FDRs if the source face changes.
 - Keep `NOTICE` current when adding, removing, replacing, or redistributing third-party code, assets, generated data, fonts, tools, native libraries, or fetched binary dependencies.
 
 ## Documentation and Decision Records
@@ -117,13 +117,13 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - CLI process entry point: `src/main.zig`
 - CLI command routing and shared command helpers: `src/cli.zig`, `src/cli/`
 - Public engine facade and live project orchestration: `src/root.zig`
-- Project build/bundle helpers: `src/project_build.zig`
-- Scene loading/validation: `src/scene_loader.zig`
-- ECS runtime, registry, and scheduling: `src/runtime.zig`
-- Luau declaration boundary and script ECS registration: `src/script.zig`
+- Project build/bundle helpers: `src/project/build.zig`
+- Scene loading/validation: `src/project/scene_loader.zig`
+- ECS runtime, registry, and scheduling: `src/runtime/main.zig` via `src/runtime.zig`
+- Luau declaration boundary and script ECS registration: `src/script/main.zig` via `src/script.zig`
 - WebGPU renderer and SDL-backed headful window path: `src/render.zig`
 - Editor state/layout helpers: `src/editor/`
-- Shared retained UI layout and input resolution: `src/ui_layout.zig`
+- Shared retained UI layout and input resolution: `src/ui/layout.zig` via `src/ui_layout.zig`
 - Offscreen image verification: `src/render_verify.zig`
 - WGSL shaders embedded into the binary: `src/shaders/`
 - Canonical smoke-test project: `examples/minimal/`
@@ -147,6 +147,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - PR bodies should contain a descriptive list of changes.
 - Write PR bodies to a Markdown file and pass it with `gh pr create --body-file` or `gh pr edit --body-file`. Do not inline multiline PR bodies with escaped `\n`; verify the saved body with `gh pr view --json body`.
 - Prefer small vertical slices that leave `main` working.
+- Keep subsystem implementation in domain directories. Top-level `src/*.zig` files should be public facades, process entry points, or genuinely small cross-cutting modules; avoid adding new large subsystem implementation files at the top level.
 - Keep source files small and cohesive. Prefer adding or extending focused modules over growing large facade files such as `src/root.zig`, `src/render/main.zig`, or `src/cli.zig`; treat files over roughly 1,500 lines as a design smell and files over roughly 2,500 lines as refactor targets unless they are generated or deliberately table-like.
 - Public facade files may re-export subsystem APIs, but should not accumulate subsystem implementation when a focused module can own it.
 - Use `examples/minimal/` as the smoke-test fixture and update it when the supported scene schema changes.

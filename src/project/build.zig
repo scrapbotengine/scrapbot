@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const native = @import("native.zig");
+const native = @import("../native.zig");
 
 const Io = std.Io;
 

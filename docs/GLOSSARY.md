@@ -26,13 +26,13 @@ This glossary defines recurring Scrapbot terms in the project's context. It is a
 
 **ECS (Entity Component System)** - Scrapbot's shared runtime model for game state: entities carry components, and systems operate over declared component access. See [ADR-008](adr/ADR-008-component-system-runtime-model.md) and [FDR-009](fdr/FDR-009-entity-component-runtime.md).
 
-**World** - A runtime container for entity identity, component storage, component validation, queries, mutation APIs, and system schedules. See [ADR-008](adr/ADR-008-component-system-runtime-model.md) and `src/runtime.zig`.
+**World** - A runtime container for entity identity, component storage, component validation, queries, mutation APIs, and system schedules. See [ADR-008](adr/ADR-008-component-system-runtime-model.md) and `src/runtime/main.zig`.
 
 **Game world** - The ECS world that owns the loaded project's authoritative runtime scene and gameplay state. See [FDR-009](fdr/FDR-009-entity-component-runtime.md).
 
 **Engine-internal world** - A subsystem-owned ECS world, such as the renderer's render world, that uses the shared runtime ECS implementation instead of a parallel storage model. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md).
 
-**Component registry** - The runtime catalog of engine, script, and native component schemas used to validate scene data, script declarations, native declarations, queries, and field access. See [FDR-009](fdr/FDR-009-entity-component-runtime.md) and `src/runtime.zig`.
+**Component registry** - The runtime catalog of engine, script, and native component schemas used to validate scene data, script declarations, native declarations, queries, and field access. See [FDR-009](fdr/FDR-009-entity-component-runtime.md) and `src/runtime/main.zig`.
 
 **Component schema** - A component's declared fields and types, authored by the engine, Luau scripts, or native modules. See [FDR-011](fdr/FDR-011-script-ecs-registration.md).
 
@@ -126,7 +126,7 @@ This glossary defines recurring Scrapbot terms in the project's context. It is a
 
 **Scroll view** - A retained `scrapbot.ui.scroll_view` viewport with content offset and clipping behavior for scene or editor UI. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md).
 
-**`ui_layout.routePointer`** - The shared retained UI routing entry point that composes command hits, scroll routing, and pointer capture intent. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md) and `src/ui_layout.zig`.
+**`ui_layout.routePointer`** - The shared retained UI routing entry point that composes command hits, scroll routing, and pointer capture intent. See [FDR-005](fdr/FDR-005-engine-ui-primitives.md) and `src/ui/layout.zig`.
 
 **Transient input resources** - Current-frame input stored as engine-owned ECS resources such as `scrapbot.input.pointer`, `scrapbot.input.keyboard`, and `scrapbot.input.frame`. See [ADR-020](adr/ADR-020-transient-ecs-input-resources.md).
 

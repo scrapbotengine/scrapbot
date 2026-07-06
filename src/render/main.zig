@@ -7,6 +7,8 @@ const ui_font = @import("../ui_font.zig");
 const editor_state_types = @import("../editor/state.zig");
 const editor_layout = @import("../editor/layout.zig");
 const editor_render_chrome = @import("../editor/render_chrome.zig");
+const editor_gizmo = @import("../editor/gizmo.zig");
+const editor_input_routing = @import("../editor/input_routing.zig");
 const render_math = @import("math.zig");
 const render_input = @import("input.zig");
 const render_platform = @import("platform.zig");
@@ -91,10 +93,7 @@ pub const EditorUpdate = editor_state_types.EditorUpdate;
 pub const EditorViewportBounds = editor_state_types.EditorViewportBounds;
 pub const EditorError = editor_state_types.EditorError;
 
-const EditorCursorKind = enum {
-    default,
-    resize_ew,
-};
+const EditorCursorKind = editor_input_routing.CursorKind;
 const ScreenRect = editor_layout.ScreenRect;
 const scaleScreenRect = editor_layout.scaleScreenRect;
 const pointInsideScreenRect = editor_layout.pointInsideScreenRect;
@@ -230,9 +229,8 @@ const editor_color_channels = [_][3]f32{
     .{ 0.231, 0.51, 0.965 },
 };
 const editor_vec3_lane_labels = [_][]const u8{ "X", "Y", "Z" };
-const editor_gizmo_axis_length: f32 = 1.25;
-const editor_gizmo_axis_thickness: f32 = 0.035;
-const editor_gizmo_pick_radius_px: f32 = 18.0;
+const editor_gizmo_axis_length = editor_gizmo.axis_length;
+const editor_gizmo_pick_radius_px = editor_gizmo.pick_radius_px;
 
 const editor_palette = struct {
     const shell = [3]f32{ 0.008, 0.012, 0.024 };
@@ -2250,60 +2248,19 @@ fn extractEditorGizmoInto(
     scene_world: *const runtime.World,
     input: FrameInput,
 ) RenderError!void {
-    const selected = input.editor.selected_entity orelse return;
-    _ = scene_world.entity(selected) catch return;
-    const selected_transform = (scene_world.getTransform(selected) catch return) orelse return;
-    const axes = [_]struct {
-        id: []const u8,
-        axis: EditorAxis,
-        position_offset: [3]f32,
-        scale: [3]f32,
-        color: [3]f32,
-        active_color: [3]f32,
-    }{
+    editor_gizmo.extractTranslateInto(
+        allocator,
+        world,
+        scene_world,
+        input.editor.selected_entity,
+        input.editor.dragging_axis,
         .{
-            .id = "x",
-            .axis = .x,
-            .position_offset = .{ editor_gizmo_axis_length * 0.5, 0.0, 0.0 },
-            .scale = .{ editor_gizmo_axis_length, editor_gizmo_axis_thickness, editor_gizmo_axis_thickness },
-            .color = editor_palette.danger,
-            .active_color = .{ 0.94, 0.42, 0.42 },
+            .danger = editor_palette.danger,
+            .success = editor_palette.success,
+            .primary = editor_palette.primary,
+            .accent_soft = editor_palette.accent_soft,
         },
-        .{
-            .id = "y",
-            .axis = .y,
-            .position_offset = .{ 0.0, editor_gizmo_axis_length * 0.5, 0.0 },
-            .scale = .{ editor_gizmo_axis_thickness, editor_gizmo_axis_length, editor_gizmo_axis_thickness },
-            .color = editor_palette.success,
-            .active_color = .{ 0.176, 0.667, 0.443 },
-        },
-        .{
-            .id = "z",
-            .axis = .z,
-            .position_offset = .{ 0.0, 0.0, editor_gizmo_axis_length * 0.5 },
-            .scale = .{ editor_gizmo_axis_thickness, editor_gizmo_axis_thickness, editor_gizmo_axis_length },
-            .color = editor_palette.primary,
-            .active_color = editor_palette.accent_soft,
-        },
-    };
-
-    for (axes) |entry| {
-        const entity_id = std.fmt.allocPrint(allocator, "scrapbot.editor.gizmo.{s}", .{entry.id}) catch return RenderError.OutOfMemory;
-        defer allocator.free(entity_id);
-        const entity = world.createEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
-        world.setTransform(entity, .{
-            .position = addVec3(selected_transform.position, entry.position_offset),
-            .scale = entry.scale,
-        }) catch |err| return mapWorldError(err);
-        world.setGeometryPrimitive(entity, .{
-            .primitive = "box",
-            .segments = 0,
-            .rings = 0,
-        }) catch |err| return mapWorldError(err);
-        world.setSurfaceMaterial(entity, .{
-            .base_color = if (input.editor.dragging_axis == entry.axis) entry.active_color else entry.color,
-        }) catch |err| return mapWorldError(err);
-    }
+    ) catch |err| return mapEditorGizmoError(err);
 }
 
 const EditorVGroup = struct {
@@ -4171,6 +4128,13 @@ fn mapWorldError(err: anyerror) RenderError {
 }
 
 fn mapLayoutError(err: anyerror) RenderError {
+    return switch (err) {
+        error.OutOfMemory => RenderError.OutOfMemory,
+        else => RenderError.InvalidScene,
+    };
+}
+
+fn mapEditorGizmoError(err: anyerror) RenderError {
     return switch (err) {
         error.OutOfMemory => RenderError.OutOfMemory,
         else => RenderError.InvalidScene,

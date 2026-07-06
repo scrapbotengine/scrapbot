@@ -48,7 +48,7 @@ zig-clap
   https://github.com/Hejsil/zig-clap/blob/0.12.0/LICENSE.
 
 Spleen bitmap font
-- Use: source data for the built-in fixed-pixel UI font in src/ui_font.zig.
+- Use: source data for the built-in fixed-pixel UI font in src/ui/font.zig.
 - Source in repo: third_party/spleen/spleen-16x32.bdf.
 - Upstream source: Spleen 16x32 2.2.0.
 - License: BSD-2-Clause.

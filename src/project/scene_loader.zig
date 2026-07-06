@@ -1,6 +1,6 @@
 const std = @import("std");
-const render = @import("render.zig");
-const runtime = @import("runtime.zig");
+const render = @import("../render.zig");
+const runtime = @import("../runtime.zig");
 
 const Io = std.Io;
 

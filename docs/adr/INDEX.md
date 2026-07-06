@@ -22,3 +22,4 @@
 | [ADR-018](ADR-018-engine-linked-native-ecs-systems.md) | Engine-Linked Native ECS Systems | 2026-07-03 |
 | [ADR-019](ADR-019-project-local-native-zig-modules.md) | Project-Local Native Zig Modules | 2026-07-03 |
 | [ADR-020](ADR-020-transient-ecs-input-resources.md) | Transient ECS Input Resources | 2026-07-03 |
+| [ADR-021](ADR-021-domain-oriented-source-layout.md) | Domain-Oriented Source Layout | 2026-07-06 |
