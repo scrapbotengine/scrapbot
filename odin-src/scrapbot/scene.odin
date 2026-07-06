@@ -9,19 +9,29 @@ Scene :: struct {
 	entity_count:             int,
 	component_instance_count: int,
 	renderable_cube_count:    int,
+	world:                    Runtime_World,
 	storage:                  []byte,
 }
 
 Scene_Parser :: struct {
-	scene:              Scene,
-	registry:           Runtime_Component_Registry,
-	entity_open:        bool,
-	entity_has_id:      bool,
-	entity_has_name:    bool,
-	entity_components:  int,
-	active_component:   string,
-	active_field_names: [dynamic]string,
-	entity_ids:         [dynamic]string,
+	scene:                 Scene,
+	registry:              Runtime_Component_Registry,
+	entity_open:           bool,
+	entity_has_id:         bool,
+	entity_has_name:       bool,
+	entity_id:             string,
+	entity_name:           string,
+	active_component:      string,
+	active_component_data: Scene_Component_Draft,
+	entity_components:     [dynamic]Scene_Component_Draft,
+	active_field_names:    [dynamic]string,
+	entity_ids:            [dynamic]string,
+}
+
+Scene_Component_Draft :: struct {
+	id:                   string,
+	fields:               [dynamic]Runtime_Component_Field_Value,
+	authored_field_names: [dynamic]string,
 }
 
 load_scene_file :: proc(path: string, registry: Runtime_Component_Registry) -> (Scene, Project_Error) {
@@ -50,7 +60,7 @@ parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (
 		return Scene{}, .Unsupported_Scene_Version
 	}
 
-	parser := Scene_Parser{scene = Scene{name = name}, registry = registry}
+	parser := Scene_Parser{scene = Scene{name = name, world = runtime_world_init()}, registry = registry}
 	remaining := contents
 	for line in strings.split_lines_iterator(&remaining) {
 		trimmed := strings.trim_space(strip_line_comment(line))
@@ -67,8 +77,10 @@ parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (
 			parser.entity_open = true
 			parser.entity_has_id = false
 			parser.entity_has_name = false
-			parser.entity_components = 0
+			parser.entity_id = ""
+			parser.entity_name = ""
 			parser.active_component = ""
+			clear(&parser.entity_components)
 			continue
 		}
 
@@ -91,11 +103,14 @@ parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (
 				free_scene_parser(&parser)
 				return Scene{}, .Invalid_Scene
 			}
+			component_draft, component_exists := take_scene_component_draft(&parser, component_id)
 			parser.active_component = component_id
+			parser.active_component_data = component_draft
 			clear(&parser.active_field_names)
-			parser.entity_components += 1
-			parser.scene.component_instance_count += 1
-			if component_id == "scrapbot.render.cube" {
+			for field_name in parser.active_component_data.authored_field_names {
+				append(&parser.active_field_names, field_name)
+			}
+			if component_id == "scrapbot.render.cube" && !component_exists {
 				parser.scene.renderable_cube_count += 1
 			}
 			continue
@@ -128,6 +143,7 @@ parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (
 				return Scene{}, .Duplicate_Scene_Entity_ID
 			}
 			append(&parser.entity_ids, id)
+			parser.entity_id = id
 			parser.entity_has_id = true
 		case "name":
 			name_value, name_value_ok := read_scene_entity_string_value(trimmed)
@@ -135,6 +151,7 @@ parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (
 				free_scene_parser(&parser)
 				return Scene{}, .Invalid_Scene
 			}
+			parser.entity_name = name_value
 			parser.entity_has_name = true
 		case:
 			free_scene_parser(&parser)
@@ -147,29 +164,58 @@ parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (
 		free_scene_parser(&parser)
 		return Scene{}, flush_err
 	}
-	if parser.scene.entity_count == 0 {
+	if runtime_world_entity_count(parser.scene.world) == 0 {
 		free_scene_parser(&parser)
 		return Scene{}, .Missing_Scene_Content
 	}
+	if scene_world_component_instance_count(parser.scene.world, "scrapbot.renderer") > 1 {
+		free_scene_parser(&parser)
+		return Scene{}, .Invalid_Scene
+	}
 
+	parser.scene.entity_count = runtime_world_entity_count(parser.scene.world)
+	parser.scene.component_instance_count = runtime_world_component_instance_count(parser.scene.world)
 	scene := parser.scene
+	parser.scene = Scene{}
 	free_scene_parser(&parser)
 	return scene, .None
 }
 
 free_scene :: proc(scene: Scene) {
+	world := scene.world
+	runtime_world_free(&world)
 	if scene.storage != nil {
 		delete(scene.storage)
 	}
 }
 
 free_scene_parser :: proc(parser: ^Scene_Parser) {
+	free_scene_component_draft(&parser.active_component_data)
+	for &component in parser.entity_components {
+		free_scene_component_draft(&component)
+	}
+	if parser.entity_components != nil {
+		delete(parser.entity_components)
+	}
 	if parser.active_field_names != nil {
 		delete(parser.active_field_names)
 	}
 	if parser.entity_ids != nil {
 		delete(parser.entity_ids)
 	}
+	runtime_world_free(&parser.scene.world)
+}
+
+free_scene_component_draft :: proc(component: ^Scene_Component_Draft) {
+	if component.fields != nil {
+		delete(component.fields)
+	}
+	if component.authored_field_names != nil {
+		delete(component.authored_field_names)
+	}
+	component.id = ""
+	component.fields = nil
+	component.authored_field_names = nil
 }
 
 flush_scene_entity :: proc(parser: ^Scene_Parser) -> Project_Error {
@@ -180,12 +226,32 @@ flush_scene_entity :: proc(parser: ^Scene_Parser) -> Project_Error {
 	if component_err != .None {
 		return component_err
 	}
-	if !parser.entity_has_id || !parser.entity_has_name || parser.entity_components == 0 {
+	if !parser.entity_has_id || !parser.entity_has_name || len(parser.entity_components) == 0 {
 		return .Invalid_Scene
 	}
-	parser.scene.entity_count += 1
+	handle, entity_err := runtime_world_create_authored_entity(&parser.scene.world, parser.entity_id, parser.entity_name)
+	if entity_err == .Duplicate_Entity_ID {
+		return .Duplicate_Scene_Entity_ID
+	}
+	if entity_err != .None {
+		return .Invalid_Scene
+	}
+	for &component in parser.entity_components {
+		add_scene_component_defaults(&component)
+		if !scene_component_has_required_fields(parser.registry, component.id, component.authored_field_names[:]) {
+			return .Invalid_Scene
+		}
+		set_err := runtime_world_set_component(&parser.scene.world, handle, component.id, component.fields[:])
+		if set_err != .None {
+			return .Invalid_Scene
+		}
+	}
 	parser.entity_open = false
 	parser.active_component = ""
+	for &component in parser.entity_components {
+		free_scene_component_draft(&component)
+	}
+	clear(&parser.entity_components)
 	return .None
 }
 
@@ -193,9 +259,8 @@ flush_scene_component :: proc(parser: ^Scene_Parser) -> Project_Error {
 	if parser.active_component == "" {
 		return .None
 	}
-	if !scene_component_has_required_fields(parser.registry, parser.active_component, parser.active_field_names[:]) {
-		return .Invalid_Scene
-	}
+	append(&parser.entity_components, parser.active_component_data)
+	parser.active_component_data = Scene_Component_Draft{}
 	parser.active_component = ""
 	clear(&parser.active_field_names)
 	return .None
@@ -212,8 +277,29 @@ read_scene_component_field :: proc(parser: ^Scene_Parser, key, value: string) ->
 	if !scene_component_value_is_allowed(parser.active_component, key, value) {
 		return .Invalid_Scene
 	}
+	field_value, value_ok := read_scene_component_runtime_value(value, field_definition.value_type)
+	if !value_ok {
+		return .Invalid_Scene
+	}
+	append(&parser.active_component_data.fields, Runtime_Component_Field_Value{name = key, value = field_value})
+	append(&parser.active_component_data.authored_field_names, key)
 	append(&parser.active_field_names, key)
 	return .None
+}
+
+take_scene_component_draft :: proc(parser: ^Scene_Parser, component_id: string) -> (Scene_Component_Draft, bool) {
+	for component, index in parser.entity_components {
+		if component.id == component_id {
+			draft := component
+			last_index := len(parser.entity_components) - 1
+			for move_index := index; move_index < last_index; move_index += 1 {
+				parser.entity_components[move_index] = parser.entity_components[move_index + 1]
+			}
+			pop(&parser.entity_components)
+			return draft, true
+		}
+	}
+	return Scene_Component_Draft{id = component_id}, false
 }
 
 parse_component_table_header :: proc(header: string) -> (string, bool) {
@@ -473,6 +559,55 @@ scene_component_field_definition :: proc(
 	return Runtime_Component_Field_Definition{}, false
 }
 
+add_scene_component_defaults :: proc(component: ^Scene_Component_Draft) {
+	switch component.id {
+	case "scrapbot.ui.canvas":
+		add_scene_component_default_field(component, "design_size", runtime_component_value_vec3({0.0, 0.0, 0.0}))
+		add_scene_component_default_field(component, "scale_mode", runtime_component_value_string("none"))
+	case "scrapbot.ui.rect":
+		add_scene_component_default_field(component, "corner_radius", runtime_component_value_float(0.0))
+	case "scrapbot.ui.table":
+		add_scene_component_default_field(component, "columns", runtime_component_value_int(2))
+		add_scene_component_default_field(component, "row_height", runtime_component_value_float(1.0))
+		add_scene_component_default_field(component, "column_gap", runtime_component_value_float(0.0))
+		add_scene_component_default_field(component, "row_gap", runtime_component_value_float(0.0))
+		add_scene_component_default_field(component, "padding", runtime_component_value_vec3({0.0, 0.0, 0.0}))
+		add_scene_component_default_field(component, "first_column_ratio", runtime_component_value_float(0.5))
+	case "scrapbot.ui.layout.item":
+		add_scene_component_default_field(component, "min_size", runtime_component_value_vec3({0.0, 0.0, 0.0}))
+		add_scene_component_default_field(component, "preferred_size", runtime_component_value_vec3({0.0, 0.0, 0.0}))
+		add_scene_component_default_field(component, "max_size", runtime_component_value_vec3({0.0, 0.0, 0.0}))
+		add_scene_component_default_field(component, "grow", runtime_component_value_float(0.0))
+		add_scene_component_default_field(component, "shrink", runtime_component_value_float(0.0))
+		add_scene_component_default_field(component, "align", runtime_component_value_string("start"))
+		add_scene_component_default_field(component, "margin", runtime_component_value_vec3({0.0, 0.0, 0.0}))
+	case "scrapbot.renderer":
+		add_scene_component_default_field(component, "hdr", runtime_component_value_boolean(true))
+		add_scene_component_default_field(component, "tone_mapping", runtime_component_value_string("aces"))
+		add_scene_component_default_field(component, "exposure", runtime_component_value_float(0.0))
+		add_scene_component_default_field(component, "postprocess_enabled", runtime_component_value_boolean(true))
+		add_scene_component_default_field(component, "antialiasing", runtime_component_value_string("fxaa"))
+		add_scene_component_default_field(component, "bloom_enabled", runtime_component_value_boolean(true))
+		add_scene_component_default_field(component, "bloom_threshold", runtime_component_value_float(0.85))
+		add_scene_component_default_field(component, "bloom_intensity", runtime_component_value_float(0.12))
+		add_scene_component_default_field(component, "bloom_radius", runtime_component_value_float(1.0))
+		add_scene_component_default_field(component, "vignette_enabled", runtime_component_value_boolean(true))
+		add_scene_component_default_field(component, "vignette_strength", runtime_component_value_float(0.24))
+		add_scene_component_default_field(component, "vignette_radius", runtime_component_value_float(0.82))
+		add_scene_component_default_field(component, "chromatic_aberration_enabled", runtime_component_value_boolean(true))
+		add_scene_component_default_field(component, "chromatic_aberration_strength", runtime_component_value_float(0.0025))
+	}
+}
+
+add_scene_component_default_field :: proc(component: ^Scene_Component_Draft, name: string, value: Runtime_Component_Value) {
+	for field in component.fields {
+		if field.name == name {
+			return
+		}
+	}
+	append(&component.fields, Runtime_Component_Field_Value{name = name, value = value})
+}
+
 scene_field_name_is_one_of :: proc(field_name: string, candidates: []string) -> bool {
 	for candidate in candidates {
 		if field_name == candidate {
@@ -550,21 +685,70 @@ parse_scene_finite_float_in_range :: proc(value: string, min_value: f32, has_min
 }
 
 parse_scene_vec3 :: proc(value: string) -> bool {
+	_, ok := parse_scene_vec3_value(value)
+	return ok
+}
+
+parse_scene_vec3_value :: proc(value: string) -> ([3]f32, bool) {
 	if len(value) < 5 || value[0] != '[' || value[len(value) - 1] != ']' {
-		return false
+		return {}, false
 	}
 	inner := value[1:len(value) - 1]
 	count := 0
+	out: [3]f32
 	remaining := inner
 	for part in strings.split_iterator(&remaining, ",") {
 		if count >= 3 {
-			return false
+			return {}, false
 		}
 		trimmed := strings.trim_space(part)
-		if trimmed == "" || !parse_scene_float(trimmed) {
-			return false
+		parsed, ok := parse_scene_float_value(trimmed)
+		if trimmed == "" || !ok {
+			return {}, false
 		}
+		out[count] = parsed
 		count += 1
 	}
-	return count == 3
+	return out, count == 3
+}
+
+read_scene_component_runtime_value :: proc(value: string, field_type: Runtime_Field_Type) -> (Runtime_Component_Value, bool) {
+	switch field_type {
+	case .Boolean:
+		if value == "true" {
+			return runtime_component_value_boolean(true), true
+		}
+		if value == "false" {
+			return runtime_component_value_boolean(false), true
+		}
+	case .Int:
+		parsed, ok := strconv.parse_int(value, 10)
+		if ok {
+			return runtime_component_value_int(parsed), true
+		}
+	case .Float:
+		parsed, ok := parse_scene_float_value(value)
+		if ok {
+			return runtime_component_value_float(parsed), true
+		}
+	case .Vec3:
+		parsed, ok := parse_scene_vec3_value(value)
+		if ok {
+			return runtime_component_value_vec3(parsed), true
+		}
+	case .String:
+		parsed, ok := parse_basic_string(value)
+		if ok {
+			return runtime_component_value_string(parsed), true
+		}
+	}
+	return Runtime_Component_Value{}, false
+}
+
+scene_world_component_instance_count :: proc(world: Runtime_World, component_id: string) -> int {
+	table, found := runtime_world_find_component_table(world, component_id)
+	if !found {
+		return 0
+	}
+	return len(table.entities)
 }

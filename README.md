@@ -16,6 +16,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin project metadata check slice
   - [x] Odin scene structure check slice
   - [x] Odin engine component schema check slice
+  - [x] Odin scene-to-world loading slice
   - [x] Odin project component schema check slice
   - [x] Odin runtime registry/entity identity slice
   - [x] Odin ECS component storage/query slice

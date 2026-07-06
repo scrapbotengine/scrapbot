@@ -53,7 +53,7 @@ Until feature parity is reached, some documentation will necessarily describe bo
 
 1. Add Odin toolchain provisioning and a buildable smoke executable.
 2. Port the first CLI/project slice: `init`, project metadata parsing, safe project-relative path checks, referenced file existence, and text/JSON `check` output.
-3. Port the first scene validation slice: root scene metadata, entity blocks, duplicate entity ids, component table placement, and scene summary counts.
+3. Port the first scene validation/loading slice: root scene metadata, entity blocks, duplicate entity ids, component table placement, scene summary counts, and scene-authored ECS world materialization.
 4. Port scene-authored engine component schema validation: engine-owned component ids, runtime-only component rejection, field names, field types, defaulted fields, and renderer setting values.
 5. Port first-pass runtime foundations: component registry validation, generation-aware entity identity, component storage, query iteration, schedule batching, and deferred structural mutation.
 6. Port first-pass script/native component schema discovery for scene validation while full Luau/native execution remains in Zig.

@@ -40,6 +40,12 @@ name = "Button"
 	testing.expect_value(t, result.scene.entity_count, 2)
 	testing.expect_value(t, result.scene.component_instance_count, 2)
 	testing.expect_value(t, result.scene.renderable_cube_count, 1)
+	cube, cube_found := runtime_world_find_entity_by_id(result.scene.world, "cube-1")
+	testing.expect_value(t, cube_found, true)
+	cube_color, cube_color_err := runtime_world_get_component_field_value(result.scene.world, cube, "scrapbot.render.cube", "color")
+	testing.expect_value(t, cube_color_err, Runtime_Error.None)
+	testing.expect_value(t, cube_color.value_type, Runtime_Field_Type.Vec3)
+	testing.expect_value(t, cube_color.vec3, [3]f32{1.0, 0.0, 0.0})
 }
 
 @(test)
@@ -195,6 +201,76 @@ color = [0.0, 1.0, 0.0]
 }
 
 @(test)
+test_check_project_merges_repeated_component_tables_on_entity :: proc(t: ^testing.T) {
+	root := make_test_project(t, "merged-component-tables")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n")
+	write_file(
+		t,
+		root,
+		"scenes/main.scene.toml",
+		`name = "Main"
+version = 1
+
+[[entities]]
+id = "entity"
+name = "Entity"
+
+[entities.components."scrapbot.transform"]
+position = [1.0, 2.0, 3.0]
+
+[entities.components."scrapbot.transform"]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+`,
+	)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	testing.expect_value(t, result.scene.component_instance_count, 1)
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "entity")
+	testing.expect_value(t, found, true)
+	position, position_err := runtime_world_get_component_field_value(result.scene.world, entity, "scrapbot.transform", "position")
+	testing.expect_value(t, position_err, Runtime_Error.None)
+	testing.expect_value(t, position.value_type, Runtime_Field_Type.Vec3)
+	testing.expect_value(t, position.vec3, [3]f32{1.0, 2.0, 3.0})
+}
+
+@(test)
+test_check_project_rejects_duplicate_field_across_repeated_component_tables :: proc(t: ^testing.T) {
+	root := make_test_project(t, "duplicate-field-across-component-tables")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n")
+	write_file(
+		t,
+		root,
+		"scenes/main.scene.toml",
+		`name = "Main"
+version = 1
+
+[[entities]]
+id = "entity"
+name = "Entity"
+
+[entities.components."scrapbot.render.cube"]
+color = [1.0, 0.0, 0.0]
+
+[entities.components."scrapbot.render.cube"]
+color = [0.0, 1.0, 0.0]
+`,
+	)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.Invalid_Scene)
+}
+
+@(test)
 test_check_project_rejects_invalid_engine_component_field_type :: proc(t: ^testing.T) {
 	root := make_test_project(t, "invalid-engine-component-field-type")
 	defer os.remove_all(root)
@@ -279,6 +355,39 @@ bloom_intensity = -1.0
 }
 
 @(test)
+test_check_project_rejects_multiple_renderer_singletons :: proc(t: ^testing.T) {
+	root := make_test_project(t, "multiple-renderer-singletons")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n")
+	write_file(
+		t,
+		root,
+		"scenes/main.scene.toml",
+		`name = "Main"
+version = 1
+
+[[entities]]
+id = "first"
+name = "First"
+
+[entities.components."scrapbot.renderer"]
+
+[[entities]]
+id = "second"
+name = "Second"
+
+[entities.components."scrapbot.renderer"]
+`,
+	)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.Invalid_Scene)
+}
+
+@(test)
 test_check_project_accepts_defaulted_engine_component_fields :: proc(t: ^testing.T) {
 	root := make_test_project(t, "defaulted-engine-component-fields")
 	defer os.remove_all(root)
@@ -297,6 +406,16 @@ color = [1.0, 1.0, 1.0]
 	defer free_check_result(result)
 	testing.expect_value(t, result.err, Project_Error.None)
 	testing.expect_value(t, result.scene.component_instance_count, 2)
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "entity")
+	testing.expect_value(t, found, true)
+	corner_radius, corner_radius_err := runtime_world_get_component_field_value(result.scene.world, entity, "scrapbot.ui.rect", "corner_radius")
+	testing.expect_value(t, corner_radius_err, Runtime_Error.None)
+	testing.expect_value(t, corner_radius.value_type, Runtime_Field_Type.Float)
+	testing.expect_value(t, corner_radius.float, f32(0.0))
+	tone_mapping, tone_mapping_err := runtime_world_get_component_field_value(result.scene.world, entity, "scrapbot.renderer", "tone_mapping")
+	testing.expect_value(t, tone_mapping_err, Runtime_Error.None)
+	testing.expect_value(t, tone_mapping.value_type, Runtime_Field_Type.String)
+	testing.expect_value(t, tone_mapping.string_value, "aces")
 }
 
 @(test)
@@ -345,6 +464,16 @@ direction = [0.0, 1.0, 0.0]
 	result := check_project(root)
 	defer free_check_result(result)
 	testing.expect_value(t, result.err, Project_Error.None)
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "entity")
+	testing.expect_value(t, found, true)
+	health_current, health_current_err := runtime_world_get_component_field_value(result.scene.world, entity, "health", "current")
+	testing.expect_value(t, health_current_err, Runtime_Error.None)
+	testing.expect_value(t, health_current.value_type, Runtime_Field_Type.Float)
+	testing.expect_value(t, health_current.float, f32(5.0))
+	health_label, health_label_err := runtime_world_get_component_field_value(result.scene.world, entity, "health", "label")
+	testing.expect_value(t, health_label_err, Runtime_Error.None)
+	testing.expect_value(t, health_label.value_type, Runtime_Field_Type.String)
+	testing.expect_value(t, health_label.string_value, "ready")
 }
 
 @(test)

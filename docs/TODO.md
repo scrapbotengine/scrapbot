@@ -9,6 +9,7 @@
 - [x] Odin `check` can validate project metadata and referenced project files.
 - [x] Odin `check` can validate first-pass scene structure and report entity/component counts.
 - [x] Odin `check` can validate scene-authored engine component ids, fields, types, defaults, and renderer setting values.
+- [x] Odin scene loading can materialize authored entities and typed component values into the runtime world.
 - [x] Odin `check` can validate script/native-declared scene component schemas with first-pass static discovery.
 - [x] Odin runtime has first-pass component registry and generation-aware entity identity.
 - [x] Odin runtime has first-pass component storage and query iteration.
@@ -27,6 +28,7 @@
 - [ ] Port remaining Scrapbot CLI commands from Zig to Odin.
 - [x] Port first-pass project metadata loading and referenced-file validation from Zig to Odin.
 - [x] Port engine-owned scene component schema validation from Zig to Odin.
+- [x] Port first-pass scene-to-runtime-world loading from Zig to Odin.
 - [x] Port script-defined and native scene component registry validation from Zig to Odin.
 - [x] Port first-pass ECS entity identity and component registry primitives from Zig to Odin.
 - [x] Port first-pass ECS component storage and query iteration from Zig to Odin.
