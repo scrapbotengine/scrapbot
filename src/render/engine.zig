@@ -131,7 +131,7 @@ const hitTestUiRect = render_ui.hitTestUiRect;
 const textPixelSize = render_ui.textPixelSize;
 const resolveUiTextPosition = render_ui.resolveUiTextPosition;
 const evaluateUiButtonState = render_ui.evaluateUiButtonState;
-const buildUiVertices = render_ui.buildUiVertices;
+const buildUiVerticesInto = render_ui.buildUiVerticesInto;
 const screenToClipX = render_ui.screenToClipX;
 const screenToClipY = render_ui.screenToClipY;
 const clamp01 = render_ui.clamp01;
@@ -1078,6 +1078,8 @@ const MeshDemo = struct {
     render_state: RenderEcsState,
     batches: []BatchResources,
     ui_draw: UiDrawResources = .{},
+    ui_vertices: std.ArrayList(UiVertex) = .empty,
+    ui_layout_cache: ui_layout.LayoutCache,
 
     fn create(
         allocator: std.mem.Allocator,
@@ -1415,6 +1417,7 @@ const MeshDemo = struct {
             .postprocess_sampler = postprocess_sampler,
             .render_state = render_state,
             .batches = batches,
+            .ui_layout_cache = ui_layout.LayoutCache.init(allocator),
         };
     }
 
@@ -1458,6 +1461,8 @@ const MeshDemo = struct {
         self.postprocess_bind_group_layout.release();
         self.bind_group_layout.release();
         self.ui_draw.deinit();
+        self.ui_vertices.deinit(self.allocator);
+        self.ui_layout_cache.deinit();
     }
 
     fn draw(
@@ -1540,9 +1545,8 @@ const MeshDemo = struct {
     }
 
     fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
-        var vertices = try buildUiVertices(self.allocator, &self.render_state.world, config.width, config.height);
-        defer vertices.deinit(self.allocator);
-        try self.ui_draw.update(device, queue, vertices.items);
+        try buildUiVerticesInto(self.allocator, &self.ui_vertices, &self.ui_layout_cache, &self.render_state.world, config.width, config.height);
+        try self.ui_draw.update(device, queue, self.ui_vertices.items);
     }
 
     fn prepareBatchResources(self: *MeshDemo, device: *wgpu.Device, plan: BatchPlan) RenderError!void {

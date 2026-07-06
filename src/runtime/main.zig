@@ -878,6 +878,7 @@ pub const World = struct {
     entities: std.ArrayList(Entity) = .empty,
     component_tables: std.ArrayList(ComponentTable) = .empty,
     query_plan_generation: u64 = 1,
+    revision: u64 = 1,
     next_entity_generation: u32 = 1,
 
     pub fn init(allocator: std.mem.Allocator) World {
@@ -900,6 +901,10 @@ pub const World = struct {
 
     pub fn queryPlanGeneration(self: World) u64 {
         return self.query_plan_generation;
+    }
+
+    pub fn worldRevision(self: World) u64 {
+        return self.revision;
     }
 
     pub fn createEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
@@ -944,6 +949,7 @@ pub const World = struct {
             grown_tables += 1;
         }
 
+        self.bumpRevision();
         return handle;
     }
 
@@ -1361,6 +1367,7 @@ pub const World = struct {
         } else {
             try self.appendComponentRow(table, handle, index, fields);
         }
+        self.bumpRevision();
     }
 
     pub fn removeComponent(self: *World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
@@ -1385,6 +1392,7 @@ pub const World = struct {
             column.values.swapRemove(self.allocator, row);
         }
 
+        self.bumpRevision();
         return true;
     }
 
@@ -1430,6 +1438,7 @@ pub const World = struct {
             }
         }
 
+        self.bumpRevision();
         return true;
     }
 
@@ -1618,7 +1627,16 @@ pub const World = struct {
     }
 
     pub fn uiRects(self: *const World) UiRectIterator {
-        return .{ .world = self };
+        const table = self.findComponentTable(ui_rect_component_id) orelse return .{ .world = self };
+        return .{
+            .world = self,
+            .table = table,
+            .button_table = self.findComponentTable(ui_button_component_id),
+            .position_column = findColumn(table.*, "position"),
+            .size_column = findColumn(table.*, "size"),
+            .color_column = findColumn(table.*, "color"),
+            .corner_radius_column = findColumn(table.*, "corner_radius"),
+        };
     }
 
     pub fn uiTextCount(self: World) usize {
@@ -1638,7 +1656,15 @@ pub const World = struct {
     }
 
     pub fn uiTexts(self: *const World) UiTextIterator {
-        return .{ .world = self };
+        const table = self.findComponentTable(ui_text_component_id) orelse return .{ .world = self };
+        return .{
+            .world = self,
+            .table = table,
+            .position_column = findColumn(table.*, "position"),
+            .size_column = findColumn(table.*, "size"),
+            .color_column = findColumn(table.*, "color"),
+            .value_column = findColumn(table.*, "value"),
+        };
     }
 
     pub fn uiSeparatorCount(self: World) usize {
@@ -1658,7 +1684,14 @@ pub const World = struct {
     }
 
     pub fn uiSeparators(self: *const World) UiSeparatorIterator {
-        return .{ .world = self };
+        const table = self.findComponentTable(ui_separator_component_id) orelse return .{ .world = self };
+        return .{
+            .world = self,
+            .table = table,
+            .position_column = findColumn(table.*, "position"),
+            .size_column = findColumn(table.*, "size"),
+            .color_column = findColumn(table.*, "color"),
+        };
     }
 
     pub fn uiCommandEvent(self: World) ?UiCommandEvent {
@@ -1922,6 +1955,7 @@ pub const World = struct {
         const row = table.rows_by_entity.items[index] orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
+        self.bumpRevision();
     }
 
     fn setFieldValueResolved(self: *World, handle: EntityHandle, resolved: ResolvedComponentRow, field_name: []const u8, value: ComponentValue) WorldError!void {
@@ -1930,6 +1964,7 @@ pub const World = struct {
         const row = resolvedRowForEntity(table.*, .{ .index = @intCast(index) }, resolved.row_index) orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
+        self.bumpRevision();
     }
 
     fn ensureComponentTable(self: *World, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!usize {
@@ -1951,6 +1986,13 @@ pub const World = struct {
         self.query_plan_generation +%= 1;
         if (self.query_plan_generation == 0) {
             self.query_plan_generation = 1;
+        }
+    }
+
+    fn bumpRevision(self: *World) void {
+        self.revision +%= 1;
+        if (self.revision == 0) {
+            self.revision = 1;
         }
     }
 
@@ -2144,13 +2186,36 @@ pub const RenderableMeshIterator = struct {
 
 pub const UiRectIterator = struct {
     world: *const World,
-    index: usize = 0,
+    table: ?*const ComponentTable = null,
+    button_table: ?*const ComponentTable = null,
+    position_column: ?*const ComponentColumn = null,
+    size_column: ?*const ComponentColumn = null,
+    color_column: ?*const ComponentColumn = null,
+    corner_radius_column: ?*const ComponentColumn = null,
+    entity_index: usize = 0,
 
     pub fn next(self: *UiRectIterator) ?UiRect {
-        while (self.index < self.world.entityCount()) {
-            const handle = EntityHandle{ .index = @intCast(self.index) };
-            self.index += 1;
-            return self.world.uiRectAtEntity(handle) orelse continue;
+        const table = self.table orelse return null;
+        const position_column = self.position_column orelse return null;
+        const size_column = self.size_column orelse return null;
+        const color_column = self.color_column orelse return null;
+        const corner_radius_column = self.corner_radius_column orelse return null;
+        while (self.entity_index < table.rows_by_entity.items.len) {
+            const entity_index = self.entity_index;
+            self.entity_index += 1;
+            const row = table.rows_by_entity.items[entity_index] orelse continue;
+            const handle = table.entities.items[row];
+            const stored_entity = self.world.entity(handle) catch continue;
+            return .{
+                .entity = handle,
+                .id = stored_entity.id,
+                .name = stored_entity.name,
+                .position = columnVec3At(position_column, row) orelse return null,
+                .size = columnVec3At(size_column, row) orelse return null,
+                .color = columnVec3At(color_column, row) orelse return null,
+                .corner_radius = columnFloatAt(corner_radius_column, row) orelse return null,
+                .is_button = if (self.button_table) |button_table| tableHasEntity(button_table.*, handle) else false,
+            };
         }
         return null;
     }
@@ -2158,13 +2223,34 @@ pub const UiRectIterator = struct {
 
 pub const UiTextIterator = struct {
     world: *const World,
-    index: usize = 0,
+    table: ?*const ComponentTable = null,
+    position_column: ?*const ComponentColumn = null,
+    size_column: ?*const ComponentColumn = null,
+    color_column: ?*const ComponentColumn = null,
+    value_column: ?*const ComponentColumn = null,
+    entity_index: usize = 0,
 
     pub fn next(self: *UiTextIterator) ?UiText {
-        while (self.index < self.world.entityCount()) {
-            const handle = EntityHandle{ .index = @intCast(self.index) };
-            self.index += 1;
-            return self.world.uiTextAtEntity(handle) orelse continue;
+        const table = self.table orelse return null;
+        const position_column = self.position_column orelse return null;
+        const size_column = self.size_column orelse return null;
+        const color_column = self.color_column orelse return null;
+        const value_column = self.value_column orelse return null;
+        while (self.entity_index < table.rows_by_entity.items.len) {
+            const entity_index = self.entity_index;
+            self.entity_index += 1;
+            const row = table.rows_by_entity.items[entity_index] orelse continue;
+            const handle = table.entities.items[row];
+            const stored_entity = self.world.entity(handle) catch continue;
+            return .{
+                .entity = handle,
+                .id = stored_entity.id,
+                .name = stored_entity.name,
+                .position = columnVec3At(position_column, row) orelse return null,
+                .size = columnFloatAt(size_column, row) orelse return null,
+                .color = columnVec3At(color_column, row) orelse return null,
+                .value = columnStringAt(value_column, row) orelse return null,
+            };
         }
         return null;
     }
@@ -2172,17 +2258,66 @@ pub const UiTextIterator = struct {
 
 pub const UiSeparatorIterator = struct {
     world: *const World,
-    index: usize = 0,
+    table: ?*const ComponentTable = null,
+    position_column: ?*const ComponentColumn = null,
+    size_column: ?*const ComponentColumn = null,
+    color_column: ?*const ComponentColumn = null,
+    entity_index: usize = 0,
 
     pub fn next(self: *UiSeparatorIterator) ?UiSeparator {
-        while (self.index < self.world.entityCount()) {
-            const handle = EntityHandle{ .index = @intCast(self.index) };
-            self.index += 1;
-            return self.world.uiSeparatorAtEntity(handle) orelse continue;
+        const table = self.table orelse return null;
+        const position_column = self.position_column orelse return null;
+        const size_column = self.size_column orelse return null;
+        const color_column = self.color_column orelse return null;
+        while (self.entity_index < table.rows_by_entity.items.len) {
+            const entity_index = self.entity_index;
+            self.entity_index += 1;
+            const row = table.rows_by_entity.items[entity_index] orelse continue;
+            const handle = table.entities.items[row];
+            const stored_entity = self.world.entity(handle) catch continue;
+            return .{
+                .entity = handle,
+                .id = stored_entity.id,
+                .name = stored_entity.name,
+                .position = columnVec3At(position_column, row) orelse return null,
+                .size = columnVec3At(size_column, row) orelse return null,
+                .color = columnVec3At(color_column, row) orelse return null,
+            };
         }
         return null;
     }
 };
+
+fn tableHasEntity(table: ComponentTable, handle: EntityHandle) bool {
+    const index: usize = handle.index;
+    if (index >= table.rows_by_entity.items.len) {
+        return false;
+    }
+    const row = table.rows_by_entity.items[index] orelse return false;
+    const stored = table.entities.items[row];
+    return handle.generation == 0 or stored.generation == 0 or stored.generation == handle.generation;
+}
+
+fn columnVec3At(column: *const ComponentColumn, row: usize) ?[3]f32 {
+    return switch (column.values) {
+        .vec3 => |values| if (row < values.items.len) values.items[row] else null,
+        else => null,
+    };
+}
+
+fn columnFloatAt(column: *const ComponentColumn, row: usize) ?f32 {
+    return switch (column.values) {
+        .float => |values| if (row < values.items.len) values.items[row] else null,
+        else => null,
+    };
+}
+
+fn columnStringAt(column: *const ComponentColumn, row: usize) ?[]const u8 {
+    return switch (column.values) {
+        .string => |values| if (row < values.items.len) values.items[row] else null,
+        else => null,
+    };
+}
 
 pub fn validateTypeId(id: []const u8) TypeIdError!void {
     _ = try validateTypeIdShape(id);

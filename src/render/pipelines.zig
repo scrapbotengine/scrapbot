@@ -255,6 +255,46 @@ pub fn createUi(device: *wgpu.Device, texture_format: wgpu.TextureFormat, pipeli
             .offset = @offsetOf(UiVertex, "rect_size_radius"),
             .shader_location = 3,
         },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows0"),
+            .shader_location = 4,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows1"),
+            .shader_location = 5,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows2"),
+            .shader_location = 6,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows3"),
+            .shader_location = 7,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows4"),
+            .shader_location = 8,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows5"),
+            .shader_location = 9,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows6"),
+            .shader_location = 10,
+        },
+        .{
+            .format = .float32x4,
+            .offset = @offsetOf(UiVertex, "glyph_rows7"),
+            .shader_location = 11,
+        },
     };
     const vertex_buffers = [_]wgpu.VertexBufferLayout{
         .{

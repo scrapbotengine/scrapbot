@@ -286,6 +286,26 @@ test "UI vertex builder expands rects and fixed pixel text" {
     try std.testing.expect(vertices.items[0].position[1] > 0.8);
 }
 
+test "UI vertex builder emits one quad per visible glyph" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const label = try world.createEntity("label", "Label");
+    try world.setUiText(label, .{
+        .position = .{ 42.0, 36.0, 0.0 },
+        .size = 1.0,
+        .color = .{ 1.0, 0.8, 0.2 },
+        .value = "A ",
+    });
+
+    var vertices = try buildUiVertices(std.testing.allocator, &world, 640, 480);
+    defer vertices.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 6), vertices.items.len);
+    try std.testing.expectEqual(@as(f32, -1.0), vertices.items[0].rect_size_radius[3]);
+    try std.testing.expect(vertices.items[0].glyph_rows1[2] > 0.0);
+}
+
 test "UI vertex builder scales editor logical pixels to physical pixels" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();

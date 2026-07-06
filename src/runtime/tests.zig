@@ -317,6 +317,50 @@ test "world resolves UI rect and text components" {
     try std.testing.expectEqualStrings("BATCHES 4", resolved_label.value);
 }
 
+test "UI iterators preserve entity order after component swap removal" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    try world.setUiRect(first, .{ .position = .{ 1.0, 0.0, 0.0 } });
+
+    const second = try world.createEntity("second", "Second");
+    try world.setUiRect(second, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setUiButton(second);
+
+    const third = try world.createEntity("third", "Third");
+    try world.setUiRect(third, .{ .position = .{ 3.0, 0.0, 0.0 } });
+
+    try std.testing.expect(try world.removeComponent(first, ui_rect_component_id));
+
+    var rects = world.uiRects();
+    const resolved_second = rects.next() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(second.index, resolved_second.entity.index);
+    try std.testing.expect(resolved_second.is_button);
+    try std.testing.expectEqual(@as(f32, 2.0), resolved_second.position[0]);
+
+    const resolved_third = rects.next() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(third.index, resolved_third.entity.index);
+    try std.testing.expect(!resolved_third.is_button);
+    try std.testing.expectEqual(@as(f32, 3.0), resolved_third.position[0]);
+
+    try std.testing.expect(rects.next() == null);
+}
+
+test "UI rect iterators detect buttons added through wildcard handles" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("button", "Button");
+    try world.setUiRect(.{ .index = entity.index }, .{});
+    try world.setUiButton(entity);
+
+    var rects = world.uiRects();
+    const rect = rects.next() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(entity.index, rect.entity.index);
+    try std.testing.expect(rect.is_button);
+}
+
 test "world stores expanded UI semantic components" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
