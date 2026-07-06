@@ -42,6 +42,17 @@ test_build_project_creates_host_bundle :: proc(t: ^testing.T) {
 	testing.expect_value(t, os.exists(manifest_path), true)
 	testing.expect_value(t, os.exists(copied_asset_path), true)
 
+	launcher, launcher_read_err := os.read_entire_file(launcher_path, context.allocator)
+	testing.expect_value(t, launcher_read_err, nil)
+	defer delete(launcher)
+	when ODIN_OS == .Windows {
+		testing.expect(t, strings.contains(string(launcher), `PATH=%SCRIPT_DIR%lib;%SCRIPT_DIR%bin;%PATH%`))
+	} else when ODIN_OS == .Darwin {
+		testing.expect(t, strings.contains(string(launcher), "DYLD_LIBRARY_PATH"))
+	} else when ODIN_OS == .Linux {
+		testing.expect(t, strings.contains(string(launcher), "LD_LIBRARY_PATH"))
+	}
+
 	packaged := check_project(result.project_path)
 	defer free_check_result(packaged)
 	testing.expect_value(t, packaged.err, Project_Error.None)
@@ -52,7 +63,14 @@ test_build_project_creates_host_bundle :: proc(t: ^testing.T) {
 	defer delete(manifest)
 	testing.expect(t, strings.contains(string(manifest), `"schema": "scrapbot.build.v1"`))
 	testing.expect(t, strings.contains(string(manifest), `"native_artifact": null`))
-	testing.expect(t, strings.contains(string(manifest), `"sdl3_bundled": false`))
+	testing.expect(t, strings.contains(string(manifest), `"sdl3_bundled":`))
+	if result.sdl3_bundled {
+		testing.expect_value(t, result.sdl3_warning, "")
+		testing.expect(t, strings.contains(string(manifest), `"sdl3_warning": null`))
+	} else {
+		testing.expect(t, result.sdl3_warning != "")
+		testing.expect(t, strings.contains(string(manifest), `"sdl3_warning": "SDL3 was not copied;`))
+	}
 }
 
 @(test)
@@ -102,6 +120,37 @@ test_build_project_copies_packaged_native_artifact_from_scrapbot_cache :: proc(t
 	testing.expect_value(t, read_err, nil)
 	defer delete(manifest)
 	testing.expect(t, strings.contains(string(manifest), `"native_artifact": ".scrapbot/build/native/libscrapbot_project.test"`))
+}
+
+@(test)
+test_build_project_copies_discoverable_sdl3_candidate :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "build-sdl3-candidate")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	lib_path := join_test_path(t, root, "lib")
+	defer delete(lib_path)
+	testing.expect_value(t, ensure_directory(lib_path), true)
+	candidate_path := join_test_path(t, root, "libSDL3.test")
+	defer delete(candidate_path)
+	testing.expect_value(t, os.write_entire_file(candidate_path, "sdl3 bytes"), nil)
+	copied_path := join_test_path(t, lib_path, "libSDL3.test")
+	defer delete(copied_path)
+	testing.expect_value(t, os.write_entire_file(copied_path, "old bytes"), nil)
+
+	candidates := [?]string{candidate_path}
+	testing.expect_value(t, copy_discoverable_sdl3_from_candidates(lib_path, candidates[:]), true)
+
+	testing.expect_value(t, os.exists(copied_path), true)
+	copied, copied_read_err := os.read_entire_file(copied_path, context.allocator)
+	testing.expect_value(t, copied_read_err, nil)
+	defer delete(copied)
+	testing.expect_value(t, string(copied), "sdl3 bytes")
+
+	missing_candidate := join_test_path(t, root, "missing-SDL3.test")
+	defer delete(missing_candidate)
+	missing_candidates := [?]string{missing_candidate}
+	testing.expect_value(t, copy_discoverable_sdl3_from_candidates(lib_path, missing_candidates[:]), false)
 }
 
 @(test)

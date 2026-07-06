@@ -25,6 +25,7 @@ Build_Result :: struct {
 	runtime_path: string,
 	launcher_path: string,
 	native_artifact: string,
+	sdl3_bundled: bool,
 	sdl3_warning: string,
 }
 
@@ -227,14 +228,20 @@ build_project :: proc(options: Build_Options) -> (Build_Result, Project_Error) {
 		return Build_Result{}, .Io_Error
 	}
 	defer delete(manifest_path)
-	sdl3_warning := strings.clone("SDL3 was not copied by the Odin migration build slice; the target machine must provide a compatible SDL3 runtime library.")
+	sdl3_bundled := copy_discoverable_sdl3(lib_path)
+	sdl3_warning := ""
+	if !sdl3_bundled {
+		sdl3_warning = strings.clone("SDL3 was not copied; the target machine must provide a compatible SDL3 runtime library.")
+	}
 	keep_sdl3_warning := false
 	defer {
 		if !keep_sdl3_warning {
-			delete(sdl3_warning)
+			if sdl3_warning != "" {
+				delete(sdl3_warning)
+			}
 		}
 	}
-	if !write_build_manifest(manifest_path, check.project.name, bundle_path, runtime_bundle_path, project_bundle_path, native_artifact, sdl3_warning) {
+	if !write_build_manifest(manifest_path, check.project.name, bundle_path, runtime_bundle_path, project_bundle_path, native_artifact, sdl3_bundled, sdl3_warning) {
 		return Build_Result{}, .Io_Error
 	}
 
@@ -261,6 +268,7 @@ build_project :: proc(options: Build_Options) -> (Build_Result, Project_Error) {
 		runtime_path = runtime_bundle_path,
 		launcher_path = launcher_path,
 		native_artifact = native_artifact,
+		sdl3_bundled = sdl3_bundled,
 		sdl3_warning = sdl3_warning,
 	}, .None
 }
@@ -523,13 +531,76 @@ launcher_file_name :: proc() -> string {
 
 write_launcher :: proc(path: string) -> bool {
 	when ODIN_OS == .Windows {
-		return os.write_entire_file(path, "@echo off\r\nset \"SCRIPT_DIR=%~dp0\"\r\n\"%SCRIPT_DIR%bin\\scrapbot.exe\" run \"%SCRIPT_DIR%project\" %*\r\n") == nil
+		return os.write_entire_file(path, "@echo off\r\nset \"SCRIPT_DIR=%~dp0\"\r\nset \"PATH=%SCRIPT_DIR%lib;%SCRIPT_DIR%bin;%PATH%\"\r\n\"%SCRIPT_DIR%bin\\scrapbot.exe\" run \"%SCRIPT_DIR%project\" %*\r\n") == nil
+	}
+	when ODIN_OS == .Darwin {
+		return os.write_entire_file(path, "#!/bin/sh\nset -eu\nDIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\nexport DYLD_LIBRARY_PATH=\"$DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}\"\nexec \"$DIR/bin/scrapbot\" run \"$DIR/project\" \"$@\"\n", os.Permissions_Read_All + os.Permissions_Write_All + os.Permissions_Execute_All) == nil
+	}
+	when ODIN_OS == .Linux {
+		return os.write_entire_file(path, "#!/bin/sh\nset -eu\nDIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\nexport LD_LIBRARY_PATH=\"$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\nexec \"$DIR/bin/scrapbot\" run \"$DIR/project\" \"$@\"\n", os.Permissions_Read_All + os.Permissions_Write_All + os.Permissions_Execute_All) == nil
 	}
 	ok := os.write_entire_file(path, "#!/bin/sh\nset -eu\nDIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\nexec \"$DIR/bin/scrapbot\" run \"$DIR/project\" \"$@\"\n", os.Permissions_Read_All + os.Permissions_Write_All + os.Permissions_Execute_All) == nil
 	return ok
 }
 
-write_build_manifest :: proc(path, project_name, bundle_path, runtime_path, project_path, native_artifact, sdl3_warning: string) -> bool {
+copy_discoverable_sdl3 :: proc(lib_path: string) -> bool {
+	when ODIN_OS == .Darwin {
+		candidates := [?]string{
+			"/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib",
+			"/opt/homebrew/opt/sdl3/lib/libSDL3.dylib",
+			"/opt/homebrew/lib/libSDL3.0.dylib",
+			"/opt/homebrew/lib/libSDL3.dylib",
+			"/usr/local/opt/sdl3/lib/libSDL3.0.dylib",
+			"/usr/local/opt/sdl3/lib/libSDL3.dylib",
+			"/usr/local/lib/libSDL3.0.dylib",
+			"/usr/local/lib/libSDL3.dylib",
+		}
+		return copy_discoverable_sdl3_from_candidates(lib_path, candidates[:])
+	}
+	when ODIN_OS == .Linux {
+		candidates := [?]string{
+			"/usr/lib/libSDL3.so.0",
+			"/usr/lib/libSDL3.so",
+			"/usr/lib/x86_64-linux-gnu/libSDL3.so.0",
+			"/usr/lib/x86_64-linux-gnu/libSDL3.so",
+			"/usr/lib/aarch64-linux-gnu/libSDL3.so.0",
+			"/usr/lib/aarch64-linux-gnu/libSDL3.so",
+		}
+		return copy_discoverable_sdl3_from_candidates(lib_path, candidates[:])
+	}
+	when ODIN_OS == .Windows {
+		candidates := [?]string{"SDL3.dll"}
+		return copy_discoverable_sdl3_from_candidates(lib_path, candidates[:])
+	}
+	return false
+}
+
+copy_discoverable_sdl3_from_candidates :: proc(lib_path: string, candidates: []string) -> bool {
+	copied := false
+	for candidate in candidates {
+		if !os.exists(candidate) {
+			continue
+		}
+		name := filepath.base(candidate)
+		if name == "" {
+			continue
+		}
+		dest_path, dest_err := filepath.join([]string{lib_path, name})
+		if dest_err != nil {
+			return copied
+		}
+		if os.exists(dest_path) {
+			os.remove(dest_path)
+		}
+		if os.copy_file(dest_path, candidate) == nil {
+			copied = true
+		}
+		delete(dest_path)
+	}
+	return copied
+}
+
+write_build_manifest :: proc(path, project_name, bundle_path, runtime_path, project_path, native_artifact: string, sdl3_bundled: bool, sdl3_warning: string) -> bool {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 	strings.write_string(&builder, "{\n")
@@ -558,10 +629,20 @@ write_build_manifest :: proc(path, project_name, bundle_path, runtime_path, proj
 		strings.write_rune(&builder, '"')
 	}
 	strings.write_string(&builder, "," + "\n")
-	strings.write_string(&builder, `  "sdl3_bundled": false,` + "\n")
-	strings.write_string(&builder, `  "sdl3_warning": "`)
-	write_json_string_contents(&builder, sdl3_warning)
-	strings.write_string(&builder, "\"\n}\n")
+	if sdl3_bundled {
+		strings.write_string(&builder, `  "sdl3_bundled": true,` + "\n")
+	} else {
+		strings.write_string(&builder, `  "sdl3_bundled": false,` + "\n")
+	}
+	strings.write_string(&builder, `  "sdl3_warning": `)
+	if sdl3_warning == "" {
+		strings.write_string(&builder, `null`)
+	} else {
+		strings.write_rune(&builder, '"')
+		write_json_string_contents(&builder, sdl3_warning)
+		strings.write_rune(&builder, '"')
+	}
+	strings.write_string(&builder, "\n}\n")
 	return os.write_entire_file(path, strings.to_string(builder)) == nil
 }
 

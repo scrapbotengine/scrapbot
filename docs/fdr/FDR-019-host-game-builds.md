@@ -48,7 +48,7 @@ Host game builds let users package a Scrapbot project into a runnable bundle for
 
 ### 5. Treat external runtime libraries as packaging work
 
-**Decision:** The first bundle copies discoverable SDL3 runtime libraries into `lib/`, and generated launchers add that directory to the platform dynamic library search path before running `bin/scrapbot`. If SDL3 cannot be discovered, the build records a warning.
+**Decision:** The first bundle copies discoverable SDL3 runtime libraries into `lib/`, and generated launchers add that directory to the platform dynamic library search path before running `bin/scrapbot`. If SDL3 cannot be discovered, the build records a warning. During the Odin migration, the Odin `scrapbot build` path follows the same host-library discovery, copy, launcher, and manifest contract.
 **Why:** The current runtime links SDL3 as a platform library. Copying known local libraries and making the launcher search `lib/` gives host bundles a practical same-platform relocation path without turning v1 into a platform installer.
 **Tradeoff:** Deeper app relocation, rpath/install-name repair, codesigning, and installer-grade dependency management remain future packaging work.
 

@@ -79,6 +79,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Structured diagnostics
 - Distribution
   - [x] Host game builds
+  - [x] SDL3 host-library bundling in Odin build
   - [ ] Package dependencies
   - [ ] Cross-platform exports
   - [ ] Console/mobile publishing

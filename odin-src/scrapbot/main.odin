@@ -964,6 +964,7 @@ print_build_result :: proc(result: Build_Result, format: Check_Output_Format) {
 		if result.native_artifact != "" {
 			fmt.printf("Native artifact: %s\n", result.native_artifact)
 		}
+		fmt.printf("SDL3 bundled: %v\n", result.sdl3_bundled)
 		if result.sdl3_warning != "" {
 			fmt.printf("Warning: %s\n", result.sdl3_warning)
 		}
@@ -986,9 +987,19 @@ print_build_result :: proc(result: Build_Result, format: Check_Output_Format) {
 			json_print(result.native_artifact, false)
 			fmt.print(`"`)
 		}
-		fmt.print(`,"sdl3_bundled":false,"sdl3_warning":"`)
-		json_print(result.sdl3_warning, false)
-		fmt.println(`"}`)
+		if result.sdl3_bundled {
+			fmt.print(`,"sdl3_bundled":true`)
+		} else {
+			fmt.print(`,"sdl3_bundled":false`)
+		}
+		fmt.print(`,"sdl3_warning":`)
+		if result.sdl3_warning == "" {
+			fmt.println(`null}`)
+		} else {
+			fmt.print(`"`)
+			json_print(result.sdl3_warning, false)
+			fmt.println(`"}`)
+		}
 	}
 }
 
