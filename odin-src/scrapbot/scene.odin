@@ -14,6 +14,7 @@ Scene :: struct {
 
 Scene_Parser :: struct {
 	scene:              Scene,
+	registry:           Runtime_Component_Registry,
 	entity_open:        bool,
 	entity_has_id:      bool,
 	entity_has_name:    bool,
@@ -23,21 +24,13 @@ Scene_Parser :: struct {
 	entity_ids:         [dynamic]string,
 }
 
-Scene_Field_Type :: enum {
-	Boolean,
-	Int,
-	Float,
-	Vec3,
-	String,
-}
-
-load_scene_file :: proc(path: string) -> (Scene, Project_Error) {
+load_scene_file :: proc(path: string, registry: Runtime_Component_Registry) -> (Scene, Project_Error) {
 	contents, read_err := os.read_entire_file(path, context.allocator)
 	if read_err != nil {
 		return Scene{}, .Missing_Default_Scene
 	}
 
-	scene, parse_err := parse_scene(string(contents))
+	scene, parse_err := parse_scene(string(contents), registry)
 	if parse_err != .None {
 		delete(contents)
 		return scene, parse_err
@@ -47,7 +40,7 @@ load_scene_file :: proc(path: string) -> (Scene, Project_Error) {
 	return scene, .None
 }
 
-parse_scene :: proc(contents: string) -> (Scene, Project_Error) {
+parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (Scene, Project_Error) {
 	name, name_ok := read_required_root_string(contents, "name")
 	if !name_ok || name == "" {
 		return Scene{}, .Invalid_Scene
@@ -57,7 +50,7 @@ parse_scene :: proc(contents: string) -> (Scene, Project_Error) {
 		return Scene{}, .Unsupported_Scene_Version
 	}
 
-	parser := Scene_Parser{scene = Scene{name = name}}
+	parser := Scene_Parser{scene = Scene{name = name}, registry = registry}
 	remaining := contents
 	for line in strings.split_lines_iterator(&remaining) {
 		trimmed := strings.trim_space(strip_line_comment(line))
@@ -91,6 +84,10 @@ parse_scene :: proc(contents: string) -> (Scene, Project_Error) {
 			}
 			component_id, ok := parse_component_table_header(trimmed)
 			if !ok || component_id == "" || !scene_component_can_be_authored(component_id) {
+				free_scene_parser(&parser)
+				return Scene{}, .Invalid_Scene
+			}
+			if _, found := runtime_find_component(parser.registry, component_id); !found {
 				free_scene_parser(&parser)
 				return Scene{}, .Invalid_Scene
 			}
@@ -196,7 +193,7 @@ flush_scene_component :: proc(parser: ^Scene_Parser) -> Project_Error {
 	if parser.active_component == "" {
 		return .None
 	}
-	if !scene_component_has_required_fields(parser.active_component, parser.active_field_names[:]) {
+	if !scene_component_has_required_fields(parser.registry, parser.active_component, parser.active_field_names[:]) {
 		return .Invalid_Scene
 	}
 	parser.active_component = ""
@@ -205,14 +202,11 @@ flush_scene_component :: proc(parser: ^Scene_Parser) -> Project_Error {
 }
 
 read_scene_component_field :: proc(parser: ^Scene_Parser, key, value: string) -> Project_Error {
-	if !scene_component_is_known_engine_authored(parser.active_component) {
-		return .None
-	}
 	if has_scene_component_field(parser.active_field_names[:], key) {
 		return .Invalid_Scene
 	}
-	field_type, field_ok := scene_component_field_type(parser.active_component, key)
-	if !field_ok || !scene_component_value_has_type(value, field_type) {
+	field_definition, field_ok := scene_component_field_definition(parser.registry, parser.active_component, key)
+	if !field_ok || !scene_component_value_has_runtime_type(value, field_definition.value_type) {
 		return .Invalid_Scene
 	}
 	if !scene_component_value_is_allowed(parser.active_component, key, value) {
@@ -368,7 +362,7 @@ scene_component_is_known_engine_authored :: proc(component_id: string) -> bool {
 	return false
 }
 
-scene_component_has_required_fields :: proc(component_id: string, fields: []string) -> bool {
+scene_component_has_required_fields :: proc(registry: Runtime_Component_Registry, component_id: string, fields: []string) -> bool {
 	switch component_id {
 	case "scrapbot.transform":
 		return has_scene_component_field(fields, "position") &&
@@ -451,158 +445,32 @@ scene_component_has_required_fields :: proc(component_id: string, fields: []stri
 		       has_scene_component_field(fields, "size") &&
 		       has_scene_component_field(fields, "color")
 	}
+	definition, found := runtime_find_component(registry, component_id)
+	if !found {
+		return false
+	}
+	for field in definition.fields {
+		if !has_scene_component_field(fields, field.name) {
+			return false
+		}
+	}
 	return true
 }
 
-scene_component_field_type :: proc(component_id, field_name: string) -> (Scene_Field_Type, bool) {
-	switch component_id {
-	case "scrapbot.transform":
-		return scene_field_type_for(field_name, []string{"position", "rotation", "scale"}, .Vec3)
-	case "scrapbot.render.cube":
-		return scene_field_type_for(field_name, []string{"color"}, .Vec3)
-	case "scrapbot.geometry.primitive":
-		if field_name == "primitive" {
-			return .String, true
-		}
-		return scene_field_type_for(field_name, []string{"segments", "rings"}, .Int)
-	case "scrapbot.material.surface":
-		return scene_field_type_for(field_name, []string{"base_color"}, .Vec3)
-	case "scrapbot.renderer":
-		if scene_field_name_is_one_of(field_name, []string{
-			"hdr",
-			"postprocess_enabled",
-			"bloom_enabled",
-			"vignette_enabled",
-			"chromatic_aberration_enabled",
-		}) {
-			return .Boolean, true
-		}
-		if scene_field_name_is_one_of(field_name, []string{"tone_mapping", "antialiasing"}) {
-			return .String, true
-		}
-		return scene_field_type_for(field_name, []string{
-			"exposure",
-			"bloom_threshold",
-			"bloom_intensity",
-			"bloom_radius",
-			"vignette_strength",
-			"vignette_radius",
-			"chromatic_aberration_strength",
-		}, .Float)
-	case "scrapbot.camera":
-		return scene_field_type_for(field_name, []string{"fov_y_degrees", "near", "far"}, .Float)
-	case "scrapbot.light.directional":
-		if scene_field_name_is_one_of(field_name, []string{"direction", "color"}) {
-			return .Vec3, true
-		}
-		return scene_field_type_for(field_name, []string{"intensity", "ambient"}, .Float)
-	case "scrapbot.shadow.caster", "scrapbot.shadow.receiver", "scrapbot.ui.button":
-		return .String, false
-	case "scrapbot.ui.canvas":
-		if field_name == "design_size" {
-			return .Vec3, true
-		}
-		if field_name == "scale_mode" {
-			return .String, true
-		}
-	case "scrapbot.ui.rect":
-		if scene_field_name_is_one_of(field_name, []string{"position", "size", "color"}) {
-			return .Vec3, true
-		}
-		if field_name == "corner_radius" {
-			return .Float, true
-		}
-	case "scrapbot.ui.border":
-		if field_name == "color" {
-			return .Vec3, true
-		}
-		if field_name == "thickness" {
-			return .Float, true
-		}
-	case "scrapbot.ui.text":
-		if scene_field_name_is_one_of(field_name, []string{"position", "color"}) {
-			return .Vec3, true
-		}
-		if field_name == "size" {
-			return .Float, true
-		}
-		if field_name == "value" {
-			return .String, true
-		}
-	case "scrapbot.ui.hit_area":
-		return scene_field_type_for(field_name, []string{"position", "size"}, .Vec3)
-	case "scrapbot.ui.command":
-		return scene_field_type_for(field_name, []string{"command"}, .String)
-	case "scrapbot.ui.scroll_view":
-		return scene_field_type_for(field_name, []string{"position", "size", "content_offset"}, .Vec3)
-	case "scrapbot.ui.vgroup", "scrapbot.ui.hgroup":
-		if scene_field_name_is_one_of(field_name, []string{"position", "size", "padding"}) {
-			return .Vec3, true
-		}
-		if field_name == "spacing" {
-			return .Float, true
-		}
-	case "scrapbot.ui.table":
-		if scene_field_name_is_one_of(field_name, []string{"position", "size", "padding"}) {
-			return .Vec3, true
-		}
-		if field_name == "columns" {
-			return .Int, true
-		}
-		return scene_field_type_for(field_name, []string{
-			"row_height",
-			"column_gap",
-			"row_gap",
-			"first_column_ratio",
-		}, .Float)
-	case "scrapbot.ui.stack":
-		if scene_field_name_is_one_of(field_name, []string{"position", "padding"}) {
-			return .Vec3, true
-		}
-		if field_name == "spacing" {
-			return .Float, true
-		}
-		if field_name == "direction" {
-			return .String, true
-		}
-	case "scrapbot.ui.layout.item":
-		if field_name == "parent" || field_name == "align" {
-			return .String, true
-		}
-		if field_name == "order" {
-			return .Int, true
-		}
-		if scene_field_name_is_one_of(field_name, []string{"min_size", "preferred_size", "max_size", "margin"}) {
-			return .Vec3, true
-		}
-		return scene_field_type_for(field_name, []string{"grow", "shrink"}, .Float)
-	case "scrapbot.ui.spacer":
-		return scene_field_type_for(field_name, []string{"size"}, .Vec3)
-	case "scrapbot.ui.text_block":
-		if field_name == "size" {
-			return .Vec3, true
-		}
-		return scene_field_type_for(field_name, []string{"horizontal_align", "vertical_align"}, .String)
-	case "scrapbot.ui.toggle":
-		return scene_field_type_for(field_name, []string{"checked"}, .Boolean)
-	case "scrapbot.ui.progress_bar":
-		if field_name == "fill_color" {
-			return .Vec3, true
-		}
-		return scene_field_type_for(field_name, []string{"value", "max"}, .Float)
-	case "scrapbot.ui.separator":
-		if scene_field_name_is_one_of(field_name, []string{"position", "size", "color"}) {
-			return .Vec3, true
+scene_component_field_definition :: proc(
+	registry: Runtime_Component_Registry,
+	component_id, field_name: string,
+) -> (Runtime_Component_Field_Definition, bool) {
+	definition, found := runtime_find_component(registry, component_id)
+	if !found {
+		return Runtime_Component_Field_Definition{}, false
+	}
+	for field in definition.fields {
+		if field.name == field_name {
+			return field, true
 		}
 	}
-	return .String, false
-}
-
-scene_field_type_for :: proc(field_name: string, candidates: []string, field_type: Scene_Field_Type) -> (Scene_Field_Type, bool) {
-	if scene_field_name_is_one_of(field_name, candidates) {
-		return field_type, true
-	}
-	return .String, false
+	return Runtime_Component_Field_Definition{}, false
 }
 
 scene_field_name_is_one_of :: proc(field_name: string, candidates: []string) -> bool {
@@ -614,7 +482,7 @@ scene_field_name_is_one_of :: proc(field_name: string, candidates: []string) -> 
 	return false
 }
 
-scene_component_value_has_type :: proc(value: string, field_type: Scene_Field_Type) -> bool {
+scene_component_value_has_runtime_type :: proc(value: string, field_type: Runtime_Field_Type) -> bool {
 	switch field_type {
 	case .Boolean:
 		return value == "true" || value == "false"

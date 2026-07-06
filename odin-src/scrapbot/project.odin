@@ -60,16 +60,22 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		return Project_Check_Result{project = project, err = .Missing_Default_Scene}
 	}
 
-	scene, scene_err := load_scene_file(default_scene_path)
-	if scene_err != .None {
-		return Project_Check_Result{project = project, scene = scene, err = scene_err}
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	engine_err := runtime_register_engine_components(&registry)
+	if engine_err != .None {
+		return Project_Check_Result{project = project, err = .Invalid_Scene}
 	}
 
 	for script_path in project.scripts {
 		full_path := project_relative_path(project.root_path, script_path)
 		defer delete(full_path)
 		if !os.exists(full_path) {
-			return Project_Check_Result{project = project, scene = scene, err = .Missing_Script}
+			return Project_Check_Result{project = project, err = .Missing_Script}
+		}
+		script_err := register_script_components_from_file(&registry, full_path)
+		if script_err != .None {
+			return Project_Check_Result{project = project, err = script_err}
 		}
 	}
 
@@ -77,7 +83,11 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		full_path := project_relative_path(project.root_path, project.native)
 		defer delete(full_path)
 		if !os.exists(full_path) {
-			return Project_Check_Result{project = project, scene = scene, err = .Missing_Native}
+			return Project_Check_Result{project = project, err = .Missing_Native}
+		}
+		native_err := register_native_components_from_file(&registry, full_path)
+		if native_err != .None {
+			return Project_Check_Result{project = project, err = native_err}
 		}
 	}
 
@@ -85,8 +95,13 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		full_path := project_relative_path(project.root_path, project.native_artifact)
 		defer delete(full_path)
 		if !os.exists(full_path) {
-			return Project_Check_Result{project = project, scene = scene, err = .Missing_Native_Artifact}
+			return Project_Check_Result{project = project, err = .Missing_Native_Artifact}
 		}
+	}
+
+	scene, scene_err := load_scene_file(default_scene_path, registry)
+	if scene_err != .None {
+		return Project_Check_Result{project = project, scene = scene, err = scene_err}
 	}
 
 	return Project_Check_Result{project = project, scene = scene}

@@ -138,8 +138,7 @@ version = 1
 id = "entity"
 name = "Entity"
 
-[entities.components.marker]
-value = true
+[entities.components."scrapbot.ui.button"]
 `,
 	)
 }

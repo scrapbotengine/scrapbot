@@ -60,15 +60,13 @@ version = 1
 id = "dupe"
 name = "One"
 
-[entities.components.marker]
-value = true
+[entities.components."scrapbot.ui.button"]
 
 [[entities]]
 id = "dupe"
 name = "Two"
 
-[entities.components.marker]
-value = true
+[entities.components."scrapbot.ui.button"]
 `,
 	)
 
@@ -302,14 +300,108 @@ color = [1.0, 1.0, 1.0]
 }
 
 @(test)
-test_check_project_allows_project_local_components_during_registry_migration :: proc(t: ^testing.T) {
-	root := make_test_project(t, "project-local-component")
+test_check_project_rejects_undeclared_project_local_component :: proc(t: ^testing.T) {
+	root := make_test_project(t, "undeclared-project-local-component")
 	defer os.remove_all(root)
 	defer delete(root)
 
 	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\n")
 	write_basic_scene_with_component(t, root, `[entities.components.health]
-current = "schema validation pending"
+current = 5.0
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.Invalid_Scene)
+}
+
+@(test)
+test_check_project_accepts_script_defined_scene_component_schema :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-defined-scene-component")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scripts/gameplay.luau", `--!strict
+
+local Health = ecs.component("health", {
+  fields = ecs.fields({
+    current = "f32",
+    max = "int",
+    alive = "boolean",
+    label = "string",
+    direction = "vec3",
+  }),
+})
+`)
+	write_basic_scene_with_component(t, root, `[entities.components.health]
+current = 5.0
+max = 10
+alive = true
+label = "ready"
+direction = [0.0, 1.0, 0.0]
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+}
+
+@(test)
+test_check_project_rejects_script_defined_scene_component_field_mismatch :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-defined-scene-component-mismatch")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scripts/gameplay.luau", `--!strict
+
+ecs.component("health", {
+  fields = ecs.fields({
+    current = "f32",
+  }),
+})
+`)
+	write_basic_scene_with_component(t, root, `[entities.components.health]
+current = "not a float"
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.Invalid_Scene)
+}
+
+@(test)
+test_check_project_accepts_native_defined_scene_component_schema :: proc(t: ^testing.T) {
+	root := make_test_project(t, "native-defined-scene-component")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\n")
+	write_file(t, root, "native/game.zig", `const scrapbot = @import("scrapbot_native");
+
+const stats_fields = [_]scrapbot.ComponentField{
+    .{ .name = "count", .field_type = .int },
+    .{ .name = "enabled", .field_type = .boolean },
+    .{ .name = "speed", .field_type = .float },
+    .{ .name = "direction", .field_type = .vec3 },
+    .{ .name = "label", .field_type = .string },
+};
+
+export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int {
+    scrapbot.registerComponent(api, .{
+        .id = "native_stats",
+        .fields = stats_fields[0..],
+    }) catch return 0;
+    return 1;
+}
+`)
+	write_basic_scene_with_component(t, root, `[entities.components.native_stats]
+count = 2
+enabled = true
+speed = 1.5
+direction = [1.0, 2.0, 3.0]
+label = "ready"
 `)
 
 	result := check_project(root)
