@@ -44,6 +44,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin render command validation slice
   - [x] Odin visual-test command validation slice
   - [x] Odin native declaration registration slice
+  - [x] Odin native execution boundary diagnostics slice
   - [ ] Odin CLI feature parity
   - [ ] Zig engine implementation removed
 - Runtime
@@ -96,6 +97,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
 - Native
   - [x] Native Zig modules
   - [x] Native Odin component/system declaration scanning
+  - [x] Native Odin pending-execution diagnostics
   - [ ] Native Odin module execution
   - [x] Native hot reload
   - [ ] Native extension examples

@@ -32,6 +32,7 @@
 - [x] Odin `render` and `render-test` can validate projects, run bounded frame simulation, check selected entities, and report pending backend render stats.
 - [x] Odin `visual-test` can validate projects, expected/actual paths, selected entities, bounded frame simulation, and pending backend visual-comparison stats.
 - [x] Odin `check` can statically register project-local native Odin component and system declarations from `native = "native/game.odin"`.
+- [x] Odin runtime reports a structured runtime diagnostic when scheduled Odin-native systems reach the pending execution boundary.
 - [x] Shared ECS runtime with generation-aware entities, component tables, system schedules, and script/native access.
 - [x] Live reload for project metadata, scenes, scripts, and project-local native Zig modules.
 - [x] WebGPU renderer with headful SDL windows, offscreen render verification, batching, shadows, and postprocess settings.
@@ -74,8 +75,9 @@
 - [x] Port first-pass render/render-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass visual-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass project-local native Odin component/system declaration registration.
+- [x] Port first-pass pending Odin-native system execution diagnostics.
 - [ ] Port remaining editor-shell input routing for Odin test replay, including entity selection, inspector selection, scrolling, splitter dragging, gizmo capture, and text editing.
-- [ ] Port remaining script runtime diagnostics from Zig to Odin, including native and reload execution paths.
+- [ ] Port remaining script runtime diagnostics from Zig to Odin, including reload execution paths and native execution once native systems can run.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [ ] Port Odin render image output, offscreen image verification, and hidden headful smoke paths.
 - [ ] Execute project-local native Odin systems and replace the Zig native build/reload path.

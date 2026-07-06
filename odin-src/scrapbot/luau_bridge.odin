@@ -553,18 +553,27 @@ script_program_run_schedule :: proc(
 	schedule: Runtime_System_Schedule,
 	delta_seconds: f32,
 ) -> Script_Run_Result {
-	if program.vm == nil {
-		return Script_Run_Result{ok = true}
-	}
 	for batch in schedule.batches {
 		for system in batch.systems {
 			if system.runner.kind == .None {
 				continue
 			}
-			if system.runner.kind != .Luau {
+			if system.runner.kind == .Native {
 				return Script_Run_Result{
 					ok = false,
 					diagnostic = script_runtime_diagnostic("", system.id, 0, "native Odin system execution is not ported yet"),
+				}
+			}
+			if system.runner.kind != .Luau {
+				return Script_Run_Result{
+					ok = false,
+					diagnostic = script_runtime_diagnostic("", system.id, 0, "unsupported system runner"),
+				}
+			}
+			if program.vm == nil {
+				return Script_Run_Result{
+					ok = false,
+					diagnostic = script_runtime_diagnostic("", system.id, 0, "script VM is not available for scheduled Luau system"),
 				}
 			}
 

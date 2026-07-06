@@ -308,6 +308,38 @@ ecs.system("read_missing_field", {
 }
 
 @(test)
+test_run_script_simulation_reports_native_odin_execution_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-native-odin-diagnostic")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.odin\"\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "native/game.odin", `package game
+
+scrapbot_register :: proc(api: ^scrapbot.Register_Api) -> bool {
+    scrapbot.register_system(api, {
+        id = "native_tick",
+        phase = .Update,
+    })
+    return true
+}
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	testing.expect_value(t, runtime_system_schedule_system_count(result.update_schedule), 1)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.completed_frames, 0)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.system_id, "native_tick")
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "native Odin system execution is not ported yet"))
+}
+
+@(test)
 test_run_script_simulation_supports_direct_vec3_methods :: proc(t: ^testing.T) {
 	root := make_test_project(t, "script-simulation-direct-vec3")
 	defer os.remove_all(root)
