@@ -23,6 +23,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin ECS component storage/query slice
   - [x] Odin ECS scheduling/deferred mutation slice
   - [x] Odin script system registration/schedule check slice
+  - [x] Odin structured script validation diagnostics slice
   - [x] Odin deterministic step command slice
   - [x] Odin benchmark command slice
   - [x] Odin test discovery/manifest command slice

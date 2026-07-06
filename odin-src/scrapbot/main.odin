@@ -239,7 +239,7 @@ run_step :: proc(args: []string, emit_output: bool) -> int {
 	defer free_check_result(result)
 	if result.err != .None {
 		if emit_output {
-			print_check_error(result.err, options.target_path, options.format)
+			print_project_check_error(result, options.target_path, options.format)
 		}
 		return 1
 	}
@@ -262,7 +262,7 @@ run_bench :: proc(args: []string, emit_output: bool) -> int {
 	defer free_check_result(result)
 	if result.err != .None {
 		if emit_output {
-			print_check_error(result.err, options.target_path, options.format)
+			print_project_check_error(result, options.target_path, options.format)
 		}
 		return 1
 	}
@@ -314,7 +314,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 	defer free_check_result(result)
 	if result.err != .None {
 		if emit_output {
-			print_check_error(result.err, options.target_path, .Text)
+			print_project_check_error(result, options.target_path, .Text)
 		}
 		return 1
 	}
@@ -332,6 +332,18 @@ run_check :: proc(args: []string, emit_output: bool) -> int {
 	i := 0
 	for i < len(args) {
 		arg := args[i]
+		if strings.has_prefix(arg, "--format=") {
+			parsed, ok := parse_output_format(arg[len("--format="):])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --format: %s\n", arg[len("--format="):])
+				}
+				return 1
+			}
+			format = parsed
+			i += 1
+			continue
+		}
 		if arg == "--format" {
 			if i + 1 >= len(args) {
 				if emit_output {
@@ -339,17 +351,14 @@ run_check :: proc(args: []string, emit_output: bool) -> int {
 				}
 				return 1
 			}
-			switch args[i + 1] {
-			case "text":
-				format = .Text
-			case "json":
-				format = .JSON
-			case:
+			parsed, ok := parse_output_format(args[i + 1])
+			if !ok {
 				if emit_output {
 					fmt.eprintf("invalid --format: %s\n", args[i + 1])
 				}
 				return 1
 			}
+			format = parsed
 			i += 2
 			continue
 		}
@@ -373,7 +382,7 @@ run_check :: proc(args: []string, emit_output: bool) -> int {
 	defer free_check_result(result)
 	if result.err != .None {
 		if emit_output {
-			print_check_error(result.err, target_path, format)
+			print_project_check_error(result, target_path, format)
 		}
 		return 1
 	}
@@ -761,6 +770,80 @@ print_check_error :: proc(err: Project_Error, target_path: string, format: Check
 		json_print(target_path, true)
 		fmt.eprintln(`"}`)
 	}
+}
+
+print_project_check_error :: proc(result: Project_Check_Result, target_path: string, format: Check_Output_Format) {
+	if !script_diagnostic_present(result.diagnostic) {
+		print_check_error(result.err, target_path, format)
+		return
+	}
+
+	diagnostic := result.diagnostic
+	switch format {
+	case .Text:
+		fmt.eprintf("Project invalid: %s: %s", target_path, script_diagnostic_stage_label(diagnostic.stage))
+		if diagnostic.path != "" {
+			fmt.eprintf(" in %s", diagnostic.path)
+		}
+		if diagnostic.system_id != "" {
+			fmt.eprintf(" system %s", diagnostic.system_id)
+		}
+		if diagnostic.has_start {
+			fmt.eprintf(":%d", diagnostic.start.line)
+			if diagnostic.start.has_column {
+				fmt.eprintf(":%d", diagnostic.start.column)
+			}
+		}
+		fmt.eprintf(": %s\n", diagnostic.message)
+	case .JSON:
+		fmt.eprint(`{"ok":false,"diagnostic":`)
+		print_script_diagnostic_json(diagnostic, target_path, true)
+		fmt.eprintln(`}`)
+	}
+}
+
+print_script_diagnostic_json :: proc(diagnostic: Script_Diagnostic, root_path: string, stderr: bool) {
+	print_json_fragment(`{"stage":"`, stderr)
+	json_print(script_diagnostic_stage_name(diagnostic.stage), stderr)
+	print_json_fragment(`","root":"`, stderr)
+	json_print(root_path, stderr)
+	print_json_fragment(`"`, stderr)
+	if diagnostic.path != "" {
+		print_json_fragment(`,"path":"`, stderr)
+		json_print(diagnostic.path, stderr)
+		print_json_fragment(`"`, stderr)
+	}
+	if diagnostic.system_id != "" {
+		print_json_fragment(`,"system_id":"`, stderr)
+		json_print(diagnostic.system_id, stderr)
+		print_json_fragment(`"`, stderr)
+	}
+	if diagnostic.has_start {
+		fmt_print_json_position(diagnostic.start, "start", stderr)
+	}
+	print_json_fragment(`,"message":"`, stderr)
+	json_print(diagnostic.message, stderr)
+	print_json_fragment(`"}`, stderr)
+}
+
+fmt_print_json_position :: proc(position: Script_Diagnostic_Position, key: string, stderr: bool) {
+	print_json_fragment(`,"`, stderr)
+	json_print(key, stderr)
+	print_json_fragment(`":{"line":`, stderr)
+	if stderr {
+		fmt.eprintf(`%d`, position.line)
+	} else {
+		fmt.printf(`%d`, position.line)
+	}
+	if position.has_column {
+		print_json_fragment(`,"column":`, stderr)
+		if stderr {
+			fmt.eprintf(`%d`, position.column)
+		} else {
+			fmt.printf(`%d`, position.column)
+		}
+	}
+	print_json_fragment(`}`, stderr)
 }
 
 json_print :: proc(value: string, stderr: bool) {

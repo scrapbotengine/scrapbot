@@ -53,6 +53,7 @@ Project_Check_Result :: struct {
 	update_schedule:       Runtime_System_Schedule,
 	fixed_update_schedule: Runtime_System_Schedule,
 	render_schedule:       Runtime_System_Schedule,
+	diagnostic:            Script_Diagnostic,
 	err:                   Project_Error,
 }
 
@@ -81,9 +82,9 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		if !os.exists(full_path) {
 			return Project_Check_Result{project = project, err = .Missing_Script}
 		}
-		script_err := register_script_components_from_file(&registry, full_path)
+		script_err, diagnostic := register_script_components_from_file_detailed(&registry, full_path, script_path)
 		if script_err != .None {
-			return Project_Check_Result{project = project, err = script_err}
+			return Project_Check_Result{project = project, diagnostic = diagnostic, err = script_err}
 		}
 	}
 
@@ -114,25 +115,45 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 
 	startup_schedule, startup_schedule_err := runtime_build_system_schedule(registry, .Startup)
 	if startup_schedule_err != .None {
-		return Project_Check_Result{project = project, scene = scene, err = .Invalid_Script}
+		return Project_Check_Result{
+			project = project,
+			scene = scene,
+			diagnostic = script_schedule_diagnostic(.Startup, "failed to build script schedule"),
+			err = .Invalid_Script,
+		}
 	}
 	update_schedule, update_schedule_err := runtime_build_system_schedule(registry, .Update)
 	if update_schedule_err != .None {
 		runtime_system_schedule_free(startup_schedule)
-		return Project_Check_Result{project = project, scene = scene, err = .Invalid_Script}
+		return Project_Check_Result{
+			project = project,
+			scene = scene,
+			diagnostic = script_schedule_diagnostic(.Update, "failed to build script schedule"),
+			err = .Invalid_Script,
+		}
 	}
 	fixed_update_schedule, fixed_update_schedule_err := runtime_build_system_schedule(registry, .Fixed_Update)
 	if fixed_update_schedule_err != .None {
 		runtime_system_schedule_free(update_schedule)
 		runtime_system_schedule_free(startup_schedule)
-		return Project_Check_Result{project = project, scene = scene, err = .Invalid_Script}
+		return Project_Check_Result{
+			project = project,
+			scene = scene,
+			diagnostic = script_schedule_diagnostic(.Fixed_Update, "failed to build script schedule"),
+			err = .Invalid_Script,
+		}
 	}
 	render_schedule, render_schedule_err := runtime_build_system_schedule(registry, .Render)
 	if render_schedule_err != .None {
 		runtime_system_schedule_free(fixed_update_schedule)
 		runtime_system_schedule_free(update_schedule)
 		runtime_system_schedule_free(startup_schedule)
-		return Project_Check_Result{project = project, scene = scene, err = .Invalid_Script}
+		return Project_Check_Result{
+			project = project,
+			scene = scene,
+			diagnostic = script_schedule_diagnostic(.Render, "failed to build script schedule"),
+			err = .Invalid_Script,
+		}
 	}
 
 	return Project_Check_Result{
@@ -237,6 +258,8 @@ free_project :: proc(project: Project) {
 }
 
 free_check_result :: proc(result: Project_Check_Result) {
+	diagnostic := result.diagnostic
+	script_diagnostic_free(&diagnostic)
 	free_project(result.project)
 	free_scene(result.scene)
 	runtime_system_schedule_free(result.startup_schedule)

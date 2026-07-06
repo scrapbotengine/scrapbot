@@ -193,3 +193,36 @@ test_component_scan_rejects_script_system_unknown_ref :: proc(t: ^testing.T) {
 	err := register_script_components_from_file(&registry, script_path)
 	testing.expect_value(t, err, Project_Error.Invalid_Script)
 }
+
+@(test)
+test_component_scan_returns_script_system_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "component-scan-script-system-diagnostic")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, "scripts/gameplay.luau", `local Flag = ecs.component("flag", {
+  fields = ecs.fields({}),
+})
+
+ecs.system("broken", {
+  phase = "late_update",
+  writes = ecs.refs(Flag),
+})
+`)
+
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	script_path := project_relative_path(root, "scripts/gameplay.luau")
+	defer delete(script_path)
+	err, diagnostic := register_script_components_from_file_detailed(&registry, script_path, "scripts/gameplay.luau")
+	defer {
+		mutable_diagnostic := diagnostic
+		script_diagnostic_free(&mutable_diagnostic)
+	}
+	testing.expect_value(t, err, Project_Error.Invalid_Script)
+	testing.expect_value(t, diagnostic.stage, Script_Diagnostic_Stage.Registration)
+	testing.expect_value(t, diagnostic.path, "scripts/gameplay.luau")
+	testing.expect_value(t, diagnostic.system_id, "broken")
+	testing.expect_value(t, diagnostic.start.line, 5)
+	testing.expect_value(t, diagnostic.message, "system phase is not supported")
+}

@@ -14,9 +14,19 @@ Script_Query_Binding :: struct {
 }
 
 register_script_components_from_file :: proc(registry: ^Runtime_Component_Registry, path: string) -> Project_Error {
-	contents, read_err := os.read_entire_file(path, context.allocator)
+	err, diagnostic := register_script_components_from_file_detailed(registry, path, path)
+	script_diagnostic_free(&diagnostic)
+	return err
+}
+
+register_script_components_from_file_detailed :: proc(
+	registry: ^Runtime_Component_Registry,
+	file_system_path: string,
+	diagnostic_path: string,
+) -> (Project_Error, Script_Diagnostic) {
+	contents, read_err := os.read_entire_file(file_system_path, context.allocator)
 	if read_err != nil {
-		return .Missing_Script
+		return .Missing_Script, Script_Diagnostic{}
 	}
 	defer delete(contents)
 
@@ -36,7 +46,7 @@ register_script_components_from_file :: proc(registry: ^Runtime_Component_Regist
 		fragment := remaining[component_index:]
 		open_index := strings.index_byte(fragment, '(')
 		if open_index < 0 {
-			return .Invalid_Script
+			return .Invalid_Script, script_registration_diagnostic(diagnostic_path, string(contents), remaining_offset + component_index, "ecs.component call is missing '('")
 		}
 		after_open := strings.trim_space(fragment[open_index + 1:])
 		component_id, id_len, id_ok := parse_quoted_prefix(after_open)
@@ -64,12 +74,12 @@ register_script_components_from_file :: proc(registry: ^Runtime_Component_Regist
 			fields_fragment := after_id[fields_call_index + len("ecs.fields({"):]
 			fields_end := strings.index(fields_fragment, "})")
 			if fields_end < 0 {
-				return .Invalid_Script
+				return .Invalid_Script, script_registration_diagnostic(diagnostic_path, string(contents), remaining_offset + component_index, "ecs.fields table is missing closing '})'")
 			}
 			fields_ok: bool
 			fields, fields_ok = parse_script_field_definitions(fields_fragment[:fields_end])
 			if !fields_ok {
-				return .Invalid_Script
+				return .Invalid_Script, script_registration_diagnostic(diagnostic_path, string(contents), remaining_offset + component_index, "ecs.fields contains an unsupported field declaration")
 			}
 			fields_owned = true
 			next_remaining = fields_fragment[fields_end + len("})"):]
@@ -86,21 +96,21 @@ register_script_components_from_file :: proc(registry: ^Runtime_Component_Regist
 			delete(fields)
 		}
 		if err != .None {
-			return .Invalid_Script
+			return .Invalid_Script, script_registration_diagnostic(diagnostic_path, string(contents), remaining_offset + component_index, "script component declaration is invalid")
 		}
 		remaining_offset += len(string(contents)[remaining_offset:]) - len(next_remaining)
 		remaining = next_remaining
 	}
 
-	query_err := register_script_query_bindings(string(contents), component_bindings[:], &query_bindings)
+	query_err, query_diagnostic := register_script_query_bindings(string(contents), diagnostic_path, component_bindings[:], &query_bindings)
 	if query_err != .None {
-		return query_err
+		return query_err, query_diagnostic
 	}
-	system_err := register_script_systems_from_contents(registry, string(contents), component_bindings[:], query_bindings[:])
+	system_err, system_diagnostic := register_script_systems_from_contents(registry, string(contents), diagnostic_path, component_bindings[:], query_bindings[:])
 	if system_err != .None {
-		return system_err
+		return system_err, system_diagnostic
 	}
-	return .None
+	return .None, Script_Diagnostic{}
 }
 
 register_native_components_from_file :: proc(registry: ^Runtime_Component_Registry, path: string) -> Project_Error {
@@ -165,9 +175,10 @@ register_native_components_from_file :: proc(registry: ^Runtime_Component_Regist
 
 register_script_query_bindings :: proc(
 	contents: string,
+	diagnostic_path: string,
 	component_bindings: []Script_Component_Binding,
 	query_bindings: ^[dynamic]Script_Query_Binding,
-) -> Project_Error {
+) -> (Project_Error, Script_Diagnostic) {
 	remaining := contents
 	remaining_offset := 0
 	for {
@@ -179,33 +190,34 @@ register_script_query_bindings :: proc(
 		fragment := remaining[query_index:]
 		open_index := strings.index_byte(fragment, '(')
 		if open_index < 0 {
-			return .Invalid_Script
+			return .Invalid_Script, script_registration_diagnostic(diagnostic_path, contents, absolute_index, "ecs.query call is missing '('")
 		}
 		after_open := fragment[open_index + 1:]
 		close_index := strings.index_byte(after_open, ')')
 		if close_index < 0 {
-			return .Invalid_Script
+			return .Invalid_Script, script_registration_diagnostic(diagnostic_path, contents, absolute_index, "ecs.query call is missing ')'")
 		}
 		query_name, query_name_ok := parse_luau_assignment_name_before(contents, absolute_index)
 		if query_name_ok {
 			ids, ids_ok := parse_script_component_ref_list(after_open[:close_index], component_bindings)
 			if !ids_ok {
-				return .Invalid_Script
+				return .Invalid_Script, script_registration_diagnostic(diagnostic_path, contents, absolute_index, "ecs.query references an unknown or invalid component")
 			}
 			append(query_bindings, Script_Query_Binding{name = query_name, component_ids = ids})
 		}
 		remaining_offset = absolute_index + open_index + close_index + 2
 		remaining = contents[remaining_offset:]
 	}
-	return .None
+	return .None, Script_Diagnostic{}
 }
 
 register_script_systems_from_contents :: proc(
 	registry: ^Runtime_Component_Registry,
 	contents: string,
+	diagnostic_path: string,
 	component_bindings: []Script_Component_Binding,
 	query_bindings: []Script_Query_Binding,
-) -> Project_Error {
+) -> (Project_Error, Script_Diagnostic) {
 	remaining := contents
 	remaining_offset := 0
 	for {
@@ -217,12 +229,12 @@ register_script_systems_from_contents :: proc(
 		fragment := remaining[system_index:]
 		open_index := strings.index_byte(fragment, '(')
 		if open_index < 0 {
-			return .Invalid_Script
+			return .Invalid_Script, script_registration_diagnostic(diagnostic_path, contents, absolute_index, "ecs.system call is missing '('")
 		}
 		after_open := strings.trim_space(fragment[open_index + 1:])
 		system_id, id_len, id_ok := parse_quoted_prefix(after_open)
 		if !id_ok {
-			return .Invalid_Script
+			return .Invalid_Script, script_registration_diagnostic(diagnostic_path, contents, absolute_index, "ecs.system id must be a quoted string")
 		}
 		body_start_offset := absolute_index + open_index + 1 + len(fragment[open_index + 1:]) - len(after_open) + id_len
 		after_id := contents[body_start_offset:]
@@ -232,23 +244,26 @@ register_script_systems_from_contents :: proc(
 			body = after_id[:next_system_index]
 		}
 
-		err := register_script_system_from_body(registry, system_id, body, component_bindings, query_bindings)
+		err, diagnostic := register_script_system_from_body(registry, system_id, body, contents, diagnostic_path, absolute_index, component_bindings, query_bindings)
 		if err != .None {
-			return err
+			return err, diagnostic
 		}
 		remaining_offset = body_start_offset + len(body)
 		remaining = contents[remaining_offset:]
 	}
-	return .None
+	return .None, Script_Diagnostic{}
 }
 
 register_script_system_from_body :: proc(
 	registry: ^Runtime_Component_Registry,
 	system_id: string,
 	body: string,
+	contents: string,
+	diagnostic_path: string,
+	absolute_index: int,
 	component_bindings: []Script_Component_Binding,
 	query_bindings: []Script_Query_Binding,
-) -> Project_Error {
+) -> (Project_Error, Script_Diagnostic) {
 	metadata_body := body
 	if run_index := strings.index(body, "run ="); run_index >= 0 {
 		metadata_body = body[:run_index]
@@ -257,11 +272,11 @@ register_script_system_from_body :: proc(
 	phase := Runtime_System_Phase.Update
 	if phase_value, phase_found, phase_ok := parse_script_string_field(metadata_body, "phase"); phase_found {
 		if !phase_ok {
-			return .Invalid_Script
+			return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system phase must be a quoted string")
 		}
 		parsed_phase, parsed_phase_ok := parse_script_system_phase(phase_value)
 		if !parsed_phase_ok {
-			return .Invalid_Script
+			return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system phase is not supported")
 		}
 		phase = parsed_phase
 	}
@@ -276,24 +291,24 @@ register_script_system_from_body :: proc(
 	defer delete(after)
 
 	if ok := append_script_refs_field(&reads, metadata_body, "reads", component_bindings); !ok {
-		return .Invalid_Script
+		return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system reads must use ecs.refs with known components")
 	}
 	if ok := append_script_refs_field(&writes, metadata_body, "writes", component_bindings); !ok {
-		return .Invalid_Script
+		return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system writes must use ecs.refs with known components")
 	}
 	if ok := append_script_string_array_field(&before, metadata_body, "before"); !ok {
-		return .Invalid_Script
+		return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system before list must contain quoted ids")
 	}
 	if ok := append_script_string_array_field(&after, metadata_body, "after"); !ok {
-		return .Invalid_Script
+		return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system after list must contain quoted ids")
 	}
 	if query_name, query_found, query_ok := parse_script_identifier_field(metadata_body, "query"); query_found {
 		if !query_ok {
-			return .Invalid_Script
+			return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system query must reference a local query binding")
 		}
 		components, components_ok := script_query_components_for_name(query_bindings, query_name)
 		if !components_ok {
-			return .Invalid_Script
+			return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "system query references an unknown query binding")
 		}
 		for component_id in components {
 			if !runtime_contains_string(reads[:], component_id) && !runtime_contains_string(writes[:], component_id) {
@@ -312,9 +327,9 @@ register_script_system_from_body :: proc(
 		runner = Runtime_System_Runner{kind = .Luau, ref = 0},
 	})
 	if runtime_err != .None {
-		return .Invalid_Script
+		return .Invalid_Script, script_system_registration_diagnostic(diagnostic_path, contents, absolute_index, system_id, "script system declaration is invalid")
 	}
-	return .None
+	return .None, Script_Diagnostic{}
 }
 
 free_script_query_bindings :: proc(bindings: []Script_Query_Binding) {

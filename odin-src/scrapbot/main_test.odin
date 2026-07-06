@@ -80,6 +80,17 @@ test_run_check_command_accepts_json_format :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_run_check_command_accepts_equals_json_format :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-check-equals-json")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Check Equals JSON"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "check", root, "--format=json"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
 test_run_step_command_accepts_initialized_project :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-step-project")
 	defer os.remove_all(root)

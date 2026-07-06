@@ -149,6 +149,36 @@ ecs.system("second", {
 	result := check_project(root)
 	defer free_check_result(result)
 	testing.expect_value(t, result.err, Project_Error.Invalid_Script)
+	testing.expect_value(t, result.diagnostic.stage, Script_Diagnostic_Stage.Schedule)
+	testing.expect_value(t, result.diagnostic.message, "failed to build script schedule: update")
+}
+
+@(test)
+test_check_project_returns_script_registration_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-registration-diagnostic")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "scripts/gameplay.luau", `local Flag = ecs.component("flag", {
+  fields = ecs.fields({}),
+})
+
+ecs.system("broken", {
+  writes = ecs.refs(Missing),
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.Invalid_Script)
+	testing.expect_value(t, result.diagnostic.stage, Script_Diagnostic_Stage.Registration)
+	testing.expect_value(t, result.diagnostic.path, "scripts/gameplay.luau")
+	testing.expect_value(t, result.diagnostic.system_id, "broken")
+	testing.expect_value(t, result.diagnostic.has_start, true)
+	testing.expect_value(t, result.diagnostic.start.line, 5)
+	testing.expect_value(t, result.diagnostic.message, "system writes must use ecs.refs with known components")
 }
 
 make_test_project :: proc(t: ^testing.T, name: string) -> string {
