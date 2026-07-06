@@ -90,7 +90,7 @@ test_check_project_reports_missing_script :: proc(t: ^testing.T) {
 }
 
 make_test_project :: proc(t: ^testing.T, name: string) -> string {
-	root, join_err := filepath.join([]string{"odin-out", "tests", name})
+	root, join_err := filepath.join([]string{"odin-out", "odin-tests", name})
 	if join_err != nil {
 		testing.fail_now(t, "failed to join test project path")
 	}

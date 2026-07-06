@@ -27,7 +27,7 @@ run = "mise build-odin && ./odin-out/scrapbot --version"
 
 [tasks.test-odin]
 description = "Run Odin migration tests"
-run = "odin test odin-src/scrapbot -out:odin-out/scrapbot-tests"
+run = "odin test odin-src/scrapbot -define:ODIN_TEST_THREADS=1 -out:odin-out/scrapbot-tests"
 
 [tasks.test]
 description = "Run the full Scrapbot test suite"
