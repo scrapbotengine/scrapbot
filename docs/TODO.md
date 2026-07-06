@@ -19,6 +19,7 @@
 - [x] Odin `check` can report structured script registration and schedule diagnostics.
 - [x] Odin `check` can load Luau scripts through the C ABI bridge and import component/system declarations.
 - [x] Odin `step`, `bench`, and bounded `run` can execute Luau query/component-field systems against the Odin ECS world.
+- [x] Odin Luau execution can process first-pass structural commands for spawn, add component, remove component, and despawn through deferred mutation flush/rollback.
 - [x] Odin `step` can validate projects and report deterministic frame/schedule summaries.
 - [x] Odin `bench` can report validation/update timing with Odin Luau execution and pending render stats.
 - [x] Odin `test` can discover test projects, validate test manifests, and report pending assertion execution.
@@ -48,12 +49,13 @@
 - [x] Port first-pass structured script registration and schedule diagnostics from Zig to Odin.
 - [x] Port Luau bridge-backed declaration loading from Zig to Odin.
 - [x] Port first-pass Luau query/component-field callback execution from Zig to Odin.
+- [x] Port first-pass Luau structural command callbacks from Zig to Odin.
 - [x] Port first-pass deterministic step command from Zig to Odin.
 - [x] Port first-pass benchmark command from Zig to Odin.
 - [x] Port first-pass test command discovery and manifest validation from Zig to Odin.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.
-- [ ] Port remaining Luau callbacks from Zig to Odin, including structural commands, resolved-row/bulk views, and complete runtime diagnostics.
+- [ ] Port remaining Luau callbacks from Zig to Odin, including resolved-row/bulk views, direct vec3 entity methods, and complete runtime diagnostics.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [ ] Port Odin render command output, offscreen image verification, and hidden headful smoke paths.
 - [ ] Replace project-local native Zig modules with project-local native Odin modules.

@@ -77,6 +77,46 @@ Luau_Bridge_Set_Field_Proc :: #type proc "c" (
 	value: ^Luau_Bridge_Field_Value,
 ) -> c.int
 
+Luau_Bridge_Component_Field_Value :: struct {
+	name:     cstring,
+	name_len: c.size_t,
+	value:    Luau_Bridge_Field_Value,
+}
+
+Luau_Bridge_Spawn_Entity_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	id: cstring,
+	name: cstring,
+	out_entity: ^u32,
+	out_entity_generation: ^u32,
+) -> c.int
+
+Luau_Bridge_Despawn_Entity_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+) -> c.int
+
+Luau_Bridge_Add_Component_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	fields: [^]Luau_Bridge_Component_Field_Value,
+	field_count: c.size_t,
+) -> c.int
+
+Luau_Bridge_Remove_Component_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+) -> c.int
+
 Luau_Bridge_Host_Error_Proc :: #type proc "c" (ctx: rawptr) -> cstring
 
 Luau_Bridge_Callbacks :: struct {
@@ -94,10 +134,10 @@ Luau_Bridge_Callbacks :: struct {
 	get_field_resolved:         rawptr,
 	set_field:                  Luau_Bridge_Set_Field_Proc,
 	set_field_resolved:         rawptr,
-	spawn_entity:               rawptr,
-	despawn_entity:             rawptr,
-	add_component:              rawptr,
-	remove_component:           rawptr,
+	spawn_entity:               Luau_Bridge_Spawn_Entity_Proc,
+	despawn_entity:             Luau_Bridge_Despawn_Entity_Proc,
+	add_component:              Luau_Bridge_Add_Component_Proc,
+	remove_component:           Luau_Bridge_Remove_Component_Proc,
 	host_error:                 Luau_Bridge_Host_Error_Proc,
 }
 
@@ -156,6 +196,7 @@ Script_Program :: struct {
 	host_error_len:     int,
 	has_host_error:     bool,
 	odin_context:       odin_runtime.Context,
+	deferred:           Runtime_Deferred_Command_Buffer,
 }
 
 Script_Run_Result :: struct {
@@ -174,9 +215,13 @@ script_program_init :: proc() -> (Script_Program, Script_Diagnostic, bool) {
 }
 
 script_program_free :: proc(program: ^Script_Program) {
+	if program.odin_context.allocator.procedure != nil {
+		context = program.odin_context
+	}
 	if program.vm != nil {
 		scrapbot_luau_destroy(program.vm)
 	}
+	runtime_deferred_command_buffer_free(&program.deferred)
 	for origin in program.system_origins {
 		if origin.id != "" {
 			delete(origin.id)
@@ -411,6 +456,14 @@ script_program_run_schedule :: proc(
 			program.has_active_system = false
 			program.active_registry = nil
 			if !ok {
+				runtime_deferred_discard(&program.deferred, world)
+				diagnostic := script_program_runtime_diagnostic(program, system)
+				script_program_clear_host_error(program)
+				return Script_Run_Result{ok = false, diagnostic = diagnostic}
+			}
+			flush_err := runtime_deferred_flush(&program.deferred, world, registry^)
+			if flush_err != .None {
+				script_program_set_host_error(program, "system failed to flush deferred structural commands")
 				diagnostic := script_program_runtime_diagnostic(program, system)
 				script_program_clear_host_error(program)
 				return Script_Run_Result{ok = false, diagnostic = diagnostic}
@@ -504,6 +557,10 @@ luau_bridge_callbacks :: proc() -> Luau_Bridge_Callbacks {
 		query_next = luau_bridge_query_next,
 		get_field = luau_bridge_get_field,
 		set_field = luau_bridge_set_field,
+		spawn_entity = luau_bridge_spawn_entity,
+		despawn_entity = luau_bridge_despawn_entity,
+		add_component = luau_bridge_add_component,
+		remove_component = luau_bridge_remove_component,
 		host_error = luau_bridge_host_error,
 	}
 }
@@ -657,12 +714,220 @@ luau_bridge_set_field :: proc "c" (
 	return 1
 }
 
+luau_bridge_spawn_entity :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	id: cstring,
+	name: cstring,
+	out_entity: ^u32,
+	out_entity_generation: ^u32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || out_entity == nil || out_entity_generation == nil {
+		return 0
+	}
+	context = program.odin_context
+	entity_id := clone_luau_cstring(id)
+	entity_name := clone_luau_cstring(name)
+	defer if entity_id != "" do delete(entity_id)
+	defer if entity_name != "" do delete(entity_name)
+	if entity_id == "" {
+		script_program_set_host_error(program, "system tried to spawn an entity with an invalid id")
+		return 0
+	}
+	spawn_name := entity_name
+	if entity_name == "" {
+		spawn_name = entity_id
+	}
+	entity, entity_err := runtime_world_create_entity(runtime_world, entity_id, spawn_name)
+	if entity_err != .None {
+		script_program_set_host_error(program, "system failed to spawn entity")
+		return 0
+	}
+	record_err := runtime_deferred_record_immediate_spawn(&program.deferred, entity)
+	if record_err != .None {
+		_ = runtime_world_remove_entity(runtime_world, entity)
+		script_program_set_host_error(program, "system failed to record spawned entity")
+		return 0
+	}
+	out_entity^ = entity.index
+	out_entity_generation^ = entity.generation
+	return 1
+}
+
+luau_bridge_despawn_entity :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	system, system_ok := script_program_active_system_definition(program)
+	if !system_ok {
+		script_program_set_host_error(program, "system tried to despawn without an active system")
+		return 0
+	}
+	err := runtime_deferred_queue_despawn_entity(&program.deferred, runtime_world^, system, Entity_Handle{index = entity, generation = entity_generation})
+	if err != .None {
+		script_program_set_host_error(program, "system failed to queue despawn entity")
+		return 0
+	}
+	return 1
+}
+
+luau_bridge_add_component :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	fields: [^]Luau_Bridge_Component_Field_Value,
+	field_count: c.size_t,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	system, system_ok := script_program_active_system_definition(program)
+	if !system_ok {
+		script_program_set_host_error(program, "system tried to add a component without an active system")
+		return 0
+	}
+	component := clone_luau_cstring(component_id)
+	defer if component != "" do delete(component)
+	if component == "" {
+		script_program_set_host_error(program, "system tried to add an invalid component")
+		return 0
+	}
+	definition, definition_found := runtime_find_component(program.active_registry^, component)
+	if !definition_found {
+		script_program_set_host_error(program, "system tried to add an unknown component")
+		return 0
+	}
+	count := int(field_count)
+	if count > 0 && fields == nil {
+		script_program_set_host_error(program, "system tried to add a component with invalid fields")
+		return 0
+	}
+	runtime_fields := make([]Runtime_Component_Field_Value, count)
+	if runtime_fields == nil && count > 0 {
+		script_program_set_host_error(program, "system failed to allocate component fields")
+		return 0
+	}
+	defer runtime_component_field_values_free(runtime_fields)
+	defer if runtime_fields != nil do delete(runtime_fields)
+
+	for index := 0; index < count; index += 1 {
+		raw_field := fields[index]
+		field_name, field_name_ok := luau_bridge_string_view(raw_field.name, raw_field.name_len)
+		if !field_name_ok {
+			script_program_set_host_error(program, "system tried to add a component with an invalid field")
+			return 0
+		}
+		field_definition, field_found := runtime_component_definition_find_field(definition^, field_name)
+		if !field_found {
+			script_program_set_host_error(program, "system tried to add an unknown component field")
+			return 0
+		}
+		owned_field_name, name_err := strings.clone(field_name)
+		if name_err != nil {
+			script_program_set_host_error(program, "system failed to allocate component field name")
+			return 0
+		}
+		value, value_ok := luau_bridge_field_value_to_runtime(raw_field.value, field_definition.value_type)
+		if !value_ok {
+			delete(owned_field_name)
+			script_program_set_host_error(program, "system tried to add a component field with the wrong type")
+			return 0
+		}
+		runtime_fields[index] = Runtime_Component_Field_Value{name = owned_field_name, value = value}
+	}
+	err := runtime_deferred_queue_add_component(&program.deferred, system, Entity_Handle{index = entity, generation = entity_generation}, component, runtime_fields)
+	if err != .None {
+		script_program_set_host_error(program, "system failed to queue add component")
+		return 0
+	}
+	return 1
+}
+
+luau_bridge_remove_component :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	system, system_ok := script_program_active_system_definition(program)
+	if !system_ok {
+		script_program_set_host_error(program, "system tried to remove a component without an active system")
+		return 0
+	}
+	component := clone_luau_cstring(component_id)
+	defer if component != "" do delete(component)
+	if component == "" {
+		script_program_set_host_error(program, "system tried to remove an invalid component")
+		return 0
+	}
+	err := runtime_deferred_queue_remove_component(&program.deferred, system, Entity_Handle{index = entity, generation = entity_generation}, component)
+	if err != .None {
+		script_program_set_host_error(program, "system failed to queue remove component")
+		return 0
+	}
+	return 1
+}
+
 luau_bridge_host_error :: proc "c" (ctx: rawptr) -> cstring {
 	program := cast(^Script_Program)ctx
 	if program == nil || !program.has_host_error {
 		return nil
 	}
 	return cstring(raw_data(program.host_error_storage[:]))
+}
+
+script_program_active_system_definition :: proc(program: ^Script_Program) -> (Runtime_System_Definition, bool) {
+	if !program.has_active_system || program.active_registry == nil {
+		return Runtime_System_Definition{}, false
+	}
+	index := program.active_system.registry_index
+	if index < 0 || index >= len(program.active_registry.systems) {
+		return Runtime_System_Definition{}, false
+	}
+	return program.active_registry.systems[index], true
+}
+
+runtime_component_definition_find_field :: proc(definition: Runtime_Component_Definition, field_name: string) -> (Runtime_Component_Field_Definition, bool) {
+	for field in definition.fields {
+		if field.name == field_name {
+			return field, true
+		}
+	}
+	return Runtime_Component_Field_Definition{}, false
+}
+
+luau_bridge_string_view :: proc(value: cstring, value_len: c.size_t) -> (string, bool) {
+	length := int(value_len)
+	if length < 0 || (length > 0 && value == nil) {
+		return "", false
+	}
+	if length == 0 {
+		return "", true
+	}
+	bytes := transmute([^]u8)value
+	return string(bytes[:length]), true
 }
 
 luau_bridge_field_value_from_runtime :: proc(value: Runtime_Component_Value) -> (Luau_Bridge_Field_Value, bool) {

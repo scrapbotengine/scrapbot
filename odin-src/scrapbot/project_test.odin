@@ -257,6 +257,167 @@ ecs.system("bad_writer", {
 }
 
 @(test)
+test_run_script_simulation_flushes_structural_commands :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-structural-flush")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "scripts/gameplay.luau", `local Marker = ecs.component("marker", {
+  fields = ecs.fields({
+    value = "int",
+  }),
+})
+
+ecs.system("spawn_marker", {
+  phase = "startup",
+  writes = ecs.refs(Marker),
+  run = function(world, dt)
+    local entity = world.spawn("spawned", "Spawned")
+    entity:add(Marker, { value = 42 })
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 0, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "spawned")
+	testing.expect_value(t, found, true)
+	marker, marker_err := runtime_world_get_component_field_value(result.scene.world, entity, "marker", "value")
+	testing.expect_value(t, marker_err, Runtime_Error.None)
+	testing.expect_value(t, marker.int_value, 42)
+}
+
+@(test)
+test_run_script_simulation_despawns_after_system_success :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-despawn")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "doomed"
+name = "Doomed"
+
+[entities.components.marker]
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Marker = ecs.component("marker", {
+  fields = ecs.fields({}),
+})
+
+local Markers = ecs.query(Marker)
+
+ecs.system("despawn_markers", {
+  query = Markers,
+  writes = ecs.refs(Marker),
+  run = function(world, dt)
+    for entity, marker in Markers:iter(world) do
+      entity:despawn()
+    end
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+	_, found := runtime_world_find_entity_by_id(result.scene.world, "doomed")
+	testing.expect_value(t, found, false)
+}
+
+@(test)
+test_run_script_simulation_removes_component_after_system_success :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-remove-component")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "tagged"
+name = "Tagged"
+
+[entities.components.marker]
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Marker = ecs.component("marker", {
+  fields = ecs.fields({}),
+})
+
+local Markers = ecs.query(Marker)
+
+ecs.system("remove_markers", {
+  query = Markers,
+  writes = ecs.refs(Marker),
+  run = function(world, dt)
+    for entity, marker in Markers:iter(world) do
+      entity:remove(Marker)
+    end
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "tagged")
+	testing.expect_value(t, found, true)
+	has_marker, has_err := runtime_world_has_component(result.scene.world, entity, "marker")
+	testing.expect_value(t, has_err, Runtime_Error.None)
+	testing.expect_value(t, has_marker, false)
+}
+
+@(test)
+test_run_script_simulation_rolls_back_spawn_after_structural_failure :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-structural-rollback")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "scripts/gameplay.luau", `local Marker = ecs.component("marker", {
+  fields = ecs.fields({
+    value = "int",
+  }),
+})
+
+ecs.system("bad_spawn", {
+  phase = "startup",
+  run = function(world, dt)
+    local entity = world.spawn("rolled-back", "Rolled Back")
+    entity:add(Marker, { value = 1 })
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 0, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.system_id, "bad_spawn")
+	_, found := runtime_world_find_entity_by_id(result.scene.world, "rolled-back")
+	testing.expect_value(t, found, false)
+}
+
+@(test)
 test_check_project_rejects_cyclic_script_system_order :: proc(t: ^testing.T) {
 	root := make_test_project(t, "script-system-cycle")
 	defer os.remove_all(root)
