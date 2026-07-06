@@ -927,6 +927,35 @@ test_live_project_run_frames_polls_luau_script_source_between_frames :: proc(t: 
 }
 
 @(test)
+test_live_project_run_frame_reports_script_reload_for_window_loop_tick :: proc(t: ^testing.T) {
+	root := make_test_project(t, "live-project-run-frame-script-reload")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_script_counter_project(t, root, "1")
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	report := Live_Project_Run_Report{}
+	defer live_project_run_report_free(&report)
+	first := live_project_run_frame_with_report(&live, 0.5, 0, &report)
+	defer script_diagnostic_free(&first.diagnostic)
+	testing.expect_value(t, first.ok, true)
+	testing.expect_value(t, first.completed_frames, 1)
+	testing.expect_value(t, live_project_counter_value(t, live), 2)
+	testing.expect_value(t, len(report.reloads), 0)
+
+	write_script_counter_source(t, root, "10")
+	second := live_project_run_frame_with_report(&live, 0.5, first.completed_frames, &report)
+	defer script_diagnostic_free(&second.diagnostic)
+	testing.expect_value(t, second.ok, true)
+	testing.expect_value(t, second.completed_frames, 2)
+	testing.expect_value(t, live_project_counter_value(t, live), 12)
+	expect_reload_event(t, report, 0, 1, false, false, true, false)
+}
+
+@(test)
 test_live_project_reloads_scene_source_and_resets_startup :: proc(t: ^testing.T) {
 	root := make_test_project(t, "live-project-scene-source-reload")
 	defer os.remove_all(root)

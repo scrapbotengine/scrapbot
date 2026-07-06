@@ -7,7 +7,7 @@
 
 Live reload lets users, editor tools, and agents change scene, script, and project-local native source files while the engine is running. It shortens the edit-run loop and makes text-first project state practical for interactive development.
 
-**Migration note:** During the Odin rewrite, bounded `scrapbot run --frames` can poll project metadata, default scene, Luau script, and Odin native source changes between frames, revalidate replacements, reload compatible project/scene changes as fresh scene generations, preserve the current world on successful script/native reloads, report successful reload event categories in run output, and keep the last-known-good state active on failed reloads. Unbounded/window-loop integration remains pending.
+**Migration note:** During the Odin rewrite, bounded `scrapbot run --frames` can poll project metadata, default scene, Luau script, and Odin native source changes between frames, revalidate replacements, reload compatible project/scene changes as fresh scene generations, preserve the current world on successful script/native reloads, report successful reload event categories in run output, and keep the last-known-good state active on failed reloads. The reload/poll/startup/update path is also exposed as a reusable Odin live-project frame tick for the future window loop. Wiring that tick into a real unbounded Odin presentation loop remains pending.
 
 ## Behavior
 

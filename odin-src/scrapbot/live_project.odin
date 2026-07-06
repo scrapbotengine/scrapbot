@@ -364,44 +364,58 @@ live_project_run_frames_with_report :: proc(
 			}
 		}
 
-		reload, reload_err := live_project_poll_project_source(project)
-		if reload_err != .None {
-			return live_project_reload_error_result(project, reload_err, completed_frames)
+		frame := live_project_run_frame_with_report(project, delta_seconds, completed_frames, report)
+		if !frame.ok {
+			return frame
 		}
-		live_project_record_reload(report, completed_frames, reload)
-
-		reload, reload_err = live_project_poll_scene_source(project)
-		if reload_err != .None {
-			return live_project_reload_error_result(project, reload_err, completed_frames)
-		}
-		live_project_record_reload(report, completed_frames, reload)
-
-		reload, reload_err = live_project_poll_script_sources(project)
-		if reload_err != .None {
-			return live_project_reload_error_result(project, reload_err, completed_frames)
-		}
-		live_project_record_reload(report, completed_frames, reload)
-
-		reload, reload_err = live_project_poll_native_source(project)
-		if reload_err != .None {
-			return live_project_reload_error_result(project, reload_err, completed_frames)
-		}
-		live_project_record_reload(report, completed_frames, reload)
-
-		startup_result = live_project_run_startup_if_needed(project)
-		if !startup_result.ok {
-			startup_result.completed_frames = completed_frames
-			return startup_result
-		}
-
-		update := script_program_run_schedule(&project.check.script_program, &project.check.registry, &project.check.scene.world, project.check.update_schedule, delta_seconds)
-		if !update.ok {
-			return Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic}
-		}
-		completed_frames += 1
+		completed_frames = frame.completed_frames
 	}
 
 	return Simulation_Run_Result{ok = true, completed_frames = completed_frames}
+}
+
+live_project_run_frame_with_report :: proc(project: ^Live_Project, delta_seconds: f32, completed_frames: int, report: ^Live_Project_Run_Report) -> Simulation_Run_Result {
+	startup_result := live_project_run_startup_if_needed(project)
+	if !startup_result.ok {
+		startup_result.completed_frames = completed_frames
+		return startup_result
+	}
+
+	reload, reload_err := live_project_poll_project_source(project)
+	if reload_err != .None {
+		return live_project_reload_error_result(project, reload_err, completed_frames)
+	}
+	live_project_record_reload(report, completed_frames, reload)
+
+	reload, reload_err = live_project_poll_scene_source(project)
+	if reload_err != .None {
+		return live_project_reload_error_result(project, reload_err, completed_frames)
+	}
+	live_project_record_reload(report, completed_frames, reload)
+
+	reload, reload_err = live_project_poll_script_sources(project)
+	if reload_err != .None {
+		return live_project_reload_error_result(project, reload_err, completed_frames)
+	}
+	live_project_record_reload(report, completed_frames, reload)
+
+	reload, reload_err = live_project_poll_native_source(project)
+	if reload_err != .None {
+		return live_project_reload_error_result(project, reload_err, completed_frames)
+	}
+	live_project_record_reload(report, completed_frames, reload)
+
+	startup_result = live_project_run_startup_if_needed(project)
+	if !startup_result.ok {
+		startup_result.completed_frames = completed_frames
+		return startup_result
+	}
+
+	update := script_program_run_schedule(&project.check.script_program, &project.check.registry, &project.check.scene.world, project.check.update_schedule, delta_seconds)
+	if !update.ok {
+		return Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic}
+	}
+	return Simulation_Run_Result{ok = true, completed_frames = completed_frames + 1}
 }
 
 live_project_record_reload :: proc(report: ^Live_Project_Run_Report, completed_frames: int, reload: Live_Reload_Result) {

@@ -57,6 +57,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin editor gizmo drag replay slice
   - [x] Odin bounded run command slice
   - [x] Odin bounded run reload reporting slice
+  - [x] Odin live-project frame tick reload slice
   - [x] Odin render extraction stats slice
   - [x] Odin render command validation slice
   - [x] Odin software render image output slice
