@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:path/filepath"
 import "core:strings"
 
 DEFAULT_RENDER_WIDTH :: 640
@@ -9,6 +10,7 @@ DEFAULT_RENDER_PIXEL_SCALE :: f32(1.0)
 DEFAULT_RENDER_FRAMES :: 1
 DEFAULT_RENDER_OUTPUT :: "odin-out/scrapbot-render.png"
 DEFAULT_RENDER_TEST_OUTPUT :: "odin-out/scrapbot-render-test.png"
+DEFAULT_VISUAL_TEST_OUTPUT :: "odin-out/scrapbot-visual-test.png"
 RENDER_BACKEND_PENDING :: "pending_odin_wgpu_native_binding"
 
 Render_Options :: struct {
@@ -20,6 +22,12 @@ Render_Options :: struct {
 	pixel_scale:        f32,
 	editor:             bool,
 	selected_entity_id: string,
+}
+
+Visual_Test_Options :: struct {
+	render:        Render_Options,
+	expected_path: string,
+	update:        bool,
 }
 
 parse_render_options :: proc(args: []string, default_output: string, emit_output: bool) -> (Render_Options, bool) {
@@ -177,6 +185,89 @@ parse_render_options :: proc(args: []string, default_output: string, emit_output
 	return options, true
 }
 
+parse_visual_test_options :: proc(args: []string, emit_output: bool) -> (Visual_Test_Options, bool) {
+	render_args: [dynamic]string
+	defer delete(render_args)
+	positionals: [dynamic]string
+	defer delete(positionals)
+	update := false
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--update" {
+			update = true
+			i += 1
+			continue
+		}
+		if len(arg) > 0 && arg[0] == '-' {
+			append(&render_args, arg)
+			if render_option_requires_value(arg) {
+				if i + 1 >= len(args) {
+					if emit_output {
+						fmt.eprintf("missing value for %s\n", arg)
+					}
+					return Visual_Test_Options{}, false
+				}
+				append(&render_args, args[i + 1])
+				i += 2
+				continue
+			}
+			i += 1
+			continue
+		}
+		append(&positionals, arg)
+		i += 1
+	}
+
+	if len(positionals) < 2 {
+		if emit_output {
+			fmt.eprintln("visual-test expects a project path and expected image path")
+		}
+		return Visual_Test_Options{}, false
+	}
+	if len(positionals) > 3 {
+		if emit_output {
+			fmt.eprintf("unexpected argument: %s\n", positionals[3])
+		}
+		return Visual_Test_Options{}, false
+	}
+
+	append(&render_args, positionals[0])
+	if len(positionals) == 3 {
+		append(&render_args, positionals[2])
+	}
+	render, render_ok := parse_render_options(render_args[:], DEFAULT_VISUAL_TEST_OUTPUT, emit_output)
+	if !render_ok {
+		return Visual_Test_Options{}, false
+	}
+
+	options := Visual_Test_Options{
+		render = render,
+		expected_path = positionals[1],
+		update = update,
+	}
+	return options, true
+}
+
+render_option_requires_value :: proc(arg: string) -> bool {
+	return arg == "--frames" || arg == "--width" || arg == "--height" || arg == "--pixel-scale" || arg == "--select"
+}
+
+same_resolved_path :: proc(left, right: string) -> bool {
+	left_abs, left_err := filepath.abs(left)
+	if left_err != nil {
+		return left == right
+	}
+	defer delete(left_abs)
+	right_abs, right_err := filepath.abs(right)
+	if right_err != nil {
+		return left == right
+	}
+	defer delete(right_abs)
+	return paths_equal(left_abs, right_abs)
+}
+
 print_render_result :: proc(result: Project_Check_Result, options: Render_Options, completed_frames: int, command_name: string) {
 	fmt.printf("%s OK: %s\n", command_name, result.project.name)
 	fmt.printf("Selected scene: %s\n", result.project.default_scene)
@@ -191,4 +282,27 @@ print_render_result :: proc(result: Project_Check_Result, options: Render_Option
 	}
 	print_render_extract_text(result)
 	fmt.printf("Renderer backend: %s\n", RENDER_BACKEND_PENDING)
+}
+
+print_visual_test_result :: proc(result: Project_Check_Result, options: Visual_Test_Options, completed_frames: int) {
+	if options.update {
+		fmt.printf("Visual test update pending: %s\n", result.project.name)
+		fmt.printf("Golden fixture: %s\n", options.expected_path)
+	} else {
+		fmt.printf("Visual test pending: %s\n", result.project.name)
+		fmt.printf("Expected: %s\n", options.expected_path)
+		fmt.printf("Actual: %s\n", options.render.output_path)
+	}
+	fmt.printf("Selected scene: %s\n", result.project.default_scene)
+	fmt.printf("Frames: %d/%d\n", completed_frames, options.render.frames)
+	fmt.printf("Viewport: %dx%d @%gx\n", options.render.width, options.render.height, options.render.pixel_scale)
+	if options.render.editor {
+		fmt.println("Editor: requested, pending Odin editor shell")
+	}
+	if options.render.selected_entity_id != "" {
+		fmt.printf("Selected entity: %s\n", options.render.selected_entity_id)
+	}
+	print_render_extract_text(result)
+	fmt.printf("Renderer backend: %s\n", RENDER_BACKEND_PENDING)
+	fmt.println("Image comparison: pending Odin render image output")
 }

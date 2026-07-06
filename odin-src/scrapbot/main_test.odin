@@ -389,6 +389,111 @@ test_run_render_command_rejects_invalid_dimensions_and_extra_arguments :: proc(t
 }
 
 @(test)
+test_parse_visual_test_options_accepts_expected_actual_update_and_render_flags :: proc(t: ^testing.T) {
+	options, ok := parse_visual_test_options(
+		[]string{"--update", "--select", "cube", "--frames=4", "--width", "320", "--height=240", "--pixel-scale", "2.0", "project", "expected.png", "actual.png"},
+		false,
+	)
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, options.update, true)
+	testing.expect_value(t, options.expected_path, "expected.png")
+	testing.expect_value(t, options.render.target_path, "project")
+	testing.expect_value(t, options.render.output_path, "actual.png")
+	testing.expect_value(t, options.render.frames, 4)
+	testing.expect_value(t, options.render.width, 320)
+	testing.expect_value(t, options.render.height, 240)
+	testing.expect_value(t, options.render.pixel_scale, f32(2.0))
+	testing.expect_value(t, options.render.editor, true)
+	testing.expect_value(t, options.render.selected_entity_id, "cube")
+}
+
+@(test)
+test_run_visual_test_command_accepts_initialized_project_with_expected_fixture :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-visual-project")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Visual"), Project_Error.None)
+
+	expected_path := project_relative_path(root, "expected.png")
+	defer delete(expected_path)
+	write_file(t, root, "expected.png", "not a real png yet")
+
+	exit_code := run_with_output([]string{"scrapbot", "visual-test", root, expected_path, "odin-out/test-visual-actual.png"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_visual_test_command_accepts_update_without_existing_expected_fixture :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-visual-update")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Visual Update"), Project_Error.None)
+
+	expected_path := project_relative_path(root, "missing-expected.png")
+	defer delete(expected_path)
+
+	exit_code := run_with_output([]string{"scrapbot", "visual-test", "--update", root, expected_path}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_visual_test_command_rejects_missing_expected_and_same_actual_path :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-visual-invalid")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Visual Invalid"), Project_Error.None)
+
+	expected_path := project_relative_path(root, "expected.png")
+	defer delete(expected_path)
+
+	missing_exit_code := run_with_output([]string{"scrapbot", "visual-test", root, expected_path}, false)
+	testing.expect_value(t, missing_exit_code, 1)
+	write_file(t, root, "expected.png", "not a real png yet")
+	same_path_exit_code := run_with_output([]string{"scrapbot", "visual-test", root, expected_path, expected_path}, false)
+	testing.expect_value(t, same_path_exit_code, 1)
+}
+
+@(test)
+test_run_visual_test_command_rejects_missing_selected_entity :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-visual-missing-selection")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Visual Missing Selection"), Project_Error.None)
+
+	expected_path := project_relative_path(root, "expected.png")
+	defer delete(expected_path)
+	write_file(t, root, "expected.png", "not a real png yet")
+
+	exit_code := run_with_output([]string{"scrapbot", "visual-test", "--select", "missing", root, expected_path}, false)
+	testing.expect_value(t, exit_code, 1)
+}
+
+@(test)
+test_run_visual_test_command_updates_only_extra_frames :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-visual-extra-frame-updates")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Visual Frames\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "scripts/gameplay.luau", `ecs.system("fails_on_update", {
+  phase = "update",
+  run = function()
+    error("update should only run for extra visual-test frames")
+  end,
+})
+`)
+	expected_path := project_relative_path(root, "expected.png")
+	defer delete(expected_path)
+	write_file(t, root, "expected.png", "not a real png yet")
+
+	default_exit_code := run_with_output([]string{"scrapbot", "visual-test", root, expected_path}, false)
+	testing.expect_value(t, default_exit_code, 0)
+	two_frame_exit_code := run_with_output([]string{"scrapbot", "visual-test", "--frames=2", root, expected_path}, false)
+	testing.expect_value(t, two_frame_exit_code, 1)
+}
+
+@(test)
 test_parse_test_manifest_summary_counts_expectations_and_input_frames :: proc(t: ^testing.T) {
 	summary, ok := parse_test_manifest_summary(`frames = 2
 dt = 0.016
