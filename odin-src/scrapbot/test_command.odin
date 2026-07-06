@@ -48,7 +48,9 @@ Test_Expectation :: struct {
 }
 
 Test_Editor_Expectation :: struct {
-	selected_entity: string,
+	selected_entity:      string,
+	has_system_scroll_y:  bool,
+	system_scroll_y:      f32,
 }
 
 Test_Manifest :: struct {
@@ -110,8 +112,10 @@ Test_Manifest_Input_State :: struct {
 }
 
 Test_Manifest_Editor_Expectation_State :: struct {
-	active:          bool,
-	selected_entity: string,
+	active:              bool,
+	selected_entity:     string,
+	has_system_scroll_y: bool,
+	system_scroll_y:     f32,
 }
 
 parse_test_options :: proc(args: []string, emit_output: bool) -> (Test_Options, bool) {
@@ -376,10 +380,12 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 		if !expect.active {
 			return true
 		}
-		ok := expect.selected_entity != ""
+		ok := expect.selected_entity != "" || expect.has_system_scroll_y
 		if ok {
 			append(&manifest.editor_expectations, Test_Editor_Expectation{
 				selected_entity = expect.selected_entity,
+				has_system_scroll_y = expect.has_system_scroll_y,
+				system_scroll_y = expect.system_scroll_y,
 			})
 		} else {
 			free_test_editor_expectation_state(expect^)
@@ -650,6 +656,17 @@ parse_test_manifest_editor_expect_key :: proc(expect: ^Test_Manifest_Editor_Expe
 				return false
 			}
 		}
+		return true
+	case "system_scroll_y":
+		if expect.has_system_scroll_y {
+			return false
+		}
+		parsed, ok := strconv.parse_f32(value)
+		if !ok || !test_float_is_finite(parsed) || parsed < 0 {
+			return false
+		}
+		expect.system_scroll_y = parsed
+		expect.has_system_scroll_y = true
 		return true
 	}
 	return false
@@ -1009,8 +1026,16 @@ test_expectation_matches :: proc(world: Runtime_World, expectation: Test_Expecta
 }
 
 test_editor_expectation_matches :: proc(world: Runtime_World, editor_state: Editor_Test_Input_State, expectation: Test_Editor_Expectation) -> bool {
-	selected, selected_ok := editor_test_selected_entity_id(editor_state, world)
-	return selected_ok && selected == expectation.selected_entity
+	if expectation.selected_entity != "" {
+		selected, selected_ok := editor_test_selected_entity_id(editor_state, world)
+		if !selected_ok || selected != expectation.selected_entity {
+			return false
+		}
+	}
+	if expectation.has_system_scroll_y && !test_float_approx_equal(editor_state.system_scroll_y, expectation.system_scroll_y) {
+		return false
+	}
+	return true
 }
 
 test_expected_value_matches :: proc(expected: Test_Expected_Value, actual: Runtime_Component_Value) -> bool {
@@ -1072,15 +1097,28 @@ test_expectation_failure_message :: proc(world: Runtime_World, expectation: Test
 test_editor_expectation_failure_message :: proc(world: Runtime_World, editor_state: Editor_Test_Input_State, expectation: Test_Editor_Expectation) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
-	strings.write_string(&builder, "editor.selected_entity: expected \"")
-	strings.write_string(&builder, expectation.selected_entity)
-	strings.write_rune(&builder, '"')
-	if actual, ok := editor_test_selected_entity_id(editor_state, world); ok {
-		strings.write_string(&builder, ", got \"")
-		strings.write_string(&builder, actual)
+	wrote := false
+	if expectation.selected_entity != "" {
+		strings.write_string(&builder, "editor.selected_entity: expected \"")
+		strings.write_string(&builder, expectation.selected_entity)
 		strings.write_rune(&builder, '"')
-	} else {
-		strings.write_string(&builder, ", got none")
+		if actual, ok := editor_test_selected_entity_id(editor_state, world); ok {
+			strings.write_string(&builder, ", got \"")
+			strings.write_string(&builder, actual)
+			strings.write_rune(&builder, '"')
+		} else {
+			strings.write_string(&builder, ", got none")
+		}
+		wrote = true
+	}
+	if expectation.has_system_scroll_y {
+		if wrote {
+			strings.write_string(&builder, "; ")
+		}
+		strings.write_string(&builder, "editor.system_scroll_y: expected ")
+		append_test_format(&builder, "%g", expectation.system_scroll_y)
+		strings.write_string(&builder, ", got ")
+		append_test_format(&builder, "%g", editor_state.system_scroll_y)
 	}
 	return strings.clone(strings.to_string(builder))
 }

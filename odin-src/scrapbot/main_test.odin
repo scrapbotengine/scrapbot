@@ -524,6 +524,31 @@ selected_entity = "entity-3"
 	testing.expect_value(t, exit_code, 0)
 }
 
+@(test)
+test_run_test_command_replays_editor_system_scroll :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-system-scroll")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "Editor System Scroll Test"), Project_Error.None)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 1
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [20.0, 140.0]
+wheel = [0.0, -1.0]
+system_profile_count_hint = 9
+
+[[expect.editor]]
+system_scroll_y = 18.0
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
 make_editor_playback_test_project :: proc(t: ^testing.T, name: string) -> string {
 	root := make_test_project_root(t, name)
 	testing.expect_value(t, init_project(root, "Editor Playback Test"), Project_Error.None)
