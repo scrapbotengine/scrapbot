@@ -45,6 +45,8 @@ Step_Input_Frame :: struct {
 
 Editor_Test_Input_State :: struct {
 	captured_pointer: bool,
+	paused:           bool,
+	step_once:        bool,
 }
 
 frame_input_default :: proc() -> Frame_Input {
@@ -55,6 +57,7 @@ frame_input_default :: proc() -> Frame_Input {
 }
 
 route_editor_test_input :: proc(state: ^Editor_Test_Input_State, input: ^Frame_Input) {
+	state.step_once = false
 	if !input.debug_overlay_visible {
 		state.captured_pointer = false
 		return
@@ -62,9 +65,20 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, input: ^Frame_I
 	consumed := false
 	if input.pointer.has_position {
 		inside_game := editor_pointer_in_game_viewport(input^)
-		if input.pointer.primary_pressed && !inside_game {
-			state.captured_pointer = true
-			consumed = true
+		if input.pointer.primary_pressed {
+			if editor_pointer_in_play_button(input^) {
+				state.paused = !state.paused
+				state.captured_pointer = true
+				consumed = true
+			} else if editor_pointer_in_step_button(input^) {
+				state.paused = true
+				state.step_once = true
+				state.captured_pointer = true
+				consumed = true
+			} else if !inside_game {
+				state.captured_pointer = true
+				consumed = true
+			}
 		}
 		if input.pointer.primary_down && state.captured_pointer {
 			consumed = true
@@ -91,8 +105,37 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, input: ^Frame_I
 	}
 }
 
+editor_test_should_run_update :: proc(state: Editor_Test_Input_State) -> bool {
+	return !state.paused || state.step_once
+}
+
 editor_pointer_in_game_viewport :: proc(input: Frame_Input) -> bool {
 	x, y, width, height := editor_game_viewport(input.viewport_width, input.viewport_height)
+	return input.pointer.position[0] >= x &&
+	       input.pointer.position[1] >= y &&
+	       input.pointer.position[0] < x + width &&
+	       input.pointer.position[1] < y + height
+}
+
+editor_pointer_in_play_button :: proc(input: Frame_Input) -> bool {
+	x, y, width, height := editor_play_button_rect(input.viewport_width)
+	return editor_pointer_in_rect(input, x, y, width, height)
+}
+
+editor_pointer_in_step_button :: proc(input: Frame_Input) -> bool {
+	play_x, play_y, play_width, play_height := editor_play_button_rect(input.viewport_width)
+	return editor_pointer_in_rect(input, play_x + play_width + UI_EDITOR_CONTROL_BUTTON_GAP, play_y, play_width, play_height)
+}
+
+editor_play_button_rect :: proc(window_width: f32) -> (x, y, width, height: f32) {
+	body_width := max_f32(window_width, 1)
+	return max_f32(body_width - UI_EDITOR_PANEL_PADDING_X - UI_EDITOR_CONTROL_BUTTON_WIDTH * 2 - UI_EDITOR_CONTROL_BUTTON_GAP, UI_EDITOR_PANEL_PADDING_X),
+	       (UI_EDITOR_TOP_BAR_HEIGHT - UI_EDITOR_CONTROL_BUTTON_HEIGHT) * 0.5,
+	       UI_EDITOR_CONTROL_BUTTON_WIDTH,
+	       UI_EDITOR_CONTROL_BUTTON_HEIGHT
+}
+
+editor_pointer_in_rect :: proc(input: Frame_Input, x, y, width, height: f32) -> bool {
 	return input.pointer.position[0] >= x &&
 	       input.pointer.position[1] >= y &&
 	       input.pointer.position[0] < x + width &&

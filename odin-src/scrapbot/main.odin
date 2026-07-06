@@ -106,7 +106,7 @@ Usage:
 Odin migration status:
   init, check, build, deterministic step, benchmark, test discovery, and bounded run
   currently cover text project creation, validation, packaging, and schedule-aware frame accounting slices.
-  Luau execution, retained scene UI replay, editor chrome input ownership, and render/visual command validation are partially ported;
+  Luau execution, retained scene UI replay, editor chrome/playback input routing, and render/visual command validation are partially ported;
   native execution, full editor-shell input routing, image comparison, WebGPU presentation, and editor are still being ported.`)
 }
 
@@ -648,6 +648,10 @@ run_script_simulation_with_input :: proc(result: ^Project_Check_Result, frames: 
 					completed_frames = completed_frames,
 					diagnostic = script_runtime_diagnostic("", "", 0, runtime_error_label(route_err)),
 				}
+			}
+			if !editor_test_should_run_update(editor_input_state) {
+				completed_frames += 1
+				continue
 			}
 		}
 		update := script_program_run_schedule(&result.script_program, &result.registry, &result.scene.world, result.update_schedule, delta_seconds)

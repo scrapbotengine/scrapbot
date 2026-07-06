@@ -369,6 +369,100 @@ test_run_test_command_consumes_editor_chrome_input :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_run_test_command_replays_editor_play_pause :: proc(t: ^testing.T) {
+	root := make_editor_playback_test_project(t, "cli-test-editor-play-pause")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 2
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [1040.0, 20.0]
+primary_pressed = true
+primary_down = true
+
+[[expect.field]]
+entity = "counter"
+component = "counter"
+field = "ticks"
+equals_int = 0
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_test_command_replays_editor_single_step :: proc(t: ^testing.T) {
+	root := make_editor_playback_test_project(t, "cli-test-editor-single-step")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 2
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [1160.0, 20.0]
+primary_pressed = true
+primary_down = true
+
+[[expect.field]]
+entity = "counter"
+component = "counter"
+field = "ticks"
+equals_int = 1
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+make_editor_playback_test_project :: proc(t: ^testing.T, name: string) -> string {
+	root := make_test_project_root(t, name)
+	testing.expect_value(t, init_project(root, "Editor Playback Test"), Project_Error.None)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "Editor Playback Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = ["scripts/gameplay.luau"]
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Editor Playback Test"
+version = 1
+
+[[entities]]
+id = "counter"
+name = "Counter"
+
+[entities.components.counter]
+ticks = 0
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Counter = ecs.component("counter", {
+  fields = ecs.fields({
+    ticks = "int",
+  }),
+})
+
+local Counters = ecs.query(Counter)
+
+ecs.system("tick_counter", {
+  phase = "update",
+  query = Counters,
+  writes = ecs.refs(Counter),
+  run = function(world, _dt)
+    for _entity, counter in Counters:iter(world) do
+      counter.ticks = counter.ticks + 1
+    end
+  end,
+})
+`)
+	return root
+}
+
+@(test)
 test_run_command_accepts_initialized_project :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-run-project")
 	defer os.remove_all(root)
