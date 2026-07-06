@@ -8,8 +8,6 @@ import "core:strings"
 
 TEST_MANIFEST_NAME :: "test.scrapbot.toml"
 TEST_DEFAULT_ROOT :: "tests/projects"
-TEST_PENDING_EXECUTION_REASON :: "pending_odin_luau_native_bridge"
-
 Test_Command_Error :: enum {
 	None,
 	Discovery_Failed,
@@ -17,7 +15,7 @@ Test_Command_Error :: enum {
 }
 
 Test_Case_Status :: enum {
-	Pending,
+	Passed,
 	Failed,
 }
 
@@ -33,15 +31,41 @@ Test_Manifest_Summary :: struct {
 	input_frames:  int,
 }
 
-Test_Case_Result :: struct {
-	name:          string,
-	path:          string,
-	status:        Test_Case_Status,
+Test_Expected_Value :: struct {
+	value_type:   Runtime_Field_Type,
+	boolean:      bool,
+	int_value:    int,
+	float:        f32,
+	vec3:         [3]f32,
+	string_value: string,
+}
+
+Test_Expectation :: struct {
+	entity:    string,
+	component: string,
+	field:     string,
+	expected:  Test_Expected_Value,
+}
+
+Test_Manifest :: struct {
 	frames:        int,
 	delta_seconds: f32,
-	expectations:  int,
 	input_frames:  int,
-	error:         string,
+	expectations:  [dynamic]Test_Expectation,
+}
+
+Test_Case_Result :: struct {
+	name:              string,
+	path:              string,
+	status:            Test_Case_Status,
+	frames:            int,
+	completed_frames:  int,
+	delta_seconds:     f32,
+	expectations:      int,
+	input_frames:      int,
+	failed_assertions: int,
+	error:             string,
+	assertion_errors:  [dynamic]string,
 }
 
 Test_Suite_Summary :: struct {
@@ -50,7 +74,7 @@ Test_Suite_Summary :: struct {
 	failed:             int,
 	pending:            int,
 	assertions:         int,
-	pending_assertions: int,
+	failed_assertions:  int,
 }
 
 Test_Command_Result :: struct {
@@ -66,10 +90,11 @@ Test_Manifest_Section :: enum {
 
 Test_Manifest_Expectation_State :: struct {
 	active:        bool,
-	entity:        bool,
-	component:     bool,
-	field:         bool,
-	equals_count: int,
+	entity:        string,
+	component:     string,
+	field:         string,
+	expected:      Test_Expected_Value,
+	has_expected:  bool,
 }
 
 Test_Manifest_Input_State :: struct {
@@ -148,32 +173,33 @@ run_test_command :: proc(options: Test_Options) -> (Test_Command_Result, Test_Co
 	}
 
 	for project_path in project_paths {
-		case_result := run_pending_test_case(project_path)
+		case_result := run_test_case(project_path)
 		append(&result.cases, case_result)
 		result.summary.cases += 1
 		result.summary.assertions += case_result.expectations
+		result.summary.failed_assertions += case_result.failed_assertions
 		if case_result.status == .Failed {
 			result.summary.failed += 1
 		} else {
 			result.summary.validated += 1
-			result.summary.pending += 1
-			result.summary.pending_assertions += case_result.expectations
 		}
 	}
 
 	return result, .None
 }
 
-run_pending_test_case :: proc(project_path: string) -> Test_Case_Result {
+run_test_case :: proc(project_path: string) -> Test_Case_Result {
 	name := test_case_name_from_path(project_path)
 	path := strings.clone(project_path)
 	result := Test_Case_Result{
 		name = name,
 		path = path,
-		status = .Pending,
+		status = .Passed,
+		assertion_errors = make([dynamic]string),
 	}
 
-	manifest, manifest_ok := load_test_manifest_summary(project_path)
+	manifest, manifest_ok := load_test_manifest(project_path)
+	defer free_test_manifest(manifest)
 	if !manifest_ok {
 		result.status = .Failed
 		result.error = strings.clone("invalid test manifest")
@@ -181,7 +207,7 @@ run_pending_test_case :: proc(project_path: string) -> Test_Case_Result {
 	}
 	result.frames = manifest.frames
 	result.delta_seconds = manifest.delta_seconds
-	result.expectations = manifest.expectations
+	result.expectations = len(manifest.expectations)
 	result.input_frames = manifest.input_frames
 
 	check := check_project(project_path)
@@ -190,6 +216,28 @@ run_pending_test_case :: proc(project_path: string) -> Test_Case_Result {
 		result.status = .Failed
 		result.error = strings.clone(project_error_message(check.err))
 		return result
+	}
+
+	simulation := run_script_simulation(&check, manifest.frames, manifest.delta_seconds)
+	result.completed_frames = simulation.completed_frames
+	if !simulation.ok {
+		result.status = .Failed
+		if simulation.diagnostic.message != "" {
+			result.error = strings.clone(simulation.diagnostic.message)
+		} else {
+			result.error = strings.clone("runtime error")
+		}
+		return result
+	}
+
+	for expectation in manifest.expectations {
+		if !test_expectation_matches(check.scene.world, expectation) {
+			result.failed_assertions += 1
+			append(&result.assertion_errors, test_expectation_failure_message(check.scene.world, expectation))
+		}
+	}
+	if result.failed_assertions > 0 {
+		result.status = .Failed
 	}
 
 	return result
@@ -238,6 +286,15 @@ is_test_project_path :: proc(path: string) -> bool {
 }
 
 load_test_manifest_summary :: proc(project_path: string) -> (Test_Manifest_Summary, bool) {
+	manifest, ok := load_test_manifest(project_path)
+	defer free_test_manifest(manifest)
+	if !ok {
+		return {}, false
+	}
+	return test_manifest_summary(manifest), true
+}
+
+load_test_manifest :: proc(project_path: string) -> (Test_Manifest, bool) {
 	manifest_path := project_relative_path(project_path, TEST_MANIFEST_NAME)
 	defer delete(manifest_path)
 	contents, read_err := os.read_entire_file(manifest_path, context.allocator)
@@ -245,23 +302,52 @@ load_test_manifest_summary :: proc(project_path: string) -> (Test_Manifest_Summa
 		return {}, false
 	}
 	defer delete(contents)
-	return parse_test_manifest_summary(string(contents))
+	return parse_test_manifest(string(contents))
+}
+
+test_manifest_summary :: proc(manifest: Test_Manifest) -> Test_Manifest_Summary {
+	return Test_Manifest_Summary{
+		frames = manifest.frames,
+		delta_seconds = manifest.delta_seconds,
+		expectations = len(manifest.expectations),
+		input_frames = manifest.input_frames,
+	}
 }
 
 parse_test_manifest_summary :: proc(contents: string) -> (Test_Manifest_Summary, bool) {
-	summary := Test_Manifest_Summary{
+	manifest, ok := parse_test_manifest(contents)
+	defer free_test_manifest(manifest)
+	if !ok {
+		return {}, false
+	}
+	return test_manifest_summary(manifest), true
+}
+
+parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
+	manifest := Test_Manifest{
 		frames = DEFAULT_STEP_FRAMES,
 		delta_seconds = DEFAULT_STEP_DELTA_SECONDS,
+		expectations = make([dynamic]Test_Expectation),
 	}
 	section := Test_Manifest_Section.Root
 	expect := Test_Manifest_Expectation_State{}
 	input := Test_Manifest_Input_State{}
 
-	finish_expect := proc(expect: ^Test_Manifest_Expectation_State) -> bool {
+	finish_expect := proc(manifest: ^Test_Manifest, expect: ^Test_Manifest_Expectation_State) -> bool {
 		if !expect.active {
 			return true
 		}
-		ok := expect.entity && expect.component && expect.field && expect.equals_count == 1
+		ok := expect.entity != "" && expect.component != "" && expect.field != "" && expect.has_expected
+		if ok {
+			append(&manifest.expectations, Test_Expectation{
+				entity = expect.entity,
+				component = expect.component,
+				field = expect.field,
+				expected = expect.expected,
+			})
+		} else {
+			free_test_expectation_state(expect^)
+		}
 		expect^ = {}
 		return ok
 	}
@@ -281,71 +367,81 @@ parse_test_manifest_summary :: proc(contents: string) -> (Test_Manifest_Summary,
 			continue
 		}
 		if trimmed == "[[expect.field]]" || trimmed == "[[expect]]" {
-			if !finish_expect(&expect) || !finish_input(&input) {
-				return summary, false
+			if !finish_expect(&manifest, &expect) || !finish_input(&input) {
+				free_test_manifest(manifest)
+				return {}, false
 			}
 			section = .Expect_Field
 			expect.active = true
-			summary.expectations += 1
 			continue
 		}
 		if trimmed == "[[input.frame]]" {
-			if !finish_expect(&expect) || !finish_input(&input) {
-				return summary, false
+			if !finish_expect(&manifest, &expect) || !finish_input(&input) {
+				free_test_manifest(manifest)
+				return {}, false
 			}
 			section = .Input_Frame
 			input.active = true
-			summary.input_frames += 1
+			manifest.input_frames += 1
 			continue
 		}
 		if strings.has_prefix(trimmed, "[") {
-			return summary, false
+			free_test_manifest(manifest)
+			return {}, false
 		}
 
 		key, value, key_ok := read_manifest_key_value(trimmed)
 		if !key_ok {
-			return summary, false
+			free_test_manifest(manifest)
+			return {}, false
 		}
 		switch section {
 		case .Root:
-			if !parse_test_manifest_root_key(&summary, key, value) {
-				return summary, false
+			if !parse_test_manifest_root_key(&manifest, key, value) {
+				free_test_manifest(manifest)
+				return {}, false
 			}
 		case .Expect_Field:
 			if !parse_test_manifest_expect_key(&expect, key, value) {
-				return summary, false
+				free_test_manifest(manifest)
+				free_test_expectation_state(expect)
+				return {}, false
 			}
 		case .Input_Frame:
 			if !parse_test_manifest_input_key(&input, key, value) {
-				return summary, false
+				free_test_manifest(manifest)
+				free_test_expectation_state(expect)
+				return {}, false
 			}
 		}
 	}
 
-	if !finish_expect(&expect) || !finish_input(&input) {
-		return summary, false
+	if !finish_expect(&manifest, &expect) || !finish_input(&input) {
+		free_test_manifest(manifest)
+		return {}, false
 	}
-	if summary.frames <= 0 || summary.delta_seconds <= 0 || summary.expectations == 0 {
-		return summary, false
+	if manifest.frames <= 0 || manifest.delta_seconds <= 0 || len(manifest.expectations) == 0 {
+		free_test_manifest(manifest)
+		return {}, false
 	}
-	return summary, true
+	return manifest, true
 }
 
-parse_test_manifest_root_key :: proc(summary: ^Test_Manifest_Summary, key, value: string) -> bool {
+parse_test_manifest_root_key :: proc(manifest: ^Test_Manifest, key, value: string) -> bool {
 	switch key {
 	case "frames":
 		frames, ok := parse_positive_int(value)
 		if !ok {
 			return false
 		}
-		summary.frames = frames
+		manifest.frames = frames
 		return true
 	case "dt", "delta_seconds":
 		delta_seconds, ok := parse_positive_f32(value)
 		if !ok {
 			return false
 		}
-		summary.delta_seconds = delta_seconds
+		manifest.delta_seconds = delta_seconds
 		return true
 	}
 	return false
@@ -354,50 +450,111 @@ parse_test_manifest_root_key :: proc(summary: ^Test_Manifest_Summary, key, value
 parse_test_manifest_expect_key :: proc(expect: ^Test_Manifest_Expectation_State, key, value: string) -> bool {
 	switch key {
 	case "entity", "component", "field":
-		parsed, ok := parse_basic_string(value)
+		parsed, owned, ok := parse_basic_string_unescaped(value)
 		if !ok || parsed == "" {
+			if owned != "" {
+				delete(owned)
+			}
 			return false
-		}
+			}
+			cloned := ""
+			if owned != "" {
+				cloned = owned
+			} else {
+				clone_ok: bool
+				cloned, clone_ok = clone_test_string(parsed)
+				if !clone_ok {
+					return false
+				}
+			}
 		switch key {
 		case "entity":
-			expect.entity = true
+			if expect.entity != "" {
+				delete(cloned)
+				return false
+			}
+			expect.entity = cloned
 		case "component":
-			expect.component = true
+			if expect.component != "" {
+				delete(cloned)
+				return false
+			}
+			expect.component = cloned
 		case "field":
-			expect.field = true
+			if expect.field != "" {
+				delete(cloned)
+				return false
+			}
+			expect.field = cloned
 		}
 		return true
 	case "equals_bool":
 		if value != "true" && value != "false" {
 			return false
 		}
-		expect.equals_count += 1
+		if expect.has_expected {
+			return false
+		}
+		expect.expected = Test_Expected_Value{value_type = .Boolean, boolean = value == "true"}
+		expect.has_expected = true
 		return true
 	case "equals_int":
-		_, ok := strconv.parse_int(value, 10)
+		parsed, ok := strconv.parse_int(value, 10)
 		if !ok {
 			return false
 		}
-		expect.equals_count += 1
+		if expect.has_expected {
+			return false
+		}
+		expect.expected = Test_Expected_Value{value_type = .Int, int_value = int(parsed)}
+		expect.has_expected = true
 		return true
 	case "equals_float":
-		if !parse_test_manifest_float(value) {
+		parsed, ok := strconv.parse_f32(value)
+		if !ok || !test_float_is_finite(parsed) {
 			return false
 		}
-		expect.equals_count += 1
+		if expect.has_expected {
+			return false
+		}
+		expect.expected = Test_Expected_Value{value_type = .Float, float = parsed}
+		expect.has_expected = true
 		return true
 	case "equals_vec3":
-		if !parse_scene_vec3(value) {
-			return false
-		}
-		expect.equals_count += 1
-		return true
-	case "equals_string":
-		_, ok := parse_basic_string(value)
+		parsed, ok := parse_test_manifest_vec3_value(value)
 		if !ok {
 			return false
 		}
-		expect.equals_count += 1
+		if expect.has_expected {
+			return false
+		}
+		expect.expected = Test_Expected_Value{value_type = .Vec3, vec3 = parsed}
+		expect.has_expected = true
+		return true
+	case "equals_string":
+		parsed, owned, ok := parse_basic_string_unescaped(value)
+		if !ok {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		if expect.has_expected {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		expected := owned
+		if expected == "" {
+			clone_ok: bool
+			expected, clone_ok = clone_test_string(parsed)
+			if !clone_ok {
+				return false
+			}
+		}
+		expect.expected = Test_Expected_Value{value_type = .String, string_value = expected}
+		expect.has_expected = true
 		return true
 	}
 	return false
@@ -425,7 +582,7 @@ parse_test_manifest_input_key :: proc(input: ^Test_Manifest_Input_State, key, va
 
 parse_test_manifest_float :: proc(value: string) -> bool {
 	parsed, ok := strconv.parse_f32(value)
-	if !ok || parsed != parsed || parsed > 3.4028234663852886e38 || parsed < -3.4028234663852886e38 {
+	if !ok || !test_float_is_finite(parsed) {
 		return false
 	}
 	return true
@@ -449,6 +606,212 @@ parse_test_manifest_vec2 :: proc(value: string) -> bool {
 		count += 1
 	}
 	return count == 2
+}
+
+parse_test_manifest_vec3_value :: proc(value: string) -> ([3]f32, bool) {
+	if len(value) < 7 || value[0] != '[' || value[len(value) - 1] != ']' {
+		return {}, false
+	}
+	result: [3]f32
+	count := 0
+	inner := value[1:len(value) - 1]
+	remaining := inner
+	for part in strings.split_iterator(&remaining, ",") {
+		if count >= 3 {
+			return {}, false
+		}
+		trimmed := strings.trim_space(part)
+		parsed, ok := strconv.parse_f32(trimmed)
+		if trimmed == "" || !ok || !test_float_is_finite(parsed) {
+			return {}, false
+		}
+		result[count] = parsed
+		count += 1
+	}
+	return result, count == 3
+}
+
+test_float_is_finite :: proc(value: f32) -> bool {
+	return value == value && value <= 3.4028234663852886e38 && value >= -3.4028234663852886e38
+}
+
+clone_test_string :: proc(value: string) -> (string, bool) {
+	owned, err := strings.clone(value)
+	if err != nil {
+		return "", false
+	}
+	return owned, true
+}
+
+free_test_manifest :: proc(manifest: Test_Manifest) {
+	for expectation in manifest.expectations {
+		free_test_expectation(expectation)
+	}
+	if manifest.expectations != nil {
+		delete(manifest.expectations)
+	}
+}
+
+free_test_expectation :: proc(expectation: Test_Expectation) {
+	if expectation.entity != "" {
+		delete(expectation.entity)
+	}
+	if expectation.component != "" {
+		delete(expectation.component)
+	}
+	if expectation.field != "" {
+		delete(expectation.field)
+	}
+	free_test_expected_value(expectation.expected)
+}
+
+free_test_expectation_state :: proc(expect: Test_Manifest_Expectation_State) {
+	if expect.entity != "" {
+		delete(expect.entity)
+	}
+	if expect.component != "" {
+		delete(expect.component)
+	}
+	if expect.field != "" {
+		delete(expect.field)
+	}
+	if expect.has_expected {
+		free_test_expected_value(expect.expected)
+	}
+}
+
+free_test_expected_value :: proc(value: Test_Expected_Value) {
+	if value.value_type == .String && value.string_value != "" {
+		delete(value.string_value)
+	}
+}
+
+test_expectation_matches :: proc(world: Runtime_World, expectation: Test_Expectation) -> bool {
+	entity, entity_found := runtime_world_find_entity_by_id(world, expectation.entity)
+	if !entity_found {
+		return false
+	}
+	actual, actual_err := runtime_world_get_component_field_value(world, entity, expectation.component, expectation.field)
+	if actual_err != .None {
+		return false
+	}
+	return test_expected_value_matches(expectation.expected, actual)
+}
+
+test_expected_value_matches :: proc(expected: Test_Expected_Value, actual: Runtime_Component_Value) -> bool {
+	if expected.value_type != actual.value_type {
+		return false
+	}
+	switch expected.value_type {
+	case .Boolean:
+		return expected.boolean == actual.boolean
+	case .Int:
+		return expected.int_value == actual.int_value
+	case .Float:
+		return test_float_approx_equal(expected.float, actual.float)
+	case .Vec3:
+		return test_float_approx_equal(expected.vec3[0], actual.vec3[0]) &&
+			test_float_approx_equal(expected.vec3[1], actual.vec3[1]) &&
+			test_float_approx_equal(expected.vec3[2], actual.vec3[2])
+	case .String:
+		return expected.string_value == actual.string_value
+	}
+	return false
+}
+
+test_float_approx_equal :: proc(left, right: f32) -> bool {
+	diff := left - right
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= 0.0001
+}
+
+test_expectation_failure_message :: proc(world: Runtime_World, expectation: Test_Expectation) -> string {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	strings.write_string(&builder, expectation.entity)
+	strings.write_rune(&builder, '.')
+	strings.write_string(&builder, expectation.component)
+	strings.write_rune(&builder, '.')
+	strings.write_string(&builder, expectation.field)
+	strings.write_string(&builder, ": expected ")
+	append_test_expected_value_text(&builder, expectation.expected)
+
+	entity, entity_found := runtime_world_find_entity_by_id(world, expectation.entity)
+	if !entity_found {
+		strings.write_string(&builder, ", got UnknownEntity")
+		return strings.clone(strings.to_string(builder))
+	}
+	actual, actual_err := runtime_world_get_component_field_value(world, entity, expectation.component, expectation.field)
+	if actual_err != .None {
+		strings.write_string(&builder, ", got ")
+		strings.write_string(&builder, runtime_error_label(actual_err))
+		return strings.clone(strings.to_string(builder))
+	}
+	strings.write_string(&builder, ", got ")
+	append_test_component_value_text(&builder, actual)
+	return strings.clone(strings.to_string(builder))
+}
+
+append_test_expected_value_text :: proc(builder: ^strings.Builder, value: Test_Expected_Value) {
+	switch value.value_type {
+	case .Boolean:
+		if value.boolean {
+			strings.write_string(builder, "true")
+		} else {
+			strings.write_string(builder, "false")
+		}
+	case .Int:
+		append_test_format(builder, "%d", value.int_value)
+	case .Float:
+		append_test_format(builder, "%g", value.float)
+	case .Vec3:
+		strings.write_rune(builder, '[')
+		append_test_format(builder, "%g", value.vec3[0])
+		strings.write_string(builder, ", ")
+		append_test_format(builder, "%g", value.vec3[1])
+		strings.write_string(builder, ", ")
+		append_test_format(builder, "%g", value.vec3[2])
+		strings.write_rune(builder, ']')
+	case .String:
+		strings.write_rune(builder, '"')
+		strings.write_string(builder, value.string_value)
+		strings.write_rune(builder, '"')
+	}
+}
+
+append_test_component_value_text :: proc(builder: ^strings.Builder, value: Runtime_Component_Value) {
+	switch value.value_type {
+	case .Boolean:
+		if value.boolean {
+			strings.write_string(builder, "true")
+		} else {
+			strings.write_string(builder, "false")
+		}
+	case .Int:
+		append_test_format(builder, "%d", value.int_value)
+	case .Float:
+		append_test_format(builder, "%g", value.float)
+	case .Vec3:
+		strings.write_rune(builder, '[')
+		append_test_format(builder, "%g", value.vec3[0])
+		strings.write_string(builder, ", ")
+		append_test_format(builder, "%g", value.vec3[1])
+		strings.write_string(builder, ", ")
+		append_test_format(builder, "%g", value.vec3[2])
+		strings.write_rune(builder, ']')
+	case .String:
+		strings.write_rune(builder, '"')
+		strings.write_string(builder, value.string_value)
+		strings.write_rune(builder, '"')
+	}
+}
+
+append_test_format :: proc(builder: ^strings.Builder, format: string, args: ..any) {
+	buffer: [128]u8
+	text := fmt.bprintf(buffer[:], format, ..args)
+	strings.write_string(builder, text)
 }
 
 read_manifest_key_value :: proc(line: string) -> (string, string, bool) {
@@ -492,6 +855,14 @@ free_test_command_result :: proc(result: Test_Command_Result) {
 		if case_result.error != "" {
 			delete(case_result.error)
 		}
+		for assertion_error in case_result.assertion_errors {
+			if assertion_error != "" {
+				delete(assertion_error)
+			}
+		}
+		if case_result.assertion_errors != nil {
+			delete(case_result.assertion_errors)
+		}
 	}
 	delete(result.cases)
 }
@@ -510,31 +881,29 @@ print_test_command_result :: proc(result: Test_Command_Result, format: Check_Out
 	case .Text:
 		for case_result in result.cases {
 			switch case_result.status {
-			case .Pending:
-				fmt.printf(
-					"PENDING %s: %d frames, dt %g, %d expectations, %d input frames (%s)\n",
-					case_result.name,
-					case_result.frames,
-					case_result.delta_seconds,
-					case_result.expectations,
-					case_result.input_frames,
-					TEST_PENDING_EXECUTION_REASON,
-				)
+			case .Passed:
+				fmt.printf("PASS %s (%d assertions)\n", case_result.name, case_result.expectations)
 			case .Failed:
-				fmt.printf("FAIL %s: %s\n", case_result.name, case_result.error)
+				if case_result.error != "" {
+					fmt.printf("FAIL %s: %s\n", case_result.name, case_result.error)
+				} else {
+					fmt.printf("FAIL %s\n", case_result.name)
+				}
+				for assertion_error in case_result.assertion_errors {
+					fmt.printf("  - %s\n", assertion_error)
+				}
 			}
 		}
 		fmt.printf(
-			"Test projects: %d, validated: %d, failed: %d, pending: %d, assertions pending: %d\n",
-			result.summary.cases,
+			"Test projects: %d passed, %d failed, %d assertions",
 			result.summary.validated,
 			result.summary.failed,
-			result.summary.pending,
-			result.summary.pending_assertions,
+			result.summary.assertions,
 		)
-		if result.summary.pending > 0 {
-			fmt.println("Execution: pending Luau/native Odin bridge")
+		if result.summary.failed_assertions > 0 {
+			fmt.printf(", %d failed", result.summary.failed_assertions)
 		}
+		fmt.println()
 	case .JSON:
 		fmt.print(`{"ok":`)
 		if result.summary.failed == 0 {
@@ -542,9 +911,7 @@ print_test_command_result :: proc(result: Test_Command_Result, format: Check_Out
 		} else {
 			fmt.print(`false`)
 		}
-		fmt.print(`,"execution":"`)
-		json_print(TEST_PENDING_EXECUTION_REASON, false)
-		fmt.print(`","tests":[`)
+		fmt.print(`,"execution":"odin_luau_systems","tests":[`)
 		for case_result, index in result.cases {
 			if index > 0 {
 				fmt.print(`,`)
@@ -555,23 +922,35 @@ print_test_command_result :: proc(result: Test_Command_Result, format: Check_Out
 			json_print(case_result.path, false)
 			fmt.print(`","status":"`)
 			print_test_case_status_json(case_result.status)
-			fmt.printf(`","frames":%d,"dt":%g,"expectations":%d,"input_frames":%d`, case_result.frames, case_result.delta_seconds, case_result.expectations, case_result.input_frames)
+			fmt.printf(`","frames":%d,"completed_frames":%d,"dt":%g,"expectations":%d,"failed_assertions":%d,"input_frames":%d`, case_result.frames, case_result.completed_frames, case_result.delta_seconds, case_result.expectations, case_result.failed_assertions, case_result.input_frames)
 			if case_result.error != "" {
 				fmt.print(`,"error":"`)
 				json_print(case_result.error, false)
 				fmt.print(`"`)
 			}
+			if len(case_result.assertion_errors) > 0 {
+				fmt.print(`,"assertion_errors":[`)
+				for assertion_error, error_index in case_result.assertion_errors {
+					if error_index > 0 {
+						fmt.print(`,`)
+					}
+					fmt.print(`"`)
+					json_print(assertion_error, false)
+					fmt.print(`"`)
+				}
+				fmt.print(`]`)
+			}
 			fmt.print(`}`)
 		}
 		fmt.print(`],"summary":{`)
 		fmt.printf(
-			`"cases":%d,"validated":%d,"failed":%d,"pending":%d,"assertions":%d,"pending_assertions":%d`,
+			`"cases":%d,"passed":%d,"failed":%d,"pending":%d,"assertions":%d,"failed_assertions":%d`,
 			result.summary.cases,
 			result.summary.validated,
 			result.summary.failed,
 			result.summary.pending,
 			result.summary.assertions,
-			result.summary.pending_assertions,
+			result.summary.failed_assertions,
 		)
 		fmt.println(`}}`)
 	}
@@ -579,8 +958,8 @@ print_test_command_result :: proc(result: Test_Command_Result, format: Check_Out
 
 print_test_case_status_json :: proc(status: Test_Case_Status) {
 	switch status {
-	case .Pending:
-		fmt.print(`pending`)
+	case .Passed:
+		fmt.print(`passed`)
 	case .Failed:
 		fmt.print(`failed`)
 	}

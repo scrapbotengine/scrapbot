@@ -260,6 +260,26 @@ test_run_test_command_rejects_invalid_manifest :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_run_test_command_fails_mismatched_assertion :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-mismatched-assertion")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "Mismatched Test"), Project_Error.None)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 1
+dt = 1.0
+
+[[expect.field]]
+entity = "scrapbot.renderer"
+component = "scrapbot.renderer"
+field = "hdr"
+equals_bool = false
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 1)
+}
+
+@(test)
 test_run_command_accepts_initialized_project :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-run-project")
 	defer os.remove_all(root)
@@ -528,9 +548,9 @@ write_valid_test_manifest :: proc(t: ^testing.T, root: string) {
 dt = 1.0
 
 [[expect.field]]
-entity = "entity"
-component = "scrapbot.ui.button"
-field = "pressed"
-equals_bool = false
+entity = "scrapbot.renderer"
+component = "scrapbot.renderer"
+field = "hdr"
+equals_bool = true
 `)
 }

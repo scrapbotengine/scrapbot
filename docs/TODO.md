@@ -26,7 +26,7 @@
 - [x] Odin Luau runtime bridge diagnostics include active system, component field, and runtime error context.
 - [x] Odin `step` can validate projects and report deterministic frame/schedule summaries.
 - [x] Odin `bench` can report validation/update timing with Odin Luau execution and pending render stats.
-- [x] Odin `test` can discover test projects, validate test manifests, and report pending assertion execution.
+- [x] Odin `test` can discover test projects, validate test manifests, execute Luau-backed frame simulation, and evaluate first-pass field assertions.
 - [x] Odin `run` can validate projects and execute bounded hidden frame updates while rendering remains pending.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
 - [x] Odin `render` and `render-test` can validate projects, run bounded frame simulation, check selected entities, and report pending backend render stats.
@@ -63,6 +63,7 @@
 - [x] Port first-pass deterministic step command from Zig to Odin.
 - [x] Port first-pass benchmark command from Zig to Odin.
 - [x] Port first-pass test command discovery and manifest validation from Zig to Odin.
+- [x] Port first-pass test command field assertion execution from Zig to Odin.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.
 - [x] Port first-pass render/render-test command parsing and validation from Zig to Odin.

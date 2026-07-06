@@ -7,7 +7,7 @@
 
 The headless validation and test runner lets users, CI systems, and agents check project correctness and script behavior without opening a window. It validates project metadata, script ECS declarations, the default scene, runs deterministic update frames, and exposes machine-readable validation details for editor and agent workflows.
 
-**Odin migration note:** During the staged Odin rewrite, the Odin `visual-test` command currently validates command shape, project loading, selected entity ids, expected/actual path safety, bounded Luau frame simulation, and render extraction stats. Golden image generation, image comparison, metadata sidecars, and tolerance checks still remain in the Zig implementation until Odin render image output lands.
+**Odin migration note:** During the staged Odin rewrite, the Odin `test` command can discover test projects, validate manifests, run Luau-backed frame simulation, and evaluate first-pass final ECS field assertions. Manifest input replay, editor/input routing assertions, and native-backed fixtures still remain in the Zig implementation until those Odin subsystems land. The Odin `visual-test` command currently validates command shape, project loading, selected entity ids, expected/actual path safety, bounded Luau frame simulation, and render extraction stats; golden image generation, image comparison, metadata sidecars, and tolerance checks still remain in Zig until Odin render image output lands.
 
 ## Behavior
 

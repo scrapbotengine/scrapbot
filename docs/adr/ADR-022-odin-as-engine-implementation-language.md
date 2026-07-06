@@ -67,7 +67,7 @@ Until feature parity is reached, some documentation will necessarily describe bo
 14. Port bulk f32/vec3 Luau query view callbacks so buffer-backed hot-loop scripts can read and write packed field values through Odin.
 15. Port first-pass deterministic stepping command output.
 16. Port first-pass benchmark command output while renderer stats still wait for their Odin implementation.
-17. Port first-pass test command discovery and manifest validation while assertion execution still waits for the Odin Luau/native bridge.
+17. Port first-pass test command discovery, manifest validation, and field assertion execution while deterministic input replay and native-backed fixtures still wait for their Odin ports.
 18. Port first-pass bounded `run` command validation while the window loop still waits for the Odin renderer and full callback bridge.
 19. Port first-pass renderer ECS extraction and batch-stat planning before backend-specific drawing.
 20. Port first-pass `render`, `render-test`, and `visual-test` command validation/output while pixel rendering still waits for Odin `wgpu-native` bindings.
