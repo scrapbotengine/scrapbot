@@ -45,7 +45,7 @@ Usage:
   scrapbot check [path] [--format text|json]
 
 Odin migration status:
-  check currently validates project metadata and referenced project files.
+  check currently validates project metadata, referenced files, and first-pass scene structure.
   Runtime, scripting, rendering, editor, and test execution are still being ported.`)
 }
 
@@ -93,10 +93,15 @@ run_check :: proc(args: []string) -> int {
 	}
 
 	project := result.project
+	scene := result.scene
 	switch format {
 	case .Text:
 		fmt.printf("Project OK: %s\n", project.name)
 		fmt.printf("Default scene: %s\n", project.default_scene)
+		fmt.printf("Scene: %s\n", scene.name)
+		fmt.printf("Entities: %d\n", scene.entity_count)
+		fmt.printf("Components: %d\n", scene.component_instance_count)
+		fmt.printf("Renderable cubes: %d\n", scene.renderable_cube_count)
 		fmt.printf("Scripts: %d\n", len(project.scripts))
 		if project.native != "" {
 			fmt.printf("Native source: %s\n", project.native)
@@ -112,6 +117,15 @@ run_check :: proc(args: []string) -> int {
 		fmt.print(`","default_scene":"`)
 		json_print(project.default_scene, false)
 		fmt.printf(`","scripts":%d`, len(project.scripts))
+		fmt.print(`},"scene":`)
+		fmt.print(`{"name":"`)
+		json_print(scene.name, false)
+		fmt.printf(
+			`","entities":%d,"components":%d,"renderable_cubes":%d`,
+			scene.entity_count,
+			scene.component_instance_count,
+			scene.renderable_cube_count,
+		)
 		fmt.println(`},"runtime_validation":"pending_odin_port"}`)
 	}
 

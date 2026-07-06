@@ -2,7 +2,6 @@ package main
 
 import "core:os"
 import "core:path/filepath"
-import "core:strconv"
 import "core:strings"
 
 PROJECT_FILE_NAME :: "project.toml"
@@ -20,6 +19,10 @@ Project_Error :: enum {
 	Unsupported_Project_Version,
 	Invalid_Default_Scene,
 	Missing_Default_Scene,
+	Unsupported_Scene_Version,
+	Invalid_Scene,
+	Duplicate_Scene_Entity_ID,
+	Missing_Scene_Content,
 	Invalid_Script,
 	Missing_Script,
 	Invalid_Native,
@@ -41,6 +44,7 @@ Project :: struct {
 
 Project_Check_Result :: struct {
 	project: Project,
+	scene:   Scene,
 	err:     Project_Error,
 }
 
@@ -56,11 +60,16 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		return Project_Check_Result{project = project, err = .Missing_Default_Scene}
 	}
 
+	scene, scene_err := load_scene_file(default_scene_path)
+	if scene_err != .None {
+		return Project_Check_Result{project = project, scene = scene, err = scene_err}
+	}
+
 	for script_path in project.scripts {
 		full_path := project_relative_path(project.root_path, script_path)
 		defer delete(full_path)
 		if !os.exists(full_path) {
-			return Project_Check_Result{project = project, err = .Missing_Script}
+			return Project_Check_Result{project = project, scene = scene, err = .Missing_Script}
 		}
 	}
 
@@ -68,7 +77,7 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		full_path := project_relative_path(project.root_path, project.native)
 		defer delete(full_path)
 		if !os.exists(full_path) {
-			return Project_Check_Result{project = project, err = .Missing_Native}
+			return Project_Check_Result{project = project, scene = scene, err = .Missing_Native}
 		}
 	}
 
@@ -76,11 +85,11 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		full_path := project_relative_path(project.root_path, project.native_artifact)
 		defer delete(full_path)
 		if !os.exists(full_path) {
-			return Project_Check_Result{project = project, err = .Missing_Native_Artifact}
+			return Project_Check_Result{project = project, scene = scene, err = .Missing_Native_Artifact}
 		}
 	}
 
-	return Project_Check_Result{project = project}
+	return Project_Check_Result{project = project, scene = scene}
 }
 
 load_project :: proc(root_path: string) -> (Project, Project_Error) {
@@ -163,6 +172,11 @@ free_project :: proc(project: Project) {
 	}
 }
 
+free_check_result :: proc(result: Project_Check_Result) {
+	free_project(result.project)
+	free_scene(result.scene)
+}
+
 project_metadata_file_name :: proc(root_path: string) -> string {
 	canonical := project_relative_path(root_path, PROJECT_FILE_NAME)
 	defer delete(canonical)
@@ -221,10 +235,23 @@ read_required_int :: proc(contents, key: string) -> (int, bool) {
 		if !found {
 			continue
 		}
-		parsed, ok := strconv.parse_int(value, 10)
-		return parsed, ok
+		return parse_manifest_int(value)
 	}
 	return 0, false
+}
+
+parse_manifest_int :: proc(value: string) -> (int, bool) {
+	result := 0
+	if value == "" {
+		return 0, false
+	}
+	for c in value {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		result = result * 10 + int(c - '0')
+	}
+	return result, true
 }
 
 read_key_value :: proc(line, key: string) -> (string, bool) {
@@ -297,14 +324,17 @@ parse_basic_string_array :: proc(value: string) -> ([]string, bool) {
 			break
 		}
 		if remaining[0] != '"' {
+			delete(items)
 			return nil, false
 		}
 		end := string_end_index(remaining)
 		if end < 0 {
+			delete(items)
 			return nil, false
 		}
 		item, ok := parse_basic_string(remaining[:end + 1])
 		if !ok {
+			delete(items)
 			return nil, false
 		}
 		append(&items, item)
@@ -313,6 +343,7 @@ parse_basic_string_array :: proc(value: string) -> ([]string, bool) {
 			break
 		}
 		if remaining[0] != ',' {
+			delete(items)
 			return nil, false
 		}
 		remaining = remaining[1:]
@@ -366,6 +397,14 @@ project_error_message :: proc(err: Project_Error) -> string {
 		return "invalid default scene"
 	case .Missing_Default_Scene:
 		return "missing default scene"
+	case .Unsupported_Scene_Version:
+		return "unsupported scene version"
+	case .Invalid_Scene:
+		return "invalid scene"
+	case .Duplicate_Scene_Entity_ID:
+		return "duplicate scene entity id"
+	case .Missing_Scene_Content:
+		return "missing scene content"
 	case .Invalid_Script:
 		return "invalid script path"
 	case .Missing_Script:

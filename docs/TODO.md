@@ -6,6 +6,7 @@
 - [x] Odin engine rewrite accepted as the target implementation direction.
 - [x] Odin smoke build scaffold added beside the current Zig engine.
 - [x] Odin `check` can validate project metadata and referenced project files.
+- [x] Odin `check` can validate first-pass scene structure and report entity/component counts.
 - [x] Shared ECS runtime with generation-aware entities, component tables, system schedules, and script/native access.
 - [x] Live reload for project metadata, scenes, scripts, and project-local native Zig modules.
 - [x] WebGPU renderer with headful SDL windows, offscreen render verification, batching, shadows, and postprocess settings.
@@ -19,7 +20,7 @@
 
 - [ ] Port the Scrapbot CLI entrypoint from Zig to Odin.
 - [x] Port first-pass project metadata loading and referenced-file validation from Zig to Odin.
-- [ ] Port scene parsing and component registry validation from Zig to Odin.
+- [ ] Port full scene component registry validation from Zig to Odin.
 - [ ] Port ECS entity identity, component storage, queries, schedules, and deferred mutation from Zig to Odin.
 - [ ] Port Luau bridge diagnostics and script ECS registration from Zig to Odin.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.

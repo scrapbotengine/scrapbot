@@ -53,12 +53,13 @@ Until feature parity is reached, some documentation will necessarily describe bo
 
 1. Add Odin toolchain provisioning and a buildable smoke executable.
 2. Port the first CLI/project validation slice: project metadata parsing, safe project-relative path checks, referenced file existence, and text/JSON `check` output.
-3. Port the rest of the pure engine foundations before backend-heavy systems: scene validation data structures, math helpers, ECS identity, registry, storage, and scheduling.
-4. Port Luau bridge behavior and diagnostics while preserving existing script fixtures.
-5. Port `wgpu-native` bindings and renderer extraction/offscreen verification.
-6. Port retained UI, editor routing, and headful window integration.
-7. Port project-local native modules from Zig to Odin.
-8. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
+3. Port the first scene validation slice: root scene metadata, entity blocks, duplicate entity ids, component table placement, and scene summary counts.
+4. Port the rest of the pure engine foundations before backend-heavy systems: component registry validation, math helpers, ECS identity, registry, storage, and scheduling.
+5. Port Luau bridge behavior and diagnostics while preserving existing script fixtures.
+6. Port `wgpu-native` bindings and renderer extraction/offscreen verification.
+7. Port retained UI, editor routing, and headful window integration.
+8. Port project-local native modules from Zig to Odin.
+9. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
 
 ## Related
 
