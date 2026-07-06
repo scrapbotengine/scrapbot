@@ -526,6 +526,38 @@ test "cached layout entries reject reused entity generations" {
     try std.testing.expectApproxEqAbs(@as(f32, 40.0), new_layout.position[0], 0.001);
 }
 
+test "cached layout entries reject matching revisions from different worlds" {
+    var first_world = runtime.World.init(std.testing.allocator);
+    defer first_world.deinit();
+    var second_world = runtime.World.init(std.testing.allocator);
+    defer second_world.deinit();
+
+    const first_parent = try first_world.createEntity("parent", "Parent");
+    try first_world.setUiRect(first_parent, .{ .position = .{ 11.0, 0.0, 0.0 } });
+    const first_child = try first_world.createEntity("child", "Child");
+    try first_world.setUiSpacer(first_child, .{ .size = .{ 8.0, 8.0, 0.0 } });
+    try first_world.setUiLayoutItem(first_child, .{ .parent = "parent", .order = 0 });
+
+    const second_parent = try second_world.createEntity("parent", "Parent");
+    try second_world.setUiRect(second_parent, .{ .position = .{ 55.0, 0.0, 0.0 } });
+    const second_child = try second_world.createEntity("child", "Child");
+    try second_world.setUiSpacer(second_child, .{ .size = .{ 8.0, 8.0, 0.0 } });
+    try second_world.setUiLayoutItem(second_child, .{ .parent = "parent", .order = 0 });
+
+    try std.testing.expectEqual(first_world.worldRevision(), second_world.worldRevision());
+    try std.testing.expectEqual(first_child.index, second_child.index);
+    try std.testing.expectEqual(first_child.generation, second_child.generation);
+
+    var cache = LayoutCache.init(std.testing.allocator);
+    defer cache.deinit();
+
+    const first_layout = try resolveWithCache(&cache, &first_world, first_child, .{ 0.0, 0.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 11.0), first_layout.position[0], 0.001);
+
+    const second_layout = try resolveWithCache(&cache, &second_world, second_child, .{ 0.0, 0.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 55.0), second_layout.position[0], 0.001);
+}
+
 test "table lays out children in row-major cells with controlled column split" {
     var world = runtime.World.init(std.testing.allocator);
     defer world.deinit();

@@ -52,6 +52,7 @@ pub const LayoutItem = struct {
 
 pub const LayoutCache = struct {
     allocator: std.mem.Allocator,
+    world: ?*const runtime.World = null,
     world_revision: u64 = 0,
     resolved: std.ArrayList(?CachedResolvedLayout) = .empty,
     item_sizes: std.ArrayList(?CachedSize) = .empty,
@@ -86,11 +87,12 @@ pub const LayoutCache = struct {
             entry.* = null;
         }
         self.linear_groups.clearRetainingCapacity();
+        self.world = world;
         self.world_revision = world.worldRevision();
     }
 
     fn ensureFresh(self: *LayoutCache, world: *const runtime.World) Error!void {
-        if (self.world_revision != world.worldRevision()) {
+        if (self.world != world or self.world_revision != world.worldRevision()) {
             try self.reset(world);
             return;
         }
