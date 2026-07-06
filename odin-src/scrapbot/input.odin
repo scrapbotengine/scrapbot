@@ -44,9 +44,12 @@ Step_Input_Frame :: struct {
 }
 
 Editor_Test_Input_State :: struct {
-	captured_pointer: bool,
-	paused:           bool,
-	step_once:        bool,
+	captured_pointer:    bool,
+	paused:              bool,
+	step_once:           bool,
+	selected_entity:     Entity_Handle,
+	has_selected_entity: bool,
+	entity_scroll_y:     f32,
 }
 
 frame_input_default :: proc() -> Frame_Input {
@@ -56,7 +59,7 @@ frame_input_default :: proc() -> Frame_Input {
 	}
 }
 
-route_editor_test_input :: proc(state: ^Editor_Test_Input_State, input: ^Frame_Input) {
+route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: Runtime_World, input: ^Frame_Input) {
 	state.step_once = false
 	if !input.debug_overlay_visible {
 		state.captured_pointer = false
@@ -73,6 +76,11 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, input: ^Frame_I
 			} else if editor_pointer_in_step_button(input^) {
 				state.paused = true
 				state.step_once = true
+				state.captured_pointer = true
+				consumed = true
+			} else if selected, selected_ok := editor_entity_at_pointer(world, state^, input^); selected_ok {
+				state.selected_entity = selected
+				state.has_selected_entity = true
 				state.captured_pointer = true
 				consumed = true
 			} else if !inside_game {
@@ -109,6 +117,17 @@ editor_test_should_run_update :: proc(state: Editor_Test_Input_State) -> bool {
 	return !state.paused || state.step_once
 }
 
+editor_test_selected_entity_id :: proc(state: Editor_Test_Input_State, world: Runtime_World) -> (string, bool) {
+	if !state.has_selected_entity {
+		return "", false
+	}
+	entity, err := runtime_world_entity(world, state.selected_entity)
+	if err != .None {
+		return "", false
+	}
+	return entity.id, true
+}
+
 editor_pointer_in_game_viewport :: proc(input: Frame_Input) -> bool {
 	x, y, width, height := editor_game_viewport(input.viewport_width, input.viewport_height)
 	return input.pointer.position[0] >= x &&
@@ -133,6 +152,90 @@ editor_play_button_rect :: proc(window_width: f32) -> (x, y, width, height: f32)
 	       (UI_EDITOR_TOP_BAR_HEIGHT - UI_EDITOR_CONTROL_BUTTON_HEIGHT) * 0.5,
 	       UI_EDITOR_CONTROL_BUTTON_WIDTH,
 	       UI_EDITOR_CONTROL_BUTTON_HEIGHT
+}
+
+editor_entity_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input) -> (Entity_Handle, bool) {
+	if !input.pointer.has_position || runtime_world_entity_count(world) == 0 {
+		return Entity_Handle{}, false
+	}
+	clip_x, clip_y, clip_width, clip_height := editor_entity_list_clip_rect(world, input)
+	if !editor_pointer_in_rect(input, clip_x, clip_y, clip_width, clip_height) {
+		return Entity_Handle{}, false
+	}
+	row_index := int((input.pointer.position[1] - clip_y - UI_EDITOR_ENTITY_CARD_PADDING_Y + 8.0 + state_entity_scroll_y(state)) / UI_EDITOR_ENTITY_ROW_STRIDE)
+	if row_index < 0 || row_index >= runtime_world_entity_count(world) {
+		return Entity_Handle{}, false
+	}
+	entity, err := runtime_world_entity(world, Entity_Handle{index = u32(row_index)})
+	if err != .None {
+		return Entity_Handle{}, false
+	}
+	return Entity_Handle{index = u32(row_index), generation = entity.generation}, true
+}
+
+state_entity_scroll_y :: proc(state: Editor_Test_Input_State) -> f32 {
+	return state.entity_scroll_y
+}
+
+editor_entity_list_clip_rect :: proc(world: Runtime_World, input: Frame_Input) -> (x, y, width, height: f32) {
+	panel_x, panel_y, panel_width, panel_height := editor_entity_panel_rect(input.viewport_width, input.viewport_height)
+	visible_rows := editor_entity_visible_rows(panel_y, panel_height)
+	scrollbar_space := f32(0)
+	if runtime_world_entity_count(world) > visible_rows {
+		scrollbar_space = UI_EDITOR_SCROLLBAR_WIDTH + UI_EDITOR_SCROLLBAR_GAP
+	}
+	return panel_x,
+	       panel_y + editor_system_rows_y_offset(),
+	       max_f32(panel_width - scrollbar_space, 1),
+	       editor_entity_table_content_height(visible_rows)
+}
+
+editor_entity_panel_rect :: proc(window_width, window_height: f32) -> (x, y, width, height: f32) {
+	body_x := f32(0)
+	body_y := UI_EDITOR_TOP_BAR_HEIGHT
+	body_height := max_f32(window_height - UI_EDITOR_TOP_BAR_HEIGHT - UI_EDITOR_BOTTOM_BAR_HEIGHT, 1)
+	left, _ := editor_side_widths(window_width)
+	sidebar_x := body_x + UI_EDITOR_SIDEBAR_PANEL_MARGIN
+	sidebar_y := body_y + UI_EDITOR_SIDEBAR_PANEL_MARGIN
+	sidebar_width := max_f32(left - UI_EDITOR_SIDEBAR_PANEL_MARGIN * 2, 1)
+	sidebar_height := max_f32(body_height - UI_EDITOR_SIDEBAR_PANEL_MARGIN * 2, 1)
+	entity_height := editor_entity_panel_height(sidebar_height)
+	return sidebar_x,
+	       sidebar_y + max_f32(sidebar_height - entity_height, 0),
+	       sidebar_width,
+	       entity_height
+}
+
+editor_entity_panel_height :: proc(total_height: f32) -> f32 {
+	if total_height <= UI_EDITOR_LEFT_PANEL_GAP + 2 {
+		return max_f32(total_height * 0.5, 1)
+	}
+	max_entity_height := max_f32(total_height * 0.5, 1)
+	min_entity_height := min_f32(UI_EDITOR_ENTITY_PANEL_MIN_HEIGHT, max_entity_height)
+	entity_height := clamp_f32(total_height * 0.4, min_entity_height, max_entity_height)
+	min_system := min_f32(UI_EDITOR_SYSTEM_PANEL_MIN_HEIGHT, max_f32(total_height - UI_EDITOR_LEFT_PANEL_GAP - 1, 1))
+	if total_height - UI_EDITOR_LEFT_PANEL_GAP - entity_height < min_system {
+		entity_height = max_f32(total_height - UI_EDITOR_LEFT_PANEL_GAP - min_system, 1)
+	}
+	return entity_height
+}
+
+editor_entity_visible_rows :: proc(panel_y, panel_height: f32) -> int {
+	rows_y := panel_y + editor_system_rows_y_offset()
+	rows_height := max_f32(panel_y + panel_height - rows_y - UI_EDITOR_PANEL_BOTTOM_PADDING - UI_EDITOR_ENTITY_CARD_PADDING_Y * 2, UI_EDITOR_ENTITY_ROW_STRIDE)
+	rows := int(rows_height / UI_EDITOR_ENTITY_ROW_STRIDE)
+	if rows < 1 {
+		return 1
+	}
+	return rows
+}
+
+editor_entity_table_content_height :: proc(row_count: int) -> f32 {
+	return UI_EDITOR_ENTITY_CARD_PADDING_Y * 2 + f32(row_count) * UI_EDITOR_ENTITY_ROW_STRIDE
+}
+
+editor_system_rows_y_offset :: proc() -> f32 {
+	return UI_EDITOR_PANEL_PADDING_Y + UI_EDITOR_TEXT_HEIGHT + UI_EDITOR_PANEL_LABEL_GAP
 }
 
 editor_pointer_in_rect :: proc(input: Frame_Input, x, y, width, height: f32) -> bool {

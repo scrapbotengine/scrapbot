@@ -26,7 +26,7 @@
 - [x] Odin Luau runtime bridge diagnostics include active system, component field, and runtime error context.
 - [x] Odin `step` can validate projects and report deterministic frame/schedule summaries.
 - [x] Odin `bench` can report validation/update timing with Odin Luau execution and pending render stats.
-- [x] Odin `test` can discover test projects, validate test manifests, replay script-visible input resources, route retained scene UI commands/scroll, consume editor-chrome pointer input, replay editor play/pause and single-step buttons, execute Luau-backed frame simulation, and evaluate first-pass field assertions.
+- [x] Odin `test` can discover test projects, validate test manifests, replay script-visible input resources, route retained scene UI commands/scroll, consume editor-chrome pointer input, replay editor play/pause and single-step buttons, replay first-pass editor entity-list selection, execute Luau-backed frame simulation, and evaluate first-pass field/editor assertions.
 - [x] Odin `run` can validate projects and execute bounded hidden frame updates while rendering remains pending.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
 - [x] Odin `render` and `render-test` can validate projects, run bounded frame simulation, check selected entities, and report pending backend render stats.
@@ -70,13 +70,14 @@
 - [x] Port first-pass retained scene UI command and scroll routing for Odin test replay.
 - [x] Port first-pass editor chrome input ownership for Odin test replay.
 - [x] Port first-pass editor playback button replay for Odin test replay.
+- [x] Port first-pass editor entity-list selection replay for Odin test replay.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.
 - [x] Port first-pass render/render-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass visual-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass project-local native Odin component/system declaration registration.
 - [x] Port first-pass pending Odin-native system execution diagnostics.
-- [ ] Port remaining editor-shell input routing for Odin test replay, including entity selection, inspector selection, scrolling, splitter dragging, gizmo capture, and text editing.
+- [ ] Port remaining editor-shell input routing for Odin test replay, including editor scrolling, inspector selection, splitter dragging, gizmo capture, and text editing.
 - [ ] Port remaining script runtime diagnostics from Zig to Odin, including reload execution paths and native execution once native systems can run.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [ ] Port Odin render image output, offscreen image verification, and hidden headful smoke paths.

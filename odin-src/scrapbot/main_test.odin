@@ -422,6 +422,58 @@ equals_int = 1
 	testing.expect_value(t, exit_code, 0)
 }
 
+@(test)
+test_run_test_command_replays_editor_entity_selection :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-entity-selection")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Editor Entity Selection Test"
+version = 1
+
+[[entities]]
+id = "first"
+name = "First"
+
+[entities.components.flag]
+value = 1
+
+[[entities]]
+id = "second"
+name = "Second"
+
+[entities.components.flag]
+value = 2
+`)
+	write_file(t, root, "scripts/components.luau", `local Flag = ecs.component("flag", {
+  fields = ecs.fields({
+    value = "int",
+  }),
+})
+`)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "Editor Entity Selection Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = ["scripts/components.luau"]
+`)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 1
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [20.0, 528.0]
+primary_pressed = true
+primary_down = true
+
+[[expect.editor]]
+selected_entity = "second"
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
 make_editor_playback_test_project :: proc(t: ^testing.T, name: string) -> string {
 	root := make_test_project_root(t, name)
 	testing.expect_value(t, init_project(root, "Editor Playback Test"), Project_Error.None)
@@ -719,11 +771,14 @@ entity = "counter"
 component = "counter"
 field = "value"
 equals_int = 2
+
+[[expect.editor]]
+selected_entity = "counter"
 `)
 	testing.expect_value(t, ok, true)
 	testing.expect_value(t, summary.frames, 2)
 	testing.expect_value(t, summary.input_frames, 1)
-	testing.expect_value(t, summary.expectations, 2)
+	testing.expect_value(t, summary.expectations, 3)
 }
 
 @(test)

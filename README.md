@@ -39,6 +39,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin retained scene UI replay slice
   - [x] Odin editor chrome input ownership replay slice
   - [x] Odin editor playback replay slice
+  - [x] Odin editor entity-list selection replay slice
   - [x] Odin bounded run command slice
   - [x] Odin render extraction stats slice
   - [x] Odin render command validation slice

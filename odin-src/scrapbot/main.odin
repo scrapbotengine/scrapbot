@@ -616,6 +616,7 @@ Simulation_Run_Result :: struct {
 	ok:               bool,
 	completed_frames: int,
 	diagnostic:       Script_Diagnostic,
+	editor_state:     Editor_Test_Input_State,
 }
 
 run_script_simulation :: proc(result: ^Project_Check_Result, frames: int, delta_seconds: f32) -> Simulation_Run_Result {
@@ -632,13 +633,14 @@ run_script_simulation_with_input :: proc(result: ^Project_Check_Result, frames: 
 	for completed_frames < frames {
 		if len(input_frames) > 0 {
 			frame_input := step_input_for_frame(input_frames, completed_frames + 1)
-			route_editor_test_input(&editor_input_state, &frame_input)
+			route_editor_test_input(&editor_input_state, result.scene.world, &frame_input)
 			input_err := write_frame_input(&result.scene.world, frame_input)
 			if input_err != .None {
 				return Simulation_Run_Result{
 					ok = false,
 					completed_frames = completed_frames,
 					diagnostic = script_runtime_diagnostic("", "", 0, runtime_error_label(input_err)),
+					editor_state = editor_input_state,
 				}
 			}
 			route_err := route_test_frame_input(&result.scene.world)
@@ -647,6 +649,7 @@ run_script_simulation_with_input :: proc(result: ^Project_Check_Result, frames: 
 					ok = false,
 					completed_frames = completed_frames,
 					diagnostic = script_runtime_diagnostic("", "", 0, runtime_error_label(route_err)),
+					editor_state = editor_input_state,
 				}
 			}
 			if !editor_test_should_run_update(editor_input_state) {
@@ -656,11 +659,11 @@ run_script_simulation_with_input :: proc(result: ^Project_Check_Result, frames: 
 		}
 		update := script_program_run_schedule(&result.script_program, &result.registry, &result.scene.world, result.update_schedule, delta_seconds)
 		if !update.ok {
-			return Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic}
+			return Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic, editor_state = editor_input_state}
 		}
 		completed_frames += 1
 	}
-	return Simulation_Run_Result{ok = true, completed_frames = completed_frames}
+	return Simulation_Run_Result{ok = true, completed_frames = completed_frames, editor_state = editor_input_state}
 }
 
 print_step_result :: proc(result: Project_Check_Result, options: Simulation_Options, completed_frames: int) {

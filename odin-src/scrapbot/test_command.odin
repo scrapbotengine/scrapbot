@@ -47,11 +47,16 @@ Test_Expectation :: struct {
 	expected:  Test_Expected_Value,
 }
 
+Test_Editor_Expectation :: struct {
+	selected_entity: string,
+}
+
 Test_Manifest :: struct {
-	frames:        int,
-	delta_seconds: f32,
-	input_frames:  [dynamic]Step_Input_Frame,
-	expectations:  [dynamic]Test_Expectation,
+	frames:              int,
+	delta_seconds:       f32,
+	input_frames:        [dynamic]Step_Input_Frame,
+	expectations:        [dynamic]Test_Expectation,
+	editor_expectations: [dynamic]Test_Editor_Expectation,
 }
 
 Test_Case_Result :: struct {
@@ -85,6 +90,7 @@ Test_Command_Result :: struct {
 Test_Manifest_Section :: enum {
 	Root,
 	Expect_Field,
+	Expect_Editor,
 	Input_Frame,
 }
 
@@ -101,6 +107,11 @@ Test_Manifest_Input_State :: struct {
 	active: bool,
 	frame:  int,
 	input:  Frame_Input,
+}
+
+Test_Manifest_Editor_Expectation_State :: struct {
+	active:          bool,
+	selected_entity: string,
 }
 
 parse_test_options :: proc(args: []string, emit_output: bool) -> (Test_Options, bool) {
@@ -208,7 +219,7 @@ run_test_case :: proc(project_path: string) -> Test_Case_Result {
 	}
 	result.frames = manifest.frames
 	result.delta_seconds = manifest.delta_seconds
-	result.expectations = len(manifest.expectations)
+	result.expectations = len(manifest.expectations) + len(manifest.editor_expectations)
 	result.input_frames = len(manifest.input_frames)
 
 	check := check_project(project_path)
@@ -235,6 +246,12 @@ run_test_case :: proc(project_path: string) -> Test_Case_Result {
 		if !test_expectation_matches(check.scene.world, expectation) {
 			result.failed_assertions += 1
 			append(&result.assertion_errors, test_expectation_failure_message(check.scene.world, expectation))
+		}
+	}
+	for expectation in manifest.editor_expectations {
+		if !test_editor_expectation_matches(check.scene.world, simulation.editor_state, expectation) {
+			result.failed_assertions += 1
+			append(&result.assertion_errors, test_editor_expectation_failure_message(check.scene.world, simulation.editor_state, expectation))
 		}
 	}
 	if result.failed_assertions > 0 {
@@ -310,7 +327,7 @@ test_manifest_summary :: proc(manifest: Test_Manifest) -> Test_Manifest_Summary 
 	return Test_Manifest_Summary{
 		frames = manifest.frames,
 		delta_seconds = manifest.delta_seconds,
-		expectations = len(manifest.expectations),
+		expectations = len(manifest.expectations) + len(manifest.editor_expectations),
 		input_frames = len(manifest.input_frames),
 	}
 }
@@ -330,10 +347,12 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 		delta_seconds = DEFAULT_STEP_DELTA_SECONDS,
 		input_frames = make([dynamic]Step_Input_Frame),
 		expectations = make([dynamic]Test_Expectation),
+		editor_expectations = make([dynamic]Test_Editor_Expectation),
 	}
 	section := Test_Manifest_Section.Root
 	expect := Test_Manifest_Expectation_State{}
 	input := Test_Manifest_Input_State{}
+	editor_expect := Test_Manifest_Editor_Expectation_State{}
 
 	finish_expect := proc(manifest: ^Test_Manifest, expect: ^Test_Manifest_Expectation_State) -> bool {
 		if !expect.active {
@@ -349,6 +368,21 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 			})
 		} else {
 			free_test_expectation_state(expect^)
+		}
+		expect^ = {}
+		return ok
+	}
+	finish_editor_expect := proc(manifest: ^Test_Manifest, expect: ^Test_Manifest_Editor_Expectation_State) -> bool {
+		if !expect.active {
+			return true
+		}
+		ok := expect.selected_entity != ""
+		if ok {
+			append(&manifest.editor_expectations, Test_Editor_Expectation{
+				selected_entity = expect.selected_entity,
+			})
+		} else {
+			free_test_editor_expectation_state(expect^)
 		}
 		expect^ = {}
 		return ok
@@ -380,7 +414,7 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 			continue
 		}
 		if trimmed == "[[expect.field]]" || trimmed == "[[expect]]" {
-			if !finish_expect(&manifest, &expect) || !finish_input(&manifest, &input) {
+			if !finish_expect(&manifest, &expect) || !finish_editor_expect(&manifest, &editor_expect) || !finish_input(&manifest, &input) {
 				free_test_manifest(manifest)
 				return {}, false
 			}
@@ -388,8 +422,17 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 			expect.active = true
 			continue
 		}
+		if trimmed == "[[expect.editor]]" {
+			if !finish_expect(&manifest, &expect) || !finish_editor_expect(&manifest, &editor_expect) || !finish_input(&manifest, &input) {
+				free_test_manifest(manifest)
+				return {}, false
+			}
+			section = .Expect_Editor
+			editor_expect.active = true
+			continue
+		}
 		if trimmed == "[[input.frame]]" {
-			if !finish_expect(&manifest, &expect) || !finish_input(&manifest, &input) {
+			if !finish_expect(&manifest, &expect) || !finish_editor_expect(&manifest, &editor_expect) || !finish_input(&manifest, &input) {
 				free_test_manifest(manifest)
 				return {}, false
 			}
@@ -418,22 +461,31 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 			if !parse_test_manifest_expect_key(&expect, key, value) {
 				free_test_manifest(manifest)
 				free_test_expectation_state(expect)
+				free_test_editor_expectation_state(editor_expect)
+				return {}, false
+			}
+		case .Expect_Editor:
+			if !parse_test_manifest_editor_expect_key(&editor_expect, key, value) {
+				free_test_manifest(manifest)
+				free_test_expectation_state(expect)
+				free_test_editor_expectation_state(editor_expect)
 				return {}, false
 			}
 		case .Input_Frame:
 			if !parse_test_manifest_input_key(&input, key, value) {
 				free_test_manifest(manifest)
 				free_test_expectation_state(expect)
+				free_test_editor_expectation_state(editor_expect)
 				return {}, false
 			}
 		}
 	}
 
-	if !finish_expect(&manifest, &expect) || !finish_input(&manifest, &input) {
+	if !finish_expect(&manifest, &expect) || !finish_editor_expect(&manifest, &editor_expect) || !finish_input(&manifest, &input) {
 		free_test_manifest(manifest)
 		return {}, false
 	}
-	if manifest.frames <= 0 || manifest.delta_seconds <= 0 || len(manifest.expectations) == 0 {
+	if manifest.frames <= 0 || manifest.delta_seconds <= 0 || (len(manifest.expectations) + len(manifest.editor_expectations)) == 0 {
 		free_test_manifest(manifest)
 		return {}, false
 	}
@@ -568,6 +620,36 @@ parse_test_manifest_expect_key :: proc(expect: ^Test_Manifest_Expectation_State,
 		}
 		expect.expected = Test_Expected_Value{value_type = .String, string_value = expected}
 		expect.has_expected = true
+		return true
+	}
+	return false
+}
+
+parse_test_manifest_editor_expect_key :: proc(expect: ^Test_Manifest_Editor_Expectation_State, key, value: string) -> bool {
+	switch key {
+	case "selected_entity":
+		parsed, owned, ok := parse_basic_string_unescaped(value)
+		if !ok || parsed == "" {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		if expect.selected_entity != "" {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		if owned != "" {
+			expect.selected_entity = owned
+		} else {
+			clone_ok: bool
+			expect.selected_entity, clone_ok = clone_test_string(parsed)
+			if !clone_ok {
+				return false
+			}
+		}
 		return true
 	}
 	return false
@@ -854,8 +936,14 @@ free_test_manifest :: proc(manifest: Test_Manifest) {
 	for expectation in manifest.expectations {
 		free_test_expectation(expectation)
 	}
+	for expectation in manifest.editor_expectations {
+		free_test_editor_expectation(expectation)
+	}
 	if manifest.expectations != nil {
 		delete(manifest.expectations)
+	}
+	if manifest.editor_expectations != nil {
+		delete(manifest.editor_expectations)
 	}
 	if manifest.input_frames != nil {
 		delete(manifest.input_frames)
@@ -875,6 +963,12 @@ free_test_expectation :: proc(expectation: Test_Expectation) {
 	free_test_expected_value(expectation.expected)
 }
 
+free_test_editor_expectation :: proc(expectation: Test_Editor_Expectation) {
+	if expectation.selected_entity != "" {
+		delete(expectation.selected_entity)
+	}
+}
+
 free_test_expectation_state :: proc(expect: Test_Manifest_Expectation_State) {
 	if expect.entity != "" {
 		delete(expect.entity)
@@ -887,6 +981,12 @@ free_test_expectation_state :: proc(expect: Test_Manifest_Expectation_State) {
 	}
 	if expect.has_expected {
 		free_test_expected_value(expect.expected)
+	}
+}
+
+free_test_editor_expectation_state :: proc(expect: Test_Manifest_Editor_Expectation_State) {
+	if expect.selected_entity != "" {
+		delete(expect.selected_entity)
 	}
 }
 
@@ -906,6 +1006,11 @@ test_expectation_matches :: proc(world: Runtime_World, expectation: Test_Expecta
 		return false
 	}
 	return test_expected_value_matches(expectation.expected, actual)
+}
+
+test_editor_expectation_matches :: proc(world: Runtime_World, editor_state: Editor_Test_Input_State, expectation: Test_Editor_Expectation) -> bool {
+	selected, selected_ok := editor_test_selected_entity_id(editor_state, world)
+	return selected_ok && selected == expectation.selected_entity
 }
 
 test_expected_value_matches :: proc(expected: Test_Expected_Value, actual: Runtime_Component_Value) -> bool {
@@ -961,6 +1066,22 @@ test_expectation_failure_message :: proc(world: Runtime_World, expectation: Test
 	}
 	strings.write_string(&builder, ", got ")
 	append_test_component_value_text(&builder, actual)
+	return strings.clone(strings.to_string(builder))
+}
+
+test_editor_expectation_failure_message :: proc(world: Runtime_World, editor_state: Editor_Test_Input_State, expectation: Test_Editor_Expectation) -> string {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	strings.write_string(&builder, "editor.selected_entity: expected \"")
+	strings.write_string(&builder, expectation.selected_entity)
+	strings.write_rune(&builder, '"')
+	if actual, ok := editor_test_selected_entity_id(editor_state, world); ok {
+		strings.write_string(&builder, ", got \"")
+		strings.write_string(&builder, actual)
+		strings.write_rune(&builder, '"')
+	} else {
+		strings.write_string(&builder, ", got none")
+	}
 	return strings.clone(strings.to_string(builder))
 }
 
