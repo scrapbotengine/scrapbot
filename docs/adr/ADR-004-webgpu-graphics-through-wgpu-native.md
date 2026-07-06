@@ -4,6 +4,8 @@
 
 **Migration note:** The language-specific Zig binding details are superseded by [ADR-023](ADR-023-odin-as-engine-implementation-language.md). Scrapbot still uses `wgpu-native`, but the target renderer binding is Odin through the C ABI.
 
+**Odin migration note:** The first Odin migration slice owns the render-relevant `wgpu-native` C ABI scalar types, string/chained structs, texture formats, and buffer/texture usage flags in `odin-src/scrapbot/wgpu_native.odin`. It does not yet link `wgpu-native` or replace the Zig WebGPU renderer.
+
 ## Context
 
 Scrapbot needs a cross-platform graphics foundation without directly owning Vulkan, Metal, Direct3D, and OpenGL backends at the start of the project. A direct backend strategy would consume too much early engineering effort before the engine has proven its runtime, project model, scripting, and editor architecture.
