@@ -71,11 +71,12 @@ Until feature parity is reached, some documentation will necessarily describe bo
 18. Port first-pass bounded `run` command validation while the window loop still waits for the Odin renderer and full callback bridge.
 19. Port first-pass renderer ECS extraction and batch-stat planning before backend-specific drawing.
 20. Port the rest of the pure engine foundations before backend-heavy systems, including math helpers and runtime diagnostics.
-21. Port remaining Luau bridge callbacks and runtime diagnostics while preserving existing script fixtures.
-22. Port `wgpu-native` bindings and offscreen render verification.
-23. Port retained UI, editor routing, and headful window integration.
-24. Port project-local native modules from Zig to Odin.
-25. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
+21. Port detailed Luau bridge runtime diagnostics while preserving existing script fixtures.
+22. Port remaining native and reload runtime diagnostics.
+23. Port `wgpu-native` bindings and offscreen render verification.
+24. Port retained UI, editor routing, and headful window integration.
+25. Port project-local native modules from Zig to Odin.
+26. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
 
 ## Related
 

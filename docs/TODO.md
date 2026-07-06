@@ -23,6 +23,7 @@
 - [x] Odin Luau execution supports direct entity vec3 get/set methods.
 - [x] Odin Luau execution supports prepared query iteration and resolved-row component field access.
 - [x] Odin Luau execution supports bulk f32/vec3 query views.
+- [x] Odin Luau runtime bridge diagnostics include active system, component field, and runtime error context.
 - [x] Odin `step` can validate projects and report deterministic frame/schedule summaries.
 - [x] Odin `bench` can report validation/update timing with Odin Luau execution and pending render stats.
 - [x] Odin `test` can discover test projects, validate test manifests, and report pending assertion execution.
@@ -56,12 +57,13 @@
 - [x] Port direct Luau entity vec3 get/set callbacks from Zig to Odin.
 - [x] Port prepared Luau query iteration and resolved-row field callbacks from Zig to Odin.
 - [x] Port bulk f32/vec3 Luau query view callbacks from Zig to Odin.
+- [x] Port detailed Luau runtime bridge diagnostics from Zig to Odin.
 - [x] Port first-pass deterministic step command from Zig to Odin.
 - [x] Port first-pass benchmark command from Zig to Odin.
 - [x] Port first-pass test command discovery and manifest validation from Zig to Odin.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.
-- [ ] Port remaining Luau callbacks from Zig to Odin, including complete runtime diagnostics.
+- [ ] Port remaining script runtime diagnostics from Zig to Odin, including native and reload execution paths.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [ ] Port Odin render command output, offscreen image verification, and hidden headful smoke paths.
 - [ ] Replace project-local native Zig modules with project-local native Odin modules.

@@ -2,6 +2,7 @@ package main
 
 import odin_runtime "base:runtime"
 import "core:c"
+import "core:fmt"
 import "core:math"
 import "core:os"
 import "core:strings"
@@ -583,7 +584,12 @@ script_program_run_schedule :: proc(
 			}
 			flush_err := runtime_deferred_flush(&program.deferred, world, registry^)
 			if flush_err != .None {
-				script_program_set_host_error(program, "system failed to flush deferred structural commands")
+				script_program_set_host_errorf(
+					program,
+					"system '%s' failed to flush deferred structural commands: %s",
+					script_program_active_system_id(program),
+					runtime_error_label(flush_err),
+				)
 				diagnostic := script_program_runtime_diagnostic(program, system)
 				script_program_clear_host_error(program)
 				return Script_Run_Result{ok = false, diagnostic = diagnostic}
@@ -672,6 +678,67 @@ script_program_set_host_error :: proc(program: ^Script_Program, message: string)
 	program.has_host_error = true
 }
 
+script_program_set_host_errorf :: proc(program: ^Script_Program, format: string, args: ..any) {
+	script_program_clear_host_error(program)
+	message := fmt.bprintf(program.host_error_storage[:len(program.host_error_storage) - 1], format, ..args)
+	count := len(message)
+	if count >= len(program.host_error_storage) {
+		count = len(program.host_error_storage) - 1
+	}
+	program.host_error_storage[count] = 0
+	program.host_error_len = count
+	program.has_host_error = true
+}
+
+script_program_active_system_id :: proc(program: ^Script_Program) -> string {
+	if program != nil && program.has_active_system && program.active_system.id != "" {
+		return program.active_system.id
+	}
+	return "<none>"
+}
+
+runtime_error_label :: proc(err: Runtime_Error) -> string {
+	switch err {
+	case .None:
+		return "None"
+	case .Out_Of_Memory:
+		return "Out_Of_Memory"
+	case .Invalid_Type_ID:
+		return "Invalid_Type_ID"
+	case .Reserved_Type_ID:
+		return "Reserved_Type_ID"
+	case .Invalid_Field_Name:
+		return "Invalid_Field_Name"
+	case .Duplicate_Component_Field:
+		return "Duplicate_Component_Field"
+	case .Duplicate_Component_Type:
+		return "Duplicate_Component_Type"
+	case .Duplicate_System_Access:
+		return "Duplicate_System_Access"
+	case .Duplicate_System_Type:
+		return "Duplicate_System_Type"
+	case .Duplicate_Entity_ID:
+		return "Duplicate_Entity_ID"
+	case .Invalid_Entity:
+		return "Invalid_Entity"
+	case .Unknown_Component:
+		return "Unknown_Component"
+	case .Unknown_Component_Type:
+		return "Unknown_Component_Type"
+	case .Unknown_Field:
+		return "Unknown_Field"
+	case .Invalid_Field_Type:
+		return "Invalid_Field_Type"
+	case .Cyclic_System_Order:
+		return "Cyclic_System_Order"
+	case .Access_Denied:
+		return "Access_Denied"
+	case .Invalid_Structural_Command:
+		return "Invalid_Structural_Command"
+	}
+	return "Unknown_Runtime_Error"
+}
+
 luau_bridge_callbacks :: proc() -> Luau_Bridge_Callbacks {
 	return Luau_Bridge_Callbacks{
 		query_next = luau_bridge_query_next,
@@ -753,7 +820,12 @@ luau_bridge_prepare_query :: proc "c" (
 	indices := out_component_table_indices[:len(ids)]
 	driver_index, found, err := runtime_world_prepare_query(runtime_world^, ids, indices)
 	if err != .None {
-		script_program_set_host_error(program, "world query prepare failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to prepare query: %s",
+			script_program_active_system_id(program),
+			runtime_error_label(err),
+		)
 		return -1
 	}
 	if !found {
@@ -782,7 +854,12 @@ luau_bridge_query_next_prepared :: proc "c" (
 	context = program.odin_context
 	count := int(component_count)
 	if count <= 0 || count > 32 {
-		script_program_set_host_error(program, "prepared world query has invalid component count")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to run prepared query with unsupported component count %d",
+			script_program_active_system_id(program),
+			count,
+		)
 		return -1
 	}
 	indices := component_table_indices[:count]
@@ -791,7 +868,12 @@ luau_bridge_query_next_prepared :: proc "c" (
 	entity, found, err := runtime_world_query_next_prepared(runtime_world^, indices, driver_table_index, &cursor_value, rows)
 	cursor^ = u32(cursor_value)
 	if err != .None {
-		script_program_set_host_error(program, "prepared world query iteration failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to run prepared query: %s",
+			script_program_active_system_id(program),
+			runtime_error_label(err),
+		)
 		return -1
 	}
 	if !found {
@@ -819,12 +901,21 @@ luau_bridge_component_ids :: proc(
 ) -> ([]string, bool) {
 	count := int(component_count)
 	if count <= 0 || count > 32 || component_ids == nil {
-		script_program_set_host_error(program, "world query has invalid component count")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to query %d components; the host bridge supports at most 32",
+			script_program_active_system_id(program),
+			count,
+		)
 		return nil, false
 	}
 	ids := make([]string, count)
 	if ids == nil {
-		script_program_set_host_error(program, "world query failed to allocate component list")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to allocate query component list",
+			script_program_active_system_id(program),
+		)
 		return nil, false
 	}
 	for index := 0; index < count; index += 1 {
@@ -832,14 +923,23 @@ luau_bridge_component_ids :: proc(
 		if id == "" {
 			luau_bridge_component_ids_free(ids[:index])
 			delete(ids)
-			script_program_set_host_error(program, "world query has invalid component id")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to query an invalid component id",
+				script_program_active_system_id(program),
+			)
 			return nil, false
 		}
 		if !script_program_active_system_allows_read(program, id) {
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to query component '%s' without declaring it in reads or writes",
+				script_program_active_system_id(program),
+				id,
+			)
 			delete(id)
 			luau_bridge_component_ids_free(ids[:index])
 			delete(ids)
-			script_program_set_host_error(program, "system tried to query a component without declaring read access")
 			return nil, false
 		}
 		ids[index] = id
@@ -879,14 +979,14 @@ luau_bridge_read_f32_view :: proc "c" (
 	defer if field != "" do delete(field)
 	count := int(entity_count)
 	if count < 0 {
-		script_program_set_host_error(program, "bulk f32 read has invalid entity count")
+		script_program_set_host_errorf(program, "system '%s' bulk f32 read has invalid entity count", script_program_active_system_id(program))
 		return 0
 	}
 	if count == 0 {
 		return 1
 	}
 	if entities == nil || entity_generations == nil || component_rows == nil || out_values == nil {
-		script_program_set_host_error(program, "bulk f32 read has invalid buffers")
+		script_program_set_host_errorf(program, "system '%s' bulk f32 read has invalid buffers", script_program_active_system_id(program))
 		return 0
 	}
 	entity_indices := entities[:count]
@@ -901,11 +1001,24 @@ luau_bridge_read_f32_view :: proc "c" (
 			field,
 		)
 		if err != .None {
-			script_program_set_host_error(program, "bulk f32 read failed")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' failed to bulk-read '%s.%s': %s",
+				script_program_active_system_id(program),
+				component,
+				field,
+				runtime_error_label(err),
+			)
 			return 0
 		}
 		if value.value_type != .Float {
-			script_program_set_host_error(program, "system tried to bulk-read non-f32 field as f32")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to bulk-read non-f32 field '%s.%s' as f32",
+				script_program_active_system_id(program),
+				component,
+				field,
+			)
 			return 0
 		}
 		values[index] = value.float
@@ -939,14 +1052,14 @@ luau_bridge_write_f32_view :: proc "c" (
 	defer if field != "" do delete(field)
 	count := int(entity_count)
 	if count < 0 {
-		script_program_set_host_error(program, "bulk f32 write has invalid entity count")
+		script_program_set_host_errorf(program, "system '%s' bulk f32 write has invalid entity count", script_program_active_system_id(program))
 		return 0
 	}
 	if count == 0 {
 		return 1
 	}
 	if entities == nil || entity_generations == nil || component_rows == nil || values == nil {
-		script_program_set_host_error(program, "bulk f32 write has invalid buffers")
+		script_program_set_host_errorf(program, "system '%s' bulk f32 write has invalid buffers", script_program_active_system_id(program))
 		return 0
 	}
 	entity_indices := entities[:count]
@@ -956,7 +1069,13 @@ luau_bridge_write_f32_view :: proc "c" (
 	for index := 0; index < count; index += 1 {
 		value := source_values[index]
 		if !luau_bridge_f32_is_finite(value) {
-			script_program_set_host_error(program, "system tried to bulk-write non-finite f32 value")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to bulk-write non-finite f32 value to '%s.%s'",
+				script_program_active_system_id(program),
+				component,
+				field,
+			)
 			return 0
 		}
 		err := runtime_world_set_component_field_value_resolved(
@@ -967,7 +1086,14 @@ luau_bridge_write_f32_view :: proc "c" (
 			runtime_component_value_float(value),
 		)
 		if err != .None {
-			script_program_set_host_error(program, "bulk f32 write failed")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' failed to bulk-write '%s.%s': %s",
+				script_program_active_system_id(program),
+				component,
+				field,
+				runtime_error_label(err),
+			)
 			return 0
 		}
 	}
@@ -1000,14 +1126,14 @@ luau_bridge_read_vec3_view :: proc "c" (
 	defer if field != "" do delete(field)
 	count := int(entity_count)
 	if count < 0 {
-		script_program_set_host_error(program, "bulk vec3 read has invalid entity count")
+		script_program_set_host_errorf(program, "system '%s' bulk vec3 read has invalid entity count", script_program_active_system_id(program))
 		return 0
 	}
 	if count == 0 {
 		return 1
 	}
 	if entities == nil || entity_generations == nil || component_rows == nil || out_values == nil {
-		script_program_set_host_error(program, "bulk vec3 read has invalid buffers")
+		script_program_set_host_errorf(program, "system '%s' bulk vec3 read has invalid buffers", script_program_active_system_id(program))
 		return 0
 	}
 	entity_indices := entities[:count]
@@ -1022,11 +1148,24 @@ luau_bridge_read_vec3_view :: proc "c" (
 			field,
 		)
 		if err != .None {
-			script_program_set_host_error(program, "bulk vec3 read failed")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' failed to bulk-read '%s.%s': %s",
+				script_program_active_system_id(program),
+				component,
+				field,
+				runtime_error_label(err),
+			)
 			return 0
 		}
 		if value.value_type != .Vec3 {
-			script_program_set_host_error(program, "system tried to bulk-read non-vec3 field as vec3")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to bulk-read non-vec3 field '%s.%s' as vec3",
+				script_program_active_system_id(program),
+				component,
+				field,
+			)
 			return 0
 		}
 		offset := index * 3
@@ -1063,14 +1202,14 @@ luau_bridge_write_vec3_view :: proc "c" (
 	defer if field != "" do delete(field)
 	count := int(entity_count)
 	if count < 0 {
-		script_program_set_host_error(program, "bulk vec3 write has invalid entity count")
+		script_program_set_host_errorf(program, "system '%s' bulk vec3 write has invalid entity count", script_program_active_system_id(program))
 		return 0
 	}
 	if count == 0 {
 		return 1
 	}
 	if entities == nil || entity_generations == nil || component_rows == nil || values == nil {
-		script_program_set_host_error(program, "bulk vec3 write has invalid buffers")
+		script_program_set_host_errorf(program, "system '%s' bulk vec3 write has invalid buffers", script_program_active_system_id(program))
 		return 0
 	}
 	entity_indices := entities[:count]
@@ -1081,7 +1220,13 @@ luau_bridge_write_vec3_view :: proc "c" (
 		offset := index * 3
 		value := [3]f32{source_values[offset + 0], source_values[offset + 1], source_values[offset + 2]}
 		if !luau_bridge_f32_is_finite(value[0]) || !luau_bridge_f32_is_finite(value[1]) || !luau_bridge_f32_is_finite(value[2]) {
-			script_program_set_host_error(program, "system tried to bulk-write non-finite vec3 value")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to bulk-write non-finite vec3 value to '%s.%s'",
+				script_program_active_system_id(program),
+				component,
+				field,
+			)
 			return 0
 		}
 		err := runtime_world_set_component_field_value_resolved(
@@ -1092,7 +1237,14 @@ luau_bridge_write_vec3_view :: proc "c" (
 			runtime_component_value_vec3(value),
 		)
 		if err != .None {
-			script_program_set_host_error(program, "bulk vec3 write failed")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' failed to bulk-write '%s.%s': %s",
+				script_program_active_system_id(program),
+				component,
+				field,
+				runtime_error_label(err),
+			)
 			return 0
 		}
 	}
@@ -1110,7 +1262,11 @@ luau_bridge_view_field_identity :: proc(
 	if component == "" || field == "" {
 		if component != "" do delete(component)
 		if field != "" do delete(field)
-		script_program_set_host_error(program, "bulk view operation has invalid field identity")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' bulk view operation has invalid field identity",
+			script_program_active_system_id(program),
+		)
 		return "", "", false
 	}
 	allowed := script_program_active_system_allows_write(program, component)
@@ -1118,13 +1274,27 @@ luau_bridge_view_field_identity :: proc(
 		allowed = script_program_active_system_allows_read(program, component)
 	}
 	if !allowed {
+		if read {
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to bulk-read '%s.%s' without declaring '%s' in reads or writes",
+				script_program_active_system_id(program),
+				component,
+				field,
+				component,
+			)
+		} else {
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to bulk-write '%s.%s' without declaring '%s' in writes",
+				script_program_active_system_id(program),
+				component,
+				field,
+				component,
+			)
+		}
 		delete(component)
 		delete(field)
-		if read {
-			script_program_set_host_error(program, "system tried to bulk-read a component field without declaring read access")
-		} else {
-			script_program_set_host_error(program, "system tried to bulk-write a component field without declaring write access")
-		}
 		return "", "", false
 	}
 	return component, field, true
@@ -1154,21 +1324,41 @@ luau_bridge_get_field :: proc "c" (
 	defer if component != "" do delete(component)
 	defer if field != "" do delete(field)
 	if component == "" || field == "" {
-		script_program_set_host_error(program, "component field read has invalid field identity")
+		script_program_set_host_errorf(program, "system '%s' component field read has invalid field identity", script_program_active_system_id(program))
 		return 0
 	}
 	if !script_program_active_system_allows_read(program, component) {
-		script_program_set_host_error(program, "system tried to read a component field without declaring read access")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to read '%s.%s' without declaring '%s' in reads or writes",
+			script_program_active_system_id(program),
+			component,
+			field,
+			component,
+		)
 		return 0
 	}
 	value, err := runtime_world_get_component_field_value(runtime_world^, Entity_Handle{index = entity, generation = entity_generation}, component, field)
 	if err != .None {
-		script_program_set_host_error(program, "component field read failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to read '%s.%s': %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	luau_value, ok := luau_bridge_field_value_from_runtime(value)
 	if !ok {
-		script_program_set_host_error(program, "component field read returned unsupported value")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' read '%s.%s' returned unsupported value",
+			script_program_active_system_id(program),
+			component,
+			field,
+		)
 		return 0
 	}
 	out_value^ = luau_value
@@ -1197,11 +1387,18 @@ luau_bridge_get_field_resolved :: proc "c" (
 	defer if component != "" do delete(component)
 	defer if field != "" do delete(field)
 	if component == "" || field == "" {
-		script_program_set_host_error(program, "resolved component field read has invalid field identity")
+		script_program_set_host_errorf(program, "system '%s' resolved component field read has invalid field identity", script_program_active_system_id(program))
 		return 0
 	}
 	if !script_program_active_system_allows_read(program, component) {
-		script_program_set_host_error(program, "system tried to read a resolved component field without declaring read access")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to read '%s.%s' without declaring '%s' in reads or writes",
+			script_program_active_system_id(program),
+			component,
+			field,
+			component,
+		)
 		return 0
 	}
 	value, err := runtime_world_get_component_field_value_resolved(
@@ -1211,12 +1408,25 @@ luau_bridge_get_field_resolved :: proc "c" (
 		field,
 	)
 	if err != .None {
-		script_program_set_host_error(program, "resolved component field read failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to read '%s.%s': %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	luau_value, ok := luau_bridge_field_value_from_runtime(value)
 	if !ok {
-		script_program_set_host_error(program, "resolved component field read returned unsupported value")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' read '%s.%s' returned unsupported value",
+			script_program_active_system_id(program),
+			component,
+			field,
+		)
 		return 0
 	}
 	out_value^ = luau_value
@@ -1243,27 +1453,54 @@ luau_bridge_set_field :: proc "c" (
 	defer if component != "" do delete(component)
 	defer if field != "" do delete(field)
 	if component == "" || field == "" {
-		script_program_set_host_error(program, "component field write has invalid field identity")
+		script_program_set_host_errorf(program, "system '%s' component field write has invalid field identity", script_program_active_system_id(program))
 		return 0
 	}
 	if !script_program_active_system_allows_write(program, component) {
-		script_program_set_host_error(program, "system tried to write a component field without declaring write access")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to write '%s.%s' without declaring '%s' in writes",
+			script_program_active_system_id(program),
+			component,
+			field,
+			component,
+		)
 		return 0
 	}
 	current, current_err := runtime_world_get_component_field_value(runtime_world^, Entity_Handle{index = entity, generation = entity_generation}, component, field)
 	if current_err != .None {
-		script_program_set_host_error(program, "component field write failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to inspect '%s.%s' before write: %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(current_err),
+		)
 		return 0
 	}
 	runtime_value, value_ok := luau_bridge_field_value_to_runtime(value^, current.value_type)
 	if !value_ok {
-		script_program_set_host_error(program, "component field write value has unsupported type")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to convert value for '%s.%s'",
+			script_program_active_system_id(program),
+			component,
+			field,
+		)
 		return 0
 	}
 	err := runtime_world_set_component_field_value(runtime_world, Entity_Handle{index = entity, generation = entity_generation}, component, field, runtime_value)
 	runtime_component_value_free(runtime_value)
 	if err != .None {
-		script_program_set_host_error(program, "component field write failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to write '%s.%s': %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	return 1
@@ -1291,11 +1528,18 @@ luau_bridge_set_field_resolved :: proc "c" (
 	defer if component != "" do delete(component)
 	defer if field != "" do delete(field)
 	if component == "" || field == "" {
-		script_program_set_host_error(program, "resolved component field write has invalid field identity")
+		script_program_set_host_errorf(program, "system '%s' resolved component field write has invalid field identity", script_program_active_system_id(program))
 		return 0
 	}
 	if !script_program_active_system_allows_write(program, component) {
-		script_program_set_host_error(program, "system tried to write a resolved component field without declaring write access")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to write '%s.%s' without declaring '%s' in writes",
+			script_program_active_system_id(program),
+			component,
+			field,
+			component,
+		)
 		return 0
 	}
 	current, current_err := runtime_world_get_component_field_value_resolved(
@@ -1305,12 +1549,25 @@ luau_bridge_set_field_resolved :: proc "c" (
 		field,
 	)
 	if current_err != .None {
-		script_program_set_host_error(program, "resolved component field write failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to inspect '%s.%s' before write: %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(current_err),
+		)
 		return 0
 	}
 	runtime_value, value_ok := luau_bridge_field_value_to_runtime(value^, current.value_type)
 	if !value_ok {
-		script_program_set_host_error(program, "resolved component field write value has unsupported type")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to convert value for '%s.%s'",
+			script_program_active_system_id(program),
+			component,
+			field,
+		)
 		return 0
 	}
 	err := runtime_world_set_component_field_value_resolved(
@@ -1322,7 +1579,14 @@ luau_bridge_set_field_resolved :: proc "c" (
 	)
 	runtime_component_value_free(runtime_value)
 	if err != .None {
-		script_program_set_host_error(program, "resolved component field write failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to write '%s.%s': %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	return 1
@@ -1348,16 +1612,40 @@ luau_bridge_get_vec3 :: proc "c" (
 	defer if component != "" do delete(component)
 	defer if field != "" do delete(field)
 	if component == "" || field == "" {
-		script_program_set_host_error(program, "vec3 field read has invalid field identity")
+		script_program_set_host_errorf(program, "system '%s' vec3 field read has invalid field identity", script_program_active_system_id(program))
 		return 0
 	}
 	if !script_program_active_system_allows_read(program, component) {
-		script_program_set_host_error(program, "system tried to read a vec3 field without declaring read access")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to read '%s.%s' without declaring '%s' in reads or writes",
+			script_program_active_system_id(program),
+			component,
+			field,
+			component,
+		)
 		return 0
 	}
 	value, err := runtime_world_get_component_field_value(runtime_world^, Entity_Handle{index = entity, generation = entity_generation}, component, field)
-	if err != .None || value.value_type != .Vec3 {
-		script_program_set_host_error(program, "vec3 field read failed")
+	if err != .None {
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to read '%s.%s': %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(err),
+		)
+		return 0
+	}
+	if value.value_type != .Vec3 {
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to read non-vec3 field '%s.%s' as vec3",
+			script_program_active_system_id(program),
+			component,
+			field,
+		)
 		return 0
 	}
 	out_value^ = value.vec3
@@ -1384,22 +1672,53 @@ luau_bridge_set_vec3 :: proc "c" (
 	defer if component != "" do delete(component)
 	defer if field != "" do delete(field)
 	if component == "" || field == "" {
-		script_program_set_host_error(program, "vec3 field write has invalid field identity")
+		script_program_set_host_errorf(program, "system '%s' vec3 field write has invalid field identity", script_program_active_system_id(program))
 		return 0
 	}
 	if !script_program_active_system_allows_write(program, component) {
-		script_program_set_host_error(program, "system tried to write a vec3 field without declaring write access")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to write '%s.%s' without declaring '%s' in writes",
+			script_program_active_system_id(program),
+			component,
+			field,
+			component,
+		)
 		return 0
 	}
 	current, current_err := runtime_world_get_component_field_value(runtime_world^, Entity_Handle{index = entity, generation = entity_generation}, component, field)
-	if current_err != .None || current.value_type != .Vec3 {
-		script_program_set_host_error(program, "vec3 field write failed")
+	if current_err != .None {
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to inspect '%s.%s' before write: %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(current_err),
+		)
+		return 0
+	}
+	if current.value_type != .Vec3 {
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to write non-vec3 field '%s.%s' as vec3",
+			script_program_active_system_id(program),
+			component,
+			field,
+		)
 		return 0
 	}
 	runtime_value := runtime_component_value_vec3(value^)
 	err := runtime_world_set_component_field_value(runtime_world, Entity_Handle{index = entity, generation = entity_generation}, component, field, runtime_value)
 	if err != .None {
-		script_program_set_host_error(program, "vec3 field write failed")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to write '%s.%s': %s",
+			script_program_active_system_id(program),
+			component,
+			field,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	return 1
@@ -1424,7 +1743,7 @@ luau_bridge_spawn_entity :: proc "c" (
 	defer if entity_id != "" do delete(entity_id)
 	defer if entity_name != "" do delete(entity_name)
 	if entity_id == "" {
-		script_program_set_host_error(program, "system tried to spawn an entity with an invalid id")
+		script_program_set_host_errorf(program, "system '%s' tried to spawn an entity with an invalid id", script_program_active_system_id(program))
 		return 0
 	}
 	spawn_name := entity_name
@@ -1433,13 +1752,25 @@ luau_bridge_spawn_entity :: proc "c" (
 	}
 	entity, entity_err := runtime_world_create_entity(runtime_world, entity_id, spawn_name)
 	if entity_err != .None {
-		script_program_set_host_error(program, "system failed to spawn entity")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to spawn entity '%s': %s",
+			script_program_active_system_id(program),
+			entity_id,
+			runtime_error_label(entity_err),
+		)
 		return 0
 	}
 	record_err := runtime_deferred_record_immediate_spawn(&program.deferred, entity)
 	if record_err != .None {
 		_ = runtime_world_remove_entity(runtime_world, entity)
-		script_program_set_host_error(program, "system failed to record spawned entity")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to record spawned entity '%s': %s",
+			script_program_active_system_id(program),
+			entity_id,
+			runtime_error_label(record_err),
+		)
 		return 0
 	}
 	out_entity^ = entity.index
@@ -1461,12 +1792,18 @@ luau_bridge_despawn_entity :: proc "c" (
 	context = program.odin_context
 	system, system_ok := script_program_active_system_definition(program)
 	if !system_ok {
-		script_program_set_host_error(program, "system tried to despawn without an active system")
+		script_program_set_host_errorf(program, "system '%s' tried to despawn without an active system", script_program_active_system_id(program))
 		return 0
 	}
 	err := runtime_deferred_queue_despawn_entity(&program.deferred, runtime_world^, system, Entity_Handle{index = entity, generation = entity_generation})
 	if err != .None {
-		script_program_set_host_error(program, "system failed to queue despawn entity")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to queue despawn entity %d: %s",
+			script_program_active_system_id(program),
+			entity,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	return 1
@@ -1489,28 +1826,43 @@ luau_bridge_add_component :: proc "c" (
 	context = program.odin_context
 	system, system_ok := script_program_active_system_definition(program)
 	if !system_ok {
-		script_program_set_host_error(program, "system tried to add a component without an active system")
+		script_program_set_host_errorf(program, "system '%s' tried to add a component without an active system", script_program_active_system_id(program))
 		return 0
 	}
 	component := clone_luau_cstring(component_id)
 	defer if component != "" do delete(component)
 	if component == "" {
-		script_program_set_host_error(program, "system tried to add an invalid component")
+		script_program_set_host_errorf(program, "system '%s' tried to add an invalid component", script_program_active_system_id(program))
 		return 0
 	}
 	definition, definition_found := runtime_find_component(program.active_registry^, component)
 	if !definition_found {
-		script_program_set_host_error(program, "system tried to add an unknown component")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to add unknown component '%s'",
+			script_program_active_system_id(program),
+			component,
+		)
 		return 0
 	}
 	count := int(field_count)
 	if count > 0 && fields == nil {
-		script_program_set_host_error(program, "system tried to add a component with invalid fields")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' tried to add component '%s' with invalid fields",
+			script_program_active_system_id(program),
+			component,
+		)
 		return 0
 	}
 	runtime_fields := make([]Runtime_Component_Field_Value, count)
 	if runtime_fields == nil && count > 0 {
-		script_program_set_host_error(program, "system failed to allocate component fields")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to allocate component fields for '%s'",
+			script_program_active_system_id(program),
+			component,
+		)
 		return 0
 	}
 	defer runtime_component_field_values_free(runtime_fields)
@@ -1520,30 +1872,60 @@ luau_bridge_add_component :: proc "c" (
 		raw_field := fields[index]
 		field_name, field_name_ok := luau_bridge_string_view(raw_field.name, raw_field.name_len)
 		if !field_name_ok {
-			script_program_set_host_error(program, "system tried to add a component with an invalid field")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to add component '%s' with an invalid field",
+				script_program_active_system_id(program),
+				component,
+			)
 			return 0
 		}
 		field_definition, field_found := runtime_component_definition_find_field(definition^, field_name)
 		if !field_found {
-			script_program_set_host_error(program, "system tried to add an unknown component field")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' tried to add unknown field '%s.%s'",
+				script_program_active_system_id(program),
+				component,
+				field_name,
+			)
 			return 0
 		}
 		owned_field_name, name_err := strings.clone(field_name)
 		if name_err != nil {
-			script_program_set_host_error(program, "system failed to allocate component field name")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' failed to queue field name for '%s.%s': Out_Of_Memory",
+				script_program_active_system_id(program),
+				component,
+				field_name,
+			)
 			return 0
 		}
 		value, value_ok := luau_bridge_field_value_to_runtime(raw_field.value, field_definition.value_type)
 		if !value_ok {
 			delete(owned_field_name)
-			script_program_set_host_error(program, "system tried to add a component field with the wrong type")
+			script_program_set_host_errorf(
+				program,
+				"system '%s' failed to convert value for '%s.%s'",
+				script_program_active_system_id(program),
+				component,
+				field_name,
+			)
 			return 0
 		}
 		runtime_fields[index] = Runtime_Component_Field_Value{name = owned_field_name, value = value}
 	}
 	err := runtime_deferred_queue_add_component(&program.deferred, system, Entity_Handle{index = entity, generation = entity_generation}, component, runtime_fields)
 	if err != .None {
-		script_program_set_host_error(program, "system failed to queue add component")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to queue add component '%s' to entity %d: %s",
+			script_program_active_system_id(program),
+			component,
+			entity,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	return 1
@@ -1564,18 +1946,25 @@ luau_bridge_remove_component :: proc "c" (
 	context = program.odin_context
 	system, system_ok := script_program_active_system_definition(program)
 	if !system_ok {
-		script_program_set_host_error(program, "system tried to remove a component without an active system")
+		script_program_set_host_errorf(program, "system '%s' tried to remove a component without an active system", script_program_active_system_id(program))
 		return 0
 	}
 	component := clone_luau_cstring(component_id)
 	defer if component != "" do delete(component)
 	if component == "" {
-		script_program_set_host_error(program, "system tried to remove an invalid component")
+		script_program_set_host_errorf(program, "system '%s' tried to remove an invalid component", script_program_active_system_id(program))
 		return 0
 	}
 	err := runtime_deferred_queue_remove_component(&program.deferred, system, Entity_Handle{index = entity, generation = entity_generation}, component)
 	if err != .None {
-		script_program_set_host_error(program, "system failed to queue remove component")
+		script_program_set_host_errorf(
+			program,
+			"system '%s' failed to queue remove component '%s' from entity %d: %s",
+			script_program_active_system_id(program),
+			component,
+			entity,
+			runtime_error_label(err),
+		)
 		return 0
 	}
 	return 1

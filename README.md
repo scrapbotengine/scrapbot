@@ -30,6 +30,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin Luau direct vec3 method execution slice
   - [x] Odin Luau prepared query/resolved-row execution slice
   - [x] Odin Luau bulk query view execution slice
+  - [x] Odin Luau runtime bridge diagnostics slice
   - [x] Odin deterministic step command slice
   - [x] Odin benchmark command slice
   - [x] Odin test discovery/manifest command slice

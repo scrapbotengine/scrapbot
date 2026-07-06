@@ -253,7 +253,58 @@ ecs.system("bad_writer", {
 	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
 	testing.expect_value(t, simulation.diagnostic.path, "scripts/gameplay.luau")
 	testing.expect_value(t, simulation.diagnostic.system_id, "bad_writer")
-	testing.expect(t, strings.contains(simulation.diagnostic.message, "without declaring write access"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "bad_writer"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "scrapbot.transform.rotation"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "without declaring"))
+}
+
+@(test)
+test_run_script_simulation_reports_runtime_field_context_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-runtime-field-context")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "stats"
+name = "Stats"
+
+[entities.components.stats]
+health = 10
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Stats = ecs.component("stats", {
+  fields = ecs.fields({
+    health = "int",
+  }),
+})
+local StatsQuery = ecs.query(Stats)
+
+ecs.system("read_missing_field", {
+  query = StatsQuery,
+  run = function(world, dt)
+    for _entity, stats in StatsQuery:iter(world) do
+      local missing = stats.missing
+    end
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.completed_frames, 0)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.path, "scripts/gameplay.luau")
+	testing.expect_value(t, simulation.diagnostic.system_id, "read_missing_field")
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "read_missing_field"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "stats.missing"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "Unknown_Field"))
 }
 
 @(test)
@@ -345,7 +396,9 @@ ecs.system("bad_vec3_writer", {
 	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
 	testing.expect_value(t, simulation.diagnostic.path, "scripts/gameplay.luau")
 	testing.expect_value(t, simulation.diagnostic.system_id, "bad_vec3_writer")
-	testing.expect(t, strings.contains(simulation.diagnostic.message, "without declaring write access"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "bad_vec3_writer"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "scrapbot.transform.rotation"))
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "without declaring"))
 }
 
 @(test)

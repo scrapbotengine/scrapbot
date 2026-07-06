@@ -21,7 +21,7 @@ Diagnostics report Luau, script-ECS, and project-native failures in a form that 
 - Command-line commands render diagnostics as text.
 - `scrapbot check` can render validation diagnostics as JSON for editor panels, automation, and agent workflows.
 - `scrapbot step` can render runtime system diagnostics as JSON alongside the final scene and simulation summaries.
-- During the Odin migration, the Odin `check` command loads scripts through the shared Luau C ABI bridge, imports component/system declarations, and can render structured load, registration, and schedule diagnostics. Odin `step`, `bench`, and bounded `run` can execute Luau query/component-field systems, first-pass structural commands, direct entity vec3 methods, prepared query/resolved-row field access, and bulk f32/vec3 query views, and can report runtime diagnostics for denied field or structural access. Remaining native, reload, and full runtime diagnostics still remain in the Zig implementation.
+- During the Odin migration, the Odin `check` command loads scripts through the shared Luau C ABI bridge, imports component/system declarations, and can render structured load, registration, and schedule diagnostics. Odin `step`, `bench`, and bounded `run` can execute Luau query/component-field systems, first-pass structural commands, direct entity vec3 methods, prepared query/resolved-row field access, and bulk f32/vec3 query views, and can report runtime diagnostics with active system, component field, and runtime error context for denied or failed host-bridge access. Remaining native/reload execution diagnostics and richer Luau stack/range diagnostics still remain in the Zig implementation.
 
 ## Design Decisions
 
