@@ -99,6 +99,88 @@ export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int
 }
 
 @(test)
+test_component_scan_parses_odin_native_field_arrays :: proc(t: ^testing.T) {
+	source := `package game
+
+stats_fields := []scrapbot.Component_Field{
+    {name = "count", field_type = .Int},
+    {name = "enabled", field_type = .Boolean},
+    {name = "speed", field_type = .Float},
+    {name = "direction", field_type = .Vec3},
+    {name = "label", field_type = .String},
+}
+`
+	fields, ok := parse_native_field_array(source, "stats_fields")
+	testing.expect_value(t, ok, true)
+	if !ok {
+		return
+	}
+	defer delete(fields)
+	testing.expect_value(t, len(fields), 5)
+	testing.expect_value(t, fields[0].name, "count")
+	testing.expect_value(t, fields[0].value_type, Runtime_Field_Type.Int)
+	testing.expect_value(t, fields[4].name, "label")
+	testing.expect_value(t, fields[4].value_type, Runtime_Field_Type.String)
+}
+
+@(test)
+test_component_scan_registers_odin_native_components_and_systems :: proc(t: ^testing.T) {
+	root := make_test_project(t, "component-scan-odin-native")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.odin\"\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "native/game.odin", `package game
+
+stats_fields := []scrapbot.Component_Field{
+    {name = "count", field_type = .Int},
+}
+
+native_reads := []string{"native_stats"}
+native_writes := []string{"scrapbot.transform"}
+
+scrapbot_register :: proc(api: ^scrapbot.Register_Api) -> bool {
+    scrapbot.register_component(api, {
+        id = "native_stats",
+        fields = stats_fields[:],
+    })
+    scrapbot.register_system(api, {
+        id = "native_move",
+        phase = .Update,
+        reads = native_reads[:],
+        writes = native_writes[:],
+    })
+    return true
+}
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	component, component_found := runtime_find_component(result.registry, "native_stats")
+	testing.expect_value(t, component_found, true)
+	if component_found {
+		testing.expect_value(t, len(component.fields), 1)
+		testing.expect_value(t, component.fields[0].name, "count")
+	}
+	system, system_found := runtime_find_system(result.registry, "native_move")
+	testing.expect_value(t, system_found, true)
+	if !system_found {
+		return
+	}
+	testing.expect_value(t, system.phase, Runtime_System_Phase.Update)
+	testing.expect_value(t, len(system.reads), 1)
+	testing.expect_value(t, system.reads[0], "native_stats")
+	testing.expect_value(t, len(system.writes), 1)
+	testing.expect_value(t, system.writes[0], TRANSFORM_COMPONENT_ID)
+	testing.expect_value(t, system.runner.kind, Runtime_System_Runner_Kind.Native)
+	testing.expect(t, system.runner.ref != 0)
+	testing.expect_value(t, runtime_system_schedule_system_count(result.update_schedule), 1)
+	testing.expect_value(t, result.update_schedule.batches[0].systems[0].runner.kind, Runtime_System_Runner_Kind.Native)
+}
+
+@(test)
 test_component_scan_registers_script_marker_before_field_component :: proc(t: ^testing.T) {
 	root := make_test_project(t, "component-scan-script-marker")
 	defer os.remove_all(root)

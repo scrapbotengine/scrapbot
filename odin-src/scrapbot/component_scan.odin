@@ -120,7 +120,12 @@ register_native_components_from_file :: proc(registry: ^Runtime_Component_Regist
 	}
 	defer delete(contents)
 
-	remaining := string(contents)
+	source := string(contents)
+	if strings.index(source, "scrapbot.register_component") >= 0 || strings.index(source, "scrapbot.register_system") >= 0 {
+		return register_odin_native_declarations_from_contents(registry, source)
+	}
+
+	remaining := source
 	for {
 		call_index := strings.index(remaining, "scrapbot.registerComponent")
 		if call_index < 0 {
@@ -168,6 +173,142 @@ register_native_components_from_file :: proc(registry: ^Runtime_Component_Regist
 		if err != .None {
 			return .Invalid_Native
 		}
+		remaining = fragment[block_start + block_end + len("})"):]
+	}
+	return .None
+}
+
+register_odin_native_declarations_from_contents :: proc(registry: ^Runtime_Component_Registry, contents: string) -> Project_Error {
+	component_err := register_odin_native_components_from_contents(registry, contents)
+	if component_err != .None {
+		return component_err
+	}
+	return register_odin_native_systems_from_contents(registry, contents)
+}
+
+register_odin_native_components_from_contents :: proc(registry: ^Runtime_Component_Registry, contents: string) -> Project_Error {
+	remaining := contents
+	for {
+		call_index := strings.index(remaining, "scrapbot.register_component")
+		if call_index < 0 {
+			break
+		}
+		fragment := remaining[call_index:]
+		block_start := strings.index_byte(fragment, '{')
+		if block_start < 0 {
+			return .Invalid_Native
+		}
+		block_end := strings.index(fragment[block_start:], "})")
+		if block_end < 0 {
+			return .Invalid_Native
+		}
+		block := fragment[block_start:block_start + block_end]
+		component_id, id_ok := parse_native_component_id(block)
+		if !id_ok {
+			return .Invalid_Native
+		}
+		field_array_name, fields_ref_ok := parse_native_component_fields_reference(block)
+		if !fields_ref_ok {
+			field_array_name = ""
+		}
+		fields: []Runtime_Component_Field_Definition
+		fields_owned := false
+		fields_ok := true
+		if field_array_name == "" {
+			fields = nil
+		} else {
+			fields, fields_ok = parse_native_field_array(contents, field_array_name)
+			fields_owned = true
+		}
+		if !fields_ok {
+			return .Invalid_Native
+		}
+
+		err := runtime_register_project_component(registry, Runtime_Component_Definition{
+			id = component_id,
+			version = 1,
+			fields = fields,
+		})
+		if fields_owned && fields != nil {
+			delete(fields)
+		}
+		if err != .None {
+			return .Invalid_Native
+		}
+		remaining = fragment[block_start + block_end + len("})"):]
+	}
+	return .None
+}
+
+register_odin_native_systems_from_contents :: proc(registry: ^Runtime_Component_Registry, contents: string) -> Project_Error {
+	remaining := contents
+	native_runner_ref := u32(1)
+	for {
+		call_index := strings.index(remaining, "scrapbot.register_system")
+		if call_index < 0 {
+			break
+		}
+		fragment := remaining[call_index:]
+		block_start := strings.index_byte(fragment, '{')
+		if block_start < 0 {
+			return .Invalid_Native
+		}
+		block_end := strings.index(fragment[block_start:], "})")
+		if block_end < 0 {
+			return .Invalid_Native
+		}
+		block := fragment[block_start:block_start + block_end]
+		system_id, id_ok := parse_native_component_id(block)
+		if !id_ok {
+			return .Invalid_Native
+		}
+		phase := Runtime_System_Phase.Update
+		if phase_text, phase_found, phase_ok := parse_native_enum_field(block, "phase"); phase_found {
+			if !phase_ok {
+				return .Invalid_Native
+			}
+			parsed_phase, parsed_phase_ok := parse_native_system_phase(phase_text)
+			if !parsed_phase_ok {
+				return .Invalid_Native
+			}
+			phase = parsed_phase
+		}
+
+		reads := make([dynamic]string)
+		writes := make([dynamic]string)
+		before := make([dynamic]string)
+		after := make([dynamic]string)
+		defer delete(reads)
+		defer delete(writes)
+		defer delete(before)
+		defer delete(after)
+
+		if !append_native_string_array_reference(&reads, contents, block, "reads") {
+			return .Invalid_Native
+		}
+		if !append_native_string_array_reference(&writes, contents, block, "writes") {
+			return .Invalid_Native
+		}
+		if !append_native_string_array_reference(&before, contents, block, "before") {
+			return .Invalid_Native
+		}
+		if !append_native_string_array_reference(&after, contents, block, "after") {
+			return .Invalid_Native
+		}
+
+		runtime_err := runtime_register_project_system(registry, Runtime_System_Definition{
+			id = system_id,
+			phase = phase,
+			reads = reads[:],
+			writes = writes[:],
+			before = before[:],
+			after = after[:],
+			runner = Runtime_System_Runner{kind = .Native, ref = native_runner_ref},
+		})
+		if runtime_err != .None {
+			return .Invalid_Native
+		}
+		native_runner_ref += 1
 		remaining = fragment[block_start + block_end + len("})"):]
 	}
 	return .None
@@ -624,24 +765,29 @@ parse_native_field_array :: proc(contents, array_name: string) -> ([]Runtime_Com
 	type_marker := "scrapbot.ComponentField{"
 	type_index := strings.index(after_name, type_marker)
 	if type_index < 0 {
-		return nil, false
+		type_marker = "scrapbot.Component_Field{"
+		type_index = strings.index(after_name, type_marker)
+		if type_index < 0 {
+			return nil, false
+		}
 	}
 	body_fragment := after_name[type_index + len(type_marker):]
-	end := strings.index(body_fragment, "};")
-	if end < 0 {
-		return nil, false
-	}
 
 	fields := make([dynamic]Runtime_Component_Field_Definition)
-	remaining := body_fragment[:end]
+	remaining := body_fragment
+	closed := false
 	for line in strings.split_lines_iterator(&remaining) {
 		trimmed := strings.trim_space(strip_line_comment(line))
 		if trimmed == "" {
 			continue
 		}
-		name, name_ok := parse_assignment_string_value(trimmed, ".name")
-		field_type_text, type_ok := parse_assignment_enum_value(trimmed, ".field_type")
-		if !name_ok || !type_ok {
+		if strings.has_prefix(trimmed, "}") {
+			closed = true
+			break
+		}
+		name, name_ok := parse_native_string_field_value(trimmed, "name")
+		field_type_text, type_found, type_ok := parse_native_enum_field(trimmed, "field_type")
+		if !name_ok || !type_found || !type_ok {
 			delete(fields)
 			return nil, false
 		}
@@ -651,6 +797,10 @@ parse_native_field_array :: proc(contents, array_name: string) -> ([]Runtime_Com
 			return nil, false
 		}
 		append(&fields, Runtime_Component_Field_Definition{name = name, value_type = field_type})
+	}
+	if !closed {
+		delete(fields)
+		return nil, false
 	}
 	out := make([]Runtime_Component_Field_Definition, len(fields))
 	if out == nil && len(fields) > 0 {
@@ -665,15 +815,15 @@ parse_native_field_array :: proc(contents, array_name: string) -> ([]Runtime_Com
 }
 
 parse_native_component_id :: proc(block: string) -> (string, bool) {
-	return parse_assignment_string_value(block, ".id")
+	return parse_native_string_field_value(block, "id")
 }
 
 parse_native_component_fields_reference :: proc(block: string) -> (string, bool) {
-	field_key := strings.index(block, ".fields")
+	field_key := native_assignment_key_index(block, "fields")
 	if field_key < 0 {
 		return "", false
 	}
-	after_key := block[field_key + len(".fields"):]
+	after_key := block[field_key + len("fields"):]
 	eq_index := strings.index_byte(after_key, '=')
 	if eq_index < 0 {
 		return "", false
@@ -684,13 +834,160 @@ parse_native_component_fields_reference :: proc(block: string) -> (string, bool)
 	}
 	slice_index := strings.index(value, "[0..]")
 	if slice_index < 0 {
-		return "", false
+		slice_index = strings.index(value, "[:]")
+		if slice_index < 0 {
+			return "", false
+		}
 	}
 	name := strings.trim_space(value[:slice_index])
 	if name == "" {
 		return "", false
 	}
 	return name, true
+}
+
+parse_native_string_field_value :: proc(text, key: string) -> (string, bool) {
+	index := native_assignment_key_index(text, key)
+	if index < 0 {
+		return "", false
+	}
+	after_key := text[index + len(key):]
+	eq_index := strings.index_byte(after_key, '=')
+	if eq_index < 0 {
+		return "", false
+	}
+	value, _, ok := parse_quoted_prefix(strings.trim_space(after_key[eq_index + 1:]))
+	return value, ok
+}
+
+parse_native_enum_field :: proc(text, key: string) -> (value: string, found: bool, ok: bool) {
+	index := native_assignment_key_index(text, key)
+	if index < 0 {
+		return "", false, true
+	}
+	after_key := text[index + len(key):]
+	eq_index := strings.index_byte(after_key, '=')
+	if eq_index < 0 {
+		return "", true, false
+	}
+	raw := strings.trim_space(after_key[eq_index + 1:])
+	if !strings.has_prefix(raw, ".") {
+		return "", true, false
+	}
+	end := 1
+	for end < len(raw) {
+		byte := raw[end]
+		if !is_script_identifier_byte(byte) {
+			break
+		}
+		end += 1
+	}
+	return raw[1:end], true, end > 1
+}
+
+native_assignment_key_index :: proc(text, key: string) -> int {
+	index := strings.index(text, key)
+	for index >= 0 {
+		if index == 0 || !is_script_identifier_byte(text[index - 1]) {
+			after := index + len(key)
+			if after >= len(text) || !is_script_identifier_byte(text[after]) {
+				return index
+			}
+		}
+		next_start := index + len(key)
+		if next_start >= len(text) {
+			break
+		}
+		next_index := strings.index(text[next_start:], key)
+		if next_index < 0 {
+			break
+		}
+		index = next_start + next_index
+	}
+	return -1
+}
+
+append_native_string_array_reference :: proc(out: ^[dynamic]string, contents, block, key: string) -> bool {
+	array_name, found := parse_native_string_array_reference(block, key)
+	if !found {
+		return true
+	}
+	values, ok := parse_native_string_array(contents, array_name)
+	if !ok {
+		return false
+	}
+	defer delete(values)
+	for value in values {
+		append(out, value)
+	}
+	return true
+}
+
+parse_native_string_array_reference :: proc(block, key: string) -> (string, bool) {
+	field_key := native_assignment_key_index(block, key)
+	if field_key < 0 {
+		return "", false
+	}
+	after_key := block[field_key + len(key):]
+	eq_index := strings.index_byte(after_key, '=')
+	if eq_index < 0 {
+		return "", false
+	}
+	value := strings.trim_space(after_key[eq_index + 1:])
+	if strings.has_suffix(value, ",") {
+		value = strings.trim_space(value[:len(value) - 1])
+	}
+	slice_index := strings.index(value, "[:]")
+	if slice_index < 0 {
+		slice_index = strings.index(value, "[0..]")
+		if slice_index < 0 {
+			return "", false
+		}
+	}
+	name := strings.trim_space(value[:slice_index])
+	return name, name != ""
+}
+
+parse_native_string_array :: proc(contents, array_name: string) -> ([]string, bool) {
+	start := strings.index(contents, array_name)
+	if start < 0 {
+		return nil, false
+	}
+	after_name := contents[start + len(array_name):]
+	open_index := strings.index_byte(after_name, '{')
+	if open_index < 0 {
+		return nil, false
+	}
+	after_open := after_name[open_index + 1:]
+	close_index := strings.index_byte(after_open, '}')
+	if close_index < 0 {
+		return nil, false
+	}
+	values := make([dynamic]string)
+	remaining := after_open[:close_index]
+	for {
+		quoted_index := strings.index_byte(remaining, '"')
+		if quoted_index < 0 {
+			break
+		}
+		value, consumed, ok := parse_quoted_prefix(remaining[quoted_index:])
+		if !ok {
+			delete(values)
+			return nil, false
+		}
+		append(&values, value)
+		remaining = remaining[quoted_index + consumed:]
+	}
+	out := make([]string, len(values))
+	if out == nil && len(values) > 0 {
+		delete(values)
+		return nil, false
+	}
+	for value, index in values {
+		out[index] = value
+	}
+	delete(values)
+	return out, true
 }
 
 parse_assignment_string_value :: proc(text, key: string) -> (string, bool) {
@@ -724,7 +1021,7 @@ parse_assignment_enum_value :: proc(text, key: string) -> (string, bool) {
 	end := 1
 	for end < len(value) {
 		byte := value[end]
-		if !((byte >= 'a' && byte <= 'z') || (byte >= '0' && byte <= '9') || byte == '_') {
+		if !is_script_identifier_byte(byte) {
 			break
 		}
 		end += 1
@@ -767,16 +1064,30 @@ component_field_type_from_script :: proc(value: string) -> (Runtime_Field_Type, 
 
 component_field_type_from_native :: proc(value: string) -> (Runtime_Field_Type, bool) {
 	switch value {
-	case "boolean":
+	case "boolean", "bool", "Boolean", "Bool":
 		return .Boolean, true
-	case "int":
+	case "int", "i32", "Int", "I32":
 		return .Int, true
-	case "float":
+	case "float", "f32", "Float", "F32":
 		return .Float, true
-	case "vec3":
+	case "vec3", "Vec3":
 		return .Vec3, true
-	case "string":
+	case "string", "String":
 		return .String, true
 	}
 	return .String, false
+}
+
+parse_native_system_phase :: proc(value: string) -> (Runtime_System_Phase, bool) {
+	switch value {
+	case "startup", "Startup":
+		return .Startup, true
+	case "update", "Update":
+		return .Update, true
+	case "fixed_update", "Fixed_Update":
+		return .Fixed_Update, true
+	case "render", "Render":
+		return .Render, true
+	}
+	return .Update, false
 }

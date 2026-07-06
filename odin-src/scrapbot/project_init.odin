@@ -137,7 +137,7 @@ starter_project_contents :: proc(name: string) -> (string, bool) {
 	}
 	strings.write_string(&builder, "\"\nversion = 1\ndefault_scene = \"")
 	strings.write_string(&builder, DEFAULT_SCENE_PATH)
-	strings.write_string(&builder, "\"\n\n# native = \"native/game.zig\"\n")
+	strings.write_string(&builder, "\"\n\n# native = \"native/game.odin\"\n")
 	return strings.clone(strings.to_string(builder)), true
 }
 

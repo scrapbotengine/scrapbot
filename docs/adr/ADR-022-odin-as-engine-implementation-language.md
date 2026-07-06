@@ -76,8 +76,9 @@ Until feature parity is reached, some documentation will necessarily describe bo
 23. Port remaining native and reload runtime diagnostics.
 24. Port `wgpu-native` bindings and offscreen render verification.
 25. Port retained UI, editor routing, and headful window integration.
-26. Port project-local native modules from Zig to Odin.
-27. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
+26. Port project-local native component/system declaration registration from Zig to Odin.
+27. Port project-local native module execution, build, and reload behavior from Zig to Odin.
+28. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
 
 ## Related
 

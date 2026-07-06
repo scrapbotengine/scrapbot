@@ -27,7 +27,7 @@ test_init_project_creates_checkable_project :: proc(t: ^testing.T) {
 	defer delete(scene_path)
 	gitkeep_path := project_relative_path(root, "assets/.gitkeep")
 	defer delete(gitkeep_path)
-	native_path := project_relative_path(root, "native/game.zig")
+	native_path := project_relative_path(root, "native/game.odin")
 	defer delete(native_path)
 	testing.expect_value(t, os.exists(project_path), true)
 	testing.expect_value(t, os.exists(scene_path), true)
@@ -37,7 +37,7 @@ test_init_project_creates_checkable_project :: proc(t: ^testing.T) {
 	metadata, read_err := os.read_entire_file(project_path, context.allocator)
 	testing.expect_value(t, read_err, nil)
 	defer delete(metadata)
-	testing.expect(t, strings.contains(string(metadata), "\n# native = \"native/game.zig\"\n"))
+	testing.expect(t, strings.contains(string(metadata), "\n# native = \"native/game.odin\"\n"))
 
 	result := check_project(root)
 	defer free_check_result(result)

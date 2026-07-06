@@ -1,7 +1,7 @@
 # FDR-001: Project Directory Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-05
+**Last reviewed:** 2026-07-06
 
 ## Overview
 
@@ -17,7 +17,7 @@ The project directory runtime lets users and agents run the `scrapbot` binary in
 - `scrapbot init` creates the target directory when needed, writes `project.toml`, writes the startup scene at `scenes/main.scene.toml`, and creates `assets/.gitkeep`.
 - Fresh projects contain a small script-free scene with a renderer singleton, cube, camera, and directional light using the current scene-authored components.
 - Fresh default scenes include a preconfigured `scrapbot.renderer` HDR, color, and postprocess profile.
-- Fresh project manifests keep the optional native module line commented out and do not create native source files.
+- Fresh project manifests keep the optional native module line commented out as `native = "native/game.odin"` and do not create native source files.
 - `scrapbot init` does not overwrite an existing project; it fails if `project.toml` or the legacy `project.scrapbot.toml` already exists in the target directory.
 - Interactive and headless commands use the same project loading rules.
 - Commands that write files keep generated artifacts separate from authoritative source files.
