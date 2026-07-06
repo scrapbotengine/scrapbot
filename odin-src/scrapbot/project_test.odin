@@ -921,6 +921,116 @@ test_live_project_run_frames_polls_luau_script_source_between_frames :: proc(t: 
 }
 
 @(test)
+test_live_project_reloads_scene_source_and_resets_startup :: proc(t: ^testing.T) {
+	root := make_test_project(t, "live-project-scene-source-reload")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_script_counter_project(t, root, "1")
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	first := live_project_run_frames(&live, 1, 0.5)
+	defer script_diagnostic_free(&first.diagnostic)
+	testing.expect_value(t, first.ok, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 2)
+
+	write_counter_scene(t, root, "20")
+	reload, reload_err := live_project_poll_scene_source(&live)
+	testing.expect_value(t, reload_err, Project_Error.None)
+	testing.expect_value(t, reload.changed, true)
+	testing.expect_value(t, reload.info.scene_reloaded, true)
+	testing.expect_value(t, reload.info.scripts_reloaded, false)
+	testing.expect_value(t, reload.info.native_reloaded, false)
+	testing.expect_value(t, live_project_counter_value(t, live), 20)
+
+	second := live_project_run_frames(&live, 1, 0.5)
+	defer script_diagnostic_free(&second.diagnostic)
+	testing.expect_value(t, second.ok, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 21)
+}
+
+@(test)
+test_live_project_script_reload_leaves_changed_scene_pending :: proc(t: ^testing.T) {
+	root := make_test_project(t, "live-project-script-reload-leaves-scene-pending")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_script_counter_project(t, root, "1")
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	first := live_project_run_frames(&live, 1, 0.5)
+	defer script_diagnostic_free(&first.diagnostic)
+	testing.expect_value(t, first.ok, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 2)
+
+	write_counter_scene(t, root, "20")
+	write_script_counter_source(t, root, "10")
+	script_reload, script_reload_err := live_project_poll_script_sources(&live)
+	testing.expect_value(t, script_reload_err, Project_Error.None)
+	testing.expect_value(t, script_reload.changed, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 2)
+
+	scene_reload, scene_reload_err := live_project_poll_scene_source(&live)
+	testing.expect_value(t, scene_reload_err, Project_Error.None)
+	testing.expect_value(t, scene_reload.changed, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 20)
+
+	second := live_project_run_frames(&live, 1, 0.5)
+	defer script_diagnostic_free(&second.diagnostic)
+	testing.expect_value(t, second.ok, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 30)
+}
+
+@(test)
+test_live_project_keeps_last_good_after_bad_scene_reload :: proc(t: ^testing.T) {
+	root := make_test_project(t, "live-project-scene-source-reload-failure")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_script_counter_project(t, root, "1")
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+	testing.expect_value(t, live_project_counter_value(t, live), 1)
+
+	write_file(t, root, "scenes/main.scene.toml", "name = \"Main\"\nversion = 1\n")
+	bad_reload, bad_reload_err := live_project_poll_scene_source(&live)
+	testing.expect_value(t, bad_reload_err, Project_Error.Missing_Scene_Content)
+	testing.expect_value(t, bad_reload.changed, false)
+	testing.expect_value(t, live_project_counter_value(t, live), 1)
+
+	write_counter_scene(t, root, "7")
+	fixed_reload, fixed_reload_err := live_project_poll_scene_source(&live)
+	testing.expect_value(t, fixed_reload_err, Project_Error.None)
+	testing.expect_value(t, fixed_reload.changed, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 7)
+}
+
+@(test)
+test_live_project_run_frames_polls_scene_source_between_frames :: proc(t: ^testing.T) {
+	root := make_test_project(t, "live-project-run-polls-scene-source")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_script_counter_project(t, root, "1")
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	hook_data := Live_Project_Scene_Reload_Test_Hook_Data{t = t, root = root}
+	simulation := live_project_run_frames_with_hook(&live, 2, 0.5, live_project_scene_reload_test_hook, rawptr(&hook_data))
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+	testing.expect_value(t, simulation.completed_frames, 2)
+	testing.expect_value(t, hook_data.rewrote_source, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 21)
+}
+
+@(test)
 test_run_script_simulation_reports_native_odin_set_field_write_access_diagnostic :: proc(t: ^testing.T) {
 	root := make_test_project(t, "script-simulation-native-odin-set-field-write-access")
 	defer os.remove_all(root)
@@ -1859,6 +1969,25 @@ live_project_script_reload_test_hook :: proc(project: ^Live_Project, completed_f
 	return true
 }
 
+Live_Project_Scene_Reload_Test_Hook_Data :: struct {
+	t:              ^testing.T,
+	root:           string,
+	rewrote_source: bool,
+}
+
+live_project_scene_reload_test_hook :: proc(project: ^Live_Project, completed_frames: int, user_data: rawptr) -> bool {
+	_ = project
+	data := cast(^Live_Project_Scene_Reload_Test_Hook_Data)user_data
+	if data == nil {
+		return false
+	}
+	if completed_frames == 1 && !data.rewrote_source {
+		write_counter_scene(data.t, data.root, "20")
+		data.rewrote_source = true
+	}
+	return true
+}
+
 live_project_counter_value :: proc(t: ^testing.T, live: Live_Project) -> int {
 	target, target_found := runtime_world_find_entity_by_id(live.check.scene.world, "target")
 	if !target_found {
@@ -1869,6 +1998,23 @@ live_project_counter_value :: proc(t: ^testing.T, live: Live_Project) -> int {
 		testing.fail_now(t, "failed to read stats.count")
 	}
 	return value.int_value
+}
+
+write_counter_scene :: proc(t: ^testing.T, root, count: string) {
+	scene := strings.builder_make()
+	defer strings.builder_destroy(&scene)
+	strings.write_string(&scene, `name = "Main"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.stats]
+count = `)
+	strings.write_string(&scene, count)
+	strings.write_string(&scene, "\n")
+	write_file(t, root, "scenes/main.scene.toml", strings.to_string(scene))
 }
 
 write_valid_scene_file :: proc(t: ^testing.T, root, relative_path: string) {
