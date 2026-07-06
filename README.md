@@ -27,6 +27,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin benchmark command slice
   - [x] Odin test discovery/manifest command slice
   - [x] Odin bounded run command slice
+  - [x] Odin render extraction stats slice
   - [ ] Odin CLI feature parity
   - [ ] Zig engine implementation removed
 - Runtime

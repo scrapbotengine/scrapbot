@@ -108,6 +108,7 @@ print_run_result :: proc(result: Project_Check_Result, options: Run_Options) {
 	if options.editor {
 		fmt.println("Editor: requested, pending Odin editor shell")
 	}
+	print_render_extract_text(result)
 	fmt.println("Execution: pending Luau/native Odin bridge")
-	fmt.println("Rendering: pending Odin renderer")
+	fmt.println("Renderer backend: pending Odin wgpu-native binding")
 }

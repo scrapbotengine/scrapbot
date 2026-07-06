@@ -480,7 +480,8 @@ print_bench_result :: proc(result: Project_Check_Result, options: Simulation_Opt
 		fmt.printf("Entities: %d, components: %d, renderable cubes: %d\n", result.scene.entity_count, result.scene.component_instance_count, result.scene.renderable_cube_count)
 		fmt.printf("Update batches: %d, systems: %d\n", runtime_system_schedule_batch_count(result.update_schedule), runtime_system_schedule_system_count(result.update_schedule))
 		fmt.println("Execution: pending Luau/native Odin bridge")
-		fmt.println("Render stats: pending Odin renderer")
+		print_render_extract_text(result)
+		fmt.println("Renderer backend: pending Odin wgpu-native binding")
 	case .JSON:
 		fmt.print(`{"ok":true,"project":`)
 		fmt.print(`{"name":"`)
@@ -496,8 +497,50 @@ print_bench_result :: proc(result: Project_Check_Result, options: Simulation_Opt
 		fmt.print(`}`)
 		fmt.print(`,"schedule":`)
 		print_schedule_summary_json(result)
-		fmt.println(`,"execution":"pending_odin_luau_native_bridge","render_stats":"pending_odin_renderer"}`)
+		fmt.print(`,"render_stats":`)
+		print_render_extract_json(result)
+		fmt.println(`,"execution":"pending_odin_luau_native_bridge","renderer_backend":"pending_odin_wgpu_native_binding"}`)
 	}
+}
+
+print_render_extract_text :: proc(result: Project_Check_Result) {
+	extract, extract_err := render_extract_scene(result.scene.world)
+	if extract_err != .None {
+		fmt.println("Render stats: invalid scene render data")
+		return
+	}
+	fmt.printf(
+		"Render stats: %d renderables, %d batches, %d cameras, %d directional lights, %d UI rects, %d UI texts\n",
+		extract.renderables,
+		extract.render_batches,
+		extract.cameras,
+		extract.directional_lights,
+		extract.ui_rects,
+		extract.ui_texts,
+	)
+}
+
+print_render_extract_json :: proc(result: Project_Check_Result) {
+	extract, extract_err := render_extract_scene(result.scene.world)
+	if extract_err != .None {
+		fmt.print(`{"status":"invalid_scene"}`)
+		return
+	}
+	fmt.print(`{"status":"ok"`)
+	fmt.printf(
+		`,"renderables":%d,"legacy_cubes":%d,"geometry_primitives":%d,"batches":%d,"cameras":%d,"directional_lights":%d,"ui_rects":%d,"ui_texts":%d,"shadow_casters":%d,"shadow_receivers":%d`,
+		extract.renderables,
+		extract.legacy_cubes,
+		extract.geometry_primitives,
+		extract.render_batches,
+		extract.cameras,
+		extract.directional_lights,
+		extract.ui_rects,
+		extract.ui_texts,
+		extract.shadow_casters,
+		extract.shadow_receivers,
+	)
+	fmt.print(`}`)
 }
 
 print_schedule_summary_json :: proc(result: Project_Check_Result) {
