@@ -348,8 +348,10 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 	}
 
 	completed_frames := 0
+	run_report := Live_Project_Run_Report{}
+	defer live_project_run_report_free(&run_report)
 	if options.max_frames > 0 {
-		simulation := live_project_run_frames(&live, options.max_frames, 1.0 / 60.0)
+		simulation := live_project_run_frames_with_report(&live, options.max_frames, 1.0 / 60.0, nil, nil, &run_report)
 		if !simulation.ok {
 			live.check.diagnostic = simulation.diagnostic
 			live.check.err = .Invalid_Script
@@ -362,7 +364,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 	}
 
 	if emit_output {
-		print_run_result(live.check, options, completed_frames)
+		print_run_result(live.check, options, completed_frames, run_report)
 	}
 	return 0
 }

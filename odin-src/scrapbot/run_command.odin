@@ -85,7 +85,7 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 	return options, true
 }
 
-print_run_result :: proc(result: Project_Check_Result, options: Run_Options, completed_frames: int) {
+print_run_result :: proc(result: Project_Check_Result, options: Run_Options, completed_frames: int, report: Live_Project_Run_Report) {
 	fmt.printf("Loaded project %s\n", result.project.name)
 	fmt.printf("Selected scene: %s\n", result.project.default_scene)
 	fmt.printf("Scene entities: %d\n", result.scene.entity_count)
@@ -95,6 +95,9 @@ print_run_result :: proc(result: Project_Check_Result, options: Run_Options, com
 		runtime_system_schedule_batch_count(result.update_schedule),
 		runtime_system_schedule_system_count(result.update_schedule),
 	)
+	for event in report.reloads {
+		print_run_reload_event(event)
+	}
 	if options.max_frames > 0 {
 		fmt.printf("Frames: %d/%d\n", completed_frames, options.max_frames)
 	} else {
@@ -115,4 +118,18 @@ print_run_result :: proc(result: Project_Check_Result, options: Run_Options, com
 		fmt.println("Execution: pending unbounded Odin window loop")
 	}
 	fmt.println("Renderer backend: pending Odin wgpu-native binding")
+}
+
+print_run_reload_event :: proc(event: Live_Reload_Event) {
+	info := event.info
+	fmt.printf(
+		"Reloaded %s%s%s%s at frame %d: %d entities, %d systems\n",
+		info.project_reloaded ? "project" : "",
+		info.scene_reloaded ? (info.project_reloaded ? " and scene" : "scene") : "",
+		info.scripts_reloaded ? ((info.project_reloaded || info.scene_reloaded) ? " and scripts" : "scripts") : "",
+		info.native_reloaded ? ((info.project_reloaded || info.scene_reloaded || info.scripts_reloaded) ? " and native" : "native") : "",
+		event.frame,
+		info.entity_count,
+		info.system_count,
+	)
 }

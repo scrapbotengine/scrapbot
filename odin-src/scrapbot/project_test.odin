@@ -820,12 +820,15 @@ test_live_project_run_frames_polls_development_odin_native_source_between_frames
 	testing.expect_value(t, init_err, Project_Error.None)
 
 	hook_data := Live_Project_Native_Reload_Test_Hook_Data{t = t, root = root}
-	simulation := live_project_run_frames_with_hook(&live, 2, 0.5, live_project_native_reload_test_hook, rawptr(&hook_data))
+	report := Live_Project_Run_Report{}
+	defer live_project_run_report_free(&report)
+	simulation := live_project_run_frames_with_report(&live, 2, 0.5, live_project_native_reload_test_hook, rawptr(&hook_data), &report)
 	defer script_diagnostic_free(&simulation.diagnostic)
 	testing.expect_value(t, simulation.ok, true)
 	testing.expect_value(t, simulation.completed_frames, 2)
 	testing.expect_value(t, hook_data.rewrote_source, true)
 	testing.expect_value(t, live_project_counter_value(t, live), 12)
+	expect_reload_event(t, report, 0, 1, false, false, true, true)
 }
 
 @(test)
@@ -912,12 +915,15 @@ test_live_project_run_frames_polls_luau_script_source_between_frames :: proc(t: 
 	testing.expect_value(t, init_err, Project_Error.None)
 
 	hook_data := Live_Project_Script_Reload_Test_Hook_Data{t = t, root = root}
-	simulation := live_project_run_frames_with_hook(&live, 2, 0.5, live_project_script_reload_test_hook, rawptr(&hook_data))
+	report := Live_Project_Run_Report{}
+	defer live_project_run_report_free(&report)
+	simulation := live_project_run_frames_with_report(&live, 2, 0.5, live_project_script_reload_test_hook, rawptr(&hook_data), &report)
 	defer script_diagnostic_free(&simulation.diagnostic)
 	testing.expect_value(t, simulation.ok, true)
 	testing.expect_value(t, simulation.completed_frames, 2)
 	testing.expect_value(t, hook_data.rewrote_source, true)
 	testing.expect_value(t, live_project_counter_value(t, live), 12)
+	expect_reload_event(t, report, 0, 1, false, false, true, false)
 }
 
 @(test)
@@ -1022,12 +1028,15 @@ test_live_project_run_frames_polls_scene_source_between_frames :: proc(t: ^testi
 	testing.expect_value(t, init_err, Project_Error.None)
 
 	hook_data := Live_Project_Scene_Reload_Test_Hook_Data{t = t, root = root}
-	simulation := live_project_run_frames_with_hook(&live, 2, 0.5, live_project_scene_reload_test_hook, rawptr(&hook_data))
+	report := Live_Project_Run_Report{}
+	defer live_project_run_report_free(&report)
+	simulation := live_project_run_frames_with_report(&live, 2, 0.5, live_project_scene_reload_test_hook, rawptr(&hook_data), &report)
 	defer script_diagnostic_free(&simulation.diagnostic)
 	testing.expect_value(t, simulation.ok, true)
 	testing.expect_value(t, simulation.completed_frames, 2)
 	testing.expect_value(t, hook_data.rewrote_source, true)
 	testing.expect_value(t, live_project_counter_value(t, live), 21)
+	expect_reload_event(t, report, 0, 1, false, true, false, false)
 }
 
 @(test)
@@ -1107,13 +1116,16 @@ test_live_project_run_frames_polls_project_metadata_between_frames :: proc(t: ^t
 	testing.expect_value(t, init_err, Project_Error.None)
 
 	hook_data := Live_Project_Project_Reload_Test_Hook_Data{t = t, root = root}
-	simulation := live_project_run_frames_with_hook(&live, 2, 0.5, live_project_project_reload_test_hook, rawptr(&hook_data))
+	report := Live_Project_Run_Report{}
+	defer live_project_run_report_free(&report)
+	simulation := live_project_run_frames_with_report(&live, 2, 0.5, live_project_project_reload_test_hook, rawptr(&hook_data), &report)
 	defer script_diagnostic_free(&simulation.diagnostic)
 	testing.expect_value(t, simulation.ok, true)
 	testing.expect_value(t, simulation.completed_frames, 2)
 	testing.expect_value(t, hook_data.rewrote_source, true)
 	testing.expect_value(t, live.check.project.default_scene, "scenes/alternate.scene.toml")
 	testing.expect_value(t, live_project_counter_value(t, live), 30)
+	expect_reload_event(t, report, 0, 1, true, true, true, false)
 }
 
 @(test)
@@ -2070,6 +2082,21 @@ live_project_project_reload_test_hook :: proc(project: ^Live_Project, completed_
 		data.rewrote_source = true
 	}
 	return true
+}
+
+expect_reload_event :: proc(t: ^testing.T, report: Live_Project_Run_Report, index, frame: int, project, scene, scripts, native: bool) {
+	testing.expect_value(t, len(report.reloads) > index, true)
+	if len(report.reloads) <= index {
+		return
+	}
+	event := report.reloads[index]
+	testing.expect_value(t, event.frame, frame)
+	testing.expect_value(t, event.info.project_reloaded, project)
+	testing.expect_value(t, event.info.scene_reloaded, scene)
+	testing.expect_value(t, event.info.scripts_reloaded, scripts)
+	testing.expect_value(t, event.info.native_reloaded, native)
+	testing.expect_value(t, event.info.entity_count > 0, true)
+	testing.expect_value(t, event.info.system_count > 0, true)
 }
 
 live_project_counter_value :: proc(t: ^testing.T, live: Live_Project) -> int {

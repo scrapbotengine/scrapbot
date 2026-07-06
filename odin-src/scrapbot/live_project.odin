@@ -28,6 +28,15 @@ Live_Reload_Result :: struct {
 	info:    Live_Reload_Info,
 }
 
+Live_Reload_Event :: struct {
+	frame: int,
+	info:  Live_Reload_Info,
+}
+
+Live_Project_Run_Report :: struct {
+	reloads: [dynamic]Live_Reload_Event,
+}
+
 Live_Project_Frame_Hook :: proc(project: ^Live_Project, completed_frames: int, user_data: rawptr) -> bool
 
 Live_Project :: struct {
@@ -315,12 +324,30 @@ live_project_run_frames :: proc(project: ^Live_Project, frames: int, delta_secon
 	return live_project_run_frames_with_hook(project, frames, delta_seconds, nil, nil)
 }
 
+live_project_run_report_free :: proc(report: ^Live_Project_Run_Report) {
+	if report.reloads != nil {
+		delete(report.reloads)
+	}
+	report^ = Live_Project_Run_Report{}
+}
+
 live_project_run_frames_with_hook :: proc(
 	project: ^Live_Project,
 	frames: int,
 	delta_seconds: f32,
 	frame_hook: Live_Project_Frame_Hook,
 	hook_data: rawptr,
+) -> Simulation_Run_Result {
+	return live_project_run_frames_with_report(project, frames, delta_seconds, frame_hook, hook_data, nil)
+}
+
+live_project_run_frames_with_report :: proc(
+	project: ^Live_Project,
+	frames: int,
+	delta_seconds: f32,
+	frame_hook: Live_Project_Frame_Hook,
+	hook_data: rawptr,
+	report: ^Live_Project_Run_Report,
 ) -> Simulation_Run_Result {
 	startup_result := live_project_run_startup_if_needed(project)
 	if !startup_result.ok {
@@ -337,25 +364,29 @@ live_project_run_frames_with_hook :: proc(
 			}
 		}
 
-		_, reload_err := live_project_poll_project_source(project)
+		reload, reload_err := live_project_poll_project_source(project)
 		if reload_err != .None {
 			return live_project_reload_error_result(project, reload_err, completed_frames)
 		}
+		live_project_record_reload(report, completed_frames, reload)
 
-		_, reload_err = live_project_poll_scene_source(project)
+		reload, reload_err = live_project_poll_scene_source(project)
 		if reload_err != .None {
 			return live_project_reload_error_result(project, reload_err, completed_frames)
 		}
+		live_project_record_reload(report, completed_frames, reload)
 
-		_, reload_err = live_project_poll_script_sources(project)
+		reload, reload_err = live_project_poll_script_sources(project)
 		if reload_err != .None {
 			return live_project_reload_error_result(project, reload_err, completed_frames)
 		}
+		live_project_record_reload(report, completed_frames, reload)
 
-		_, reload_err = live_project_poll_native_source(project)
+		reload, reload_err = live_project_poll_native_source(project)
 		if reload_err != .None {
 			return live_project_reload_error_result(project, reload_err, completed_frames)
 		}
+		live_project_record_reload(report, completed_frames, reload)
 
 		startup_result = live_project_run_startup_if_needed(project)
 		if !startup_result.ok {
@@ -371,6 +402,13 @@ live_project_run_frames_with_hook :: proc(
 	}
 
 	return Simulation_Run_Result{ok = true, completed_frames = completed_frames}
+}
+
+live_project_record_reload :: proc(report: ^Live_Project_Run_Report, completed_frames: int, reload: Live_Reload_Result) {
+	if report == nil || !reload.changed {
+		return
+	}
+	append(&report.reloads, Live_Reload_Event{frame = completed_frames, info = reload.info})
 }
 
 live_project_run_startup_if_needed :: proc(project: ^Live_Project) -> Simulation_Run_Result {
