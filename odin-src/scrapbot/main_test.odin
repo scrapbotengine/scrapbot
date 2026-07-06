@@ -685,6 +685,45 @@ selected_field = "b"
 	testing.expect_value(t, exit_code, 0)
 }
 
+@(test)
+test_run_test_command_replays_editor_splitter_drag :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-splitter-drag")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "Editor Splitter Drag Test"), Project_Error.None)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 3
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [325.0, 100.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 2
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [525.0, 100.0]
+primary_down = true
+
+[[input.frame]]
+frame = 3
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [525.0, 100.0]
+primary_released = true
+
+[[expect.editor]]
+left_sidebar_width = 520.0
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
 make_editor_playback_test_project :: proc(t: ^testing.T, name: string) -> string {
 	root := make_test_project_root(t, name)
 	testing.expect_value(t, init_project(root, "Editor Playback Test"), Project_Error.None)

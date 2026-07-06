@@ -43,6 +43,12 @@ Step_Input_Frame :: struct {
 	input: Frame_Input,
 }
 
+Editor_Test_Splitter :: enum {
+	None,
+	Left,
+	Right,
+}
+
 Editor_Test_Input_State :: struct {
 	captured_pointer:    bool,
 	paused:              bool,
@@ -55,6 +61,11 @@ Editor_Test_Input_State :: struct {
 	selected_property_component: string,
 	selected_property_field:     string,
 	has_selected_property:       bool,
+	dragging_splitter:           Editor_Test_Splitter,
+	left_sidebar_width:          f32,
+	right_sidebar_width:         f32,
+	last_pointer:                [2]f32,
+	has_last_pointer:            bool,
 }
 
 frame_input_default :: proc() -> Frame_Input {
@@ -73,6 +84,11 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: Runtime_
 	consumed := false
 	if input.pointer.has_position {
 		inside_game := editor_pointer_in_game_viewport(input^)
+		ensure_editor_sidebar_widths(state, input^)
+		if state.dragging_splitter != .None && input.pointer.primary_down {
+			drag_editor_splitter(state, input^)
+			consumed = true
+		}
 		if input.pointer.primary_pressed {
 			if editor_pointer_in_play_button(input^) {
 				state.paused = !state.paused
@@ -82,6 +98,12 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: Runtime_
 				state.paused = true
 				state.step_once = true
 				state.captured_pointer = true
+				consumed = true
+			} else if splitter, splitter_ok := editor_splitter_at_pointer(state^, input^); splitter_ok {
+				state.dragging_splitter = splitter
+				state.captured_pointer = true
+				state.last_pointer = input.pointer.position
+				state.has_last_pointer = true
 				consumed = true
 			} else if selected, selected_ok := editor_entity_at_pointer(world, state^, input^); selected_ok {
 				state.selected_entity = selected
@@ -110,6 +132,8 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: Runtime_
 				consumed = true
 			}
 			state.captured_pointer = false
+			state.dragging_splitter = .None
+			state.has_last_pointer = false
 		}
 		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
 			if !inside_game {
@@ -128,6 +152,8 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: Runtime_
 		}
 	} else if input.pointer.primary_released {
 		state.captured_pointer = false
+		state.dragging_splitter = .None
+		state.has_last_pointer = false
 	}
 	if consumed {
 		clear_frame_pointer_actions(input)
@@ -147,6 +173,43 @@ editor_test_selected_entity_id :: proc(state: Editor_Test_Input_State, world: Ru
 		return "", false
 	}
 	return entity.id, true
+}
+
+ensure_editor_sidebar_widths :: proc(state: ^Editor_Test_Input_State, input: Frame_Input) {
+	left := state.left_sidebar_width
+	right := state.right_sidebar_width
+	default_left, default_right := editor_side_widths(input.viewport_width)
+	if left <= 0 {
+		left = default_left
+	}
+	if right <= 0 {
+		right = default_right
+	}
+	state.left_sidebar_width, state.right_sidebar_width = editor_clamped_side_widths(input.viewport_width, left, right)
+}
+
+drag_editor_splitter :: proc(state: ^Editor_Test_Input_State, input: Frame_Input) {
+	if !state.has_last_pointer {
+		state.last_pointer = input.pointer.position
+		state.has_last_pointer = true
+		return
+	}
+	delta_x := input.pointer.position[0] - state.last_pointer[0]
+	state.last_pointer = input.pointer.position
+	if delta_x == 0 {
+		return
+	}
+	left := state.left_sidebar_width
+	right := state.right_sidebar_width
+	switch state.dragging_splitter {
+	case .Left:
+		left += delta_x
+	case .Right:
+		right -= delta_x
+	case .None:
+		return
+	}
+	state.left_sidebar_width, state.right_sidebar_width = editor_clamped_side_widths(input.viewport_width, left, right)
 }
 
 editor_pointer_in_game_viewport :: proc(input: Frame_Input) -> bool {
@@ -194,6 +257,21 @@ editor_entity_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_
 	return Entity_Handle{index = u32(row_index), generation = entity.generation}, true
 }
 
+editor_splitter_at_pointer :: proc(state: Editor_Test_Input_State, input: Frame_Input) -> (Editor_Test_Splitter, bool) {
+	if !input.pointer.has_position {
+		return .None, false
+	}
+	x, y, width, height := editor_left_splitter_hit_rect(state, input)
+	if editor_pointer_in_rect(input, x, y, width, height) {
+		return .Left, true
+	}
+	x, y, width, height = editor_right_splitter_hit_rect(state, input)
+	if editor_pointer_in_rect(input, x, y, width, height) {
+		return .Right, true
+	}
+	return .None, false
+}
+
 editor_inspector_property_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input) -> (component_id, field_name: string, ok: bool) {
 	if !input.pointer.has_position || !state.has_selected_entity {
 		return "", "", false
@@ -227,6 +305,29 @@ editor_inspector_property_at_pointer :: proc(world: Runtime_World, state: Editor
 		component_index += 1
 	}
 	return "", "", false
+}
+
+editor_left_splitter_hit_rect :: proc(state: Editor_Test_Input_State, input: Frame_Input) -> (x, y, width, height: f32) {
+	body_y := UI_EDITOR_TOP_BAR_HEIGHT
+	body_height := max_f32(input.viewport_height - UI_EDITOR_TOP_BAR_HEIGHT - UI_EDITOR_BOTTOM_BAR_HEIGHT, 1)
+	visual_x := state.left_sidebar_width
+	extra_width := max_f32(UI_EDITOR_SPLITTER_HIT_WIDTH - UI_EDITOR_SPLITTER_WIDTH, 0)
+	return visual_x - extra_width * 0.5,
+	       body_y,
+	       UI_EDITOR_SPLITTER_WIDTH + extra_width,
+	       body_height
+}
+
+editor_right_splitter_hit_rect :: proc(state: Editor_Test_Input_State, input: Frame_Input) -> (x, y, width, height: f32) {
+	body_width := max_f32(input.viewport_width, 1)
+	body_y := UI_EDITOR_TOP_BAR_HEIGHT
+	body_height := max_f32(input.viewport_height - UI_EDITOR_TOP_BAR_HEIGHT - UI_EDITOR_BOTTOM_BAR_HEIGHT, 1)
+	visual_x := body_width - state.right_sidebar_width - UI_EDITOR_SPLITTER_WIDTH
+	extra_width := max_f32(UI_EDITOR_SPLITTER_HIT_WIDTH - UI_EDITOR_SPLITTER_WIDTH, 0)
+	return visual_x - extra_width * 0.5,
+	       body_y,
+	       UI_EDITOR_SPLITTER_WIDTH + extra_width,
+	       body_height
 }
 
 editor_pointer_in_system_list :: proc(input: Frame_Input) -> bool {

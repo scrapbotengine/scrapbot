@@ -55,6 +55,10 @@ Test_Editor_Expectation :: struct {
 	inspector_scroll_y:     f32,
 	selected_component:     string,
 	selected_field:         string,
+	has_left_sidebar_width: bool,
+	left_sidebar_width:     f32,
+	has_right_sidebar_width: bool,
+	right_sidebar_width:    f32,
 }
 
 Test_Manifest :: struct {
@@ -124,6 +128,10 @@ Test_Manifest_Editor_Expectation_State :: struct {
 	inspector_scroll_y:     f32,
 	selected_component:     string,
 	selected_field:         string,
+	has_left_sidebar_width: bool,
+	left_sidebar_width:     f32,
+	has_right_sidebar_width: bool,
+	right_sidebar_width:    f32,
 }
 
 parse_test_options :: proc(args: []string, emit_output: bool) -> (Test_Options, bool) {
@@ -394,7 +402,12 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 			expect^ = {}
 			return false
 		}
-		ok := expect.selected_entity != "" || expect.has_system_scroll_y || expect.has_inspector_scroll_y || (expect.selected_component != "" && expect.selected_field != "")
+		ok := expect.selected_entity != "" ||
+		      expect.has_system_scroll_y ||
+		      expect.has_inspector_scroll_y ||
+		      (expect.selected_component != "" && expect.selected_field != "") ||
+		      expect.has_left_sidebar_width ||
+		      expect.has_right_sidebar_width
 		if ok {
 			append(&manifest.editor_expectations, Test_Editor_Expectation{
 				selected_entity = expect.selected_entity,
@@ -404,6 +417,10 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 				inspector_scroll_y = expect.inspector_scroll_y,
 				selected_component = expect.selected_component,
 				selected_field = expect.selected_field,
+				has_left_sidebar_width = expect.has_left_sidebar_width,
+				left_sidebar_width = expect.left_sidebar_width,
+				has_right_sidebar_width = expect.has_right_sidebar_width,
+				right_sidebar_width = expect.right_sidebar_width,
 			})
 		} else {
 			free_test_editor_expectation_state(expect^)
@@ -744,6 +761,28 @@ parse_test_manifest_editor_expect_key :: proc(expect: ^Test_Manifest_Editor_Expe
 				return false
 			}
 		}
+		return true
+	case "left_sidebar_width":
+		if expect.has_left_sidebar_width {
+			return false
+		}
+		parsed, ok := strconv.parse_f32(value)
+		if !ok || !test_float_is_finite(parsed) || parsed <= 0 {
+			return false
+		}
+		expect.left_sidebar_width = parsed
+		expect.has_left_sidebar_width = true
+		return true
+	case "right_sidebar_width":
+		if expect.has_right_sidebar_width {
+			return false
+		}
+		parsed, ok := strconv.parse_f32(value)
+		if !ok || !test_float_is_finite(parsed) || parsed <= 0 {
+			return false
+		}
+		expect.right_sidebar_width = parsed
+		expect.has_right_sidebar_width = true
 		return true
 	}
 	return false
@@ -1134,6 +1173,12 @@ test_editor_expectation_matches :: proc(world: Runtime_World, editor_state: Edit
 			return false
 		}
 	}
+	if expectation.has_left_sidebar_width && !test_float_approx_equal(editor_state.left_sidebar_width, expectation.left_sidebar_width) {
+		return false
+	}
+	if expectation.has_right_sidebar_width && !test_float_approx_equal(editor_state.right_sidebar_width, expectation.right_sidebar_width) {
+		return false
+	}
 	return true
 }
 
@@ -1248,6 +1293,26 @@ test_editor_expectation_failure_message :: proc(world: Runtime_World, editor_sta
 		} else {
 			strings.write_string(&builder, ", got none")
 		}
+		wrote = true
+	}
+	if expectation.has_left_sidebar_width {
+		if wrote {
+			strings.write_string(&builder, "; ")
+		}
+		strings.write_string(&builder, "editor.left_sidebar_width: expected ")
+		append_test_format(&builder, "%g", expectation.left_sidebar_width)
+		strings.write_string(&builder, ", got ")
+		append_test_format(&builder, "%g", editor_state.left_sidebar_width)
+		wrote = true
+	}
+	if expectation.has_right_sidebar_width {
+		if wrote {
+			strings.write_string(&builder, "; ")
+		}
+		strings.write_string(&builder, "editor.right_sidebar_width: expected ")
+		append_test_format(&builder, "%g", expectation.right_sidebar_width)
+		strings.write_string(&builder, ", got ")
+		append_test_format(&builder, "%g", editor_state.right_sidebar_width)
 	}
 	return strings.clone(strings.to_string(builder))
 }

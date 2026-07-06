@@ -11,6 +11,7 @@ UI_EDITOR_RIGHT_SIDEBAR_TARGET_WIDTH :: f32(560.0)
 UI_EDITOR_RIGHT_SIDEBAR_MIN_WIDTH :: f32(360.0)
 UI_EDITOR_MIN_GAME_VIEWPORT_WIDTH :: f32(320.0)
 UI_EDITOR_SPLITTER_WIDTH :: f32(2.0)
+UI_EDITOR_SPLITTER_HIT_WIDTH :: f32(12.0)
 UI_EDITOR_PANEL_PADDING_X :: f32(20.0)
 UI_EDITOR_CONTROL_BUTTON_WIDTH :: f32(104.0)
 UI_EDITOR_CONTROL_BUTTON_HEIGHT :: f32(36.0)
@@ -195,6 +196,12 @@ editor_side_widths :: proc(window_width: f32) -> (f32, f32) {
 		left = max_f32(left * scale, 1)
 		right = max_f32(right * scale, 1)
 	}
+	return editor_clamped_side_widths(window_width, left, right)
+}
+
+editor_clamped_side_widths :: proc(window_width, left_width, right_width: f32) -> (f32, f32) {
+	left := left_width
+	right := right_width
 	max_clamped_total := max_f32(window_width - UI_EDITOR_MIN_GAME_VIEWPORT_WIDTH - UI_EDITOR_SPLITTER_WIDTH * 2, 1)
 	left = clamp_f32(left, min_f32(UI_EDITOR_LEFT_SIDEBAR_MIN_WIDTH, max_clamped_total), max_clamped_total)
 	right = clamp_f32(right, min_f32(UI_EDITOR_RIGHT_SIDEBAR_MIN_WIDTH, max_clamped_total), max_clamped_total)
