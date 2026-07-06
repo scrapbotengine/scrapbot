@@ -44,7 +44,7 @@ Offscreen demo rendering proves that Scrapbot can initialize the WebGPU backend,
 
 ### 3. Use the scene ECS world as render data authority
 
-**Decision:** Offscreen rendering resolves mesh, camera, light, shadow, and renderer settings from the scene `runtime.World`; renderer-owned state is limited to frame snapshots, UI/editor overlay state, schedule profiling, and GPU resources.
+**Decision:** Offscreen rendering resolves mesh, camera, light, shadow, renderer settings, scene UI, and engine-generated editor overlay data from the scene `runtime.World`; renderer-owned state is limited to frame snapshots, schedule profiling, and GPU resources.
 **Why:** This keeps offscreen rendering aligned with the authoritative scene ECS model while avoiding per-frame scene clones. It follows ADR-022.
 **Tradeoff:** GPU buffers and bind groups are still renderer-owned side resources until native/internal component storage is designed.
 

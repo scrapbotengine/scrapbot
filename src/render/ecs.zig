@@ -3,7 +3,6 @@ const runtime = @import("../runtime.zig");
 const editor_gizmo = @import("../editor/gizmo.zig");
 const editor_metrics = @import("../editor/metrics.zig");
 const editor_theme = @import("../editor/theme.zig");
-const render_extract = @import("extract.zig");
 const render_input = @import("input.zig");
 const render_editor_extract = @import("editor/extract.zig");
 const render_types = @import("types.zig");
@@ -12,7 +11,6 @@ const render_ui = @import("ui.zig");
 const FrameInput = render_input.FrameInput;
 const RenderError = render_types.RenderError;
 const UiCanvasTransform = render_ui.UiCanvasTransform;
-const extractSceneUiInto = render_extract.extractSceneUiInto;
 const extractDebugOverlayInto = render_editor_extract.extractDebugOverlayInto;
 const monotonicTimestampNs = render_editor_extract.monotonicTimestampNs;
 const setRenderFrameInput = render_ui.setRenderFrameInput;
@@ -42,7 +40,7 @@ pub const render_draw_meshes_system_id = "scrapbot.render.draw_meshes";
 const editor_palette = editor_theme.palette;
 
 pub const Scene = struct {
-    world: *const runtime.World,
+    world: *runtime.World,
 };
 
 const RenderSystemProfileState = struct {
@@ -91,10 +89,10 @@ pub const RenderEcsState = struct {
     allocator: std.mem.Allocator,
     registry: runtime.ComponentRegistry,
     schedule: runtime.SystemSchedule,
-    world: runtime.World,
-    scratch_world: runtime.World,
+    world: *runtime.World = undefined,
     extracted_renderables: std.ArrayList(runtime.RenderableMesh) = .empty,
     scratch_renderables: std.ArrayList(runtime.RenderableMesh) = .empty,
+    ui_draw_queued: bool = false,
     system_profiles: std.ArrayList(RenderSystemProfileState) = .empty,
     system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
     combined_system_profile_snapshots: std.ArrayList(runtime.SystemProfileSnapshot) = .empty,
@@ -115,8 +113,6 @@ pub const RenderEcsState = struct {
             .allocator = allocator,
             .registry = registry,
             .schedule = schedule,
-            .world = runtime.World.init(allocator),
-            .scratch_world = runtime.World.init(allocator),
         };
         errdefer state.deinit();
         try state.initializeSystemProfiles();
@@ -133,8 +129,6 @@ pub const RenderEcsState = struct {
         self.system_profiles.deinit(self.allocator);
         self.scratch_renderables.deinit(self.allocator);
         self.extracted_renderables.deinit(self.allocator);
-        self.scratch_world.deinit();
-        self.world.deinit();
         self.schedule.deinit();
         self.registry.deinit();
         self.* = undefined;
@@ -252,10 +246,13 @@ pub const RenderEcsState = struct {
     }
 
     pub fn extractSceneWithInput(self: *RenderEcsState, scene: Scene, input: FrameInput) RenderError!void {
+        self.world = scene.world;
         self.scratch_renderables.clearRetainingCapacity();
-        self.scratch_world.clearRetainingCapacity();
+        self.ui_draw_queued = false;
+        try self.clearFrameState(scene.world);
+        errdefer self.clearFrameState(scene.world) catch {};
 
-        setRenderFrameInput(&self.scratch_world, input) catch |err| {
+        setRenderFrameInput(scene.world, input) catch |err| {
             std.log.err("render extract failed while setting frame input: {s}", .{@errorName(err)});
             return err;
         };
@@ -266,7 +263,7 @@ pub const RenderEcsState = struct {
         }
 
         if (input.debug_overlay_visible) {
-            extractEditorGizmoInto(self.allocator, &self.scratch_world, scene.world, input) catch |err| {
+            extractEditorGizmoInto(self.allocator, scene.world, scene.world, input) catch |err| {
                 std.log.err("render extract failed while extracting editor gizmo: {s}", .{@errorName(err)});
                 return err;
             };
@@ -276,21 +273,13 @@ pub const RenderEcsState = struct {
             };
         }
 
-        if (input.ui_visible) {
-            extractSceneUiInto(&self.scratch_world, scene.world) catch |err| {
-                std.log.err("render extract failed while extracting scene UI: {s}", .{@errorName(err)});
-                return err;
-            };
-        }
-
         if (input.debug_overlay_visible) {
-            extractDebugOverlayInto(self.allocator, &self.scratch_world, input, scene.world) catch |err| {
+            extractDebugOverlayInto(self.allocator, scene.world, input, scene.world) catch |err| {
                 std.log.err("render extract failed while extracting editor overlay: {s}", .{@errorName(err)});
                 return err;
             };
         }
 
-        std.mem.swap(runtime.World, &self.world, &self.scratch_world);
         std.mem.swap(std.ArrayList(runtime.RenderableMesh), &self.extracted_renderables, &self.scratch_renderables);
     }
 
@@ -298,16 +287,25 @@ pub const RenderEcsState = struct {
         return self.extracted_renderables.items;
     }
 
+    pub fn clearFrameState(self: *RenderEcsState, world: *runtime.World) RenderError!void {
+        _ = self;
+        world.removeAllComponentsSilently(render_ui_button_state_component_id) catch |err| return mapWorldError(err);
+        world.removeAllComponentsSilently(render_ui_clip_component_id) catch |err| return mapWorldError(err);
+        world.removeAllComponentsSilently(render_draw_batch_component_id) catch |err| return mapWorldError(err);
+        world.removeAllComponentsSilently(render_draw_ui_component_id) catch |err| return mapWorldError(err);
+        world.clearEngineTransientEntities() catch |err| return mapWorldError(err);
+    }
+
     fn appendExtractedEditorGizmoMeshes(self: *RenderEcsState) RenderError!void {
         for (editor_gizmo.translate_entity_ids) |entity_id| {
-            const entity = self.scratch_world.findEntityById(entity_id) orelse continue;
-            const mesh = self.scratch_world.renderableMeshForEntity(entity) orelse continue;
+            const entity = self.world.findEntityById(entity_id) orelse continue;
+            const mesh = self.world.renderableMeshForEntity(entity) orelse continue;
             self.scratch_renderables.append(self.allocator, mesh) catch return RenderError.OutOfMemory;
         }
     }
 
     pub fn updateUiInteractions(self: *RenderEcsState) RenderError!void {
-        const input = try renderFrameInput(&self.world);
+        const input = try renderFrameInput(self.world);
         if (!input.ui_visible) {
             return;
         }
@@ -321,9 +319,9 @@ pub const RenderEcsState = struct {
             const stored_entity = self.world.entity(entity) catch |err| return mapWorldError(err);
             const position = self.world.getVec3(entity, runtime.ui_rect_component_id, "position") catch |err| return mapWorldError(err);
             const size = self.world.getVec3(entity, runtime.ui_rect_component_id, "size") catch |err| return mapWorldError(err);
-            const layout = try resolveUiLayout(&self.world, entity, position);
+            const layout = try resolveUiLayout(self.world, entity, position);
             const canvas_transform = if (input.viewport_width > 0.0 and input.viewport_height > 0.0)
-                try sceneUiCanvasTransform(&self.world, input, input.viewport_width, input.viewport_height)
+                try sceneUiCanvasTransform(self.world, input, input.viewport_width, input.viewport_height)
             else
                 UiCanvasTransform{};
             const canvas_layout = applyUiCanvasLayout(canvas_transform, stored_entity.id, layout);
@@ -335,7 +333,7 @@ pub const RenderEcsState = struct {
             if (self.world.hasComponent(entity, runtime.ui_hit_area_component_id) catch |err| return mapWorldError(err)) {
                 const hit_position = self.world.getVec3(entity, runtime.ui_hit_area_component_id, "position") catch |err| return mapWorldError(err);
                 const hit_size = self.world.getVec3(entity, runtime.ui_hit_area_component_id, "size") catch |err| return mapWorldError(err);
-                const hit_layout = try resolveUiLayout(&self.world, entity, hit_position);
+                const hit_layout = try resolveUiLayout(self.world, entity, hit_position);
                 const hit_canvas_layout = applyUiCanvasLayout(canvas_transform, stored_entity.id, hit_layout);
                 const hit_screen_size = if (isEditorUiEntityId(stored_entity.id)) hit_size else scaleUiSize(canvas_transform, hit_size);
                 const hit_screen_layout = try resolveUiScreenLayout(input, stored_entity.id, hit_canvas_layout, hit_screen_size);
@@ -344,7 +342,7 @@ pub const RenderEcsState = struct {
                 interaction_clip = hit_screen_layout.clip;
             }
             const state = evaluateUiButtonState(input, interaction_position, interaction_size, interaction_clip);
-            try setRenderUiButtonState(&self.world, entity, state);
+            try setRenderUiButtonState(self.world, entity, state);
         }
     }
 
@@ -356,20 +354,17 @@ pub const RenderEcsState = struct {
             const entity_id = std.fmt.allocPrint(self.allocator, "scrapbot.render.draw.batch.{d}", .{batch_index}) catch return RenderError.OutOfMemory;
             defer self.allocator.free(entity_id);
 
-            const entity = self.world.createEntity(entity_id, "Batch Draw") catch |err| return mapWorldError(err);
+            const entity = self.world.createEngineTransientEntity(entity_id, "Batch Draw") catch |err| return mapWorldError(err);
             const fields = [_]runtime.ComponentFieldValue{
                 .{ .name = "batch_index", .value = .{ .int = @intCast(batch_index) } },
             };
-            self.world.setComponent(entity, render_draw_batch_component_id, &fields) catch |err| return mapWorldError(err);
+            self.world.setComponentSilently(entity, render_draw_batch_component_id, &fields) catch |err| return mapWorldError(err);
         }
     }
 
     pub fn queueUiDraw(self: *RenderEcsState) RenderError!void {
-        if (self.world.uiRectCount() == 0 and self.world.uiTextCount() == 0) {
-            return;
-        }
-        const entity = self.world.createEntity("scrapbot.render.draw.ui", "UI Draw") catch |err| return mapWorldError(err);
-        self.world.setComponent(entity, render_draw_ui_component_id, &.{}) catch |err| return mapWorldError(err);
+        const input = try renderFrameInput(self.world);
+        self.ui_draw_queued = hasDrawableUi(self.world, input);
     }
 
     pub fn drawCommandCount(self: RenderEcsState) usize {
@@ -377,13 +372,42 @@ pub const RenderEcsState = struct {
     }
 
     pub fn uiDrawCommandCount(self: RenderEcsState) usize {
-        return self.world.componentInstanceCountFor(render_draw_ui_component_id);
+        return @intFromBool(self.ui_draw_queued);
     }
 
     pub fn drawCommandBatchIndex(self: RenderEcsState, entity: runtime.EntityHandle) RenderError!usize {
-        return batchIndexFromDrawEntity(&self.world, entity);
+        return batchIndexFromDrawEntity(self.world, entity);
     }
 };
+
+fn hasDrawableUi(world: *const runtime.World, input: FrameInput) bool {
+    var rects = world.uiRects();
+    while (rects.next()) |rect| {
+        if (shouldQueueUiEntity(input, rect.id)) {
+            return true;
+        }
+    }
+    var separators = world.uiSeparators();
+    while (separators.next()) |separator| {
+        if (shouldQueueUiEntity(input, separator.id)) {
+            return true;
+        }
+    }
+    var texts = world.uiTexts();
+    while (texts.next()) |text| {
+        if (shouldQueueUiEntity(input, text.id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn shouldQueueUiEntity(input: FrameInput, entity_id: []const u8) bool {
+    if (isEditorUiEntityId(entity_id)) {
+        return input.debug_overlay_visible;
+    }
+    return input.ui_visible;
+}
 
 fn registerRenderEcsTypes(registry: *runtime.ComponentRegistry) !void {
     try runtime.registerEngineComponents(registry);

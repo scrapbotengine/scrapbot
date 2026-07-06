@@ -121,9 +121,9 @@ test "debug overlay extracts FPS label when visible" {
     const play_label_position = try state.world.getVec3(play_label, runtime.ui_text_component_id, "position");
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), play_label_position[0], 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), play_label_position[1], 0.001);
-    const play_label_item = (try ui_layout.layoutItem(&state.world, play_label)) orelse return error.TestExpectedEqual;
+    const play_label_item = (try ui_layout.layoutItem(state.world, play_label)) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("scrapbot.editor.controls.play", play_label_item.parent);
-    const resolved_play_label = try resolveUiLayout(&state.world, play_label, play_label_position);
+    const resolved_play_label = try resolveUiLayout(state.world, play_label, play_label_position);
     const play_label_text = runtime.UiText{
         .entity = play_label,
         .id = "scrapbot.editor.controls.play.label",
@@ -133,13 +133,13 @@ test "debug overlay extracts FPS label when visible" {
         .color = try state.world.getVec3(play_label, runtime.ui_text_component_id, "color"),
         .value = try state.world.getString(play_label, runtime.ui_text_component_id, "value"),
     };
-    const centered_play_label = try resolveUiTextPosition(&state.world, play_label, play_label_text, resolved_play_label.position);
+    const centered_play_label = try resolveUiTextPosition(state.world, play_label, play_label_text, resolved_play_label.position);
     const expected_play_label_x = play_position[0] + (editor_control_button_width - editorTextWidth("PAUSE", 1.0)) * 0.5;
     const expected_play_label_y = play_position[1] + (editor_control_button_height - editorTextHeight(1.0)) * 0.5;
     try std.testing.expectApproxEqAbs(expected_play_label_x, centered_play_label[0], 0.001);
     try std.testing.expectApproxEqAbs(expected_play_label_y, centered_play_label[1], 0.001);
 
-    const input = try renderFrameInput(&state.world);
+    const input = try renderFrameInput(state.world);
     var texts = state.world.uiTexts();
     while (texts.next()) |text| {
         try std.testing.expect(std.mem.indexOf(u8, text.value, "IN W") == null);
@@ -199,7 +199,7 @@ test "editor shell body uses hgroup slot for the game viewport" {
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_hgroup_component_id));
     const game_slot = state.world.findEntityById("scrapbot.editor.shell.game_viewport") orelse return error.TestExpectedEqual;
-    const slot_rect = try ui_layout.resolvedItemRect(&state.world, game_slot);
+    const slot_rect = try ui_layout.resolvedItemRect(state.world, game_slot);
     const left_splitter = editorSplitterRect(input, .left) orelse return error.TestExpectedEqual;
     const viewport = editorGameViewport(input);
     try std.testing.expectApproxEqAbs(@as(f32, 2.0), left_splitter.width, 0.001);
@@ -232,7 +232,7 @@ test "editor shell body uses hgroup slot for the game viewport" {
             .has_position = true,
         },
     });
-    const hit = (try ui_layout.commandAt(&hover_state.world, hover_point)) orelse return error.TestExpectedEqual;
+    const hit = (try ui_layout.commandAt(hover_state.world, hover_point)) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings(editor_command_splitter_left, hit.command);
     const hover_splitter = hover_state.world.findEntityById("scrapbot.editor.shell.splitter.left") orelse return error.TestExpectedEqual;
     const hover_color = try hover_state.world.getVec3(hover_splitter, runtime.ui_separator_component_id, "color");
@@ -658,7 +658,7 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     };
     try state.extractSceneWithInput(.{ .world = &scene_world }, frame_input);
 
-    try std.testing.expectEqual(@as(usize, 3), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 4), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 4), state.extractedRenderableMeshes().len);
     try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.panel") != null);
     try std.testing.expect(state.world.findEntityById("scrapbot.editor.inspector.accent") == null);
@@ -728,11 +728,11 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try std.testing.expectEqualStrings("ON", try state.world.getString(toggle_value, runtime.ui_text_component_id, "value"));
     const separator_size = try state.world.getVec3(separator, runtime.ui_separator_component_id, "size");
     const sidebar = editorSidebarPanelRect(editorRightSidebarRect(frame_input));
-    const resolved_card_layout = try resolveUiLayout(&state.world, geometry_card, card_position);
-    const resolved_separator_layout = try resolveUiLayout(&state.world, separator, try state.world.getVec3(separator, runtime.ui_separator_component_id, "position"));
+    const resolved_card_layout = try resolveUiLayout(state.world, geometry_card, card_position);
+    const resolved_separator_layout = try resolveUiLayout(state.world, separator, try state.world.getVec3(separator, runtime.ui_separator_component_id, "position"));
     const transform_card = state.world.findEntityById("scrapbot.editor.inspector.component.0") orelse return error.TestExpectedEqual;
     const transform_card_size = try state.world.getVec3(transform_card, runtime.ui_rect_component_id, "size");
-    const resolved_transform_card_layout = try resolveUiLayout(&state.world, transform_card, try state.world.getVec3(transform_card, runtime.ui_rect_component_id, "position"));
+    const resolved_transform_card_layout = try resolveUiLayout(state.world, transform_card, try state.world.getVec3(transform_card, runtime.ui_rect_component_id, "position"));
 
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), card_position[0], 0.001);
     try std.testing.expectApproxEqAbs(sidebar.width, card_size[0], 0.001);
@@ -746,23 +746,23 @@ test "editor overlay extracts selected entity inspector and translate gizmo" {
     try std.testing.expect(editorTextWidth(title_value, title_size) <= card_size[0] - editor_inspector_card_padding_x * 2.0);
     const field_layout = editorInspectorFieldLayout(card_size[0]);
     const row_position = try state.world.getVec3(geometry_field_row, runtime.ui_table_component_id, "position");
-    const row_layout = try resolveUiLayout(&state.world, geometry_field_row, row_position);
-    const row_size = try uiLayoutItemSize(&state.world, geometry_field_row);
+    const row_layout = try resolveUiLayout(state.world, geometry_field_row, row_position);
+    const row_size = try uiLayoutItemSize(state.world, geometry_field_row);
     const next_row_position = try state.world.getVec3(geometry_next_row, runtime.ui_table_component_id, "position");
-    const next_row_layout = try resolveUiLayout(&state.world, geometry_next_row, next_row_position);
+    const next_row_layout = try resolveUiLayout(state.world, geometry_next_row, next_row_position);
     const transform_position_row_position = try state.world.getVec3(transform_position_row, runtime.ui_table_component_id, "position");
-    const transform_position_row_layout = try resolveUiLayout(&state.world, transform_position_row, transform_position_row_position);
-    const transform_position_row_size = try uiLayoutItemSize(&state.world, transform_position_row);
+    const transform_position_row_layout = try resolveUiLayout(state.world, transform_position_row, transform_position_row_position);
+    const transform_position_row_size = try uiLayoutItemSize(state.world, transform_position_row);
     const transform_rotation_row_position = try state.world.getVec3(transform_rotation_row, runtime.ui_table_component_id, "position");
-    const transform_rotation_row_layout = try resolveUiLayout(&state.world, transform_rotation_row, transform_rotation_row_position);
-    const label_cell_rect = try ui_layout.resolvedItemRect(&state.world, geometry_field_label_cell);
-    const value_cell_rect = try ui_layout.resolvedItemRect(&state.world, geometry_field_value_cell);
-    const input_layout = try resolveUiLayout(&state.world, geometry_field_input, input_position);
-    const input_size = try uiLayoutItemSize(&state.world, geometry_field_input);
-    const value_text_layout = try resolveUiLayout(&state.world, geometry_field_value, value_position);
+    const transform_rotation_row_layout = try resolveUiLayout(state.world, transform_rotation_row, transform_rotation_row_position);
+    const label_cell_rect = try ui_layout.resolvedItemRect(state.world, geometry_field_label_cell);
+    const value_cell_rect = try ui_layout.resolvedItemRect(state.world, geometry_field_value_cell);
+    const input_layout = try resolveUiLayout(state.world, geometry_field_input, input_position);
+    const input_size = try uiLayoutItemSize(state.world, geometry_field_input);
+    const value_text_layout = try resolveUiLayout(state.world, geometry_field_value, value_position);
     const transform_position_input_position = try state.world.getVec3(transform_position_input_0, runtime.ui_rect_component_id, "position");
-    const transform_position_lane_layout = try resolveUiLayout(&state.world, transform_position_input_0, transform_position_input_position);
-    const transform_lane_text_layout = try resolveUiLayout(&state.world, transform_position_value_0, transform_lane_value_position);
+    const transform_position_lane_layout = try resolveUiLayout(state.world, transform_position_input_0, transform_position_input_position);
+    const transform_lane_text_layout = try resolveUiLayout(state.world, transform_position_value_0, transform_lane_value_position);
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), label_position[0], 0.001);
     try std.testing.expectApproxEqAbs(resolved_card_layout.position[0] + field_layout.label_x, label_cell_rect.position[0], 0.001);
     try std.testing.expectApproxEqAbs(field_layout.label_width, label_cell_rect.size[0], 0.001);
@@ -836,7 +836,7 @@ test "editor inspector component stack resolves inside scroll view clip" {
 
     const clip = editorInspectorScrollClipRect(frame_input);
     const card_position = try state.world.getVec3(first_card, runtime.ui_rect_component_id, "position");
-    const resolved = try resolveUiLayout(&state.world, first_card, card_position);
+    const resolved = try resolveUiLayout(state.world, first_card, card_position);
     const resolved_clip = resolved.clip orelse return error.TestExpectedEqual;
     try std.testing.expectApproxEqAbs(clip.position[0], resolved_clip.position[0], 0.001);
     try std.testing.expectApproxEqAbs(clip.position[1], resolved_clip.position[1], 0.001);
@@ -902,9 +902,9 @@ test "editor inspector field rows split labels and editors evenly" {
     const wide_label_text = try wide_state.world.getString(wide_label, runtime.ui_text_component_id, "value");
     try std.testing.expectEqualStrings("chromatic_aberration_strength", wide_label_text);
 
-    const wide_label_cell_rect = try ui_layout.resolvedItemRect(&wide_state.world, wide_label_cell);
-    const wide_value_cell_rect = try ui_layout.resolvedItemRect(&wide_state.world, wide_value_cell);
-    const wide_input_rect = try ui_layout.resolvedItemRect(&wide_state.world, wide_input_box);
+    const wide_label_cell_rect = try ui_layout.resolvedItemRect(wide_state.world, wide_label_cell);
+    const wide_value_cell_rect = try ui_layout.resolvedItemRect(wide_state.world, wide_value_cell);
+    const wide_input_rect = try ui_layout.resolvedItemRect(wide_state.world, wide_input_box);
     try std.testing.expectApproxEqAbs(wide_label_cell_rect.size[0], wide_value_cell_rect.size[0], 0.001);
     try std.testing.expectApproxEqAbs(editorInspectorFieldLayout(editorInspectorScrollClipRect(wide_input).size[0]).label_width, wide_label_cell_rect.size[0], 0.001);
     try std.testing.expectApproxEqAbs(wide_value_cell_rect.position[0], wide_input_rect.position[0], 0.001);
@@ -1044,7 +1044,7 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(try render_state.world.hasComponent(selection_rect, runtime.ui_rect_component_id));
     try std.testing.expect((try render_state.world.getVec3(selection_rect, runtime.ui_rect_component_id, "size"))[0] > 1.0);
     try std.testing.expect(render_state.world.findEntityById("scrapbot.editor.inspector.component.0.field.0.caret.0") != null);
-    var focused_vertices = try buildUiVertices(std.testing.allocator, &render_state.world, 1280, 720);
+    var focused_vertices = try buildUiVertices(std.testing.allocator, render_state.world, 1280, 720);
     focused_vertices.deinit(std.testing.allocator);
 
     var replace_selected = FrameInput{
@@ -1275,7 +1275,7 @@ test "editor inspector property inputs edit text and commit with undo" {
     try std.testing.expect(try scalar_render_state.world.hasComponent(scalar_input, runtime.ui_border_component_id));
     const scalar_selection = scalar_render_state.world.findEntityById("scrapbot.editor.inspector.component.1.field.1.selection") orelse return error.TestExpectedEqual;
     try std.testing.expect(try scalar_render_state.world.hasComponent(scalar_selection, runtime.ui_rect_component_id));
-    var scalar_vertices = try buildUiVertices(std.testing.allocator, &scalar_render_state.world, 1280, 720);
+    var scalar_vertices = try buildUiVertices(std.testing.allocator, scalar_render_state.world, 1280, 720);
     scalar_vertices.deinit(std.testing.allocator);
 }
 

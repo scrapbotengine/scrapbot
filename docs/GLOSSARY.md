@@ -148,7 +148,7 @@ This glossary defines recurring Scrapbot terms in the project's context. It is a
 
 **Offscreen rendering** - Rendering a project to an image artifact without opening a platform window, used by `scrapbot render` and `scrapbot render-test`. See [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
 
-**Render world** - The renderer-owned ECS world that receives extracted render data, prepared resources, draw-command entities, and render-phase systems. See [ADR-013](adr/ADR-013-shared-ecs-for-engine-internal-worlds.md) and [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
+**Render world** - Historical term for the former renderer-owned ECS world that mirrored scene render data. Scrapbot now resolves render-facing ECS data from the authoritative scene world and keeps only renderer side resources outside it. See [ADR-022](adr/ADR-022-single-world-render-data-flow.md) and [FDR-007](fdr/FDR-007-offscreen-demo-rendering.md).
 
 **Renderer singleton** - The scene-authored `scrapbot.renderer` component that configures HDR color, tone mapping, antialiasing, bloom, chromatic aberration, and vignette for the game view. See [FDR-020](fdr/FDR-020-postprocess-and-hdr-render-settings.md).
 

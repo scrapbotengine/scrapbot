@@ -371,7 +371,7 @@ pub const ImageRenderOptions = struct {
 };
 
 pub const Scene = struct {
-    world: *const runtime.World,
+    world: *runtime.World,
 };
 
 pub const SceneReloadHook = struct {
@@ -1320,7 +1320,6 @@ const MeshDemo = struct {
 
         var render_state = try RenderEcsState.init(allocator);
         errdefer render_state.deinit();
-        try render_state.extractScene(.{ .world = scene.world });
 
         const batches = allocator.alloc(BatchResources, 0) catch return RenderError.OutOfMemory;
         errdefer allocator.free(batches);
@@ -1485,6 +1484,9 @@ const MeshDemo = struct {
         defer if (maybe_plan) |*plan| {
             plan.deinit();
         };
+        defer self.render_state.clearFrameState(context.frame.scene.world) catch |err| {
+            std.log.err("render frame cleanup failed: {s}", .{@errorName(err)});
+        };
 
         var profiled_context = context;
         profiled_context.frame.input.system_profiles = try self.render_state.combineSystemProfileSnapshots(context.frame.input.system_profiles);
@@ -1540,7 +1542,7 @@ const MeshDemo = struct {
     }
 
     fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
-        try buildUiVerticesInto(self.allocator, &self.ui_vertices, &self.ui_layout_cache, &self.render_state.world, config.width, config.height);
+        try buildUiVerticesInto(self.allocator, &self.ui_vertices, &self.ui_layout_cache, config.scene.world, config.width, config.height);
         try self.ui_draw.update(device, queue, self.ui_vertices.items);
     }
 

@@ -69,7 +69,7 @@ pub fn extractTranslateInto(
     };
 
     for (axes, translate_entity_ids) |entry, entity_id| {
-        const entity = world.createEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
+        const entity = world.createEngineTransientEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
         world.setTransform(entity, .{
             .position = addVec3(selected_transform.position, entry.position_offset),
             .scale = entry.scale,

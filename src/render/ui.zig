@@ -44,7 +44,7 @@ pub const UiProgressBar = struct {
 };
 
 pub fn writeFrameInput(world: *runtime.World, input: FrameInput) runtime.WorldError!void {
-    const entity = world.findEntityById(runtime.input_entity_id) orelse try world.createEntity(runtime.input_entity_id, "Input Frame");
+    const entity = world.findEntityById(runtime.input_entity_id) orelse try world.createEngineTransientEntity(runtime.input_entity_id, "Input Frame");
     try world.setInputPointer(entity, .{
         .position = .{ input.pointer.position[0], input.pointer.position[1], 0.0 },
         .delta = .{ input.pointer.delta[0], input.pointer.delta[1], 0.0 },
@@ -128,7 +128,7 @@ pub fn setRenderUiButtonState(world: *runtime.World, entity: runtime.EntityHandl
         .{ .name = "held", .value = .{ .boolean = state.held } },
         .{ .name = "pressed", .value = .{ .boolean = state.pressed } },
     };
-    world.setComponent(entity, render_ui_button_state_component_id, &fields) catch |err| return mapWorldError(err);
+    world.setComponentSilently(entity, render_ui_button_state_component_id, &fields) catch |err| return mapWorldError(err);
 }
 
 pub fn setRenderUiClip(world: *runtime.World, entity: runtime.EntityHandle, clip: UiClipRect) RenderError!void {
@@ -136,7 +136,7 @@ pub fn setRenderUiClip(world: *runtime.World, entity: runtime.EntityHandle, clip
         .{ .name = "position", .value = .{ .vec3 = clip.position } },
         .{ .name = "size", .value = .{ .vec3 = clip.size } },
     };
-    world.setComponent(entity, render_ui_clip_component_id, &fields) catch |err| return mapWorldError(err);
+    world.setComponentSilently(entity, render_ui_clip_component_id, &fields) catch |err| return mapWorldError(err);
 }
 
 pub fn renderUiButtonState(world: *const runtime.World, entity: runtime.EntityHandle) RenderError!?UiButtonState {
@@ -337,6 +337,9 @@ pub fn buildUiVerticesInto(
 
     var rects = world.uiRects();
     while (rects.next()) |rect| {
+        if (!shouldDrawUiEntity(input, rect.id)) {
+            continue;
+        }
         const maybe_button_state = if (rect.is_button) try renderUiButtonState(world, rect.entity) else null;
         const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, rect.entity);
         const layout = try resolveUiLayoutWithCache(layout_cache, world, rect.entity, rect.position);
@@ -374,6 +377,9 @@ pub fn buildUiVerticesInto(
 
     var separators = world.uiSeparators();
     while (separators.next()) |separator| {
+        if (!shouldDrawUiEntity(input, separator.id)) {
+            continue;
+        }
         const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, separator.entity);
         const layout = try resolveUiLayoutWithCache(layout_cache, world, separator.entity, separator.position);
         const canvas_layout = applyUiCanvasLayout(canvas_transform, separator.id, layout);
@@ -387,6 +393,9 @@ pub fn buildUiVerticesInto(
 
     var texts = world.uiTexts();
     while (texts.next()) |text| {
+        if (!shouldDrawUiEntity(input, text.id)) {
+            continue;
+        }
         const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, text.entity);
         const layout = try resolveUiLayoutWithCache(layout_cache, world, text.entity, text.position);
         const canvas_layout = applyUiCanvasLayout(canvas_transform, text.id, layout);
@@ -405,6 +414,13 @@ pub fn buildUiVerticesInto(
         resolved_text.size *= pixel_scale;
         try appendUiText(vertices, allocator, width, height, resolved_text, maybe_clip);
     }
+}
+
+fn shouldDrawUiEntity(input: FrameInput, entity_id: []const u8) bool {
+    if (isEditorUiEntityId(entity_id)) {
+        return input.debug_overlay_visible;
+    }
+    return input.ui_visible;
 }
 
 fn viewportUiClip(clip: ?UiClipRect, viewport_clip: UiClipRect) RenderError!?UiClipRect {

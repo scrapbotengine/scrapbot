@@ -160,8 +160,8 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     defer state.deinit();
     try state.extractScene(.{ .world = &scene_world });
 
-    try std.testing.expectEqual(@as(usize, 4), state.world.entityCount());
-    try std.testing.expectEqual(@as(usize, 0), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 8), state.world.entityCount());
+    try std.testing.expectEqual(@as(usize, 2), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 2), state.extractedRenderableMeshes().len);
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
     try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
@@ -286,14 +286,14 @@ test "render ECS repeated extraction replaces render world without accumulating 
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
     try state.extractScene(.{ .world = &scene_world });
-    try std.testing.expectEqual(@as(usize, 0), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
     try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
     const first_entity_count = state.world.entityCount();
 
     try state.extractScene(.{ .world = &scene_world });
     try std.testing.expectEqual(first_entity_count, state.world.entityCount());
-    try std.testing.expectEqual(@as(usize, 0), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
     try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
 }
@@ -306,7 +306,7 @@ test "render ECS failed renderable snapshot preserves previous render world and 
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
     try state.extractScene(.{ .world = &valid_world });
-    try std.testing.expectEqual(@as(usize, 0), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
 
     const original_allocator = state.allocator;
@@ -314,9 +314,9 @@ test "render ECS failed renderable snapshot preserves previous render world and 
     defer state.allocator = original_allocator;
     try std.testing.expectError(RenderError.OutOfMemory, state.extractScene(.{ .world = &valid_world }));
 
-    try std.testing.expectEqual(@as(usize, 0), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
     try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
-    try std.testing.expect(state.world.findEntityById("scrapbot.input.frame") != null);
+    try std.testing.expect(state.world.findEntityById("scrapbot.input.frame") == null);
 }
 
 test "render stats reports mesh renderables and planned batches" {
@@ -752,13 +752,13 @@ test "render ECS derives UI button interaction state from frame input" {
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(render_ui_button_state_component_id));
     const extracted_button = state.world.uiRectAt(0) orelse return error.TestExpectedEqual;
-    const held_state = (try renderUiButtonState(&state.world, extracted_button.entity)) orelse return error.TestExpectedEqual;
+    const held_state = (try renderUiButtonState(state.world, extracted_button.entity)) orelse return error.TestExpectedEqual;
     try std.testing.expect(held_state.hovered);
     try std.testing.expect(held_state.held);
     try std.testing.expect(!held_state.pressed);
 
     const extracted_panel = state.world.uiRectAt(1) orelse return error.TestExpectedEqual;
-    try std.testing.expect((try renderUiButtonState(&state.world, extracted_panel.entity)) == null);
+    try std.testing.expect((try renderUiButtonState(state.world, extracted_panel.entity)) == null);
 
     try state.extractSceneWithInput(.{ .world = &scene_world }, .{
         .pointer = .{
@@ -770,7 +770,7 @@ test "render ECS derives UI button interaction state from frame input" {
     try state.updateUiInteractions();
 
     const pressed_button = state.world.uiRectAt(0) orelse return error.TestExpectedEqual;
-    const pressed_state = (try renderUiButtonState(&state.world, pressed_button.entity)) orelse return error.TestExpectedEqual;
+    const pressed_state = (try renderUiButtonState(state.world, pressed_button.entity)) orelse return error.TestExpectedEqual;
     try std.testing.expect(pressed_state.hovered);
     try std.testing.expect(!pressed_state.held);
     try std.testing.expect(pressed_state.pressed);
@@ -809,7 +809,7 @@ test "render ECS hit tests buttons through UI layout clips" {
     try state.updateUiInteractions();
 
     const extracted_button = state.world.findEntityById("button") orelse return error.TestExpectedEqual;
-    const held_state = (try renderUiButtonState(&state.world, extracted_button)) orelse return error.TestExpectedEqual;
+    const held_state = (try renderUiButtonState(state.world, extracted_button)) orelse return error.TestExpectedEqual;
     try std.testing.expect(held_state.hovered);
     try std.testing.expect(held_state.held);
 
@@ -823,7 +823,7 @@ test "render ECS hit tests buttons through UI layout clips" {
     try state.updateUiInteractions();
 
     const clipped_button = state.world.findEntityById("button") orelse return error.TestExpectedEqual;
-    const clipped_state = (try renderUiButtonState(&state.world, clipped_button)) orelse return error.TestExpectedEqual;
+    const clipped_state = (try renderUiButtonState(state.world, clipped_button)) orelse return error.TestExpectedEqual;
     try std.testing.expect(!clipped_state.hovered);
     try std.testing.expect(!clipped_state.held);
 }
@@ -853,11 +853,13 @@ test "hidden UI overlay skips UI extraction but keeps frame input" {
     try state.extractSceneWithInput(.{ .world = &scene_world }, .{ .ui_visible = false });
     try state.updateUiInteractions();
 
-    try std.testing.expectEqual(@as(usize, 0), state.world.uiRectCount());
-    try std.testing.expectEqual(@as(usize, 0), state.world.uiTextCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
     try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(render_ui_button_state_component_id));
+    try state.queueUiDraw();
+    try std.testing.expectEqual(@as(usize, 0), state.uiDrawCommandCount());
 
-    const input = try renderFrameInput(&state.world);
+    const input = try renderFrameInput(state.world);
     try std.testing.expect(!input.ui_visible);
     try std.testing.expect(!input.debug_overlay_visible);
 }

@@ -110,6 +110,7 @@ pub const editorEntityNeedsScroll = editor_metrics.editorEntityNeedsScroll;
 pub const editorEntityMaxScroll = editor_metrics.editorEntityMaxScroll;
 pub const editorEntityMaxScrollY = editor_metrics.editorEntityMaxScrollY;
 pub const editorEntityHandleAt = editor_metrics.editorEntityHandleAt;
+const editorInspectableEntityCount = editor_metrics.editorInspectableEntityCount;
 pub const editorEntityComponentCount = editor_metrics.editorEntityComponentCount;
 pub const editorEntityHandlesEqual = editor_metrics.editorEntityHandlesEqual;
 pub const editorSidebarPanelRect = editor_metrics.editorSidebarPanelRect;
@@ -162,7 +163,7 @@ const EditorVGroup = struct {
     fn text(self: *EditorVGroup, name: []const u8, value: []const u8, size: f32, color: [3]f32) RenderError!void {
         const entity_id = std.fmt.allocPrint(self.allocator, "{s}.{d}", .{ self.id_prefix, self.row }) catch return RenderError.OutOfMemory;
         defer self.allocator.free(entity_id);
-        const entity = self.world.createEntity(entity_id, name) catch |err| return mapWorldError(err);
+        const entity = self.world.createEngineTransientEntity(entity_id, name) catch |err| return mapWorldError(err);
         const position = if (self.layout_parent != null)
             [3]f32{ 0.0, 0.0, 0.0 }
         else
@@ -198,7 +199,7 @@ pub fn extractEditorShellInto(allocator: std.mem.Allocator, world: *runtime.Worl
     try extractEditorShellRect(world, "scrapbot.editor.shell.top_bar", top, editor_palette.shell);
     try extractEditorShellRect(world, "scrapbot.editor.shell.bottom_bar", bottom, editor_palette.shell);
 
-    const body_group = world.createEntity("scrapbot.editor.shell.body", "Editor Body HGroup") catch |err| return mapWorldError(err);
+    const body_group = world.createEngineTransientEntity("scrapbot.editor.shell.body", "Editor Body HGroup") catch |err| return mapWorldError(err);
     world.setUiHGroup(body_group, .{
         .position = body.position(),
         .size = body.size3(),
@@ -264,7 +265,7 @@ fn extractEditorSplitterHitTarget(world: *runtime.World, input: FrameInput, spli
         .left => editor_command_splitter_left,
         .right => editor_command_splitter_right,
     };
-    const entity = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const entity = world.createEngineTransientEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiHitArea(entity, .{
         .position = .{ hit_rect.x - visual.x, 0.0, 0.0 },
         .size = hit_rect.size3(),
@@ -278,7 +279,7 @@ fn extractEditorSplitterHitTarget(world: *runtime.World, input: FrameInput, spli
 }
 
 fn extractEditorShellRect(world: *runtime.World, id: []const u8, rect: ScreenRect, color: [3]f32) RenderError!void {
-    const entity = world.createEntity(id, "Editor Shell Rect") catch |err| return mapWorldError(err);
+    const entity = world.createEngineTransientEntity(id, "Editor Shell Rect") catch |err| return mapWorldError(err);
     world.setUiRect(entity, .{
         .position = rect.position(),
         .size = rect.size3(),
@@ -288,7 +289,7 @@ fn extractEditorShellRect(world: *runtime.World, id: []const u8, rect: ScreenRec
 }
 
 fn extractEditorShellLayoutRect(world: *runtime.World, id: []const u8, name: []const u8, size: [3]f32, order: i32, color: [3]f32) RenderError!void {
-    const entity = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const entity = world.createEngineTransientEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiRect(entity, .{
         .position = .{ 0.0, 0.0, 0.0 },
         .size = size,
@@ -303,7 +304,7 @@ fn extractEditorShellLayoutRect(world: *runtime.World, id: []const u8, name: []c
 }
 
 fn extractEditorShellLayoutSeparator(world: *runtime.World, id: []const u8, name: []const u8, size: [3]f32, order: i32, color: [3]f32) RenderError!void {
-    const entity = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const entity = world.createEngineTransientEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiSeparator(entity, .{
         .position = .{ 0.0, 0.0, 0.0 },
         .size = size,
@@ -349,7 +350,7 @@ fn editorSplitterVisible(input: FrameInput, splitter: EditorSplitter, hovered_sp
 }
 
 fn extractEditorShellLayoutSpacer(world: *runtime.World, id: []const u8, name: []const u8, min_size: [3]f32, order: i32, grow: f32) RenderError!void {
-    const entity = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const entity = world.createEngineTransientEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiSpacer(entity, .{ .size = .{ 0.0, 0.0, 0.0 } }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(entity, .{
         .parent = "scrapbot.editor.shell.body",
@@ -374,7 +375,7 @@ pub fn extractDebugOverlayInto(
     const panel_size = editorDebugPanelSize(input);
     const panel = editorSystemPanelRect(input);
 
-    const canvas = world.createEntity("scrapbot.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
+    const canvas = world.createEngineTransientEntity("scrapbot.editor.debug.canvas", "Editor Debug Canvas") catch |err| return mapWorldError(err);
     world.setUiCanvas(canvas, .{}) catch |err| return mapWorldError(err);
 
     _ = try extractEditorPanel(world, "scrapbot.editor.debug.panel", "Editor Debug Panel", .{
@@ -392,7 +393,7 @@ pub fn extractDebugOverlayInto(
 
     const header_text = formatSystemProfileHeader(allocator, input.system_profiles) catch return RenderError.OutOfMemory;
     defer allocator.free(header_text);
-    const header = world.createEntity("scrapbot.editor.debug.systems.header", "Editor Debug Systems Header") catch |err| return mapWorldError(err);
+    const header = world.createEngineTransientEntity("scrapbot.editor.debug.systems.header", "Editor Debug Systems Header") catch |err| return mapWorldError(err);
     world.setUiText(header, .{
         .position = editorPanelTextPosition(panel, editorSystemHeaderY(input) - panel.y),
         .size = editor_system_text_size,
@@ -401,7 +402,7 @@ pub fn extractDebugOverlayInto(
     }) catch |err| return mapWorldError(err);
 
     const list_clip = editorSystemListClipRect(input);
-    const system_scroll = world.createEntity("scrapbot.editor.debug.systems.scroll", "Editor Debug Systems Scroll View") catch |err| return mapWorldError(err);
+    const system_scroll = world.createEngineTransientEntity("scrapbot.editor.debug.systems.scroll", "Editor Debug Systems Scroll View") catch |err| return mapWorldError(err);
     world.setUiScrollView(system_scroll, .{
         .position = list_clip.position,
         .size = list_clip.size,
@@ -410,7 +411,7 @@ pub fn extractDebugOverlayInto(
 
     const row_width = list_clip.size[0];
     const table_height = editorSystemTableContentHeight(input.system_profiles.len);
-    const system_table = world.createEntity("scrapbot.editor.debug.systems.table", "Editor Debug Systems Table") catch |err| return mapWorldError(err);
+    const system_table = world.createEngineTransientEntity("scrapbot.editor.debug.systems.table", "Editor Debug Systems Table") catch |err| return mapWorldError(err);
     world.setUiRect(system_table, .{
         .position = .{
             0.0,
@@ -460,7 +461,7 @@ pub fn extractDebugOverlayInto(
 
 pub fn extractEditorTopBarInto(allocator: std.mem.Allocator, world: *runtime.World, input: FrameInput) RenderError!void {
     const top = editorTopBarRect(input);
-    const title = world.createEntity("scrapbot.editor.top.title", "Editor Top Title") catch |err| return mapWorldError(err);
+    const title = world.createEngineTransientEntity("scrapbot.editor.top.title", "Editor Top Title") catch |err| return mapWorldError(err);
     world.setUiText(title, .{
         .position = .{ editor_panel_padding_x, top.y + editor_bar_text_offset_y, 0.0 },
         .size = 1.0,
@@ -470,7 +471,7 @@ pub fn extractEditorTopBarInto(allocator: std.mem.Allocator, world: *runtime.Wor
 
     const fps_text = formatFpsLabel(allocator, input.fps) catch return RenderError.OutOfMemory;
     defer allocator.free(fps_text);
-    const fps = world.createEntity("scrapbot.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
+    const fps = world.createEngineTransientEntity("scrapbot.editor.debug.fps", "Editor Debug FPS") catch |err| return mapWorldError(err);
     world.setUiText(fps, .{
         .position = .{ editor_top_fps_x, top.y + editor_bar_text_offset_y, 0.0 },
         .size = editor_system_text_size,
@@ -492,7 +493,7 @@ pub fn extractEditorBottomBarInto(allocator: std.mem.Allocator, world: *runtime.
         @as(u32, @intFromFloat(@round(viewport.height))),
     }) catch return RenderError.OutOfMemory;
     defer allocator.free(status);
-    const status_text = world.createEntity("scrapbot.editor.bottom.status", "Editor Bottom Status") catch |err| return mapWorldError(err);
+    const status_text = world.createEngineTransientEntity("scrapbot.editor.bottom.status", "Editor Bottom Status") catch |err| return mapWorldError(err);
     world.setUiText(status_text, .{
         .position = .{ editor_panel_padding_x, bottom.y + editor_bar_text_offset_y, 0.0 },
         .size = editor_system_text_size,
@@ -539,7 +540,7 @@ fn extractEditorButtonInto(
     label: []const u8,
     color: [3]f32,
 ) RenderError!void {
-    const button = world.createEntity(spec.id, spec.name) catch |err| return mapWorldError(err);
+    const button = world.createEngineTransientEntity(spec.id, spec.name) catch |err| return mapWorldError(err);
     world.setUiRect(button, .{
         .position = spec.rect.position(),
         .size = spec.rect.size3(),
@@ -553,7 +554,7 @@ fn extractEditorButtonInto(
     const label_id = std.fmt.bufPrint(&label_id_buffer, "{s}.label", .{spec.id}) catch return RenderError.InvalidScene;
     var label_name_buffer: [96]u8 = undefined;
     const label_name = std.fmt.bufPrint(&label_name_buffer, "{s} Label", .{spec.name}) catch return RenderError.InvalidScene;
-    const text = world.createEntity(label_id, label_name) catch |err| return mapWorldError(err);
+    const text = world.createEngineTransientEntity(label_id, label_name) catch |err| return mapWorldError(err);
     world.setUiText(text, .{
         .position = .{ 0.0, 0.0, 0.0 },
         .size = 1.0,
@@ -579,7 +580,7 @@ fn extractEditorSystemScrollbarInto(world: *runtime.World, input: FrameInput, li
 
     const track_height = list_clip.size[1];
     const track_x = list_clip.position[0] + list_clip.size[0] + editor_scrollbar_gap;
-    const track = world.createEntity("scrapbot.editor.debug.systems.scrollbar.track", "Editor System Scrollbar Track") catch |err| return mapWorldError(err);
+    const track = world.createEngineTransientEntity("scrapbot.editor.debug.systems.scrollbar.track", "Editor System Scrollbar Track") catch |err| return mapWorldError(err);
     world.setUiRect(track, .{
         .position = .{ track_x, list_clip.position[1], 0.0 },
         .size = .{ editor_scrollbar_width, track_height, 0.0 },
@@ -594,7 +595,7 @@ fn extractEditorSystemScrollbarInto(world: *runtime.World, input: FrameInput, li
     const scroll_t = if (max_scroll > 0.0) std.math.clamp(input.editor.system_scroll_y / max_scroll, 0.0, 1.0) else 0.0;
     const thumb_y = list_clip.position[1] + (track_height - thumb_height) * scroll_t;
 
-    const thumb = world.createEntity("scrapbot.editor.debug.systems.scrollbar.thumb", "Editor System Scrollbar Thumb") catch |err| return mapWorldError(err);
+    const thumb = world.createEngineTransientEntity("scrapbot.editor.debug.systems.scrollbar.thumb", "Editor System Scrollbar Thumb") catch |err| return mapWorldError(err);
     world.setUiRect(thumb, .{
         .position = .{ track_x, thumb_y, 0.0 },
         .size = .{ editor_scrollbar_width, thumb_height, 0.0 },
@@ -612,17 +613,18 @@ fn extractEditorEntityListInto(
     const panel = editorEntityPanelRect(input);
     _ = try extractEditorPanel(world, "scrapbot.editor.entities.panel", "Editor Entities Panel", panel, editor_palette.panel, 0.0);
 
-    const header_text = std.fmt.allocPrint(allocator, "ENTITIES {d}", .{scene_world.entityCount()}) catch return RenderError.OutOfMemory;
+    const entity_count = editorInspectableEntityCount(scene_world);
+    const header_text = std.fmt.allocPrint(allocator, "ENTITIES {d}", .{entity_count}) catch return RenderError.OutOfMemory;
     defer allocator.free(header_text);
     try extractEditorText(world, "scrapbot.editor.entities.header", "Editor Entities Header", editorPanelTextPosition(panel, editorSystemHeaderYOffset()), header_text, editor_entity_text_size, editor_palette.text_muted);
 
-    if (scene_world.entityCount() == 0) {
+    if (entity_count == 0) {
         try extractEditorText(world, "scrapbot.editor.entities.empty", "Editor Entities Empty", editorPanelTextPosition(panel, editorSystemRowsYOffset()), "NO ENTITIES", editor_entity_text_size, editor_palette.text_dim);
         return;
     }
 
     const list_clip = editorEntityListClipRect(scene_world, input);
-    const entity_scroll = world.createEntity("scrapbot.editor.entities.scroll", "Editor Entities Scroll View") catch |err| return mapWorldError(err);
+    const entity_scroll = world.createEngineTransientEntity("scrapbot.editor.entities.scroll", "Editor Entities Scroll View") catch |err| return mapWorldError(err);
     world.setUiScrollView(entity_scroll, .{
         .position = list_clip.position,
         .size = list_clip.size,
@@ -630,8 +632,8 @@ fn extractEditorEntityListInto(
     }) catch |err| return mapWorldError(err);
 
     const row_width = list_clip.size[0];
-    const table_height = editorEntityTableContentHeight(scene_world.entityCount());
-    const entity_table = world.createEntity("scrapbot.editor.entities.table", "Editor Entities Table") catch |err| return mapWorldError(err);
+    const table_height = editorEntityTableContentHeight(entity_count);
+    const entity_table = world.createEngineTransientEntity("scrapbot.editor.entities.table", "Editor Entities Table") catch |err| return mapWorldError(err);
     world.setUiRect(entity_table, .{
         .position = .{ 0.0, 0.0, 0.0 },
         .size = .{ row_width, table_height, 0.0 },
@@ -707,7 +709,7 @@ fn extractEditorEntityScrollbarInto(world: *runtime.World, scene_world: *const r
 
     const track_height = list_clip.size[1];
     const track_x = list_clip.position[0] + list_clip.size[0] + editor_scrollbar_gap;
-    const track = world.createEntity("scrapbot.editor.entities.scrollbar.track", "Editor Entities Scrollbar Track") catch |err| return mapWorldError(err);
+    const track = world.createEngineTransientEntity("scrapbot.editor.entities.scrollbar.track", "Editor Entities Scrollbar Track") catch |err| return mapWorldError(err);
     world.setUiRect(track, .{
         .position = .{ track_x, list_clip.position[1], 0.0 },
         .size = .{ editor_scrollbar_width, track_height, 0.0 },
@@ -716,13 +718,13 @@ fn extractEditorEntityScrollbarInto(world: *runtime.World, scene_world: *const r
     }) catch |err| return mapWorldError(err);
 
     const visible_rows = @as(f32, @floatFromInt(editorEntityVisibleRows(input)));
-    const total_rows = @as(f32, @floatFromInt(scene_world.entityCount()));
+    const total_rows = @as(f32, @floatFromInt(editorInspectableEntityCount(scene_world)));
     const thumb_height = @max(track_height * visible_rows / @max(total_rows, visible_rows), editor_scrollbar_width * 2.0);
     const max_scroll = editorEntityMaxScrollY(scene_world, input);
     const scroll_t = if (max_scroll > 0.0) std.math.clamp(input.editor.entity_scroll_y / max_scroll, 0.0, 1.0) else 0.0;
     const thumb_y = list_clip.position[1] + (track_height - thumb_height) * scroll_t;
 
-    const thumb = world.createEntity("scrapbot.editor.entities.scrollbar.thumb", "Editor Entities Scrollbar Thumb") catch |err| return mapWorldError(err);
+    const thumb = world.createEngineTransientEntity("scrapbot.editor.entities.scrollbar.thumb", "Editor Entities Scrollbar Thumb") catch |err| return mapWorldError(err);
     world.setUiRect(thumb, .{
         .position = .{ track_x, thumb_y, 0.0 },
         .size = .{ editor_scrollbar_width, thumb_height, 0.0 },
@@ -788,7 +790,7 @@ fn extractEditorComponentInspectorInto(
     }, entity_header, editor_inspector_text_size, editor_palette.text_muted);
 
     const scroll_clip = editorInspectorScrollClipRect(input);
-    const scroll = world.createEntity("scrapbot.editor.inspector.scroll", "Editor Inspector Scroll View") catch |err| return mapWorldError(err);
+    const scroll = world.createEngineTransientEntity("scrapbot.editor.inspector.scroll", "Editor Inspector Scroll View") catch |err| return mapWorldError(err);
     world.setUiScrollView(scroll, .{
         .position = scroll_clip.position,
         .size = scroll_clip.size,
@@ -797,7 +799,7 @@ fn extractEditorComponentInspectorInto(
 
     const card_width = @max(scroll_clip.size[0], 1.0);
     const stack_id = "scrapbot.editor.inspector.components";
-    const stack = world.createEntity(stack_id, "Editor Component Stack") catch |err| return mapWorldError(err);
+    const stack = world.createEngineTransientEntity(stack_id, "Editor Component Stack") catch |err| return mapWorldError(err);
     world.setUiVGroup(stack, .{
         .position = .{ 0.0, 0.0, 0.0 },
         .size = .{
@@ -823,7 +825,7 @@ fn extractEditorComponentInspectorInto(
         if (component_index > 0) {
             const separator_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.separator.{d}", .{component_index}) catch return RenderError.OutOfMemory;
             defer allocator.free(separator_id);
-            const separator = world.createEntity(separator_id, "Editor Component Separator") catch |err| return mapWorldError(err);
+            const separator = world.createEngineTransientEntity(separator_id, "Editor Component Separator") catch |err| return mapWorldError(err);
             world.setUiSeparator(separator, .{
                 .position = .{ 0.0, 0.0, 0.0 },
                 .size = .{ card_width, editor_render_chrome.inspector_separator_height, 0.0 },
@@ -893,7 +895,7 @@ fn extractEditorText(
     size: f32,
     color: [3]f32,
 ) RenderError!void {
-    const entity = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const entity = world.createEngineTransientEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiText(entity, .{
         .position = position,
         .size = size,
@@ -910,7 +912,7 @@ fn extractEditorPanel(
     color: [3]f32,
     corner_radius: f32,
 ) RenderError!runtime.EntityHandle {
-    const panel = world.createEntity(id, name) catch |err| return mapWorldError(err);
+    const panel = world.createEngineTransientEntity(id, name) catch |err| return mapWorldError(err);
     world.setUiRect(panel, .{
         .position = rect.position(),
         .size = rect.size3(),
@@ -1012,7 +1014,7 @@ fn extractEditorPropertyRow(
     const value_cell_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.value_cell", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
     defer allocator.free(value_cell_id);
 
-    const row = world.createEntity(row_id, "Editor Component Field Table") catch |err| return mapWorldError(err);
+    const row = world.createEngineTransientEntity(row_id, "Editor Component Field Table") catch |err| return mapWorldError(err);
     world.setUiTable(row, .{
         .position = .{ editor_inspector_card_padding_x, spec.field_y + editor_inspector_field_control_offset_y - editor_inspector_input_cell_padding, 0.0 },
         .size = .{ @max(spec.card_width - editor_inspector_card_padding_x * 2.0, 1.0), editor_inspector_field_row_height, 0.0 },
@@ -1027,7 +1029,7 @@ fn extractEditorPropertyRow(
         .order = @intCast(spec.field_index),
     }) catch |err| return mapWorldError(err);
 
-    const label_cell = world.createEntity(label_cell_id, "Editor Component Field Label Cell") catch |err| return mapWorldError(err);
+    const label_cell = world.createEngineTransientEntity(label_cell_id, "Editor Component Field Label Cell") catch |err| return mapWorldError(err);
     world.setUiSpacer(label_cell, .{ .size = .{ 0.0, editor_inspector_field_row_height, 0.0 } }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(label_cell, .{
         .parent = row_id,
@@ -1035,7 +1037,7 @@ fn extractEditorPropertyRow(
         .@"align" = "fill",
     }) catch |err| return mapWorldError(err);
 
-    const value_cell = world.createEntity(value_cell_id, "Editor Component Field Value Cell") catch |err| return mapWorldError(err);
+    const value_cell = world.createEngineTransientEntity(value_cell_id, "Editor Component Field Value Cell") catch |err| return mapWorldError(err);
     world.setUiSpacer(value_cell, .{ .size = .{ 0.0, editor_inspector_field_row_height, 0.0 } }) catch |err| return mapWorldError(err);
     world.setUiLayoutItem(value_cell, .{
         .parent = row_id,
@@ -1068,7 +1070,7 @@ fn extractEditorPropertyRow(
             const value_row_id = std.fmt.allocPrint(allocator, "scrapbot.editor.inspector.component.{d}.field.{d}.value_row", .{ spec.component_index, spec.field_index }) catch return RenderError.OutOfMemory;
             defer allocator.free(value_row_id);
             const padded_value_width = @max(value_rect.size[0] - editor_inspector_input_cell_padding * 2.0, 1.0);
-            const value_row = world.createEntity(value_row_id, "Editor Property Vec3 Value Row") catch |err| return mapWorldError(err);
+            const value_row = world.createEngineTransientEntity(value_row_id, "Editor Property Vec3 Value Row") catch |err| return mapWorldError(err);
             world.setUiHGroup(value_row, .{
                 .position = .{ editor_inspector_input_cell_padding, 0.0, 0.0 },
                 .size = .{ padded_value_width, editor_inspector_field_row_height, 0.0 },

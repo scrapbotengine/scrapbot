@@ -18,7 +18,7 @@ Scene-authored render data is resolved directly from the project scene `runtime.
 
 The renderer may keep retained side state for GPU resources, render schedules, profiling, and temporary frame snapshots that are not an ECS world of scene clones. Renderable snapshots may be built from the scene world to avoid repeated scans inside a frame, but those snapshots are derived data, not authoritative entity storage.
 
-Frame-local UI/editor overlay data may remain in renderer-owned transient ECS storage while Scrapbot lacks a first-class engine-transient entity lifecycle on the main world. That storage must not mirror scene mesh/camera/light/config data, and it is a compatibility step toward engine-owned transient entities in the single world.
+Frame-local UI/editor overlay data is generated as engine-transient entities in the same scene world. Those entities use reserved engine ids and runtime provenance, participate in normal ECS UI layout and rendering for the current frame, and are cleared after render submission so they do not become scene-authored data or gameplay entities. Engine-transient entities and explicit render-internal component writes do not write structural events.
 
 Render draw submission should flow from prepared batch plans and renderer side resources instead of creating draw-command entities in a cloned render world.
 
@@ -27,5 +27,5 @@ Render draw submission should flow from prepared batch plans and renderer side r
 - `scrapbot.render.extract` no longer pays to clone stable scene mesh, camera, light, or renderer-setting components each frame.
 - Scene render data has one ECS owner, so stale render-world copies cannot diverge from the project world.
 - Render systems still have schedule/profiling boundaries, but some systems operate on frame snapshots and renderer side resources instead of queried render-world entities.
-- Engine-owned UI/editor overlay entities still need a follow-up migration to a main-world transient lifecycle.
+- Engine-owned UI/editor overlay entities share the same world as scene data during render frames, so editor tooling can use normal ECS UI primitives without a second render world.
 - Backend resources remain outside serialized scene data and scripting APIs.

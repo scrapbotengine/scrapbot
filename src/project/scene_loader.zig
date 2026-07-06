@@ -8,7 +8,7 @@ pub const Scene = struct {
     name: []const u8,
     world: runtime.World,
 
-    pub fn renderScene(self: *const Scene) render.Scene {
+    pub fn renderScene(self: *Scene) render.Scene {
         return .{ .world = &self.world };
     }
 

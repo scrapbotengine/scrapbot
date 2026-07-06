@@ -102,10 +102,12 @@ pub const EntityHandle = struct {
 pub const EntityProvenance = enum {
     authored,
     spawned,
+    engine_transient,
 };
 
 pub const CreateEntityOptions = struct {
     provenance: EntityProvenance = .spawned,
+    emit_structural_events: bool = true,
 };
 
 pub const ResolvedComponentRow = struct {

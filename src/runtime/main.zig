@@ -966,11 +966,20 @@ pub const World = struct {
         return self.createEntityWithOptions(id, name, .{ .provenance = .authored });
     }
 
+    pub fn createEngineTransientEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
+        return self.createEntityWithOptions(id, name, .{
+            .provenance = .engine_transient,
+            .emit_structural_events = false,
+        });
+    }
+
     fn createEntityWithOptions(self: *World, id: []const u8, name: []const u8, options: CreateEntityOptions) !EntityHandle {
         if (self.findEntityById(id) != null) {
             return WorldError.DuplicateEntityId;
         }
-        try self.reserveStructuralEvents(1);
+        if (options.emit_structural_events) {
+            try self.reserveStructuralEvents(1);
+        }
 
         const owned_id = try self.allocator.dupe(u8, id);
         errdefer self.allocator.free(owned_id);
@@ -1001,10 +1010,12 @@ pub const World = struct {
             grown_tables += 1;
         }
 
-        self.appendStructuralEventAssumeCapacity(.{
-            .kind = .entity_created,
-            .entity = handle,
-        });
+        if (options.emit_structural_events) {
+            self.appendStructuralEventAssumeCapacity(.{
+                .kind = .entity_created,
+                .entity = handle,
+            });
+        }
         self.bumpRevision();
         return handle;
     }
@@ -1415,35 +1426,67 @@ pub const World = struct {
     }
 
     pub fn setComponent(self: *World, handle: EntityHandle, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!void {
+        return self.setComponentWithStructuralEvents(handle, component_id, fields, true);
+    }
+
+    pub fn setComponentSilently(self: *World, handle: EntityHandle, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!void {
+        return self.setComponentWithStructuralEvents(handle, component_id, fields, false);
+    }
+
+    fn setComponentWithStructuralEvents(self: *World, handle: EntityHandle, component_id: []const u8, fields: []const ComponentFieldValue, emit_requested: bool) WorldError!void {
         const index = try self.componentIndex(handle);
+        const emit_structural_event = emit_requested and self.entities.items[index].provenance != .engine_transient;
         const table_index = try self.ensureComponentTable(component_id, fields);
         const table = &self.component_tables.items[table_index];
         if (table.rows_by_entity.items[index]) |row| {
             try self.updateComponentRow(table, row, fields);
         } else {
-            try self.reserveStructuralEvents(1);
+            if (emit_structural_event) {
+                try self.reserveStructuralEvents(1);
+            }
             try self.appendComponentRow(table, handle, index, fields);
-            self.appendStructuralEventAssumeCapacity(.{
-                .kind = .component_added,
-                .entity = handle,
-                .component_id = table.id,
-            });
+            if (emit_structural_event) {
+                self.appendStructuralEventAssumeCapacity(.{
+                    .kind = .component_added,
+                    .entity = handle,
+                    .component_id = table.id,
+                });
+            }
         }
         self.bumpRevision();
     }
 
     pub fn removeComponent(self: *World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
-        return self.removeComponentWithEventCapacity(handle, component_id, true);
+        return self.removeComponentWithStructuralEvents(handle, component_id, true, true);
     }
 
-    fn removeComponentWithEventCapacity(self: *World, handle: EntityHandle, component_id: []const u8, reserve_event: bool) WorldError!bool {
+    pub fn removeAllComponents(self: *World, component_id: []const u8) WorldError!void {
+        return self.removeAllComponentsWithStructuralEvents(component_id, true);
+    }
+
+    pub fn removeAllComponentsSilently(self: *World, component_id: []const u8) WorldError!void {
+        return self.removeAllComponentsWithStructuralEvents(component_id, false);
+    }
+
+    fn removeAllComponentsWithStructuralEvents(self: *World, component_id: []const u8, emit_requested: bool) WorldError!void {
+        while (true) {
+            const table = self.findComponentTable(component_id) orelse return;
+            if (table.entities.items.len == 0) {
+                return;
+            }
+            _ = try self.removeComponentWithStructuralEvents(table.entities.items[0], component_id, true, emit_requested);
+        }
+    }
+
+    fn removeComponentWithStructuralEvents(self: *World, handle: EntityHandle, component_id: []const u8, reserve_event: bool, emit_requested: bool) WorldError!bool {
         const entity_index = try self.componentIndex(handle);
+        const emit_structural_event = emit_requested and self.entities.items[entity_index].provenance != .engine_transient;
         const table = self.findMutableComponentTable(component_id) orelse return false;
         if (entity_index >= table.rows_by_entity.items.len) {
             return false;
         }
         const row = table.rows_by_entity.items[entity_index] orelse return false;
-        if (reserve_event) {
+        if (emit_structural_event and reserve_event) {
             try self.reserveStructuralEvents(1);
         }
         const removed_handle = table.entities.items[row];
@@ -1462,29 +1505,49 @@ pub const World = struct {
             column.values.swapRemove(self.allocator, row);
         }
 
-        self.appendStructuralEventAssumeCapacity(.{
-            .kind = .component_removed,
-            .entity = removed_handle,
-            .component_id = removed_component_id,
-        });
+        if (emit_structural_event) {
+            self.appendStructuralEventAssumeCapacity(.{
+                .kind = .component_removed,
+                .entity = removed_handle,
+                .component_id = removed_component_id,
+            });
+        }
         self.bumpRevision();
         return true;
     }
 
+    pub fn clearEngineTransientEntities(self: *World) WorldError!void {
+        var index: usize = 0;
+        while (index < self.entities.items.len) {
+            if (self.entities.items[index].provenance != .engine_transient) {
+                index += 1;
+                continue;
+            }
+            const handle = EntityHandle{
+                .index = @intCast(index),
+                .generation = self.entities.items[index].generation,
+            };
+            _ = try self.removeEntity(handle);
+        }
+    }
+
     pub fn removeEntity(self: *World, handle: EntityHandle) WorldError!bool {
         const entity_index = try self.componentIndex(handle);
+        const emit_structural_event = self.entities.items[entity_index].provenance != .engine_transient;
         const last_entity_index = self.entities.items.len - 1;
         const removed_handle = EntityHandle{
             .index = @intCast(entity_index),
             .generation = self.entities.items[entity_index].generation,
         };
-        try self.reserveStructuralEvents(self.componentCountForEntity(removed_handle) + 1);
+        if (emit_structural_event) {
+            try self.reserveStructuralEvents(self.componentCountForEntity(removed_handle) + 1);
+        }
 
         while (true) {
             var removed_component = false;
             for (self.component_tables.items) |*table| {
                 if (entity_index < table.rows_by_entity.items.len and table.rows_by_entity.items[entity_index] != null) {
-                    _ = try self.removeComponentWithEventCapacity(removed_handle, table.id, false);
+                    _ = try self.removeComponentWithStructuralEvents(removed_handle, table.id, false, emit_structural_event);
                     removed_component = true;
                     break;
                 }
@@ -1518,10 +1581,12 @@ pub const World = struct {
             }
         }
 
-        self.appendStructuralEventAssumeCapacity(.{
-            .kind = .entity_removed,
-            .entity = removed_handle,
-        });
+        if (emit_structural_event) {
+            self.appendStructuralEventAssumeCapacity(.{
+                .kind = .entity_removed,
+                .entity = removed_handle,
+            });
+        }
         self.bumpRevision();
         return true;
     }

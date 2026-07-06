@@ -84,9 +84,58 @@ test "world tracks entity provenance" {
 
     const spawned = try world.createEntity("spawned", "Spawned");
     const authored = try world.createAuthoredEntity("authored", "Authored");
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
 
     try std.testing.expectEqual(EntityProvenance.spawned, (try world.entity(spawned)).provenance);
     try std.testing.expectEqual(EntityProvenance.authored, (try world.entity(authored)).provenance);
+    try std.testing.expectEqual(EntityProvenance.engine_transient, (try world.entity(transient)).provenance);
+}
+
+test "world clears engine transient entities without removing scene entities" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const authored = try world.createAuthoredEntity("authored", "Authored");
+    const spawned = try world.createEntity("spawned", "Spawned");
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
+    try world.setTransform(authored, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setTransform(spawned, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setTransform(transient, .{ .position = .{ 3.0, 0.0, 0.0 } });
+
+    try std.testing.expectEqual(@as(usize, 3), world.entityCount());
+    try std.testing.expectEqual(@as(usize, 3), world.componentInstanceCountFor(transform_component_id));
+
+    try world.clearEngineTransientEntities();
+
+    try std.testing.expectEqual(@as(usize, 2), world.entityCount());
+    try std.testing.expect(world.findEntityById("authored") != null);
+    try std.testing.expect(world.findEntityById("spawned") != null);
+    try std.testing.expect(world.findEntityById("transient") == null);
+    try std.testing.expectEqual(@as(usize, 2), world.componentInstanceCountFor(transform_component_id));
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(transient));
+}
+
+test "engine transient mutations do not write structural events" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const scene_entity = try world.createEntity("scene", "Scene");
+    try world.setTransform(scene_entity, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(@as(usize, 2), world.structuralEvents().len);
+    world.clearStructuralEventsRetainingCapacity();
+
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
+    try world.setTransform(transient, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setComponentSilently(scene_entity, ui_command_event_component_id, &.{
+        .{ .name = "command", .value = .{ .string = "internal" } },
+        .{ .name = "source", .value = .{ .string = "transient" } },
+    });
+    try std.testing.expectEqual(@as(usize, 0), world.structuralEvents().len);
+
+    try world.clearEngineTransientEntities();
+    try world.removeAllComponentsSilently(ui_command_event_component_id);
+    try std.testing.expectEqual(@as(usize, 0), world.structuralEvents().len);
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(transient));
 }
 
 test "world exposes component field names for inspection" {
