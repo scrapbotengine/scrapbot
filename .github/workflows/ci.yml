@@ -11,6 +11,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  odin-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: odin
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Odin scaffold
+        run: mise odin-smoke
+
   macos:
     runs-on: macos-latest
     steps:
