@@ -57,6 +57,9 @@ run_with_output :: proc(args: []string, emit_output: bool) -> int {
 	if command == "bench" {
 		return run_bench(args[2:], emit_output)
 	}
+	if command == "test" {
+		return run_test(args[2:], emit_output)
+	}
 	if command == "init" {
 		return run_init(args[2:], emit_output)
 	}
@@ -81,12 +84,13 @@ Usage:
   scrapbot check [path] [--format text|json]
   scrapbot step [path] [--frames N] [--dt seconds] [--format text|json]
   scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
+  scrapbot test [path] [--format text|json]
   scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
 
 Odin migration status:
-  init, check, build, deterministic step, and benchmark currently cover text project
-  creation, validation, packaging, and schedule-aware frame accounting slices.
-  Luau/native callback execution, rendering, editor, and test execution are still being ported.`)
+  init, check, build, deterministic step, benchmark, and test discovery currently cover
+  text project creation, validation, packaging, and schedule-aware frame accounting slices.
+  Luau/native callback execution, assertion evaluation, rendering, and editor are still being ported.`)
 }
 
 run_init :: proc(args: []string, emit_output: bool) -> int {
@@ -268,6 +272,30 @@ run_bench :: proc(args: []string, emit_output: bool) -> int {
 
 	if emit_output {
 		print_bench_result(result, options, startup_ns, update_ns, completed_frames)
+	}
+	return 0
+}
+
+run_test :: proc(args: []string, emit_output: bool) -> int {
+	options, options_ok := parse_test_options(args, emit_output)
+	if !options_ok {
+		return 1
+	}
+
+	result, err := run_test_command(options)
+	defer free_test_command_result(result)
+	if err != .None {
+		if emit_output {
+			print_test_command_error(err, options.target_path, options.format)
+		}
+		return 1
+	}
+
+	if emit_output {
+		print_test_command_result(result, options.format)
+	}
+	if result.summary.failed > 0 {
+		return 1
 	}
 	return 0
 }

@@ -25,6 +25,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin script system registration/schedule check slice
   - [x] Odin deterministic step command slice
   - [x] Odin benchmark command slice
+  - [x] Odin test discovery/manifest command slice
   - [ ] Odin CLI feature parity
   - [ ] Zig engine implementation removed
 - Runtime
@@ -176,6 +177,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Project validation
   - [x] Deterministic stepping
   - [x] Benchmark runner
+  - [x] Test discovery and manifest validation
   - [x] JSON command output
 - Verification
   - [x] Gameplay test fixtures

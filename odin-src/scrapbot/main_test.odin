@@ -194,3 +194,98 @@ test_run_bench_command_rejects_extra_arguments :: proc(t: ^testing.T) {
 	exit_code := run_with_output([]string{"scrapbot", "bench", root, "extra"}, false)
 	testing.expect_value(t, exit_code, 1)
 }
+
+@(test)
+test_run_test_command_accepts_test_project_directory :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-project")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Test"), Project_Error.None)
+	write_valid_test_manifest(t, root)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root, "--format=json"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_test_command_discovers_child_test_projects :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-suite")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	first := project_relative_path(root, "first")
+	defer delete(first)
+	second := project_relative_path(root, "second")
+	defer delete(second)
+	testing.expect_value(t, init_project(first, "First Test"), Project_Error.None)
+	testing.expect_value(t, init_project(second, "Second Test"), Project_Error.None)
+	write_valid_test_manifest(t, first)
+	write_valid_test_manifest(t, second)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_test_command_reports_no_projects :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-empty")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root, "--format=json"}, false)
+	testing.expect_value(t, exit_code, 1)
+}
+
+@(test)
+test_run_test_command_rejects_invalid_manifest :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-invalid-manifest")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "Invalid Test"), Project_Error.None)
+	write_file(t, root, TEST_MANIFEST_NAME, "frames = 1\ndt = 1.0\n")
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 1)
+}
+
+@(test)
+test_parse_test_manifest_summary_counts_expectations_and_input_frames :: proc(t: ^testing.T) {
+	summary, ok := parse_test_manifest_summary(`frames = 2
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+viewport = [1280.0, 720.0]
+pointer = [20.0, 20.0]
+primary_held = true
+primary_released = true
+
+[[expect.field]]
+entity = "flag"
+component = "flag"
+field = "active"
+equals_bool = true
+
+[[expect.field]]
+entity = "counter"
+component = "counter"
+field = "value"
+equals_int = 2
+`)
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, summary.frames, 2)
+	testing.expect_value(t, summary.input_frames, 1)
+	testing.expect_value(t, summary.expectations, 2)
+}
+
+write_valid_test_manifest :: proc(t: ^testing.T, root: string) {
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 1
+dt = 1.0
+
+[[expect.field]]
+entity = "entity"
+component = "scrapbot.ui.button"
+field = "pressed"
+equals_bool = false
+`)
+}
