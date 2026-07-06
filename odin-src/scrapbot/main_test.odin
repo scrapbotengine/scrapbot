@@ -303,6 +303,92 @@ test_run_command_rejects_extra_argument_after_explicit_current_directory :: proc
 }
 
 @(test)
+test_parse_render_options_accepts_dimensions_editor_and_select :: proc(t: ^testing.T) {
+	options, ok := parse_render_options(
+		[]string{"--frames", "4", "--width=320", "--height", "240", "--pixel-scale", "2.0", "--select", "cube", "project", "out.png"},
+		DEFAULT_RENDER_OUTPUT,
+		false,
+	)
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, options.frames, 4)
+	testing.expect_value(t, options.width, 320)
+	testing.expect_value(t, options.height, 240)
+	testing.expect_value(t, options.pixel_scale, f32(2.0))
+	testing.expect_value(t, options.editor, true)
+	testing.expect_value(t, options.selected_entity_id, "cube")
+	testing.expect_value(t, options.target_path, "project")
+	testing.expect_value(t, options.output_path, "out.png")
+}
+
+@(test)
+test_run_render_command_accepts_initialized_project :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-project")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "render", "--frames=2", "--width", "320", "--height=240", root, "odin-out/test-render.png"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_render_command_updates_only_extra_frames :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-extra-frame-updates")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Render Frames\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "scripts/gameplay.luau", `ecs.system("fails_on_update", {
+  phase = "update",
+  run = function()
+    error("update should only run for extra render frames")
+  end,
+})
+`)
+
+	default_exit_code := run_with_output([]string{"scrapbot", "render", root}, false)
+	testing.expect_value(t, default_exit_code, 0)
+	two_frame_exit_code := run_with_output([]string{"scrapbot", "render", "--frames=2", root}, false)
+	testing.expect_value(t, two_frame_exit_code, 1)
+}
+
+@(test)
+test_run_render_test_command_accepts_selected_entity :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-test-project")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render Test"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "render-test", "--select", "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_render_command_rejects_missing_selected_entity :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-missing-selection")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render Missing Selection"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "render", "--select", "missing", root}, false)
+	testing.expect_value(t, exit_code, 1)
+}
+
+@(test)
+test_run_render_command_rejects_invalid_dimensions_and_extra_arguments :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-invalid")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render Invalid"), Project_Error.None)
+
+	width_exit_code := run_with_output([]string{"scrapbot", "render", root, "--width", "0"}, false)
+	testing.expect_value(t, width_exit_code, 1)
+	extra_exit_code := run_with_output([]string{"scrapbot", "render", root, "out.png", "extra"}, false)
+	testing.expect_value(t, extra_exit_code, 1)
+}
+
+@(test)
 test_parse_test_manifest_summary_counts_expectations_and_input_frames :: proc(t: ^testing.T) {
 	summary, ok := parse_test_manifest_summary(`frames = 2
 dt = 0.016

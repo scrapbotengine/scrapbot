@@ -29,6 +29,7 @@
 - [x] Odin `test` can discover test projects, validate test manifests, and report pending assertion execution.
 - [x] Odin `run` can validate projects and execute bounded hidden frame updates while rendering remains pending.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
+- [x] Odin `render` and `render-test` can validate projects, run bounded frame simulation, check selected entities, and report pending backend render stats.
 - [x] Shared ECS runtime with generation-aware entities, component tables, system schedules, and script/native access.
 - [x] Live reload for project metadata, scenes, scripts, and project-local native Zig modules.
 - [x] WebGPU renderer with headful SDL windows, offscreen render verification, batching, shadows, and postprocess settings.
@@ -63,9 +64,10 @@
 - [x] Port first-pass test command discovery and manifest validation from Zig to Odin.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.
+- [x] Port first-pass render/render-test command parsing and validation from Zig to Odin.
 - [ ] Port remaining script runtime diagnostics from Zig to Odin, including native and reload execution paths.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
-- [ ] Port Odin render command output, offscreen image verification, and hidden headful smoke paths.
+- [ ] Port Odin render image output, offscreen image verification, and hidden headful smoke paths.
 - [ ] Replace project-local native Zig modules with project-local native Odin modules.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
 - [ ] Add scroll support to inspector component vgroups.

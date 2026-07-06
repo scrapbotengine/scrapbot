@@ -63,6 +63,12 @@ run_with_output :: proc(args: []string, emit_output: bool) -> int {
 	if command == "run" {
 		return run_project(args[2:], emit_output)
 	}
+	if command == "render" {
+		return run_render(args[2:], emit_output, false)
+	}
+	if command == "render-test" {
+		return run_render(args[2:], emit_output, true)
+	}
 	if command == "init" {
 		return run_init(args[2:], emit_output)
 	}
@@ -89,12 +95,15 @@ Usage:
   scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
   scrapbot test [path] [--format text|json]
   scrapbot run [path] [--frames N] [--editor] [--hidden]
+  scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
   scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
 
 Odin migration status:
   init, check, build, deterministic step, benchmark, test discovery, and bounded run
   currently cover text project creation, validation, packaging, and schedule-aware frame accounting slices.
-  Luau/native callback execution, assertion evaluation, rendering, and editor are still being ported.`)
+  Luau execution and render command validation are partially ported; native execution,
+  assertion evaluation, WebGPU presentation, and editor are still being ported.`)
 }
 
 run_init :: proc(args: []string, emit_output: bool) -> int {
@@ -350,6 +359,66 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 
 	if emit_output {
 		print_run_result(result, options, completed_frames)
+	}
+	return 0
+}
+
+run_render :: proc(args: []string, emit_output: bool, render_test: bool) -> int {
+	default_output := DEFAULT_RENDER_OUTPUT
+	command_name := "Render"
+	error_name := "render"
+	if render_test {
+		default_output = DEFAULT_RENDER_TEST_OUTPUT
+		command_name = "Render test"
+		error_name = "render-test"
+	}
+	options, options_ok := parse_render_options(args, default_output, emit_output)
+	if !options_ok {
+		return 1
+	}
+
+	result := check_project(options.target_path)
+	defer free_check_result(result)
+	if result.err != .None {
+		if emit_output {
+			print_project_check_error(result, options.target_path, .Text)
+		}
+		return 1
+	}
+
+	if options.selected_entity_id != "" {
+		if _, found := runtime_world_find_entity_by_id(result.scene.world, options.selected_entity_id); !found {
+			if emit_output {
+				fmt.eprintf("%s selected entity not found: %s\n", error_name, options.selected_entity_id)
+			}
+			return 1
+		}
+	}
+
+	update_frames := 0
+	if options.frames > 1 {
+		update_frames = options.frames - 1
+	}
+	simulation := run_script_simulation(&result, update_frames, 1.0 / 60.0)
+	if !simulation.ok {
+		result.diagnostic = simulation.diagnostic
+		result.err = .Invalid_Script
+		if emit_output {
+			print_project_check_error(result, options.target_path, .Text)
+		}
+		return 1
+	}
+
+	_, extract_err := render_extract_scene(result.scene.world)
+	if extract_err != .None {
+		if emit_output {
+			fmt.eprintln("render failed: invalid scene render data")
+		}
+		return 1
+	}
+
+	if emit_output {
+		print_render_result(result, options, options.frames, command_name)
 	}
 	return 0
 }
