@@ -1,0 +1,9 @@
+name = "Editor Chrome Input"
+version = 1
+
+[[entities]]
+id = "flag"
+name = "Flag"
+
+[entities.components.flag]
+active = false

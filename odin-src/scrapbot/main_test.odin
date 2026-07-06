@@ -335,7 +335,7 @@ dt = 0.016
 frame = 1
 debug_overlay_visible = true
 viewport = [1280.0, 720.0]
-pointer = [180.0, 148.0]
+pointer = [500.0, 148.0]
 primary_released = true
 move_forward = true
 
@@ -359,6 +359,12 @@ test_run_test_command_replays_retained_ui_commands :: proc(t: ^testing.T) {
 @(test)
 test_run_test_command_replays_retained_ui_scroll :: proc(t: ^testing.T) {
 	exit_code := run_with_output([]string{"scrapbot", "test", "tests/projects/ui_scroll_replay"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_test_command_consumes_editor_chrome_input :: proc(t: ^testing.T) {
+	exit_code := run_with_output([]string{"scrapbot", "test", "tests/projects/editor_chrome_input"}, false)
 	testing.expect_value(t, exit_code, 0)
 }
 

@@ -43,11 +43,71 @@ Step_Input_Frame :: struct {
 	input: Frame_Input,
 }
 
+Editor_Test_Input_State :: struct {
+	captured_pointer: bool,
+}
+
 frame_input_default :: proc() -> Frame_Input {
 	return Frame_Input{
 		ui_visible = true,
 		pixel_scale = 1.0,
 	}
+}
+
+route_editor_test_input :: proc(state: ^Editor_Test_Input_State, input: ^Frame_Input) {
+	if !input.debug_overlay_visible {
+		state.captured_pointer = false
+		return
+	}
+	consumed := false
+	if input.pointer.has_position {
+		inside_game := editor_pointer_in_game_viewport(input^)
+		if input.pointer.primary_pressed && !inside_game {
+			state.captured_pointer = true
+			consumed = true
+		}
+		if input.pointer.primary_down && state.captured_pointer {
+			consumed = true
+		}
+		if input.pointer.primary_released {
+			if state.captured_pointer || !inside_game {
+				consumed = true
+			}
+			state.captured_pointer = false
+		}
+		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
+			if !inside_game {
+				consumed = true
+			}
+		}
+		if (input.pointer.wheel_delta[0] != 0 || input.pointer.wheel_delta[1] != 0) && !inside_game {
+			consumed = true
+		}
+	} else if input.pointer.primary_released {
+		state.captured_pointer = false
+	}
+	if consumed {
+		clear_frame_pointer_actions(input)
+	}
+}
+
+editor_pointer_in_game_viewport :: proc(input: Frame_Input) -> bool {
+	x, y, width, height := editor_game_viewport(input.viewport_width, input.viewport_height)
+	return input.pointer.position[0] >= x &&
+	       input.pointer.position[1] >= y &&
+	       input.pointer.position[0] < x + width &&
+	       input.pointer.position[1] < y + height
+}
+
+clear_frame_pointer_actions :: proc(input: ^Frame_Input) {
+	input.pointer.delta = {}
+	input.pointer.primary_down = false
+	input.pointer.primary_pressed = false
+	input.pointer.primary_released = false
+	input.pointer.secondary_down = false
+	input.pointer.secondary_pressed = false
+	input.pointer.secondary_released = false
+	input.pointer.wheel_delta = {}
 }
 
 write_frame_input :: proc(world: ^Runtime_World, input: Frame_Input) -> Runtime_Error {
