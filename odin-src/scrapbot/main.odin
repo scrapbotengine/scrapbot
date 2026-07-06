@@ -2,9 +2,19 @@ package main
 
 import "core:fmt"
 import "core:os"
+import "core:strconv"
 import "core:strings"
 
 VERSION :: "0.0.0-odin-migration"
+DEFAULT_STEP_FRAMES :: 1
+DEFAULT_STEP_DELTA_SECONDS :: f32(1.0 / 60.0)
+
+Step_Options :: struct {
+	target_path:   string,
+	frames:        int,
+	delta_seconds: f32,
+	format:        Check_Output_Format,
+}
 
 main :: proc() {
 	exit_code := run(os.args)
@@ -37,7 +47,10 @@ run_with_output :: proc(args: []string, emit_output: bool) -> int {
 		return 0
 	}
 	if command == "check" {
-		return run_check(args[2:])
+		return run_check(args[2:], emit_output)
+	}
+	if command == "step" {
+		return run_step(args[2:], emit_output)
 	}
 	if command == "init" {
 		return run_init(args[2:], emit_output)
@@ -61,11 +74,13 @@ Usage:
   scrapbot help
   scrapbot init [path]
   scrapbot check [path] [--format text|json]
+  scrapbot step [path] [--frames N] [--dt seconds] [--format text|json]
   scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
 
 Odin migration status:
-  init, check, and build currently cover text project creation, validation, and packaging slices.
-  Runtime run loops, scripting execution, rendering, editor, and test execution are still being ported.`)
+  init, check, build, and deterministic step currently cover text project creation,
+  validation, packaging, and schedule-aware frame accounting slices.
+  Luau/native callback execution, rendering, editor, and test execution are still being ported.`)
 }
 
 run_init :: proc(args: []string, emit_output: bool) -> int {
@@ -200,7 +215,139 @@ run_build :: proc(args: []string, emit_output: bool) -> int {
 	return 0
 }
 
-run_check :: proc(args: []string) -> int {
+run_step :: proc(args: []string, emit_output: bool) -> int {
+	options := Step_Options{
+		target_path = ".",
+		frames = DEFAULT_STEP_FRAMES,
+		delta_seconds = DEFAULT_STEP_DELTA_SECONDS,
+		format = .Text,
+	}
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.has_prefix(arg, "--frames=") {
+			frames, ok := parse_positive_int(arg[len("--frames="):])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --frames: %s\n", arg[len("--frames="):])
+				}
+				return 1
+			}
+			options.frames = frames
+			i += 1
+			continue
+		}
+		if arg == "--frames" {
+			if i + 1 >= len(args) {
+				if emit_output {
+					fmt.eprintln("missing value for --frames")
+				}
+				return 1
+			}
+			frames, ok := parse_positive_int(args[i + 1])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --frames: %s\n", args[i + 1])
+				}
+				return 1
+			}
+			options.frames = frames
+			i += 2
+			continue
+		}
+		if strings.has_prefix(arg, "--dt=") {
+			delta_seconds, ok := parse_positive_f32(arg[len("--dt="):])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --dt: %s\n", arg[len("--dt="):])
+				}
+				return 1
+			}
+			options.delta_seconds = delta_seconds
+			i += 1
+			continue
+		}
+		if arg == "--dt" {
+			if i + 1 >= len(args) {
+				if emit_output {
+					fmt.eprintln("missing value for --dt")
+				}
+				return 1
+			}
+			delta_seconds, ok := parse_positive_f32(args[i + 1])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --dt: %s\n", args[i + 1])
+				}
+				return 1
+			}
+			options.delta_seconds = delta_seconds
+			i += 2
+			continue
+		}
+		if strings.has_prefix(arg, "--format=") {
+			parsed, ok := parse_output_format(arg[len("--format="):])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --format: %s\n", arg[len("--format="):])
+				}
+				return 1
+			}
+			options.format = parsed
+			i += 1
+			continue
+		}
+		if arg == "--format" {
+			if i + 1 >= len(args) {
+				if emit_output {
+					fmt.eprintln("missing value for --format")
+				}
+				return 1
+			}
+			parsed, ok := parse_output_format(args[i + 1])
+			if !ok {
+				if emit_output {
+					fmt.eprintf("invalid --format: %s\n", args[i + 1])
+				}
+				return 1
+			}
+			options.format = parsed
+			i += 2
+			continue
+		}
+		if len(arg) > 0 && arg[0] == '-' {
+			if emit_output {
+				fmt.eprintf("unknown argument: %s\n", arg)
+			}
+			return 1
+		}
+		if options.target_path != "." {
+			if emit_output {
+				fmt.eprintf("unexpected argument: %s\n", arg)
+			}
+			return 1
+		}
+		options.target_path = arg
+		i += 1
+	}
+
+	result := check_project(options.target_path)
+	defer free_check_result(result)
+	if result.err != .None {
+		if emit_output {
+			print_check_error(result.err, options.target_path, options.format)
+		}
+		return 1
+	}
+
+	if emit_output {
+		print_step_result(result, options)
+	}
+	return 0
+}
+
+run_check :: proc(args: []string, emit_output: bool) -> int {
 	target_path := "."
 	format: Check_Output_Format = .Text
 
@@ -209,7 +356,9 @@ run_check :: proc(args: []string) -> int {
 		arg := args[i]
 		if arg == "--format" {
 			if i + 1 >= len(args) {
-				fmt.eprintln("missing value for --format")
+				if emit_output {
+					fmt.eprintln("missing value for --format")
+				}
 				return 1
 			}
 			switch args[i + 1] {
@@ -218,18 +367,24 @@ run_check :: proc(args: []string) -> int {
 			case "json":
 				format = .JSON
 			case:
-				fmt.eprintf("invalid --format: %s\n", args[i + 1])
+				if emit_output {
+					fmt.eprintf("invalid --format: %s\n", args[i + 1])
+				}
 				return 1
 			}
 			i += 2
 			continue
 		}
 		if len(arg) > 0 && arg[0] == '-' {
-			fmt.eprintf("unknown argument: %s\n", arg)
+			if emit_output {
+				fmt.eprintf("unknown argument: %s\n", arg)
+			}
 			return 1
 		}
 		if target_path != "." {
-			fmt.eprintf("unexpected argument: %s\n", arg)
+			if emit_output {
+				fmt.eprintf("unexpected argument: %s\n", arg)
+			}
 			return 1
 		}
 		target_path = arg
@@ -239,8 +394,13 @@ run_check :: proc(args: []string) -> int {
 	result := check_project(target_path)
 	defer free_check_result(result)
 	if result.err != .None {
-		print_check_error(result.err, target_path, format)
+		if emit_output {
+			print_check_error(result.err, target_path, format)
+		}
 		return 1
+	}
+	if !emit_output {
+		return 0
 	}
 
 	project := result.project
@@ -288,20 +448,60 @@ run_check :: proc(args: []string) -> int {
 			scene.component_instance_count,
 			scene.renderable_cube_count,
 		)
-		fmt.print(`},"schedule":{`)
-		fmt.print(`"startup":{`)
-		fmt.printf(`"batches":%d,"systems":%d`, runtime_system_schedule_batch_count(result.startup_schedule), runtime_system_schedule_system_count(result.startup_schedule))
-		fmt.print(`},"update":{`)
-		fmt.printf(`"batches":%d,"systems":%d`, runtime_system_schedule_batch_count(result.update_schedule), runtime_system_schedule_system_count(result.update_schedule))
-		fmt.print(`},"fixed_update":{`)
-		fmt.printf(`"batches":%d,"systems":%d`, runtime_system_schedule_batch_count(result.fixed_update_schedule), runtime_system_schedule_system_count(result.fixed_update_schedule))
-		fmt.print(`},"render":{`)
-		fmt.printf(`"batches":%d,"systems":%d`, runtime_system_schedule_batch_count(result.render_schedule), runtime_system_schedule_system_count(result.render_schedule))
-		fmt.print(`}`)
-		fmt.println(`},"runtime_validation":"schedules_ok"}`)
+		fmt.print(`},"schedule":`)
+		print_schedule_summary_json(result)
+		fmt.println(`,"runtime_validation":"schedules_ok"}`)
 	}
 
 	return 0
+}
+
+print_step_result :: proc(result: Project_Check_Result, options: Step_Options) {
+	switch options.format {
+	case .Text:
+		fmt.printf("Step OK: %s\n", result.project.name)
+		fmt.printf("Scene: %s\n", result.scene.name)
+		fmt.printf("Frames: %d/%d, dt: %g\n", options.frames, options.frames, options.delta_seconds)
+		fmt.printf("Entities: %d, components: %d, renderable cubes: %d\n", result.scene.entity_count, result.scene.component_instance_count, result.scene.renderable_cube_count)
+		fmt.printf("Update batches: %d, systems: %d\n", runtime_system_schedule_batch_count(result.update_schedule), runtime_system_schedule_system_count(result.update_schedule))
+		fmt.println("Execution: pending Luau/native Odin bridge")
+	case .JSON:
+		fmt.print(`{"ok":true,"project":`)
+		fmt.print(`{"name":"`)
+		json_print(result.project.name, false)
+		fmt.print(`","default_scene":"`)
+		json_print(result.project.default_scene, false)
+		fmt.printf(`","scripts":%d`, len(result.project.scripts))
+		fmt.print(`},"scene":{"name":"`)
+		json_print(result.scene.name, false)
+		fmt.printf(`","entities":%d,"components":%d,"renderable_cubes":%d`, result.scene.entity_count, result.scene.component_instance_count, result.scene.renderable_cube_count)
+		fmt.print(`},"simulation":{`)
+		fmt.printf(`"frames":%d,"completed_frames":%d,"dt":%g`, options.frames, options.frames, options.delta_seconds)
+		fmt.print(`}`)
+		fmt.print(`,"schedule":`)
+		print_schedule_summary_json(result)
+		fmt.println(`,"execution":"pending_odin_luau_native_bridge"}`)
+	}
+}
+
+print_schedule_summary_json :: proc(result: Project_Check_Result) {
+	fmt.print(`{`)
+	print_schedule_phase_json("startup", result.startup_schedule, false)
+	print_schedule_phase_json("update", result.update_schedule, true)
+	print_schedule_phase_json("fixed_update", result.fixed_update_schedule, true)
+	print_schedule_phase_json("render", result.render_schedule, true)
+	fmt.print(`}`)
+}
+
+print_schedule_phase_json :: proc(name: string, schedule: Runtime_System_Schedule, comma: bool) {
+	if comma {
+		fmt.print(`,`)
+	}
+	fmt.print(`"`)
+	json_print(name, false)
+	fmt.print(`":{`)
+	fmt.printf(`"batches":%d,"systems":%d`, runtime_system_schedule_batch_count(schedule), runtime_system_schedule_system_count(schedule))
+	fmt.print(`}`)
 }
 
 parse_output_format :: proc(value: string) -> (Check_Output_Format, bool) {
@@ -312,6 +512,22 @@ parse_output_format :: proc(value: string) -> (Check_Output_Format, bool) {
 		return .JSON, true
 	}
 	return .Text, false
+}
+
+parse_positive_int :: proc(value: string) -> (int, bool) {
+	parsed, ok := strconv.parse_int(value, 10)
+	if !ok || parsed <= 0 {
+		return 0, false
+	}
+	return parsed, true
+}
+
+parse_positive_f32 :: proc(value: string) -> (f32, bool) {
+	parsed, ok := strconv.parse_f32(value)
+	if !ok || parsed <= 0 || parsed != parsed || parsed > 3.4028234663852886e38 || parsed < -3.4028234663852886e38 {
+		return 0, false
+	}
+	return parsed, true
 }
 
 print_build_error :: proc(err: Project_Error, target_path: string, format: Check_Output_Format) {

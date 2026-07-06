@@ -58,12 +58,13 @@ Until feature parity is reached, some documentation will necessarily describe bo
 5. Port first-pass runtime foundations: component registry validation, generation-aware entity identity, component storage, query iteration, schedule batching, and deferred structural mutation.
 6. Port first-pass script/native component schema discovery for scene validation while full Luau/native execution remains in Zig.
 7. Port first-pass script system declaration discovery and schedule validation while Luau callbacks still execute through the Zig engine.
-8. Port the rest of the pure engine foundations before backend-heavy systems, including math helpers and runtime diagnostics.
-9. Port Luau bridge behavior and diagnostics while preserving existing script fixtures.
-10. Port `wgpu-native` bindings and renderer extraction/offscreen verification.
-11. Port retained UI, editor routing, and headful window integration.
-12. Port project-local native modules from Zig to Odin.
-13. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
+8. Port first-pass deterministic stepping command output while callback execution still waits for the Odin Luau/native bridge.
+9. Port the rest of the pure engine foundations before backend-heavy systems, including math helpers and runtime diagnostics.
+10. Port Luau bridge behavior and diagnostics while preserving existing script fixtures.
+11. Port `wgpu-native` bindings and renderer extraction/offscreen verification.
+12. Port retained UI, editor routing, and headful window integration.
+13. Port project-local native modules from Zig to Odin.
+14. Remove Zig build/test/dependency surfaces only after Odin replacements pass equivalent checks.
 
 ## Related
 

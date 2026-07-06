@@ -67,3 +67,72 @@ test_run_build_command_rejects_extra_arguments :: proc(t: ^testing.T) {
 	exit_code := run_with_output([]string{"scrapbot", "build", root, "extra"}, false)
 	testing.expect_value(t, exit_code, 1)
 }
+
+@(test)
+test_run_check_command_accepts_json_format :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-check-json")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Check JSON"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "check", root, "--format", "json"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_step_command_accepts_initialized_project :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-step-project")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Step"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "step", root, "--frames", "3", "--dt=0.5", "--format=json"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_step_command_accepts_script_schedules :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-step-script-project")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Step Script\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, "scripts/gameplay.luau", `local Flag = ecs.component("flag", {
+  fields = ecs.fields({}),
+})
+
+local Flags = ecs.query(Flag)
+
+ecs.system("observe_flags", {
+  query = Flags,
+})
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "step", root, "--frames=2"}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_step_command_rejects_invalid_frames_and_dt :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-step-invalid")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Step Invalid"), Project_Error.None)
+
+	frames_exit_code := run_with_output([]string{"scrapbot", "step", root, "--frames", "0"}, false)
+	testing.expect_value(t, frames_exit_code, 1)
+	dt_exit_code := run_with_output([]string{"scrapbot", "step", root, "--dt", "-1.0"}, false)
+	testing.expect_value(t, dt_exit_code, 1)
+}
+
+@(test)
+test_run_step_command_rejects_extra_arguments :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-step-extra")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Step Extra"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "step", root, "extra"}, false)
+	testing.expect_value(t, exit_code, 1)
+}
