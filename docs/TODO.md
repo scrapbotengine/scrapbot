@@ -84,10 +84,11 @@
 - [x] Port first-pass visual-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass project-local native Odin component/system declaration registration.
 - [x] Port first-pass pending Odin-native system execution diagnostics.
+- [x] Port first-pass Odin-native set-field system execution.
 - [ ] Port remaining script runtime diagnostics from Zig to Odin, including reload execution paths and native execution once native systems can run.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [ ] Port Odin render image output, offscreen image verification, and hidden headful smoke paths.
-- [ ] Execute project-local native Odin systems and replace the Zig native build/reload path.
+- [ ] Execute general project-local native Odin systems and replace the Zig native build/reload path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
 - [ ] Add scroll support to inspector component vgroups.
 - [ ] Add typed inspector controls for floats, ints, strings, and enums.

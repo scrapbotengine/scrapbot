@@ -310,6 +310,7 @@ Script_System_Origin :: struct {
 Script_Program :: struct {
 	vm:                 rawptr,
 	system_origins:     [dynamic]Script_System_Origin,
+	native_operations:  [dynamic]Native_System_Operation,
 	active_registry:    ^Runtime_Component_Registry,
 	active_system:      Runtime_Scheduled_System,
 	has_active_system:  bool,
@@ -353,6 +354,10 @@ script_program_free :: proc(program: ^Script_Program) {
 	}
 	if program.system_origins != nil {
 		delete(program.system_origins)
+	}
+	native_system_operations_free(program.native_operations[:])
+	if program.native_operations != nil {
+		delete(program.native_operations)
 	}
 	script_program_clear_host_error(program)
 	program^ = Script_Program{}
@@ -559,10 +564,11 @@ script_program_run_schedule :: proc(
 				continue
 			}
 			if system.runner.kind == .Native {
-				return Script_Run_Result{
-					ok = false,
-					diagnostic = script_runtime_diagnostic("", system.id, 0, "native Odin system execution is not ported yet"),
+				native_result := script_program_run_native_system(program, registry, world, system)
+				if !native_result.ok {
+					return native_result
 				}
+				continue
 			}
 			if system.runner.kind != .Luau {
 				return Script_Run_Result{

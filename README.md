@@ -106,6 +106,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Native Zig modules
   - [x] Native Odin component/system declaration scanning
   - [x] Native Odin pending-execution diagnostics
+  - [x] Native Odin set-field execution slice
   - [ ] Native Odin module execution
   - [x] Native hot reload
   - [ ] Native extension examples

@@ -120,6 +120,10 @@ check_project :: proc(root_path: string) -> Project_Check_Result {
 		if native_err != .None {
 			return Project_Check_Result{project = project, err = native_err}
 		}
+		native_exec_err := script_program_load_native_file(&script_program, full_path, project.native)
+		if native_exec_err != .None {
+			return Project_Check_Result{project = project, err = native_exec_err}
+		}
 	}
 
 	if project.native_artifact != "" {

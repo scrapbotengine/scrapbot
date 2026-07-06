@@ -340,6 +340,123 @@ scrapbot_register :: proc(api: ^scrapbot.Register_Api) -> bool {
 }
 
 @(test)
+test_run_script_simulation_executes_native_odin_set_field_operation :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-native-odin-set-field")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.odin\"\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.stats]
+count = 0
+`)
+	write_file(t, root, "native/game.odin", `package game
+
+stats_fields := []scrapbot.Component_Field{
+    {name = "count", field_type = .Int},
+}
+
+native_tick_writes := []string{"stats"}
+
+scrapbot_register :: proc(api: ^scrapbot.Register_Api) -> bool {
+    scrapbot.register_component(api, {
+        id = "stats",
+        fields = stats_fields[:],
+    })
+    scrapbot.register_system(api, {
+        id = "native_tick",
+        phase = .Update,
+        writes = native_tick_writes[:],
+        execute = {
+            entity = "target",
+            component = "stats",
+            field = "count",
+            value = 2,
+        },
+    })
+    return true
+}
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	testing.expect_value(t, runtime_system_schedule_system_count(result.update_schedule), 1)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+	testing.expect_value(t, simulation.completed_frames, 1)
+	entity, entity_found := runtime_world_find_entity_by_id(result.scene.world, "target")
+	testing.expect(t, entity_found)
+	value, value_err := runtime_world_get_component_field_value(result.scene.world, entity, "stats", "count")
+	testing.expect_value(t, value_err, Runtime_Error.None)
+	testing.expect_value(t, value.value_type, Runtime_Field_Type.Int)
+	testing.expect_value(t, value.int_value, 2)
+}
+
+@(test)
+test_run_script_simulation_reports_native_odin_set_field_write_access_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-native-odin-set-field-write-access")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.odin\"\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.stats]
+count = 0
+`)
+	write_file(t, root, "native/game.odin", `package game
+
+stats_fields := []scrapbot.Component_Field{
+    {name = "count", field_type = .Int},
+}
+
+scrapbot_register :: proc(api: ^scrapbot.Register_Api) -> bool {
+    scrapbot.register_component(api, {
+        id = "stats",
+        fields = stats_fields[:],
+    })
+    scrapbot.register_system(api, {
+        id = "native_tick",
+        phase = .Update,
+        execute = {
+            entity = "target",
+            component = "stats",
+            field = "count",
+            value = 2,
+        },
+    })
+    return true
+}
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	testing.expect_value(t, runtime_system_schedule_system_count(result.update_schedule), 1)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.completed_frames, 0)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.path, "native/game.odin")
+	testing.expect_value(t, simulation.diagnostic.system_id, "native_tick")
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "did not declare"))
+}
+
+@(test)
 test_run_script_simulation_supports_direct_vec3_methods :: proc(t: ^testing.T) {
 	root := make_test_project(t, "script-simulation-direct-vec3")
 	defer os.remove_all(root)
