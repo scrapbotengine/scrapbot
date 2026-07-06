@@ -15,6 +15,7 @@ Live_Source_File :: struct {
 }
 
 Live_Reload_Info :: struct {
+	project_reloaded: bool,
 	scene_reloaded:   bool,
 	scripts_reloaded: bool,
 	native_reloaded:  bool,
@@ -32,9 +33,12 @@ Live_Project_Frame_Hook :: proc(project: ^Live_Project, completed_frames: int, u
 Live_Project :: struct {
 	check:                 Project_Check_Result,
 	script_sources:        []Live_Source_File,
+	project_stamp:         Source_File_Stamp,
 	scene_stamp:           Source_File_Stamp,
 	native_stamp:          Source_File_Stamp,
 	has_native_stamp:      bool,
+	last_failed_project:   Source_File_Stamp,
+	has_last_failed_project: bool,
 	last_failed_scene:     Source_File_Stamp,
 	has_last_failed_scene: bool,
 	last_failed_script_index: int,
@@ -50,6 +54,11 @@ live_project_init :: proc(root_path: string) -> (Live_Project, Project_Error) {
 	check := check_project(root_path)
 	if check.err != .None {
 		return Live_Project{check = check}, check.err
+	}
+	project_stamp, project_stamp_ok := live_project_stat_project(check.project)
+	if !project_stamp_ok {
+		free_check_result(check)
+		return Live_Project{}, .Missing_Project_File
 	}
 	scene_stamp, scene_stamp_ok := live_project_stat_scene(check.project)
 	if !scene_stamp_ok {
@@ -70,6 +79,7 @@ live_project_init :: proc(root_path: string) -> (Live_Project, Project_Error) {
 	return Live_Project{
 		check = check,
 		script_sources = script_sources,
+		project_stamp = project_stamp,
 		scene_stamp = scene_stamp,
 		native_stamp = stamp,
 		has_native_stamp = has_stamp,
@@ -81,6 +91,77 @@ live_project_free :: proc(project: ^Live_Project) {
 	live_source_files_free(project.script_sources)
 	script_diagnostic_free(&project.last_diagnostic)
 	project^ = Live_Project{}
+}
+
+live_project_poll_project_source :: proc(project: ^Live_Project) -> (Live_Reload_Result, Project_Error) {
+	next_stamp, stamp_ok := live_project_stat_project(project.check.project)
+	if !stamp_ok {
+		return Live_Reload_Result{}, .Missing_Project_File
+	}
+	if source_file_stamp_equal(next_stamp, project.project_stamp) {
+		return Live_Reload_Result{}, .None
+	}
+	if project.has_last_failed_project && source_file_stamp_equal(next_stamp, project.last_failed_project) {
+		return Live_Reload_Result{}, .None
+	}
+
+	next_check := check_project(project.check.project.root_path)
+	if next_check.err != .None {
+		live_project_store_failed_diagnostic(project, &next_check)
+		project.last_failed_project = next_stamp
+		project.has_last_failed_project = true
+		free_check_result(next_check)
+		return Live_Reload_Result{}, next_check.err
+	}
+
+	next_project_stamp, project_stamp_ok := live_project_stat_project(next_check.project)
+	if !project_stamp_ok {
+		free_check_result(next_check)
+		return Live_Reload_Result{}, .Missing_Project_File
+	}
+	next_scene_stamp, scene_stamp_ok := live_project_stat_scene(next_check.project)
+	if !scene_stamp_ok {
+		free_check_result(next_check)
+		return Live_Reload_Result{}, .Missing_Default_Scene
+	}
+	next_script_sources, scripts_ok := live_project_stat_scripts(next_check.project)
+	if !scripts_ok {
+		free_check_result(next_check)
+		return Live_Reload_Result{}, .Missing_Script
+	}
+	next_native_stamp, has_native_stamp, native_stamp_ok := live_project_stat_native(next_check.project)
+	if !native_stamp_ok {
+		live_source_files_free(next_script_sources)
+		free_check_result(next_check)
+		return Live_Reload_Result{}, .Missing_Native
+	}
+
+	live_project_clear_diagnostic(project)
+	live_source_files_free(project.script_sources)
+	old_check := project.check
+	project.check = next_check
+	project.script_sources = next_script_sources
+	project.project_stamp = next_project_stamp
+	project.scene_stamp = next_scene_stamp
+	project.native_stamp = next_native_stamp
+	project.has_native_stamp = has_native_stamp
+	project.has_last_failed_project = false
+	project.has_last_failed_scene = false
+	project.has_last_failed_script = false
+	project.has_last_failed_native = false
+	project.startup_ran = false
+	free_check_result(old_check)
+	return Live_Reload_Result{
+		changed = true,
+		info = Live_Reload_Info{
+			project_reloaded = true,
+			scene_reloaded = true,
+			scripts_reloaded = true,
+			native_reloaded = has_native_stamp,
+			entity_count = runtime_world_entity_count(project.check.scene.world),
+			system_count = runtime_system_schedule_system_count(project.check.update_schedule),
+		},
+	}, .None
 }
 
 live_project_poll_scene_source :: proc(project: ^Live_Project) -> (Live_Reload_Result, Project_Error) {
@@ -256,7 +337,12 @@ live_project_run_frames_with_hook :: proc(
 			}
 		}
 
-		_, reload_err := live_project_poll_scene_source(project)
+		_, reload_err := live_project_poll_project_source(project)
+		if reload_err != .None {
+			return live_project_reload_error_result(project, reload_err, completed_frames)
+		}
+
+		_, reload_err = live_project_poll_scene_source(project)
 		if reload_err != .None {
 			return live_project_reload_error_result(project, reload_err, completed_frames)
 		}
@@ -353,6 +439,10 @@ live_project_stat_native :: proc(project: Project) -> (Source_File_Stamp, bool, 
 
 live_project_stat_scene :: proc(project: Project) -> (Source_File_Stamp, bool) {
 	return live_project_stat_project_source(project, project.default_scene)
+}
+
+live_project_stat_project :: proc(project: Project) -> (Source_File_Stamp, bool) {
+	return live_project_stat_project_source(project, project.metadata_path)
 }
 
 live_project_stat_project_source :: proc(project: Project, resource_path: string) -> (Source_File_Stamp, bool) {
