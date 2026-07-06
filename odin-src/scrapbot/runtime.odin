@@ -44,11 +44,17 @@ Runtime_Error :: enum {
 	Invalid_Field_Name,
 	Duplicate_Component_Field,
 	Duplicate_Component_Type,
+	Duplicate_System_Access,
+	Duplicate_System_Type,
 	Duplicate_Entity_ID,
 	Invalid_Entity,
 	Unknown_Component,
+	Unknown_Component_Type,
 	Unknown_Field,
 	Invalid_Field_Type,
+	Cyclic_System_Order,
+	Access_Denied,
+	Invalid_Structural_Command,
 }
 
 Runtime_Field_Type :: enum {
@@ -97,8 +103,52 @@ Runtime_Component_Table :: struct {
 	columns:        []Runtime_Component_Column,
 }
 
+Runtime_System_Phase :: enum {
+	Startup,
+	Update,
+	Fixed_Update,
+	Render,
+}
+
+Runtime_System_Runner_Kind :: enum {
+	None,
+	Luau,
+	Native,
+}
+
+Runtime_System_Runner :: struct {
+	kind: Runtime_System_Runner_Kind,
+	ref:  u32,
+}
+
+Runtime_System_Definition :: struct {
+	id:     string,
+	phase:  Runtime_System_Phase,
+	reads:  []string,
+	writes: []string,
+	before: []string,
+	after:  []string,
+	runner: Runtime_System_Runner,
+}
+
+Runtime_Scheduled_System :: struct {
+	registry_index: int,
+	id:             string,
+	runner:         Runtime_System_Runner,
+}
+
+Runtime_System_Batch :: struct {
+	phase:   Runtime_System_Phase,
+	systems: []Runtime_Scheduled_System,
+}
+
+Runtime_System_Schedule :: struct {
+	batches: []Runtime_System_Batch,
+}
+
 Runtime_Component_Registry :: struct {
 	components: [dynamic]Runtime_Component_Definition,
+	systems:    [dynamic]Runtime_System_Definition,
 }
 
 Runtime_Registration_Context :: enum {
@@ -130,18 +180,47 @@ Runtime_World :: struct {
 	next_entity_generation: u32,
 }
 
+Runtime_Deferred_Command_Kind :: enum {
+	Add_Component,
+	Remove_Component,
+	Despawn_Entity,
+}
+
+Runtime_Deferred_Command :: struct {
+	kind:         Runtime_Deferred_Command_Kind,
+	entity:       Entity_Handle,
+	component_id: string,
+	fields:       []Runtime_Component_Field_Value,
+}
+
+Runtime_Deferred_Command_Buffer :: struct {
+	commands:         [dynamic]Runtime_Deferred_Command,
+	immediate_spawns: [dynamic]Entity_Handle,
+}
+
 runtime_registry_free :: proc(registry: ^Runtime_Component_Registry) {
+	for system in registry.systems {
+		runtime_system_definition_free(system)
+	}
+	if registry.systems != nil {
+		delete(registry.systems)
+	}
 	for component in registry.components {
 		runtime_component_definition_free(component)
 	}
 	if registry.components != nil {
 		delete(registry.components)
 	}
+	registry.systems = nil
 	registry.components = nil
 }
 
 runtime_registry_component_count :: proc(registry: Runtime_Component_Registry) -> int {
 	return len(registry.components)
+}
+
+runtime_registry_system_count :: proc(registry: Runtime_Component_Registry) -> int {
+	return len(registry.systems)
 }
 
 runtime_register_project_component :: proc(registry: ^Runtime_Component_Registry, definition: Runtime_Component_Definition) -> Runtime_Error {
@@ -156,10 +235,31 @@ runtime_register_engine_component :: proc(registry: ^Runtime_Component_Registry,
 	return runtime_register_component_as(registry, .Engine, definition)
 }
 
+runtime_register_project_system :: proc(registry: ^Runtime_Component_Registry, definition: Runtime_System_Definition) -> Runtime_Error {
+	return runtime_register_system_as(registry, .Project, definition)
+}
+
+runtime_register_package_system :: proc(registry: ^Runtime_Component_Registry, definition: Runtime_System_Definition) -> Runtime_Error {
+	return runtime_register_system_as(registry, .Package, definition)
+}
+
+runtime_register_engine_system :: proc(registry: ^Runtime_Component_Registry, definition: Runtime_System_Definition) -> Runtime_Error {
+	return runtime_register_system_as(registry, .Engine, definition)
+}
+
 runtime_find_component :: proc(registry: Runtime_Component_Registry, id: string) -> (^Runtime_Component_Definition, bool) {
 	for &component in registry.components {
 		if component.id == id {
 			return &component, true
+		}
+	}
+	return nil, false
+}
+
+runtime_find_system :: proc(registry: Runtime_Component_Registry, id: string) -> (^Runtime_System_Definition, bool) {
+	for &system in registry.systems {
+		if system.id == id {
+			return &system, true
 		}
 	}
 	return nil, false
@@ -202,6 +302,242 @@ runtime_register_component_as :: proc(
 	return .None
 }
 
+runtime_register_system_as :: proc(
+	registry: ^Runtime_Component_Registry,
+	registration_context: Runtime_Registration_Context,
+	definition: Runtime_System_Definition,
+) -> Runtime_Error {
+	id_err := runtime_validate_type_id_for_context(definition.id, registration_context)
+	if id_err != .None {
+		return id_err
+	}
+	access_err := runtime_validate_system_access(registry^, definition, registration_context)
+	if access_err != .None {
+		return access_err
+	}
+
+	if existing, ok := runtime_find_system(registry^, definition.id); ok {
+		if runtime_system_definitions_equal(existing^, definition) {
+			return .None
+		}
+		return .Duplicate_System_Type
+	}
+
+	owned, copy_err := runtime_system_definition_clone(definition)
+	if copy_err != .None {
+		return copy_err
+	}
+	append(&registry.systems, owned)
+	return .None
+}
+
+runtime_validate_system_access :: proc(
+	registry: Runtime_Component_Registry,
+	definition: Runtime_System_Definition,
+	registration_context: Runtime_Registration_Context,
+) -> Runtime_Error {
+	for component_id in definition.reads {
+		id_err := runtime_validate_reference_type_id_for_context(component_id, registration_context)
+		if id_err != .None {
+			return id_err
+		}
+		if _, found := runtime_find_component(registry, component_id); !found {
+			return .Unknown_Component_Type
+		}
+		if runtime_count_string(definition.reads, component_id) > 1 || runtime_contains_string(definition.writes, component_id) {
+			return .Duplicate_System_Access
+		}
+	}
+	for component_id in definition.writes {
+		id_err := runtime_validate_reference_type_id_for_context(component_id, registration_context)
+		if id_err != .None {
+			return id_err
+		}
+		if _, found := runtime_find_component(registry, component_id); !found {
+			return .Unknown_Component_Type
+		}
+		if runtime_count_string(definition.writes, component_id) > 1 {
+			return .Duplicate_System_Access
+		}
+	}
+	for system_id in definition.before {
+		id_err := runtime_validate_reference_type_id_for_context(system_id, registration_context)
+		if id_err != .None {
+			return id_err
+		}
+	}
+	for system_id in definition.after {
+		id_err := runtime_validate_reference_type_id_for_context(system_id, registration_context)
+		if id_err != .None {
+			return id_err
+		}
+	}
+	return .None
+}
+
+runtime_build_system_schedule :: proc(registry: Runtime_Component_Registry, phase: Runtime_System_Phase) -> (Runtime_System_Schedule, Runtime_Error) {
+	phase_indices := make([dynamic]int)
+	defer delete(phase_indices)
+	for system, index in registry.systems {
+		if system.phase == phase {
+			append(&phase_indices, index)
+		}
+	}
+
+	system_count := len(phase_indices)
+	remaining_dependencies := make([]int, system_count)
+	if remaining_dependencies == nil && system_count > 0 {
+		return Runtime_System_Schedule{}, .Out_Of_Memory
+	}
+	defer delete(remaining_dependencies)
+	scheduled := make([]bool, system_count)
+	if scheduled == nil && system_count > 0 {
+		return Runtime_System_Schedule{}, .Out_Of_Memory
+	}
+	defer delete(scheduled)
+
+	for target_local := 0; target_local < system_count; target_local += 1 {
+		for source_local := 0; source_local < system_count; source_local += 1 {
+			if source_local == target_local {
+				continue
+			}
+			if runtime_system_must_run_before(registry, phase_indices[source_local], phase_indices[target_local]) {
+				remaining_dependencies[target_local] += 1
+			}
+		}
+	}
+
+	batches := make([dynamic]Runtime_System_Batch)
+	scheduled_count := 0
+	for scheduled_count < system_count {
+		batch_local_indices := make([dynamic]int)
+		for local_index := 0; local_index < system_count; local_index += 1 {
+			if scheduled[local_index] || remaining_dependencies[local_index] != 0 {
+				continue
+			}
+			if runtime_system_conflicts_with_batch(registry, phase_indices[local_index], phase_indices[:], batch_local_indices[:]) {
+				continue
+			}
+			append(&batch_local_indices, local_index)
+			scheduled[local_index] = true
+		}
+
+			if len(batch_local_indices) == 0 {
+				delete(batch_local_indices)
+				runtime_system_batches_free(batches[:])
+				delete(batches)
+				return Runtime_System_Schedule{}, .Cyclic_System_Order
+			}
+
+		systems := make([]Runtime_Scheduled_System, len(batch_local_indices))
+			if systems == nil && len(batch_local_indices) > 0 {
+				delete(batch_local_indices)
+				runtime_system_batches_free(batches[:])
+				delete(batches)
+				return Runtime_System_Schedule{}, .Out_Of_Memory
+			}
+		copied_system_count := 0
+		for local_index, batch_index in batch_local_indices {
+			registry_index := phase_indices[local_index]
+			owned_id, id_err := strings.clone(registry.systems[registry_index].id)
+			if id_err != nil {
+				for system in systems[:copied_system_count] {
+					delete(system.id)
+				}
+				delete(systems)
+				delete(batch_local_indices)
+				runtime_system_batches_free(batches[:])
+				delete(batches)
+				return Runtime_System_Schedule{}, .Out_Of_Memory
+			}
+			systems[batch_index] = Runtime_Scheduled_System{
+				registry_index = registry_index,
+				id = owned_id,
+				runner = registry.systems[registry_index].runner,
+			}
+			copied_system_count += 1
+		}
+
+		append(&batches, Runtime_System_Batch{phase = phase, systems = systems})
+		scheduled_count += len(batch_local_indices)
+		for source_local in batch_local_indices {
+			for target_local := 0; target_local < system_count; target_local += 1 {
+				if scheduled[target_local] {
+					continue
+				}
+				if runtime_system_must_run_before(registry, phase_indices[source_local], phase_indices[target_local]) {
+					remaining_dependencies[target_local] -= 1
+				}
+			}
+		}
+		delete(batch_local_indices)
+	}
+
+	owned_batches := make([]Runtime_System_Batch, len(batches))
+	if owned_batches == nil && len(batches) > 0 {
+		runtime_system_batches_free(batches[:])
+		delete(batches)
+		return Runtime_System_Schedule{}, .Out_Of_Memory
+	}
+	for batch, index in batches {
+		owned_batches[index] = batch
+	}
+	delete(batches)
+	return Runtime_System_Schedule{batches = owned_batches}, .None
+}
+
+runtime_system_schedule_free :: proc(schedule: Runtime_System_Schedule) {
+	runtime_system_batches_free(schedule.batches)
+	if schedule.batches != nil {
+		delete(schedule.batches)
+	}
+}
+
+runtime_system_batches_free :: proc(batches: []Runtime_System_Batch) {
+	for batch in batches {
+		for system in batch.systems {
+			delete(system.id)
+		}
+		if batch.systems != nil {
+			delete(batch.systems)
+		}
+	}
+}
+
+runtime_system_schedule_batch_count :: proc(schedule: Runtime_System_Schedule) -> int {
+	return len(schedule.batches)
+}
+
+runtime_system_schedule_system_count :: proc(schedule: Runtime_System_Schedule) -> int {
+	count := 0
+	for batch in schedule.batches {
+		count += len(batch.systems)
+	}
+	return count
+}
+
+runtime_system_must_run_before :: proc(registry: Runtime_Component_Registry, source_index, target_index: int) -> bool {
+	source := registry.systems[source_index]
+	target := registry.systems[target_index]
+	return runtime_contains_string(source.before, target.id) || runtime_contains_string(target.after, source.id)
+}
+
+runtime_system_conflicts_with_batch :: proc(
+	registry: Runtime_Component_Registry,
+	candidate_index: int,
+	phase_indices: []int,
+	batch_local_indices: []int,
+) -> bool {
+	candidate := registry.systems[candidate_index]
+	for local_index in batch_local_indices {
+		other := registry.systems[phase_indices[local_index]]
+		if runtime_systems_conflict(candidate, other) {
+			return true
+		}
+	}
+	return false
+}
+
 runtime_component_definition_clone :: proc(definition: Runtime_Component_Definition) -> (Runtime_Component_Definition, Runtime_Error) {
 	owned_id, id_err := strings.clone(definition.id)
 	if id_err != nil {
@@ -239,6 +575,48 @@ runtime_component_definition_clone :: proc(definition: Runtime_Component_Definit
 	}, .None
 }
 
+runtime_system_definition_clone :: proc(definition: Runtime_System_Definition) -> (Runtime_System_Definition, Runtime_Error) {
+	owned_id, id_err := strings.clone(definition.id)
+	if id_err != nil {
+		return Runtime_System_Definition{}, .Out_Of_Memory
+	}
+	reads, reads_err := runtime_string_list_clone(definition.reads)
+	if reads_err != .None {
+		delete(owned_id)
+		return Runtime_System_Definition{}, reads_err
+	}
+	writes, writes_err := runtime_string_list_clone(definition.writes)
+	if writes_err != .None {
+		runtime_string_list_free(reads)
+		delete(owned_id)
+		return Runtime_System_Definition{}, writes_err
+	}
+	before, before_err := runtime_string_list_clone(definition.before)
+	if before_err != .None {
+		runtime_string_list_free(writes)
+		runtime_string_list_free(reads)
+		delete(owned_id)
+		return Runtime_System_Definition{}, before_err
+	}
+	after, after_err := runtime_string_list_clone(definition.after)
+	if after_err != .None {
+		runtime_string_list_free(before)
+		runtime_string_list_free(writes)
+		runtime_string_list_free(reads)
+		delete(owned_id)
+		return Runtime_System_Definition{}, after_err
+	}
+	return Runtime_System_Definition{
+		id = owned_id,
+		phase = definition.phase,
+		reads = reads,
+		writes = writes,
+		before = before,
+		after = after,
+		runner = definition.runner,
+	}, .None
+}
+
 runtime_component_definition_free :: proc(definition: Runtime_Component_Definition) {
 	if definition.id != "" {
 		delete(definition.id)
@@ -248,6 +626,46 @@ runtime_component_definition_free :: proc(definition: Runtime_Component_Definiti
 	}
 	if definition.fields != nil {
 		delete(definition.fields)
+	}
+}
+
+runtime_system_definition_free :: proc(definition: Runtime_System_Definition) {
+	if definition.id != "" {
+		delete(definition.id)
+	}
+	runtime_string_list_free(definition.reads)
+	runtime_string_list_free(definition.writes)
+	runtime_string_list_free(definition.before)
+	runtime_string_list_free(definition.after)
+}
+
+runtime_string_list_clone :: proc(values: []string) -> ([]string, Runtime_Error) {
+	copied := make([]string, len(values))
+	if copied == nil && len(values) > 0 {
+		return nil, .Out_Of_Memory
+	}
+	copied_count := 0
+	for value, index in values {
+		owned, err := strings.clone(value)
+		if err != nil {
+			for copied_value in copied[:copied_count] {
+				delete(copied_value)
+			}
+			delete(copied)
+			return nil, .Out_Of_Memory
+		}
+		copied[index] = owned
+		copied_count += 1
+	}
+	return copied, .None
+}
+
+runtime_string_list_free :: proc(values: []string) {
+	for value in values {
+		delete(value)
+	}
+	if values != nil {
+		delete(values)
 	}
 }
 
@@ -262,6 +680,60 @@ runtime_component_definitions_equal :: proc(left, right: Runtime_Component_Defin
 		}
 	}
 	return true
+}
+
+runtime_system_definitions_equal :: proc(left, right: Runtime_System_Definition) -> bool {
+	return left.id == right.id &&
+		left.phase == right.phase &&
+		runtime_system_runners_equal(left.runner, right.runner) &&
+		runtime_string_lists_equal(left.reads, right.reads) &&
+		runtime_string_lists_equal(left.writes, right.writes) &&
+		runtime_string_lists_equal(left.before, right.before) &&
+		runtime_string_lists_equal(left.after, right.after)
+}
+
+runtime_system_runners_equal :: proc(left, right: Runtime_System_Runner) -> bool {
+	return left.kind == right.kind && left.ref == right.ref
+}
+
+runtime_string_lists_equal :: proc(left, right: []string) -> bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for value, index in left {
+		if value != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+runtime_contains_string :: proc(values: []string, needle: string) -> bool {
+	return runtime_count_string(values, needle) > 0
+}
+
+runtime_count_string :: proc(values: []string, needle: string) -> int {
+	count := 0
+	for value in values {
+		if value == needle {
+			count += 1
+		}
+	}
+	return count
+}
+
+runtime_systems_conflict :: proc(left, right: Runtime_System_Definition) -> bool {
+	for component_id in left.writes {
+		if runtime_contains_string(right.reads, component_id) || runtime_contains_string(right.writes, component_id) {
+			return true
+		}
+	}
+	for component_id in right.writes {
+		if runtime_contains_string(left.reads, component_id) || runtime_contains_string(left.writes, component_id) {
+			return true
+		}
+	}
+	return false
 }
 
 runtime_component_value_boolean :: proc(value: bool) -> Runtime_Component_Value {
@@ -779,6 +1251,23 @@ runtime_validate_type_id_for_context :: proc(id: string, registration_context: R
 	return .Invalid_Type_ID
 }
 
+runtime_validate_reference_type_id_for_context :: proc(id: string, registration_context: Runtime_Registration_Context) -> Runtime_Error {
+	switch registration_context {
+	case .Engine, .Project:
+		return runtime_validate_type_id(id)
+	case .Package:
+		segment_count, err := runtime_validate_type_id_shape(id)
+		if err != .None {
+			return err
+		}
+		if segment_count < 2 {
+			return .Invalid_Type_ID
+		}
+		return .None
+	}
+	return .Invalid_Type_ID
+}
+
 runtime_validate_field_name :: proc(name: string) -> Runtime_Error {
 	err := runtime_validate_identifier_segment(name)
 	if err != .None {
@@ -1236,6 +1725,290 @@ runtime_world_query_driver_table :: proc(world: Runtime_World, component_ids: []
 		}
 	}
 	return table, true
+}
+
+runtime_deferred_command_buffer_free :: proc(buffer: ^Runtime_Deferred_Command_Buffer) {
+	runtime_deferred_clear_commands(buffer)
+	if buffer.commands != nil {
+		delete(buffer.commands)
+	}
+	if buffer.immediate_spawns != nil {
+		delete(buffer.immediate_spawns)
+	}
+	buffer.commands = nil
+	buffer.immediate_spawns = nil
+}
+
+runtime_deferred_clear_commands :: proc(buffer: ^Runtime_Deferred_Command_Buffer) {
+	for command in buffer.commands {
+		runtime_deferred_command_free(command)
+	}
+	clear(&buffer.commands)
+	clear(&buffer.immediate_spawns)
+}
+
+runtime_deferred_command_free :: proc(command: Runtime_Deferred_Command) {
+	if command.component_id != "" {
+		delete(command.component_id)
+	}
+	for field in command.fields {
+		if field.name != "" {
+			delete(field.name)
+		}
+		runtime_component_value_free(field.value)
+	}
+	if command.fields != nil {
+		delete(command.fields)
+	}
+}
+
+runtime_deferred_record_immediate_spawn :: proc(buffer: ^Runtime_Deferred_Command_Buffer, handle: Entity_Handle) -> Runtime_Error {
+	append(&buffer.immediate_spawns, handle)
+	return .None
+}
+
+runtime_deferred_discard :: proc(buffer: ^Runtime_Deferred_Command_Buffer, world: ^Runtime_World) {
+	runtime_deferred_rollback_immediate_spawns(buffer^, world)
+	runtime_deferred_clear_commands(buffer)
+}
+
+runtime_deferred_queue_add_component :: proc(
+	buffer: ^Runtime_Deferred_Command_Buffer,
+	system: Runtime_System_Definition,
+	entity: Entity_Handle,
+	component_id: string,
+	fields: []Runtime_Component_Field_Value,
+) -> Runtime_Error {
+	if !runtime_system_has_write_access(system, component_id) {
+		return .Access_Denied
+	}
+	owned_id, id_err := strings.clone(component_id)
+	if id_err != nil {
+		return .Out_Of_Memory
+	}
+	owned_fields, fields_err := runtime_component_field_values_clone(fields)
+	if fields_err != .None {
+		delete(owned_id)
+		return fields_err
+	}
+	append(&buffer.commands, Runtime_Deferred_Command{
+		kind = .Add_Component,
+		entity = entity,
+		component_id = owned_id,
+		fields = owned_fields,
+	})
+	return .None
+}
+
+runtime_deferred_queue_remove_component :: proc(
+	buffer: ^Runtime_Deferred_Command_Buffer,
+	system: Runtime_System_Definition,
+	entity: Entity_Handle,
+	component_id: string,
+) -> Runtime_Error {
+	if !runtime_system_has_write_access(system, component_id) {
+		return .Access_Denied
+	}
+	owned_id, id_err := strings.clone(component_id)
+	if id_err != nil {
+		return .Out_Of_Memory
+	}
+	append(&buffer.commands, Runtime_Deferred_Command{
+		kind = .Remove_Component,
+		entity = entity,
+		component_id = owned_id,
+	})
+	return .None
+}
+
+runtime_deferred_queue_despawn_entity :: proc(
+	buffer: ^Runtime_Deferred_Command_Buffer,
+	world: Runtime_World,
+	system: Runtime_System_Definition,
+	entity: Entity_Handle,
+) -> Runtime_Error {
+	if _, entity_err := runtime_world_entity(world, entity); entity_err != .None {
+		return entity_err
+	}
+	for table in world.component_tables {
+		if _, found := runtime_component_table_row_for_entity(table, entity); found {
+			if !runtime_system_has_write_access(system, table.id) {
+				return .Access_Denied
+			}
+		}
+	}
+	append(&buffer.commands, Runtime_Deferred_Command{kind = .Despawn_Entity, entity = entity})
+	return .None
+}
+
+runtime_deferred_flush :: proc(buffer: ^Runtime_Deferred_Command_Buffer, world: ^Runtime_World, registry: Runtime_Component_Registry) -> Runtime_Error {
+	preflight_err := runtime_deferred_preflight(buffer^, world^, registry)
+	if preflight_err != .None {
+		runtime_deferred_rollback_immediate_spawns(buffer^, world)
+		runtime_deferred_clear_commands(buffer)
+		return preflight_err
+	}
+
+	for command in buffer.commands {
+		switch command.kind {
+		case .Add_Component:
+			err := runtime_world_set_component(world, command.entity, command.component_id, command.fields)
+			if err != .None {
+				runtime_deferred_rollback_immediate_spawns(buffer^, world)
+				runtime_deferred_clear_commands(buffer)
+				return err
+			}
+		case .Remove_Component:
+			_, err := runtime_world_remove_component(world, command.entity, command.component_id)
+			if err != .None {
+				runtime_deferred_rollback_immediate_spawns(buffer^, world)
+				runtime_deferred_clear_commands(buffer)
+				return err
+			}
+		case .Despawn_Entity:
+		}
+	}
+
+	for command in buffer.commands {
+		switch command.kind {
+		case .Add_Component, .Remove_Component:
+		case .Despawn_Entity:
+			err := runtime_world_remove_entity(world, command.entity)
+			if err != .None {
+				runtime_deferred_rollback_immediate_spawns(buffer^, world)
+				runtime_deferred_clear_commands(buffer)
+				return err
+			}
+		}
+	}
+
+	runtime_deferred_clear_commands(buffer)
+	return .None
+}
+
+runtime_deferred_preflight :: proc(buffer: Runtime_Deferred_Command_Buffer, world: Runtime_World, registry: Runtime_Component_Registry) -> Runtime_Error {
+	despawned_entities := make([dynamic]Entity_Handle)
+	defer delete(despawned_entities)
+	for command in buffer.commands {
+		switch command.kind {
+		case .Add_Component:
+			if runtime_contains_entity_handle(despawned_entities[:], command.entity) {
+				return .Invalid_Structural_Command
+			}
+			if _, entity_err := runtime_world_entity(world, command.entity); entity_err != .None {
+				return entity_err
+			}
+			validate_err := runtime_deferred_validate_add_component(registry, command.component_id, command.fields)
+			if validate_err != .None {
+				return validate_err
+			}
+		case .Remove_Component:
+			if runtime_contains_entity_handle(despawned_entities[:], command.entity) {
+				return .Invalid_Structural_Command
+			}
+			if _, entity_err := runtime_world_entity(world, command.entity); entity_err != .None {
+				return entity_err
+			}
+		case .Despawn_Entity:
+			if runtime_contains_entity_handle(despawned_entities[:], command.entity) {
+				return .Invalid_Structural_Command
+			}
+			if _, entity_err := runtime_world_entity(world, command.entity); entity_err != .None {
+				return entity_err
+			}
+			append(&despawned_entities, command.entity)
+		}
+	}
+	return .None
+}
+
+runtime_deferred_validate_add_component :: proc(
+	registry: Runtime_Component_Registry,
+	component_id: string,
+	fields: []Runtime_Component_Field_Value,
+) -> Runtime_Error {
+	definition, found := runtime_find_component(registry, component_id)
+	if !found {
+		return .Unknown_Component_Type
+	}
+	if len(fields) != len(definition.fields) {
+		return .Unknown_Field
+	}
+	for field_definition in definition.fields {
+		matches := 0
+		for field in fields {
+			if field.name != field_definition.name {
+				continue
+			}
+			matches += 1
+			if field.value.value_type != field_definition.value_type {
+				return .Invalid_Field_Type
+			}
+		}
+		if matches == 0 {
+			return .Unknown_Field
+		}
+		if matches > 1 {
+			return .Invalid_Structural_Command
+		}
+	}
+	return .None
+}
+
+runtime_deferred_rollback_immediate_spawns :: proc(buffer: Runtime_Deferred_Command_Buffer, world: ^Runtime_World) {
+	index := len(buffer.immediate_spawns)
+	for index > 0 {
+		index -= 1
+		_ = runtime_world_remove_entity(world, buffer.immediate_spawns[index])
+	}
+}
+
+runtime_component_field_values_clone :: proc(fields: []Runtime_Component_Field_Value) -> ([]Runtime_Component_Field_Value, Runtime_Error) {
+	owned_fields := make([]Runtime_Component_Field_Value, len(fields))
+	if owned_fields == nil && len(fields) > 0 {
+		return nil, .Out_Of_Memory
+	}
+	copied_count := 0
+	for field, index in fields {
+		owned_name, name_err := strings.clone(field.name)
+		if name_err != nil {
+			runtime_component_field_values_free(owned_fields[:copied_count])
+			delete(owned_fields)
+			return nil, .Out_Of_Memory
+		}
+		owned_value, value_err := runtime_component_value_clone(field.value)
+		if value_err != .None {
+			delete(owned_name)
+			runtime_component_field_values_free(owned_fields[:copied_count])
+			delete(owned_fields)
+			return nil, value_err
+		}
+		owned_fields[index] = Runtime_Component_Field_Value{name = owned_name, value = owned_value}
+		copied_count += 1
+	}
+	return owned_fields, .None
+}
+
+runtime_component_field_values_free :: proc(fields: []Runtime_Component_Field_Value) {
+	for field in fields {
+		if field.name != "" {
+			delete(field.name)
+		}
+		runtime_component_value_free(field.value)
+	}
+}
+
+runtime_system_has_write_access :: proc(system: Runtime_System_Definition, component_id: string) -> bool {
+	return runtime_contains_string(system.writes, component_id)
+}
+
+runtime_contains_entity_handle :: proc(handles: []Entity_Handle, handle: Entity_Handle) -> bool {
+	for candidate in handles {
+		if candidate.index == handle.index && candidate.generation == handle.generation {
+			return true
+		}
+	}
+	return false
 }
 
 runtime_world_remove_entity :: proc(world: ^Runtime_World, handle: Entity_Handle) -> Runtime_Error {

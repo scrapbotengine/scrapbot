@@ -399,3 +399,260 @@ test_runtime_world_removes_components_and_repairs_entity_rows :: proc(t: ^testin
 	testing.expect_value(t, moved_last_health_err, Runtime_Error.None)
 	testing.expect_value(t, moved_last_health.int_value, 30)
 }
+
+@(test)
+test_runtime_registry_validates_system_access_and_duplicates :: proc(t: ^testing.T) {
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+
+	marker_fields := [1]Runtime_Component_Field_Definition{{name = "value", value_type = .Int}}
+	testing.expect_value(t, runtime_register_project_component(&registry, Runtime_Component_Definition{
+		id = "marker",
+		version = 1,
+		fields = marker_fields[:],
+	}), Runtime_Error.None)
+
+	reads_marker := [1]string{"marker"}
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{
+		id = "read_marker",
+		phase = .Update,
+		reads = reads_marker[:],
+	}), Runtime_Error.None)
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{
+		id = "read_marker",
+		phase = .Update,
+		reads = reads_marker[:],
+	}), Runtime_Error.None)
+	testing.expect_value(t, runtime_registry_system_count(registry), 1)
+
+	writes_marker := [1]string{"marker"}
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{
+		id = "read_marker",
+		phase = .Update,
+		writes = writes_marker[:],
+	}), Runtime_Error.Duplicate_System_Type)
+
+	missing_reads := [1]string{"missing"}
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{
+		id = "missing_reader",
+		phase = .Update,
+		reads = missing_reads[:],
+	}), Runtime_Error.Unknown_Component_Type)
+
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{
+		id = "conflicting_access",
+		phase = .Update,
+		reads = reads_marker[:],
+		writes = writes_marker[:],
+	}), Runtime_Error.Duplicate_System_Access)
+
+	duplicate_reads := [2]string{"marker", "marker"}
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{
+		id = "duplicate_reads",
+		phase = .Update,
+		reads = duplicate_reads[:],
+	}), Runtime_Error.Duplicate_System_Access)
+}
+
+@(test)
+test_runtime_builds_schedule_batches_from_order_and_access :: proc(t: ^testing.T) {
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+
+	component_ids := [2]string{"a", "b"}
+	for id in component_ids {
+		testing.expect_value(t, runtime_register_project_component(&registry, Runtime_Component_Definition{id = id, version = 1}), Runtime_Error.None)
+	}
+
+	reads_a := [1]string{"a"}
+	writes_a := [1]string{"a"}
+	writes_b := [1]string{"b"}
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{id = "read_a", phase = .Update, reads = reads_a[:]}), Runtime_Error.None)
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{id = "write_a", phase = .Update, writes = writes_a[:]}), Runtime_Error.None)
+	testing.expect_value(t, runtime_register_project_system(&registry, Runtime_System_Definition{id = "write_b", phase = .Update, writes = writes_b[:]}), Runtime_Error.None)
+
+	schedule, schedule_err := runtime_build_system_schedule(registry, .Update)
+	testing.expect_value(t, schedule_err, Runtime_Error.None)
+	defer runtime_system_schedule_free(schedule)
+	testing.expect_value(t, runtime_system_schedule_batch_count(schedule), 2)
+	testing.expect_value(t, runtime_system_schedule_system_count(schedule), 3)
+	testing.expect_value(t, len(schedule.batches[0].systems), 2)
+	testing.expect_value(t, schedule.batches[0].systems[0].id, "read_a")
+	testing.expect_value(t, schedule.batches[0].systems[1].id, "write_b")
+	testing.expect_value(t, schedule.batches[1].systems[0].id, "write_a")
+}
+
+@(test)
+test_runtime_builds_ordered_schedule_and_rejects_cycles :: proc(t: ^testing.T) {
+	ordered := Runtime_Component_Registry{}
+	defer runtime_registry_free(&ordered)
+
+	testing.expect_value(t, runtime_register_project_component(&ordered, Runtime_Component_Definition{id = "marker", version = 1}), Runtime_Error.None)
+	reads_marker := [1]string{"marker"}
+	before_second := [1]string{"second"}
+	after_first := [1]string{"first"}
+	testing.expect_value(t, runtime_register_project_system(&ordered, Runtime_System_Definition{
+		id = "first",
+		phase = .Startup,
+		reads = reads_marker[:],
+		before = before_second[:],
+	}), Runtime_Error.None)
+	testing.expect_value(t, runtime_register_project_system(&ordered, Runtime_System_Definition{
+		id = "second",
+		phase = .Startup,
+		reads = reads_marker[:],
+		after = after_first[:],
+	}), Runtime_Error.None)
+
+	schedule, schedule_err := runtime_build_system_schedule(ordered, .Startup)
+	testing.expect_value(t, schedule_err, Runtime_Error.None)
+	defer runtime_system_schedule_free(schedule)
+	testing.expect_value(t, runtime_system_schedule_batch_count(schedule), 2)
+	testing.expect_value(t, schedule.batches[0].systems[0].id, "first")
+	testing.expect_value(t, schedule.batches[1].systems[0].id, "second")
+
+	cyclic := Runtime_Component_Registry{}
+	defer runtime_registry_free(&cyclic)
+	testing.expect_value(t, runtime_register_project_component(&cyclic, Runtime_Component_Definition{id = "marker", version = 1}), Runtime_Error.None)
+	one_before_two := [1]string{"two"}
+	two_before_one := [1]string{"one"}
+	testing.expect_value(t, runtime_register_project_system(&cyclic, Runtime_System_Definition{
+		id = "one",
+		phase = .Startup,
+		reads = reads_marker[:],
+		before = one_before_two[:],
+	}), Runtime_Error.None)
+	testing.expect_value(t, runtime_register_project_system(&cyclic, Runtime_System_Definition{
+		id = "two",
+		phase = .Startup,
+		reads = reads_marker[:],
+		before = two_before_one[:],
+	}), Runtime_Error.None)
+	_, cyclic_err := runtime_build_system_schedule(cyclic, .Startup)
+	testing.expect_value(t, cyclic_err, Runtime_Error.Cyclic_System_Order)
+}
+
+@(test)
+test_runtime_deferred_component_adds_flush_after_system_boundary :: proc(t: ^testing.T) {
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	buffer := Runtime_Deferred_Command_Buffer{}
+	defer runtime_deferred_command_buffer_free(&buffer)
+
+	marker_fields := [1]Runtime_Component_Field_Definition{{name = "value", value_type = .Int}}
+	testing.expect_value(t, runtime_register_project_component(&registry, Runtime_Component_Definition{id = "marker", version = 1, fields = marker_fields[:]}), Runtime_Error.None)
+	writes_marker := [1]string{"marker"}
+	system := Runtime_System_Definition{id = "create_marker", phase = .Startup, writes = writes_marker[:]}
+
+	entity, entity_err := runtime_world_create_entity(&world, "queued", "Queued")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	testing.expect_value(t, runtime_deferred_record_immediate_spawn(&buffer, entity), Runtime_Error.None)
+	component_fields := [1]Runtime_Component_Field_Value{{name = "value", value = runtime_component_value_int(11)}}
+	testing.expect_value(t, runtime_deferred_queue_add_component(&buffer, system, entity, "marker", component_fields[:]), Runtime_Error.None)
+
+	has_marker, has_err := runtime_world_has_component(world, entity, "marker")
+	testing.expect_value(t, has_err, Runtime_Error.None)
+	testing.expect_value(t, has_marker, false)
+
+	testing.expect_value(t, runtime_deferred_flush(&buffer, &world, registry), Runtime_Error.None)
+	value, value_err := runtime_world_get_component_field_value(world, entity, "marker", "value")
+	testing.expect_value(t, value_err, Runtime_Error.None)
+	testing.expect_value(t, value.int_value, 11)
+	testing.expect_value(t, len(buffer.commands), 0)
+	testing.expect_value(t, len(buffer.immediate_spawns), 0)
+}
+
+@(test)
+test_runtime_deferred_mutations_require_declared_write_access :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	buffer := Runtime_Deferred_Command_Buffer{}
+	defer runtime_deferred_command_buffer_free(&buffer)
+
+	entity, entity_err := runtime_world_create_entity(&world, "entity", "Entity")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	reads_marker := [1]string{"marker"}
+	read_only_system := Runtime_System_Definition{id = "reader", phase = .Update, reads = reads_marker[:]}
+	component_fields := [1]Runtime_Component_Field_Value{{name = "value", value = runtime_component_value_int(1)}}
+	testing.expect_value(t, runtime_deferred_queue_add_component(&buffer, read_only_system, entity, "marker", component_fields[:]), Runtime_Error.Access_Denied)
+	testing.expect_value(t, runtime_deferred_queue_remove_component(&buffer, read_only_system, entity, "marker"), Runtime_Error.Access_Denied)
+}
+
+@(test)
+test_runtime_deferred_discard_rolls_back_immediate_spawns :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	buffer := Runtime_Deferred_Command_Buffer{}
+	defer runtime_deferred_command_buffer_free(&buffer)
+
+	first, first_err := runtime_world_create_entity(&world, "first", "First")
+	testing.expect_value(t, first_err, Runtime_Error.None)
+	second, second_err := runtime_world_create_entity(&world, "second", "Second")
+	testing.expect_value(t, second_err, Runtime_Error.None)
+	testing.expect_value(t, runtime_deferred_record_immediate_spawn(&buffer, first), Runtime_Error.None)
+	testing.expect_value(t, runtime_deferred_record_immediate_spawn(&buffer, second), Runtime_Error.None)
+	testing.expect_value(t, runtime_world_entity_count(world), 2)
+
+	runtime_deferred_discard(&buffer, &world)
+	testing.expect_value(t, runtime_world_entity_count(world), 0)
+	_, first_found := runtime_world_find_entity_by_id(world, "first")
+	testing.expect_value(t, first_found, false)
+	_, second_found := runtime_world_find_entity_by_id(world, "second")
+	testing.expect_value(t, second_found, false)
+}
+
+@(test)
+test_runtime_deferred_flush_rejects_mutation_after_despawn_and_rolls_back_spawns :: proc(t: ^testing.T) {
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	buffer := Runtime_Deferred_Command_Buffer{}
+	defer runtime_deferred_command_buffer_free(&buffer)
+
+	marker_fields := [1]Runtime_Component_Field_Definition{{name = "value", value_type = .Int}}
+	testing.expect_value(t, runtime_register_project_component(&registry, Runtime_Component_Definition{id = "marker", version = 1, fields = marker_fields[:]}), Runtime_Error.None)
+	writes_marker := [1]string{"marker"}
+	system := Runtime_System_Definition{id = "bad_flush", phase = .Startup, writes = writes_marker[:]}
+
+	entity, entity_err := runtime_world_create_entity(&world, "rolled-back", "Rolled Back")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	testing.expect_value(t, runtime_deferred_record_immediate_spawn(&buffer, entity), Runtime_Error.None)
+	testing.expect_value(t, runtime_deferred_queue_despawn_entity(&buffer, world, system, entity), Runtime_Error.None)
+	component_fields := [1]Runtime_Component_Field_Value{{name = "value", value = runtime_component_value_int(3)}}
+	testing.expect_value(t, runtime_deferred_queue_add_component(&buffer, system, entity, "marker", component_fields[:]), Runtime_Error.None)
+
+	testing.expect_value(t, runtime_deferred_flush(&buffer, &world, registry), Runtime_Error.Invalid_Structural_Command)
+	testing.expect_value(t, runtime_world_entity_count(world), 0)
+	testing.expect_value(t, len(buffer.commands), 0)
+	testing.expect_value(t, len(buffer.immediate_spawns), 0)
+}
+
+@(test)
+test_runtime_deferred_despawn_requires_write_access_to_all_components :: proc(t: ^testing.T) {
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	buffer := Runtime_Deferred_Command_Buffer{}
+	defer runtime_deferred_command_buffer_free(&buffer)
+
+	testing.expect_value(t, runtime_register_project_component(&registry, Runtime_Component_Definition{id = "marker", version = 1}), Runtime_Error.None)
+	testing.expect_value(t, runtime_register_project_component(&registry, Runtime_Component_Definition{id = "tag", version = 1}), Runtime_Error.None)
+	entity, entity_err := runtime_world_create_entity(&world, "doomed", "Doomed")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	testing.expect_value(t, runtime_world_set_component(&world, entity, "marker", []Runtime_Component_Field_Value{}), Runtime_Error.None)
+	testing.expect_value(t, runtime_world_set_component(&world, entity, "tag", []Runtime_Component_Field_Value{}), Runtime_Error.None)
+
+	writes_marker := [1]string{"marker"}
+	limited_system := Runtime_System_Definition{id = "limited", phase = .Update, writes = writes_marker[:]}
+	testing.expect_value(t, runtime_deferred_queue_despawn_entity(&buffer, world, limited_system, entity), Runtime_Error.Access_Denied)
+
+	writes_all := [2]string{"marker", "tag"}
+	full_system := Runtime_System_Definition{id = "full", phase = .Update, writes = writes_all[:]}
+	testing.expect_value(t, runtime_deferred_queue_despawn_entity(&buffer, world, full_system, entity), Runtime_Error.None)
+	testing.expect_value(t, runtime_deferred_flush(&buffer, &world, registry), Runtime_Error.None)
+	testing.expect_value(t, runtime_world_entity_count(world), 0)
+}
