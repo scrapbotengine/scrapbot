@@ -21,6 +21,8 @@ WGPU_Texture_Format :: u32
 WGPU_Texture_Dimension :: u32
 WGPU_Texture_View_Dimension :: u32
 WGPU_Texture_Aspect :: u32
+WGPU_Map_Mode :: WGPU_Flags
+WGPU_Callback_Mode :: u32
 WGPU_SType :: u32
 WGPU_Status :: u32
 WGPU_Optional_Bool :: u32
@@ -58,6 +60,10 @@ WGPU_MAP_ASYNC_STATUS_INSTANCE_DROPPED :: WGPU_Map_Async_Status(0x00000002)
 WGPU_MAP_ASYNC_STATUS_ERROR :: WGPU_Map_Async_Status(0x00000003)
 WGPU_MAP_ASYNC_STATUS_ABORTED :: WGPU_Map_Async_Status(0x00000004)
 WGPU_MAP_ASYNC_STATUS_UNKNOWN :: WGPU_Map_Async_Status(0x00000005)
+
+WGPU_CALLBACK_MODE_WAIT_ANY_ONLY :: WGPU_Callback_Mode(0x00000001)
+WGPU_CALLBACK_MODE_ALLOW_PROCESS_EVENTS :: WGPU_Callback_Mode(0x00000002)
+WGPU_CALLBACK_MODE_ALLOW_SPONTANEOUS :: WGPU_Callback_Mode(0x00000003)
 
 WGPU_STYPE_SHADER_SOURCE_SPIRV :: WGPU_SType(0x00000001)
 WGPU_STYPE_SHADER_SOURCE_WGSL :: WGPU_SType(0x00000002)
@@ -119,6 +125,10 @@ WGPU_BUFFER_USAGE_STORAGE :: WGPU_Buffer_Usage(0x0000000000000080)
 WGPU_BUFFER_USAGE_INDIRECT :: WGPU_Buffer_Usage(0x0000000000000100)
 WGPU_BUFFER_USAGE_QUERY_RESOLVE :: WGPU_Buffer_Usage(0x0000000000000200)
 
+WGPU_MAP_MODE_NONE :: WGPU_Map_Mode(0x0000000000000000)
+WGPU_MAP_MODE_READ :: WGPU_Map_Mode(0x0000000000000001)
+WGPU_MAP_MODE_WRITE :: WGPU_Map_Mode(0x0000000000000002)
+
 WGPU_TEXTURE_USAGE_NONE :: WGPU_Texture_Usage(0x0000000000000000)
 WGPU_TEXTURE_USAGE_COPY_SRC :: WGPU_Texture_Usage(0x0000000000000001)
 WGPU_TEXTURE_USAGE_COPY_DST :: WGPU_Texture_Usage(0x0000000000000002)
@@ -148,10 +158,20 @@ WGPU_Chained_Struct_Out :: struct #align(align_of(rawptr)) {
 	s_type: WGPU_SType,
 }
 
+WGPU_Future :: struct {
+	id: u64,
+}
+
 WGPU_Extent_3D :: struct {
 	width:                 u32,
 	height:                u32,
 	depth_or_array_layers: u32,
+}
+
+WGPU_Origin_3D :: struct {
+	x: u32,
+	y: u32,
+	z: u32,
 }
 
 WGPU_Buffer_Descriptor :: struct #align(align_of(rawptr)) {
@@ -188,6 +208,61 @@ WGPU_Texture_View_Descriptor :: struct #align(align_of(rawptr)) {
 	usage:            WGPU_Texture_Usage,
 }
 
+WGPU_Texel_Copy_Texture_Info :: struct #align(align_of(rawptr)) {
+	texture:   WGPU_Texture,
+	mip_level: u32,
+	origin:    WGPU_Origin_3D,
+	aspect:    WGPU_Texture_Aspect,
+}
+
+WGPU_Texel_Copy_Buffer_Layout :: struct {
+	offset:         u64,
+	bytes_per_row:  u32,
+	rows_per_image: u32,
+}
+
+WGPU_Texel_Copy_Buffer_Info :: struct #align(align_of(rawptr)) {
+	layout: WGPU_Texel_Copy_Buffer_Layout,
+	buffer: WGPU_Buffer,
+}
+
+WGPU_Command_Encoder_Descriptor :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	label:         WGPU_String_View,
+}
+
+WGPU_Command_Buffer_Descriptor :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	label:         WGPU_String_View,
+}
+
+WGPU_Buffer_Map_Callback :: proc "c" (status: WGPU_Map_Async_Status, message: WGPU_String_View, userdata1, userdata2: rawptr)
+
+WGPU_Buffer_Map_Callback_Info :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	mode:          WGPU_Callback_Mode,
+	callback:      WGPU_Buffer_Map_Callback,
+	userdata1:     rawptr,
+	userdata2:     rawptr,
+}
+
+WGPU_Device_Create_Texture_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Texture_Descriptor) -> WGPU_Texture
+WGPU_Device_Create_Buffer_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Buffer_Descriptor) -> WGPU_Buffer
+WGPU_Device_Create_Command_Encoder_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Command_Encoder_Descriptor) -> WGPU_Command_Encoder
+WGPU_Texture_Create_View_Proc :: proc "c" (texture: WGPU_Texture, descriptor: ^WGPU_Texture_View_Descriptor) -> WGPU_Texture_View
+WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc :: proc "c" (encoder: WGPU_Command_Encoder, source: ^WGPU_Texel_Copy_Texture_Info, destination: ^WGPU_Texel_Copy_Buffer_Info, copy_size: ^WGPU_Extent_3D)
+WGPU_Command_Encoder_Finish_Proc :: proc "c" (encoder: WGPU_Command_Encoder, descriptor: ^WGPU_Command_Buffer_Descriptor) -> WGPU_Command_Buffer
+WGPU_Queue_Submit_Proc :: proc "c" (queue: WGPU_Queue, command_count: c.size_t, commands: [^]WGPU_Command_Buffer)
+WGPU_Buffer_Map_Async_Proc :: proc "c" (buffer: WGPU_Buffer, mode: WGPU_Map_Mode, offset, size: c.size_t, callback_info: WGPU_Buffer_Map_Callback_Info) -> WGPU_Future
+WGPU_Buffer_Get_Mapped_Range_Proc :: proc "c" (buffer: WGPU_Buffer, offset, size: c.size_t) -> rawptr
+WGPU_Buffer_Unmap_Proc :: proc "c" (buffer: WGPU_Buffer)
+WGPU_Instance_Process_Events_Proc :: proc "c" (instance: WGPU_Instance)
+WGPU_Texture_Release_Proc :: proc "c" (texture: WGPU_Texture)
+WGPU_Texture_View_Release_Proc :: proc "c" (texture_view: WGPU_Texture_View)
+WGPU_Buffer_Release_Proc :: proc "c" (buffer: WGPU_Buffer)
+WGPU_Command_Encoder_Release_Proc :: proc "c" (encoder: WGPU_Command_Encoder)
+WGPU_Command_Buffer_Release_Proc :: proc "c" (command_buffer: WGPU_Command_Buffer)
+
 wgpu_string_view_null :: proc() -> WGPU_String_View {
 	return WGPU_String_View{data = nil, length = WGPU_STRLEN}
 }
@@ -206,6 +281,10 @@ wgpu_extent_3d :: proc(width, height: u32, depth_or_array_layers: u32 = 1) -> WG
 		height = height,
 		depth_or_array_layers = depth_or_array_layers,
 	}
+}
+
+wgpu_origin_3d_zero :: proc() -> WGPU_Origin_3D {
+	return WGPU_Origin_3D{}
 }
 
 wgpu_texture_descriptor_2d :: proc(label: WGPU_String_View, width, height: u32, format: WGPU_Texture_Format, usage: WGPU_Texture_Usage) -> WGPU_Texture_Descriptor {
@@ -256,6 +335,44 @@ wgpu_buffer_descriptor :: proc(label: WGPU_String_View, usage: WGPU_Buffer_Usage
 		usage = usage,
 		size = size,
 		mapped_at_creation = mapped,
+	}
+}
+
+wgpu_texel_copy_texture_info :: proc(texture: WGPU_Texture) -> WGPU_Texel_Copy_Texture_Info {
+	return WGPU_Texel_Copy_Texture_Info{
+		texture = texture,
+		mip_level = 0,
+		origin = wgpu_origin_3d_zero(),
+		aspect = WGPU_TEXTURE_ASPECT_ALL,
+	}
+}
+
+wgpu_texel_copy_buffer_info :: proc(buffer: WGPU_Buffer, bytes_per_row, rows_per_image: u32) -> WGPU_Texel_Copy_Buffer_Info {
+	return WGPU_Texel_Copy_Buffer_Info{
+		layout = WGPU_Texel_Copy_Buffer_Layout{
+			offset = 0,
+			bytes_per_row = bytes_per_row,
+			rows_per_image = rows_per_image,
+		},
+		buffer = buffer,
+	}
+}
+
+wgpu_command_encoder_descriptor :: proc(label: WGPU_String_View) -> WGPU_Command_Encoder_Descriptor {
+	return WGPU_Command_Encoder_Descriptor{next_in_chain = nil, label = label}
+}
+
+wgpu_command_buffer_descriptor :: proc(label: WGPU_String_View) -> WGPU_Command_Buffer_Descriptor {
+	return WGPU_Command_Buffer_Descriptor{next_in_chain = nil, label = label}
+}
+
+wgpu_buffer_map_callback_info :: proc(callback: WGPU_Buffer_Map_Callback, userdata1: rawptr = nil, userdata2: rawptr = nil) -> WGPU_Buffer_Map_Callback_Info {
+	return WGPU_Buffer_Map_Callback_Info{
+		next_in_chain = nil,
+		mode = WGPU_CALLBACK_MODE_ALLOW_PROCESS_EVENTS,
+		callback = callback,
+		userdata1 = userdata1,
+		userdata2 = userdata2,
 	}
 }
 

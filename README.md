@@ -66,6 +66,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin offscreen editor chrome render slice
   - [x] Odin wgpu-native ABI boundary slice
   - [x] Odin wgpu-native descriptor boundary slice
+  - [x] Odin wgpu-native copy/readback boundary slice
   - [x] Odin native declaration registration slice
   - [x] Odin native execution boundary diagnostics slice
   - [ ] Odin CLI feature parity

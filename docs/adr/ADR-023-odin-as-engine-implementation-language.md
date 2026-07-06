@@ -74,7 +74,7 @@ Until feature parity is reached, some documentation will necessarily describe bo
 21. Port the rest of the pure engine foundations before backend-heavy systems, including math helpers and runtime diagnostics.
 22. Port detailed Luau bridge runtime diagnostics while preserving existing script fixtures.
 23. Port remaining native and reload runtime diagnostics.
-24. Port `wgpu-native` bindings and offscreen render verification. The first Odin slices should establish ABI-compatible scalar types, string/chained structs, renderer texture formats, usage flags, and texture/buffer descriptors before adding foreign procedure declarations and platform library linking.
+24. Port `wgpu-native` bindings and offscreen render verification. The first Odin slices should establish ABI-compatible scalar types, string/chained structs, renderer texture formats, usage flags, texture/buffer descriptors, and offscreen copy/readback procedure types before adding foreign procedure declarations and platform library linking.
 25. Port retained UI, editor routing, and headful window integration.
 26. Port project-local native component/system declaration registration from Zig to Odin.
 27. Port project-local native module execution, build, and reload behavior from Zig to Odin.
