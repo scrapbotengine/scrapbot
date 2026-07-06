@@ -878,6 +878,7 @@ pub const World = struct {
     entities: std.ArrayList(Entity) = .empty,
     component_tables: std.ArrayList(ComponentTable) = .empty,
     query_plan_generation: u64 = 1,
+    revision: u64 = 1,
     next_entity_generation: u32 = 1,
 
     pub fn init(allocator: std.mem.Allocator) World {
@@ -900,6 +901,10 @@ pub const World = struct {
 
     pub fn queryPlanGeneration(self: World) u64 {
         return self.query_plan_generation;
+    }
+
+    pub fn worldRevision(self: World) u64 {
+        return self.revision;
     }
 
     pub fn createEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
@@ -944,6 +949,7 @@ pub const World = struct {
             grown_tables += 1;
         }
 
+        self.bumpRevision();
         return handle;
     }
 
@@ -1361,6 +1367,7 @@ pub const World = struct {
         } else {
             try self.appendComponentRow(table, handle, index, fields);
         }
+        self.bumpRevision();
     }
 
     pub fn removeComponent(self: *World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
@@ -1385,6 +1392,7 @@ pub const World = struct {
             column.values.swapRemove(self.allocator, row);
         }
 
+        self.bumpRevision();
         return true;
     }
 
@@ -1430,6 +1438,7 @@ pub const World = struct {
             }
         }
 
+        self.bumpRevision();
         return true;
     }
 
@@ -1946,6 +1955,7 @@ pub const World = struct {
         const row = table.rows_by_entity.items[index] orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
+        self.bumpRevision();
     }
 
     fn setFieldValueResolved(self: *World, handle: EntityHandle, resolved: ResolvedComponentRow, field_name: []const u8, value: ComponentValue) WorldError!void {
@@ -1954,6 +1964,7 @@ pub const World = struct {
         const row = resolvedRowForEntity(table.*, .{ .index = @intCast(index) }, resolved.row_index) orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
+        self.bumpRevision();
     }
 
     fn ensureComponentTable(self: *World, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!usize {
@@ -1975,6 +1986,13 @@ pub const World = struct {
         self.query_plan_generation +%= 1;
         if (self.query_plan_generation == 0) {
             self.query_plan_generation = 1;
+        }
+    }
+
+    fn bumpRevision(self: *World) void {
+        self.revision +%= 1;
+        if (self.revision == 0) {
+            self.revision = 1;
         }
     }
 
@@ -2276,7 +2294,8 @@ fn tableHasEntity(table: ComponentTable, handle: EntityHandle) bool {
         return false;
     }
     const row = table.rows_by_entity.items[index] orelse return false;
-    return table.entities.items[row].generation == handle.generation;
+    const stored = table.entities.items[row];
+    return handle.generation == 0 or stored.generation == 0 or stored.generation == handle.generation;
 }
 
 fn columnVec3At(column: *const ComponentColumn, row: usize) ?[3]f32 {

@@ -507,10 +507,13 @@ test "cached layout entries reject reused entity generations" {
 
     var cache = LayoutCache.init(std.testing.allocator);
     defer cache.deinit();
-    try cache.reset(&world);
 
     const old_layout = try resolveWithCache(&cache, &world, old_child, .{ 0.0, 0.0, 0.0 });
     try std.testing.expectApproxEqAbs(@as(f32, 10.0), old_layout.position[0], 0.001);
+
+    try world.setVec3(first_parent, runtime.ui_rect_component_id, "position", .{ 22.0, 0.0, 0.0 });
+    const mutated_layout = try resolveWithCache(&cache, &world, old_child, .{ 0.0, 0.0, 0.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 22.0), mutated_layout.position[0], 0.001);
 
     try std.testing.expect(try world.removeEntity(old_child));
     const new_child = try world.createEntity("new-child", "New Child");

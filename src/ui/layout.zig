@@ -52,6 +52,7 @@ pub const LayoutItem = struct {
 
 pub const LayoutCache = struct {
     allocator: std.mem.Allocator,
+    world_revision: u64 = 0,
     resolved: std.ArrayList(?CachedResolvedLayout) = .empty,
     item_sizes: std.ArrayList(?CachedSize) = .empty,
     resolved_item_sizes: std.ArrayList(?CachedSize) = .empty,
@@ -85,6 +86,18 @@ pub const LayoutCache = struct {
             entry.* = null;
         }
         self.linear_groups.clearRetainingCapacity();
+        self.world_revision = world.worldRevision();
+    }
+
+    fn ensureFresh(self: *LayoutCache, world: *const runtime.World) Error!void {
+        if (self.world_revision != world.worldRevision()) {
+            try self.reset(world);
+            return;
+        }
+        const count = world.entityCount();
+        try self.ensureOptionalResolvedCapacity(count);
+        try self.ensureOptionalSizeCapacity(&self.item_sizes, count);
+        try self.ensureOptionalSizeCapacity(&self.resolved_item_sizes, count);
     }
 
     fn ensureOptionalResolvedCapacity(self: *LayoutCache, count: usize) Error!void {
@@ -394,6 +407,7 @@ pub fn resolveCached(cache: *LayoutCache, world: *const runtime.World, entity: r
 }
 
 pub fn resolveWithCache(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle, local_position: [3]f32) Error!ResolvedLayout {
+    try cache.ensureFresh(world);
     const base = try resolveBaseWithCache(cache, world, entity, 0);
     return .{
         .position = addVec3(base.position, local_position),
@@ -792,6 +806,7 @@ pub fn resolvedItemSize(world: *const runtime.World, entity: runtime.EntityHandl
 }
 
 pub fn resolvedItemSizeWithCache(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle) Error![3]f32 {
+    try cache.ensureFresh(world);
     const index: usize = entity.index;
     if (index >= world.entityCount()) {
         return error.InvalidLayout;

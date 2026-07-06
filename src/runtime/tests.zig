@@ -347,6 +347,20 @@ test "UI iterators preserve entity order after component swap removal" {
     try std.testing.expect(rects.next() == null);
 }
 
+test "UI rect iterators detect buttons added through wildcard handles" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("button", "Button");
+    try world.setUiRect(.{ .index = entity.index }, .{});
+    try world.setUiButton(entity);
+
+    var rects = world.uiRects();
+    const rect = rects.next() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(entity.index, rect.entity.index);
+    try std.testing.expect(rect.is_button);
+}
+
 test "world stores expanded UI semantic components" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();

@@ -327,10 +327,7 @@ pub fn buildUiVerticesInto(
     };
     layout_cache.reset(world) catch |err| return mapLayoutError(err);
     vertices.clearRetainingCapacity();
-    const estimated_vertices =
-        world.uiRectCount() * 18 +
-        world.uiSeparatorCount() * 6 +
-        world.uiTextCount() * 192;
+    const estimated_vertices = estimatedUiVertexCapacity(world);
     vertices.ensureTotalCapacity(allocator, estimated_vertices) catch return RenderError.OutOfMemory;
 
     var rects = world.uiRects();
@@ -407,6 +404,15 @@ pub fn buildUiVerticesInto(
 
 fn viewportUiClip(clip: ?UiClipRect, viewport_clip: UiClipRect) RenderError!?UiClipRect {
     return combineUiClip(clip, viewport_clip);
+}
+
+fn estimatedUiVertexCapacity(world: *const runtime.World) usize {
+    const rect_vertices = std.math.mul(usize, world.uiRectCount(), 18) catch std.math.maxInt(usize);
+    const separator_vertices = std.math.mul(usize, world.uiSeparatorCount(), 6) catch std.math.maxInt(usize);
+    const text_count = @min(world.uiTextCount(), 256);
+    const text_vertices = std.math.mul(usize, text_count, 64) catch std.math.maxInt(usize);
+    const total = std.math.add(usize, rect_vertices, separator_vertices) catch std.math.maxInt(usize);
+    return @min(std.math.add(usize, total, text_vertices) catch std.math.maxInt(usize), 65_536);
 }
 
 fn uiProgressRatio(progress: UiProgressBar) RenderError!f32 {
