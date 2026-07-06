@@ -23,7 +23,11 @@ run = "mkdir -p odin-out && odin build odin-src/scrapbot -out:odin-out/scrapbot"
 
 [tasks.odin-smoke]
 description = "Build and run the Odin migration scaffold"
-run = "mise build-odin && ./odin-out/scrapbot"
+run = "mise build-odin && ./odin-out/scrapbot --version"
+
+[tasks.test-odin]
+description = "Run Odin migration tests"
+run = "odin test odin-src/scrapbot -out:odin-out/scrapbot-tests"
 
 [tasks.test]
 description = "Run the full Scrapbot test suite"

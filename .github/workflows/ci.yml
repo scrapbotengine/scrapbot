@@ -19,8 +19,8 @@ jobs:
         with:
           install_args: odin
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build Odin scaffold
-        run: mise odin-smoke
+      - name: Build and test Odin scaffold
+        run: mise odin-smoke && mise test-odin
 
   macos:
     runs-on: macos-latest
