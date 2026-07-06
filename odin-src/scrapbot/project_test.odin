@@ -349,6 +349,207 @@ ecs.system("bad_vec3_writer", {
 }
 
 @(test)
+test_run_script_simulation_supports_bulk_query_views :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-bulk-query-view")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "first"
+name = "First"
+
+[entities.components.motion]
+position = [1.0, 2.0, 3.0]
+velocity = [2.0, 0.0, -2.0]
+speed = 10.0
+
+[[entities]]
+id = "second"
+name = "Second"
+
+[entities.components.motion]
+position = [-1.0, 4.0, 0.5]
+velocity = [0.0, -4.0, 1.0]
+speed = 20.0
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Motion = ecs.component("motion", {
+  fields = ecs.fields({
+    position = "vec3",
+    velocity = "vec3",
+    speed = "f32",
+  }),
+})
+local Movers = ecs.query(Motion)
+
+ecs.system("advance_movers", {
+  query = Movers,
+  writes = ecs.refs(Motion),
+  run = function(world, dt)
+    local view = Movers:view(world)
+    local count = view:count()
+    local positions = view:read_vec3(Motion, "position")
+    local velocities = view:read_vec3(Motion, "velocity")
+    local speeds = view:read_f32(Motion, "speed")
+
+    for index = 0, count - 1 do
+      local f32_offset = index * 4
+      local vec3_offset = index * 12
+      local px = buffer.readf32(positions, vec3_offset)
+      local py = buffer.readf32(positions, vec3_offset + 4)
+      local pz = buffer.readf32(positions, vec3_offset + 8)
+      local vx = buffer.readf32(velocities, vec3_offset)
+      local vy = buffer.readf32(velocities, vec3_offset + 4)
+      local vz = buffer.readf32(velocities, vec3_offset + 8)
+      buffer.writef32(positions, vec3_offset, px + vx * dt)
+      buffer.writef32(positions, vec3_offset + 4, py + vy * dt)
+      buffer.writef32(positions, vec3_offset + 8, pz + vz * dt)
+      buffer.writef32(speeds, f32_offset, buffer.readf32(speeds, f32_offset) + dt)
+    end
+
+    view:write_vec3(Motion, "position", positions)
+    view:write_f32(Motion, "speed", speeds)
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+
+	first, first_found := runtime_world_find_entity_by_id(result.scene.world, "first")
+	testing.expect_value(t, first_found, true)
+	first_position, first_position_err := runtime_world_get_component_field_value(result.scene.world, first, "motion", "position")
+	testing.expect_value(t, first_position_err, Runtime_Error.None)
+	testing.expect_value(t, first_position.vec3, [3]f32{2.0, 2.0, 2.0})
+	first_speed, first_speed_err := runtime_world_get_component_field_value(result.scene.world, first, "motion", "speed")
+	testing.expect_value(t, first_speed_err, Runtime_Error.None)
+	testing.expect_value(t, first_speed.float, f32(10.5))
+
+	second, second_found := runtime_world_find_entity_by_id(result.scene.world, "second")
+	testing.expect_value(t, second_found, true)
+	second_position, second_position_err := runtime_world_get_component_field_value(result.scene.world, second, "motion", "position")
+	testing.expect_value(t, second_position_err, Runtime_Error.None)
+	testing.expect_value(t, second_position.vec3, [3]f32{-1.0, 2.0, 1.0})
+	second_speed, second_speed_err := runtime_world_get_component_field_value(result.scene.world, second, "motion", "speed")
+	testing.expect_value(t, second_speed_err, Runtime_Error.None)
+	testing.expect_value(t, second_speed.float, f32(20.5))
+}
+
+@(test)
+test_run_script_simulation_reports_bulk_query_view_write_access_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-bulk-query-view-diagnostic")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "stats"
+name = "Stats"
+
+[entities.components.stats]
+speed = 1.5
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Stats = ecs.component("stats", {
+  fields = ecs.fields({
+    speed = "f32",
+  }),
+})
+local StatsQuery = ecs.query(Stats)
+
+ecs.system("write_without_access", {
+  query = StatsQuery,
+  run = function(world, dt)
+    local view = StatsQuery:view(world)
+    local speeds = view:read_f32(Stats, "speed")
+    view:write_f32(Stats, "speed", speeds)
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.completed_frames, 0)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.path, "scripts/gameplay.luau")
+	testing.expect_value(t, simulation.diagnostic.system_id, "write_without_access")
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "bulk-write"))
+
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "stats")
+	testing.expect_value(t, found, true)
+	speed, speed_err := runtime_world_get_component_field_value(result.scene.world, entity, "stats", "speed")
+	testing.expect_value(t, speed_err, Runtime_Error.None)
+	testing.expect_value(t, speed.float, f32(1.5))
+}
+
+@(test)
+test_run_script_simulation_rejects_nonfinite_bulk_query_view_write :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-bulk-query-view-nonfinite")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "stats"
+name = "Stats"
+
+[entities.components.stats]
+speed = 1.5
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Stats = ecs.component("stats", {
+  fields = ecs.fields({
+    speed = "f32",
+  }),
+})
+local StatsQuery = ecs.query(Stats)
+
+ecs.system("write_bad_value", {
+  query = StatsQuery,
+  writes = ecs.refs(Stats),
+  run = function(world, dt)
+    local view = StatsQuery:view(world)
+    local speeds = view:read_f32(Stats, "speed")
+    buffer.writef32(speeds, 0, 1e100)
+    view:write_f32(Stats, "speed", speeds)
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.completed_frames, 0)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.system_id, "write_bad_value")
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "non-finite"))
+
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "stats")
+	testing.expect_value(t, found, true)
+	speed, speed_err := runtime_world_get_component_field_value(result.scene.world, entity, "stats", "speed")
+	testing.expect_value(t, speed_err, Runtime_Error.None)
+	testing.expect_value(t, speed.float, f32(1.5))
+}
+
+@(test)
 test_run_script_simulation_flushes_structural_commands :: proc(t: ^testing.T) {
 	root := make_test_project(t, "script-simulation-structural-flush")
 	defer os.remove_all(root)

@@ -2,6 +2,7 @@ package main
 
 import odin_runtime "base:runtime"
 import "core:c"
+import "core:math"
 import "core:os"
 import "core:strings"
 
@@ -60,6 +61,58 @@ Luau_Bridge_Query_Next_Prepared_Proc :: #type proc "c" (
 ) -> c.int
 
 Luau_Bridge_Query_Plan_Generation_Proc :: #type proc "c" (ctx: rawptr, world: rawptr) -> u64
+
+Luau_Bridge_Read_F32_View_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	out_values: [^]f32,
+) -> c.int
+
+Luau_Bridge_Write_F32_View_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	values: [^]f32,
+) -> c.int
+
+Luau_Bridge_Read_Vec3_View_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	out_values: [^]f32,
+) -> c.int
+
+Luau_Bridge_Write_Vec3_View_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	values: [^]f32,
+) -> c.int
 
 Luau_Bridge_Field_Tag :: enum c.int {
 	Boolean = 1,
@@ -191,10 +244,10 @@ Luau_Bridge_Callbacks :: struct {
 	prepare_query:              Luau_Bridge_Prepare_Query_Proc,
 	query_next_prepared:        Luau_Bridge_Query_Next_Prepared_Proc,
 	query_plan_generation:      Luau_Bridge_Query_Plan_Generation_Proc,
-	read_f32_view:              rawptr,
-	write_f32_view:             rawptr,
-	read_vec3_view:             rawptr,
-	write_vec3_view:            rawptr,
+	read_f32_view:              Luau_Bridge_Read_F32_View_Proc,
+	write_f32_view:             Luau_Bridge_Write_F32_View_Proc,
+	read_vec3_view:             Luau_Bridge_Read_Vec3_View_Proc,
+	write_vec3_view:            Luau_Bridge_Write_Vec3_View_Proc,
 	get_vec3:                   Luau_Bridge_Get_Vec3_Proc,
 	set_vec3:                   Luau_Bridge_Set_Vec3_Proc,
 	get_field:                  Luau_Bridge_Get_Field_Proc,
@@ -625,6 +678,10 @@ luau_bridge_callbacks :: proc() -> Luau_Bridge_Callbacks {
 		prepare_query = luau_bridge_prepare_query,
 		query_next_prepared = luau_bridge_query_next_prepared,
 		query_plan_generation = luau_bridge_query_plan_generation,
+		read_f32_view = luau_bridge_read_f32_view,
+		write_f32_view = luau_bridge_write_f32_view,
+		read_vec3_view = luau_bridge_read_vec3_view,
+		write_vec3_view = luau_bridge_write_vec3_view,
 		get_vec3 = luau_bridge_get_vec3,
 		set_vec3 = luau_bridge_set_vec3,
 		get_field = luau_bridge_get_field,
@@ -794,6 +851,287 @@ luau_bridge_component_ids_free :: proc(ids: []string) {
 	for id in ids {
 		if id != "" do delete(id)
 	}
+}
+
+luau_bridge_read_f32_view :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	out_values: [^]f32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	component, field, identity_ok := luau_bridge_view_field_identity(program, component_id, field_name, true)
+	if !identity_ok {
+		return 0
+	}
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	count := int(entity_count)
+	if count < 0 {
+		script_program_set_host_error(program, "bulk f32 read has invalid entity count")
+		return 0
+	}
+	if count == 0 {
+		return 1
+	}
+	if entities == nil || entity_generations == nil || component_rows == nil || out_values == nil {
+		script_program_set_host_error(program, "bulk f32 read has invalid buffers")
+		return 0
+	}
+	entity_indices := entities[:count]
+	generations := entity_generations[:count]
+	rows := component_rows[:count]
+	values := out_values[:count]
+	for index := 0; index < count; index += 1 {
+		value, err := runtime_world_get_component_field_value_resolved(
+			runtime_world^,
+			Entity_Handle{index = entity_indices[index], generation = generations[index]},
+			Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = rows[index]},
+			field,
+		)
+		if err != .None {
+			script_program_set_host_error(program, "bulk f32 read failed")
+			return 0
+		}
+		if value.value_type != .Float {
+			script_program_set_host_error(program, "system tried to bulk-read non-f32 field as f32")
+			return 0
+		}
+		values[index] = value.float
+	}
+	return 1
+}
+
+luau_bridge_write_f32_view :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	values: [^]f32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	component, field, identity_ok := luau_bridge_view_field_identity(program, component_id, field_name, false)
+	if !identity_ok {
+		return 0
+	}
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	count := int(entity_count)
+	if count < 0 {
+		script_program_set_host_error(program, "bulk f32 write has invalid entity count")
+		return 0
+	}
+	if count == 0 {
+		return 1
+	}
+	if entities == nil || entity_generations == nil || component_rows == nil || values == nil {
+		script_program_set_host_error(program, "bulk f32 write has invalid buffers")
+		return 0
+	}
+	entity_indices := entities[:count]
+	generations := entity_generations[:count]
+	rows := component_rows[:count]
+	source_values := values[:count]
+	for index := 0; index < count; index += 1 {
+		value := source_values[index]
+		if !luau_bridge_f32_is_finite(value) {
+			script_program_set_host_error(program, "system tried to bulk-write non-finite f32 value")
+			return 0
+		}
+		err := runtime_world_set_component_field_value_resolved(
+			runtime_world,
+			Entity_Handle{index = entity_indices[index], generation = generations[index]},
+			Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = rows[index]},
+			field,
+			runtime_component_value_float(value),
+		)
+		if err != .None {
+			script_program_set_host_error(program, "bulk f32 write failed")
+			return 0
+		}
+	}
+	return 1
+}
+
+luau_bridge_read_vec3_view :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	out_values: [^]f32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	component, field, identity_ok := luau_bridge_view_field_identity(program, component_id, field_name, true)
+	if !identity_ok {
+		return 0
+	}
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	count := int(entity_count)
+	if count < 0 {
+		script_program_set_host_error(program, "bulk vec3 read has invalid entity count")
+		return 0
+	}
+	if count == 0 {
+		return 1
+	}
+	if entities == nil || entity_generations == nil || component_rows == nil || out_values == nil {
+		script_program_set_host_error(program, "bulk vec3 read has invalid buffers")
+		return 0
+	}
+	entity_indices := entities[:count]
+	generations := entity_generations[:count]
+	rows := component_rows[:count]
+	values := out_values[:count * 3]
+	for index := 0; index < count; index += 1 {
+		value, err := runtime_world_get_component_field_value_resolved(
+			runtime_world^,
+			Entity_Handle{index = entity_indices[index], generation = generations[index]},
+			Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = rows[index]},
+			field,
+		)
+		if err != .None {
+			script_program_set_host_error(program, "bulk vec3 read failed")
+			return 0
+		}
+		if value.value_type != .Vec3 {
+			script_program_set_host_error(program, "system tried to bulk-read non-vec3 field as vec3")
+			return 0
+		}
+		offset := index * 3
+		values[offset + 0] = value.vec3[0]
+		values[offset + 1] = value.vec3[1]
+		values[offset + 2] = value.vec3[2]
+	}
+	return 1
+}
+
+luau_bridge_write_vec3_view :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	component_id: cstring,
+	component_table_index: u32,
+	entities: [^]u32,
+	entity_generations: [^]u32,
+	component_rows: [^]u32,
+	entity_count: c.size_t,
+	field_name: cstring,
+	values: [^]f32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil {
+		return 0
+	}
+	context = program.odin_context
+	component, field, identity_ok := luau_bridge_view_field_identity(program, component_id, field_name, false)
+	if !identity_ok {
+		return 0
+	}
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	count := int(entity_count)
+	if count < 0 {
+		script_program_set_host_error(program, "bulk vec3 write has invalid entity count")
+		return 0
+	}
+	if count == 0 {
+		return 1
+	}
+	if entities == nil || entity_generations == nil || component_rows == nil || values == nil {
+		script_program_set_host_error(program, "bulk vec3 write has invalid buffers")
+		return 0
+	}
+	entity_indices := entities[:count]
+	generations := entity_generations[:count]
+	rows := component_rows[:count]
+	source_values := values[:count * 3]
+	for index := 0; index < count; index += 1 {
+		offset := index * 3
+		value := [3]f32{source_values[offset + 0], source_values[offset + 1], source_values[offset + 2]}
+		if !luau_bridge_f32_is_finite(value[0]) || !luau_bridge_f32_is_finite(value[1]) || !luau_bridge_f32_is_finite(value[2]) {
+			script_program_set_host_error(program, "system tried to bulk-write non-finite vec3 value")
+			return 0
+		}
+		err := runtime_world_set_component_field_value_resolved(
+			runtime_world,
+			Entity_Handle{index = entity_indices[index], generation = generations[index]},
+			Runtime_Resolved_Component_Row{table_index = component_table_index, row_index = rows[index]},
+			field,
+			runtime_component_value_vec3(value),
+		)
+		if err != .None {
+			script_program_set_host_error(program, "bulk vec3 write failed")
+			return 0
+		}
+	}
+	return 1
+}
+
+luau_bridge_view_field_identity :: proc(
+	program: ^Script_Program,
+	component_id: cstring,
+	field_name: cstring,
+	read: bool,
+) -> (string, string, bool) {
+	component := clone_luau_cstring(component_id)
+	field := clone_luau_cstring(field_name)
+	if component == "" || field == "" {
+		if component != "" do delete(component)
+		if field != "" do delete(field)
+		script_program_set_host_error(program, "bulk view operation has invalid field identity")
+		return "", "", false
+	}
+	allowed := script_program_active_system_allows_write(program, component)
+	if read {
+		allowed = script_program_active_system_allows_read(program, component)
+	}
+	if !allowed {
+		delete(component)
+		delete(field)
+		if read {
+			script_program_set_host_error(program, "system tried to bulk-read a component field without declaring read access")
+		} else {
+			script_program_set_host_error(program, "system tried to bulk-write a component field without declaring write access")
+		}
+		return "", "", false
+	}
+	return component, field, true
+}
+
+luau_bridge_f32_is_finite :: proc(value: f32) -> bool {
+	return !math.is_nan_f32(value) && !math.is_inf_f32(value)
 }
 
 luau_bridge_get_field :: proc "c" (
