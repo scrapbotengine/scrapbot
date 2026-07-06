@@ -102,10 +102,12 @@ pub const EntityHandle = struct {
 pub const EntityProvenance = enum {
     authored,
     spawned,
+    engine_transient,
 };
 
 pub const CreateEntityOptions = struct {
     provenance: EntityProvenance = .spawned,
+    emit_structural_events: bool = true,
 };
 
 pub const ResolvedComponentRow = struct {
@@ -118,6 +120,19 @@ pub const Entity = struct {
     name: []const u8,
     generation: u32 = 0,
     provenance: EntityProvenance = .spawned,
+};
+
+pub const StructuralEventKind = enum {
+    entity_created,
+    entity_removed,
+    component_added,
+    component_removed,
+};
+
+pub const StructuralEvent = struct {
+    kind: StructuralEventKind,
+    entity: EntityHandle,
+    component_id: ?[]const u8 = null,
 };
 
 pub const Transform = struct {

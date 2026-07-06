@@ -330,7 +330,7 @@ pub const LiveProject = struct {
         self.* = undefined;
     }
 
-    pub fn renderScene(self: *const LiveProject) RenderScene {
+    pub fn renderScene(self: *LiveProject) RenderScene {
         return .{ .world = &self.scene.world };
     }
 

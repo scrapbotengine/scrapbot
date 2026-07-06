@@ -72,6 +72,7 @@ fn addBatchTestRenderable(
         try world.setShadowReceiver(entity);
     }
 }
+
 test "render ECS schedule orders extract prepare queue and draw systems" {
     var state = try RenderEcsState.init(std.testing.allocator);
     defer state.deinit();
@@ -161,24 +162,25 @@ test "render ECS extracts scene data and queues mesh draw commands" {
 
     try std.testing.expectEqual(@as(usize, 8), state.world.entityCount());
     try std.testing.expectEqual(@as(usize, 2), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 2), state.extractedRenderableMeshes().len);
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.ui_canvas_component_id));
     try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
     try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.input_pointer_component_id));
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.input_keyboard_component_id));
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(runtime.input_frame_component_id));
-    try std.testing.expectEqual(@as(f32, 52.0), (state.world.renderCamera() orelse return error.TestExpectedEqual).fov_y_degrees);
-    try std.testing.expectEqual(@as(f32, 1.25), (state.world.renderDirectionalLight() orelse return error.TestExpectedEqual).intensity);
-    const extracted_sphere = state.world.renderableMeshAt(1) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(f32, 52.0), (scene_world.renderCamera() orelse return error.TestExpectedEqual).fov_y_degrees);
+    try std.testing.expectEqual(@as(f32, 1.25), (scene_world.renderDirectionalLight() orelse return error.TestExpectedEqual).intensity);
+    const extracted_sphere = state.extractedRenderableMeshes()[1];
     try std.testing.expectEqualStrings("uv_sphere", extracted_sphere.primitive);
     try std.testing.expectEqual(@as(f32, 0.35), extracted_sphere.base_color[1]);
-    const extracted_box = state.world.renderableMeshAt(0) orelse return error.TestExpectedEqual;
+    const extracted_box = state.extractedRenderableMeshes()[0];
     try std.testing.expect(extracted_box.casts_shadow);
     try std.testing.expect(!extracted_box.receives_shadow);
     try std.testing.expect(!extracted_sphere.casts_shadow);
     try std.testing.expect(extracted_sphere.receives_shadow);
 
-    var plan = try BatchPlan.build(std.testing.allocator, &state.world);
+    var plan = try BatchPlan.buildFromRenderables(std.testing.allocator, state.extractedRenderableMeshes());
     defer plan.deinit();
     try std.testing.expectEqual(@as(usize, 2), plan.batches.len);
 
@@ -215,7 +217,7 @@ test "batch plan groups matching geometry and shadow state with per-instance col
     defer state.deinit();
     try state.extractScene(.{ .world = &scene_world });
 
-    var plan = try BatchPlan.build(std.testing.allocator, &state.world);
+    var plan = try BatchPlan.buildFromRenderables(std.testing.allocator, state.extractedRenderableMeshes());
     defer plan.deinit();
 
     try std.testing.expectEqual(@as(usize, 3), plan.batches.len);
@@ -239,6 +241,82 @@ test "batch plan groups matching geometry and shadow state with per-instance col
 
     try state.queueBatchDraws(plan.batches.len);
     try std.testing.expectEqual(@as(usize, 3), state.drawCommandCount());
+}
+
+test "batch plan from extracted renderables matches render world plan" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    try addBatchTestRenderable(&scene_world, "blue-box-a", "box", 0, 0, .{ -1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{ .casts_shadow = true });
+    try addBatchTestRenderable(&scene_world, "gold-sphere", "uv_sphere", 16, 8, .{ 0.0, 0.0, 0.0 }, .{ 1.0, 0.56, 0.1 }, .{});
+    try addBatchTestRenderable(&scene_world, "blue-box-b", "box", 0, 0, .{ 1.6, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{ .casts_shadow = true });
+    try addBatchTestRenderable(&scene_world, "blue-box-receiver", "box", 0, 0, .{ 0.0, -1.2, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{ .receives_shadow = true });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractScene(.{ .world = &scene_world });
+
+    var world_plan = try BatchPlan.build(std.testing.allocator, &scene_world);
+    defer world_plan.deinit();
+    var extracted_plan = try BatchPlan.buildFromRenderables(std.testing.allocator, state.extractedRenderableMeshes());
+    defer extracted_plan.deinit();
+
+    try std.testing.expectEqual(world_plan.renderables.len, extracted_plan.renderables.len);
+    try std.testing.expectEqual(world_plan.batches.len, extracted_plan.batches.len);
+    for (world_plan.batches, extracted_plan.batches) |world_batch, extracted_batch| {
+        try std.testing.expect(world_batch.geometry_key.eql(extracted_batch.geometry_key));
+        try std.testing.expect(world_batch.shadow_key.eql(extracted_batch.shadow_key));
+        try std.testing.expectEqualSlices(usize, world_batch.render_indices, extracted_batch.render_indices);
+    }
+}
+
+test "render ECS repeated extraction replaces render world without accumulating entities" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    try addBatchTestRenderable(&scene_world, "blue-box", "box", 0, 0, .{ -1.0, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{});
+
+    const panel = try scene_world.createEntity("panel", "Panel");
+    try scene_world.setUiRect(panel, .{
+        .position = .{ 24.0, 24.0, 0.0 },
+        .size = .{ 120.0, 40.0, 0.0 },
+        .color = .{ 0.02, 0.08, 0.16 },
+    });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractScene(.{ .world = &scene_world });
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
+    const first_entity_count = state.world.entityCount();
+
+    try state.extractScene(.{ .world = &scene_world });
+    try std.testing.expectEqual(first_entity_count, state.world.entityCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
+}
+
+test "render ECS failed renderable snapshot preserves previous render world and snapshot" {
+    var valid_world = runtime.World.init(std.testing.allocator);
+    defer valid_world.deinit();
+    try addBatchTestRenderable(&valid_world, "blue-box", "box", 0, 0, .{ -1.0, 0.0, 0.0 }, .{ 0.08, 0.42, 1.0 }, .{});
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.extractScene(.{ .world = &valid_world });
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
+
+    const original_allocator = state.allocator;
+    state.allocator = std.testing.failing_allocator;
+    defer state.allocator = original_allocator;
+    try std.testing.expectError(RenderError.OutOfMemory, state.extractScene(.{ .world = &valid_world }));
+
+    try std.testing.expectEqual(@as(usize, 1), state.world.renderableMeshCount());
+    try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
+    try std.testing.expect(state.world.findEntityById("scrapbot.input.frame") == null);
 }
 
 test "render stats reports mesh renderables and planned batches" {
@@ -674,13 +752,13 @@ test "render ECS derives UI button interaction state from frame input" {
 
     try std.testing.expectEqual(@as(usize, 1), state.world.componentInstanceCountFor(render_ui_button_state_component_id));
     const extracted_button = state.world.uiRectAt(0) orelse return error.TestExpectedEqual;
-    const held_state = (try renderUiButtonState(&state.world, extracted_button.entity)) orelse return error.TestExpectedEqual;
+    const held_state = (try renderUiButtonState(state.world, extracted_button.entity)) orelse return error.TestExpectedEqual;
     try std.testing.expect(held_state.hovered);
     try std.testing.expect(held_state.held);
     try std.testing.expect(!held_state.pressed);
 
     const extracted_panel = state.world.uiRectAt(1) orelse return error.TestExpectedEqual;
-    try std.testing.expect((try renderUiButtonState(&state.world, extracted_panel.entity)) == null);
+    try std.testing.expect((try renderUiButtonState(state.world, extracted_panel.entity)) == null);
 
     try state.extractSceneWithInput(.{ .world = &scene_world }, .{
         .pointer = .{
@@ -692,7 +770,7 @@ test "render ECS derives UI button interaction state from frame input" {
     try state.updateUiInteractions();
 
     const pressed_button = state.world.uiRectAt(0) orelse return error.TestExpectedEqual;
-    const pressed_state = (try renderUiButtonState(&state.world, pressed_button.entity)) orelse return error.TestExpectedEqual;
+    const pressed_state = (try renderUiButtonState(state.world, pressed_button.entity)) orelse return error.TestExpectedEqual;
     try std.testing.expect(pressed_state.hovered);
     try std.testing.expect(!pressed_state.held);
     try std.testing.expect(pressed_state.pressed);
@@ -731,7 +809,7 @@ test "render ECS hit tests buttons through UI layout clips" {
     try state.updateUiInteractions();
 
     const extracted_button = state.world.findEntityById("button") orelse return error.TestExpectedEqual;
-    const held_state = (try renderUiButtonState(&state.world, extracted_button)) orelse return error.TestExpectedEqual;
+    const held_state = (try renderUiButtonState(state.world, extracted_button)) orelse return error.TestExpectedEqual;
     try std.testing.expect(held_state.hovered);
     try std.testing.expect(held_state.held);
 
@@ -745,7 +823,7 @@ test "render ECS hit tests buttons through UI layout clips" {
     try state.updateUiInteractions();
 
     const clipped_button = state.world.findEntityById("button") orelse return error.TestExpectedEqual;
-    const clipped_state = (try renderUiButtonState(&state.world, clipped_button)) orelse return error.TestExpectedEqual;
+    const clipped_state = (try renderUiButtonState(state.world, clipped_button)) orelse return error.TestExpectedEqual;
     try std.testing.expect(!clipped_state.hovered);
     try std.testing.expect(!clipped_state.held);
 }
@@ -775,11 +853,13 @@ test "hidden UI overlay skips UI extraction but keeps frame input" {
     try state.extractSceneWithInput(.{ .world = &scene_world }, .{ .ui_visible = false });
     try state.updateUiInteractions();
 
-    try std.testing.expectEqual(@as(usize, 0), state.world.uiRectCount());
-    try std.testing.expectEqual(@as(usize, 0), state.world.uiTextCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiRectCount());
+    try std.testing.expectEqual(@as(usize, 1), state.world.uiTextCount());
     try std.testing.expectEqual(@as(usize, 0), state.world.componentInstanceCountFor(render_ui_button_state_component_id));
+    try state.queueUiDraw();
+    try std.testing.expectEqual(@as(usize, 0), state.uiDrawCommandCount());
 
-    const input = try renderFrameInput(&state.world);
+    const input = try renderFrameInput(state.world);
     try std.testing.expect(!input.ui_visible);
     try std.testing.expect(!input.debug_overlay_visible);
 }

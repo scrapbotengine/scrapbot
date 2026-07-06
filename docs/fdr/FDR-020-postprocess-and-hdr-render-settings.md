@@ -55,7 +55,7 @@ Postprocess and HDR render settings let projects configure the final game-view i
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-004, ADR-013
+- **ADRs:** ADR-001, ADR-004, ADR-022
 - **FDRs:** FDR-006, FDR-007, FDR-008, FDR-014, FDR-015, FDR-016
 
 ## Open Questions

@@ -809,6 +809,8 @@ pub const EntityProvenance = components.EntityProvenance;
 const CreateEntityOptions = components.CreateEntityOptions;
 pub const ResolvedComponentRow = components.ResolvedComponentRow;
 pub const Entity = components.Entity;
+pub const StructuralEventKind = components.StructuralEventKind;
+pub const StructuralEvent = components.StructuralEvent;
 
 pub const EntityComponentIterator = struct {
     world: *const World,
@@ -825,6 +827,24 @@ pub const EntityComponentIterator = struct {
             }
             if (table.rows_by_entity.items[self.handle.index] != null) {
                 return table.id;
+            }
+        }
+        return null;
+    }
+};
+
+pub const ComponentStructuralEventIterator = struct {
+    events: []const StructuralEvent,
+    component_id: []const u8,
+    index: usize = 0,
+
+    pub fn next(self: *ComponentStructuralEventIterator) ?StructuralEvent {
+        while (self.index < self.events.len) {
+            const event = self.events[self.index];
+            self.index += 1;
+            const event_component_id = event.component_id orelse continue;
+            if (std.mem.eql(u8, event_component_id, self.component_id)) {
+                return event;
             }
         }
         return null;
@@ -877,6 +897,7 @@ pub const World = struct {
     allocator: std.mem.Allocator,
     entities: std.ArrayList(Entity) = .empty,
     component_tables: std.ArrayList(ComponentTable) = .empty,
+    structural_events: std.ArrayList(StructuralEvent) = .empty,
     query_plan_generation: u64 = 1,
     revision: u64 = 1,
     next_entity_generation: u32 = 1,
@@ -896,7 +917,22 @@ pub const World = struct {
         }
         self.component_tables.deinit(allocator);
         self.entities.deinit(allocator);
+        self.structural_events.deinit(allocator);
         self.* = .{ .allocator = allocator };
+    }
+
+    pub fn clearRetainingCapacity(self: *World) void {
+        for (self.entities.items) |stored_entity| {
+            self.allocator.free(stored_entity.id);
+            self.allocator.free(stored_entity.name);
+        }
+        self.entities.clearRetainingCapacity();
+        for (self.component_tables.items) |*component_table| {
+            component_table.clearRetainingCapacity(self.allocator);
+        }
+        self.clearStructuralEventsRetainingCapacity();
+        self.bumpQueryPlanGeneration();
+        self.bumpRevision();
     }
 
     pub fn queryPlanGeneration(self: World) u64 {
@@ -907,6 +943,21 @@ pub const World = struct {
         return self.revision;
     }
 
+    pub fn structuralEvents(self: World) []const StructuralEvent {
+        return self.structural_events.items;
+    }
+
+    pub fn componentStructuralEvents(self: World, component_id: []const u8) ComponentStructuralEventIterator {
+        return .{
+            .events = self.structural_events.items,
+            .component_id = component_id,
+        };
+    }
+
+    pub fn clearStructuralEventsRetainingCapacity(self: *World) void {
+        self.structural_events.clearRetainingCapacity();
+    }
+
     pub fn createEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
         return self.createEntityWithOptions(id, name, .{});
     }
@@ -915,9 +966,19 @@ pub const World = struct {
         return self.createEntityWithOptions(id, name, .{ .provenance = .authored });
     }
 
+    pub fn createEngineTransientEntity(self: *World, id: []const u8, name: []const u8) !EntityHandle {
+        return self.createEntityWithOptions(id, name, .{
+            .provenance = .engine_transient,
+            .emit_structural_events = false,
+        });
+    }
+
     fn createEntityWithOptions(self: *World, id: []const u8, name: []const u8, options: CreateEntityOptions) !EntityHandle {
         if (self.findEntityById(id) != null) {
             return WorldError.DuplicateEntityId;
+        }
+        if (options.emit_structural_events) {
+            try self.reserveStructuralEvents(1);
         }
 
         const owned_id = try self.allocator.dupe(u8, id);
@@ -949,6 +1010,12 @@ pub const World = struct {
             grown_tables += 1;
         }
 
+        if (options.emit_structural_events) {
+            self.appendStructuralEventAssumeCapacity(.{
+                .kind = .entity_created,
+                .entity = handle,
+            });
+        }
         self.bumpRevision();
         return handle;
     }
@@ -1359,31 +1426,77 @@ pub const World = struct {
     }
 
     pub fn setComponent(self: *World, handle: EntityHandle, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!void {
+        return self.setComponentWithStructuralEvents(handle, component_id, fields, true);
+    }
+
+    pub fn setComponentSilently(self: *World, handle: EntityHandle, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!void {
+        return self.setComponentWithStructuralEvents(handle, component_id, fields, false);
+    }
+
+    fn setComponentWithStructuralEvents(self: *World, handle: EntityHandle, component_id: []const u8, fields: []const ComponentFieldValue, emit_requested: bool) WorldError!void {
         const index = try self.componentIndex(handle);
+        const emit_structural_event = emit_requested and self.entities.items[index].provenance != .engine_transient;
         const table_index = try self.ensureComponentTable(component_id, fields);
         const table = &self.component_tables.items[table_index];
         if (table.rows_by_entity.items[index]) |row| {
             try self.updateComponentRow(table, row, fields);
         } else {
+            if (emit_structural_event) {
+                try self.reserveStructuralEvents(1);
+            }
             try self.appendComponentRow(table, handle, index, fields);
+            if (emit_structural_event) {
+                self.appendStructuralEventAssumeCapacity(.{
+                    .kind = .component_added,
+                    .entity = handle,
+                    .component_id = table.id,
+                });
+            }
         }
         self.bumpRevision();
     }
 
     pub fn removeComponent(self: *World, handle: EntityHandle, component_id: []const u8) WorldError!bool {
+        return self.removeComponentWithStructuralEvents(handle, component_id, true, true);
+    }
+
+    pub fn removeAllComponents(self: *World, component_id: []const u8) WorldError!void {
+        return self.removeAllComponentsWithStructuralEvents(component_id, true);
+    }
+
+    pub fn removeAllComponentsSilently(self: *World, component_id: []const u8) WorldError!void {
+        return self.removeAllComponentsWithStructuralEvents(component_id, false);
+    }
+
+    fn removeAllComponentsWithStructuralEvents(self: *World, component_id: []const u8, emit_requested: bool) WorldError!void {
+        while (true) {
+            const table = self.findComponentTable(component_id) orelse return;
+            if (table.entities.items.len == 0) {
+                return;
+            }
+            _ = try self.removeComponentWithStructuralEvents(table.entities.items[0], component_id, true, emit_requested);
+        }
+    }
+
+    fn removeComponentWithStructuralEvents(self: *World, handle: EntityHandle, component_id: []const u8, reserve_event: bool, emit_requested: bool) WorldError!bool {
         const entity_index = try self.componentIndex(handle);
+        const emit_structural_event = emit_requested and self.entities.items[entity_index].provenance != .engine_transient;
         const table = self.findMutableComponentTable(component_id) orelse return false;
         if (entity_index >= table.rows_by_entity.items.len) {
             return false;
         }
         const row = table.rows_by_entity.items[entity_index] orelse return false;
+        if (emit_structural_event and reserve_event) {
+            try self.reserveStructuralEvents(1);
+        }
+        const removed_handle = table.entities.items[row];
+        const removed_component_id = table.id;
         const last_row = table.entities.items.len - 1;
-        const removed_entity = table.entities.items[row];
         const moved_entity = table.entities.items[last_row];
 
         table.entities.items[row] = moved_entity;
         _ = table.entities.pop();
-        table.rows_by_entity.items[removed_entity.index] = null;
+        table.rows_by_entity.items[removed_handle.index] = null;
         if (row != last_row) {
             table.rows_by_entity.items[moved_entity.index] = row;
         }
@@ -1392,19 +1505,49 @@ pub const World = struct {
             column.values.swapRemove(self.allocator, row);
         }
 
+        if (emit_structural_event) {
+            self.appendStructuralEventAssumeCapacity(.{
+                .kind = .component_removed,
+                .entity = removed_handle,
+                .component_id = removed_component_id,
+            });
+        }
         self.bumpRevision();
         return true;
     }
 
+    pub fn clearEngineTransientEntities(self: *World) WorldError!void {
+        var index: usize = 0;
+        while (index < self.entities.items.len) {
+            if (self.entities.items[index].provenance != .engine_transient) {
+                index += 1;
+                continue;
+            }
+            const handle = EntityHandle{
+                .index = @intCast(index),
+                .generation = self.entities.items[index].generation,
+            };
+            _ = try self.removeEntity(handle);
+        }
+    }
+
     pub fn removeEntity(self: *World, handle: EntityHandle) WorldError!bool {
         const entity_index = try self.componentIndex(handle);
+        const emit_structural_event = self.entities.items[entity_index].provenance != .engine_transient;
         const last_entity_index = self.entities.items.len - 1;
+        const removed_handle = EntityHandle{
+            .index = @intCast(entity_index),
+            .generation = self.entities.items[entity_index].generation,
+        };
+        if (emit_structural_event) {
+            try self.reserveStructuralEvents(self.componentCountForEntity(removed_handle) + 1);
+        }
 
         while (true) {
             var removed_component = false;
             for (self.component_tables.items) |*table| {
                 if (entity_index < table.rows_by_entity.items.len and table.rows_by_entity.items[entity_index] != null) {
-                    _ = try self.removeComponent(handle, table.id);
+                    _ = try self.removeComponentWithStructuralEvents(removed_handle, table.id, false, emit_structural_event);
                     removed_component = true;
                     break;
                 }
@@ -1438,6 +1581,12 @@ pub const World = struct {
             }
         }
 
+        if (emit_structural_event) {
+            self.appendStructuralEventAssumeCapacity(.{
+                .kind = .entity_removed,
+                .entity = removed_handle,
+            });
+        }
         self.bumpRevision();
         return true;
     }
@@ -1568,7 +1717,7 @@ pub const World = struct {
     pub fn renderableMeshCount(self: World) usize {
         var count: usize = 0;
         for (0..self.entityCount()) |index| {
-            if (self.renderableMeshAtEntity(.{ .index = @intCast(index) }) != null) {
+            if (self.renderableMeshForEntity(.{ .index = @intCast(index) }) != null) {
                 count += 1;
             }
         }
@@ -1590,16 +1739,32 @@ pub const World = struct {
     }
 
     pub fn renderableMeshAt(self: World, render_index: usize) ?RenderableMesh {
+        const collector = RenderableMeshCollector.init(self);
         var found: usize = 0;
         for (0..self.entityCount()) |index| {
             const handle = EntityHandle{ .index = @intCast(index) };
-            const mesh = self.renderableMeshAtEntity(handle) orelse continue;
+            const mesh = collector.meshAt(handle) orelse continue;
             if (found == render_index) {
                 return mesh;
             }
             found += 1;
         }
         return null;
+    }
+
+    pub fn renderableMeshForEntity(self: World, handle: EntityHandle) ?RenderableMesh {
+        const collector = RenderableMeshCollector.init(self);
+        return collector.meshAt(handle);
+    }
+
+    pub fn appendRenderableMeshes(self: World, allocator: std.mem.Allocator, out: *std.ArrayList(RenderableMesh)) std.mem.Allocator.Error!void {
+        const collector = RenderableMeshCollector.init(self);
+        try out.ensureUnusedCapacity(allocator, self.entityCount());
+        for (0..self.entityCount()) |index| {
+            const handle = EntityHandle{ .index = @intCast(index) };
+            const mesh = collector.meshAt(handle) orelse continue;
+            out.appendAssumeCapacity(mesh);
+        }
     }
 
     pub fn renderableCubes(self: *const World) RenderableCubeIterator {
@@ -1709,55 +1874,7 @@ pub const World = struct {
     }
 
     fn renderableMeshAtEntity(self: World, handle: EntityHandle) ?RenderableMesh {
-        const stored_entity = self.entity(handle) catch return null;
-        const stored_handle = EntityHandle{
-            .index = handle.index,
-            .generation = stored_entity.generation,
-        };
-        const transform = (self.getTransform(handle) catch return null) orelse return null;
-        const spin = self.getVec3(handle, spin_component_id, "angular_velocity") catch .{ 0.0, 0.0, 0.0 };
-        const casts_shadow = self.hasComponent(handle, shadow_caster_component_id) catch false;
-        const receives_shadow = self.hasComponent(handle, shadow_receiver_component_id) catch false;
-
-        if ((self.hasComponent(handle, geometry_primitive_component_id) catch false) and
-            (self.hasComponent(handle, surface_material_component_id) catch false))
-        {
-            return .{
-                .entity = stored_handle,
-                .id = stored_entity.id,
-                .name = stored_entity.name,
-                .position = transform.position,
-                .rotation = transform.rotation,
-                .scale = transform.scale,
-                .primitive = self.getString(handle, geometry_primitive_component_id, "primitive") catch return null,
-                .segments = self.getInt(handle, geometry_primitive_component_id, "segments") catch return null,
-                .rings = self.getInt(handle, geometry_primitive_component_id, "rings") catch return null,
-                .base_color = self.getVec3(handle, surface_material_component_id, "base_color") catch return null,
-                .spin = spin,
-                .casts_shadow = casts_shadow,
-                .receives_shadow = receives_shadow,
-            };
-        }
-
-        if (self.hasComponent(handle, cube_renderer_component_id) catch false) {
-            return .{
-                .entity = stored_handle,
-                .id = stored_entity.id,
-                .name = stored_entity.name,
-                .position = transform.position,
-                .rotation = transform.rotation,
-                .scale = transform.scale,
-                .primitive = "box",
-                .segments = 0,
-                .rings = 0,
-                .base_color = self.getVec3(handle, cube_renderer_component_id, "color") catch return null,
-                .spin = spin,
-                .casts_shadow = casts_shadow,
-                .receives_shadow = receives_shadow,
-            };
-        }
-
-        return null;
+        return self.renderableMeshForEntity(handle);
     }
 
     fn uiRectAtEntity(self: World, handle: EntityHandle) ?UiRect {
@@ -1996,6 +2113,14 @@ pub const World = struct {
         }
     }
 
+    fn reserveStructuralEvents(self: *World, additional_count: usize) WorldError!void {
+        try self.structural_events.ensureUnusedCapacity(self.allocator, additional_count);
+    }
+
+    fn appendStructuralEventAssumeCapacity(self: *World, event: StructuralEvent) void {
+        self.structural_events.appendAssumeCapacity(event);
+    }
+
     fn nextEntityGeneration(self: *World) u32 {
         const generation = self.next_entity_generation;
         self.next_entity_generation +%= 1;
@@ -2003,6 +2128,16 @@ pub const World = struct {
             self.next_entity_generation = 1;
         }
         return generation;
+    }
+
+    fn componentCountForEntity(self: World, handle: EntityHandle) usize {
+        var count: usize = 0;
+        for (self.component_tables.items) |table| {
+            if (rowForEntity(table, handle) != null) {
+                count += 1;
+            }
+        }
+        return count;
     }
 
     fn createComponentTable(self: World, component_id: []const u8, fields: []const ComponentFieldValue) WorldError!ComponentTable {
@@ -2146,15 +2281,249 @@ fn validateComponentTableFields(table: ComponentTable, fields: []const Component
     }
 }
 
+const RenderableMeshCollector = struct {
+    world: World,
+    transform: ?TransformLookup,
+    geometry: ?GeometryLookup,
+    material: ?MaterialLookup,
+    cube: ?CubeLookup,
+    spin: ?SpinLookup,
+    shadow_caster: ?*const ComponentTable,
+    shadow_receiver: ?*const ComponentTable,
+
+    fn init(world: World) RenderableMeshCollector {
+        return .{
+            .world = world,
+            .transform = TransformLookup.init(world.findComponentTable(transform_component_id)),
+            .geometry = GeometryLookup.init(world.findComponentTable(geometry_primitive_component_id)),
+            .material = MaterialLookup.init(world.findComponentTable(surface_material_component_id)),
+            .cube = CubeLookup.init(world.findComponentTable(cube_renderer_component_id)),
+            .spin = SpinLookup.init(world.findComponentTable(spin_component_id)),
+            .shadow_caster = world.findComponentTable(shadow_caster_component_id),
+            .shadow_receiver = world.findComponentTable(shadow_receiver_component_id),
+        };
+    }
+
+    fn meshAt(self: RenderableMeshCollector, handle: EntityHandle) ?RenderableMesh {
+        const stored_entity = self.world.entity(handle) catch return null;
+        const stored_handle = EntityHandle{
+            .index = handle.index,
+            .generation = stored_entity.generation,
+        };
+        const transform_lookup = self.transform orelse return null;
+        const transform = transform_lookup.valueAt(stored_handle) orelse return null;
+        const spin = if (self.spin) |lookup| lookup.valueAt(stored_handle) orelse .{ 0.0, 0.0, 0.0 } else .{ 0.0, 0.0, 0.0 };
+        const casts_shadow = hasComponentRow(self.shadow_caster, stored_handle);
+        const receives_shadow = hasComponentRow(self.shadow_receiver, stored_handle);
+
+        if (self.geometry) |geometry| {
+            if (self.material) |material| {
+                if (geometry.valueAt(stored_handle)) |geometry_value| {
+                    if (material.valueAt(stored_handle)) |material_value| {
+                        return .{
+                            .entity = stored_handle,
+                            .id = stored_entity.id,
+                            .name = stored_entity.name,
+                            .position = transform.position,
+                            .rotation = transform.rotation,
+                            .scale = transform.scale,
+                            .primitive = geometry_value.primitive,
+                            .segments = geometry_value.segments,
+                            .rings = geometry_value.rings,
+                            .base_color = material_value.base_color,
+                            .spin = spin,
+                            .casts_shadow = casts_shadow,
+                            .receives_shadow = receives_shadow,
+                        };
+                    }
+                }
+            }
+        }
+
+        if (self.cube) |cube| {
+            if (cube.valueAt(stored_handle)) |cube_value| {
+                return .{
+                    .entity = stored_handle,
+                    .id = stored_entity.id,
+                    .name = stored_entity.name,
+                    .position = transform.position,
+                    .rotation = transform.rotation,
+                    .scale = transform.scale,
+                    .primitive = "box",
+                    .segments = 0,
+                    .rings = 0,
+                    .base_color = cube_value.color,
+                    .spin = spin,
+                    .casts_shadow = casts_shadow,
+                    .receives_shadow = receives_shadow,
+                };
+            }
+        }
+
+        return null;
+    }
+};
+
+const TransformLookup = struct {
+    table: *const ComponentTable,
+    position: *const ComponentColumn,
+    rotation: *const ComponentColumn,
+    scale: *const ComponentColumn,
+
+    fn init(table: ?*const ComponentTable) ?TransformLookup {
+        const resolved = table orelse return null;
+        return .{
+            .table = resolved,
+            .position = findColumn(resolved.*, "position") orelse return null,
+            .rotation = findColumn(resolved.*, "rotation") orelse return null,
+            .scale = findColumn(resolved.*, "scale") orelse return null,
+        };
+    }
+
+    fn valueAt(self: TransformLookup, handle: EntityHandle) ?Transform {
+        const row = rowForEntity(self.table.*, handle) orelse return null;
+        return .{
+            .position = vec3ColumnValue(self.position, row) orelse return null,
+            .rotation = vec3ColumnValue(self.rotation, row) orelse return null,
+            .scale = vec3ColumnValue(self.scale, row) orelse return null,
+        };
+    }
+};
+
+const GeometryLookup = struct {
+    table: *const ComponentTable,
+    primitive: *const ComponentColumn,
+    segments: *const ComponentColumn,
+    rings: *const ComponentColumn,
+
+    const Value = struct {
+        primitive: []const u8,
+        segments: i32,
+        rings: i32,
+    };
+
+    fn init(table: ?*const ComponentTable) ?GeometryLookup {
+        const resolved = table orelse return null;
+        return .{
+            .table = resolved,
+            .primitive = findColumn(resolved.*, "primitive") orelse return null,
+            .segments = findColumn(resolved.*, "segments") orelse return null,
+            .rings = findColumn(resolved.*, "rings") orelse return null,
+        };
+    }
+
+    fn valueAt(self: GeometryLookup, handle: EntityHandle) ?Value {
+        const row = rowForEntity(self.table.*, handle) orelse return null;
+        return .{
+            .primitive = stringColumnValue(self.primitive, row) orelse return null,
+            .segments = intColumnValue(self.segments, row) orelse return null,
+            .rings = intColumnValue(self.rings, row) orelse return null,
+        };
+    }
+};
+
+const MaterialLookup = struct {
+    table: *const ComponentTable,
+    base_color: *const ComponentColumn,
+
+    const Value = struct {
+        base_color: [3]f32,
+    };
+
+    fn init(table: ?*const ComponentTable) ?MaterialLookup {
+        const resolved = table orelse return null;
+        return .{
+            .table = resolved,
+            .base_color = findColumn(resolved.*, "base_color") orelse return null,
+        };
+    }
+
+    fn valueAt(self: MaterialLookup, handle: EntityHandle) ?Value {
+        const row = rowForEntity(self.table.*, handle) orelse return null;
+        return .{
+            .base_color = vec3ColumnValue(self.base_color, row) orelse return null,
+        };
+    }
+};
+
+const CubeLookup = struct {
+    table: *const ComponentTable,
+    color: *const ComponentColumn,
+
+    const Value = struct {
+        color: [3]f32,
+    };
+
+    fn init(table: ?*const ComponentTable) ?CubeLookup {
+        const resolved = table orelse return null;
+        return .{
+            .table = resolved,
+            .color = findColumn(resolved.*, "color") orelse return null,
+        };
+    }
+
+    fn valueAt(self: CubeLookup, handle: EntityHandle) ?Value {
+        const row = rowForEntity(self.table.*, handle) orelse return null;
+        return .{
+            .color = vec3ColumnValue(self.color, row) orelse return null,
+        };
+    }
+};
+
+const SpinLookup = struct {
+    table: *const ComponentTable,
+    angular_velocity: *const ComponentColumn,
+
+    fn init(table: ?*const ComponentTable) ?SpinLookup {
+        const resolved = table orelse return null;
+        return .{
+            .table = resolved,
+            .angular_velocity = findColumn(resolved.*, "angular_velocity") orelse return null,
+        };
+    }
+
+    fn valueAt(self: SpinLookup, handle: EntityHandle) ?[3]f32 {
+        const row = rowForEntity(self.table.*, handle) orelse return null;
+        return vec3ColumnValue(self.angular_velocity, row);
+    }
+};
+
+fn hasComponentRow(table: ?*const ComponentTable, handle: EntityHandle) bool {
+    const resolved = table orelse return false;
+    return rowForEntity(resolved.*, handle) != null;
+}
+
+fn vec3ColumnValue(column: *const ComponentColumn, row: usize) ?[3]f32 {
+    return switch (column.values) {
+        .vec3 => |values| values.items[row],
+        else => null,
+    };
+}
+
+fn intColumnValue(column: *const ComponentColumn, row: usize) ?i32 {
+    return switch (column.values) {
+        .int => |values| values.items[row],
+        else => null,
+    };
+}
+
+fn stringColumnValue(column: *const ComponentColumn, row: usize) ?[]const u8 {
+    return switch (column.values) {
+        .string => |values| values.items[row],
+        else => null,
+    };
+}
+
 pub const RenderableCubeIterator = struct {
     world: *const World,
     index: usize = 0,
 
     pub fn next(self: *RenderableCubeIterator) ?RenderableCube {
+        const collector = RenderableMeshCollector.init(self.world.*);
         while (self.index < self.world.entityCount()) {
             const handle = EntityHandle{ .index = @intCast(self.index) };
             self.index += 1;
-            const mesh = self.world.renderableMeshAtEntity(handle) orelse continue;
+            const mesh = collector.meshAt(handle) orelse continue;
             return .{
                 .entity = mesh.entity,
                 .id = mesh.id,
@@ -2175,10 +2544,11 @@ pub const RenderableMeshIterator = struct {
     index: usize = 0,
 
     pub fn next(self: *RenderableMeshIterator) ?RenderableMesh {
+        const collector = RenderableMeshCollector.init(self.world.*);
         while (self.index < self.world.entityCount()) {
             const handle = EntityHandle{ .index = @intCast(self.index) };
             self.index += 1;
-            return self.world.renderableMeshAtEntity(handle) orelse continue;
+            return collector.meshAt(handle) orelse continue;
         }
         return null;
     }

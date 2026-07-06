@@ -16,7 +16,20 @@ pub const BatchPlan = struct {
     pub fn build(allocator: std.mem.Allocator, world: *const runtime.World) RenderError!BatchPlan {
         var renderables: std.ArrayList(runtime.RenderableMesh) = .empty;
         errdefer renderables.deinit(allocator);
+        world.appendRenderableMeshes(allocator, &renderables) catch return RenderError.OutOfMemory;
 
+        const renderable_slice = renderables.toOwnedSlice(allocator) catch return RenderError.OutOfMemory;
+        errdefer allocator.free(renderable_slice);
+        return buildFromOwnedRenderables(allocator, renderable_slice);
+    }
+
+    pub fn buildFromRenderables(allocator: std.mem.Allocator, renderables: []const runtime.RenderableMesh) RenderError!BatchPlan {
+        const renderable_slice = allocator.dupe(runtime.RenderableMesh, renderables) catch return RenderError.OutOfMemory;
+        errdefer allocator.free(renderable_slice);
+        return buildFromOwnedRenderables(allocator, renderable_slice);
+    }
+
+    fn buildFromOwnedRenderables(allocator: std.mem.Allocator, renderable_slice: []runtime.RenderableMesh) RenderError!BatchPlan {
         var builds: std.ArrayList(BatchBuild) = .empty;
         errdefer {
             for (builds.items) |*pending_batch| {
@@ -25,10 +38,7 @@ pub const BatchPlan = struct {
             builds.deinit(allocator);
         }
 
-        var meshes = world.renderableMeshes();
-        while (meshes.next()) |renderable| {
-            const render_index = renderables.items.len;
-            renderables.append(allocator, renderable) catch return RenderError.OutOfMemory;
+        for (renderable_slice, 0..) |renderable, render_index| {
             const geometry_key = GeometryKey.fromRenderable(renderable) orelse return RenderError.InvalidScene;
             const shadow_key = ShadowKey.fromRenderable(renderable);
 
@@ -51,9 +61,6 @@ pub const BatchPlan = struct {
             };
             builds.items[index].render_indices.append(allocator, render_index) catch return RenderError.OutOfMemory;
         }
-
-        const renderable_slice = renderables.toOwnedSlice(allocator) catch return RenderError.OutOfMemory;
-        errdefer allocator.free(renderable_slice);
 
         const batches = allocator.alloc(BatchPlanEntry, builds.items.len) catch return RenderError.OutOfMemory;
         var copied: usize = 0;

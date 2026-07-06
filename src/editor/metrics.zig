@@ -266,7 +266,7 @@ pub const EditorEntityVisibleRange = struct {
 };
 
 pub fn editorEntityVisibleRange(scene_world: *const runtime.World, input: FrameInput) EditorEntityVisibleRange {
-    const entity_count = scene_world.entityCount();
+    const entity_count = editorInspectableEntityCount(scene_world);
     if (entity_count == 0) {
         return .{ .start = 0, .end = 0, .offset_y = 0.0 };
     }
@@ -330,12 +330,12 @@ pub fn editorEntityTableContentHeight(row_count: usize) f32 {
 }
 
 pub fn editorEntityNeedsScroll(scene_world: *const runtime.World, input: FrameInput) bool {
-    return scene_world.entityCount() > editorEntityVisibleRows(input);
+    return editorInspectableEntityCount(scene_world) > editorEntityVisibleRows(input);
 }
 
 pub fn editorEntityMaxScroll(scene_world: *const runtime.World, input: FrameInput) usize {
     const visible_rows = editorEntityVisibleRows(input);
-    const entity_count = scene_world.entityCount();
+    const entity_count = editorInspectableEntityCount(scene_world);
     return if (entity_count > visible_rows)
         entity_count - visible_rows
     else
@@ -347,12 +347,31 @@ pub fn editorEntityMaxScrollY(scene_world: *const runtime.World, input: FrameInp
 }
 
 pub fn editorEntityHandleAt(scene_world: *const runtime.World, entity_index: usize) ?runtime.EntityHandle {
-    if (entity_index >= scene_world.entityCount()) {
-        return null;
+    var inspectable_index: usize = 0;
+    for (0..scene_world.entityCount()) |dense_index| {
+        const index: u32 = @intCast(dense_index);
+        const entity = scene_world.entity(.{ .index = index }) catch continue;
+        if (entity.provenance == .engine_transient) {
+            continue;
+        }
+        if (inspectable_index == entity_index) {
+            return .{ .index = index, .generation = entity.generation };
+        }
+        inspectable_index += 1;
     }
-    const index: u32 = @intCast(entity_index);
-    const entity = scene_world.entity(.{ .index = index }) catch return null;
-    return .{ .index = index, .generation = entity.generation };
+    return null;
+}
+
+pub fn editorInspectableEntityCount(scene_world: *const runtime.World) usize {
+    var count: usize = 0;
+    for (0..scene_world.entityCount()) |dense_index| {
+        const index: u32 = @intCast(dense_index);
+        const entity = scene_world.entity(.{ .index = index }) catch continue;
+        if (entity.provenance != .engine_transient) {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 pub fn editorEntityComponentCount(scene_world: *const runtime.World, handle: runtime.EntityHandle) usize {

@@ -84,9 +84,58 @@ test "world tracks entity provenance" {
 
     const spawned = try world.createEntity("spawned", "Spawned");
     const authored = try world.createAuthoredEntity("authored", "Authored");
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
 
     try std.testing.expectEqual(EntityProvenance.spawned, (try world.entity(spawned)).provenance);
     try std.testing.expectEqual(EntityProvenance.authored, (try world.entity(authored)).provenance);
+    try std.testing.expectEqual(EntityProvenance.engine_transient, (try world.entity(transient)).provenance);
+}
+
+test "world clears engine transient entities without removing scene entities" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const authored = try world.createAuthoredEntity("authored", "Authored");
+    const spawned = try world.createEntity("spawned", "Spawned");
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
+    try world.setTransform(authored, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setTransform(spawned, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setTransform(transient, .{ .position = .{ 3.0, 0.0, 0.0 } });
+
+    try std.testing.expectEqual(@as(usize, 3), world.entityCount());
+    try std.testing.expectEqual(@as(usize, 3), world.componentInstanceCountFor(transform_component_id));
+
+    try world.clearEngineTransientEntities();
+
+    try std.testing.expectEqual(@as(usize, 2), world.entityCount());
+    try std.testing.expect(world.findEntityById("authored") != null);
+    try std.testing.expect(world.findEntityById("spawned") != null);
+    try std.testing.expect(world.findEntityById("transient") == null);
+    try std.testing.expectEqual(@as(usize, 2), world.componentInstanceCountFor(transform_component_id));
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(transient));
+}
+
+test "engine transient mutations do not write structural events" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const scene_entity = try world.createEntity("scene", "Scene");
+    try world.setTransform(scene_entity, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(@as(usize, 2), world.structuralEvents().len);
+    world.clearStructuralEventsRetainingCapacity();
+
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
+    try world.setTransform(transient, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setComponentSilently(scene_entity, ui_command_event_component_id, &.{
+        .{ .name = "command", .value = .{ .string = "internal" } },
+        .{ .name = "source", .value = .{ .string = "transient" } },
+    });
+    try std.testing.expectEqual(@as(usize, 0), world.structuralEvents().len);
+
+    try world.clearEngineTransientEntities();
+    try world.removeAllComponentsSilently(ui_command_event_component_id);
+    try std.testing.expectEqual(@as(usize, 0), world.structuralEvents().len);
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(transient));
 }
 
 test "world exposes component field names for inspection" {
@@ -108,6 +157,45 @@ test "world exposes component field names for inspection" {
         .vec3 => |payload| try std.testing.expectEqual(@as(f32, 2.0), payload[1]),
         else => return error.TestExpectedEqual,
     }
+}
+
+test "world clears entities and components while retaining reusable schemas" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    try world.setTransform(first, .{ .position = .{ 1.0, 2.0, 3.0 } });
+    try world.setUiText(first, .{
+        .position = .{ 4.0, 5.0, 0.0 },
+        .size = 2.0,
+        .color = .{ 1.0, 1.0, 1.0 },
+        .value = "before",
+    });
+
+    try std.testing.expectEqual(@as(usize, 1), world.entityCount());
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(transform_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(ui_text_component_id));
+
+    const before_generation = world.queryPlanGeneration();
+    const before_revision = world.worldRevision();
+    world.clearRetainingCapacity();
+
+    try std.testing.expectEqual(@as(usize, 0), world.entityCount());
+    try std.testing.expectEqual(@as(usize, 0), world.componentInstanceCountFor(transform_component_id));
+    try std.testing.expectEqual(@as(usize, 0), world.componentInstanceCountFor(ui_text_component_id));
+    try std.testing.expectEqual(@as(usize, 3), world.componentFieldCount(transform_component_id));
+    try std.testing.expect(world.queryPlanGeneration() != before_generation);
+    try std.testing.expect(world.worldRevision() != before_revision);
+    try std.testing.expect(world.findEntityById("first") == null);
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(first));
+
+    const second = try world.createEntity("second", "Second");
+    try std.testing.expectEqual(@as(u32, 0), second.index);
+    try std.testing.expect(second.generation != first.generation);
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(first));
+    try world.setTransform(second, .{ .position = .{ 7.0, 8.0, 9.0 } });
+    const transform = (try world.getTransform(second)) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(f32, 8.0), transform.position[1]);
 }
 
 test "world stores frame input components on a shared input entity" {
@@ -168,6 +256,52 @@ test "world removes component rows without moving entity handles" {
     try std.testing.expectEqualStrings("two", event.command);
     try std.testing.expectEqualStrings("second", event.source);
     try std.testing.expect(!try world.removeComponent(first, ui_command_event_component_id));
+}
+
+test "world records structural events for entities and components" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("entity", "Entity");
+    try world.setTransform(entity, .{ .position = .{ 1.0, 2.0, 3.0 } });
+    try world.setTransform(entity, .{ .position = .{ 4.0, 5.0, 6.0 } });
+    try world.setCubeRenderer(entity, .{ .color = .{ 0.2, 0.4, 0.6 } });
+
+    const initial_events = world.structuralEvents();
+    try std.testing.expectEqual(@as(usize, 3), initial_events.len);
+    try std.testing.expectEqual(runtime.StructuralEventKind.entity_created, initial_events[0].kind);
+    try std.testing.expectEqual(entity, initial_events[0].entity);
+    try std.testing.expect(initial_events[0].component_id == null);
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_added, initial_events[1].kind);
+    try std.testing.expectEqual(entity, initial_events[1].entity);
+    try std.testing.expectEqualStrings(transform_component_id, initial_events[1].component_id orelse return error.TestExpectedEqual);
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_added, initial_events[2].kind);
+    try std.testing.expectEqualStrings(cube_renderer_component_id, initial_events[2].component_id orelse return error.TestExpectedEqual);
+
+    var transform_events = world.componentStructuralEvents(transform_component_id);
+    const transform_added = transform_events.next() orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_added, transform_added.kind);
+    try std.testing.expect(transform_events.next() == null);
+
+    try std.testing.expect(try world.removeComponent(entity, transform_component_id));
+    try std.testing.expect(try world.removeEntity(entity));
+
+    const all_events = world.structuralEvents();
+    try std.testing.expectEqual(@as(usize, 6), all_events.len);
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_removed, all_events[3].kind);
+    try std.testing.expectEqualStrings(transform_component_id, all_events[3].component_id orelse return error.TestExpectedEqual);
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_removed, all_events[4].kind);
+    try std.testing.expectEqualStrings(cube_renderer_component_id, all_events[4].component_id orelse return error.TestExpectedEqual);
+    try std.testing.expectEqual(runtime.StructuralEventKind.entity_removed, all_events[5].kind);
+    try std.testing.expectEqual(entity, all_events[5].entity);
+
+    var cube_events = world.componentStructuralEvents(cube_renderer_component_id);
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_added, (cube_events.next() orelse return error.TestExpectedEqual).kind);
+    try std.testing.expectEqual(runtime.StructuralEventKind.component_removed, (cube_events.next() orelse return error.TestExpectedEqual).kind);
+    try std.testing.expect(cube_events.next() == null);
+
+    world.clearStructuralEventsRetainingCapacity();
+    try std.testing.expectEqual(@as(usize, 0), world.structuralEvents().len);
 }
 
 test "world removes entities and repairs component table handles" {

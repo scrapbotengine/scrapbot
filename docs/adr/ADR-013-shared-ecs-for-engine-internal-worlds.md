@@ -2,6 +2,8 @@
 
 **Date:** 2026-07-02
 
+**Status:** Superseded by [ADR-022](ADR-022-single-world-render-data-flow.md).
+
 ## Context
 
 Scrapbot's game state, scenes, scripts, tests, and future editor already use one entity-component-system runtime. Rendering originally read scene components directly and kept renderer-specific object arrays as the effective draw model. That would create a second, informal ECS if internal engine paths grew separate storage, scheduling, and query rules.
