@@ -1,24 +1,12 @@
 const std = @import("std");
 const geometry = @import("../geometry.zig");
 const runtime = @import("../runtime.zig");
-const backend = @import("backend.zig");
-const render_math = @import("math.zig");
+const render_resources = @import("resources.zig");
 const types = @import("types.zig");
 const wgpu = @import("wgpu");
 
 const RenderError = types.RenderError;
-const InstanceConfig = types.InstanceConfig;
 const InstanceAttributes = types.InstanceAttributes;
-const CameraState = types.CameraState;
-const DirectionalLightState = types.DirectionalLightState;
-const perspective = render_math.perspective;
-const matMul = render_math.matMul;
-const translation = render_math.translation;
-const scaling = render_math.scaling;
-const rotationX = render_math.rotationX;
-const rotationY = render_math.rotationY;
-const rotationZ = render_math.rotationZ;
-const cameraViewMatrix = render_math.cameraViewMatrix;
 
 pub const BatchPlan = struct {
     allocator: std.mem.Allocator,
@@ -108,12 +96,12 @@ pub const BatchPlan = struct {
     }
 };
 
-pub const BatchBuild = struct {
+const BatchBuild = struct {
     geometry_key: GeometryKey,
     shadow_key: ShadowKey,
     render_indices: std.ArrayList(usize) = .empty,
 
-    pub fn deinit(self: *BatchBuild, allocator: std.mem.Allocator) void {
+    fn deinit(self: *BatchBuild, allocator: std.mem.Allocator) void {
         self.render_indices.deinit(allocator);
     }
 };
@@ -151,10 +139,10 @@ pub const BatchResources = struct {
 
         const vertex_bytes = std.mem.sliceAsBytes(mesh.vertices);
         const index_bytes = std.mem.sliceAsBytes(mesh.indices);
-        const vertex_buffer = try backend.createStaticBuffer(device, "Scrapbot mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
+        const vertex_buffer = try render_resources.createStaticBuffer(device, "Scrapbot mesh vertex buffer", wgpu.BufferUsages.vertex, vertex_bytes);
         errdefer vertex_buffer.release();
 
-        const index_buffer = try backend.createStaticBuffer(device, "Scrapbot mesh index buffer", wgpu.BufferUsages.index, index_bytes);
+        const index_buffer = try render_resources.createStaticBuffer(device, "Scrapbot mesh index buffer", wgpu.BufferUsages.index, index_bytes);
         errdefer index_buffer.release();
 
         if (entry.render_indices.len > std.math.maxInt(u32)) {
@@ -233,50 +221,9 @@ pub const ShadowKey = struct {
     }
 };
 
-pub fn instanceAttributes(config: InstanceConfig) RenderError!InstanceAttributes {
-    const aspect = config.width / config.height;
-    const mesh = config.mesh;
-    const rotation = matMul(
-        rotationZ(mesh.rotation[2]),
-        matMul(
-            rotationY(mesh.rotation[1]),
-            rotationX(mesh.rotation[0]),
-        ),
-    );
-    const model = matMul(
-        translation(mesh.position[0], mesh.position[1], mesh.position[2]),
-        matMul(rotation, scaling(mesh.scale[0], mesh.scale[1], mesh.scale[2])),
-    );
-    const camera = try validateCamera(config.camera);
-    const view = cameraViewMatrix(camera.transform);
-    const projection = perspective(std.math.degreesToRadians(camera.fov_y_degrees), aspect, camera.near, camera.far);
-    const mvp = matMul(projection, matMul(view, model));
-    const shadow_mvp = matMul(config.light_view_projection, model);
-
-    return .{
-        .mvp = mvp,
-        .model = model,
-        .object_color = .{ mesh.base_color[0], mesh.base_color[1], mesh.base_color[2], 1.0 },
-        .shadow_mvp = shadow_mvp,
-        .shadow_flags = .{
-            @floatFromInt(@as(u32, @intFromBool(mesh.receives_shadow))),
-            @floatFromInt(@as(u32, @intFromBool(mesh.casts_shadow))),
-            0.0,
-            0.0,
-        },
-    };
-}
-
 fn mapGeometryError(err: anyerror) RenderError {
     return switch (err) {
         error.OutOfMemory => RenderError.OutOfMemory,
         else => RenderError.InvalidScene,
     };
-}
-
-fn validateCamera(camera: CameraState) RenderError!CameraState {
-    if (camera.near <= 0.0 or camera.far <= camera.near or camera.fov_y_degrees <= 0.0 or camera.fov_y_degrees >= 180.0) {
-        return RenderError.InvalidScene;
-    }
-    return camera;
 }

@@ -1,4 +1,9 @@
 const main = @import("render/main.zig");
+const batching = @import("render/batching.zig");
+const config = @import("render/config.zig");
+const pipelines = @import("render/pipelines.zig");
+const render_types = @import("render/types.zig");
+const ui_draw = @import("render/ui_draw.zig");
 
 pub const RenderError = main.RenderError;
 pub const Stats = main.Stats;
@@ -40,4 +45,9 @@ pub const editorSystemListHitTestPoint = main.editorSystemListHitTestPoint;
 
 test {
     _ = main;
+    _ = batching;
+    _ = config;
+    _ = pipelines;
+    _ = render_types;
+    _ = ui_draw;
 }
