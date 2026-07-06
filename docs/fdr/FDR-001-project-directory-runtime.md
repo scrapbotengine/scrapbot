@@ -1,7 +1,7 @@
 # FDR-001: Project Directory Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-05
+**Last reviewed:** 2026-07-06
 
 ## Overview
 
@@ -14,8 +14,9 @@ The project directory runtime lets users and agents run the `scrapbot` binary in
 - The runtime locates project metadata, resolves project-relative paths, and reports clear diagnostics when the directory is not a valid project.
 - Users can initialize a new project with `scrapbot init [path]`, defaulting to the current directory.
 - `project.toml` is the canonical project manifest. Existing `project.scrapbot.toml` manifests remain loadable as a compatibility alias, but `project.toml` wins when both files are present.
-- `scrapbot init` creates the target directory when needed, writes `project.toml`, writes the startup scene at `scenes/main.scene.toml`, and creates `assets/.gitkeep`.
-- Fresh projects contain a small script-free scene with a renderer singleton, cube, camera, and directional light using the current scene-authored components.
+- `scrapbot init` creates the target directory when needed, writes `project.toml`, writes the startup scene at `scenes/main.scene.toml`, writes a starter Luau script at `scripts/main.luau`, and creates `assets/.gitkeep`.
+- Fresh projects contain a small scene with a renderer singleton, spinning cube, camera, and directional light using the current scene-authored components.
+- Fresh project manifests list `scripts/main.luau`, and the starter script declares a project-local `spin` component plus an update system that rotates matching entities.
 - Fresh default scenes include a preconfigured `scrapbot.renderer` HDR, color, and postprocess profile.
 - Fresh project manifests keep the optional native module line commented out and do not create native source files.
 - `scrapbot init` does not overwrite an existing project; it fails if `project.toml` or the legacy `project.scrapbot.toml` already exists in the target directory.
