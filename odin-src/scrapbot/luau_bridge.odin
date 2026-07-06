@@ -77,6 +77,26 @@ Luau_Bridge_Set_Field_Proc :: #type proc "c" (
 	value: ^Luau_Bridge_Field_Value,
 ) -> c.int
 
+Luau_Bridge_Get_Vec3_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	field_name: cstring,
+	out_value: ^[3]f32,
+) -> c.int
+
+Luau_Bridge_Set_Vec3_Proc :: #type proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	field_name: cstring,
+	value: ^[3]f32,
+) -> c.int
+
 Luau_Bridge_Component_Field_Value :: struct {
 	name:     cstring,
 	name_len: c.size_t,
@@ -128,8 +148,8 @@ Luau_Bridge_Callbacks :: struct {
 	write_f32_view:             rawptr,
 	read_vec3_view:             rawptr,
 	write_vec3_view:            rawptr,
-	get_vec3:                   rawptr,
-	set_vec3:                   rawptr,
+	get_vec3:                   Luau_Bridge_Get_Vec3_Proc,
+	set_vec3:                   Luau_Bridge_Set_Vec3_Proc,
 	get_field:                  Luau_Bridge_Get_Field_Proc,
 	get_field_resolved:         rawptr,
 	set_field:                  Luau_Bridge_Set_Field_Proc,
@@ -555,6 +575,8 @@ script_program_set_host_error :: proc(program: ^Script_Program, message: string)
 luau_bridge_callbacks :: proc() -> Luau_Bridge_Callbacks {
 	return Luau_Bridge_Callbacks{
 		query_next = luau_bridge_query_next,
+		get_vec3 = luau_bridge_get_vec3,
+		set_vec3 = luau_bridge_set_vec3,
 		get_field = luau_bridge_get_field,
 		set_field = luau_bridge_set_field,
 		spawn_entity = luau_bridge_spawn_entity,
@@ -709,6 +731,83 @@ luau_bridge_set_field :: proc "c" (
 	runtime_component_value_free(runtime_value)
 	if err != .None {
 		script_program_set_host_error(program, "component field write failed")
+		return 0
+	}
+	return 1
+}
+
+luau_bridge_get_vec3 :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	field_name: cstring,
+	out_value: ^[3]f32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || out_value == nil {
+		return 0
+	}
+	context = program.odin_context
+	component := clone_luau_cstring(component_id)
+	field := clone_luau_cstring(field_name)
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	if component == "" || field == "" {
+		script_program_set_host_error(program, "vec3 field read has invalid field identity")
+		return 0
+	}
+	if !script_program_active_system_allows_read(program, component) {
+		script_program_set_host_error(program, "system tried to read a vec3 field without declaring read access")
+		return 0
+	}
+	value, err := runtime_world_get_component_field_value(runtime_world^, Entity_Handle{index = entity, generation = entity_generation}, component, field)
+	if err != .None || value.value_type != .Vec3 {
+		script_program_set_host_error(program, "vec3 field read failed")
+		return 0
+	}
+	out_value^ = value.vec3
+	return 1
+}
+
+luau_bridge_set_vec3 :: proc "c" (
+	ctx: rawptr,
+	world: rawptr,
+	entity: u32,
+	entity_generation: u32,
+	component_id: cstring,
+	field_name: cstring,
+	value: ^[3]f32,
+) -> c.int {
+	program := cast(^Script_Program)ctx
+	runtime_world := cast(^Runtime_World)world
+	if program == nil || runtime_world == nil || value == nil {
+		return 0
+	}
+	context = program.odin_context
+	component := clone_luau_cstring(component_id)
+	field := clone_luau_cstring(field_name)
+	defer if component != "" do delete(component)
+	defer if field != "" do delete(field)
+	if component == "" || field == "" {
+		script_program_set_host_error(program, "vec3 field write has invalid field identity")
+		return 0
+	}
+	if !script_program_active_system_allows_write(program, component) {
+		script_program_set_host_error(program, "system tried to write a vec3 field without declaring write access")
+		return 0
+	}
+	current, current_err := runtime_world_get_component_field_value(runtime_world^, Entity_Handle{index = entity, generation = entity_generation}, component, field)
+	if current_err != .None || current.value_type != .Vec3 {
+		script_program_set_host_error(program, "vec3 field write failed")
+		return 0
+	}
+	runtime_value := runtime_component_value_vec3(value^)
+	err := runtime_world_set_component_field_value(runtime_world, Entity_Handle{index = entity, generation = entity_generation}, component, field, runtime_value)
+	if err != .None {
+		script_program_set_host_error(program, "vec3 field write failed")
 		return 0
 	}
 	return 1

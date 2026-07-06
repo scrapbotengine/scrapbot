@@ -257,6 +257,98 @@ ecs.system("bad_writer", {
 }
 
 @(test)
+test_run_script_simulation_supports_direct_vec3_methods :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-direct-vec3")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "cube"
+name = "Cube"
+
+[entities.components."scrapbot.transform"]
+position = [1.0, 2.0, 3.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Transform = ecs.component("scrapbot.transform")
+local Transforms = ecs.query(Transform)
+
+ecs.system("direct_vec3", {
+  query = Transforms,
+  writes = ecs.refs(Transform),
+  run = function(world, dt)
+    for entity, transform in Transforms:iter(world) do
+      local position = entity:get_vec3("scrapbot.transform", "position")
+      entity:set_vec3("scrapbot.transform", "rotation", { position[1] + dt, position[2] + dt, position[3] + dt })
+    end
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, true)
+	entity, found := runtime_world_find_entity_by_id(result.scene.world, "cube")
+	testing.expect_value(t, found, true)
+	rotation, rotation_err := runtime_world_get_component_field_value(result.scene.world, entity, TRANSFORM_COMPONENT_ID, "rotation")
+	testing.expect_value(t, rotation_err, Runtime_Error.None)
+	testing.expect_value(t, rotation.vec3, [3]f32{1.5, 2.5, 3.5})
+}
+
+@(test)
+test_run_script_simulation_reports_direct_vec3_write_access_diagnostic :: proc(t: ^testing.T) {
+	root := make_test_project(t, "script-simulation-direct-vec3-diagnostic")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = [\"scripts/gameplay.luau\"]\n")
+	write_file(t, root, "scenes/main.scene.toml", `name = "Main"
+version = 1
+
+[[entities]]
+id = "cube"
+name = "Cube"
+
+[entities.components."scrapbot.transform"]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+`)
+	write_file(t, root, "scripts/gameplay.luau", `local Transform = ecs.component("scrapbot.transform")
+local Transforms = ecs.query(Transform)
+
+ecs.system("bad_vec3_writer", {
+  query = Transforms,
+  run = function(world, dt)
+    for entity, transform in Transforms:iter(world) do
+      entity:set_vec3("scrapbot.transform", "rotation", { dt, 0.0, 0.0 })
+    end
+  end,
+})
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+	simulation := run_script_simulation(&result, 1, 0.5)
+	defer script_diagnostic_free(&simulation.diagnostic)
+	testing.expect_value(t, simulation.ok, false)
+	testing.expect_value(t, simulation.completed_frames, 0)
+	testing.expect_value(t, simulation.diagnostic.stage, Script_Diagnostic_Stage.Runtime)
+	testing.expect_value(t, simulation.diagnostic.path, "scripts/gameplay.luau")
+	testing.expect_value(t, simulation.diagnostic.system_id, "bad_vec3_writer")
+	testing.expect(t, strings.contains(simulation.diagnostic.message, "without declaring write access"))
+}
+
+@(test)
 test_run_script_simulation_flushes_structural_commands :: proc(t: ^testing.T) {
 	root := make_test_project(t, "script-simulation-structural-flush")
 	defer os.remove_all(root)
