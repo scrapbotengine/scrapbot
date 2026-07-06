@@ -21,6 +21,14 @@ pub const UiVertex = extern struct {
     color: [4]f32,
     local_position: [2]f32,
     rect_size_radius: [4]f32,
+    glyph_rows0: [4]f32,
+    glyph_rows1: [4]f32,
+    glyph_rows2: [4]f32,
+    glyph_rows3: [4]f32,
+    glyph_rows4: [4]f32,
+    glyph_rows5: [4]f32,
+    glyph_rows6: [4]f32,
+    glyph_rows7: [4]f32,
 };
 
 pub const InstanceAttributes = extern struct {

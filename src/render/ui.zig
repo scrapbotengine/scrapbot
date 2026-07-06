@@ -21,6 +21,11 @@ pub const UiCanvasTransform = ui_layout.CanvasTransform;
 const editorGameViewport = editor_layout.gameViewport;
 const isFiniteVec3 = render_math.isFiniteVec3;
 
+const GlyphVertexRows = struct {
+    rows: [8][4]f32,
+    visible: bool,
+};
+
 pub const UiButtonState = struct {
     hovered: bool = false,
     held: bool = false,
@@ -516,36 +521,11 @@ fn appendGlyph(
     byte: u8,
     clip: ?UiClipRect,
 ) RenderError!void {
-    const rows = ui_font.glyphRows(byte);
-    for (rows, 0..) |row_bits, row| {
-        var run_start: ?usize = null;
-        for (0..ui_font.width + 1) |column| {
-            const lit = if (column < ui_font.width) blk: {
-                const bit: ui_font.BitShift = @intCast(ui_font.width - 1 - column);
-                break :blk (row_bits & (@as(ui_font.Row, 1) << bit)) != 0;
-            } else false;
-            if (lit) {
-                if (run_start == null) {
-                    run_start = column;
-                }
-                continue;
-            }
-            const start = run_start orelse continue;
-            const run_width = column - start;
-            run_start = null;
-            try appendUiRectClipped(
-                vertices,
-                allocator,
-                width,
-                height,
-                .{ x + @as(f32, @floatFromInt(start)) * size, y + @as(f32, @floatFromInt(row)) * size, 0.0 },
-                .{ @as(f32, @floatFromInt(run_width)) * size, size, 0.0 },
-                color,
-                0.0,
-                clip,
-            );
-        }
+    const glyph = glyphVertexRows(byte);
+    if (!glyph.visible) {
+        return;
     }
+    try appendUiGlyphClipped(vertices, allocator, width, height, .{ x, y, 0.0 }, size, color, glyph.rows, clip);
 }
 
 fn rectIntersectsClip(position: [3]f32, size: [3]f32, clip: ?UiClipRect) RenderError!bool {
@@ -639,15 +619,138 @@ fn appendUiRectClipped(
     const local_right = local_left + clipped_size[0];
     const local_bottom = local_top + clipped_size[1];
 
+    const glyph_rows = zeroGlyphRows();
     const quad = [_]UiVertex{
-        .{ .position = .{ left, top }, .color = vertex_color, .local_position = .{ local_left, local_top }, .rect_size_radius = rect_size_radius },
-        .{ .position = .{ right, top }, .color = vertex_color, .local_position = .{ local_right, local_top }, .rect_size_radius = rect_size_radius },
-        .{ .position = .{ right, bottom }, .color = vertex_color, .local_position = .{ local_right, local_bottom }, .rect_size_radius = rect_size_radius },
-        .{ .position = .{ left, top }, .color = vertex_color, .local_position = .{ local_left, local_top }, .rect_size_radius = rect_size_radius },
-        .{ .position = .{ right, bottom }, .color = vertex_color, .local_position = .{ local_right, local_bottom }, .rect_size_radius = rect_size_radius },
-        .{ .position = .{ left, bottom }, .color = vertex_color, .local_position = .{ local_left, local_bottom }, .rect_size_radius = rect_size_radius },
+        uiVertex(.{ left, top }, vertex_color, .{ local_left, local_top }, rect_size_radius, glyph_rows),
+        uiVertex(.{ right, top }, vertex_color, .{ local_right, local_top }, rect_size_radius, glyph_rows),
+        uiVertex(.{ right, bottom }, vertex_color, .{ local_right, local_bottom }, rect_size_radius, glyph_rows),
+        uiVertex(.{ left, top }, vertex_color, .{ local_left, local_top }, rect_size_radius, glyph_rows),
+        uiVertex(.{ right, bottom }, vertex_color, .{ local_right, local_bottom }, rect_size_radius, glyph_rows),
+        uiVertex(.{ left, bottom }, vertex_color, .{ local_left, local_bottom }, rect_size_radius, glyph_rows),
     };
     try vertices.appendSlice(allocator, &quad);
+}
+
+fn appendUiGlyphClipped(
+    vertices: *std.ArrayList(UiVertex),
+    allocator: std.mem.Allocator,
+    width: u32,
+    height: u32,
+    position: [3]f32,
+    pixel_size: f32,
+    color: [3]f32,
+    glyph_rows: [8][4]f32,
+    clip: ?UiClipRect,
+) RenderError!void {
+    const size = [3]f32{
+        @as(f32, @floatFromInt(ui_font.width)) * pixel_size,
+        @as(f32, @floatFromInt(ui_font.height)) * pixel_size,
+        0.0,
+    };
+    if (!isFiniteVec3(position) or
+        !std.math.isFinite(pixel_size) or
+        pixel_size <= 0.0 or
+        !isFiniteVec3(color))
+    {
+        return RenderError.InvalidScene;
+    }
+
+    var clipped_position = position;
+    var clipped_size = size;
+    if (clip) |clip_rect| {
+        if (!isFiniteVec3(clip_rect.position) or !isFiniteVec3(clip_rect.size)) {
+            return RenderError.InvalidScene;
+        }
+        if (clip_rect.size[0] <= 0.0 or clip_rect.size[1] <= 0.0) {
+            return;
+        }
+        const left_px = @max(position[0], clip_rect.position[0]);
+        const top_px = @max(position[1], clip_rect.position[1]);
+        const right_px = @min(position[0] + size[0], clip_rect.position[0] + clip_rect.size[0]);
+        const bottom_px = @min(position[1] + size[1], clip_rect.position[1] + clip_rect.size[1]);
+        if (right_px <= left_px or bottom_px <= top_px) {
+            return;
+        }
+        clipped_position = .{ left_px, top_px, position[2] };
+        clipped_size = .{ right_px - left_px, bottom_px - top_px, size[2] };
+    }
+
+    const left = screenToClipX(clipped_position[0], width);
+    const right = screenToClipX(clipped_position[0] + clipped_size[0], width);
+    const top = screenToClipY(clipped_position[1], height);
+    const bottom = screenToClipY(clipped_position[1] + clipped_size[1], height);
+    const vertex_color = [4]f32{ clamp01(color[0]), clamp01(color[1]), clamp01(color[2]), 1.0 };
+    const rect_size_radius = [4]f32{ size[0], size[1], pixel_size, -1.0 };
+    const local_left = clipped_position[0] - position[0];
+    const local_top = clipped_position[1] - position[1];
+    const local_right = local_left + clipped_size[0];
+    const local_bottom = local_top + clipped_size[1];
+
+    const quad = [_]UiVertex{
+        uiVertex(.{ left, top }, vertex_color, .{ local_left, local_top }, rect_size_radius, glyph_rows),
+        uiVertex(.{ right, top }, vertex_color, .{ local_right, local_top }, rect_size_radius, glyph_rows),
+        uiVertex(.{ right, bottom }, vertex_color, .{ local_right, local_bottom }, rect_size_radius, glyph_rows),
+        uiVertex(.{ left, top }, vertex_color, .{ local_left, local_top }, rect_size_radius, glyph_rows),
+        uiVertex(.{ right, bottom }, vertex_color, .{ local_right, local_bottom }, rect_size_radius, glyph_rows),
+        uiVertex(.{ left, bottom }, vertex_color, .{ local_left, local_bottom }, rect_size_radius, glyph_rows),
+    };
+    try vertices.appendSlice(allocator, &quad);
+}
+
+fn glyphVertexRows(byte: u8) GlyphVertexRows {
+    return glyph_vertex_rows[if (byte < glyph_vertex_rows.len) byte else ui_font.fallback_codepoint];
+}
+
+const glyph_vertex_rows = buildGlyphVertexRows();
+
+fn buildGlyphVertexRows() [128]GlyphVertexRows {
+    @setEvalBranchQuota(8_192);
+    var table: [128]GlyphVertexRows = undefined;
+    for (&table, 0..) |*entry, byte| {
+        entry.* = buildGlyphVertexRowsForByte(@intCast(byte));
+    }
+    return table;
+}
+
+fn buildGlyphVertexRowsForByte(byte: u8) GlyphVertexRows {
+    const rows = ui_font.glyphRows(byte);
+    var glyph_rows = zeroGlyphRows();
+    var visible = false;
+    for (rows, 0..) |row_bits, row| {
+        visible = visible or row_bits != 0;
+        glyph_rows[row / 4][row % 4] = @floatFromInt(row_bits);
+    }
+    return .{ .rows = glyph_rows, .visible = visible };
+}
+
+fn zeroGlyphRows() [8][4]f32 {
+    return .{
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+    };
+}
+
+fn uiVertex(position: [2]f32, color: [4]f32, local_position: [2]f32, rect_size_radius: [4]f32, glyph_rows: [8][4]f32) UiVertex {
+    return .{
+        .position = position,
+        .color = color,
+        .local_position = local_position,
+        .rect_size_radius = rect_size_radius,
+        .glyph_rows0 = glyph_rows[0],
+        .glyph_rows1 = glyph_rows[1],
+        .glyph_rows2 = glyph_rows[2],
+        .glyph_rows3 = glyph_rows[3],
+        .glyph_rows4 = glyph_rows[4],
+        .glyph_rows5 = glyph_rows[5],
+        .glyph_rows6 = glyph_rows[6],
+        .glyph_rows7 = glyph_rows[7],
+    };
 }
 
 pub fn screenToClipX(value: f32, width: u32) f32 {
