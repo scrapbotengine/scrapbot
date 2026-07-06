@@ -45,7 +45,7 @@
 
 ## Next Slice
 
-- [ ] Port remaining Scrapbot CLI commands from Zig to Odin.
+- [x] Port remaining top-level Scrapbot CLI command names and aliases from Zig to Odin.
 - [x] Port first-pass project metadata loading and referenced-file validation from Zig to Odin.
 - [x] Port first-pass project build packaging from Zig to Odin.
 - [x] Port engine-owned scene component schema validation from Zig to Odin.

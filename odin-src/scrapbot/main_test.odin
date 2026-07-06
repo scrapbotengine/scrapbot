@@ -5,6 +5,12 @@ import "core:strings"
 import "core:testing"
 
 @(test)
+test_run_version_command_matches_top_level_cli :: proc(t: ^testing.T) {
+	testing.expect_value(t, run_with_output([]string{"scrapbot", "--version"}, false), 0)
+	testing.expect_value(t, run_with_output([]string{"scrapbot", "version"}, false), 0)
+}
+
+@(test)
 test_run_init_command_creates_checkable_project :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-init-project")
 	defer os.remove_all(root)
