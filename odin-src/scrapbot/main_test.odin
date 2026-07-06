@@ -1003,6 +1003,44 @@ test_run_render_command_writes_png_artifact :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_run_render_command_writes_editor_chrome_pixels :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-editor-chrome")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render Editor Chrome"), Project_Error.None)
+	output_path := project_relative_path(root, "editor-render.png")
+	defer delete(output_path)
+
+	exit_code := run_with_output(
+		[]string{
+			"scrapbot",
+			"render",
+			"--editor",
+			"--select",
+			"018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001",
+			"--width",
+			"320",
+			"--height",
+			"240",
+			root,
+			output_path,
+		},
+		false,
+	)
+	testing.expect_value(t, exit_code, 0)
+
+	image, image_err := render_load_rgb_image(output_path)
+	if image_err != .None {
+		testing.fail_now(t, "failed to load rendered editor image")
+	}
+	defer render_image_free(&image)
+	expect_render_pixel(t, image, 4, 4, EDITOR_CHROME_TOP_COLOR)
+	expect_render_pixel(t, image, 8, 40, EDITOR_CHROME_PANEL_COLOR)
+	expect_render_pixel(t, image, 236, 38, EDITOR_CHROME_SELECTION_COLOR)
+	expect_render_pixel(t, image, 72, 24, EDITOR_CHROME_VIEWPORT_COLOR)
+}
+
+@(test)
 test_run_render_command_updates_only_extra_frames :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-render-extra-frame-updates")
 	defer os.remove_all(root)
@@ -1222,6 +1260,16 @@ expect_file_prefix :: proc(t: ^testing.T, path: string, prefix: []u8) {
 	for byte, index in prefix {
 		testing.expect_value(t, contents[index], byte)
 	}
+}
+
+expect_render_pixel :: proc(t: ^testing.T, image: Render_Image, x, y: int, color: [3]u8) {
+	if x < 0 || y < 0 || x >= image.width || y >= image.height {
+		testing.fail_now(t, "pixel coordinate outside rendered image")
+	}
+	offset := (y * image.width + x) * 3
+	testing.expect_value(t, image.rgb[offset], color[0])
+	testing.expect_value(t, image.rgb[offset + 1], color[1])
+	testing.expect_value(t, image.rgb[offset + 2], color[2])
 }
 
 @(test)

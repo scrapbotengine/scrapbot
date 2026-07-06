@@ -63,12 +63,19 @@ DEFAULT_RENDER_IMAGE_COMPARISON_OPTIONS :: Render_Image_Comparison_Options{
 	changed_pixel_delta = 2,
 }
 
+EDITOR_CHROME_TOP_COLOR :: [3]u8{34, 40, 50}
+EDITOR_CHROME_PANEL_COLOR :: [3]u8{44, 50, 60}
+EDITOR_CHROME_BOTTOM_COLOR :: [3]u8{30, 34, 42}
+EDITOR_CHROME_RULE_COLOR :: [3]u8{82, 92, 108}
+EDITOR_CHROME_VIEWPORT_COLOR :: [3]u8{87, 169, 216}
+EDITOR_CHROME_SELECTION_COLOR :: [3]u8{240, 160, 76}
+
 render_write_scene_image :: proc(world: Runtime_World, options: Render_Options, verify_output: bool) -> (Render_Image_Verification, Render_Image_Error) {
 	format, format_ok := render_image_format_from_path(options.output_path)
 	if !format_ok {
 		return Render_Image_Verification{}, .Unsupported_Format
 	}
-	image, image_ok := render_image_from_scene(world, options.width, options.height)
+	image, image_ok := render_image_from_scene(world, options)
 	if !image_ok {
 		return Render_Image_Verification{}, .Out_Of_Memory
 	}
@@ -253,7 +260,9 @@ render_image_format_from_path :: proc(path: string) -> (Render_Image_Format, boo
 	return .PNG, false
 }
 
-render_image_from_scene :: proc(world: Runtime_World, width, height: int) -> (Render_Image, bool) {
+render_image_from_scene :: proc(world: Runtime_World, options: Render_Options) -> (Render_Image, bool) {
+	width := options.width
+	height := options.height
 	if width <= 0 || height <= 0 {
 		return Render_Image{}, false
 	}
@@ -265,6 +274,9 @@ render_image_from_scene :: proc(world: Runtime_World, width, height: int) -> (Re
 	render_fill(&image, {18, 22, 29})
 	render_draw_scene_renderables(&image, world)
 	render_draw_scene_ui(&image, world)
+	if options.editor {
+		render_draw_editor_chrome(&image, options)
+	}
 	return image, true
 }
 
@@ -324,6 +336,43 @@ render_draw_scene_ui :: proc(image: ^Render_Image, world: Runtime_World) {
 		height := max(1, int(math.round_f32(size[1])))
 		color := render_vec3_to_rgb(color_value.vec3, {80, 170, 245})
 		render_fill_rect(image, x, y, width, height, color)
+	}
+}
+
+render_draw_editor_chrome :: proc(image: ^Render_Image, options: Render_Options) {
+	if image.width <= 0 || image.height <= 0 {
+		return
+	}
+	top_height := min(max(24, image.height / 12), max(1, image.height / 3))
+	bottom_height := min(max(18, image.height / 16), max(1, image.height / 5))
+	body_y := top_height
+	body_height := max(0, image.height - top_height - bottom_height)
+	left_width := min(max(72, image.width / 5), max(1, image.width / 3))
+	right_width := min(max(96, image.width * 3 / 10), max(1, image.width / 3))
+	if left_width + right_width + 48 > image.width {
+		left_width = max(8, image.width / 5)
+		right_width = max(8, image.width / 4)
+	}
+	viewport_x := left_width
+	viewport_width := max(0, image.width - left_width - right_width)
+
+	render_fill_rect(image, 0, 0, image.width, top_height, EDITOR_CHROME_TOP_COLOR)
+	render_fill_rect(image, 0, image.height - bottom_height, image.width, bottom_height, EDITOR_CHROME_BOTTOM_COLOR)
+	render_fill_rect(image, 0, body_y, left_width, body_height, EDITOR_CHROME_PANEL_COLOR)
+	render_fill_rect(image, image.width - right_width, body_y, right_width, body_height, EDITOR_CHROME_PANEL_COLOR)
+	render_fill_rect(image, 0, top_height - 2, image.width, 2, EDITOR_CHROME_RULE_COLOR)
+	render_fill_rect(image, 0, image.height - bottom_height, image.width, 2, EDITOR_CHROME_RULE_COLOR)
+	render_fill_rect(image, left_width - 2, body_y, 2, body_height, EDITOR_CHROME_RULE_COLOR)
+	render_fill_rect(image, image.width - right_width, body_y, 2, body_height, EDITOR_CHROME_RULE_COLOR)
+	if viewport_width > 0 && body_height > 0 {
+		render_stroke_rect(image, viewport_x, body_y, viewport_width, body_height, EDITOR_CHROME_VIEWPORT_COLOR)
+	}
+	if options.selected_entity_id != "" && right_width > 24 && body_height > 28 {
+		accent_x := image.width - right_width + 12
+		accent_y := body_y + 14
+		accent_width := max(4, right_width - 24)
+		accent_height := min(max(8, body_height / 18), body_height - 28)
+		render_fill_rect(image, accent_x, accent_y, accent_width, accent_height, EDITOR_CHROME_SELECTION_COLOR)
 	}
 }
 

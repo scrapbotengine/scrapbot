@@ -7,7 +7,7 @@
 
 Offscreen demo rendering proves that Scrapbot can initialize the WebGPU backend, create GPU resources, render through a graphics pipeline, read pixels back, and write an inspectable image artifact without opening a window.
 
-**Odin migration note:** During the staged Odin rewrite, the Odin `render` and `render-test` commands currently validate projects, parse render flags, run bounded Luau frame simulation, check selected entity ids, write first-pass software PNG/BMP artifacts plus metadata sidecars from ECS render data, and verify `render-test` foreground coverage, visible components, and color groups. The Odin `visual-test` command can update golden fixtures, compare expected and actual PNG/BMP images with tolerance metrics, and fail on mismatches against that first-pass software artifact path. WebGPU readback, editor chrome pixels, and hidden headful smoke paths still remain in the Zig implementation until the Odin `wgpu-native` renderer lands.
+**Odin migration note:** During the staged Odin rewrite, the Odin `render` and `render-test` commands currently validate projects, parse render flags, run bounded Luau frame simulation, check selected entity ids, write first-pass software PNG/BMP artifacts plus metadata sidecars from ECS render data, draw deterministic software editor chrome pixels for `--editor`, and verify `render-test` foreground coverage, visible components, and color groups. The Odin `visual-test` command can update golden fixtures, compare expected and actual PNG/BMP images with tolerance metrics, and fail on mismatches against that first-pass software artifact path. WebGPU readback and hidden headful smoke paths still remain in the Zig implementation until the Odin `wgpu-native` renderer lands.
 
 ## Behavior
 

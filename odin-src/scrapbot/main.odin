@@ -106,8 +106,9 @@ Usage:
 Odin migration status:
   init, check, build, deterministic step, benchmark, test discovery, and bounded run
   currently cover text project creation, validation, packaging, and schedule-aware frame accounting slices.
-  Luau execution, retained scene UI replay, editor chrome/playback input routing, and render/visual command validation are partially ported;
-  native execution, full editor-shell input routing, image comparison, WebGPU presentation, and editor are still being ported.`)
+  Luau execution, native module execution, retained scene UI/editor input replay, software render/visual output,
+  image comparison, and first-pass offscreen editor chrome are partially ported;
+  WebGPU presentation, unbounded window-loop reload diagnostics, and the full editor shell are still being ported.`)
 }
 
 run_init :: proc(args: []string, emit_output: bool) -> int {
