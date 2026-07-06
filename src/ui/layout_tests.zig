@@ -4,9 +4,14 @@ const runtime = @import("../runtime.zig");
 const layout = @import("layout.zig");
 
 const PointerCapture = layout.PointerCapture;
+const LayoutCache = layout.LayoutCache;
 const applyScrollWheelAt = layout.applyScrollWheelAt;
 const commandAt = layout.commandAt;
+const resolve = layout.resolve;
+const resolveWithCache = layout.resolveWithCache;
 const resolvedItemRect = layout.resolvedItemRect;
+const resolvedItemSize = layout.resolvedItemSize;
+const resolvedItemSizeWithCache = layout.resolvedItemSizeWithCache;
 const routePointer = layout.routePointer;
 const routeScrollWheelAt = layout.routeScrollWheelAt;
 
@@ -365,6 +370,64 @@ test "vgroup rejects invalid fixed layout values" {
     try world.setUiLayoutItem(child, .{ .parent = "column", .order = 0 });
 
     try std.testing.expectError(error.InvalidLayout, resolvedItemRect(&world, child));
+}
+
+test "cached layout resolution matches direct layout resolution" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const panel = try world.createEntity("panel", "Panel");
+    try world.setUiRect(panel, .{
+        .position = .{ 12.0, 18.0, 0.0 },
+        .size = .{ 240.0, 180.0, 0.0 },
+        .color = .{ 0.0, 0.0, 0.0 },
+    });
+
+    const scroll = try world.createEntity("scroll", "Scroll");
+    try world.setUiScrollView(scroll, .{
+        .position = .{ 8.0, 10.0, 0.0 },
+        .size = .{ 180.0, 90.0, 0.0 },
+        .content_offset = .{ 0.0, 15.0, 0.0 },
+    });
+    try world.setUiLayoutItem(scroll, .{ .parent = "panel", .order = 0 });
+
+    const column = try world.createEntity("column", "Column");
+    try world.setUiVGroup(column, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .size = .{ 180.0, 160.0, 0.0 },
+        .spacing = 4.0,
+        .padding = .{ 6.0, 5.0, 0.0 },
+    });
+    try world.setUiLayoutItem(column, .{ .parent = "scroll", .order = 0 });
+
+    const first = try world.createEntity("first", "First");
+    try world.setUiSpacer(first, .{ .size = .{ 30.0, 20.0, 0.0 } });
+    try world.setUiLayoutItem(first, .{ .parent = "column", .order = 0, .@"align" = "fill" });
+
+    const second = try world.createEntity("second", "Second");
+    try world.setUiSpacer(second, .{ .size = .{ 40.0, 30.0, 0.0 } });
+    try world.setUiLayoutItem(second, .{ .parent = "column", .order = 1, .@"align" = "center" });
+
+    var cache = LayoutCache.init(std.testing.allocator);
+    defer cache.deinit();
+    try cache.reset(&world);
+
+    const direct_layout = try resolve(&world, second, .{ 3.0, 7.0, 0.0 });
+    const cached_layout = try resolveWithCache(&cache, &world, second, .{ 3.0, 7.0, 0.0 });
+    try std.testing.expectApproxEqAbs(direct_layout.position[0], cached_layout.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(direct_layout.position[1], cached_layout.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(direct_layout.position[2], cached_layout.position[2], 0.001);
+    try std.testing.expect(direct_layout.clip != null);
+    try std.testing.expect(cached_layout.clip != null);
+    try std.testing.expectApproxEqAbs(direct_layout.clip.?.position[0], cached_layout.clip.?.position[0], 0.001);
+    try std.testing.expectApproxEqAbs(direct_layout.clip.?.position[1], cached_layout.clip.?.position[1], 0.001);
+    try std.testing.expectApproxEqAbs(direct_layout.clip.?.size[0], cached_layout.clip.?.size[0], 0.001);
+    try std.testing.expectApproxEqAbs(direct_layout.clip.?.size[1], cached_layout.clip.?.size[1], 0.001);
+
+    const direct_size = try resolvedItemSize(&world, second);
+    const cached_size = try resolvedItemSizeWithCache(&cache, &world, second);
+    try std.testing.expectApproxEqAbs(direct_size[0], cached_size[0], 0.001);
+    try std.testing.expectApproxEqAbs(direct_size[1], cached_size[1], 0.001);
 }
 
 test "table lays out children in row-major cells with controlled column split" {

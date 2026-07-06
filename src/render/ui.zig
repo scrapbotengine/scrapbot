@@ -187,6 +187,10 @@ pub fn resolveUiLayout(world: *const runtime.World, entity: runtime.EntityHandle
     return ui_layout.resolve(world, entity, local_position) catch |err| return mapLayoutError(err);
 }
 
+pub fn resolveUiLayoutWithCache(cache: *ui_layout.LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle, local_position: [3]f32) RenderError!ui_layout.ResolvedLayout {
+    return ui_layout.resolveWithCache(cache, world, entity, local_position) catch |err| return mapLayoutError(err);
+}
+
 pub fn combineUiClip(a: ?UiClipRect, b: ?UiClipRect) RenderError!?UiClipRect {
     return ui_layout.combineClip(a, b) catch |err| return mapLayoutError(err);
 }
@@ -252,6 +256,10 @@ pub fn uiLayoutItemSize(world: *const runtime.World, entity: runtime.EntityHandl
     return ui_layout.resolvedItemSize(world, entity) catch |err| return mapLayoutError(err);
 }
 
+pub fn uiLayoutItemSizeWithCache(cache: *ui_layout.LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle) RenderError![3]f32 {
+    return ui_layout.resolvedItemSizeWithCache(cache, world, entity) catch |err| return mapLayoutError(err);
+}
+
 pub fn hitTestUiRect(point: [2]f32, position: [3]f32, size: [3]f32, clip: ?UiClipRect) bool {
     return ui_layout.pointInsideRect(point, position, size, clip);
 }
@@ -288,6 +296,23 @@ fn mapLayoutError(err: anyerror) RenderError {
 }
 
 pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World, width: u32, height: u32) RenderError!std.ArrayList(UiVertex) {
+    var layout_cache = ui_layout.LayoutCache.init(allocator);
+    defer layout_cache.deinit();
+
+    var vertices: std.ArrayList(UiVertex) = .empty;
+    errdefer vertices.deinit(allocator);
+    try buildUiVerticesInto(allocator, &vertices, &layout_cache, world, width, height);
+    return vertices;
+}
+
+pub fn buildUiVerticesInto(
+    allocator: std.mem.Allocator,
+    vertices: *std.ArrayList(UiVertex),
+    layout_cache: *ui_layout.LayoutCache,
+    world: *const runtime.World,
+    width: u32,
+    height: u32,
+) RenderError!void {
     if (width == 0 or height == 0) {
         return RenderError.InvalidScene;
     }
@@ -296,14 +321,23 @@ pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World
     const input = frameInputWithDefaultOutputMetrics(stored_input, width, height);
     const pixel_scale = framePixelScale(input);
     const canvas_transform = try sceneUiCanvasTransform(world, input, input.viewport_width, input.viewport_height);
-    var vertices: std.ArrayList(UiVertex) = .empty;
-    errdefer vertices.deinit(allocator);
+    const viewport_clip = UiClipRect{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .size = .{ @floatFromInt(width), @floatFromInt(height), 0.0 },
+    };
+    layout_cache.reset(world) catch |err| return mapLayoutError(err);
+    vertices.clearRetainingCapacity();
+    const estimated_vertices =
+        world.uiRectCount() * 18 +
+        world.uiSeparatorCount() * 6 +
+        world.uiTextCount() * 192;
+    vertices.ensureTotalCapacity(allocator, estimated_vertices) catch return RenderError.OutOfMemory;
 
     var rects = world.uiRects();
     while (rects.next()) |rect| {
         const maybe_button_state = if (rect.is_button) try renderUiButtonState(world, rect.entity) else null;
-        const item_size = try uiLayoutItemSize(world, rect.entity);
-        const layout = try resolveUiLayout(world, rect.entity, rect.position);
+        const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, rect.entity);
+        const layout = try resolveUiLayoutWithCache(layout_cache, world, rect.entity, rect.position);
         const canvas_layout = applyUiCanvasLayout(canvas_transform, rect.id, layout);
         const screen_size = if (isEditorUiEntityId(rect.id)) item_size else scaleUiSize(canvas_transform, item_size);
         const screen_layout = try resolveUiScreenLayout(input, rect.id, canvas_layout, screen_size);
@@ -311,7 +345,7 @@ pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World
         const physical_size = scaleUiVec3By(screen_size, pixel_scale);
         const style_scale: f32 = (if (isEditorUiEntityId(rect.id)) 1.0 else canvas_transform.scale) * pixel_scale;
         const screen_radius = rect.corner_radius * style_scale;
-        const maybe_clip = scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity)), pixel_scale);
+        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity)), pixel_scale), viewport_clip);
         var rect_color = rect.color;
         if (maybe_button_state) |state| {
             if (state.held) {
@@ -326,37 +360,37 @@ pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World
             rect_color = scaleColor(rect_color, 1.18);
         }
 
-        try appendStyledUiRect(&vertices, allocator, world, width, height, rect.entity, physical_layout.position, physical_size, rect_color, screen_radius, style_scale, maybe_clip);
+        try appendStyledUiRect(vertices, allocator, world, width, height, rect.entity, physical_layout.position, physical_size, rect_color, screen_radius, style_scale, maybe_clip);
         if (try uiProgressBar(world, rect.entity)) |progress| {
             const ratio = try uiProgressRatio(progress);
             if (ratio > 0.0) {
                 const fill_size = [3]f32{ physical_size[0] * ratio, physical_size[1], physical_size[2] };
-                try appendUiRectClipped(&vertices, allocator, width, height, physical_layout.position, fill_size, progress.fill_color, screen_radius, maybe_clip);
+                try appendUiRectClipped(vertices, allocator, width, height, physical_layout.position, fill_size, progress.fill_color, screen_radius, maybe_clip);
             }
         }
     }
 
     var separators = world.uiSeparators();
     while (separators.next()) |separator| {
-        const item_size = try uiLayoutItemSize(world, separator.entity);
-        const layout = try resolveUiLayout(world, separator.entity, separator.position);
+        const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, separator.entity);
+        const layout = try resolveUiLayoutWithCache(layout_cache, world, separator.entity, separator.position);
         const canvas_layout = applyUiCanvasLayout(canvas_transform, separator.id, layout);
         const screen_size = if (isEditorUiEntityId(separator.id)) item_size else scaleUiSize(canvas_transform, item_size);
         const screen_layout = try resolveUiScreenLayout(input, separator.id, canvas_layout, screen_size);
         const physical_layout = scaleUiResolvedLayoutBy(screen_layout, pixel_scale);
         const physical_size = scaleUiVec3By(screen_size, pixel_scale);
-        const maybe_clip = scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity)), pixel_scale);
-        try appendUiRectClipped(&vertices, allocator, width, height, physical_layout.position, physical_size, separator.color, 0.0, maybe_clip);
+        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity)), pixel_scale), viewport_clip);
+        try appendUiRectClipped(vertices, allocator, width, height, physical_layout.position, physical_size, separator.color, 0.0, maybe_clip);
     }
 
     var texts = world.uiTexts();
     while (texts.next()) |text| {
-        const item_size = try uiLayoutItemSize(world, text.entity);
-        const layout = try resolveUiLayout(world, text.entity, text.position);
+        const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, text.entity);
+        const layout = try resolveUiLayoutWithCache(layout_cache, world, text.entity, text.position);
         const canvas_layout = applyUiCanvasLayout(canvas_transform, text.id, layout);
         const screen_item_size = if (isEditorUiEntityId(text.id)) item_size else scaleUiSize(canvas_transform, item_size);
         const screen_layout = try resolveUiScreenLayout(input, text.id, canvas_layout, screen_item_size);
-        const maybe_clip = scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity)), pixel_scale);
+        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity)), pixel_scale), viewport_clip);
         var resolved_text = text;
         if (isEditorUiEntityId(text.id)) {
             resolved_text.position = try resolveUiTextPosition(world, text.entity, text, screen_layout.position);
@@ -367,10 +401,12 @@ pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World
         }
         resolved_text.position = scaleUiVec3By(resolved_text.position, pixel_scale);
         resolved_text.size *= pixel_scale;
-        try appendUiText(&vertices, allocator, width, height, resolved_text, maybe_clip);
+        try appendUiText(vertices, allocator, width, height, resolved_text, maybe_clip);
     }
+}
 
-    return vertices;
+fn viewportUiClip(clip: ?UiClipRect, viewport_clip: UiClipRect) RenderError!?UiClipRect {
+    return combineUiClip(clip, viewport_clip);
 }
 
 fn uiProgressRatio(progress: UiProgressBar) RenderError!f32 {
@@ -446,6 +482,9 @@ fn appendUiText(
     }
 
     const origin_x = text.position[0];
+    if (!rectIntersectsClip(text.position, textPixelSize(text.value, text.size), clip)) {
+        return;
+    }
     var cursor_x = origin_x;
     var cursor_y = text.position[1];
     for (text.value) |byte| {
@@ -473,18 +512,28 @@ fn appendGlyph(
 ) RenderError!void {
     const rows = ui_font.glyphRows(byte);
     for (rows, 0..) |row_bits, row| {
-        for (0..ui_font.width) |column| {
-            const bit: ui_font.BitShift = @intCast(ui_font.width - 1 - column);
-            if ((row_bits & (@as(ui_font.Row, 1) << bit)) == 0) {
+        var run_start: ?usize = null;
+        for (0..ui_font.width + 1) |column| {
+            const lit = if (column < ui_font.width) blk: {
+                const bit: ui_font.BitShift = @intCast(ui_font.width - 1 - column);
+                break :blk (row_bits & (@as(ui_font.Row, 1) << bit)) != 0;
+            } else false;
+            if (lit) {
+                if (run_start == null) {
+                    run_start = column;
+                }
                 continue;
             }
+            const start = run_start orelse continue;
+            const run_width = column - start;
+            run_start = null;
             try appendUiRectClipped(
                 vertices,
                 allocator,
                 width,
                 height,
-                .{ x + @as(f32, @floatFromInt(column)) * size, y + @as(f32, @floatFromInt(row)) * size, 0.0 },
-                .{ size, size, 0.0 },
+                .{ x + @as(f32, @floatFromInt(start)) * size, y + @as(f32, @floatFromInt(row)) * size, 0.0 },
+                .{ @as(f32, @floatFromInt(run_width)) * size, size, 0.0 },
                 color,
                 0.0,
                 clip,
@@ -493,16 +542,19 @@ fn appendGlyph(
     }
 }
 
-fn appendUiRect(
-    vertices: *std.ArrayList(UiVertex),
-    allocator: std.mem.Allocator,
-    width: u32,
-    height: u32,
-    position: [3]f32,
-    size: [3]f32,
-    color: [3]f32,
-) RenderError!void {
-    try appendUiRectClipped(vertices, allocator, width, height, position, size, color, 0.0, null);
+fn rectIntersectsClip(position: [3]f32, size: [3]f32, clip: ?UiClipRect) bool {
+    if (size[0] <= 0.0 or size[1] <= 0.0) {
+        return false;
+    }
+    const clip_rect = clip orelse return true;
+    if (clip_rect.size[0] <= 0.0 or clip_rect.size[1] <= 0.0) {
+        return false;
+    }
+    const left = @max(position[0], clip_rect.position[0]);
+    const top = @max(position[1], clip_rect.position[1]);
+    const right = @min(position[0] + size[0], clip_rect.position[0] + clip_rect.size[0]);
+    const bottom = @min(position[1] + size[1], clip_rect.position[1] + clip_rect.size[1]);
+    return right > left and bottom > top;
 }
 
 fn appendUiRectClipped(

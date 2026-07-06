@@ -50,6 +50,64 @@ pub const LayoutItem = struct {
     margin: [3]f32,
 };
 
+pub const LayoutCache = struct {
+    allocator: std.mem.Allocator,
+    resolved: std.ArrayList(?ResolvedLayout) = .empty,
+    item_sizes: std.ArrayList(?[3]f32) = .empty,
+    resolved_item_sizes: std.ArrayList(?[3]f32) = .empty,
+    linear_groups: std.ArrayList(CachedLinearGroup) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) LayoutCache {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *LayoutCache) void {
+        const allocator = self.allocator;
+        self.linear_groups.deinit(self.allocator);
+        self.resolved_item_sizes.deinit(self.allocator);
+        self.item_sizes.deinit(self.allocator);
+        self.resolved.deinit(self.allocator);
+        self.* = .{ .allocator = allocator };
+    }
+
+    pub fn reset(self: *LayoutCache, world: *const runtime.World) Error!void {
+        const count = world.entityCount();
+        try self.ensureOptionalResolvedCapacity(count);
+        try self.ensureOptionalSizeCapacity(&self.item_sizes, count);
+        try self.ensureOptionalSizeCapacity(&self.resolved_item_sizes, count);
+        for (self.resolved.items[0..count]) |*entry| {
+            entry.* = null;
+        }
+        for (self.item_sizes.items[0..count]) |*entry| {
+            entry.* = null;
+        }
+        for (self.resolved_item_sizes.items[0..count]) |*entry| {
+            entry.* = null;
+        }
+        self.linear_groups.clearRetainingCapacity();
+    }
+
+    fn ensureOptionalResolvedCapacity(self: *LayoutCache, count: usize) Error!void {
+        try self.resolved.ensureTotalCapacity(self.allocator, count);
+        while (self.resolved.items.len < count) {
+            self.resolved.appendAssumeCapacity(null);
+        }
+    }
+
+    fn ensureOptionalSizeCapacity(self: *LayoutCache, list: *std.ArrayList(?[3]f32), count: usize) Error!void {
+        try list.ensureTotalCapacity(self.allocator, count);
+        while (list.items.len < count) {
+            list.appendAssumeCapacity(null);
+        }
+    }
+};
+
+const CachedLinearGroup = struct {
+    parent: runtime.EntityHandle,
+    main_axis: usize,
+    slots: LinearLayoutSlots,
+};
+
 pub const Canvas = struct {
     design_size: [3]f32,
     scale_mode: []const u8,
@@ -318,6 +376,102 @@ pub fn resolve(world: *const runtime.World, entity: runtime.EntityHandle, local_
         child = parent;
     }
     return error.InvalidLayout;
+}
+
+pub fn resolveCached(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle, local_position: [3]f32) Error!ResolvedLayout {
+    try cache.reset(world);
+    return resolveWithCache(cache, world, entity, local_position);
+}
+
+pub fn resolveWithCache(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle, local_position: [3]f32) Error!ResolvedLayout {
+    const base = try resolveBaseWithCache(cache, world, entity, 0);
+    return .{
+        .position = addVec3(base.position, local_position),
+        .clip = base.clip,
+    };
+}
+
+fn resolveBaseWithCache(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle, depth: usize) Error!ResolvedLayout {
+    const max_depth = 32;
+    if (depth >= max_depth) {
+        return error.InvalidLayout;
+    }
+    const index: usize = entity.index;
+    if (index >= world.entityCount()) {
+        return error.InvalidLayout;
+    }
+    if (cache.resolved.items[index]) |cached| {
+        return cached;
+    }
+
+    var resolved: ResolvedLayout = .{ .position = .{ 0.0, 0.0, 0.0 } };
+    const item = (try layoutItem(world, entity)) orelse {
+        cache.resolved.items[index] = resolved;
+        return resolved;
+    };
+    const parent = world.findEntityById(item.parent) orelse return error.InvalidLayout;
+
+    if (!isFiniteVec3(item.margin) or item.margin[0] < 0.0 or item.margin[1] < 0.0 or item.margin[2] < 0.0) {
+        return error.InvalidLayout;
+    }
+    resolved.position = addVec3(resolved.position, item.margin);
+
+    const has_vgroup = try vgroup(world, parent);
+    const has_hgroup = try hgroup(world, parent);
+    const has_table = try table(world, parent);
+    const has_stack = try stack(world, parent);
+    const has_scroll = try scrollView(world, parent);
+
+    if (has_vgroup) |group| {
+        const group_offset = try linearGroupChildOffsetCached(cache, world, parent, entity, group, 1);
+        resolved.position[0] += group.position[0] + group.padding[0] + group_offset[0];
+        resolved.position[1] += group.position[1] + group.padding[1] + group_offset[1];
+        resolved.position[2] += group.position[2] + group_offset[2];
+    }
+
+    if (has_hgroup) |group| {
+        const group_offset = try linearGroupChildOffsetCached(cache, world, parent, entity, group, 0);
+        resolved.position[0] += group.position[0] + group.padding[0] + group_offset[0];
+        resolved.position[1] += group.position[1] + group.padding[1] + group_offset[1];
+        resolved.position[2] += group.position[2] + group_offset[2];
+    }
+
+    if (has_table) |table_value| {
+        const table_offset = try tableChildOffsetCached(cache, world, entity, item, table_value);
+        resolved.position[0] += table_value.position[0] + table_value.padding[0] + table_offset[0];
+        resolved.position[1] += table_value.position[1] + table_value.padding[1] + table_offset[1];
+        resolved.position[2] += table_value.position[2] + table_offset[2];
+    }
+
+    if (has_stack) |stack_value| {
+        const stack_offset = try stackChildOffsetCached(cache, world, parent, entity, item, stack_value);
+        resolved.position[0] += stack_value.position[0] + stack_value.padding[0] + stack_offset[0];
+        resolved.position[1] += stack_value.position[1] + stack_value.padding[1] + stack_offset[1];
+        resolved.position[2] += stack_value.position[2] + stack_offset[2];
+    }
+
+    if (has_scroll) |scroll_view| {
+        if (!isFiniteVec3(scroll_view.position) or !isFiniteVec3(scroll_view.size) or !isFiniteVec3(scroll_view.content_offset)) {
+            return error.InvalidLayout;
+        }
+        resolved.position[0] += scroll_view.position[0] - scroll_view.content_offset[0];
+        resolved.position[1] += scroll_view.position[1] - scroll_view.content_offset[1];
+        resolved.position[2] += scroll_view.position[2] - scroll_view.content_offset[2];
+        resolved.clip = try combineClip(resolved.clip, .{
+            .position = scroll_view.position,
+            .size = scroll_view.size,
+        });
+    }
+
+    if (has_vgroup == null and has_hgroup == null and has_table == null and has_stack == null and has_scroll == null) {
+        resolved.position = addVec3(resolved.position, try parentAnchorPosition(world, parent));
+    }
+
+    const parent_base = try resolveBaseWithCache(cache, world, parent, depth + 1);
+    resolved.position = addVec3(resolved.position, parent_base.position);
+    resolved.clip = try combineClip(resolved.clip, parent_base.clip);
+    cache.resolved.items[index] = resolved;
+    return resolved;
 }
 
 pub fn combineClip(a: ?ClipRect, b: ?ClipRect) Error!?ClipRect {
@@ -625,6 +779,33 @@ pub fn resolvedItemSize(world: *const runtime.World, entity: runtime.EntityHandl
     return itemSize(world, entity);
 }
 
+pub fn resolvedItemSizeWithCache(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle) Error![3]f32 {
+    const index: usize = entity.index;
+    if (index >= world.entityCount()) {
+        return error.InvalidLayout;
+    }
+    if (cache.resolved_item_sizes.items[index]) |cached| {
+        return cached;
+    }
+
+    const size = blk: {
+        const item = (try layoutItem(world, entity)) orelse break :blk try itemSizeWithCache(cache, world, entity);
+        const parent = world.findEntityById(item.parent) orelse return error.InvalidLayout;
+        if (try hgroup(world, parent)) |group| {
+            break :blk try linearGroupChildSizeCached(cache, world, parent, entity, group, 0);
+        }
+        if (try vgroup(world, parent)) |group| {
+            break :blk try linearGroupChildSizeCached(cache, world, parent, entity, group, 1);
+        }
+        if (try table(world, parent)) |table_value| {
+            break :blk try tableChildSizeCached(cache, world, entity, item, table_value);
+        }
+        break :blk try itemSizeWithCache(cache, world, entity);
+    };
+    cache.resolved_item_sizes.items[index] = size;
+    return size;
+}
+
 fn itemNaturalSize(world: *const runtime.World, entity: runtime.EntityHandle) Error![3]f32 {
     if (try world.hasComponent(entity, runtime.ui_rect_component_id)) {
         return try world.getVec3(entity, runtime.ui_rect_component_id, "size");
@@ -656,6 +837,77 @@ fn itemNaturalSize(world: *const runtime.World, entity: runtime.EntityHandle) Er
     if (try world.hasComponent(entity, runtime.ui_stack_component_id)) {
         const stack_value = (try stack(world, entity)) orelse return .{ 0.0, 0.0, 0.0 };
         return try containerContentSize(world, entity, try stackDirectionIsHorizontal(stack_value.direction));
+    }
+    if (try world.hasComponent(entity, runtime.ui_text_block_component_id)) {
+        return try world.getVec3(entity, runtime.ui_text_block_component_id, "size");
+    }
+    if (try world.hasComponent(entity, runtime.ui_text_component_id)) {
+        const size = try world.getFloat(entity, runtime.ui_text_component_id, "size");
+        const value = try world.getString(entity, runtime.ui_text_component_id, "value");
+        return textPixelSize(value, size);
+    }
+    return .{ 0.0, 0.0, 0.0 };
+}
+
+fn itemSizeWithCache(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle) Error![3]f32 {
+    const index: usize = entity.index;
+    if (index >= world.entityCount()) {
+        return error.InvalidLayout;
+    }
+    if (cache.item_sizes.items[index]) |cached| {
+        return cached;
+    }
+    var size = try itemNaturalSizeCached(cache, world, entity);
+    if (try layoutItem(world, entity)) |item| {
+        try validateLayoutItem(item);
+        for (0..3) |axis| {
+            if (item.preferred_size[axis] > 0.0) {
+                size[axis] = item.preferred_size[axis];
+            }
+            size[axis] = @max(size[axis], item.min_size[axis]);
+            if (item.max_size[axis] > 0.0) {
+                size[axis] = @min(size[axis], @max(item.max_size[axis], item.min_size[axis]));
+            }
+        }
+        size[0] += item.margin[0] * 2.0;
+        size[1] += item.margin[1] * 2.0;
+        size[2] += item.margin[2] * 2.0;
+    }
+    cache.item_sizes.items[index] = size;
+    return size;
+}
+
+fn itemNaturalSizeCached(cache: *LayoutCache, world: *const runtime.World, entity: runtime.EntityHandle) Error![3]f32 {
+    if (try world.hasComponent(entity, runtime.ui_rect_component_id)) {
+        return try world.getVec3(entity, runtime.ui_rect_component_id, "size");
+    }
+    if (try world.hasComponent(entity, runtime.ui_separator_component_id)) {
+        return try world.getVec3(entity, runtime.ui_separator_component_id, "size");
+    }
+    if (try world.hasComponent(entity, runtime.ui_hit_area_component_id)) {
+        return try world.getVec3(entity, runtime.ui_hit_area_component_id, "size");
+    }
+    if (try world.hasComponent(entity, runtime.ui_spacer_component_id)) {
+        return try world.getVec3(entity, runtime.ui_spacer_component_id, "size");
+    }
+    if (try world.hasComponent(entity, runtime.ui_scroll_view_component_id)) {
+        return try world.getVec3(entity, runtime.ui_scroll_view_component_id, "size");
+    }
+    if (try world.hasComponent(entity, runtime.ui_hgroup_component_id)) {
+        const group = (try hgroup(world, entity)) orelse return .{ 0.0, 0.0, 0.0 };
+        return group.size;
+    }
+    if (try world.hasComponent(entity, runtime.ui_vgroup_component_id)) {
+        const group = (try vgroup(world, entity)) orelse return .{ 0.0, 0.0, 0.0 };
+        return group.size;
+    }
+    if (try world.hasComponent(entity, runtime.ui_table_component_id)) {
+        const table_value = (try table(world, entity)) orelse return .{ 0.0, 0.0, 0.0 };
+        return table_value.size;
+    }
+    if (try world.hasComponent(entity, runtime.ui_stack_component_id)) {
+        const stack_value = (try stack(world, entity)) orelse return .{ 0.0, 0.0, 0.0 };
+        return try containerContentSizeCached(cache, world, entity, try stackDirectionIsHorizontal(stack_value.direction));
     }
     if (try world.hasComponent(entity, runtime.ui_text_block_component_id)) {
         return try world.getVec3(entity, runtime.ui_text_block_component_id, "size");
@@ -714,6 +966,50 @@ fn containerContentSize(world: *const runtime.World, parent: runtime.EntityHandl
             continue;
         }
         const child_size = try itemSize(world, child);
+        main_size += child_size[main_axis];
+        cross_size = @max(cross_size, child_size[cross_axis]);
+        child_count += 1;
+    }
+    if (child_count > 1) {
+        main_size += spacing * @as(f32, @floatFromInt(child_count - 1));
+    }
+
+    var out = [3]f32{ 0.0, 0.0, 0.0 };
+    out[main_axis] = main_size + padding[main_axis] * 2.0;
+    out[cross_axis] = cross_size + padding[cross_axis] * 2.0;
+    return out;
+}
+
+fn containerContentSizeCached(cache: *LayoutCache, world: *const runtime.World, parent: runtime.EntityHandle, horizontal: bool) Error![3]f32 {
+    const parent_entity = try world.entity(parent);
+    var main_size: f32 = 0.0;
+    var cross_size: f32 = 0.0;
+    var child_count: usize = 0;
+    var spacing: f32 = 0.0;
+    var padding = [3]f32{ 0.0, 0.0, 0.0 };
+
+    if (try hgroup(world, parent)) |group| {
+        spacing = group.spacing;
+        padding = group.padding;
+    }
+    if (try vgroup(world, parent)) |group| {
+        spacing = group.spacing;
+        padding = group.padding;
+    }
+    if (try stack(world, parent)) |stack_value| {
+        spacing = stack_value.spacing;
+        padding = stack_value.padding;
+    }
+
+    const main_axis: usize = if (horizontal) 0 else 1;
+    const cross_axis: usize = if (horizontal) 1 else 0;
+    for (0..world.entityCount()) |index| {
+        const child = runtime.EntityHandle{ .index = @intCast(index) };
+        const item = (try layoutItem(world, child)) orelse continue;
+        if (!std.mem.eql(u8, item.parent, parent_entity.id)) {
+            continue;
+        }
+        const child_size = try itemSizeWithCache(cache, world, child);
         main_size += child_size[main_axis];
         cross_size = @max(cross_size, child_size[cross_axis]);
         child_count += 1;
@@ -840,6 +1136,38 @@ fn linearGroupChildSize(world: *const runtime.World, parent: runtime.EntityHandl
     return error.InvalidLayout;
 }
 
+fn linearGroupChildOffsetCached(cache: *LayoutCache, world: *const runtime.World, parent: runtime.EntityHandle, child: runtime.EntityHandle, group: HGroup, main_axis: usize) Error![3]f32 {
+    const cross_axis: usize = if (main_axis == 0) 1 else 0;
+    var slots = try resolvedLinearGroupSlotsCached(cache, world, parent, group, main_axis);
+    for (slots.slice()) |slot| {
+        if (slot.entity.index != child.index) {
+            continue;
+        }
+        var offset = [3]f32{ 0.0, 0.0, 0.0 };
+        offset[main_axis] = slot.offset_main;
+        const inner_cross_size = @max(group.size[cross_axis] - group.padding[cross_axis] * 2.0, 0.0);
+        if (std.mem.eql(u8, slot.@"align", "center")) {
+            offset[cross_axis] += @max((inner_cross_size - slot.size[cross_axis]) * 0.5, 0.0);
+        } else if (std.mem.eql(u8, slot.@"align", "end")) {
+            offset[cross_axis] += @max(inner_cross_size - slot.size[cross_axis], 0.0);
+        } else if (!std.mem.eql(u8, slot.@"align", "start") and !std.mem.eql(u8, slot.@"align", "fill")) {
+            return error.InvalidLayout;
+        }
+        return offset;
+    }
+    return error.InvalidLayout;
+}
+
+fn linearGroupChildSizeCached(cache: *LayoutCache, world: *const runtime.World, parent: runtime.EntityHandle, child: runtime.EntityHandle, group: HGroup, main_axis: usize) Error![3]f32 {
+    var slots = try resolvedLinearGroupSlotsCached(cache, world, parent, group, main_axis);
+    for (slots.slice()) |slot| {
+        if (slot.entity.index == child.index) {
+            return slot.size;
+        }
+    }
+    return error.InvalidLayout;
+}
+
 fn resolvedLinearGroupSlots(world: *const runtime.World, parent: runtime.EntityHandle, group: HGroup, main_axis: usize) Error!LinearLayoutSlots {
     const parent_entity = try world.entity(parent);
     const cross_axis: usize = if (main_axis == 0) 1 else 0;
@@ -882,6 +1210,62 @@ fn resolvedLinearGroupSlots(world: *const runtime.World, parent: runtime.EntityH
         }
     }
     return slots;
+}
+
+fn resolvedLinearGroupSlotsCached(cache: *LayoutCache, world: *const runtime.World, parent: runtime.EntityHandle, group: HGroup, main_axis: usize) Error!*LinearLayoutSlots {
+    for (cache.linear_groups.items) |*entry| {
+        if (entry.parent.index == parent.index and entry.main_axis == main_axis) {
+            return &entry.slots;
+        }
+    }
+
+    const parent_entity = try world.entity(parent);
+    const cross_axis: usize = if (main_axis == 0) 1 else 0;
+    try validateLinearGroup(group);
+    var slots = LinearLayoutSlots{};
+
+    for (0..world.entityCount()) |index| {
+        const child = runtime.EntityHandle{ .index = @intCast(index) };
+        const item = (try layoutItem(world, child)) orelse continue;
+        if (!std.mem.eql(u8, item.parent, parent_entity.id)) {
+            continue;
+        }
+        try validateLayoutItem(item);
+        const size = try itemSizeWithCache(cache, world, child);
+        const margin_main = item.margin[main_axis] * 2.0;
+        const min_main = item.min_size[main_axis] + margin_main;
+        const max_main = if (item.max_size[main_axis] > 0.0)
+            @max(item.max_size[main_axis], item.min_size[main_axis]) + margin_main
+        else
+            std.math.inf(f32);
+        try slots.append(.{
+            .entity = child,
+            .order = item.order,
+            .@"align" = item.@"align",
+            .base_main = size[main_axis],
+            .min_main = min_main,
+            .max_main = max_main,
+            .grow = item.grow,
+            .shrink = item.shrink,
+            .size = size,
+        });
+    }
+
+    std.mem.sort(LinearLayoutSlot, slots.slice(), {}, linearLayoutSlotLessThan);
+    solveLinearLayoutSlots(slots.slice(), @max(group.size[main_axis] - group.padding[main_axis] * 2.0, 0.0), group.spacing, main_axis);
+    const inner_cross_size = @max(group.size[cross_axis] - group.padding[cross_axis] * 2.0, 0.0);
+    for (slots.slice()) |*slot| {
+        if (std.mem.eql(u8, slot.@"align", "fill")) {
+            slot.size[cross_axis] = inner_cross_size;
+        }
+    }
+
+    try cache.linear_groups.append(cache.allocator, .{
+        .parent = parent,
+        .main_axis = main_axis,
+        .slots = slots,
+    });
+    return &cache.linear_groups.items[cache.linear_groups.items.len - 1].slots;
 }
 
 fn linearLayoutSlotLessThan(_: void, left: LinearLayoutSlot, right: LinearLayoutSlot) bool {
@@ -1024,6 +1408,46 @@ fn tableChildSize(world: *const runtime.World, child: runtime.EntityHandle, chil
     return size;
 }
 
+fn tableChildOffsetCached(cache: *LayoutCache, world: *const runtime.World, child: runtime.EntityHandle, child_item: LayoutItem, table_value: Table) Error![3]f32 {
+    try validateTable(table_value);
+    const columns: usize = @intCast(table_value.columns);
+    const order = try nonNegativeOrder(child_item.order);
+    const column = order % columns;
+    const row = order / columns;
+    const widths = try tableColumnWidths(table_value);
+
+    var offset = [3]f32{ 0.0, 0.0, 0.0 };
+    for (0..column) |index| {
+        offset[0] += widths[index] + table_value.column_gap;
+    }
+    offset[1] = @as(f32, @floatFromInt(row)) * (table_value.row_height + table_value.row_gap);
+
+    const child_size = try tableChildSizeCached(cache, world, child, child_item, table_value);
+    const inner_height = table_value.row_height;
+    if (std.mem.eql(u8, child_item.@"align", "center")) {
+        offset[1] += @max((inner_height - child_size[1]) * 0.5, 0.0);
+    } else if (std.mem.eql(u8, child_item.@"align", "end")) {
+        offset[1] += @max(inner_height - child_size[1], 0.0);
+    } else if (!std.mem.eql(u8, child_item.@"align", "start") and !std.mem.eql(u8, child_item.@"align", "fill")) {
+        return error.InvalidLayout;
+    }
+    return offset;
+}
+
+fn tableChildSizeCached(cache: *LayoutCache, world: *const runtime.World, child: runtime.EntityHandle, child_item: LayoutItem, table_value: Table) Error![3]f32 {
+    try validateTable(table_value);
+    const columns: usize = @intCast(table_value.columns);
+    const order = try nonNegativeOrder(child_item.order);
+    const column = order % columns;
+    const widths = try tableColumnWidths(table_value);
+    var size = try itemSizeWithCache(cache, world, child);
+    size[0] = widths[column];
+    if (std.mem.eql(u8, child_item.@"align", "fill")) {
+        size[1] = table_value.row_height;
+    }
+    return size;
+}
+
 fn tableColumnWidths(table_value: Table) Error![max_linear_layout_slots]f32 {
     try validateTable(table_value);
     const columns: usize = @intCast(table_value.columns);
@@ -1106,6 +1530,45 @@ fn stackChildOffset(world: *const runtime.World, parent: runtime.EntityHandle, c
     return offset;
 }
 
+fn stackChildOffsetCached(cache: *LayoutCache, world: *const runtime.World, parent: runtime.EntityHandle, child: runtime.EntityHandle, child_item: LayoutItem, stack_value: Stack) Error![3]f32 {
+    const parent_entity = try world.entity(parent);
+    if (!isFiniteVec3(stack_value.position) or !isFiniteVec3(stack_value.padding) or !std.math.isFinite(stack_value.spacing)) {
+        return error.InvalidLayout;
+    }
+    const horizontal = try stackDirectionIsHorizontal(stack_value.direction);
+    const main_axis: usize = if (horizontal) 0 else 1;
+    const cross_axis: usize = if (horizontal) 1 else 0;
+    var offset = [3]f32{ 0.0, 0.0, 0.0 };
+
+    for (0..world.entityCount()) |index| {
+        const sibling = runtime.EntityHandle{ .index = @intCast(index) };
+        const sibling_item = (try layoutItem(world, sibling)) orelse continue;
+        if (!std.mem.eql(u8, sibling_item.parent, parent_entity.id)) {
+            continue;
+        }
+        const before_child = sibling_item.order < child_item.order or
+            (sibling_item.order == child_item.order and sibling.index < child.index);
+        if (!before_child) {
+            continue;
+        }
+        offset[main_axis] += (try itemSizeWithCache(cache, world, sibling))[main_axis];
+        offset[main_axis] += stack_value.spacing;
+    }
+
+    const parent_size = try itemSizeWithCache(cache, world, parent);
+    const child_size = try itemSizeWithCache(cache, world, child);
+    const inner_cross_size = @max(parent_size[cross_axis] - stack_value.padding[cross_axis] * 2.0, 0.0);
+    if (std.mem.eql(u8, child_item.@"align", "center")) {
+        offset[cross_axis] += @max((inner_cross_size - child_size[cross_axis]) * 0.5, 0.0);
+    } else if (std.mem.eql(u8, child_item.@"align", "end")) {
+        offset[cross_axis] += @max(inner_cross_size - child_size[cross_axis], 0.0);
+    } else if (!std.mem.eql(u8, child_item.@"align", "start") and !std.mem.eql(u8, child_item.@"align", "fill")) {
+        return error.InvalidLayout;
+    }
+
+    return offset;
+}
+
 fn stackDirectionIsHorizontal(direction: []const u8) Error!bool {
     if (std.mem.eql(u8, direction, "horizontal") or std.mem.eql(u8, direction, "row")) {
         return true;
@@ -1118,6 +1581,10 @@ fn stackDirectionIsHorizontal(direction: []const u8) Error!bool {
 
 fn isFiniteVec3(value: [3]f32) bool {
     return std.math.isFinite(value[0]) and std.math.isFinite(value[1]) and std.math.isFinite(value[2]);
+}
+
+fn addVec3(a: [3]f32, b: [3]f32) [3]f32 {
+    return .{ a[0] + b[0], a[1] + b[1], a[2] + b[2] };
 }
 
 test {
