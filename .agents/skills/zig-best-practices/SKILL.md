@@ -27,6 +27,7 @@ Use this skill for Zig implementation, review, or architecture work. Treat local
 - Keep top-level `src/*.zig` files as facades, process entry points, or small cross-cutting modules. Put subsystem implementation under domain directories.
 - In Zig, each source file is a struct-like namespace. Use imports and explicit aliases to communicate boundaries; avoid turning facades into implementation sinks.
 - Prefer `const` over `var` unless mutation is required.
+- For CLI, editor, and tooling JSON output, prefer `std.json.Stringify` over manual string escaping and comma bookkeeping. Use `Stringify.print` only where an existing numeric format is part of the observable output contract.
 
 ## Allocation And Ownership
 

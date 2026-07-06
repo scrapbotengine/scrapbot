@@ -55,12 +55,15 @@ const printTestCaseDiagnosticFailureJson = cli_output.printTestCaseDiagnosticFai
 const printTestCaseLoadFailureJson = cli_output.printTestCaseLoadFailureJson;
 const printTestCaseOkJson = cli_output.printTestCaseOkJson;
 const printTestCaseRuntimeFailureJson = cli_output.printTestCaseRuntimeFailureJson;
-const printTestSummaryJson = cli_output.printTestSummaryJson;
+const printTestDiscoveryFailureJson = cli_output.printTestDiscoveryFailureJson;
+const printNoTestProjectsJson = cli_output.printNoTestProjectsJson;
+const printTestSuiteEndJson = cli_output.printTestSuiteEndJson;
+const printTestSuiteSeparatorJson = cli_output.printTestSuiteSeparatorJson;
+const printTestSuiteStartJson = cli_output.printTestSuiteStartJson;
 const printTestSummaryText = cli_output.printTestSummaryText;
 const projectNameFromPath = cli_path.projectNameFromPath;
 const sameResolvedPath = cli_path.sameResolvedPath;
 const trimTrailingSlashes = cli_path.trimTrailingSlashes;
-const writeJsonString = cli_output.writeJsonString;
 
 pub fn run(
     io: Io,
@@ -607,13 +610,7 @@ fn testCommand(
     const project_paths = collectTestProjects(io, allocator, options.target_path) catch |err| {
         switch (options.format) {
             .text => try stderr.print("{s}: test discovery failed: {s}\n", .{ options.target_path, @errorName(err) }),
-            .json => {
-                try stdout.writeAll("{\"ok\":false,\"error\":");
-                try writeJsonString(stdout, @errorName(err));
-                try stdout.writeAll(",\"root\":");
-                try writeJsonString(stdout, options.target_path);
-                try stdout.writeAll("}\n");
-            },
+            .json => try printTestDiscoveryFailureJson(stdout, options.target_path, err),
         }
         return 1;
     };
@@ -622,23 +619,19 @@ fn testCommand(
     if (project_paths.len == 0) {
         switch (options.format) {
             .text => try stderr.print("{s}: no Scrapbot test projects found\n", .{options.target_path}),
-            .json => {
-                try stdout.writeAll("{\"ok\":false,\"error\":\"NoTestProjects\",\"root\":");
-                try writeJsonString(stdout, options.target_path);
-                try stdout.writeAll("}\n");
-            },
+            .json => try printNoTestProjectsJson(stdout, options.target_path),
         }
         return 1;
     }
 
     var summary = TestSuiteSummary{};
     if (options.format == .json) {
-        try stdout.writeAll("{\"tests\":[");
+        try printTestSuiteStartJson(stdout);
     }
 
     for (project_paths, 0..) |project_path, index| {
         if (options.format == .json and index != 0) {
-            try stdout.writeByte(',');
+            try printTestSuiteSeparatorJson(stdout);
         }
 
         const stats = try runTestCase(io, allocator, project_path, options.format, stdout, stderr);
@@ -647,13 +640,7 @@ fn testCommand(
 
     switch (options.format) {
         .text => try printTestSummaryText(stdout, summary),
-        .json => {
-            try stdout.writeAll("],\"summary\":");
-            try printTestSummaryJson(stdout, summary);
-            try stdout.writeAll(",\"ok\":");
-            try stdout.writeAll(if (summary.failed_cases == 0) "true" else "false");
-            try stdout.writeAll("}\n");
-        },
+        .json => try printTestSuiteEndJson(stdout, summary),
     }
 
     return if (summary.failed_cases == 0) 0 else 1;
