@@ -16,7 +16,7 @@ Scrapbot represents current-frame host input as transient engine-owned ECS compo
 - `scrapbot.input.keyboard` stores modifier state, semantic movement key state, and editor-toggle edge state.
 - `scrapbot.input.frame` stores frame-level UI visibility and viewport data.
 
-SDL and other future platform backends translate raw events into the host-side frame snapshot. The live project writes a routed version of that snapshot into the game world before UI command routing and update systems run. The renderer writes the same shape into its internal render world before render systems run.
+SDL and other future platform backends translate raw events into the host-side frame snapshot. The live project writes a routed version of that snapshot into the game world before UI command routing and update systems run. Render systems write the same shape as engine-transient ECS input resources in the scene world for frame-local UI and editor overlay work.
 
 UI and editor interaction should consume these ECS resources where they run inside a world. Host-only editor chrome may still use the host snapshot before it writes routed input back to the world.
 

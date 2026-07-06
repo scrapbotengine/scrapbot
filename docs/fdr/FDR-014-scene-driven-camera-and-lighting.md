@@ -16,7 +16,7 @@ Scene-driven camera and lighting let projects describe the view and first direct
 - Directional light data includes direction, color, intensity, and ambient contribution.
 - Mesh lighting is the authored ambient contribution plus direct directional diffuse light; there is no scene-independent fill or rim light. A directional light with `ambient = 0.0` and `intensity = 0.0` renders current non-emissive mesh surfaces black.
 - The renderer uses the first available camera and first available directional light in the ECS world.
-- Rendering extracts the selected camera and directional light into the internal render ECS world before drawing.
+- Rendering resolves the selected camera and directional light from the authoritative scene ECS world before drawing.
 - Scenes without camera or directional light components still render with compatibility defaults matching the original demo view and light.
 - Camera and light component fields participate in normal scene validation, live reload, script type hints, and `scrapbot test` field assertions.
 
@@ -40,15 +40,15 @@ Scene-driven camera and lighting let projects describe the view and first direct
 **Why:** This gives text-authored scenes a deterministic rule without introducing active camera tags, scene resources, or render-layer concepts too early.
 **Tradeoff:** Multi-camera, light selection, and editor preview workflows need explicit follow-up design.
 
-### 4. Extract selected view and light state into the render world
+### 4. Resolve selected view and light from the scene world
 
-**Decision:** The renderer resolves the scene camera/light rule during extraction and writes the selected state into its internal render ECS world.
-**Why:** Later render systems should consume render-world ECS data, not reach back into the game scene directly. This follows ADR-013.
+**Decision:** The renderer resolves the scene camera/light rule from the scene world during frame preparation and drawing. Render-only camera overrides are applied as frame input without mutating scene camera components.
+**Why:** The project scene world is the authoritative ECS owner for camera and light data. This follows ADR-022.
 **Tradeoff:** The extraction rule is still simple and must evolve when active cameras, render layers, and multiple lights arrive.
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-004, ADR-005, ADR-008, ADR-013
+- **ADRs:** ADR-001, ADR-004, ADR-005, ADR-008, ADR-022
 - **FDRs:** FDR-002, FDR-007, FDR-008, FDR-009, FDR-015
 
 ## Open Questions

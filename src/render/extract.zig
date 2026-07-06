@@ -7,14 +7,12 @@ pub const Error = error{
 };
 
 pub fn extractMeshInto(
-    allocator: std.mem.Allocator,
     world: *runtime.World,
     render_index: usize,
     mesh: runtime.RenderableMesh,
-) Error!void {
-    const entity_id = std.fmt.allocPrint(allocator, "scrapbot.render.extract.mesh.{d}", .{render_index}) catch return Error.OutOfMemory;
-    defer allocator.free(entity_id);
-
+) Error!runtime.RenderableMesh {
+    var entity_id_buffer: [64]u8 = undefined;
+    const entity_id = std.fmt.bufPrint(&entity_id_buffer, "scrapbot.render.extract.mesh.{d}", .{render_index}) catch return Error.InvalidScene;
     const entity = world.createEntity(entity_id, mesh.name) catch |err| return mapWorldError(err);
     world.setTransform(entity, .{
         .position = mesh.position,
@@ -35,6 +33,23 @@ pub fn extractMeshInto(
     if (mesh.receives_shadow) {
         world.setShadowReceiver(entity) catch |err| return mapWorldError(err);
     }
+
+    const stored = world.entity(entity) catch return Error.InvalidScene;
+    return .{
+        .entity = entity,
+        .id = stored.id,
+        .name = stored.name,
+        .position = mesh.position,
+        .rotation = mesh.rotation,
+        .scale = mesh.scale,
+        .primitive = mesh.primitive,
+        .segments = mesh.segments,
+        .rings = mesh.rings,
+        .base_color = mesh.base_color,
+        .spin = mesh.spin,
+        .casts_shadow = mesh.casts_shadow,
+        .receives_shadow = mesh.receives_shadow,
+    };
 }
 
 pub fn extractSceneUiInto(render_world: *runtime.World, scene_world: *const runtime.World) Error!void {

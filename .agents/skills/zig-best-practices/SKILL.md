@@ -27,6 +27,7 @@ Use this skill for Zig implementation, review, or architecture work. Treat local
 - Keep top-level `src/*.zig` files as facades, process entry points, or small cross-cutting modules. Put subsystem implementation under domain directories.
 - In Zig, each source file is a struct-like namespace. Use imports and explicit aliases to communicate boundaries; avoid turning facades into implementation sinks.
 - Prefer `const` over `var` unless mutation is required.
+- For CLI, editor, and tooling JSON output, prefer `std.json.Stringify` over manual string escaping and comma bookkeeping. Use `Stringify.print` only where an existing numeric format is part of the observable output contract.
 
 ## Allocation And Ownership
 
@@ -61,9 +62,13 @@ Use this skill for Zig implementation, review, or architecture work. Treat local
 
 ## Tests
 
-- Add tests close to the module under test unless an integration fixture gives better coverage.
+- Zig only runs test declarations that are reachable while resolving a `zig test` root source file. Production imports alone are not a reliable test-discovery mechanism; every test file must be reached from a test root or from a reachable module's explicit `test { _ = @import("..._tests.zig"); }` block.
+- Small doctests or very small unit tests may live in the production file when they document the declaration directly.
+- For non-trivial modules, prefer a sibling `*_tests.zig` file imported from the production module with a small bottom-of-file `test { _ = @import("foo_tests.zig"); }` block. This mirrors Zig standard library practice such as `std/json.zig` importing `json/test.zig` and keeps test code discoverable without turning production files into mixed test suites.
+- Keep command-level or cross-module tests in an explicitly named test root such as `src/cli_tests.zig`, and import that from the executable or library test root. Do not hide broad integration tests at the bottom of a production module.
 - Use `std.testing.expectEqual`, `expectError`, `expectEqualStrings`, and approximate float checks instead of hand-written boolean assertions where they produce better failure output.
 - Use named tests that describe behavior, not implementation details.
+- After changing test wiring, verify the reported test counts in `zig build test --summary all`; a `0 tests passed` executable target usually means the test root is not importing the intended modules.
 - In this repository, do not run `zig build test` and `mise test` concurrently because fixed temp paths can collide.
 
 ## Scrapbot-Specific Zig Rules

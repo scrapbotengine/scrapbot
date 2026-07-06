@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-01
 
-**Migration note:** The language-specific Zig binding details are superseded by [ADR-022](ADR-022-odin-as-engine-implementation-language.md). Scrapbot still uses `wgpu-native`, but the target renderer binding is Odin through the C ABI.
+**Migration note:** The language-specific Zig binding details are superseded by [ADR-023](ADR-023-odin-as-engine-implementation-language.md). Scrapbot still uses `wgpu-native`, but the target renderer binding is Odin through the C ABI.
 
 ## Context
 

@@ -38,6 +38,21 @@ pub const ComponentColumnValues = union(FieldType) {
         }
     }
 
+    pub fn clearRetainingCapacity(self: *ComponentColumnValues, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .boolean => |*values| values.clearRetainingCapacity(),
+            .int => |*values| values.clearRetainingCapacity(),
+            .float => |*values| values.clearRetainingCapacity(),
+            .vec3 => |*values| values.clearRetainingCapacity(),
+            .string => |*values| {
+                for (values.items) |value| {
+                    allocator.free(value);
+                }
+                values.clearRetainingCapacity();
+            },
+        }
+    }
+
     pub fn appendCopy(self: *ComponentColumnValues, allocator: std.mem.Allocator, value: ComponentValue) StorageError!void {
         switch (self.*) {
             .boolean => |*values| switch (value) {
@@ -185,5 +200,13 @@ pub const ComponentTable = struct {
         allocator.free(self.columns);
         self.rows_by_entity.deinit(allocator);
         self.entities.deinit(allocator);
+    }
+
+    pub fn clearRetainingCapacity(self: *ComponentTable, allocator: std.mem.Allocator) void {
+        self.entities.clearRetainingCapacity();
+        self.rows_by_entity.clearRetainingCapacity();
+        for (self.columns) |*column| {
+            column.values.clearRetainingCapacity(allocator);
+        }
     }
 };

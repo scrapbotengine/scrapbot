@@ -94,9 +94,7 @@ const alignedOutputBytesPerRow = render_offscreen.alignedOutputBytesPerRow;
 const handleBufferMap = render_offscreen.handleBufferMap;
 const write24BitBmp = render_offscreen.write24BitBmp;
 const write24BitPng = render_offscreen.write24BitPng;
-const extractMeshInto = render_extract.extractMeshInto;
 const extractSceneUiInto = render_extract.extractSceneUiInto;
-const extractRendererInto = render_extract.extractRendererInto;
 const createMeshPipeline = render_pipelines.createMesh;
 const createShadowPipeline = render_pipelines.createShadow;
 const createUiPipeline = render_pipelines.createUi;
@@ -131,7 +129,7 @@ const hitTestUiRect = render_ui.hitTestUiRect;
 const textPixelSize = render_ui.textPixelSize;
 const resolveUiTextPosition = render_ui.resolveUiTextPosition;
 const evaluateUiButtonState = render_ui.evaluateUiButtonState;
-const buildUiVertices = render_ui.buildUiVertices;
+const buildUiVerticesInto = render_ui.buildUiVerticesInto;
 const screenToClipX = render_ui.screenToClipX;
 const screenToClipY = render_ui.screenToClipY;
 const clamp01 = render_ui.clamp01;
@@ -373,7 +371,7 @@ pub const ImageRenderOptions = struct {
 };
 
 pub const Scene = struct {
-    world: *const runtime.World,
+    world: *runtime.World,
 };
 
 pub const SceneReloadHook = struct {
@@ -634,18 +632,14 @@ pub fn updateEditorState(allocator: std.mem.Allocator, world: *runtime.World, st
 }
 
 pub fn stats(allocator: std.mem.Allocator, scene: Scene) RenderError!Stats {
-    var state = try RenderEcsState.init(allocator);
-    defer state.deinit();
-
-    try state.extractScene(.{ .world = scene.world });
-    var plan = try BatchPlan.build(allocator, &state.world);
+    var plan = try BatchPlan.build(allocator, scene.world);
     defer plan.deinit();
 
     return .{
-        .renderables = state.world.renderableMeshCount(),
+        .renderables = plan.renderables.len,
         .render_batches = plan.batches.len,
-        .ui_rects = state.world.uiRectCount(),
-        .ui_texts = state.world.uiTextCount(),
+        .ui_rects = scene.world.uiRectCount(),
+        .ui_texts = scene.world.uiTextCount(),
     };
 }
 
@@ -1078,6 +1072,8 @@ const MeshDemo = struct {
     render_state: RenderEcsState,
     batches: []BatchResources,
     ui_draw: UiDrawResources = .{},
+    ui_vertices: std.ArrayList(UiVertex) = .empty,
+    ui_layout_cache: ui_layout.LayoutCache,
 
     fn create(
         allocator: std.mem.Allocator,
@@ -1324,7 +1320,6 @@ const MeshDemo = struct {
 
         var render_state = try RenderEcsState.init(allocator);
         errdefer render_state.deinit();
-        try render_state.extractScene(.{ .world = scene.world });
 
         const batches = allocator.alloc(BatchResources, 0) catch return RenderError.OutOfMemory;
         errdefer allocator.free(batches);
@@ -1415,6 +1410,7 @@ const MeshDemo = struct {
             .postprocess_sampler = postprocess_sampler,
             .render_state = render_state,
             .batches = batches,
+            .ui_layout_cache = ui_layout.LayoutCache.init(allocator),
         };
     }
 
@@ -1458,6 +1454,8 @@ const MeshDemo = struct {
         self.postprocess_bind_group_layout.release();
         self.bind_group_layout.release();
         self.ui_draw.deinit();
+        self.ui_vertices.deinit(self.allocator);
+        self.ui_layout_cache.deinit();
     }
 
     fn draw(
@@ -1486,6 +1484,9 @@ const MeshDemo = struct {
         defer if (maybe_plan) |*plan| {
             plan.deinit();
         };
+        defer self.render_state.clearFrameState(context.frame.scene.world) catch |err| {
+            std.log.err("render frame cleanup failed: {s}", .{@errorName(err)});
+        };
 
         var profiled_context = context;
         profiled_context.frame.input.system_profiles = try self.render_state.combineSystemProfileSnapshots(context.frame.input.system_profiles);
@@ -1509,7 +1510,7 @@ const MeshDemo = struct {
         const result: RenderError!void = if (std.mem.eql(u8, system.id, render_extract_system_id)) blk: {
             break :blk self.render_state.extractSceneWithInput(.{ .world = context.frame.scene.world }, context.frame.input);
         } else if (std.mem.eql(u8, system.id, render_prepare_meshes_system_id)) blk: {
-            var plan = try BatchPlan.build(self.allocator, &self.render_state.world);
+            var plan = try BatchPlan.buildFromRenderables(self.allocator, self.render_state.extractedRenderableMeshes());
             var plan_transferred = false;
             errdefer if (!plan_transferred) {
                 plan.deinit();
@@ -1520,8 +1521,8 @@ const MeshDemo = struct {
             plan_transferred = true;
             break :blk {};
         } else if (std.mem.eql(u8, system.id, render_queue_meshes_system_id)) blk: {
-            const plan = maybe_plan.* orelse return RenderError.InvalidScene;
-            break :blk self.render_state.queueBatchDraws(plan.batches.len);
+            _ = maybe_plan.* orelse return RenderError.InvalidScene;
+            break :blk {};
         } else if (std.mem.eql(u8, system.id, render_interact_ui_system_id)) blk: {
             break :blk self.render_state.updateUiInteractions();
         } else if (std.mem.eql(u8, system.id, render_prepare_ui_system_id)) blk: {
@@ -1529,7 +1530,8 @@ const MeshDemo = struct {
         } else if (std.mem.eql(u8, system.id, render_queue_ui_system_id)) blk: {
             break :blk self.render_state.queueUiDraw();
         } else if (std.mem.eql(u8, system.id, render_draw_meshes_system_id)) blk: {
-            break :blk self.drawQueuedBatches(context);
+            const plan = maybe_plan.* orelse return RenderError.InvalidScene;
+            break :blk self.drawQueuedBatches(context, plan);
         } else {
             return RenderError.InvalidScene;
         };
@@ -1540,9 +1542,8 @@ const MeshDemo = struct {
     }
 
     fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
-        var vertices = try buildUiVertices(self.allocator, &self.render_state.world, config.width, config.height);
-        defer vertices.deinit(self.allocator);
-        try self.ui_draw.update(device, queue, vertices.items);
+        try buildUiVerticesInto(self.allocator, &self.ui_vertices, &self.ui_layout_cache, config.scene.world, config.width, config.height);
+        try self.ui_draw.update(device, queue, self.ui_vertices.items);
     }
 
     fn prepareBatchResources(self: *MeshDemo, device: *wgpu.Device, plan: BatchPlan) RenderError!void {
@@ -1584,8 +1585,8 @@ const MeshDemo = struct {
     }
 
     fn updateBatchInstances(self: *MeshDemo, queue: *wgpu.Queue, plan: BatchPlan, config: FrameConfig) RenderError!void {
-        const camera = try cameraState(&self.render_state.world);
-        const light = try directionalLightState(&self.render_state.world);
+        const camera = try cameraStateForInput(config.scene.world, config.input);
+        const light = try directionalLightState(config.scene.world);
         const light_view_projection = try shadowLightViewProjection(light);
         const game_viewport = config.gameViewport();
         for (plan.batches, 0..) |entry, batch_index| {
@@ -1615,22 +1616,15 @@ const MeshDemo = struct {
         }
     }
 
-    fn drawQueuedBatches(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
-        const light = try directionalLightState(&self.render_state.world);
+    fn drawQueuedBatches(self: *MeshDemo, context: RenderSystemContext, plan: BatchPlan) RenderError!void {
+        const light = try directionalLightState(context.frame.scene.world);
         var frame_uniforms = try frameUniforms(light);
         writeUniforms(context.queue, self.frame_uniform_buffer, &frame_uniforms);
 
-        var draw_batch_indices: std.ArrayList(usize) = .empty;
-        defer draw_batch_indices.deinit(self.allocator);
-
-        var draw_cursor: usize = 0;
-        const draw_query = [_][]const u8{render_draw_batch_component_id};
-        while (self.render_state.world.queryNext(&draw_query, &draw_cursor)) |draw_entity| {
-            const batch_index = try self.render_state.drawCommandBatchIndex(draw_entity);
+        for (plan.batches, 0..) |_, batch_index| {
             if (batch_index >= self.batches.len) {
                 return RenderError.InvalidScene;
             }
-            draw_batch_indices.append(self.allocator, batch_index) catch return RenderError.OutOfMemory;
         }
 
         const should_draw_ui = self.render_state.uiDrawCommandCount() > 0 and self.ui_draw.vertex_count > 0;
@@ -1640,9 +1634,9 @@ const MeshDemo = struct {
         }) orelse return RenderError.NoDevice;
         defer encoder.release();
 
-        try self.drawShadowPass(encoder, draw_batch_indices.items);
+        try self.drawShadowPass(encoder, plan.batches.len);
 
-        const render_config = renderConfigFromWorld(&self.render_state.world);
+        const render_config = renderConfigFromWorld(context.frame.scene.world);
         const postprocess_active = render_config.requiresPostProcess();
         const bloom_active = render_config.bloomActive();
         const scene_target_view = if (postprocess_active) blk: {
@@ -1689,7 +1683,7 @@ const MeshDemo = struct {
         );
         render_pass.setPipeline(self.pipeline);
         render_pass.setBindGroup(0, self.bind_group, 0, null);
-        for (draw_batch_indices.items) |batch_index| {
+        for (0..plan.batches.len) |batch_index| {
             const batch = self.batches[batch_index];
             render_pass.setVertexBuffer(0, batch.vertex_buffer, 0, batch.vertex_buffer_size);
             render_pass.setVertexBuffer(1, batch.instance_buffer, 0, batch.instance_buffer_size);
@@ -1719,7 +1713,7 @@ const MeshDemo = struct {
         context.queue.submit(&command_buffers);
     }
 
-    fn drawShadowPass(self: *MeshDemo, encoder: *wgpu.CommandEncoder, draw_batch_indices: []const usize) RenderError!void {
+    fn drawShadowPass(self: *MeshDemo, encoder: *wgpu.CommandEncoder, batch_count: usize) RenderError!void {
         const shadow_view = self.shadow_target.view orelse return RenderError.NoDevice;
         const depth_attachment = wgpu.DepthStencilAttachment{
             .view = shadow_view,
@@ -1737,7 +1731,7 @@ const MeshDemo = struct {
         defer render_pass.release();
 
         render_pass.setPipeline(self.shadow_pipeline);
-        for (draw_batch_indices) |batch_index| {
+        for (0..batch_count) |batch_index| {
             const batch = self.batches[batch_index];
             if (!batch.shadow_key.casts_shadow) {
                 continue;

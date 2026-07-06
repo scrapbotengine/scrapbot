@@ -52,15 +52,23 @@ test "initProject creates project metadata and default scene" {
 
     try std.testing.expect(fileExists(io, root_dir, project_file_name));
     try std.testing.expect(fileExists(io, root_dir, "assets/.gitkeep"));
+    try std.testing.expect(fileExists(io, root_dir, "scripts/main.luau"));
     try std.testing.expect(fileExists(io, root_dir, default_scene_path));
     try std.testing.expect(!fileExists(io, root_dir, "native/game.zig"));
 
     const metadata = try root_dir.readFileAlloc(io, project_file_name, std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(metadata);
+    try std.testing.expect(std.mem.indexOf(u8, metadata, "\nscripts = [\"scripts/main.luau\"]\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, metadata, "\n# native = \"native/game.zig\"\n") != null);
+
+    const starter_script = try root_dir.readFileAlloc(io, "scripts/main.luau", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(starter_script);
+    try std.testing.expect(std.mem.indexOf(u8, starter_script, "ecs.system(\"rotate_spinners\"") != null);
 
     const project = try loadProject(io, std.testing.allocator, root_path);
     defer freeProject(std.testing.allocator, project);
+    try std.testing.expectEqual(@as(usize, 1), project.scripts.len);
+    try std.testing.expectEqualStrings("scripts/main.luau", project.scripts[0]);
 
     var scene = try loadDefaultScene(io, std.testing.allocator, project);
     defer freeScene(std.testing.allocator, scene);
@@ -70,6 +78,10 @@ test "initProject creates project metadata and default scene" {
     try std.testing.expect(renderer_settings.postprocess_enabled);
     try std.testing.expectEqualStrings("fxaa", renderer_settings.antialiasing);
     try std.testing.expect(renderer_settings.bloom_enabled);
+
+    const cube = scene.world.findEntityById("018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001") orelse return error.TestExpectedEqual;
+    const angular_velocity = try scene.world.getVec3(cube, "spin", "angular_velocity");
+    try std.testing.expectEqual(@as(f32, 0.7), angular_velocity[1]);
 }
 
 test "loadProject accepts legacy project metadata filename" {
@@ -163,7 +175,9 @@ test "checkProject validates a project directory" {
 
     try std.testing.expectEqualStrings("Game", result.project.name);
     try std.testing.expectEqualStrings(default_scene_path, result.project.default_scene);
-    try std.testing.expectEqual(@as(usize, 0), result.schedule.systemCount());
+    try std.testing.expectEqual(@as(usize, 1), result.project.scripts.len);
+    try std.testing.expectEqualStrings("scripts/main.luau", result.project.scripts[0]);
+    try std.testing.expectEqual(@as(usize, 1), result.schedule.systemCount());
 }
 
 test "loadProject accepts packaged native artifact metadata" {
@@ -466,6 +480,10 @@ test "checkProject rejects scene components missing from the script registry" {
     try initProject(io, std.testing.allocator, root_path, "Game");
     const root_dir = try cwd.openDir(io, root_path, .{});
     defer root_dir.close(io);
+    try root_dir.writeFile(io, .{
+        .sub_path = project_file_name,
+        .data = "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nscripts = []\n",
+    });
     try writeSpinnerScene(io, root_dir);
 
     try std.testing.expectError(

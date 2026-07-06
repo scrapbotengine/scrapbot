@@ -24,7 +24,7 @@ Offscreen demo rendering proves that Scrapbot can initialize the WebGPU backend,
 - Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
 - Renderable meshes can cast or receive directional-light shadows when authored with shadow marker components.
 - UI rectangles and text labels render after 3D scene content as an overlay.
-- The renderer extracts scene data into an internal render ECS world, batches matching renderables, queues batch draw commands as render-world entities, and executes the render path through a render-phase system schedule.
+- The renderer reads scene render data from the authoritative scene ECS world, snapshots frame renderables for batching, and executes the render path through a render-phase system schedule.
 - Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
 - The rendered pixels are copied back to CPU memory and written as a PNG file by default. Explicit `.bmp` output paths remain supported for compatibility.
 - Render verification parses the image and checks dimensions, foreground pixel coverage, visible connected components, and expected warm/cool color groups derived from scene material and UI colors.
@@ -44,10 +44,10 @@ Offscreen demo rendering proves that Scrapbot can initialize the WebGPU backend,
 **Why:** The Zig binding currently needs compatibility patches for the active Zig toolchain, and the official `wgpu-native` release stream moves independently. This follows ADR-005.
 **Tradeoff:** The renderer module must expose deliberate engine-owned APIs as rendering grows.
 
-### 3. Use the shared ECS for renderer-internal data flow
+### 3. Use the scene ECS world as render data authority
 
-**Decision:** Offscreen rendering extracts scene data into a renderer-owned `runtime.World` and queues draw commands as internal ECS component data before issuing GPU commands.
-**Why:** This keeps offscreen rendering aligned with the same world, query, and scheduling model used by scenes and scripts. It follows ADR-013.
+**Decision:** Offscreen rendering resolves mesh, camera, light, shadow, renderer settings, scene UI, and engine-generated editor overlay data from the scene `runtime.World`; renderer-owned state is limited to frame snapshots, schedule profiling, and GPU resources.
+**Why:** This keeps offscreen rendering aligned with the authoritative scene ECS model while avoiding per-frame scene clones. It follows ADR-022.
 **Tradeoff:** GPU buffers and bind groups are still renderer-owned side resources until native/internal component storage is designed.
 
 ### 4. Let offscreen rendering exercise editor frame input
@@ -76,7 +76,7 @@ Offscreen demo rendering proves that Scrapbot can initialize the WebGPU backend,
 
 ## Related
 
-- **ADRs:** ADR-004, ADR-005, ADR-013
+- **ADRs:** ADR-004, ADR-005, ADR-022
 - **FDRs:** FDR-001, FDR-002, FDR-005, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions

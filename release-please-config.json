@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "initial-version": "0.1.0",
+      "version-file": "version.txt",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "src/root.zig"
+        },
+        {
+          "type": "generic",
+          "path": "build.zig.zon"
+        }
+      ]
+    }
+  }
+}

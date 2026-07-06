@@ -522,3 +522,7 @@ fn parseCheckOutputFormat(value: []const u8) ArgumentError!CheckOutputFormat {
     }
     return ArgumentError.InvalidFormat;
 }
+
+test {
+    _ = @import("options_tests.zig");
+}

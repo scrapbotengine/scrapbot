@@ -11,7 +11,7 @@ const scene_loader = @import("project/scene_loader.zig");
 const script = @import("script.zig");
 const ui_layout = @import("ui_layout.zig");
 
-pub const version = "0.1.0-dev";
+pub const version = "0.1.0"; // x-release-please-version
 pub const project_file_name = "project.toml";
 pub const legacy_project_file_name = "project.scrapbot.toml";
 pub const default_scene_path = "scenes/main.scene.toml";
@@ -330,7 +330,7 @@ pub const LiveProject = struct {
         self.* = undefined;
     }
 
-    pub fn renderScene(self: *const LiveProject) RenderScene {
+    pub fn renderScene(self: *LiveProject) RenderScene {
         return .{ .world = &self.scene.world };
     }
 
@@ -806,6 +806,7 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
     }
 
     try root_dir.createDirPath(io, "scenes");
+    try root_dir.createDirPath(io, "scripts");
     try root_dir.createDirPath(io, "assets");
 
     const escaped_name = try encodeTomlBasicString(allocator, name);
@@ -813,7 +814,7 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
 
     const project_contents = try std.fmt.allocPrint(
         allocator,
-        "name = \"{s}\"\nversion = 1\ndefault_scene = \"{s}\"\n\n# native = \"native/game.zig\"\n",
+        "name = \"{s}\"\nversion = 1\ndefault_scene = \"{s}\"\nscripts = [\"scripts/main.luau\"]\n\n# native = \"native/game.zig\"\n",
         .{ escaped_name, default_scene_path },
     );
     defer allocator.free(project_contents);
@@ -870,6 +871,9 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\[entities.components."scrapbot.material.surface"]
             \\base_color = [0.0, 0.56, 1.0]
             \\
+            \\[entities.components.spin]
+            \\angular_velocity = [0.0, 0.7, 0.0]
+            \\
             \\[[entities]]
             \\id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0002"
             \\name = "Main Camera"
@@ -893,6 +897,43 @@ pub fn initProject(io: Io, allocator: std.mem.Allocator, root_path: []const u8, 
             \\color = [1.0, 1.0, 1.0]
             \\intensity = 0.78
             \\ambient = 0.18
+            \\
+            ,
+            .flags = .{ .exclusive = true },
+        });
+    }
+
+    {
+        try root_dir.writeFile(io, .{
+            .sub_path = "scripts/main.luau",
+            .data =
+            \\--!strict
+            \\
+            \\local Transform = ecs.component<<ScrapbotTransform>>("scrapbot.transform")
+            \\local Spin = ecs.component("spin", {
+            \\  fields = ecs.fields({
+            \\    angular_velocity = "vec3",
+            \\  }),
+            \\})
+            \\
+            \\local Spinners = ecs.query(Transform, Spin)
+            \\
+            \\ecs.system("rotate_spinners", {
+            \\  phase = "update",
+            \\  query = Spinners,
+            \\  writes = ecs.refs(Transform),
+            \\  run = function(world, dt)
+            \\    for _entity, transform, spin in Spinners:iter(world) do
+            \\      local rotation = transform.rotation
+            \\      local angularVelocity = spin.angular_velocity
+            \\      transform.rotation = {
+            \\        rotation[1] + angularVelocity[1] * dt,
+            \\        rotation[2] + angularVelocity[2] * dt,
+            \\        rotation[3] + angularVelocity[3] * dt,
+            \\      }
+            \\    end
+            \\  end,
+            \\})
             \\
             ,
             .flags = .{ .exclusive = true },

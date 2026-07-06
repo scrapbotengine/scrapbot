@@ -24,7 +24,7 @@ Built-in geometry and materials let projects render simple 3D forms from text-au
 ### 1. Split shape selection from material color
 
 **Decision:** Geometry and material are separate ECS components instead of one renderer-specific cube component.
-**Why:** Shape data and surface data will evolve independently as assets, materials, scripts, and editor tooling grow. This follows ADR-008 and ADR-013.
+**Why:** Shape data and surface data will evolve independently as assets, materials, scripts, and editor tooling grow. This follows ADR-008 and ADR-022.
 **Tradeoff:** Simple renderable entities need two component tables instead of one.
 
 ### 2. Keep primitives built in until asset import exists
@@ -47,7 +47,7 @@ Built-in geometry and materials let projects render simple 3D forms from text-au
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-004, ADR-008, ADR-013
+- **ADRs:** ADR-001, ADR-004, ADR-008, ADR-022
 - **FDRs:** FDR-002, FDR-006, FDR-007, FDR-008, FDR-009, FDR-014, FDR-016
 
 ## Open Questions

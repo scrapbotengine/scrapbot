@@ -29,3 +29,11 @@ pub fn sameResolvedPath(allocator: std.mem.Allocator, left: []const u8, right: [
     defer allocator.free(resolved_right);
     return std.mem.eql(u8, resolved_left, resolved_right);
 }
+
+pub fn renderArtifactMetadataPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}.metadata.json", .{path});
+}
+
+test {
+    _ = @import("path_tests.zig");
+}

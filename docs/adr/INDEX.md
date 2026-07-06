@@ -23,4 +23,5 @@
 | [ADR-019](ADR-019-project-local-native-zig-modules.md) | Project-Local Native Zig Modules | 2026-07-03 |
 | [ADR-020](ADR-020-transient-ecs-input-resources.md) | Transient ECS Input Resources | 2026-07-03 |
 | [ADR-021](ADR-021-domain-oriented-source-layout.md) | Domain-Oriented Source Layout | 2026-07-06 |
-| [ADR-022](ADR-022-odin-as-engine-implementation-language.md) | Odin as the Engine Implementation Language | 2026-07-06 |
+| [ADR-022](ADR-022-single-world-render-data-flow.md) | Single-World Render Data Flow | 2026-07-06 |
+| [ADR-023](ADR-023-odin-as-engine-implementation-language.md) | Odin as the Engine Implementation Language | 2026-07-06 |

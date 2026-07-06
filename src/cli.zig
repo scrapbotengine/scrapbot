@@ -7,16 +7,11 @@ const cli_output = @import("cli/output.zig");
 const cli_path = @import("cli/path.zig");
 const test_manifest = @import("cli/test_manifest.zig");
 
-const ArgumentError = cli_options.ArgumentError;
 const BenchResult = cli_options.BenchResult;
 const CheckOutputFormat = cli_options.CheckOutputFormat;
 const RenderCommandOptions = cli_options.RenderCommandOptions;
-const ExpectedFieldValue = test_manifest.ExpectedFieldValue;
-const ExpectationEvaluation = test_manifest.ExpectationEvaluation;
 const TestCaseStats = test_manifest.TestCaseStats;
-const TestExpectation = test_manifest.TestExpectation;
 const TestManifest = test_manifest.TestManifest;
-const TestManifestError = test_manifest.TestManifestError;
 const TestSuiteSummary = test_manifest.TestSuiteSummary;
 const collectTestProjects = test_manifest.collectTestProjects;
 const evaluateExpectation = cli_output.evaluateExpectation;
@@ -26,15 +21,12 @@ const parseBenchOptions = cli_options.parseBenchOptions;
 const parseBuildOptions = cli_options.parseBuildOptions;
 const parseCheckOptions = cli_options.parseCheckOptions;
 const parseInitOptions = cli_options.parseInitOptions;
-const parseTestManifest = test_manifest.parseTestManifest;
 const parseRenderOptions = cli_options.parseRenderOptions;
 const parseRunOptions = cli_options.parseRunOptions;
 const parseStepOptions = cli_options.parseStepOptions;
 const parseTestOptions = cli_options.parseTestOptions;
 const parseTopLevel = cli_options.parseTopLevel;
 const parseVisualTestOptions = cli_options.parseVisualTestOptions;
-const parseWindowOptions = cli_options.parseWindowOptions;
-const pathExists = cli_path.pathExists;
 const printHelp = cli_help.printHelp;
 const printArgumentError = cli_output.printArgumentError;
 const printBenchOkJson = cli_output.printBenchOkJson;
@@ -55,12 +47,16 @@ const printTestCaseDiagnosticFailureJson = cli_output.printTestCaseDiagnosticFai
 const printTestCaseLoadFailureJson = cli_output.printTestCaseLoadFailureJson;
 const printTestCaseOkJson = cli_output.printTestCaseOkJson;
 const printTestCaseRuntimeFailureJson = cli_output.printTestCaseRuntimeFailureJson;
-const printTestSummaryJson = cli_output.printTestSummaryJson;
+const printTestDiscoveryFailureJson = cli_output.printTestDiscoveryFailureJson;
+const printNoTestProjectsJson = cli_output.printNoTestProjectsJson;
+const printTestSuiteEndJson = cli_output.printTestSuiteEndJson;
+const printTestSuiteSeparatorJson = cli_output.printTestSuiteSeparatorJson;
+const printTestSuiteStartJson = cli_output.printTestSuiteStartJson;
 const printTestSummaryText = cli_output.printTestSummaryText;
 const projectNameFromPath = cli_path.projectNameFromPath;
+const renderArtifactMetadataPath = cli_path.renderArtifactMetadataPath;
 const sameResolvedPath = cli_path.sameResolvedPath;
 const trimTrailingSlashes = cli_path.trimTrailingSlashes;
-const writeJsonString = cli_output.writeJsonString;
 
 pub fn run(
     io: Io,
@@ -607,13 +603,7 @@ fn testCommand(
     const project_paths = collectTestProjects(io, allocator, options.target_path) catch |err| {
         switch (options.format) {
             .text => try stderr.print("{s}: test discovery failed: {s}\n", .{ options.target_path, @errorName(err) }),
-            .json => {
-                try stdout.writeAll("{\"ok\":false,\"error\":");
-                try writeJsonString(stdout, @errorName(err));
-                try stdout.writeAll(",\"root\":");
-                try writeJsonString(stdout, options.target_path);
-                try stdout.writeAll("}\n");
-            },
+            .json => try printTestDiscoveryFailureJson(stdout, options.target_path, err),
         }
         return 1;
     };
@@ -622,23 +612,19 @@ fn testCommand(
     if (project_paths.len == 0) {
         switch (options.format) {
             .text => try stderr.print("{s}: no Scrapbot test projects found\n", .{options.target_path}),
-            .json => {
-                try stdout.writeAll("{\"ok\":false,\"error\":\"NoTestProjects\",\"root\":");
-                try writeJsonString(stdout, options.target_path);
-                try stdout.writeAll("}\n");
-            },
+            .json => try printNoTestProjectsJson(stdout, options.target_path),
         }
         return 1;
     }
 
     var summary = TestSuiteSummary{};
     if (options.format == .json) {
-        try stdout.writeAll("{\"tests\":[");
+        try printTestSuiteStartJson(stdout);
     }
 
     for (project_paths, 0..) |project_path, index| {
         if (options.format == .json and index != 0) {
-            try stdout.writeByte(',');
+            try printTestSuiteSeparatorJson(stdout);
         }
 
         const stats = try runTestCase(io, allocator, project_path, options.format, stdout, stderr);
@@ -647,13 +633,7 @@ fn testCommand(
 
     switch (options.format) {
         .text => try printTestSummaryText(stdout, summary),
-        .json => {
-            try stdout.writeAll("],\"summary\":");
-            try printTestSummaryJson(stdout, summary);
-            try stdout.writeAll(",\"ok\":");
-            try stdout.writeAll(if (summary.failed_cases == 0) "true" else "false");
-            try stdout.writeAll("}\n");
-        },
+        .json => try printTestSuiteEndJson(stdout, summary),
     }
 
     return if (summary.failed_cases == 0) 0 else 1;
@@ -958,10 +938,6 @@ fn printRenderArtifact(writer: *Io.Writer, label: []const u8, path: []const u8, 
     );
 }
 
-fn renderArtifactMetadataPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}.metadata.json", .{path});
-}
-
 fn writeRenderArtifactMetadata(io: Io, allocator: std.mem.Allocator, path: []const u8, options: RenderCommandOptions) !void {
     const metadata_path = try renderArtifactMetadataPath(allocator, path);
     defer allocator.free(metadata_path);
@@ -1022,462 +998,4 @@ fn expectedColorGroups(scene: scrapbot.Scene) usize {
     }
     const groups = @as(usize, @intFromBool(has_warm)) + @as(usize, @intFromBool(has_cool));
     return @max(groups, 1);
-}
-
-test "projectNameFromPath uses final path segment" {
-    try std.testing.expectEqualStrings("demo", projectNameFromPath("games/demo"));
-    try std.testing.expectEqualStrings("demo", projectNameFromPath("games/demo/"));
-    try std.testing.expectEqualStrings("Scrapbot Project", projectNameFromPath("."));
-}
-
-test "parseInitOptions defaults to current directory" {
-    const options = try parseInitOptions(std.testing.allocator, &.{});
-    try std.testing.expectEqualStrings(".", options.target_path);
-}
-
-test "parseInitOptions accepts one target path" {
-    const args = [_][]const u8{"games/demo"};
-    const options = try parseInitOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("games/demo", options.target_path);
-}
-
-test "parseInitOptions rejects extra arguments" {
-    const args = [_][]const u8{ "games/demo", "extra" };
-    try std.testing.expectError(ArgumentError.UnknownArgument, parseInitOptions(std.testing.allocator, &args));
-}
-
-test "run init command creates a checkable project" {
-    const root_path = ".zig-cache/test-cli-init-project";
-    const io = Io.Threaded.global_single_threaded.io();
-    const cwd = Io.Dir.cwd();
-    cwd.deleteTree(io, root_path) catch {};
-    defer cwd.deleteTree(io, root_path) catch {};
-
-    var stdout_buffer: [512]u8 = undefined;
-    var stdout = Io.Writer.fixed(&stdout_buffer);
-    var stderr_buffer: [512]u8 = undefined;
-    var stderr = Io.Writer.fixed(&stderr_buffer);
-    const args = [_][]const u8{ "scrapbot", "init", root_path };
-
-    const exit_code = try run(io, std.testing.allocator, &args, &stdout, &stderr);
-    try std.testing.expectEqual(@as(u8, 0), exit_code);
-    try std.testing.expectEqualStrings("Initialized Scrapbot project at " ++ root_path ++ "\n", stdout.buffered());
-    try std.testing.expectEqualStrings("", stderr.buffered());
-
-    const root_dir = try cwd.openDir(io, root_path, .{});
-    defer root_dir.close(io);
-    try std.testing.expect(pathExists(io, root_dir, scrapbot.project_file_name));
-    try std.testing.expect(pathExists(io, root_dir, "scenes/main.scene.toml"));
-    try std.testing.expect(pathExists(io, root_dir, "assets/.gitkeep"));
-    try std.testing.expect(!pathExists(io, root_dir, "native/game.zig"));
-
-    const metadata = try root_dir.readFileAlloc(io, scrapbot.project_file_name, std.testing.allocator, .limited(64 * 1024));
-    defer std.testing.allocator.free(metadata);
-    try std.testing.expect(std.mem.indexOf(u8, metadata, "\n# native = \"native/game.zig\"\n") != null);
-
-    const result = try scrapbot.checkProject(io, std.testing.allocator, root_path);
-    defer scrapbot.freeCheckResult(std.testing.allocator, result);
-    try std.testing.expectEqualStrings("test-cli-init-project", result.project.name);
-}
-
-test "run init command rejects extra arguments" {
-    const root_path = ".zig-cache/test-cli-init-extra";
-    const io = Io.Threaded.global_single_threaded.io();
-    const cwd = Io.Dir.cwd();
-    cwd.deleteTree(io, root_path) catch {};
-    defer cwd.deleteTree(io, root_path) catch {};
-
-    var stdout_buffer: [512]u8 = undefined;
-    var stdout = Io.Writer.fixed(&stdout_buffer);
-    var stderr_buffer: [512]u8 = undefined;
-    var stderr = Io.Writer.fixed(&stderr_buffer);
-    const args = [_][]const u8{ "scrapbot", "init", root_path, "extra" };
-
-    const exit_code = try run(io, std.testing.allocator, &args, &stdout, &stderr);
-    try std.testing.expectEqual(@as(u8, 1), exit_code);
-    try std.testing.expectEqualStrings("", stdout.buffered());
-    try std.testing.expectEqualStrings("unknown argument\n", stderr.buffered());
-    try std.testing.expectError(scrapbot.ProjectError.InvalidProject, scrapbot.checkProject(io, std.testing.allocator, root_path));
-}
-
-test "parseWindowOptions accepts frames, editor, and hidden flags" {
-    const args = [_][]const u8{ "--frames", "12", "--editor", "--hidden" };
-    const options = try parseWindowOptions(std.testing.allocator, &args);
-    try std.testing.expectEqual(@as(u32, 12), options.max_frames.?);
-    try std.testing.expect(options.editor);
-    try std.testing.expect(options.hidden);
-}
-
-test "parseWindowOptions rejects hidden run without frame limit" {
-    const args = [_][]const u8{"--hidden"};
-    try std.testing.expectError(ArgumentError.HiddenRequiresFrames, parseWindowOptions(std.testing.allocator, &args));
-}
-
-test "parseRenderOptions accepts editor flag before path" {
-    const args = [_][]const u8{ "--editor", "examples/spawn_swarm", "zig-out/spawn-editor.png" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
-    try std.testing.expect(options.editor);
-    try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
-}
-
-test "parseRenderOptions accepts editor flag after output" {
-    const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.png", "--editor" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
-    try std.testing.expect(options.editor);
-    try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
-}
-
-test "parseRenderOptions accepts selected entity" {
-    const args = [_][]const u8{ "examples/spawn_swarm", "zig-out/spawn-editor.png", "--select", "swarm.0" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
-    try std.testing.expect(options.editor);
-    try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
-    try std.testing.expectEqualStrings("swarm.0", options.selected_entity_id.?);
-}
-
-test "parseRenderOptions accepts frame count" {
-    const args = [_][]const u8{ "--frames=60", "examples/ui_gallery", "zig-out/ui-gallery.png" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
-    try std.testing.expectEqual(@as(u32, 60), options.frames);
-    try std.testing.expectEqualStrings("examples/ui_gallery", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/ui-gallery.png", options.output_path);
-}
-
-test "parseRenderOptions accepts explicit bmp output" {
-    const args = [_][]const u8{ "examples/minimal", "zig-out/minimal-render-test.bmp" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
-    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/minimal-render-test.bmp", options.output_path);
-}
-
-test "parseRenderOptions accepts render dimensions" {
-    const args = [_][]const u8{ "--width", "1400", "--height=1000", "examples/spawn_swarm", "zig-out/spawn-editor.png" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp");
-    try std.testing.expectEqual(@as(u32, 1400), options.width);
-    try std.testing.expectEqual(@as(u32, 1000), options.height);
-    try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/spawn-editor.png", options.output_path);
-}
-
-test "parseRenderOptions accepts pixel scale" {
-    const args = [_][]const u8{ "--width=1280", "--height=900", "--pixel-scale=2", "examples/minimal" };
-    const options = try parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png");
-    try std.testing.expectEqual(@as(u32, 1280), options.width);
-    try std.testing.expectEqual(@as(u32, 900), options.height);
-    try std.testing.expectApproxEqAbs(@as(f32, 2.0), options.pixel_scale, 0.000001);
-}
-
-test "parseRenderOptions rejects zero render dimension" {
-    const args = [_][]const u8{ "--width=0", "examples/minimal" };
-    try std.testing.expectError(ArgumentError.InvalidRenderSize, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.bmp"));
-}
-
-test "parseRenderOptions rejects invalid pixel scale" {
-    const args = [_][]const u8{ "--pixel-scale=0", "examples/minimal" };
-    try std.testing.expectError(ArgumentError.InvalidPixelScale, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png"));
-}
-
-test "parseRenderOptions rejects extra positionals" {
-    const args = [_][]const u8{ "examples/minimal", "one.bmp", "two.bmp" };
-    try std.testing.expectError(ArgumentError.UnknownArgument, parseRenderOptions(std.testing.allocator, &args, "zig-out/default.png"));
-}
-
-test "parseVisualTestOptions accepts expected and actual paths" {
-    const args = [_][]const u8{ "--frames=4", "tests/golden/postprocess_effects", "tests/golden/postprocess_effects/expected.png", "zig-out/postprocess-actual.png" };
-    const options = try parseVisualTestOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("tests/golden/postprocess_effects", options.render.target_path);
-    try std.testing.expectEqualStrings("tests/golden/postprocess_effects/expected.png", options.expected_path);
-    try std.testing.expectEqualStrings("zig-out/postprocess-actual.png", options.render.output_path);
-    try std.testing.expectEqual(@as(u32, 4), options.render.frames);
-    try std.testing.expect(!options.update);
-}
-
-test "parseVisualTestOptions supports update selected entity and pixel scale" {
-    const args = [_][]const u8{ "--update", "--select", "cube-1", "--width=1280", "--height", "720", "--pixel-scale", "2", "tests/golden/basic", "tests/golden/basic/expected.png" };
-    const options = try parseVisualTestOptions(std.testing.allocator, &args);
-    try std.testing.expect(options.update);
-    try std.testing.expect(options.render.editor);
-    try std.testing.expectEqualStrings("cube-1", options.render.selected_entity_id.?);
-    try std.testing.expectEqual(@as(u32, 1280), options.render.width);
-    try std.testing.expectEqual(@as(u32, 720), options.render.height);
-    try std.testing.expectApproxEqAbs(@as(f32, 2.0), options.render.pixel_scale, 0.000001);
-    try std.testing.expectEqualStrings("zig-out/scrapbot-visual-test.png", options.render.output_path);
-}
-
-test "render artifact metadata path appends sidecar suffix" {
-    const path = try renderArtifactMetadataPath(std.testing.allocator, "zig-out/editor.png");
-    defer std.testing.allocator.free(path);
-    try std.testing.expectEqualStrings("zig-out/editor.png.metadata.json", path);
-}
-
-test "parseVisualTestOptions requires expected path" {
-    const args = [_][]const u8{"tests/golden/basic"};
-    try std.testing.expectError(ArgumentError.MissingExpected, parseVisualTestOptions(std.testing.allocator, &args));
-}
-
-test "sameResolvedPath detects equivalent relative paths" {
-    try std.testing.expect(try sameResolvedPath(std.testing.allocator, "tests/golden/postprocess_effects/expected.png", "./tests/golden/postprocess_effects/expected.png"));
-    try std.testing.expect(!try sameResolvedPath(std.testing.allocator, "tests/golden/postprocess_effects/expected.png", "zig-out/postprocess-effects-actual.png"));
-}
-
-test "parseCheckOptions accepts path and json format" {
-    const args = [_][]const u8{ "examples/minimal", "--format=json" };
-    const options = try parseCheckOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
-    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
-}
-
-test "parseCheckOptions accepts format before path" {
-    const args = [_][]const u8{ "--format", "json", "examples/minimal" };
-    const options = try parseCheckOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
-    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
-}
-
-test "parseCheckOptions rejects unknown format" {
-    const args = [_][]const u8{"--format=yaml"};
-    try std.testing.expectError(ArgumentError.InvalidFormat, parseCheckOptions(std.testing.allocator, &args));
-}
-
-test "parseStepOptions accepts path frames dt and json format" {
-    const args = [_][]const u8{ "examples/minimal", "--frames=60", "--dt", "0.016", "--format=json" };
-    const options = try parseStepOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
-    try std.testing.expectEqual(@as(u32, 60), options.frames);
-    try std.testing.expectApproxEqAbs(@as(f32, 0.016), options.delta_seconds, 0.000001);
-    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
-}
-
-test "parseStepOptions rejects invalid dt" {
-    const args = [_][]const u8{ "--dt", "inf" };
-    try std.testing.expectError(ArgumentError.InvalidDelta, parseStepOptions(std.testing.allocator, &args));
-}
-
-test "parseBenchOptions accepts path frames dt and json format" {
-    const args = [_][]const u8{ "examples/spawn_swarm", "--frames=120", "--dt", "0.016", "--format=json" };
-    const options = try parseBenchOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("examples/spawn_swarm", options.target_path);
-    try std.testing.expectEqual(@as(u32, 120), options.frames);
-    try std.testing.expectApproxEqAbs(@as(f32, 0.016), options.delta_seconds, 0.000001);
-    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
-}
-
-test "parseTestOptions defaults to tests/projects" {
-    const options = try parseTestOptions(std.testing.allocator, &.{});
-    try std.testing.expectEqualStrings("tests/projects", options.target_path);
-    try std.testing.expectEqual(CheckOutputFormat.text, options.format);
-}
-
-test "parseTestOptions accepts path and json format" {
-    const args = [_][]const u8{ "tests/projects/health_tick", "--format=json" };
-    const options = try parseTestOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("tests/projects/health_tick", options.target_path);
-    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
-}
-
-test "parseBuildOptions accepts path output name force and json format" {
-    const args = [_][]const u8{ "examples/minimal", "--output=zig-out/packages", "--name", "minimal-demo", "--force", "--format=json" };
-    const options = try parseBuildOptions(std.testing.allocator, &args);
-    try std.testing.expectEqualStrings("examples/minimal", options.target_path);
-    try std.testing.expectEqualStrings("zig-out/packages", options.output_root.?);
-    try std.testing.expectEqualStrings("minimal-demo", options.name.?);
-    try std.testing.expect(options.force);
-    try std.testing.expectEqual(CheckOutputFormat.json, options.format);
-}
-
-test "parseBuildOptions defaults output root to project build directory" {
-    const options = try parseBuildOptions(std.testing.allocator, &.{});
-    try std.testing.expectEqualStrings(".", options.target_path);
-    try std.testing.expect(options.output_root == null);
-}
-
-test "parseBuildOptions rejects extra positionals" {
-    const args = [_][]const u8{ "examples/minimal", "extra" };
-    try std.testing.expectError(ArgumentError.UnknownArgument, parseBuildOptions(std.testing.allocator, &args));
-}
-
-test "parseTestManifest reads field assertions" {
-    var manifest = try parseTestManifest(std.testing.allocator,
-        \\frames = 4
-        \\dt = 1.0
-        \\
-        \\[[input.frame]]
-        \\frame = 2
-        \\debug_overlay_visible = true
-        \\viewport = [1280.0, 720.0]
-        \\pixel_scale = 2.0
-        \\pointer = [36.0, 190.0]
-        \\pointer_delta = [3.0, -2.0]
-        \\secondary_down = true
-        \\wheel_delta = [0.0, -1.0]
-        \\move_forward = true
-        \\move_up = true
-        \\system_profile_count_hint = 9
-        \\
-        \\[[expect.field]]
-        \\entity = "door-1"
-        \\component = "door"
-        \\field = "openness"
-        \\equals_float = 1.0
-        \\
-        \\[[expect.field]]
-        \\entity = "switch-1"
-        \\component = "switch"
-        \\field = "active"
-        \\equals_bool = true
-        \\
-    );
-    defer manifest.deinit(std.testing.allocator);
-
-    try std.testing.expectEqual(@as(u32, 4), manifest.frames);
-    try std.testing.expectApproxEqAbs(@as(f32, 1.0), manifest.delta_seconds, 0.000001);
-    try std.testing.expectEqual(@as(usize, 1), manifest.input_frames.len);
-    try std.testing.expectEqual(@as(u32, 2), manifest.input_frames[0].frame);
-    try std.testing.expect(manifest.input_frames[0].input.debug_overlay_visible);
-    try std.testing.expectApproxEqAbs(@as(f32, 1280.0), manifest.input_frames[0].input.viewport_width, 0.000001);
-    try std.testing.expectApproxEqAbs(@as(f32, 2.0), manifest.input_frames[0].input.pixel_scale, 0.000001);
-    try std.testing.expectApproxEqAbs(@as(f32, 36.0), manifest.input_frames[0].input.pointer.position[0], 0.000001);
-    try std.testing.expectApproxEqAbs(@as(f32, 3.0), manifest.input_frames[0].input.pointer.delta[0], 0.000001);
-    try std.testing.expect(manifest.input_frames[0].input.pointer.secondary_down);
-    try std.testing.expectApproxEqAbs(@as(f32, -1.0), manifest.input_frames[0].input.pointer.wheel_delta[1], 0.000001);
-    try std.testing.expect(manifest.input_frames[0].input.keyboard.move_forward);
-    try std.testing.expect(manifest.input_frames[0].input.keyboard.move_up);
-    try std.testing.expectEqual(@as(usize, 9), manifest.input_frames[0].input.system_profile_count_hint);
-    try std.testing.expectEqual(@as(usize, 2), manifest.expectations.len);
-    try std.testing.expectEqualStrings("door-1", manifest.expectations[0].entity);
-    try std.testing.expectEqualStrings("door", manifest.expectations[0].component);
-    try std.testing.expectEqualStrings("openness", manifest.expectations[0].field);
-    try std.testing.expect(manifest.expectations[0].expected.matches(.{ .float = 1.0 }));
-    try std.testing.expect(manifest.expectations[1].expected.matches(.{ .boolean = true }));
-}
-
-test "parseTestManifest rejects duplicate input frames" {
-    try std.testing.expectError(TestManifestError.InvalidTestManifest, parseTestManifest(std.testing.allocator,
-        \\frames = 2
-        \\
-        \\[[input.frame]]
-        \\frame = 1
-        \\pointer = [1.0, 2.0]
-        \\
-        \\[[input.frame]]
-        \\frame = 1
-        \\pointer = [3.0, 4.0]
-        \\
-        \\[[expect.field]]
-        \\entity = "scroll"
-        \\component = "scrapbot.ui.scroll_view"
-        \\field = "content_offset"
-        \\equals_vec3 = [0.0, 0.0, 0.0]
-        \\
-    ));
-}
-
-test "testCommand runs a gameplay project fixture" {
-    var stdout_buffer: [8192]u8 = undefined;
-    var stdout = Io.Writer.fixed(&stdout_buffer);
-    var stderr_buffer: [2048]u8 = undefined;
-    var stderr = Io.Writer.fixed(&stderr_buffer);
-    const io = Io.Threaded.global_single_threaded.io();
-
-    const args = [_][]const u8{"tests/projects/health_tick"};
-    const exit_code = try testCommand(io, std.testing.allocator, &args, &stdout, &stderr);
-
-    try std.testing.expectEqual(@as(u8, 0), exit_code);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "PASS health_tick") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout.buffered(), "Test projects: 1 passed, 0 failed") != null);
-    try std.testing.expectEqualStrings("", stderr.buffered());
-}
-
-test "printCheckOkJson includes schedule summary" {
-    var buffer: [1024]u8 = undefined;
-    var writer = Io.Writer.fixed(&buffer);
-
-    const scripts = [_][]const u8{"scripts/gameplay.luau"};
-    const reads = [_][]const u8{"spin"};
-    const writes = [_][]const u8{"scrapbot.transform"};
-    const system = scrapbot.CheckSystemSummary{
-        .id = "autorotate",
-        .phase = .update,
-        .runner = .luau,
-        .reads = &reads,
-        .writes = &writes,
-    };
-    const systems = [_]scrapbot.CheckSystemSummary{system};
-    const batch = scrapbot.CheckScheduleBatch{
-        .phase = .update,
-        .systems = &systems,
-    };
-    const batches = [_]scrapbot.CheckScheduleBatch{batch};
-    const result = scrapbot.CheckResult{
-        .project = .{
-            .root_path = "examples/minimal",
-            .name = "Minimal",
-            .default_scene = "scenes/main.scene.toml",
-            .scripts = &scripts,
-        },
-        .schedule = .{ .batches = &batches },
-    };
-
-    try printCheckOkJson(&writer, result);
-
-    try std.testing.expectEqualStrings(
-        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"scrapbot.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
-        writer.buffered(),
-    );
-}
-
-test "printStepOkJson includes simulation and scene summary" {
-    var output_buffer: [1536]u8 = undefined;
-    var writer = Io.Writer.fixed(&output_buffer);
-
-    var scene = scrapbot.Scene{
-        .name = "Main",
-        .world = scrapbot.World.init(std.testing.allocator),
-    };
-    defer scene.world.deinit();
-    const entity = try scene.world.createEntity("entity-1", "Entity");
-    try scene.world.setTransform(entity, .{});
-    try scene.world.setSpin(entity, .{ .angular_velocity = .{ 1.0, 0.0, 0.0 } });
-
-    const scripts = [_][]const u8{"scripts/gameplay.luau"};
-    const reads = [_][]const u8{"spin"};
-    const writes = [_][]const u8{"scrapbot.transform"};
-    const system = scrapbot.CheckSystemSummary{
-        .id = "autorotate",
-        .phase = .update,
-        .runner = .luau,
-        .reads = &reads,
-        .writes = &writes,
-    };
-    const systems = [_]scrapbot.CheckSystemSummary{system};
-    const batch = scrapbot.CheckScheduleBatch{
-        .phase = .update,
-        .systems = &systems,
-    };
-    const batches = [_]scrapbot.CheckScheduleBatch{batch};
-    const ok = scrapbot.StepOk{
-        .project = .{
-            .root_path = "examples/minimal",
-            .name = "Minimal",
-            .default_scene = "scenes/main.scene.toml",
-            .scripts = &scripts,
-        },
-        .scene = scene,
-        .schedule = .{ .batches = &batches },
-        .summary = .{
-            .frames = 2,
-            .completed_frames = 2,
-            .delta_seconds = 0.5,
-        },
-    };
-
-    try printStepOkJson(&writer, ok);
-
-    try std.testing.expectEqualStrings(
-        "{\"ok\":true,\"project\":{\"name\":\"Minimal\",\"default_scene\":\"scenes/main.scene.toml\",\"scripts\":1},\"scene\":{\"name\":\"Main\",\"entities\":1,\"component_instances\":2,\"renderable_cubes\":0},\"simulation\":{\"frames\":2,\"completed_frames\":2,\"dt\":0.5},\"schedule\":{\"batches\":[{\"phase\":\"update\",\"systems\":[{\"id\":\"autorotate\",\"phase\":\"update\",\"runner\":\"luau\",\"reads\":[\"spin\"],\"writes\":[\"scrapbot.transform\"],\"before\":[],\"after\":[]}]}]}}\n",
-        writer.buffered(),
-    );
 }

@@ -8,6 +8,11 @@ const addVec3 = render_math.addVec3;
 pub const axis_length: f32 = 1.25;
 pub const axis_thickness: f32 = 0.035;
 pub const pick_radius_px: f32 = 18.0;
+pub const translate_entity_ids = [_][]const u8{
+    "scrapbot.editor.gizmo.x",
+    "scrapbot.editor.gizmo.y",
+    "scrapbot.editor.gizmo.z",
+};
 
 pub const Error = error{
     OutOfMemory,
@@ -29,11 +34,11 @@ pub fn extractTranslateInto(
     dragging_axis: editor_state.EditorAxis,
     palette: Palette,
 ) Error!void {
+    _ = allocator;
     const selected = selected_entity orelse return;
     _ = scene_world.entity(selected) catch return;
     const selected_transform = (scene_world.getTransform(selected) catch return) orelse return;
     const axes = [_]struct {
-        id: []const u8,
         axis: editor_state.EditorAxis,
         position_offset: [3]f32,
         scale: [3]f32,
@@ -41,7 +46,6 @@ pub fn extractTranslateInto(
         active_color: [3]f32,
     }{
         .{
-            .id = "x",
             .axis = .x,
             .position_offset = .{ axis_length * 0.5, 0.0, 0.0 },
             .scale = .{ axis_length, axis_thickness, axis_thickness },
@@ -49,7 +53,6 @@ pub fn extractTranslateInto(
             .active_color = .{ 0.94, 0.42, 0.42 },
         },
         .{
-            .id = "y",
             .axis = .y,
             .position_offset = .{ 0.0, axis_length * 0.5, 0.0 },
             .scale = .{ axis_thickness, axis_length, axis_thickness },
@@ -57,7 +60,6 @@ pub fn extractTranslateInto(
             .active_color = .{ 0.176, 0.667, 0.443 },
         },
         .{
-            .id = "z",
             .axis = .z,
             .position_offset = .{ 0.0, 0.0, axis_length * 0.5 },
             .scale = .{ axis_thickness, axis_thickness, axis_length },
@@ -66,10 +68,8 @@ pub fn extractTranslateInto(
         },
     };
 
-    for (axes) |entry| {
-        const entity_id = std.fmt.allocPrint(allocator, "scrapbot.editor.gizmo.{s}", .{entry.id}) catch return Error.OutOfMemory;
-        defer allocator.free(entity_id);
-        const entity = world.createEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
+    for (axes, translate_entity_ids) |entry, entity_id| {
+        const entity = world.createEngineTransientEntity(entity_id, "Editor Translate Gizmo") catch |err| return mapWorldError(err);
         world.setTransform(entity, .{
             .position = addVec3(selected_transform.position, entry.position_offset),
             .scale = entry.scale,

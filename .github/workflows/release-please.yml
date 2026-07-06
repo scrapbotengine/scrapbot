@@ -1,0 +1,90 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  macos-release-artifacts:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          cache-key: release-${{ matrix.arch }}
+          cache-size-limit: 4096
+
+      - name: Install SDL3
+        run: brew install sdl3
+
+      - name: Build CLI
+        run: |
+          set -euo pipefail
+          sdl3_prefix="$(brew --prefix sdl3)"
+          zig build -Doptimize=ReleaseFast \
+            -Dsdl3_include_path="${sdl3_prefix}/include" \
+            -Dsdl3_library_path="${sdl3_prefix}/lib"
+
+      - name: Smoke test CLI
+        run: ./zig-out/bin/scrapbot version
+
+      - name: Package archive
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+
+          package_name="scrapbot-${VERSION}-macos-${ARCH}"
+          package_dir="dist/${package_name}"
+
+          mkdir -p "${package_dir}"
+          cp zig-out/bin/scrapbot "${package_dir}/"
+          cp LICENSE NOTICE "${package_dir}/"
+          tar -C dist -czf "dist/${package_name}.tar.gz" "${package_name}"
+
+      - name: Upload archive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: gh release upload "${TAG_NAME}" "dist/scrapbot-${VERSION}-macos-${ARCH}.tar.gz" --clobber

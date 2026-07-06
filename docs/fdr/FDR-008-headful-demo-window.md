@@ -15,7 +15,7 @@ Headful demo rendering proves that Scrapbot can create a platform window, hand i
 - Renderable entity position, rotation, scale, geometry, material base color, and spin values come from scene data.
 - Legacy cube entities remain supported and render as box geometry with inline color material data.
 - Camera projection/view data and the first directional light can come from scene data, with compatibility defaults when absent.
-- Each presented frame uses the same internal render ECS world and render-phase schedule as offscreen rendering.
+- Each presented frame uses the same scene-world render data flow and render-phase schedule as offscreen rendering.
 - Renderables with matching geometry and compatible pipeline-affecting render state are drawn through automatic instanced render batches.
 - Renderable meshes render with depth testing, scene-driven directional diffuse shading, and receiver-side shadowing.
 - UI rectangles and text labels render after 3D scene content as an overlay.
@@ -74,10 +74,10 @@ Headful demo rendering proves that Scrapbot can create a platform window, hand i
 **Why:** Normal gameplay runs should show the game first, while editor sessions need immediate tooling chrome without mutating project data.
 **Tradeoff:** Early editor state is controlled by runner flags until editor session persistence is designed.
 
-### 7. Share the renderer ECS path with offscreen rendering
+### 7. Share the scene-world render path with offscreen rendering
 
-**Decision:** Headful rendering extracts, prepares, queues, and draws through the same renderer-owned ECS world and schedule as offscreen rendering.
-**Why:** Visible windows and headless snapshots should exercise the same rendering architecture wherever possible. This follows ADR-013.
+**Decision:** Headful rendering reads scene render data directly from the project ECS world, prepares batches from a frame renderable snapshot, and draws through the same render schedule as offscreen rendering.
+**Why:** Visible windows and headless snapshots should exercise the same rendering architecture wherever possible. This follows ADR-022.
 **Tradeoff:** Backend resource lifetime is still managed by the renderer facade until native/internal component storage exists.
 
 ### 8. Add a render-only fly camera for headful exploration
@@ -88,7 +88,7 @@ Headful demo rendering proves that Scrapbot can create a platform window, hand i
 
 ## Related
 
-- **ADRs:** ADR-004, ADR-005, ADR-013, ADR-020
+- **ADRs:** ADR-004, ADR-005, ADR-020, ADR-022
 - **FDRs:** FDR-003, FDR-005, FDR-007, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions

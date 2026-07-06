@@ -654,3 +654,7 @@ fn parsePixelScale(value: []const u8) TestManifestError!f32 {
     }
     return pixel_scale;
 }
+
+test {
+    _ = @import("test_manifest_tests.zig");
+}

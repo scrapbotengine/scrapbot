@@ -1,6 +1,6 @@
 # ADR-002: Zig as the Engine Implementation Language
 
-**Status:** Superseded by [ADR-022](ADR-022-odin-as-engine-implementation-language.md).
+**Status:** Superseded by [ADR-023](ADR-023-odin-as-engine-implementation-language.md).
 
 **Date:** 2026-07-01
 
