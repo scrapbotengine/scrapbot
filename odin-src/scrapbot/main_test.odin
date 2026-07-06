@@ -756,6 +756,74 @@ equals_float = 7.5
 }
 
 @(test)
+test_run_test_command_replays_editor_gizmo_drag :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-gizmo-drag")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "Editor Gizmo Drag Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Editor Gizmo Drag Test"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.scrapbot.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+`)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 4
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [20.0, 500.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 2
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [660.0, 358.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 3
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [760.0, 358.0]
+primary_down = true
+
+[[input.frame]]
+frame = 4
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [760.0, 358.0]
+primary_released = true
+
+[[expect.editor]]
+selected_entity = "target"
+
+[[expect.field]]
+entity = "target"
+component = "scrapbot.transform"
+field = "position"
+equals_vec3 = [1.2, 0.0, 0.0]
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
 test_run_test_command_replays_editor_splitter_drag :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-test-editor-splitter-drag")
 	defer os.remove_all(root)

@@ -77,13 +77,13 @@
 - [x] Port first-pass editor inspector field selection replay for Odin test replay.
 - [x] Port first-pass editor splitter drag replay for Odin test replay.
 - [x] Port first-pass editor inspector text editing replay for Odin test replay.
+- [x] Port first-pass editor gizmo capture and drag replay for Odin test replay.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.
 - [x] Port first-pass render/render-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass visual-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass project-local native Odin component/system declaration registration.
 - [x] Port first-pass pending Odin-native system execution diagnostics.
-- [ ] Port remaining editor-shell input routing for Odin test replay, including gizmo capture.
 - [ ] Port remaining script runtime diagnostics from Zig to Odin, including reload execution paths and native execution once native systems can run.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [ ] Port Odin render image output, offscreen image verification, and hidden headful smoke paths.

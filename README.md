@@ -46,6 +46,7 @@ A compact, experimental, and probably mostly useless game engine that tries to a
   - [x] Odin editor inspector field selection replay slice
   - [x] Odin editor splitter drag replay slice
   - [x] Odin editor inspector text edit replay slice
+  - [x] Odin editor gizmo drag replay slice
   - [x] Odin bounded run command slice
   - [x] Odin render extraction stats slice
   - [x] Odin render command validation slice

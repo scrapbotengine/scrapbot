@@ -1,10 +1,17 @@
 package main
 
 import "core:fmt"
+import "core:math"
 import "core:strconv"
 import "core:strings"
 
 EDITOR_TEST_TEXT_INPUT_BUFFER_LEN :: 128
+EDITOR_TEST_GIZMO_AXIS_LENGTH :: f32(1.35)
+EDITOR_TEST_GIZMO_PICK_RADIUS_PX :: f32(12.0)
+EDITOR_TEST_DEFAULT_CAMERA_POSITION :: [3]f32{0.0, 0.0, 4.8}
+EDITOR_TEST_DEFAULT_CAMERA_FOV_Y_DEGREES :: f32(48.0)
+EDITOR_TEST_DEFAULT_CAMERA_NEAR :: f32(0.1)
+EDITOR_TEST_DEFAULT_CAMERA_FAR :: f32(100.0)
 
 Frame_Input_Pointer :: struct {
 	position:           [2]f32,
@@ -60,6 +67,13 @@ Editor_Test_Splitter :: enum {
 	Right,
 }
 
+Editor_Test_Axis :: enum {
+	None,
+	X,
+	Y,
+	Z,
+}
+
 Editor_Test_Input_State :: struct {
 	captured_pointer:    bool,
 	paused:              bool,
@@ -73,6 +87,7 @@ Editor_Test_Input_State :: struct {
 	selected_property_field:     string,
 	has_selected_property:       bool,
 	dragging_splitter:           Editor_Test_Splitter,
+	dragging_axis:               Editor_Test_Axis,
 	left_sidebar_width:          f32,
 	right_sidebar_width:         f32,
 	last_pointer:                [2]f32,
@@ -108,6 +123,10 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: ^Runtime
 		ensure_editor_sidebar_widths(state, input^)
 		if state.dragging_splitter != .None && input.pointer.primary_down {
 			drag_editor_splitter(state, input^)
+			consumed = true
+		}
+		if state.dragging_axis != .None && input.pointer.primary_down {
+			drag_editor_gizmo_axis(state, world, input^)
 			consumed = true
 		}
 		if input.pointer.primary_pressed {
@@ -151,6 +170,15 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: ^Runtime
 				commit_editor_test_text_input(world, state)
 				state.captured_pointer = true
 				consumed = true
+			} else if axis, axis_ok := editor_gizmo_axis_at_pointer(world^, state^, input^); axis_ok {
+				commit_editor_test_text_input(world, state)
+				state.dragging_axis = axis
+				state.captured_pointer = true
+				state.last_pointer = input.pointer.position
+				state.has_last_pointer = true
+				consumed = true
+			} else if state.text_input_active {
+				commit_editor_test_text_input(world, state)
 			}
 		}
 		if input.pointer.primary_down && state.captured_pointer {
@@ -162,6 +190,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: ^Runtime
 			}
 			state.captured_pointer = false
 			state.dragging_splitter = .None
+			state.dragging_axis = .None
 			state.has_last_pointer = false
 		}
 		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
@@ -182,6 +211,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: ^Runtime
 	} else if input.pointer.primary_released {
 		state.captured_pointer = false
 		state.dragging_splitter = .None
+		state.dragging_axis = .None
 		state.has_last_pointer = false
 	}
 	if consumed {
@@ -471,6 +501,309 @@ drag_editor_splitter :: proc(state: ^Editor_Test_Input_State, input: Frame_Input
 		return
 	}
 	state.left_sidebar_width, state.right_sidebar_width = editor_clamped_side_widths(input.viewport_width, left, right)
+}
+
+drag_editor_gizmo_axis :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_World, input: Frame_Input) -> bool {
+	if !state.has_selected_entity {
+		return false
+	}
+	axis, axis_ok := editor_test_axis_vector(state.dragging_axis)
+	if !axis_ok {
+		return false
+	}
+	position, position_ok := editor_test_transform_position(world^, state.selected_entity)
+	if !position_ok {
+		return false
+	}
+	if !state.has_last_pointer {
+		state.last_pointer = input.pointer.position
+		state.has_last_pointer = true
+		return true
+	}
+	camera, camera_ok := editor_test_camera_state(world^)
+	if !camera_ok {
+		state.last_pointer = input.pointer.position
+		return false
+	}
+	origin_screen, origin_ok := editor_test_project_world_to_screen(position, camera, input)
+	end_screen, end_ok := editor_test_project_world_to_screen(editor_test_add_vec3(position, editor_test_scale_vec3(axis, EDITOR_TEST_GIZMO_AXIS_LENGTH)), camera, input)
+	if !origin_ok || !end_ok {
+		state.last_pointer = input.pointer.position
+		return false
+	}
+	axis_screen_delta := [2]f32{end_screen[0] - origin_screen[0], end_screen[1] - origin_screen[1]}
+	axis_screen_length := editor_test_vec2_length(axis_screen_delta)
+	if axis_screen_length < 0.001 {
+		state.last_pointer = input.pointer.position
+		return false
+	}
+	axis_screen := [2]f32{axis_screen_delta[0] / axis_screen_length, axis_screen_delta[1] / axis_screen_length}
+	pointer_delta := [2]f32{input.pointer.position[0] - state.last_pointer[0], input.pointer.position[1] - state.last_pointer[1]}
+	projected_pixels := pointer_delta[0] * axis_screen[0] + pointer_delta[1] * axis_screen[1]
+	camera_distance := editor_test_vec3_length(editor_test_subtract_vec3(position, camera.position))
+	units_per_pixel := max_f32(camera_distance, 1.0) * 0.0025
+	world_delta := projected_pixels * units_per_pixel
+	next_position := editor_test_add_vec3(position, editor_test_scale_vec3(axis, world_delta))
+	set_err := runtime_world_set_component_field_value(world, state.selected_entity, TRANSFORM_COMPONENT_ID, "position", runtime_component_value_vec3(next_position))
+	state.last_pointer = input.pointer.position
+	return set_err == .None
+}
+
+Editor_Test_Camera_State :: struct {
+	position:      [3]f32,
+	rotation:      [3]f32,
+	fov_y_degrees: f32,
+	near:          f32,
+	far:           f32,
+}
+
+editor_gizmo_axis_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input) -> (Editor_Test_Axis, bool) {
+	if !input.pointer.has_position || !state.has_selected_entity || !editor_pointer_in_game_viewport(input) {
+		return .None, false
+	}
+	position, position_ok := editor_test_transform_position(world, state.selected_entity)
+	if !position_ok {
+		return .None, false
+	}
+	camera, camera_ok := editor_test_camera_state(world)
+	if !camera_ok {
+		return .None, false
+	}
+	origin_screen, origin_ok := editor_test_project_world_to_screen(position, camera, input)
+	if !origin_ok {
+		return .None, false
+	}
+	best_axis := Editor_Test_Axis.None
+	best_distance_sq := EDITOR_TEST_GIZMO_PICK_RADIUS_PX * EDITOR_TEST_GIZMO_PICK_RADIUS_PX
+	axes := [?]Editor_Test_Axis{.X, .Y, .Z}
+	for axis in axes {
+		vector, vector_ok := editor_test_axis_vector(axis)
+		if !vector_ok {
+			continue
+		}
+		end_screen, end_ok := editor_test_project_world_to_screen(editor_test_add_vec3(position, editor_test_scale_vec3(vector, EDITOR_TEST_GIZMO_AXIS_LENGTH)), camera, input)
+		if !end_ok {
+			continue
+		}
+		distance_sq := editor_test_distance_point_to_segment_sq(input.pointer.position, origin_screen, end_screen)
+		if distance_sq < best_distance_sq {
+			best_distance_sq = distance_sq
+			best_axis = axis
+		}
+	}
+	if best_axis == .None {
+		return .None, false
+	}
+	return best_axis, true
+}
+
+editor_test_transform_position :: proc(world: Runtime_World, entity: Entity_Handle) -> ([3]f32, bool) {
+	value, err := runtime_world_get_component_field_value(world, entity, TRANSFORM_COMPONENT_ID, "position")
+	if err != .None || value.value_type != .Vec3 {
+		return {}, false
+	}
+	return value.vec3, true
+}
+
+editor_test_camera_state :: proc(world: Runtime_World) -> (Editor_Test_Camera_State, bool) {
+	query := [?]string{TRANSFORM_COMPONENT_ID, CAMERA_COMPONENT_ID}
+	cursor := 0
+	entity, found := runtime_world_query_next(world, query[:], &cursor)
+	if !found {
+		return Editor_Test_Camera_State{
+			position = EDITOR_TEST_DEFAULT_CAMERA_POSITION,
+			rotation = {},
+			fov_y_degrees = EDITOR_TEST_DEFAULT_CAMERA_FOV_Y_DEGREES,
+			near = EDITOR_TEST_DEFAULT_CAMERA_NEAR,
+			far = EDITOR_TEST_DEFAULT_CAMERA_FAR,
+		}, true
+	}
+	position, position_ok := editor_test_transform_position(world, entity)
+	if !position_ok {
+		return {}, false
+	}
+	rotation, rotation_ok := editor_test_transform_vec3_field(world, entity, "rotation")
+	fov, fov_ok := editor_test_float_field(world, entity, CAMERA_COMPONENT_ID, "fov_y_degrees")
+	near, near_ok := editor_test_float_field(world, entity, CAMERA_COMPONENT_ID, "near")
+	far, far_ok := editor_test_float_field(world, entity, CAMERA_COMPONENT_ID, "far")
+	if !rotation_ok || !fov_ok || !near_ok || !far_ok || fov <= 0 || near <= 0 || far <= near {
+		return {}, false
+	}
+	return Editor_Test_Camera_State{position = position, rotation = rotation, fov_y_degrees = fov, near = near, far = far}, true
+}
+
+editor_test_transform_vec3_field :: proc(world: Runtime_World, entity: Entity_Handle, field_name: string) -> ([3]f32, bool) {
+	value, err := runtime_world_get_component_field_value(world, entity, TRANSFORM_COMPONENT_ID, field_name)
+	if err != .None || value.value_type != .Vec3 {
+		return {}, false
+	}
+	return value.vec3, true
+}
+
+editor_test_float_field :: proc(world: Runtime_World, entity: Entity_Handle, component_id, field_name: string) -> (f32, bool) {
+	value, err := runtime_world_get_component_field_value(world, entity, component_id, field_name)
+	if err != .None || value.value_type != .Float {
+		return 0, false
+	}
+	return value.float, true
+}
+
+editor_test_project_world_to_screen :: proc(position: [3]f32, camera: Editor_Test_Camera_State, input: Frame_Input) -> ([2]f32, bool) {
+	viewport_x, viewport_y, viewport_width, viewport_height := editor_game_viewport(input.viewport_width, input.viewport_height)
+	if viewport_width <= 0 || viewport_height <= 0 {
+		return {}, false
+	}
+	view := editor_test_camera_view_matrix(camera)
+	projection := editor_test_perspective_matrix(camera.fov_y_degrees * math.PI / 180.0, viewport_width / viewport_height, camera.near, camera.far)
+	clip := editor_test_transform_point(editor_test_mat_mul(projection, view), {position[0], position[1], position[2], 1.0})
+	if clip[3] > -0.00001 && clip[3] < 0.00001 {
+		return {}, false
+	}
+	ndc_x := clip[0] / clip[3]
+	ndc_y := clip[1] / clip[3]
+	return {
+		viewport_x + (ndc_x + 1.0) * 0.5 * viewport_width,
+		viewport_y + (1.0 - ndc_y) * 0.5 * viewport_height,
+	}, true
+}
+
+editor_test_axis_vector :: proc(axis: Editor_Test_Axis) -> ([3]f32, bool) {
+	switch axis {
+	case .X:
+		return {1.0, 0.0, 0.0}, true
+	case .Y:
+		return {0.0, 1.0, 0.0}, true
+	case .Z:
+		return {0.0, 0.0, 1.0}, true
+	case .None:
+		return {}, false
+	}
+	return {}, false
+}
+
+editor_test_add_vec3 :: proc(left, right: [3]f32) -> [3]f32 {
+	return {left[0] + right[0], left[1] + right[1], left[2] + right[2]}
+}
+
+editor_test_subtract_vec3 :: proc(left, right: [3]f32) -> [3]f32 {
+	return {left[0] - right[0], left[1] - right[1], left[2] - right[2]}
+}
+
+editor_test_scale_vec3 :: proc(value: [3]f32, scale: f32) -> [3]f32 {
+	return {value[0] * scale, value[1] * scale, value[2] * scale}
+}
+
+editor_test_vec3_length :: proc(value: [3]f32) -> f32 {
+	return f32(math.sqrt(f64(value[0] * value[0] + value[1] * value[1] + value[2] * value[2])))
+}
+
+editor_test_vec2_length :: proc(value: [2]f32) -> f32 {
+	return f32(math.sqrt(f64(value[0] * value[0] + value[1] * value[1])))
+}
+
+editor_test_distance_point_to_segment_sq :: proc(point, start, end: [2]f32) -> f32 {
+	segment := [2]f32{end[0] - start[0], end[1] - start[1]}
+	length_sq := segment[0] * segment[0] + segment[1] * segment[1]
+	if length_sq <= 0.00001 {
+		return editor_test_distance_sq(point, start)
+	}
+	point_delta := [2]f32{point[0] - start[0], point[1] - start[1]}
+	t := (point_delta[0] * segment[0] + point_delta[1] * segment[1]) / length_sq
+	t = clamp_f32(t, 0, 1)
+	closest := [2]f32{start[0] + segment[0] * t, start[1] + segment[1] * t}
+	return editor_test_distance_sq(point, closest)
+}
+
+editor_test_distance_sq :: proc(left, right: [2]f32) -> f32 {
+	dx := left[0] - right[0]
+	dy := left[1] - right[1]
+	return dx * dx + dy * dy
+}
+
+editor_test_camera_view_matrix :: proc(camera: Editor_Test_Camera_State) -> [16]f32 {
+	inverse_translation := editor_test_translation_matrix(-camera.position[0], -camera.position[1], -camera.position[2])
+	return editor_test_mat_mul(
+		editor_test_rotation_x_matrix(-camera.rotation[0]),
+		editor_test_mat_mul(
+			editor_test_rotation_y_matrix(-camera.rotation[1]),
+			editor_test_mat_mul(editor_test_rotation_z_matrix(-camera.rotation[2]), inverse_translation),
+		),
+	)
+}
+
+editor_test_perspective_matrix :: proc(fovy_radians, aspect, near, far: f32) -> [16]f32 {
+	f := 1.0 / f32(math.tan(f64(fovy_radians * 0.5)))
+	return {
+		f / aspect, 0.0, 0.0,                       0.0,
+		0.0,        f,   0.0,                       0.0,
+		0.0,        0.0, far / (near - far),        -1.0,
+		0.0,        0.0, (far * near) / (near - far), 0.0,
+	}
+}
+
+editor_test_translation_matrix :: proc(x, y, z: f32) -> [16]f32 {
+	return {
+		1.0, 0.0, 0.0, 0.0,
+		0.0, 1.0, 0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0,
+		x,   y,   z,   1.0,
+	}
+}
+
+editor_test_rotation_x_matrix :: proc(angle: f32) -> [16]f32 {
+	c := f32(math.cos(f64(angle)))
+	s := f32(math.sin(f64(angle)))
+	return {
+		1.0, 0.0, 0.0, 0.0,
+		0.0, c,   s,   0.0,
+		0.0, -s,  c,   0.0,
+		0.0, 0.0, 0.0, 1.0,
+	}
+}
+
+editor_test_rotation_y_matrix :: proc(angle: f32) -> [16]f32 {
+	c := f32(math.cos(f64(angle)))
+	s := f32(math.sin(f64(angle)))
+	return {
+		c,   0.0, -s,  0.0,
+		0.0, 1.0, 0.0, 0.0,
+		s,   0.0, c,   0.0,
+		0.0, 0.0, 0.0, 1.0,
+	}
+}
+
+editor_test_rotation_z_matrix :: proc(angle: f32) -> [16]f32 {
+	c := f32(math.cos(f64(angle)))
+	s := f32(math.sin(f64(angle)))
+	return {
+		c,   s,   0.0, 0.0,
+		-s,  c,   0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0,
+		0.0, 0.0, 0.0, 1.0,
+	}
+}
+
+editor_test_transform_point :: proc(m: [16]f32, point: [4]f32) -> [4]f32 {
+	return {
+		m[0] * point[0] + m[4] * point[1] + m[8] * point[2] + m[12] * point[3],
+		m[1] * point[0] + m[5] * point[1] + m[9] * point[2] + m[13] * point[3],
+		m[2] * point[0] + m[6] * point[1] + m[10] * point[2] + m[14] * point[3],
+		m[3] * point[0] + m[7] * point[1] + m[11] * point[2] + m[15] * point[3],
+	}
+}
+
+editor_test_mat_mul :: proc(a, b: [16]f32) -> [16]f32 {
+	out: [16]f32
+	for column := 0; column < 4; column += 1 {
+		for row := 0; row < 4; row += 1 {
+			sum := f32(0)
+			for k := 0; k < 4; k += 1 {
+				sum += a[k * 4 + row] * b[column * 4 + k]
+			}
+			out[column * 4 + row] = sum
+		}
+	}
+	return out
 }
 
 editor_pointer_in_game_viewport :: proc(input: Frame_Input) -> bool {
