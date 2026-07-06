@@ -115,6 +115,49 @@ test "world clears engine transient entities without removing scene entities" {
     try std.testing.expectError(WorldError.InvalidEntity, world.entity(transient));
 }
 
+test "world bulk clears interleaved engine transient components" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    const transient_a = try world.createEngineTransientEntity("transient-a", "Transient A");
+    const middle = try world.createEntity("middle", "Middle");
+    const transient_b = try world.createEngineTransientEntity("transient-b", "Transient B");
+    const last = try world.createEntity("last", "Last");
+
+    try world.setTransform(first, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setTransform(transient_a, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setTransform(middle, .{ .position = .{ 3.0, 0.0, 0.0 } });
+    try world.setTransform(transient_b, .{ .position = .{ 4.0, 0.0, 0.0 } });
+    try world.setTransform(last, .{ .position = .{ 5.0, 0.0, 0.0 } });
+    try world.setUiText(transient_a, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .size = 1.0,
+        .color = .{ 1.0, 1.0, 1.0 },
+        .value = "transient text",
+    });
+    try world.setSurfaceMaterial(last, .{ .base_color = .{ 0.1, 0.2, 0.3 } });
+
+    try world.clearEngineTransientEntities();
+
+    try std.testing.expectEqual(@as(usize, 3), world.entityCount());
+    try std.testing.expect(world.findEntityById("transient-a") == null);
+    try std.testing.expect(world.findEntityById("transient-b") == null);
+    try std.testing.expectEqual(@as(usize, 3), world.componentInstanceCountFor(transform_component_id));
+    try std.testing.expectEqual(@as(usize, 0), world.componentInstanceCountFor(ui_text_component_id));
+    try std.testing.expectEqual(@as(usize, 1), world.componentInstanceCountFor(surface_material_component_id));
+
+    const moved_middle = world.findEntityById("middle") orelse return error.TestExpectedEqual;
+    const moved_last = world.findEntityById("last") orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(u32, 1), moved_middle.index);
+    try std.testing.expectEqual(@as(u32, 2), moved_last.index);
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(middle));
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(last));
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(transient_a));
+    try std.testing.expectEqual(@as(f32, 3.0), (try world.getTransform(moved_middle)).?.position[0]);
+    try std.testing.expect(try world.hasComponent(moved_last, surface_material_component_id));
+}
+
 test "engine transient mutations do not write structural events" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
@@ -302,6 +345,192 @@ test "world records structural events for entities and components" {
 
     world.clearStructuralEventsRetainingCapacity();
     try std.testing.expectEqual(@as(usize, 0), world.structuralEvents().len);
+}
+
+test "query observer reports matching entities once" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const visible = try world.createEntity("visible", "Visible");
+    try world.setTransform(visible, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(visible, .{ .base_color = .{ 0.2, 0.3, 0.4 } });
+    const transform_only = try world.createEntity("transform-only", "Transform Only");
+    try world.setTransform(transform_only, .{ .position = .{ 2.0, 0.0, 0.0 } });
+
+    var observer = try runtime.QueryObserver.init(std.testing.allocator, &.{
+        transform_component_id,
+        surface_material_component_id,
+    });
+    defer observer.deinit();
+
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.disappeared().len);
+    try std.testing.expectEqualStrings("visible", observer.appeared()[0].id);
+    try std.testing.expectEqual(visible.index, observer.appeared()[0].entity.index);
+
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.disappeared().len);
+}
+
+test "query observer tracks component-set membership changes" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("dynamic", "Dynamic");
+    try world.setTransform(entity, .{ .position = .{ 1.0, 0.0, 0.0 } });
+
+    var observer = try runtime.QueryObserver.init(std.testing.allocator, &.{
+        transform_component_id,
+        surface_material_component_id,
+    });
+    defer observer.deinit();
+    try observer.reset(world);
+    try std.testing.expectEqual(@as(usize, 0), observer.existing().len);
+
+    try world.setSurfaceMaterial(entity, .{ .base_color = .{ 0.5, 0.6, 0.7 } });
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.appeared().len);
+    try std.testing.expectEqualStrings("dynamic", observer.appeared()[0].id);
+
+    try std.testing.expect(try world.removeComponent(entity, transform_component_id));
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 0), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.disappeared().len);
+    try std.testing.expectEqualStrings("dynamic", observer.disappeared()[0].id);
+
+    try world.setTransform(entity, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.appeared().len);
+    try std.testing.expectEqualStrings("dynamic", observer.appeared()[0].id);
+}
+
+test "query observer reset seeds membership without deltas" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const entity = try world.createEntity("seeded", "Seeded");
+    try world.setTransform(entity, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(entity, .{ .base_color = .{ 0.1, 0.2, 0.3 } });
+
+    var observer = try runtime.QueryObserver.init(std.testing.allocator, &.{
+        transform_component_id,
+        surface_material_component_id,
+    });
+    defer observer.deinit();
+
+    try observer.reset(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.disappeared().len);
+    try std.testing.expectEqualStrings("seeded", observer.existing()[0].id);
+}
+
+test "query observer empty component set tracks all entities" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    var observer = try runtime.QueryObserver.init(std.testing.allocator, &.{});
+    defer observer.deinit();
+    try observer.reset(world);
+
+    const first = try world.createEntity("first", "First");
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.appeared().len);
+    try std.testing.expectEqualStrings("first", observer.appeared()[0].id);
+
+    try std.testing.expect(try world.removeEntity(first));
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 0), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.disappeared().len);
+    try std.testing.expectEqualStrings("first", observer.disappeared()[0].id);
+}
+
+test "query observer repairs handles after silent transient compaction" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const first = try world.createEntity("first", "First");
+    try world.setTransform(first, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(first, .{ .base_color = .{ 0.2, 0.2, 0.2 } });
+    const transient = try world.createEngineTransientEntity("transient", "Transient");
+    try world.setTransform(transient, .{ .position = .{ 99.0, 0.0, 0.0 } });
+    const second = try world.createEntity("second", "Second");
+    try world.setTransform(second, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(second, .{ .base_color = .{ 0.3, 0.3, 0.3 } });
+
+    var observer = try runtime.QueryObserver.init(std.testing.allocator, &.{
+        transform_component_id,
+        surface_material_component_id,
+    });
+    defer observer.deinit();
+    try observer.reset(world);
+    try std.testing.expectEqual(@as(usize, 2), observer.existing().len);
+
+    try world.clearEngineTransientEntities();
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 2), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.disappeared().len);
+    const moved_second = world.findEntityById("second") orelse return error.TestExpectedEqual;
+    try std.testing.expect(observer.existing()[0].entity.index == moved_second.index or observer.existing()[1].entity.index == moved_second.index);
+    try std.testing.expectError(WorldError.InvalidEntity, world.entity(second));
+}
+
+test "query observer survives entity removal compaction and cleared event journals" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const unrelated = try world.createEntity("unrelated", "Unrelated");
+    try world.setTransform(unrelated, .{ .position = .{ 0.0, 0.0, 0.0 } });
+    const first = try world.createEntity("first", "First");
+    try world.setTransform(first, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(first, .{ .base_color = .{ 0.2, 0.2, 0.2 } });
+    const second = try world.createEntity("second", "Second");
+    try world.setTransform(second, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(second, .{ .base_color = .{ 0.3, 0.3, 0.3 } });
+
+    var observer = try runtime.QueryObserver.init(std.testing.allocator, &.{
+        transform_component_id,
+        surface_material_component_id,
+    });
+    defer observer.deinit();
+    try observer.reset(world);
+    try std.testing.expectEqual(@as(usize, 2), observer.existing().len);
+
+    try std.testing.expect(try world.removeEntity(unrelated));
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 2), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.disappeared().len);
+    const moved_first = world.findEntityById("first") orelse return error.TestExpectedEqual;
+    const moved_second = world.findEntityById("second") orelse return error.TestExpectedEqual;
+    try std.testing.expect(observer.existing()[0].entity.index == moved_first.index or observer.existing()[1].entity.index == moved_first.index);
+    try std.testing.expect(observer.existing()[0].entity.index == moved_second.index or observer.existing()[1].entity.index == moved_second.index);
+
+    try std.testing.expect(try world.removeEntity(moved_first));
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 1), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 0), observer.appeared().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.disappeared().len);
+    try std.testing.expectEqualStrings("first", observer.disappeared()[0].id);
+
+    world.clearStructuralEventsRetainingCapacity();
+    const third = try world.createEntity("third", "Third");
+    try world.setTransform(third, .{ .position = .{ 3.0, 0.0, 0.0 } });
+    try world.setSurfaceMaterial(third, .{ .base_color = .{ 0.4, 0.4, 0.4 } });
+    try observer.refresh(world);
+    try std.testing.expectEqual(@as(usize, 2), observer.existing().len);
+    try std.testing.expectEqual(@as(usize, 1), observer.appeared().len);
+    try std.testing.expectEqualStrings("third", observer.appeared()[0].id);
+    try std.testing.expectEqual(@as(usize, 0), observer.disappeared().len);
 }
 
 test "world removes entities and repairs component table handles" {

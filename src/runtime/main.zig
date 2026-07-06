@@ -851,6 +851,250 @@ pub const ComponentStructuralEventIterator = struct {
     }
 };
 
+pub const QueryObserverMember = struct {
+    entity: EntityHandle,
+    id: []const u8,
+};
+
+pub const QueryObserverDelta = struct {
+    entity: EntityHandle,
+    id: []const u8,
+};
+
+pub const QueryObserver = struct {
+    allocator: std.mem.Allocator,
+    component_ids: std.ArrayList([]const u8) = .empty,
+    members: std.ArrayList(QueryObserverMember) = .empty,
+    appeared_entities: std.ArrayList(QueryObserverDelta) = .empty,
+    disappeared_entities: std.ArrayList(QueryObserverDelta) = .empty,
+    disappeared_ids: std.ArrayList([]const u8) = .empty,
+    seen_members: std.ArrayList(bool) = .empty,
+    last_structural_event_index: usize = 0,
+    last_silent_structural_generation: u64 = 0,
+    initialized: bool = false,
+
+    pub fn init(allocator: std.mem.Allocator, component_ids: []const []const u8) !QueryObserver {
+        var observer = QueryObserver{ .allocator = allocator };
+        errdefer observer.deinit();
+        try observer.component_ids.ensureTotalCapacity(allocator, component_ids.len);
+        for (component_ids) |component_id| {
+            const owned_id = try allocator.dupe(u8, component_id);
+            observer.component_ids.appendAssumeCapacity(owned_id);
+        }
+        return observer;
+    }
+
+    pub fn deinit(self: *QueryObserver) void {
+        self.clearDeltas();
+        for (self.members.items) |member| {
+            self.allocator.free(member.id);
+        }
+        for (self.component_ids.items) |component_id| {
+            self.allocator.free(component_id);
+        }
+        self.seen_members.deinit(self.allocator);
+        self.disappeared_ids.deinit(self.allocator);
+        self.disappeared_entities.deinit(self.allocator);
+        self.appeared_entities.deinit(self.allocator);
+        self.members.deinit(self.allocator);
+        self.component_ids.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn reset(self: *QueryObserver, world: World) WorldError!void {
+        self.clearDeltas();
+        for (self.members.items) |member| {
+            self.allocator.free(member.id);
+        }
+        self.members.clearRetainingCapacity();
+
+        var cursor: usize = 0;
+        while (world.queryNext(self.component_ids.items, &cursor)) |handle| {
+            try self.addMemberSilently(world, handle);
+        }
+        self.last_structural_event_index = world.structuralEvents().len;
+        self.last_silent_structural_generation = world.silentStructuralGeneration();
+        self.initialized = true;
+    }
+
+    pub fn refresh(self: *QueryObserver, world: World) WorldError!void {
+        self.clearDeltas();
+        const events = world.structuralEvents();
+        const silent_structural_generation = world.silentStructuralGeneration();
+        if (!self.initialized or
+            self.last_structural_event_index > events.len or
+            self.last_silent_structural_generation != silent_structural_generation)
+        {
+            try self.diffAgainstWorld(world);
+            self.last_structural_event_index = events.len;
+            self.last_silent_structural_generation = silent_structural_generation;
+            self.initialized = true;
+            return;
+        }
+
+        var needs_full_diff = false;
+        for (events[self.last_structural_event_index..]) |event| {
+            if (event.kind == .entity_removed) {
+                needs_full_diff = true;
+                break;
+            }
+        }
+        if (needs_full_diff) {
+            try self.diffAgainstWorld(world);
+            self.last_structural_event_index = events.len;
+            self.last_silent_structural_generation = silent_structural_generation;
+            return;
+        }
+
+        for (events[self.last_structural_event_index..]) |event| {
+            if (event.kind == .entity_created and self.component_ids.items.len == 0) {
+                try self.refreshEntity(world, event.entity);
+                continue;
+            }
+            const component_id = event.component_id orelse continue;
+            if (!self.observesComponent(component_id)) {
+                continue;
+            }
+            try self.refreshEntity(world, event.entity);
+        }
+        self.last_structural_event_index = events.len;
+        self.last_silent_structural_generation = silent_structural_generation;
+    }
+
+    pub fn appeared(self: QueryObserver) []const QueryObserverDelta {
+        return self.appeared_entities.items;
+    }
+
+    pub fn disappeared(self: QueryObserver) []const QueryObserverDelta {
+        return self.disappeared_entities.items;
+    }
+
+    pub fn existing(self: QueryObserver) []const QueryObserverMember {
+        return self.members.items;
+    }
+
+    fn refreshEntity(self: *QueryObserver, world: World, handle: EntityHandle) WorldError!void {
+        const matches = world.hasComponents(handle, self.component_ids.items) catch false;
+        const member_index = self.findMemberByHandle(handle);
+        if (matches) {
+            if (member_index) |index| {
+                self.members.items[index].entity = handle;
+            } else {
+                try self.addMember(world, handle);
+            }
+        } else if (member_index) |index| {
+            try self.removeMemberAtAsDisappeared(index);
+        }
+    }
+
+    fn diffAgainstWorld(self: *QueryObserver, world: World) WorldError!void {
+        const previous_count = self.members.items.len;
+        try self.seen_members.ensureTotalCapacity(self.allocator, previous_count);
+        self.seen_members.items.len = previous_count;
+        @memset(self.seen_members.items, false);
+
+        var cursor: usize = 0;
+        while (world.queryNext(self.component_ids.items, &cursor)) |handle| {
+            const entity = world.entity(handle) catch continue;
+            if (self.findMemberById(entity.id)) |index| {
+                self.members.items[index].entity = handle;
+                if (index < previous_count) {
+                    self.seen_members.items[index] = true;
+                }
+            } else {
+                try self.addMember(world, handle);
+            }
+        }
+
+        var index = previous_count;
+        while (index > 0) {
+            index -= 1;
+            if (!self.seen_members.items[index]) {
+                try self.removeMemberAtAsDisappeared(index);
+            }
+        }
+    }
+
+    fn addMember(self: *QueryObserver, world: World, handle: EntityHandle) WorldError!void {
+        try self.addMemberSilently(world, handle);
+        errdefer {
+            const member = self.members.pop().?;
+            self.allocator.free(member.id);
+        }
+        const member = self.members.items[self.members.items.len - 1];
+        self.appeared_entities.append(self.allocator, .{
+            .entity = member.entity,
+            .id = member.id,
+        }) catch return WorldError.OutOfMemory;
+    }
+
+    fn addMemberSilently(self: *QueryObserver, world: World, handle: EntityHandle) WorldError!void {
+        const entity = try world.entity(handle);
+        const owned_id = self.allocator.dupe(u8, entity.id) catch return WorldError.OutOfMemory;
+        errdefer self.allocator.free(owned_id);
+        self.members.append(self.allocator, .{
+            .entity = handle,
+            .id = owned_id,
+        }) catch return WorldError.OutOfMemory;
+    }
+
+    fn removeMemberAtAsDisappeared(self: *QueryObserver, index: usize) WorldError!void {
+        const removed = self.members.items[index];
+        self.disappeared_ids.append(self.allocator, removed.id) catch return WorldError.OutOfMemory;
+        var id_transferred = false;
+        errdefer {
+            if (!id_transferred) {
+                _ = self.disappeared_ids.pop();
+            }
+        }
+        self.disappeared_entities.append(self.allocator, .{
+            .entity = removed.entity,
+            .id = removed.id,
+        }) catch return WorldError.OutOfMemory;
+        id_transferred = true;
+        if (index + 1 < self.members.items.len) {
+            std.mem.copyForwards(QueryObserverMember, self.members.items[index .. self.members.items.len - 1], self.members.items[index + 1 ..]);
+        }
+        _ = self.members.pop();
+    }
+
+    fn clearDeltas(self: *QueryObserver) void {
+        self.appeared_entities.clearRetainingCapacity();
+        self.disappeared_entities.clearRetainingCapacity();
+        for (self.disappeared_ids.items) |id| {
+            self.allocator.free(id);
+        }
+        self.disappeared_ids.clearRetainingCapacity();
+    }
+
+    fn observesComponent(self: QueryObserver, component_id: []const u8) bool {
+        for (self.component_ids.items) |observed_id| {
+            if (std.mem.eql(u8, observed_id, component_id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn findMemberByHandle(self: QueryObserver, handle: EntityHandle) ?usize {
+        for (self.members.items, 0..) |member, index| {
+            if (member.entity.index == handle.index and member.entity.generation == handle.generation) {
+                return index;
+            }
+        }
+        return null;
+    }
+
+    fn findMemberById(self: QueryObserver, id: []const u8) ?usize {
+        for (self.members.items, 0..) |member, index| {
+            if (std.mem.eql(u8, member.id, id)) {
+                return index;
+            }
+        }
+        return null;
+    }
+};
+
 pub const Transform = components.Transform;
 pub const CubeRenderer = components.CubeRenderer;
 pub const GeometryPrimitive = components.GeometryPrimitive;
@@ -898,6 +1142,9 @@ pub const World = struct {
     entities: std.ArrayList(Entity) = .empty,
     component_tables: std.ArrayList(ComponentTable) = .empty,
     structural_events: std.ArrayList(StructuralEvent) = .empty,
+    transient_clear_new_index_by_old: std.ArrayList(?u32) = .empty,
+    transient_clear_keep_rows: std.ArrayList(bool) = .empty,
+    silent_structural_generation: u64 = 1,
     query_plan_generation: u64 = 1,
     revision: u64 = 1,
     next_entity_generation: u32 = 1,
@@ -918,6 +1165,8 @@ pub const World = struct {
         self.component_tables.deinit(allocator);
         self.entities.deinit(allocator);
         self.structural_events.deinit(allocator);
+        self.transient_clear_new_index_by_old.deinit(allocator);
+        self.transient_clear_keep_rows.deinit(allocator);
         self.* = .{ .allocator = allocator };
     }
 
@@ -931,7 +1180,10 @@ pub const World = struct {
             component_table.clearRetainingCapacity(self.allocator);
         }
         self.clearStructuralEventsRetainingCapacity();
+        self.transient_clear_new_index_by_old.clearRetainingCapacity();
+        self.transient_clear_keep_rows.clearRetainingCapacity();
         self.bumpQueryPlanGeneration();
+        self.bumpSilentStructuralGeneration();
         self.bumpRevision();
     }
 
@@ -941,6 +1193,10 @@ pub const World = struct {
 
     pub fn worldRevision(self: World) u64 {
         return self.revision;
+    }
+
+    pub fn silentStructuralGeneration(self: World) u64 {
+        return self.silent_structural_generation;
     }
 
     pub fn structuralEvents(self: World) []const StructuralEvent {
@@ -1015,6 +1271,8 @@ pub const World = struct {
                 .kind = .entity_created,
                 .entity = handle,
             });
+        } else if (options.provenance != .engine_transient) {
+            self.bumpSilentStructuralGeneration();
         }
         self.bumpRevision();
         return handle;
@@ -1451,6 +1709,8 @@ pub const World = struct {
                     .entity = handle,
                     .component_id = table.id,
                 });
+            } else if (self.entities.items[index].provenance != .engine_transient) {
+                self.bumpSilentStructuralGeneration();
             }
         }
         self.bumpRevision();
@@ -1511,23 +1771,88 @@ pub const World = struct {
                 .entity = removed_handle,
                 .component_id = removed_component_id,
             });
+        } else if (self.entities.items[entity_index].provenance != .engine_transient) {
+            self.bumpSilentStructuralGeneration();
         }
         self.bumpRevision();
         return true;
     }
 
     pub fn clearEngineTransientEntities(self: *World) WorldError!void {
-        var index: usize = 0;
-        while (index < self.entities.items.len) {
-            if (self.entities.items[index].provenance != .engine_transient) {
-                index += 1;
+        if (self.entities.items.len == 0) {
+            return;
+        }
+
+        const old_entity_count = self.entities.items.len;
+        try self.transient_clear_new_index_by_old.ensureTotalCapacity(self.allocator, old_entity_count);
+        self.transient_clear_new_index_by_old.items.len = old_entity_count;
+        const new_index_by_old = self.transient_clear_new_index_by_old.items;
+        @memset(new_index_by_old, null);
+
+        var removed_count: usize = 0;
+        var write_index: usize = 0;
+        var moved_non_transient = false;
+        for (self.entities.items, 0..) |stored_entity, old_index| {
+            if (stored_entity.provenance == .engine_transient) {
+                self.allocator.free(stored_entity.id);
+                self.allocator.free(stored_entity.name);
+                removed_count += 1;
                 continue;
             }
-            const handle = EntityHandle{
-                .index = @intCast(index),
-                .generation = self.entities.items[index].generation,
-            };
-            _ = try self.removeEntity(handle);
+            new_index_by_old[old_index] = @intCast(write_index);
+            if (write_index != old_index) {
+                self.entities.items[write_index] = stored_entity;
+                moved_non_transient = true;
+            }
+            write_index += 1;
+        }
+
+        if (removed_count == 0) {
+            return;
+        }
+
+        self.entities.shrinkRetainingCapacity(write_index);
+        for (self.component_tables.items) |*table| {
+            try self.compactComponentTableAfterTransientClear(table, new_index_by_old);
+        }
+        if (moved_non_transient) {
+            self.bumpSilentStructuralGeneration();
+        }
+        self.bumpRevision();
+    }
+
+    fn compactComponentTableAfterTransientClear(self: *World, table: *ComponentTable, new_index_by_old: []const ?u32) WorldError!void {
+        try self.transient_clear_keep_rows.ensureTotalCapacity(self.allocator, table.entities.items.len);
+        self.transient_clear_keep_rows.items.len = table.entities.items.len;
+        const keep_rows = self.transient_clear_keep_rows.items;
+
+        var write_row: usize = 0;
+        for (table.entities.items, 0..) |handle, row| {
+            const new_index = if (handle.index < new_index_by_old.len) new_index_by_old[handle.index] else null;
+            if (new_index) |index| {
+                keep_rows[row] = true;
+                table.entities.items[write_row] = .{
+                    .index = index,
+                    .generation = self.entities.items[index].generation,
+                };
+                write_row += 1;
+            } else {
+                keep_rows[row] = false;
+            }
+        }
+
+        for (table.columns) |*column| {
+            column.values.compactRowsRetainingCapacity(self.allocator, keep_rows);
+        }
+        table.entities.shrinkRetainingCapacity(write_row);
+
+        table.rows_by_entity.clearRetainingCapacity();
+        try table.rows_by_entity.ensureTotalCapacity(self.allocator, self.entities.items.len);
+        for (0..self.entities.items.len) |_| {
+            table.rows_by_entity.appendAssumeCapacity(null);
+        }
+        for (table.entities.items, 0..) |handle, row| {
+            table.rows_by_entity.items[handle.index] = row;
         }
     }
 
@@ -1535,6 +1860,9 @@ pub const World = struct {
         const entity_index = try self.componentIndex(handle);
         const emit_structural_event = self.entities.items[entity_index].provenance != .engine_transient;
         const last_entity_index = self.entities.items.len - 1;
+        const moves_non_transient_silently = !emit_structural_event and
+            entity_index != last_entity_index and
+            self.entities.items[last_entity_index].provenance != .engine_transient;
         const removed_handle = EntityHandle{
             .index = @intCast(entity_index),
             .generation = self.entities.items[entity_index].generation,
@@ -1586,6 +1914,8 @@ pub const World = struct {
                 .kind = .entity_removed,
                 .entity = removed_handle,
             });
+        } else if (moves_non_transient_silently) {
+            self.bumpSilentStructuralGeneration();
         }
         self.bumpRevision();
         return true;
@@ -2103,6 +2433,13 @@ pub const World = struct {
         self.query_plan_generation +%= 1;
         if (self.query_plan_generation == 0) {
             self.query_plan_generation = 1;
+        }
+    }
+
+    fn bumpSilentStructuralGeneration(self: *World) void {
+        self.silent_structural_generation +%= 1;
+        if (self.silent_structural_generation == 0) {
+            self.silent_structural_generation = 1;
         }
     }
 
