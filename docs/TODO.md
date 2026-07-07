@@ -112,6 +112,7 @@
 - [x] Add first-pass Odin `wgpu-native` queue write-buffer and write-texture upload boundary.
 - [x] Add first-pass Odin `wgpu-native` surface creation, configuration, current-texture, and presentation boundary.
 - [x] Add first-pass Odin `wgpu-native` default dynamic library discovery and `wgpu-check` load diagnostics.
+- [x] Add first-pass Odin `wgpu-native` instance creation/release smoke through the default dynamic loader.
 - [ ] Port remaining unbounded/window-loop reload diagnostics from Zig to Odin.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [x] Port first-pass Odin software offscreen PNG/BMP image output and render-test pixel verification.

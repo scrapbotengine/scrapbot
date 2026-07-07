@@ -149,8 +149,17 @@ run_wgpu_check :: proc(args: []string, emit_output: bool) -> int {
 		return 1
 	}
 
+	smoke_error, smoke_ok := wgpu_smoke_offscreen_instance(loaded.procs)
+	if !smoke_ok {
+		if emit_output {
+			fmt.eprintf("wgpu-native instance smoke failed: %s\n", smoke_error)
+			fmt.eprintf("Path: %s\n", path)
+		}
+		return 1
+	}
+
 	if emit_output {
-		fmt.printf("wgpu-native OK: %s\n", path)
+		fmt.printf("wgpu-native instance OK: %s\n", path)
 	}
 	return 0
 }

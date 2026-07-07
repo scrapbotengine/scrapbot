@@ -927,6 +927,7 @@ WGPU_Symbol_Resolver :: proc(name: string, user_data: rawptr) -> rawptr
 
 WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR :: "load_library"
 WGPU_OFFSCREEN_LIBRARY_NOT_FOUND :: "library_not_found"
+WGPU_OFFSCREEN_INSTANCE_CREATE_ERROR :: "create_instance"
 WGPU_OFFSCREEN_LIBRARY_ENV :: "SCRAPBOT_WGPU_NATIVE_LIBRARY"
 
 WGPU_SYMBOL_DEVICE_CREATE_TEXTURE :: "wgpuDeviceCreateTexture"
@@ -2019,6 +2020,38 @@ wgpu_load_default_offscreen_library :: proc(root: string = ".") -> (WGPU_Offscre
 	}
 	defer delete(path)
 	return wgpu_load_offscreen_library(path)
+}
+
+wgpu_smoke_offscreen_instance :: proc(procs: WGPU_Offscreen_Procs) -> (string, bool) {
+	descriptor := wgpu_instance_descriptor_default()
+	instance := procs.create_instance(&descriptor)
+	if instance == nil {
+		return WGPU_OFFSCREEN_INSTANCE_CREATE_ERROR, false
+	}
+	procs.instance_release(instance)
+	return "", true
+}
+
+wgpu_smoke_default_offscreen_instance :: proc(root: string = ".") -> (string, string, bool) {
+	path, found := wgpu_find_default_offscreen_library(root)
+	if !found {
+		return "", WGPU_OFFSCREEN_LIBRARY_NOT_FOUND, false
+	}
+
+	loaded, missing, loaded_ok := wgpu_load_offscreen_library(path)
+	if !loaded_ok {
+		delete(path)
+		return "", missing, false
+	}
+	defer wgpu_unload_offscreen_library(&loaded)
+
+	smoke_error, smoke_ok := wgpu_smoke_offscreen_instance(loaded.procs)
+	if !smoke_ok {
+		delete(path)
+		return "", smoke_error, false
+	}
+
+	return path, "", true
 }
 
 wgpu_find_default_offscreen_library :: proc(root: string = ".") -> (string, bool) {

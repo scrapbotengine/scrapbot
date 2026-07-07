@@ -657,6 +657,31 @@ test_wgpu_offscreen_proc_table_reports_first_missing_symbol :: proc(t: ^testing.
 }
 
 @(test)
+test_wgpu_offscreen_instance_smoke_creates_and_releases_instance :: proc(t: ^testing.T) {
+	ctx := WGPU_Test_Resolver_Context{}
+	procs, missing, procs_ok := wgpu_resolve_offscreen_procs(wgpu_test_symbol_resolver, rawptr(&ctx))
+	testing.expect_value(t, procs_ok, true)
+	testing.expect_value(t, missing, "")
+
+	smoke_error, smoke_ok := wgpu_smoke_offscreen_instance(procs)
+	testing.expect_value(t, smoke_ok, true)
+	testing.expect_value(t, smoke_error, "")
+}
+
+@(test)
+test_wgpu_offscreen_instance_smoke_reports_create_failure :: proc(t: ^testing.T) {
+	ctx := WGPU_Test_Resolver_Context{}
+	procs, missing, procs_ok := wgpu_resolve_offscreen_procs(wgpu_test_symbol_resolver, rawptr(&ctx))
+	testing.expect_value(t, procs_ok, true)
+	testing.expect_value(t, missing, "")
+	procs.create_instance = wgpu_test_create_instance_failure
+
+	smoke_error, smoke_ok := wgpu_smoke_offscreen_instance(procs)
+	testing.expect_value(t, smoke_ok, false)
+	testing.expect_value(t, smoke_error, WGPU_OFFSCREEN_INSTANCE_CREATE_ERROR)
+}
+
+@(test)
 test_wgpu_offscreen_dynamic_library_loads_proc_table :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "wgpu-offscreen-dynlib")
 	defer os.remove_all(root)
@@ -811,6 +836,22 @@ test_wgpu_default_library_loader_uses_discovered_zig_package_cache_library :: pr
 
 	instance := loaded.procs.create_instance((^WGPU_Instance_Descriptor)(nil))
 	testing.expect_value(t, instance, WGPU_Instance(rawptr(uintptr(0x200A))))
+}
+
+@(test)
+test_wgpu_default_instance_smoke_uses_discovered_zig_package_cache_library :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-default-instance-smoke")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	cache_library_path := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(cache_library_path)
+
+	smoke_path, missing, ok := wgpu_smoke_default_offscreen_instance(root)
+	defer if ok { delete(smoke_path) }
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, missing, "")
+	testing.expect_value(t, same_resolved_path(smoke_path, cache_library_path), true)
 }
 
 build_fake_wgpu_library :: proc(t: ^testing.T, root, source: string) -> string {
@@ -1882,6 +1923,11 @@ wgpu_test_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
 wgpu_test_create_instance :: proc "c" (descriptor: ^WGPU_Instance_Descriptor) -> WGPU_Instance {
 	_ = descriptor
 	return WGPU_Instance(rawptr(uintptr(0x100A)))
+}
+
+wgpu_test_create_instance_failure :: proc "c" (descriptor: ^WGPU_Instance_Descriptor) -> WGPU_Instance {
+	_ = descriptor
+	return nil
 }
 
 wgpu_test_instance_request_adapter :: proc "c" (instance: WGPU_Instance, options: ^WGPU_Request_Adapter_Options, callback_info: WGPU_Request_Adapter_Callback_Info) -> WGPU_Future {
