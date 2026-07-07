@@ -186,6 +186,7 @@
 - [x] Add first-pass Odin WebGPU overlay vertices for selected inspector component cards and typed controls.
 - [ ] Complete full editor window-loop Odin input, tool chrome, and replacement of the Zig editor path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
+- [ ] Investigate the Linux CI standalone Odin CLI crash in Luau-backed commands; `odin test` covers the code path, but Linux platform smoke currently avoids standalone `step`/`test`/`bench` Luau execution until the process crash is fixed.
 - [x] Add retained scroll-view/vgroup routing for Odin inspector scrolling.
 - [x] Add visual scroll support to inspector component vgroups.
 - [x] Add first-pass Odin software render pixels for typed inspector controls.
