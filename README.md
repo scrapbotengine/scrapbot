@@ -19,14 +19,16 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml` and `scenes/main.scene.toml`.
 - `scrapbot check [path]` validates the project manifest and default scene.
-- `scrapbot run [path] [--headless]` loads the scene into a tiny native ECS world and submits one frame to a null renderer.
+- `scrapbot run [path] [--backend null|wgpu] [--window]` loads the scene into a tiny native ECS world and submits one frame through the selected renderer backend.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
-During development, use `mise scrapbot [args...]` to compile and run the CLI with arguments forwarded to Scrapbot. Use `mise scrapbot -- [args...]` when forwarding Scrapbot's own `--help`.
+During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary; the first real backend is planned to be `wgpu-native`.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary; the current backend is `null`, the first real backend is planned to be `wgpu-native`, and SDL3 owns the first platform window path.
 
 Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
+
+Run the full local test suite with `mise test`.
 
 ## Features / Roadmap
 

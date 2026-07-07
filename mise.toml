@@ -2,3 +2,23 @@
 node = "24"
 odin = { version = "dev-2026-07", exe = "odin" }
 pnpm = "10"
+
+[tasks.build]
+description = "Build the Scrapbot CLI"
+run = "mkdir -p bin && odin build src/scrapbot_cli -out:bin/scrapbot"
+
+[tasks.scrapbot]
+description = "Build and run the Scrapbot CLI"
+depends = ["build"]
+run = "bin/scrapbot \"$@\""
+
+[tasks.test]
+description = "Run all local checks and smoke tests"
+depends = ["build"]
+run = [
+  "odin check src/scrapbot -no-entry-point",
+  "odin test src/scrapbot",
+  "bin/scrapbot --version",
+  "bin/scrapbot check examples/minimal",
+  "bin/scrapbot run examples/minimal",
+]
