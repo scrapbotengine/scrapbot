@@ -31,7 +31,7 @@
 - [x] Odin WebGPU smoke tasks can stage the host `wgpu-native` runtime library into `odin-out/lib` without building the Zig engine.
 - [x] Odin `run --backend wgpu --frames N` can drive a bounded visible SDL window loop, tick live project reload/update state, and present scene-derived WebGPU frames.
 - [x] Odin visible WebGPU runs can drive bounded and unbounded SDL window loops through a persistent surface context and the shared live-project frame tick.
-- [x] Odin WebGPU render and run surfaces can draw first-pass editor chrome overlays for `--editor`.
+- [x] Odin WebGPU render and run surfaces can draw first-pass editor chrome and selected-inspector overlays for `--editor`.
 - [x] Odin `run` can drive bounded and unbounded visible software runs through an SDL event loop and the shared live-project frame tick.
 - [x] Odin visible software window-loop reloads emit live reload diagnostics while suppressing duplicate final-summary events.
 - [x] Odin visible software runs can present software-rendered scene and first-pass editor chrome pixels through an SDL texture.
@@ -151,6 +151,7 @@
 - [x] Port first-pass Odin visual-test golden update/comparison, tolerance checks, and render artifact metadata sidecars.
 - [x] Port first-pass Odin software editor chrome pixels for offscreen render/visual artifacts.
 - [x] Add first-pass Odin software render pixels for selected inspector component cards.
+- [x] Add first-pass Odin WebGPU overlay vertices for selected inspector component cards and typed controls.
 - [ ] Complete full editor window-loop Odin input, tool chrome, and replacement of the Zig editor path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
 - [x] Add retained scroll-view/vgroup routing for Odin inspector scrolling.

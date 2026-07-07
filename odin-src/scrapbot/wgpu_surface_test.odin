@@ -102,3 +102,87 @@ test_wgpu_editor_chrome_vertices_append_overlay_rects :: proc(t: ^testing.T) {
 	zero_count := wgpu_append_editor_chrome_vertices(&vertices, 0, 480)
 	testing.expect_value(t, zero_count, 0)
 }
+
+@(test)
+test_wgpu_editor_selected_inspector_vertices_append_typed_controls :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-editor-selected-inspector-vertices")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "WGPU Editor Selected Inspector Vertices"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = ["scripts/components.luau"]
+`)
+	write_file(t, root, "scripts/components.luau", `local Controls = ecs.component("controls", {
+  fields = ecs.fields({
+    enabled = "boolean",
+    count = "int",
+    speed = "float",
+    label = "string",
+    tint = "vec3",
+  }),
+})
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Typed Inspector Controls"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.controls]
+enabled = true
+count = 2
+speed = 1.5
+label = "alpha"
+tint = [1.0, 0.5, 0.25]
+`)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+
+	base_vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(base_vertices)
+	base_count := wgpu_append_editor_chrome_vertices(&base_vertices, 320, 240)
+
+	vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(vertices)
+	selected_count := wgpu_append_editor_chrome_vertices_for_selection(&vertices, result.scene.world, 320, 240, "target")
+	testing.expect_value(t, selected_count > base_count, true)
+	testing.expect_value(t, len(vertices), selected_count * 6)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_SELECTION_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_BOOL_ON_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_TOGGLE_KNOB_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_SCALAR_CONTROL_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_STRING_CONTROL_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_VEC3_X_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_VEC3_Y_COLOR)
+	expect_wgpu_vertex_color(t, vertices[:], EDITOR_CHROME_INSPECTOR_VEC3_Z_COLOR)
+}
+
+expect_wgpu_vertex_color :: proc(t: ^testing.T, vertices: []WGPU_Scene_Vertex, color: [3]u8) {
+	expected := [3]f32{f32(color[0]) / 255.0, f32(color[1]) / 255.0, f32(color[2]) / 255.0}
+	for vertex in vertices {
+		if wgpu_vertex_color_equal(vertex.color, expected) {
+			return
+		}
+	}
+	testing.fail_now(t, "expected WebGPU overlay vertex color not found")
+}
+
+wgpu_vertex_color_equal :: proc(actual, expected: [3]f32) -> bool {
+	epsilon := f32(0.0001)
+	return wgpu_f32_close(actual[0], expected[0], epsilon) &&
+	       wgpu_f32_close(actual[1], expected[1], epsilon) &&
+	       wgpu_f32_close(actual[2], expected[2], epsilon)
+}
+
+wgpu_f32_close :: proc(actual, expected, epsilon: f32) -> bool {
+	diff := actual - expected
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= epsilon
+}

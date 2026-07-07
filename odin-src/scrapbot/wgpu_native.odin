@@ -2611,7 +2611,11 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 	defer delete(vertices)
 	wgpu_collect_scene_vertices(&vertices, world, options.width, options.height)
 	if options.editor {
-		wgpu_append_editor_chrome_vertices(&vertices, options.width, options.height)
+		if options.selected_entity_id != "" {
+			wgpu_append_editor_chrome_vertices_for_selection(&vertices, world, options.width, options.height, options.selected_entity_id, options.inspector_scroll_y)
+		} else {
+			wgpu_append_editor_chrome_vertices(&vertices, options.width, options.height)
+		}
 	}
 
 	descriptor := wgpu_instance_descriptor_default()
@@ -2836,6 +2840,170 @@ wgpu_append_editor_chrome_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex
 		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_VIEWPORT_COLOR)
 		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x + viewport_width - 2, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_VIEWPORT_COLOR)
 	}
+	return count
+}
+
+wgpu_append_editor_chrome_vertices_for_selection :: proc(
+	vertices: ^[dynamic]WGPU_Scene_Vertex,
+	world: Runtime_World,
+	width, height: int,
+	selected_entity_id: string,
+	inspector_scroll_y: f32 = 0,
+) -> int {
+	count := wgpu_append_editor_chrome_vertices(vertices, width, height)
+	if selected_entity_id == "" || width <= 0 || height <= 0 {
+		return count
+	}
+
+	top_height := min(max(24, height / 12), max(1, height / 3))
+	bottom_height := min(max(18, height / 16), max(1, height / 5))
+	body_y := top_height
+	body_height := max(0, height - top_height - bottom_height)
+	right_width := min(max(96, width * 3 / 10), max(1, width / 3))
+	left_width := min(max(72, width / 5), max(1, width / 3))
+	if left_width + right_width + 48 > width {
+		right_width = max(8, width / 4)
+	}
+	if right_width <= 24 || body_height <= 28 {
+		return count
+	}
+
+	right_x := width - right_width
+	accent_x := right_x + 12
+	accent_y := body_y + 14
+	accent_width := max(4, right_width - 24)
+	accent_height := min(max(8, body_height / 18), body_height - 28)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = accent_x, y = accent_y, width = accent_width, height = accent_height}, EDITOR_CHROME_SELECTION_COLOR)
+	count += wgpu_append_editor_inspector_card_vertices(vertices, world, width, height, selected_entity_id, right_x, body_y, right_width, body_height, inspector_scroll_y)
+	return count
+}
+
+wgpu_append_editor_inspector_card_vertices :: proc(
+	vertices: ^[dynamic]WGPU_Scene_Vertex,
+	world: Runtime_World,
+	width, height: int,
+	selected_entity_id: string,
+	right_x, body_y, right_width, body_height: int,
+	scroll_y: f32,
+) -> int {
+	selected, selected_ok := runtime_world_find_entity_by_id(world, selected_entity_id)
+	if !selected_ok {
+		return 0
+	}
+	selected_index, selected_err := runtime_world_entity_index(world, selected)
+	if selected_err != .None {
+		return 0
+	}
+
+	count := 0
+	card_x := right_x + 12
+	card_y := body_y + 36 - int(max_f32(scroll_y, 0.0) + 0.5)
+	card_width := max(4, right_width - 24)
+	clip_top := body_y + 36
+	clip_bottom := body_y + body_height - 8
+	for table in world.component_tables {
+		if selected_index >= len(table.rows_by_entity) || table.rows_by_entity[selected_index] < 0 {
+			continue
+		}
+		field_count := len(table.columns)
+		card_height := 24 + max(1, field_count) * 8
+		if card_y >= clip_bottom {
+			break
+		}
+
+		draw_y := card_y
+		draw_height := card_height
+		header_offset := 0
+		if draw_y < clip_top {
+			header_offset = clip_top - draw_y
+			draw_height -= header_offset
+			draw_y = clip_top
+		}
+		if draw_y + draw_height > clip_bottom {
+			draw_height = max(0, clip_bottom - draw_y)
+		}
+		if draw_height > 0 {
+			count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = card_x, y = draw_y, width = card_width, height = draw_height}, EDITOR_CHROME_INSPECTOR_CARD_COLOR)
+			count += wgpu_append_chrome_stroke_rect(vertices, width, height, Renderable_Rect{x = card_x, y = draw_y, width = card_width, height = draw_height}, EDITOR_CHROME_RULE_COLOR)
+			if header_offset < 12 {
+				header_y := max(card_y + 2, clip_top)
+				header_available := draw_y + draw_height - header_y
+				if header_available > 0 {
+					header_height := min(10 - header_offset, header_available)
+					count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = card_x + 2, y = header_y, width = max(1, card_width - 4), height = header_height}, EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR)
+				}
+			}
+			field_y := card_y + 16
+			for column in table.columns {
+				if field_y + 5 >= card_y + card_height - 2 {
+					break
+				}
+				if field_y + 5 >= clip_top && field_y < clip_bottom {
+					clipped_y := max(field_y, clip_top)
+					clipped_height := min(5, clip_bottom - clipped_y)
+					if clipped_height > 0 {
+						count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = card_x + 6, y = clipped_y, width = max(1, card_width - 12), height = clipped_height}, EDITOR_CHROME_INSPECTOR_FIELD_COLOR)
+						value, value_err := runtime_world_get_component_field_value(world, selected, table.id, column.name)
+						if value_err == .None && clipped_height >= 3 {
+							count += wgpu_append_editor_inspector_typed_control_vertices(vertices, width, height, card_x, card_width, clipped_y, clipped_height, value)
+						}
+					}
+				}
+				field_y += 8
+			}
+		}
+		card_y += card_height + 4
+	}
+	return count
+}
+
+wgpu_append_editor_inspector_typed_control_vertices :: proc(
+	vertices: ^[dynamic]WGPU_Scene_Vertex,
+	width, height: int,
+	card_x, card_width, y, control_height: int,
+	value: Runtime_Component_Value,
+) -> int {
+	control_y := y
+	control_h := min(control_height, 5)
+	switch value.value_type {
+	case .Boolean:
+		rect_width := min(18, max(8, card_width / 4))
+		control_x := card_x + card_width - rect_width - 8
+		color := value.boolean ? EDITOR_CHROME_INSPECTOR_BOOL_ON_COLOR : EDITOR_CHROME_INSPECTOR_BOOL_OFF_COLOR
+		count := wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = control_x, y = control_y, width = rect_width, height = control_h}, color)
+		if rect_width > 8 {
+			knob_x := value.boolean ? control_x + rect_width - 5 : control_x + 2
+			count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = knob_x, y = control_y + 1, width = 3, height = max(1, control_h - 2)}, EDITOR_CHROME_INSPECTOR_TOGGLE_KNOB_COLOR)
+		}
+		return count
+	case .Int, .Float:
+		rect_width := min(26, max(10, card_width / 3))
+		control_x := card_x + card_width - rect_width - 8
+		return wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = control_x, y = control_y, width = rect_width, height = control_h}, EDITOR_CHROME_INSPECTOR_SCALAR_CONTROL_COLOR)
+	case .String:
+		rect_width := min(26, max(10, card_width / 3))
+		control_x := card_x + card_width - rect_width - 8
+		return wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = control_x, y = control_y, width = rect_width, height = control_h}, EDITOR_CHROME_INSPECTOR_STRING_CONTROL_COLOR)
+	case .Vec3:
+		lane_width := min(8, max(3, (card_width - 20) / 6))
+		gap := 2
+		total_width := lane_width * 3 + gap * 2
+		control_x := card_x + card_width - total_width - 8
+		count := 0
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = control_x, y = control_y, width = lane_width, height = control_h}, EDITOR_CHROME_INSPECTOR_VEC3_X_COLOR)
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = control_x + lane_width + gap, y = control_y, width = lane_width, height = control_h}, EDITOR_CHROME_INSPECTOR_VEC3_Y_COLOR)
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = control_x + (lane_width + gap) * 2, y = control_y, width = lane_width, height = control_h}, EDITOR_CHROME_INSPECTOR_VEC3_Z_COLOR)
+		return count
+	}
+	return 0
+}
+
+wgpu_append_chrome_stroke_rect :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, width, height: int, rect: Renderable_Rect, color: [3]u8) -> int {
+	count := 0
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = rect.x, y = rect.y, width = rect.width, height = 1}, color)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = rect.x, y = rect.y + rect.height - 1, width = rect.width, height = 1}, color)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = rect.x, y = rect.y, width = 1, height = rect.height}, color)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = rect.x + rect.width - 1, y = rect.y, width = 1, height = rect.height}, color)
 	return count
 }
 

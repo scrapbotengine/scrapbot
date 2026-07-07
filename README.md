@@ -76,6 +76,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin software selected inspector card render slice
   - [x] Odin software inspector visual scroll render slice
   - [x] Odin software typed inspector control render slice
+  - [x] Odin WebGPU selected inspector overlay render slice
   - [x] Odin wgpu-native ABI boundary slice
   - [x] Odin wgpu-native descriptor boundary slice
   - [x] Odin wgpu-native copy/readback boundary slice

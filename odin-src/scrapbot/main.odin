@@ -129,7 +129,7 @@ Odin migration status:
   currently cover text project creation, validation, packaging, and schedule-aware frame accounting slices.
   Luau execution, native module execution, retained scene UI/editor input replay, software render/visual output,
   WebGPU offscreen run/render output, image comparison, first-pass offscreen editor chrome, and first-pass
-  WebGPU editor chrome overlays are partially ported; hidden and bounded/unbounded visible WebGPU
+  WebGPU editor overlays are partially ported; hidden and bounded/unbounded visible WebGPU
   presentation are partially ported; the full editor shell is still being ported.`)
 }
 

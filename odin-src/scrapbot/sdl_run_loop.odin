@@ -402,12 +402,18 @@ sdl_run_live_project_wgpu_loop :: proc(
 		result.pixel_width = size.pixel_width
 		result.pixel_height = size.pixel_height
 
+		selected_entity_id := ""
+		if selected_id, selected_ok := editor_test_selected_entity_id(editor_state, project.check.scene.world); selected_ok {
+			selected_entity_id = selected_id
+		}
 		presentation, present_error, present_ok := wgpu_surface_context_present_scene_frame(
 			&surface_context,
 			project.check.scene.world,
 			u32(size.pixel_width),
 			u32(size.pixel_height),
 			editor,
+			selected_entity_id,
+			editor_state.inspector_scroll_y,
 		)
 		if !present_ok {
 			result.completed_frames = completed_frames
@@ -419,11 +425,7 @@ sdl_run_live_project_wgpu_loop :: proc(
 		result.renderable_count = presentation.renderable_count + presentation.overlay_count
 		result.editor_input_routed = editor
 		result.editor_paused = editor_state.paused
-		if selected_id, selected_ok := editor_test_selected_entity_id(editor_state, project.check.scene.world); selected_ok {
-			result.editor_selected_entity_id = selected_id
-		} else {
-			result.editor_selected_entity_id = ""
-		}
+		result.editor_selected_entity_id = selected_entity_id
 
 		if max_frames == 0 {
 			sdl3.Delay(SDL_RUN_LOOP_IDLE_DELAY_MS)

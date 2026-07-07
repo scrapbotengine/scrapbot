@@ -301,9 +301,9 @@ print_run_result :: proc(
 		if render_result.presented {
 			if options.backend == .WebGPU {
 				if window_result.editor_input_routed {
-					fmt.println("Editor: first-pass WebGPU chrome overlay and input routing")
+					fmt.println("Editor: first-pass WebGPU editor overlay and input routing")
 				} else {
-					fmt.println("Editor: first-pass WebGPU chrome overlay")
+					fmt.println("Editor: first-pass WebGPU editor overlay")
 				}
 			} else {
 				if window_result.editor_input_routed {

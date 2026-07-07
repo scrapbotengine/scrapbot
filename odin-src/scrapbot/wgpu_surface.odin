@@ -162,6 +162,8 @@ wgpu_surface_context_present_scene_frame :: proc(
 	world: Runtime_World,
 	width, height: u32,
 	editor_overlay: bool = false,
+	selected_entity_id: string = "",
+	inspector_scroll_y: f32 = 0,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	config_error, config_ok := wgpu_surface_context_configure(ctx, width, height)
 	if !config_ok {
@@ -178,7 +180,11 @@ wgpu_surface_context_present_scene_frame :: proc(
 	renderable_count := len(vertices) / 6
 	overlay_count := 0
 	if editor_overlay {
-		overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+		if selected_entity_id != "" {
+			overlay_count = wgpu_append_editor_chrome_vertices_for_selection(&vertices, world, int(width), int(height), selected_entity_id, inspector_scroll_y)
+		} else {
+			overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+		}
 	}
 
 	procs := ctx.procs
@@ -423,6 +429,8 @@ wgpu_present_surface_scene_with_world :: proc(
 	backend_type: WGPU_Backend_Type,
 	draw_world: bool,
 	editor_overlay: bool = false,
+	selected_entity_id: string = "",
+	inspector_scroll_y: f32 = 0,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	if width == 0 || height == 0 {
 		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
@@ -440,7 +448,11 @@ wgpu_present_surface_scene_with_world :: proc(
 	renderable_count := len(vertices) / 6
 	overlay_count := 0
 	if editor_overlay {
-		overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+		if selected_entity_id != "" {
+			overlay_count = wgpu_append_editor_chrome_vertices_for_selection(&vertices, world, int(width), int(height), selected_entity_id, inspector_scroll_y)
+		} else {
+			overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+		}
 	}
 
 	descriptor := wgpu_instance_descriptor_default()
