@@ -18,7 +18,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y ca-certificates git curl xz-utils zstd build-essential clang libsdl3-dev libvulkan1 mesa-vulkan-drivers xvfb
+          apt-get install -y ca-certificates git curl unzip xz-utils zstd build-essential clang libsdl3-dev libvulkan1 mesa-vulkan-drivers xvfb
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v4
         with:

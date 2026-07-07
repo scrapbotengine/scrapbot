@@ -997,6 +997,39 @@ test_wgpu_default_library_search_discovers_zig_package_cache_layout :: proc(t: ^
 }
 
 @(test)
+test_wgpu_default_library_search_discovers_odin_out_lib_layout :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-default-library-search-odin-out-lib")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	library_path := stage_fake_wgpu_odin_out_library(t, root)
+	defer delete(library_path)
+
+	found_path, found := wgpu_find_default_offscreen_library(root)
+	defer if found { delete(found_path) }
+	testing.expect_value(t, found, true)
+	testing.expect_value(t, same_resolved_path(found_path, library_path), true)
+}
+
+@(test)
+test_wgpu_default_library_search_prefers_odin_out_lib_over_zig_package_cache :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-default-library-search-prefers-odin-out-lib")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	odin_library_path := stage_fake_wgpu_odin_out_library(t, root)
+	defer delete(odin_library_path)
+
+	cache_library_path := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(cache_library_path)
+
+	found_path, found := wgpu_find_default_offscreen_library(root)
+	defer if found { delete(found_path) }
+	testing.expect_value(t, found, true)
+	testing.expect_value(t, same_resolved_path(found_path, odin_library_path), true)
+}
+
+@(test)
 test_wgpu_default_library_loader_uses_discovered_zig_package_cache_library :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "wgpu-default-library-load")
 	defer os.remove_all(root)
@@ -1089,6 +1122,30 @@ build_fake_wgpu_library :: proc(t: ^testing.T, root, source: string) -> string {
 	}
 
 	return output_path
+}
+
+stage_fake_wgpu_odin_out_library :: proc(t: ^testing.T, root: string) -> string {
+	source_library := build_fake_wgpu_library(t, root, FAKE_WGPU_DYNAMIC_LIBRARY_SOURCE)
+	defer delete(source_library)
+
+	odin_lib_path, odin_lib_err := filepath.join([]string{root, "odin-out", "lib"})
+	if odin_lib_err != nil {
+		testing.fail_now(t, "failed to join fake odin-out lib path")
+	}
+	defer delete(odin_lib_path)
+	if os.mkdir_all(odin_lib_path) != nil {
+		testing.fail_now(t, "failed to create fake odin-out lib path")
+	}
+
+	destination_library, dest_err := filepath.join([]string{odin_lib_path, wgpu_native_dynamic_library_file_name()})
+	if dest_err != nil {
+		testing.fail_now(t, "failed to join fake wgpu library path")
+	}
+	if os.copy_file(destination_library, source_library) != nil {
+		delete(destination_library)
+		testing.fail_now(t, "failed to stage fake wgpu library")
+	}
+	return destination_library
 }
 
 stage_fake_wgpu_zig_package_library :: proc(t: ^testing.T, root: string) -> string {

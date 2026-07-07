@@ -25,6 +25,10 @@ run = "mise build-odin-luau-bridge && mkdir -p odin-out && odin build odin-src/s
 description = "Build the C ABI Luau bridge used by the Odin migration scaffold"
 run = "sh tools/build-odin-luau-bridge.sh"
 
+[tasks.stage-odin-wgpu-native]
+description = "Download and stage the host wgpu-native runtime library for Odin WebGPU smokes"
+run = "sh tools/stage-odin-wgpu-native.sh"
+
 [tasks.odin-smoke]
 description = "Build and run the Odin migration scaffold"
 run = "mise build-odin && ./odin-out/scrapbot --version"
@@ -35,7 +39,7 @@ run = "mise build-odin && ./odin-out/scrapbot sdl-window-check --hidden"
 
 [tasks.odin-wgpu-surface-smoke]
 description = "Build and run Odin hidden SDL WebGPU surface presentation smokes"
-run = "mise build-odin && mise build && if [ \"${CI:-}\" = \"true\" ] && [ \"$(uname -s)\" = \"Linux\" ]; then ./odin-out/scrapbot wgpu-check . && echo \"Skipping Odin WebGPU surface presentation smoke on Linux CI; Xvfb/Xlib teardown crashes after successful present.\"; else ./odin-out/scrapbot wgpu-surface-check . --hidden && ./odin-out/scrapbot run examples/minimal --hidden --frames 2 --backend wgpu --render-output odin-out/wgpu-run-hidden.png; fi"
+run = "mise build-odin && mise stage-odin-wgpu-native && if [ \"${CI:-}\" = \"true\" ] && [ \"$(uname -s)\" = \"Linux\" ]; then ./odin-out/scrapbot wgpu-check . && echo \"Skipping Odin WebGPU surface presentation smoke on Linux CI; Xvfb/Xlib teardown crashes after successful present.\"; else ./odin-out/scrapbot wgpu-surface-check . --hidden && ./odin-out/scrapbot run examples/minimal --hidden --frames 2 --backend wgpu --render-output odin-out/wgpu-run-hidden.png; fi"
 
 [tasks.test-odin]
 description = "Run Odin migration tests"
