@@ -43,6 +43,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Clicking the selected-entity header copies the full entity id to the editor clipboard, even when the visible header area is width-constrained.
 - A selected renderable gets a world-space translate gizmo with X, Y, and Z handles.
 - Dragging a gizmo axis mutates the selected entity's transform position. In the Odin implementation, each completed translate-gizmo drag contributes one grouped undo/redo command and one pending scene edit for `scrapbot.transform.position`.
+- The Odin SDL run-loop path shares one live-project frame tick for software and WebGPU presentation, and deterministic smoke coverage routes SDL pointer input through entity selection and translate-gizmo dragging.
 - Selection uses generation-aware entity handles so stale selections are rejected instead of silently aliasing another entity.
 - Editor chrome consumes pointer input before it can select scene entities or trigger in-game UI buttons. Mesh picking and gizmo interaction only use pointer coordinates inside the game viewport.
 

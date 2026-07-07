@@ -1,5 +1,6 @@
 package main
 
+import "core:os"
 import sdl3 "vendor:sdl3"
 import "core:testing"
 
@@ -206,6 +207,93 @@ test_sdl_run_loop_editor_toggle_updates_frame_visibility :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_sdl_run_loop_tick_routes_editor_selection_from_sdl_pointer :: proc(t: ^testing.T) {
+	root := make_sdl_editor_gizmo_project(t, "sdl-editor-selection")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	size := Sdl_Window_Size{width = 1280, height = 720, pixel_width = 1280, pixel_height = 720}
+	input_state := Sdl_Input_State{}
+	editor_state := Editor_Test_Input_State{}
+	defer editor_test_input_state_free(&editor_state)
+	fly_camera := Sdl_Fly_Camera_State{}
+
+	frame_input := sdl_input_begin_frame(input_state, size, true)
+	sdl_input_apply_mouse_button(&input_state, &frame_input, size, sdl3.BUTTON_LEFT, true, 20, 500)
+	frame := sdl_run_loop_tick_live_project(&live, nil, &editor_state, &fly_camera, frame_input, true, 0.016, 0)
+	defer script_diagnostic_free(&frame.diagnostic)
+
+	testing.expect_value(t, frame.ok, true)
+	testing.expect_value(t, frame.completed_frames, 1)
+	selected_id, selected_ok := editor_test_selected_entity_id(editor_state, live.check.scene.world)
+	testing.expect_value(t, selected_ok, true)
+	testing.expect_value(t, selected_id, "target")
+}
+
+@(test)
+test_sdl_run_loop_tick_routes_editor_gizmo_drag_from_sdl_pointer :: proc(t: ^testing.T) {
+	root := make_sdl_editor_gizmo_project(t, "sdl-editor-gizmo-drag")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	size := Sdl_Window_Size{width = 1280, height = 720, pixel_width = 1280, pixel_height = 720}
+	input_state := Sdl_Input_State{}
+	editor_state := Editor_Test_Input_State{}
+	defer editor_test_input_state_free(&editor_state)
+	fly_camera := Sdl_Fly_Camera_State{}
+	completed_frames := 0
+
+	select_input := sdl_input_begin_frame(input_state, size, true)
+	sdl_input_apply_mouse_button(&input_state, &select_input, size, sdl3.BUTTON_LEFT, true, 20, 500)
+	select_frame := sdl_run_loop_tick_live_project(&live, nil, &editor_state, &fly_camera, select_input, true, 0.016, completed_frames)
+	defer script_diagnostic_free(&select_frame.diagnostic)
+	testing.expect_value(t, select_frame.ok, true)
+	completed_frames = select_frame.completed_frames
+
+	release_selection_input := sdl_input_begin_frame(input_state, size, true)
+	sdl_input_apply_mouse_button(&input_state, &release_selection_input, size, sdl3.BUTTON_LEFT, false, 20, 500)
+	release_selection_frame := sdl_run_loop_tick_live_project(&live, nil, &editor_state, &fly_camera, release_selection_input, true, 0.016, completed_frames)
+	defer script_diagnostic_free(&release_selection_frame.diagnostic)
+	testing.expect_value(t, release_selection_frame.ok, true)
+	completed_frames = release_selection_frame.completed_frames
+
+	press_gizmo_input := sdl_input_begin_frame(input_state, size, true)
+	sdl_input_apply_mouse_button(&input_state, &press_gizmo_input, size, sdl3.BUTTON_LEFT, true, 660, 358)
+	press_gizmo_frame := sdl_run_loop_tick_live_project(&live, nil, &editor_state, &fly_camera, press_gizmo_input, true, 0.016, completed_frames)
+	defer script_diagnostic_free(&press_gizmo_frame.diagnostic)
+	testing.expect_value(t, press_gizmo_frame.ok, true)
+	testing.expect_value(t, editor_state.dragging_axis, Editor_Test_Axis.X)
+	completed_frames = press_gizmo_frame.completed_frames
+
+	drag_input := sdl_input_begin_frame(input_state, size, true)
+	sdl_input_apply_mouse_motion(&input_state, &drag_input, size, 760, 358, 100, 0)
+	drag_frame := sdl_run_loop_tick_live_project(&live, nil, &editor_state, &fly_camera, drag_input, true, 0.016, completed_frames)
+	defer script_diagnostic_free(&drag_frame.diagnostic)
+	testing.expect_value(t, drag_frame.ok, true)
+	completed_frames = drag_frame.completed_frames
+
+	release_gizmo_input := sdl_input_begin_frame(input_state, size, true)
+	sdl_input_apply_mouse_button(&input_state, &release_gizmo_input, size, sdl3.BUTTON_LEFT, false, 760, 358)
+	release_gizmo_frame := sdl_run_loop_tick_live_project(&live, nil, &editor_state, &fly_camera, release_gizmo_input, true, 0.016, completed_frames)
+	defer script_diagnostic_free(&release_gizmo_frame.diagnostic)
+	testing.expect_value(t, release_gizmo_frame.ok, true)
+
+	position, position_err := runtime_world_get_vec3(live.check.scene.world, editor_state.selected_entity, TRANSFORM_COMPONENT_ID, "position")
+	testing.expect_value(t, position_err, Runtime_Error.None)
+	testing.expect_value(t, position, [3]f32{1.2, 0, 0})
+	testing.expect_value(t, editor_state.undo_len, 1)
+	testing.expect_value(t, editor_state.has_pending_scene_edit, false)
+}
+
+@(test)
 test_sdl_fly_camera_capture_respects_editor_game_viewport :: proc(t: ^testing.T) {
 	input := frame_input_default()
 	input.viewport_width = 1280
@@ -348,6 +436,27 @@ test_sdl_surface_kind_labels_are_stable_for_cli_output :: proc(t: ^testing.T) {
 	testing.expect_value(t, sdl_surface_source_kind_label(.Wayland_Surface), "wayland-surface")
 	testing.expect_value(t, sdl_surface_source_kind_label(.Xlib_Window), "xlib-window")
 	testing.expect_value(t, sdl_surface_source_kind_label(.Windows_HWND), "windows-hwnd")
+}
+
+make_sdl_editor_gizmo_project :: proc(t: ^testing.T, name: string) -> string {
+	root := make_test_project_root(t, name)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "SDL Editor Gizmo Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "SDL Editor Gizmo Test"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.scrapbot.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+`)
+	return root
 }
 
 _ :: sdl3.Window
