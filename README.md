@@ -24,7 +24,7 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary; the current backend is `null`, the first real backend is planned to be `wgpu-native`, and SDL3 owns the first platform window path.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to clear and present one short-lived window frame.
 
 Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
 
@@ -93,8 +93,9 @@ Run the full local test suite with `mise test`.
 ### Rendering
 
 - Backend
-  - [ ] WebGPU renderer
-  - [ ] Headful rendering
+  - [x] WebGPU surface smoke
+  - [x] Headful rendering smoke
+  - [ ] WebGPU scene renderer
   - [ ] Offscreen rendering
 - Scene Data
   - [ ] Cameras

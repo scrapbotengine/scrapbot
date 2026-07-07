@@ -12,7 +12,8 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The runtime can submit frame data through a renderer boundary.
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
-- The `wgpu` backend is recognized but reports that it is not implemented yet.
+- The `wgpu` backend opens an SDL3 window, creates a `wgpu-native` surface, clears one frame, presents it, and exits.
+- The `wgpu` backend currently requires `--window`.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
 - Future backends should not require scene files or gameplay code to know backend-specific GPU handles.
 
@@ -35,6 +36,12 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 **Decision:** Open platform windows through SDL3.
 **Why:** SDL3 is available through Odin's vendor bindings and gives the renderer a portable surface path. See ADR-005.
 **Tradeoff:** Headful runtime work now depends on SDL3 being available in development and distribution environments.
+
+### 4. Keep the first WGPU implementation as a smoke renderer
+
+**Decision:** The current `wgpu` backend only clears and presents one frame derived from the existing runtime flow.
+**Why:** This proves the native window/surface/device/swapchain path before introducing pipelines, shaders, GPU resources, or render packets.
+**Tradeoff:** The backend verifies presentation, not scene rendering.
 
 ## Related
 

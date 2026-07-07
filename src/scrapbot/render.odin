@@ -35,7 +35,19 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 		renderer: Null_Renderer
 		return renderer_submit(&renderer, world), ""
 	case .WGPU:
-		return frame, "wgpu renderer backend is not implemented yet"
+		if !config.window {
+			return frame, "wgpu renderer backend currently requires --window"
+		}
+		window_err := open_runtime_window("Scrapbot WGPU", 1280, 720)
+		if window_err != "" {
+			return frame, window_err
+		}
+		defer close_runtime_window()
+		pump_runtime_window_events()
+
+		frame = render_frame_from_world(world)
+		err = wgpu_clear_window(frame)
+		return
 	}
 
 	return frame, "unknown renderer backend"

@@ -32,17 +32,17 @@
 
 ## Rendering
 
-**Renderer backend** - A renderer implementation behind Scrapbot's rendering boundary, such as the current null renderer or the planned `wgpu-native` backend.
+**Renderer backend** - A renderer implementation behind Scrapbot's rendering boundary, such as the null renderer or the `wgpu-native` backend.
 
 **Null renderer** - The placeholder renderer that accepts world-derived frame data without opening a window or using the GPU.
 
-**SDL3** - The first platform window layer for Scrapbot's headful runtime smoke tests and future renderer surface creation.
+**SDL3** - The first platform window layer for Scrapbot's headful runtime smoke tests and renderer surface creation.
 
 **Render packet** - Planned name for backend-neutral render data extracted from the ECS world before submission to a renderer backend.
 
 **WebGPU** - The modern graphics API model Scrapbot is targeting for its first real renderer.
 
-**`wgpu-native`** - The planned first real renderer backend, using the native WebGPU implementation exposed through Odin's vendor bindings.
+**`wgpu-native`** - The first real renderer backend, using the native WebGPU implementation exposed through Odin's vendor bindings.
 
 ## Scripting And Editing
 
