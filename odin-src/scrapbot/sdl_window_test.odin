@@ -100,6 +100,23 @@ test_sdl_input_maps_keyboard_state_and_editor_shortcuts :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_sdl_input_accumulates_text_input_for_current_frame :: proc(t: ^testing.T) {
+	state := Sdl_Input_State{}
+	input := frame_input_default()
+
+	first := [?]u8{'4', '2', 0}
+	second := [?]u8{'.', '5', 0}
+	sdl_input_apply_text_input(&state, &input, cstring(raw_data(first[:])))
+	sdl_input_apply_text_input(&state, &input, cstring(raw_data(second[:])))
+
+	testing.expect_value(t, input.text_input, "42.5")
+
+	sdl_input_clear_text_input(&state, &input)
+	testing.expect_value(t, input.text_input, "")
+	testing.expect_value(t, state.text_input_len, 0)
+}
+
+@(test)
 test_sdl_wgpu_surface_descriptor_bundles_own_source_storage :: proc(t: ^testing.T) {
 	label := wgpu_string_view_from_string("test")
 

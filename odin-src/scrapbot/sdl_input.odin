@@ -17,6 +17,8 @@ Sdl_Input_State :: struct {
 	move_right:       bool,
 	move_up:          bool,
 	move_down:        bool,
+	text_input_buffer: [EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8,
+	text_input_len:    int,
 }
 
 sdl_input_begin_frame :: proc(state: Sdl_Input_State, size: Sdl_Window_Size, editor_visible: bool) -> Frame_Input {
@@ -45,6 +47,12 @@ sdl_input_begin_frame :: proc(state: Sdl_Input_State, size: Sdl_Window_Size, edi
 	input.keyboard.move_up = state.move_up
 	input.keyboard.move_down = state.move_down
 	return input
+}
+
+sdl_input_clear_text_input :: proc(state: ^Sdl_Input_State, input: ^Frame_Input) {
+	state.text_input_buffer = {}
+	state.text_input_len = 0
+	input.text_input = ""
 }
 
 sdl_input_window_to_pixel_position :: proc(size: Sdl_Window_Size, x, y: f32) -> [2]f32 {
@@ -116,6 +124,23 @@ sdl_input_apply_mouse_wheel :: proc(state: ^Sdl_Input_State, input: ^Frame_Input
 	}
 	input.pointer.wheel_delta[0] += wheel_x
 	input.pointer.wheel_delta[1] += wheel_y
+}
+
+sdl_input_apply_text_input :: proc(state: ^Sdl_Input_State, input: ^Frame_Input, text: cstring) {
+	if text == nil {
+		return
+	}
+	bytes := cast([^]u8)text
+	for index := 0; bytes[index] != 0; index += 1 {
+		if state.text_input_len >= len(state.text_input_buffer) {
+			break
+		}
+		state.text_input_buffer[state.text_input_len] = bytes[index]
+		state.text_input_len += 1
+	}
+	if state.text_input_len > 0 {
+		input.text_input = string(state.text_input_buffer[:state.text_input_len])
+	}
 }
 
 sdl_input_apply_key :: proc(state: ^Sdl_Input_State, input: ^Frame_Input, scancode: sdl3.Scancode, down, repeat: bool) {

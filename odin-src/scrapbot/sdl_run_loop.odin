@@ -54,6 +54,7 @@ sdl_run_loop_pump_events :: proc() -> bool {
 }
 
 sdl_run_loop_pump_input_events :: proc(input_state: ^Sdl_Input_State, input: ^Frame_Input, size: Sdl_Window_Size) -> bool {
+	sdl_input_clear_text_input(input_state, input)
 	event: sdl3.Event
 	for sdl3.PollEvent(&event) {
 		if sdl_run_loop_event_requests_quit(event) {
@@ -68,6 +69,8 @@ sdl_run_loop_pump_input_events :: proc(input_state: ^Sdl_Input_State, input: ^Fr
 			sdl_input_apply_mouse_wheel(input_state, input, size, event.wheel.x, event.wheel.y, event.wheel.mouse_x, event.wheel.mouse_y, event.wheel.direction)
 		case .KEY_DOWN, .KEY_UP:
 			sdl_input_apply_key(input_state, input, event.key.scancode, event.key.down, event.key.repeat)
+		case .TEXT_INPUT:
+			sdl_input_apply_text_input(input_state, input, event.text.text)
 		}
 	}
 	return false
@@ -188,6 +191,8 @@ sdl_run_live_project_loop :: proc(
 		return Sdl_Run_Loop_Result{}, Simulation_Run_Result{}, presenter_error, false
 	}
 	defer sdl_software_presenter_deinit(&presenter)
+	text_input_started := editor && sdl3.StartTextInput(window.window)
+	defer if text_input_started do _ = sdl3.StopTextInput(window.window)
 
 	result := Sdl_Run_Loop_Result{
 		window_opened = true,
@@ -339,6 +344,8 @@ sdl_run_live_project_wgpu_loop :: proc(
 		return Sdl_Run_Loop_Result{}, Simulation_Run_Result{}, surface_context_error, false
 	}
 	defer wgpu_surface_context_deinit(&surface_context)
+	text_input_started := editor && sdl3.StartTextInput(window.window)
+	defer if text_input_started do _ = sdl3.StopTextInput(window.window)
 
 	result := Sdl_Run_Loop_Result{
 		window_opened = true,
