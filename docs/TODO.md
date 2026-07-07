@@ -35,6 +35,7 @@
 - [x] Odin `run` can drive bounded and unbounded visible software runs through an SDL event loop and the shared live-project frame tick.
 - [x] Odin visible software window-loop reloads emit live reload diagnostics while suppressing duplicate final-summary events.
 - [x] Odin visible software runs can present software-rendered scene and first-pass editor chrome pixels through an SDL texture.
+- [x] Odin visible software and WebGPU SDL run loops can route first-pass editor pointer and keyboard input through the shared runtime input/editor model.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
 - [x] Odin `render` and `render-test` can validate projects, run bounded frame simulation, check selected entities, and report pending backend render stats.
 - [x] Odin `visual-test` can validate projects, expected/actual paths, selected entities, bounded frame simulation, golden update, image comparison, tolerance checks, and metadata sidecars against first-pass software render artifacts.
@@ -136,6 +137,7 @@
 - [x] Port bounded visible Odin software `run --frames` through an SDL event loop.
 - [x] Port unbounded visible Odin software `run` through an SDL event loop.
 - [x] Port live unbounded/window-loop reload diagnostics from Zig to Odin for visible software runs.
+- [x] Port first-pass editor pointer and keyboard input routing into visible Odin software/WebGPU SDL run loops.
 - [ ] Remove the vendored Zig `wgpu-native` binding after the migration-era Zig renderer and build surfaces are no longer needed.
 - [x] Port first-pass Odin software offscreen PNG/BMP image output and render-test pixel verification.
 - [x] Port first-pass Odin visual-test golden update/comparison, tolerance checks, and render artifact metadata sidecars.

@@ -956,6 +956,45 @@ test_live_project_run_frame_reports_script_reload_for_window_loop_tick :: proc(t
 }
 
 @(test)
+test_live_project_run_frame_with_editor_input_can_pause_updates :: proc(t: ^testing.T) {
+	root := make_test_project(t, "live-editor-input-pause")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_script_counter_project(t, root, "1")
+	live, init_err := live_project_init(root)
+	defer live_project_free(&live)
+	testing.expect_value(t, init_err, Project_Error.None)
+
+	editor_state := Editor_Test_Input_State{}
+	pause_input := frame_input_default()
+	pause_input.debug_overlay_visible = true
+	pause_input.viewport_width = 1280
+	pause_input.viewport_height = 720
+	pause_input.pointer.has_position = true
+	pause_input.pointer.position = {1040, 20}
+	pause_input.pointer.primary_pressed = true
+	pause_input.pointer.primary_down = true
+
+	first := live_project_run_frame_with_input(&live, 0.5, 0, nil, &editor_state, pause_input)
+	defer script_diagnostic_free(&first.diagnostic)
+	testing.expect_value(t, first.ok, true)
+	testing.expect_value(t, first.completed_frames, 1)
+	testing.expect_value(t, editor_state.paused, true)
+	testing.expect_value(t, live_project_counter_value(t, live), 1)
+
+	next_input := frame_input_default()
+	next_input.debug_overlay_visible = true
+	next_input.viewport_width = 1280
+	next_input.viewport_height = 720
+	second := live_project_run_frame_with_input(&live, 0.5, first.completed_frames, nil, &editor_state, next_input)
+	defer script_diagnostic_free(&second.diagnostic)
+	testing.expect_value(t, second.ok, true)
+	testing.expect_value(t, second.completed_frames, 2)
+	testing.expect_value(t, live_project_counter_value(t, live), 1)
+}
+
+@(test)
 test_live_project_reloads_scene_source_and_resets_startup :: proc(t: ^testing.T) {
 	root := make_test_project(t, "live-project-scene-source-reload")
 	defer os.remove_all(root)

@@ -27,6 +27,9 @@ Sdl_Run_Loop_Result :: struct {
 	surface_width:             int,
 	surface_height:            int,
 	renderable_count:          int,
+	editor_input_routed:       bool,
+	editor_paused:             bool,
+	editor_selected_entity_id: string,
 }
 
 Sdl_Software_Presenter :: struct {
@@ -45,6 +48,26 @@ sdl_run_loop_pump_events :: proc() -> bool {
 	for sdl3.PollEvent(&event) {
 		if sdl_run_loop_event_requests_quit(event) {
 			return true
+		}
+	}
+	return false
+}
+
+sdl_run_loop_pump_input_events :: proc(input_state: ^Sdl_Input_State, input: ^Frame_Input, size: Sdl_Window_Size) -> bool {
+	event: sdl3.Event
+	for sdl3.PollEvent(&event) {
+		if sdl_run_loop_event_requests_quit(event) {
+			return true
+		}
+		#partial switch event.type {
+		case .MOUSE_MOTION:
+			sdl_input_apply_mouse_motion(input_state, input, size, event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel)
+		case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
+			sdl_input_apply_mouse_button(input_state, input, size, event.button.button, event.button.down, event.button.x, event.button.y)
+		case .MOUSE_WHEEL:
+			sdl_input_apply_mouse_wheel(input_state, input, size, event.wheel.x, event.wheel.y, event.wheel.mouse_x, event.wheel.mouse_y, event.wheel.direction)
+		case .KEY_DOWN, .KEY_UP:
+			sdl_input_apply_key(input_state, input, event.key.scancode, event.key.down, event.key.repeat)
 		}
 	}
 	return false
@@ -176,15 +199,18 @@ sdl_run_live_project_loop :: proc(
 
 	completed_frames := 0
 	previous_ticks_ns := sdl3.GetTicksNS()
+	input_state := Sdl_Input_State{}
+	editor_state := Editor_Test_Input_State{}
 	for !sdl_run_loop_frame_limit_reached(completed_frames, max_frames) {
-		if sdl_run_loop_pump_events() {
+		frame_input := sdl_input_begin_frame(input_state, size, editor)
+		if sdl_run_loop_pump_input_events(&input_state, &frame_input, size) {
 			result.quit_requested = true
 			break
 		}
 		current_ticks_ns := sdl3.GetTicksNS()
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
-		frame := live_project_run_frame_with_report(project, delta_seconds, completed_frames, report)
+		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
 		if !frame.ok {
 			result.completed_frames = frame.completed_frames
 			return result, frame, "", true
@@ -232,6 +258,13 @@ sdl_run_live_project_loop :: proc(
 		extract, extract_err := render_extract_scene(project.check.scene.world)
 		if extract_err == .None {
 			result.renderable_count = extract.renderables + extract.ui_rects + extract.ui_texts
+		}
+		result.editor_input_routed = editor
+		result.editor_paused = editor_state.paused
+		if selected_id, selected_ok := editor_test_selected_entity_id(editor_state, project.check.scene.world); selected_ok {
+			result.editor_selected_entity_id = selected_id
+		} else {
+			result.editor_selected_entity_id = ""
 		}
 
 		if max_frames == 0 {
@@ -317,15 +350,18 @@ sdl_run_live_project_wgpu_loop :: proc(
 
 	completed_frames := 0
 	previous_ticks_ns := sdl3.GetTicksNS()
+	input_state := Sdl_Input_State{}
+	editor_state := Editor_Test_Input_State{}
 	for !sdl_run_loop_frame_limit_reached(completed_frames, max_frames) {
-		if sdl_run_loop_pump_events() {
+		frame_input := sdl_input_begin_frame(input_state, size, editor)
+		if sdl_run_loop_pump_input_events(&input_state, &frame_input, size) {
 			result.quit_requested = true
 			break
 		}
 		current_ticks_ns := sdl3.GetTicksNS()
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
-		frame := live_project_run_frame_with_report(project, delta_seconds, completed_frames, report)
+		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
 		if !frame.ok {
 			result.completed_frames = frame.completed_frames
 			return result, frame, "", true
@@ -364,6 +400,13 @@ sdl_run_live_project_wgpu_loop :: proc(
 		result.surface_width = int(presentation.width)
 		result.surface_height = int(presentation.height)
 		result.renderable_count = presentation.renderable_count + presentation.overlay_count
+		result.editor_input_routed = editor
+		result.editor_paused = editor_state.paused
+		if selected_id, selected_ok := editor_test_selected_entity_id(editor_state, project.check.scene.world); selected_ok {
+			result.editor_selected_entity_id = selected_id
+		} else {
+			result.editor_selected_entity_id = ""
+		}
 
 		if max_frames == 0 {
 			sdl3.Delay(SDL_RUN_LOOP_IDLE_DELAY_MS)

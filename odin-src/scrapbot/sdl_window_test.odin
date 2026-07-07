@@ -45,6 +45,61 @@ test_sdl_run_loop_delta_seconds_is_measured_and_clamped :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_sdl_input_scales_pointer_to_high_density_pixels :: proc(t: ^testing.T) {
+	size := Sdl_Window_Size{width = 1280, height = 720, pixel_width = 2560, pixel_height = 1440}
+	state := Sdl_Input_State{}
+	input := sdl_input_begin_frame(state, size, true)
+
+	sdl_input_apply_mouse_motion(&state, &input, size, 20, 30, 20, 30)
+
+	testing.expect_value(t, input.debug_overlay_visible, true)
+	testing.expect_value(t, input.viewport_width, f32(2560))
+	testing.expect_value(t, input.viewport_height, f32(1440))
+	testing.expect_value(t, input.pointer.has_position, true)
+	testing.expect_value(t, input.pointer.position, [2]f32{40, 60})
+	testing.expect_value(t, input.pointer.delta, [2]f32{40, 60})
+}
+
+@(test)
+test_sdl_input_maps_mouse_buttons_and_wheel :: proc(t: ^testing.T) {
+	size := Sdl_Window_Size{width = 100, height = 100, pixel_width = 100, pixel_height = 100}
+	state := Sdl_Input_State{}
+	input := sdl_input_begin_frame(state, size, false)
+
+	sdl_input_apply_mouse_button(&state, &input, size, sdl3.BUTTON_LEFT, true, 10, 20)
+	testing.expect_value(t, state.primary_down, true)
+	testing.expect_value(t, input.pointer.primary_pressed, true)
+	testing.expect_value(t, input.pointer.primary_down, true)
+
+	input = sdl_input_begin_frame(state, size, false)
+	sdl_input_apply_mouse_button(&state, &input, size, sdl3.BUTTON_LEFT, false, 10, 20)
+	testing.expect_value(t, state.primary_down, false)
+	testing.expect_value(t, input.pointer.primary_released, true)
+	testing.expect_value(t, input.pointer.primary_down, false)
+
+	sdl_input_apply_mouse_wheel(&state, &input, size, 0, 2, 10, 20, .FLIPPED)
+	testing.expect_value(t, input.pointer.wheel_delta, [2]f32{0, -2})
+}
+
+@(test)
+test_sdl_input_maps_keyboard_state_and_editor_shortcuts :: proc(t: ^testing.T) {
+	state := Sdl_Input_State{}
+	input := frame_input_default()
+
+	sdl_input_apply_key(&state, &input, .LCTRL, true, false)
+	sdl_input_apply_key(&state, &input, .A, true, false)
+	testing.expect_value(t, state.ctrl_down, true)
+	testing.expect_value(t, state.move_left, true)
+	testing.expect_value(t, input.keyboard.ctrl_down, true)
+	testing.expect_value(t, input.keyboard.move_left, true)
+	testing.expect_value(t, input.keyboard.editor_select_all_pressed, true)
+
+	input = sdl_input_begin_frame(state, Sdl_Window_Size{width = 100, height = 100, pixel_width = 100, pixel_height = 100}, false)
+	sdl_input_apply_key(&state, &input, .BACKSPACE, true, false)
+	testing.expect_value(t, input.keyboard.editor_backspace_pressed, true)
+}
+
+@(test)
 test_sdl_wgpu_surface_descriptor_bundles_own_source_storage :: proc(t: ^testing.T) {
 	label := wgpu_string_view_from_string("test")
 

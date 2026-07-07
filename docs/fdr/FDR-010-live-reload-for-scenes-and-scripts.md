@@ -1,13 +1,13 @@
 # FDR-010: Live Reload for Scenes, Scripts, and Native Modules
 
 **Status:** Active
-**Last reviewed:** 2026-07-03
+**Last reviewed:** 2026-07-07
 
 ## Overview
 
 Live reload lets users, editor tools, and agents change scene, script, and project-local native source files while the engine is running. It shortens the edit-run loop and makes text-first project state practical for interactive development.
 
-**Migration note:** During the Odin rewrite, bounded `scrapbot run --frames` can poll project metadata, default scene, Luau script, and Odin native source changes between frames, revalidate replacements, reload compatible project/scene changes as fresh scene generations, preserve the current world on successful script/native reloads, report successful reload event categories in run output, and keep the last-known-good state active on failed reloads. The reload/poll/startup/update path is also exposed as a reusable Odin live-project frame tick and is now used by bounded and unbounded visible software and WebGPU SDL runs; visible window-loop reloads emit successful reload diagnostics as they occur and skip duplicate final-summary events. Wiring that tick into the full editor loop remains pending.
+**Migration note:** During the Odin rewrite, bounded `scrapbot run --frames` can poll project metadata, default scene, Luau script, and Odin native source changes between frames, revalidate replacements, reload compatible project/scene changes as fresh scene generations, preserve the current world on successful script/native reloads, report successful reload event categories in run output, and keep the last-known-good state active on failed reloads. The reload/poll/startup/update path is also exposed as a reusable Odin live-project frame tick and is now used by bounded and unbounded visible software and WebGPU SDL runs; visible window-loop reloads emit successful reload diagnostics as they occur, skip duplicate final-summary events, and can route first-pass SDL editor input before update execution. Full editor-shell diagnostics and tool parity remain pending.
 
 ## Behavior
 

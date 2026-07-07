@@ -375,6 +375,19 @@ live_project_run_frames_with_report :: proc(
 }
 
 live_project_run_frame_with_report :: proc(project: ^Live_Project, delta_seconds: f32, completed_frames: int, report: ^Live_Project_Run_Report) -> Simulation_Run_Result {
+	prepare := live_project_prepare_frame_with_report(project, completed_frames, report)
+	if !prepare.ok {
+		return prepare
+	}
+
+	update := script_program_run_schedule(&project.check.script_program, &project.check.registry, &project.check.scene.world, project.check.update_schedule, delta_seconds)
+	if !update.ok {
+		return Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic}
+	}
+	return Simulation_Run_Result{ok = true, completed_frames = completed_frames + 1}
+}
+
+live_project_prepare_frame_with_report :: proc(project: ^Live_Project, completed_frames: int, report: ^Live_Project_Run_Report) -> Simulation_Run_Result {
 	startup_result := live_project_run_startup_if_needed(project)
 	if !startup_result.ok {
 		startup_result.completed_frames = completed_frames
@@ -410,10 +423,67 @@ live_project_run_frame_with_report :: proc(project: ^Live_Project, delta_seconds
 		startup_result.completed_frames = completed_frames
 		return startup_result
 	}
+	return Simulation_Run_Result{ok = true, completed_frames = completed_frames}
+}
+
+live_project_run_frame_with_input :: proc(
+	project: ^Live_Project,
+	delta_seconds: f32,
+	completed_frames: int,
+	report: ^Live_Project_Run_Report,
+	editor_state: ^Editor_Test_Input_State,
+	input: Frame_Input,
+) -> Simulation_Run_Result {
+	prepare := live_project_prepare_frame_with_report(project, completed_frames, report)
+	if !prepare.ok {
+		if editor_state != nil {
+			prepare.editor_state = editor_state^
+		}
+		return prepare
+	}
+
+	frame_input := input
+	if editor_state != nil {
+		route_editor_test_input(editor_state, &project.check.scene.world, &frame_input)
+	}
+	input_err := write_frame_input(&project.check.scene.world, frame_input)
+	if input_err != .None {
+		result := Simulation_Run_Result{
+			ok = false,
+			completed_frames = completed_frames,
+			diagnostic = script_runtime_diagnostic("", "", 0, runtime_error_label(input_err)),
+		}
+		if editor_state != nil {
+			result.editor_state = editor_state^
+		}
+		return result
+	}
+	route_err := route_test_frame_input(&project.check.scene.world)
+	if route_err != .None {
+		result := Simulation_Run_Result{
+			ok = false,
+			completed_frames = completed_frames,
+			diagnostic = script_runtime_diagnostic("", "", 0, runtime_error_label(route_err)),
+		}
+		if editor_state != nil {
+			result.editor_state = editor_state^
+		}
+		return result
+	}
+	if editor_state != nil && !editor_test_should_run_update(editor_state^) {
+		return Simulation_Run_Result{ok = true, completed_frames = completed_frames + 1, editor_state = editor_state^}
+	}
 
 	update := script_program_run_schedule(&project.check.script_program, &project.check.registry, &project.check.scene.world, project.check.update_schedule, delta_seconds)
 	if !update.ok {
-		return Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic}
+		result := Simulation_Run_Result{ok = false, completed_frames = completed_frames, diagnostic = update.diagnostic}
+		if editor_state != nil {
+			result.editor_state = editor_state^
+		}
+		return result
+	}
+	if editor_state != nil {
+		return Simulation_Run_Result{ok = true, completed_frames = completed_frames + 1, editor_state = editor_state^}
 	}
 	return Simulation_Run_Result{ok = true, completed_frames = completed_frames + 1}
 }

@@ -300,12 +300,26 @@ print_run_result :: proc(
 	if options.editor {
 		if render_result.presented {
 			if options.backend == .WebGPU {
-				fmt.println("Editor: first-pass WebGPU chrome overlay")
+				if window_result.editor_input_routed {
+					fmt.println("Editor: first-pass WebGPU chrome overlay and input routing")
+				} else {
+					fmt.println("Editor: first-pass WebGPU chrome overlay")
+				}
 			} else {
-				fmt.println("Editor: first-pass software chrome overlay")
+				if window_result.editor_input_routed {
+					fmt.println("Editor: first-pass software chrome overlay and input routing")
+				} else {
+					fmt.println("Editor: first-pass software chrome overlay")
+				}
 			}
 		} else {
 			fmt.println("Editor: requested, pending Odin editor shell")
+		}
+		if window_result.editor_paused {
+			fmt.println("Editor state: paused")
+		}
+		if window_result.editor_selected_entity_id != "" {
+			fmt.printf("Editor selected entity: %s\n", window_result.editor_selected_entity_id)
 		}
 	}
 	print_render_extract_text(result)
