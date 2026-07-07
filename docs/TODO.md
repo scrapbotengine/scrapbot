@@ -28,5 +28,4 @@
 
 ## Documentation And Examples
 
-- [ ] Add a sample project under `examples/`.
 - [ ] Add ADR/FDR update guidance to contributor documentation.

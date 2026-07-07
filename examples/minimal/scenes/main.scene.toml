@@ -1,0 +1,23 @@
+[[entities]]
+name = "Main Camera"
+
+[entities.transform]
+position = [0, 2, 6]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+
+[[entities]]
+name = "Cube"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.mesh]
+primitive = "cube"

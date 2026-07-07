@@ -14,6 +14,7 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 - The default generated scene lives at `scenes/main.scene.toml`.
 - Scene files describe entities and known components in TOML.
 - Project validation rejects missing manifests, unsafe scene paths, malformed project metadata, and malformed scene data.
+- Example project directories live under `examples/` and can be used for smoke verification.
 
 ## Design Decisions
 

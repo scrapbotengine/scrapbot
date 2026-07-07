@@ -26,6 +26,8 @@ During development, use `mise scrapbot [args...]` to compile and run the CLI wit
 
 This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary; the first real backend is planned to be `wgpu-native`.
 
+Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
+
 ## Features / Roadmap
 
 ### Engine Core
