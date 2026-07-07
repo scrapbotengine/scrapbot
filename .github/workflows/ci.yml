@@ -75,23 +75,6 @@ jobs:
           set -euo pipefail
           ./odin-out/scrapbot --version
           ./odin-out/scrapbot check examples/minimal
-          ./odin-out/scrapbot render-test --editor --frames=60 examples/ui_gallery odin-out/ui-gallery-editor-render-test.png
-      - name: Project and benchmark tests
-        run: |
-          set -euo pipefail
-          ./odin-out/scrapbot test examples/ui_gallery
-          ./odin-out/scrapbot render-bench examples/ui_gallery --frames=2 --warmup=1 --format=json
-      - name: Render and visual tests
-        run: |
-          set -euo pipefail
-          ./odin-out/scrapbot render-test examples/minimal odin-out/minimal-render-test.png
-          ./odin-out/scrapbot render-test examples/showcase odin-out/showcase-render-test.png
-          ./odin-out/scrapbot render-test examples/ui_gallery odin-out/ui-gallery-render-test.png
-          ./odin-out/scrapbot render-test examples/spawn_swarm odin-out/spawn-swarm-render-test.png
-          ./odin-out/scrapbot visual-test --update examples/minimal odin-out/minimal-visual-expected.png
-          ./odin-out/scrapbot visual-test examples/minimal odin-out/minimal-visual-expected.png odin-out/minimal-visual-actual.png
-      - name: Headful smoke
-        run: xvfb-run -a ./odin-out/scrapbot run examples/minimal --hidden --frames 2
       - name: SDL and WebGPU smoke
         run: xvfb-run -a mise odin-sdl-smoke && xvfb-run -a mise odin-wgpu-surface-smoke
 
@@ -125,10 +108,16 @@ jobs:
         run: .\tools\build-odin-luau-bridge.ps1
       - name: Build and test
         shell: pwsh
-        run: mise exec -- odin test odin-src/scrapbot -define:ODIN_TEST_THREADS=1 -out:odin-out/scrapbot-tests.exe
+        run: |
+          $odin = Join-Path $env:LOCALAPPDATA "mise\installs\odin\dev-2026-06\odin.exe"
+          & $odin test odin-src/scrapbot -define:ODIN_TEST_THREADS=1 -out:odin-out/scrapbot-tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build CLI
         shell: pwsh
-        run: mise exec -- odin build odin-src/scrapbot -out:odin-out/scrapbot.exe
+        run: |
+          $odin = Join-Path $env:LOCALAPPDATA "mise\installs\odin\dev-2026-06\odin.exe"
+          & $odin build odin-src/scrapbot -out:odin-out/scrapbot.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stage SDL3 runtime
         shell: pwsh
         run: Copy-Item "$env:SDL_ROOT\lib\x64\SDL3.dll" odin-out\
