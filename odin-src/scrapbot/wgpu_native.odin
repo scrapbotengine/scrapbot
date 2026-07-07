@@ -52,6 +52,9 @@ WGPU_Request_Adapter_Status :: u32
 WGPU_Request_Device_Status :: u32
 WGPU_Device_Lost_Reason :: u32
 WGPU_Error_Type :: u32
+WGPU_Composite_Alpha_Mode :: u32
+WGPU_Present_Mode :: u32
+WGPU_Surface_Get_Current_Texture_Status :: u32
 WGPU_Feature_Name :: u32
 WGPU_SType :: u32
 WGPU_Status :: u32
@@ -271,6 +274,27 @@ WGPU_ERROR_TYPE_OUT_OF_MEMORY :: WGPU_Error_Type(0x00000003)
 WGPU_ERROR_TYPE_INTERNAL :: WGPU_Error_Type(0x00000004)
 WGPU_ERROR_TYPE_UNKNOWN :: WGPU_Error_Type(0x00000005)
 
+WGPU_COMPOSITE_ALPHA_MODE_AUTO :: WGPU_Composite_Alpha_Mode(0x00000000)
+WGPU_COMPOSITE_ALPHA_MODE_OPAQUE :: WGPU_Composite_Alpha_Mode(0x00000001)
+WGPU_COMPOSITE_ALPHA_MODE_PREMULTIPLIED :: WGPU_Composite_Alpha_Mode(0x00000002)
+WGPU_COMPOSITE_ALPHA_MODE_UNPREMULTIPLIED :: WGPU_Composite_Alpha_Mode(0x00000003)
+WGPU_COMPOSITE_ALPHA_MODE_INHERIT :: WGPU_Composite_Alpha_Mode(0x00000004)
+
+WGPU_PRESENT_MODE_UNDEFINED :: WGPU_Present_Mode(0x00000000)
+WGPU_PRESENT_MODE_FIFO :: WGPU_Present_Mode(0x00000001)
+WGPU_PRESENT_MODE_FIFO_RELAXED :: WGPU_Present_Mode(0x00000002)
+WGPU_PRESENT_MODE_IMMEDIATE :: WGPU_Present_Mode(0x00000003)
+WGPU_PRESENT_MODE_MAILBOX :: WGPU_Present_Mode(0x00000004)
+
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_OPTIMAL :: WGPU_Surface_Get_Current_Texture_Status(0x00000001)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_SUBOPTIMAL :: WGPU_Surface_Get_Current_Texture_Status(0x00000002)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_TIMEOUT :: WGPU_Surface_Get_Current_Texture_Status(0x00000003)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_OUTDATED :: WGPU_Surface_Get_Current_Texture_Status(0x00000004)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_LOST :: WGPU_Surface_Get_Current_Texture_Status(0x00000005)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_OUT_OF_MEMORY :: WGPU_Surface_Get_Current_Texture_Status(0x00000006)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_DEVICE_LOST :: WGPU_Surface_Get_Current_Texture_Status(0x00000007)
+WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_ERROR :: WGPU_Surface_Get_Current_Texture_Status(0x00000008)
+
 WGPU_STYPE_SHADER_SOURCE_SPIRV :: WGPU_SType(0x00000001)
 WGPU_STYPE_SHADER_SOURCE_WGSL :: WGPU_SType(0x00000002)
 WGPU_STYPE_RENDER_PASS_MAX_DRAW_COUNT :: WGPU_SType(0x00000003)
@@ -363,6 +387,80 @@ WGPU_Chained_Struct :: struct #align(align_of(rawptr)) {
 WGPU_Chained_Struct_Out :: struct #align(align_of(rawptr)) {
 	next:   ^WGPU_Chained_Struct_Out,
 	s_type: WGPU_SType,
+}
+
+WGPU_Surface_Descriptor :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	label:         WGPU_String_View,
+}
+
+WGPU_Surface_Source_Android_Native_Window :: struct #align(align_of(rawptr)) {
+	chain:  WGPU_Chained_Struct,
+	window: rawptr,
+}
+
+WGPU_Surface_Source_Metal_Layer :: struct #align(align_of(rawptr)) {
+	chain: WGPU_Chained_Struct,
+	layer: rawptr,
+}
+
+WGPU_Surface_Source_Wayland_Surface :: struct #align(align_of(rawptr)) {
+	chain:   WGPU_Chained_Struct,
+	display: rawptr,
+	surface: rawptr,
+}
+
+WGPU_Surface_Source_Windows_HWND :: struct #align(align_of(rawptr)) {
+	chain:     WGPU_Chained_Struct,
+	hinstance: rawptr,
+	hwnd:      rawptr,
+}
+
+WGPU_Surface_Source_XCB_Window :: struct #align(align_of(rawptr)) {
+	chain:      WGPU_Chained_Struct,
+	connection: rawptr,
+	window:     u32,
+}
+
+WGPU_Surface_Source_Xlib_Window :: struct #align(align_of(rawptr)) {
+	chain:   WGPU_Chained_Struct,
+	display: rawptr,
+	window:  u64,
+}
+
+WGPU_Surface_Configuration_Extras :: struct #align(align_of(rawptr)) {
+	chain:                         WGPU_Chained_Struct,
+	desired_maximum_frame_latency: u32,
+}
+
+WGPU_Surface_Configuration :: struct #align(align_of(rawptr)) {
+	next_in_chain:    ^WGPU_Chained_Struct,
+	device:           WGPU_Device,
+	format:           WGPU_Texture_Format,
+	usage:            WGPU_Texture_Usage,
+	width:            u32,
+	height:           u32,
+	view_format_count: c.size_t,
+	view_formats:     [^]WGPU_Texture_Format,
+	alpha_mode:       WGPU_Composite_Alpha_Mode,
+	present_mode:     WGPU_Present_Mode,
+}
+
+WGPU_Surface_Capabilities :: struct #align(align_of(rawptr)) {
+	next_in_chain:     ^WGPU_Chained_Struct_Out,
+	usages:            WGPU_Texture_Usage,
+	format_count:      c.size_t,
+	formats:           [^]WGPU_Texture_Format,
+	present_mode_count: c.size_t,
+	present_modes:     [^]WGPU_Present_Mode,
+	alpha_mode_count:  c.size_t,
+	alpha_modes:       [^]WGPU_Composite_Alpha_Mode,
+}
+
+WGPU_Surface_Texture :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct_Out,
+	texture:       WGPU_Texture,
+	status:        WGPU_Surface_Get_Current_Texture_Status,
 }
 
 WGPU_Future :: struct {
@@ -774,6 +872,14 @@ WGPU_Device_Create_Bind_Group_Proc :: proc "c" (device: WGPU_Device, descriptor:
 WGPU_Device_Create_Shader_Module_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Shader_Module_Descriptor) -> WGPU_Shader_Module
 WGPU_Device_Create_Render_Pipeline_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Render_Pipeline_Descriptor) -> WGPU_Render_Pipeline
 WGPU_Device_Create_Command_Encoder_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Command_Encoder_Descriptor) -> WGPU_Command_Encoder
+WGPU_Instance_Create_Surface_Proc :: proc "c" (instance: WGPU_Instance, descriptor: ^WGPU_Surface_Descriptor) -> WGPU_Surface
+WGPU_Surface_Configure_Proc :: proc "c" (surface: WGPU_Surface, config: ^WGPU_Surface_Configuration)
+WGPU_Surface_Get_Capabilities_Proc :: proc "c" (surface: WGPU_Surface, adapter: WGPU_Adapter, capabilities: ^WGPU_Surface_Capabilities) -> WGPU_Status
+WGPU_Surface_Get_Current_Texture_Proc :: proc "c" (surface: WGPU_Surface, surface_texture: ^WGPU_Surface_Texture)
+WGPU_Surface_Present_Proc :: proc "c" (surface: WGPU_Surface) -> WGPU_Status
+WGPU_Surface_Unconfigure_Proc :: proc "c" (surface: WGPU_Surface)
+WGPU_Surface_Capabilities_Free_Members_Proc :: proc "c" (capabilities: WGPU_Surface_Capabilities)
+WGPU_Surface_Release_Proc :: proc "c" (surface: WGPU_Surface)
 WGPU_Texture_Create_View_Proc :: proc "c" (texture: WGPU_Texture, descriptor: ^WGPU_Texture_View_Descriptor) -> WGPU_Texture_View
 WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc :: proc "c" (encoder: WGPU_Command_Encoder, source: ^WGPU_Texel_Copy_Texture_Info, destination: ^WGPU_Texel_Copy_Buffer_Info, copy_size: ^WGPU_Extent_3D)
 WGPU_Command_Encoder_Begin_Render_Pass_Proc :: proc "c" (encoder: WGPU_Command_Encoder, descriptor: ^WGPU_Render_Pass_Descriptor) -> WGPU_Render_Pass_Encoder
@@ -828,6 +934,14 @@ WGPU_SYMBOL_DEVICE_CREATE_BIND_GROUP :: "wgpuDeviceCreateBindGroup"
 WGPU_SYMBOL_DEVICE_CREATE_SHADER_MODULE :: "wgpuDeviceCreateShaderModule"
 WGPU_SYMBOL_DEVICE_CREATE_RENDER_PIPELINE :: "wgpuDeviceCreateRenderPipeline"
 WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER :: "wgpuDeviceCreateCommandEncoder"
+WGPU_SYMBOL_INSTANCE_CREATE_SURFACE :: "wgpuInstanceCreateSurface"
+WGPU_SYMBOL_SURFACE_CONFIGURE :: "wgpuSurfaceConfigure"
+WGPU_SYMBOL_SURFACE_GET_CAPABILITIES :: "wgpuSurfaceGetCapabilities"
+WGPU_SYMBOL_SURFACE_GET_CURRENT_TEXTURE :: "wgpuSurfaceGetCurrentTexture"
+WGPU_SYMBOL_SURFACE_PRESENT :: "wgpuSurfacePresent"
+WGPU_SYMBOL_SURFACE_UNCONFIGURE :: "wgpuSurfaceUnconfigure"
+WGPU_SYMBOL_SURFACE_CAPABILITIES_FREE_MEMBERS :: "wgpuSurfaceCapabilitiesFreeMembers"
+WGPU_SYMBOL_SURFACE_RELEASE :: "wgpuSurfaceRelease"
 WGPU_SYMBOL_TEXTURE_CREATE_VIEW :: "wgpuTextureCreateView"
 WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER :: "wgpuCommandEncoderCopyTextureToBuffer"
 WGPU_SYMBOL_COMMAND_ENCODER_BEGIN_RENDER_PASS :: "wgpuCommandEncoderBeginRenderPass"
@@ -883,6 +997,14 @@ WGPU_Offscreen_Procs :: struct {
 	device_create_shader_module:            WGPU_Device_Create_Shader_Module_Proc,
 	device_create_render_pipeline:          WGPU_Device_Create_Render_Pipeline_Proc,
 	device_create_command_encoder:          WGPU_Device_Create_Command_Encoder_Proc,
+	instance_create_surface:                WGPU_Instance_Create_Surface_Proc,
+	surface_configure:                      WGPU_Surface_Configure_Proc,
+	surface_get_capabilities:               WGPU_Surface_Get_Capabilities_Proc,
+	surface_get_current_texture:            WGPU_Surface_Get_Current_Texture_Proc,
+	surface_present:                        WGPU_Surface_Present_Proc,
+	surface_unconfigure:                    WGPU_Surface_Unconfigure_Proc,
+	surface_capabilities_free_members:      WGPU_Surface_Capabilities_Free_Members_Proc,
+	surface_release:                        WGPU_Surface_Release_Proc,
 	texture_create_view:                    WGPU_Texture_Create_View_Proc,
 	command_encoder_copy_texture_to_buffer: WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc,
 	command_encoder_begin_render_pass:      WGPU_Command_Encoder_Begin_Render_Pass_Proc,
@@ -940,6 +1062,103 @@ wgpu_string_view_empty :: proc() -> WGPU_String_View {
 
 wgpu_string_view_from_raw :: proc(data: rawptr, length: c.size_t) -> WGPU_String_View {
 	return WGPU_String_View{data = data, length = length}
+}
+
+wgpu_surface_source_android_native_window :: proc(window: rawptr) -> WGPU_Surface_Source_Android_Native_Window {
+	return WGPU_Surface_Source_Android_Native_Window{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SURFACE_SOURCE_ANDROID_NATIVE_WINDOW},
+		window = window,
+	}
+}
+
+wgpu_surface_source_metal_layer :: proc(layer: rawptr) -> WGPU_Surface_Source_Metal_Layer {
+	return WGPU_Surface_Source_Metal_Layer{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SURFACE_SOURCE_METAL_LAYER},
+		layer = layer,
+	}
+}
+
+wgpu_surface_source_wayland_surface :: proc(display, surface: rawptr) -> WGPU_Surface_Source_Wayland_Surface {
+	return WGPU_Surface_Source_Wayland_Surface{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SURFACE_SOURCE_WAYLAND_SURFACE},
+		display = display,
+		surface = surface,
+	}
+}
+
+wgpu_surface_source_windows_hwnd :: proc(hinstance, hwnd: rawptr) -> WGPU_Surface_Source_Windows_HWND {
+	return WGPU_Surface_Source_Windows_HWND{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SURFACE_SOURCE_WINDOWS_HWND},
+		hinstance = hinstance,
+		hwnd = hwnd,
+	}
+}
+
+wgpu_surface_source_xcb_window :: proc(connection: rawptr, window: u32) -> WGPU_Surface_Source_XCB_Window {
+	return WGPU_Surface_Source_XCB_Window{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SURFACE_SOURCE_XCB_WINDOW},
+		connection = connection,
+		window = window,
+	}
+}
+
+wgpu_surface_source_xlib_window :: proc(display: rawptr, window: u64) -> WGPU_Surface_Source_Xlib_Window {
+	return WGPU_Surface_Source_Xlib_Window{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SURFACE_SOURCE_XLIB_WINDOW},
+		display = display,
+		window = window,
+	}
+}
+
+wgpu_surface_descriptor :: proc(label: WGPU_String_View, chain: ^WGPU_Chained_Struct) -> WGPU_Surface_Descriptor {
+	return WGPU_Surface_Descriptor{next_in_chain = chain, label = label}
+}
+
+wgpu_surface_descriptor_from_android_native_window :: proc(label: WGPU_String_View, source: ^WGPU_Surface_Source_Android_Native_Window) -> WGPU_Surface_Descriptor {
+	return wgpu_surface_descriptor(label, &source.chain)
+}
+
+wgpu_surface_descriptor_from_metal_layer :: proc(label: WGPU_String_View, source: ^WGPU_Surface_Source_Metal_Layer) -> WGPU_Surface_Descriptor {
+	return wgpu_surface_descriptor(label, &source.chain)
+}
+
+wgpu_surface_descriptor_from_wayland_surface :: proc(label: WGPU_String_View, source: ^WGPU_Surface_Source_Wayland_Surface) -> WGPU_Surface_Descriptor {
+	return wgpu_surface_descriptor(label, &source.chain)
+}
+
+wgpu_surface_descriptor_from_windows_hwnd :: proc(label: WGPU_String_View, source: ^WGPU_Surface_Source_Windows_HWND) -> WGPU_Surface_Descriptor {
+	return wgpu_surface_descriptor(label, &source.chain)
+}
+
+wgpu_surface_descriptor_from_xcb_window :: proc(label: WGPU_String_View, source: ^WGPU_Surface_Source_XCB_Window) -> WGPU_Surface_Descriptor {
+	return wgpu_surface_descriptor(label, &source.chain)
+}
+
+wgpu_surface_descriptor_from_xlib_window :: proc(label: WGPU_String_View, source: ^WGPU_Surface_Source_Xlib_Window) -> WGPU_Surface_Descriptor {
+	return wgpu_surface_descriptor(label, &source.chain)
+}
+
+wgpu_surface_configuration :: proc(device: WGPU_Device, format: WGPU_Texture_Format, width, height: u32, usage: WGPU_Texture_Usage = WGPU_TEXTURE_USAGE_RENDER_ATTACHMENT, present_mode: WGPU_Present_Mode = WGPU_PRESENT_MODE_FIFO, alpha_mode: WGPU_Composite_Alpha_Mode = WGPU_COMPOSITE_ALPHA_MODE_AUTO) -> WGPU_Surface_Configuration {
+	return WGPU_Surface_Configuration{
+		next_in_chain = nil,
+		device = device,
+		format = format,
+		usage = usage,
+		width = width,
+		height = height,
+		view_format_count = 0,
+		view_formats = nil,
+		alpha_mode = alpha_mode,
+		present_mode = present_mode,
+	}
+}
+
+wgpu_surface_texture_error :: proc() -> WGPU_Surface_Texture {
+	return WGPU_Surface_Texture{
+		next_in_chain = nil,
+		texture = nil,
+		status = WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_ERROR,
+	}
 }
 
 wgpu_extent_3d :: proc(width, height: u32, depth_or_array_layers: u32 = 1) -> WGPU_Extent_3D {
@@ -1578,6 +1797,38 @@ wgpu_resolve_offscreen_procs :: proc(resolver: WGPU_Symbol_Resolver, user_data: 
 	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER, false
 	procs.device_create_command_encoder = cast(WGPU_Device_Create_Command_Encoder_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_INSTANCE_CREATE_SURFACE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_INSTANCE_CREATE_SURFACE, false
+	procs.instance_create_surface = cast(WGPU_Instance_Create_Surface_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_CONFIGURE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_CONFIGURE, false
+	procs.surface_configure = cast(WGPU_Surface_Configure_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_GET_CAPABILITIES, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_GET_CAPABILITIES, false
+	procs.surface_get_capabilities = cast(WGPU_Surface_Get_Capabilities_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_GET_CURRENT_TEXTURE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_GET_CURRENT_TEXTURE, false
+	procs.surface_get_current_texture = cast(WGPU_Surface_Get_Current_Texture_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_PRESENT, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_PRESENT, false
+	procs.surface_present = cast(WGPU_Surface_Present_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_UNCONFIGURE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_UNCONFIGURE, false
+	procs.surface_unconfigure = cast(WGPU_Surface_Unconfigure_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_CAPABILITIES_FREE_MEMBERS, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_CAPABILITIES_FREE_MEMBERS, false
+	procs.surface_capabilities_free_members = cast(WGPU_Surface_Capabilities_Free_Members_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SURFACE_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SURFACE_RELEASE, false
+	procs.surface_release = cast(WGPU_Surface_Release_Proc)symbol
 
 	symbol = resolver(WGPU_SYMBOL_TEXTURE_CREATE_VIEW, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_TEXTURE_CREATE_VIEW, false

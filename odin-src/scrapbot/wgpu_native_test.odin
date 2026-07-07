@@ -11,6 +11,17 @@ test_wgpu_abi_structs_have_c_pointer_alignment :: proc(t: ^testing.T) {
 	testing.expect_value(t, size_of(WGPU_String_View), size_of(rawptr) + size_of(c.size_t))
 	testing.expect_value(t, align_of(WGPU_Chained_Struct), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Chained_Struct_Out), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Descriptor), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Source_Android_Native_Window), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Source_Metal_Layer), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Source_Wayland_Surface), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Source_Windows_HWND), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Source_XCB_Window), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Source_Xlib_Window), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Configuration_Extras), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Configuration), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Capabilities), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Surface_Texture), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Buffer_Descriptor), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Texture_Descriptor), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Texture_View_Descriptor), align_of(rawptr))
@@ -80,6 +91,96 @@ test_wgpu_renderer_formats_match_vendored_binding_values :: proc(t: ^testing.T) 
 test_wgpu_renderer_usage_helpers_match_zig_render_paths :: proc(t: ^testing.T) {
 	testing.expect_value(t, wgpu_offscreen_texture_usage(), WGPU_TEXTURE_USAGE_RENDER_ATTACHMENT | WGPU_TEXTURE_USAGE_COPY_SRC)
 	testing.expect_value(t, wgpu_staging_buffer_usage(), WGPU_BUFFER_USAGE_MAP_READ | WGPU_BUFFER_USAGE_COPY_DST)
+}
+
+@(test)
+test_wgpu_surface_descriptors_point_at_platform_sources :: proc(t: ^testing.T) {
+	label := wgpu_string_view_from_raw(rawptr(uintptr(0x1111)), 9)
+
+	android := wgpu_surface_source_android_native_window(rawptr(uintptr(0xA001)))
+	android_descriptor := wgpu_surface_descriptor_from_android_native_window(label, &android)
+	testing.expect_value(t, android.chain.next, (^WGPU_Chained_Struct)(nil))
+	testing.expect_value(t, android.chain.s_type, WGPU_STYPE_SURFACE_SOURCE_ANDROID_NATIVE_WINDOW)
+	testing.expect_value(t, android.window, rawptr(uintptr(0xA001)))
+	testing.expect_value(t, android_descriptor.next_in_chain, &android.chain)
+	testing.expect_value(t, android_descriptor.label, label)
+
+	metal := wgpu_surface_source_metal_layer(rawptr(uintptr(0xA002)))
+	metal_descriptor := wgpu_surface_descriptor_from_metal_layer(label, &metal)
+	testing.expect_value(t, metal.chain.s_type, WGPU_STYPE_SURFACE_SOURCE_METAL_LAYER)
+	testing.expect_value(t, metal.layer, rawptr(uintptr(0xA002)))
+	testing.expect_value(t, metal_descriptor.next_in_chain, &metal.chain)
+
+	wayland := wgpu_surface_source_wayland_surface(rawptr(uintptr(0xA003)), rawptr(uintptr(0xA004)))
+	wayland_descriptor := wgpu_surface_descriptor_from_wayland_surface(label, &wayland)
+	testing.expect_value(t, wayland.chain.s_type, WGPU_STYPE_SURFACE_SOURCE_WAYLAND_SURFACE)
+	testing.expect_value(t, wayland.display, rawptr(uintptr(0xA003)))
+	testing.expect_value(t, wayland.surface, rawptr(uintptr(0xA004)))
+	testing.expect_value(t, wayland_descriptor.next_in_chain, &wayland.chain)
+
+	windows := wgpu_surface_source_windows_hwnd(rawptr(uintptr(0xA005)), rawptr(uintptr(0xA006)))
+	windows_descriptor := wgpu_surface_descriptor_from_windows_hwnd(label, &windows)
+	testing.expect_value(t, windows.chain.s_type, WGPU_STYPE_SURFACE_SOURCE_WINDOWS_HWND)
+	testing.expect_value(t, windows.hinstance, rawptr(uintptr(0xA005)))
+	testing.expect_value(t, windows.hwnd, rawptr(uintptr(0xA006)))
+	testing.expect_value(t, windows_descriptor.next_in_chain, &windows.chain)
+
+	xcb := wgpu_surface_source_xcb_window(rawptr(uintptr(0xA007)), 0x55AA)
+	xcb_descriptor := wgpu_surface_descriptor_from_xcb_window(label, &xcb)
+	testing.expect_value(t, xcb.chain.s_type, WGPU_STYPE_SURFACE_SOURCE_XCB_WINDOW)
+	testing.expect_value(t, xcb.connection, rawptr(uintptr(0xA007)))
+	testing.expect_value(t, xcb.window, u32(0x55AA))
+	testing.expect_value(t, xcb_descriptor.next_in_chain, &xcb.chain)
+
+	xlib := wgpu_surface_source_xlib_window(rawptr(uintptr(0xA008)), 0x123456789ABC)
+	xlib_descriptor := wgpu_surface_descriptor_from_xlib_window(label, &xlib)
+	testing.expect_value(t, xlib.chain.s_type, WGPU_STYPE_SURFACE_SOURCE_XLIB_WINDOW)
+	testing.expect_value(t, xlib.display, rawptr(uintptr(0xA008)))
+	testing.expect_value(t, xlib.window, u64(0x123456789ABC))
+	testing.expect_value(t, xlib_descriptor.next_in_chain, &xlib.chain)
+}
+
+@(test)
+test_wgpu_surface_configuration_matches_window_defaults :: proc(t: ^testing.T) {
+	device := WGPU_Device(rawptr(uintptr(0xBEEF)))
+	config := wgpu_surface_configuration(device, WGPU_DEFAULT_TARGET_FORMAT, 640, 480)
+	testing.expect_value(t, config.next_in_chain, (^WGPU_Chained_Struct)(nil))
+	testing.expect_value(t, config.device, device)
+	testing.expect_value(t, config.format, WGPU_TEXTURE_FORMAT_BGRA8_UNORM_SRGB)
+	testing.expect_value(t, config.usage, WGPU_TEXTURE_USAGE_RENDER_ATTACHMENT)
+	testing.expect_value(t, config.width, u32(640))
+	testing.expect_value(t, config.height, u32(480))
+	testing.expect_value(t, config.view_format_count, c.size_t(0))
+	testing.expect_value(t, config.view_formats, ([^]WGPU_Texture_Format)(nil))
+	testing.expect_value(t, config.alpha_mode, WGPU_COMPOSITE_ALPHA_MODE_AUTO)
+	testing.expect_value(t, config.present_mode, WGPU_PRESENT_MODE_FIFO)
+
+	texture := wgpu_surface_texture_error()
+	testing.expect_value(t, texture.next_in_chain, (^WGPU_Chained_Struct_Out)(nil))
+	testing.expect_value(t, texture.texture, WGPU_Texture(nil))
+	testing.expect_value(t, texture.status, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_ERROR)
+}
+
+@(test)
+test_wgpu_surface_modes_and_texture_statuses_match_vendored_binding :: proc(t: ^testing.T) {
+	testing.expect_value(t, WGPU_COMPOSITE_ALPHA_MODE_AUTO, WGPU_Composite_Alpha_Mode(0))
+	testing.expect_value(t, WGPU_COMPOSITE_ALPHA_MODE_OPAQUE, WGPU_Composite_Alpha_Mode(1))
+	testing.expect_value(t, WGPU_COMPOSITE_ALPHA_MODE_PREMULTIPLIED, WGPU_Composite_Alpha_Mode(2))
+	testing.expect_value(t, WGPU_COMPOSITE_ALPHA_MODE_UNPREMULTIPLIED, WGPU_Composite_Alpha_Mode(3))
+	testing.expect_value(t, WGPU_COMPOSITE_ALPHA_MODE_INHERIT, WGPU_Composite_Alpha_Mode(4))
+	testing.expect_value(t, WGPU_PRESENT_MODE_UNDEFINED, WGPU_Present_Mode(0))
+	testing.expect_value(t, WGPU_PRESENT_MODE_FIFO, WGPU_Present_Mode(1))
+	testing.expect_value(t, WGPU_PRESENT_MODE_FIFO_RELAXED, WGPU_Present_Mode(2))
+	testing.expect_value(t, WGPU_PRESENT_MODE_IMMEDIATE, WGPU_Present_Mode(3))
+	testing.expect_value(t, WGPU_PRESENT_MODE_MAILBOX, WGPU_Present_Mode(4))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_OPTIMAL, WGPU_Surface_Get_Current_Texture_Status(1))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_SUBOPTIMAL, WGPU_Surface_Get_Current_Texture_Status(2))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_TIMEOUT, WGPU_Surface_Get_Current_Texture_Status(3))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_OUTDATED, WGPU_Surface_Get_Current_Texture_Status(4))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_LOST, WGPU_Surface_Get_Current_Texture_Status(5))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_OUT_OF_MEMORY, WGPU_Surface_Get_Current_Texture_Status(6))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_DEVICE_LOST, WGPU_Surface_Get_Current_Texture_Status(7))
+	testing.expect_value(t, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_ERROR, WGPU_Surface_Get_Current_Texture_Status(8))
 }
 
 @(test)
@@ -480,11 +581,24 @@ test_wgpu_offscreen_proc_table_resolves_required_symbols :: proc(t: ^testing.T) 
 
 	testing.expect_value(t, ok, true)
 	testing.expect_value(t, missing, "")
-	testing.expect_value(t, ctx.calls, 49)
+	testing.expect_value(t, ctx.calls, 57)
 	testing.expect_value(t, ctx.last_user_data, rawptr(&ctx))
 
 	instance := procs.create_instance((^WGPU_Instance_Descriptor)(nil))
 	testing.expect_value(t, instance, WGPU_Instance(rawptr(uintptr(0x100A))))
+	surface := procs.instance_create_surface(instance, (^WGPU_Surface_Descriptor)(nil))
+	testing.expect_value(t, surface, WGPU_Surface(rawptr(uintptr(0x1015))))
+	procs.surface_configure(surface, (^WGPU_Surface_Configuration)(nil))
+	capabilities := WGPU_Surface_Capabilities{}
+	testing.expect_value(t, procs.surface_get_capabilities(surface, WGPU_Adapter(nil), &capabilities), WGPU_STATUS_SUCCESS)
+	surface_texture := wgpu_surface_texture_error()
+	procs.surface_get_current_texture(surface, &surface_texture)
+	testing.expect_value(t, surface_texture.texture, WGPU_Texture(rawptr(uintptr(0x1016))))
+	testing.expect_value(t, surface_texture.status, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_OPTIMAL)
+	testing.expect_value(t, procs.surface_present(surface), WGPU_STATUS_SUCCESS)
+	procs.surface_unconfigure(surface)
+	procs.surface_capabilities_free_members(capabilities)
+	procs.surface_release(surface)
 
 	texture := procs.device_create_texture(WGPU_Device(nil), (^WGPU_Texture_Descriptor)(nil))
 	testing.expect_value(t, texture, WGPU_Texture(rawptr(uintptr(0x1001))))
@@ -538,7 +652,7 @@ test_wgpu_offscreen_proc_table_reports_first_missing_symbol :: proc(t: ^testing.
 
 	testing.expect_value(t, ok, false)
 	testing.expect_value(t, missing, WGPU_SYMBOL_COMMAND_ENCODER_FINISH)
-	testing.expect_value(t, ctx.calls, 17)
+	testing.expect_value(t, ctx.calls, 25)
 }
 
 @(test)
@@ -558,6 +672,19 @@ test_wgpu_offscreen_dynamic_library_loads_proc_table :: proc(t: ^testing.T) {
 
 	instance := loaded.procs.create_instance((^WGPU_Instance_Descriptor)(nil))
 	testing.expect_value(t, instance, WGPU_Instance(rawptr(uintptr(0x200A))))
+	surface := loaded.procs.instance_create_surface(instance, (^WGPU_Surface_Descriptor)(nil))
+	testing.expect_value(t, surface, WGPU_Surface(rawptr(uintptr(0x2015))))
+	loaded.procs.surface_configure(surface, (^WGPU_Surface_Configuration)(nil))
+	capabilities := WGPU_Surface_Capabilities{}
+	testing.expect_value(t, loaded.procs.surface_get_capabilities(surface, WGPU_Adapter(nil), &capabilities), WGPU_STATUS_SUCCESS)
+	surface_texture := wgpu_surface_texture_error()
+	loaded.procs.surface_get_current_texture(surface, &surface_texture)
+	testing.expect_value(t, surface_texture.texture, WGPU_Texture(rawptr(uintptr(0x2016))))
+	testing.expect_value(t, surface_texture.status, WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_OPTIMAL)
+	testing.expect_value(t, loaded.procs.surface_present(surface), WGPU_STATUS_SUCCESS)
+	loaded.procs.surface_unconfigure(surface)
+	loaded.procs.surface_capabilities_free_members(capabilities)
+	loaded.procs.surface_release(surface)
 
 	adapter_future := loaded.procs.instance_request_adapter(WGPU_Instance(nil), (^WGPU_Request_Adapter_Options)(nil), wgpu_request_adapter_callback_info(wgpu_test_request_adapter_callback))
 	testing.expect_value(t, adapter_future, WGPU_Future{id = 0x200B})
@@ -727,10 +854,76 @@ WGPU_Request_Device_Callback_Info :: struct #align(align_of(rawptr)) {
 	userdata2:     rawptr,
 }
 
+WGPU_Surface_Texture :: struct #align(align_of(rawptr)) {
+	next_in_chain: rawptr,
+	texture:       rawptr,
+	status:        u32,
+}
+
+WGPU_Surface_Capabilities :: struct #align(align_of(rawptr)) {
+	next_in_chain:     rawptr,
+	usages:            u64,
+	format_count:      c.size_t,
+	formats:           rawptr,
+	present_mode_count: c.size_t,
+	present_modes:     rawptr,
+	alpha_mode_count:  c.size_t,
+	alpha_modes:       rawptr,
+}
+
 @(export)
 wgpuCreateInstance :: proc "c" (descriptor: rawptr) -> rawptr {
 	_ = descriptor
 	return rawptr(uintptr(0x200A))
+}
+
+@(export)
+wgpuInstanceCreateSurface :: proc "c" (instance, descriptor: rawptr) -> rawptr {
+	_ = instance
+	_ = descriptor
+	return rawptr(uintptr(0x2015))
+}
+
+@(export)
+wgpuSurfaceConfigure :: proc "c" (surface, config: rawptr) {
+	_ = surface
+	_ = config
+}
+
+@(export)
+wgpuSurfaceGetCapabilities :: proc "c" (surface, adapter, capabilities: rawptr) -> u32 {
+	_ = surface
+	_ = adapter
+	_ = capabilities
+	return 1
+}
+
+@(export)
+wgpuSurfaceGetCurrentTexture :: proc "c" (surface: rawptr, surface_texture: ^WGPU_Surface_Texture) {
+	_ = surface
+	surface_texture.texture = rawptr(uintptr(0x2016))
+	surface_texture.status = 1
+}
+
+@(export)
+wgpuSurfacePresent :: proc "c" (surface: rawptr) -> u32 {
+	_ = surface
+	return 1
+}
+
+@(export)
+wgpuSurfaceUnconfigure :: proc "c" (surface: rawptr) {
+	_ = surface
+}
+
+@(export)
+wgpuSurfaceCapabilitiesFreeMembers :: proc "c" (capabilities: WGPU_Surface_Capabilities) {
+	_ = capabilities
+}
+
+@(export)
+wgpuSurfaceRelease :: proc "c" (surface: rawptr) {
+	_ = surface
 }
 
 @(export)
@@ -1091,10 +1284,76 @@ WGPU_Request_Device_Callback_Info :: struct #align(align_of(rawptr)) {
 	userdata2:     rawptr,
 }
 
+WGPU_Surface_Texture :: struct #align(align_of(rawptr)) {
+	next_in_chain: rawptr,
+	texture:       rawptr,
+	status:        u32,
+}
+
+WGPU_Surface_Capabilities :: struct #align(align_of(rawptr)) {
+	next_in_chain:     rawptr,
+	usages:            u64,
+	format_count:      c.size_t,
+	formats:           rawptr,
+	present_mode_count: c.size_t,
+	present_modes:     rawptr,
+	alpha_mode_count:  c.size_t,
+	alpha_modes:       rawptr,
+}
+
 @(export)
 wgpuCreateInstance :: proc "c" (descriptor: rawptr) -> rawptr {
 	_ = descriptor
 	return rawptr(uintptr(0x300A))
+}
+
+@(export)
+wgpuInstanceCreateSurface :: proc "c" (instance, descriptor: rawptr) -> rawptr {
+	_ = instance
+	_ = descriptor
+	return rawptr(uintptr(0x3015))
+}
+
+@(export)
+wgpuSurfaceConfigure :: proc "c" (surface, config: rawptr) {
+	_ = surface
+	_ = config
+}
+
+@(export)
+wgpuSurfaceGetCapabilities :: proc "c" (surface, adapter, capabilities: rawptr) -> u32 {
+	_ = surface
+	_ = adapter
+	_ = capabilities
+	return 1
+}
+
+@(export)
+wgpuSurfaceGetCurrentTexture :: proc "c" (surface: rawptr, surface_texture: ^WGPU_Surface_Texture) {
+	_ = surface
+	surface_texture.texture = rawptr(uintptr(0x3016))
+	surface_texture.status = 1
+}
+
+@(export)
+wgpuSurfacePresent :: proc "c" (surface: rawptr) -> u32 {
+	_ = surface
+	return 1
+}
+
+@(export)
+wgpuSurfaceUnconfigure :: proc "c" (surface: rawptr) {
+	_ = surface
+}
+
+@(export)
+wgpuSurfaceCapabilitiesFreeMembers :: proc "c" (capabilities: WGPU_Surface_Capabilities) {
+	_ = capabilities
+}
+
+@(export)
+wgpuSurfaceRelease :: proc "c" (surface: rawptr) {
+	_ = surface
 }
 
 @(export)
@@ -1456,6 +1715,22 @@ wgpu_test_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
 		return rawptr(wgpu_test_device_create_render_pipeline)
 	case WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER:
 		return rawptr(wgpu_test_device_create_command_encoder)
+	case WGPU_SYMBOL_INSTANCE_CREATE_SURFACE:
+		return rawptr(wgpu_test_instance_create_surface)
+	case WGPU_SYMBOL_SURFACE_CONFIGURE:
+		return rawptr(wgpu_test_surface_configure)
+	case WGPU_SYMBOL_SURFACE_GET_CAPABILITIES:
+		return rawptr(wgpu_test_surface_get_capabilities)
+	case WGPU_SYMBOL_SURFACE_GET_CURRENT_TEXTURE:
+		return rawptr(wgpu_test_surface_get_current_texture)
+	case WGPU_SYMBOL_SURFACE_PRESENT:
+		return rawptr(wgpu_test_surface_present)
+	case WGPU_SYMBOL_SURFACE_UNCONFIGURE:
+		return rawptr(wgpu_test_surface_unconfigure)
+	case WGPU_SYMBOL_SURFACE_CAPABILITIES_FREE_MEMBERS:
+		return rawptr(wgpu_test_surface_capabilities_free_members)
+	case WGPU_SYMBOL_SURFACE_RELEASE:
+		return rawptr(wgpu_test_surface_release)
 	case WGPU_SYMBOL_TEXTURE_CREATE_VIEW:
 		return rawptr(wgpu_test_texture_create_view)
 	case WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER:
@@ -1608,6 +1883,47 @@ wgpu_test_device_create_command_encoder :: proc "c" (device: WGPU_Device, descri
 	_ = device
 	_ = descriptor
 	return WGPU_Command_Encoder(rawptr(uintptr(0x1003)))
+}
+
+wgpu_test_instance_create_surface :: proc "c" (instance: WGPU_Instance, descriptor: ^WGPU_Surface_Descriptor) -> WGPU_Surface {
+	_ = instance
+	_ = descriptor
+	return WGPU_Surface(rawptr(uintptr(0x1015)))
+}
+
+wgpu_test_surface_configure :: proc "c" (surface: WGPU_Surface, config: ^WGPU_Surface_Configuration) {
+	_ = surface
+	_ = config
+}
+
+wgpu_test_surface_get_capabilities :: proc "c" (surface: WGPU_Surface, adapter: WGPU_Adapter, capabilities: ^WGPU_Surface_Capabilities) -> WGPU_Status {
+	_ = surface
+	_ = adapter
+	_ = capabilities
+	return WGPU_STATUS_SUCCESS
+}
+
+wgpu_test_surface_get_current_texture :: proc "c" (surface: WGPU_Surface, surface_texture: ^WGPU_Surface_Texture) {
+	_ = surface
+	surface_texture.texture = WGPU_Texture(rawptr(uintptr(0x1016)))
+	surface_texture.status = WGPU_SURFACE_GET_CURRENT_TEXTURE_STATUS_SUCCESS_OPTIMAL
+}
+
+wgpu_test_surface_present :: proc "c" (surface: WGPU_Surface) -> WGPU_Status {
+	_ = surface
+	return WGPU_STATUS_SUCCESS
+}
+
+wgpu_test_surface_unconfigure :: proc "c" (surface: WGPU_Surface) {
+	_ = surface
+}
+
+wgpu_test_surface_capabilities_free_members :: proc "c" (capabilities: WGPU_Surface_Capabilities) {
+	_ = capabilities
+}
+
+wgpu_test_surface_release :: proc "c" (surface: WGPU_Surface) {
+	_ = surface
 }
 
 wgpu_test_texture_create_view :: proc "c" (texture: WGPU_Texture, descriptor: ^WGPU_Texture_View_Descriptor) -> WGPU_Texture_View {
