@@ -1425,6 +1425,53 @@ equals_float = 7.5
 }
 
 @(test)
+test_run_test_command_replays_selected_header_copy :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-selected-header-copy")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "Editor Selected Header Copy Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Editor Selected Header Copy Test"
+version = 1
+
+[[entities]]
+id = "target-with-a-very-long-id-that-must-copy-in-full"
+name = "Target With A Very Long Name"
+
+[entities.components."scrapbot.render.cube"]
+color = [0.2, 0.4, 0.8]
+`)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 2
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [20.0, 500.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 2
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [920.0, 100.0]
+primary_pressed = true
+primary_down = true
+
+[[expect.editor]]
+selected_entity = "target-with-a-very-long-id-that-must-copy-in-full"
+clipboard = "target-with-a-very-long-id-that-must-copy-in-full"
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
 test_run_test_command_reports_editor_inspector_invalid_text_edit :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-test-editor-inspector-invalid-text-edit")
 	defer os.remove_all(root)

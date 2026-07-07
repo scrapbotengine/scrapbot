@@ -196,6 +196,11 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 				remove_editor_test_visible_component(world, state)
 				state.captured_pointer = true
 				consumed = true
+			} else if editor_pointer_in_selected_entity_header(state^, input^) {
+				commit_editor_test_text_input(world, state)
+				_ = copy_editor_test_selected_entity_id(world^, state)
+				state.captured_pointer = true
+				consumed = true
 			} else if splitter, splitter_ok := editor_splitter_at_pointer(state^, input^); splitter_ok {
 				state.dragging_splitter = splitter
 				state.captured_pointer = true
@@ -1609,6 +1614,14 @@ editor_pointer_in_remove_component_button :: proc(input: Frame_Input) -> bool {
 	return editor_pointer_in_rect(input, x, y, width, height)
 }
 
+editor_pointer_in_selected_entity_header :: proc(state: Editor_Test_Input_State, input: Frame_Input) -> bool {
+	if !input.pointer.has_position || !state.has_selected_entity {
+		return false
+	}
+	x, y, width, height := editor_selected_entity_header_rect(input.viewport_width, input.viewport_height)
+	return editor_pointer_in_rect(input, x, y, width, height)
+}
+
 editor_play_button_rect :: proc(window_width: f32) -> (x, y, width, height: f32) {
 	body_width := max_f32(window_width, 1)
 	return max_f32(body_width - UI_EDITOR_PANEL_PADDING_X - UI_EDITOR_CONTROL_BUTTON_WIDTH * 2 - UI_EDITOR_CONTROL_BUTTON_GAP, UI_EDITOR_PANEL_PADDING_X),
@@ -1643,6 +1656,16 @@ editor_component_add_button_rect :: proc(window_width, window_height: f32) -> (x
 editor_component_remove_button_rect :: proc(window_width, window_height: f32) -> (x, y, width, height: f32) {
 	add_x, add_y, add_width, add_height := editor_component_add_button_rect(window_width, window_height)
 	return add_x + add_width + 8.0, add_y, add_width, add_height
+}
+
+editor_selected_entity_header_rect :: proc(window_width, window_height: f32) -> (x, y, width, height: f32) {
+	panel_x, panel_y, _, _ := editor_right_sidebar_panel_rect(window_width, window_height)
+	button_x, _, _, _ := editor_component_add_button_rect(window_width, window_height)
+	x = panel_x + UI_EDITOR_PANEL_PADDING_X
+	y = panel_y + UI_EDITOR_PANEL_PADDING_Y
+	width = max_f32(button_x - x - 8.0, 1.0)
+	height = UI_EDITOR_TEXT_HEIGHT
+	return
 }
 
 editor_entity_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input) -> (Entity_Handle, bool) {

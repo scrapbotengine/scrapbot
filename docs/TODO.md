@@ -164,9 +164,9 @@
 - [x] Add visible editor chrome controls to spawn and despawn entities.
 - [ ] Persist inspector edits back to text scene files.
 - [x] Add first-pass validation diagnostics for failed inspector edits.
-- [x] Add first-pass inspector text copy, paste, and clipboard support.
+- [x] Add first-pass inspector text copy, paste, selected-header copy, and clipboard support.
 - [x] Add visual tests for inspector editing widgets.
-- [ ] Polish selected-entity header truncation and copy behavior.
+- [x] Add first-pass selected-entity header hit area that copies the full entity id even when the visible header is width-constrained.
 - [ ] Keep `examples/ui_gallery/` current with inspector control primitives.
 
 ## Editor Core

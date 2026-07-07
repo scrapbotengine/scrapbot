@@ -40,6 +40,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Ctrl+Z undoes inspector field edits, and Ctrl+Shift+Z or Ctrl+Y redoes them.
 - Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files.
 - String fields can be edited through the same text input control, subject to the current fixed input-buffer length.
+- Clicking the selected-entity header copies the full entity id to the editor clipboard, even when the visible header area is width-constrained.
 - A selected renderable gets a world-space translate gizmo with X, Y, and Z handles.
 - Dragging a gizmo axis mutates the selected entity's transform position.
 - Selection uses generation-aware entity handles so stale selections are rejected instead of silently aliasing another entity.
@@ -87,7 +88,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 **Decision:** Inspector component boxes fill the right sidebar width, stack in a retained vertical group, use one-pixel separators, and render fields as left-label/right-value rows. Field rows are retained `scrapbot.ui.table` entities with two columns and `first_column_ratio = 0.5`, so the table controls the current 50/50 title/editor split after padding and gap. Component titles and field rows use consistent logical 4px-grid spacing, while typed input controls use tighter 2 logical pixels of text padding and 2 logical pixel row gaps for readability. Overflowing component stacks live inside the inspector scroll view.
 **Why:** Component ids can be long qualified strings, especially engine-owned `scrapbot.*` ids, and editor chrome must remain legible without text escaping rounded cards.
-**Tradeoff:** Truncated ids and values need future hover, copy, tooltip, horizontal scrolling, or expandable-detail affordances before the inspector is comfortable for deeper editing.
+**Tradeoff:** Truncated ids and values still need future hover, tooltip, horizontal scrolling, or expandable-detail affordances before the inspector is comfortable for deeper editing. The first selected-header copy path gives agents and users a deterministic way to recover the full selected entity id.
 
 ### 5b. Reserve the right sidebar for selected-entity components
 
