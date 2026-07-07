@@ -388,12 +388,17 @@ pub const RenderBenchmarkResult = struct {
     pixel_scale: f32,
     total_ns: u64,
     system_profiles: []runtime.SystemProfileSnapshot,
+    draw_profiles: []RenderBenchmarkProfile,
 
     pub fn deinit(self: *RenderBenchmarkResult, allocator: std.mem.Allocator) void {
         for (self.system_profiles) |profile| {
             allocator.free(profile.id);
         }
         allocator.free(self.system_profiles);
+        for (self.draw_profiles) |profile| {
+            allocator.free(profile.id);
+        }
+        allocator.free(self.draw_profiles);
         self.* = undefined;
     }
 
@@ -401,6 +406,85 @@ pub const RenderBenchmarkResult = struct {
         return if (self.frames == 0) 0 else self.total_ns / @as(u64, self.frames);
     }
 };
+
+pub const RenderBenchmarkProfile = struct {
+    id: []const u8,
+    sample_count: u32,
+    window_size: u32,
+    last_ns: u64,
+    rolling_average_ns: u64,
+};
+
+const DrawProfileSlot = enum {
+    uniforms,
+    encoder,
+    shadow_pass,
+    postprocess_setup,
+    main_pass,
+    bloom_passes,
+    postprocess_pass,
+    ui_pass,
+    finish_submit,
+};
+
+const draw_profile_ids = [_][]const u8{
+    "scrapbot.render.draw_meshes.uniforms",
+    "scrapbot.render.draw_meshes.encoder",
+    "scrapbot.render.draw_meshes.shadow_pass",
+    "scrapbot.render.draw_meshes.postprocess_setup",
+    "scrapbot.render.draw_meshes.main_pass",
+    "scrapbot.render.draw_meshes.bloom_passes",
+    "scrapbot.render.draw_meshes.postprocess_pass",
+    "scrapbot.render.draw_meshes.ui_pass",
+    "scrapbot.render.draw_meshes.finish_submit",
+};
+const draw_profile_count = draw_profile_ids.len;
+
+const RenderBenchmarkProfileState = struct {
+    id: []const u8,
+    samples: [render_system_profile_window_frames]u64 = [_]u64{0} ** render_system_profile_window_frames,
+    sample_cursor: usize = 0,
+    sample_count: usize = 0,
+    last_ns: u64 = 0,
+
+    fn record(self: *RenderBenchmarkProfileState, duration_ns: u64) void {
+        self.last_ns = duration_ns;
+        self.samples[self.sample_cursor] = duration_ns;
+        self.sample_cursor = (self.sample_cursor + 1) % render_system_profile_window_frames;
+        if (self.sample_count < render_system_profile_window_frames) {
+            self.sample_count += 1;
+        }
+    }
+
+    fn reset(self: *RenderBenchmarkProfileState) void {
+        self.samples = [_]u64{0} ** render_system_profile_window_frames;
+        self.sample_cursor = 0;
+        self.sample_count = 0;
+        self.last_ns = 0;
+    }
+
+    fn snapshot(self: RenderBenchmarkProfileState) RenderBenchmarkProfile {
+        var total: u64 = 0;
+        for (self.samples[0..self.sample_count]) |sample| {
+            total += sample;
+        }
+        return .{
+            .id = self.id,
+            .sample_count = @intCast(self.sample_count),
+            .window_size = render_system_profile_window_frames,
+            .last_ns = self.last_ns,
+            .rolling_average_ns = if (self.sample_count == 0) 0 else total / @as(u64, @intCast(self.sample_count)),
+        };
+    }
+};
+
+fn initialDrawProfileStates() [draw_profile_count]RenderBenchmarkProfileState {
+    var states: [draw_profile_count]RenderBenchmarkProfileState = undefined;
+    for (&states, draw_profile_ids) |*state, id| {
+        state.* = .{ .id = id };
+    }
+    return states;
+}
 
 pub const Scene = struct {
     world: *runtime.World,
@@ -734,6 +818,7 @@ pub fn renderBenchmarkFrames(io: Io, allocator: std.mem.Allocator, scene: Scene,
 
     try drawBenchmarkFrames(instance, gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, scene, &demo, options, options.warmup_frames);
     demo.render_state.resetSystemProfileSamples();
+    demo.resetDrawProfileSamples();
 
     const started_ns = monotonicTimestampNs();
     try drawBenchmarkFrames(instance, gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, scene, &demo, options, options.frames);
@@ -741,6 +826,8 @@ pub fn renderBenchmarkFrames(io: Io, allocator: std.mem.Allocator, scene: Scene,
 
     const profiles = try copySystemProfileSnapshots(allocator, demo.render_state.systemProfileSnapshots());
     errdefer freeSystemProfileSnapshots(allocator, profiles);
+    const draw_profiles = try copyDrawProfileSnapshots(allocator, &demo.draw_profiles);
+    errdefer freeDrawProfileSnapshots(allocator, draw_profiles);
 
     return .{
         .frames = options.frames,
@@ -751,6 +838,7 @@ pub fn renderBenchmarkFrames(io: Io, allocator: std.mem.Allocator, scene: Scene,
         .pixel_scale = options.pixel_scale,
         .total_ns = total_ns,
         .system_profiles = profiles,
+        .draw_profiles = draw_profiles,
     };
 }
 
@@ -813,6 +901,41 @@ fn copySystemProfileSnapshots(
 }
 
 fn freeSystemProfileSnapshots(allocator: std.mem.Allocator, snapshots: []runtime.SystemProfileSnapshot) void {
+    for (snapshots) |profile| {
+        allocator.free(profile.id);
+    }
+    allocator.free(snapshots);
+}
+
+fn copyDrawProfileSnapshots(
+    allocator: std.mem.Allocator,
+    states: []const RenderBenchmarkProfileState,
+) ![]RenderBenchmarkProfile {
+    const copied = try allocator.alloc(RenderBenchmarkProfile, states.len);
+    errdefer allocator.free(copied);
+
+    var copied_count: usize = 0;
+    errdefer {
+        for (copied[0..copied_count]) |profile| {
+            allocator.free(profile.id);
+        }
+    }
+
+    for (states, 0..) |state, index| {
+        const snapshot = state.snapshot();
+        copied[index] = .{
+            .id = try allocator.dupe(u8, snapshot.id),
+            .sample_count = snapshot.sample_count,
+            .window_size = snapshot.window_size,
+            .last_ns = snapshot.last_ns,
+            .rolling_average_ns = snapshot.rolling_average_ns,
+        };
+        copied_count += 1;
+    }
+    return copied;
+}
+
+fn freeDrawProfileSnapshots(allocator: std.mem.Allocator, snapshots: []RenderBenchmarkProfile) void {
     for (snapshots) |profile| {
         allocator.free(profile.id);
     }
@@ -1232,6 +1355,7 @@ const MeshDemo = struct {
     batches: []BatchResources,
     ui_draw: UiDrawResources = .{},
     ui_vertex_cache: UiVertexCache,
+    draw_profiles: [draw_profile_count]RenderBenchmarkProfileState,
 
     fn create(
         allocator: std.mem.Allocator,
@@ -1569,6 +1693,7 @@ const MeshDemo = struct {
             .render_state = render_state,
             .batches = batches,
             .ui_vertex_cache = try UiVertexCache.init(allocator),
+            .draw_profiles = initialDrawProfileStates(),
         };
     }
 
@@ -1634,6 +1759,16 @@ const MeshDemo = struct {
 
     fn renderSystemProfileCount(self: *const MeshDemo) usize {
         return self.render_state.system_profiles.items.len;
+    }
+
+    fn resetDrawProfileSamples(self: *MeshDemo) void {
+        for (&self.draw_profiles) |*profile| {
+            profile.reset();
+        }
+    }
+
+    fn recordDrawProfile(self: *MeshDemo, slot: DrawProfileSlot, duration_ns: u64) void {
+        self.draw_profiles[@intFromEnum(slot)].record(duration_ns);
     }
 
     fn runRenderSchedule(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
@@ -1774,9 +1909,11 @@ const MeshDemo = struct {
     }
 
     fn drawQueuedBatches(self: *MeshDemo, context: RenderSystemContext, plan: BatchPlan) RenderError!void {
+        var profile_started_ns = monotonicTimestampNs();
         const light = try directionalLightState(context.frame.scene.world);
         var frame_uniforms = try frameUniforms(light);
         writeUniforms(context.queue, self.frame_uniform_buffer, &frame_uniforms);
+        self.recordDrawProfile(.uniforms, elapsedNanosecondsSince(profile_started_ns));
 
         for (plan.batches, 0..) |_, batch_index| {
             if (batch_index >= self.batches.len) {
@@ -1786,13 +1923,18 @@ const MeshDemo = struct {
 
         const should_draw_ui = self.render_state.uiDrawCommandCount() > 0 and self.ui_draw.vertex_count > 0;
 
+        profile_started_ns = monotonicTimestampNs();
         const encoder = context.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
             .label = wgpu.StringView.fromSlice("Scrapbot mesh command encoder"),
         }) orelse return RenderError.NoDevice;
         defer encoder.release();
+        self.recordDrawProfile(.encoder, elapsedNanosecondsSince(profile_started_ns));
 
+        profile_started_ns = monotonicTimestampNs();
         try self.drawShadowPass(encoder, plan.batches.len);
+        self.recordDrawProfile(.shadow_pass, elapsedNanosecondsSince(profile_started_ns));
 
+        profile_started_ns = monotonicTimestampNs();
         const render_config = renderConfigFromWorld(context.frame.scene.world);
         const postprocess_active = render_config.requiresPostProcess();
         const bloom_active = render_config.bloomActive();
@@ -1805,6 +1947,7 @@ const MeshDemo = struct {
             );
             break :blk self.postprocess_target.view orelse return RenderError.NoDevice;
         } else context.target_view;
+        self.recordDrawProfile(.postprocess_setup, elapsedNanosecondsSince(profile_started_ns));
 
         const color_attachments = [_]wgpu.ColorAttachment{
             .{
@@ -1824,6 +1967,7 @@ const MeshDemo = struct {
             .depth_clear_value = 1.0,
         };
 
+        profile_started_ns = monotonicTimestampNs();
         const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
             .color_attachment_count = color_attachments.len,
             .color_attachments = &color_attachments,
@@ -1848,19 +1992,35 @@ const MeshDemo = struct {
             render_pass.drawIndexed(batch.index_count, batch.instance_count, 0, 0, 0);
         }
         render_pass.end();
+        self.recordDrawProfile(.main_pass, elapsedNanosecondsSince(profile_started_ns));
 
         if (postprocess_active) {
-            const bloom_views = if (bloom_active)
-                try self.drawBloomPasses(render_config, context.device, encoder, context.queue, scene_target_view, context.frame.width, context.frame.height)
-            else
-                emptyBloomViews(scene_target_view);
+            const bloom_views = if (bloom_active) blk: {
+                profile_started_ns = monotonicTimestampNs();
+                const bloom_views = try self.drawBloomPasses(render_config, context.device, encoder, context.queue, scene_target_view, context.frame.width, context.frame.height);
+                self.recordDrawProfile(.bloom_passes, elapsedNanosecondsSince(profile_started_ns));
+                break :blk bloom_views;
+            } else blk: {
+                self.recordDrawProfile(.bloom_passes, 0);
+                break :blk emptyBloomViews(scene_target_view);
+            };
+            profile_started_ns = monotonicTimestampNs();
             try self.drawPostProcessPass(render_config, encoder, context.device, context.queue, context.target_view, scene_target_view, bloom_views, context.frame.width, context.frame.height);
+            self.recordDrawProfile(.postprocess_pass, elapsedNanosecondsSince(profile_started_ns));
+        } else {
+            self.recordDrawProfile(.bloom_passes, 0);
+            self.recordDrawProfile(.postprocess_pass, 0);
         }
 
         if (should_draw_ui) {
+            profile_started_ns = monotonicTimestampNs();
             try self.drawUiPass(encoder, context.target_view);
+            self.recordDrawProfile(.ui_pass, elapsedNanosecondsSince(profile_started_ns));
+        } else {
+            self.recordDrawProfile(.ui_pass, 0);
         }
 
+        profile_started_ns = monotonicTimestampNs();
         const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
             .label = wgpu.StringView.fromSlice("Scrapbot mesh command buffer"),
         }) orelse return RenderError.NoDevice;
@@ -1868,6 +2028,7 @@ const MeshDemo = struct {
 
         const command_buffers = [_]*const wgpu.CommandBuffer{command_buffer};
         context.queue.submit(&command_buffers);
+        self.recordDrawProfile(.finish_submit, elapsedNanosecondsSince(profile_started_ns));
     }
 
     fn drawShadowPass(self: *MeshDemo, encoder: *wgpu.CommandEncoder, batch_count: usize) RenderError!void {

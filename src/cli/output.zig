@@ -138,6 +138,18 @@ pub fn printRenderBenchOkText(
             profile.window_size,
         });
     }
+    try writer.writeAll("Draw breakdown:\n");
+    for (result.draw_profiles) |profile| {
+        const avg_us = profile.rolling_average_ns / 1000;
+        const last_us = profile.last_ns / 1000;
+        try writer.print("  {s}: avg {d}us, last {d}us, samples {d}/{d}\n", .{
+            profile.id,
+            avg_us,
+            last_us,
+            profile.sample_count,
+            profile.window_size,
+        });
+    }
 }
 
 pub fn printBuildOkText(writer: *Io.Writer, result: scrapbot.BuildResult) !void {

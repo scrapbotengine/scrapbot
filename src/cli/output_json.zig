@@ -269,6 +269,18 @@ pub fn printRenderBenchOkJson(
         try jw.endObject();
     }
     try jw.endArray();
+    try jw.objectField("draw_profiles");
+    try jw.beginArray();
+    for (result.draw_profiles) |profile| {
+        try jw.beginObject();
+        try writeField(&jw, "id", profile.id);
+        try writeField(&jw, "sample_count", profile.sample_count);
+        try writeField(&jw, "window_size", profile.window_size);
+        try writeField(&jw, "last_ns", profile.last_ns);
+        try writeField(&jw, "avg_ns", profile.rolling_average_ns);
+        try jw.endObject();
+    }
+    try jw.endArray();
     try jw.endObject();
     try jw.endObject();
     try writer.writeByte('\n');
