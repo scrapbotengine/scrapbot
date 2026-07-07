@@ -118,11 +118,13 @@ wgpu_present_surface_clear :: proc(
 	command_buffers := [?]WGPU_Command_Buffer{command_buffer}
 	procs.queue_submit(queue, 1, &command_buffers[0])
 	procs.command_buffer_release(command_buffer)
+	_ = procs.device_poll(device, WGPU_TRUE, nil)
 
 	present_status := procs.surface_present(surface)
 	if present_status != WGPU_STATUS_SUCCESS {
 		return WGPU_Surface_Presentation_Report{}, WGPU_SURFACE_PRESENT_ERROR, false
 	}
+	_ = procs.device_poll(device, WGPU_TRUE, nil)
 
 	return WGPU_Surface_Presentation_Report{
 		width = width,
@@ -300,11 +302,13 @@ wgpu_present_surface_scene_with_world :: proc(
 	command_buffers := [?]WGPU_Command_Buffer{command_buffer}
 	procs.queue_submit(queue, 1, &command_buffers[0])
 	procs.command_buffer_release(command_buffer)
+	_ = procs.device_poll(device, WGPU_TRUE, nil)
 
 	present_status := procs.surface_present(surface)
 	if present_status != WGPU_STATUS_SUCCESS {
 		return WGPU_Surface_Presentation_Report{}, WGPU_SURFACE_PRESENT_ERROR, false
 	}
+	_ = procs.device_poll(device, WGPU_TRUE, nil)
 
 	return WGPU_Surface_Presentation_Report{
 		width = width,
