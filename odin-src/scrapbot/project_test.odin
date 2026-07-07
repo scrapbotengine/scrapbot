@@ -737,6 +737,51 @@ scrapbot_register :: proc "c" (api: ^scrapbot.Register_Api) -> bool {
 }
 
 @(test)
+test_test_command_reports_check_diagnostic_message :: proc(t: ^testing.T) {
+	root := make_test_project(t, "test-command-check-diagnostic")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.odin\"\n")
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 1
+
+[[expect.field]]
+entity = "entity-1"
+component = "scrapbot.transform"
+field = "position"
+equals_vec3 = [0, 0, 0]
+`)
+	write_file(t, root, "native/game.odin", `package game
+
+import scrapbot "scrapbot:scrapbot_native"
+
+@(export)
+scrapbot_register :: proc "c" (api: ^scrapbot.Register_Api) -> bool {
+    return true
+`)
+
+	case_result := run_test_case(root)
+	defer {
+		if case_result.name != "" {
+			delete(case_result.name)
+		}
+		if case_result.path != "" {
+			delete(case_result.path)
+		}
+		if case_result.error != "" {
+			delete(case_result.error)
+		}
+		if case_result.assertion_errors != nil {
+			delete(case_result.assertion_errors)
+		}
+	}
+	testing.expect_value(t, case_result.status, Test_Case_Status.Failed)
+	testing.expect(t, strings.contains(case_result.error, "native build native/game.odin"))
+	testing.expect(t, strings.contains(case_result.error, "failed to build Odin native module"))
+}
+
+@(test)
 test_live_project_reloads_development_odin_native_source_callback :: proc(t: ^testing.T) {
 	root := make_test_project(t, "live-project-odin-native-source-reload")
 	defer os.remove_all(root)

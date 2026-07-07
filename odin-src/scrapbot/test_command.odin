@@ -266,7 +266,7 @@ run_test_case :: proc(project_path: string) -> Test_Case_Result {
 	defer free_check_result(check)
 	if check.err != .None {
 		result.status = .Failed
-		result.error = strings.clone(project_error_message(check.err))
+		result.error = test_case_check_error_message(check)
 		return result
 	}
 
@@ -299,6 +299,22 @@ run_test_case :: proc(project_path: string) -> Test_Case_Result {
 	}
 
 	return result
+}
+
+test_case_check_error_message :: proc(check: Project_Check_Result) -> string {
+	if script_diagnostic_present(check.diagnostic) {
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+		strings.write_string(&builder, script_diagnostic_stage_label(check.diagnostic.stage))
+		if check.diagnostic.path != "" {
+			strings.write_string(&builder, " ")
+			strings.write_string(&builder, check.diagnostic.path)
+		}
+		strings.write_string(&builder, ": ")
+		strings.write_string(&builder, check.diagnostic.message)
+		return strings.clone(strings.to_string(builder))
+	}
+	return strings.clone(project_error_message(check.err))
 }
 
 collect_test_projects :: proc(target_path: string) -> ([dynamic]string, Test_Command_Error) {
