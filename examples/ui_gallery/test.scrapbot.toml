@@ -1,0 +1,48 @@
+frames = 1
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [24.0, 544.0]
+primary_pressed = true
+
+[[expect.editor]]
+selected_entity = "inspector-control-sample"
+
+[[expect.field]]
+entity = "inspector-control-sample"
+component = "inspector_control_sample"
+field = "enabled"
+equals_bool = true
+
+[[expect.field]]
+entity = "inspector-control-sample"
+component = "inspector_control_sample"
+field = "count"
+equals_int = 7
+
+[[expect.field]]
+entity = "inspector-control-sample"
+component = "inspector_control_sample"
+field = "gain"
+equals_float = 0.75
+
+[[expect.field]]
+entity = "inspector-control-sample"
+component = "inspector_control_sample"
+field = "tint"
+equals_vec3 = [0.22, 0.714, 0.82]
+
+[[expect.field]]
+entity = "inspector-control-sample"
+component = "inspector_control_sample"
+field = "label"
+equals_string = "Gallery Sample"
+
+[[expect.field]]
+entity = "inspector-control-sample"
+component = "scrapbot.geometry.primitive"
+field = "primitive"
+equals_string = "uv_sphere"

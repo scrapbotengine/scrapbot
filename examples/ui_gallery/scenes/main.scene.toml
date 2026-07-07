@@ -10,6 +10,22 @@ design_size = [640.0, 480.0, 0.0]
 scale_mode = "fit"
 
 [[entities]]
+id = "inspector-control-sample"
+name = "Inspector Control Sample"
+
+[entities.components.inspector_control_sample]
+enabled = true
+count = 7
+gain = 0.75
+tint = [0.22, 0.714, 0.82]
+label = "Gallery Sample"
+
+[entities.components."scrapbot.geometry.primitive"]
+primitive = "uv_sphere"
+segments = 32
+rings = 16
+
+[[entities]]
 id = "gallery-shell"
 name = "Gallery Shell"
 

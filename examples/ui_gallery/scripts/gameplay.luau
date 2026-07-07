@@ -12,6 +12,16 @@ local MeterFill = ecs.component("meter_fill", {
   fields = ecs.fields({}),
 })
 
+ecs.component("inspector_control_sample", {
+  fields = ecs.fields({
+    enabled = "boolean",
+    count = "int",
+    gain = "f32",
+    tint = "vec3",
+    label = "string",
+  }),
+})
+
 local CommandEvents = ecs.query(CommandEvent)
 local StatusLabels = ecs.query(UiText, StatusLabel)
 local MeterFills = ecs.query(UiProgressBar, MeterFill)

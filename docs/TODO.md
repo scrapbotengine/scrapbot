@@ -177,7 +177,7 @@
 - [x] Add first-pass inspector text copy, paste, selected-header copy, and clipboard support.
 - [x] Add visual tests for inspector editing widgets.
 - [x] Add first-pass selected-entity header hit area that copies the full entity id even when the visible header is width-constrained.
-- [ ] Keep `examples/ui_gallery/` current with inspector control primitives.
+- [x] Keep `examples/ui_gallery/` current with inspector control primitives.
 
 ## Editor Core
 
