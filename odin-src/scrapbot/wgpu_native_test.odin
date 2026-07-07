@@ -139,6 +139,11 @@ test_wgpu_copy_texture_to_buffer_structs_match_offscreen_readback_defaults :: pr
 	testing.expect_value(t, destination.layout.offset, u64(0))
 	testing.expect_value(t, destination.layout.bytes_per_row, u32(2560))
 	testing.expect_value(t, destination.layout.rows_per_image, u32(480))
+
+	upload_layout := wgpu_texel_copy_buffer_layout(128, 32, 16)
+	testing.expect_value(t, upload_layout.offset, u64(16))
+	testing.expect_value(t, upload_layout.bytes_per_row, u32(128))
+	testing.expect_value(t, upload_layout.rows_per_image, u32(32))
 }
 
 @(test)
@@ -475,7 +480,7 @@ test_wgpu_offscreen_proc_table_resolves_required_symbols :: proc(t: ^testing.T) 
 
 	testing.expect_value(t, ok, true)
 	testing.expect_value(t, missing, "")
-	testing.expect_value(t, ctx.calls, 47)
+	testing.expect_value(t, ctx.calls, 49)
 	testing.expect_value(t, ctx.last_user_data, rawptr(&ctx))
 
 	instance := procs.create_instance((^WGPU_Instance_Descriptor)(nil))
@@ -505,6 +510,13 @@ test_wgpu_offscreen_proc_table_resolves_required_symbols :: proc(t: ^testing.T) 
 
 	queue := procs.device_get_queue(WGPU_Device(nil))
 	testing.expect_value(t, queue, WGPU_Queue(rawptr(uintptr(0x100D))))
+	buffer := WGPU_Buffer(rawptr(uintptr(0x2222)))
+	upload_data := [?]u8{1, 2, 3, 4}
+	procs.queue_write_buffer(queue, buffer, 8, rawptr(&upload_data[0]), len(upload_data))
+	texture_destination := wgpu_texel_copy_texture_info(texture)
+	texture_layout := wgpu_texel_copy_buffer_layout(4, 1)
+	texture_extent := wgpu_extent_3d(1, 1)
+	procs.queue_write_texture(queue, &texture_destination, rawptr(&upload_data[0]), len(upload_data), &texture_layout, &texture_extent)
 
 	render_pass := procs.command_encoder_begin_render_pass(WGPU_Command_Encoder(nil), (^WGPU_Render_Pass_Descriptor)(nil))
 	testing.expect_value(t, render_pass, WGPU_Render_Pass_Encoder(rawptr(uintptr(0x100E))))
@@ -555,6 +567,12 @@ test_wgpu_offscreen_dynamic_library_loads_proc_table :: proc(t: ^testing.T) {
 
 	queue := loaded.procs.device_get_queue(WGPU_Device(nil))
 	testing.expect_value(t, queue, WGPU_Queue(rawptr(uintptr(0x200D))))
+	upload_data := [?]u8{5, 6, 7, 8}
+	loaded.procs.queue_write_buffer(queue, WGPU_Buffer(rawptr(uintptr(0x2020))), 4, rawptr(&upload_data[0]), len(upload_data))
+	texture_destination := wgpu_texel_copy_texture_info(WGPU_Texture(rawptr(uintptr(0x2021))))
+	texture_layout := wgpu_texel_copy_buffer_layout(4, 1)
+	texture_extent := wgpu_extent_3d(1, 1)
+	loaded.procs.queue_write_texture(queue, &texture_destination, rawptr(&upload_data[0]), len(upload_data), &texture_layout, &texture_extent)
 
 	bind_group_layout := loaded.procs.device_create_bind_group_layout(WGPU_Device(nil), (^WGPU_Bind_Group_Layout_Descriptor)(nil))
 	testing.expect_value(t, bind_group_layout, WGPU_Bind_Group_Layout(rawptr(uintptr(0x200F))))
@@ -914,6 +932,25 @@ wgpuQueueSubmit :: proc "c" (queue: rawptr, command_count: c.size_t, commands: r
 }
 
 @(export)
+wgpuQueueWriteBuffer :: proc "c" (queue, buffer: rawptr, buffer_offset: u64, data: rawptr, size: c.size_t) {
+	_ = queue
+	_ = buffer
+	_ = buffer_offset
+	_ = data
+	_ = size
+}
+
+@(export)
+wgpuQueueWriteTexture :: proc "c" (queue, destination, data: rawptr, data_size: c.size_t, data_layout, write_size: rawptr) {
+	_ = queue
+	_ = destination
+	_ = data
+	_ = data_size
+	_ = data_layout
+	_ = write_size
+}
+
+@(export)
 wgpuBufferMapAsync :: proc "c" (buffer: rawptr, mode: u64, offset, size: c.size_t, callback_info: WGPU_Buffer_Map_Callback_Info) -> WGPU_Future {
 	_ = buffer
 	_ = mode
@@ -1252,6 +1289,25 @@ wgpuQueueSubmit :: proc "c" (queue: rawptr, command_count: c.size_t, commands: r
 }
 
 @(export)
+wgpuQueueWriteBuffer :: proc "c" (queue, buffer: rawptr, buffer_offset: u64, data: rawptr, size: c.size_t) {
+	_ = queue
+	_ = buffer
+	_ = buffer_offset
+	_ = data
+	_ = size
+}
+
+@(export)
+wgpuQueueWriteTexture :: proc "c" (queue, destination, data: rawptr, data_size: c.size_t, data_layout, write_size: rawptr) {
+	_ = queue
+	_ = destination
+	_ = data
+	_ = data_size
+	_ = data_layout
+	_ = write_size
+}
+
+@(export)
 wgpuBufferMapAsync :: proc "c" (buffer: rawptr, mode: u64, offset, size: c.size_t, callback_info: WGPU_Buffer_Map_Callback_Info) -> WGPU_Future {
 	_ = buffer
 	_ = mode
@@ -1410,6 +1466,10 @@ wgpu_test_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
 		return rawptr(wgpu_test_command_encoder_finish)
 	case WGPU_SYMBOL_QUEUE_SUBMIT:
 		return rawptr(wgpu_test_queue_submit)
+	case WGPU_SYMBOL_QUEUE_WRITE_BUFFER:
+		return rawptr(wgpu_test_queue_write_buffer)
+	case WGPU_SYMBOL_QUEUE_WRITE_TEXTURE:
+		return rawptr(wgpu_test_queue_write_texture)
 	case WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_PIPELINE:
 		return rawptr(wgpu_test_render_pass_encoder_set_pipeline)
 	case WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_BIND_GROUP:
@@ -1579,6 +1639,23 @@ wgpu_test_queue_submit :: proc "c" (queue: WGPU_Queue, command_count: c.size_t, 
 	_ = queue
 	_ = command_count
 	_ = commands
+}
+
+wgpu_test_queue_write_buffer :: proc "c" (queue: WGPU_Queue, buffer: WGPU_Buffer, buffer_offset: u64, data: rawptr, size: c.size_t) {
+	_ = queue
+	_ = buffer
+	_ = buffer_offset
+	_ = data
+	_ = size
+}
+
+wgpu_test_queue_write_texture :: proc "c" (queue: WGPU_Queue, destination: ^WGPU_Texel_Copy_Texture_Info, data: rawptr, data_size: c.size_t, data_layout: ^WGPU_Texel_Copy_Buffer_Layout, write_size: ^WGPU_Extent_3D) {
+	_ = queue
+	_ = destination
+	_ = data
+	_ = data_size
+	_ = data_layout
+	_ = write_size
 }
 
 wgpu_test_render_pass_encoder_set_pipeline :: proc "c" (render_pass: WGPU_Render_Pass_Encoder, pipeline: WGPU_Render_Pipeline) {

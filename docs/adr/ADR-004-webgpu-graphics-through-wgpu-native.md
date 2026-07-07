@@ -4,7 +4,7 @@
 
 **Migration note:** The language-specific Zig binding details are superseded by [ADR-023](ADR-023-odin-as-engine-implementation-language.md). Scrapbot still uses `wgpu-native`, but the target renderer binding is Odin through the C ABI.
 
-**Odin migration note:** The first Odin migration slices own the render-relevant `wgpu-native` C ABI scalar types, string/chained structs, texture formats, buffer/texture usage flags, initial texture/buffer descriptor structs, instance/adapter/device/queue request descriptors, bind-group/sampler/pipeline-layout descriptors, shader module and render pipeline descriptors, render pass attachment/descriptors, offscreen copy/readback and render pass command procedure boundaries, offscreen proc-table resolver, and dynamic-library-backed offscreen proc loader in `odin-src/scrapbot/wgpu_native.odin`. They can load a compatible dynamic library boundary but do not yet drive real WebGPU render output or replace the Zig WebGPU renderer.
+**Odin migration note:** The first Odin migration slices own the render-relevant `wgpu-native` C ABI scalar types, string/chained structs, texture formats, buffer/texture usage flags, initial texture/buffer descriptor structs, instance/adapter/device/queue request descriptors, bind-group/sampler/pipeline-layout descriptors, shader module and render pipeline descriptors, render pass attachment/descriptors, offscreen copy/readback, queue upload, and render pass command procedure boundaries, offscreen proc-table resolver, and dynamic-library-backed offscreen proc loader in `odin-src/scrapbot/wgpu_native.odin`. They can load a compatible dynamic library boundary but do not yet drive real WebGPU render output or replace the Zig WebGPU renderer.
 
 ## Context
 

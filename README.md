@@ -73,6 +73,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin wgpu-native render pass command boundary slice
   - [x] Odin wgpu-native resource binding boundary slice
   - [x] Odin wgpu-native shader/pipeline boundary slice
+  - [x] Odin wgpu-native queue upload boundary slice
   - [x] Odin native declaration registration slice
   - [x] Odin native execution boundary diagnostics slice
   - [ ] Odin CLI feature parity

@@ -779,6 +779,8 @@ WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc :: proc "c" (encoder: WGPU_Comm
 WGPU_Command_Encoder_Begin_Render_Pass_Proc :: proc "c" (encoder: WGPU_Command_Encoder, descriptor: ^WGPU_Render_Pass_Descriptor) -> WGPU_Render_Pass_Encoder
 WGPU_Command_Encoder_Finish_Proc :: proc "c" (encoder: WGPU_Command_Encoder, descriptor: ^WGPU_Command_Buffer_Descriptor) -> WGPU_Command_Buffer
 WGPU_Queue_Submit_Proc :: proc "c" (queue: WGPU_Queue, command_count: c.size_t, commands: [^]WGPU_Command_Buffer)
+WGPU_Queue_Write_Buffer_Proc :: proc "c" (queue: WGPU_Queue, buffer: WGPU_Buffer, buffer_offset: u64, data: rawptr, size: c.size_t)
+WGPU_Queue_Write_Texture_Proc :: proc "c" (queue: WGPU_Queue, destination: ^WGPU_Texel_Copy_Texture_Info, data: rawptr, data_size: c.size_t, data_layout: ^WGPU_Texel_Copy_Buffer_Layout, write_size: ^WGPU_Extent_3D)
 WGPU_Render_Pass_Encoder_Set_Pipeline_Proc :: proc "c" (render_pass: WGPU_Render_Pass_Encoder, pipeline: WGPU_Render_Pipeline)
 WGPU_Render_Pass_Encoder_Set_Bind_Group_Proc :: proc "c" (render_pass: WGPU_Render_Pass_Encoder, group_index: u32, group: WGPU_Bind_Group, dynamic_offset_count: c.size_t, dynamic_offsets: [^]u32)
 WGPU_Render_Pass_Encoder_Set_Vertex_Buffer_Proc :: proc "c" (render_pass: WGPU_Render_Pass_Encoder, slot: u32, buffer: WGPU_Buffer, offset, size: u64)
@@ -831,6 +833,8 @@ WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER :: "wgpuCommandEncoderCopyTex
 WGPU_SYMBOL_COMMAND_ENCODER_BEGIN_RENDER_PASS :: "wgpuCommandEncoderBeginRenderPass"
 WGPU_SYMBOL_COMMAND_ENCODER_FINISH :: "wgpuCommandEncoderFinish"
 WGPU_SYMBOL_QUEUE_SUBMIT :: "wgpuQueueSubmit"
+WGPU_SYMBOL_QUEUE_WRITE_BUFFER :: "wgpuQueueWriteBuffer"
+WGPU_SYMBOL_QUEUE_WRITE_TEXTURE :: "wgpuQueueWriteTexture"
 WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_PIPELINE :: "wgpuRenderPassEncoderSetPipeline"
 WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_BIND_GROUP :: "wgpuRenderPassEncoderSetBindGroup"
 WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_VERTEX_BUFFER :: "wgpuRenderPassEncoderSetVertexBuffer"
@@ -884,6 +888,8 @@ WGPU_Offscreen_Procs :: struct {
 	command_encoder_begin_render_pass:      WGPU_Command_Encoder_Begin_Render_Pass_Proc,
 	command_encoder_finish:                 WGPU_Command_Encoder_Finish_Proc,
 	queue_submit:                           WGPU_Queue_Submit_Proc,
+	queue_write_buffer:                     WGPU_Queue_Write_Buffer_Proc,
+	queue_write_texture:                    WGPU_Queue_Write_Texture_Proc,
 	render_pass_encoder_set_pipeline:       WGPU_Render_Pass_Encoder_Set_Pipeline_Proc,
 	render_pass_encoder_set_bind_group:     WGPU_Render_Pass_Encoder_Set_Bind_Group_Proc,
 	render_pass_encoder_set_vertex_buffer:  WGPU_Render_Pass_Encoder_Set_Vertex_Buffer_Proc,
@@ -1008,13 +1014,17 @@ wgpu_texel_copy_texture_info :: proc(texture: WGPU_Texture) -> WGPU_Texel_Copy_T
 	}
 }
 
+wgpu_texel_copy_buffer_layout :: proc(bytes_per_row, rows_per_image: u32, offset: u64 = 0) -> WGPU_Texel_Copy_Buffer_Layout {
+	return WGPU_Texel_Copy_Buffer_Layout{
+		offset = offset,
+		bytes_per_row = bytes_per_row,
+		rows_per_image = rows_per_image,
+	}
+}
+
 wgpu_texel_copy_buffer_info :: proc(buffer: WGPU_Buffer, bytes_per_row, rows_per_image: u32) -> WGPU_Texel_Copy_Buffer_Info {
 	return WGPU_Texel_Copy_Buffer_Info{
-		layout = WGPU_Texel_Copy_Buffer_Layout{
-			offset = 0,
-			bytes_per_row = bytes_per_row,
-			rows_per_image = rows_per_image,
-		},
+		layout = wgpu_texel_copy_buffer_layout(bytes_per_row, rows_per_image),
 		buffer = buffer,
 	}
 }
@@ -1588,6 +1598,14 @@ wgpu_resolve_offscreen_procs :: proc(resolver: WGPU_Symbol_Resolver, user_data: 
 	symbol = resolver(WGPU_SYMBOL_QUEUE_SUBMIT, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_QUEUE_SUBMIT, false
 	procs.queue_submit = cast(WGPU_Queue_Submit_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_QUEUE_WRITE_BUFFER, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_QUEUE_WRITE_BUFFER, false
+	procs.queue_write_buffer = cast(WGPU_Queue_Write_Buffer_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_QUEUE_WRITE_TEXTURE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_QUEUE_WRITE_TEXTURE, false
+	procs.queue_write_texture = cast(WGPU_Queue_Write_Texture_Proc)symbol
 
 	symbol = resolver(WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_PIPELINE, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_RENDER_PASS_ENCODER_SET_PIPELINE, false
