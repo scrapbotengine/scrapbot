@@ -13,7 +13,7 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 - Users can initialize a project directory.
 - Users can validate a project without opening a window.
 - Users can run a project through the selected renderer backend.
-- Users can request a short-lived platform window for renderer smoke checks.
+- Users can request a platform window for renderer runs and limit windowed runs with `--frames`.
 - Users can ask for top-level help or command-specific help.
 - During development, `mise scrapbot` builds and runs the CLI with forwarded arguments.
 

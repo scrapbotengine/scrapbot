@@ -1,4 +1,12 @@
-package scrapbot
+package ecs
+
+import shared "../shared"
+
+Scene :: shared.Scene
+World :: shared.World
+World_Entity :: shared.World_Entity
+Entity :: shared.Entity
+Render_Frame :: shared.Render_Frame
 
 destroy_world :: proc(world: ^World) {
 	delete(world.entities)

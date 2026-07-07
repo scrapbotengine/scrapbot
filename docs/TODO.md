@@ -4,7 +4,8 @@
 
 - [x] Add a `wgpu-native` surface smoke backend.
 - [x] Use the SDL3 window path to create a `wgpu-native` surface.
-- [ ] Replace the WGPU clear smoke with a scene renderer.
+- [x] Replace the WGPU clear smoke with a simple triangle render loop.
+- [ ] Replace the WGPU triangle loop with a scene renderer.
 - [ ] Define the render packet boundary between ECS state and renderer backends.
 - [ ] Add offscreen render verification.
 

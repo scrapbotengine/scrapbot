@@ -1,4 +1,4 @@
-package scrapbot
+package platform
 
 import "core:c"
 import "core:fmt"
@@ -48,6 +48,18 @@ close_runtime_window :: proc() {
 		sdl.Quit()
 		runtime_window_ready = false
 	}
+}
+
+runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {
+	if runtime_window == nil {
+		return 0, 0, false
+	}
+
+	w, h: c.int
+	if !sdl.GetWindowSizeInPixels(runtime_window, &w, &h) {
+		return 0, 0, false
+	}
+	return int(w), int(h), true
 }
 
 pump_runtime_window_events :: proc() -> bool {

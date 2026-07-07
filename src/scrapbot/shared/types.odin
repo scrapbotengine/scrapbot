@@ -1,4 +1,4 @@
-package scrapbot
+package shared
 
 PROJECT_FILE :: "project.toml"
 DEFAULT_SCENE :: "scenes/main.scene.toml"
@@ -12,11 +12,6 @@ Vec3 :: struct {
 Renderer_Backend :: enum {
 	Null,
 	WGPU,
-}
-
-Run_Config :: struct {
-	backend: Renderer_Backend,
-	window:  bool,
 }
 
 Project_Config :: struct {

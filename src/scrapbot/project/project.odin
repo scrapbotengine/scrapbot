@@ -1,18 +1,22 @@
-package scrapbot
+package project
 
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import shared "../shared"
+
+PROJECT_FILE :: shared.PROJECT_FILE
+DEFAULT_SCENE :: shared.DEFAULT_SCENE
+
+Project_Config :: shared.Project_Config
+Scene :: shared.Scene
+Scene_Entity :: shared.Scene_Entity
+Vec3 :: shared.Vec3
 
 Project_Load_Result :: struct {
 	config: Project_Config,
 	scene:  Scene,
 	err:    string,
-}
-
-Runtime_Result :: struct {
-	frame: Render_Frame,
-	err:   string,
 }
 
 project_toml_template :: proc(name: string) -> string {
@@ -148,25 +152,4 @@ check_project :: proc(root: string) -> string {
 	loaded := load_project(root)
 	defer destroy_project_load_result(&loaded)
 	return loaded.err
-}
-
-run_headless :: proc(root: string) -> Runtime_Result {
-	return run_project(root, Run_Config{backend = .Null})
-}
-
-run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
-	result: Runtime_Result
-
-	loaded := load_project(root)
-	defer destroy_project_load_result(&loaded)
-	if loaded.err != "" {
-		result.err = loaded.err
-		return result
-	}
-
-	world := build_world(&loaded.scene)
-	defer destroy_world(&world)
-
-	result.frame, result.err = run_renderer(config, &world)
-	return result
 }

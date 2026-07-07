@@ -12,8 +12,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The runtime can submit frame data through a renderer boundary.
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
-- The `wgpu` backend opens an SDL3 window, creates a `wgpu-native` surface, clears one frame, presents it, and exits.
+- The `wgpu` backend opens an SDL3 window, creates a `wgpu-native` surface, and runs a simple triangle render loop.
 - The `wgpu` backend currently requires `--window`.
+- Windowed renderer runs can be limited with `--frames`; `0` means run until the window closes.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
 - Future backends should not require scene files or gameplay code to know backend-specific GPU handles.
 
@@ -37,11 +38,11 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 **Why:** SDL3 is available through Odin's vendor bindings and gives the renderer a portable surface path. See ADR-005.
 **Tradeoff:** Headful runtime work now depends on SDL3 being available in development and distribution environments.
 
-### 4. Keep the first WGPU implementation as a smoke renderer
+### 4. Keep the first WGPU implementation as a triangle renderer
 
-**Decision:** The current `wgpu` backend only clears and presents one frame derived from the existing runtime flow.
-**Why:** This proves the native window/surface/device/swapchain path before introducing pipelines, shaders, GPU resources, or render packets.
-**Tradeoff:** The backend verifies presentation, not scene rendering.
+**Decision:** The current `wgpu` backend creates a minimal WGSL render pipeline and draws a filled triangle in a window loop.
+**Why:** This proves the native window/surface/device/swapchain path plus shader and pipeline creation before introducing render packets, buffers, assets, or scene-driven drawing.
+**Tradeoff:** The backend verifies a render loop and draw call, not scene rendering.
 
 ## Related
 

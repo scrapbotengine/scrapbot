@@ -17,7 +17,7 @@ description = "Run all local checks and smoke tests"
 depends = ["build"]
 run = [
   "odin check src/scrapbot -no-entry-point",
-  "odin test src/scrapbot",
+  "odin test src/scrapbot -all-packages",
   "bin/scrapbot --version",
   "bin/scrapbot check examples/minimal",
   "bin/scrapbot run examples/minimal",

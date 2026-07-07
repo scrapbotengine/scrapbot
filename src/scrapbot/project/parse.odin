@@ -1,4 +1,4 @@
-package scrapbot
+package project
 
 import "core:fmt"
 import "core:strconv"
