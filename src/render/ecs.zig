@@ -283,6 +283,10 @@ pub const RenderEcsState = struct {
 
         var meshes = scene.world.renderableMeshes();
         while (meshes.next()) |mesh| {
+            const entity = scene.world.entity(mesh.entity) catch continue;
+            if (entity.provenance == .engine_transient) {
+                continue;
+            }
             self.scratch_renderables.append(self.allocator, mesh) catch return RenderError.OutOfMemory;
         }
 
@@ -291,7 +295,7 @@ pub const RenderEcsState = struct {
                 std.log.err("render extract failed while extracting editor gizmo: {s}", .{@errorName(err)});
                 return err;
             };
-            self.appendExtractedEditorGizmoMeshes() catch |err| {
+            self.appendExtractedEditorGizmoMeshes(input.editor.selected_entity) catch |err| {
                 std.log.err("render extract failed while snapshotting editor gizmo: {s}", .{@errorName(err)});
                 return err;
             };
@@ -333,7 +337,9 @@ pub const RenderEcsState = struct {
         world.clearEngineTransientEntities() catch |err| return mapWorldError(err);
     }
 
-    fn appendExtractedEditorGizmoMeshes(self: *RenderEcsState) RenderError!void {
+    fn appendExtractedEditorGizmoMeshes(self: *RenderEcsState, selected_entity: ?runtime.EntityHandle) RenderError!void {
+        const selected = selected_entity orelse return;
+        _ = (self.world.getTransform(selected) catch return) orelse return;
         for (editor_gizmo.translate_entity_ids) |entity_id| {
             const entity = self.world.findEntityById(entity_id) orelse continue;
             const mesh = self.world.renderableMeshForEntity(entity) orelse continue;

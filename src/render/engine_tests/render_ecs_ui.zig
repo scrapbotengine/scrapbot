@@ -204,6 +204,46 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     try std.testing.expectEqual(@as(usize, 1), state.uiDrawCommandCount());
 }
 
+test "render ECS drops stale editor gizmos when selecting transformless light" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    const box = try scene_world.createEntity("box", "Box");
+    try scene_world.setTransform(box, .{});
+    try scene_world.setGeometryPrimitive(box, .{ .primitive = "box" });
+    try scene_world.setSurfaceMaterial(box, .{});
+
+    const light = try scene_world.createEntity("key-light", "Key Light");
+    try scene_world.setDirectionalLight(light, .{ .intensity = 1.25 });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    const input = FrameInput{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    };
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .debug_overlay_visible = input.debug_overlay_visible,
+        .viewport_width = input.viewport_width,
+        .viewport_height = input.viewport_height,
+        .editor = .{ .selected_entity = box },
+    });
+    try std.testing.expectEqual(@as(usize, 4), state.extractedRenderableMeshes().len);
+    try std.testing.expect(scene_world.findEntityById("scrapbot.editor.gizmo.x") != null);
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .debug_overlay_visible = input.debug_overlay_visible,
+        .viewport_width = input.viewport_width,
+        .viewport_height = input.viewport_height,
+        .editor = .{ .selected_entity = light },
+    });
+    try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
+    try std.testing.expectEqual(box.index, state.extractedRenderableMeshes()[0].entity.index);
+    try std.testing.expect(scene_world.findEntityById("scrapbot.editor.gizmo.x") == null);
+}
+
 test "batch plan groups matching geometry and shadow state with per-instance color" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
