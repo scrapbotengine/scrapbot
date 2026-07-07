@@ -270,7 +270,7 @@ run_test_case :: proc(project_path: string) -> Test_Case_Result {
 		return result
 	}
 
-	simulation := run_script_simulation_with_input(&check, manifest.frames, manifest.delta_seconds, manifest.input_frames[:])
+	simulation := run_script_simulation_with_persistent_editor_input(&check, manifest.frames, manifest.delta_seconds, manifest.input_frames[:])
 	result.completed_frames = simulation.completed_frames
 	if !simulation.ok {
 		result.status = .Failed

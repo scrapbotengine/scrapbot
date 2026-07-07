@@ -1105,6 +1105,14 @@ run_script_simulation :: proc(result: ^Project_Check_Result, frames: int, delta_
 }
 
 run_script_simulation_with_input :: proc(result: ^Project_Check_Result, frames: int, delta_seconds: f32, input_frames: []Step_Input_Frame) -> Simulation_Run_Result {
+	return run_script_simulation_with_input_options(result, frames, delta_seconds, input_frames, false)
+}
+
+run_script_simulation_with_persistent_editor_input :: proc(result: ^Project_Check_Result, frames: int, delta_seconds: f32, input_frames: []Step_Input_Frame) -> Simulation_Run_Result {
+	return run_script_simulation_with_input_options(result, frames, delta_seconds, input_frames, true)
+}
+
+run_script_simulation_with_input_options :: proc(result: ^Project_Check_Result, frames: int, delta_seconds: f32, input_frames: []Step_Input_Frame, persist_scene_edits: bool) -> Simulation_Run_Result {
 	startup := script_program_run_schedule(&result.script_program, &result.registry, &result.scene.world, result.startup_schedule, 0)
 	if !startup.ok {
 		return Simulation_Run_Result{ok = false, diagnostic = startup.diagnostic}
@@ -1116,6 +1124,9 @@ run_script_simulation_with_input :: proc(result: ^Project_Check_Result, frames: 
 		if len(input_frames) > 0 {
 			frame_input := step_input_for_frame(input_frames, completed_frames + 1)
 			route_editor_test_input(&editor_input_state, result.registry, &result.scene.world, &frame_input)
+			if persist_scene_edits {
+				persist_editor_test_pending_scene_edit(result.project, result.scene.world, &editor_input_state)
+			}
 			input_err := write_frame_input(&result.scene.world, frame_input)
 			if input_err != .None {
 				return Simulation_Run_Result{

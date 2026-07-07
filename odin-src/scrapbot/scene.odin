@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
@@ -48,6 +49,136 @@ load_scene_file :: proc(path: string, registry: Runtime_Component_Registry) -> (
 
 	scene.storage = contents
 	return scene, .None
+}
+
+persist_editor_test_pending_scene_edit :: proc(project: Project, world: Runtime_World, state: ^Editor_Test_Input_State) -> bool {
+	command, ok := take_editor_test_pending_scene_edit(state)
+	if !ok {
+		return false
+	}
+	defer editor_test_field_command_free(&command)
+	return persist_scene_component_field_edit(project.root_path, project.default_scene, world, &command)
+}
+
+persist_scene_component_field_edit :: proc(project_root, scene_relative_path: string, world: Runtime_World, command: ^Editor_Test_Field_Edit_Command) -> bool {
+	entity, entity_err := runtime_world_entity(world, command.entity)
+	if entity_err != .None || entity.provenance != .Authored {
+		return false
+	}
+	component_id := editor_test_field_command_component(command)
+	field_name := editor_test_field_command_field(command)
+	if component_id == "" || field_name == "" {
+		return false
+	}
+
+	scene_path := project_relative_path(project_root, scene_relative_path)
+	defer delete(scene_path)
+	if scene_path == "" {
+		return false
+	}
+	contents, read_err := os.read_entire_file(scene_path, context.allocator)
+	if read_err != nil {
+		return false
+	}
+	defer delete(contents)
+
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	remaining := string(contents)
+	in_entity := false
+	target_entity := false
+	target_component := false
+	updated := false
+
+	for line in strings.split_lines_iterator(&remaining) {
+		trimmed := strings.trim_space(strip_line_comment(line))
+		next_line := line
+		owned_next_line := ""
+
+		if trimmed == "[[entities]]" {
+			in_entity = true
+			target_entity = false
+			target_component = false
+		} else if in_entity && strings.has_prefix(trimmed, "[") {
+			component, ok := parse_component_table_header(trimmed)
+			target_component = ok && target_entity && component == component_id
+		} else if in_entity && !updated {
+			key, value, ok := read_key_value_parts(trimmed)
+			if ok && !target_component && key == "id" {
+				id, id_ok := parse_basic_string(value)
+				target_entity = id_ok && id == entity.id
+			} else if ok && target_component && key == field_name {
+				owned_next_line = scene_component_field_replacement_line(line, field_name, command.new_value)
+				if owned_next_line == "" {
+					return false
+				}
+				next_line = owned_next_line
+				updated = true
+			}
+		}
+
+		strings.write_string(&builder, next_line)
+		strings.write_rune(&builder, '\n')
+		if owned_next_line != "" {
+			delete(owned_next_line)
+		}
+	}
+
+	if !updated {
+		return false
+	}
+	return os.write_entire_file(scene_path, strings.to_string(builder)) == nil
+}
+
+scene_component_field_replacement_line :: proc(line, field_name: string, value: Runtime_Component_Value) -> string {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	for index := 0; index < len(line); index += 1 {
+		if line[index] != ' ' && line[index] != '\t' {
+			break
+		}
+		strings.write_rune(&builder, rune(line[index]))
+	}
+	strings.write_string(&builder, field_name)
+	strings.write_string(&builder, " = ")
+	if !write_scene_component_value(&builder, value) {
+		return ""
+	}
+	out, err := strings.clone(strings.to_string(builder))
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
+write_scene_component_value :: proc(builder: ^strings.Builder, value: Runtime_Component_Value) -> bool {
+	switch value.value_type {
+	case .Boolean:
+		if value.boolean {
+			strings.write_string(builder, "true")
+		} else {
+			strings.write_string(builder, "false")
+		}
+	case .Int:
+		strings.write_string(builder, fmt.tprintf("%d", value.int_value))
+	case .Float:
+		strings.write_string(builder, fmt.tprintf("%g", value.float))
+	case .Vec3:
+		strings.write_string(builder, "[")
+		strings.write_string(builder, fmt.tprintf("%g", value.vec3[0]))
+		strings.write_string(builder, ", ")
+		strings.write_string(builder, fmt.tprintf("%g", value.vec3[1]))
+		strings.write_string(builder, ", ")
+		strings.write_string(builder, fmt.tprintf("%g", value.vec3[2]))
+		strings.write_string(builder, "]")
+	case .String:
+		strings.write_rune(builder, '"')
+		if !write_toml_basic_string_contents(builder, value.string_value) {
+			return false
+		}
+		strings.write_rune(builder, '"')
+	}
+	return true
 }
 
 parse_scene :: proc(contents: string, registry: Runtime_Component_Registry) -> (Scene, Project_Error) {

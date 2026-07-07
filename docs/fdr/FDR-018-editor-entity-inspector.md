@@ -1,7 +1,7 @@
 # FDR-018: Editor Entity Inspector
 
 **Status:** Active
-**Last reviewed:** 2026-07-05
+**Last reviewed:** 2026-07-07
 
 ## Overview
 
@@ -38,7 +38,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 - Typing, Backspace, and Delete replace or remove the selected range when text is selected.
 - Field changes are staged in the input buffer and apply only when the user presses Enter or the input loses focus.
 - Ctrl+Z undoes inspector field edits, and Ctrl+Shift+Z or Ctrl+Y redoes them.
-- Inspector edits mutate the live ECS world. They do not yet persist back to TOML scene files.
+- Inspector edits mutate the live ECS world. In the Odin implementation, first-pass scene persistence rewrites existing authored field lines for authored entities in the default scene TOML.
 - String fields can be edited through the same text input control, subject to the current fixed input-buffer length.
 - Clicking the selected-entity header copies the full entity id to the editor clipboard, even when the visible header area is width-constrained.
 - A selected renderable gets a world-space translate gizmo with X, Y, and Z handles.
@@ -99,14 +99,20 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 ### 5c. Start inspector undo at the field-command level
 
 **Decision:** Inspector field edits are stored as bounded in-memory commands containing the selected entity handle, component id, field name, old value, and new value.
-**Why:** This gives the editor immediate undo/redo behavior without inventing scene-file persistence or a global editor transaction model too early.
-**Tradeoff:** The history is runtime-only, per editor session, and field-granular. It does not yet group drags, survive reload, serialize to project files, or coordinate with future multi-entity edits.
+**Why:** This gives the editor immediate undo/redo behavior without inventing a global editor transaction model too early.
+**Tradeoff:** The history is runtime-only, per editor session, and field-granular. It does not yet group drags, survive reload, coordinate with future multi-entity edits, or persist component/entity structural edits.
 
 ### 5d. Build typed controls as variations on a reusable row
 
 **Decision:** The inspector has one reusable field-row layout and adds typed control variants for value kinds. Numeric and general string values use text inputs, `vec3` values use lane inputs preceded by colored `X`/`Y`/`Z` labels, color-like `vec3` values add a swatch, booleans use toggles, and known enum-like strings can use selectors.
 **Why:** This follows the editor-library direction: one base editing component shape with type-specific gadgets, instead of one-off layout code per component field. It also keeps live ECS mutation and undo/redo on the same field-command path.
-**Tradeoff:** The first selectors are hard-coded to known engine string fields. Rich enum metadata, dropdowns, sliders, drag editing, validation messages, and persisted scene edits still need later design.
+**Tradeoff:** The first selectors are hard-coded to known engine string fields. Rich enum metadata, dropdowns, sliders, drag editing, validation messages, and full scene persistence still need later design.
+
+### 5e. Persist authored field edits with narrow TOML rewrites
+
+**Decision:** The Odin editor records the latest successful inspector field edit as a pending scene edit. `scrapbot test` replay and live project frames consume that edit by finding the selected authored entity, matching the component table in the default scene file, and replacing the existing authored field line with the new typed TOML value.
+**Why:** This gives immediate text-file feedback for the most common inspector workflow while preserving the text-first project model.
+**Tradeoff:** The first pass is intentionally narrow. It only updates existing field lines on authored entities in the default scene, and it does not create missing fields, persist spawned entities, persist component add/remove/despawn operations, preserve inline comments on edited lines, or perform a full TOML round-trip.
 
 ### 6. Route editor controls through retained UI commands
 
@@ -123,7 +129,7 @@ The editor entity inspector lets a developer inspect and lightly manipulate live
 
 - What searchable or hierarchical entity browser should grow out of the compact entity list?
 - Should picking move from bounding volumes to per-mesh acceleration, ID-buffer selection, or a hybrid?
-- How should editor mutations persist back into text scene files while preserving live reload's last-known-good behavior?
+- How should full editor transactions persist back into text scene files while preserving live reload's last-known-good behavior?
 - How should undo/redo become a project-wide transaction model that can group drags, text edits, component add/remove, and multi-entity changes?
 - What transform gizmo modes, snapping rules, and coordinate spaces are required before this feels like a real editor?
 - How should pause/step interact with future fixed-update scheduling and parallel systems?

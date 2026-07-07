@@ -445,6 +445,7 @@ live_project_run_frame_with_input :: proc(
 	frame_input := input
 	if editor_state != nil {
 		route_editor_test_input(editor_state, project.check.registry, &project.check.scene.world, &frame_input)
+		persist_editor_test_pending_scene_edit(project.check.project, project.check.scene.world, editor_state)
 	}
 	input_err := write_frame_input(&project.check.scene.world, frame_input)
 	if input_err != .None {

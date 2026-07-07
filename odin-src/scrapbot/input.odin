@@ -136,6 +136,8 @@ Editor_Test_Input_State :: struct {
 	undo_len:                    int,
 	redo_stack:                  [EDITOR_TEST_UNDO_CAPACITY]Editor_Test_Field_Edit_Command,
 	redo_len:                    int,
+	pending_scene_edit:          Editor_Test_Field_Edit_Command,
+	has_pending_scene_edit:      bool,
 }
 
 frame_input_default :: proc() -> Frame_Input {
@@ -304,6 +306,7 @@ editor_test_selected_entity_id :: proc(state: Editor_Test_Input_State, world: Ru
 editor_test_input_state_free :: proc(state: ^Editor_Test_Input_State) {
 	clear_editor_test_field_command_stack(&state.undo_stack, &state.undo_len)
 	clear_editor_test_field_command_stack(&state.redo_stack, &state.redo_len)
+	clear_editor_test_pending_scene_edit(state)
 }
 
 apply_editor_test_keyboard_edits :: proc(state: ^Editor_Test_Input_State, registry: Runtime_Component_Registry, world: ^Runtime_World, input: Frame_Input) -> bool {
@@ -560,6 +563,7 @@ apply_editor_test_field_value :: proc(
 	if push_undo {
 		push_editor_test_field_command(&state.undo_stack, &state.undo_len, entity, component_id, field_name, lane, old_value, new_value)
 		clear_editor_test_field_command_stack(&state.redo_stack, &state.redo_len)
+		set_editor_test_pending_scene_edit(state, entity, component_id, field_name, lane, old_value, new_value)
 	}
 	clear_editor_test_diagnostic(state)
 	return true
@@ -577,6 +581,7 @@ undo_editor_test_field_edit :: proc(world: ^Runtime_World, state: ^Editor_Test_I
 		editor_test_field_command_free(&command)
 		return false
 	}
+	set_editor_test_pending_scene_edit(state, command.entity, component_id, field_name, command.lane, command.new_value, command.old_value)
 	push_editor_test_field_command(&state.redo_stack, &state.redo_len, command.entity, component_id, field_name, command.lane, command.old_value, command.new_value)
 	select_editor_test_field_edit_command(world^, state, &command)
 	clear_editor_test_diagnostic(state)
@@ -596,6 +601,7 @@ redo_editor_test_field_edit :: proc(world: ^Runtime_World, state: ^Editor_Test_I
 		editor_test_field_command_free(&command)
 		return false
 	}
+	set_editor_test_pending_scene_edit(state, command.entity, component_id, field_name, command.lane, command.old_value, command.new_value)
 	push_editor_test_field_command(&state.undo_stack, &state.undo_len, command.entity, component_id, field_name, command.lane, command.old_value, command.new_value)
 	select_editor_test_field_edit_command(world^, state, &command)
 	clear_editor_test_diagnostic(state)
@@ -728,6 +734,38 @@ editor_test_field_command_component :: proc(command: ^Editor_Test_Field_Edit_Com
 
 editor_test_field_command_field :: proc(command: ^Editor_Test_Field_Edit_Command) -> string {
 	return command.field
+}
+
+set_editor_test_pending_scene_edit :: proc(
+	state: ^Editor_Test_Input_State,
+	entity: Entity_Handle,
+	component_id, field_name: string,
+	lane: int,
+	old_value, new_value: Runtime_Component_Value,
+) -> bool {
+	clear_editor_test_pending_scene_edit(state)
+	if !editor_test_field_command_init(&state.pending_scene_edit, entity, component_id, field_name, lane, old_value, new_value) {
+		return false
+	}
+	state.has_pending_scene_edit = true
+	return true
+}
+
+take_editor_test_pending_scene_edit :: proc(state: ^Editor_Test_Input_State) -> (Editor_Test_Field_Edit_Command, bool) {
+	if !state.has_pending_scene_edit {
+		return Editor_Test_Field_Edit_Command{}, false
+	}
+	command := state.pending_scene_edit
+	state.pending_scene_edit = Editor_Test_Field_Edit_Command{}
+	state.has_pending_scene_edit = false
+	return command, true
+}
+
+clear_editor_test_pending_scene_edit :: proc(state: ^Editor_Test_Input_State) {
+	if state.has_pending_scene_edit {
+		editor_test_field_command_free(&state.pending_scene_edit)
+		state.has_pending_scene_edit = false
+	}
 }
 
 editor_test_component_values_equal :: proc(left, right: Runtime_Component_Value) -> bool {

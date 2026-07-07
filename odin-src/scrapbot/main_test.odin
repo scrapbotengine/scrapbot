@@ -1339,6 +1339,16 @@ equals_float = 7.5
 
 	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
 	testing.expect_value(t, exit_code, 0)
+
+	scene_path := project_relative_path(root, "scenes/main.scene.toml")
+	defer delete(scene_path)
+	scene_contents, read_err := os.read_entire_file(scene_path, context.allocator)
+	if read_err != nil {
+		testing.fail_now(t, "failed to read edited scene file")
+	}
+	defer delete(scene_contents)
+	testing.expect(t, strings.contains(string(scene_contents), "\nb = 7.5\n"))
+	testing.expect(t, !strings.contains(string(scene_contents), "\nb = 2.0\n"))
 }
 
 @(test)

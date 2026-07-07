@@ -65,6 +65,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin editor inspector invalid-edit diagnostics slice
   - [x] Odin editor inspector clipboard copy/paste slice
   - [x] Odin editor selected-header copy slice
+  - [x] Odin editor inspector scene-field persistence slice
   - [x] Odin editor gizmo drag replay slice
   - [x] Odin bounded run command slice
   - [x] Odin bounded run reload reporting slice
