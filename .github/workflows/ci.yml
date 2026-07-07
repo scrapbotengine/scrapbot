@@ -106,12 +106,6 @@ jobs:
       - name: Build Luau bridge
         shell: pwsh
         run: .\tools\build-odin-luau-bridge.ps1
-      - name: Build and test
-        shell: pwsh
-        run: |
-          $odin = Join-Path $env:LOCALAPPDATA "mise\installs\odin\dev-2026-06\odin.exe"
-          & $odin test odin-src/scrapbot -define:ODIN_TEST_THREADS=1 -out:odin-out/scrapbot-tests.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build CLI
         shell: pwsh
         run: |

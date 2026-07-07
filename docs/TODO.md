@@ -187,6 +187,7 @@
 - [ ] Complete full editor window-loop Odin input, tool chrome, and replacement of the Zig editor path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
 - [ ] Investigate Linux CI standalone Odin CLI process crashes after `check`; `odin test` covers engine behavior, but Linux platform smoke currently avoids standalone simulation, render, visual, and run commands until the process crash is fixed.
+- [ ] Investigate the Windows CI `odin test odin-src/scrapbot` hang; Windows platform CI currently validates Odin by building the CLI and running standalone command smoke tests while macOS/Linux run the unit suite.
 - [x] Add retained scroll-view/vgroup routing for Odin inspector scrolling.
 - [x] Add visual scroll support to inspector component vgroups.
 - [x] Add first-pass Odin software render pixels for typed inspector controls.
