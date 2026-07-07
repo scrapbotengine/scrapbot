@@ -36,6 +36,15 @@ WGPU_Address_Mode :: u32
 WGPU_Filter_Mode :: u32
 WGPU_Mipmap_Filter_Mode :: u32
 WGPU_Compare_Function :: u32
+WGPU_Vertex_Step_Mode :: u32
+WGPU_Vertex_Format :: u32
+WGPU_Primitive_Topology :: u32
+WGPU_Front_Face :: u32
+WGPU_Cull_Mode :: u32
+WGPU_Stencil_Operation :: u32
+WGPU_Blend_Operation :: u32
+WGPU_Blend_Factor :: u32
+WGPU_Color_Write_Mask :: WGPU_Flags
 WGPU_Feature_Level :: u32
 WGPU_Power_Preference :: u32
 WGPU_Backend_Type :: u32
@@ -154,6 +163,74 @@ WGPU_COMPARE_FUNCTION_GREATER :: WGPU_Compare_Function(0x00000005)
 WGPU_COMPARE_FUNCTION_NOT_EQUAL :: WGPU_Compare_Function(0x00000006)
 WGPU_COMPARE_FUNCTION_GREATER_EQUAL :: WGPU_Compare_Function(0x00000007)
 WGPU_COMPARE_FUNCTION_ALWAYS :: WGPU_Compare_Function(0x00000008)
+
+WGPU_VERTEX_STEP_MODE_VERTEX_BUFFER_NOT_USED :: WGPU_Vertex_Step_Mode(0x00000000)
+WGPU_VERTEX_STEP_MODE_UNDEFINED :: WGPU_Vertex_Step_Mode(0x00000001)
+WGPU_VERTEX_STEP_MODE_VERTEX :: WGPU_Vertex_Step_Mode(0x00000002)
+WGPU_VERTEX_STEP_MODE_INSTANCE :: WGPU_Vertex_Step_Mode(0x00000003)
+
+WGPU_VERTEX_FORMAT_FLOAT32X2 :: WGPU_Vertex_Format(0x0000001D)
+WGPU_VERTEX_FORMAT_FLOAT32X3 :: WGPU_Vertex_Format(0x0000001E)
+WGPU_VERTEX_FORMAT_FLOAT32X4 :: WGPU_Vertex_Format(0x0000001F)
+
+WGPU_PRIMITIVE_TOPOLOGY_UNDEFINED :: WGPU_Primitive_Topology(0x00000000)
+WGPU_PRIMITIVE_TOPOLOGY_POINT_LIST :: WGPU_Primitive_Topology(0x00000001)
+WGPU_PRIMITIVE_TOPOLOGY_LINE_LIST :: WGPU_Primitive_Topology(0x00000002)
+WGPU_PRIMITIVE_TOPOLOGY_LINE_STRIP :: WGPU_Primitive_Topology(0x00000003)
+WGPU_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST :: WGPU_Primitive_Topology(0x00000004)
+WGPU_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP :: WGPU_Primitive_Topology(0x00000005)
+
+WGPU_FRONT_FACE_UNDEFINED :: WGPU_Front_Face(0x00000000)
+WGPU_FRONT_FACE_CCW :: WGPU_Front_Face(0x00000001)
+WGPU_FRONT_FACE_CW :: WGPU_Front_Face(0x00000002)
+
+WGPU_CULL_MODE_UNDEFINED :: WGPU_Cull_Mode(0x00000000)
+WGPU_CULL_MODE_NONE :: WGPU_Cull_Mode(0x00000001)
+WGPU_CULL_MODE_FRONT :: WGPU_Cull_Mode(0x00000002)
+WGPU_CULL_MODE_BACK :: WGPU_Cull_Mode(0x00000003)
+
+WGPU_STENCIL_OPERATION_UNDEFINED :: WGPU_Stencil_Operation(0x00000000)
+WGPU_STENCIL_OPERATION_KEEP :: WGPU_Stencil_Operation(0x00000001)
+WGPU_STENCIL_OPERATION_ZERO :: WGPU_Stencil_Operation(0x00000002)
+WGPU_STENCIL_OPERATION_REPLACE :: WGPU_Stencil_Operation(0x00000003)
+WGPU_STENCIL_OPERATION_INVERT :: WGPU_Stencil_Operation(0x00000004)
+WGPU_STENCIL_OPERATION_INCREMENT_CLAMP :: WGPU_Stencil_Operation(0x00000005)
+WGPU_STENCIL_OPERATION_DECREMENT_CLAMP :: WGPU_Stencil_Operation(0x00000006)
+WGPU_STENCIL_OPERATION_INCREMENT_WRAP :: WGPU_Stencil_Operation(0x00000007)
+WGPU_STENCIL_OPERATION_DECREMENT_WRAP :: WGPU_Stencil_Operation(0x00000008)
+
+WGPU_BLEND_OPERATION_UNDEFINED :: WGPU_Blend_Operation(0x00000000)
+WGPU_BLEND_OPERATION_ADD :: WGPU_Blend_Operation(0x00000001)
+WGPU_BLEND_OPERATION_SUBTRACT :: WGPU_Blend_Operation(0x00000002)
+WGPU_BLEND_OPERATION_REVERSE_SUBTRACT :: WGPU_Blend_Operation(0x00000003)
+WGPU_BLEND_OPERATION_MIN :: WGPU_Blend_Operation(0x00000004)
+WGPU_BLEND_OPERATION_MAX :: WGPU_Blend_Operation(0x00000005)
+
+WGPU_BLEND_FACTOR_UNDEFINED :: WGPU_Blend_Factor(0x00000000)
+WGPU_BLEND_FACTOR_ZERO :: WGPU_Blend_Factor(0x00000001)
+WGPU_BLEND_FACTOR_ONE :: WGPU_Blend_Factor(0x00000002)
+WGPU_BLEND_FACTOR_SRC :: WGPU_Blend_Factor(0x00000003)
+WGPU_BLEND_FACTOR_ONE_MINUS_SRC :: WGPU_Blend_Factor(0x00000004)
+WGPU_BLEND_FACTOR_SRC_ALPHA :: WGPU_Blend_Factor(0x00000005)
+WGPU_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA :: WGPU_Blend_Factor(0x00000006)
+WGPU_BLEND_FACTOR_DST :: WGPU_Blend_Factor(0x00000007)
+WGPU_BLEND_FACTOR_ONE_MINUS_DST :: WGPU_Blend_Factor(0x00000008)
+WGPU_BLEND_FACTOR_DST_ALPHA :: WGPU_Blend_Factor(0x00000009)
+WGPU_BLEND_FACTOR_ONE_MINUS_DST_ALPHA :: WGPU_Blend_Factor(0x0000000A)
+WGPU_BLEND_FACTOR_SRC_ALPHA_SATURATED :: WGPU_Blend_Factor(0x0000000B)
+WGPU_BLEND_FACTOR_CONSTANT :: WGPU_Blend_Factor(0x0000000C)
+WGPU_BLEND_FACTOR_ONE_MINUS_CONSTANT :: WGPU_Blend_Factor(0x0000000D)
+WGPU_BLEND_FACTOR_SRC1 :: WGPU_Blend_Factor(0x0000000E)
+WGPU_BLEND_FACTOR_ONE_MINUS_SRC1 :: WGPU_Blend_Factor(0x0000000F)
+WGPU_BLEND_FACTOR_SRC1_ALPHA :: WGPU_Blend_Factor(0x00000010)
+WGPU_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA :: WGPU_Blend_Factor(0x00000011)
+
+WGPU_COLOR_WRITE_MASK_NONE :: WGPU_Color_Write_Mask(0x0000000000000000)
+WGPU_COLOR_WRITE_MASK_RED :: WGPU_Color_Write_Mask(0x0000000000000001)
+WGPU_COLOR_WRITE_MASK_GREEN :: WGPU_Color_Write_Mask(0x0000000000000002)
+WGPU_COLOR_WRITE_MASK_BLUE :: WGPU_Color_Write_Mask(0x0000000000000004)
+WGPU_COLOR_WRITE_MASK_ALPHA :: WGPU_Color_Write_Mask(0x0000000000000008)
+WGPU_COLOR_WRITE_MASK_ALL :: WGPU_Color_Write_Mask(0x000000000000000F)
 
 WGPU_FEATURE_LEVEL_COMPATIBILITY :: WGPU_Feature_Level(0x00000001)
 WGPU_FEATURE_LEVEL_CORE :: WGPU_Feature_Level(0x00000002)
@@ -488,6 +565,121 @@ WGPU_Pipeline_Layout_Descriptor :: struct #align(align_of(rawptr)) {
 	bind_group_layouts:      [^]WGPU_Bind_Group_Layout,
 }
 
+WGPU_Shader_Source_WGSL :: struct #align(align_of(rawptr)) {
+	chain: WGPU_Chained_Struct,
+	code:  WGPU_String_View,
+}
+
+WGPU_Shader_Module_Descriptor :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	label:         WGPU_String_View,
+}
+
+WGPU_Constant_Entry :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	key:           WGPU_String_View,
+	value:         f64,
+}
+
+WGPU_Vertex_Attribute :: struct {
+	format:          WGPU_Vertex_Format,
+	offset:          u64,
+	shader_location: u32,
+}
+
+WGPU_Vertex_Buffer_Layout :: struct #align(align_of(rawptr)) {
+	step_mode:       WGPU_Vertex_Step_Mode,
+	array_stride:    u64,
+	attribute_count: c.size_t,
+	attributes:      [^]WGPU_Vertex_Attribute,
+}
+
+WGPU_Vertex_State :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	module:        WGPU_Shader_Module,
+	entry_point:   WGPU_String_View,
+	constant_count: c.size_t,
+	constants:     [^]WGPU_Constant_Entry,
+	buffer_count:  c.size_t,
+	buffers:       [^]WGPU_Vertex_Buffer_Layout,
+}
+
+WGPU_Primitive_State :: struct #align(align_of(rawptr)) {
+	next_in_chain:     ^WGPU_Chained_Struct,
+	topology:          WGPU_Primitive_Topology,
+	strip_index_format: WGPU_Index_Format,
+	front_face:        WGPU_Front_Face,
+	cull_mode:         WGPU_Cull_Mode,
+	unclipped_depth:   WGPU_Bool,
+}
+
+WGPU_Stencil_Face_State :: struct {
+	compare:       WGPU_Compare_Function,
+	fail_op:       WGPU_Stencil_Operation,
+	depth_fail_op: WGPU_Stencil_Operation,
+	pass_op:       WGPU_Stencil_Operation,
+}
+
+WGPU_Depth_Stencil_State :: struct #align(align_of(rawptr)) {
+	next_in_chain:          ^WGPU_Chained_Struct,
+	format:                 WGPU_Texture_Format,
+	depth_write_enabled:    WGPU_Optional_Bool,
+	depth_compare:          WGPU_Compare_Function,
+	stencil_front:          WGPU_Stencil_Face_State,
+	stencil_back:           WGPU_Stencil_Face_State,
+	stencil_read_mask:      u32,
+	stencil_write_mask:     u32,
+	depth_bias:             i32,
+	depth_bias_slope_scale: f32,
+	depth_bias_clamp:       f32,
+}
+
+WGPU_Multisample_State :: struct #align(align_of(rawptr)) {
+	next_in_chain:            ^WGPU_Chained_Struct,
+	count:                    u32,
+	mask:                     u32,
+	alpha_to_coverage_enabled: WGPU_Bool,
+}
+
+WGPU_Blend_Component :: struct {
+	operation:  WGPU_Blend_Operation,
+	src_factor: WGPU_Blend_Factor,
+	dst_factor: WGPU_Blend_Factor,
+}
+
+WGPU_Blend_State :: struct {
+	color: WGPU_Blend_Component,
+	alpha: WGPU_Blend_Component,
+}
+
+WGPU_Color_Target_State :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	format:        WGPU_Texture_Format,
+	blend:         ^WGPU_Blend_State,
+	write_mask:    WGPU_Color_Write_Mask,
+}
+
+WGPU_Fragment_State :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	module:        WGPU_Shader_Module,
+	entry_point:   WGPU_String_View,
+	constant_count: c.size_t,
+	constants:     [^]WGPU_Constant_Entry,
+	target_count:  c.size_t,
+	targets:       [^]WGPU_Color_Target_State,
+}
+
+WGPU_Render_Pipeline_Descriptor :: struct #align(align_of(rawptr)) {
+	next_in_chain: ^WGPU_Chained_Struct,
+	label:         WGPU_String_View,
+	layout:        WGPU_Pipeline_Layout,
+	vertex:        WGPU_Vertex_State,
+	primitive:     WGPU_Primitive_State,
+	depth_stencil: ^WGPU_Depth_Stencil_State,
+	multisample:   WGPU_Multisample_State,
+	fragment:      ^WGPU_Fragment_State,
+}
+
 WGPU_Instance_Capabilities :: struct #align(align_of(rawptr)) {
 	next_in_chain:            ^WGPU_Chained_Struct_Out,
 	timed_wait_any_enable:    WGPU_Bool,
@@ -579,6 +771,8 @@ WGPU_Device_Create_Bind_Group_Layout_Proc :: proc "c" (device: WGPU_Device, desc
 WGPU_Device_Create_Pipeline_Layout_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Pipeline_Layout_Descriptor) -> WGPU_Pipeline_Layout
 WGPU_Device_Create_Sampler_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Sampler_Descriptor) -> WGPU_Sampler
 WGPU_Device_Create_Bind_Group_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Bind_Group_Descriptor) -> WGPU_Bind_Group
+WGPU_Device_Create_Shader_Module_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Shader_Module_Descriptor) -> WGPU_Shader_Module
+WGPU_Device_Create_Render_Pipeline_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Render_Pipeline_Descriptor) -> WGPU_Render_Pipeline
 WGPU_Device_Create_Command_Encoder_Proc :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Command_Encoder_Descriptor) -> WGPU_Command_Encoder
 WGPU_Texture_Create_View_Proc :: proc "c" (texture: WGPU_Texture, descriptor: ^WGPU_Texture_View_Descriptor) -> WGPU_Texture_View
 WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc :: proc "c" (encoder: WGPU_Command_Encoder, source: ^WGPU_Texel_Copy_Texture_Info, destination: ^WGPU_Texel_Copy_Buffer_Info, copy_size: ^WGPU_Extent_3D)
@@ -605,6 +799,8 @@ WGPU_Bind_Group_Layout_Release_Proc :: proc "c" (bind_group_layout: WGPU_Bind_Gr
 WGPU_Pipeline_Layout_Release_Proc :: proc "c" (pipeline_layout: WGPU_Pipeline_Layout)
 WGPU_Sampler_Release_Proc :: proc "c" (sampler: WGPU_Sampler)
 WGPU_Bind_Group_Release_Proc :: proc "c" (bind_group: WGPU_Bind_Group)
+WGPU_Shader_Module_Release_Proc :: proc "c" (shader_module: WGPU_Shader_Module)
+WGPU_Render_Pipeline_Release_Proc :: proc "c" (pipeline: WGPU_Render_Pipeline)
 WGPU_Command_Encoder_Release_Proc :: proc "c" (encoder: WGPU_Command_Encoder)
 WGPU_Command_Buffer_Release_Proc :: proc "c" (command_buffer: WGPU_Command_Buffer)
 WGPU_Render_Pass_Encoder_Release_Proc :: proc "c" (render_pass: WGPU_Render_Pass_Encoder)
@@ -627,6 +823,8 @@ WGPU_SYMBOL_DEVICE_CREATE_BIND_GROUP_LAYOUT :: "wgpuDeviceCreateBindGroupLayout"
 WGPU_SYMBOL_DEVICE_CREATE_PIPELINE_LAYOUT :: "wgpuDeviceCreatePipelineLayout"
 WGPU_SYMBOL_DEVICE_CREATE_SAMPLER :: "wgpuDeviceCreateSampler"
 WGPU_SYMBOL_DEVICE_CREATE_BIND_GROUP :: "wgpuDeviceCreateBindGroup"
+WGPU_SYMBOL_DEVICE_CREATE_SHADER_MODULE :: "wgpuDeviceCreateShaderModule"
+WGPU_SYMBOL_DEVICE_CREATE_RENDER_PIPELINE :: "wgpuDeviceCreateRenderPipeline"
 WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER :: "wgpuDeviceCreateCommandEncoder"
 WGPU_SYMBOL_TEXTURE_CREATE_VIEW :: "wgpuTextureCreateView"
 WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER :: "wgpuCommandEncoderCopyTextureToBuffer"
@@ -653,6 +851,8 @@ WGPU_SYMBOL_BIND_GROUP_LAYOUT_RELEASE :: "wgpuBindGroupLayoutRelease"
 WGPU_SYMBOL_PIPELINE_LAYOUT_RELEASE :: "wgpuPipelineLayoutRelease"
 WGPU_SYMBOL_SAMPLER_RELEASE :: "wgpuSamplerRelease"
 WGPU_SYMBOL_BIND_GROUP_RELEASE :: "wgpuBindGroupRelease"
+WGPU_SYMBOL_SHADER_MODULE_RELEASE :: "wgpuShaderModuleRelease"
+WGPU_SYMBOL_RENDER_PIPELINE_RELEASE :: "wgpuRenderPipelineRelease"
 WGPU_SYMBOL_COMMAND_ENCODER_RELEASE :: "wgpuCommandEncoderRelease"
 WGPU_SYMBOL_COMMAND_BUFFER_RELEASE :: "wgpuCommandBufferRelease"
 WGPU_SYMBOL_RENDER_PASS_ENCODER_RELEASE :: "wgpuRenderPassEncoderRelease"
@@ -676,6 +876,8 @@ WGPU_Offscreen_Procs :: struct {
 	device_create_pipeline_layout:          WGPU_Device_Create_Pipeline_Layout_Proc,
 	device_create_sampler:                  WGPU_Device_Create_Sampler_Proc,
 	device_create_bind_group:               WGPU_Device_Create_Bind_Group_Proc,
+	device_create_shader_module:            WGPU_Device_Create_Shader_Module_Proc,
+	device_create_render_pipeline:          WGPU_Device_Create_Render_Pipeline_Proc,
 	device_create_command_encoder:          WGPU_Device_Create_Command_Encoder_Proc,
 	texture_create_view:                    WGPU_Texture_Create_View_Proc,
 	command_encoder_copy_texture_to_buffer: WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc,
@@ -702,6 +904,8 @@ WGPU_Offscreen_Procs :: struct {
 	pipeline_layout_release:                WGPU_Pipeline_Layout_Release_Proc,
 	sampler_release:                        WGPU_Sampler_Release_Proc,
 	bind_group_release:                     WGPU_Bind_Group_Release_Proc,
+	shader_module_release:                  WGPU_Shader_Module_Release_Proc,
+	render_pipeline_release:                WGPU_Render_Pipeline_Release_Proc,
 	command_encoder_release:                WGPU_Command_Encoder_Release_Proc,
 	command_buffer_release:                 WGPU_Command_Buffer_Release_Proc,
 	render_pass_encoder_release:            WGPU_Render_Pass_Encoder_Release_Proc,
@@ -1061,6 +1265,155 @@ wgpu_pipeline_layout_descriptor :: proc(label: WGPU_String_View, bind_group_layo
 	}
 }
 
+wgpu_shader_source_wgsl :: proc(code: WGPU_String_View) -> WGPU_Shader_Source_WGSL {
+	return WGPU_Shader_Source_WGSL{
+		chain = WGPU_Chained_Struct{next = nil, s_type = WGPU_STYPE_SHADER_SOURCE_WGSL},
+		code = code,
+	}
+}
+
+wgpu_shader_module_descriptor_wgsl :: proc(label: WGPU_String_View, source: ^WGPU_Shader_Source_WGSL) -> WGPU_Shader_Module_Descriptor {
+	return WGPU_Shader_Module_Descriptor{
+		next_in_chain = &source.chain,
+		label = label,
+	}
+}
+
+wgpu_vertex_attribute :: proc(format: WGPU_Vertex_Format, offset: u64, shader_location: u32) -> WGPU_Vertex_Attribute {
+	return WGPU_Vertex_Attribute{
+		format = format,
+		offset = offset,
+		shader_location = shader_location,
+	}
+}
+
+wgpu_vertex_buffer_layout :: proc(step_mode: WGPU_Vertex_Step_Mode, array_stride: u64, attributes: [^]WGPU_Vertex_Attribute, attribute_count: c.size_t) -> WGPU_Vertex_Buffer_Layout {
+	return WGPU_Vertex_Buffer_Layout{
+		step_mode = step_mode,
+		array_stride = array_stride,
+		attribute_count = attribute_count,
+		attributes = attributes,
+	}
+}
+
+wgpu_vertex_state :: proc(module: WGPU_Shader_Module, entry_point: WGPU_String_View, buffers: [^]WGPU_Vertex_Buffer_Layout = nil, buffer_count: c.size_t = 0) -> WGPU_Vertex_State {
+	return WGPU_Vertex_State{
+		next_in_chain = nil,
+		module = module,
+		entry_point = entry_point,
+		constant_count = 0,
+		constants = nil,
+		buffer_count = buffer_count,
+		buffers = buffers,
+	}
+}
+
+wgpu_primitive_state :: proc(cull_mode: WGPU_Cull_Mode = WGPU_CULL_MODE_NONE) -> WGPU_Primitive_State {
+	return WGPU_Primitive_State{
+		next_in_chain = nil,
+		topology = WGPU_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		strip_index_format = WGPU_INDEX_FORMAT_UNDEFINED,
+		front_face = WGPU_FRONT_FACE_CCW,
+		cull_mode = cull_mode,
+		unclipped_depth = WGPU_FALSE,
+	}
+}
+
+wgpu_stencil_face_state_default :: proc() -> WGPU_Stencil_Face_State {
+	return WGPU_Stencil_Face_State{
+		compare = WGPU_COMPARE_FUNCTION_ALWAYS,
+		fail_op = WGPU_STENCIL_OPERATION_KEEP,
+		depth_fail_op = WGPU_STENCIL_OPERATION_KEEP,
+		pass_op = WGPU_STENCIL_OPERATION_KEEP,
+	}
+}
+
+wgpu_depth_stencil_state :: proc(format: WGPU_Texture_Format, depth_write_enabled: WGPU_Optional_Bool = WGPU_OPTIONAL_BOOL_TRUE, depth_compare: WGPU_Compare_Function = WGPU_COMPARE_FUNCTION_LESS) -> WGPU_Depth_Stencil_State {
+	return WGPU_Depth_Stencil_State{
+		next_in_chain = nil,
+		format = format,
+		depth_write_enabled = depth_write_enabled,
+		depth_compare = depth_compare,
+		stencil_front = wgpu_stencil_face_state_default(),
+		stencil_back = wgpu_stencil_face_state_default(),
+		stencil_read_mask = 0xFFFFFFFF,
+		stencil_write_mask = 0xFFFFFFFF,
+		depth_bias = 0,
+		depth_bias_slope_scale = 0,
+		depth_bias_clamp = 0,
+	}
+}
+
+wgpu_multisample_state_default :: proc() -> WGPU_Multisample_State {
+	return WGPU_Multisample_State{
+		next_in_chain = nil,
+		count = 1,
+		mask = 0xFFFFFFFF,
+		alpha_to_coverage_enabled = WGPU_FALSE,
+	}
+}
+
+wgpu_blend_component_replace :: proc() -> WGPU_Blend_Component {
+	return WGPU_Blend_Component{
+		operation = WGPU_BLEND_OPERATION_ADD,
+		src_factor = WGPU_BLEND_FACTOR_ONE,
+		dst_factor = WGPU_BLEND_FACTOR_ZERO,
+	}
+}
+
+wgpu_blend_component_over :: proc() -> WGPU_Blend_Component {
+	return WGPU_Blend_Component{
+		operation = WGPU_BLEND_OPERATION_ADD,
+		src_factor = WGPU_BLEND_FACTOR_ONE,
+		dst_factor = WGPU_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+	}
+}
+
+wgpu_blend_state_alpha_blending :: proc() -> WGPU_Blend_State {
+	return WGPU_Blend_State{
+		color = WGPU_Blend_Component{
+			operation = WGPU_BLEND_OPERATION_ADD,
+			src_factor = WGPU_BLEND_FACTOR_SRC_ALPHA,
+			dst_factor = WGPU_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+		},
+		alpha = wgpu_blend_component_over(),
+	}
+}
+
+wgpu_color_target_state :: proc(format: WGPU_Texture_Format, blend: ^WGPU_Blend_State = nil) -> WGPU_Color_Target_State {
+	return WGPU_Color_Target_State{
+		next_in_chain = nil,
+		format = format,
+		blend = blend,
+		write_mask = WGPU_COLOR_WRITE_MASK_ALL,
+	}
+}
+
+wgpu_fragment_state :: proc(module: WGPU_Shader_Module, entry_point: WGPU_String_View, targets: [^]WGPU_Color_Target_State, target_count: c.size_t) -> WGPU_Fragment_State {
+	return WGPU_Fragment_State{
+		next_in_chain = nil,
+		module = module,
+		entry_point = entry_point,
+		constant_count = 0,
+		constants = nil,
+		target_count = target_count,
+		targets = targets,
+	}
+}
+
+wgpu_render_pipeline_descriptor :: proc(label: WGPU_String_View, layout: WGPU_Pipeline_Layout, vertex: WGPU_Vertex_State, primitive: WGPU_Primitive_State, multisample: WGPU_Multisample_State, fragment: ^WGPU_Fragment_State = nil, depth_stencil: ^WGPU_Depth_Stencil_State = nil) -> WGPU_Render_Pipeline_Descriptor {
+	return WGPU_Render_Pipeline_Descriptor{
+		next_in_chain = nil,
+		label = label,
+		layout = layout,
+		vertex = vertex,
+		primitive = primitive,
+		depth_stencil = depth_stencil,
+		multisample = multisample,
+		fragment = fragment,
+	}
+}
+
 wgpu_instance_descriptor_default :: proc() -> WGPU_Instance_Descriptor {
 	return WGPU_Instance_Descriptor{
 		next_in_chain = nil,
@@ -1204,6 +1557,14 @@ wgpu_resolve_offscreen_procs :: proc(resolver: WGPU_Symbol_Resolver, user_data: 
 	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_BIND_GROUP, false
 	procs.device_create_bind_group = cast(WGPU_Device_Create_Bind_Group_Proc)symbol
 
+	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_SHADER_MODULE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_SHADER_MODULE, false
+	procs.device_create_shader_module = cast(WGPU_Device_Create_Shader_Module_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_RENDER_PIPELINE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_RENDER_PIPELINE, false
+	procs.device_create_render_pipeline = cast(WGPU_Device_Create_Render_Pipeline_Proc)symbol
+
 	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER, false
 	procs.device_create_command_encoder = cast(WGPU_Device_Create_Command_Encoder_Proc)symbol
@@ -1307,6 +1668,14 @@ wgpu_resolve_offscreen_procs :: proc(resolver: WGPU_Symbol_Resolver, user_data: 
 	symbol = resolver(WGPU_SYMBOL_BIND_GROUP_RELEASE, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_BIND_GROUP_RELEASE, false
 	procs.bind_group_release = cast(WGPU_Bind_Group_Release_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_SHADER_MODULE_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_SHADER_MODULE_RELEASE, false
+	procs.shader_module_release = cast(WGPU_Shader_Module_Release_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_RENDER_PIPELINE_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_RENDER_PIPELINE_RELEASE, false
+	procs.render_pipeline_release = cast(WGPU_Render_Pipeline_Release_Proc)symbol
 
 	symbol = resolver(WGPU_SYMBOL_COMMAND_ENCODER_RELEASE, user_data)
 	if symbol == nil do return procs, WGPU_SYMBOL_COMMAND_ENCODER_RELEASE, false

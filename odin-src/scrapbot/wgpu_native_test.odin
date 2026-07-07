@@ -31,6 +31,17 @@ test_wgpu_abi_structs_have_c_pointer_alignment :: proc(t: ^testing.T) {
 	testing.expect_value(t, align_of(WGPU_Bind_Group_Descriptor), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Sampler_Descriptor), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Pipeline_Layout_Descriptor), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Shader_Source_WGSL), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Shader_Module_Descriptor), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Constant_Entry), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Vertex_Buffer_Layout), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Vertex_State), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Primitive_State), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Depth_Stencil_State), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Multisample_State), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Color_Target_State), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Fragment_State), align_of(rawptr))
+	testing.expect_value(t, align_of(WGPU_Render_Pipeline_Descriptor), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Instance_Capabilities), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Instance_Descriptor), align_of(rawptr))
 	testing.expect_value(t, align_of(WGPU_Request_Adapter_Options), align_of(rawptr))
@@ -283,6 +294,121 @@ test_wgpu_sampler_and_pipeline_layout_descriptors_match_renderer_defaults :: pro
 }
 
 @(test)
+test_wgpu_shader_module_descriptor_points_at_wgsl_source :: proc(t: ^testing.T) {
+	label := wgpu_string_view_from_raw(rawptr(uintptr(0xCAFE)), 6)
+	code := wgpu_string_view_from_raw(rawptr(uintptr(0xBEEF)), 19)
+	source := wgpu_shader_source_wgsl(code)
+	descriptor := wgpu_shader_module_descriptor_wgsl(label, &source)
+
+	testing.expect_value(t, source.chain.next, (^WGPU_Chained_Struct)(nil))
+	testing.expect_value(t, source.chain.s_type, WGPU_STYPE_SHADER_SOURCE_WGSL)
+	testing.expect_value(t, source.code, code)
+	testing.expect_value(t, descriptor.next_in_chain, &source.chain)
+	testing.expect_value(t, descriptor.label, label)
+}
+
+@(test)
+test_wgpu_blend_state_matches_ui_alpha_defaults :: proc(t: ^testing.T) {
+	replace := wgpu_blend_component_replace()
+	testing.expect_value(t, replace.operation, WGPU_BLEND_OPERATION_ADD)
+	testing.expect_value(t, replace.src_factor, WGPU_BLEND_FACTOR_ONE)
+	testing.expect_value(t, replace.dst_factor, WGPU_BLEND_FACTOR_ZERO)
+
+	over := wgpu_blend_component_over()
+	testing.expect_value(t, over.operation, WGPU_BLEND_OPERATION_ADD)
+	testing.expect_value(t, over.src_factor, WGPU_BLEND_FACTOR_ONE)
+	testing.expect_value(t, over.dst_factor, WGPU_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
+
+	alpha := wgpu_blend_state_alpha_blending()
+	testing.expect_value(t, alpha.color.operation, WGPU_BLEND_OPERATION_ADD)
+	testing.expect_value(t, alpha.color.src_factor, WGPU_BLEND_FACTOR_SRC_ALPHA)
+	testing.expect_value(t, alpha.color.dst_factor, WGPU_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
+	testing.expect_value(t, alpha.alpha, over)
+}
+
+@(test)
+test_wgpu_render_pipeline_descriptor_matches_mesh_defaults :: proc(t: ^testing.T) {
+	module := WGPU_Shader_Module(rawptr(uintptr(0x4444)))
+	layout := WGPU_Pipeline_Layout(rawptr(uintptr(0x5555)))
+	vertex_entry := wgpu_string_view_from_raw(rawptr(uintptr(0xAAAA)), 7)
+	fragment_entry := wgpu_string_view_from_raw(rawptr(uintptr(0xBBBB)), 7)
+	label := wgpu_string_view_from_raw(rawptr(uintptr(0xCCCC)), 13)
+	attributes := [?]WGPU_Vertex_Attribute{
+		wgpu_vertex_attribute(WGPU_VERTEX_FORMAT_FLOAT32X3, 0, 0),
+		wgpu_vertex_attribute(WGPU_VERTEX_FORMAT_FLOAT32X2, 12, 1),
+		wgpu_vertex_attribute(WGPU_VERTEX_FORMAT_FLOAT32X4, 20, 2),
+	}
+	buffers := [?]WGPU_Vertex_Buffer_Layout{
+		wgpu_vertex_buffer_layout(WGPU_VERTEX_STEP_MODE_VERTEX, 36, &attributes[0], len(attributes)),
+	}
+	vertex := wgpu_vertex_state(module, vertex_entry, &buffers[0], len(buffers))
+	primitive := wgpu_primitive_state(WGPU_CULL_MODE_BACK)
+	depth := wgpu_depth_stencil_state(WGPU_DEPTH_FORMAT)
+	multisample := wgpu_multisample_state_default()
+	blend := wgpu_blend_state_alpha_blending()
+	targets := [?]WGPU_Color_Target_State{
+		wgpu_color_target_state(WGPU_DEFAULT_TARGET_FORMAT, &blend),
+	}
+	fragment := wgpu_fragment_state(module, fragment_entry, &targets[0], len(targets))
+	descriptor := wgpu_render_pipeline_descriptor(label, layout, vertex, primitive, multisample, &fragment, &depth)
+
+	testing.expect_value(t, attributes[0].format, WGPU_VERTEX_FORMAT_FLOAT32X3)
+	testing.expect_value(t, attributes[0].offset, u64(0))
+	testing.expect_value(t, attributes[0].shader_location, u32(0))
+	testing.expect_value(t, attributes[1].format, WGPU_VERTEX_FORMAT_FLOAT32X2)
+	testing.expect_value(t, attributes[1].offset, u64(12))
+	testing.expect_value(t, attributes[2].format, WGPU_VERTEX_FORMAT_FLOAT32X4)
+	testing.expect_value(t, attributes[2].offset, u64(20))
+
+	testing.expect_value(t, buffers[0].step_mode, WGPU_VERTEX_STEP_MODE_VERTEX)
+	testing.expect_value(t, buffers[0].array_stride, u64(36))
+	testing.expect_value(t, buffers[0].attribute_count, c.size_t(3))
+	testing.expect_value(t, buffers[0].attributes, &attributes[0])
+
+	testing.expect_value(t, vertex.next_in_chain, (^WGPU_Chained_Struct)(nil))
+	testing.expect_value(t, vertex.module, module)
+	testing.expect_value(t, vertex.entry_point, vertex_entry)
+	testing.expect_value(t, vertex.constant_count, c.size_t(0))
+	testing.expect_value(t, vertex.constants, ([^]WGPU_Constant_Entry)(nil))
+	testing.expect_value(t, vertex.buffer_count, c.size_t(1))
+	testing.expect_value(t, vertex.buffers, &buffers[0])
+
+	testing.expect_value(t, primitive.topology, WGPU_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+	testing.expect_value(t, primitive.strip_index_format, WGPU_INDEX_FORMAT_UNDEFINED)
+	testing.expect_value(t, primitive.front_face, WGPU_FRONT_FACE_CCW)
+	testing.expect_value(t, primitive.cull_mode, WGPU_CULL_MODE_BACK)
+	testing.expect_value(t, primitive.unclipped_depth, WGPU_FALSE)
+
+	testing.expect_value(t, depth.format, WGPU_DEPTH_FORMAT)
+	testing.expect_value(t, depth.depth_write_enabled, WGPU_OPTIONAL_BOOL_TRUE)
+	testing.expect_value(t, depth.depth_compare, WGPU_COMPARE_FUNCTION_LESS)
+	testing.expect_value(t, depth.stencil_front, wgpu_stencil_face_state_default())
+	testing.expect_value(t, depth.stencil_read_mask, u32(0xFFFFFFFF))
+	testing.expect_value(t, depth.stencil_write_mask, u32(0xFFFFFFFF))
+
+	testing.expect_value(t, multisample.count, u32(1))
+	testing.expect_value(t, multisample.mask, u32(0xFFFFFFFF))
+	testing.expect_value(t, multisample.alpha_to_coverage_enabled, WGPU_FALSE)
+
+	testing.expect_value(t, targets[0].format, WGPU_DEFAULT_TARGET_FORMAT)
+	testing.expect_value(t, targets[0].blend, &blend)
+	testing.expect_value(t, targets[0].write_mask, WGPU_COLOR_WRITE_MASK_ALL)
+	testing.expect_value(t, fragment.module, module)
+	testing.expect_value(t, fragment.entry_point, fragment_entry)
+	testing.expect_value(t, fragment.target_count, c.size_t(1))
+	testing.expect_value(t, fragment.targets, &targets[0])
+
+	testing.expect_value(t, descriptor.next_in_chain, (^WGPU_Chained_Struct)(nil))
+	testing.expect_value(t, descriptor.label, label)
+	testing.expect_value(t, descriptor.layout, layout)
+	testing.expect_value(t, descriptor.vertex, vertex)
+	testing.expect_value(t, descriptor.primitive, primitive)
+	testing.expect_value(t, descriptor.depth_stencil, &depth)
+	testing.expect_value(t, descriptor.multisample, multisample)
+	testing.expect_value(t, descriptor.fragment, &fragment)
+}
+
+@(test)
 test_wgpu_buffer_map_callback_info_uses_process_events_mode :: proc(t: ^testing.T) {
 	userdata1 := rawptr(uintptr(0x1111))
 	userdata2 := rawptr(uintptr(0x2222))
@@ -349,7 +475,7 @@ test_wgpu_offscreen_proc_table_resolves_required_symbols :: proc(t: ^testing.T) 
 
 	testing.expect_value(t, ok, true)
 	testing.expect_value(t, missing, "")
-	testing.expect_value(t, ctx.calls, 43)
+	testing.expect_value(t, ctx.calls, 47)
 	testing.expect_value(t, ctx.last_user_data, rawptr(&ctx))
 
 	instance := procs.create_instance((^WGPU_Instance_Descriptor)(nil))
@@ -366,6 +492,10 @@ test_wgpu_offscreen_proc_table_resolves_required_symbols :: proc(t: ^testing.T) 
 	testing.expect_value(t, sampler, WGPU_Sampler(rawptr(uintptr(0x1011))))
 	bind_group := procs.device_create_bind_group(WGPU_Device(nil), (^WGPU_Bind_Group_Descriptor)(nil))
 	testing.expect_value(t, bind_group, WGPU_Bind_Group(rawptr(uintptr(0x1012))))
+	shader_module := procs.device_create_shader_module(WGPU_Device(nil), (^WGPU_Shader_Module_Descriptor)(nil))
+	testing.expect_value(t, shader_module, WGPU_Shader_Module(rawptr(uintptr(0x1013))))
+	render_pipeline := procs.device_create_render_pipeline(WGPU_Device(nil), (^WGPU_Render_Pipeline_Descriptor)(nil))
+	testing.expect_value(t, render_pipeline, WGPU_Render_Pipeline(rawptr(uintptr(0x1014))))
 
 	command_buffer := procs.command_encoder_finish(WGPU_Command_Encoder(nil), (^WGPU_Command_Buffer_Descriptor)(nil))
 	testing.expect_value(t, command_buffer, WGPU_Command_Buffer(rawptr(uintptr(0x1006))))
@@ -396,7 +526,7 @@ test_wgpu_offscreen_proc_table_reports_first_missing_symbol :: proc(t: ^testing.
 
 	testing.expect_value(t, ok, false)
 	testing.expect_value(t, missing, WGPU_SYMBOL_COMMAND_ENCODER_FINISH)
-	testing.expect_value(t, ctx.calls, 15)
+	testing.expect_value(t, ctx.calls, 17)
 }
 
 @(test)
@@ -434,6 +564,10 @@ test_wgpu_offscreen_dynamic_library_loads_proc_table :: proc(t: ^testing.T) {
 	testing.expect_value(t, sampler, WGPU_Sampler(rawptr(uintptr(0x2011))))
 	bind_group := loaded.procs.device_create_bind_group(WGPU_Device(nil), (^WGPU_Bind_Group_Descriptor)(nil))
 	testing.expect_value(t, bind_group, WGPU_Bind_Group(rawptr(uintptr(0x2012))))
+	shader_module := loaded.procs.device_create_shader_module(WGPU_Device(nil), (^WGPU_Shader_Module_Descriptor)(nil))
+	testing.expect_value(t, shader_module, WGPU_Shader_Module(rawptr(uintptr(0x2013))))
+	render_pipeline := loaded.procs.device_create_render_pipeline(WGPU_Device(nil), (^WGPU_Render_Pipeline_Descriptor)(nil))
+	testing.expect_value(t, render_pipeline, WGPU_Render_Pipeline(rawptr(uintptr(0x2014))))
 
 	render_pass := loaded.procs.command_encoder_begin_render_pass(WGPU_Command_Encoder(nil), (^WGPU_Render_Pass_Descriptor)(nil))
 	testing.expect_value(t, render_pass, WGPU_Render_Pass_Encoder(rawptr(uintptr(0x200E))))
@@ -646,6 +780,20 @@ wgpuDeviceCreateBindGroup :: proc "c" (device, descriptor: rawptr) -> rawptr {
 }
 
 @(export)
+wgpuDeviceCreateShaderModule :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x2013))
+}
+
+@(export)
+wgpuDeviceCreateRenderPipeline :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x2014))
+}
+
+@(export)
 wgpuDeviceCreateCommandEncoder :: proc "c" (device, descriptor: rawptr) -> rawptr {
 	_ = device
 	_ = descriptor
@@ -829,6 +977,16 @@ wgpuBindGroupRelease :: proc "c" (bind_group: rawptr) {
 }
 
 @(export)
+wgpuShaderModuleRelease :: proc "c" (shader_module: rawptr) {
+	_ = shader_module
+}
+
+@(export)
+wgpuRenderPipelineRelease :: proc "c" (pipeline: rawptr) {
+	_ = pipeline
+}
+
+@(export)
 wgpuCommandEncoderRelease :: proc "c" (encoder: rawptr) {
 	_ = encoder
 }
@@ -964,6 +1122,20 @@ wgpuDeviceCreateBindGroup :: proc "c" (device, descriptor: rawptr) -> rawptr {
 	_ = device
 	_ = descriptor
 	return rawptr(uintptr(0x3012))
+}
+
+@(export)
+wgpuDeviceCreateShaderModule :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x3013))
+}
+
+@(export)
+wgpuDeviceCreateRenderPipeline :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x3014))
 }
 
 @(export)
@@ -1143,6 +1315,16 @@ wgpuBindGroupRelease :: proc "c" (bind_group: rawptr) {
 }
 
 @(export)
+wgpuShaderModuleRelease :: proc "c" (shader_module: rawptr) {
+	_ = shader_module
+}
+
+@(export)
+wgpuRenderPipelineRelease :: proc "c" (pipeline: rawptr) {
+	_ = pipeline
+}
+
+@(export)
 wgpuCommandEncoderRelease :: proc "c" (encoder: rawptr) {
 	_ = encoder
 }
@@ -1212,6 +1394,10 @@ wgpu_test_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
 		return rawptr(wgpu_test_device_create_sampler)
 	case WGPU_SYMBOL_DEVICE_CREATE_BIND_GROUP:
 		return rawptr(wgpu_test_device_create_bind_group)
+	case WGPU_SYMBOL_DEVICE_CREATE_SHADER_MODULE:
+		return rawptr(wgpu_test_device_create_shader_module)
+	case WGPU_SYMBOL_DEVICE_CREATE_RENDER_PIPELINE:
+		return rawptr(wgpu_test_device_create_render_pipeline)
 	case WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER:
 		return rawptr(wgpu_test_device_create_command_encoder)
 	case WGPU_SYMBOL_TEXTURE_CREATE_VIEW:
@@ -1264,6 +1450,10 @@ wgpu_test_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
 		return rawptr(wgpu_test_sampler_release)
 	case WGPU_SYMBOL_BIND_GROUP_RELEASE:
 		return rawptr(wgpu_test_bind_group_release)
+	case WGPU_SYMBOL_SHADER_MODULE_RELEASE:
+		return rawptr(wgpu_test_shader_module_release)
+	case WGPU_SYMBOL_RENDER_PIPELINE_RELEASE:
+		return rawptr(wgpu_test_render_pipeline_release)
 	case WGPU_SYMBOL_COMMAND_ENCODER_RELEASE:
 		return rawptr(wgpu_test_command_encoder_release)
 	case WGPU_SYMBOL_COMMAND_BUFFER_RELEASE:
@@ -1340,6 +1530,18 @@ wgpu_test_device_create_bind_group :: proc "c" (device: WGPU_Device, descriptor:
 	_ = device
 	_ = descriptor
 	return WGPU_Bind_Group(rawptr(uintptr(0x1012)))
+}
+
+wgpu_test_device_create_shader_module :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Shader_Module_Descriptor) -> WGPU_Shader_Module {
+	_ = device
+	_ = descriptor
+	return WGPU_Shader_Module(rawptr(uintptr(0x1013)))
+}
+
+wgpu_test_device_create_render_pipeline :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Render_Pipeline_Descriptor) -> WGPU_Render_Pipeline {
+	_ = device
+	_ = descriptor
+	return WGPU_Render_Pipeline(rawptr(uintptr(0x1014)))
 }
 
 wgpu_test_device_create_command_encoder :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Command_Encoder_Descriptor) -> WGPU_Command_Encoder {
@@ -1497,6 +1699,14 @@ wgpu_test_sampler_release :: proc "c" (sampler: WGPU_Sampler) {
 
 wgpu_test_bind_group_release :: proc "c" (bind_group: WGPU_Bind_Group) {
 	_ = bind_group
+}
+
+wgpu_test_shader_module_release :: proc "c" (shader_module: WGPU_Shader_Module) {
+	_ = shader_module
+}
+
+wgpu_test_render_pipeline_release :: proc "c" (pipeline: WGPU_Render_Pipeline) {
+	_ = pipeline
 }
 
 wgpu_test_command_encoder_release :: proc "c" (encoder: WGPU_Command_Encoder) {
