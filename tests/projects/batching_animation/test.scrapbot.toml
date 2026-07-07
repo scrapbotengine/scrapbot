@@ -1,8 +1,0 @@
-frames = 1
-dt = 1.0
-
-[[expect.field]]
-entity = "animated-box"
-component = "scrapbot.transform"
-field = "rotation"
-equals_vec3 = [0.72, 0.48, 0.18]

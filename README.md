@@ -18,21 +18,21 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Engine Core
 
 - Runtime
-  - [x] Single-binary CLI
-  - [x] Cross-platform runtime
-  - [x] Interactive commands
-  - [x] Headless commands
+  - [ ] Single-binary CLI
+  - [ ] Cross-platform runtime
+  - [ ] Interactive commands
+  - [ ] Headless commands
 - Projects
-  - [x] Text-first projects
-  - [x] TOML scene files
-  - [x] Project initialization
+  - [ ] Text-first projects
+  - [ ] TOML scene files
+  - [ ] Project initialization
   - [ ] Project templates
   - [ ] Scene migrations
 - Reloading
-  - [x] Live reload
-  - [x] Structured diagnostics
+  - [ ] Live reload
+  - [ ] Structured diagnostics
 - Distribution
-  - [x] Host game builds
+  - [ ] Host game builds
   - [ ] Package dependencies
   - [ ] Cross-platform exports
   - [ ] Console/mobile publishing
@@ -40,57 +40,57 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### ECS Runtime
 
 - World Model
-  - [x] Shared ECS runtime
-  - [x] Reflected components
-  - [x] Generation-aware entities
-  - [x] Component registry
+  - [ ] Shared ECS runtime
+  - [ ] Reflected components
+  - [ ] Generation-aware entities
+  - [ ] Component registry
   - [ ] Component lifecycles
   - [ ] World snapshots
 - Scheduling
-  - [x] Scheduled systems
-  - [x] Access-controlled systems
-  - [x] Deferred mutations
+  - [ ] Scheduled systems
+  - [ ] Access-controlled systems
+  - [ ] Deferred mutations
   - [ ] Parallel system scheduling
 - Queries
-  - [x] Bulk Luau query views
+  - [ ] Bulk Luau query views
   - [ ] Advanced queries
 
 ### Scripting And Native Extensions
 
 - Luau
-  - [x] Luau scripting
-  - [x] Script components
-  - [x] Script systems
-  - [x] Script hot reload
+  - [ ] Luau scripting
+  - [ ] Script components
+  - [ ] Script systems
+  - [ ] Script hot reload
   - [ ] Luau type definitions
   - [ ] Editor scripting
 - Native
-  - [x] Native Zig modules
-  - [x] Native hot reload
+  - [ ] Native Odin modules
+  - [ ] Native hot reload
   - [ ] Native extension examples
   - [ ] Static native packaging
 - Developer Experience
-  - [x] Script/native diagnostics
+  - [ ] Script/native diagnostics
   - [ ] Performance documentation
 
 ### Rendering
 
 - Backend
-  - [x] WebGPU renderer
-  - [x] Headful rendering
-  - [x] Offscreen rendering
+  - [ ] WebGPU renderer
+  - [ ] Headful rendering
+  - [ ] Offscreen rendering
 - Scene Data
-  - [x] Cameras
-  - [x] Lighting
-  - [x] Primitive meshes
-  - [x] Materials
-  - [x] Legacy cube rendering
+  - [ ] Cameras
+  - [ ] Lighting
+  - [ ] Primitive meshes
+  - [ ] Materials
+  - [ ] Legacy cube rendering
   - [ ] Scene camera workflow
 - Pipeline
-  - [x] Render batching
-  - [x] Shadows
-  - [x] HDR rendering
-  - [x] Postprocessing
+  - [ ] Render batching
+  - [ ] Shadows
+  - [ ] HDR rendering
+  - [ ] Postprocessing
   - [ ] Frustum culling
   - [ ] GPU-driven rendering
   - [ ] Multi-light rendering
@@ -105,18 +105,18 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Input And UI
 
 - Input
-  - [x] ECS platform input
-  - [x] Runtime input resources
+  - [ ] ECS platform input
+  - [ ] Runtime input resources
   - [ ] Controller input
 - Retained UI
-  - [x] Retained UI primitives
-  - [x] Retained layout system
-  - [x] UI command events
-  - [x] UI scrolling
-  - [x] Canvas scaling
-  - [x] Built-in bitmap UI text
+  - [ ] Retained UI primitives
+  - [ ] Retained layout system
+  - [ ] UI command events
+  - [ ] UI scrolling
+  - [ ] Canvas scaling
+  - [ ] Built-in bitmap UI text
   - [ ] SDF-based font rendering
-  - [x] UI gallery
+  - [ ] UI gallery
 - Controls
   - [ ] Reusable editor controls
   - [ ] Form controls
@@ -131,28 +131,28 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Editor
 
 - Shell
-  - [x] Editor shell
-  - [x] Game viewport
-  - [x] Resizable panels
+  - [ ] Editor shell
+  - [ ] Game viewport
+  - [ ] Resizable panels
   - [ ] Dockable editor workspace
 - Inspection
-  - [x] System profiler
-  - [x] Entity browser
-  - [x] Entity selection
-  - [x] Component inspector
+  - [ ] System profiler
+  - [ ] Entity browser
+  - [ ] Entity selection
+  - [ ] Component inspector
   - [ ] Searchable browser
   - [ ] Hierarchical browser
 - Editing
-  - [x] Inspector editing
-  - [x] Inspector undo/redo
+  - [ ] Inspector editing
+  - [ ] Inspector undo/redo
   - [ ] Component management
   - [ ] Entity management
   - [ ] Scene edit persistence
   - [ ] Multi-selection editing
   - [ ] Editor transactions
 - Scene Tools
-  - [x] Playback controls
-  - [x] Translate gizmo
+  - [ ] Playback controls
+  - [ ] Translate gizmo
   - [ ] Transform gizmo modes
   - [ ] Precise picking
 - Extensibility
@@ -162,19 +162,19 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Testing And Tooling
 
 - Commands
-  - [x] Project validation
-  - [x] Deterministic stepping
-  - [x] Benchmark runner
-  - [x] JSON command output
+  - [ ] Project validation
+  - [ ] Deterministic stepping
+  - [ ] Benchmark runner
+  - [ ] JSON command output
 - Verification
-  - [x] Gameplay test fixtures
-  - [x] Offscreen render verification
+  - [ ] Gameplay test fixtures
+  - [ ] Offscreen render verification
   - [ ] Editor screenshot tests
   - [ ] Native extension tests
 - Project Support
-  - [x] Example projects
-  - [x] Documentation site
-  - [x] Agent workflow docs
+  - [ ] Example projects
+  - [ ] Documentation site
+  - [ ] Agent workflow docs
   - [ ] CI workflow
   - [ ] Docs checks
   - [ ] Benchmark trend reporting
@@ -182,8 +182,8 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Assets, Simulation, And Larger Systems
 
 - Assets
-  - [x] Primitive geometry
-  - [x] Embedded UI font
+  - [ ] Primitive geometry
+  - [ ] Embedded UI font
   - [ ] Asset references
   - [ ] Asset import pipeline
   - [ ] Asset browser
