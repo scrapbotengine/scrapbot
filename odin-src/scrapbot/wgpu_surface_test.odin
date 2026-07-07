@@ -179,6 +179,12 @@ test_wgpu_editor_selected_vertices_append_gizmo_axes :: proc(t: ^testing.T) {
 	expect_wgpu_vertex_color(t, vertices[:], EDITOR_GIZMO_AXIS_X_COLOR)
 	expect_wgpu_vertex_color(t, vertices[:], EDITOR_GIZMO_AXIS_ACTIVE_COLOR)
 	expect_wgpu_vertex_color(t, vertices[:], EDITOR_GIZMO_AXIS_Z_COLOR)
+
+	hover_vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(hover_vertices)
+	hover_count := wgpu_append_editor_chrome_vertices_for_selection(&hover_vertices, result.scene.world, 320, 240, "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001", 0, .None, .Z)
+	testing.expect_value(t, hover_count > 0, true)
+	expect_wgpu_vertex_color(t, hover_vertices[:], EDITOR_GIZMO_AXIS_HOVER_COLOR)
 }
 
 expect_wgpu_vertex_color :: proc(t: ^testing.T, vertices: []WGPU_Scene_Vertex, color: [3]u8) {

@@ -121,6 +121,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin editor gizmo undo grouping slice
   - [x] Odin SDL editor selection/gizmo smoke coverage slice
   - [x] Odin editor translate-gizmo render styling slice
+  - [x] Odin editor translate-gizmo hover styling slice
   - [x] Odin visible editor entity lifecycle controls slice
   - [x] Odin visible editor component lifecycle controls slice
   - [x] Odin macOS release artifact workflow slice

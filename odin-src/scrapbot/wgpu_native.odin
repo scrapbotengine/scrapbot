@@ -2620,6 +2620,7 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 				options.selected_entity_id,
 				options.inspector_scroll_y,
 				options.gizmo_axis,
+				options.gizmo_hover_axis,
 				options.camera_override_enabled,
 				options.camera_override,
 			)
@@ -2866,6 +2867,7 @@ wgpu_append_editor_chrome_vertices_for_selection :: proc(
 	selected_entity_id: string,
 	inspector_scroll_y: f32 = 0,
 	gizmo_axis: Editor_Test_Axis = .None,
+	gizmo_hover_axis: Editor_Test_Axis = .None,
 	camera_override_enabled: bool = false,
 	camera_override: Editor_Test_Camera_State = {},
 ) -> int {
@@ -2880,6 +2882,7 @@ wgpu_append_editor_chrome_vertices_for_selection :: proc(
 		height,
 		selected_entity_id,
 		gizmo_axis,
+		gizmo_hover_axis,
 		camera_override_enabled,
 		camera_override,
 	)
@@ -2913,6 +2916,7 @@ wgpu_append_editor_gizmo_vertices :: proc(
 	width, height: int,
 	selected_entity_id: string,
 	active_axis: Editor_Test_Axis,
+	hover_axis: Editor_Test_Axis,
 	camera_override_enabled: bool,
 	camera_override: Editor_Test_Camera_State,
 ) -> int {
@@ -2950,8 +2954,13 @@ wgpu_append_editor_gizmo_vertices :: proc(
 		if !end_ok || !render_screen_point_in_viewport(end, viewport) {
 			continue
 		}
-		color := render_gizmo_axis_color(axis, active_axis)
-		thickness := axis == active_axis ? 5 : 3
+		color := render_gizmo_axis_color(axis, active_axis, hover_axis)
+		thickness := 3
+		if axis == active_axis {
+			thickness = 5
+		} else if axis == hover_axis {
+			thickness = 4
+		}
 		count += wgpu_append_screen_line_rects(vertices, width, height, origin, end, thickness, color)
 		tip_size := thickness + 2
 		tip_radius := max(2, tip_size / 2)

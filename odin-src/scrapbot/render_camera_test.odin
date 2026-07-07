@@ -99,6 +99,94 @@ test_editor_gizmo_hit_testing_uses_frame_camera_override :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_editor_gizmo_hover_updates_without_capturing_pointer :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+	}
+	defer editor_test_input_state_free(&state)
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+
+	input := frame_input_default()
+	input.debug_overlay_visible = true
+	input.viewport_width = 1280
+	input.viewport_height = 720
+	input.pointer.has_position = true
+	camera, camera_ok := editor_test_camera_state(world)
+	testing.expect_value(t, camera_ok, true)
+	origin, origin_ok := editor_test_project_world_to_screen([3]f32{0, 0, 0}, camera, input)
+	testing.expect_value(t, origin_ok, true)
+	x_end, x_end_ok := editor_test_project_world_to_screen(editor_test_scale_vec3([3]f32{1, 0, 0}, EDITOR_TEST_GIZMO_AXIS_LENGTH), camera, input)
+	testing.expect_value(t, x_end_ok, true)
+	input.pointer.position = {
+		(origin[0] + x_end[0]) * 0.5,
+		(origin[1] + x_end[1]) * 0.5,
+	}
+
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.hovered_axis, Editor_Test_Axis.X)
+	testing.expect_value(t, state.dragging_axis, Editor_Test_Axis.None)
+	testing.expect_value(t, state.captured_pointer, false)
+	testing.expect_value(t, editor_gizmo_highlight_axis(state), Editor_Test_Axis.X)
+	testing.expect_value(t, input.pointer.has_position, true)
+}
+
+@(test)
+test_editor_gizmo_hover_and_drag_state_clear_when_editor_hidden :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	state := Editor_Test_Input_State{
+		captured_pointer = true,
+		selected_entity = entity,
+		has_selected_entity = true,
+		dragging_splitter = .Left,
+		dragging_axis = .X,
+		hovered_axis = .Y,
+		has_last_pointer = true,
+		last_pointer = {640, 360},
+	}
+	defer editor_test_input_state_free(&state)
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	begin_editor_gizmo_drag(&state, world)
+
+	input := frame_input_default()
+	input.debug_overlay_visible = false
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.captured_pointer, false)
+	testing.expect_value(t, state.dragging_splitter, Editor_Test_Splitter.None)
+	testing.expect_value(t, state.dragging_axis, Editor_Test_Axis.None)
+	testing.expect_value(t, state.hovered_axis, Editor_Test_Axis.None)
+	testing.expect_value(t, state.has_last_pointer, false)
+	testing.expect_value(t, state.has_gizmo_drag_start_position, false)
+}
+
+@(test)
+test_editor_gizmo_hover_axis_renders_distinct_software_color :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	_ = make_render_camera_test_world(t, &world)
+	image, image_ok := render_image_from_scene(world, Render_Options{
+		width = 320,
+		height = 240,
+		editor = true,
+		selected_entity_id = "renderable",
+		gizmo_hover_axis = .X,
+	})
+	testing.expect_value(t, image_ok, true)
+	defer render_image_free(&image)
+	expect_render_color_present(t, image, EDITOR_GIZMO_AXIS_HOVER_COLOR)
+}
+
+@(test)
 test_editor_gizmo_drag_finish_pushes_grouped_undo :: proc(t: ^testing.T) {
 	world := runtime_world_init()
 	defer runtime_world_free(&world)

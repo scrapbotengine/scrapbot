@@ -89,6 +89,7 @@ EDITOR_GIZMO_AXIS_X_COLOR :: [3]u8{236, 88, 76}
 EDITOR_GIZMO_AXIS_Y_COLOR :: [3]u8{105, 194, 92}
 EDITOR_GIZMO_AXIS_Z_COLOR :: [3]u8{80, 156, 235}
 EDITOR_GIZMO_AXIS_ACTIVE_COLOR :: [3]u8{255, 230, 116}
+EDITOR_GIZMO_AXIS_HOVER_COLOR :: [3]u8{246, 246, 196}
 
 render_write_scene_image :: proc(world: Runtime_World, options: Render_Options, verify_output: bool) -> (Render_Image_Verification, Render_Image_Error) {
 	format, format_ok := render_image_format_from_path(options.output_path)
@@ -464,8 +465,13 @@ render_draw_editor_gizmo_axes :: proc(image: ^Render_Image, world: Runtime_World
 		if !end_ok || !render_screen_point_in_viewport(end, viewport) {
 			continue
 		}
-		color := render_gizmo_axis_color(axis, options.gizmo_axis)
-		thickness := axis == options.gizmo_axis ? 5 : 3
+		color := render_gizmo_axis_color(axis, options.gizmo_axis, options.gizmo_hover_axis)
+		thickness := 3
+		if axis == options.gizmo_axis {
+			thickness = 5
+		} else if axis == options.gizmo_hover_axis {
+			thickness = 4
+		}
 		render_draw_screen_line(image, origin, end, thickness, color)
 		render_draw_gizmo_axis_tip(image, end, thickness + 2, color)
 	}
@@ -478,9 +484,12 @@ render_screen_point_in_viewport :: proc(point: [2]f32, viewport: Render_Viewport
 	       point[1] <= viewport.y + viewport.height
 }
 
-render_gizmo_axis_color :: proc(axis, active_axis: Editor_Test_Axis) -> [3]u8 {
+render_gizmo_axis_color :: proc(axis, active_axis: Editor_Test_Axis, hover_axis: Editor_Test_Axis = .None) -> [3]u8 {
 	if axis == active_axis {
 		return EDITOR_GIZMO_AXIS_ACTIVE_COLOR
+	}
+	if axis == hover_axis {
+		return EDITOR_GIZMO_AXIS_HOVER_COLOR
 	}
 	switch axis {
 	case .X:

@@ -115,6 +115,7 @@ Editor_Test_Input_State :: struct {
 	has_selected_property:       bool,
 	dragging_splitter:           Editor_Test_Splitter,
 	dragging_axis:               Editor_Test_Axis,
+	hovered_axis:                Editor_Test_Axis,
 	left_sidebar_width:          f32,
 	right_sidebar_width:         f32,
 	last_pointer:                [2]f32,
@@ -155,6 +156,11 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 	state.step_once = false
 	if !input.debug_overlay_visible {
 		state.captured_pointer = false
+		state.dragging_splitter = .None
+		state.dragging_axis = .None
+		state.hovered_axis = .None
+		state.has_last_pointer = false
+		clear_editor_gizmo_drag(state)
 		return
 	}
 	consumed := false
@@ -164,6 +170,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 	if input.pointer.has_position {
 		inside_game := editor_pointer_in_game_viewport(input^)
 		ensure_editor_sidebar_widths(state, input^)
+		update_editor_gizmo_hover(state, world^, input^)
 		if state.dragging_splitter != .None && input.pointer.primary_down {
 			drag_editor_splitter(state, input^)
 			consumed = true
@@ -243,9 +250,9 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 				commit_editor_test_text_input(world, state)
 				state.captured_pointer = true
 				consumed = true
-			} else if axis, axis_ok := editor_gizmo_axis_at_pointer(world^, state^, input^); axis_ok {
+			} else if state.hovered_axis != .None {
 				commit_editor_test_text_input(world, state)
-				state.dragging_axis = axis
+				state.dragging_axis = state.hovered_axis
 				state.captured_pointer = true
 				state.last_pointer = input.pointer.position
 				state.has_last_pointer = true
@@ -270,6 +277,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 			state.dragging_axis = .None
 			state.has_last_pointer = false
 			clear_editor_gizmo_drag(state)
+			update_editor_gizmo_hover(state, world^, input^)
 		}
 		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
 			if !inside_game {
@@ -290,12 +298,32 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 		state.captured_pointer = false
 		state.dragging_splitter = .None
 		state.dragging_axis = .None
+		state.hovered_axis = .None
 		state.has_last_pointer = false
 		clear_editor_gizmo_drag(state)
 	}
 	if consumed {
 		clear_frame_pointer_actions(input)
 	}
+}
+
+update_editor_gizmo_hover :: proc(state: ^Editor_Test_Input_State, world: Runtime_World, input: Frame_Input) {
+	if state.dragging_axis != .None {
+		state.hovered_axis = state.dragging_axis
+		return
+	}
+	if axis, axis_ok := editor_gizmo_axis_at_pointer(world, state^, input); axis_ok {
+		state.hovered_axis = axis
+	} else {
+		state.hovered_axis = .None
+	}
+}
+
+editor_gizmo_highlight_axis :: proc(state: Editor_Test_Input_State) -> Editor_Test_Axis {
+	if state.dragging_axis != .None {
+		return state.dragging_axis
+	}
+	return state.hovered_axis
 }
 
 editor_test_should_run_update :: proc(state: Editor_Test_Input_State) -> bool {
