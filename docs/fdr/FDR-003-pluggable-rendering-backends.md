@@ -13,8 +13,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
 - The `wgpu` backend opens an SDL3 window, creates a `wgpu-native` surface, and runs a simple triangle render loop.
-- The `wgpu` backend currently requires `--window`.
-- Windowed renderer runs can be limited with `--frames`; `0` means run until the window closes.
+- The `wgpu` backend can also render a headless final-frame PNG with `--framegrab`.
+- The `wgpu` backend currently requires `--window` or `--framegrab`.
+- Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
 - Future backends should not require scene files or gameplay code to know backend-specific GPU handles.
 
@@ -44,6 +45,12 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 **Why:** This proves the native window/surface/device/swapchain path plus shader and pipeline creation before introducing render packets, buffers, assets, or scene-driven drawing.
 **Tradeoff:** The backend verifies a render loop and draw call, not scene rendering.
 
+### 5. Add headless framegrabs before scene rendering
+
+**Decision:** Headless WGPU renders the same triangle pipeline into an offscreen texture, reads the final frame back to CPU memory, and writes a PNG.
+**Why:** This gives agents and tests a visual artifact before the renderer is scene-driven.
+**Tradeoff:** On macOS, the current implementation creates a hidden SDL3 window for Metal adapter bootstrap even though the captured frame is rendered offscreen.
+
 ## Related
 
 - **ADRs:** ADR-003, ADR-005
@@ -52,5 +59,5 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 ## Open Questions
 
 - What render packet shape should bridge ECS state into renderer-owned resources?
-- How soon should offscreen rendering become part of verification?
+- How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

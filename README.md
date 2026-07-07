@@ -19,12 +19,12 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml` and `scenes/main.scene.toml`.
 - `scrapbot check [path]` validates the project manifest and default scene.
-- `scrapbot run [path] [--backend null|wgpu] [--window] [--frames n]` loads the scene into a tiny native ECS world and submits it through the selected renderer backend.
+- `scrapbot run [path] [--backend null|wgpu] [--window] [--frames n] [--framegrab out.png]` loads the scene into a tiny native ECS world and submits it through the selected renderer backend.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to run a simple windowed triangle loop.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to run a simple triangle loop. Headless WGPU can write a final-frame PNG with `--framegrab`.
 
 Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
 
@@ -96,8 +96,9 @@ Run the full local test suite with `mise test`.
   - [x] WebGPU surface smoke
   - [x] Headful rendering smoke
   - [x] WebGPU triangle render loop
+  - [x] Headless WebGPU framegrab
   - [ ] WebGPU scene renderer
-  - [ ] Offscreen rendering
+  - [ ] Offscreen render comparison
 - Scene Data
   - [ ] Cameras
   - [ ] Lighting

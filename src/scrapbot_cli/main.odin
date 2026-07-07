@@ -21,7 +21,8 @@ Run_Options :: struct {
 	backend: string `usage:"Renderer backend: null or wgpu."`,
 	window:  bool   `usage:"Open a platform window for renderer runs."`,
 	headless: bool   `usage:"Force headless mode. This is the default unless --window is passed."`,
-	frames:  u32    `usage:"Limit windowed renderer frames. 0 runs until the window closes."`,
+	frames:  u32    `usage:"Limit renderer frames. Windowed 0 runs until close; headless 0 captures one frame."`,
+	framegrab: string `usage:"Write the final headless WGPU frame to this PNG path."`,
 }
 
 main :: proc() {
@@ -103,9 +104,10 @@ run_project :: proc(args: []string) -> int {
 	}
 
 	config := scrapbot.Run_Config {
-		backend    = backend,
-		window     = opt.window && !opt.headless,
-		max_frames = opt.frames,
+		backend        = backend,
+		window         = opt.window && !opt.headless,
+		max_frames     = opt.frames,
+		framegrab_path = opt.framegrab,
 	}
 	result := scrapbot.run_project(opt.path, config)
 	if result.err != "" {
@@ -156,7 +158,7 @@ print_help :: proc() {
 	fmt.println(`scrapbot commands:
   scrapbot init [path] [name]    Create project.toml and scenes/main.scene.toml
   scrapbot check [path]          Validate project.toml and the default scene
-  scrapbot run [path] [--backend null|wgpu] [--window] [--frames n]
+  scrapbot run [path] [--backend null|wgpu] [--window] [--frames n] [--framegrab out.png]
                                   Load the project and render
   scrapbot help <command>         Print command-specific options
   scrapbot --version             Print the engine version`)

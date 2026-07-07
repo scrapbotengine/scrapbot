@@ -5,9 +5,10 @@
 - [x] Add a `wgpu-native` surface smoke backend.
 - [x] Use the SDL3 window path to create a `wgpu-native` surface.
 - [x] Replace the WGPU clear smoke with a simple triangle render loop.
+- [x] Add a headless WGPU PNG framegrab path.
 - [ ] Replace the WGPU triangle loop with a scene renderer.
 - [ ] Define the render packet boundary between ECS state and renderer backends.
-- [ ] Add offscreen render verification.
+- [ ] Add visual comparison for offscreen render output.
 
 ## Project Runtime
 

@@ -8,15 +8,26 @@ import sdl "vendor:sdl3"
 runtime_window: ^sdl.Window
 runtime_window_ready: bool
 
-runtime_window_flags :: proc() -> sdl.WindowFlags {
+runtime_window_flags :: proc(hidden: bool) -> sdl.WindowFlags {
 	flags := sdl.WindowFlags{.RESIZABLE}
 	when ODIN_OS == .Darwin {
 		flags += sdl.WINDOW_METAL
+	}
+	if hidden {
+		flags += sdl.WINDOW_HIDDEN
 	}
 	return flags
 }
 
 open_runtime_window :: proc(title: string, width, height: int) -> string {
+	return open_runtime_window_with_visibility(title, width, height, false)
+}
+
+open_hidden_runtime_window :: proc(title: string, width, height: int) -> string {
+	return open_runtime_window_with_visibility(title, width, height, true)
+}
+
+open_runtime_window_with_visibility :: proc(title: string, width, height: int, hidden: bool) -> string {
 	if runtime_window_ready {
 		return ""
 	}
@@ -28,7 +39,7 @@ open_runtime_window :: proc(title: string, width, height: int) -> string {
 	title_c := strings.clone_to_cstring(title)
 	defer delete(title_c)
 
-	runtime_window = sdl.CreateWindow(title_c, c.int(width), c.int(height), runtime_window_flags())
+	runtime_window = sdl.CreateWindow(title_c, c.int(width), c.int(height), runtime_window_flags(hidden))
 	if runtime_window == nil {
 		err := fmt.tprintf("failed to create SDL3 window: %s", sdl.GetError())
 		sdl.Quit()

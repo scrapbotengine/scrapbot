@@ -6,9 +6,10 @@ import shared "../shared"
 
 Renderer_Backend :: shared.Renderer_Backend
 Run_Config :: struct {
-	backend:    Renderer_Backend,
-	window:     bool,
-	max_frames: u32,
+	backend:        Renderer_Backend,
+	window:         bool,
+	max_frames:     u32,
+	framegrab_path: string,
 }
 World :: shared.World
 Render_Frame :: shared.Render_Frame
@@ -48,18 +49,30 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 		renderer: Null_Renderer
 		return renderer_submit(&renderer, world), ""
 	case .WGPU:
-		if !config.window {
-			return frame, "wgpu renderer backend currently requires --window"
-		}
-		window_err := platform.open_runtime_window("Scrapbot WGPU", 1280, 720)
-		if window_err != "" {
-			return frame, window_err
-		}
-		defer platform.close_runtime_window()
-		platform.pump_runtime_window_events()
-
 		frame = ecs.render_frame_from_world(world)
-		err = wgpu_run_window(frame, config.max_frames)
+		if config.window {
+			window_err := platform.open_runtime_window("Scrapbot WGPU", 1280, 720)
+			if window_err != "" {
+				return frame, window_err
+			}
+			defer platform.close_runtime_window()
+			platform.pump_runtime_window_events()
+
+			err = wgpu_run_window(frame, config.max_frames)
+			return
+		}
+		if config.framegrab_path != "" {
+			window_err := platform.open_hidden_runtime_window("Scrapbot WGPU Headless", 1280, 720)
+			if window_err != "" {
+				return frame, window_err
+			}
+			defer platform.close_runtime_window()
+			platform.pump_runtime_window_events()
+
+			err = wgpu_run_headless(frame, config.max_frames, config.framegrab_path)
+			return
+		}
+		err = "wgpu renderer backend currently requires --window or --framegrab"
 		return
 	}
 
