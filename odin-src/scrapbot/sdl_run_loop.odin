@@ -117,6 +117,7 @@ sdl_run_live_project_wgpu_loop :: proc(
 	target_path: string,
 	max_frames: int,
 	hidden: bool,
+	editor: bool,
 	emit_live_reload_output: bool,
 	report: ^Live_Project_Run_Report,
 ) -> (Sdl_Run_Loop_Result, Simulation_Run_Result, string, bool) {
@@ -223,6 +224,7 @@ sdl_run_live_project_wgpu_loop :: proc(
 			project.check.scene.world,
 			u32(size.pixel_width),
 			u32(size.pixel_height),
+			editor,
 		)
 		if !present_ok {
 			result.completed_frames = completed_frames
@@ -231,7 +233,7 @@ sdl_run_live_project_wgpu_loop :: proc(
 		result.presented = true
 		result.surface_width = int(presentation.width)
 		result.surface_height = int(presentation.height)
-		result.renderable_count = presentation.renderable_count
+		result.renderable_count = presentation.renderable_count + presentation.overlay_count
 
 		if max_frames == 0 {
 			sdl3.Delay(SDL_RUN_LOOP_IDLE_DELAY_MS)

@@ -242,12 +242,6 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 		}
 		return options, false
 	}
-	if options.backend == .WebGPU && options.editor {
-		if emit_output {
-			fmt.eprintln("run failed: WebGPU editor chrome is not ported yet")
-		}
-		return options, false
-	}
 	if options.render_output_explicit && options.backend != .WebGPU {
 		if emit_output {
 			fmt.eprintln("--render-output requires --backend wgpu")
@@ -302,7 +296,11 @@ print_run_result :: proc(
 		fmt.println("Window: visible presentation pending Odin renderer")
 	}
 	if options.editor {
-		fmt.println("Editor: requested, pending Odin editor shell")
+		if options.backend == .WebGPU && render_result.presented {
+			fmt.println("Editor: first-pass WebGPU chrome overlay")
+		} else {
+			fmt.println("Editor: requested, pending Odin editor shell")
+		}
 	}
 	print_render_extract_text(result)
 	if options.max_frames > 0 || window_result.window_opened {
@@ -348,7 +346,7 @@ print_run_reload_events_since :: proc(report: Live_Project_Run_Report, start_ind
 	return printed_count
 }
 
-run_present_hidden_wgpu_surface :: proc(world: Runtime_World, target_path: string) -> (WGPU_Surface_Presentation_Report, string, bool) {
+run_present_hidden_wgpu_surface :: proc(world: Runtime_World, target_path: string, editor_overlay: bool = false) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	path, found := wgpu_find_default_offscreen_library(target_path)
 	if !found && target_path != "." {
 		path, found = wgpu_find_default_offscreen_library(".")
@@ -400,5 +398,7 @@ run_present_hidden_wgpu_surface :: proc(world: Runtime_World, target_path: strin
 		world,
 		u32(size.pixel_width),
 		u32(size.pixel_height),
+		WGPU_BACKEND_TYPE_UNDEFINED,
+		editor_overlay,
 	)
 }

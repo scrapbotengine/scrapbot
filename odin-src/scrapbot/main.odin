@@ -128,9 +128,9 @@ Odin migration status:
   init, check, build, deterministic step, benchmark, test discovery, and bounded run
   currently cover text project creation, validation, packaging, and schedule-aware frame accounting slices.
   Luau execution, native module execution, retained scene UI/editor input replay, software render/visual output,
-  WebGPU offscreen run/render output, image comparison, and first-pass offscreen editor chrome are partially ported;
-  hidden and bounded/unbounded visible WebGPU presentation are partially ported; WebGPU editor chrome and
-  the full editor shell are still being ported.`)
+  WebGPU offscreen run/render output, image comparison, first-pass offscreen editor chrome, and first-pass
+  WebGPU editor chrome overlays are partially ported; hidden and bounded/unbounded visible WebGPU
+  presentation are partially ported; the full editor shell is still being ported.`)
 }
 
 run_sdl_window_check :: proc(args: []string, emit_output: bool) -> int {
@@ -595,7 +595,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 		simulation := Simulation_Run_Result{}
 		window_error: string
 		window_ok: bool
-		window_result, simulation, window_error, window_ok = sdl_run_live_project_wgpu_loop(&live, options.target_path, options.max_frames, false, emit_output, &run_report)
+		window_result, simulation, window_error, window_ok = sdl_run_live_project_wgpu_loop(&live, options.target_path, options.max_frames, false, options.editor, emit_output, &run_report)
 		if !window_ok {
 			if emit_output {
 				fmt.eprintf("run window loop failed: %s\n", window_error)
@@ -654,7 +654,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 			return 1
 		}
 		if options.hidden {
-			surface_report, surface_error, surface_ok := run_present_hidden_wgpu_surface(live.check.scene.world, options.target_path)
+			surface_report, surface_error, surface_ok := run_present_hidden_wgpu_surface(live.check.scene.world, options.target_path, options.editor)
 			if !surface_ok {
 				if emit_output {
 					fmt.eprintf("run surface presentation failed: %s\n", surface_error)
@@ -664,7 +664,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 			render_result.presented = true
 			render_result.surface_width = int(surface_report.width)
 			render_result.surface_height = int(surface_report.height)
-			render_result.renderable_count = surface_report.renderable_count
+			render_result.renderable_count = surface_report.renderable_count + surface_report.overlay_count
 		} else if window_result.presented {
 			render_result.presented = true
 			render_result.surface_width = window_result.surface_width
@@ -680,6 +680,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 			height = options.render_height,
 			pixel_scale = options.render_pixel_scale,
 			backend = options.backend,
+			editor = options.editor,
 		}
 		_, image_err := render_write_scene_image(live.check.scene.world, render_options, false)
 		if image_err != .None {
@@ -721,13 +722,6 @@ run_render :: proc(args: []string, emit_output: bool, render_test: bool) -> int 
 	if !options_ok {
 		return 1
 	}
-	if options.backend == .WebGPU && options.editor {
-		if emit_output {
-			fmt.eprintf("%s failed: WebGPU editor chrome is not ported yet\n", error_name)
-		}
-		return 1
-	}
-
 	result := check_project(options.target_path)
 	defer free_check_result(result)
 	if result.err != .None {
@@ -815,13 +809,6 @@ run_visual_test :: proc(args: []string, emit_output: bool) -> int {
 			return 1
 		}
 	}
-	if options.render.backend == .WebGPU && options.render.editor {
-		if emit_output {
-			fmt.eprintln("visual-test failed: WebGPU editor chrome is not ported yet")
-		}
-		return 1
-	}
-
 	if !options.update {
 		if same_resolved_path(options.expected_path, options.render.output_path) {
 			if emit_output {

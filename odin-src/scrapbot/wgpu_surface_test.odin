@@ -79,6 +79,26 @@ test_wgpu_surface_context_presents_scene_frames_and_reconfigures :: proc(t: ^tes
 	testing.expect_value(t, report.width, u32(320))
 	testing.expect_value(t, report.height, u32(240))
 	testing.expect_value(t, report.renderable_count, 1)
+	testing.expect_value(t, report.overlay_count, 0)
 	testing.expect_value(t, surface_ctx.width, u32(320))
 	testing.expect_value(t, surface_ctx.height, u32(240))
+
+	overlay_report, overlay_error, overlay_ok := wgpu_surface_context_present_scene_frame(&surface_ctx, result.scene.world, 320, 240, true)
+	testing.expect_value(t, overlay_ok, true)
+	testing.expect_value(t, overlay_error, "")
+	testing.expect_value(t, overlay_report.renderable_count, 1)
+	testing.expect_value(t, overlay_report.overlay_count > 0, true)
+}
+
+@(test)
+test_wgpu_editor_chrome_vertices_append_overlay_rects :: proc(t: ^testing.T) {
+	vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(vertices)
+
+	count := wgpu_append_editor_chrome_vertices(&vertices, 640, 480)
+	testing.expect_value(t, count > 0, true)
+	testing.expect_value(t, len(vertices), count * 6)
+
+	zero_count := wgpu_append_editor_chrome_vertices(&vertices, 0, 480)
+	testing.expect_value(t, zero_count, 0)
 }

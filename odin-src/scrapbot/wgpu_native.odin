@@ -2610,6 +2610,9 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 	vertices: [dynamic]WGPU_Scene_Vertex
 	defer delete(vertices)
 	wgpu_collect_scene_vertices(&vertices, world, options.width, options.height)
+	if options.editor {
+		wgpu_append_editor_chrome_vertices(&vertices, options.width, options.height)
+	}
 
 	descriptor := wgpu_instance_descriptor_default()
 	instance := procs.create_instance(&descriptor)
@@ -2799,6 +2802,47 @@ wgpu_collect_scene_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, world
 		wgpu_append_rect_vertices(vertices, width, height, rect, color)
 		index += 1
 	}
+}
+
+wgpu_append_editor_chrome_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, width, height: int) -> int {
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	top_height := min(max(24, height / 12), max(1, height / 3))
+	bottom_height := min(max(18, height / 16), max(1, height / 5))
+	body_y := top_height
+	body_height := max(0, height - top_height - bottom_height)
+	left_width := min(max(72, width / 5), max(1, width / 3))
+	right_width := min(max(96, width * 3 / 10), max(1, width / 3))
+	if left_width + right_width + 48 > width {
+		left_width = max(8, width / 5)
+		right_width = max(8, width / 4)
+	}
+	viewport_x := left_width
+	viewport_width := max(0, width - left_width - right_width)
+
+	count := 0
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = 0, y = 0, width = width, height = top_height}, EDITOR_CHROME_TOP_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = 0, y = height - bottom_height, width = width, height = bottom_height}, EDITOR_CHROME_BOTTOM_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = 0, y = body_y, width = left_width, height = body_height}, EDITOR_CHROME_PANEL_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = width - right_width, y = body_y, width = right_width, height = body_height}, EDITOR_CHROME_PANEL_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = 0, y = top_height - 2, width = width, height = 2}, EDITOR_CHROME_RULE_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = 0, y = height - bottom_height, width = width, height = 2}, EDITOR_CHROME_RULE_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = left_width - 2, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_RULE_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = width - right_width, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_RULE_COLOR)
+	if viewport_width > 0 && body_height > 0 {
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x, y = body_y, width = viewport_width, height = 2}, EDITOR_CHROME_VIEWPORT_COLOR)
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x, y = body_y + body_height - 2, width = viewport_width, height = 2}, EDITOR_CHROME_VIEWPORT_COLOR)
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_VIEWPORT_COLOR)
+		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x + viewport_width - 2, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_VIEWPORT_COLOR)
+	}
+	return count
+}
+
+wgpu_append_chrome_rect :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, width, height: int, rect: Renderable_Rect, color: [3]u8) -> int {
+	before := len(vertices^)
+	wgpu_append_rect_vertices(vertices, width, height, rect, color)
+	return (len(vertices^) - before) / 6
 }
 
 wgpu_append_rect_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, image_width, image_height: int, rect: Renderable_Rect, color: [3]u8) {

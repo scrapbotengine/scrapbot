@@ -15,6 +15,7 @@ WGPU_Surface_Presentation_Report :: struct {
 	present_mode:     WGPU_Present_Mode,
 	alpha_mode:       WGPU_Composite_Alpha_Mode,
 	renderable_count: int,
+	overlay_count:    int,
 }
 
 WGPU_Surface_Context :: struct {
@@ -160,6 +161,7 @@ wgpu_surface_context_present_scene_frame :: proc(
 	ctx: ^WGPU_Surface_Context,
 	world: Runtime_World,
 	width, height: u32,
+	editor_overlay: bool = false,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	config_error, config_ok := wgpu_surface_context_configure(ctx, width, height)
 	if !config_ok {
@@ -173,6 +175,11 @@ wgpu_surface_context_present_scene_frame :: proc(
 		}
 	}
 	wgpu_collect_scene_vertices(&vertices, world, int(width), int(height))
+	renderable_count := len(vertices) / 6
+	overlay_count := 0
+	if editor_overlay {
+		overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+	}
 
 	procs := ctx.procs
 	surface_texture := wgpu_surface_texture_error()
@@ -273,7 +280,8 @@ wgpu_surface_context_present_scene_frame :: proc(
 		format = ctx.format,
 		present_mode = ctx.present_mode,
 		alpha_mode = ctx.alpha_mode,
-		renderable_count = len(vertices) / 6,
+		renderable_count = renderable_count,
+		overlay_count = overlay_count,
 	}, "", true
 }
 
@@ -402,8 +410,9 @@ wgpu_present_surface_scene :: proc(
 	world: Runtime_World,
 	width, height: u32,
 	backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED,
+	editor_overlay: bool = false,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
-	return wgpu_present_surface_scene_with_world(procs, surface_descriptor, world, width, height, backend_type, true)
+	return wgpu_present_surface_scene_with_world(procs, surface_descriptor, world, width, height, backend_type, true, editor_overlay)
 }
 
 wgpu_present_surface_scene_with_world :: proc(
@@ -413,6 +422,7 @@ wgpu_present_surface_scene_with_world :: proc(
 	width, height: u32,
 	backend_type: WGPU_Backend_Type,
 	draw_world: bool,
+	editor_overlay: bool = false,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	if width == 0 || height == 0 {
 		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
@@ -426,6 +436,11 @@ wgpu_present_surface_scene_with_world :: proc(
 	}
 	if draw_world {
 		wgpu_collect_scene_vertices(&vertices, world, int(width), int(height))
+	}
+	renderable_count := len(vertices) / 6
+	overlay_count := 0
+	if editor_overlay {
+		overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
 	}
 
 	descriptor := wgpu_instance_descriptor_default()
@@ -576,7 +591,8 @@ wgpu_present_surface_scene_with_world :: proc(
 		format = format,
 		present_mode = present_mode,
 		alpha_mode = alpha_mode,
-		renderable_count = len(vertices) / 6,
+		renderable_count = renderable_count,
+		overlay_count = overlay_count,
 	}, "", true
 }
 

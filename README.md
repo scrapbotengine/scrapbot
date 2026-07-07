@@ -89,6 +89,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin wgpu-native direct library staging slice
   - [x] Odin bounded visible WebGPU run SDL loop slice
   - [x] Odin unbounded visible WebGPU run SDL loop slice
+  - [x] Odin first-pass WebGPU editor chrome overlay slice
   - [x] Odin bounded visible software run SDL loop slice
   - [x] Odin unbounded visible software run SDL loop slice
   - [x] Odin native declaration registration slice

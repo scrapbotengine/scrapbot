@@ -1030,10 +1030,22 @@ test_run_options_use_sdl_window_loop_for_visible_wgpu_runs :: proc(t: ^testing.T
 	testing.expect_value(t, run_options_use_sdl_window_loop(hidden), false)
 	testing.expect_value(t, run_options_use_wgpu_sdl_window_loop(hidden), false)
 
+	hidden_editor, hidden_editor_ok := parse_run_options([]string{"--frames", "2", "--hidden", "--editor", "--backend", "wgpu"}, false)
+	testing.expect_value(t, hidden_editor_ok, true)
+	testing.expect_value(t, hidden_editor.editor, true)
+	testing.expect_value(t, run_options_use_sdl_window_loop(hidden_editor), false)
+	testing.expect_value(t, run_options_use_wgpu_sdl_window_loop(hidden_editor), false)
+
 	unbounded, unbounded_ok := parse_run_options([]string{"--backend", "wgpu"}, false)
 	testing.expect_value(t, unbounded_ok, true)
 	testing.expect_value(t, run_options_use_sdl_window_loop(unbounded), true)
 	testing.expect_value(t, run_options_use_wgpu_sdl_window_loop(unbounded), true)
+
+	editor, editor_ok := parse_run_options([]string{"--frames", "2", "--editor", "--backend", "wgpu"}, false)
+	testing.expect_value(t, editor_ok, true)
+	testing.expect_value(t, editor.editor, true)
+	testing.expect_value(t, run_options_use_sdl_window_loop(editor), true)
+	testing.expect_value(t, run_options_use_wgpu_sdl_window_loop(editor), true)
 }
 
 @(test)
@@ -1057,12 +1069,6 @@ test_run_command_rejects_hidden_without_frame_limit :: proc(t: ^testing.T) {
 @(test)
 test_run_command_rejects_hidden_unbounded_wgpu :: proc(t: ^testing.T) {
 	exit_code := run_with_output([]string{"scrapbot", "run", "--hidden", "--backend", "wgpu"}, false)
-	testing.expect_value(t, exit_code, 1)
-}
-
-@(test)
-test_run_command_rejects_wgpu_editor_chrome_until_ported :: proc(t: ^testing.T) {
-	exit_code := run_with_output([]string{"scrapbot", "run", "--frames", "1", "--hidden", "--editor", "--backend", "wgpu"}, false)
 	testing.expect_value(t, exit_code, 1)
 }
 
@@ -1136,14 +1142,20 @@ test_run_render_command_writes_wgpu_backend_png_with_fake_library :: proc(t: ^te
 }
 
 @(test)
-test_run_render_command_rejects_wgpu_editor_chrome_until_ported :: proc(t: ^testing.T) {
+test_run_render_command_writes_wgpu_editor_chrome_with_fake_library :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-render-wgpu-editor")
 	defer os.remove_all(root)
 	defer delete(root)
 	testing.expect_value(t, init_project(root, "CLI Render WGPU Editor"), Project_Error.None)
+	staged_library := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(staged_library)
 
-	exit_code := run_with_output([]string{"scrapbot", "render", "--backend", "wgpu", "--editor", root}, false)
-	testing.expect_value(t, exit_code, 1)
+	output_path := project_relative_path(root, "wgpu-editor-render.png")
+	defer delete(output_path)
+
+	exit_code := run_with_output([]string{"scrapbot", "render", "--backend", "wgpu", "--editor", "--width", "16", "--height", "16", root, output_path}, false)
+	testing.expect_value(t, exit_code, 0)
+	expect_file_prefix(t, output_path, []u8{0x89, 'P', 'N', 'G'})
 }
 
 @(test)

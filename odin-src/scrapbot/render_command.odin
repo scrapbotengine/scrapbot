@@ -317,7 +317,7 @@ print_render_result :: proc(result: Project_Check_Result, options: Render_Option
 	fmt.printf("Frames: %d/%d\n", completed_frames, options.frames)
 	fmt.printf("Viewport: %dx%d @%gx\n", options.width, options.height, options.pixel_scale)
 	if options.editor {
-		fmt.println("Editor: software chrome overlay")
+		fmt.printf("Editor: %s chrome overlay\n", options.backend == .WebGPU ? "first-pass WebGPU" : "software")
 	}
 	if options.selected_entity_id != "" {
 		fmt.printf("Selected entity: %s\n", options.selected_entity_id)
@@ -339,7 +339,7 @@ print_render_test_result :: proc(result: Project_Check_Result, options: Render_O
 	fmt.printf("Output: %s\n", options.output_path)
 	fmt.printf("Frames: %d/%d\n", completed_frames, options.frames)
 	if options.editor {
-		fmt.println("Editor: software chrome overlay")
+		fmt.printf("Editor: %s chrome overlay\n", options.backend == .WebGPU ? "first-pass WebGPU" : "software")
 	}
 	if options.selected_entity_id != "" {
 		fmt.printf("Selected entity: %s\n", options.selected_entity_id)
@@ -371,7 +371,7 @@ print_visual_test_result :: proc(result: Project_Check_Result, options: Visual_T
 	fmt.printf("Frames: %d/%d\n", completed_frames, options.render.frames)
 	fmt.printf("Viewport: %dx%d @%gx\n", options.render.width, options.render.height, options.render.pixel_scale)
 	if options.render.editor {
-		fmt.println("Editor: software chrome overlay")
+		fmt.printf("Editor: %s chrome overlay\n", options.render.backend == .WebGPU ? "first-pass WebGPU" : "software")
 	}
 	if options.render.selected_entity_id != "" {
 		fmt.printf("Selected entity: %s\n", options.render.selected_entity_id)
