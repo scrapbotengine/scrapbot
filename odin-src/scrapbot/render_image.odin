@@ -74,6 +74,8 @@ EDITOR_CHROME_SELECTION_COLOR :: [3]u8{240, 160, 76}
 EDITOR_CHROME_BUTTON_COLOR :: [3]u8{82, 96, 116}
 EDITOR_CHROME_BUTTON_ACCENT_COLOR :: [3]u8{149, 204, 116}
 EDITOR_CHROME_BUTTON_DESTRUCTIVE_COLOR :: [3]u8{220, 112, 104}
+EDITOR_CHROME_MODE_INACTIVE_COLOR :: [3]u8{62, 72, 88}
+EDITOR_CHROME_MODE_ACTIVE_COLOR :: [3]u8{87, 169, 216}
 EDITOR_CHROME_INSPECTOR_CARD_COLOR :: [3]u8{54, 61, 73}
 EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR :: [3]u8{68, 77, 92}
 EDITOR_CHROME_INSPECTOR_FIELD_COLOR :: [3]u8{36, 42, 52}
@@ -422,6 +424,7 @@ render_draw_editor_chrome :: proc(image: ^Render_Image, world: Runtime_World, op
 	render_fill_rect(image, 0, image.height - bottom_height, image.width, 2, EDITOR_CHROME_RULE_COLOR)
 	render_fill_rect(image, left_width - 2, body_y, 2, body_height, EDITOR_CHROME_RULE_COLOR)
 	render_fill_rect(image, image.width - right_width, body_y, 2, body_height, EDITOR_CHROME_RULE_COLOR)
+	render_draw_editor_gizmo_mode_button(image, options.gizmo_local_space)
 	if viewport_width > 0 && body_height > 0 {
 		render_stroke_rect(image, viewport_x, body_y, viewport_width, body_height, EDITOR_CHROME_VIEWPORT_COLOR)
 	}
@@ -475,6 +478,36 @@ render_draw_editor_gizmo_axes :: proc(image: ^Render_Image, world: Runtime_World
 		render_draw_screen_line(image, origin, end, thickness, color)
 		render_draw_gizmo_axis_tip(image, end, thickness + 2, color)
 	}
+}
+
+render_draw_editor_gizmo_mode_button :: proc(image: ^Render_Image, local_space: bool) {
+	if image.width <= 0 || image.height <= 0 {
+		return
+	}
+	x_f, _, width_f, _ := editor_gizmo_mode_button_rect(f32(image.width))
+	top_height := min(max(24, image.height / 12), max(1, image.height / 3))
+	button_y := 4
+	button_height := max(6, top_height - 8)
+	if button_height <= 0 {
+		return
+	}
+	x := int(math.round_f32(x_f))
+	width := int(math.round_f32(width_f))
+	if width <= 0 {
+		return
+	}
+	left_width := max(1, width / 2)
+	right_width := max(1, width - left_width)
+	world_color := local_space ? EDITOR_CHROME_MODE_INACTIVE_COLOR : EDITOR_CHROME_MODE_ACTIVE_COLOR
+	local_color := local_space ? EDITOR_CHROME_MODE_ACTIVE_COLOR : EDITOR_CHROME_MODE_INACTIVE_COLOR
+	render_fill_rect(image, x, button_y, left_width, button_height, world_color)
+	render_fill_rect(image, x + left_width, button_y, right_width, button_height, local_color)
+	render_stroke_rect(image, x, button_y, width, button_height, EDITOR_CHROME_RULE_COLOR)
+	axis_y := button_y + button_height / 2
+	render_fill_rect(image, x + max(3, left_width / 4), axis_y - 1, max(4, left_width / 2), 2, EDITOR_CHROME_BUTTON_ACCENT_COLOR)
+	local_center_x := x + left_width + max(3, right_width / 2)
+	render_fill_rect(image, local_center_x - 1, button_y + max(2, button_height / 4), 2, max(4, button_height / 2), EDITOR_CHROME_BUTTON_ACCENT_COLOR)
+	render_fill_rect(image, x + left_width, button_y + 1, 1, max(1, button_height - 2), EDITOR_CHROME_RULE_COLOR)
 }
 
 render_screen_point_in_viewport :: proc(point: [2]f32, viewport: Render_Viewport) -> bool {

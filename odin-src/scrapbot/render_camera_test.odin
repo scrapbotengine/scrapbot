@@ -149,6 +149,9 @@ test_editor_gizmo_hover_and_drag_state_clear_when_editor_hidden :: proc(t: ^test
 		dragging_splitter = .Left,
 		dragging_axis = .X,
 		hovered_axis = .Y,
+		gizmo_persistent_local_space = true,
+		gizmo_local_space = true,
+		gizmo_drag_local_space = true,
 		has_last_pointer = true,
 		last_pointer = {640, 360},
 	}
@@ -164,8 +167,16 @@ test_editor_gizmo_hover_and_drag_state_clear_when_editor_hidden :: proc(t: ^test
 	testing.expect_value(t, state.dragging_splitter, Editor_Test_Splitter.None)
 	testing.expect_value(t, state.dragging_axis, Editor_Test_Axis.None)
 	testing.expect_value(t, state.hovered_axis, Editor_Test_Axis.None)
+	testing.expect_value(t, state.gizmo_persistent_local_space, true)
+	testing.expect_value(t, state.gizmo_local_space, false)
+	testing.expect_value(t, state.gizmo_drag_local_space, false)
 	testing.expect_value(t, state.has_last_pointer, false)
 	testing.expect_value(t, state.has_gizmo_drag_start_position, false)
+
+	input.debug_overlay_visible = true
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.gizmo_persistent_local_space, true)
+	testing.expect_value(t, state.gizmo_local_space, true)
 }
 
 @(test)
@@ -347,6 +358,57 @@ test_editor_gizmo_local_space_follows_alt_without_pointer :: proc(t: ^testing.T)
 	state.gizmo_drag_local_space = true
 	route_editor_test_input(&state, registry, &world, &input)
 	testing.expect_value(t, state.gizmo_local_space, true)
+}
+
+@(test)
+test_editor_gizmo_mode_button_toggles_persistent_local_space :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	state := Editor_Test_Input_State{}
+	defer editor_test_input_state_free(&state)
+
+	input := frame_input_default()
+	input.debug_overlay_visible = true
+	input.viewport_width = 1280
+	input.viewport_height = 720
+	input.pointer.has_position = true
+	x, y, width, height := editor_gizmo_mode_button_rect(input.viewport_width)
+	input.pointer.position = {x + width * 0.5, y + height * 0.5}
+	input.pointer.primary_pressed = true
+	input.pointer.primary_down = true
+
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.gizmo_persistent_local_space, true)
+	testing.expect_value(t, state.gizmo_local_space, true)
+	testing.expect_value(t, state.captured_pointer, true)
+	testing.expect_value(t, input.pointer.primary_pressed, false)
+
+	input.pointer.primary_pressed = true
+	input.pointer.primary_down = true
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.gizmo_persistent_local_space, false)
+	testing.expect_value(t, state.gizmo_local_space, false)
+}
+
+@(test)
+test_editor_gizmo_mode_button_renders_active_software_segment :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	world_image, world_ok := render_image_from_scene(world, Render_Options{width = 320, height = 240, editor = true})
+	testing.expect_value(t, world_ok, true)
+	defer render_image_free(&world_image)
+	x, _, width, _ := editor_gizmo_mode_button_rect(320)
+	expect_render_pixel(t, world_image, int(x) + 8, 8, EDITOR_CHROME_MODE_ACTIVE_COLOR)
+	expect_render_pixel(t, world_image, int(x) + int(width) - 8, 8, EDITOR_CHROME_MODE_INACTIVE_COLOR)
+
+	local_image, local_ok := render_image_from_scene(world, Render_Options{width = 320, height = 240, editor = true, gizmo_local_space = true})
+	testing.expect_value(t, local_ok, true)
+	defer render_image_free(&local_image)
+	expect_render_pixel(t, local_image, int(x) + 8, 8, EDITOR_CHROME_MODE_INACTIVE_COLOR)
+	expect_render_pixel(t, local_image, int(x) + int(width) - 8, 8, EDITOR_CHROME_MODE_ACTIVE_COLOR)
 }
 
 @(test)

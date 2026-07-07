@@ -117,6 +117,7 @@ Editor_Test_Input_State :: struct {
 	dragging_splitter:           Editor_Test_Splitter,
 	dragging_axis:               Editor_Test_Axis,
 	hovered_axis:                Editor_Test_Axis,
+	gizmo_persistent_local_space: bool,
 	gizmo_local_space:           bool,
 	gizmo_drag_local_space:      bool,
 	left_sidebar_width:          f32,
@@ -173,7 +174,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 		consumed = true
 	}
 	if state.dragging_axis == .None {
-		state.gizmo_local_space = input.keyboard.alt_down
+		state.gizmo_local_space = editor_gizmo_effective_local_space(state^, input^)
 	}
 	if input.pointer.has_position {
 		inside_game := editor_pointer_in_game_viewport(input^)
@@ -195,6 +196,12 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 			} else if editor_pointer_in_step_button(input^) {
 				state.paused = true
 				state.step_once = true
+				state.captured_pointer = true
+				consumed = true
+			} else if editor_pointer_in_gizmo_mode_button(input^) {
+				commit_editor_test_text_input(world, state)
+				state.gizmo_persistent_local_space = !state.gizmo_persistent_local_space
+				state.gizmo_local_space = editor_gizmo_effective_local_space(state^, input^)
 				state.captured_pointer = true
 				consumed = true
 			} else if editor_pointer_in_spawn_entity_button(input^) {
@@ -287,7 +294,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 			state.gizmo_drag_local_space = false
 			state.has_last_pointer = false
 			clear_editor_gizmo_drag(state)
-			state.gizmo_local_space = input.keyboard.alt_down
+			state.gizmo_local_space = editor_gizmo_effective_local_space(state^, input^)
 			update_editor_gizmo_hover(state, world^, input^)
 		}
 		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
@@ -310,14 +317,21 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 		state.dragging_splitter = .None
 		state.dragging_axis = .None
 		state.hovered_axis = .None
-		state.gizmo_local_space = false
 		state.gizmo_drag_local_space = false
 		state.has_last_pointer = false
 		clear_editor_gizmo_drag(state)
+		state.gizmo_local_space = editor_gizmo_effective_local_space(state^, input^)
 	}
 	if consumed {
 		clear_frame_pointer_actions(input)
 	}
+}
+
+editor_gizmo_effective_local_space :: proc(state: Editor_Test_Input_State, input: Frame_Input) -> bool {
+	if state.dragging_axis != .None {
+		return state.gizmo_drag_local_space
+	}
+	return state.gizmo_persistent_local_space || input.keyboard.alt_down
 }
 
 update_editor_gizmo_hover :: proc(state: ^Editor_Test_Input_State, world: Runtime_World, input: Frame_Input) {
@@ -1812,6 +1826,11 @@ editor_pointer_in_step_button :: proc(input: Frame_Input) -> bool {
 	return editor_pointer_in_rect(input, play_x + play_width + UI_EDITOR_CONTROL_BUTTON_GAP, play_y, play_width, play_height)
 }
 
+editor_pointer_in_gizmo_mode_button :: proc(input: Frame_Input) -> bool {
+	x, y, width, height := editor_gizmo_mode_button_rect(input.viewport_width)
+	return editor_pointer_in_rect(input, x, y, width, height)
+}
+
 editor_pointer_in_spawn_entity_button :: proc(input: Frame_Input) -> bool {
 	x, y, width, height := editor_entity_spawn_button_rect(input.viewport_width, input.viewport_height)
 	return editor_pointer_in_rect(input, x, y, width, height)
@@ -1846,6 +1865,15 @@ editor_play_button_rect :: proc(window_width: f32) -> (x, y, width, height: f32)
 	       (UI_EDITOR_TOP_BAR_HEIGHT - UI_EDITOR_CONTROL_BUTTON_HEIGHT) * 0.5,
 	       UI_EDITOR_CONTROL_BUTTON_WIDTH,
 	       UI_EDITOR_CONTROL_BUTTON_HEIGHT
+}
+
+editor_gizmo_mode_button_rect :: proc(window_width: f32) -> (x, y, width, height: f32) {
+	play_x, play_y, _, play_height := editor_play_button_rect(window_width)
+	width = UI_EDITOR_CONTROL_BUTTON_WIDTH
+	height = play_height
+	x = max_f32(play_x - UI_EDITOR_CONTROL_BUTTON_GAP - width, UI_EDITOR_PANEL_PADDING_X)
+	y = play_y
+	return
 }
 
 editor_entity_spawn_button_rect :: proc(window_width, window_height: f32) -> (x, y, width, height: f32) {

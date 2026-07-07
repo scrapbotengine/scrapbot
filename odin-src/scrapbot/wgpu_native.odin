@@ -2626,7 +2626,7 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 				options.camera_override,
 			)
 		} else {
-			wgpu_append_editor_chrome_vertices(&vertices, options.width, options.height)
+			wgpu_append_editor_chrome_vertices(&vertices, options.width, options.height, options.gizmo_local_space)
 		}
 	}
 
@@ -2826,7 +2826,7 @@ wgpu_collect_scene_vertices_with_options :: proc(vertices: ^[dynamic]WGPU_Scene_
 	}
 }
 
-wgpu_append_editor_chrome_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, width, height: int) -> int {
+wgpu_append_editor_chrome_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, width, height: int, gizmo_local_space: bool = false) -> int {
 	if width <= 0 || height <= 0 {
 		return 0
 	}
@@ -2852,6 +2852,7 @@ wgpu_append_editor_chrome_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex
 	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = 0, y = height - bottom_height, width = width, height = 2}, EDITOR_CHROME_RULE_COLOR)
 	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = left_width - 2, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_RULE_COLOR)
 	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = width - right_width, y = body_y, width = 2, height = body_height}, EDITOR_CHROME_RULE_COLOR)
+	count += wgpu_append_editor_gizmo_mode_button_vertices(vertices, width, height, gizmo_local_space)
 	if viewport_width > 0 && body_height > 0 {
 		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x, y = body_y, width = viewport_width, height = 2}, EDITOR_CHROME_VIEWPORT_COLOR)
 		count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = viewport_x, y = body_y + body_height - 2, width = viewport_width, height = 2}, EDITOR_CHROME_VIEWPORT_COLOR)
@@ -2873,7 +2874,7 @@ wgpu_append_editor_chrome_vertices_for_selection :: proc(
 	camera_override_enabled: bool = false,
 	camera_override: Editor_Test_Camera_State = {},
 ) -> int {
-	count := wgpu_append_editor_chrome_vertices(vertices, width, height)
+	count := wgpu_append_editor_chrome_vertices(vertices, width, height, gizmo_local_space)
 	if selected_entity_id == "" || width <= 0 || height <= 0 {
 		return count
 	}
@@ -2910,6 +2911,35 @@ wgpu_append_editor_chrome_vertices_for_selection :: proc(
 	accent_height := min(max(8, body_height / 18), body_height - 28)
 	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = accent_x, y = accent_y, width = accent_width, height = accent_height}, EDITOR_CHROME_SELECTION_COLOR)
 	count += wgpu_append_editor_inspector_card_vertices(vertices, world, width, height, selected_entity_id, right_x, body_y, right_width, body_height, inspector_scroll_y)
+	return count
+}
+
+wgpu_append_editor_gizmo_mode_button_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, width, height: int, local_space: bool) -> int {
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	x_f, _, width_f, _ := editor_gizmo_mode_button_rect(f32(width))
+	top_height := min(max(24, height / 12), max(1, height / 3))
+	button_y := 4
+	button_height := max(6, top_height - 8)
+	button_x := int(x_f + 0.5)
+	button_width := int(width_f + 0.5)
+	if button_width <= 0 || button_height <= 0 {
+		return 0
+	}
+	left_width := max(1, button_width / 2)
+	right_width := max(1, button_width - left_width)
+	world_color := local_space ? EDITOR_CHROME_MODE_INACTIVE_COLOR : EDITOR_CHROME_MODE_ACTIVE_COLOR
+	local_color := local_space ? EDITOR_CHROME_MODE_ACTIVE_COLOR : EDITOR_CHROME_MODE_INACTIVE_COLOR
+	count := 0
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = button_x, y = button_y, width = left_width, height = button_height}, world_color)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = button_x + left_width, y = button_y, width = right_width, height = button_height}, local_color)
+	count += wgpu_append_chrome_stroke_rect(vertices, width, height, Renderable_Rect{x = button_x, y = button_y, width = button_width, height = button_height}, EDITOR_CHROME_RULE_COLOR)
+	axis_y := button_y + button_height / 2
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = button_x + max(3, left_width / 4), y = axis_y - 1, width = max(4, left_width / 2), height = 2}, EDITOR_CHROME_BUTTON_ACCENT_COLOR)
+	local_center_x := button_x + left_width + max(3, right_width / 2)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = local_center_x - 1, y = button_y + max(2, button_height / 4), width = 2, height = max(4, button_height / 2)}, EDITOR_CHROME_BUTTON_ACCENT_COLOR)
+	count += wgpu_append_chrome_rect(vertices, width, height, Renderable_Rect{x = button_x + left_width, y = button_y + 1, width = 1, height = max(1, button_height - 2)}, EDITOR_CHROME_RULE_COLOR)
 	return count
 }
 

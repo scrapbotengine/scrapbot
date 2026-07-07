@@ -206,7 +206,7 @@ wgpu_surface_context_present_scene_frame :: proc(
 				camera_override,
 			)
 		} else {
-			overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+			overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height), gizmo_local_space)
 		}
 	}
 
@@ -497,7 +497,7 @@ wgpu_present_surface_scene_with_world :: proc(
 				camera_override,
 			)
 		} else {
-			overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height))
+			overlay_count = wgpu_append_editor_chrome_vertices(&vertices, int(width), int(height), gizmo_local_space)
 		}
 	}
 

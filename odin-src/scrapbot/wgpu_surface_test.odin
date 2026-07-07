@@ -145,6 +145,8 @@ tint = [1.0, 0.5, 0.25]
 	base_vertices: [dynamic]WGPU_Scene_Vertex
 	defer delete(base_vertices)
 	base_count := wgpu_append_editor_chrome_vertices(&base_vertices, 320, 240)
+	expect_wgpu_vertex_color(t, base_vertices[:], EDITOR_CHROME_MODE_ACTIVE_COLOR)
+	expect_wgpu_vertex_color(t, base_vertices[:], EDITOR_CHROME_MODE_INACTIVE_COLOR)
 
 	vertices: [dynamic]WGPU_Scene_Vertex
 	defer delete(vertices)
@@ -194,6 +196,8 @@ test_wgpu_editor_selected_vertices_append_gizmo_axes :: proc(t: ^testing.T) {
 	defer delete(local_vertices)
 	local_count := wgpu_append_editor_chrome_vertices_for_selection(&local_vertices, result.scene.world, 320, 240, "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001", 0, .X, .None, true)
 	testing.expect_value(t, local_count > 0, true)
+	expect_wgpu_vertex_color(t, local_vertices[:], EDITOR_CHROME_MODE_ACTIVE_COLOR)
+	expect_wgpu_vertex_color(t, local_vertices[:], EDITOR_CHROME_MODE_INACTIVE_COLOR)
 	x_span, y_span, span_ok := wgpu_vertex_color_position_span(local_vertices[:], EDITOR_GIZMO_AXIS_ACTIVE_COLOR)
 	testing.expect_value(t, span_ok, true)
 	testing.expect_value(t, y_span > x_span * 1.5, true)
