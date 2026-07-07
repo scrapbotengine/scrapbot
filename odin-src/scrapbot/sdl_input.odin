@@ -19,6 +19,8 @@ Sdl_Input_State :: struct {
 	move_down:        bool,
 	text_input_buffer: [EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8,
 	text_input_len:    int,
+	clipboard_buffer:  [EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8,
+	clipboard_len:     int,
 }
 
 sdl_input_begin_frame :: proc(state: Sdl_Input_State, size: Sdl_Window_Size, editor_visible: bool) -> Frame_Input {
@@ -52,7 +54,10 @@ sdl_input_begin_frame :: proc(state: Sdl_Input_State, size: Sdl_Window_Size, edi
 sdl_input_clear_text_input :: proc(state: ^Sdl_Input_State, input: ^Frame_Input) {
 	state.text_input_buffer = {}
 	state.text_input_len = 0
+	state.clipboard_buffer = {}
+	state.clipboard_len = 0
 	input.text_input = ""
+	input.clipboard_text = ""
 }
 
 sdl_input_window_to_pixel_position :: proc(size: Sdl_Window_Size, x, y: f32) -> [2]f32 {
@@ -181,9 +186,35 @@ sdl_input_apply_key :: proc(state: ^Sdl_Input_State, input: ^Frame_Input, scanco
 	}
 	editor_shortcut_down := state.ctrl_down || state.super_down
 	input.keyboard.editor_select_all_pressed = down && !repeat && scancode == .A && editor_shortcut_down
+	input.keyboard.editor_copy_pressed = down && !repeat && scancode == .C && editor_shortcut_down
+	input.keyboard.editor_paste_pressed = down && !repeat && scancode == .V && editor_shortcut_down
 	input.keyboard.editor_undo_pressed = down && !repeat && scancode == .Z && editor_shortcut_down && !state.shift_down
 	input.keyboard.editor_redo_pressed = down && !repeat && editor_shortcut_down && ((scancode == .Z && state.shift_down) || scancode == .Y)
+	if input.keyboard.editor_paste_pressed {
+		sdl_input_apply_clipboard_text(state, input)
+	}
 	sdl_input_sync_keyboard_state(input, state^)
+}
+
+sdl_input_apply_clipboard_text :: proc(state: ^Sdl_Input_State, input: ^Frame_Input) {
+	if !sdl3.HasClipboardText() {
+		return
+	}
+	text := sdl3.GetClipboardText()
+	if text == nil {
+		return
+	}
+	defer sdl3.free(rawptr(text))
+	for index := 0; text[index] != 0; index += 1 {
+		if state.clipboard_len >= len(state.clipboard_buffer) - 1 {
+			break
+		}
+		state.clipboard_buffer[state.clipboard_len] = text[index]
+		state.clipboard_len += 1
+	}
+	if state.clipboard_len > 0 {
+		input.clipboard_text = string(state.clipboard_buffer[:state.clipboard_len])
+	}
 }
 
 sdl_input_apply_modifier_key :: proc(state: ^Sdl_Input_State, scancode: sdl3.Scancode, down: bool) -> bool {

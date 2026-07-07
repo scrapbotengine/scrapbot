@@ -63,6 +63,8 @@ Test_Editor_Expectation :: struct {
 	right_sidebar_width:    f32,
 	has_diagnostic:         bool,
 	diagnostic:             string,
+	has_clipboard:          bool,
+	clipboard:              string,
 }
 
 Test_Manifest :: struct {
@@ -140,6 +142,8 @@ Test_Manifest_Editor_Expectation_State :: struct {
 	right_sidebar_width:    f32,
 	has_diagnostic:         bool,
 	diagnostic:             string,
+	has_clipboard:          bool,
+	clipboard:              string,
 }
 
 parse_test_options :: proc(args: []string, emit_output: bool) -> (Test_Options, bool) {
@@ -422,7 +426,8 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 		      expect.has_selected_lane ||
 		      expect.has_left_sidebar_width ||
 		      expect.has_right_sidebar_width ||
-		      expect.has_diagnostic
+		      expect.has_diagnostic ||
+		      expect.has_clipboard
 		if ok {
 			append(&manifest.editor_expectations, Test_Editor_Expectation{
 				selected_entity = expect.selected_entity,
@@ -440,6 +445,8 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 				right_sidebar_width = expect.right_sidebar_width,
 				has_diagnostic = expect.has_diagnostic,
 				diagnostic = expect.diagnostic,
+				has_clipboard = expect.has_clipboard,
+				clipboard = expect.clipboard,
 			})
 		} else {
 			free_test_editor_expectation_state(expect^)
@@ -838,6 +845,25 @@ parse_test_manifest_editor_expect_key :: proc(expect: ^Test_Manifest_Editor_Expe
 		}
 		expect.has_diagnostic = true
 		return true
+	case "clipboard":
+		parsed, owned, ok := parse_basic_string_unescaped(value)
+		if !ok || expect.has_clipboard {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		if owned != "" {
+			expect.clipboard = owned
+		} else {
+			clone_ok: bool
+			expect.clipboard, clone_ok = clone_test_string(parsed)
+			if !clone_ok {
+				return false
+			}
+		}
+		expect.has_clipboard = true
+		return true
 	}
 	return false
 }
@@ -1102,6 +1128,20 @@ parse_test_manifest_input_key :: proc(input: ^Test_Manifest_Input_State, key, va
 		}
 		input.input.keyboard.editor_select_all_pressed = parsed
 		return true
+	case "editor_copy_pressed":
+		parsed, ok := parse_test_manifest_bool(value)
+		if !ok {
+			return false
+		}
+		input.input.keyboard.editor_copy_pressed = parsed
+		return true
+	case "editor_paste_pressed":
+		parsed, ok := parse_test_manifest_bool(value)
+		if !ok {
+			return false
+		}
+		input.input.keyboard.editor_paste_pressed = parsed
+		return true
 	case "text_input":
 		parsed, owned, ok := parse_basic_string_unescaped(value)
 		if !ok {
@@ -1121,6 +1161,30 @@ parse_test_manifest_input_key :: proc(input: ^Test_Manifest_Input_State, key, va
 		} else {
 			clone_ok: bool
 			input.input.text_input, clone_ok = clone_test_string(parsed)
+			if !clone_ok {
+				return false
+			}
+		}
+		return true
+	case "clipboard_text":
+		parsed, owned, ok := parse_basic_string_unescaped(value)
+		if !ok {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		if input.input.clipboard_text != "" {
+			if owned != "" {
+				delete(owned)
+			}
+			return false
+		}
+		if owned != "" {
+			input.input.clipboard_text = owned
+		} else {
+			clone_ok: bool
+			input.input.clipboard_text, clone_ok = clone_test_string(parsed)
 			if !clone_ok {
 				return false
 			}
@@ -1238,11 +1302,17 @@ free_test_input_frame :: proc(input_frame: Step_Input_Frame) {
 	if input_frame.input.text_input != "" {
 		delete(input_frame.input.text_input)
 	}
+	if input_frame.input.clipboard_text != "" {
+		delete(input_frame.input.clipboard_text)
+	}
 }
 
 free_test_input_state :: proc(input: Test_Manifest_Input_State) {
 	if input.input.text_input != "" {
 		delete(input.input.text_input)
+	}
+	if input.input.clipboard_text != "" {
+		delete(input.input.clipboard_text)
 	}
 }
 
@@ -1271,6 +1341,9 @@ free_test_editor_expectation :: proc(expectation: Test_Editor_Expectation) {
 	}
 	if expectation.diagnostic != "" {
 		delete(expectation.diagnostic)
+	}
+	if expectation.clipboard != "" {
+		delete(expectation.clipboard)
 	}
 }
 
@@ -1301,6 +1374,9 @@ free_test_editor_expectation_state :: proc(expect: Test_Manifest_Editor_Expectat
 	}
 	if expect.diagnostic != "" {
 		delete(expect.diagnostic)
+	}
+	if expect.clipboard != "" {
+		delete(expect.clipboard)
 	}
 }
 
@@ -1354,6 +1430,9 @@ test_editor_expectation_matches :: proc(world: Runtime_World, editor_state: ^Edi
 		return false
 	}
 	if expectation.has_diagnostic && editor_test_diagnostic_text(editor_state) != expectation.diagnostic {
+		return false
+	}
+	if expectation.has_clipboard && editor_test_clipboard_text(editor_state) != expectation.clipboard {
 		return false
 	}
 	return true
@@ -1514,6 +1593,17 @@ test_editor_expectation_failure_message :: proc(world: Runtime_World, editor_sta
 		strings.write_string(&builder, expectation.diagnostic)
 		strings.write_string(&builder, "\", got \"")
 		strings.write_string(&builder, editor_test_diagnostic_text(editor_state))
+		strings.write_rune(&builder, '"')
+		wrote = true
+	}
+	if expectation.has_clipboard {
+		if wrote {
+			strings.write_string(&builder, "; ")
+		}
+		strings.write_string(&builder, "editor.clipboard: expected \"")
+		strings.write_string(&builder, expectation.clipboard)
+		strings.write_string(&builder, "\", got \"")
+		strings.write_string(&builder, editor_test_clipboard_text(editor_state))
 		strings.write_rune(&builder, '"')
 		wrote = true
 	}

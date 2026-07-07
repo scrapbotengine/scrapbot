@@ -217,6 +217,7 @@ sdl_run_live_project_loop :: proc(
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
 		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
+		sdl_run_loop_flush_editor_clipboard(&editor_state)
 		if !frame.ok {
 			result.completed_frames = frame.completed_frames
 			return result, frame, "", true
@@ -371,6 +372,7 @@ sdl_run_live_project_wgpu_loop :: proc(
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
 		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
+		sdl_run_loop_flush_editor_clipboard(&editor_state)
 		if !frame.ok {
 			result.completed_frames = frame.completed_frames
 			return result, frame, "", true
@@ -423,4 +425,12 @@ sdl_run_live_project_wgpu_loop :: proc(
 	}
 	result.completed_frames = completed_frames
 	return result, Simulation_Run_Result{ok = true, completed_frames = completed_frames}, "", true
+}
+
+sdl_run_loop_flush_editor_clipboard :: proc(editor_state: ^Editor_Test_Input_State) {
+	if !editor_state.clipboard_changed {
+		return
+	}
+	_ = sdl3.SetClipboardText(cstring(raw_data(editor_state.clipboard_buffer[:])))
+	editor_state.clipboard_changed = false
 }

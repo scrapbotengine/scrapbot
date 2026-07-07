@@ -50,6 +50,8 @@ Frame_Input_Keyboard :: struct {
 	editor_backspace_pressed: bool,
 	editor_delete_pressed: bool,
 	editor_select_all_pressed: bool,
+	editor_copy_pressed: bool,
+	editor_paste_pressed: bool,
 }
 
 Frame_Input :: struct {
@@ -62,6 +64,7 @@ Frame_Input :: struct {
 	pixel_scale:               f32,
 	system_profile_count_hint: int,
 	text_input:                string,
+	clipboard_text:            string,
 }
 
 Step_Input_Frame :: struct {
@@ -121,6 +124,9 @@ Editor_Test_Input_State :: struct {
 	has_diagnostic:              bool,
 	diagnostic_buffer:           [EDITOR_TEST_DIAGNOSTIC_BUFFER_LEN]u8,
 	diagnostic_len:              int,
+	clipboard_buffer:            [EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8,
+	clipboard_len:               int,
+	clipboard_changed:           bool,
 	undo_stack:                  [EDITOR_TEST_UNDO_CAPACITY]Editor_Test_Field_Edit_Command,
 	undo_len:                    int,
 	redo_stack:                  [EDITOR_TEST_UNDO_CAPACITY]Editor_Test_Field_Edit_Command,
@@ -273,6 +279,15 @@ editor_test_input_state_free :: proc(state: ^Editor_Test_Input_State) {
 apply_editor_test_keyboard_edits :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_World, input: Frame_Input) -> bool {
 	consumed := false
 	if state.text_input_active {
+		if input.keyboard.editor_copy_pressed {
+			if copy_editor_test_text_input_selection(state) {
+				consumed = true
+			}
+		}
+		if input.keyboard.editor_paste_pressed && input.clipboard_text != "" {
+			editor_test_text_input_insert(state, input.clipboard_text)
+			consumed = true
+		}
 		if input.keyboard.editor_select_all_pressed {
 			select_all_editor_test_text_input(state)
 			consumed = true
@@ -328,6 +343,9 @@ apply_editor_test_keyboard_edits :: proc(state: ^Editor_Test_Input_State, world:
 	}
 	if input.keyboard.editor_redo_pressed {
 		return redo_editor_test_field_edit(world, state)
+	}
+	if input.keyboard.editor_copy_pressed {
+		return copy_editor_test_selected_entity_id(world^, state)
 	}
 	return false
 }
@@ -777,6 +795,38 @@ editor_test_parse_input_value :: proc(current: Runtime_Component_Value, text: st
 select_all_editor_test_text_input :: proc(state: ^Editor_Test_Input_State) {
 	state.text_input_selection_anchor = 0
 	state.text_input_cursor = state.text_input_len
+}
+
+copy_editor_test_text_input_selection :: proc(state: ^Editor_Test_Input_State) -> bool {
+	if !state.text_input_active || !editor_test_text_input_has_selection(state^) {
+		return false
+	}
+	start := min_int(state.text_input_cursor, state.text_input_selection_anchor)
+	end := max_int(state.text_input_cursor, state.text_input_selection_anchor)
+	return set_editor_test_clipboard(state, string(state.text_input_buffer[start:end]))
+}
+
+copy_editor_test_selected_entity_id :: proc(world: Runtime_World, state: ^Editor_Test_Input_State) -> bool {
+	entity_id, selected_ok := editor_test_selected_entity_id(state^, world)
+	if !selected_ok {
+		return false
+	}
+	return set_editor_test_clipboard(state, entity_id)
+}
+
+set_editor_test_clipboard :: proc(state: ^Editor_Test_Input_State, text: string) -> bool {
+	state.clipboard_buffer = {}
+	count := min_int(len(text), len(state.clipboard_buffer) - 1)
+	for index := 0; index < count; index += 1 {
+		state.clipboard_buffer[index] = text[index]
+	}
+	state.clipboard_len = count
+	state.clipboard_changed = true
+	return true
+}
+
+editor_test_clipboard_text :: proc(state: ^Editor_Test_Input_State) -> string {
+	return string(state.clipboard_buffer[:state.clipboard_len])
 }
 
 editor_test_text_input_move_cursor :: proc(state: ^Editor_Test_Input_State, cursor: int, select_range: bool) {

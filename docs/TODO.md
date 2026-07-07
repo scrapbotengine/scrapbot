@@ -159,6 +159,7 @@
 - [ ] Add editor controls to spawn and despawn entities.
 - [ ] Persist inspector edits back to text scene files.
 - [x] Add first-pass validation diagnostics for failed inspector edits.
+- [x] Add first-pass inspector text copy, paste, and clipboard support.
 - [ ] Add visual tests for inspector editing widgets.
 - [ ] Polish selected-entity header truncation and copy behavior.
 - [ ] Keep `examples/ui_gallery/` current with inspector control primitives.
@@ -183,7 +184,7 @@
 - [ ] Add scrollable vgroup and hgroup containers as first-class primitives.
 - [ ] Add dropdown, slider, checkbox, text area, and color picker controls.
 - [ ] Add keyboard focus traversal for retained UI.
-- [ ] Add text copy, paste, and clipboard support.
+- [ ] Add general retained UI text copy, paste, and clipboard support.
 - [ ] Add SDF-based font rendering for scalable UI and editor text.
 - [ ] Add disabled, hovered, active, focused, and invalid visual states.
 - [ ] Add reusable UI themes and density settings.

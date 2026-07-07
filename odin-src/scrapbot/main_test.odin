@@ -750,6 +750,27 @@ test_editor_inspector_routing_uses_scroll_view_component_stack :: proc(t: ^testi
 }
 
 @(test)
+test_editor_inspector_copies_focused_text_selection :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity, entity_err := runtime_world_create_entity(&world, "selected", "Selected")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	fields := [?]Runtime_Component_Field_Value{{name = "label", value = runtime_component_value_string("alpha")}}
+	testing.expect_value(t, runtime_world_set_component(&world, entity, "c0", fields[:]), Runtime_Error.None)
+
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+	}
+	focused := focus_editor_test_text_input(world, &state, "c0", "label", 0)
+	testing.expect_value(t, focused, true)
+	select_all_editor_test_text_input(&state)
+	testing.expect_value(t, copy_editor_test_text_input_selection(&state), true)
+	testing.expect_value(t, editor_test_clipboard_text(&state), "alpha")
+}
+
+@(test)
 test_run_test_command_replays_editor_inspector_field_selection :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-test-editor-inspector-field-selection")
 	defer os.remove_all(root)
@@ -866,6 +887,89 @@ editor_enter_pressed = true
 selected_entity = "target"
 selected_component = "c0"
 selected_field = "b"
+
+[[expect.field]]
+entity = "target"
+component = "c0"
+field = "b"
+equals_float = 7.5
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
+test_run_test_command_replays_editor_inspector_clipboard_copy_paste :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-inspector-clipboard-copy-paste")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "Editor Inspector Clipboard Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = ["scripts/components.luau"]
+`)
+	write_file(t, root, "scripts/components.luau", `local C0 = ecs.component("c0", {
+  fields = ecs.fields({
+    a = "float",
+    b = "float",
+  }),
+})
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Editor Inspector Clipboard Test"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.c0]
+a = 1.0
+b = 2.0
+`)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 5
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [20.0, 500.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 2
+editor_visible = true
+viewport = [1280.0, 720.0]
+editor_copy_pressed = true
+
+[[input.frame]]
+frame = 3
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [900.0, 285.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 4
+editor_visible = true
+viewport = [1280.0, 720.0]
+clipboard_text = "7.5"
+editor_paste_pressed = true
+
+[[input.frame]]
+frame = 5
+editor_visible = true
+viewport = [1280.0, 720.0]
+editor_enter_pressed = true
+
+[[expect.editor]]
+selected_entity = "target"
+selected_component = "c0"
+selected_field = "b"
+clipboard = "target"
 
 [[expect.field]]
 entity = "target"

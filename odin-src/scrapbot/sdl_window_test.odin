@@ -122,6 +122,14 @@ test_sdl_input_maps_keyboard_state_and_editor_shortcuts :: proc(t: ^testing.T) {
 
 	input = sdl_input_begin_frame(state, Sdl_Window_Size{width = 100, height = 100, pixel_width = 100, pixel_height = 100}, false)
 	sdl_input_apply_key(&state, &input, .LSHIFT, false, false)
+	sdl_input_apply_key(&state, &input, .C, true, false)
+	testing.expect_value(t, input.keyboard.editor_copy_pressed, true)
+
+	input = sdl_input_begin_frame(state, Sdl_Window_Size{width = 100, height = 100, pixel_width = 100, pixel_height = 100}, false)
+	sdl_input_apply_key(&state, &input, .V, true, false)
+	testing.expect_value(t, input.keyboard.editor_paste_pressed, true)
+
+	input = sdl_input_begin_frame(state, Sdl_Window_Size{width = 100, height = 100, pixel_width = 100, pixel_height = 100}, false)
 	sdl_input_apply_key(&state, &input, .Y, true, false)
 	testing.expect_value(t, input.keyboard.editor_redo_pressed, true)
 }
