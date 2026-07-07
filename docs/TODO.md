@@ -87,6 +87,7 @@
 - [x] Port first-pass editor inspector field selection replay for Odin test replay.
 - [x] Port first-pass editor splitter drag replay for Odin test replay.
 - [x] Port first-pass editor inspector text editing replay for Odin test replay.
+- [x] Port first-pass editor inspector vec3 lane text editing replay for Odin test replay.
 - [x] Port first-pass editor gizmo capture and drag replay for Odin test replay.
 - [x] Port first-pass bounded run command parsing and validation from Zig to Odin.
 - [x] Port first-pass renderer ECS extraction stats from Zig to Odin.

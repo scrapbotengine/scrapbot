@@ -825,6 +825,75 @@ equals_float = 7.5
 }
 
 @(test)
+test_run_test_command_replays_editor_inspector_vec3_lane_text_edit :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-test-editor-inspector-vec3-lane-text-edit")
+	defer os.remove_all(root)
+	defer delete(root)
+	write_file(t, root, PROJECT_FILE_NAME, `name = "Editor Inspector Vec3 Lane Text Edit Test"
+version = 1
+default_scene = "scenes/main.scene.toml"
+scripts = ["scripts/components.luau"]
+`)
+	write_file(t, root, "scripts/components.luau", `local C0 = ecs.component("c0", {
+  fields = ecs.fields({
+    position = "vec3",
+  }),
+})
+`)
+	write_file(t, root, "scenes/main.scene.toml", `name = "Editor Inspector Vec3 Lane Text Edit Test"
+version = 1
+
+[[entities]]
+id = "target"
+name = "Target"
+
+[entities.components.c0]
+position = [1.0, 2.0, 3.0]
+`)
+	write_file(t, root, TEST_MANIFEST_NAME, `frames = 3
+dt = 0.016
+
+[[input.frame]]
+frame = 1
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [20.0, 500.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 2
+editor_visible = true
+viewport = [1280.0, 720.0]
+pointer = [1230.0, 250.0]
+primary_pressed = true
+primary_down = true
+
+[[input.frame]]
+frame = 3
+editor_visible = true
+viewport = [1280.0, 720.0]
+text_input = "9.0"
+editor_enter_pressed = true
+
+[[expect.editor]]
+selected_entity = "target"
+selected_component = "c0"
+selected_field = "position"
+selected_lane = 2
+
+[[expect.field]]
+entity = "target"
+component = "c0"
+field = "position"
+equals_vec3 = [1.0, 2.0, 9.0]
+`)
+
+	exit_code := run_with_output([]string{"scrapbot", "test", root}, false)
+	testing.expect_value(t, exit_code, 0)
+}
+
+@(test)
 test_run_test_command_replays_editor_gizmo_drag :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-test-editor-gizmo-drag")
 	defer os.remove_all(root)

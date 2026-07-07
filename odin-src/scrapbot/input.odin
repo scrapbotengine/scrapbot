@@ -85,6 +85,7 @@ Editor_Test_Input_State :: struct {
 	inspector_scroll_y:  f32,
 	selected_property_component: string,
 	selected_property_field:     string,
+	selected_property_lane:      int,
 	has_selected_property:       bool,
 	dragging_splitter:           Editor_Test_Splitter,
 	dragging_axis:               Editor_Test_Axis,
@@ -95,6 +96,7 @@ Editor_Test_Input_State :: struct {
 	text_input_active:           bool,
 	text_input_component:        string,
 	text_input_field:            string,
+	text_input_lane:             int,
 	text_input_buffer:           [EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8,
 	text_input_len:              int,
 	text_input_cursor:           int,
@@ -152,18 +154,20 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, world: ^Runtime
 				state.has_selected_property = false
 				state.selected_property_component = ""
 				state.selected_property_field = ""
+				state.selected_property_lane = 0
 				clear_editor_test_text_input(state)
 				state.captured_pointer = true
 				consumed = true
-			} else if component_id, field_name, property_ok := editor_inspector_property_at_pointer(world^, state^, input^); property_ok {
+			} else if component_id, field_name, lane, property_ok := editor_inspector_property_at_pointer(world^, state^, input^); property_ok {
 				if state.text_input_active &&
-				   (state.text_input_component != component_id || state.text_input_field != field_name) {
+				   (state.text_input_component != component_id || state.text_input_field != field_name || state.text_input_lane != lane) {
 					commit_editor_test_text_input(world, state)
 				}
 				state.selected_property_component = component_id
 				state.selected_property_field = field_name
+				state.selected_property_lane = lane
 				state.has_selected_property = true
-				focus_editor_test_text_input(world^, state, component_id, field_name)
+				focus_editor_test_text_input(world^, state, component_id, field_name, lane)
 				state.captured_pointer = true
 				consumed = true
 			} else if !inside_game {
@@ -262,7 +266,7 @@ apply_editor_test_keyboard_edits :: proc(state: ^Editor_Test_Input_State, world:
 	return consumed
 }
 
-focus_editor_test_text_input :: proc(world: Runtime_World, state: ^Editor_Test_Input_State, component_id, field_name: string) -> bool {
+focus_editor_test_text_input :: proc(world: Runtime_World, state: ^Editor_Test_Input_State, component_id, field_name: string, lane: int) -> bool {
 	if !state.has_selected_entity {
 		clear_editor_test_text_input(state)
 		return false
@@ -272,7 +276,7 @@ focus_editor_test_text_input :: proc(world: Runtime_World, state: ^Editor_Test_I
 		clear_editor_test_text_input(state)
 		return false
 	}
-	formatted, ok := editor_test_format_input_value(&state.text_input_buffer, value)
+	formatted, ok := editor_test_format_input_value(&state.text_input_buffer, value, lane)
 	if !ok {
 		clear_editor_test_text_input(state)
 		return false
@@ -280,6 +284,7 @@ focus_editor_test_text_input :: proc(world: Runtime_World, state: ^Editor_Test_I
 	state.text_input_active = true
 	state.text_input_component = component_id
 	state.text_input_field = field_name
+	state.text_input_lane = clamp_int(lane, 0, 2)
 	state.text_input_len = len(formatted)
 	state.text_input_cursor = state.text_input_len
 	if editor_test_component_value_selects_all_on_focus(value) {
@@ -300,7 +305,7 @@ commit_editor_test_text_input :: proc(world: ^Runtime_World, state: ^Editor_Test
 		return false
 	}
 	text := string(state.text_input_buffer[:state.text_input_len])
-	next, parse_ok := editor_test_parse_input_value(current, text)
+	next, parse_ok := editor_test_parse_input_value(current, text, state.text_input_lane)
 	if !parse_ok {
 		clear_editor_test_text_input(state)
 		return false
@@ -314,6 +319,7 @@ clear_editor_test_text_input :: proc(state: ^Editor_Test_Input_State) {
 	state.text_input_active = false
 	state.text_input_component = ""
 	state.text_input_field = ""
+	state.text_input_lane = 0
 	state.text_input_buffer = {}
 	state.text_input_len = 0
 	state.text_input_cursor = 0
@@ -330,7 +336,7 @@ editor_test_component_value_selects_all_on_focus :: proc(value: Runtime_Componen
 	return false
 }
 
-editor_test_format_input_value :: proc(buffer: ^[EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8, value: Runtime_Component_Value) -> (string, bool) {
+editor_test_format_input_value :: proc(buffer: ^[EDITOR_TEST_TEXT_INPUT_BUFFER_LEN]u8, value: Runtime_Component_Value, lane: int = 0) -> (string, bool) {
 	buffer^ = {}
 	switch value.value_type {
 	case .Boolean:
@@ -347,7 +353,7 @@ editor_test_format_input_value :: proc(buffer: ^[EDITOR_TEST_TEXT_INPUT_BUFFER_L
 		text := fmt.bprintf(buffer[:], "%g", value.float)
 		return text, true
 	case .Vec3:
-		text := fmt.bprintf(buffer[:], "%g", value.vec3[0])
+		text := fmt.bprintf(buffer[:], "%g", value.vec3[clamp_int(lane, 0, 2)])
 		return text, true
 	case .String:
 		if len(value.string_value) > len(buffer) {
@@ -359,7 +365,7 @@ editor_test_format_input_value :: proc(buffer: ^[EDITOR_TEST_TEXT_INPUT_BUFFER_L
 	return "", false
 }
 
-editor_test_parse_input_value :: proc(current: Runtime_Component_Value, text: string) -> (Runtime_Component_Value, bool) {
+editor_test_parse_input_value :: proc(current: Runtime_Component_Value, text: string, lane: int = 0) -> (Runtime_Component_Value, bool) {
 	trimmed := strings.trim_space(text)
 	switch current.value_type {
 	case .Boolean:
@@ -383,7 +389,7 @@ editor_test_parse_input_value :: proc(current: Runtime_Component_Value, text: st
 		parsed, ok := strconv.parse_f32(trimmed)
 		if ok {
 			next := current.vec3
-			next[0] = parsed
+			next[clamp_int(lane, 0, 2)] = parsed
 			return runtime_component_value_vec3(next), true
 		}
 	case .String:
@@ -866,17 +872,17 @@ editor_splitter_at_pointer :: proc(state: Editor_Test_Input_State, input: Frame_
 	return .None, false
 }
 
-editor_inspector_property_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input) -> (component_id, field_name: string, ok: bool) {
+editor_inspector_property_at_pointer :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input) -> (component_id, field_name: string, lane: int, ok: bool) {
 	if !input.pointer.has_position || !state.has_selected_entity {
-		return "", "", false
+		return "", "", 0, false
 	}
 	selected_index, selected_err := runtime_world_entity_index(world, state.selected_entity)
 	if selected_err != .None {
-		return "", "", false
+		return "", "", 0, false
 	}
 	clip_x, clip_y, clip_width, clip_height := editor_inspector_scroll_clip_rect(input)
 	if !editor_pointer_in_rect(input, clip_x, clip_y, clip_width, clip_height) {
-		return "", "", false
+		return "", "", 0, false
 	}
 	content_y := -state.inspector_scroll_y
 	component_index := 0
@@ -892,13 +898,62 @@ editor_inspector_property_at_pointer :: proc(world: Runtime_World, state: Editor
 			field_y := clip_y + content_y + field_start_y + f32(field_index) * UI_EDITOR_INSPECTOR_FIELD_ROW_STRIDE
 			row_y := field_y + UI_EDITOR_INSPECTOR_FIELD_CONTROL_OFFSET_Y - UI_EDITOR_INSPECTOR_INPUT_CELL_PADDING
 			if editor_pointer_in_rect(input, clip_x, row_y, clip_width, UI_EDITOR_INSPECTOR_FIELD_ROW_HEIGHT) {
-				return table.id, column.name, true
+				value, value_err := runtime_world_get_component_field_value(world, state.selected_entity, table.id, column.name)
+				if value_err != .None {
+					return "", "", 0, false
+				}
+				value_x, value_width := editor_inspector_value_rect(clip_width)
+				lane := editor_inspector_vec3_lane_at_pointer(value, column.name, input.pointer.position[0], clip_x + value_x + UI_EDITOR_INSPECTOR_INPUT_CELL_PADDING, max_f32(value_width - UI_EDITOR_INSPECTOR_INPUT_CELL_PADDING * 2.0, 1.0))
+				return table.id, column.name, lane, true
 			}
 		}
 		content_y += editor_inspector_component_card_height(len(table.columns))
 		component_index += 1
 	}
-	return "", "", false
+	return "", "", 0, false
+}
+
+editor_inspector_value_rect :: proc(card_width: f32) -> (x, width: f32) {
+	row_width := max_f32(card_width - UI_EDITOR_INSPECTOR_CARD_PADDING_X * 2.0, 1.0)
+	available := max_f32(row_width - UI_EDITOR_INSPECTOR_FIELD_COLUMN_GAP, 0.0)
+	column_width := max_f32(available * 0.5, UI_EDITOR_INSPECTOR_COLUMN_MIN_WIDTH)
+	return UI_EDITOR_INSPECTOR_CARD_PADDING_X + column_width + UI_EDITOR_INSPECTOR_FIELD_COLUMN_GAP, column_width
+}
+
+editor_inspector_vec3_lane_at_pointer :: proc(value: Runtime_Component_Value, field_name: string, pointer_x, value_screen_x, value_width: f32) -> int {
+	if value.value_type != .Vec3 {
+		return 0
+	}
+	is_color := editor_test_field_looks_like_color(field_name)
+	child_count := f32(6.0)
+	if is_color {
+		child_count = 7.0
+	}
+	spacing_total := max_f32(child_count - 1.0, 0.0) * UI_EDITOR_INSPECTOR_INPUT_GAP
+	swatch_total_width := f32(0)
+	if is_color {
+		swatch_total_width = UI_EDITOR_INSPECTOR_SWATCH_SIZE
+	}
+	lane_width := max_f32((value_width - swatch_total_width - UI_EDITOR_INSPECTOR_LANE_LABEL_WIDTH * 3.0 - spacing_total) / 3.0, 1.0)
+	x := value_screen_x
+	if is_color {
+		if pointer_x < x + UI_EDITOR_INSPECTOR_SWATCH_SIZE + UI_EDITOR_INSPECTOR_INPUT_GAP {
+			return 0
+		}
+		x += UI_EDITOR_INSPECTOR_SWATCH_SIZE + UI_EDITOR_INSPECTOR_INPUT_GAP
+	}
+	for lane := 0; lane < 3; lane += 1 {
+		slot_end := x + UI_EDITOR_INSPECTOR_LANE_LABEL_WIDTH + UI_EDITOR_INSPECTOR_INPUT_GAP + lane_width
+		if pointer_x < slot_end || lane == 2 {
+			return lane
+		}
+		x = slot_end + UI_EDITOR_INSPECTOR_INPUT_GAP
+	}
+	return 2
+}
+
+editor_test_field_looks_like_color :: proc(field_name: string) -> bool {
+	return strings.contains(field_name, "color") || strings.contains(field_name, "colour")
 }
 
 editor_left_splitter_hit_rect :: proc(state: Editor_Test_Input_State, input: Frame_Input) -> (x, y, width, height: f32) {
@@ -1179,6 +1234,10 @@ min_int :: proc(left, right: int) -> int {
 		return left
 	}
 	return right
+}
+
+clamp_int :: proc(value, minimum, maximum: int) -> int {
+	return max_int(min_int(value, maximum), minimum)
 }
 
 clear_frame_pointer_actions :: proc(input: ^Frame_Input) {

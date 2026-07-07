@@ -55,6 +55,8 @@ Test_Editor_Expectation :: struct {
 	inspector_scroll_y:     f32,
 	selected_component:     string,
 	selected_field:         string,
+	has_selected_lane:      bool,
+	selected_lane:          int,
 	has_left_sidebar_width: bool,
 	left_sidebar_width:     f32,
 	has_right_sidebar_width: bool,
@@ -128,6 +130,8 @@ Test_Manifest_Editor_Expectation_State :: struct {
 	inspector_scroll_y:     f32,
 	selected_component:     string,
 	selected_field:         string,
+	has_selected_lane:      bool,
+	selected_lane:          int,
 	has_left_sidebar_width: bool,
 	left_sidebar_width:     f32,
 	has_right_sidebar_width: bool,
@@ -402,10 +406,16 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 			expect^ = {}
 			return false
 		}
+		if expect.has_selected_lane && !has_property {
+			free_test_editor_expectation_state(expect^)
+			expect^ = {}
+			return false
+		}
 		ok := expect.selected_entity != "" ||
 		      expect.has_system_scroll_y ||
 		      expect.has_inspector_scroll_y ||
 		      (expect.selected_component != "" && expect.selected_field != "") ||
+		      expect.has_selected_lane ||
 		      expect.has_left_sidebar_width ||
 		      expect.has_right_sidebar_width
 		if ok {
@@ -417,6 +427,8 @@ parse_test_manifest :: proc(contents: string) -> (Test_Manifest, bool) {
 				inspector_scroll_y = expect.inspector_scroll_y,
 				selected_component = expect.selected_component,
 				selected_field = expect.selected_field,
+				has_selected_lane = expect.has_selected_lane,
+				selected_lane = expect.selected_lane,
 				has_left_sidebar_width = expect.has_left_sidebar_width,
 				left_sidebar_width = expect.left_sidebar_width,
 				has_right_sidebar_width = expect.has_right_sidebar_width,
@@ -769,6 +781,14 @@ parse_test_manifest_editor_expect_key :: proc(expect: ^Test_Manifest_Editor_Expe
 				return false
 			}
 		}
+		return true
+	case "selected_lane":
+		parsed, ok := strconv.parse_int(strings.trim_space(value), 10)
+		if !ok || parsed < 0 || parsed > 2 || expect.has_selected_lane {
+			return false
+		}
+		expect.selected_lane = parsed
+		expect.has_selected_lane = true
 		return true
 	case "left_sidebar_width":
 		if expect.has_left_sidebar_width {
@@ -1248,6 +1268,11 @@ test_editor_expectation_matches :: proc(world: Runtime_World, editor_state: Edit
 			return false
 		}
 	}
+	if expectation.has_selected_lane {
+		if !editor_state.has_selected_property || editor_state.selected_property_lane != expectation.selected_lane {
+			return false
+		}
+	}
 	if expectation.has_left_sidebar_width && !test_float_approx_equal(editor_state.left_sidebar_width, expectation.left_sidebar_width) {
 		return false
 	}
@@ -1365,6 +1390,20 @@ test_editor_expectation_failure_message :: proc(world: Runtime_World, editor_sta
 			strings.write_rune(&builder, '.')
 			strings.write_string(&builder, editor_state.selected_property_field)
 			strings.write_rune(&builder, '"')
+		} else {
+			strings.write_string(&builder, ", got none")
+		}
+		wrote = true
+	}
+	if expectation.has_selected_lane {
+		if wrote {
+			strings.write_string(&builder, "; ")
+		}
+		strings.write_string(&builder, "editor.selected_lane: expected ")
+		append_test_format(&builder, "%d", expectation.selected_lane)
+		if editor_state.has_selected_property {
+			strings.write_string(&builder, ", got ")
+			append_test_format(&builder, "%d", editor_state.selected_property_lane)
 		} else {
 			strings.write_string(&builder, ", got none")
 		}
