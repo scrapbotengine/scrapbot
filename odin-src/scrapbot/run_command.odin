@@ -248,12 +248,6 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 		}
 		return options, false
 	}
-	if options.backend == .WebGPU && !options.hidden {
-		if emit_output {
-			fmt.eprintln("run failed: visible WebGPU presentation is not ported yet; use --hidden --frames")
-		}
-		return options, false
-	}
 	if options.backend == .WebGPU && options.max_frames == 0 {
 		if emit_output {
 			fmt.eprintln("run failed: WebGPU run rendering requires --frames")
@@ -270,7 +264,11 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 }
 
 run_options_use_sdl_window_loop :: proc(options: Run_Options) -> bool {
-	return !options.hidden && options.backend == .Software
+	return !options.hidden && (options.backend == .Software || options.backend == .WebGPU)
+}
+
+run_options_use_wgpu_sdl_window_loop :: proc(options: Run_Options) -> bool {
+	return run_options_use_sdl_window_loop(options) && options.backend == .WebGPU
 }
 
 print_run_result :: proc(
@@ -301,7 +299,11 @@ print_run_result :: proc(
 	if options.hidden {
 		fmt.println("Window: hidden")
 	} else if window_result.window_opened {
-		fmt.printf("Window: visible SDL loop %dx%d (%dx%d pixels), presentation pending\n", window_result.window_width, window_result.window_height, window_result.pixel_width, window_result.pixel_height)
+		if options.backend == .WebGPU && window_result.presented {
+			fmt.printf("Window: visible SDL WebGPU loop %dx%d (%dx%d pixels)\n", window_result.window_width, window_result.window_height, window_result.pixel_width, window_result.pixel_height)
+		} else {
+			fmt.printf("Window: visible SDL loop %dx%d (%dx%d pixels), presentation pending\n", window_result.window_width, window_result.window_height, window_result.pixel_width, window_result.pixel_height)
+		}
 	} else {
 		fmt.println("Window: visible presentation pending Odin renderer")
 	}

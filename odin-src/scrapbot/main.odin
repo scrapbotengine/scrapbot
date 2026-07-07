@@ -129,7 +129,8 @@ Odin migration status:
   currently cover text project creation, validation, packaging, and schedule-aware frame accounting slices.
   Luau execution, native module execution, retained scene UI/editor input replay, software render/visual output,
   WebGPU offscreen run/render output, image comparison, and first-pass offscreen editor chrome are partially ported;
-  WebGPU presentation, unbounded window-loop reload diagnostics, and the full editor shell are still being ported.`)
+  hidden and bounded visible WebGPU presentation are partially ported; unbounded WebGPU presentation and
+  the full editor shell are still being ported.`)
 }
 
 run_sdl_window_check :: proc(args: []string, emit_output: bool) -> int {
@@ -590,7 +591,27 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 	run_report := Live_Project_Run_Report{}
 	defer live_project_run_report_free(&run_report)
 	window_result := Sdl_Run_Loop_Result{}
-	if run_options_use_sdl_window_loop(options) {
+	if run_options_use_wgpu_sdl_window_loop(options) {
+		simulation := Simulation_Run_Result{}
+		window_error: string
+		window_ok: bool
+		window_result, simulation, window_error, window_ok = sdl_run_live_project_wgpu_loop(&live, options.target_path, options.max_frames, false, emit_output, &run_report)
+		if !window_ok {
+			if emit_output {
+				fmt.eprintf("run window loop failed: %s\n", window_error)
+			}
+			return 1
+		}
+		if !simulation.ok {
+			live.check.diagnostic = simulation.diagnostic
+			live.check.err = .Invalid_Script
+			if emit_output {
+				print_project_check_error(live.check, options.target_path, .Text)
+			}
+			return 1
+		}
+		completed_frames = simulation.completed_frames
+	} else if run_options_use_sdl_window_loop(options) {
 		simulation := Simulation_Run_Result{}
 		window_error: string
 		window_ok: bool
@@ -632,17 +653,24 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 			}
 			return 1
 		}
-		surface_report, surface_error, surface_ok := run_present_hidden_wgpu_surface(live.check.scene.world, options.target_path)
-		if !surface_ok {
-			if emit_output {
-				fmt.eprintf("run surface presentation failed: %s\n", surface_error)
+		if options.hidden {
+			surface_report, surface_error, surface_ok := run_present_hidden_wgpu_surface(live.check.scene.world, options.target_path)
+			if !surface_ok {
+				if emit_output {
+					fmt.eprintf("run surface presentation failed: %s\n", surface_error)
+				}
+				return 1
 			}
-			return 1
+			render_result.presented = true
+			render_result.surface_width = int(surface_report.width)
+			render_result.surface_height = int(surface_report.height)
+			render_result.renderable_count = surface_report.renderable_count
+		} else if window_result.presented {
+			render_result.presented = true
+			render_result.surface_width = window_result.surface_width
+			render_result.surface_height = window_result.surface_height
+			render_result.renderable_count = window_result.renderable_count
 		}
-		render_result.presented = true
-		render_result.surface_width = int(surface_report.width)
-		render_result.surface_height = int(surface_report.height)
-		render_result.renderable_count = surface_report.renderable_count
 
 		render_options := Render_Options{
 			target_path = options.target_path,
