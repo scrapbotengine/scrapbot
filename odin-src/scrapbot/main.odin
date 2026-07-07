@@ -611,6 +611,18 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 			}
 			return 1
 		}
+		surface_report, surface_error, surface_ok := run_present_hidden_wgpu_surface(live.check.scene.world, options.target_path)
+		if !surface_ok {
+			if emit_output {
+				fmt.eprintf("run surface presentation failed: %s\n", surface_error)
+			}
+			return 1
+		}
+		render_result.presented = true
+		render_result.surface_width = int(surface_report.width)
+		render_result.surface_height = int(surface_report.height)
+		render_result.renderable_count = surface_report.renderable_count
+
 		render_options := Render_Options{
 			target_path = options.target_path,
 			output_path = options.render_output_path,
@@ -634,13 +646,11 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 			}
 			return 1
 		}
-		render_result = Run_Render_Result{
-			rendered = true,
-			output_path = render_options.output_path,
-			width = render_options.width,
-			height = render_options.height,
-			pixel_scale = render_options.pixel_scale,
-		}
+		render_result.rendered = true
+		render_result.output_path = render_options.output_path
+		render_result.width = render_options.width
+		render_result.height = render_options.height
+		render_result.pixel_scale = render_options.pixel_scale
 	}
 
 	if emit_output {

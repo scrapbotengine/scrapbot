@@ -13,7 +13,7 @@ DEFAULT_RENDER_TEST_OUTPUT :: "odin-out/scrapbot-render-test.png"
 DEFAULT_VISUAL_TEST_OUTPUT :: "odin-out/scrapbot-visual-test.png"
 DEFAULT_RUN_RENDER_OUTPUT :: "odin-out/scrapbot-run-wgpu.png"
 ODIN_SOFTWARE_RENDER_BACKEND :: "odin software offscreen placeholder"
-ODIN_WGPU_RENDER_BACKEND :: "odin wgpu-native offscreen scene renderer"
+ODIN_WGPU_RENDER_BACKEND :: "odin wgpu-native scene renderer"
 
 Render_Backend :: enum {
 	Software,

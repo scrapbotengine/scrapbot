@@ -7,7 +7,7 @@
 
 Headful demo rendering proves that Scrapbot can create a platform window, hand its native surface to WebGPU, configure a presentable surface, and draw visible frames through the same renderer foundation used by offscreen rendering.
 
-**Odin migration note:** The Odin `run` command can execute bounded hidden frame loops and, with `--backend wgpu`, write a final offscreen WebGPU frame artifact through the Odin `wgpu-native` path. The Odin SDL boundary can initialize video, create a hidden high-DPI window, extract platform-native `wgpu-native` surface descriptors for Metal, Wayland/X11, or Win32, and present a single hidden clear frame through `scrapbot wgpu-surface-check`. Odin still rejects visible WebGPU presentation, scene-driven window presentation, and WebGPU editor chrome until the surface presentation loop is ported.
+**Odin migration note:** The Odin `run` command can execute bounded hidden frame loops and, with `--backend wgpu`, write a final offscreen WebGPU frame artifact through the Odin `wgpu-native` path and present the final simulated scene through a hidden SDL WebGPU surface. The Odin SDL boundary can initialize video, create a hidden high-DPI window, extract platform-native `wgpu-native` surface descriptors for Metal, Wayland/X11, or Win32, and present a single hidden clear frame through `scrapbot wgpu-surface-check`. Odin still rejects visible WebGPU presentation, the unbounded WebGPU window loop, and WebGPU editor chrome until the full surface presentation loop is ported.
 
 ## Behavior
 

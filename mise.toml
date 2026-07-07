@@ -34,8 +34,8 @@ description = "Build and run the Odin SDL hidden-window smoke"
 run = "mise build-odin && ./odin-out/scrapbot sdl-window-check --hidden"
 
 [tasks.odin-wgpu-surface-smoke]
-description = "Build and run the Odin hidden SDL WebGPU surface presentation smoke"
-run = "mise build-odin && mise build && ./odin-out/scrapbot wgpu-surface-check . --hidden"
+description = "Build and run Odin hidden SDL WebGPU surface presentation smokes"
+run = "mise build-odin && mise build && ./odin-out/scrapbot wgpu-surface-check . --hidden && ./odin-out/scrapbot run examples/minimal --hidden --frames 2 --backend wgpu --render-output odin-out/wgpu-run-hidden.png"
 
 [tasks.test-odin]
 description = "Run Odin migration tests"

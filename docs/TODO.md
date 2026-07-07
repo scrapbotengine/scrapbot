@@ -27,7 +27,7 @@
 - [x] Odin `step` can validate projects and report deterministic frame/schedule summaries.
 - [x] Odin `bench` can report validation/update timing with Odin Luau execution and pending render stats.
 - [x] Odin `test` can discover test projects, validate test manifests, replay script-visible input resources, route retained scene UI commands/scroll, consume editor-chrome pointer input, replay editor play/pause and single-step buttons, replay first-pass editor entity-list/system-list/inspector scrolling, entity selection, inspector field selection, and splitter dragging, execute Luau-backed frame simulation, and evaluate first-pass field/editor assertions.
-- [x] Odin `run` can validate projects, execute bounded hidden frame updates, and write final offscreen WebGPU frame artifacts.
+- [x] Odin `run` can validate projects, execute bounded hidden frame updates, write final offscreen WebGPU frame artifacts, and present scene-derived frames through a hidden WebGPU surface.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
 - [x] Odin `render` and `render-test` can validate projects, run bounded frame simulation, check selected entities, and report pending backend render stats.
 - [x] Odin `visual-test` can validate projects, expected/actual paths, selected entities, bounded frame simulation, golden update, image comparison, tolerance checks, and metadata sidecars against first-pass software render artifacts.
@@ -121,6 +121,7 @@
 - [x] Port first-pass bounded hidden Odin `run --backend wgpu` offscreen frame output.
 - [x] Port first-pass Odin SDL hidden window creation and native surface descriptor extraction.
 - [x] Port first-pass Odin hidden SDL WebGPU surface presentation smoke paths.
+- [x] Port bounded hidden Odin `run --backend wgpu` scene surface presentation.
 - [ ] Port remaining unbounded/window-loop reload diagnostics from Zig to Odin.
 - [ ] Replace the vendored Zig `wgpu-native` binding with Odin C ABI bindings.
 - [x] Port first-pass Odin software offscreen PNG/BMP image output and render-test pixel verification.

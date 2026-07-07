@@ -17,11 +17,15 @@ Run_Options :: struct {
 }
 
 Run_Render_Result :: struct {
-	rendered:    bool,
-	output_path: string,
-	width:       int,
-	height:      int,
-	pixel_scale: f32,
+	rendered:         bool,
+	output_path:      string,
+	width:            int,
+	height:           int,
+	pixel_scale:      f32,
+	presented:        bool,
+	surface_width:    int,
+	surface_height:   int,
+	renderable_count: int,
 }
 
 parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bool) {
@@ -246,7 +250,7 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 	}
 	if options.backend == .WebGPU && !options.hidden {
 		if emit_output {
-			fmt.eprintln("run failed: WebGPU presentation is not ported yet; use --hidden --frames")
+			fmt.eprintln("run failed: visible WebGPU presentation is not ported yet; use --hidden --frames")
 		}
 		return options, false
 	}
@@ -301,6 +305,9 @@ print_run_result :: proc(result: Project_Check_Result, options: Run_Options, com
 		fmt.printf("Rendered frame: %s\n", render_result.output_path)
 		fmt.printf("Render viewport: %dx%d @%gx\n", render_result.width, render_result.height, render_result.pixel_scale)
 	}
+	if render_result.presented {
+		fmt.printf("Presented surface frame: %dx%d, renderables: %d\n", render_result.surface_width, render_result.surface_height, render_result.renderable_count)
+	}
 	fmt.printf("Renderer backend: %s\n", render_backend_label(options.backend))
 }
 
@@ -315,5 +322,60 @@ print_run_reload_event :: proc(event: Live_Reload_Event) {
 		event.frame,
 		info.entity_count,
 		info.system_count,
+	)
+}
+
+run_present_hidden_wgpu_surface :: proc(world: Runtime_World, target_path: string) -> (WGPU_Surface_Presentation_Report, string, bool) {
+	path, found := wgpu_find_default_offscreen_library(target_path)
+	if !found && target_path != "." {
+		path, found = wgpu_find_default_offscreen_library(".")
+	}
+	if !found {
+		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_LIBRARY_NOT_FOUND, false
+	}
+	defer delete(path)
+
+	loaded, missing, loaded_ok := wgpu_load_offscreen_library(path)
+	defer wgpu_unload_offscreen_library(&loaded)
+	if !loaded_ok {
+		if missing == "" {
+			missing = WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR
+		}
+		return WGPU_Surface_Presentation_Report{}, missing, false
+	}
+
+	init_err := sdl_video_init()
+	if init_err != .None {
+		return WGPU_Surface_Presentation_Report{}, sdl_window_error_message(init_err), false
+	}
+	defer sdl_video_quit()
+
+	window, window_err := sdl_window_create(sdl_window_default_options(true))
+	defer sdl_window_destroy(&window)
+	if window_err != .None {
+		return WGPU_Surface_Presentation_Report{}, sdl_window_error_message(window_err), false
+	}
+
+	size, size_err := sdl_window_get_size(window.window)
+	if size_err != .None {
+		return WGPU_Surface_Presentation_Report{}, sdl_window_error_message(size_err), false
+	}
+	if size.pixel_width <= 0 || size.pixel_height <= 0 {
+		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
+	}
+
+	surface_descriptor := Sdl_WGPU_Surface_Descriptor{}
+	surface_err := sdl_window_init_surface_descriptor(&surface_descriptor, window.window)
+	defer sdl_wgpu_surface_descriptor_deinit(&surface_descriptor)
+	if surface_err != .None {
+		return WGPU_Surface_Presentation_Report{}, sdl_window_error_message(surface_err), false
+	}
+
+	return wgpu_present_surface_scene(
+		loaded.procs,
+		&surface_descriptor.descriptor,
+		world,
+		u32(size.pixel_width),
+		u32(size.pixel_height),
 	)
 }

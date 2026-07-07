@@ -9,11 +9,12 @@ WGPU_SURFACE_CURRENT_TEXTURE_ERROR :: "surface_current_texture"
 WGPU_SURFACE_PRESENT_ERROR :: "surface_present"
 
 WGPU_Surface_Presentation_Report :: struct {
-	width:        u32,
-	height:       u32,
-	format:       WGPU_Texture_Format,
-	present_mode: WGPU_Present_Mode,
-	alpha_mode:   WGPU_Composite_Alpha_Mode,
+	width:            u32,
+	height:           u32,
+	format:           WGPU_Texture_Format,
+	present_mode:     WGPU_Present_Mode,
+	alpha_mode:       WGPU_Composite_Alpha_Mode,
+	renderable_count: int,
 }
 
 wgpu_present_surface_clear :: proc(
@@ -22,8 +23,35 @@ wgpu_present_surface_clear :: proc(
 	width, height: u32,
 	backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
+	return wgpu_present_surface_scene_with_world(procs, surface_descriptor, Runtime_World{}, width, height, backend_type, false)
+}
+
+wgpu_present_surface_scene :: proc(
+	procs: WGPU_Offscreen_Procs,
+	surface_descriptor: ^WGPU_Surface_Descriptor,
+	world: Runtime_World,
+	width, height: u32,
+	backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED,
+) -> (WGPU_Surface_Presentation_Report, string, bool) {
+	return wgpu_present_surface_scene_with_world(procs, surface_descriptor, world, width, height, backend_type, true)
+}
+
+wgpu_present_surface_scene_with_world :: proc(
+	procs: WGPU_Offscreen_Procs,
+	surface_descriptor: ^WGPU_Surface_Descriptor,
+	world: Runtime_World,
+	width, height: u32,
+	backend_type: WGPU_Backend_Type,
+	draw_world: bool,
+) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	if width == 0 || height == 0 {
 		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
+	}
+
+	vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(vertices)
+	if draw_world {
+		wgpu_collect_scene_vertices(&vertices, world, int(width), int(height))
 	}
 
 	descriptor := wgpu_instance_descriptor_default()
@@ -90,6 +118,45 @@ wgpu_present_surface_clear :: proc(
 	}
 	defer procs.texture_view_release(texture_view)
 
+	shader_module: WGPU_Shader_Module
+	pipeline_layout: WGPU_Pipeline_Layout
+	render_pipeline: WGPU_Render_Pipeline
+	defer wgpu_release_scene_pipeline_resources(procs, &shader_module, &pipeline_layout, &render_pipeline)
+	if len(vertices) > 0 {
+		shader_code := wgpu_scene_rect_wgsl(vertices[:])
+		defer delete(shader_code)
+		shader_source := wgpu_shader_source_wgsl(wgpu_string_view_from_string(shader_code))
+		shader_descriptor := wgpu_shader_module_descriptor_wgsl(wgpu_string_view_empty(), &shader_source)
+		shader_module = procs.device_create_shader_module(device, &shader_descriptor)
+		if shader_module == nil {
+			return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_SHADER_MODULE_CREATE_ERROR, false
+		}
+
+		pipeline_layout_descriptor := wgpu_pipeline_layout_descriptor(wgpu_string_view_empty(), nil, 0)
+		pipeline_layout = procs.device_create_pipeline_layout(device, &pipeline_layout_descriptor)
+		if pipeline_layout == nil {
+			return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_PIPELINE_LAYOUT_CREATE_ERROR, false
+		}
+
+		vertex := wgpu_vertex_state(shader_module, wgpu_string_view_from_string("vs_main"))
+		color_targets := [?]WGPU_Color_Target_State{
+			wgpu_color_target_state(format),
+		}
+		fragment := wgpu_fragment_state(shader_module, wgpu_string_view_from_string("fs_main"), &color_targets[0], 1)
+		pipeline_descriptor := wgpu_render_pipeline_descriptor(
+			wgpu_string_view_empty(),
+			pipeline_layout,
+			vertex,
+			wgpu_primitive_state(),
+			wgpu_multisample_state_default(),
+			&fragment,
+		)
+		render_pipeline = procs.device_create_render_pipeline(device, &pipeline_descriptor)
+		if render_pipeline == nil {
+			return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_RENDER_PIPELINE_CREATE_ERROR, false
+		}
+	}
+
 	encoder_descriptor := wgpu_command_encoder_descriptor(wgpu_string_view_empty())
 	encoder := procs.device_create_command_encoder(device, &encoder_descriptor)
 	if encoder == nil {
@@ -104,6 +171,10 @@ wgpu_present_surface_clear :: proc(
 	render_pass := procs.command_encoder_begin_render_pass(encoder, &pass_descriptor)
 	if render_pass == nil {
 		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_RENDER_PASS_CREATE_ERROR, false
+	}
+	if len(vertices) > 0 {
+		procs.render_pass_encoder_set_pipeline(render_pass, render_pipeline)
+		procs.render_pass_encoder_draw(render_pass, u32(len(vertices)), 1, 0, 0)
 	}
 	procs.render_pass_encoder_end(render_pass)
 	procs.render_pass_encoder_release(render_pass)
@@ -129,6 +200,7 @@ wgpu_present_surface_clear :: proc(
 		format = format,
 		present_mode = present_mode,
 		alpha_mode = alpha_mode,
+		renderable_count = len(vertices) / 6,
 	}, "", true
 }
 
