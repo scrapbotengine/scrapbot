@@ -281,6 +281,27 @@ test_sdl_fly_camera_uses_pointer_delta_and_modifier_descent :: proc(t: ^testing.
 }
 
 @(test)
+test_sdl_fly_camera_resets_after_scene_stamp_changes :: proc(t: ^testing.T) {
+	fly_camera := Sdl_Fly_Camera_State{
+		initialized = true,
+		active = true,
+		position = {1, 2, 3},
+	}
+	before := Source_File_Stamp{size = 10, modification_time_ns = 100}
+	same := Source_File_Stamp{size = 10, modification_time_ns = 100}
+	changed := Source_File_Stamp{size = 11, modification_time_ns = 100}
+
+	sdl_fly_camera_reset_after_scene_reload(&fly_camera, before, same)
+	testing.expect_value(t, fly_camera.initialized, true)
+	testing.expect_value(t, fly_camera.active, true)
+
+	sdl_fly_camera_reset_after_scene_reload(&fly_camera, before, changed)
+	testing.expect_value(t, fly_camera.initialized, false)
+	testing.expect_value(t, fly_camera.active, false)
+	testing.expect_value(t, fly_camera.position, [3]f32{1, 2, 3})
+}
+
+@(test)
 test_sdl_wgpu_surface_descriptor_bundles_own_source_storage :: proc(t: ^testing.T) {
 	label := wgpu_string_view_from_string("test")
 

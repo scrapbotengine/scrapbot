@@ -164,6 +164,8 @@ wgpu_surface_context_present_scene_frame :: proc(
 	editor_overlay: bool = false,
 	selected_entity_id: string = "",
 	inspector_scroll_y: f32 = 0,
+	camera_override_enabled: bool = false,
+	camera_override: Editor_Test_Camera_State = {},
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	config_error, config_ok := wgpu_surface_context_configure(ctx, width, height)
 	if !config_ok {
@@ -176,7 +178,13 @@ wgpu_surface_context_present_scene_frame :: proc(
 			delete(vertices)
 		}
 	}
-	wgpu_collect_scene_vertices(&vertices, world, int(width), int(height))
+	wgpu_collect_scene_vertices_with_options(&vertices, world, Render_Options{
+		width = int(width),
+		height = int(height),
+		editor = editor_overlay,
+		camera_override_enabled = camera_override_enabled,
+		camera_override = camera_override,
+	})
 	renderable_count := len(vertices) / 6
 	overlay_count := 0
 	if editor_overlay {
@@ -431,6 +439,8 @@ wgpu_present_surface_scene_with_world :: proc(
 	editor_overlay: bool = false,
 	selected_entity_id: string = "",
 	inspector_scroll_y: f32 = 0,
+	camera_override_enabled: bool = false,
+	camera_override: Editor_Test_Camera_State = {},
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	if width == 0 || height == 0 {
 		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
@@ -443,7 +453,13 @@ wgpu_present_surface_scene_with_world :: proc(
 		}
 	}
 	if draw_world {
-		wgpu_collect_scene_vertices(&vertices, world, int(width), int(height))
+		wgpu_collect_scene_vertices_with_options(&vertices, world, Render_Options{
+			width = int(width),
+			height = int(height),
+			editor = editor_overlay,
+			camera_override_enabled = camera_override_enabled,
+			camera_override = camera_override,
+		})
 	}
 	renderable_count := len(vertices) / 6
 	overlay_count := 0

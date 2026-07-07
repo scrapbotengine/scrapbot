@@ -355,9 +355,11 @@ sdl_run_live_project_loop :: proc(
 		current_ticks_ns := sdl3.GetTicksNS()
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
+		scene_stamp_before_frame := project.scene_stamp
+		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
+		sdl_fly_camera_reset_after_scene_reload(&fly_camera, scene_stamp_before_frame, project.scene_stamp)
 		sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
 		sdl_run_loop_sync_relative_mouse(window.window, fly_camera.active, &relative_mouse_active)
-		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
 		sdl_run_loop_flush_editor_clipboard(&editor_state)
 		if !frame.ok {
 			result.completed_frames = frame.completed_frames
@@ -394,6 +396,8 @@ sdl_run_live_project_loop :: proc(
 			editor = editor_visible,
 			selected_entity_id = selected_entity_id,
 			inspector_scroll_y = editor_state.inspector_scroll_y,
+			camera_override_enabled = fly_camera.initialized,
+			camera_override = sdl_fly_camera_render_camera(fly_camera),
 			backend = .Software,
 		})
 		if !image_ok {
@@ -530,9 +534,11 @@ sdl_run_live_project_wgpu_loop :: proc(
 		current_ticks_ns := sdl3.GetTicksNS()
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
+		scene_stamp_before_frame := project.scene_stamp
+		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
+		sdl_fly_camera_reset_after_scene_reload(&fly_camera, scene_stamp_before_frame, project.scene_stamp)
 		sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
 		sdl_run_loop_sync_relative_mouse(window.window, fly_camera.active, &relative_mouse_active)
-		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
 		sdl_run_loop_flush_editor_clipboard(&editor_state)
 		if !frame.ok {
 			result.completed_frames = frame.completed_frames
@@ -569,6 +575,8 @@ sdl_run_live_project_wgpu_loop :: proc(
 			editor_visible,
 			selected_entity_id,
 			editor_state.inspector_scroll_y,
+			fly_camera.initialized,
+			sdl_fly_camera_render_camera(fly_camera),
 		)
 		if !present_ok {
 			result.completed_frames = completed_frames
@@ -600,4 +608,21 @@ sdl_run_loop_flush_editor_clipboard :: proc(editor_state: ^Editor_Test_Input_Sta
 	}
 	_ = sdl3.SetClipboardText(cstring(raw_data(editor_state.clipboard_buffer[:])))
 	editor_state.clipboard_changed = false
+}
+
+sdl_fly_camera_render_camera :: proc(state: Sdl_Fly_Camera_State) -> Editor_Test_Camera_State {
+	return Editor_Test_Camera_State{
+		position = state.position,
+		rotation = state.rotation,
+		fov_y_degrees = state.fov_y_degrees,
+		near = state.near,
+		far = state.far,
+	}
+}
+
+sdl_fly_camera_reset_after_scene_reload :: proc(state: ^Sdl_Fly_Camera_State, before, after: Source_File_Stamp) {
+	if !source_file_stamp_equal(before, after) {
+		state.initialized = false
+		state.active = false
+	}
 }

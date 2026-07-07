@@ -2609,7 +2609,7 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 
 	vertices: [dynamic]WGPU_Scene_Vertex
 	defer delete(vertices)
-	wgpu_collect_scene_vertices(&vertices, world, options.width, options.height)
+	wgpu_collect_scene_vertices_with_options(&vertices, world, options)
 	if options.editor {
 		if options.selected_entity_id != "" {
 			wgpu_append_editor_chrome_vertices_for_selection(&vertices, world, options.width, options.height, options.selected_entity_id, options.inspector_scroll_y)
@@ -2788,6 +2788,10 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 }
 
 wgpu_collect_scene_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, world: Runtime_World, width, height: int) {
+	wgpu_collect_scene_vertices_with_options(vertices, world, Render_Options{width = width, height = height})
+}
+
+wgpu_collect_scene_vertices_with_options :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, world: Runtime_World, options: Render_Options) {
 	cursor := 0
 	index := 0
 	for {
@@ -2802,8 +2806,10 @@ wgpu_collect_scene_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, world
 			continue
 		}
 		color := render_entity_color(world, entity, index)
-		rect := render_renderable_rect(width, height, index)
-		wgpu_append_rect_vertices(vertices, width, height, rect, color)
+		rect, rect_ok := render_renderable_rect_for_entity(world, entity, options.width, options.height, index, options)
+		if rect_ok {
+			wgpu_append_rect_vertices(vertices, options.width, options.height, rect, color)
+		}
 		index += 1
 	}
 }

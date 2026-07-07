@@ -116,6 +116,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin visible SDL run editor text input slice
   - [x] Odin visible SDL run editor toggle slice
   - [x] Odin visible SDL fly-camera input state slice
+  - [x] Odin renderer camera override slice
   - [x] Odin visible editor entity lifecycle controls slice
   - [x] Odin visible editor component lifecycle controls slice
   - [x] Odin native declaration registration slice

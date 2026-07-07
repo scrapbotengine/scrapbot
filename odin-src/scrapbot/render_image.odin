@@ -320,7 +320,7 @@ render_image_from_scene :: proc(world: Runtime_World, options: Render_Options) -
 	}
 	image := Render_Image{width = width, height = height, rgb = pixels}
 	render_fill(&image, {18, 22, 29})
-	render_draw_scene_renderables(&image, world)
+	render_draw_scene_renderables(&image, world, options)
 	render_draw_scene_ui(&image, world)
 	if options.editor {
 		render_draw_editor_chrome(&image, world, options)
@@ -343,7 +343,7 @@ render_fill :: proc(image: ^Render_Image, color: [3]u8) {
 	}
 }
 
-render_draw_scene_renderables :: proc(image: ^Render_Image, world: Runtime_World) {
+render_draw_scene_renderables :: proc(image: ^Render_Image, world: Runtime_World, options: Render_Options) {
 	cursor := 0
 	index := 0
 	for {
@@ -358,7 +358,11 @@ render_draw_scene_renderables :: proc(image: ^Render_Image, world: Runtime_World
 			continue
 		}
 		color := render_entity_color(world, entity, index)
-		rect := render_renderable_rect(image.width, image.height, index)
+		rect, rect_ok := render_renderable_rect_for_entity(world, entity, image.width, image.height, index, options)
+		if !rect_ok {
+			index += 1
+			continue
+		}
 		render_fill_rect(image, rect.x, rect.y, rect.width, rect.height, color)
 		render_stroke_rect(image, rect.x, rect.y, rect.width, rect.height, render_lighten_color(color))
 		index += 1
@@ -572,6 +576,13 @@ Renderable_Rect :: struct {
 	height: int,
 }
 
+Render_Viewport :: struct {
+	x:      f32,
+	y:      f32,
+	width:  f32,
+	height: f32,
+}
+
 render_renderable_rect :: proc(width, height, index: int) -> Renderable_Rect {
 	cell_width := max(64, width / 4)
 	cell_height := max(64, height / 3)
@@ -582,6 +593,101 @@ render_renderable_rect :: proc(width, height, index: int) -> Renderable_Rect {
 		y = max(0, height - size - 8)
 	}
 	return Renderable_Rect{x = x, y = y, width = size, height = size}
+}
+
+render_renderable_rect_for_entity :: proc(
+	world: Runtime_World,
+	entity: Entity_Handle,
+	width, height, index: int,
+	options: Render_Options,
+) -> (Renderable_Rect, bool) {
+	if width <= 0 || height <= 0 {
+		return Renderable_Rect{}, false
+	}
+	position, position_ok := editor_test_transform_position(world, entity)
+	if !position_ok {
+		return render_renderable_rect(width, height, index), true
+	}
+	scale, scale_ok := render_transform_scale(world, entity)
+	if !scale_ok {
+		scale = {1.0, 1.0, 1.0}
+	}
+	camera := render_options_camera(world, options)
+	viewport := render_scene_viewport(width, height, options.editor)
+	screen, project_ok := render_project_world_to_viewport(position, camera, viewport)
+	if !project_ok {
+		return Renderable_Rect{}, false
+	}
+	scale_max := max_f32(max_f32(render_abs_f32(scale[0]), render_abs_f32(scale[1])), render_abs_f32(scale[2]))
+	if scale_max <= 0.0001 {
+		scale_max = 1.0
+	}
+	distance := editor_test_vec3_length(editor_test_subtract_vec3(position, camera.position))
+	reference_distance := max_f32(EDITOR_TEST_DEFAULT_CAMERA_POSITION[2], 0.1)
+	distance_scale := reference_distance / max_f32(distance, 0.1)
+	base_size := min_f32(viewport.width, viewport.height) * 0.18 * scale_max * distance_scale
+	size := int(math.round_f32(clamp_f32(base_size, 8.0, 140.0)))
+	x := int(math.round_f32(screen[0])) - size / 2
+	y := int(math.round_f32(screen[1])) - size / 2
+	return Renderable_Rect{x = x, y = y, width = size, height = size}, true
+}
+
+render_options_camera :: proc(world: Runtime_World, options: Render_Options) -> Editor_Test_Camera_State {
+	if options.camera_override_enabled {
+		return options.camera_override
+	}
+	camera, ok := editor_test_camera_state(world)
+	if ok {
+		return camera
+	}
+	return Editor_Test_Camera_State{
+		position = EDITOR_TEST_DEFAULT_CAMERA_POSITION,
+		rotation = {},
+		fov_y_degrees = EDITOR_TEST_DEFAULT_CAMERA_FOV_Y_DEGREES,
+		near = EDITOR_TEST_DEFAULT_CAMERA_NEAR,
+		far = EDITOR_TEST_DEFAULT_CAMERA_FAR,
+	}
+}
+
+render_scene_viewport :: proc(width, height: int, editor: bool) -> Render_Viewport {
+	if !editor {
+		return Render_Viewport{x = 0, y = 0, width = f32(width), height = f32(height)}
+	}
+	x, y, viewport_width, viewport_height := editor_game_viewport(f32(width), f32(height))
+	return Render_Viewport{x = x, y = y, width = viewport_width, height = viewport_height}
+}
+
+render_project_world_to_viewport :: proc(position: [3]f32, camera: Editor_Test_Camera_State, viewport: Render_Viewport) -> ([2]f32, bool) {
+	if viewport.width <= 0 || viewport.height <= 0 || camera.fov_y_degrees <= 0 || camera.near <= 0 || camera.far <= camera.near {
+		return {}, false
+	}
+	view := editor_test_camera_view_matrix(camera)
+	projection := editor_test_perspective_matrix(camera.fov_y_degrees * math.PI / 180.0, viewport.width / viewport.height, camera.near, camera.far)
+	clip := editor_test_transform_point(editor_test_mat_mul(projection, view), {position[0], position[1], position[2], 1.0})
+	if clip[3] <= 0.00001 {
+		return {}, false
+	}
+	ndc_x := clip[0] / clip[3]
+	ndc_y := clip[1] / clip[3]
+	return {
+		viewport.x + (ndc_x + 1.0) * 0.5 * viewport.width,
+		viewport.y + (1.0 - ndc_y) * 0.5 * viewport.height,
+	}, true
+}
+
+render_transform_scale :: proc(world: Runtime_World, entity: Entity_Handle) -> ([3]f32, bool) {
+	value, err := runtime_world_get_component_field_value(world, entity, TRANSFORM_COMPONENT_ID, "scale")
+	if err != .None || value.value_type != .Vec3 {
+		return {}, false
+	}
+	return value.vec3, true
+}
+
+render_abs_f32 :: proc(value: f32) -> f32 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 render_entity_color :: proc(world: Runtime_World, entity: Entity_Handle, index: int) -> [3]u8 {
