@@ -252,6 +252,7 @@ sdl_run_live_project_loop :: proc(
 			pixel_scale = DEFAULT_RENDER_PIXEL_SCALE,
 			editor = editor,
 			selected_entity_id = selected_entity_id,
+			inspector_scroll_y = editor_state.inspector_scroll_y,
 			backend = .Software,
 		})
 		if !image_ok {

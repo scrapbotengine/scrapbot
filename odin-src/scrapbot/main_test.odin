@@ -2274,7 +2274,7 @@ test_run_command_rejects_extra_argument_after_explicit_current_directory :: proc
 @(test)
 test_parse_render_options_accepts_dimensions_backend_editor_and_select :: proc(t: ^testing.T) {
 	options, ok := parse_render_options(
-		[]string{"--frames", "4", "--width=320", "--height", "240", "--pixel-scale", "2.0", "--backend", "wgpu", "--select", "cube", "project", "out.png"},
+		[]string{"--frames", "4", "--width=320", "--height", "240", "--pixel-scale", "2.0", "--backend", "wgpu", "--select", "cube", "--inspector-scroll-y", "24.0", "project", "out.png"},
 		DEFAULT_RENDER_OUTPUT,
 		false,
 	)
@@ -2286,6 +2286,7 @@ test_parse_render_options_accepts_dimensions_backend_editor_and_select :: proc(t
 	testing.expect_value(t, options.backend, Render_Backend.WebGPU)
 	testing.expect_value(t, options.editor, true)
 	testing.expect_value(t, options.selected_entity_id, "cube")
+	testing.expect_value(t, options.inspector_scroll_y, f32(24.0))
 	testing.expect_value(t, options.target_path, "project")
 	testing.expect_value(t, options.output_path, "out.png")
 }
@@ -2412,6 +2413,45 @@ test_run_render_command_writes_editor_chrome_pixels :: proc(t: ^testing.T) {
 	expect_render_pixel(t, image, 72, 24, EDITOR_CHROME_VIEWPORT_COLOR)
 	expect_render_pixel(t, image, 238, 62, EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR)
 	expect_render_pixel(t, image, 244, 78, EDITOR_CHROME_INSPECTOR_FIELD_COLOR)
+}
+
+@(test)
+test_run_render_command_applies_editor_inspector_scroll_pixels :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-editor-inspector-scroll")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render Editor Inspector Scroll"), Project_Error.None)
+	output_path := project_relative_path(root, "editor-scroll-render.png")
+	defer delete(output_path)
+
+	exit_code := run_with_output(
+		[]string{
+			"scrapbot",
+			"render",
+			"--editor",
+			"--select",
+			"018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001",
+			"--inspector-scroll-y",
+			"24",
+			"--width",
+			"320",
+			"--height",
+			"240",
+			root,
+			output_path,
+		},
+		false,
+	)
+	testing.expect_value(t, exit_code, 0)
+
+	image, image_err := render_load_rgb_image(output_path)
+	if image_err != .None {
+		testing.fail_now(t, "failed to load rendered editor image")
+	}
+	defer render_image_free(&image)
+	expect_render_pixel(t, image, 238, 62, EDITOR_CHROME_INSPECTOR_CARD_COLOR)
+	expect_render_pixel(t, image, 244, 62, EDITOR_CHROME_INSPECTOR_FIELD_COLOR)
+	expect_render_pixel(t, image, 238, 92, EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR)
 }
 
 @(test)

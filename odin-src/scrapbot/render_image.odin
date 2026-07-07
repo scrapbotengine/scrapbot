@@ -414,7 +414,7 @@ render_draw_editor_chrome :: proc(image: ^Render_Image, world: Runtime_World, op
 		accent_width := max(4, right_width - 24)
 		accent_height := min(max(8, body_height / 18), body_height - 28)
 		render_fill_rect(image, accent_x, accent_y, accent_width, accent_height, EDITOR_CHROME_SELECTION_COLOR)
-		render_draw_editor_inspector_cards(image, world, options.selected_entity_id, image.width - right_width, body_y, right_width, body_height)
+		render_draw_editor_inspector_cards(image, world, options.selected_entity_id, image.width - right_width, body_y, right_width, body_height, options.inspector_scroll_y)
 	}
 	render_draw_editor_component_buttons(image, image.width - right_width, right_width, body_y)
 }
@@ -457,7 +457,7 @@ render_draw_editor_component_buttons :: proc(image: ^Render_Image, right_x, righ
 	render_fill_rect(image, remove_x + 4, button_y + button_size / 2 - 1, max(2, button_size - 8), 2, EDITOR_CHROME_BUTTON_DESTRUCTIVE_COLOR)
 }
 
-render_draw_editor_inspector_cards :: proc(image: ^Render_Image, world: Runtime_World, selected_entity_id: string, right_x, body_y, right_width, body_height: int) {
+render_draw_editor_inspector_cards :: proc(image: ^Render_Image, world: Runtime_World, selected_entity_id: string, right_x, body_y, right_width, body_height: int, scroll_y: f32) {
 	selected, selected_ok := runtime_world_find_entity_by_id(world, selected_entity_id)
 	if !selected_ok {
 		return
@@ -467,8 +467,9 @@ render_draw_editor_inspector_cards :: proc(image: ^Render_Image, world: Runtime_
 		return
 	}
 	card_x := right_x + 12
-	card_y := body_y + 36
+	card_y := body_y + 36 - int(math.round_f32(max_f32(scroll_y, 0.0)))
 	card_width := max(4, right_width - 24)
+	clip_top := body_y + 36
 	clip_bottom := body_y + body_height - 8
 	for table in world.component_tables {
 		if selected_index >= len(table.rows_by_entity) || table.rows_by_entity[selected_index] < 0 {
@@ -479,19 +480,42 @@ render_draw_editor_inspector_cards :: proc(image: ^Render_Image, world: Runtime_
 		if card_y >= clip_bottom {
 			break
 		}
-		if card_y + card_height > clip_bottom {
-			card_height = max(4, clip_bottom - card_y)
+		draw_y := card_y
+		draw_height := card_height
+		header_offset := 0
+		if draw_y < clip_top {
+			header_offset = clip_top - draw_y
+			draw_height -= header_offset
+			draw_y = clip_top
 		}
-		render_fill_rect(image, card_x, card_y, card_width, card_height, EDITOR_CHROME_INSPECTOR_CARD_COLOR)
-		render_stroke_rect(image, card_x, card_y, card_width, card_height, EDITOR_CHROME_RULE_COLOR)
-		render_fill_rect(image, card_x + 2, card_y + 2, max(1, card_width - 4), min(10, max(1, card_height - 4)), EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR)
-		field_y := card_y + 16
-		for _ in table.columns {
-			if field_y + 5 >= card_y + card_height - 2 {
-				break
+		if draw_y + draw_height > clip_bottom {
+			draw_height = max(0, clip_bottom - draw_y)
+		}
+		if draw_height > 0 {
+			render_fill_rect(image, card_x, draw_y, card_width, draw_height, EDITOR_CHROME_INSPECTOR_CARD_COLOR)
+			render_stroke_rect(image, card_x, draw_y, card_width, draw_height, EDITOR_CHROME_RULE_COLOR)
+			if header_offset < 12 {
+				header_y := max(card_y + 2, clip_top)
+				header_available := draw_y + draw_height - header_y
+				if header_available > 0 {
+					header_height := min(10 - header_offset, header_available)
+					render_fill_rect(image, card_x + 2, header_y, max(1, card_width - 4), header_height, EDITOR_CHROME_INSPECTOR_CARD_HEADER_COLOR)
+				}
 			}
-			render_fill_rect(image, card_x + 6, field_y, max(1, card_width - 12), 5, EDITOR_CHROME_INSPECTOR_FIELD_COLOR)
-			field_y += 8
+			field_y := card_y + 16
+			for _ in table.columns {
+				if field_y + 5 >= card_y + card_height - 2 {
+					break
+				}
+				if field_y + 5 >= clip_top && field_y < clip_bottom {
+					clipped_y := max(field_y, clip_top)
+					clipped_height := min(5, clip_bottom - clipped_y)
+					if clipped_height > 0 {
+						render_fill_rect(image, card_x + 6, clipped_y, max(1, card_width - 12), clipped_height, EDITOR_CHROME_INSPECTOR_FIELD_COLOR)
+					}
+				}
+				field_y += 8
+			}
 		}
 		card_y += card_height + 4
 	}

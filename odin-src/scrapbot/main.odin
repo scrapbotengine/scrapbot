@@ -115,9 +115,9 @@ Usage:
   scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
   scrapbot test [tests-path|project-path] [--format text|json]
   scrapbot run [path] [--frames N] [--editor] [--hidden] [--backend software|wgpu] [--render-output output.png] [--render-width PX] [--render-height PX] [--render-pixel-scale S]
-  scrapbot render [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  scrapbot render-test [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  scrapbot visual-test [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
+  scrapbot render [--backend software|wgpu] [--editor] [--select entity-id] [--inspector-scroll-y PX] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot render-test [--backend software|wgpu] [--editor] [--select entity-id] [--inspector-scroll-y PX] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot visual-test [--backend software|wgpu] [--editor] [--select entity-id] [--inspector-scroll-y PX] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
   scrapbot sdl-window-check [--hidden|--visible]
   scrapbot wgpu-surface-check [root] [--hidden|--visible]
   scrapbot wgpu-check [root]
@@ -1426,6 +1426,14 @@ parse_positive_int :: proc(value: string) -> (int, bool) {
 parse_positive_f32 :: proc(value: string) -> (f32, bool) {
 	parsed, ok := strconv.parse_f32(value)
 	if !ok || parsed <= 0 || parsed != parsed || parsed > 3.4028234663852886e38 || parsed < -3.4028234663852886e38 {
+		return 0, false
+	}
+	return parsed, true
+}
+
+parse_non_negative_f32 :: proc(value: string) -> (f32, bool) {
+	parsed, ok := strconv.parse_f32(value)
+	if !ok || parsed < 0 || parsed != parsed || parsed > 3.4028234663852886e38 || parsed < -3.4028234663852886e38 {
 		return 0, false
 	}
 	return parsed, true

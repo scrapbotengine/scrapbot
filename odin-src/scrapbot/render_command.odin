@@ -29,6 +29,7 @@ Render_Options :: struct {
 	pixel_scale:        f32,
 	editor:             bool,
 	selected_entity_id: string,
+	inspector_scroll_y: f32,
 	backend:            Render_Backend,
 }
 
@@ -171,6 +172,32 @@ parse_render_options :: proc(args: []string, default_output: string, emit_output
 			i += 1
 			continue
 		}
+		if strings.has_prefix(arg, "--inspector-scroll-y=") {
+			scroll_y, ok := parse_non_negative_f32(arg[len("--inspector-scroll-y="):])
+			if !ok {
+				if emit_output do fmt.eprintf("invalid --inspector-scroll-y: %s\n", arg[len("--inspector-scroll-y="):])
+				return options, false
+			}
+			options.inspector_scroll_y = scroll_y
+			options.editor = true
+			i += 1
+			continue
+		}
+		if arg == "--inspector-scroll-y" {
+			if i + 1 >= len(args) {
+				if emit_output do fmt.eprintln("missing value for --inspector-scroll-y")
+				return options, false
+			}
+			scroll_y, ok := parse_non_negative_f32(args[i + 1])
+			if !ok {
+				if emit_output do fmt.eprintf("invalid --inspector-scroll-y: %s\n", args[i + 1])
+				return options, false
+			}
+			options.inspector_scroll_y = scroll_y
+			options.editor = true
+			i += 2
+			continue
+		}
 		if strings.has_prefix(arg, "--backend=") {
 			backend, ok := parse_render_backend(arg[len("--backend="):])
 			if !ok {
@@ -293,7 +320,7 @@ parse_visual_test_options :: proc(args: []string, emit_output: bool) -> (Visual_
 }
 
 render_option_requires_value :: proc(arg: string) -> bool {
-	return arg == "--frames" || arg == "--width" || arg == "--height" || arg == "--pixel-scale" || arg == "--select" || arg == "--backend"
+	return arg == "--frames" || arg == "--width" || arg == "--height" || arg == "--pixel-scale" || arg == "--select" || arg == "--backend" || arg == "--inspector-scroll-y"
 }
 
 same_resolved_path :: proc(left, right: string) -> bool {

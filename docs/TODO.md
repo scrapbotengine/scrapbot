@@ -154,7 +154,7 @@
 - [ ] Complete full editor window-loop Odin input, tool chrome, and replacement of the Zig editor path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
 - [x] Add retained scroll-view/vgroup routing for Odin inspector scrolling.
-- [ ] Add visual scroll support to inspector component vgroups.
+- [x] Add visual scroll support to inspector component vgroups.
 - [ ] Add typed inspector controls for floats, ints, strings, and enums.
 - [x] Add first-pass editor add/remove component replay controls.
 - [x] Add visible editor chrome controls to add and remove components on the selected entity.
