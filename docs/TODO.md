@@ -167,6 +167,7 @@
 - [x] Add deterministic SDL run-loop smoke coverage for editor selection and translate-gizmo paths.
 - [x] Draw selected Odin editor translate-gizmo axes in software and WebGPU editor render paths, with active-axis highlighting during visible SDL drags.
 - [x] Route Odin translate-gizmo hover-axis styling through visible SDL editor input and software/WebGPU editor render paths.
+- [x] Add first-pass Shift-based 0.25 world-unit snapping for Odin translate-gizmo axis drags.
 - [x] Build macOS release artifacts from the Odin CLI instead of the migration-era Zig CLI, with the SDL3 runtime dylib bundled beside the binary.
 - [x] Remove the unnecessary Zig toolchain setup from the Odin CI smoke job.
 - [x] Make default local build/test/run tasks target Odin while keeping explicit migration-era Zig compatibility tasks.
@@ -200,7 +201,7 @@
 - [ ] Add hierarchy/grouping support for entity browsing.
 - [ ] Add multi-selection and batch component editing.
 - [ ] Add rotation and scale gizmos.
-- [ ] Add local-space, world-space, and snapping modes for gizmos.
+- [ ] Add local-space and world-space modes plus richer snapping controls for gizmos.
 - [x] Add hover styling for translate gizmo axes.
 - [ ] Add undo grouping for multi-field edits and future non-translate editor transactions.
 - [ ] Add editor transaction persistence across live reloads.

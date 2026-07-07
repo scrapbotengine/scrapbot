@@ -10,6 +10,7 @@ EDITOR_TEST_DIAGNOSTIC_BUFFER_LEN :: 160
 EDITOR_TEST_UNDO_CAPACITY :: 64
 EDITOR_TEST_GIZMO_AXIS_LENGTH :: f32(1.35)
 EDITOR_TEST_GIZMO_PICK_RADIUS_PX :: f32(12.0)
+EDITOR_TEST_GIZMO_TRANSLATE_SNAP_INCREMENT :: f32(0.25)
 EDITOR_TEST_DEFAULT_CAMERA_POSITION :: [3]f32{0.0, 0.0, 4.8}
 EDITOR_TEST_DEFAULT_CAMERA_FOV_Y_DEGREES :: f32(48.0)
 EDITOR_TEST_DEFAULT_CAMERA_NEAR :: f32(0.1)
@@ -1390,9 +1391,26 @@ drag_editor_gizmo_axis :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_
 	units_per_pixel := max_f32(camera_distance, 1.0) * 0.0025
 	world_delta := projected_pixels * units_per_pixel
 	next_position := editor_test_add_vec3(position, editor_test_scale_vec3(axis, world_delta))
+	if input.keyboard.shift_down {
+		next_position = editor_test_snap_position_axis(next_position, state.dragging_axis, EDITOR_TEST_GIZMO_TRANSLATE_SNAP_INCREMENT)
+	}
 	set_err := runtime_world_set_component_field_value(world, state.selected_entity, TRANSFORM_COMPONENT_ID, "position", runtime_component_value_vec3(next_position))
 	state.last_pointer = input.pointer.position
 	return set_err == .None
+}
+
+editor_test_snap_position_axis :: proc(position: [3]f32, axis: Editor_Test_Axis, increment: f32) -> [3]f32 {
+	if increment <= 0 {
+		return position
+	}
+	next := position
+	lane := editor_test_axis_lane(axis)
+	next[lane] = editor_test_snap_float(next[lane], increment)
+	return next
+}
+
+editor_test_snap_float :: proc(value, increment: f32) -> f32 {
+	return math.round_f32(value / increment) * increment
 }
 
 begin_editor_gizmo_drag :: proc(state: ^Editor_Test_Input_State, world: Runtime_World) {
