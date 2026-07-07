@@ -50,6 +50,55 @@ test_editor_renderable_rect_uses_game_viewport :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_gizmo_hit_testing_uses_frame_camera_override :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+	}
+	input := frame_input_default()
+	input.viewport_width = 1280
+	input.viewport_height = 720
+	input.pointer.has_position = true
+
+	scene_camera, scene_camera_ok := editor_test_camera_state(world)
+	testing.expect_value(t, scene_camera_ok, true)
+	override_camera := scene_camera
+	override_camera.position[0] = 2.5
+
+	entity_position := [3]f32{0, 0, 0}
+	x_axis_end := editor_test_scale_vec3([3]f32{1, 0, 0}, EDITOR_TEST_GIZMO_AXIS_LENGTH)
+	override_origin, override_origin_ok := editor_test_project_world_to_screen(entity_position, override_camera, input)
+	testing.expect_value(t, override_origin_ok, true)
+	override_x_end, override_x_end_ok := editor_test_project_world_to_screen(x_axis_end, override_camera, input)
+	testing.expect_value(t, override_x_end_ok, true)
+	input.pointer.position = {
+		(override_origin[0] + override_x_end[0]) * 0.5,
+		(override_origin[1] + override_x_end[1]) * 0.5,
+	}
+	testing.expect_value(t, editor_pointer_in_game_viewport(input), true)
+
+	scene_origin, scene_origin_ok := editor_test_project_world_to_screen(entity_position, scene_camera, input)
+	testing.expect_value(t, scene_origin_ok, true)
+	scene_x_end, scene_x_end_ok := editor_test_project_world_to_screen(x_axis_end, scene_camera, input)
+	testing.expect_value(t, scene_x_end_ok, true)
+	scene_distance_sq := editor_test_distance_point_to_segment_sq(input.pointer.position, scene_origin, scene_x_end)
+	pick_radius_sq := EDITOR_TEST_GIZMO_PICK_RADIUS_PX * EDITOR_TEST_GIZMO_PICK_RADIUS_PX
+	testing.expect_value(t, scene_distance_sq > pick_radius_sq, true)
+	_, default_ok := editor_gizmo_axis_at_pointer(world, state, input)
+	testing.expect_value(t, default_ok, false)
+
+	input.camera_override_enabled = true
+	input.camera_override = override_camera
+	axis, override_ok := editor_gizmo_axis_at_pointer(world, state, input)
+	testing.expect_value(t, override_ok, true)
+	testing.expect_value(t, axis, Editor_Test_Axis.X)
+}
+
+@(test)
 test_wgpu_scene_vertices_use_render_camera_options :: proc(t: ^testing.T) {
 	world := runtime_world_init()
 	defer runtime_world_free(&world)

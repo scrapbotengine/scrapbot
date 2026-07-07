@@ -39,6 +39,7 @@
 - [x] Odin visible software and WebGPU SDL run loops can route first-pass editor pointer, keyboard, and text input through the shared runtime input/editor model.
 - [x] Odin visible software and WebGPU SDL run loops can track first-pass fly-camera input state from right-mouse capture, pointer deltas, and semantic movement keys.
 - [x] Odin software and WebGPU render paths can consume scene-camera data and visible-run fly-camera overrides when placing first-pass renderables.
+- [x] Odin visible editor gizmo hit testing and dragging can use the same visible-run fly-camera override as rendering.
 - [x] Odin `render-bench` can benchmark first-pass in-memory software render generation with text/JSON output.
 - [x] Default `mise build`, `mise test`, and `mise scrapbot` now target the Odin CLI; migration-era Zig tasks are explicit `*-zig` compatibility tasks.
 - [x] Odin WebGPU dynamic library discovery no longer falls back to migration-era Zig `zig-out` or `zig-pkg` cache paths.
@@ -157,6 +158,7 @@
 - [x] Port first-pass editor pointer and keyboard input routing into visible Odin software/WebGPU SDL run loops.
 - [x] Port first-pass SDL text input routing into visible Odin software/WebGPU editor run loops.
 - [x] Port Ctrl+Tab editor visibility toggling into visible Odin software/WebGPU SDL run loops.
+- [x] Route visible Odin editor gizmo hit testing and dragging through the active fly-camera override.
 - [x] Make default local build/test/run tasks target Odin while keeping explicit migration-era Zig compatibility tasks.
 - [x] Remove stale pending-status wording from Odin `scrapbot run` output after visible window loops and editor overlays landed.
 - [ ] Remove the vendored Zig `wgpu-native` binding after the migration-era Zig renderer and build surfaces are no longer needed.

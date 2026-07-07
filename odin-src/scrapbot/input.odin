@@ -64,6 +64,8 @@ Frame_Input :: struct {
 	viewport_width:            f32,
 	viewport_height:           f32,
 	pixel_scale:               f32,
+	camera_override_enabled:   bool,
+	camera_override:           Editor_Test_Camera_State,
 	system_profile_count_hint: int,
 	text_input:                string,
 	clipboard_text:            string,
@@ -1328,7 +1330,7 @@ drag_editor_gizmo_axis :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_
 		state.has_last_pointer = true
 		return true
 	}
-	camera, camera_ok := editor_test_camera_state(world^)
+	camera, camera_ok := editor_test_input_camera_state(world^, input)
 	if !camera_ok {
 		state.last_pointer = input.pointer.position
 		return false
@@ -1373,7 +1375,7 @@ editor_gizmo_axis_at_pointer :: proc(world: Runtime_World, state: Editor_Test_In
 	if !position_ok {
 		return .None, false
 	}
-	camera, camera_ok := editor_test_camera_state(world)
+	camera, camera_ok := editor_test_input_camera_state(world, input)
 	if !camera_ok {
 		return .None, false
 	}
@@ -1438,6 +1440,17 @@ editor_test_camera_state :: proc(world: Runtime_World) -> (Editor_Test_Camera_St
 		return {}, false
 	}
 	return Editor_Test_Camera_State{position = position, rotation = rotation, fov_y_degrees = fov, near = near, far = far}, true
+}
+
+editor_test_input_camera_state :: proc(world: Runtime_World, input: Frame_Input) -> (Editor_Test_Camera_State, bool) {
+	if input.camera_override_enabled {
+		camera := input.camera_override
+		if camera.fov_y_degrees > 0 && camera.near > 0 && camera.far > camera.near {
+			return camera, true
+		}
+		return {}, false
+	}
+	return editor_test_camera_state(world)
 }
 
 editor_test_transform_vec3_field :: proc(world: Runtime_World, entity: Entity_Handle, field_name: string) -> ([3]f32, bool) {

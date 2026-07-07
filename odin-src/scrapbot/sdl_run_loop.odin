@@ -355,10 +355,14 @@ sdl_run_live_project_loop :: proc(
 		current_ticks_ns := sdl3.GetTicksNS()
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
+		sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
+		sdl_fly_camera_apply_to_frame_input(&frame_input, fly_camera)
 		scene_stamp_before_frame := project.scene_stamp
 		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
 		sdl_fly_camera_reset_after_scene_reload(&fly_camera, scene_stamp_before_frame, project.scene_stamp)
-		sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
+		if !source_file_stamp_equal(scene_stamp_before_frame, project.scene_stamp) {
+			sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
+		}
 		sdl_run_loop_sync_relative_mouse(window.window, fly_camera.active, &relative_mouse_active)
 		sdl_run_loop_flush_editor_clipboard(&editor_state)
 		if !frame.ok {
@@ -534,10 +538,14 @@ sdl_run_live_project_wgpu_loop :: proc(
 		current_ticks_ns := sdl3.GetTicksNS()
 		delta_seconds := sdl_run_loop_delta_seconds(previous_ticks_ns, current_ticks_ns)
 		previous_ticks_ns = current_ticks_ns
+		sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
+		sdl_fly_camera_apply_to_frame_input(&frame_input, fly_camera)
 		scene_stamp_before_frame := project.scene_stamp
 		frame := live_project_run_frame_with_input(project, delta_seconds, completed_frames, report, &editor_state, frame_input)
 		sdl_fly_camera_reset_after_scene_reload(&fly_camera, scene_stamp_before_frame, project.scene_stamp)
-		sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
+		if !source_file_stamp_equal(scene_stamp_before_frame, project.scene_stamp) {
+			sdl_fly_camera_update(&fly_camera, project.check.scene.world, frame_input, editor_visible, delta_seconds)
+		}
 		sdl_run_loop_sync_relative_mouse(window.window, fly_camera.active, &relative_mouse_active)
 		sdl_run_loop_flush_editor_clipboard(&editor_state)
 		if !frame.ok {
@@ -618,6 +626,14 @@ sdl_fly_camera_render_camera :: proc(state: Sdl_Fly_Camera_State) -> Editor_Test
 		near = state.near,
 		far = state.far,
 	}
+}
+
+sdl_fly_camera_apply_to_frame_input :: proc(input: ^Frame_Input, state: Sdl_Fly_Camera_State) {
+	if !state.initialized {
+		return
+	}
+	input.camera_override_enabled = true
+	input.camera_override = sdl_fly_camera_render_camera(state)
 }
 
 sdl_fly_camera_reset_after_scene_reload :: proc(state: ^Sdl_Fly_Camera_State, before, after: Source_File_Stamp) {
