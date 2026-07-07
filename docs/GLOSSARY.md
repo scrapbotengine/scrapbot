@@ -36,6 +36,8 @@
 
 **Null renderer** - The placeholder renderer that accepts world-derived frame data without opening a window or using the GPU.
 
+**SDL3** - The first platform window layer for Scrapbot's headful runtime smoke tests and future renderer surface creation.
+
 **Render packet** - Planned name for backend-neutral render data extracted from the ECS world before submission to a renderer backend.
 
 **WebGPU** - The modern graphics API model Scrapbot is targeting for its first real renderer.

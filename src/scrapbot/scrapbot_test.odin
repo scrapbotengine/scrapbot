@@ -44,3 +44,17 @@ test_scene_builds_world_with_soa_transforms :: proc(t: ^testing.T) {
 	testing.expect(t, len(world.meshes) == 1)
 	testing.expect(t, world.transforms[1].position == Vec3{0, 0, 0})
 }
+
+@(test)
+test_renderer_backend_names_parse :: proc(t: ^testing.T) {
+	backend, ok := parse_renderer_backend("null")
+	testing.expect(t, ok)
+	testing.expect(t, backend == .Null)
+
+	backend, ok = parse_renderer_backend("wgpu-native")
+	testing.expect(t, ok)
+	testing.expect(t, backend == .WGPU)
+
+	_, ok = parse_renderer_backend("potato")
+	testing.expect(t, !ok)
+}

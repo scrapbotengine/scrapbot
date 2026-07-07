@@ -18,7 +18,9 @@ Check_Options :: struct {
 
 Run_Options :: struct {
 	path:     string `args:"pos=0" usage:"Project directory to run."`,
-	headless: bool   `usage:"Run without opening a window. Currently this is the only mode."`,
+	backend: string `usage:"Renderer backend: null or wgpu."`,
+	window:  bool   `usage:"Open a short-lived platform window for renderer smoke checks."`,
+	headless: bool   `usage:"Force headless mode. This is the default unless --window is passed."`,
 }
 
 main :: proc() {
@@ -87,19 +89,30 @@ run_check :: proc(args: []string) -> int {
 }
 
 run_project :: proc(args: []string) -> int {
-	opt := Run_Options{path = "."}
+	opt := Run_Options{path = ".", backend = "null"}
 	code, should_run := parse_command_args(&opt, args, "scrapbot run")
 	if !should_run {
 		return code
 	}
 
-	result := scrapbot.run_headless(opt.path)
+	backend, backend_ok := scrapbot.parse_renderer_backend(opt.backend)
+	if !backend_ok {
+		fmt.eprintf("unknown renderer backend: %s\n", opt.backend)
+		return 1
+	}
+
+	config := scrapbot.Run_Config {
+		backend = backend,
+		window = opt.window && !opt.headless,
+	}
+	result := scrapbot.run_project(opt.path, config)
 	if result.err != "" {
 		fmt.eprintln(result.err)
 		return 1
 	}
 	fmt.printf(
-		"headless frame: %d entities, %d cameras, %d meshes\n",
+		"%s frame: %d entities, %d cameras, %d meshes\n",
+		scrapbot.renderer_backend_name(backend),
 		result.frame.entity_count,
 		result.frame.camera_count,
 		result.frame.mesh_count,
@@ -141,8 +154,8 @@ print_help :: proc() {
 	fmt.println(`scrapbot commands:
   scrapbot init [path] [name]    Create project.toml and scenes/main.scene.toml
   scrapbot check [path]          Validate project.toml and the default scene
-  scrapbot run [path] [--headless]
-                                  Load the project and render one headless frame
+  scrapbot run [path] [--backend null|wgpu] [--window]
+                                  Load the project and render one frame
   scrapbot help <command>         Print command-specific options
   scrapbot --version             Print the engine version`)
 }

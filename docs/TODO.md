@@ -3,7 +3,7 @@
 ## Rendering
 
 - [ ] Replace the null renderer with a `wgpu-native` renderer backend.
-- [ ] Add SDL3 or GLFW window creation for headful rendering.
+- [ ] Use the SDL3 window path to create a `wgpu-native` surface.
 - [ ] Define the render packet boundary between ECS state and renderer backends.
 - [ ] Add offscreen render verification.
 

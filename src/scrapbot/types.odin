@@ -9,6 +9,16 @@ Vec3 :: struct {
 	x, y, z: f32,
 }
 
+Renderer_Backend :: enum {
+	Null,
+	WGPU,
+}
+
+Run_Config :: struct {
+	backend: Renderer_Backend,
+	window:  bool,
+}
+
 Project_Config :: struct {
 	name:          string,
 	default_scene: string,

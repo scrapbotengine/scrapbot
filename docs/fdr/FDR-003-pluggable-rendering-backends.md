@@ -1,6 +1,6 @@
 # FDR-003: Pluggable rendering backends
 
-**Status:** Planned
+**Status:** Active
 **Last reviewed:** 2026-07-07
 
 ## Overview
@@ -10,8 +10,10 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 ## Behavior
 
 - The runtime can submit frame data through a renderer boundary.
-- The current implementation uses a null renderer for the headless slice.
-- The first real backend is planned to use `wgpu-native`.
+- The current implementation supports the null backend.
+- Users can select a renderer backend from the CLI.
+- The `wgpu` backend is recognized but reports that it is not implemented yet.
+- Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
 - Future backends should not require scene files or gameplay code to know backend-specific GPU handles.
 
 ## Design Decisions
@@ -28,13 +30,19 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 **Why:** It matches the desired WebGPU direction, supports modern native graphics backends, and is available through Odin's vendor bindings. See ADR-003.
 **Tradeoff:** WebGPU concepts and validation rules shape the renderer abstraction early.
 
+### 3. Use SDL3 for the first window path
+
+**Decision:** Open platform windows through SDL3.
+**Why:** SDL3 is available through Odin's vendor bindings and gives the renderer a portable surface path. See ADR-005.
+**Tradeoff:** Headful runtime work now depends on SDL3 being available in development and distribution environments.
+
 ## Related
 
-- **ADRs:** ADR-003
+- **ADRs:** ADR-003, ADR-005
 - **FDRs:** FDR-001, FDR-002
 
 ## Open Questions
 
-- Should SDL3 or GLFW own the first windowing path?
 - What render packet shape should bridge ECS state into renderer-owned resources?
 - How soon should offscreen rendering become part of verification?
+- How long should the headful runtime loop live before the editor and game loop exist?

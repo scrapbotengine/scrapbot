@@ -151,6 +151,10 @@ check_project :: proc(root: string) -> string {
 }
 
 run_headless :: proc(root: string) -> Runtime_Result {
+	return run_project(root, Run_Config{backend = .Null})
+}
+
+run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 	result: Runtime_Result
 
 	loaded := load_project(root)
@@ -163,7 +167,6 @@ run_headless :: proc(root: string) -> Runtime_Result {
 	world := build_world(&loaded.scene)
 	defer destroy_world(&world)
 
-	renderer: Null_Renderer
-	result.frame = renderer_submit(&renderer, &world)
+	result.frame, result.err = run_renderer(config, &world)
 	return result
 }

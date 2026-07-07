@@ -12,7 +12,8 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 - Users can print the engine version.
 - Users can initialize a project directory.
 - Users can validate a project without opening a window.
-- Users can run a project in the current headless runtime slice.
+- Users can run a project through the selected renderer backend.
+- Users can request a short-lived platform window for renderer smoke checks.
 - Users can ask for top-level help or command-specific help.
 - During development, `mise scrapbot` builds and runs the CLI with forwarded arguments.
 
@@ -32,8 +33,8 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-004
-- **FDRs:** FDR-002
+- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005
+- **FDRs:** FDR-002, FDR-003
 
 ## Open Questions
 
