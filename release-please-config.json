@@ -8,6 +8,10 @@
       "extra-files": [
         {
           "type": "generic",
+          "path": "odin-src/scrapbot/main.odin"
+        },
+        {
+          "type": "generic",
           "path": "src/root.zig"
         },
         {

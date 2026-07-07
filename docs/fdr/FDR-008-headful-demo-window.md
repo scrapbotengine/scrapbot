@@ -50,7 +50,7 @@ Headful demo rendering proves that Scrapbot can create a platform window, hand i
 
 **Decision:** Desktop windowing uses SDL3 to create a native platform window. Scrapbot creates the matching `wgpu-native` surface from SDL-provided native handles: Metal on macOS, Wayland/X11 on Linux, and Win32 HWND/HINSTANCE on Windows MSVC.
 **Why:** SDL3 gives Scrapbot a small C ABI windowing layer with cross-platform reach while keeping platform details behind the renderer boundary described in ADR-005.
-**Tradeoff:** The development-time run path still expects SDL3 to be installed as a system dependency. Host build bundles can copy discoverable SDL3 runtime libraries into the bundle, but deeper app relocation and installer-grade dependency management remain packaging work.
+**Tradeoff:** The development-time run path still expects SDL3 to be installed as a system dependency. Host build bundles can copy discoverable SDL3 runtime libraries into the bundle, and first-pass macOS release archives bundle the SDL3 runtime dylib beside the Odin CLI. Deeper app relocation and installer-grade dependency management remain packaging work.
 
 ### 4. Keep the frame cap as a runtime option
 
@@ -97,4 +97,4 @@ Headful demo rendering proves that Scrapbot can create a platform window, hand i
 
 - Should `run` eventually select scenes and windows from project configuration instead of fixed defaults?
 - How should renderer failures be surfaced as structured diagnostics instead of coarse error names?
-- How should release packaging bundle SDL3 and any required runtime libraries per platform?
+- How should release packaging bundle required runtime libraries on Linux and Windows?

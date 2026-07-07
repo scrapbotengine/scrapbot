@@ -6,7 +6,7 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 
-VERSION :: "0.0.0-odin-migration"
+VERSION :: "0.1.0" // x-release-please-version
 DEFAULT_STEP_FRAMES :: 1
 DEFAULT_BENCH_FRAMES :: 240
 DEFAULT_STEP_DELTA_SECONDS :: f32(1.0 / 60.0)
