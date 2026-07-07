@@ -130,11 +130,178 @@ test_wgpu_buffer_map_callback_info_uses_process_events_mode :: proc(t: ^testing.
 	testing.expect_value(t, info.userdata2, userdata2)
 }
 
+@(test)
+test_wgpu_offscreen_proc_table_resolves_required_symbols :: proc(t: ^testing.T) {
+	ctx := WGPU_Test_Resolver_Context{}
+	procs, missing, ok := wgpu_resolve_offscreen_procs(wgpu_test_symbol_resolver, rawptr(&ctx))
+
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, missing, "")
+	testing.expect_value(t, ctx.calls, 16)
+	testing.expect_value(t, ctx.last_user_data, rawptr(&ctx))
+
+	texture := procs.device_create_texture(WGPU_Device(nil), (^WGPU_Texture_Descriptor)(nil))
+	testing.expect_value(t, texture, WGPU_Texture(rawptr(uintptr(0x1001))))
+
+	command_buffer := procs.command_encoder_finish(WGPU_Command_Encoder(nil), (^WGPU_Command_Buffer_Descriptor)(nil))
+	testing.expect_value(t, command_buffer, WGPU_Command_Buffer(rawptr(uintptr(0x1006))))
+
+	future := procs.buffer_map_async(WGPU_Buffer(nil), WGPU_MAP_MODE_READ, 0, 16, wgpu_buffer_map_callback_info(wgpu_test_buffer_map_callback))
+	testing.expect_value(t, future, WGPU_Future{id = 0x1008})
+}
+
+@(test)
+test_wgpu_offscreen_proc_table_reports_first_missing_symbol :: proc(t: ^testing.T) {
+	ctx := WGPU_Test_Resolver_Context{missing = WGPU_SYMBOL_COMMAND_ENCODER_FINISH}
+	_, missing, ok := wgpu_resolve_offscreen_procs(wgpu_test_symbol_resolver, rawptr(&ctx))
+
+	testing.expect_value(t, ok, false)
+	testing.expect_value(t, missing, WGPU_SYMBOL_COMMAND_ENCODER_FINISH)
+	testing.expect_value(t, ctx.calls, 6)
+}
+
 wgpu_test_buffer_map_callback :: proc "c" (status: WGPU_Map_Async_Status, message: WGPU_String_View, userdata1, userdata2: rawptr) {
 	_ = status
 	_ = message
 	_ = userdata1
 	_ = userdata2
+}
+
+WGPU_Test_Resolver_Context :: struct {
+	missing:        string,
+	calls:          int,
+	last_user_data: rawptr,
+}
+
+wgpu_test_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
+	ctx := (^WGPU_Test_Resolver_Context)(user_data)
+	ctx.calls += 1
+	ctx.last_user_data = user_data
+	if ctx.missing == name {
+		return nil
+	}
+	switch name {
+	case WGPU_SYMBOL_DEVICE_CREATE_TEXTURE:
+		return rawptr(wgpu_test_device_create_texture)
+	case WGPU_SYMBOL_DEVICE_CREATE_BUFFER:
+		return rawptr(wgpu_test_device_create_buffer)
+	case WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER:
+		return rawptr(wgpu_test_device_create_command_encoder)
+	case WGPU_SYMBOL_TEXTURE_CREATE_VIEW:
+		return rawptr(wgpu_test_texture_create_view)
+	case WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER:
+		return rawptr(wgpu_test_command_encoder_copy_texture_to_buffer)
+	case WGPU_SYMBOL_COMMAND_ENCODER_FINISH:
+		return rawptr(wgpu_test_command_encoder_finish)
+	case WGPU_SYMBOL_QUEUE_SUBMIT:
+		return rawptr(wgpu_test_queue_submit)
+	case WGPU_SYMBOL_BUFFER_MAP_ASYNC:
+		return rawptr(wgpu_test_buffer_map_async)
+	case WGPU_SYMBOL_BUFFER_GET_MAPPED_RANGE:
+		return rawptr(wgpu_test_buffer_get_mapped_range)
+	case WGPU_SYMBOL_BUFFER_UNMAP:
+		return rawptr(wgpu_test_buffer_unmap)
+	case WGPU_SYMBOL_INSTANCE_PROCESS_EVENTS:
+		return rawptr(wgpu_test_instance_process_events)
+	case WGPU_SYMBOL_TEXTURE_RELEASE:
+		return rawptr(wgpu_test_texture_release)
+	case WGPU_SYMBOL_TEXTURE_VIEW_RELEASE:
+		return rawptr(wgpu_test_texture_view_release)
+	case WGPU_SYMBOL_BUFFER_RELEASE:
+		return rawptr(wgpu_test_buffer_release)
+	case WGPU_SYMBOL_COMMAND_ENCODER_RELEASE:
+		return rawptr(wgpu_test_command_encoder_release)
+	case WGPU_SYMBOL_COMMAND_BUFFER_RELEASE:
+		return rawptr(wgpu_test_command_buffer_release)
+	}
+	return nil
+}
+
+wgpu_test_device_create_texture :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Texture_Descriptor) -> WGPU_Texture {
+	_ = device
+	_ = descriptor
+	return WGPU_Texture(rawptr(uintptr(0x1001)))
+}
+
+wgpu_test_device_create_buffer :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Buffer_Descriptor) -> WGPU_Buffer {
+	_ = device
+	_ = descriptor
+	return WGPU_Buffer(rawptr(uintptr(0x1002)))
+}
+
+wgpu_test_device_create_command_encoder :: proc "c" (device: WGPU_Device, descriptor: ^WGPU_Command_Encoder_Descriptor) -> WGPU_Command_Encoder {
+	_ = device
+	_ = descriptor
+	return WGPU_Command_Encoder(rawptr(uintptr(0x1003)))
+}
+
+wgpu_test_texture_create_view :: proc "c" (texture: WGPU_Texture, descriptor: ^WGPU_Texture_View_Descriptor) -> WGPU_Texture_View {
+	_ = texture
+	_ = descriptor
+	return WGPU_Texture_View(rawptr(uintptr(0x1004)))
+}
+
+wgpu_test_command_encoder_copy_texture_to_buffer :: proc "c" (encoder: WGPU_Command_Encoder, source: ^WGPU_Texel_Copy_Texture_Info, destination: ^WGPU_Texel_Copy_Buffer_Info, copy_size: ^WGPU_Extent_3D) {
+	_ = encoder
+	_ = source
+	_ = destination
+	_ = copy_size
+}
+
+wgpu_test_command_encoder_finish :: proc "c" (encoder: WGPU_Command_Encoder, descriptor: ^WGPU_Command_Buffer_Descriptor) -> WGPU_Command_Buffer {
+	_ = encoder
+	_ = descriptor
+	return WGPU_Command_Buffer(rawptr(uintptr(0x1006)))
+}
+
+wgpu_test_queue_submit :: proc "c" (queue: WGPU_Queue, command_count: c.size_t, commands: [^]WGPU_Command_Buffer) {
+	_ = queue
+	_ = command_count
+	_ = commands
+}
+
+wgpu_test_buffer_map_async :: proc "c" (buffer: WGPU_Buffer, mode: WGPU_Map_Mode, offset, size: c.size_t, callback_info: WGPU_Buffer_Map_Callback_Info) -> WGPU_Future {
+	_ = buffer
+	_ = mode
+	_ = offset
+	_ = size
+	_ = callback_info
+	return WGPU_Future{id = 0x1008}
+}
+
+wgpu_test_buffer_get_mapped_range :: proc "c" (buffer: WGPU_Buffer, offset, size: c.size_t) -> rawptr {
+	_ = buffer
+	_ = offset
+	_ = size
+	return rawptr(uintptr(0x1009))
+}
+
+wgpu_test_buffer_unmap :: proc "c" (buffer: WGPU_Buffer) {
+	_ = buffer
+}
+
+wgpu_test_instance_process_events :: proc "c" (instance: WGPU_Instance) {
+	_ = instance
+}
+
+wgpu_test_texture_release :: proc "c" (texture: WGPU_Texture) {
+	_ = texture
+}
+
+wgpu_test_texture_view_release :: proc "c" (texture_view: WGPU_Texture_View) {
+	_ = texture_view
+}
+
+wgpu_test_buffer_release :: proc "c" (buffer: WGPU_Buffer) {
+	_ = buffer
+}
+
+wgpu_test_command_encoder_release :: proc "c" (encoder: WGPU_Command_Encoder) {
+	_ = encoder
+}
+
+wgpu_test_command_buffer_release :: proc "c" (command_buffer: WGPU_Command_Buffer) {
+	_ = command_buffer
 }
 
 @(test)

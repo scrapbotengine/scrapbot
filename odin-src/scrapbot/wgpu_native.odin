@@ -263,6 +263,44 @@ WGPU_Buffer_Release_Proc :: proc "c" (buffer: WGPU_Buffer)
 WGPU_Command_Encoder_Release_Proc :: proc "c" (encoder: WGPU_Command_Encoder)
 WGPU_Command_Buffer_Release_Proc :: proc "c" (command_buffer: WGPU_Command_Buffer)
 
+WGPU_Symbol_Resolver :: proc(name: string, user_data: rawptr) -> rawptr
+
+WGPU_SYMBOL_DEVICE_CREATE_TEXTURE :: "wgpuDeviceCreateTexture"
+WGPU_SYMBOL_DEVICE_CREATE_BUFFER :: "wgpuDeviceCreateBuffer"
+WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER :: "wgpuDeviceCreateCommandEncoder"
+WGPU_SYMBOL_TEXTURE_CREATE_VIEW :: "wgpuTextureCreateView"
+WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER :: "wgpuCommandEncoderCopyTextureToBuffer"
+WGPU_SYMBOL_COMMAND_ENCODER_FINISH :: "wgpuCommandEncoderFinish"
+WGPU_SYMBOL_QUEUE_SUBMIT :: "wgpuQueueSubmit"
+WGPU_SYMBOL_BUFFER_MAP_ASYNC :: "wgpuBufferMapAsync"
+WGPU_SYMBOL_BUFFER_GET_MAPPED_RANGE :: "wgpuBufferGetMappedRange"
+WGPU_SYMBOL_BUFFER_UNMAP :: "wgpuBufferUnmap"
+WGPU_SYMBOL_INSTANCE_PROCESS_EVENTS :: "wgpuInstanceProcessEvents"
+WGPU_SYMBOL_TEXTURE_RELEASE :: "wgpuTextureRelease"
+WGPU_SYMBOL_TEXTURE_VIEW_RELEASE :: "wgpuTextureViewRelease"
+WGPU_SYMBOL_BUFFER_RELEASE :: "wgpuBufferRelease"
+WGPU_SYMBOL_COMMAND_ENCODER_RELEASE :: "wgpuCommandEncoderRelease"
+WGPU_SYMBOL_COMMAND_BUFFER_RELEASE :: "wgpuCommandBufferRelease"
+
+WGPU_Offscreen_Procs :: struct {
+	device_create_texture:                  WGPU_Device_Create_Texture_Proc,
+	device_create_buffer:                   WGPU_Device_Create_Buffer_Proc,
+	device_create_command_encoder:          WGPU_Device_Create_Command_Encoder_Proc,
+	texture_create_view:                    WGPU_Texture_Create_View_Proc,
+	command_encoder_copy_texture_to_buffer: WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc,
+	command_encoder_finish:                 WGPU_Command_Encoder_Finish_Proc,
+	queue_submit:                           WGPU_Queue_Submit_Proc,
+	buffer_map_async:                       WGPU_Buffer_Map_Async_Proc,
+	buffer_get_mapped_range:                WGPU_Buffer_Get_Mapped_Range_Proc,
+	buffer_unmap:                           WGPU_Buffer_Unmap_Proc,
+	instance_process_events:                WGPU_Instance_Process_Events_Proc,
+	texture_release:                        WGPU_Texture_Release_Proc,
+	texture_view_release:                   WGPU_Texture_View_Release_Proc,
+	buffer_release:                         WGPU_Buffer_Release_Proc,
+	command_encoder_release:                WGPU_Command_Encoder_Release_Proc,
+	command_buffer_release:                 WGPU_Command_Buffer_Release_Proc,
+}
+
 wgpu_string_view_null :: proc() -> WGPU_String_View {
 	return WGPU_String_View{data = nil, length = WGPU_STRLEN}
 }
@@ -374,6 +412,77 @@ wgpu_buffer_map_callback_info :: proc(callback: WGPU_Buffer_Map_Callback, userda
 		userdata1 = userdata1,
 		userdata2 = userdata2,
 	}
+}
+
+wgpu_resolve_offscreen_procs :: proc(resolver: WGPU_Symbol_Resolver, user_data: rawptr = nil) -> (WGPU_Offscreen_Procs, string, bool) {
+	procs: WGPU_Offscreen_Procs
+	symbol: rawptr
+
+	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_TEXTURE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_TEXTURE, false
+	procs.device_create_texture = cast(WGPU_Device_Create_Texture_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_BUFFER, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_BUFFER, false
+	procs.device_create_buffer = cast(WGPU_Device_Create_Buffer_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER, false
+	procs.device_create_command_encoder = cast(WGPU_Device_Create_Command_Encoder_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_TEXTURE_CREATE_VIEW, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_TEXTURE_CREATE_VIEW, false
+	procs.texture_create_view = cast(WGPU_Texture_Create_View_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_COMMAND_ENCODER_COPY_TEXTURE_TO_BUFFER, false
+	procs.command_encoder_copy_texture_to_buffer = cast(WGPU_Command_Encoder_Copy_Texture_To_Buffer_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_COMMAND_ENCODER_FINISH, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_COMMAND_ENCODER_FINISH, false
+	procs.command_encoder_finish = cast(WGPU_Command_Encoder_Finish_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_QUEUE_SUBMIT, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_QUEUE_SUBMIT, false
+	procs.queue_submit = cast(WGPU_Queue_Submit_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_BUFFER_MAP_ASYNC, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_BUFFER_MAP_ASYNC, false
+	procs.buffer_map_async = cast(WGPU_Buffer_Map_Async_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_BUFFER_GET_MAPPED_RANGE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_BUFFER_GET_MAPPED_RANGE, false
+	procs.buffer_get_mapped_range = cast(WGPU_Buffer_Get_Mapped_Range_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_BUFFER_UNMAP, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_BUFFER_UNMAP, false
+	procs.buffer_unmap = cast(WGPU_Buffer_Unmap_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_INSTANCE_PROCESS_EVENTS, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_INSTANCE_PROCESS_EVENTS, false
+	procs.instance_process_events = cast(WGPU_Instance_Process_Events_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_TEXTURE_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_TEXTURE_RELEASE, false
+	procs.texture_release = cast(WGPU_Texture_Release_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_TEXTURE_VIEW_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_TEXTURE_VIEW_RELEASE, false
+	procs.texture_view_release = cast(WGPU_Texture_View_Release_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_BUFFER_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_BUFFER_RELEASE, false
+	procs.buffer_release = cast(WGPU_Buffer_Release_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_COMMAND_ENCODER_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_COMMAND_ENCODER_RELEASE, false
+	procs.command_encoder_release = cast(WGPU_Command_Encoder_Release_Proc)symbol
+
+	symbol = resolver(WGPU_SYMBOL_COMMAND_BUFFER_RELEASE, user_data)
+	if symbol == nil do return procs, WGPU_SYMBOL_COMMAND_BUFFER_RELEASE, false
+	procs.command_buffer_release = cast(WGPU_Command_Buffer_Release_Proc)symbol
+
+	return procs, "", true
 }
 
 wgpu_offscreen_texture_usage :: proc() -> WGPU_Texture_Usage {
