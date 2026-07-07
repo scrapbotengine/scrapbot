@@ -169,7 +169,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [ ] Luau type definitions
   - [ ] Editor scripting
 - Native
-  - [x] Migration-era Native Zig module compatibility
+  - [x] Odin engine rejects project-local Zig native source
   - [x] Native Odin component/system declaration scanning
   - [x] Native Odin pending-execution diagnostics
   - [x] Native Odin set-field execution slice

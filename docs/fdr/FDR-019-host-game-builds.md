@@ -1,11 +1,11 @@
 # FDR-019: Host Game Builds
 
 **Status:** Active
-**Last reviewed:** 2026-07-04
+**Last reviewed:** 2026-07-07
 
 ## Overview
 
-Host game builds let users package a Scrapbot project into a runnable bundle for the current machine's operating system and architecture. The feature exists so projects can be validated, copied, and launched outside the source workspace without requiring project-local native Zig source to be rebuilt on the target machine.
+Host game builds let users package a Scrapbot project into a runnable bundle for the current machine's operating system and architecture. The feature exists so projects can be validated, copied, and launched outside the source workspace without requiring project-local native source to be rebuilt on the target machine.
 
 ## Behavior
 
@@ -16,7 +16,7 @@ Host game builds let users package a Scrapbot project into a runnable bundle for
 - Generated project caches and repository/build directories are excluded from the copied project tree.
 - Projects with `native = "..."` are packaged with a prebuilt native library artifact.
 - Projects that already contain only `native_artifact` copy that artifact explicitly even when it lives under the otherwise-excluded `.scrapbot` directory. During the Odin migration, the Odin `scrapbot build` path preserves these existing artifacts and can compile `native = "native/game.odin"` sources that import `scrapbot "scrapbot:scrapbot_native"` into packaged native artifacts.
-- Packaged projects load `native_artifact` when present, so they do not need the Zig compiler or native source file to run.
+- Packaged projects load `native_artifact` when present, so they do not need the Odin compiler or native source file to run.
 - Build validates the copied packaged project before reporting success. The current Zig path loads and registers packaged native artifacts; during the Odin migration, the Odin path loads preserved, newly built, or development-time Odin artifacts for registration, typed field callbacks, and deferred structural callbacks. First-pass Odin native source reload transactions exist for development workflows, and bounded runs plus visible software/WebGPU SDL window loops poll native source between frames while editor window-loop integration remains pending.
 - Build bundles are host-only. Cross-platform export, mobile packaging, codesigning, notarization, and fully static project-native executables are not part of this feature.
 
@@ -31,7 +31,7 @@ Host game builds let users package a Scrapbot project into a runnable bundle for
 ### 2. Use native artifacts for packaged projects
 
 **Decision:** Packaged project manifests can include `native_artifact`, which takes precedence over rebuilding `native` source.
-**Why:** Runtime bundles should not require a Zig toolchain on the target machine. This follows the source-level native boundary established by ADR-019 while keeping the first build path compatible with the current dynamic module implementation.
+**Why:** Runtime bundles should not require a native source toolchain on the target machine. This follows the source-level native boundary established by ADR-019 while keeping the first build path compatible with the current dynamic module implementation.
 **Tradeoff:** The bundle still uses dynamic native loading. Platforms that forbid dynamic code loading need the future static SDK path.
 
 ### 3. Validate packaged output before success

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-03
 
-**Migration note:** This record describes the current migration-era native module behavior. [ADR-024](ADR-024-odin-as-engine-implementation-language.md) makes Odin the target engine implementation language and requires a future Odin native-module contract to replace the Zig source contract.
+**Migration note:** This record describes legacy migration-era native module behavior for the Zig engine. [ADR-024](ADR-024-odin-as-engine-implementation-language.md) makes Odin the target engine implementation language; the Odin engine now supports `native = "native/game.odin"` and rejects project-local Zig native source.
 
 ## Context
 

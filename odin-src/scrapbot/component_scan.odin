@@ -114,68 +114,16 @@ register_script_components_from_file_detailed :: proc(
 }
 
 register_native_components_from_file :: proc(registry: ^Runtime_Component_Registry, path: string) -> Project_Error {
+	if !project_native_source_path_supported(path) {
+		return .Invalid_Native
+	}
 	contents, read_err := os.read_entire_file(path, context.allocator)
 	if read_err != nil {
 		return .Missing_Native
 	}
 	defer delete(contents)
 
-	source := string(contents)
-	if strings.index(source, "scrapbot.register_component") >= 0 || strings.index(source, "scrapbot.register_system") >= 0 {
-		return register_odin_native_declarations_from_contents(registry, source)
-	}
-
-	remaining := source
-	for {
-		call_index := strings.index(remaining, "scrapbot.registerComponent")
-		if call_index < 0 {
-			break
-		}
-		fragment := remaining[call_index:]
-		block_start := strings.index(fragment, ".{")
-		if block_start < 0 {
-			return .Invalid_Native
-		}
-		block_end := strings.index(fragment[block_start:], "})")
-		if block_end < 0 {
-			return .Invalid_Native
-		}
-		block := fragment[block_start:block_start + block_end]
-		component_id, id_ok := parse_native_component_id(block)
-		if !id_ok {
-			return .Invalid_Native
-		}
-		field_array_name, fields_ref_ok := parse_native_component_fields_reference(block)
-		if !fields_ref_ok {
-			field_array_name = ""
-		}
-		fields: []Runtime_Component_Field_Definition
-		fields_owned := false
-		fields_ok := true
-		if field_array_name == "" {
-			fields = nil
-		} else {
-			fields, fields_ok = parse_native_field_array(string(contents), field_array_name)
-			fields_owned = true
-		}
-		if !fields_ok {
-			return .Invalid_Native
-		}
-
-		err := runtime_register_project_component(registry, Runtime_Component_Definition{
-			id = component_id,
-			version = 1,
-			fields = fields,
-		})
-		if fields_owned && fields != nil {
-			delete(fields)
-		}
-		if err != .None {
-			return .Invalid_Native
-		}
-		remaining = fragment[block_start + block_end + len("})"):]
-	}
-	return .None
+	return register_odin_native_declarations_from_contents(registry, string(contents))
 }
 
 register_odin_native_declarations_from_contents :: proc(registry: ^Runtime_Component_Registry, contents: string) -> Project_Error {
@@ -762,14 +710,10 @@ parse_native_field_array :: proc(contents, array_name: string) -> ([]Runtime_Com
 		return nil, false
 	}
 	after_name := contents[start + len(array_name):]
-	type_marker := "scrapbot.ComponentField{"
+	type_marker := "scrapbot.Component_Field{"
 	type_index := strings.index(after_name, type_marker)
 	if type_index < 0 {
-		type_marker = "scrapbot.Component_Field{"
-		type_index = strings.index(after_name, type_marker)
-		if type_index < 0 {
-			return nil, false
-		}
+		return nil, false
 	}
 	body_fragment := after_name[type_index + len(type_marker):]
 

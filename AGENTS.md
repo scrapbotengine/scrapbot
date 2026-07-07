@@ -52,7 +52,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - In hot Luau loops, cache component fields in locals before reusing them. Repeated field access crosses the host ECS bridge, and repeated vec3 field access allocates tables.
 - For large measured Luau loops, prefer explicit `Query:view(world)` bulk `f32`/`vec3` buffers over per-entity proxy access only when the buffer complexity is justified.
 - Measure Luau bridge hot-loop optimizations before keeping them. Query-local field-index caching has already regressed versus the simpler resolved-row path in `spawn_swarm`.
-- Project-local native code must use the access-checked host API. Odin modules import `scrapbot "scrapbot:scrapbot_native"` and export `scrapbot_register(api)`; migration-era Zig compatibility imports `scrapbot_native` through the same narrow host boundary. Do not expose or depend on raw runtime world internals from project native modules.
+- Project-local native code must use the access-checked host API. Odin modules import `scrapbot "scrapbot:scrapbot_native"` and export `scrapbot_register(api)`; the Odin engine rejects project-local `native = "native/game.zig"` source. Do not expose or depend on raw runtime world internals from project native modules.
 - Native systems and components must use the same component registry, scheduler, profiling path, and deferred mutation semantics as Luau systems.
 
 ## UI, Input, and Editor Rules
@@ -92,7 +92,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - Update FDRs when changing feature behavior, command behavior, scene schema, validation semantics, diagnostics, examples that define supported behavior, or user-visible workflows.
 - Update `docs/fdr/INDEX.md` and `docs/adr/INDEX.md` when adding records.
 - Keep `scrapbot check --format=json` useful for editor and agent workflows. Add fields compatibly; do not remove or rename existing successful-output metadata without an explicit compatibility decision.
-- Runtime script host API failures should report the active system plus relevant component/field context. Avoid generic bridge errors when Zig can identify the denied access or failed mutation.
+- Runtime script host API failures should report the active system plus relevant component/field context. Avoid generic bridge errors when the host can identify the denied access or failed mutation.
 
 ## Verification Rules
 

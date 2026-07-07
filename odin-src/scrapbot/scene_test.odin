@@ -506,23 +506,23 @@ test_check_project_accepts_native_defined_scene_component_schema :: proc(t: ^tes
 	defer os.remove_all(root)
 	defer delete(root)
 
-	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\n")
-	write_file(t, root, "native/game.zig", `const scrapbot = @import("scrapbot_native");
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.odin\"\n")
+	write_file(t, root, "native/game.odin", `package game
 
-const stats_fields = [_]scrapbot.ComponentField{
-    .{ .name = "count", .field_type = .int },
-    .{ .name = "enabled", .field_type = .boolean },
-    .{ .name = "speed", .field_type = .float },
-    .{ .name = "direction", .field_type = .vec3 },
-    .{ .name = "label", .field_type = .string },
-};
+stats_fields := []scrapbot.Component_Field{
+    {name = "count", field_type = .Int},
+    {name = "enabled", field_type = .Boolean},
+    {name = "speed", field_type = .Float},
+    {name = "direction", field_type = .Vec3},
+    {name = "label", field_type = .String},
+}
 
-export fn scrapbot_register(api: *const scrapbot.RegisterApi) callconv(.c) c_int {
-    scrapbot.registerComponent(api, .{
-        .id = "native_stats",
-        .fields = stats_fields[0..],
-    }) catch return 0;
-    return 1;
+scrapbot_register :: proc(api: ^scrapbot.Register_Api) -> bool {
+    scrapbot.register_component(api, {
+        id = "native_stats",
+        fields = stats_fields[:],
+    })
+    return true
 }
 `)
 	write_basic_scene_with_component(t, root, `[entities.components.native_stats]
@@ -536,6 +536,21 @@ label = "ready"
 	result := check_project(root)
 	defer free_check_result(result)
 	testing.expect_value(t, result.err, Project_Error.None)
+}
+
+@(test)
+test_check_project_rejects_zig_native_source_in_odin_engine :: proc(t: ^testing.T) {
+	root := make_test_project(t, "zig-native-source-rejected")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	write_file(t, root, PROJECT_FILE_NAME, "name = \"Game\"\nversion = 1\ndefault_scene = \"scenes/main.scene.toml\"\nnative = \"native/game.zig\"\n")
+	write_file(t, root, "native/game.zig", `const scrapbot = @import("scrapbot_native");`)
+	write_valid_scene_file(t, root, "scenes/main.scene.toml")
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.Invalid_Native)
 }
 
 write_basic_scene_with_component :: proc(t: ^testing.T, root, component_body: string) {

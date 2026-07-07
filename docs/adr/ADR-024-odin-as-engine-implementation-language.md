@@ -31,7 +31,7 @@ The migration keeps these architectural commitments unless later ADRs explicitly
 - External native dependency details stay behind engine-owned boundaries.
 - The `scrapbot` CLI remains the primary automation and verification surface.
 
-Project-local native modules should migrate from the current Zig source contract to an Odin source contract once the Odin host API exists. Until then, existing Zig native-module support is compatibility scaffolding for the migration, not a permanent language decision.
+Project-local native modules use the Odin source contract in the Odin engine. `native = "native/game.odin"` is the supported source-module path; `native = "native/game.zig"` remains migration-era Zig engine compatibility scaffolding and is rejected by the Odin project loader.
 
 ## Consequences
 
@@ -41,7 +41,7 @@ The migration must replace several Zig-specific surfaces:
 
 - `build.zig` and `build.zig.zon` package/build orchestration.
 - The vendored Zig `wgpu-native` binding package, which remains only for migration-era Zig renderer builds now that Odin WebGPU smoke tasks stage the host library directly.
-- Project-local native Zig module builds, generated `scrapbot_native` APIs, fixtures, and diagnostics.
+- Remaining migration-era project-local native Zig module builds, generated `scrapbot_native` APIs, fixtures, and diagnostics.
 - Zig-specific CI setup, default test commands, cache directories, and agent guidance.
 - Zig tests that currently prove ECS, scripting, UI layout, renderer extraction, editor interaction, native reload, and CLI behavior.
 

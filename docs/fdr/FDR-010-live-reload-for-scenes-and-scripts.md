@@ -12,11 +12,11 @@ Live reload lets users, editor tools, and agents change scene, script, and proje
 ## Behavior
 
 - Interactive runs detect changed scene, script, and project-local native source files.
-- The current implementation polls project metadata, the active scene, project-listed scripts, and `native = "native/game.zig"` during `scrapbot run`, including changes to the project's `default_scene`.
+- The current Odin implementation polls project metadata, the active scene, project-listed scripts, and `native = "native/game.odin"` during `scrapbot run`, including changes to the project's `default_scene`.
 - Reloaded files are parsed and validated before they replace active runtime state.
 - Compatible scene changes replace the active scene world after validation.
 - Script reloads validate Luau source, execute script ECS registration, rebuild the component registry, and rebuild schedule batches.
-- Native reloads rebuild the project-local Zig module, load it, call its registration entrypoint, rebuild the ECS program, validate the current scene against the new registry, and swap only after all stages succeed.
+- Native reloads rebuild the project-local Odin module, load it, call its registration entrypoint, rebuild the ECS program, validate the current scene against the new registry, and swap only after all stages succeed.
 - Script-only reloads do not replay startup systems against an already-running world.
 - Native-only reloads do not replay startup systems against an already-running world.
 - Project reloads and scene reloads create a fresh scene generation, so startup systems run again before the next update.

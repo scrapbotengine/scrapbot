@@ -45,6 +45,7 @@
 - [x] Odin `visual-test` can validate projects, expected/actual paths, selected entities, bounded frame simulation, golden update, image comparison, tolerance checks, and metadata sidecars against first-pass software render artifacts.
 - [x] Odin offscreen render artifacts can include first-pass software editor chrome pixels for `--editor` and selected-entity overlays.
 - [x] Odin `check` can statically register project-local native Odin component and system declarations from `native = "native/game.odin"`.
+- [x] Odin project validation rejects project-local Zig native source paths; native source modules are Odin-only in the Odin engine.
 - [x] Odin runtime reports a structured runtime diagnostic when scheduled Odin-native systems reach the pending execution boundary.
 - [x] `examples/native_motion/`, `tests/projects/native_motion/`, and `tests/projects/native_lifecycle/` now use project-local Odin native modules.
 - [x] Shared ECS runtime with generation-aware entities, component tables, system schedules, and script/native access.
@@ -104,6 +105,7 @@
 - [x] Port first-pass render/render-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass visual-test command parsing and validation from Zig to Odin.
 - [x] Port first-pass project-local native Odin component/system declaration registration.
+- [x] Reject `native = "native/game.zig"` in the Odin engine after project-local Odin native modules reached build/load/run/reload parity.
 - [x] Port first-pass pending Odin-native system execution diagnostics.
 - [x] Port first-pass Odin-native set-field system execution.
 - [x] Port first-pass Odin-native lifecycle structural operations.

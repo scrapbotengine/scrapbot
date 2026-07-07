@@ -277,6 +277,11 @@ load_project :: proc(root_path: string) -> (Project, Project_Error) {
 		delete(contents)
 		return Project{}, .Invalid_Native
 	}
+	if native != "" && !project_native_source_path_supported(native) {
+		delete(scripts)
+		delete(contents)
+		return Project{}, .Invalid_Native
+	}
 
 	native_artifact, native_artifact_ok := read_optional_string(text, "native_artifact")
 	if !native_artifact_ok || (native_artifact != "" && !is_safe_project_relative_path(native_artifact)) {
@@ -333,6 +338,10 @@ project_native_source_uses_generated_sdk :: proc(file_system_path: string) -> bo
 	}
 	defer delete(contents)
 	return strings.contains(string(contents), `scrapbot:scrapbot_native`)
+}
+
+project_native_source_path_supported :: proc(path: string) -> bool {
+	return strings.has_suffix(path, ".odin")
 }
 
 project_metadata_file_name :: proc(root_path: string) -> string {
