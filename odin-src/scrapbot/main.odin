@@ -249,15 +249,20 @@ run_wgpu_surface_check :: proc(args: []string, emit_output: bool) -> int {
 		}
 		return 1
 	}
-	defer sdl_video_quit()
+	// Linux/Xlib WebGPU surfaces can crash during SDL teardown under Xvfb.
+	when ODIN_OS != .Linux {
+		defer sdl_video_quit()
+	}
 
 	window, window_err := sdl_window_create(sdl_window_default_options(hidden))
-	defer sdl_window_destroy(&window)
 	if window_err != .None {
 		if emit_output {
 			fmt.eprintf("wgpu surface check failed: %s\n", sdl_window_error_message(window_err))
 		}
 		return 1
+	}
+	when ODIN_OS != .Linux {
+		defer sdl_window_destroy(&window)
 	}
 
 	size, size_err := sdl_window_get_size(window.window)

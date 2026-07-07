@@ -349,12 +349,17 @@ run_present_hidden_wgpu_surface :: proc(world: Runtime_World, target_path: strin
 	if init_err != .None {
 		return WGPU_Surface_Presentation_Report{}, sdl_window_error_message(init_err), false
 	}
-	defer sdl_video_quit()
+	// Linux/Xlib WebGPU surfaces can crash during SDL teardown under Xvfb.
+	when ODIN_OS != .Linux {
+		defer sdl_video_quit()
+	}
 
 	window, window_err := sdl_window_create(sdl_window_default_options(true))
-	defer sdl_window_destroy(&window)
 	if window_err != .None {
 		return WGPU_Surface_Presentation_Report{}, sdl_window_error_message(window_err), false
+	}
+	when ODIN_OS != .Linux {
+		defer sdl_window_destroy(&window)
 	}
 
 	size, size_err := sdl_window_get_size(window.window)
