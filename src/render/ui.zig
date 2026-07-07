@@ -30,6 +30,12 @@ pub const UiButtonState = struct {
     hovered: bool = false,
     held: bool = false,
     pressed: bool = false,
+
+    fn eql(self: UiButtonState, other: UiButtonState) bool {
+        return self.hovered == other.hovered and
+            self.held == other.held and
+            self.pressed == other.pressed;
+    }
 };
 
 pub const UiBorder = struct {
@@ -44,7 +50,7 @@ pub const UiProgressBar = struct {
 };
 
 pub fn writeFrameInput(world: *runtime.World, input: FrameInput) runtime.WorldError!void {
-    const entity = world.findEntityById(runtime.input_entity_id) orelse try world.createEngineTransientEntity(runtime.input_entity_id, "Input Frame");
+    const entity = try world.createEngineTransientEntity(runtime.input_entity_id, "Input Frame");
     try world.setInputPointer(entity, .{
         .position = .{ input.pointer.position[0], input.pointer.position[1], 0.0 },
         .delta = .{ input.pointer.delta[0], input.pointer.delta[1], 0.0 },
@@ -123,6 +129,11 @@ pub fn renderFrameInput(world: *const runtime.World) RenderError!FrameInput {
 }
 
 pub fn setRenderUiButtonState(world: *runtime.World, entity: runtime.EntityHandle, state: UiButtonState) RenderError!void {
+    if (try renderUiButtonState(world, entity)) |existing| {
+        if (existing.eql(state)) {
+            return;
+        }
+    }
     const fields = [_]runtime.ComponentFieldValue{
         .{ .name = "hovered", .value = .{ .boolean = state.hovered } },
         .{ .name = "held", .value = .{ .boolean = state.held } },
@@ -310,6 +321,157 @@ pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World
     return vertices;
 }
 
+const UiVertexCacheKey = struct {
+    width: u32 = 0,
+    height: u32 = 0,
+    viewport_width: f32 = 0.0,
+    viewport_height: f32 = 0.0,
+    pixel_scale: f32 = 1.0,
+    ui_visible: bool = false,
+    debug_overlay_visible: bool = false,
+    non_text_generation_fingerprint: u64 = 0,
+
+    fn fromInput(world: *const runtime.World, width: u32, height: u32, frame_input: FrameInput) UiVertexCacheKey {
+        const input = frameInputWithDefaultOutputMetrics(frame_input, width, height);
+        return .{
+            .width = width,
+            .height = height,
+            .viewport_width = input.viewport_width,
+            .viewport_height = input.viewport_height,
+            .pixel_scale = framePixelScale(input),
+            .ui_visible = input.ui_visible,
+            .debug_overlay_visible = input.debug_overlay_visible,
+            .non_text_generation_fingerprint = nonTextUiComponentGenerationFingerprint(world),
+        };
+    }
+
+    fn eql(self: UiVertexCacheKey, other: UiVertexCacheKey) bool {
+        return self.width == other.width and
+            self.height == other.height and
+            self.viewport_width == other.viewport_width and
+            self.viewport_height == other.viewport_height and
+            self.pixel_scale == other.pixel_scale and
+            self.ui_visible == other.ui_visible and
+            self.debug_overlay_visible == other.debug_overlay_visible and
+            self.non_text_generation_fingerprint == other.non_text_generation_fingerprint;
+    }
+};
+
+const non_text_ui_vertex_cache_component_ids = [_][]const u8{
+    runtime.ui_canvas_component_id,
+    runtime.ui_rect_component_id,
+    runtime.ui_border_component_id,
+    runtime.ui_button_component_id,
+    runtime.ui_scroll_view_component_id,
+    runtime.ui_vgroup_component_id,
+    runtime.ui_hgroup_component_id,
+    runtime.ui_table_component_id,
+    runtime.ui_stack_component_id,
+    runtime.ui_layout_item_component_id,
+    runtime.ui_spacer_component_id,
+    runtime.ui_text_block_component_id,
+    runtime.ui_toggle_component_id,
+    runtime.ui_progress_bar_component_id,
+    runtime.ui_separator_component_id,
+    render_ui_button_state_component_id,
+    render_ui_clip_component_id,
+};
+
+fn nonTextUiComponentGenerationFingerprint(world: *const runtime.World) u64 {
+    var fingerprint: u64 = 14695981039346656037;
+    for (non_text_ui_vertex_cache_component_ids) |component_id| {
+        fingerprint ^= world.componentMutationGeneration(component_id);
+        fingerprint *%= 1099511628211;
+    }
+    return fingerprint;
+}
+
+fn uiTextGenerationFingerprint(world: *const runtime.World) u64 {
+    return world.componentMutationGeneration(runtime.ui_text_component_id);
+}
+
+pub const UiVertexCache = struct {
+    allocator: std.mem.Allocator,
+    vertices: std.ArrayList(UiVertex) = .empty,
+    rect_vertices: std.ArrayList(UiVertex) = .empty,
+    separator_vertices: std.ArrayList(UiVertex) = .empty,
+    text_vertices: std.ArrayList(UiVertex) = .empty,
+    layout_cache: ui_layout.LayoutCache,
+    last_key: UiVertexCacheKey = .{},
+    last_text_generation_fingerprint: u64 = 0,
+    initialized: bool = false,
+
+    pub fn init(allocator: std.mem.Allocator) RenderError!UiVertexCache {
+        return .{
+            .allocator = allocator,
+            .layout_cache = ui_layout.LayoutCache.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *UiVertexCache) void {
+        self.layout_cache.deinit();
+        self.text_vertices.deinit(self.allocator);
+        self.separator_vertices.deinit(self.allocator);
+        self.rect_vertices.deinit(self.allocator);
+        self.vertices.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn refresh(self: *UiVertexCache, world: *const runtime.World, width: u32, height: u32) RenderError!bool {
+        const stored_input = renderFrameInput(world) catch FrameInput{};
+        return self.refreshWithInput(world, width, height, stored_input);
+    }
+
+    pub fn refreshWithInput(self: *UiVertexCache, world: *const runtime.World, width: u32, height: u32, frame_input: FrameInput) RenderError!bool {
+        const key = UiVertexCacheKey.fromInput(world, width, height, frame_input);
+        const text_generation_fingerprint = uiTextGenerationFingerprint(world);
+        const should_rebuild_non_text = !self.initialized or !self.last_key.eql(key);
+        const should_rebuild_text = should_rebuild_non_text or
+            self.last_text_generation_fingerprint != text_generation_fingerprint;
+        if (!should_rebuild_non_text and !should_rebuild_text) {
+            return false;
+        }
+
+        const context = try uiBuildContextFromInput(world, width, height, frame_input);
+        self.layout_cache.reset(world) catch |err| return mapLayoutError(err);
+        if (should_rebuild_non_text) {
+            self.rect_vertices.clearRetainingCapacity();
+            self.separator_vertices.clearRetainingCapacity();
+            const estimated_rect_vertices = std.math.mul(usize, world.uiRectCount(), 18) catch std.math.maxInt(usize);
+            const estimated_separator_vertices = std.math.mul(usize, world.uiSeparatorCount(), 6) catch std.math.maxInt(usize);
+            self.rect_vertices.ensureTotalCapacity(self.allocator, estimated_rect_vertices) catch return RenderError.OutOfMemory;
+            self.separator_vertices.ensureTotalCapacity(self.allocator, estimated_separator_vertices) catch return RenderError.OutOfMemory;
+            try buildUiRectVerticesInto(self.allocator, &self.rect_vertices, &self.layout_cache, world, width, height, context);
+            try buildUiSeparatorVerticesInto(self.allocator, &self.separator_vertices, &self.layout_cache, world, width, height, context);
+        }
+        if (should_rebuild_text) {
+            self.text_vertices.clearRetainingCapacity();
+            const estimated_text_vertices = std.math.mul(usize, @min(world.uiTextCount(), 256), 64) catch std.math.maxInt(usize);
+            self.text_vertices.ensureTotalCapacity(self.allocator, estimated_text_vertices) catch return RenderError.OutOfMemory;
+            try buildUiTextVerticesInto(self.allocator, &self.text_vertices, &self.layout_cache, world, width, height, context);
+        }
+
+        try self.rebuildCombinedVertices();
+        self.last_key = key;
+        self.last_text_generation_fingerprint = text_generation_fingerprint;
+        self.initialized = true;
+        return true;
+    }
+
+    pub fn vertexItems(self: *const UiVertexCache) []const UiVertex {
+        return self.vertices.items;
+    }
+
+    fn rebuildCombinedVertices(self: *UiVertexCache) RenderError!void {
+        const total = self.rect_vertices.items.len + self.separator_vertices.items.len + self.text_vertices.items.len;
+        self.vertices.clearRetainingCapacity();
+        self.vertices.ensureTotalCapacity(self.allocator, total) catch return RenderError.OutOfMemory;
+        self.vertices.appendSliceAssumeCapacity(self.rect_vertices.items);
+        self.vertices.appendSliceAssumeCapacity(self.separator_vertices.items);
+        self.vertices.appendSliceAssumeCapacity(self.text_vertices.items);
+    }
+};
+
 pub fn buildUiVerticesInto(
     allocator: std.mem.Allocator,
     vertices: *std.ArrayList(UiVertex),
@@ -322,35 +484,66 @@ pub fn buildUiVerticesInto(
         return RenderError.InvalidScene;
     }
 
-    const stored_input = renderFrameInput(world) catch FrameInput{};
-    const input = frameInputWithDefaultOutputMetrics(stored_input, width, height);
-    const pixel_scale = framePixelScale(input);
-    const canvas_transform = try sceneUiCanvasTransform(world, input, input.viewport_width, input.viewport_height);
-    const viewport_clip = UiClipRect{
-        .position = .{ 0.0, 0.0, 0.0 },
-        .size = .{ @floatFromInt(width), @floatFromInt(height), 0.0 },
-    };
+    const context = try uiBuildContext(world, width, height);
     layout_cache.reset(world) catch |err| return mapLayoutError(err);
     vertices.clearRetainingCapacity();
     const estimated_vertices = estimatedUiVertexCapacity(world);
     vertices.ensureTotalCapacity(allocator, estimated_vertices) catch return RenderError.OutOfMemory;
+    try buildUiRectVerticesInto(allocator, vertices, layout_cache, world, width, height, context);
+    try buildUiSeparatorVerticesInto(allocator, vertices, layout_cache, world, width, height, context);
+    try buildUiTextVerticesInto(allocator, vertices, layout_cache, world, width, height, context);
+}
 
+const UiBuildContext = struct {
+    input: FrameInput,
+    pixel_scale: f32,
+    canvas_transform: UiCanvasTransform,
+    viewport_clip: UiClipRect,
+};
+
+fn uiBuildContext(world: *const runtime.World, width: u32, height: u32) RenderError!UiBuildContext {
+    const stored_input = renderFrameInput(world) catch FrameInput{};
+    return uiBuildContextFromInput(world, width, height, stored_input);
+}
+
+fn uiBuildContextFromInput(world: *const runtime.World, width: u32, height: u32, frame_input: FrameInput) RenderError!UiBuildContext {
+    const input = frameInputWithDefaultOutputMetrics(frame_input, width, height);
+    return .{
+        .input = input,
+        .pixel_scale = framePixelScale(input),
+        .canvas_transform = try sceneUiCanvasTransform(world, input, input.viewport_width, input.viewport_height),
+        .viewport_clip = .{
+            .position = .{ 0.0, 0.0, 0.0 },
+            .size = .{ @floatFromInt(width), @floatFromInt(height), 0.0 },
+        },
+    };
+}
+
+fn buildUiRectVerticesInto(
+    allocator: std.mem.Allocator,
+    vertices: *std.ArrayList(UiVertex),
+    layout_cache: *ui_layout.LayoutCache,
+    world: *const runtime.World,
+    width: u32,
+    height: u32,
+    context: UiBuildContext,
+) RenderError!void {
     var rects = world.uiRects();
     while (rects.next()) |rect| {
-        if (!shouldDrawUiEntity(input, rect.id)) {
+        if (!shouldDrawUiEntity(context.input, rect.id)) {
             continue;
         }
         const maybe_button_state = if (rect.is_button) try renderUiButtonState(world, rect.entity) else null;
         const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, rect.entity);
         const layout = try resolveUiLayoutWithCache(layout_cache, world, rect.entity, rect.position);
-        const canvas_layout = applyUiCanvasLayout(canvas_transform, rect.id, layout);
-        const screen_size = if (isEditorUiEntityId(rect.id)) item_size else scaleUiSize(canvas_transform, item_size);
-        const screen_layout = try resolveUiScreenLayout(input, rect.id, canvas_layout, screen_size);
-        const physical_layout = scaleUiResolvedLayoutBy(screen_layout, pixel_scale);
-        const physical_size = scaleUiVec3By(screen_size, pixel_scale);
-        const style_scale: f32 = (if (isEditorUiEntityId(rect.id)) 1.0 else canvas_transform.scale) * pixel_scale;
+        const canvas_layout = applyUiCanvasLayout(context.canvas_transform, rect.id, layout);
+        const screen_size = if (isEditorUiEntityId(rect.id)) item_size else scaleUiSize(context.canvas_transform, item_size);
+        const screen_layout = try resolveUiScreenLayout(context.input, rect.id, canvas_layout, screen_size);
+        const physical_layout = scaleUiResolvedLayoutBy(screen_layout, context.pixel_scale);
+        const physical_size = scaleUiVec3By(screen_size, context.pixel_scale);
+        const style_scale: f32 = (if (isEditorUiEntityId(rect.id)) 1.0 else context.canvas_transform.scale) * context.pixel_scale;
         const screen_radius = rect.corner_radius * style_scale;
-        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity)), pixel_scale), viewport_clip);
+        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, rect.entity)), context.pixel_scale), context.viewport_clip);
         var rect_color = rect.color;
         if (maybe_button_state) |state| {
             if (state.held) {
@@ -374,44 +567,64 @@ pub fn buildUiVerticesInto(
             }
         }
     }
+}
 
+fn buildUiSeparatorVerticesInto(
+    allocator: std.mem.Allocator,
+    vertices: *std.ArrayList(UiVertex),
+    layout_cache: *ui_layout.LayoutCache,
+    world: *const runtime.World,
+    width: u32,
+    height: u32,
+    context: UiBuildContext,
+) RenderError!void {
     var separators = world.uiSeparators();
     while (separators.next()) |separator| {
-        if (!shouldDrawUiEntity(input, separator.id)) {
+        if (!shouldDrawUiEntity(context.input, separator.id)) {
             continue;
         }
         const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, separator.entity);
         const layout = try resolveUiLayoutWithCache(layout_cache, world, separator.entity, separator.position);
-        const canvas_layout = applyUiCanvasLayout(canvas_transform, separator.id, layout);
-        const screen_size = if (isEditorUiEntityId(separator.id)) item_size else scaleUiSize(canvas_transform, item_size);
-        const screen_layout = try resolveUiScreenLayout(input, separator.id, canvas_layout, screen_size);
-        const physical_layout = scaleUiResolvedLayoutBy(screen_layout, pixel_scale);
-        const physical_size = scaleUiVec3By(screen_size, pixel_scale);
-        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity)), pixel_scale), viewport_clip);
+        const canvas_layout = applyUiCanvasLayout(context.canvas_transform, separator.id, layout);
+        const screen_size = if (isEditorUiEntityId(separator.id)) item_size else scaleUiSize(context.canvas_transform, item_size);
+        const screen_layout = try resolveUiScreenLayout(context.input, separator.id, canvas_layout, screen_size);
+        const physical_layout = scaleUiResolvedLayoutBy(screen_layout, context.pixel_scale);
+        const physical_size = scaleUiVec3By(screen_size, context.pixel_scale);
+        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, separator.entity)), context.pixel_scale), context.viewport_clip);
         try appendUiRectClipped(vertices, allocator, width, height, physical_layout.position, physical_size, separator.color, 0.0, maybe_clip);
     }
+}
 
+fn buildUiTextVerticesInto(
+    allocator: std.mem.Allocator,
+    vertices: *std.ArrayList(UiVertex),
+    layout_cache: *ui_layout.LayoutCache,
+    world: *const runtime.World,
+    width: u32,
+    height: u32,
+    context: UiBuildContext,
+) RenderError!void {
     var texts = world.uiTexts();
     while (texts.next()) |text| {
-        if (!shouldDrawUiEntity(input, text.id)) {
+        if (!shouldDrawUiEntity(context.input, text.id)) {
             continue;
         }
         const item_size = try uiLayoutItemSizeWithCache(layout_cache, world, text.entity);
         const layout = try resolveUiLayoutWithCache(layout_cache, world, text.entity, text.position);
-        const canvas_layout = applyUiCanvasLayout(canvas_transform, text.id, layout);
-        const screen_item_size = if (isEditorUiEntityId(text.id)) item_size else scaleUiSize(canvas_transform, item_size);
-        const screen_layout = try resolveUiScreenLayout(input, text.id, canvas_layout, screen_item_size);
-        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity)), pixel_scale), viewport_clip);
+        const canvas_layout = applyUiCanvasLayout(context.canvas_transform, text.id, layout);
+        const screen_item_size = if (isEditorUiEntityId(text.id)) item_size else scaleUiSize(context.canvas_transform, item_size);
+        const screen_layout = try resolveUiScreenLayout(context.input, text.id, canvas_layout, screen_item_size);
+        const maybe_clip = try viewportUiClip(scaleUiClipBy(try combineUiClip(screen_layout.clip, try renderUiClip(world, text.entity)), context.pixel_scale), context.viewport_clip);
         var resolved_text = text;
         if (isEditorUiEntityId(text.id)) {
             resolved_text.position = try resolveUiTextPosition(world, text.entity, text, screen_layout.position);
         } else {
             const design_position = try resolveUiTextPosition(world, text.entity, text, layout.position);
-            resolved_text.position = scaleUiVec3(canvas_transform, design_position);
-            resolved_text.size *= canvas_transform.scale;
+            resolved_text.position = scaleUiVec3(context.canvas_transform, design_position);
+            resolved_text.size *= context.canvas_transform.scale;
         }
-        resolved_text.position = scaleUiVec3By(resolved_text.position, pixel_scale);
-        resolved_text.size *= pixel_scale;
+        resolved_text.position = scaleUiVec3By(resolved_text.position, context.pixel_scale);
+        resolved_text.size *= context.pixel_scale;
         try appendUiText(vertices, allocator, width, height, resolved_text, maybe_clip);
     }
 }

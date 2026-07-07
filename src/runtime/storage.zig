@@ -155,6 +155,63 @@ pub const ComponentColumnValues = union(FieldType) {
         }
     }
 
+    pub fn compactRowsRetainingCapacity(self: *ComponentColumnValues, allocator: std.mem.Allocator, keep_rows: []const bool) void {
+        switch (self.*) {
+            .boolean => |*values| {
+                var write_index: usize = 0;
+                for (values.items, 0..) |value, row| {
+                    if (keep_rows[row]) {
+                        values.items[write_index] = value;
+                        write_index += 1;
+                    }
+                }
+                values.shrinkRetainingCapacity(write_index);
+            },
+            .int => |*values| {
+                var write_index: usize = 0;
+                for (values.items, 0..) |value, row| {
+                    if (keep_rows[row]) {
+                        values.items[write_index] = value;
+                        write_index += 1;
+                    }
+                }
+                values.shrinkRetainingCapacity(write_index);
+            },
+            .float => |*values| {
+                var write_index: usize = 0;
+                for (values.items, 0..) |value, row| {
+                    if (keep_rows[row]) {
+                        values.items[write_index] = value;
+                        write_index += 1;
+                    }
+                }
+                values.shrinkRetainingCapacity(write_index);
+            },
+            .vec3 => |*values| {
+                var write_index: usize = 0;
+                for (values.items, 0..) |value, row| {
+                    if (keep_rows[row]) {
+                        values.items[write_index] = value;
+                        write_index += 1;
+                    }
+                }
+                values.shrinkRetainingCapacity(write_index);
+            },
+            .string => |*values| {
+                var write_index: usize = 0;
+                for (values.items, 0..) |value, row| {
+                    if (keep_rows[row]) {
+                        values.items[write_index] = value;
+                        write_index += 1;
+                    } else {
+                        allocator.free(value);
+                    }
+                }
+                values.shrinkRetainingCapacity(write_index);
+            },
+        }
+    }
+
     pub fn valueAt(self: ComponentColumnValues, row: usize) ComponentValue {
         return switch (self) {
             .boolean => |values| .{ .boolean = values.items[row] },
@@ -191,6 +248,7 @@ pub const ComponentTable = struct {
     entities: std.ArrayList(EntityHandle) = .empty,
     rows_by_entity: std.ArrayList(?usize) = .empty,
     columns: []ComponentColumn = &.{},
+    mutation_generation: u64 = 1,
 
     pub fn deinit(self: *ComponentTable, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -207,6 +265,14 @@ pub const ComponentTable = struct {
         self.rows_by_entity.clearRetainingCapacity();
         for (self.columns) |*column| {
             column.values.clearRetainingCapacity(allocator);
+        }
+        self.bumpMutationGeneration();
+    }
+
+    pub fn bumpMutationGeneration(self: *ComponentTable) void {
+        self.mutation_generation +%= 1;
+        if (self.mutation_generation == 0) {
+            self.mutation_generation = 1;
         }
     }
 };

@@ -451,23 +451,20 @@ pub fn editorSystemMaxScrollY(input: FrameInput, profile_count: usize) f32 {
     return @as(f32, @floatFromInt(editorSystemMaxScroll(input, profile_count))) * editor_system_row_stride;
 }
 
-pub fn formatFpsLabel(allocator: std.mem.Allocator, fps: f32) error{OutOfMemory}![]const u8 {
-    return std.fmt.allocPrint(allocator, "FPS {d}", .{roundedFps(fps)});
+pub fn formatFpsLabel(buffer: *[16]u8, fps: f32) []const u8 {
+    return std.fmt.bufPrint(buffer, "FPS {d}", .{roundedFps(fps)}) catch "FPS ----";
 }
 
-pub fn formatSystemProfileHeader(allocator: std.mem.Allocator, profiles: []const runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
+pub fn formatSystemProfileHeader(buffer: *[32]u8, profiles: []const runtime.SystemProfileSnapshot) []const u8 {
     const window_size = if (profiles.len == 0) 0 else profiles[0].window_size;
-    return std.fmt.allocPrint(allocator, "SYS {d} AVG {d}F SNAP 3HZ", .{ profiles.len, window_size });
+    return std.fmt.bufPrint(buffer, "SYS {d} AVG {d}F SNAP 3HZ", .{ profiles.len, window_size }) catch "SYS";
 }
 
-pub fn formatSystemProfileDuration(allocator: std.mem.Allocator, profile: runtime.SystemProfileSnapshot) error{OutOfMemory}![]const u8 {
+pub fn formatSystemProfileDuration(buffer: *[16]u8, profile: runtime.SystemProfileSnapshot) []const u8 {
     if (profile.sample_count == 0) {
-        return allocator.dupe(u8, "--");
+        return "--";
     }
-
-    var average_buffer: [16]u8 = undefined;
-    const average = formatDurationShort(&average_buffer, profile.rolling_average_ns);
-    return allocator.dupe(u8, average);
+    return formatDurationShort(buffer, profile.rolling_average_ns);
 }
 
 pub fn formatDurationShort(buffer: *[16]u8, ns: u64) []const u8 {

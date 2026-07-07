@@ -70,6 +70,7 @@ const resolveUiTextPosition = render_ui.resolveUiTextPosition;
 const routeEditorSplitterAt = render.routeEditorSplitterAt;
 const setRenderUiButtonState = render_ui.setRenderUiButtonState;
 const buildUiVertices = render_ui.buildUiVertices;
+const UiVertexCache = render_ui.UiVertexCache;
 const setRenderUiClip = render_ui.setRenderUiClip;
 const screenToClipY = render_ui.screenToClipY;
 const uiLayoutItemSize = render_ui.uiLayoutItemSize;
@@ -1319,6 +1320,109 @@ test "editor profile input combines project and engine system rows" {
     try std.testing.expectEqualStrings("game.update", combined[0].id);
     try std.testing.expectEqualStrings(render_extract_system_id, combined[1].id);
     try std.testing.expectEqual(runtime.SystemPhase.render, combined[1].phase);
+}
+
+test "editor profile input excludes startup systems from live rows" {
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+
+    const project_profiles = [_]runtime.SystemProfileSnapshot{
+        .{
+            .id = "game.spawn",
+            .phase = .startup,
+            .sample_count = 1,
+            .window_size = 120,
+            .last_ns = 5_000,
+            .rolling_average_ns = 5_000,
+        },
+        .{
+            .id = "game.update",
+            .phase = .update,
+            .sample_count = 2,
+            .window_size = 120,
+            .last_ns = 1_000,
+            .rolling_average_ns = 900,
+        },
+    };
+
+    const combined = try state.combineSystemProfileSnapshots(project_profiles[0..]);
+    try std.testing.expectEqual(@as(usize, 1) + state.system_profiles.items.len, combined.len);
+    try std.testing.expectEqualStrings("game.update", combined[0].id);
+    for (combined) |profile| {
+        try std.testing.expect(profile.phase != .startup);
+    }
+}
+
+test "stable editor extraction retains UI entities and lets prepare UI skip rebuilds" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    const input = FrameInput{
+        .ui_visible = false,
+        .debug_overlay_visible = true,
+        .fps = 60.0,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    };
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, input);
+    const first_entity_count = state.world.entityCount();
+    const first_text_generation = state.world.componentMutationGeneration(runtime.ui_text_component_id);
+    const first_rect_generation = state.world.componentMutationGeneration(runtime.ui_rect_component_id);
+
+    var cache = try UiVertexCache.init(std.testing.allocator);
+    defer cache.deinit();
+    try std.testing.expect(try cache.refresh(state.world, 1280, 720));
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, input);
+    try std.testing.expectEqual(first_entity_count, state.world.entityCount());
+    try std.testing.expectEqual(first_text_generation, state.world.componentMutationGeneration(runtime.ui_text_component_id));
+    try std.testing.expectEqual(first_rect_generation, state.world.componentMutationGeneration(runtime.ui_rect_component_id));
+    try std.testing.expect(!try cache.refresh(state.world, 1280, 720));
+}
+
+test "stable selected inspector extraction does not churn layout items" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    const selected = try scene_world.createAuthoredEntity("selected", "Selected");
+    try scene_world.setTransform(selected, .{
+        .position = .{ 1.0, 2.0, 3.0 },
+        .rotation = .{ 0.0, 0.25, 0.5 },
+        .scale = .{ 1.0, 1.0, 1.0 },
+    });
+    try scene_world.setGeometryPrimitive(selected, .{ .primitive = "box" });
+    try scene_world.setSurfaceMaterial(selected, .{ .base_color = .{ 0.2, 0.4, 0.6 } });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    const input = FrameInput{
+        .ui_visible = false,
+        .debug_overlay_visible = true,
+        .fps = 60.0,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+        .editor = .{ .selected_entity = selected },
+    };
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, input);
+    const first_entity_count = state.world.entityCount();
+    const first_layout_generation = state.world.componentMutationGeneration(runtime.ui_layout_item_component_id);
+    const first_text_generation = state.world.componentMutationGeneration(runtime.ui_text_component_id);
+    const first_rect_generation = state.world.componentMutationGeneration(runtime.ui_rect_component_id);
+
+    var cache = try UiVertexCache.init(std.testing.allocator);
+    defer cache.deinit();
+    try std.testing.expect(try cache.refresh(state.world, 1280, 720));
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, input);
+    try std.testing.expectEqual(first_entity_count, state.world.entityCount());
+    try std.testing.expectEqual(first_layout_generation, state.world.componentMutationGeneration(runtime.ui_layout_item_component_id));
+    try std.testing.expectEqual(first_text_generation, state.world.componentMutationGeneration(runtime.ui_text_component_id));
+    try std.testing.expectEqual(first_rect_generation, state.world.componentMutationGeneration(runtime.ui_rect_component_id));
+    try std.testing.expect(!try cache.refresh(state.world, 1280, 720));
 }
 
 test "editor profile display snapshots are copied and throttled" {

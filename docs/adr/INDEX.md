@@ -24,3 +24,4 @@
 | [ADR-020](ADR-020-transient-ecs-input-resources.md) | Transient ECS Input Resources | 2026-07-03 |
 | [ADR-021](ADR-021-domain-oriented-source-layout.md) | Domain-Oriented Source Layout | 2026-07-06 |
 | [ADR-022](ADR-022-single-world-render-data-flow.md) | Single-World Render Data Flow | 2026-07-06 |
+| [ADR-023](ADR-023-query-observers-for-ecs-membership.md) | Query Observers for ECS Membership | 2026-07-06 |

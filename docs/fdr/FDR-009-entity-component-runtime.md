@@ -1,7 +1,7 @@
 # FDR-009: Entity Component Runtime
 
 **Status:** Active
-**Last reviewed:** 2026-07-06
+**Last reviewed:** 2026-07-07
 
 ## Overview
 
@@ -35,6 +35,8 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Engine-linked native systems use the same registry, schedule, and profiling path as Luau systems.
 - The runtime can build phase-specific system schedule batches from those declarations.
 - Worlds record structural events for scene/runtime entity creation/removal and component addition/removal; engine-transient frame entities and explicit internal component writes do not enter the journal.
+- Runtime query observers can retain membership for a component set and report existing, appeared, and disappeared entities across structural changes.
+- Component tables expose mutation generations so retained engine-side caches can invalidate derived data when relevant component rows or fields change.
 - The example script-authored system queries entities with `scrapbot.transform` and project-local `spin`, then applies `spin.angular_velocity` to `scrapbot.transform.rotation` during update.
 - Invalid, duplicate, or unsupported entity/component data produces diagnostics suitable for command-line and editor display.
 
@@ -72,7 +74,7 @@ The entity component runtime is the shared low-level model for game state. It gi
 
 ### 6. Keep scene render data in the authoritative world
 
-**Decision:** Engine subsystems may create separate worlds for isolated non-scene data, but render-facing scene data and frame-local editor/UI overlay entities live in the project world. Overlay entities use engine-transient provenance and are cleared after render submission.
+**Decision:** Engine subsystems may create separate worlds for isolated non-scene data, but render-facing scene data and frame-local editor/UI overlay entities live in the project world. Overlay entities use engine-transient provenance, are reused by stable id across frames, and are swept when an extraction no longer touches them.
 **Why:** The scene world should be the single authority for authored, runtime-spawned, and frame-local render-facing entities. This follows ADR-022 while preserving ADR-013's rule that any internal worlds use the shared runtime implementation.
 **Tradeoff:** Native/backend-only values still need an explicit storage design before they can live fully inside ECS.
 
@@ -118,9 +120,15 @@ The entity component runtime is the shared low-level model for game state. It gi
 **Why:** Engine subsystems can react to ECS membership changes without adding per-entity callbacks. Engine-transient render/editor frame data is intentionally skipped so frame cleanup does not look like gameplay structure changing.
 **Tradeoff:** The first journal records structural membership changes only. Field-level change tracking, event cursor ownership, and component-lifecycle hooks remain future work.
 
+### 14. Observe query membership from structural events
+
+**Decision:** Runtime query observers retain membership for fixed component sets and expose appeared/disappeared deltas after refresh. They reconcile incrementally from structural events when possible and fall back to full query diffs when journals were cleared or entity removals may have compacted dense indices. Component tables also expose mutation generations for retained consumers that need coarse field/row invalidation.
+**Why:** Engine subsystems need a shared ECS-native way to keep retained side state synchronized with component-set membership without rescanning every entity each frame. This follows ADR-023.
+**Tradeoff:** Observers report structural membership changes only, and mutation generations are table-wide rather than per-field deltas. Clearing the world event journal can force a full observer diff.
+
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018, ADR-022
+- **ADRs:** ADR-001, ADR-006, ADR-008, ADR-010, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018, ADR-022, ADR-023
 - **FDRs:** FDR-002, FDR-004, FDR-005, FDR-010, FDR-011, FDR-014, FDR-015, FDR-016, FDR-017
 
 ## Open Questions
@@ -131,4 +139,5 @@ The entity component runtime is the shared low-level model for game state. It gi
 - Should script structural command buffers flush after each system, each schedule batch, or each phase once parallel execution is introduced?
 - Should command flushes gain all-or-nothing transaction rollback, or should preflight validation make flush-time failures impossible?
 - Which additional field types need bulk query view support beyond `f32` and `vec3`?
-- Should structural events gain field-level changed events, per-consumer cursors, or schedule-bound clearing rules?
+- Should structural events gain field-level changed events, or are table-level mutation generations enough for retained engine caches?
+- Should structural event journals gain schedule-bound clearing rules?

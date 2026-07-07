@@ -20,6 +20,7 @@ const resolveUiLayout = render_ui.resolveUiLayout;
 const resolveUiTextPosition = render_ui.resolveUiTextPosition;
 const setRenderUiButtonState = render_ui.setRenderUiButtonState;
 const textPixelSize = render_ui.textPixelSize;
+const UiVertexCache = render_ui.UiVertexCache;
 const writeFrameInput = render_ui.writeFrameInput;
 const screenToClipX = render_ui.screenToClipX;
 const screenToClipY = render_ui.screenToClipY;
@@ -203,6 +204,46 @@ test "render ECS extracts scene data and queues mesh draw commands" {
     try std.testing.expectEqual(@as(usize, 1), state.uiDrawCommandCount());
 }
 
+test "render ECS drops stale editor gizmos when selecting transformless light" {
+    var scene_world = runtime.World.init(std.testing.allocator);
+    defer scene_world.deinit();
+
+    const box = try scene_world.createEntity("box", "Box");
+    try scene_world.setTransform(box, .{});
+    try scene_world.setGeometryPrimitive(box, .{ .primitive = "box" });
+    try scene_world.setSurfaceMaterial(box, .{});
+
+    const light = try scene_world.createEntity("key-light", "Key Light");
+    try scene_world.setDirectionalLight(light, .{ .intensity = 1.25 });
+
+    var state = try RenderEcsState.init(std.testing.allocator);
+    defer state.deinit();
+    const input = FrameInput{
+        .debug_overlay_visible = true,
+        .viewport_width = 1280.0,
+        .viewport_height = 720.0,
+    };
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .debug_overlay_visible = input.debug_overlay_visible,
+        .viewport_width = input.viewport_width,
+        .viewport_height = input.viewport_height,
+        .editor = .{ .selected_entity = box },
+    });
+    try std.testing.expectEqual(@as(usize, 4), state.extractedRenderableMeshes().len);
+    try std.testing.expect(scene_world.findEntityById("scrapbot.editor.gizmo.x") != null);
+
+    try state.extractSceneWithInput(.{ .world = &scene_world }, .{
+        .debug_overlay_visible = input.debug_overlay_visible,
+        .viewport_width = input.viewport_width,
+        .viewport_height = input.viewport_height,
+        .editor = .{ .selected_entity = light },
+    });
+    try std.testing.expectEqual(@as(usize, 1), state.extractedRenderableMeshes().len);
+    try std.testing.expectEqual(box.index, state.extractedRenderableMeshes()[0].entity.index);
+    try std.testing.expect(scene_world.findEntityById("scrapbot.editor.gizmo.x") == null);
+}
+
 test "batch plan groups matching geometry and shadow state with per-instance color" {
     var scene_world = runtime.World.init(std.testing.allocator);
     defer scene_world.deinit();
@@ -362,6 +403,67 @@ test "UI vertex builder expands rects and fixed pixel text" {
     try std.testing.expect(vertices.items.len > 6);
     try std.testing.expectEqual(@as(f32, -0.9), vertices.items[0].position[0]);
     try std.testing.expect(vertices.items[0].position[1] > 0.8);
+}
+
+test "UI vertex cache reuses static vertices and rebuilds on UI mutation" {
+    var world = runtime.World.init(std.testing.allocator);
+    defer world.deinit();
+
+    const panel = try world.createEntity("panel", "Panel");
+    try world.setUiRect(panel, .{
+        .position = .{ 20.0, 20.0, 0.0 },
+        .size = .{ 120.0, 40.0, 0.0 },
+        .color = .{ 0.1, 0.2, 0.3 },
+    });
+    try world.setUiButton(panel);
+    const label = try world.createEntity("label", "Label");
+    try world.setUiText(label, .{
+        .position = .{ 28.0, 30.0, 0.0 },
+        .size = 2.0,
+        .color = .{ 1.0, 1.0, 1.0 },
+        .value = "CACHE",
+    });
+
+    var cache = try UiVertexCache.init(std.testing.allocator);
+    defer cache.deinit();
+
+    try std.testing.expect(try cache.refresh(&world, 640, 480));
+    const initial_count = cache.vertexItems().len;
+    try std.testing.expect(initial_count > 0);
+    try std.testing.expect(!try cache.refresh(&world, 640, 480));
+
+    try writeFrameInput(&world, .{
+        .pointer = .{
+            .position = .{ 33.0, 44.0 },
+            .delta = .{ 1.0, 1.0 },
+            .has_position = true,
+        },
+        .viewport_width = 640.0,
+        .viewport_height = 480.0,
+    });
+    try std.testing.expect(!try cache.refresh(&world, 640, 480));
+    try std.testing.expectEqual(initial_count, cache.vertexItems().len);
+
+    try world.setUiRect(panel, .{
+        .position = .{ 20.0, 20.0, 0.0 },
+        .size = .{ 140.0, 40.0, 0.0 },
+        .color = .{ 0.1, 0.2, 0.3 },
+    });
+    try std.testing.expect(try cache.refresh(&world, 640, 480));
+    try std.testing.expect(!try cache.refresh(&world, 640, 480));
+
+    try setRenderUiButtonState(&world, panel, .{ .hovered = true });
+    try std.testing.expect(try cache.refresh(&world, 640, 480));
+    try setRenderUiButtonState(&world, panel, .{ .hovered = true });
+    try std.testing.expect(!try cache.refresh(&world, 640, 480));
+
+    const extra = try world.createEntity("extra", "Extra");
+    try world.setUiRect(extra, .{
+        .position = .{ 20.0, 70.0, 0.0 },
+        .size = .{ 40.0, 20.0, 0.0 },
+        .color = .{ 0.4, 0.2, 0.1 },
+    });
+    try std.testing.expect(try cache.refresh(&world, 640, 480));
 }
 
 test "UI vertex builder emits one quad per visible glyph" {

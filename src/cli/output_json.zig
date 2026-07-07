@@ -225,6 +225,67 @@ pub fn printBenchOkJson(writer: *Io.Writer, result: BenchResult) !void {
     try writer.writeByte('\n');
 }
 
+pub fn printRenderBenchOkJson(
+    writer: *Io.Writer,
+    project_name: []const u8,
+    scene_name: []const u8,
+    scene: scrapbot.Scene,
+    result: scrapbot.RenderBenchmarkResult,
+) !void {
+    var jw = jsonWriter(writer);
+    try jw.beginObject();
+    try writeField(&jw, "ok", true);
+    try jw.objectField("project");
+    try jw.beginObject();
+    try writeField(&jw, "name", project_name);
+    try jw.endObject();
+    try jw.objectField("scene");
+    try jw.beginObject();
+    try writeField(&jw, "name", scene_name);
+    try writeField(&jw, "entities", scene.entityCount());
+    try writeField(&jw, "component_instances", scene.componentInstanceCount());
+    try writeField(&jw, "renderable_cubes", scene.renderableCubeCount());
+    try jw.endObject();
+    try jw.objectField("render_benchmark");
+    try jw.beginObject();
+    try writeField(&jw, "frames", result.frames);
+    try writeField(&jw, "warmup_frames", result.warmup_frames);
+    try writeFloatField(&jw, "dt", result.delta_seconds);
+    try writeField(&jw, "width", result.width);
+    try writeField(&jw, "height", result.height);
+    try writeFloatField(&jw, "pixel_scale", result.pixel_scale);
+    try writeField(&jw, "total_ns", result.total_ns);
+    try writeField(&jw, "ns_per_frame", result.nsPerFrame());
+    try jw.objectField("systems");
+    try jw.beginArray();
+    for (result.system_profiles) |profile| {
+        try jw.beginObject();
+        try writeField(&jw, "id", profile.id);
+        try writeField(&jw, "phase", @tagName(profile.phase));
+        try writeField(&jw, "sample_count", profile.sample_count);
+        try writeField(&jw, "window_size", profile.window_size);
+        try writeField(&jw, "last_ns", profile.last_ns);
+        try writeField(&jw, "avg_ns", profile.rolling_average_ns);
+        try jw.endObject();
+    }
+    try jw.endArray();
+    try jw.objectField("draw_profiles");
+    try jw.beginArray();
+    for (result.draw_profiles) |profile| {
+        try jw.beginObject();
+        try writeField(&jw, "id", profile.id);
+        try writeField(&jw, "sample_count", profile.sample_count);
+        try writeField(&jw, "window_size", profile.window_size);
+        try writeField(&jw, "last_ns", profile.last_ns);
+        try writeField(&jw, "avg_ns", profile.rolling_average_ns);
+        try jw.endObject();
+    }
+    try jw.endArray();
+    try jw.endObject();
+    try jw.endObject();
+    try writer.writeByte('\n');
+}
+
 pub fn printBuildOkJson(writer: *Io.Writer, result: scrapbot.BuildResult) !void {
     var jw = jsonWriter(writer);
     try jw.beginObject();

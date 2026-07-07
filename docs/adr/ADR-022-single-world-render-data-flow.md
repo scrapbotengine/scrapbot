@@ -18,7 +18,7 @@ Scene-authored render data is resolved directly from the project scene `runtime.
 
 The renderer may keep retained side state for GPU resources, render schedules, profiling, and temporary frame snapshots that are not an ECS world of scene clones. Renderable snapshots may be built from the scene world to avoid repeated scans inside a frame, but those snapshots are derived data, not authoritative entity storage.
 
-Frame-local UI/editor overlay data is generated as engine-transient entities in the same scene world. Those entities use reserved engine ids and runtime provenance, participate in normal ECS UI layout and rendering for the current frame, and are cleared after render submission so they do not become scene-authored data or gameplay entities. Engine-transient entities and explicit render-internal component writes do not write structural events.
+Frame-local UI/editor overlay data is generated as engine-transient entities in the same scene world. Those entities use reserved engine ids and runtime provenance, participate in normal ECS UI layout and rendering for the current frame, and are retained across frames when regenerated with the same id. Each render extraction marks the engine-transient entities it touched and sweeps untouched ones after successful extraction, so stale overlay data does not become scene-authored data or gameplay state. Engine-transient entities and explicit render-internal component writes do not write structural events.
 
 Render draw submission should flow from prepared batch plans and renderer side resources instead of creating draw-command entities in a cloned render world.
 

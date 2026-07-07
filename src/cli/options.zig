@@ -79,6 +79,19 @@ pub const RenderCommandOptions = struct {
     selected_entity_id: ?[]const u8 = null,
 };
 
+pub const RenderBenchCommandOptions = struct {
+    target_path: []const u8 = ".",
+    frames: u32 = 120,
+    warmup_frames: u32 = 30,
+    delta_seconds: f32 = 1.0 / 60.0,
+    width: u32 = scrapbot.default_output_width,
+    height: u32 = scrapbot.default_output_height,
+    pixel_scale: f32 = 1.0,
+    editor: bool = false,
+    selected_entity_id: ?[]const u8 = null,
+    format: CheckOutputFormat = .text,
+};
+
 pub const VisualTestCommandOptions = struct {
     render: RenderCommandOptions,
     expected_path: []const u8,
@@ -332,6 +345,63 @@ pub fn parseCheckOptions(allocator: std.mem.Allocator, args: []const []const u8)
     }
     if (result.positionals[0]) |path| {
         options.target_path = path;
+    }
+    if (result.args.format) |format| {
+        options.format = format;
+    }
+    return options;
+}
+
+pub fn parseRenderBenchOptions(allocator: std.mem.Allocator, args: []const []const u8) ArgumentError!RenderBenchCommandOptions {
+    const params = comptime clap.parseParamsComptime(
+        \\--editor
+        \\--select <ENTITY>
+        \\--frames <FRAMES>
+        \\--warmup <FRAMES>
+        \\--dt <SECONDS>
+        \\--width <PIXELS>
+        \\--height <PIXELS>
+        \\--pixel-scale <SCALE>
+        \\--format <FORMAT>
+        \\<PATH>
+        \\<EXTRA>...
+        \\
+    );
+    var iter = SliceArgIterator.init(args);
+    var result = clap.parseEx(clap.Help, &params, clap_parsers, &iter, .{
+        .allocator = allocator,
+    }) catch |err| return mapClapArgumentError(err);
+    defer result.deinit();
+
+    var options = RenderBenchCommandOptions{};
+    if (result.positionals[1].len != 0) {
+        return ArgumentError.UnknownArgument;
+    }
+    if (result.positionals[0]) |path| {
+        options.target_path = path;
+    }
+    options.editor = result.args.editor != 0;
+    if (result.args.select) |entity_id| {
+        options.selected_entity_id = entity_id;
+        options.editor = true;
+    }
+    if (result.args.frames) |frames| {
+        options.frames = frames;
+    }
+    if (result.args.warmup) |warmup| {
+        options.warmup_frames = warmup;
+    }
+    if (result.args.dt) |delta_seconds| {
+        options.delta_seconds = delta_seconds;
+    }
+    if (result.args.width) |width| {
+        options.width = width;
+    }
+    if (result.args.height) |height| {
+        options.height = height;
+    }
+    if (result.args.@"pixel-scale") |pixel_scale| {
+        options.pixel_scale = pixel_scale;
     }
     if (result.args.format) |format| {
         options.format = format;

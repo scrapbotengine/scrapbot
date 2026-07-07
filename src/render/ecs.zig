@@ -72,6 +72,14 @@ const RenderSystemProfileState = struct {
         self.last_ns = duration_ns;
     }
 
+    fn reset(self: *RenderSystemProfileState) void {
+        self.samples_ns = [_]u64{0} ** render_system_profile_window_frames;
+        self.sample_count = 0;
+        self.next_sample = 0;
+        self.total_ns = 0;
+        self.last_ns = 0;
+    }
+
     fn snapshot(self: RenderSystemProfileState) runtime.SystemProfileSnapshot {
         const average_ns = if (self.sample_count == 0) 0 else self.total_ns / self.sample_count;
         return .{
@@ -84,6 +92,10 @@ const RenderSystemProfileState = struct {
         };
     }
 };
+
+fn showProfileInLivePerformancePanel(profile: runtime.SystemProfileSnapshot) bool {
+    return profile.phase != .startup;
+}
 
 pub const RenderEcsState = struct {
     allocator: std.mem.Allocator,
@@ -171,9 +183,15 @@ pub const RenderEcsState = struct {
         self.combined_system_profile_snapshots.ensureTotalCapacity(self.allocator, project_profiles.len + render_profiles.len) catch return RenderError.OutOfMemory;
 
         for (project_profiles) |profile| {
+            if (!showProfileInLivePerformancePanel(profile)) {
+                continue;
+            }
             try self.appendDisplaySystemProfileSnapshot(profile);
         }
         for (render_profiles) |profile| {
+            if (!showProfileInLivePerformancePanel(profile)) {
+                continue;
+            }
             try self.appendDisplaySystemProfileSnapshot(profile);
         }
     }
@@ -241,6 +259,12 @@ pub const RenderEcsState = struct {
         }
     }
 
+    pub fn resetSystemProfileSamples(self: *RenderEcsState) void {
+        for (self.system_profiles.items) |*profile| {
+            profile.reset();
+        }
+    }
+
     pub fn extractScene(self: *RenderEcsState, scene: Scene) RenderError!void {
         try self.extractSceneWithInput(scene, .{});
     }
@@ -249,7 +273,7 @@ pub const RenderEcsState = struct {
         self.world = scene.world;
         self.scratch_renderables.clearRetainingCapacity();
         self.ui_draw_queued = false;
-        try self.clearFrameState(scene.world);
+        try self.beginFrameState(scene.world);
         errdefer self.clearFrameState(scene.world) catch {};
 
         setRenderFrameInput(scene.world, input) catch |err| {
@@ -259,6 +283,10 @@ pub const RenderEcsState = struct {
 
         var meshes = scene.world.renderableMeshes();
         while (meshes.next()) |mesh| {
+            const entity = scene.world.entity(mesh.entity) catch continue;
+            if (entity.provenance == .engine_transient) {
+                continue;
+            }
             self.scratch_renderables.append(self.allocator, mesh) catch return RenderError.OutOfMemory;
         }
 
@@ -267,7 +295,7 @@ pub const RenderEcsState = struct {
                 std.log.err("render extract failed while extracting editor gizmo: {s}", .{@errorName(err)});
                 return err;
             };
-            self.appendExtractedEditorGizmoMeshes() catch |err| {
+            self.appendExtractedEditorGizmoMeshes(input.editor.selected_entity) catch |err| {
                 std.log.err("render extract failed while snapshotting editor gizmo: {s}", .{@errorName(err)});
                 return err;
             };
@@ -281,10 +309,23 @@ pub const RenderEcsState = struct {
         }
 
         std.mem.swap(std.ArrayList(runtime.RenderableMesh), &self.extracted_renderables, &self.scratch_renderables);
+        try self.finishFrameState(scene.world);
     }
 
     pub fn extractedRenderableMeshes(self: *const RenderEcsState) []const runtime.RenderableMesh {
         return self.extracted_renderables.items;
+    }
+
+    pub fn beginFrameState(self: *RenderEcsState, world: *runtime.World) RenderError!void {
+        _ = self;
+        world.beginEngineTransientFrame();
+        world.removeAllComponentsSilently(render_draw_batch_component_id) catch |err| return mapWorldError(err);
+        world.removeAllComponentsSilently(render_draw_ui_component_id) catch |err| return mapWorldError(err);
+    }
+
+    pub fn finishFrameState(self: *RenderEcsState, world: *runtime.World) RenderError!void {
+        _ = self;
+        world.clearUnusedEngineTransientEntities() catch |err| return mapWorldError(err);
     }
 
     pub fn clearFrameState(self: *RenderEcsState, world: *runtime.World) RenderError!void {
@@ -296,7 +337,9 @@ pub const RenderEcsState = struct {
         world.clearEngineTransientEntities() catch |err| return mapWorldError(err);
     }
 
-    fn appendExtractedEditorGizmoMeshes(self: *RenderEcsState) RenderError!void {
+    fn appendExtractedEditorGizmoMeshes(self: *RenderEcsState, selected_entity: ?runtime.EntityHandle) RenderError!void {
+        const selected = selected_entity orelse return;
+        _ = (self.world.getTransform(selected) catch return) orelse return;
         for (editor_gizmo.translate_entity_ids) |entity_id| {
             const entity = self.world.findEntityById(entity_id) orelse continue;
             const mesh = self.world.renderableMeshForEntity(entity) orelse continue;

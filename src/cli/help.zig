@@ -12,6 +12,7 @@ pub fn printHelp(writer: *Io.Writer) !void {
         \\  scrapbot check [path] [--format text|json]
         \\  scrapbot step [path] [--frames N] [--dt seconds] [--format text|json]
         \\  scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
+        \\  scrapbot render-bench [--editor] [--select entity-id] [--frames N] [--warmup N] [--dt seconds] [--width PX] [--height PX] [--pixel-scale S] [--format text|json] [path]
         \\  scrapbot test [tests-path|project-path] [--format text|json]
         \\  scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
         \\  scrapbot run [path] [--frames N] [--editor] [--hidden]

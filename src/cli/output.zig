@@ -112,6 +112,46 @@ pub fn printBenchOkText(writer: *Io.Writer, result: BenchResult) !void {
     });
 }
 
+pub fn printRenderBenchOkText(
+    writer: *Io.Writer,
+    project_name: []const u8,
+    scene_name: []const u8,
+    result: scrapbot.RenderBenchmarkResult,
+) !void {
+    const total_ms = @as(f64, @floatFromInt(result.total_ns)) / 1_000_000.0;
+    const frame_ms = @as(f64, @floatFromInt(result.nsPerFrame())) / 1_000_000.0;
+
+    try writer.print("Render benchmark OK: {s}\n", .{project_name});
+    try writer.print("Scene: {s}\n", .{scene_name});
+    try writer.print("Frames: {d}, warmup: {d}, dt: {d}\n", .{ result.frames, result.warmup_frames, result.delta_seconds });
+    try writer.print("Output: {d}x{d} @{d}x\n", .{ result.width, result.height, result.pixel_scale });
+    try writer.print("Render schedule: {d} ms total, {d} ms/frame\n", .{ total_ms, frame_ms });
+    try writer.writeAll("Systems:\n");
+    for (result.system_profiles) |profile| {
+        const avg_us = profile.rolling_average_ns / 1000;
+        const last_us = profile.last_ns / 1000;
+        try writer.print("  {s}: avg {d}us, last {d}us, samples {d}/{d}\n", .{
+            profile.id,
+            avg_us,
+            last_us,
+            profile.sample_count,
+            profile.window_size,
+        });
+    }
+    try writer.writeAll("Draw breakdown:\n");
+    for (result.draw_profiles) |profile| {
+        const avg_us = profile.rolling_average_ns / 1000;
+        const last_us = profile.last_ns / 1000;
+        try writer.print("  {s}: avg {d}us, last {d}us, samples {d}/{d}\n", .{
+            profile.id,
+            avg_us,
+            last_us,
+            profile.sample_count,
+            profile.window_size,
+        });
+    }
+}
+
 pub fn printBuildOkText(writer: *Io.Writer, result: scrapbot.BuildResult) !void {
     try writer.print("Build OK: {s}\n", .{result.project_name});
     try writer.print("Bundle: {s}\n", .{result.bundle_path});
@@ -199,6 +239,7 @@ pub const printCheckOkJson = output_json.printCheckOkJson;
 pub const printStepOkJson = output_json.printStepOkJson;
 pub const printStepFailureJson = output_json.printStepFailureJson;
 pub const printBenchOkJson = output_json.printBenchOkJson;
+pub const printRenderBenchOkJson = output_json.printRenderBenchOkJson;
 pub const printBuildOkJson = output_json.printBuildOkJson;
 pub const printProjectSummaryJson = output_json.printProjectSummaryJson;
 pub const printSceneSummaryJson = output_json.printSceneSummaryJson;

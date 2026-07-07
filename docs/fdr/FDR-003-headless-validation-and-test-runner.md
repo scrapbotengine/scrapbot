@@ -1,7 +1,7 @@
 # FDR-003: Headless Validation and Test Runner
 
 **Status:** Active
-**Last reviewed:** 2026-07-05
+**Last reviewed:** 2026-07-07
 
 ## Overview
 
@@ -15,6 +15,8 @@ The headless validation and test runner lets users, CI systems, and agents check
 - `scrapbot step [path] --format=json` reports project metadata, final scene summary, simulation summary, schedule batches, and structured runtime diagnostics when a system fails.
 - `scrapbot bench [path] [--frames N] [--dt seconds]` loads a project once, measures startup and repeated update frames without opening a window, and reports elapsed timing data plus headless render-planning statistics.
 - `scrapbot bench [path] --format=json` reports benchmark timing, renderable count, render batch count, and UI primitive counts for scripts, agents, and CI logs.
+- `scrapbot render-bench [path] [--editor] [--frames N] [--warmup N] [--dt seconds] [--format text|json]` renders the default scene offscreen for warmup and measured frames, steps the live project between frames, and reports total render-schedule timing plus per-render-system samples.
+- `scrapbot render-bench [path] --editor --format=json` reports the same render-system ids, average nanoseconds, last-sample nanoseconds, sample counts, and profiler window sizes shown in the editor performance overlay, giving agents an automated way to verify render-system performance changes before relying on manual headful testing.
 - Automated scenario fixtures live under `tests/projects/` and use complete text-authored Scrapbot projects rather than sharing example projects.
 - `scrapbot test [tests-path|project-path]` discovers text-authored test projects, reads each project's `test.scrapbot.toml`, steps the project headlessly, replays optional deterministic input frames, and checks declared ECS field expectations.
 - `scrapbot test --format=json` reports each project case, simulation summary, per-field expected/actual assertion data, diagnostics, and a suite summary.

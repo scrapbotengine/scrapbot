@@ -9,6 +9,7 @@ const test_manifest = @import("cli/test_manifest.zig");
 
 const BenchResult = cli_options.BenchResult;
 const CheckOutputFormat = cli_options.CheckOutputFormat;
+const RenderBenchCommandOptions = cli_options.RenderBenchCommandOptions;
 const RenderCommandOptions = cli_options.RenderCommandOptions;
 const TestCaseStats = test_manifest.TestCaseStats;
 const TestManifest = test_manifest.TestManifest;
@@ -21,6 +22,7 @@ const parseBenchOptions = cli_options.parseBenchOptions;
 const parseBuildOptions = cli_options.parseBuildOptions;
 const parseCheckOptions = cli_options.parseCheckOptions;
 const parseInitOptions = cli_options.parseInitOptions;
+const parseRenderBenchOptions = cli_options.parseRenderBenchOptions;
 const parseRenderOptions = cli_options.parseRenderOptions;
 const parseRunOptions = cli_options.parseRunOptions;
 const parseStepOptions = cli_options.parseStepOptions;
@@ -39,6 +41,8 @@ const printProjectError = cli_output.printProjectError;
 const printProjectErrorJson = cli_output.printProjectErrorJson;
 const printScriptDiagnostic = cli_output.printScriptDiagnostic;
 const printScriptDiagnosticJson = cli_output.printScriptDiagnosticJson;
+const printRenderBenchOkJson = cli_output.printRenderBenchOkJson;
+const printRenderBenchOkText = cli_output.printRenderBenchOkText;
 const printStepFailureJson = cli_output.printStepFailureJson;
 const printStepFailureText = cli_output.printStepFailureText;
 const printStepOkJson = cli_output.printStepOkJson;
@@ -115,6 +119,10 @@ pub fn run(
 
     if (std.mem.eql(u8, command, "bench")) {
         return try benchCommand(io, allocator, args[2..], stdout, stderr);
+    }
+
+    if (std.mem.eql(u8, command, "render-bench")) {
+        return try renderBenchCommand(io, allocator, args[2..], stdout, stderr);
     }
 
     if (std.mem.eql(u8, command, "test")) {
@@ -588,6 +596,82 @@ fn benchCommand(
     return 0;
 }
 
+fn renderBenchCommand(
+    io: Io,
+    allocator: std.mem.Allocator,
+    args: []const []const u8,
+    stdout: *Io.Writer,
+    stderr: *Io.Writer,
+) !u8 {
+    const options = parseRenderBenchOptions(allocator, args) catch |err| {
+        try printArgumentError(stderr, err);
+        return 1;
+    };
+
+    const result = try checkProjectForCommand(io, allocator, options.target_path, stderr) orelse return 1;
+    defer scrapbot.freeCheckResult(allocator, result);
+
+    var live_project = scrapbot.LiveProject.init(io, allocator, options.target_path) catch |err| {
+        switch (options.format) {
+            .text => try printProjectError(stderr, options.target_path, err),
+            .json => try printProjectErrorJson(stdout, options.target_path, err),
+        }
+        return 1;
+    };
+    defer live_project.deinit();
+
+    if (!live_project.runStartup()) {
+        if (live_project.lastDiagnostic()) |diagnostic| {
+            switch (options.format) {
+                .text => try printScriptDiagnostic(stderr, options.target_path, diagnostic.*),
+                .json => try printScriptDiagnosticJson(stdout, options.target_path, diagnostic.*),
+            }
+        }
+        return 1;
+    }
+
+    if (options.selected_entity_id) |entity_id| {
+        if (live_project.scene.world.findEntityById(entity_id) == null) {
+            try stderr.print("render-bench selected entity not found: {s}\n", .{entity_id});
+            return 1;
+        }
+    }
+
+    var frame_context = RenderFrameContext{
+        .live_project = &live_project,
+        .stderr = stderr,
+        .target_path = options.target_path,
+        .selected_entity_id = options.selected_entity_id,
+    };
+    var render_result = scrapbot.renderBenchmarkFrames(io, allocator, live_project.renderScene(), .{
+        .frames = options.frames,
+        .warmup_frames = options.warmup_frames,
+        .delta_seconds = options.delta_seconds,
+        .width = options.width,
+        .height = options.height,
+        .pixel_scale = options.pixel_scale,
+        .frame_input = renderBenchFrameInput(&live_project, options),
+        .frame_update = .{
+            .context = &frame_context,
+            .step = stepRenderLiveProject,
+        },
+    }) catch |err| {
+        try stderr.print("render-bench failed: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer render_result.deinit(allocator);
+
+    if (frame_context.failed) {
+        return 1;
+    }
+
+    switch (options.format) {
+        .text => try printRenderBenchOkText(stdout, result.project.name, live_project.scene.name, render_result),
+        .json => try printRenderBenchOkJson(stdout, result.project.name, live_project.scene.name, live_project.scene, render_result),
+    }
+    return 0;
+}
+
 fn testCommand(
     io: Io,
     allocator: std.mem.Allocator,
@@ -793,6 +877,19 @@ fn stepRenderLiveProject(raw_context: *anyopaque, delta_seconds: f32, input: *sc
 }
 
 fn renderCommandFrameInput(live_project: *scrapbot.LiveProject, options: RenderCommandOptions) scrapbot.FrameInput {
+    const editor = renderCommandEditorFrame(live_project, options.selected_entity_id);
+    if (!options.editor and editor.selected_entity == null) {
+        return .{};
+    }
+    return .{
+        .debug_overlay_visible = true,
+        .fps = 60.0,
+        .editor = editor,
+        .system_profiles = live_project.systemProfileSnapshots(),
+    };
+}
+
+fn renderBenchFrameInput(live_project: *scrapbot.LiveProject, options: RenderBenchCommandOptions) scrapbot.FrameInput {
     const editor = renderCommandEditorFrame(live_project, options.selected_entity_id);
     if (!options.editor and editor.selected_entity == null) {
         return .{};

@@ -120,6 +120,7 @@ pub const Entity = struct {
     name: []const u8,
     generation: u32 = 0,
     provenance: EntityProvenance = .spawned,
+    engine_transient_mark: u64 = 0,
 };
 
 pub const StructuralEventKind = enum {

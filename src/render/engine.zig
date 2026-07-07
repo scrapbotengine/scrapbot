@@ -2,7 +2,6 @@ const std = @import("std");
 const Io = std.Io;
 const geometry = @import("../geometry.zig");
 const runtime = @import("../runtime.zig");
-const ui_layout = @import("../ui_layout.zig");
 const ui_font = @import("../ui_font.zig");
 const editor_state_types = @import("../editor/state.zig");
 const editor_layout = @import("../editor/layout.zig");
@@ -129,7 +128,6 @@ const hitTestUiRect = render_ui.hitTestUiRect;
 const textPixelSize = render_ui.textPixelSize;
 const resolveUiTextPosition = render_ui.resolveUiTextPosition;
 const evaluateUiButtonState = render_ui.evaluateUiButtonState;
-const buildUiVerticesInto = render_ui.buildUiVerticesInto;
 const screenToClipX = render_ui.screenToClipX;
 const screenToClipY = render_ui.screenToClipY;
 const clamp01 = render_ui.clamp01;
@@ -369,6 +367,124 @@ pub const ImageRenderOptions = struct {
     frame_input: FrameInput = .{},
     frame_update: ?FrameUpdateHook = null,
 };
+
+pub const RenderBenchmarkOptions = struct {
+    frames: u32 = 120,
+    warmup_frames: u32 = 30,
+    delta_seconds: f32 = live_run_default_delta_seconds,
+    width: u32 = default_output_width,
+    height: u32 = default_output_height,
+    pixel_scale: f32 = 1.0,
+    frame_input: FrameInput = .{},
+    frame_update: ?FrameUpdateHook = null,
+};
+
+pub const RenderBenchmarkResult = struct {
+    frames: u32,
+    warmup_frames: u32,
+    delta_seconds: f32,
+    width: u32,
+    height: u32,
+    pixel_scale: f32,
+    total_ns: u64,
+    system_profiles: []runtime.SystemProfileSnapshot,
+    draw_profiles: []RenderBenchmarkProfile,
+
+    pub fn deinit(self: *RenderBenchmarkResult, allocator: std.mem.Allocator) void {
+        for (self.system_profiles) |profile| {
+            allocator.free(profile.id);
+        }
+        allocator.free(self.system_profiles);
+        for (self.draw_profiles) |profile| {
+            allocator.free(profile.id);
+        }
+        allocator.free(self.draw_profiles);
+        self.* = undefined;
+    }
+
+    pub fn nsPerFrame(self: RenderBenchmarkResult) u64 {
+        return if (self.frames == 0) 0 else self.total_ns / @as(u64, self.frames);
+    }
+};
+
+pub const RenderBenchmarkProfile = struct {
+    id: []const u8,
+    sample_count: u32,
+    window_size: u32,
+    last_ns: u64,
+    rolling_average_ns: u64,
+};
+
+const DrawProfileSlot = enum {
+    uniforms,
+    encoder,
+    shadow_pass,
+    postprocess_setup,
+    main_pass,
+    bloom_passes,
+    postprocess_pass,
+    ui_pass,
+    finish_submit,
+};
+
+const draw_profile_ids = [_][]const u8{
+    "scrapbot.render.draw_meshes.uniforms",
+    "scrapbot.render.draw_meshes.encoder",
+    "scrapbot.render.draw_meshes.shadow_pass",
+    "scrapbot.render.draw_meshes.postprocess_setup",
+    "scrapbot.render.draw_meshes.main_pass",
+    "scrapbot.render.draw_meshes.bloom_passes",
+    "scrapbot.render.draw_meshes.postprocess_pass",
+    "scrapbot.render.draw_meshes.ui_pass",
+    "scrapbot.render.draw_meshes.finish_submit",
+};
+const draw_profile_count = draw_profile_ids.len;
+
+const RenderBenchmarkProfileState = struct {
+    id: []const u8,
+    samples: [render_system_profile_window_frames]u64 = [_]u64{0} ** render_system_profile_window_frames,
+    sample_cursor: usize = 0,
+    sample_count: usize = 0,
+    last_ns: u64 = 0,
+
+    fn record(self: *RenderBenchmarkProfileState, duration_ns: u64) void {
+        self.last_ns = duration_ns;
+        self.samples[self.sample_cursor] = duration_ns;
+        self.sample_cursor = (self.sample_cursor + 1) % render_system_profile_window_frames;
+        if (self.sample_count < render_system_profile_window_frames) {
+            self.sample_count += 1;
+        }
+    }
+
+    fn reset(self: *RenderBenchmarkProfileState) void {
+        self.samples = [_]u64{0} ** render_system_profile_window_frames;
+        self.sample_cursor = 0;
+        self.sample_count = 0;
+        self.last_ns = 0;
+    }
+
+    fn snapshot(self: RenderBenchmarkProfileState) RenderBenchmarkProfile {
+        var total: u64 = 0;
+        for (self.samples[0..self.sample_count]) |sample| {
+            total += sample;
+        }
+        return .{
+            .id = self.id,
+            .sample_count = @intCast(self.sample_count),
+            .window_size = render_system_profile_window_frames,
+            .last_ns = self.last_ns,
+            .rolling_average_ns = if (self.sample_count == 0) 0 else total / @as(u64, @intCast(self.sample_count)),
+        };
+    }
+};
+
+fn initialDrawProfileStates() [draw_profile_count]RenderBenchmarkProfileState {
+    var states: [draw_profile_count]RenderBenchmarkProfileState = undefined;
+    for (&states, draw_profile_ids) |*state, id| {
+        state.* = .{ .id = id };
+    }
+    return states;
+}
 
 pub const Scene = struct {
     world: *runtime.World,
@@ -659,6 +775,171 @@ pub fn renderDemoImageWithInput(io: Io, allocator: std.mem.Allocator, output_pat
 
 pub fn renderDemoImageFrames(io: Io, allocator: std.mem.Allocator, output_path: []const u8, scene: Scene, options: ImageRenderOptions) !void {
     try renderDemoOutputFrames(io, allocator, output_path, scene, options, try imageFormatFromPath(output_path));
+}
+
+pub fn renderBenchmarkFrames(io: Io, allocator: std.mem.Allocator, scene: Scene, options: RenderBenchmarkOptions) !RenderBenchmarkResult {
+    _ = io;
+    if (options.width == 0 or options.height == 0) {
+        return RenderError.InvalidScene;
+    }
+
+    const output_extent = wgpu.Extent3D{
+        .width = options.width,
+        .height = options.height,
+        .depth_or_array_layers = 1,
+    };
+    const instance = wgpu.Instance.create(null) orelse return RenderError.NoAdapter;
+    defer instance.release();
+
+    var gpu = try openGpu(instance, null);
+    defer gpu.deinit();
+
+    const texture_format = wgpu.TextureFormat.bgra8_unorm_srgb;
+    const target_texture = gpu.device.createTexture(&wgpu.TextureDescriptor{
+        .label = wgpu.StringView.fromSlice("Scrapbot render benchmark target"),
+        .size = output_extent,
+        .format = texture_format,
+        .usage = wgpu.TextureUsages.render_attachment,
+    }) orelse return RenderError.NoDevice;
+    defer target_texture.release();
+
+    const target_view = target_texture.createView(&wgpu.TextureViewDescriptor{
+        .label = wgpu.StringView.fromSlice("Scrapbot render benchmark target view"),
+        .mip_level_count = 1,
+        .array_layer_count = 1,
+    }) orelse return RenderError.NoDevice;
+    defer target_view.release();
+
+    var demo = try MeshDemo.create(allocator, gpu.device, gpu.queue, texture_format, scene);
+    defer demo.deinit();
+
+    var depth = try DepthTarget.create(gpu.device, options.width, options.height);
+    defer depth.deinit();
+
+    try drawBenchmarkFrames(instance, gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, scene, &demo, options, options.warmup_frames);
+    demo.render_state.resetSystemProfileSamples();
+    demo.resetDrawProfileSamples();
+
+    const started_ns = monotonicTimestampNs();
+    try drawBenchmarkFrames(instance, gpu.device, gpu.queue, target_view, depth.view orelse return RenderError.NoDevice, scene, &demo, options, options.frames);
+    const total_ns = elapsedNanosecondsSince(started_ns);
+
+    const profiles = try copySystemProfileSnapshots(allocator, demo.render_state.systemProfileSnapshots());
+    errdefer freeSystemProfileSnapshots(allocator, profiles);
+    const draw_profiles = try copyDrawProfileSnapshots(allocator, &demo.draw_profiles);
+    errdefer freeDrawProfileSnapshots(allocator, draw_profiles);
+
+    return .{
+        .frames = options.frames,
+        .warmup_frames = options.warmup_frames,
+        .delta_seconds = options.delta_seconds,
+        .width = options.width,
+        .height = options.height,
+        .pixel_scale = options.pixel_scale,
+        .total_ns = total_ns,
+        .system_profiles = profiles,
+        .draw_profiles = draw_profiles,
+    };
+}
+
+fn drawBenchmarkFrames(
+    instance: *wgpu.Instance,
+    device: *wgpu.Device,
+    queue: *wgpu.Queue,
+    target_view: *wgpu.TextureView,
+    depth_view: *wgpu.TextureView,
+    scene: Scene,
+    demo: *MeshDemo,
+    options: RenderBenchmarkOptions,
+    frames: u32,
+) !void {
+    var frame_index: u32 = 0;
+    while (frame_index < frames) : (frame_index += 1) {
+        var input = frameInputWithOutputMetrics(options.frame_input, options.width, options.height, options.pixel_scale);
+        input.delta_seconds = options.delta_seconds;
+        input.system_profile_count_hint = demo.renderSystemProfileCount();
+        if (options.frame_update) |frame_update| {
+            frame_update.step(frame_update.context, options.delta_seconds, &input);
+        }
+
+        try demo.draw(device, queue, target_view, depth_view, .{
+            .width = options.width,
+            .height = options.height,
+            .scene = scene,
+            .input = input,
+        });
+        instance.processEvents();
+    }
+}
+
+fn copySystemProfileSnapshots(
+    allocator: std.mem.Allocator,
+    snapshots: []const runtime.SystemProfileSnapshot,
+) ![]runtime.SystemProfileSnapshot {
+    const copied = try allocator.alloc(runtime.SystemProfileSnapshot, snapshots.len);
+    errdefer allocator.free(copied);
+
+    var copied_count: usize = 0;
+    errdefer {
+        for (copied[0..copied_count]) |profile| {
+            allocator.free(profile.id);
+        }
+    }
+
+    for (snapshots, 0..) |snapshot, index| {
+        copied[index] = .{
+            .id = try allocator.dupe(u8, snapshot.id),
+            .phase = snapshot.phase,
+            .sample_count = snapshot.sample_count,
+            .window_size = snapshot.window_size,
+            .last_ns = snapshot.last_ns,
+            .rolling_average_ns = snapshot.rolling_average_ns,
+        };
+        copied_count += 1;
+    }
+    return copied;
+}
+
+fn freeSystemProfileSnapshots(allocator: std.mem.Allocator, snapshots: []runtime.SystemProfileSnapshot) void {
+    for (snapshots) |profile| {
+        allocator.free(profile.id);
+    }
+    allocator.free(snapshots);
+}
+
+fn copyDrawProfileSnapshots(
+    allocator: std.mem.Allocator,
+    states: []const RenderBenchmarkProfileState,
+) ![]RenderBenchmarkProfile {
+    const copied = try allocator.alloc(RenderBenchmarkProfile, states.len);
+    errdefer allocator.free(copied);
+
+    var copied_count: usize = 0;
+    errdefer {
+        for (copied[0..copied_count]) |profile| {
+            allocator.free(profile.id);
+        }
+    }
+
+    for (states, 0..) |state, index| {
+        const snapshot = state.snapshot();
+        copied[index] = .{
+            .id = try allocator.dupe(u8, snapshot.id),
+            .sample_count = snapshot.sample_count,
+            .window_size = snapshot.window_size,
+            .last_ns = snapshot.last_ns,
+            .rolling_average_ns = snapshot.rolling_average_ns,
+        };
+        copied_count += 1;
+    }
+    return copied;
+}
+
+fn freeDrawProfileSnapshots(allocator: std.mem.Allocator, snapshots: []RenderBenchmarkProfile) void {
+    for (snapshots) |profile| {
+        allocator.free(profile.id);
+    }
+    allocator.free(snapshots);
 }
 
 fn renderDemoOutputFrames(
@@ -1036,6 +1317,7 @@ pub const render_draw_meshes_system_id = render_ecs.render_draw_meshes_system_id
 pub const mapWorldError = render_ecs.mapWorldError;
 
 const UiDrawResources = render_ui_draw.UiDrawResources;
+const UiVertexCache = render_ui.UiVertexCache;
 const InstanceAttributes = render_types.InstanceAttributes;
 
 const MeshDemo = struct {
@@ -1072,8 +1354,8 @@ const MeshDemo = struct {
     render_state: RenderEcsState,
     batches: []BatchResources,
     ui_draw: UiDrawResources = .{},
-    ui_vertices: std.ArrayList(UiVertex) = .empty,
-    ui_layout_cache: ui_layout.LayoutCache,
+    ui_vertex_cache: UiVertexCache,
+    draw_profiles: [draw_profile_count]RenderBenchmarkProfileState,
 
     fn create(
         allocator: std.mem.Allocator,
@@ -1410,7 +1692,8 @@ const MeshDemo = struct {
             .postprocess_sampler = postprocess_sampler,
             .render_state = render_state,
             .batches = batches,
-            .ui_layout_cache = ui_layout.LayoutCache.init(allocator),
+            .ui_vertex_cache = try UiVertexCache.init(allocator),
+            .draw_profiles = initialDrawProfileStates(),
         };
     }
 
@@ -1454,8 +1737,7 @@ const MeshDemo = struct {
         self.postprocess_bind_group_layout.release();
         self.bind_group_layout.release();
         self.ui_draw.deinit();
-        self.ui_vertices.deinit(self.allocator);
-        self.ui_layout_cache.deinit();
+        self.ui_vertex_cache.deinit();
     }
 
     fn draw(
@@ -1479,13 +1761,20 @@ const MeshDemo = struct {
         return self.render_state.system_profiles.items.len;
     }
 
+    fn resetDrawProfileSamples(self: *MeshDemo) void {
+        for (&self.draw_profiles) |*profile| {
+            profile.reset();
+        }
+    }
+
+    fn recordDrawProfile(self: *MeshDemo, slot: DrawProfileSlot, duration_ns: u64) void {
+        self.draw_profiles[@intFromEnum(slot)].record(duration_ns);
+    }
+
     fn runRenderSchedule(self: *MeshDemo, context: RenderSystemContext) RenderError!void {
         var maybe_plan: ?BatchPlan = null;
         defer if (maybe_plan) |*plan| {
             plan.deinit();
-        };
-        defer self.render_state.clearFrameState(context.frame.scene.world) catch |err| {
-            std.log.err("render frame cleanup failed: {s}", .{@errorName(err)});
         };
 
         var profiled_context = context;
@@ -1542,8 +1831,11 @@ const MeshDemo = struct {
     }
 
     fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
-        try buildUiVerticesInto(self.allocator, &self.ui_vertices, &self.ui_layout_cache, config.scene.world, config.width, config.height);
-        try self.ui_draw.update(device, queue, self.ui_vertices.items);
+        const rebuilt = try self.ui_vertex_cache.refreshWithInput(config.scene.world, config.width, config.height, config.input);
+        const vertices = self.ui_vertex_cache.vertexItems();
+        if (rebuilt or (vertices.len > 0 and self.ui_draw.vertex_buffer == null)) {
+            try self.ui_draw.update(device, queue, vertices);
+        }
     }
 
     fn prepareBatchResources(self: *MeshDemo, device: *wgpu.Device, plan: BatchPlan) RenderError!void {
@@ -1617,9 +1909,11 @@ const MeshDemo = struct {
     }
 
     fn drawQueuedBatches(self: *MeshDemo, context: RenderSystemContext, plan: BatchPlan) RenderError!void {
+        var profile_started_ns = monotonicTimestampNs();
         const light = try directionalLightState(context.frame.scene.world);
         var frame_uniforms = try frameUniforms(light);
         writeUniforms(context.queue, self.frame_uniform_buffer, &frame_uniforms);
+        self.recordDrawProfile(.uniforms, elapsedNanosecondsSince(profile_started_ns));
 
         for (plan.batches, 0..) |_, batch_index| {
             if (batch_index >= self.batches.len) {
@@ -1629,13 +1923,18 @@ const MeshDemo = struct {
 
         const should_draw_ui = self.render_state.uiDrawCommandCount() > 0 and self.ui_draw.vertex_count > 0;
 
+        profile_started_ns = monotonicTimestampNs();
         const encoder = context.device.createCommandEncoder(&wgpu.CommandEncoderDescriptor{
             .label = wgpu.StringView.fromSlice("Scrapbot mesh command encoder"),
         }) orelse return RenderError.NoDevice;
         defer encoder.release();
+        self.recordDrawProfile(.encoder, elapsedNanosecondsSince(profile_started_ns));
 
+        profile_started_ns = monotonicTimestampNs();
         try self.drawShadowPass(encoder, plan.batches.len);
+        self.recordDrawProfile(.shadow_pass, elapsedNanosecondsSince(profile_started_ns));
 
+        profile_started_ns = monotonicTimestampNs();
         const render_config = renderConfigFromWorld(context.frame.scene.world);
         const postprocess_active = render_config.requiresPostProcess();
         const bloom_active = render_config.bloomActive();
@@ -1648,6 +1947,7 @@ const MeshDemo = struct {
             );
             break :blk self.postprocess_target.view orelse return RenderError.NoDevice;
         } else context.target_view;
+        self.recordDrawProfile(.postprocess_setup, elapsedNanosecondsSince(profile_started_ns));
 
         const color_attachments = [_]wgpu.ColorAttachment{
             .{
@@ -1667,6 +1967,7 @@ const MeshDemo = struct {
             .depth_clear_value = 1.0,
         };
 
+        profile_started_ns = monotonicTimestampNs();
         const render_pass = encoder.beginRenderPass(&wgpu.RenderPassDescriptor{
             .color_attachment_count = color_attachments.len,
             .color_attachments = &color_attachments,
@@ -1691,19 +1992,35 @@ const MeshDemo = struct {
             render_pass.drawIndexed(batch.index_count, batch.instance_count, 0, 0, 0);
         }
         render_pass.end();
+        self.recordDrawProfile(.main_pass, elapsedNanosecondsSince(profile_started_ns));
 
         if (postprocess_active) {
-            const bloom_views = if (bloom_active)
-                try self.drawBloomPasses(render_config, context.device, encoder, context.queue, scene_target_view, context.frame.width, context.frame.height)
-            else
-                emptyBloomViews(scene_target_view);
+            const bloom_views = if (bloom_active) blk: {
+                profile_started_ns = monotonicTimestampNs();
+                const bloom_views = try self.drawBloomPasses(render_config, context.device, encoder, context.queue, scene_target_view, context.frame.width, context.frame.height);
+                self.recordDrawProfile(.bloom_passes, elapsedNanosecondsSince(profile_started_ns));
+                break :blk bloom_views;
+            } else blk: {
+                self.recordDrawProfile(.bloom_passes, 0);
+                break :blk emptyBloomViews(scene_target_view);
+            };
+            profile_started_ns = monotonicTimestampNs();
             try self.drawPostProcessPass(render_config, encoder, context.device, context.queue, context.target_view, scene_target_view, bloom_views, context.frame.width, context.frame.height);
+            self.recordDrawProfile(.postprocess_pass, elapsedNanosecondsSince(profile_started_ns));
+        } else {
+            self.recordDrawProfile(.bloom_passes, 0);
+            self.recordDrawProfile(.postprocess_pass, 0);
         }
 
         if (should_draw_ui) {
+            profile_started_ns = monotonicTimestampNs();
             try self.drawUiPass(encoder, context.target_view);
+            self.recordDrawProfile(.ui_pass, elapsedNanosecondsSince(profile_started_ns));
+        } else {
+            self.recordDrawProfile(.ui_pass, 0);
         }
 
+        profile_started_ns = monotonicTimestampNs();
         const command_buffer = encoder.finish(&wgpu.CommandBufferDescriptor{
             .label = wgpu.StringView.fromSlice("Scrapbot mesh command buffer"),
         }) orelse return RenderError.NoDevice;
@@ -1711,6 +2028,7 @@ const MeshDemo = struct {
 
         const command_buffers = [_]*const wgpu.CommandBuffer{command_buffer};
         context.queue.submit(&command_buffers);
+        self.recordDrawProfile(.finish_submit, elapsedNanosecondsSince(profile_started_ns));
     }
 
     fn drawShadowPass(self: *MeshDemo, encoder: *wgpu.CommandEncoder, batch_count: usize) RenderError!void {
@@ -2320,5 +2638,3 @@ const PostProcessUniforms = extern struct {
     params3: [4]f32,
     params4: [4]f32,
 };
-
-const UiVertex = render_types.UiVertex;

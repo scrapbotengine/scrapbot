@@ -174,6 +174,21 @@ test "parseBenchOptions accepts path frames dt and json format" {
     try std.testing.expectEqual(CheckOutputFormat.json, parsed.format);
 }
 
+test "parseRenderBenchOptions accepts editor frames warmup dimensions dt and json format" {
+    const args = [_][]const u8{ "examples/spawn_swarm", "--editor", "--select", "cube-1", "--frames=120", "--warmup=20", "--dt", "0.016", "--width", "1280", "--height", "720", "--pixel-scale", "2", "--format=json" };
+    const parsed = try options.parseRenderBenchOptions(std.testing.allocator, &args);
+    try std.testing.expectEqualStrings("examples/spawn_swarm", parsed.target_path);
+    try std.testing.expect(parsed.editor);
+    try std.testing.expectEqualStrings("cube-1", parsed.selected_entity_id.?);
+    try std.testing.expectEqual(@as(u32, 120), parsed.frames);
+    try std.testing.expectEqual(@as(u32, 20), parsed.warmup_frames);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.016), parsed.delta_seconds, 0.000001);
+    try std.testing.expectEqual(@as(u32, 1280), parsed.width);
+    try std.testing.expectEqual(@as(u32, 720), parsed.height);
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), parsed.pixel_scale, 0.000001);
+    try std.testing.expectEqual(CheckOutputFormat.json, parsed.format);
+}
+
 test "parseTestOptions defaults to tests/projects" {
     const parsed = try options.parseTestOptions(std.testing.allocator, &.{});
     try std.testing.expectEqualStrings("tests/projects", parsed.target_path);
