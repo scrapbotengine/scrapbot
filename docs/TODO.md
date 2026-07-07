@@ -30,6 +30,7 @@
 - [x] Odin `run` can validate projects, execute bounded hidden frame updates, write final offscreen WebGPU frame artifacts, and present scene-derived frames through a hidden WebGPU surface.
 - [x] Odin WebGPU smoke tasks can stage the host `wgpu-native` runtime library into `odin-out/lib` without building the Zig engine.
 - [x] Odin `run --backend wgpu --frames N` can drive a bounded visible SDL window loop, tick live project reload/update state, and present scene-derived WebGPU frames.
+- [x] Odin visible WebGPU runs can drive bounded and unbounded SDL window loops through a persistent surface context and the shared live-project frame tick.
 - [x] Odin `run` can drive bounded and unbounded visible software runs through an SDL event loop and the shared live-project frame tick.
 - [x] Odin visible software window-loop reloads emit live reload diagnostics while suppressing duplicate final-summary events.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
@@ -128,6 +129,7 @@
 - [x] Port bounded hidden Odin `run --backend wgpu` scene surface presentation.
 - [x] Stage the host `wgpu-native` runtime library directly for Odin WebGPU smokes without relying on the Zig build task to populate `zig-pkg`.
 - [x] Port bounded visible Odin `run --backend wgpu --frames N` scene surface presentation through an SDL event loop.
+- [x] Port unbounded visible Odin `run --backend wgpu` scene surface presentation through a persistent SDL/WebGPU loop.
 - [x] Port bounded visible Odin software `run --frames` through an SDL event loop.
 - [x] Port unbounded visible Odin software `run` through an SDL event loop.
 - [x] Port live unbounded/window-loop reload diagnostics from Zig to Odin for visible software runs.
@@ -135,7 +137,7 @@
 - [x] Port first-pass Odin software offscreen PNG/BMP image output and render-test pixel verification.
 - [x] Port first-pass Odin visual-test golden update/comparison, tolerance checks, and render artifact metadata sidecars.
 - [x] Port first-pass Odin software editor chrome pixels for offscreen render/visual artifacts.
-- [ ] Complete unbounded visible WebGPU/editor window-loop Odin project/scene/script/native live reload integration and replacement of the Zig reload path.
+- [ ] Complete WebGPU editor window-loop Odin project/scene/script/native live reload integration and replacement of the Zig reload path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
 - [ ] Add scroll support to inspector component vgroups.
 - [ ] Add typed inspector controls for floats, ints, strings, and enums.

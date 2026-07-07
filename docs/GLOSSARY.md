@@ -92,7 +92,7 @@ This glossary defines recurring Scrapbot terms in the project's context. It is a
 
 ## Live Reload and Diagnostics
 
-**Live reload** - Runtime detection, validation, and staged replacement of changed project metadata, scene, script, and project-local native files without restarting the engine. During the Odin rewrite, bounded runs and the visible software SDL window loop can reload project metadata, the default scene, Luau script, and Odin native source with last-known-good behavior; visible WebGPU/editor loop integration remains pending. See [ADR-009](adr/ADR-009-live-reload-as-a-core-runtime-capability.md) and [FDR-010](fdr/FDR-010-live-reload-for-scenes-and-scripts.md).
+**Live reload** - Runtime detection, validation, and staged replacement of changed project metadata, scene, script, and project-local native files without restarting the engine. During the Odin rewrite, bounded runs plus visible software and WebGPU SDL window loops can reload project metadata, the default scene, Luau script, and Odin native source with last-known-good behavior; editor loop integration remains pending. See [ADR-009](adr/ADR-009-live-reload-as-a-core-runtime-capability.md) and [FDR-010](fdr/FDR-010-live-reload-for-scenes-and-scripts.md).
 
 **Last-known-good state** - The active valid runtime state preserved when a reload, script validation, native build, or registration step fails. See [ADR-009](adr/ADR-009-live-reload-as-a-core-runtime-capability.md) and [FDR-013](fdr/FDR-013-script-diagnostics.md).
 

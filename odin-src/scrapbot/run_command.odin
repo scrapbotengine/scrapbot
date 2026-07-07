@@ -248,12 +248,6 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 		}
 		return options, false
 	}
-	if options.backend == .WebGPU && options.max_frames == 0 {
-		if emit_output {
-			fmt.eprintln("run failed: WebGPU run rendering requires --frames")
-		}
-		return options, false
-	}
 	if options.render_output_explicit && options.backend != .WebGPU {
 		if emit_output {
 			fmt.eprintln("--render-output requires --backend wgpu")

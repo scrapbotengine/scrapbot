@@ -1019,7 +1019,7 @@ test_run_options_use_sdl_window_loop_for_bounded_visible_software_runs :: proc(t
 }
 
 @(test)
-test_run_options_use_sdl_window_loop_for_bounded_visible_wgpu_runs :: proc(t: ^testing.T) {
+test_run_options_use_sdl_window_loop_for_visible_wgpu_runs :: proc(t: ^testing.T) {
 	visible, visible_ok := parse_run_options([]string{"--frames", "2", "--backend", "wgpu"}, false)
 	testing.expect_value(t, visible_ok, true)
 	testing.expect_value(t, run_options_use_sdl_window_loop(visible), true)
@@ -1029,6 +1029,11 @@ test_run_options_use_sdl_window_loop_for_bounded_visible_wgpu_runs :: proc(t: ^t
 	testing.expect_value(t, hidden_ok, true)
 	testing.expect_value(t, run_options_use_sdl_window_loop(hidden), false)
 	testing.expect_value(t, run_options_use_wgpu_sdl_window_loop(hidden), false)
+
+	unbounded, unbounded_ok := parse_run_options([]string{"--backend", "wgpu"}, false)
+	testing.expect_value(t, unbounded_ok, true)
+	testing.expect_value(t, run_options_use_sdl_window_loop(unbounded), true)
+	testing.expect_value(t, run_options_use_wgpu_sdl_window_loop(unbounded), true)
 }
 
 @(test)
@@ -1050,8 +1055,8 @@ test_run_command_rejects_hidden_without_frame_limit :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_run_command_rejects_unbounded_wgpu_until_window_loop_is_ported :: proc(t: ^testing.T) {
-	exit_code := run_with_output([]string{"scrapbot", "run", "--backend", "wgpu"}, false)
+test_run_command_rejects_hidden_unbounded_wgpu :: proc(t: ^testing.T) {
+	exit_code := run_with_output([]string{"scrapbot", "run", "--hidden", "--backend", "wgpu"}, false)
 	testing.expect_value(t, exit_code, 1)
 }
 

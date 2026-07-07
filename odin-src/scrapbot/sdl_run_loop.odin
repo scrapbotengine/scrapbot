@@ -165,6 +165,17 @@ sdl_run_live_project_wgpu_loop :: proc(
 		return Sdl_Run_Loop_Result{}, Simulation_Run_Result{}, sdl_window_error_message(surface_err), false
 	}
 
+	surface_context, surface_context_error, surface_context_ok := wgpu_surface_context_init(
+		loaded.procs,
+		&surface_descriptor.descriptor,
+		u32(size.pixel_width),
+		u32(size.pixel_height),
+	)
+	if !surface_context_ok {
+		return Sdl_Run_Loop_Result{}, Simulation_Run_Result{}, surface_context_error, false
+	}
+	defer wgpu_surface_context_deinit(&surface_context)
+
 	result := Sdl_Run_Loop_Result{
 		window_opened = true,
 		window_width = size.width,
@@ -207,9 +218,8 @@ sdl_run_live_project_wgpu_loop :: proc(
 		result.pixel_width = size.pixel_width
 		result.pixel_height = size.pixel_height
 
-		presentation, present_error, present_ok := wgpu_present_surface_scene(
-			loaded.procs,
-			&surface_descriptor.descriptor,
+		presentation, present_error, present_ok := wgpu_surface_context_present_scene_frame(
+			&surface_context,
 			project.check.scene.world,
 			u32(size.pixel_width),
 			u32(size.pixel_height),
