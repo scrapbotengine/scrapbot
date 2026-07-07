@@ -1388,8 +1388,92 @@ editor_pointer_in_inspector :: proc(world: Runtime_World, state: Editor_Test_Inp
 }
 
 editor_inspector_scroll_next :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input, current_y, wheel_delta_y: f32) -> f32 {
+	if next, ok := editor_inspector_retained_scroll_next(world, state, input, current_y, wheel_delta_y); ok {
+		return next
+	}
 	next := current_y + -wheel_delta_y * UI_EDITOR_SCROLL_PIXELS_PER_WHEEL
 	return clamp_f32(next, 0, editor_inspector_max_scroll_y(world, state, input))
+}
+
+editor_inspector_retained_scroll_next :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input, current_y, wheel_delta_y: f32) -> (f32, bool) {
+	if wheel_delta_y == 0 {
+		return current_y, true
+	}
+	routing_world, routing_ok := editor_inspector_routing_world(world, state, input, current_y)
+	if !routing_ok {
+		return current_y, false
+	}
+	defer runtime_world_free(&routing_world)
+	clip_x, clip_y, clip_width, clip_height := editor_inspector_scroll_clip_rect(input)
+	point := [2]f32{
+		clamp_f32(input.pointer.position[0], clip_x, clip_x + max_f32(clip_width - 1.0, 0.0)),
+		clamp_f32(input.pointer.position[1], clip_y, clip_y + max_f32(clip_height - 1.0, 0.0)),
+	}
+	consumed, scroll_err := apply_scroll_wheel_at(&routing_world, point, wheel_delta_y, UI_EDITOR_SCROLL_PIXELS_PER_WHEEL)
+	if scroll_err != .None || !consumed {
+		return current_y, false
+	}
+	scroll, scroll_found := runtime_world_find_entity_by_id(routing_world, "scrapbot.editor.inspector.scroll")
+	if !scroll_found {
+		return current_y, false
+	}
+	content_offset, offset_err := runtime_world_get_vec3(routing_world, scroll, UI_SCROLL_VIEW_COMPONENT_ID, "content_offset")
+	if offset_err != .None {
+		return current_y, false
+	}
+	return content_offset[1], true
+}
+
+editor_inspector_routing_world :: proc(world: Runtime_World, state: Editor_Test_Input_State, input: Frame_Input, scroll_y: f32) -> (Runtime_World, bool) {
+	routing_world := runtime_world_init()
+	clip_x, clip_y, clip_width, clip_height := editor_inspector_scroll_clip_rect(input)
+	scroll, scroll_err := runtime_world_create_entity(&routing_world, "scrapbot.editor.inspector.scroll", "Editor Inspector Scroll View")
+	if scroll_err != .None {
+		runtime_world_free(&routing_world)
+		return Runtime_World{}, false
+	}
+	scroll_fields := [?]Runtime_Component_Field_Value{
+		{name = "position", value = runtime_component_value_vec3({clip_x, clip_y, 0.0})},
+		{name = "size", value = runtime_component_value_vec3({clip_width, clip_height, 0.0})},
+		{name = "content_offset", value = runtime_component_value_vec3({0.0, scroll_y, 0.0})},
+	}
+	if runtime_world_set_component(&routing_world, scroll, UI_SCROLL_VIEW_COMPONENT_ID, scroll_fields[:]) != .None {
+		runtime_world_free(&routing_world)
+		return Runtime_World{}, false
+	}
+
+	content_height := editor_inspector_component_content_height(world, state)
+	stack, stack_err := runtime_world_create_entity(&routing_world, "scrapbot.editor.inspector.components", "Editor Component Stack")
+	if stack_err != .None {
+		runtime_world_free(&routing_world)
+		return Runtime_World{}, false
+	}
+	stack_fields := [?]Runtime_Component_Field_Value{
+		{name = "position", value = runtime_component_value_vec3({0.0, 0.0, 0.0})},
+		{name = "size", value = runtime_component_value_vec3({max_f32(clip_width, 1.0), content_height, 0.0})},
+		{name = "spacing", value = runtime_component_value_float(UI_EDITOR_INSPECTOR_CARD_GAP)},
+		{name = "padding", value = runtime_component_value_vec3({0.0, 0.0, 0.0})},
+	}
+	if runtime_world_set_component(&routing_world, stack, UI_VGROUP_COMPONENT_ID, stack_fields[:]) != .None {
+		runtime_world_free(&routing_world)
+		return Runtime_World{}, false
+	}
+	layout_fields := [?]Runtime_Component_Field_Value{
+		{name = "parent", value = runtime_component_value_string("scrapbot.editor.inspector.scroll")},
+		{name = "order", value = runtime_component_value_int(0)},
+		{name = "min_size", value = runtime_component_value_vec3({0.0, 0.0, 0.0})},
+		{name = "preferred_size", value = runtime_component_value_vec3({0.0, 0.0, 0.0})},
+		{name = "max_size", value = runtime_component_value_vec3({0.0, 0.0, 0.0})},
+		{name = "grow", value = runtime_component_value_float(0.0)},
+		{name = "shrink", value = runtime_component_value_float(0.0)},
+		{name = "align", value = runtime_component_value_string("")},
+		{name = "margin", value = runtime_component_value_vec3({0.0, 0.0, 0.0})},
+	}
+	if runtime_world_set_component(&routing_world, stack, UI_LAYOUT_ITEM_COMPONENT_ID, layout_fields[:]) != .None {
+		runtime_world_free(&routing_world)
+		return Runtime_World{}, false
+	}
+	return routing_world, true
 }
 
 editor_pointer_in_entity_list :: proc(world: Runtime_World, input: Frame_Input) -> bool {

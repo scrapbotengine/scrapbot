@@ -696,6 +696,60 @@ inspector_scroll_y = 18.0
 }
 
 @(test)
+test_editor_inspector_routing_uses_scroll_view_component_stack :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity, entity_err := runtime_world_create_entity(&world, "selected", "Selected")
+	testing.expect_value(t, entity_err, Runtime_Error.None)
+	component_ids := [?]string{"c0", "c1", "c2", "c3", "c4", "c5"}
+	for component_id in component_ids {
+		fields := [?]Runtime_Component_Field_Value{
+			{name = "a", value = runtime_component_value_float(1.0)},
+			{name = "b", value = runtime_component_value_float(2.0)},
+			{name = "c", value = runtime_component_value_float(3.0)},
+		}
+		testing.expect_value(t, runtime_world_set_component(&world, entity, component_id, fields[:]), Runtime_Error.None)
+	}
+
+	input := frame_input_default()
+	input.debug_overlay_visible = true
+	input.viewport_width = 1280.0
+	input.viewport_height = 720.0
+	input.pointer.has_position = true
+	input.pointer.position = {900.0, 190.0}
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+		inspector_scroll_y = 80.0,
+	}
+	routing_world, routing_ok := editor_inspector_routing_world(world, state, input, state.inspector_scroll_y)
+	testing.expect_value(t, routing_ok, true)
+	defer runtime_world_free(&routing_world)
+
+	scroll, scroll_found := runtime_world_find_entity_by_id(routing_world, "scrapbot.editor.inspector.scroll")
+	testing.expect_value(t, scroll_found, true)
+	has_scroll, scroll_err := runtime_world_has_component(routing_world, scroll, UI_SCROLL_VIEW_COMPONENT_ID)
+	testing.expect_value(t, scroll_err, Runtime_Error.None)
+	testing.expect_value(t, has_scroll, true)
+	stack, stack_found := runtime_world_find_entity_by_id(routing_world, "scrapbot.editor.inspector.components")
+	testing.expect_value(t, stack_found, true)
+	has_stack, stack_err := runtime_world_has_component(routing_world, stack, UI_VGROUP_COMPONENT_ID)
+	testing.expect_value(t, stack_err, Runtime_Error.None)
+	testing.expect_value(t, has_stack, true)
+	parent, parent_err := runtime_world_get_string(routing_world, stack, UI_LAYOUT_ITEM_COMPONENT_ID, "parent")
+	testing.expect_value(t, parent_err, Runtime_Error.None)
+	testing.expect_value(t, parent, "scrapbot.editor.inspector.scroll")
+
+	max_y, max_err := scroll_max_y(routing_world, scroll)
+	testing.expect_value(t, max_err, Runtime_Error.None)
+	testing.expect(t, max_y > 0)
+	next_y, next_ok := editor_inspector_retained_scroll_next(world, state, input, state.inspector_scroll_y, -1.0)
+	testing.expect_value(t, next_ok, true)
+	testing.expect_value(t, next_y, state.inspector_scroll_y + UI_EDITOR_SCROLL_PIXELS_PER_WHEEL)
+}
+
+@(test)
 test_run_test_command_replays_editor_inspector_field_selection :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-test-editor-inspector-field-selection")
 	defer os.remove_all(root)

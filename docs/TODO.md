@@ -152,7 +152,8 @@
 - [x] Port first-pass Odin software editor chrome pixels for offscreen render/visual artifacts.
 - [ ] Complete full editor window-loop Odin input, tool chrome, and replacement of the Zig editor path.
 - [ ] Remove Zig build/test/dependency surfaces after Odin parity is verified.
-- [ ] Add scroll support to inspector component vgroups.
+- [x] Add retained scroll-view/vgroup routing for Odin inspector scrolling.
+- [ ] Add visual scroll support to inspector component vgroups.
 - [ ] Add typed inspector controls for floats, ints, strings, and enums.
 - [ ] Add editor controls to add and remove components on the selected entity.
 - [ ] Add editor controls to spawn and despawn entities.
