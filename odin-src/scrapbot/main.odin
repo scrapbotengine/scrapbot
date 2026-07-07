@@ -589,8 +589,22 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 	completed_frames := 0
 	run_report := Live_Project_Run_Report{}
 	defer live_project_run_report_free(&run_report)
+	window_result := Sdl_Run_Loop_Result{}
 	if options.max_frames > 0 {
-		simulation := live_project_run_frames_with_report(&live, options.max_frames, 1.0 / 60.0, nil, nil, &run_report)
+		simulation := Simulation_Run_Result{}
+		if run_options_use_sdl_window_loop(options) {
+			window_error: string
+			window_ok: bool
+			window_result, simulation, window_error, window_ok = sdl_run_live_project_frames(&live, options.max_frames, 1.0 / 60.0, false, &run_report)
+			if !window_ok {
+				if emit_output {
+					fmt.eprintf("run window loop failed: %s\n", window_error)
+				}
+				return 1
+			}
+		} else {
+			simulation = live_project_run_frames_with_report(&live, options.max_frames, 1.0 / 60.0, nil, nil, &run_report)
+		}
 		if !simulation.ok {
 			live.check.diagnostic = simulation.diagnostic
 			live.check.err = .Invalid_Script
@@ -654,7 +668,7 @@ run_project :: proc(args: []string, emit_output: bool) -> int {
 	}
 
 	if emit_output {
-		print_run_result(live.check, options, completed_frames, run_report, render_result)
+		print_run_result(live.check, options, completed_frames, run_report, render_result, window_result)
 	}
 	return 0
 }

@@ -18,6 +18,18 @@ test_sdl_window_flags_include_hidden_and_platform_surface_bits :: proc(t: ^testi
 }
 
 @(test)
+test_sdl_run_loop_event_requests_quit_for_process_and_window_close :: proc(t: ^testing.T) {
+	quit := sdl3.Event{type = .QUIT}
+	testing.expect_value(t, sdl_run_loop_event_requests_quit(quit), true)
+
+	close := sdl3.Event{type = .WINDOW_CLOSE_REQUESTED}
+	testing.expect_value(t, sdl_run_loop_event_requests_quit(close), true)
+
+	resize := sdl3.Event{type = .WINDOW_RESIZED}
+	testing.expect_value(t, sdl_run_loop_event_requests_quit(resize), false)
+}
+
+@(test)
 test_sdl_wgpu_surface_descriptor_bundles_own_source_storage :: proc(t: ^testing.T) {
 	label := wgpu_string_view_from_string("test")
 

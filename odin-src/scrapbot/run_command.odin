@@ -269,7 +269,18 @@ parse_run_options :: proc(args: []string, emit_output: bool) -> (Run_Options, bo
 	return options, true
 }
 
-print_run_result :: proc(result: Project_Check_Result, options: Run_Options, completed_frames: int, report: Live_Project_Run_Report, render_result: Run_Render_Result) {
+run_options_use_sdl_window_loop :: proc(options: Run_Options) -> bool {
+	return options.max_frames > 0 && !options.hidden && options.backend == .Software
+}
+
+print_run_result :: proc(
+	result: Project_Check_Result,
+	options: Run_Options,
+	completed_frames: int,
+	report: Live_Project_Run_Report,
+	render_result: Run_Render_Result,
+	window_result: Sdl_Run_Loop_Result,
+) {
 	fmt.printf("Loaded project %s\n", result.project.name)
 	fmt.printf("Selected scene: %s\n", result.project.default_scene)
 	fmt.printf("Scene entities: %d\n", result.scene.entity_count)
@@ -289,6 +300,8 @@ print_run_result :: proc(result: Project_Check_Result, options: Run_Options, com
 	}
 	if options.hidden {
 		fmt.println("Window: hidden")
+	} else if window_result.window_opened {
+		fmt.printf("Window: visible SDL loop %dx%d (%dx%d pixels), presentation pending\n", window_result.window_width, window_result.window_height, window_result.pixel_width, window_result.pixel_height)
 	} else {
 		fmt.println("Window: visible presentation pending Odin renderer")
 	}
@@ -300,6 +313,9 @@ print_run_result :: proc(result: Project_Check_Result, options: Run_Options, com
 		fmt.println("Execution: Odin Luau systems")
 	} else {
 		fmt.println("Execution: pending unbounded Odin window loop")
+	}
+	if window_result.quit_requested {
+		fmt.println("Execution: stopped after SDL quit request")
 	}
 	if render_result.rendered {
 		fmt.printf("Rendered frame: %s\n", render_result.output_path)

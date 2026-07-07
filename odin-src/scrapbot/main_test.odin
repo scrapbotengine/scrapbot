@@ -1004,6 +1004,17 @@ test_parse_run_options_accepts_frames_editor_and_hidden_flags :: proc(t: ^testin
 }
 
 @(test)
+test_run_options_use_sdl_window_loop_for_bounded_visible_software_runs :: proc(t: ^testing.T) {
+	visible, visible_ok := parse_run_options([]string{"--frames", "2", "--backend", "software"}, false)
+	testing.expect_value(t, visible_ok, true)
+	testing.expect_value(t, run_options_use_sdl_window_loop(visible), true)
+
+	hidden, hidden_ok := parse_run_options([]string{"--frames", "2", "--hidden", "--backend", "software"}, false)
+	testing.expect_value(t, hidden_ok, true)
+	testing.expect_value(t, run_options_use_sdl_window_loop(hidden), false)
+}
+
+@(test)
 test_run_command_rejects_hidden_without_frame_limit :: proc(t: ^testing.T) {
 	exit_code := run_with_output([]string{"scrapbot", "run", "--hidden"}, false)
 	testing.expect_value(t, exit_code, 1)
