@@ -1295,6 +1295,11 @@ pub const World = struct {
         return table.entities.items.len;
     }
 
+    pub fn componentMutationGeneration(self: World, component_id: []const u8) u64 {
+        const table = self.findComponentTable(component_id) orelse return 0;
+        return table.mutation_generation;
+    }
+
     pub fn componentFieldCount(self: World, component_id: []const u8) usize {
         const table = self.findComponentTable(component_id) orelse return 0;
         return table.columns.len;
@@ -1764,6 +1769,7 @@ pub const World = struct {
         for (table.columns) |*column| {
             column.values.swapRemove(self.allocator, row);
         }
+        table.bumpMutationGeneration();
 
         if (emit_structural_event) {
             self.appendStructuralEventAssumeCapacity(.{
@@ -1827,10 +1833,14 @@ pub const World = struct {
         const keep_rows = self.transient_clear_keep_rows.items;
 
         var write_row: usize = 0;
+        var table_changed = false;
         for (table.entities.items, 0..) |handle, row| {
             const new_index = if (handle.index < new_index_by_old.len) new_index_by_old[handle.index] else null;
             if (new_index) |index| {
                 keep_rows[row] = true;
+                if (index != handle.index) {
+                    table_changed = true;
+                }
                 table.entities.items[write_row] = .{
                     .index = index,
                     .generation = self.entities.items[index].generation,
@@ -1838,6 +1848,7 @@ pub const World = struct {
                 write_row += 1;
             } else {
                 keep_rows[row] = false;
+                table_changed = true;
             }
         }
 
@@ -1853,6 +1864,9 @@ pub const World = struct {
         }
         for (table.entities.items, 0..) |handle, row| {
             table.rows_by_entity.items[handle.index] = row;
+        }
+        if (table_changed) {
+            table.bumpMutationGeneration();
         }
     }
 
@@ -2402,6 +2416,7 @@ pub const World = struct {
         const row = table.rows_by_entity.items[index] orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
+        table.bumpMutationGeneration();
         self.bumpRevision();
     }
 
@@ -2411,6 +2426,7 @@ pub const World = struct {
         const row = resolvedRowForEntity(table.*, .{ .index = @intCast(index) }, resolved.row_index) orelse return WorldError.UnknownComponent;
         const column = findMutableColumn(table, field_name) orelse return WorldError.UnknownField;
         try column.values.setCopy(self.allocator, row, value);
+        table.bumpMutationGeneration();
         self.bumpRevision();
     }
 
@@ -2537,6 +2553,7 @@ pub const World = struct {
             try column.values.appendCopy(self.allocator, field.value);
             appended_columns += 1;
         }
+        table.bumpMutationGeneration();
     }
 
     fn updateComponentRow(self: *World, table: *ComponentTable, row: usize, fields: []const ComponentFieldValue) WorldError!void {
@@ -2545,6 +2562,7 @@ pub const World = struct {
             const field = findFieldValue(fields, column.name) orelse return WorldError.UnknownField;
             try column.values.setCopy(self.allocator, row, field.value);
         }
+        table.bumpMutationGeneration();
     }
 };
 

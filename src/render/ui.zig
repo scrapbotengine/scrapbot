@@ -30,6 +30,12 @@ pub const UiButtonState = struct {
     hovered: bool = false,
     held: bool = false,
     pressed: bool = false,
+
+    fn eql(self: UiButtonState, other: UiButtonState) bool {
+        return self.hovered == other.hovered and
+            self.held == other.held and
+            self.pressed == other.pressed;
+    }
 };
 
 pub const UiBorder = struct {
@@ -123,6 +129,11 @@ pub fn renderFrameInput(world: *const runtime.World) RenderError!FrameInput {
 }
 
 pub fn setRenderUiButtonState(world: *runtime.World, entity: runtime.EntityHandle, state: UiButtonState) RenderError!void {
+    if (try renderUiButtonState(world, entity)) |existing| {
+        if (existing.eql(state)) {
+            return;
+        }
+    }
     const fields = [_]runtime.ComponentFieldValue{
         .{ .name = "hovered", .value = .{ .boolean = state.hovered } },
         .{ .name = "held", .value = .{ .boolean = state.held } },
@@ -308,6 +319,138 @@ pub fn buildUiVertices(allocator: std.mem.Allocator, world: *const runtime.World
     errdefer vertices.deinit(allocator);
     try buildUiVerticesInto(allocator, &vertices, &layout_cache, world, width, height);
     return vertices;
+}
+
+const UiVertexCacheKey = struct {
+    width: u32 = 0,
+    height: u32 = 0,
+    viewport_width: f32 = 0.0,
+    viewport_height: f32 = 0.0,
+    pixel_scale: f32 = 1.0,
+    ui_visible: bool = false,
+    debug_overlay_visible: bool = false,
+    component_generation_fingerprint: u64 = 0,
+
+    fn fromWorld(world: *const runtime.World, width: u32, height: u32) UiVertexCacheKey {
+        const stored_input = renderFrameInput(world) catch FrameInput{};
+        const input = frameInputWithDefaultOutputMetrics(stored_input, width, height);
+        return .{
+            .width = width,
+            .height = height,
+            .viewport_width = input.viewport_width,
+            .viewport_height = input.viewport_height,
+            .pixel_scale = framePixelScale(input),
+            .ui_visible = input.ui_visible,
+            .debug_overlay_visible = input.debug_overlay_visible,
+            .component_generation_fingerprint = uiComponentGenerationFingerprint(world),
+        };
+    }
+
+    fn eql(self: UiVertexCacheKey, other: UiVertexCacheKey) bool {
+        return self.width == other.width and
+            self.height == other.height and
+            self.viewport_width == other.viewport_width and
+            self.viewport_height == other.viewport_height and
+            self.pixel_scale == other.pixel_scale and
+            self.ui_visible == other.ui_visible and
+            self.debug_overlay_visible == other.debug_overlay_visible and
+            self.component_generation_fingerprint == other.component_generation_fingerprint;
+    }
+};
+
+const ui_vertex_cache_component_ids = [_][]const u8{
+    runtime.ui_canvas_component_id,
+    runtime.ui_rect_component_id,
+    runtime.ui_border_component_id,
+    runtime.ui_text_component_id,
+    runtime.ui_button_component_id,
+    runtime.ui_scroll_view_component_id,
+    runtime.ui_vgroup_component_id,
+    runtime.ui_hgroup_component_id,
+    runtime.ui_table_component_id,
+    runtime.ui_stack_component_id,
+    runtime.ui_layout_item_component_id,
+    runtime.ui_spacer_component_id,
+    runtime.ui_text_block_component_id,
+    runtime.ui_toggle_component_id,
+    runtime.ui_progress_bar_component_id,
+    runtime.ui_separator_component_id,
+    render_ui_button_state_component_id,
+    render_ui_clip_component_id,
+};
+
+fn uiComponentGenerationFingerprint(world: *const runtime.World) u64 {
+    var fingerprint: u64 = 14695981039346656037;
+    for (ui_vertex_cache_component_ids) |component_id| {
+        fingerprint ^= world.componentMutationGeneration(component_id);
+        fingerprint *%= 1099511628211;
+    }
+    return fingerprint;
+}
+
+pub const UiVertexCache = struct {
+    allocator: std.mem.Allocator,
+    vertices: std.ArrayList(UiVertex) = .empty,
+    layout_cache: ui_layout.LayoutCache,
+    rect_observer: runtime.QueryObserver,
+    text_observer: runtime.QueryObserver,
+    separator_observer: runtime.QueryObserver,
+    last_key: UiVertexCacheKey = .{},
+    initialized: bool = false,
+
+    pub fn init(allocator: std.mem.Allocator) RenderError!UiVertexCache {
+        var rect_observer = runtime.QueryObserver.init(allocator, &.{runtime.ui_rect_component_id}) catch return RenderError.OutOfMemory;
+        errdefer rect_observer.deinit();
+        var text_observer = runtime.QueryObserver.init(allocator, &.{runtime.ui_text_component_id}) catch return RenderError.OutOfMemory;
+        errdefer text_observer.deinit();
+        var separator_observer = runtime.QueryObserver.init(allocator, &.{runtime.ui_separator_component_id}) catch return RenderError.OutOfMemory;
+        errdefer separator_observer.deinit();
+
+        return .{
+            .allocator = allocator,
+            .layout_cache = ui_layout.LayoutCache.init(allocator),
+            .rect_observer = rect_observer,
+            .text_observer = text_observer,
+            .separator_observer = separator_observer,
+        };
+    }
+
+    pub fn deinit(self: *UiVertexCache) void {
+        self.separator_observer.deinit();
+        self.text_observer.deinit();
+        self.rect_observer.deinit();
+        self.layout_cache.deinit();
+        self.vertices.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn refresh(self: *UiVertexCache, world: *const runtime.World, width: u32, height: u32) RenderError!bool {
+        self.rect_observer.refresh(world.*) catch |err| return mapWorldError(err);
+        self.text_observer.refresh(world.*) catch |err| return mapWorldError(err);
+        self.separator_observer.refresh(world.*) catch |err| return mapWorldError(err);
+
+        const key = UiVertexCacheKey.fromWorld(world, width, height);
+        const membership_changed = observerMembershipChanged(self.rect_observer) or
+            observerMembershipChanged(self.text_observer) or
+            observerMembershipChanged(self.separator_observer);
+        const should_rebuild = !self.initialized or membership_changed or !self.last_key.eql(key);
+        if (!should_rebuild) {
+            return false;
+        }
+
+        try buildUiVerticesInto(self.allocator, &self.vertices, &self.layout_cache, world, width, height);
+        self.last_key = key;
+        self.initialized = true;
+        return true;
+    }
+
+    pub fn vertexItems(self: *const UiVertexCache) []const UiVertex {
+        return self.vertices.items;
+    }
+};
+
+fn observerMembershipChanged(observer: runtime.QueryObserver) bool {
+    return observer.appeared().len > 0 or observer.disappeared().len > 0;
 }
 
 pub fn buildUiVerticesInto(

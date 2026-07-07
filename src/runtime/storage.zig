@@ -248,6 +248,7 @@ pub const ComponentTable = struct {
     entities: std.ArrayList(EntityHandle) = .empty,
     rows_by_entity: std.ArrayList(?usize) = .empty,
     columns: []ComponentColumn = &.{},
+    mutation_generation: u64 = 1,
 
     pub fn deinit(self: *ComponentTable, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -264,6 +265,14 @@ pub const ComponentTable = struct {
         self.rows_by_entity.clearRetainingCapacity();
         for (self.columns) |*column| {
             column.values.clearRetainingCapacity(allocator);
+        }
+        self.bumpMutationGeneration();
+    }
+
+    pub fn bumpMutationGeneration(self: *ComponentTable) void {
+        self.mutation_generation +%= 1;
+        if (self.mutation_generation == 0) {
+            self.mutation_generation = 1;
         }
     }
 };

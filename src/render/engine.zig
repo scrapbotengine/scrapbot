@@ -2,7 +2,6 @@ const std = @import("std");
 const Io = std.Io;
 const geometry = @import("../geometry.zig");
 const runtime = @import("../runtime.zig");
-const ui_layout = @import("../ui_layout.zig");
 const ui_font = @import("../ui_font.zig");
 const editor_state_types = @import("../editor/state.zig");
 const editor_layout = @import("../editor/layout.zig");
@@ -129,7 +128,6 @@ const hitTestUiRect = render_ui.hitTestUiRect;
 const textPixelSize = render_ui.textPixelSize;
 const resolveUiTextPosition = render_ui.resolveUiTextPosition;
 const evaluateUiButtonState = render_ui.evaluateUiButtonState;
-const buildUiVerticesInto = render_ui.buildUiVerticesInto;
 const screenToClipX = render_ui.screenToClipX;
 const screenToClipY = render_ui.screenToClipY;
 const clamp01 = render_ui.clamp01;
@@ -1036,6 +1034,7 @@ pub const render_draw_meshes_system_id = render_ecs.render_draw_meshes_system_id
 pub const mapWorldError = render_ecs.mapWorldError;
 
 const UiDrawResources = render_ui_draw.UiDrawResources;
+const UiVertexCache = render_ui.UiVertexCache;
 const InstanceAttributes = render_types.InstanceAttributes;
 
 const MeshDemo = struct {
@@ -1072,8 +1071,7 @@ const MeshDemo = struct {
     render_state: RenderEcsState,
     batches: []BatchResources,
     ui_draw: UiDrawResources = .{},
-    ui_vertices: std.ArrayList(UiVertex) = .empty,
-    ui_layout_cache: ui_layout.LayoutCache,
+    ui_vertex_cache: UiVertexCache,
 
     fn create(
         allocator: std.mem.Allocator,
@@ -1410,7 +1408,7 @@ const MeshDemo = struct {
             .postprocess_sampler = postprocess_sampler,
             .render_state = render_state,
             .batches = batches,
-            .ui_layout_cache = ui_layout.LayoutCache.init(allocator),
+            .ui_vertex_cache = try UiVertexCache.init(allocator),
         };
     }
 
@@ -1454,8 +1452,7 @@ const MeshDemo = struct {
         self.postprocess_bind_group_layout.release();
         self.bind_group_layout.release();
         self.ui_draw.deinit();
-        self.ui_vertices.deinit(self.allocator);
-        self.ui_layout_cache.deinit();
+        self.ui_vertex_cache.deinit();
     }
 
     fn draw(
@@ -1542,8 +1539,11 @@ const MeshDemo = struct {
     }
 
     fn prepareUiDrawResources(self: *MeshDemo, device: *wgpu.Device, queue: *wgpu.Queue, config: FrameConfig) RenderError!void {
-        try buildUiVerticesInto(self.allocator, &self.ui_vertices, &self.ui_layout_cache, config.scene.world, config.width, config.height);
-        try self.ui_draw.update(device, queue, self.ui_vertices.items);
+        const rebuilt = try self.ui_vertex_cache.refresh(config.scene.world, config.width, config.height);
+        const vertices = self.ui_vertex_cache.vertexItems();
+        if (rebuilt or (vertices.len > 0 and self.ui_draw.vertex_buffer == null)) {
+            try self.ui_draw.update(device, queue, vertices);
+        }
     }
 
     fn prepareBatchResources(self: *MeshDemo, device: *wgpu.Device, plan: BatchPlan) RenderError!void {
@@ -2320,5 +2320,3 @@ const PostProcessUniforms = extern struct {
     params3: [4]f32,
     params4: [4]f32,
 };
-
-const UiVertex = render_types.UiVertex;

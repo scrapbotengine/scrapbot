@@ -202,6 +202,35 @@ test "world exposes component field names for inspection" {
     }
 }
 
+test "component mutation generation tracks table row and field changes" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+
+    try std.testing.expectEqual(@as(u64, 0), world.componentMutationGeneration(ui_rect_component_id));
+
+    const panel = try world.createEntity("panel", "Panel");
+    try world.setUiRect(panel, .{ .position = .{ 1.0, 0.0, 0.0 } });
+    const after_add = world.componentMutationGeneration(ui_rect_component_id);
+    try std.testing.expect(after_add != 0);
+
+    const input = try world.createEngineTransientEntity(input_entity_id, "Input Frame");
+    try world.setInputFrame(input, .{ .viewport = .{ 640.0, 480.0, 0.0 } });
+    try std.testing.expectEqual(after_add, world.componentMutationGeneration(ui_rect_component_id));
+    try world.clearEngineTransientEntities();
+    try std.testing.expectEqual(after_add, world.componentMutationGeneration(ui_rect_component_id));
+
+    try world.setUiRect(panel, .{ .position = .{ 2.0, 0.0, 0.0 } });
+    const after_row_update = world.componentMutationGeneration(ui_rect_component_id);
+    try std.testing.expect(after_row_update != after_add);
+
+    try world.setVec3(panel, ui_rect_component_id, "color", .{ 0.2, 0.3, 0.4 });
+    const after_field_update = world.componentMutationGeneration(ui_rect_component_id);
+    try std.testing.expect(after_field_update != after_row_update);
+
+    try std.testing.expect(try world.removeComponent(panel, ui_rect_component_id));
+    try std.testing.expect(world.componentMutationGeneration(ui_rect_component_id) != after_field_update);
+}
+
 test "world clears entities and components while retaining reusable schemas" {
     var world = World.init(std.testing.allocator);
     defer world.deinit();
