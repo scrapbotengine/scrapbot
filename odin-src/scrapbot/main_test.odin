@@ -224,6 +224,12 @@ test_run_bench_command_accepts_initialized_project :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_bench_renderer_backend_labels_render_extraction :: proc(t: ^testing.T) {
+	testing.expect_value(t, bench_renderer_backend_label(), "odin render extraction")
+	testing.expect_value(t, bench_renderer_backend_json_label(), "odin_render_extraction")
+}
+
+@(test)
 test_run_bench_command_accepts_script_schedules :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-bench-script-project")
 	defer os.remove_all(root)

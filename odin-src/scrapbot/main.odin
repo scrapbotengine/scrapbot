@@ -1194,7 +1194,7 @@ print_bench_result :: proc(result: Project_Check_Result, options: Simulation_Opt
 		fmt.printf("Update batches: %d, systems: %d\n", runtime_system_schedule_batch_count(result.update_schedule), runtime_system_schedule_system_count(result.update_schedule))
 		fmt.println("Execution: Odin Luau systems")
 		print_render_extract_text(result)
-		fmt.println("Renderer backend: pending Odin wgpu-native binding")
+		fmt.printf("Renderer backend: %s\n", bench_renderer_backend_label())
 	case .JSON:
 		fmt.print(`{"ok":true,"project":`)
 		fmt.print(`{"name":"`)
@@ -1212,8 +1212,18 @@ print_bench_result :: proc(result: Project_Check_Result, options: Simulation_Opt
 		print_schedule_summary_json(result)
 		fmt.print(`,"render_stats":`)
 		print_render_extract_json(result)
-		fmt.println(`,"execution":"odin_luau_systems","renderer_backend":"pending_odin_wgpu_native_binding"}`)
+		fmt.print(`,"execution":"odin_luau_systems","renderer_backend":"`)
+		json_print(bench_renderer_backend_json_label(), false)
+		fmt.println(`"}`)
 	}
+}
+
+bench_renderer_backend_label :: proc() -> string {
+	return "odin render extraction"
+}
+
+bench_renderer_backend_json_label :: proc() -> string {
+	return "odin_render_extraction"
 }
 
 print_render_extract_text :: proc(result: Project_Check_Result) {

@@ -25,7 +25,7 @@
 - [x] Odin Luau execution supports bulk f32/vec3 query views.
 - [x] Odin Luau runtime bridge diagnostics include active system, component field, and runtime error context.
 - [x] Odin `step` can validate projects and report deterministic frame/schedule summaries.
-- [x] Odin `bench` can report validation/update timing with Odin Luau execution and pending render stats.
+- [x] Odin `bench` can report validation/update timing with Odin Luau execution and render extraction stats.
 - [x] Odin `test` can discover test projects, validate test manifests, replay script-visible input resources, route retained scene UI commands/scroll, consume editor-chrome pointer input, replay editor play/pause and single-step buttons, replay first-pass editor entity-list/system-list/inspector scrolling, entity selection, inspector field selection, and splitter dragging, execute Luau-backed frame simulation, and evaluate first-pass field/editor assertions.
 - [x] Odin `run` can validate projects, execute bounded hidden frame updates, write final offscreen WebGPU frame artifacts, and present scene-derived frames through a hidden WebGPU surface.
 - [x] Odin WebGPU smoke tasks can stage the host `wgpu-native` runtime library into `odin-out/lib` without building the Zig engine.
