@@ -1,0 +1,4 @@
+interface:
+  display_name: "Odin Language"
+  short_description: "Work effectively in Odin codebases"
+  default_prompt: "Use $odin-language to implement this Odin change idiomatically."
