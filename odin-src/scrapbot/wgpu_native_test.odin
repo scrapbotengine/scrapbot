@@ -1,6 +1,8 @@
 package main
 
 import "core:c"
+import "core:dynlib"
+import "core:os"
 import "core:testing"
 
 @(test)
@@ -160,12 +162,333 @@ test_wgpu_offscreen_proc_table_reports_first_missing_symbol :: proc(t: ^testing.
 	testing.expect_value(t, ctx.calls, 6)
 }
 
+@(test)
+test_wgpu_offscreen_dynamic_library_loads_proc_table :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-offscreen-dynlib")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	library_path := build_fake_wgpu_library(t, root, FAKE_WGPU_DYNAMIC_LIBRARY_SOURCE)
+	defer delete(library_path)
+
+	loaded, missing, ok := wgpu_load_offscreen_library(library_path)
+	defer wgpu_unload_offscreen_library(&loaded)
+
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, missing, "")
+
+	texture := loaded.procs.device_create_texture(WGPU_Device(nil), (^WGPU_Texture_Descriptor)(nil))
+	testing.expect_value(t, texture, WGPU_Texture(rawptr(uintptr(0x2001))))
+
+	future := loaded.procs.buffer_map_async(WGPU_Buffer(nil), WGPU_MAP_MODE_READ, 0, 16, wgpu_buffer_map_callback_info(wgpu_test_buffer_map_callback))
+	testing.expect_value(t, future, WGPU_Future{id = 0x2008})
+}
+
+@(test)
+test_wgpu_offscreen_dynamic_library_reports_missing_required_symbol :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-offscreen-dynlib-missing-symbol")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	library_path := build_fake_wgpu_library(t, root, FAKE_WGPU_MISSING_SYMBOL_DYNAMIC_LIBRARY_SOURCE)
+	defer delete(library_path)
+
+	loaded, missing, ok := wgpu_load_offscreen_library(library_path)
+
+	testing.expect_value(t, ok, false)
+	testing.expect_value(t, missing, WGPU_SYMBOL_COMMAND_ENCODER_FINISH)
+	testing.expect_value(t, loaded.handle, dynlib.Library(nil))
+}
+
+@(test)
+test_wgpu_offscreen_dynamic_library_reports_load_failure :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-offscreen-dynlib-missing-file")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	library_path := join_test_path(t, root, dynamic_library_file_name())
+	defer delete(library_path)
+
+	loaded, missing, ok := wgpu_load_offscreen_library(library_path)
+
+	testing.expect_value(t, ok, false)
+	testing.expect_value(t, missing, WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR)
+	testing.expect_value(t, loaded.handle, dynlib.Library(nil))
+}
+
+build_fake_wgpu_library :: proc(t: ^testing.T, root, source: string) -> string {
+	write_file(t, root, "fake_wgpu.odin", source)
+
+	output_name := dynamic_library_file_name()
+	output_path := join_test_path(t, root, output_name)
+	output_arg := build_prefixed_string("-out:", output_name)
+	defer delete(output_arg)
+
+	command := []string{"odin", "build", ".", "-build-mode:dll", output_arg}
+	state, stdout, stderr, exec_err := os.process_exec(os.Process_Desc{
+		working_dir = root,
+		command = command,
+	}, context.allocator)
+	defer {
+		if stdout != nil {
+			delete(stdout)
+		}
+		if stderr != nil {
+			delete(stderr)
+		}
+	}
+	if exec_err != nil || !state.exited || state.exit_code != 0 || !os.exists(output_path) {
+		delete(output_path)
+		testing.fail_now(t, "failed to build fake wgpu dynamic library")
+	}
+
+	return output_path
+}
+
 wgpu_test_buffer_map_callback :: proc "c" (status: WGPU_Map_Async_Status, message: WGPU_String_View, userdata1, userdata2: rawptr) {
 	_ = status
 	_ = message
 	_ = userdata1
 	_ = userdata2
 }
+
+FAKE_WGPU_DYNAMIC_LIBRARY_SOURCE :: `package fake_wgpu
+
+import "core:c"
+
+WGPU_Future :: struct {
+	id: u64,
+}
+
+WGPU_String_View :: struct #align(align_of(rawptr)) {
+	data:   rawptr,
+	length: c.size_t,
+}
+
+WGPU_Buffer_Map_Callback_Info :: struct #align(align_of(rawptr)) {
+	next_in_chain: rawptr,
+	mode:          u32,
+	callback:      rawptr,
+	userdata1:     rawptr,
+	userdata2:     rawptr,
+}
+
+@(export)
+wgpuDeviceCreateTexture :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x2001))
+}
+
+@(export)
+wgpuDeviceCreateBuffer :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x2002))
+}
+
+@(export)
+wgpuDeviceCreateCommandEncoder :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x2003))
+}
+
+@(export)
+wgpuTextureCreateView :: proc "c" (texture, descriptor: rawptr) -> rawptr {
+	_ = texture
+	_ = descriptor
+	return rawptr(uintptr(0x2004))
+}
+
+@(export)
+wgpuCommandEncoderCopyTextureToBuffer :: proc "c" (encoder, source, destination, copy_size: rawptr) {
+	_ = encoder
+	_ = source
+	_ = destination
+	_ = copy_size
+}
+
+@(export)
+wgpuCommandEncoderFinish :: proc "c" (encoder, descriptor: rawptr) -> rawptr {
+	_ = encoder
+	_ = descriptor
+	return rawptr(uintptr(0x2006))
+}
+
+@(export)
+wgpuQueueSubmit :: proc "c" (queue: rawptr, command_count: c.size_t, commands: rawptr) {
+	_ = queue
+	_ = command_count
+	_ = commands
+}
+
+@(export)
+wgpuBufferMapAsync :: proc "c" (buffer: rawptr, mode: u64, offset, size: c.size_t, callback_info: WGPU_Buffer_Map_Callback_Info) -> WGPU_Future {
+	_ = buffer
+	_ = mode
+	_ = offset
+	_ = size
+	_ = callback_info
+	return WGPU_Future{id = 0x2008}
+}
+
+@(export)
+wgpuBufferGetMappedRange :: proc "c" (buffer: rawptr, offset, size: c.size_t) -> rawptr {
+	_ = buffer
+	_ = offset
+	_ = size
+	return rawptr(uintptr(0x2009))
+}
+
+@(export)
+wgpuBufferUnmap :: proc "c" (buffer: rawptr) {
+	_ = buffer
+}
+
+@(export)
+wgpuInstanceProcessEvents :: proc "c" (instance: rawptr) {
+	_ = instance
+}
+
+@(export)
+wgpuTextureRelease :: proc "c" (texture: rawptr) {
+	_ = texture
+}
+
+@(export)
+wgpuTextureViewRelease :: proc "c" (texture_view: rawptr) {
+	_ = texture_view
+}
+
+@(export)
+wgpuBufferRelease :: proc "c" (buffer: rawptr) {
+	_ = buffer
+}
+
+@(export)
+wgpuCommandEncoderRelease :: proc "c" (encoder: rawptr) {
+	_ = encoder
+}
+
+@(export)
+wgpuCommandBufferRelease :: proc "c" (command_buffer: rawptr) {
+	_ = command_buffer
+}
+`
+
+FAKE_WGPU_MISSING_SYMBOL_DYNAMIC_LIBRARY_SOURCE :: `package fake_wgpu
+
+import "core:c"
+
+WGPU_Future :: struct {
+	id: u64,
+}
+
+WGPU_Buffer_Map_Callback_Info :: struct #align(align_of(rawptr)) {
+	next_in_chain: rawptr,
+	mode:          u32,
+	callback:      rawptr,
+	userdata1:     rawptr,
+	userdata2:     rawptr,
+}
+
+@(export)
+wgpuDeviceCreateTexture :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x3001))
+}
+
+@(export)
+wgpuDeviceCreateBuffer :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x3002))
+}
+
+@(export)
+wgpuDeviceCreateCommandEncoder :: proc "c" (device, descriptor: rawptr) -> rawptr {
+	_ = device
+	_ = descriptor
+	return rawptr(uintptr(0x3003))
+}
+
+@(export)
+wgpuTextureCreateView :: proc "c" (texture, descriptor: rawptr) -> rawptr {
+	_ = texture
+	_ = descriptor
+	return rawptr(uintptr(0x3004))
+}
+
+@(export)
+wgpuCommandEncoderCopyTextureToBuffer :: proc "c" (encoder, source, destination, copy_size: rawptr) {
+	_ = encoder
+	_ = source
+	_ = destination
+	_ = copy_size
+}
+
+@(export)
+wgpuQueueSubmit :: proc "c" (queue: rawptr, command_count: c.size_t, commands: rawptr) {
+	_ = queue
+	_ = command_count
+	_ = commands
+}
+
+@(export)
+wgpuBufferMapAsync :: proc "c" (buffer: rawptr, mode: u64, offset, size: c.size_t, callback_info: WGPU_Buffer_Map_Callback_Info) -> WGPU_Future {
+	_ = buffer
+	_ = mode
+	_ = offset
+	_ = size
+	_ = callback_info
+	return WGPU_Future{id = 0x3008}
+}
+
+@(export)
+wgpuBufferGetMappedRange :: proc "c" (buffer: rawptr, offset, size: c.size_t) -> rawptr {
+	_ = buffer
+	_ = offset
+	_ = size
+	return rawptr(uintptr(0x3009))
+}
+
+@(export)
+wgpuBufferUnmap :: proc "c" (buffer: rawptr) {
+	_ = buffer
+}
+
+@(export)
+wgpuInstanceProcessEvents :: proc "c" (instance: rawptr) {
+	_ = instance
+}
+
+@(export)
+wgpuTextureRelease :: proc "c" (texture: rawptr) {
+	_ = texture
+}
+
+@(export)
+wgpuTextureViewRelease :: proc "c" (texture_view: rawptr) {
+	_ = texture_view
+}
+
+@(export)
+wgpuBufferRelease :: proc "c" (buffer: rawptr) {
+	_ = buffer
+}
+
+@(export)
+wgpuCommandEncoderRelease :: proc "c" (encoder: rawptr) {
+	_ = encoder
+}
+
+@(export)
+wgpuCommandBufferRelease :: proc "c" (command_buffer: rawptr) {
+	_ = command_buffer
+}
+`
 
 WGPU_Test_Resolver_Context :: struct {
 	missing:        string,

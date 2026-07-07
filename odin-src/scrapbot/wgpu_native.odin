@@ -1,6 +1,7 @@
 package main
 
 import "core:c"
+import "core:dynlib"
 
 // First-pass wgpu-native C ABI surface used by the Odin renderer migration.
 // This file intentionally avoids foreign procedure declarations until the Odin
@@ -265,6 +266,8 @@ WGPU_Command_Buffer_Release_Proc :: proc "c" (command_buffer: WGPU_Command_Buffe
 
 WGPU_Symbol_Resolver :: proc(name: string, user_data: rawptr) -> rawptr
 
+WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR :: "load_library"
+
 WGPU_SYMBOL_DEVICE_CREATE_TEXTURE :: "wgpuDeviceCreateTexture"
 WGPU_SYMBOL_DEVICE_CREATE_BUFFER :: "wgpuDeviceCreateBuffer"
 WGPU_SYMBOL_DEVICE_CREATE_COMMAND_ENCODER :: "wgpuDeviceCreateCommandEncoder"
@@ -299,6 +302,15 @@ WGPU_Offscreen_Procs :: struct {
 	buffer_release:                         WGPU_Buffer_Release_Proc,
 	command_encoder_release:                WGPU_Command_Encoder_Release_Proc,
 	command_buffer_release:                 WGPU_Command_Buffer_Release_Proc,
+}
+
+WGPU_Offscreen_Dynamic_Library :: struct {
+	handle: dynlib.Library,
+	procs:  WGPU_Offscreen_Procs,
+}
+
+WGPU_Dynlib_Resolver_Context :: struct {
+	library: dynlib.Library,
 }
 
 wgpu_string_view_null :: proc() -> WGPU_String_View {
@@ -483,6 +495,47 @@ wgpu_resolve_offscreen_procs :: proc(resolver: WGPU_Symbol_Resolver, user_data: 
 	procs.command_buffer_release = cast(WGPU_Command_Buffer_Release_Proc)symbol
 
 	return procs, "", true
+}
+
+wgpu_load_offscreen_library :: proc(path: string) -> (WGPU_Offscreen_Dynamic_Library, string, bool) {
+	loaded: WGPU_Offscreen_Dynamic_Library
+
+	library, library_ok := dynlib.load_library(path)
+	if !library_ok {
+		return loaded, WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR, false
+	}
+
+	resolver_context := WGPU_Dynlib_Resolver_Context{library = library}
+	procs, missing, procs_ok := wgpu_resolve_offscreen_procs(wgpu_dynlib_symbol_resolver, rawptr(&resolver_context))
+	if !procs_ok {
+		dynlib.unload_library(library)
+		return loaded, missing, false
+	}
+
+	loaded.handle = library
+	loaded.procs = procs
+	return loaded, "", true
+}
+
+wgpu_unload_offscreen_library :: proc(loaded: ^WGPU_Offscreen_Dynamic_Library) -> bool {
+	if loaded == nil || loaded.handle == dynlib.Library(nil) {
+		return true
+	}
+	unload_ok := dynlib.unload_library(loaded.handle)
+	loaded^ = WGPU_Offscreen_Dynamic_Library{}
+	return unload_ok
+}
+
+wgpu_dynlib_symbol_resolver :: proc(name: string, user_data: rawptr) -> rawptr {
+	if user_data == nil {
+		return nil
+	}
+	resolver_context := (^WGPU_Dynlib_Resolver_Context)(user_data)
+	symbol, symbol_ok := dynlib.symbol_address(resolver_context.library, name)
+	if !symbol_ok {
+		return nil
+	}
+	return symbol
 }
 
 wgpu_offscreen_texture_usage :: proc() -> WGPU_Texture_Usage {
