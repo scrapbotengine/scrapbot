@@ -18,14 +18,19 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y ca-certificates git curl xz-utils zstd build-essential clang libsdl3-dev xvfb
+          apt-get install -y ca-certificates git curl xz-utils zstd build-essential clang libsdl3-dev libvulkan1 mesa-vulkan-drivers xvfb
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v4
         with:
           install_args: odin
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          cache-key: ci-odin
+          cache-size-limit: 4096
       - name: Build and test Odin scaffold
-        run: mise odin-smoke && mise test-odin && xvfb-run -a mise odin-sdl-smoke
+        run: mise odin-smoke && mise test-odin && xvfb-run -a mise odin-sdl-smoke && xvfb-run -a mise odin-wgpu-surface-smoke
 
   macos:
     runs-on: macos-latest

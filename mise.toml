@@ -33,6 +33,10 @@ run = "mise build-odin && ./odin-out/scrapbot --version"
 description = "Build and run the Odin SDL hidden-window smoke"
 run = "mise build-odin && ./odin-out/scrapbot sdl-window-check --hidden"
 
+[tasks.odin-wgpu-surface-smoke]
+description = "Build and run the Odin hidden SDL WebGPU surface presentation smoke"
+run = "mise build-odin && mise build && ./odin-out/scrapbot wgpu-surface-check . --hidden"
+
 [tasks.test-odin]
 description = "Run Odin migration tests"
 run = "mise build-odin-luau-bridge && odin test odin-src/scrapbot -define:ODIN_TEST_THREADS=1 -out:odin-out/scrapbot-tests"

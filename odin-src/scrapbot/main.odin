@@ -80,6 +80,9 @@ run_with_output :: proc(args: []string, emit_output: bool) -> int {
 	if command == "sdl-window-check" {
 		return run_sdl_window_check(args[2:], emit_output)
 	}
+	if command == "wgpu-surface-check" {
+		return run_wgpu_surface_check(args[2:], emit_output)
+	}
 	if command == "wgpu-check" {
 		return run_wgpu_check(args[2:], emit_output)
 	}
@@ -116,6 +119,7 @@ Usage:
   scrapbot render-test [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
   scrapbot visual-test [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
   scrapbot sdl-window-check [--hidden|--visible]
+  scrapbot wgpu-surface-check [root] [--hidden|--visible]
   scrapbot wgpu-check [root]
   scrapbot wgpu-render-test [root] [output.png]
   scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
@@ -185,6 +189,115 @@ run_sdl_window_check :: proc(args: []string, emit_output: bool) -> int {
 		fmt.printf("Window size: %dx%d\n", size.width, size.height)
 		fmt.printf("Pixel size: %dx%d\n", size.pixel_width, size.pixel_height)
 		fmt.printf("Surface source: %s\n", sdl_surface_source_kind_label(surface_descriptor.kind))
+	}
+	return 0
+}
+
+run_wgpu_surface_check :: proc(args: []string, emit_output: bool) -> int {
+	root := "."
+	hidden := true
+	root_seen := false
+	for arg in args {
+		switch arg {
+		case "--hidden":
+			hidden = true
+		case "--visible":
+			hidden = false
+		case:
+			if len(arg) > 0 && arg[0] == '-' {
+				if emit_output {
+					fmt.eprintf("unknown argument: %s\n", arg)
+				}
+				return 1
+			}
+			if root_seen {
+				if emit_output {
+					fmt.eprintf("unexpected argument: %s\n", arg)
+				}
+				return 1
+			}
+			root = arg
+			root_seen = true
+		}
+	}
+
+	path, found := wgpu_find_default_offscreen_library(root)
+	if !found {
+		if emit_output {
+			fmt.eprintf("wgpu-native library not found under %s\n", root)
+			fmt.eprintf("Set %s to an explicit library path or populate zig-pkg.\n", WGPU_OFFSCREEN_LIBRARY_ENV)
+		}
+		return 1
+	}
+	defer delete(path)
+
+	loaded, missing, loaded_ok := wgpu_load_offscreen_library(path)
+	defer wgpu_unload_offscreen_library(&loaded)
+	if !loaded_ok {
+		if emit_output {
+			fmt.eprintf("wgpu-native library failed to load: %s\n", missing)
+			fmt.eprintf("Path: %s\n", path)
+		}
+		return 1
+	}
+
+	init_err := sdl_video_init()
+	if init_err != .None {
+		if emit_output {
+			fmt.eprintf("wgpu surface check failed: %s\n", sdl_window_error_message(init_err))
+		}
+		return 1
+	}
+	defer sdl_video_quit()
+
+	window, window_err := sdl_window_create(sdl_window_default_options(hidden))
+	defer sdl_window_destroy(&window)
+	if window_err != .None {
+		if emit_output {
+			fmt.eprintf("wgpu surface check failed: %s\n", sdl_window_error_message(window_err))
+		}
+		return 1
+	}
+
+	size, size_err := sdl_window_get_size(window.window)
+	if size_err != .None {
+		if emit_output {
+			fmt.eprintf("wgpu surface size check failed: %s\n", sdl_window_error_message(size_err))
+		}
+		return 1
+	}
+
+	surface_descriptor := Sdl_WGPU_Surface_Descriptor{}
+	surface_err := sdl_window_init_surface_descriptor(&surface_descriptor, window.window)
+	defer sdl_wgpu_surface_descriptor_deinit(&surface_descriptor)
+	if surface_err != .None {
+		if emit_output {
+			fmt.eprintf("wgpu surface descriptor check failed: %s\n", sdl_window_error_message(surface_err))
+		}
+		return 1
+	}
+
+	report, wgpu_error, present_ok := wgpu_present_surface_clear(
+		loaded.procs,
+		&surface_descriptor.descriptor,
+		u32(size.pixel_width),
+		u32(size.pixel_height),
+	)
+	if !present_ok {
+		if emit_output {
+			fmt.eprintf("wgpu surface presentation failed: %s\n", wgpu_error)
+			fmt.eprintf("Path: %s\n", path)
+		}
+		return 1
+	}
+
+	if emit_output {
+		fmt.printf("wgpu-native surface presentation OK: %s\n", path)
+		fmt.printf("SDL window: %s\n", hidden ? "hidden" : "visible")
+		fmt.printf("Window size: %dx%d\n", size.width, size.height)
+		fmt.printf("Pixel size: %dx%d\n", size.pixel_width, size.pixel_height)
+		fmt.printf("Surface source: %s\n", sdl_surface_source_kind_label(surface_descriptor.kind))
+		fmt.printf("Surface frame: %dx%d format=0x%x present_mode=0x%x alpha_mode=0x%x\n", report.width, report.height, u32(report.format), u32(report.present_mode), u32(report.alpha_mode))
 	}
 	return 0
 }

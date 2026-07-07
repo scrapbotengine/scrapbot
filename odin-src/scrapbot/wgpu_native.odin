@@ -2984,9 +2984,14 @@ wgpu_smoke_default_offscreen_triangle_readback :: proc(root: string = ".", backe
 	return path, "", true
 }
 
-wgpu_request_adapter_sync :: proc(procs: WGPU_Offscreen_Procs, instance: WGPU_Instance, backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED) -> (WGPU_Adapter, string, bool) {
+wgpu_request_adapter_sync :: proc(
+	procs: WGPU_Offscreen_Procs,
+	instance: WGPU_Instance,
+	backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED,
+	compatible_surface: WGPU_Surface = nil,
+) -> (WGPU_Adapter, string, bool) {
 	state := WGPU_Adapter_Request_State{}
-	options := wgpu_request_adapter_options(nil)
+	options := wgpu_request_adapter_options(compatible_surface)
 	options.backend_type = backend_type
 	_ = procs.instance_request_adapter(instance, &options, wgpu_request_adapter_callback_info(wgpu_request_adapter_sync_callback, rawptr(&state)))
 	if !wgpu_poll_request_until_complete(procs, instance, &state.complete) {
