@@ -3,6 +3,7 @@ package main
 import "core:c"
 import "core:dynlib"
 import "core:os"
+import "core:path/filepath"
 import "core:testing"
 
 @(test)
@@ -765,6 +766,53 @@ test_wgpu_offscreen_dynamic_library_reports_load_failure :: proc(t: ^testing.T) 
 	testing.expect_value(t, loaded.handle, dynlib.Library(nil))
 }
 
+@(test)
+test_wgpu_native_dynamic_library_file_name_matches_host_platform :: proc(t: ^testing.T) {
+	when ODIN_OS == .Windows {
+		testing.expect_value(t, wgpu_native_dynamic_library_file_name(), "wgpu_native.dll")
+	} else when ODIN_OS == .Darwin {
+		testing.expect_value(t, wgpu_native_dynamic_library_file_name(), "libwgpu_native.dylib")
+	} else {
+		testing.expect_value(t, wgpu_native_dynamic_library_file_name(), "libwgpu_native.so")
+	}
+}
+
+@(test)
+test_wgpu_default_library_search_discovers_zig_package_cache_layout :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-default-library-search")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	_, found_before := wgpu_find_default_offscreen_library(root)
+	testing.expect_value(t, found_before, false)
+
+	cache_library_path := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(cache_library_path)
+
+	found_path, found := wgpu_find_default_offscreen_library(root)
+	defer if found { delete(found_path) }
+	testing.expect_value(t, found, true)
+	testing.expect_value(t, same_resolved_path(found_path, cache_library_path), true)
+}
+
+@(test)
+test_wgpu_default_library_loader_uses_discovered_zig_package_cache_library :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-default-library-load")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	cache_library_path := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(cache_library_path)
+
+	loaded, missing, ok := wgpu_load_default_offscreen_library(root)
+	defer wgpu_unload_offscreen_library(&loaded)
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, missing, "")
+
+	instance := loaded.procs.create_instance((^WGPU_Instance_Descriptor)(nil))
+	testing.expect_value(t, instance, WGPU_Instance(rawptr(uintptr(0x200A))))
+}
+
 build_fake_wgpu_library :: proc(t: ^testing.T, root, source: string) -> string {
 	write_file(t, root, "fake_wgpu.odin", source)
 
@@ -792,6 +840,30 @@ build_fake_wgpu_library :: proc(t: ^testing.T, root, source: string) -> string {
 	}
 
 	return output_path
+}
+
+stage_fake_wgpu_zig_package_library :: proc(t: ^testing.T, root: string) -> string {
+	source_library := build_fake_wgpu_library(t, root, FAKE_WGPU_DYNAMIC_LIBRARY_SOURCE)
+	defer delete(source_library)
+
+	cache_lib_path, cache_lib_err := filepath.join([]string{root, "zig-pkg", "fake-wgpu-hash", "lib"})
+	if cache_lib_err != nil {
+		testing.fail_now(t, "failed to join fake zig package lib path")
+	}
+	defer delete(cache_lib_path)
+	if os.mkdir_all(cache_lib_path) != nil {
+		testing.fail_now(t, "failed to create fake zig package lib path")
+	}
+
+	destination_library, dest_err := filepath.join([]string{cache_lib_path, wgpu_native_dynamic_library_file_name()})
+	if dest_err != nil {
+		testing.fail_now(t, "failed to join fake wgpu library path")
+	}
+	if os.copy_file(destination_library, source_library) != nil {
+		delete(destination_library)
+		testing.fail_now(t, "failed to stage fake wgpu library")
+	}
+	return destination_library
 }
 
 wgpu_test_buffer_map_callback :: proc "c" (status: WGPU_Map_Async_Status, message: WGPU_String_View, userdata1, userdata2: rawptr) {

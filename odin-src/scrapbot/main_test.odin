@@ -11,6 +11,27 @@ test_run_version_command_matches_top_level_cli :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_run_wgpu_check_command_reports_missing_library :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-wgpu-check-missing")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	testing.expect_value(t, run_with_output([]string{"scrapbot", "wgpu-check", root}, false), 1)
+}
+
+@(test)
+test_run_wgpu_check_command_loads_zig_package_cache_library :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-wgpu-check-loads")
+	defer os.remove_all(root)
+	defer delete(root)
+
+	staged_library := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(staged_library)
+
+	testing.expect_value(t, run_with_output([]string{"scrapbot", "wgpu-check", root}, false), 0)
+}
+
+@(test)
 test_run_init_command_creates_checkable_project :: proc(t: ^testing.T) {
 	root := make_test_project_root(t, "cli-init-project")
 	defer os.remove_all(root)

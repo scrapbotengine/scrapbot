@@ -2,6 +2,8 @@ package main
 
 import "core:c"
 import "core:dynlib"
+import "core:os"
+import "core:path/filepath"
 
 // First-pass wgpu-native C ABI surface used by the Odin renderer migration.
 // This file intentionally avoids foreign procedure declarations until the Odin
@@ -924,6 +926,8 @@ WGPU_Queue_Release_Proc :: proc "c" (queue: WGPU_Queue)
 WGPU_Symbol_Resolver :: proc(name: string, user_data: rawptr) -> rawptr
 
 WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR :: "load_library"
+WGPU_OFFSCREEN_LIBRARY_NOT_FOUND :: "library_not_found"
+WGPU_OFFSCREEN_LIBRARY_ENV :: "SCRAPBOT_WGPU_NATIVE_LIBRARY"
 
 WGPU_SYMBOL_DEVICE_CREATE_TEXTURE :: "wgpuDeviceCreateTexture"
 WGPU_SYMBOL_DEVICE_CREATE_BUFFER :: "wgpuDeviceCreateBuffer"
@@ -1995,6 +1999,101 @@ wgpu_load_offscreen_library :: proc(path: string) -> (WGPU_Offscreen_Dynamic_Lib
 	loaded.handle = library
 	loaded.procs = procs
 	return loaded, "", true
+}
+
+wgpu_native_dynamic_library_file_name :: proc() -> string {
+	when ODIN_OS == .Windows {
+		return "wgpu_native.dll"
+	}
+	when ODIN_OS == .Darwin {
+		return "libwgpu_native.dylib"
+	}
+	return "libwgpu_native.so"
+}
+
+wgpu_load_default_offscreen_library :: proc(root: string = ".") -> (WGPU_Offscreen_Dynamic_Library, string, bool) {
+	loaded: WGPU_Offscreen_Dynamic_Library
+	path, found := wgpu_find_default_offscreen_library(root)
+	if !found {
+		return loaded, WGPU_OFFSCREEN_LIBRARY_NOT_FOUND, false
+	}
+	defer delete(path)
+	return wgpu_load_offscreen_library(path)
+}
+
+wgpu_find_default_offscreen_library :: proc(root: string = ".") -> (string, bool) {
+	if env_path, env_found := os.lookup_env(WGPU_OFFSCREEN_LIBRARY_ENV, context.allocator); env_found {
+		defer delete(env_path)
+		if env_path != "" && os.exists(env_path) {
+			owned, clone_err := filepath.abs(env_path)
+			if clone_err == nil {
+				return owned, true
+			}
+		}
+	}
+
+	candidates := [?][]string{
+		{root, "odin-out", wgpu_native_dynamic_library_file_name()},
+		{root, "odin-out", "lib", wgpu_native_dynamic_library_file_name()},
+		{root, "zig-out", "bin", wgpu_native_dynamic_library_file_name()},
+		{root, "zig-out", "lib", wgpu_native_dynamic_library_file_name()},
+		{root, wgpu_native_dynamic_library_file_name()},
+	}
+	for candidate in candidates {
+		if path, ok := wgpu_find_existing_path(candidate); ok {
+			return path, true
+		}
+	}
+
+	return wgpu_find_zig_package_offscreen_library(root)
+}
+
+wgpu_find_zig_package_offscreen_library :: proc(root: string = ".") -> (string, bool) {
+	zig_pkg_path, join_err := filepath.join([]string{root, "zig-pkg"})
+	if join_err != nil {
+		return "", false
+	}
+	defer delete(zig_pkg_path)
+	if !os.exists(zig_pkg_path) {
+		return "", false
+	}
+
+	entries, read_err := os.read_all_directory_by_path(zig_pkg_path, context.allocator)
+	if read_err != nil {
+		return "", false
+	}
+	defer os.file_info_slice_delete(entries, context.allocator)
+
+	for entry in entries {
+		if entry.type != .Directory {
+			continue
+		}
+		if entry.name == "." || entry.name == ".." {
+			continue
+		}
+		path, ok := wgpu_find_existing_path([]string{zig_pkg_path, entry.name, "lib", wgpu_native_dynamic_library_file_name()})
+		if ok {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+wgpu_find_existing_path :: proc(parts: []string) -> (string, bool) {
+	path, join_err := filepath.join(parts)
+	if join_err != nil {
+		return "", false
+	}
+	if !os.exists(path) {
+		delete(path)
+		return "", false
+	}
+	absolute, abs_err := filepath.abs(path)
+	delete(path)
+	if abs_err != nil {
+		return "", false
+	}
+	return absolute, true
 }
 
 wgpu_unload_offscreen_library :: proc(loaded: ^WGPU_Offscreen_Dynamic_Library) -> bool {

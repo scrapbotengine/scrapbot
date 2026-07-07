@@ -74,6 +74,9 @@ run_with_output :: proc(args: []string, emit_output: bool) -> int {
 	if command == "visual-test" {
 		return run_visual_test(args[2:], emit_output)
 	}
+	if command == "wgpu-check" {
+		return run_wgpu_check(args[2:], emit_output)
+	}
 	if command == "init" {
 		return run_init(args[2:], emit_output)
 	}
@@ -103,6 +106,7 @@ Usage:
   scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
   scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
   scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
+  scrapbot wgpu-check [root]
   scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
 
 Odin migration status:
@@ -111,6 +115,44 @@ Odin migration status:
   Luau execution, native module execution, retained scene UI/editor input replay, software render/visual output,
   image comparison, and first-pass offscreen editor chrome are partially ported;
   WebGPU presentation, unbounded window-loop reload diagnostics, and the full editor shell are still being ported.`)
+}
+
+run_wgpu_check :: proc(args: []string, emit_output: bool) -> int {
+	root := "."
+	if len(args) > 1 {
+		if emit_output {
+			fmt.eprintln("wgpu-check expects at most one root path")
+		}
+		return 1
+	}
+	if len(args) == 1 {
+		root = args[0]
+	}
+
+	path, found := wgpu_find_default_offscreen_library(root)
+	if !found {
+		if emit_output {
+			fmt.eprintf("wgpu-native library not found under %s\n", root)
+			fmt.eprintf("Set %s to an explicit library path or populate zig-pkg.\n", WGPU_OFFSCREEN_LIBRARY_ENV)
+		}
+		return 1
+	}
+	defer delete(path)
+
+	loaded, missing, ok := wgpu_load_offscreen_library(path)
+	defer wgpu_unload_offscreen_library(&loaded)
+	if !ok {
+		if emit_output {
+			fmt.eprintf("wgpu-native library failed to load: %s\n", missing)
+			fmt.eprintf("Path: %s\n", path)
+		}
+		return 1
+	}
+
+	if emit_output {
+		fmt.printf("wgpu-native OK: %s\n", path)
+	}
+	return 0
 }
 
 run_init :: proc(args: []string, emit_output: bool) -> int {
