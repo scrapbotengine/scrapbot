@@ -457,7 +457,7 @@ render_draw_editor_gizmo_axes :: proc(image: ^Render_Image, world: Runtime_World
 	}
 	axes := [?]Editor_Test_Axis{.X, .Y, .Z}
 	for axis in axes {
-		vector, vector_ok := editor_test_axis_vector(axis)
+		vector, vector_ok := editor_gizmo_axis_vector(world, entity, axis, options.gizmo_local_space)
 		if !vector_ok {
 			continue
 		}

@@ -2621,6 +2621,7 @@ wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: R
 				options.inspector_scroll_y,
 				options.gizmo_axis,
 				options.gizmo_hover_axis,
+				options.gizmo_local_space,
 				options.camera_override_enabled,
 				options.camera_override,
 			)
@@ -2868,6 +2869,7 @@ wgpu_append_editor_chrome_vertices_for_selection :: proc(
 	inspector_scroll_y: f32 = 0,
 	gizmo_axis: Editor_Test_Axis = .None,
 	gizmo_hover_axis: Editor_Test_Axis = .None,
+	gizmo_local_space: bool = false,
 	camera_override_enabled: bool = false,
 	camera_override: Editor_Test_Camera_State = {},
 ) -> int {
@@ -2883,6 +2885,7 @@ wgpu_append_editor_chrome_vertices_for_selection :: proc(
 		selected_entity_id,
 		gizmo_axis,
 		gizmo_hover_axis,
+		gizmo_local_space,
 		camera_override_enabled,
 		camera_override,
 	)
@@ -2917,6 +2920,7 @@ wgpu_append_editor_gizmo_vertices :: proc(
 	selected_entity_id: string,
 	active_axis: Editor_Test_Axis,
 	hover_axis: Editor_Test_Axis,
+	local_space: bool,
 	camera_override_enabled: bool,
 	camera_override: Editor_Test_Camera_State,
 ) -> int {
@@ -2946,7 +2950,7 @@ wgpu_append_editor_gizmo_vertices :: proc(
 	count := 0
 	axes := [?]Editor_Test_Axis{.X, .Y, .Z}
 	for axis in axes {
-		vector, vector_ok := editor_test_axis_vector(axis)
+		vector, vector_ok := editor_gizmo_axis_vector(world, entity, axis, local_space)
 		if !vector_ok {
 			continue
 		}

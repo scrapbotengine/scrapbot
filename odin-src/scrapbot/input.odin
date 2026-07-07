@@ -117,6 +117,8 @@ Editor_Test_Input_State :: struct {
 	dragging_splitter:           Editor_Test_Splitter,
 	dragging_axis:               Editor_Test_Axis,
 	hovered_axis:                Editor_Test_Axis,
+	gizmo_local_space:           bool,
+	gizmo_drag_local_space:      bool,
 	left_sidebar_width:          f32,
 	right_sidebar_width:         f32,
 	last_pointer:                [2]f32,
@@ -160,6 +162,8 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 		state.dragging_splitter = .None
 		state.dragging_axis = .None
 		state.hovered_axis = .None
+		state.gizmo_local_space = false
+		state.gizmo_drag_local_space = false
 		state.has_last_pointer = false
 		clear_editor_gizmo_drag(state)
 		return
@@ -167,6 +171,9 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 	consumed := false
 	if apply_editor_test_keyboard_edits(state, registry, world, input^) {
 		consumed = true
+	}
+	if state.dragging_axis == .None {
+		state.gizmo_local_space = input.keyboard.alt_down
 	}
 	if input.pointer.has_position {
 		inside_game := editor_pointer_in_game_viewport(input^)
@@ -254,6 +261,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 			} else if state.hovered_axis != .None {
 				commit_editor_test_text_input(world, state)
 				state.dragging_axis = state.hovered_axis
+				state.gizmo_drag_local_space = state.gizmo_local_space
 				state.captured_pointer = true
 				state.last_pointer = input.pointer.position
 				state.has_last_pointer = true
@@ -276,8 +284,10 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 			state.captured_pointer = false
 			state.dragging_splitter = .None
 			state.dragging_axis = .None
+			state.gizmo_drag_local_space = false
 			state.has_last_pointer = false
 			clear_editor_gizmo_drag(state)
+			state.gizmo_local_space = input.keyboard.alt_down
 			update_editor_gizmo_hover(state, world^, input^)
 		}
 		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
@@ -300,6 +310,8 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 		state.dragging_splitter = .None
 		state.dragging_axis = .None
 		state.hovered_axis = .None
+		state.gizmo_local_space = false
+		state.gizmo_drag_local_space = false
 		state.has_last_pointer = false
 		clear_editor_gizmo_drag(state)
 	}
@@ -311,6 +323,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 update_editor_gizmo_hover :: proc(state: ^Editor_Test_Input_State, world: Runtime_World, input: Frame_Input) {
 	if state.dragging_axis != .None {
 		state.hovered_axis = state.dragging_axis
+		state.gizmo_local_space = state.gizmo_drag_local_space
 		return
 	}
 	if axis, axis_ok := editor_gizmo_axis_at_pointer(world, state^, input); axis_ok {
@@ -1354,7 +1367,7 @@ drag_editor_gizmo_axis :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_
 	if !state.has_selected_entity {
 		return false
 	}
-	axis, axis_ok := editor_test_axis_vector(state.dragging_axis)
+	axis, axis_ok := editor_gizmo_axis_vector(world^, state.selected_entity, state.dragging_axis, state.gizmo_drag_local_space)
 	if !axis_ok {
 		return false
 	}
@@ -1392,21 +1405,29 @@ drag_editor_gizmo_axis :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_
 	world_delta := projected_pixels * units_per_pixel
 	next_position := editor_test_add_vec3(position, editor_test_scale_vec3(axis, world_delta))
 	if input.keyboard.shift_down {
-		next_position = editor_test_snap_position_axis(next_position, state.dragging_axis, EDITOR_TEST_GIZMO_TRANSLATE_SNAP_INCREMENT)
+		start_position := position
+		if state.has_gizmo_drag_start_position {
+			start_position = state.gizmo_drag_start_position
+		}
+		next_position = editor_test_snap_position_along_axis(start_position, next_position, axis, EDITOR_TEST_GIZMO_TRANSLATE_SNAP_INCREMENT)
 	}
 	set_err := runtime_world_set_component_field_value(world, state.selected_entity, TRANSFORM_COMPONENT_ID, "position", runtime_component_value_vec3(next_position))
 	state.last_pointer = input.pointer.position
 	return set_err == .None
 }
 
-editor_test_snap_position_axis :: proc(position: [3]f32, axis: Editor_Test_Axis, increment: f32) -> [3]f32 {
+editor_test_snap_position_along_axis :: proc(start_position, position, axis: [3]f32, increment: f32) -> [3]f32 {
 	if increment <= 0 {
 		return position
 	}
-	next := position
-	lane := editor_test_axis_lane(axis)
-	next[lane] = editor_test_snap_float(next[lane], increment)
-	return next
+	unit_axis, axis_ok := editor_test_normalize_vec3(axis)
+	if !axis_ok {
+		return position
+	}
+	delta := editor_test_subtract_vec3(position, start_position)
+	distance := editor_test_dot_vec3(delta, unit_axis)
+	snapped_distance := editor_test_snap_float(distance, increment)
+	return editor_test_add_vec3(start_position, editor_test_scale_vec3(unit_axis, snapped_distance))
 }
 
 editor_test_snap_float :: proc(value, increment: f32) -> f32 {
@@ -1487,7 +1508,7 @@ editor_gizmo_axis_at_pointer :: proc(world: Runtime_World, state: Editor_Test_In
 	best_distance_sq := EDITOR_TEST_GIZMO_PICK_RADIUS_PX * EDITOR_TEST_GIZMO_PICK_RADIUS_PX
 	axes := [?]Editor_Test_Axis{.X, .Y, .Z}
 	for axis in axes {
-		vector, vector_ok := editor_test_axis_vector(axis)
+		vector, vector_ok := editor_gizmo_axis_vector(world, state.selected_entity, axis, state.gizmo_local_space)
 		if !vector_ok {
 			continue
 		}
@@ -1602,6 +1623,26 @@ editor_test_axis_vector :: proc(axis: Editor_Test_Axis) -> ([3]f32, bool) {
 	return {}, false
 }
 
+editor_gizmo_axis_vector :: proc(world: Runtime_World, entity: Entity_Handle, axis: Editor_Test_Axis, local_space: bool) -> ([3]f32, bool) {
+	base, base_ok := editor_test_axis_vector(axis)
+	if !base_ok {
+		return {}, false
+	}
+	if !local_space {
+		return base, true
+	}
+	rotation, rotation_ok := editor_test_transform_vec3_field(world, entity, "rotation")
+	if !rotation_ok {
+		return base, true
+	}
+	rotation_matrix := editor_test_mat_mul(
+		editor_test_rotation_z_matrix(rotation[2]),
+		editor_test_mat_mul(editor_test_rotation_y_matrix(rotation[1]), editor_test_rotation_x_matrix(rotation[0])),
+	)
+	rotated := editor_test_transform_point(rotation_matrix, {base[0], base[1], base[2], 0.0})
+	return editor_test_normalize_vec3({rotated[0], rotated[1], rotated[2]})
+}
+
 editor_test_axis_lane :: proc(axis: Editor_Test_Axis) -> int {
 	switch axis {
 	case .X:
@@ -1630,6 +1671,18 @@ editor_test_scale_vec3 :: proc(value: [3]f32, scale: f32) -> [3]f32 {
 
 editor_test_vec3_length :: proc(value: [3]f32) -> f32 {
 	return f32(math.sqrt(f64(value[0] * value[0] + value[1] * value[1] + value[2] * value[2])))
+}
+
+editor_test_normalize_vec3 :: proc(value: [3]f32) -> ([3]f32, bool) {
+	length := editor_test_vec3_length(value)
+	if length <= 0.00001 {
+		return {}, false
+	}
+	return {value[0] / length, value[1] / length, value[2] / length}, true
+}
+
+editor_test_dot_vec3 :: proc(left, right: [3]f32) -> f32 {
+	return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
 }
 
 editor_test_vec2_length :: proc(value: [2]f32) -> f32 {

@@ -185,6 +185,18 @@ test_wgpu_editor_selected_vertices_append_gizmo_axes :: proc(t: ^testing.T) {
 	hover_count := wgpu_append_editor_chrome_vertices_for_selection(&hover_vertices, result.scene.world, 320, 240, "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001", 0, .None, .Z)
 	testing.expect_value(t, hover_count > 0, true)
 	expect_wgpu_vertex_color(t, hover_vertices[:], EDITOR_GIZMO_AXIS_HOVER_COLOR)
+
+	entity, entity_ok := runtime_world_find_entity_by_id(result.scene.world, "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001")
+	testing.expect_value(t, entity_ok, true)
+	set_err := runtime_world_set_component_field_value(&result.scene.world, entity, TRANSFORM_COMPONENT_ID, "rotation", runtime_component_value_vec3([3]f32{0, 0, 1.5707964}))
+	testing.expect_value(t, set_err, Runtime_Error.None)
+	local_vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(local_vertices)
+	local_count := wgpu_append_editor_chrome_vertices_for_selection(&local_vertices, result.scene.world, 320, 240, "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001", 0, .X, .None, true)
+	testing.expect_value(t, local_count > 0, true)
+	x_span, y_span, span_ok := wgpu_vertex_color_position_span(local_vertices[:], EDITOR_GIZMO_AXIS_ACTIVE_COLOR)
+	testing.expect_value(t, span_ok, true)
+	testing.expect_value(t, y_span > x_span * 1.5, true)
 }
 
 expect_wgpu_vertex_color :: proc(t: ^testing.T, vertices: []WGPU_Scene_Vertex, color: [3]u8) {
@@ -202,6 +214,36 @@ wgpu_vertex_color_equal :: proc(actual, expected: [3]f32) -> bool {
 	return wgpu_f32_close(actual[0], expected[0], epsilon) &&
 	       wgpu_f32_close(actual[1], expected[1], epsilon) &&
 	       wgpu_f32_close(actual[2], expected[2], epsilon)
+}
+
+wgpu_vertex_color_position_span :: proc(vertices: []WGPU_Scene_Vertex, color: [3]u8) -> (x_span, y_span: f32, ok: bool) {
+	expected := [3]f32{f32(color[0]) / 255.0, f32(color[1]) / 255.0, f32(color[2]) / 255.0}
+	min_x := f32(0)
+	max_x := f32(0)
+	min_y := f32(0)
+	max_y := f32(0)
+	found := false
+	for vertex in vertices {
+		if !wgpu_vertex_color_equal(vertex.color, expected) {
+			continue
+		}
+		if !found {
+			min_x = vertex.position[0]
+			max_x = vertex.position[0]
+			min_y = vertex.position[1]
+			max_y = vertex.position[1]
+			found = true
+			continue
+		}
+		min_x = min_f32(min_x, vertex.position[0])
+		max_x = max_f32(max_x, vertex.position[0])
+		min_y = min_f32(min_y, vertex.position[1])
+		max_y = max_f32(max_y, vertex.position[1])
+	}
+	if !found {
+		return 0, 0, false
+	}
+	return max_x - min_x, max_y - min_y, true
 }
 
 wgpu_f32_close :: proc(actual, expected, epsilon: f32) -> bool {

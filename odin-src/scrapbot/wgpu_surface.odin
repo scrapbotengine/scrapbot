@@ -168,6 +168,7 @@ wgpu_surface_context_present_scene_frame :: proc(
 	camera_override: Editor_Test_Camera_State = {},
 	gizmo_axis: Editor_Test_Axis = .None,
 	gizmo_hover_axis: Editor_Test_Axis = .None,
+	gizmo_local_space: bool = false,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	config_error, config_ok := wgpu_surface_context_configure(ctx, width, height)
 	if !config_ok {
@@ -200,6 +201,7 @@ wgpu_surface_context_present_scene_frame :: proc(
 				inspector_scroll_y,
 				gizmo_axis,
 				gizmo_hover_axis,
+				gizmo_local_space,
 				camera_override_enabled,
 				camera_override,
 			)
@@ -456,6 +458,7 @@ wgpu_present_surface_scene_with_world :: proc(
 	camera_override: Editor_Test_Camera_State = {},
 	gizmo_axis: Editor_Test_Axis = .None,
 	gizmo_hover_axis: Editor_Test_Axis = .None,
+	gizmo_local_space: bool = false,
 ) -> (WGPU_Surface_Presentation_Report, string, bool) {
 	if width == 0 || height == 0 {
 		return WGPU_Surface_Presentation_Report{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
@@ -489,6 +492,7 @@ wgpu_present_surface_scene_with_world :: proc(
 				inspector_scroll_y,
 				gizmo_axis,
 				gizmo_hover_axis,
+				gizmo_local_space,
 				camera_override_enabled,
 				camera_override,
 			)

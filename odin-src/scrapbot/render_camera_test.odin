@@ -296,11 +296,106 @@ test_editor_gizmo_shift_drag_snaps_translate_axis :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_editor_gizmo_snap_position_axis_only_changes_selected_lane :: proc(t: ^testing.T) {
-	position := editor_test_snap_position_axis([3]f32{0.37, 1.11, -0.62}, .Y, EDITOR_TEST_GIZMO_TRANSLATE_SNAP_INCREMENT)
-	testing.expect_value(t, position, [3]f32{0.37, 1.0, -0.62})
-	unchanged := editor_test_snap_position_axis([3]f32{0.37, 1.11, -0.62}, .Z, 0)
+test_editor_gizmo_snap_position_along_axis_snaps_drag_distance :: proc(t: ^testing.T) {
+	position := editor_test_snap_position_along_axis(
+		[3]f32{0.0, 0.0, 0.0},
+		[3]f32{0.37, 1.11, -0.62},
+		[3]f32{0.0, 1.0, 0.0},
+		EDITOR_TEST_GIZMO_TRANSLATE_SNAP_INCREMENT,
+	)
+	testing.expect_value(t, position, [3]f32{0.0, 1.0, 0.0})
+	unchanged := editor_test_snap_position_along_axis([3]f32{}, [3]f32{0.37, 1.11, -0.62}, [3]f32{0.0, 0.0, 1.0}, 0)
 	testing.expect_value(t, unchanged, [3]f32{0.37, 1.11, -0.62})
+}
+
+@(test)
+test_editor_gizmo_local_axis_vector_uses_transform_rotation :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	set_err := runtime_world_set_component_field_value(&world, entity, TRANSFORM_COMPONENT_ID, "rotation", runtime_component_value_vec3([3]f32{0, 0, 1.5707964}))
+	testing.expect_value(t, set_err, Runtime_Error.None)
+	vector, vector_ok := editor_gizmo_axis_vector(world, entity, .X, true)
+	testing.expect_value(t, vector_ok, true)
+	testing.expect_value(t, render_abs_f32(vector[0]) < 0.0001, true)
+	testing.expect_value(t, vector[1] > 0.9999, true)
+	testing.expect_value(t, render_abs_f32(vector[2]) < 0.0001, true)
+}
+
+@(test)
+test_editor_gizmo_local_space_follows_alt_without_pointer :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	state := Editor_Test_Input_State{}
+	defer editor_test_input_state_free(&state)
+
+	input := frame_input_default()
+	input.debug_overlay_visible = true
+	input.keyboard.alt_down = true
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.gizmo_local_space, true)
+
+	input.keyboard.alt_down = false
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.gizmo_local_space, false)
+
+	state.dragging_axis = .X
+	state.gizmo_local_space = true
+	state.gizmo_drag_local_space = true
+	route_editor_test_input(&state, registry, &world, &input)
+	testing.expect_value(t, state.gizmo_local_space, true)
+}
+
+@(test)
+test_editor_gizmo_local_space_drag_uses_rotated_axis :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	set_err := runtime_world_set_component_field_value(&world, entity, TRANSFORM_COMPONENT_ID, "rotation", runtime_component_value_vec3([3]f32{0, 0, 1.5707964}))
+	testing.expect_value(t, set_err, Runtime_Error.None)
+
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+		dragging_axis = .X,
+		gizmo_local_space = true,
+		gizmo_drag_local_space = true,
+		captured_pointer = true,
+	}
+	defer editor_test_input_state_free(&state)
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	begin_editor_gizmo_drag(&state, world)
+
+	drag_input := frame_input_default()
+	drag_input.debug_overlay_visible = true
+	drag_input.viewport_width = 1280
+	drag_input.viewport_height = 720
+	drag_input.pointer.has_position = true
+	camera, camera_ok := editor_test_camera_state(world)
+	testing.expect_value(t, camera_ok, true)
+	axis, axis_ok := editor_gizmo_axis_vector(world, entity, .X, true)
+	testing.expect_value(t, axis_ok, true)
+	origin, origin_ok := editor_test_project_world_to_screen([3]f32{0, 0, 0}, camera, drag_input)
+	testing.expect_value(t, origin_ok, true)
+	end, end_ok := editor_test_project_world_to_screen(editor_test_scale_vec3(axis, EDITOR_TEST_GIZMO_AXIS_LENGTH), camera, drag_input)
+	testing.expect_value(t, end_ok, true)
+	state.last_pointer = origin
+	state.has_last_pointer = true
+	drag_input.pointer.position = end
+	drag_input.pointer.primary_down = true
+	drag_input.keyboard.alt_down = true
+	route_editor_test_input(&state, registry, &world, &drag_input)
+
+	position, position_err := runtime_world_get_vec3(world, entity, TRANSFORM_COMPONENT_ID, "position")
+	testing.expect_value(t, position_err, Runtime_Error.None)
+	testing.expect_value(t, render_abs_f32(position[0]) < 0.001, true)
+	testing.expect_value(t, position[1] > 0.1, true)
+	testing.expect_value(t, render_abs_f32(position[2]) < 0.001, true)
 }
 
 @(test)

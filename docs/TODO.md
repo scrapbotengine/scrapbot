@@ -43,6 +43,7 @@
 - [x] Odin translate-gizmo drags produce one grouped undo/redo and pending scene edit command on release.
 - [x] Odin SDL run-loop frame ticks have deterministic editor selection and translate-gizmo smoke coverage from SDL pointer input.
 - [x] Odin software and WebGPU editor render paths draw selected translate-gizmo X/Y/Z axes, and visible SDL runs pass active-axis state for drag highlighting.
+- [x] Odin translate-gizmo hover, drag, and render paths can use first-pass Alt-held local-space axes.
 - [x] macOS release artifacts are built from the Odin CLI, bundle the SDL3 runtime dylib, and release-please updates the Odin CLI version constant.
 - [x] Odin `render-bench` can benchmark first-pass in-memory software render generation with text/JSON output.
 - [x] Odin CI smoke builds and tests the Odin CLI without installing the Zig toolchain.
@@ -168,6 +169,7 @@
 - [x] Draw selected Odin editor translate-gizmo axes in software and WebGPU editor render paths, with active-axis highlighting during visible SDL drags.
 - [x] Route Odin translate-gizmo hover-axis styling through visible SDL editor input and software/WebGPU editor render paths.
 - [x] Add first-pass Shift-based 0.25 world-unit snapping for Odin translate-gizmo axis drags.
+- [x] Add first-pass Alt-based local-space mode for Odin translate-gizmo axis hover, drag, and render paths.
 - [x] Build macOS release artifacts from the Odin CLI instead of the migration-era Zig CLI, with the SDL3 runtime dylib bundled beside the binary.
 - [x] Remove the unnecessary Zig toolchain setup from the Odin CI smoke job.
 - [x] Make default local build/test/run tasks target Odin while keeping explicit migration-era Zig compatibility tasks.
@@ -201,7 +203,7 @@
 - [ ] Add hierarchy/grouping support for entity browsing.
 - [ ] Add multi-selection and batch component editing.
 - [ ] Add rotation and scale gizmos.
-- [ ] Add local-space and world-space modes plus richer snapping controls for gizmos.
+- [ ] Add persistent world/local-space mode controls plus richer snapping controls for gizmos.
 - [x] Add hover styling for translate gizmo axes.
 - [ ] Add undo grouping for multi-field edits and future non-translate editor transactions.
 - [ ] Add editor transaction persistence across live reloads.
