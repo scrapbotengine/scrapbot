@@ -124,6 +124,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [x] Odin visible editor entity lifecycle controls slice
   - [x] Odin visible editor component lifecycle controls slice
   - [x] Odin macOS release artifact workflow slice
+  - [x] Odin CI smoke without Zig toolchain slice
   - [x] Odin native declaration registration slice
   - [x] Odin native execution boundary diagnostics slice
   - [x] Odin CLI feature parity

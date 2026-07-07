@@ -45,6 +45,7 @@
 - [x] Odin software and WebGPU editor render paths draw selected translate-gizmo X/Y/Z axes, and visible SDL runs pass active-axis state for drag highlighting.
 - [x] macOS release artifacts are built from the Odin CLI, bundle the SDL3 runtime dylib, and release-please updates the Odin CLI version constant.
 - [x] Odin `render-bench` can benchmark first-pass in-memory software render generation with text/JSON output.
+- [x] Odin CI smoke builds and tests the Odin CLI without installing the Zig toolchain.
 - [x] Default `mise build`, `mise test`, and `mise scrapbot` now target the Odin CLI; migration-era Zig tasks are explicit `*-zig` compatibility tasks.
 - [x] Odin WebGPU dynamic library discovery no longer falls back to migration-era Zig `zig-out` or `zig-pkg` cache paths.
 - [x] Odin render extraction can count renderables, batches, cameras, lights, and UI draw primitives.
@@ -166,6 +167,7 @@
 - [x] Add deterministic SDL run-loop smoke coverage for editor selection and translate-gizmo paths.
 - [x] Draw selected Odin editor translate-gizmo axes in software and WebGPU editor render paths, with active-axis highlighting during visible SDL drags.
 - [x] Build macOS release artifacts from the Odin CLI instead of the migration-era Zig CLI, with the SDL3 runtime dylib bundled beside the binary.
+- [x] Remove the unnecessary Zig toolchain setup from the Odin CI smoke job.
 - [x] Make default local build/test/run tasks target Odin while keeping explicit migration-era Zig compatibility tasks.
 - [x] Remove stale pending-status wording from Odin `scrapbot run` output after visible window loops and editor overlays landed.
 - [ ] Remove the vendored Zig `wgpu-native` binding after the migration-era Zig renderer and build surfaces are no longer needed.

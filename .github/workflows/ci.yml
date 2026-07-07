@@ -24,11 +24,6 @@ jobs:
         with:
           install_args: odin
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          cache-key: ci-odin
-          cache-size-limit: 4096
       - name: Build and test Odin CLI
         run: mise build && ./odin-out/scrapbot --version && mise test && xvfb-run -a mise odin-sdl-smoke && xvfb-run -a mise odin-wgpu-surface-smoke
 
