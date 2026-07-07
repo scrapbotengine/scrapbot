@@ -45,7 +45,7 @@ The migration must replace several Zig-specific surfaces:
 - Zig-specific CI setup, default test commands, cache directories, and agent guidance.
 - Zig tests that currently prove ECS, scripting, UI layout, renderer extraction, editor interaction, native reload, and CLI behavior.
 
-Odin introduces its own toolchain and package conventions. The repository uses `mise.toml` as the shared tool entrypoint, so Odin provisioning and default tasks live there while the migration is active. Zig compatibility tasks should stay explicit and named with a `-zig` suffix while the migration keeps them.
+Odin introduces its own toolchain and package conventions. The repository uses `mise.toml` as the shared tool entrypoint, so Odin provisioning and default tasks live there while the migration is active. The primary macOS, Linux, and Windows CI jobs now build and validate the Odin CLI; Zig compatibility tasks should stay explicit and named with a `-zig` suffix while the migration keeps them.
 
 Until feature parity is reached, some documentation will necessarily describe both the current Zig implementation and the intended Odin target. Those references should be explicit about migration status rather than implying that both languages are equally supported end states.
 

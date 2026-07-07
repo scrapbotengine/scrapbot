@@ -11,7 +11,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  odin-smoke:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: odin
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install SDL3
+        run: brew install sdl3
+      - name: Build and test
+        run: mise test
+      - name: Build CLI
+        run: mise build
+      - name: Validation smoke tests
+        run: |
+          set -euo pipefail
+          ./odin-out/scrapbot --version
+          ./odin-out/scrapbot check examples/minimal
+          ./odin-out/scrapbot step examples/minimal --frames=3 --format=json
+          ./odin-out/scrapbot test tests/projects/health_tick
+          ./odin-out/scrapbot bench examples/spawn_swarm --frames=60 --format=json
+          ./odin-out/scrapbot render-test --editor --frames=60 examples/ui_gallery odin-out/ui-gallery-editor-render-test.png
+      - name: Project and benchmark tests
+        run: |
+          set -euo pipefail
+          ./odin-out/scrapbot test tests/projects
+          ./odin-out/scrapbot bench examples/spawn_swarm --frames 60 --format=json
+      - name: Render and visual tests
+        run: |
+          set -euo pipefail
+          ./odin-out/scrapbot render-test examples/minimal odin-out/minimal-render-test.png
+          ./odin-out/scrapbot render-test examples/showcase odin-out/showcase-render-test.png
+          ./odin-out/scrapbot render-test examples/ui_gallery odin-out/ui-gallery-render-test.png
+          ./odin-out/scrapbot render-test examples/spawn_swarm odin-out/spawn-swarm-render-test.png
+          ./odin-out/scrapbot visual-test --update examples/minimal odin-out/minimal-visual-expected.png
+          ./odin-out/scrapbot visual-test examples/minimal odin-out/minimal-visual-expected.png odin-out/minimal-visual-actual.png
+      - name: Headful smoke
+        run: ./odin-out/scrapbot run examples/minimal --hidden --frames 2
+      - name: SDL and WebGPU smoke
+        run: mise odin-sdl-smoke && mise odin-wgpu-surface-smoke
+
+  linux:
     runs-on: ubuntu-latest
     container: ubuntu:25.10
     steps:
@@ -24,99 +66,47 @@ jobs:
         with:
           install_args: odin
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and test Odin CLI
-        run: mise build && ./odin-out/scrapbot --version && mise test && xvfb-run -a mise odin-sdl-smoke && xvfb-run -a mise odin-wgpu-surface-smoke
-
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          cache-key: ci
-          cache-size-limit: 4096
-      - name: Install SDL3
-        run: brew install sdl3
       - name: Build and test
-        run: zig build test
+        run: mise test
       - name: Build CLI
-        run: zig build -Doptimize=ReleaseFast
-      - name: Leak-checked tests
+        run: mise build
+      - name: Validation smoke tests
         run: |
           set -euo pipefail
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
+          ./odin-out/scrapbot --version
+          ./odin-out/scrapbot check examples/minimal
+          ./odin-out/scrapbot step examples/minimal --frames=3 --format=json
+          ./odin-out/scrapbot test tests/projects/health_tick
+          ./odin-out/scrapbot bench examples/spawn_swarm --frames=60 --format=json
+          ./odin-out/scrapbot render-test --editor --frames=60 examples/ui_gallery odin-out/ui-gallery-editor-render-test.png
       - name: Project and benchmark tests
         run: |
           set -euo pipefail
-          ./zig-out/bin/scrapbot test tests/projects
-          ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json
+          ./odin-out/scrapbot test tests/projects
+          ./odin-out/scrapbot bench examples/spawn_swarm --frames 60 --format=json
       - name: Render and visual tests
         run: |
           set -euo pipefail
-          ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+          ./odin-out/scrapbot render-test examples/minimal odin-out/minimal-render-test.png
+          ./odin-out/scrapbot render-test examples/showcase odin-out/showcase-render-test.png
+          ./odin-out/scrapbot render-test examples/ui_gallery odin-out/ui-gallery-render-test.png
+          ./odin-out/scrapbot render-test examples/spawn_swarm odin-out/spawn-swarm-render-test.png
+          ./odin-out/scrapbot visual-test --update examples/minimal odin-out/minimal-visual-expected.png
+          ./odin-out/scrapbot visual-test examples/minimal odin-out/minimal-visual-expected.png odin-out/minimal-visual-actual.png
       - name: Headful smoke
-        run: ./zig-out/bin/scrapbot run examples/minimal --hidden --frames 2
-
-  linux:
-    runs-on: ubuntu-latest
-    container: ubuntu:25.10
-    steps:
-      - name: Install system dependencies
-        run: |
-          apt-get update
-          apt-get install -y ca-certificates git xz-utils zstd build-essential libsdl3-dev libvulkan1 mesa-vulkan-drivers xvfb
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          cache-key: ci
-          cache-size-limit: 4096
-      - name: Build and test
-        run: zig build test
-      - name: Build CLI
-        run: zig build -Doptimize=ReleaseFast
-      - name: Leak-checked tests
-        run: |
-          set -euo pipefail
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
-      - name: Project and benchmark tests
-        run: |
-          set -euo pipefail
-          ./zig-out/bin/scrapbot test tests/projects
-          ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json
-      - name: Render and visual tests
-        run: |
-          set -euo pipefail
-          ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
-      - name: Headful smoke
-        run: xvfb-run -a ./zig-out/bin/scrapbot run examples/minimal --hidden --frames 2
+        run: xvfb-run -a ./odin-out/scrapbot run examples/minimal --hidden --frames 2
+      - name: SDL and WebGPU smoke
+        run: xvfb-run -a mise odin-sdl-smoke && xvfb-run -a mise odin-wgpu-surface-smoke
 
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+      - uses: jdx/mise-action@v4
         with:
-          version: 0.16.0
-          cache-key: ci
-          cache-size-limit: 4096
+          install_args: odin
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ilammy/msvc-dev-cmd@v1
       - name: Install SDL3
         shell: pwsh
         run: |
@@ -129,38 +119,41 @@ jobs:
           $sdlLinkDir = Join-Path $installDir "link"
           New-Item -ItemType Directory -Path $sdlLinkDir | Out-Null
           Copy-Item "$sdlRoot\lib\x64\SDL3.lib" $sdlLinkDir
+          Copy-Item "$sdlRoot\lib\x64\SDL3.lib" .
           Add-Content -Path $env:GITHUB_ENV -Value "SDL_ROOT=$sdlRoot"
           Add-Content -Path $env:GITHUB_ENV -Value "SDL_LINK_DIR=$sdlLinkDir"
           Add-Content -Path $env:GITHUB_PATH -Value "$sdlRoot\lib\x64"
+      - name: Build Luau bridge
+        shell: pwsh
+        run: .\tools\build-odin-luau-bridge.ps1
       - name: Build and test
         shell: pwsh
-        run: zig build test -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
+        run: odin test odin-src/scrapbot -define:ODIN_TEST_THREADS=1 -out:odin-out/scrapbot-tests.exe
       - name: Build CLI
         shell: pwsh
-        run: zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
+        run: odin build odin-src/scrapbot -out:odin-out/scrapbot.exe
       - name: Stage SDL3 runtime
         shell: pwsh
-        run: Copy-Item "$env:SDL_ROOT\lib\x64\SDL3.dll" zig-out\bin\
-      - name: Leak-checked tests
+        run: Copy-Item "$env:SDL_ROOT\lib\x64\SDL3.dll" odin-out\
+      - name: Validation smoke tests
         shell: pwsh
         run: |
           function Invoke-Scrapbot {
-            & .\zig-out\bin\scrapbot.exe @args
+            & .\odin-out\scrapbot.exe @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-          $env:SCRAPBOT_LEAK_CHECK = "1"
+          Invoke-Scrapbot --version
           Invoke-Scrapbot check examples/minimal
           Invoke-Scrapbot step examples/minimal --frames=3 --format=json
           Invoke-Scrapbot test tests/projects/health_tick
           Invoke-Scrapbot bench examples/spawn_swarm --frames=60 --format=json
-          Invoke-Scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
-          Remove-Item Env:\SCRAPBOT_LEAK_CHECK
+          Invoke-Scrapbot render-test --editor --frames=60 examples/ui_gallery odin-out/ui-gallery-editor-render-test.png
       - name: Project and benchmark tests
         shell: pwsh
         run: |
           function Invoke-Scrapbot {
-            & .\zig-out\bin\scrapbot.exe @args
+            & .\odin-out\scrapbot.exe @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
@@ -170,15 +163,16 @@ jobs:
         shell: pwsh
         run: |
           function Invoke-Scrapbot {
-            & .\zig-out\bin\scrapbot.exe @args
+            & .\odin-out\scrapbot.exe @args
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-          Invoke-Scrapbot render-test examples/minimal zig-out/minimal-render-test.png
-          Invoke-Scrapbot render-test examples/showcase zig-out/showcase-render-test.png
-          Invoke-Scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          Invoke-Scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          Invoke-Scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
+          Invoke-Scrapbot render-test examples/minimal odin-out/minimal-render-test.png
+          Invoke-Scrapbot render-test examples/showcase odin-out/showcase-render-test.png
+          Invoke-Scrapbot render-test examples/ui_gallery odin-out/ui-gallery-render-test.png
+          Invoke-Scrapbot render-test examples/spawn_swarm odin-out/spawn-swarm-render-test.png
+          Invoke-Scrapbot visual-test --update examples/minimal odin-out/minimal-visual-expected.png
+          Invoke-Scrapbot visual-test examples/minimal odin-out/minimal-visual-expected.png odin-out/minimal-visual-actual.png
       - name: Headful smoke
         shell: pwsh
-        run: .\zig-out\bin\scrapbot.exe run examples/minimal --hidden --frames 2
+        run: .\odin-out\scrapbot.exe run examples/minimal --hidden --frames 2

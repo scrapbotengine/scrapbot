@@ -7,7 +7,8 @@ import "core:math"
 import "core:os"
 import "core:strings"
 
-LUAU_BRIDGE_LIB :: "../../odin-out/luau-bridge/libscrapbot_luau_bridge.a"
+LUAU_BRIDGE_DEFAULT_LIB :: "../../odin-out/luau-bridge/scrapbot_luau_bridge.lib" when ODIN_OS == .Windows else "../../odin-out/luau-bridge/libscrapbot_luau_bridge.a"
+LUAU_BRIDGE_LIB :: #config(LUAU_BRIDGE_LIB, LUAU_BRIDGE_DEFAULT_LIB)
 
 when !#exists(LUAU_BRIDGE_LIB) {
 	#panic("missing Odin Luau bridge library; run `mise build-odin-luau-bridge`")
@@ -22,6 +23,10 @@ when ODIN_OS == .Darwin {
 	foreign import luau_bridge {
 		LUAU_BRIDGE_LIB,
 		"system:stdc++",
+	}
+} else when ODIN_OS == .Windows {
+	foreign import luau_bridge {
+		LUAU_BRIDGE_LIB,
 	}
 } else {
 	foreign import luau_bridge {
