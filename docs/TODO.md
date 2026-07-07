@@ -40,6 +40,7 @@
 - [x] Odin visible software and WebGPU SDL run loops can track first-pass fly-camera input state from right-mouse capture, pointer deltas, and semantic movement keys.
 - [x] Odin software and WebGPU render paths can consume scene-camera data and visible-run fly-camera overrides when placing first-pass renderables.
 - [x] Odin visible editor gizmo hit testing and dragging can use the same visible-run fly-camera override as rendering.
+- [x] Odin translate-gizmo drags produce one grouped undo/redo and pending scene edit command on release.
 - [x] Odin `render-bench` can benchmark first-pass in-memory software render generation with text/JSON output.
 - [x] Default `mise build`, `mise test`, and `mise scrapbot` now target the Odin CLI; migration-era Zig tasks are explicit `*-zig` compatibility tasks.
 - [x] Odin WebGPU dynamic library discovery no longer falls back to migration-era Zig `zig-out` or `zig-pkg` cache paths.
@@ -192,7 +193,7 @@
 - [ ] Add rotation and scale gizmos.
 - [ ] Add local-space, world-space, and snapping modes for gizmos.
 - [ ] Add hover styling and axis constraints for transform gizmos.
-- [ ] Add undo grouping for drags and multi-field edits.
+- [ ] Add undo grouping for multi-field edits and future non-translate editor transactions.
 - [ ] Add editor transaction persistence across live reloads.
 - [ ] Add ID-buffer or accelerated picking for precise selection.
 - [ ] Add selectable non-renderable entities.

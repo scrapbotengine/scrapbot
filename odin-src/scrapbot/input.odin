@@ -119,6 +119,8 @@ Editor_Test_Input_State :: struct {
 	right_sidebar_width:         f32,
 	last_pointer:                [2]f32,
 	has_last_pointer:            bool,
+	gizmo_drag_start_position:   [3]f32,
+	has_gizmo_drag_start_position: bool,
 	text_input_active:           bool,
 	text_input_component:        string,
 	text_input_field:            string,
@@ -247,6 +249,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 				state.captured_pointer = true
 				state.last_pointer = input.pointer.position
 				state.has_last_pointer = true
+				begin_editor_gizmo_drag(state, world^)
 				consumed = true
 			} else if state.text_input_active {
 				commit_editor_test_text_input(world, state)
@@ -259,10 +262,14 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 			if state.captured_pointer || !inside_game {
 				consumed = true
 			}
+			if state.dragging_axis != .None {
+				finish_editor_gizmo_drag(state, world)
+			}
 			state.captured_pointer = false
 			state.dragging_splitter = .None
 			state.dragging_axis = .None
 			state.has_last_pointer = false
+			clear_editor_gizmo_drag(state)
 		}
 		if input.pointer.secondary_pressed || input.pointer.secondary_down || input.pointer.secondary_released {
 			if !inside_game {
@@ -284,6 +291,7 @@ route_editor_test_input :: proc(state: ^Editor_Test_Input_State, registry: Runti
 		state.dragging_splitter = .None
 		state.dragging_axis = .None
 		state.has_last_pointer = false
+		clear_editor_gizmo_drag(state)
 	}
 	if consumed {
 		clear_frame_pointer_actions(input)
@@ -1359,6 +1367,52 @@ drag_editor_gizmo_axis :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_
 	return set_err == .None
 }
 
+begin_editor_gizmo_drag :: proc(state: ^Editor_Test_Input_State, world: Runtime_World) {
+	clear_editor_gizmo_drag(state)
+	if !state.has_selected_entity {
+		return
+	}
+	position, position_ok := editor_test_transform_position(world, state.selected_entity)
+	if !position_ok {
+		return
+	}
+	state.gizmo_drag_start_position = position
+	state.has_gizmo_drag_start_position = true
+}
+
+finish_editor_gizmo_drag :: proc(state: ^Editor_Test_Input_State, world: ^Runtime_World) -> bool {
+	if !state.has_selected_entity || !state.has_gizmo_drag_start_position {
+		return false
+	}
+	next_position, next_ok := editor_test_transform_position(world^, state.selected_entity)
+	if !next_ok {
+		return false
+	}
+	old_value := runtime_component_value_vec3(state.gizmo_drag_start_position)
+	new_value := runtime_component_value_vec3(next_position)
+	if editor_test_component_values_equal(old_value, new_value) {
+		return true
+	}
+	lane := editor_test_axis_lane(state.dragging_axis)
+	if !push_editor_test_field_command(&state.undo_stack, &state.undo_len, state.selected_entity, TRANSFORM_COMPONENT_ID, "position", lane, old_value, new_value) {
+		return false
+	}
+	clear_editor_test_field_command_stack(&state.redo_stack, &state.redo_len)
+	set_editor_test_pending_scene_edit(state, state.selected_entity, TRANSFORM_COMPONENT_ID, "position", lane, old_value, new_value)
+	state.selected_property_component = TRANSFORM_COMPONENT_ID
+	state.selected_property_field = "position"
+	state.selected_property_lane = lane
+	state.has_selected_property = true
+	clear_editor_test_text_input(state)
+	clear_editor_test_diagnostic(state)
+	return true
+}
+
+clear_editor_gizmo_drag :: proc(state: ^Editor_Test_Input_State) {
+	state.gizmo_drag_start_position = {}
+	state.has_gizmo_drag_start_position = false
+}
+
 Editor_Test_Camera_State :: struct {
 	position:      [3]f32,
 	rotation:      [3]f32,
@@ -1500,6 +1554,20 @@ editor_test_axis_vector :: proc(axis: Editor_Test_Axis) -> ([3]f32, bool) {
 		return {}, false
 	}
 	return {}, false
+}
+
+editor_test_axis_lane :: proc(axis: Editor_Test_Axis) -> int {
+	switch axis {
+	case .X:
+		return 0
+	case .Y:
+		return 1
+	case .Z:
+		return 2
+	case .None:
+		return 0
+	}
+	return 0
 }
 
 editor_test_add_vec3 :: proc(left, right: [3]f32) -> [3]f32 {

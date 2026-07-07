@@ -99,6 +99,81 @@ test_editor_gizmo_hit_testing_uses_frame_camera_override :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_editor_gizmo_drag_finish_pushes_grouped_undo :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+		dragging_axis = .X,
+	}
+	defer editor_test_input_state_free(&state)
+
+	begin_editor_gizmo_drag(&state, world)
+	testing.expect_value(t, state.has_gizmo_drag_start_position, true)
+	set_err := runtime_world_set_component_field_value(&world, entity, TRANSFORM_COMPONENT_ID, "position", runtime_component_value_vec3([3]f32{1.2, 0, 0}))
+	testing.expect_value(t, set_err, Runtime_Error.None)
+	testing.expect_value(t, finish_editor_gizmo_drag(&state, &world), true)
+	testing.expect_value(t, state.undo_len, 1)
+	testing.expect_value(t, state.has_pending_scene_edit, true)
+
+	testing.expect_value(t, undo_editor_test_field_edit(&world, &state), true)
+	position, position_err := runtime_world_get_vec3(world, entity, TRANSFORM_COMPONENT_ID, "position")
+	testing.expect_value(t, position_err, Runtime_Error.None)
+	testing.expect_value(t, position, [3]f32{0, 0, 0})
+	testing.expect_value(t, redo_editor_test_field_edit(&world, &state), true)
+	position, position_err = runtime_world_get_vec3(world, entity, TRANSFORM_COMPONENT_ID, "position")
+	testing.expect_value(t, position_err, Runtime_Error.None)
+	testing.expect_value(t, position, [3]f32{1.2, 0, 0})
+}
+
+@(test)
+test_editor_gizmo_drag_release_routes_grouped_undo :: proc(t: ^testing.T) {
+	world := runtime_world_init()
+	defer runtime_world_free(&world)
+
+	entity := make_render_camera_test_world(t, &world)
+	state := Editor_Test_Input_State{
+		selected_entity = entity,
+		has_selected_entity = true,
+		dragging_axis = .X,
+		captured_pointer = true,
+		has_last_pointer = true,
+		last_pointer = {660, 358},
+	}
+	defer editor_test_input_state_free(&state)
+	registry := Runtime_Component_Registry{}
+	defer runtime_registry_free(&registry)
+	begin_editor_gizmo_drag(&state, world)
+
+	drag_input := frame_input_default()
+	drag_input.debug_overlay_visible = true
+	drag_input.viewport_width = 1280
+	drag_input.viewport_height = 720
+	drag_input.pointer.has_position = true
+	drag_input.pointer.position = {760, 358}
+	drag_input.pointer.primary_down = true
+	route_editor_test_input(&state, registry, &world, &drag_input)
+
+	release_input := frame_input_default()
+	release_input.debug_overlay_visible = true
+	release_input.viewport_width = 1280
+	release_input.viewport_height = 720
+	release_input.pointer.has_position = true
+	release_input.pointer.position = {760, 358}
+	release_input.pointer.primary_released = true
+	route_editor_test_input(&state, registry, &world, &release_input)
+	testing.expect_value(t, state.undo_len, 1)
+	testing.expect_value(t, state.has_pending_scene_edit, true)
+	testing.expect_value(t, undo_editor_test_field_edit(&world, &state), true)
+	position, position_err := runtime_world_get_vec3(world, entity, TRANSFORM_COMPONENT_ID, "position")
+	testing.expect_value(t, position_err, Runtime_Error.None)
+	testing.expect_value(t, position, [3]f32{0, 0, 0})
+}
+
+@(test)
 test_wgpu_scene_vertices_use_render_camera_options :: proc(t: ^testing.T) {
 	world := runtime_world_init()
 	defer runtime_world_free(&world)
