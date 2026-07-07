@@ -12,6 +12,12 @@ DEFAULT_RENDER_OUTPUT :: "odin-out/scrapbot-render.png"
 DEFAULT_RENDER_TEST_OUTPUT :: "odin-out/scrapbot-render-test.png"
 DEFAULT_VISUAL_TEST_OUTPUT :: "odin-out/scrapbot-visual-test.png"
 ODIN_SOFTWARE_RENDER_BACKEND :: "odin software offscreen placeholder; WebGPU binding pending"
+ODIN_WGPU_RENDER_BACKEND :: "odin wgpu-native offscreen scene renderer"
+
+Render_Backend :: enum {
+	Software,
+	WebGPU,
+}
 
 Render_Options :: struct {
 	target_path:        string,
@@ -22,6 +28,7 @@ Render_Options :: struct {
 	pixel_scale:        f32,
 	editor:             bool,
 	selected_entity_id: string,
+	backend:            Render_Backend,
 }
 
 Visual_Test_Options :: struct {
@@ -163,6 +170,30 @@ parse_render_options :: proc(args: []string, default_output: string, emit_output
 			i += 1
 			continue
 		}
+		if strings.has_prefix(arg, "--backend=") {
+			backend, ok := parse_render_backend(arg[len("--backend="):])
+			if !ok {
+				if emit_output do fmt.eprintf("invalid --backend: %s\n", arg[len("--backend="):])
+				return options, false
+			}
+			options.backend = backend
+			i += 1
+			continue
+		}
+		if arg == "--backend" {
+			if i + 1 >= len(args) {
+				if emit_output do fmt.eprintln("missing value for --backend")
+				return options, false
+			}
+			backend, ok := parse_render_backend(args[i + 1])
+			if !ok {
+				if emit_output do fmt.eprintf("invalid --backend: %s\n", args[i + 1])
+				return options, false
+			}
+			options.backend = backend
+			i += 2
+			continue
+		}
 		if len(arg) > 0 && arg[0] == '-' {
 			if emit_output do fmt.eprintf("unknown argument: %s\n", arg)
 			return options, false
@@ -183,6 +214,16 @@ parse_render_options :: proc(args: []string, default_output: string, emit_output
 		return options, false
 	}
 	return options, true
+}
+
+parse_render_backend :: proc(value: string) -> (Render_Backend, bool) {
+	switch value {
+	case "software":
+		return .Software, true
+	case "wgpu", "webgpu":
+		return .WebGPU, true
+	}
+	return .Software, false
 }
 
 parse_visual_test_options :: proc(args: []string, emit_output: bool) -> (Visual_Test_Options, bool) {
@@ -251,7 +292,7 @@ parse_visual_test_options :: proc(args: []string, emit_output: bool) -> (Visual_
 }
 
 render_option_requires_value :: proc(arg: string) -> bool {
-	return arg == "--frames" || arg == "--width" || arg == "--height" || arg == "--pixel-scale" || arg == "--select"
+	return arg == "--frames" || arg == "--width" || arg == "--height" || arg == "--pixel-scale" || arg == "--select" || arg == "--backend"
 }
 
 same_resolved_path :: proc(left, right: string) -> bool {
@@ -281,7 +322,7 @@ print_render_result :: proc(result: Project_Check_Result, options: Render_Option
 		fmt.printf("Selected entity: %s\n", options.selected_entity_id)
 	}
 	print_render_extract_text(result)
-	fmt.printf("Renderer backend: %s\n", ODIN_SOFTWARE_RENDER_BACKEND)
+	fmt.printf("Renderer backend: %s\n", render_backend_label(options.backend))
 }
 
 print_render_test_result :: proc(result: Project_Check_Result, options: Render_Options, completed_frames: int, verification: Render_Image_Verification) {
@@ -303,7 +344,7 @@ print_render_test_result :: proc(result: Project_Check_Result, options: Render_O
 		fmt.printf("Selected entity: %s\n", options.selected_entity_id)
 	}
 	print_render_extract_text(result)
-	fmt.printf("Renderer backend: %s\n", ODIN_SOFTWARE_RENDER_BACKEND)
+	fmt.printf("Renderer backend: %s\n", render_backend_label(options.backend))
 }
 
 print_visual_test_result :: proc(result: Project_Check_Result, options: Visual_Test_Options, completed_frames: int, comparison: Render_Image_Comparison, comparison_ok: bool) {
@@ -335,5 +376,15 @@ print_visual_test_result :: proc(result: Project_Check_Result, options: Visual_T
 		fmt.printf("Selected entity: %s\n", options.render.selected_entity_id)
 	}
 	print_render_extract_text(result)
-	fmt.printf("Renderer backend: %s\n", ODIN_SOFTWARE_RENDER_BACKEND)
+	fmt.printf("Renderer backend: %s\n", render_backend_label(options.render.backend))
+}
+
+render_backend_label :: proc(backend: Render_Backend) -> string {
+	switch backend {
+	case .Software:
+		return ODIN_SOFTWARE_RENDER_BACKEND
+	case .WebGPU:
+		return ODIN_WGPU_RENDER_BACKEND
+	}
+	return ODIN_SOFTWARE_RENDER_BACKEND
 }

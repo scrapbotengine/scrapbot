@@ -1020,9 +1020,9 @@ test_run_command_rejects_extra_argument_after_explicit_current_directory :: proc
 }
 
 @(test)
-test_parse_render_options_accepts_dimensions_editor_and_select :: proc(t: ^testing.T) {
+test_parse_render_options_accepts_dimensions_backend_editor_and_select :: proc(t: ^testing.T) {
 	options, ok := parse_render_options(
-		[]string{"--frames", "4", "--width=320", "--height", "240", "--pixel-scale", "2.0", "--select", "cube", "project", "out.png"},
+		[]string{"--frames", "4", "--width=320", "--height", "240", "--pixel-scale", "2.0", "--backend", "wgpu", "--select", "cube", "project", "out.png"},
 		DEFAULT_RENDER_OUTPUT,
 		false,
 	)
@@ -1031,10 +1031,55 @@ test_parse_render_options_accepts_dimensions_editor_and_select :: proc(t: ^testi
 	testing.expect_value(t, options.width, 320)
 	testing.expect_value(t, options.height, 240)
 	testing.expect_value(t, options.pixel_scale, f32(2.0))
+	testing.expect_value(t, options.backend, Render_Backend.WebGPU)
 	testing.expect_value(t, options.editor, true)
 	testing.expect_value(t, options.selected_entity_id, "cube")
 	testing.expect_value(t, options.target_path, "project")
 	testing.expect_value(t, options.output_path, "out.png")
+}
+
+@(test)
+test_run_render_command_writes_wgpu_backend_png_with_fake_library :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-wgpu-backend")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render WGPU"), Project_Error.None)
+
+	staged_library := stage_fake_wgpu_zig_package_library(t, root)
+	defer delete(staged_library)
+
+	output_path := project_relative_path(root, "wgpu-render.png")
+	defer delete(output_path)
+
+	exit_code := run_with_output([]string{"scrapbot", "render", "--backend", "wgpu", "--width", "1", "--height", "1", root, output_path}, false)
+	testing.expect_value(t, exit_code, 0)
+
+	image, image_err := render_load_rgb_image(output_path)
+	defer render_image_free(&image)
+	testing.expect_value(t, image_err, Render_Image_Error.None)
+	testing.expect_value(t, image.width, 1)
+	testing.expect_value(t, image.height, 1)
+	expect_render_pixel(t, image, 0, 0, {255, 0, 0})
+
+	metadata_path := render_artifact_metadata_path(output_path)
+	defer delete(metadata_path)
+	metadata, metadata_err := os.read_entire_file(metadata_path, context.allocator)
+	if metadata_err != nil {
+		testing.fail_now(t, "failed to read render metadata")
+	}
+	defer delete(metadata)
+	testing.expect_value(t, strings.contains(string(metadata), `"backend": "wgpu"`), true)
+}
+
+@(test)
+test_run_render_command_rejects_wgpu_editor_chrome_until_ported :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "cli-render-wgpu-editor")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "CLI Render WGPU Editor"), Project_Error.None)
+
+	exit_code := run_with_output([]string{"scrapbot", "render", "--backend", "wgpu", "--editor", root}, false)
+	testing.expect_value(t, exit_code, 1)
 }
 
 @(test)

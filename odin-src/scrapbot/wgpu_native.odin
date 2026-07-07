@@ -2,8 +2,10 @@ package main
 
 import "core:c"
 import "core:dynlib"
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 
 // First-pass wgpu-native C ABI surface used by the Odin renderer migration.
 // This file intentionally avoids foreign procedure declarations until the Odin
@@ -965,6 +967,30 @@ fn fs_main() -> @location(0) vec4<f32> {
 	return vec4<f32>(1.0, 0.0, 0.0, 1.0);
 }
 `
+
+WGPU_SCENE_RECT_WGSL_HEADER :: `struct VertexOut {
+	@builtin(position) position: vec4<f32>,
+	@location(0) color: vec3<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
+	var out: VertexOut;
+	out.position = vec4<f32>(POSITIONS[vertex_index], 0.0, 1.0);
+	out.color = COLORS[vertex_index];
+	return out;
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+	return vec4<f32>(in.color, 1.0);
+}
+`
+
+WGPU_Scene_Vertex :: struct {
+	position: [2]f32,
+	color:    [3]f32,
+}
 
 WGPU_SYMBOL_DEVICE_CREATE_TEXTURE :: "wgpuDeviceCreateTexture"
 WGPU_SYMBOL_DEVICE_CREATE_BUFFER :: "wgpuDeviceCreateBuffer"
@@ -2552,6 +2578,308 @@ wgpu_render_offscreen_triangle_image :: proc(procs: WGPU_Offscreen_Procs, width,
 	}
 
 	return Render_Image{width = width, height = height, rgb = rgb}, "", true
+}
+
+wgpu_render_scene_image :: proc(world: Runtime_World, options: Render_Options, backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED) -> (Render_Image, string, bool) {
+	path, found := wgpu_find_default_offscreen_library(options.target_path)
+	if !found && options.target_path != "." {
+		path, found = wgpu_find_default_offscreen_library(".")
+	}
+	if !found {
+		return Render_Image{}, WGPU_OFFSCREEN_LIBRARY_NOT_FOUND, false
+	}
+	defer delete(path)
+
+	loaded, missing, loaded_ok := wgpu_load_offscreen_library(path)
+	defer wgpu_unload_offscreen_library(&loaded)
+	if !loaded_ok {
+		if missing == "" {
+			missing = WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR
+		}
+		return Render_Image{}, missing, false
+	}
+
+	return wgpu_render_scene_image_with_procs(loaded.procs, world, options, backend_type)
+}
+
+wgpu_render_scene_image_with_procs :: proc(procs: WGPU_Offscreen_Procs, world: Runtime_World, options: Render_Options, backend_type: WGPU_Backend_Type = WGPU_BACKEND_TYPE_UNDEFINED) -> (Render_Image, string, bool) {
+	if options.width <= 0 || options.height <= 0 {
+		return Render_Image{}, WGPU_OFFSCREEN_INVALID_SIZE_ERROR, false
+	}
+
+	vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(vertices)
+	wgpu_collect_scene_vertices(&vertices, world, options.width, options.height)
+
+	descriptor := wgpu_instance_descriptor_default()
+	instance := procs.create_instance(&descriptor)
+	if instance == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_INSTANCE_CREATE_ERROR, false
+	}
+	defer procs.instance_release(instance)
+
+	adapter, adapter_error, adapter_ok := wgpu_request_adapter_sync(procs, instance, backend_type)
+	if !adapter_ok {
+		return Render_Image{}, adapter_error, false
+	}
+	defer procs.adapter_release(adapter)
+
+	device, device_error, device_ok := wgpu_request_device_sync(procs, instance, adapter)
+	if !device_ok {
+		return Render_Image{}, device_error, false
+	}
+	defer procs.device_release(device)
+
+	queue := procs.device_get_queue(device)
+	if queue == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_QUEUE_GET_ERROR, false
+	}
+	defer procs.queue_release(queue)
+
+	width_u32 := u32(options.width)
+	height_u32 := u32(options.height)
+	bytes_per_row := wgpu_align_to_u32(width_u32 * 4, 256)
+	buffer_size := u64(bytes_per_row) * u64(height_u32)
+
+	texture_descriptor := wgpu_texture_descriptor_2d(wgpu_string_view_empty(), width_u32, height_u32, WGPU_DEFAULT_TARGET_FORMAT, wgpu_offscreen_texture_usage())
+	texture := procs.device_create_texture(device, &texture_descriptor)
+	if texture == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_TEXTURE_CREATE_ERROR, false
+	}
+	defer procs.texture_release(texture)
+
+	view_descriptor := wgpu_single_mip_texture_view_descriptor(wgpu_string_view_empty())
+	texture_view := procs.texture_create_view(texture, &view_descriptor)
+	if texture_view == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_TEXTURE_VIEW_CREATE_ERROR, false
+	}
+	defer procs.texture_view_release(texture_view)
+
+	staging_descriptor := wgpu_buffer_descriptor(wgpu_string_view_empty(), wgpu_staging_buffer_usage(), buffer_size)
+	staging_buffer := procs.device_create_buffer(device, &staging_descriptor)
+	if staging_buffer == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_BUFFER_CREATE_ERROR, false
+	}
+	defer procs.buffer_release(staging_buffer)
+
+	shader_module: WGPU_Shader_Module
+	pipeline_layout: WGPU_Pipeline_Layout
+	render_pipeline: WGPU_Render_Pipeline
+	defer wgpu_release_scene_pipeline_resources(procs, &shader_module, &pipeline_layout, &render_pipeline)
+	if len(vertices) > 0 {
+		shader_code := wgpu_scene_rect_wgsl(vertices[:])
+		defer delete(shader_code)
+		shader_source := wgpu_shader_source_wgsl(wgpu_string_view_from_string(shader_code))
+		shader_descriptor := wgpu_shader_module_descriptor_wgsl(wgpu_string_view_empty(), &shader_source)
+		shader_module = procs.device_create_shader_module(device, &shader_descriptor)
+		if shader_module == nil {
+			return Render_Image{}, WGPU_OFFSCREEN_SHADER_MODULE_CREATE_ERROR, false
+		}
+
+		pipeline_layout_descriptor := wgpu_pipeline_layout_descriptor(wgpu_string_view_empty(), nil, 0)
+		pipeline_layout = procs.device_create_pipeline_layout(device, &pipeline_layout_descriptor)
+		if pipeline_layout == nil {
+			return Render_Image{}, WGPU_OFFSCREEN_PIPELINE_LAYOUT_CREATE_ERROR, false
+		}
+
+		vertex := wgpu_vertex_state(shader_module, wgpu_string_view_from_string("vs_main"))
+		color_targets := [?]WGPU_Color_Target_State{
+			wgpu_color_target_state(WGPU_DEFAULT_TARGET_FORMAT),
+		}
+		fragment := wgpu_fragment_state(shader_module, wgpu_string_view_from_string("fs_main"), &color_targets[0], 1)
+		pipeline_descriptor := wgpu_render_pipeline_descriptor(
+			wgpu_string_view_empty(),
+			pipeline_layout,
+			vertex,
+			wgpu_primitive_state(),
+			wgpu_multisample_state_default(),
+			&fragment,
+		)
+		render_pipeline = procs.device_create_render_pipeline(device, &pipeline_descriptor)
+		if render_pipeline == nil {
+			return Render_Image{}, WGPU_OFFSCREEN_RENDER_PIPELINE_CREATE_ERROR, false
+		}
+	}
+
+	encoder_descriptor := wgpu_command_encoder_descriptor(wgpu_string_view_empty())
+	encoder := procs.device_create_command_encoder(device, &encoder_descriptor)
+	if encoder == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_COMMAND_ENCODER_CREATE_ERROR, false
+	}
+	defer procs.command_encoder_release(encoder)
+
+	background := wgpu_color(0.006049, 0.008023, 0.012286, 1.0)
+	color_attachments := [?]WGPU_Color_Attachment{
+		wgpu_color_attachment_clear(texture_view, background),
+	}
+	pass_descriptor := wgpu_render_pass_descriptor(wgpu_string_view_empty(), &color_attachments[0], 1)
+	render_pass := procs.command_encoder_begin_render_pass(encoder, &pass_descriptor)
+	if render_pass == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_RENDER_PASS_CREATE_ERROR, false
+	}
+	if len(vertices) > 0 {
+		procs.render_pass_encoder_set_pipeline(render_pass, render_pipeline)
+		procs.render_pass_encoder_draw(render_pass, u32(len(vertices)), 1, 0, 0)
+	}
+	procs.render_pass_encoder_end(render_pass)
+	procs.render_pass_encoder_release(render_pass)
+
+	source := wgpu_texel_copy_texture_info(texture)
+	destination := wgpu_texel_copy_buffer_info(staging_buffer, bytes_per_row, height_u32)
+	copy_size := wgpu_extent_3d(width_u32, height_u32)
+	procs.command_encoder_copy_texture_to_buffer(encoder, &source, &destination, &copy_size)
+
+	command_buffer_descriptor := wgpu_command_buffer_descriptor(wgpu_string_view_empty())
+	command_buffer := procs.command_encoder_finish(encoder, &command_buffer_descriptor)
+	if command_buffer == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_COMMAND_BUFFER_CREATE_ERROR, false
+	}
+
+	command_buffers := [?]WGPU_Command_Buffer{command_buffer}
+	procs.queue_submit(queue, 1, &command_buffers[0])
+	procs.command_buffer_release(command_buffer)
+
+	map_state := WGPU_Buffer_Map_State{}
+	_ = procs.buffer_map_async(
+		staging_buffer,
+		WGPU_MAP_MODE_READ,
+		0,
+		c.size_t(buffer_size),
+		wgpu_buffer_map_callback_info(wgpu_buffer_map_sync_callback, rawptr(&map_state)),
+	)
+	if !wgpu_poll_device_until_complete(procs, device, &map_state.complete) {
+		return Render_Image{}, WGPU_OFFSCREEN_REQUEST_TIMEOUT_ERROR, false
+	}
+	if map_state.status != WGPU_MAP_ASYNC_STATUS_SUCCESS {
+		return Render_Image{}, WGPU_OFFSCREEN_MAP_ERROR, false
+	}
+	defer procs.buffer_unmap(staging_buffer)
+
+	mapped_raw := procs.buffer_get_mapped_range(staging_buffer, 0, c.size_t(buffer_size))
+	if mapped_raw == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_MAPPED_RANGE_ERROR, false
+	}
+
+	rgb := make([]u8, options.width * options.height * 3)
+	if rgb == nil {
+		return Render_Image{}, WGPU_OFFSCREEN_READBACK_ERROR, false
+	}
+
+	pixels := transmute([^]u8)mapped_raw
+	for y in 0 ..< options.height {
+		source_row := y * int(bytes_per_row)
+		for x in 0 ..< options.width {
+			source_pixel := source_row + x * 4
+			target_pixel := (y * options.width + x) * 3
+			rgb[target_pixel + 0] = pixels[source_pixel + 2]
+			rgb[target_pixel + 1] = pixels[source_pixel + 1]
+			rgb[target_pixel + 2] = pixels[source_pixel + 0]
+		}
+	}
+
+	return Render_Image{width = options.width, height = options.height, rgb = rgb}, "", true
+}
+
+wgpu_collect_scene_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, world: Runtime_World, width, height: int) {
+	cursor := 0
+	index := 0
+	for {
+		entity, found := runtime_world_query_next(world, []string{TRANSFORM_COMPONENT_ID}, &cursor)
+		if !found {
+			break
+		}
+		has_geometry := render_entity_has_component(world, entity, GEOMETRY_PRIMITIVE_COMPONENT_ID) &&
+		                render_entity_has_component(world, entity, SURFACE_MATERIAL_COMPONENT_ID)
+		has_legacy_cube := render_entity_has_component(world, entity, CUBE_RENDERER_COMPONENT_ID)
+		if !has_geometry && !has_legacy_cube {
+			continue
+		}
+		color := render_entity_color(world, entity, index)
+		rect := render_renderable_rect(width, height, index)
+		wgpu_append_rect_vertices(vertices, width, height, rect, color)
+		index += 1
+	}
+}
+
+wgpu_append_rect_vertices :: proc(vertices: ^[dynamic]WGPU_Scene_Vertex, image_width, image_height: int, rect: Renderable_Rect, color: [3]u8) {
+	min_x := max(0, rect.x)
+	min_y := max(0, rect.y)
+	max_x := min(image_width, rect.x + rect.width)
+	max_y := min(image_height, rect.y + rect.height)
+	if min_x >= max_x || min_y >= max_y {
+		return
+	}
+
+	x0 := (f32(min_x) / f32(image_width)) * 2.0 - 1.0
+	x1 := (f32(max_x) / f32(image_width)) * 2.0 - 1.0
+	y0 := 1.0 - (f32(min_y) / f32(image_height)) * 2.0
+	y1 := 1.0 - (f32(max_y) / f32(image_height)) * 2.0
+	vertex_color := [3]f32{f32(color[0]) / 255.0, f32(color[1]) / 255.0, f32(color[2]) / 255.0}
+
+	append(vertices, WGPU_Scene_Vertex{position = {x0, y0}, color = vertex_color})
+	append(vertices, WGPU_Scene_Vertex{position = {x0, y1}, color = vertex_color})
+	append(vertices, WGPU_Scene_Vertex{position = {x1, y0}, color = vertex_color})
+	append(vertices, WGPU_Scene_Vertex{position = {x1, y0}, color = vertex_color})
+	append(vertices, WGPU_Scene_Vertex{position = {x0, y1}, color = vertex_color})
+	append(vertices, WGPU_Scene_Vertex{position = {x1, y1}, color = vertex_color})
+}
+
+wgpu_scene_rect_wgsl :: proc(vertices: []WGPU_Scene_Vertex) -> string {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+
+	strings.write_string(&builder, "const POSITIONS = array<vec2<f32>, ")
+	strings.write_string(&builder, fmt.tprintf("%d", len(vertices)))
+	strings.write_string(&builder, ">(\n")
+	for vertex in vertices {
+		strings.write_string(&builder, "\tvec2<f32>(")
+		strings.write_string(&builder, wgpu_format_f32(vertex.position[0]))
+		strings.write_string(&builder, ", ")
+		strings.write_string(&builder, wgpu_format_f32(vertex.position[1]))
+		strings.write_string(&builder, "),\n")
+	}
+	strings.write_string(&builder, ");\n\n")
+
+	strings.write_string(&builder, "const COLORS = array<vec3<f32>, ")
+	strings.write_string(&builder, fmt.tprintf("%d", len(vertices)))
+	strings.write_string(&builder, ">(\n")
+	for vertex in vertices {
+		strings.write_string(&builder, "\tvec3<f32>(")
+		strings.write_string(&builder, wgpu_format_f32(vertex.color[0]))
+		strings.write_string(&builder, ", ")
+		strings.write_string(&builder, wgpu_format_f32(vertex.color[1]))
+		strings.write_string(&builder, ", ")
+		strings.write_string(&builder, wgpu_format_f32(vertex.color[2]))
+		strings.write_string(&builder, "),\n")
+	}
+	strings.write_string(&builder, ");\n\n")
+	strings.write_string(&builder, WGPU_SCENE_RECT_WGSL_HEADER)
+
+	return strings.clone(strings.to_string(builder))
+}
+
+wgpu_release_scene_pipeline_resources :: proc(
+	procs: WGPU_Offscreen_Procs,
+	shader_module: ^WGPU_Shader_Module,
+	pipeline_layout: ^WGPU_Pipeline_Layout,
+	render_pipeline: ^WGPU_Render_Pipeline,
+) {
+	if render_pipeline^ != nil {
+		procs.render_pipeline_release(render_pipeline^)
+		render_pipeline^ = nil
+	}
+	if pipeline_layout^ != nil {
+		procs.pipeline_layout_release(pipeline_layout^)
+		pipeline_layout^ = nil
+	}
+	if shader_module^ != nil {
+		procs.shader_module_release(shader_module^)
+		shader_module^ = nil
+	}
+}
+
+wgpu_format_f32 :: proc(value: f32) -> string {
+	return fmt.tprintf("%.6f", value)
 }
 
 wgpu_align_to_u32 :: proc(value, alignment: u32) -> u32 {

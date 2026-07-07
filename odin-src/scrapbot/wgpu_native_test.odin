@@ -811,6 +811,27 @@ test_wgpu_offscreen_triangle_image_converts_readback_to_rgb :: proc(t: ^testing.
 }
 
 @(test)
+test_wgpu_scene_vertex_collection_uses_scene_renderable_colors :: proc(t: ^testing.T) {
+	root := make_test_project_root(t, "wgpu-scene-vertices")
+	defer os.remove_all(root)
+	defer delete(root)
+	testing.expect_value(t, init_project(root, "WGPU Scene Vertices"), Project_Error.None)
+
+	result := check_project(root)
+	defer free_check_result(result)
+	testing.expect_value(t, result.err, Project_Error.None)
+
+	vertices: [dynamic]WGPU_Scene_Vertex
+	defer delete(vertices)
+	wgpu_collect_scene_vertices(&vertices, result.scene.world, 320, 240)
+
+	testing.expect_value(t, len(vertices), 6)
+	testing.expect_value(t, vertices[0].color[0] < 0.1, true)
+	testing.expect_value(t, vertices[0].color[1] > 0.5, true)
+	testing.expect_value(t, vertices[0].color[2] > 0.9, true)
+}
+
+@(test)
 test_wgpu_offscreen_triangle_readback_smoke_reports_pipeline_failure :: proc(t: ^testing.T) {
 	ctx := WGPU_Test_Resolver_Context{}
 	procs, missing, procs_ok := wgpu_resolve_offscreen_procs(wgpu_test_symbol_resolver, rawptr(&ctx))

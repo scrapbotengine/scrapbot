@@ -109,9 +109,9 @@ Usage:
   scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
   scrapbot test [tests-path|project-path] [--format text|json]
   scrapbot run [path] [--frames N] [--editor] [--hidden]
-  scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
+  scrapbot render [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot render-test [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
+  scrapbot visual-test [--backend software|wgpu] [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
   scrapbot wgpu-check [root]
   scrapbot wgpu-render-test [root] [output.png]
   scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
@@ -443,6 +443,12 @@ run_render :: proc(args: []string, emit_output: bool, render_test: bool) -> int 
 	if !options_ok {
 		return 1
 	}
+	if options.backend == .WebGPU && options.editor {
+		if emit_output {
+			fmt.eprintf("%s failed: WebGPU editor chrome is not ported yet\n", error_name)
+		}
+		return 1
+	}
 
 	result := check_project(options.target_path)
 	defer free_check_result(result)
@@ -530,6 +536,12 @@ run_visual_test :: proc(args: []string, emit_output: bool) -> int {
 			}
 			return 1
 		}
+	}
+	if options.render.backend == .WebGPU && options.render.editor {
+		if emit_output {
+			fmt.eprintln("visual-test failed: WebGPU editor chrome is not ported yet")
+		}
+		return 1
 	}
 
 	if !options.update {
@@ -1257,6 +1269,10 @@ render_image_error_message :: proc(err: Render_Image_Error) -> string {
 		return "out of memory"
 	case .Io_Error:
 		return "io error"
+	case .Backend_Unavailable:
+		return "render backend unavailable"
+	case .Backend_Render_Failed:
+		return "render backend failed"
 	case .Invalid_Image:
 		return "invalid image"
 	case .Image_Size_Mismatch:

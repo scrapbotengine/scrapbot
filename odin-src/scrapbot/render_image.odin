@@ -15,6 +15,8 @@ Render_Image_Error :: enum {
 	Unsupported_Format,
 	Out_Of_Memory,
 	Io_Error,
+	Backend_Unavailable,
+	Backend_Render_Failed,
 	Invalid_Image,
 	Image_Size_Mismatch,
 	Missing_Foreground,
@@ -75,8 +77,27 @@ render_write_scene_image :: proc(world: Runtime_World, options: Render_Options, 
 	if !format_ok {
 		return Render_Image_Verification{}, .Unsupported_Format
 	}
-	image, image_ok := render_image_from_scene(world, options)
+	image := Render_Image{}
+	image_ok := false
+	image_error := Render_Image_Error.None
+	switch options.backend {
+	case .Software:
+		image, image_ok = render_image_from_scene(world, options)
+	case .WebGPU:
+		wgpu_error: string
+		image, wgpu_error, image_ok = wgpu_render_scene_image(world, options)
+		if !image_ok {
+			if wgpu_error == WGPU_OFFSCREEN_LIBRARY_NOT_FOUND || wgpu_error == WGPU_OFFSCREEN_LIBRARY_LOAD_ERROR {
+				image_error = .Backend_Unavailable
+			} else {
+				image_error = .Backend_Render_Failed
+			}
+		}
+	}
 	if !image_ok {
+		if image_error != .None {
+			return Render_Image_Verification{}, image_error
+		}
 		return Render_Image_Verification{}, .Out_Of_Memory
 	}
 	defer render_image_free(&image)
@@ -122,11 +143,24 @@ render_write_artifact_metadata :: proc(path: string, options: Render_Options) ->
 	strings.write_string(&builder, "," + "\n")
 	strings.write_string(&builder, `  "pixel_scale": `)
 	strings.write_string(&builder, render_f32_metadata_string(options.pixel_scale))
-	strings.write_string(&builder, "\n}\n")
+	strings.write_string(&builder, "," + "\n")
+	strings.write_string(&builder, `  "backend": "`)
+	strings.write_string(&builder, render_backend_metadata_value(options.backend))
+	strings.write_string(&builder, `"` + "\n}\n")
 	if os.write_entire_file(metadata_path, strings.to_string(builder)) != nil {
 		return .Io_Error
 	}
 	return .None
+}
+
+render_backend_metadata_value :: proc(backend: Render_Backend) -> string {
+	switch backend {
+	case .Software:
+		return "software"
+	case .WebGPU:
+		return "wgpu"
+	}
+	return "software"
 }
 
 render_artifact_metadata_path :: proc(path: string) -> string {
