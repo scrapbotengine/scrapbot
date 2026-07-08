@@ -2,6 +2,10 @@ scrapbot.log("hello from examples/minimal")
 scrapbot.log("entities: " .. tostring(scrapbot.entity_count()))
 scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))
 
+scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+
 scrapbot.system(function(delta_seconds)
 	scrapbot.query("autorotate", function(entity, autorotate)
 		local rotation = scrapbot.get_rotation(entity)

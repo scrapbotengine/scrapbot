@@ -27,6 +27,7 @@
 - [x] Add Luau LSP metadata for the built-in `scrapbot` global.
 - [x] Add a first Luau system bridge for project-local systems.
 - [x] Add scene-defined custom component data for Luau systems.
+- [x] Validate scene custom components against Luau-defined component schemas.
 - [ ] Add reflected Luau component schemas and generated typed component APIs.
 - [ ] Add native Odin extension loading and hot reload.
 

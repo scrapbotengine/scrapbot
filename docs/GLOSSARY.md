@@ -46,7 +46,7 @@
 
 ## Scripting And Editing
 
-**Luau** - Scrapbot's embedded scripting language for project-local code, currently exposed through `scripts/main.luau` and a minimal `scrapbot` API.
+**Luau** - Scrapbot's embedded scripting language for project-local code, currently exposed through `scripts/main.luau` and a minimal `scrapbot` API for logging, systems, and script-defined component schemas.
 
 **Native extension** - Planned project-local compiled code that can register fast systems or engine integrations.
 

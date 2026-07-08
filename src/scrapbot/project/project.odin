@@ -63,6 +63,10 @@ velocity = [0, 1.5707963, 0]
 default_script_template :: proc() -> string {
 	return `scrapbot.log("hello from Scrapbot")
 
+scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+
 scrapbot.system(function(delta_seconds)
 	scrapbot.query("autorotate", function(entity, autorotate)
 		local rotation = scrapbot.get_rotation(entity)
@@ -82,6 +86,7 @@ type Scrapbot = {
 	log: (message: any) -> (),
 	entity_count: () -> number,
 	renderable_count: () -> number,
+	component: (name: string, schema: ScrapbotComponentSchema) -> (),
 	system: (system: (delta_seconds: number) -> ()) -> (),
 	query: (component_name: string, callback: (entity: ScrapbotEntity, component: any) -> ()) -> (),
 	get_rotation: (entity: ScrapbotEntity) -> ScrapbotVec3,
@@ -97,6 +102,10 @@ type ScrapbotVec3 = {
 	x: number,
 	y: number,
 	z: number,
+}
+
+type ScrapbotComponentSchema = {
+	[string]: "vec3",
 }
 
 declare scrapbot: Scrapbot

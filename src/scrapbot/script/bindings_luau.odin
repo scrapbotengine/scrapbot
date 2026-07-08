@@ -12,6 +12,7 @@ LUA_OK :: c.int(0)
 LUA_MAXCSTACK :: 8000
 LUA_REGISTRYINDEX :: -LUA_MAXCSTACK - 2000
 LUA_GLOBALSINDEX :: -LUA_MAXCSTACK - 2002
+LUA_TSTRING :: c.int(6)
 LUA_TFUNCTION :: c.int(8)
 LUA_TTABLE :: c.int(7)
 
@@ -73,6 +74,7 @@ foreign luau {
 	lua_getfield :: proc "c" (L: Lua_State, idx: c.int, k: cstring) -> c.int ---
 	lua_setfield :: proc "c" (L: Lua_State, idx: c.int, k: cstring) ---
 	lua_settable :: proc "c" (L: Lua_State, idx: c.int) ---
+	lua_next :: proc "c" (L: Lua_State, idx: c.int) -> c.int ---
 	lua_setthreaddata :: proc "c" (L: Lua_State, data: rawptr) ---
 	lua_getthreaddata :: proc "c" (L: Lua_State) -> rawptr ---
 	lua_ref :: proc "c" (L: Lua_State, idx: c.int) -> c.int ---

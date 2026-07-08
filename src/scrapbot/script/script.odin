@@ -10,6 +10,8 @@ import shared "../shared"
 
 DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
 DEFAULT_SCRIPT_CHUNK :: "=" + DEFAULT_SCRIPT
+MAX_SCRIPT_COMPONENTS :: 64
+MAX_SCRIPT_COMPONENT_FIELDS :: 16
 MAX_SCRIPT_SYSTEMS :: 64
 World :: shared.World
 Vec3 :: shared.Vec3
@@ -25,8 +27,25 @@ Run_Result :: struct {
 Runtime :: struct {
 	L: Lua_State,
 	world: ^World,
+	components: [MAX_SCRIPT_COMPONENTS]Component_Definition,
+	component_count: int,
 	systems: [MAX_SCRIPT_SYSTEMS]Script_System,
 	system_count: int,
+}
+
+Component_Field_Type :: enum {
+	Vec3,
+}
+
+Component_Field_Definition :: struct {
+	name: string,
+	field_type: Component_Field_Type,
+}
+
+Component_Definition :: struct {
+	name: string,
+	fields: [MAX_SCRIPT_COMPONENT_FIELDS]Component_Field_Definition,
+	field_count: int,
 }
 
 Script_System :: struct {
@@ -103,6 +122,11 @@ run_source :: proc(runtime: ^Runtime, source, chunk_name: string, world: ^World)
 		return result
 	}
 
+	result.err = validate_world_components(runtime)
+	if result.err != "" {
+		return result
+	}
+
 	result.ran = true
 	return result
 }
@@ -140,7 +164,7 @@ step_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> st
 }
 
 register_scrapbot_api :: proc(L: Lua_State) {
-	lua_createtable(L, 0, 8)
+	lua_createtable(L, 0, 9)
 
 	lua_pushcclosurek(L, scrapbot_log, "scrapbot.log", 0, nil)
 	lua_setfield(L, -2, "log")
@@ -150,6 +174,9 @@ register_scrapbot_api :: proc(L: Lua_State) {
 
 	lua_pushcclosurek(L, scrapbot_renderable_count, "scrapbot.renderable_count", 0, nil)
 	lua_setfield(L, -2, "renderable_count")
+
+	lua_pushcclosurek(L, scrapbot_component, "scrapbot.component", 0, nil)
+	lua_setfield(L, -2, "component")
 
 	lua_pushcclosurek(L, scrapbot_system, "scrapbot.system", 0, nil)
 	lua_setfield(L, -2, "system")
@@ -197,6 +224,64 @@ scrapbot_renderable_count :: proc "c" (L: Lua_State) -> c.int {
 	return 1
 }
 
+scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	if runtime == nil || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TTABLE {
+		return luau_push_error(L, "scrapbot.component expects a component name and field schema table")
+	}
+
+	name_length: c.size_t
+	name_data := lua_tolstring(L, 1, &name_length)
+	if name_data == nil {
+		return luau_push_error(L, "scrapbot.component component name must be a string")
+	}
+	component_name := luau_string(name_data, name_length)
+
+	component_index, found := find_component_definition(runtime, component_name)
+	if !found {
+		if runtime.component_count >= MAX_SCRIPT_COMPONENTS {
+			return luau_push_error(L, "too many script component definitions")
+		}
+		component_index = runtime.component_count
+		runtime.component_count += 1
+	}
+
+	component := &runtime.components[component_index]
+	component^ = {}
+	component.name = component_name
+
+	lua_pushnil(L)
+	for lua_next(L, 2) != 0 {
+		if component.field_count >= MAX_SCRIPT_COMPONENT_FIELDS {
+			return luau_push_error(L, "too many fields in script component definition")
+		}
+		if lua_type(L, -2) != LUA_TSTRING || lua_type(L, -1) != LUA_TSTRING {
+			return luau_push_error(L, "component schema fields must map names to field type strings")
+		}
+
+		field_name_length: c.size_t
+		field_name_data := lua_tolstring(L, -2, &field_name_length)
+		field_type_length: c.size_t
+		field_type_data := lua_tolstring(L, -1, &field_type_length)
+		if field_name_data == nil || field_type_data == nil {
+			return luau_push_error(L, "component schema fields must map names to field type strings")
+		}
+		field_type_name := luau_string(field_type_data, field_type_length)
+		if field_type_name != "vec3" {
+			return luau_push_error(L, "unsupported component field type")
+		}
+
+		component.fields[component.field_count] = Component_Field_Definition {
+			name = luau_string(field_name_data, field_name_length),
+			field_type = .Vec3,
+		}
+		component.field_count += 1
+		lua_settop(L, -2)
+	}
+
+	return 0
+}
+
 scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
 	if runtime == nil || runtime.system_count >= MAX_SCRIPT_SYSTEMS || lua_type(L, 1) != LUA_TFUNCTION {
@@ -207,6 +292,70 @@ scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 	runtime.systems[runtime.system_count] = Script_System{callback_ref = callback_ref}
 	runtime.system_count += 1
 	return 0
+}
+
+validate_world_components :: proc(runtime: ^Runtime) -> string {
+	if runtime == nil || runtime.world == nil {
+		return ""
+	}
+
+	for component in runtime.world.custom_components {
+		definition, definition_ok := component_definition(runtime, component.name)
+		if !definition_ok {
+			return fmt.tprintf(
+				`scene component "%s" is not defined by scripts/main.luau; add scrapbot.component("%s", schema)`,
+				component.name,
+				component.name,
+			)
+		}
+
+		for field in component.vec3_fields {
+			field_definition, field_ok := component_field(definition, field.name)
+			if !field_ok {
+				return fmt.tprintf(
+					`scene component "%s" has field "%s" that is not defined by scripts/main.luau`,
+					component.name,
+					field.name,
+				)
+			}
+			if field_definition.field_type != .Vec3 {
+				return fmt.tprintf(
+					`scene component "%s" field "%s" does not accept vec3 values`,
+					component.name,
+					field.name,
+				)
+			}
+		}
+	}
+
+	return ""
+}
+
+find_component_definition :: proc "c" (runtime: ^Runtime, name: string) -> (index: int, ok: bool) {
+	for component, i in runtime.components[:runtime.component_count] {
+		if component.name == name {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+component_definition :: proc(runtime: ^Runtime, name: string) -> (definition: Component_Definition, ok: bool) {
+	index, found := find_component_definition(runtime, name)
+	if !found {
+		return {}, false
+	}
+	return runtime.components[index], true
+}
+
+component_field :: proc(definition: Component_Definition, name: string) -> (field: Component_Field_Definition, ok: bool) {
+	for i in 0..<definition.field_count {
+		definition_field := definition.fields[i]
+		if definition_field.name == name {
+			return definition_field, true
+		}
+	}
+	return {}, false
 }
 
 scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
@@ -361,6 +510,11 @@ luau_stack_error :: proc(L: Lua_State, chunk_name: string) -> string {
 		return fmt.tprintf("%s: unknown Luau error", chunk_name)
 	}
 	return fmt.tprintf("%s: %s", chunk_name, luau_string(data, length))
+}
+
+luau_push_error :: proc "c" (L: Lua_State, message: string) -> c.int {
+	lua_pushlstring(L, cstring(raw_data(message)), c.size_t(len(message)))
+	return lua_error(L)
 }
 
 luau_string :: proc "c" (data: cstring, length: c.size_t) -> string {

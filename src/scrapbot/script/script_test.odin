@@ -17,6 +17,10 @@ test_luau_script_can_read_ecs_counts :: proc(t: ^testing.T) {
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
+scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+
 assert(scrapbot.entity_count() == 2)
 assert(scrapbot.renderable_count() == 1)
 `, "=test", &world)
@@ -60,6 +64,10 @@ velocity = [0, 2, 0]
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
+scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+
 scrapbot.system(function(delta_seconds)
 	scrapbot.query("autorotate", function(entity, autorotate)
 		local rotation = scrapbot.get_rotation(entity)
@@ -76,4 +84,62 @@ end)
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[0].rotation == shared.Vec3{0, 1, 0})
+}
+
+@(test)
+test_luau_script_must_define_scene_custom_components :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Spinner"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.components.autorotate]
+velocity = [0, 2, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `scrapbot.log("missing component declaration")`, "=test", &world)
+
+	testing.expect(t, !result.ran)
+	testing.expect(t, result.err == `scene component "autorotate" is not defined by scripts/main.luau; add scrapbot.component("autorotate", schema)`)
+}
+
+@(test)
+test_luau_component_schema_must_define_scene_fields :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Spinner"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.components.autorotate]
+velocity = [0, 2, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+scrapbot.component("autorotate", {
+	speed = "vec3",
+})
+`, "=test", &world)
+
+	testing.expect(t, !result.ran)
+	testing.expect(t, result.err == `scene component "autorotate" has field "velocity" that is not defined by scripts/main.luau`)
 }
