@@ -64,7 +64,7 @@ This was the first scripting slice. The current API has since grown a narrow ECS
 **Why:** This is enough for the first project-owned system, `autorotate.velocity`, while keeping the parser and Luau bridge small.
 **Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Namespaced component schemas are not registered yet. Luau receives component tables dynamically, and only transform rotation has mutation helpers.
 
-### 6. Poll project files for first hot reload
+### 6. Check project files periodically for first hot reload
 
 **Decision:** `--hot-reload` checks file modification stamps on a short interval while renderer frames are advancing.
 **Why:** Periodic checks are portable, backend-neutral, and enough to validate runtime state replacement before introducing platform file watching services.

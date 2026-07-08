@@ -12,10 +12,10 @@ The previous Zig prototype used Luau successfully. Alternatives such as Lua, Wre
 
 Embed Luau as Scrapbot's project scripting language. Vendor Luau as a pinned source dependency and link the compiled runtime into the Scrapbot CLI.
 
-The first integration executes `scripts/main.luau` when a project is run and exposes a tiny `scrapbot` API for logging and read-only ECS counts. Future slices will expand this into script components, scheduled script systems, typed API definitions, and hot reload.
+Project runs execute `scripts/main.luau` when present and expose a small `scrapbot` API for logging, ECS counts, project component declarations, frame systems, custom component queries, transform rotation mutation, and hot reload. Future slices will expand this into scheduled systems, richer typed APIs, modules, editor scripting, and native extension boundaries.
 
 ## Consequences
 
-Scrapbot gains a fast iteration path for project code without requiring native compilation. The engine can grow a stable scripting ABI around ECS concepts before exposing native extension boundaries.
+Scrapbot gains a fast iteration path for project code without requiring native compilation. Project scripts can define simple data components, attach systems to the runtime loop, and iterate through hot reload while the engine grows a stable scripting ABI around ECS concepts.
 
 Vendoring Luau adds a native C++ build step and platform-specific linker flags. Build tasks must keep that dependency explicit, and future Windows support will need a corresponding linker path.

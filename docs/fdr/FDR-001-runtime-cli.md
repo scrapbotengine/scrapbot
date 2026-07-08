@@ -1,7 +1,7 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-07
+**Last reviewed:** 2026-07-08
 
 ## Overview
 
@@ -35,7 +35,7 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005
+- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006
 - **FDRs:** FDR-002, FDR-003
 
 ## Open Questions
