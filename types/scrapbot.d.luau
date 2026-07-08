@@ -24,7 +24,6 @@ type ScrapbotVec3 = {
 
 type ScrapbotComponent<T> = {
 	name: string,
-	_type: T?,
 }
 
 type ScrapbotComponentSchema = {

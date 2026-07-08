@@ -25,7 +25,6 @@ type Vec3 = {
 
 type Component<T> = {
 	name: string,
-	_type: T?,
 }
 
 type Autorotate = {
@@ -87,7 +86,6 @@ type Vec3 = {
 
 type Component<T> = {
 	name: string,
-	_type: T?,
 }
 
 type Autorotate = {
