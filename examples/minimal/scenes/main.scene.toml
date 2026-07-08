@@ -15,7 +15,7 @@ far = 100
 name = "Left Cube"
 
 [entities.transform]
-position = [-1.25, 0, 0]
+position = [-2.25, 0, 0]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
