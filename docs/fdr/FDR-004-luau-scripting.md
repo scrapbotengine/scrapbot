@@ -15,6 +15,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - Script errors fail the run with a Luau diagnostic.
 - Scripts can call `scrapbot.log(message)`.
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
+- Projects include Luau LSP metadata so editors can type-check the `scrapbot` global.
 
 ## Design Decisions
 
@@ -35,6 +36,12 @@ Luau scripting lets project directories include fast-iteration game code without
 **Decision:** Keep Luau as a pinned git submodule and build static libraries through `mise`.
 **Why:** The local package manager distribution provides a CLI but not the embeddable headers and libraries Scrapbot needs.
 **Tradeoff:** Build tasks now own native dependency compilation and platform-specific linker flags.
+
+### 4. Ship project-local Luau editor definitions
+
+**Decision:** Generate `types/scrapbot.d.luau` and `.vscode/settings.json` for new projects.
+**Why:** The Luau language server uses `luau-lsp.types.definitionFiles` mappings for custom globals, and project scripts need the `scrapbot` global to be known outside the running engine.
+**Tradeoff:** The first editor integration is VS Code-oriented. Other editors may need equivalent Luau LSP settings until Scrapbot has editor-agnostic project metadata generation.
 
 ## Related
 

@@ -17,7 +17,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 
 Scrapbot currently has a small Odin CLI and runtime skeleton:
 
-- `scrapbot init [path] [name]` creates a text-first project with `project.toml` and `scenes/main.scene.toml`.
+- `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, and Luau LSP metadata.
 - `scrapbot check [path]` validates the project manifest and default scene.
 - `scrapbot run [path] [--backend null|wgpu] [--window] [--frames n] [--framegrab out.png]` loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, and submits the world through the selected renderer backend.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.

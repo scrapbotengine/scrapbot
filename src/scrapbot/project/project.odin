@@ -8,6 +8,8 @@ import shared "../shared"
 PROJECT_FILE :: shared.PROJECT_FILE
 DEFAULT_SCENE :: shared.DEFAULT_SCENE
 DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
+DEFAULT_LUAU_TYPES :: shared.DEFAULT_LUAU_TYPES
+DEFAULT_VSCODE_SETTINGS :: shared.DEFAULT_VSCODE_SETTINGS
 
 Project_Config :: shared.Project_Config
 Scene :: shared.Scene
@@ -60,6 +62,30 @@ scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))
 `
 }
 
+default_luau_types_template :: proc() -> string {
+	return `--!strict
+
+type Scrapbot = {
+	log: (message: any) -> (),
+	entity_count: () -> number,
+	renderable_count: () -> number,
+}
+
+declare scrapbot: Scrapbot
+`
+}
+
+default_vscode_settings_template :: proc() -> string {
+	return `{
+  "luau-lsp.platform.type": "standard",
+  "luau-lsp.sourcemap.enabled": false,
+  "luau-lsp.types.definitionFiles": {
+    "scrapbot": "types/scrapbot.d.luau"
+  }
+}
+`
+}
+
 init_project :: proc(root, name: string) -> string {
 	project_name := name
 	if project_name == "" {
@@ -91,6 +117,24 @@ init_project :: proc(root, name: string) -> string {
 		return fmt.tprintf("failed to create scripts directory: %v", err)
 	}
 
+	types_dir, join_types_err := filepath.join({root, "types"})
+	if join_types_err != nil {
+		return "failed to allocate types path"
+	}
+	defer delete(types_dir)
+	if err := os.make_directory_all(types_dir); err != nil {
+		return fmt.tprintf("failed to create types directory: %v", err)
+	}
+
+	vscode_dir, join_vscode_err := filepath.join({root, ".vscode"})
+	if join_vscode_err != nil {
+		return "failed to allocate editor settings path"
+	}
+	defer delete(vscode_dir)
+	if err := os.make_directory_all(vscode_dir); err != nil {
+		return fmt.tprintf("failed to create editor settings directory: %v", err)
+	}
+
 	project_path, join_project_err := filepath.join({root, PROJECT_FILE})
 	if join_project_err != nil {
 		return "failed to allocate project path"
@@ -119,6 +163,24 @@ init_project :: proc(root, name: string) -> string {
 	defer delete(script_path)
 	if err := os.write_entire_file(script_path, default_script_template()); err != nil {
 		return fmt.tprintf("failed to write %s: %v", script_path, err)
+	}
+
+	types_path, join_types_file_err := filepath.join({root, DEFAULT_LUAU_TYPES})
+	if join_types_file_err != nil {
+		return "failed to allocate Luau types path"
+	}
+	defer delete(types_path)
+	if err := os.write_entire_file(types_path, default_luau_types_template()); err != nil {
+		return fmt.tprintf("failed to write %s: %v", types_path, err)
+	}
+
+	vscode_settings_path, join_settings_err := filepath.join({root, DEFAULT_VSCODE_SETTINGS})
+	if join_settings_err != nil {
+		return "failed to allocate editor settings file path"
+	}
+	defer delete(vscode_settings_path)
+	if err := os.write_entire_file(vscode_settings_path, default_vscode_settings_template()); err != nil {
+		return fmt.tprintf("failed to write %s: %v", vscode_settings_path, err)
 	}
 
 	return ""

@@ -1,5 +1,7 @@
 package project
 
+import "core:os"
+import "core:path/filepath"
 import "core:testing"
 
 @(test)
@@ -25,4 +27,34 @@ default_scene = "scenes/main.scene.toml"
 test_project_config_rejects_unescaped_string_bodies :: proc(t: ^testing.T) {
 	_, result := parse_project_config("name = \"Bad \\ Game\"\ndefault_scene = \"scenes/main.scene.toml\"\n")
 	testing.expect(t, result.err == .Invalid_Field)
+}
+
+@(test)
+test_init_project_writes_luau_lsp_metadata :: proc(t: ^testing.T) {
+	parent, temp_err := os.make_directory_temp("", "scrapbot-init-*", context.temp_allocator)
+	testing.expect(t, temp_err == nil)
+	defer os.remove_all(parent)
+
+	root, join_root_err := filepath.join({parent, "project"})
+	testing.expect(t, join_root_err == nil)
+	defer delete(root)
+	defer os.remove_all(root)
+
+	init_err := init_project(root, "Typed Demo")
+	testing.expect(t, init_err == "")
+
+	types_path, join_types_err := filepath.join({root, DEFAULT_LUAU_TYPES})
+	testing.expect(t, join_types_err == nil)
+	defer delete(types_path)
+	settings_path, join_settings_err := filepath.join({root, DEFAULT_VSCODE_SETTINGS})
+	testing.expect(t, join_settings_err == nil)
+	defer delete(settings_path)
+
+	types_bytes, types_err := os.read_entire_file(types_path, context.temp_allocator)
+	testing.expect(t, types_err == nil)
+	testing.expect(t, string(types_bytes) == default_luau_types_template())
+
+	settings_bytes, settings_err := os.read_entire_file(settings_path, context.temp_allocator)
+	testing.expect(t, settings_err == nil)
+	testing.expect(t, string(settings_bytes) == default_vscode_settings_template())
 }

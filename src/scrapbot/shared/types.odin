@@ -3,6 +3,8 @@ package shared
 PROJECT_FILE :: "project.toml"
 DEFAULT_SCENE :: "scenes/main.scene.toml"
 DEFAULT_SCRIPT :: "scripts/main.luau"
+DEFAULT_LUAU_TYPES :: "types/scrapbot.d.luau"
+DEFAULT_VSCODE_SETTINGS :: ".vscode/settings.json"
 
 VERSION :: "0.1.0-dev"
 

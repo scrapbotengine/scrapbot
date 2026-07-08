@@ -24,6 +24,7 @@
 - [ ] Add a reflected component registry.
 - [ ] Add scheduled systems with declared component access.
 - [x] Execute a project-local Luau entry script during `scrapbot run`.
+- [x] Add Luau LSP metadata for the built-in `scrapbot` global.
 - [ ] Add Luau scripting for project-local systems.
 - [ ] Add native Odin extension loading and hot reload.
 
