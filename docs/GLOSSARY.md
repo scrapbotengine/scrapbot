@@ -50,6 +50,6 @@
 
 **Native extension** - Planned project-local compiled code that can register fast systems or engine integrations.
 
-**Hot reload** - Planned runtime behavior where scene files, scripts, shaders, or native extension code can be reloaded without restarting the engine.
+**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports polling reload for the default scene TOML and `scripts/main.luau`.
 
 **Editor GUI** - The planned in-engine editor interface toggled from a running project.

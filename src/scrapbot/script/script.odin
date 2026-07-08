@@ -141,6 +141,12 @@ destroy_runtime :: proc(runtime: ^Runtime) {
 	runtime^ = {}
 }
 
+rebind_runtime :: proc(runtime: ^Runtime) {
+	if runtime != nil && runtime.L != nil {
+		lua_setthreaddata(runtime.L, runtime)
+	}
+}
+
 step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> string {
 	if runtime == nil || runtime.L == nil {
 		return ""

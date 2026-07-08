@@ -9,6 +9,7 @@ Frame_System_Proc :: #type proc(data: rawptr, world: ^World, delta_seconds: f32)
 Run_Config :: struct {
 	backend:           Renderer_Backend,
 	window:            bool,
+	hot_reload:        bool,
 	max_frames:        u32,
 	framegrab_path:    string,
 	frame_system:      Frame_System_Proc,

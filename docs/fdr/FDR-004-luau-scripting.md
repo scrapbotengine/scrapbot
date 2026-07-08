@@ -13,6 +13,9 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot init` creates a starter `scripts/main.luau`.
 - `scrapbot run` executes the script after scene loading and ECS world construction.
 - Script errors fail the run with a Luau diagnostic.
+- `scrapbot run --hot-reload` polls `scripts/main.luau` and the default scene TOML during renderer frames.
+- Successful script reload replaces the active Luau runtime; failed script reload keeps the last good runtime.
+- Successful scene reload rebuilds the ECS world and validates `scripts/main.luau` against it before swapping state; failed scene reload keeps the last good world and runtime.
 - Scripts can call `scrapbot.log(message)`.
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
 - Scripts can define project components with `scrapbot.component(name, schema)`, where the first supported field type is `"vec3"`.
@@ -33,7 +36,7 @@ Luau scripting lets project directories include fast-iteration game code without
 
 **Decision:** Execute `scripts/main.luau` if it exists.
 **Why:** A single conventional entry point is enough to verify embedding, project layout, and CLI behavior before introducing modules or script systems.
-**Tradeoff:** There is no module loading or hot reload yet.
+**Tradeoff:** There is no module loading yet, and hot reload currently targets only this conventional entry script.
 
 ### 2. Expose read-only ECS inspection first
 
@@ -61,6 +64,12 @@ This was the first scripting slice. The current API has since grown a narrow ECS
 **Why:** This is enough for the first project-owned system, `autorotate.velocity`, while keeping the parser and Luau bridge small.
 **Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Namespaced component schemas are not registered yet. Luau receives component tables dynamically, and only transform rotation has mutation helpers.
 
+### 6. Poll project files for first hot reload
+
+**Decision:** `--hot-reload` polls file modification stamps once per renderer frame.
+**Why:** Polling is portable, backend-neutral, and enough to validate runtime state replacement before introducing platform file watching services.
+**Tradeoff:** Reloads only happen while frames are advancing, and the first implementation watches the active default scene and `scripts/main.luau` rather than every project asset.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-002, ADR-006
@@ -71,4 +80,4 @@ This was the first scripting slice. The current API has since grown a narrow ECS
 - How should script systems declare component access before the ECS scheduler becomes real?
 - How should component schemas become typed generated Luau APIs instead of stringly runtime declarations?
 - Should Luau modules resolve from project-local script directories, engine packages, or both?
-- What file-watching contract should drive script hot reload?
+- What file-watching contract should replace polling once Scrapbot has runtime services?

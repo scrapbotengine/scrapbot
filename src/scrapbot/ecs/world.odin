@@ -1,5 +1,6 @@
 package ecs
 
+import "core:strings"
 import shared "../shared"
 
 Scene :: shared.Scene
@@ -16,7 +17,17 @@ Custom_Component :: shared.Custom_Component
 INVALID_COMPONENT_INDEX :: -1
 
 destroy_world :: proc(world: ^World) {
+	for entity in world.entities {
+		delete(entity.name)
+	}
+	for mesh in world.meshes {
+		delete(mesh.primitive)
+	}
 	for &component in world.custom_components {
+		delete(component.name)
+		for field in component.vec3_fields {
+			delete(field.name)
+		}
 		delete(component.vec3_fields)
 	}
 	delete(world.entities)
@@ -34,7 +45,7 @@ build_world :: proc(scene: ^Scene) -> World {
 		id := Entity{index = u32(len(world.entities)), generation = 1}
 		world_entity := World_Entity {
 			id              = id,
-			name            = entity.name,
+			name            = clone_world_string(entity.name),
 			transform_index = INVALID_COMPONENT_INDEX,
 			camera_index    = INVALID_COMPONENT_INDEX,
 			mesh_index      = INVALID_COMPONENT_INDEX,
@@ -50,15 +61,19 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 		if entity.has_mesh {
 			world_entity.mesh_index = len(world.meshes)
-			append(&world.meshes, entity.mesh)
+			mesh := entity.mesh
+			mesh.primitive = clone_world_string(entity.mesh.primitive)
+			append(&world.meshes, mesh)
 		}
 		for component in entity.custom_components {
 			world_component := Custom_Component {
 				entity_index = int(id.index),
-				name         = component.name,
+				name         = clone_world_string(component.name),
 			}
 			for field in component.vec3_fields {
-				append(&world_component.vec3_fields, field)
+				world_field := field
+				world_field.name = clone_world_string(field.name)
+				append(&world_component.vec3_fields, world_field)
 			}
 			append(&world.custom_components, world_component)
 		}
@@ -77,6 +92,17 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 	}
 	return world
+}
+
+clone_world_string :: proc(value: string) -> string {
+	if value == "" {
+		return ""
+	}
+	cloned, err := strings.clone(value)
+	if err != nil {
+		return ""
+	}
+	return cloned
 }
 
 render_frame_from_world :: proc(world: ^World) -> Render_Frame {

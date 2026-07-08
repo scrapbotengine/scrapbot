@@ -45,6 +45,20 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
 
+	if run_config.hot_reload {
+		hot_reload: Hot_Reload_State
+		defer destroy_hot_reload_state(&hot_reload)
+		if err := init_hot_reload_state(&hot_reload, root, &loaded, &world); err != "" {
+			result.err = err
+			return result
+		}
+
+		run_config.frame_system = hot_reload_frame_system
+		run_config.frame_system_data = &hot_reload
+		result.frame, result.err = render.run_renderer(run_config, &world)
+		return result
+	}
+
 	script_runtime: script.Runtime
 	defer script.destroy_runtime(&script_runtime)
 	script_result := script.run_project_script(&script_runtime, root, &world)

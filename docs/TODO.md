@@ -16,7 +16,8 @@
 
 - [ ] Add a real TOML parser or formalize the supported scene subset.
 - [x] Add component indexes so sparse ECS component storage maps entities precisely.
-- [ ] Add file watching for scene hot reload.
+- [x] Add polling hot reload for the default scene and project Luau script.
+- [ ] Replace polling hot reload with platform file watching when runtime services exist.
 - [ ] Add structured diagnostics for `scrapbot check`.
 
 ## ECS And Scripting

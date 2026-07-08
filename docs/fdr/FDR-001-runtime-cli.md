@@ -15,6 +15,7 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 - Users can run a project through the selected renderer backend.
 - Users can request a platform window for renderer runs and limit windowed runs with `--frames`.
 - Users can request a headless WGPU PNG framegrab with `--framegrab`.
+- Users can pass `--hot-reload` to poll the default scene TOML and `scripts/main.luau` during renderer frames.
 - Users can ask for top-level help or command-specific help.
 - During development, `mise scrapbot` builds and runs the CLI with forwarded arguments.
 

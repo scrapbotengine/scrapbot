@@ -19,12 +19,12 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, and Luau LSP metadata.
 - `scrapbot check [path]` validates the project manifest and default scene.
-- `scrapbot run [path] [--backend null|wgpu] [--window] [--frames n] [--framegrab out.png]` loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered script systems, and submits the world through the selected renderer backend.
+- `scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--frames n] [--framegrab out.png]` loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered script systems, and submits the world through the selected renderer backend.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed script-defined component handles, custom component queries, and transform rotation updates.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed script-defined component handles, custom component queries, transform rotation updates, and polling hot reload for the default scene plus `scripts/main.luau`.
 
 Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
 
@@ -46,7 +46,7 @@ Run the full local test suite with `mise test`.
   - [ ] Project templates
   - [ ] Scene migrations
 - Reloading
-  - [ ] Live reload
+  - [x] Live reload
   - [ ] Structured diagnostics
 - Distribution
   - [ ] Host game builds
@@ -79,7 +79,7 @@ Run the full local test suite with `mise test`.
   - [x] Luau type definitions
   - [x] Basic script components
   - [x] Basic script systems
-  - [ ] Script hot reload
+  - [x] Script hot reload
   - [ ] Reflected script components
   - [ ] Scheduled script systems
   - [ ] Editor scripting
