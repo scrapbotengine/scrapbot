@@ -3,6 +3,7 @@ package project
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import shared "../shared"
 
 Parse_Error :: enum {
 	None,
@@ -95,7 +96,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if current == nil {
 				return scene, fail(.Invalid_Syntax, fmt.tprintf("%s appears before [[entities]]", line))
 			}
-			if !is_component_name(component_name) {
+			if !shared.component_name_is_valid(component_name) {
 				return scene, fail(.Invalid_Field, fmt.tprintf("invalid component name '%s'", component_name))
 			}
 			append(&current.custom_components, Custom_Component{name = component_name})
@@ -165,7 +166,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if current_component == nil {
 				return scene, fail(.Invalid_Syntax, "component fields must appear under [entities.components.<name>]")
 			}
-			if !is_component_name(key) {
+			if !shared.component_token_is_valid(key) {
 				return scene, fail(.Invalid_Field, fmt.tprintf("invalid component field '%s'", key))
 			}
 			vec: Vec3
@@ -201,19 +202,6 @@ parse_component_section :: proc(line: string) -> (name: string, ok: bool) {
 	}
 	name = line[len(prefix):len(line) - 1]
 	return name, true
-}
-
-is_component_name :: proc(name: string) -> bool {
-	if name == "" {
-		return false
-	}
-	for c in name {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 strip_comment :: proc(line: string) -> string {

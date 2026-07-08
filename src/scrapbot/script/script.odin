@@ -236,6 +236,12 @@ scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 		return luau_push_error(L, "scrapbot.component component name must be a string")
 	}
 	component_name := luau_string(name_data, name_length)
+	if !shared.component_name_is_valid(component_name) {
+		return luau_push_error(L, "component name must be dot-separated identifier tokens")
+	}
+	if !shared.component_name_is_project_level(component_name) {
+		return luau_push_error(L, "project scripts can only define single-token project component names")
+	}
 
 	component_index, found := find_component_definition(runtime, component_name)
 	if !found {
@@ -301,6 +307,9 @@ validate_world_components :: proc(runtime: ^Runtime) -> string {
 	}
 
 	for component in runtime.world.custom_components {
+		if !shared.component_name_is_project_level(component.name) {
+			continue
+		}
 		definition, definition_ok := component_definition(runtime, component.name)
 		if !definition_ok {
 			return fmt.tprintf(

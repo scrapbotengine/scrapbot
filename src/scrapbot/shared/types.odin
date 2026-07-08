@@ -120,3 +120,47 @@ Render_Frame :: struct {
 	mesh_count:       int,
 	renderable_count: int,
 }
+
+component_name_is_valid :: proc "c" (name: string) -> bool {
+	if name == "" {
+		return false
+	}
+
+	token_start := 0
+	for c, index in name {
+		if c == '.' {
+			if !component_token_is_valid(name[token_start:index]) {
+				return false
+			}
+			token_start = index + 1
+		}
+	}
+
+	return component_token_is_valid(name[token_start:])
+}
+
+component_name_is_project_level :: proc "c" (name: string) -> bool {
+	return component_name_is_valid(name) && !component_name_is_namespaced(name)
+}
+
+component_name_is_namespaced :: proc "c" (name: string) -> bool {
+	for c in name {
+		if c == '.' {
+			return true
+		}
+	}
+	return false
+}
+
+component_token_is_valid :: proc "c" (token: string) -> bool {
+	if token == "" {
+		return false
+	}
+	for c in token {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}

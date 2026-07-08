@@ -30,6 +30,48 @@ test_project_config_rejects_unescaped_string_bodies :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_scene_accepts_namespaced_component_names :: proc(t: ^testing.T) {
+	scene, result := parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.scrappyphysics.rigidbody]
+velocity = [0, 0, 0]
+`)
+	defer destroy_scene(&scene)
+
+	testing.expect(t, result.err == .None)
+	testing.expect(t, len(scene.entities) == 1)
+	testing.expect(t, len(scene.entities[0].custom_components) == 1)
+	testing.expect(t, scene.entities[0].custom_components[0].name == "scrappyphysics.rigidbody")
+}
+
+@(test)
+test_scene_rejects_malformed_component_names :: proc(t: ^testing.T) {
+	scene, result := parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.scrappyphysics..rigidbody]
+velocity = [0, 0, 0]
+`)
+	defer destroy_scene(&scene)
+
+	testing.expect(t, result.err == .Invalid_Field)
+}
+
+@(test)
+test_scene_component_fields_are_single_tokens :: proc(t: ^testing.T) {
+	scene, result := parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.autorotate]
+rotation.velocity = [0, 0, 0]
+`)
+	defer destroy_scene(&scene)
+
+	testing.expect(t, result.err == .Invalid_Field)
+}
+
+@(test)
 test_init_project_writes_luau_lsp_metadata :: proc(t: ^testing.T) {
 	parent, temp_err := os.make_directory_temp("", "scrapbot-init-*", context.temp_allocator)
 	testing.expect(t, temp_err == nil)

@@ -12,7 +12,7 @@
 
 **Entity** - A generation-aware identifier for one object in a Scrapbot world.
 
-**Component** - A typed piece of data attached to an entity, such as a transform, camera, or mesh reference.
+**Component** - A typed piece of data attached to an entity, such as a transform, camera, or mesh reference. Single-token names like `autorotate` identify project-level components; dotted names like `scrapbot.transform` or `scrappyphysics.rigidbody` identify engine or library components.
 
 **System** - Runtime logic that reads or writes components for matching entities.
 

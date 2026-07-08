@@ -173,6 +173,42 @@ scrapbot.component("autorotate", {
 }
 
 @(test)
+test_luau_scripts_can_only_define_project_level_components :: proc(t: ^testing.T) {
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+scrapbot.component("scrapbot.transform", {
+	position = "vec3",
+})
+`, "=test", nil)
+
+	testing.expect(t, !result.ran)
+	testing.expect(t, result.err == "=test: project scripts can only define single-token project component names")
+}
+
+@(test)
+test_luau_script_validation_skips_namespaced_scene_components :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.scrappyphysics.rigidbody]
+velocity = [0, 0, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `scrapbot.log("namespaced component")`, "=test", &world)
+
+	testing.expect(t, result.ran)
+	testing.expect(t, result.err == "")
+}
+
+@(test)
 test_luau_query_requires_component_handle :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(`[[entities]]
 name = "Spinner"

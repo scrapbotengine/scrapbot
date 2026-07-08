@@ -16,6 +16,8 @@ Luau scripting lets project directories include fast-iteration game code without
 - Scripts can call `scrapbot.log(message)`.
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
 - Scripts can define project components with `scrapbot.component(name, schema)`, where the first supported field type is `"vec3"`.
+- Single-token component names such as `autorotate` are project-level components.
+- Multi-token dotted component names such as `scrapbot.transform` or `scrappyphysics.rigidbody` are reserved for engine or library components.
 - `scrapbot.component` returns a typed component handle that scripts can cast to a project-local handle type.
 - Scripts can register frame systems with `scrapbot.system(function(delta_seconds) ... end)`.
 - Scripts can query scene-defined custom components with `scrapbot.query(component_handle, callback)`.
@@ -55,9 +57,9 @@ This was the first scripting slice. The current API has since grown a narrow ECS
 
 ### 5. Start custom components as simple scene data
 
-**Decision:** Allow scripts to define project components with `scrapbot.component(name, schema)` and let scene files attach matching data with `[entities.components.<name>]` sections whose initial fields are vec3 values. `scrapbot.component` returns a handle that selects the component at runtime, while query callbacks use explicit Luau annotations for the component payload type.
+**Decision:** Allow scripts to define project components with `scrapbot.component(name, schema)` and let scene files attach matching data with `[entities.components.<name>]` sections whose initial fields are vec3 values. Single-token component names are owned by the project, while multi-token dotted names are reserved for the engine or future libraries. `scrapbot.component` returns a handle that selects the component at runtime, while query callbacks use explicit Luau annotations for the component payload type.
 **Why:** This is enough for the first project-owned system, `autorotate.velocity`, while keeping the parser and Luau bridge small.
-**Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Luau receives component tables dynamically, and only transform rotation has mutation helpers.
+**Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Namespaced component schemas are not registered yet. Luau receives component tables dynamically, and only transform rotation has mutation helpers.
 
 ## Related
 
