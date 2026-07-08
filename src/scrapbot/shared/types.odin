@@ -2,6 +2,7 @@ package shared
 
 PROJECT_FILE :: "project.toml"
 DEFAULT_SCENE :: "scenes/main.scene.toml"
+DEFAULT_SCRIPT :: "scripts/main.luau"
 
 VERSION :: "0.1.0-dev"
 

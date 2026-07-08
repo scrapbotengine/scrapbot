@@ -23,10 +23,11 @@ For narrower loops:
 ```sh
 odin build src/scrapbot_cli -out:bin/scrapbot
 odin check src/scrapbot -no-entry-point
-odin test src/scrapbot -all-packages
 odin test src/scrapbot/render
 bin/scrapbot help run
 ```
+
+Do not run `odin test src/scrapbot -all-packages` directly unless you also pass the Luau native linker flags from `mise.toml`; the script package links against the vendored Luau static libraries. Prefer `mise test` for full-package tests.
 
 ## CLI Smoke Tests
 

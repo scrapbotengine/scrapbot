@@ -3,6 +3,7 @@ package scrapbot
 import ecs "./ecs"
 import project "./project"
 import render "./render"
+import script "./script"
 import shared "./shared"
 
 VERSION :: "0.1.0-dev"
@@ -42,6 +43,12 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
+
+	script_result := script.run_project_script(root, &world)
+	if script_result.err != "" {
+		result.err = script_result.err
+		return result
+	}
 
 	result.frame, result.err = render.run_renderer(config, &world)
 	return result

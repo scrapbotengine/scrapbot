@@ -7,6 +7,7 @@ import shared "../shared"
 
 PROJECT_FILE :: shared.PROJECT_FILE
 DEFAULT_SCENE :: shared.DEFAULT_SCENE
+DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
 
 Project_Config :: shared.Project_Config
 Scene :: shared.Scene
@@ -52,6 +53,13 @@ primitive = "cube"
 `
 }
 
+default_script_template :: proc() -> string {
+	return `scrapbot.log("hello from Scrapbot")
+scrapbot.log("entities: " .. tostring(scrapbot.entity_count()))
+scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))
+`
+}
+
 init_project :: proc(root, name: string) -> string {
 	project_name := name
 	if project_name == "" {
@@ -74,6 +82,15 @@ init_project :: proc(root, name: string) -> string {
 		return fmt.tprintf("failed to create scenes directory: %v", err)
 	}
 
+	scripts_dir, join_scripts_err := filepath.join({root, "scripts"})
+	if join_scripts_err != nil {
+		return "failed to allocate scripts path"
+	}
+	defer delete(scripts_dir)
+	if err := os.make_directory_all(scripts_dir); err != nil {
+		return fmt.tprintf("failed to create scripts directory: %v", err)
+	}
+
 	project_path, join_project_err := filepath.join({root, PROJECT_FILE})
 	if join_project_err != nil {
 		return "failed to allocate project path"
@@ -93,6 +110,15 @@ init_project :: proc(root, name: string) -> string {
 	defer delete(scene_path)
 	if err := os.write_entire_file(scene_path, default_scene_template()); err != nil {
 		return fmt.tprintf("failed to write %s: %v", scene_path, err)
+	}
+
+	script_path, join_script_err := filepath.join({root, DEFAULT_SCRIPT})
+	if join_script_err != nil {
+		return "failed to allocate script path"
+	}
+	defer delete(script_path)
+	if err := os.write_entire_file(script_path, default_script_template()); err != nil {
+		return fmt.tprintf("failed to write %s: %v", script_path, err)
 	}
 
 	return ""
