@@ -1,7 +1,7 @@
 # FDR-004: Luau scripting
 
 **Status:** Active
-**Last reviewed:** 2026-07-10
+**Last reviewed:** 2026-07-11
 
 ## Overview
 
@@ -25,6 +25,8 @@ Luau scripting lets project directories include fast-iteration game code without
 - The engine registry currently contains built-in `scrapbot.transform`, `scrapbot.camera`, and `scrapbot.mesh` component names.
 - `scrapbot.component` returns a typed component handle that scripts can cast to a generated component handle type.
 - Scripts can register frame systems with `scrapbot.system(function(delta_seconds) ... end)`.
+- Scripts can declare system component access with `scrapbot.system({ reads = {...}, writes = {...} }, function(delta_seconds) ... end)`.
+- Script system access declarations accept project component handles or registered component-name strings.
 - Scripts can query scene-defined custom components with `scrapbot.query(component_handle, callback)`.
 - Project scripts annotate query callback component parameters with generated component payload aliases such as `Autorotate`.
 - Scripts can read and write entity rotation through `scrapbot.get_rotation(entity)` and `scrapbot.set_rotation(entity, rotation)`.
@@ -47,6 +49,8 @@ Luau scripting lets project directories include fast-iteration game code without
 **Tradeoff:** Useful gameplay scripting still needs component APIs, queries, and system scheduling.
 
 This was the first scripting slice. The current API has since grown a narrow ECS bridge for frame systems, custom component queries, and transform rotation mutation.
+
+Access-declared systems now feed the runtime scheduler, but Luau execution remains serial.
 
 ### 3. Vendor Luau from source
 
@@ -78,14 +82,19 @@ This was the first scripting slice. The current API has since grown a narrow ECS
 **Why:** Periodic checks are portable, backend-neutral, and enough to validate runtime state replacement before introducing platform file watching services.
 **Tradeoff:** Reloads are not immediate, and the first implementation watches the active default scene and `scripts/main.luau` rather than every project asset.
 
+### 8. Feed Luau system declarations into the scheduler
+
+**Decision:** Let Luau systems declare component reads and writes in an options table before the callback.
+**Why:** The same script API that users write now should produce the scheduling metadata needed for future parallel execution.
+**Tradeoff:** Access declarations are manually maintained for now. The runtime validates component names, but it does not yet enforce that system bodies only touch declared components.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-002, ADR-006
-- **FDRs:** FDR-001, FDR-002
+- **FDRs:** FDR-001, FDR-002, FDR-005
 
 ## Open Questions
 
-- How should script systems declare component access before the ECS scheduler becomes real?
 - Should `scrapbot check` invoke a Luau analyzer once the local Luau toolchain builds one?
 - Should Luau modules resolve from project-local script directories, engine packages, or both?
 - What file-watching contract should replace polling once Scrapbot has runtime services?

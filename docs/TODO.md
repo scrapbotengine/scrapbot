@@ -23,7 +23,7 @@
 ## ECS And Scripting
 
 - [x] Reflect component registry metadata into editor/tooling APIs.
-- [ ] Add scheduled systems with declared component access.
+- [x] Add scheduled systems with declared component access.
 - [x] Execute a project-local Luau entry script during `scrapbot run`.
 - [x] Add Luau LSP metadata for the built-in `scrapbot` global.
 - [x] Add a first Luau system bridge for project-local systems.

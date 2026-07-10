@@ -7,11 +7,12 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import component "../component"
+import schedule "../schedule"
 import shared "../shared"
 
 DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
 DEFAULT_SCRIPT_CHUNK :: "=" + DEFAULT_SCRIPT
-MAX_SCRIPT_SYSTEMS :: 64
+MAX_SCRIPT_SYSTEMS :: schedule.MAX_SYSTEMS
 World :: shared.World
 Vec3 :: shared.Vec3
 Transform_Component :: shared.Transform_Component
@@ -38,6 +39,7 @@ Runtime :: struct {
 
 Script_System :: struct {
 	callback_ref: c.int,
+	declaration: schedule.System,
 }
 
 run_project_script :: proc(runtime: ^Runtime, root: string, world: ^World) -> Run_Result {
@@ -155,14 +157,31 @@ step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> st
 	}
 	runtime.world = world
 	L := runtime.L
-	for system in runtime.systems[:runtime.system_count] {
+	scheduled_systems: [MAX_SCRIPT_SYSTEMS]schedule.System
+	for system, index in runtime.systems[:runtime.system_count] {
+		scheduled_systems[index] = system.declaration
+	}
+	plan := schedule.build_plan(scheduled_systems[:runtime.system_count])
+
+	for batch in plan.batches[:plan.batch_count] {
+		for i in 0..<batch.system_count {
+			system_index := batch.system_indices[i]
+			system := runtime.systems[system_index]
+			if err := run_script_system(L, system, delta_seconds); err != "" {
+				return err
+			}
+		}
+	}
+	return ""
+}
+
+run_script_system :: proc(L: Lua_State, system: Script_System, delta_seconds: f32) -> string {
 		lua_rawgeti(L, LUA_REGISTRYINDEX, system.callback_ref)
 		lua_pushnumber(L, f64(delta_seconds))
 		status := lua_pcall(L, 1, 0, 0)
 		if status != LUA_OK {
 			return luau_stack_error(L, "Luau system")
 		}
-	}
 	return ""
 }
 
@@ -297,14 +316,115 @@ scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 
 scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
-	if runtime == nil || runtime.system_count >= MAX_SCRIPT_SYSTEMS || lua_type(L, 1) != LUA_TFUNCTION {
+	if runtime == nil {
 		return 0
 	}
+	if runtime.system_count >= MAX_SCRIPT_SYSTEMS {
+		return luau_push_error(L, "too many script systems")
+	}
 
-	callback_ref := lua_ref(L, 1)
-	runtime.systems[runtime.system_count] = Script_System{callback_ref = callback_ref}
+	callback_index := c.int(1)
+	declaration: schedule.System
+	if lua_type(L, 1) == LUA_TTABLE && lua_type(L, 2) == LUA_TFUNCTION {
+		if err := read_system_options(L, runtime, 1, &declaration); err != "" {
+			return luau_push_error(L, err)
+		}
+		callback_index = 2
+	} else if lua_type(L, 1) != LUA_TFUNCTION {
+		return luau_push_error(L, "scrapbot.system expects a callback or options table and callback")
+	}
+
+	callback_ref := lua_ref(L, callback_index)
+	runtime.systems[runtime.system_count] = Script_System {
+		callback_ref = callback_ref,
+		declaration = declaration,
+	}
 	runtime.system_count += 1
 	return 0
+}
+
+read_system_options :: proc "c" (
+	L: Lua_State,
+	runtime: ^Runtime,
+	options_index: c.int,
+	declaration: ^schedule.System,
+) -> string {
+	if err := read_system_access_list(L, runtime, options_index, "reads", .Read, declaration); err != "" {
+		return err
+	}
+	if err := read_system_access_list(L, runtime, options_index, "writes", .Write, declaration); err != "" {
+		return err
+	}
+	return ""
+}
+
+read_system_access_list :: proc "c" (
+	L: Lua_State,
+	runtime: ^Runtime,
+	options_index: c.int,
+	field: cstring,
+	mode: schedule.Access_Mode,
+	declaration: ^schedule.System,
+) -> string {
+	lua_getfield(L, options_index, field)
+	defer lua_settop(L, -2)
+	if lua_type(L, -1) == 0 {
+		return ""
+	}
+	if lua_type(L, -1) != LUA_TTABLE {
+		return "system access declarations must be arrays"
+	}
+
+	lua_pushnil(L)
+	for lua_next(L, -2) != 0 {
+		name, err := component_reference_argument(L, runtime, -1)
+		if err != "" {
+			return err
+		}
+		if declaration.access_count >= schedule.MAX_SYSTEM_ACCESSES {
+			return "too many system component access declarations"
+		}
+		declaration.accesses[declaration.access_count] = schedule.Access {
+			component = name,
+			mode      = mode,
+		}
+		declaration.access_count += 1
+		lua_settop(L, -2)
+	}
+
+	return ""
+}
+
+component_reference_argument :: proc "c" (
+	L: Lua_State,
+	runtime: ^Runtime,
+	index: c.int,
+) -> (name: string, err: string) {
+	if lua_type(L, index) == LUA_TSTRING {
+		name_length: c.size_t
+		name_data := lua_tolstring(L, index, &name_length)
+		if name_data == nil {
+			return "", "component access declaration must be a component handle or registered component name"
+		}
+		name = luau_string(name_data, name_length)
+	} else if lua_type(L, index) == LUA_TTABLE {
+		name_length: c.size_t
+		lua_getfield(L, index, "name")
+		name_data := lua_tolstring(L, -1, &name_length)
+		if name_data == nil {
+			lua_settop(L, -2)
+			return "", "component access declaration handle must contain a name"
+		}
+		name = luau_string(name_data, name_length)
+		lua_settop(L, -2)
+	} else {
+		return "", "component access declaration must be a component handle or registered component name"
+	}
+
+	if _, registered := component.find_definition(&runtime.registry, name); !registered {
+		return "", "system access declaration references unregistered component"
+	}
+	return name, ""
 }
 
 validate_world_components :: proc(runtime: ^Runtime) -> string {

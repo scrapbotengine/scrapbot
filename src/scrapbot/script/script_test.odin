@@ -115,6 +115,71 @@ end)
 }
 
 @(test)
+test_luau_system_accepts_declared_component_access :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Spinner"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.components.autorotate]
+velocity = [0, 2, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+local AutorotateComponent = scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+
+scrapbot.system({
+	reads = { AutorotateComponent },
+	writes = { "scrapbot.transform" },
+}, function(delta_seconds)
+	scrapbot.query(AutorotateComponent, function(entity, autorotate)
+		local rotation = scrapbot.get_rotation(entity)
+		rotation.y += autorotate.velocity.y * delta_seconds
+		scrapbot.set_rotation(entity, rotation)
+	end)
+end)
+`, "=test", &world)
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+	testing.expect(t, runtime.system_count == 1)
+	testing.expect(t, runtime.systems[0].declaration.access_count == 2)
+	testing.expect(t, runtime.systems[0].declaration.accesses[0].component == "autorotate")
+	testing.expect(t, runtime.systems[0].declaration.accesses[0].mode == .Read)
+	testing.expect(t, runtime.systems[0].declaration.accesses[1].component == "scrapbot.transform")
+	testing.expect(t, runtime.systems[0].declaration.accesses[1].mode == .Write)
+
+	step_err := step_runtime(&runtime, &world, 0.5)
+	testing.expect(t, step_err == "")
+	testing.expect(t, world.transforms[0].rotation.y == 1)
+}
+
+@(test)
+test_luau_system_rejects_unregistered_access_components :: proc(t: ^testing.T) {
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+scrapbot.system({
+	writes = { "scrappyphysics.rigidbody" },
+}, function() end)
+`, "=test", nil)
+
+	testing.expect(t, !result.ran)
+	testing.expect(t, result.err == "=test: system access declaration references unregistered component")
+}
+
+@(test)
 test_luau_script_must_define_scene_custom_components :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(`[[entities]]
 name = "Spinner"
