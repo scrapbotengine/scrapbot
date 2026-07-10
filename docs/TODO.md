@@ -32,6 +32,7 @@
 - [x] Add typed Luau component handles for query callbacks.
 - [x] Add reflected Luau component schemas and generated typed component APIs.
 - [x] Add an engine component registry for dotted component names.
+- [x] Add deferred Luau spawn/despawn commands.
 - [ ] Add library component registration for dotted component names.
 - [ ] Add a Luau analyzer check for example project scripts.
 - [ ] Add native Odin extension loading and hot reload.

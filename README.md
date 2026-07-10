@@ -24,7 +24,7 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed script-defined component handles, access-declared scheduled systems, custom component queries, transform rotation updates, generated component type aliases, and periodic hot reload for the default scene plus `scripts/main.luau`. A small component registry validates project-level Luau components and known engine component names.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed script-defined component handles, access-declared scheduled systems, custom component queries, transform rotation updates, deferred entity spawn/despawn commands, generated component type aliases, and periodic hot reload for the default scene plus `scripts/main.luau`. A small component registry validates project-level Luau components and known engine component names.
 
 Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
 
@@ -66,7 +66,7 @@ Run the full local test suite with `mise test`.
 - Scheduling
   - [x] Scheduled systems
   - [x] Access-controlled systems
-  - [ ] Deferred mutations
+  - [x] Deferred mutations
   - [ ] Parallel system scheduling
 - Queries
   - [ ] Bulk Luau query views

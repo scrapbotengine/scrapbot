@@ -180,6 +180,141 @@ scrapbot.system({
 }
 
 @(test)
+test_luau_spawn_is_deferred_until_after_system_step :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Source"
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+local frame = 0
+
+scrapbot.system(function()
+	frame += 1
+	if frame == 1 then
+		assert(scrapbot.entity_count() == 1)
+		scrapbot.spawn({ name = "Deferred Spawn" })
+		assert(scrapbot.entity_count() == 1)
+	else
+		assert(scrapbot.entity_count() == 2)
+	end
+end)
+`, "=test", &world)
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+
+	step_err := step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err == "")
+	testing.expect(t, ecs.alive_entity_count(&world) == 2)
+	testing.expect(t, world.entities[1].name == "Deferred Spawn")
+
+	step_err = step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err == "")
+	testing.expect(t, ecs.alive_entity_count(&world) == 2)
+}
+
+@(test)
+test_luau_despawn_is_deferred_until_after_query_iteration :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "First"
+
+[entities.components.autorotate]
+velocity = [0, 1, 0]
+
+[[entities]]
+name = "Second"
+
+[entities.components.autorotate]
+velocity = [0, 1, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+local AutorotateComponent = scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+local frame = 0
+
+scrapbot.system(function()
+	frame += 1
+	local query_count = 0
+	scrapbot.query(AutorotateComponent, function(entity)
+		query_count += 1
+		if frame == 1 then
+			scrapbot.despawn(entity)
+		end
+	end)
+
+	if frame == 1 then
+		assert(query_count == 2)
+		assert(scrapbot.entity_count() == 2)
+	else
+		assert(query_count == 0)
+		assert(scrapbot.entity_count() == 0)
+	end
+end)
+`, "=test", &world)
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+
+	step_err := step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err == "")
+	testing.expect(t, ecs.alive_entity_count(&world) == 0)
+
+	step_err = step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err == "")
+	testing.expect(t, ecs.alive_entity_count(&world) == 0)
+}
+
+@(test)
+test_luau_deferred_commands_are_discarded_when_system_errors :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Source"
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+local frame = 0
+
+scrapbot.system(function()
+	frame += 1
+	if frame == 1 then
+		scrapbot.spawn({ name = "Should Not Exist" })
+		error("failed frame")
+	end
+end)
+`, "=test", &world)
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+
+	step_err := step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err != "")
+	testing.expect(t, ecs.alive_entity_count(&world) == 1)
+
+	step_err = step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err == "")
+	testing.expect(t, ecs.alive_entity_count(&world) == 1)
+}
+
+@(test)
 test_luau_script_must_define_scene_custom_components :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(`[[entities]]
 name = "Spinner"

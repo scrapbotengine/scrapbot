@@ -4,7 +4,7 @@ Scrapbot keeps `src/scrapbot` as the public runtime facade imported by the CLI. 
 
 - `scrapbot/shared` - Shared data contracts used across runtime packages.
 - `scrapbot/project` - Project manifests, scene parsing, project creation, and loading.
-- `scrapbot/ecs` - World construction and ECS-owned runtime state helpers.
+- `scrapbot/ecs` - World construction, ECS-owned runtime state helpers, and deferred world command application.
 - `scrapbot/component` - Component registry, schema validation helpers, and Luau type generation.
 - `scrapbot/schedule` - System access declarations and conflict-free batch planning.
 - `scrapbot/platform` - Platform window and event integration.

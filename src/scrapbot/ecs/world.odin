@@ -45,6 +45,7 @@ build_world :: proc(scene: ^Scene) -> World {
 		id := Entity{index = u32(len(world.entities)), generation = 1}
 		world_entity := World_Entity {
 			id              = id,
+			alive           = true,
 			name            = clone_world_string(entity.name),
 			transform_index = INVALID_COMPONENT_INDEX,
 			camera_index    = INVALID_COMPONENT_INDEX,
@@ -107,11 +108,58 @@ clone_world_string :: proc(value: string) -> string {
 
 render_frame_from_world :: proc(world: ^World) -> Render_Frame {
 	return Render_Frame {
-		entity_count     = len(world.entities),
-		camera_count     = len(world.cameras),
-		mesh_count       = len(world.meshes),
-		renderable_count = len(world.renderables),
+		entity_count     = alive_entity_count(world),
+		camera_count     = alive_camera_count(world),
+		mesh_count       = alive_mesh_count(world),
+		renderable_count = alive_renderable_count(world),
 	}
+}
+
+entity_is_alive :: proc "c" (world: ^World, entity_index: int) -> bool {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return false
+	}
+	return world.entities[entity_index].alive
+}
+
+alive_entity_count :: proc "c" (world: ^World) -> int {
+	count := 0
+	for entity in world.entities {
+		if entity.alive {
+			count += 1
+		}
+	}
+	return count
+}
+
+alive_renderable_count :: proc(world: ^World) -> int {
+	count := 0
+	for renderable in world.renderables {
+		if entity_is_alive(world, renderable.entity_index) {
+			count += 1
+		}
+	}
+	return count
+}
+
+alive_camera_count :: proc(world: ^World) -> int {
+	count := 0
+	for entity in world.entities {
+		if entity.alive && entity.camera_index >= 0 {
+			count += 1
+		}
+	}
+	return count
+}
+
+alive_mesh_count :: proc(world: ^World) -> int {
+	count := 0
+	for entity in world.entities {
+		if entity.alive && entity.mesh_index >= 0 {
+			count += 1
+		}
+	}
+	return count
 }
 
 build_render_list :: proc(world: ^World) -> Render_List {
@@ -119,6 +167,9 @@ build_render_list :: proc(world: ^World) -> Render_List {
 	list.camera, list.has_camera = first_camera_instance(world)
 
 	for renderable in world.renderables {
+		if !entity_is_alive(world, renderable.entity_index) {
+			continue
+		}
 		instance, ok := render_instance_from_renderable(world, renderable)
 		if !ok {
 			continue
@@ -138,6 +189,9 @@ render_instance_from_renderable :: proc(world: ^World, renderable: Renderable) -
 	if renderable.entity_index < 0 || renderable.entity_index >= len(world.entities) {
 		return {}, false
 	}
+	if !world.entities[renderable.entity_index].alive {
+		return {}, false
+	}
 	if renderable.transform_index < 0 || renderable.transform_index >= len(world.transforms) {
 		return {}, false
 	}
@@ -154,6 +208,9 @@ render_instance_from_renderable :: proc(world: ^World, renderable: Renderable) -
 
 first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: bool) {
 	for entity in world.entities {
+		if !entity.alive {
+			continue
+		}
 		if entity.camera_index < 0 || entity.camera_index >= len(world.cameras) {
 			continue
 		}

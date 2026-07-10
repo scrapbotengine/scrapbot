@@ -30,6 +30,8 @@ Luau scripting lets project directories include fast-iteration game code without
 - Scripts can query scene-defined custom components with `scrapbot.query(component_handle, callback)`.
 - Project scripts annotate query callback component parameters with generated component payload aliases such as `Autorotate`.
 - Scripts can read and write entity rotation through `scrapbot.get_rotation(entity)` and `scrapbot.set_rotation(entity, rotation)`.
+- Scripts can queue entity lifecycle changes with `scrapbot.spawn({ name = "..." })` and `scrapbot.despawn(entity)`.
+- Spawn and despawn requests are deferred until after all scheduled systems have run for the frame.
 - Scene files can attach simple custom vec3 component data with `[entities.components.<name>]` sections.
 - Scene custom component data must match its registered schema. Project-level component schemas come from `scripts/main.luau`; engine component schemas come from the engine registry.
 - Projects include Luau LSP metadata so editors can type-check the `scrapbot` global, engine component aliases, and project component aliases.
@@ -51,6 +53,8 @@ Luau scripting lets project directories include fast-iteration game code without
 This was the first scripting slice. The current API has since grown a narrow ECS bridge for frame systems, custom component queries, and transform rotation mutation.
 
 Access-declared systems now feed the runtime scheduler, but Luau execution remains serial.
+
+Structural mutations requested by Luau systems are now deferred through an engine command buffer and applied after the frame's scheduled systems have completed.
 
 ### 3. Vendor Luau from source
 
@@ -87,6 +91,12 @@ Access-declared systems now feed the runtime scheduler, but Luau execution remai
 **Decision:** Let Luau systems declare component reads and writes in an options table before the callback.
 **Why:** The same script API that users write now should produce the scheduling metadata needed for future parallel execution.
 **Tradeoff:** Access declarations are manually maintained for now. The runtime validates component names, but it does not yet enforce that system bodies only touch declared components.
+
+### 9. Expose entity lifecycle through deferred commands
+
+**Decision:** Add `scrapbot.spawn` and `scrapbot.despawn` as deferred Luau APIs instead of mutating the world immediately.
+**Why:** Project systems need a basic way to create and remove entities, but immediate structural mutation would make queries and future parallel scheduling much harder to reason about.
+**Tradeoff:** Spawned/despawned entities are visible after the current frame step, and spawned entities currently start as bare named entities without component payload construction.
 
 ## Related
 

@@ -75,6 +75,7 @@ Custom_Component :: struct {
 
 World_Entity :: struct {
 	id:              Entity,
+	alive:           bool,
 	name:            string,
 	transform_index: int,
 	camera_index:    int,

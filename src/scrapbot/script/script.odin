@@ -7,6 +7,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import component "../component"
+import ecs "../ecs"
 import schedule "../schedule"
 import shared "../shared"
 
@@ -33,6 +34,7 @@ Runtime :: struct {
 	world: ^World,
 	registry: component.Registry,
 	log_enabled: bool,
+	commands: ecs.Command_Buffer,
 	systems: [MAX_SCRIPT_SYSTEMS]Script_System,
 	system_count: int,
 }
@@ -168,20 +170,21 @@ step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> st
 			system_index := batch.system_indices[i]
 			system := runtime.systems[system_index]
 			if err := run_script_system(L, system, delta_seconds); err != "" {
+				ecs.clear_commands(&runtime.commands)
 				return err
 			}
 		}
 	}
-	return ""
+	return ecs.apply_commands(world, &runtime.commands)
 }
 
 run_script_system :: proc(L: Lua_State, system: Script_System, delta_seconds: f32) -> string {
-		lua_rawgeti(L, LUA_REGISTRYINDEX, system.callback_ref)
-		lua_pushnumber(L, f64(delta_seconds))
-		status := lua_pcall(L, 1, 0, 0)
-		if status != LUA_OK {
-			return luau_stack_error(L, "Luau system")
-		}
+	lua_rawgeti(L, LUA_REGISTRYINDEX, system.callback_ref)
+	lua_pushnumber(L, f64(delta_seconds))
+	status := lua_pcall(L, 1, 0, 0)
+	if status != LUA_OK {
+		return luau_stack_error(L, "Luau system")
+	}
 	return ""
 }
 
@@ -191,7 +194,7 @@ step_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> st
 }
 
 register_scrapbot_api :: proc(L: Lua_State) {
-	lua_createtable(L, 0, 9)
+	lua_createtable(L, 0, 11)
 
 	lua_pushcclosurek(L, scrapbot_log, "scrapbot.log", 0, nil)
 	lua_setfield(L, -2, "log")
@@ -217,6 +220,12 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_pushcclosurek(L, scrapbot_set_rotation, "scrapbot.set_rotation", 0, nil)
 	lua_setfield(L, -2, "set_rotation")
 
+	lua_pushcclosurek(L, scrapbot_spawn, "scrapbot.spawn", 0, nil)
+	lua_setfield(L, -2, "spawn")
+
+	lua_pushcclosurek(L, scrapbot_despawn, "scrapbot.despawn", 0, nil)
+	lua_setfield(L, -2, "despawn")
+
 	lua_setfield(L, LUA_GLOBALSINDEX, "scrapbot")
 }
 
@@ -240,7 +249,7 @@ scrapbot_entity_count :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
 	count := 0
 	if runtime != nil && runtime.world != nil {
-		count = len(runtime.world.entities)
+		count = ecs.alive_entity_count(runtime.world)
 	}
 	lua_pushinteger(L, c.ptrdiff_t(count))
 	return 1
@@ -465,6 +474,9 @@ scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 
 	callback_ref := lua_ref(L, 2)
 	for component in runtime.world.custom_components {
+		if !ecs.entity_is_alive(runtime.world, component.entity_index) {
+			continue
+		}
 		if component.name != component_name {
 			continue
 		}
@@ -482,6 +494,44 @@ scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 	return 0
 }
 
+scrapbot_spawn :: proc "c" (L: Lua_State) -> c.int {
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	if runtime == nil {
+		return 0
+	}
+
+	name := ""
+	if lua_type(L, 1) == LUA_TTABLE {
+		name_length: c.size_t
+		lua_getfield(L, 1, "name")
+		name_data := lua_tolstring(L, -1, &name_length)
+		if name_data != nil {
+			name = luau_string(name_data, name_length)
+		}
+		lua_settop(L, -2)
+	} else if lua_type(L, 1) != LUA_TNONE && lua_type(L, 1) != LUA_TNIL {
+		return luau_push_error(L, "scrapbot.spawn expects an optional entity options table")
+	}
+
+	if err := ecs.queue_spawn(&runtime.commands, name); err != "" {
+		return luau_push_error(L, err)
+	}
+	return 0
+}
+
+scrapbot_despawn :: proc "c" (L: Lua_State) -> c.int {
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	entity_index, ok := entity_index_argument(L, 1)
+	if runtime == nil || !ok {
+		return luau_push_error(L, "scrapbot.despawn expects an entity")
+	}
+
+	if err := ecs.queue_despawn(&runtime.commands, entity_index); err != "" {
+		return luau_push_error(L, err)
+	}
+	return 0
+}
+
 push_component_handle :: proc "c" (L: Lua_State, name: string) {
 	lua_createtable(L, 0, 1)
 	lua_pushlstring(L, cstring(raw_data(name)), c.size_t(len(name)))
@@ -491,7 +541,7 @@ push_component_handle :: proc "c" (L: Lua_State, name: string) {
 scrapbot_get_rotation :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
 	entity_index, ok := entity_index_argument(L, 1)
-	if !ok || runtime == nil || runtime.world == nil || entity_index < 0 || entity_index >= len(runtime.world.entities) {
+	if !ok || runtime == nil || runtime.world == nil || !ecs.entity_is_alive(runtime.world, entity_index) {
 		lua_pushnil(L)
 		return 1
 	}
@@ -511,7 +561,7 @@ scrapbot_set_rotation :: proc "c" (L: Lua_State) -> c.int {
 	entity_index, entity_ok := entity_index_argument(L, 1)
 	rotation, rotation_ok := vec3_argument(L, 2)
 	if !entity_ok || !rotation_ok || runtime == nil || runtime.world == nil ||
-	   entity_index < 0 || entity_index >= len(runtime.world.entities) {
+	   !ecs.entity_is_alive(runtime.world, entity_index) {
 		return 0
 	}
 
@@ -530,7 +580,7 @@ push_entity_table :: proc "c" (L: Lua_State, world: ^World, entity_index: int) {
 	lua_createtable(L, 0, 2)
 	lua_pushinteger(L, c.ptrdiff_t(entity_index + 1))
 	lua_setfield(L, -2, "index")
-	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+	if ecs.entity_is_alive(world, entity_index) {
 		name := world.entities[entity_index].name
 		lua_pushlstring(L, cstring(raw_data(name)), c.size_t(len(name)))
 		lua_setfield(L, -2, "name")

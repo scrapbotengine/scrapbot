@@ -20,6 +20,8 @@
 
 **Scheduled system** - A system with declared component reads and writes. Scrapbot batches scheduled systems by access conflicts before executing them serially.
 
+**Deferred command buffer** - A per-runtime queue of structural ECS mutations requested while systems are running. Scrapbot currently applies queued spawn and despawn commands after the scheduled frame step.
+
 **SoA (Structure of Arrays)** - A data layout used for hot component storage, taking advantage of Odin's `#soa` support.
 
 **World** - The in-memory ECS state built from a project scene and used by runtime systems and rendering.

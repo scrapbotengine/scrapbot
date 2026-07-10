@@ -121,3 +121,43 @@ test_world_preserves_project_custom_components :: proc(t: ^testing.T) {
 	testing.expect(t, camera_ok)
 	testing.expect(t, camera.camera.fov == 60)
 }
+
+@(test)
+test_deferred_commands_spawn_entities_when_applied :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+
+	commands: Command_Buffer
+	err := queue_spawn(&commands, "Spawned")
+	testing.expect(t, err == "")
+	testing.expect(t, alive_entity_count(&world) == 0)
+
+	apply_err := apply_commands(&world, &commands)
+	testing.expect(t, apply_err == "")
+	testing.expect(t, commands.command_count == 0)
+	testing.expect(t, alive_entity_count(&world) == 1)
+	testing.expect(t, world.entities[0].name == "Spawned")
+}
+
+@(test)
+test_deferred_commands_despawn_entities_without_shifting_indices :: proc(t: ^testing.T) {
+	scene, result := project.parse_scene(MULTI_CUBE_SCENE)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, result.err == .None)
+
+	world := build_world(&scene)
+	defer destroy_world(&world)
+
+	commands: Command_Buffer
+	err := queue_despawn(&commands, 1)
+	testing.expect(t, err == "")
+	testing.expect(t, alive_entity_count(&world) == 3)
+	testing.expect(t, render_frame_from_world(&world).renderable_count == 2)
+
+	apply_err := apply_commands(&world, &commands)
+	testing.expect(t, apply_err == "")
+	testing.expect(t, alive_entity_count(&world) == 2)
+	testing.expect(t, !entity_is_alive(&world, 1))
+	testing.expect(t, world.entities[2].id.index == 2)
+	testing.expect(t, render_frame_from_world(&world).renderable_count == 1)
+}

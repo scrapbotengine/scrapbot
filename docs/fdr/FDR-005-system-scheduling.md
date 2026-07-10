@@ -18,6 +18,8 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Luau access declarations may reference project component handles or registered component-name strings.
 - Unknown component names in system access declarations fail script loading.
 - Scheduled Luau batches currently execute serially in deterministic batch order.
+- Structural world changes requested from Luau systems are queued in a deferred command buffer and applied after all scheduled systems finish for the frame.
+- Deferred commands currently support spawning named entities and despawning entities without shifting existing entity indices.
 
 ## Design Decisions
 
@@ -39,6 +41,12 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 **Why:** This avoids making every small script declare access before the scheduler has visible parallel execution benefits.
 **Tradeoff:** Undeclared systems are less informative to the scheduler and may need stricter rules once true parallel execution arrives.
 
+### 4. Defer structural world mutation until the frame boundary
+
+**Decision:** Queue Luau `spawn` and `despawn` requests during system execution, then apply them after the scheduled frame step completes.
+**Why:** Queries and future parallel system batches need stable entity/component storage while systems are running.
+**Tradeoff:** Script code observes structural changes on the next frame, and the first command buffer has a fixed capacity and only supports basic entity lifecycle commands.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-006
@@ -47,5 +55,5 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 ## Open Questions
 
 - When should undeclared systems become warnings or errors?
-- How should deferred world mutations be represented between scheduled batches?
 - Should Luau systems remain main-thread-only once native systems start running in parallel?
+- Should deferred commands eventually flush between independent schedule batches, or only at frame boundaries?
