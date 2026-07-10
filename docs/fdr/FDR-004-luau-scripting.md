@@ -1,7 +1,7 @@
 # FDR-004: Luau scripting
 
 **Status:** Active
-**Last reviewed:** 2026-07-08
+**Last reviewed:** 2026-07-10
 
 ## Overview
 
@@ -20,14 +20,15 @@ Luau scripting lets project directories include fast-iteration game code without
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
 - Scripts can define project components with `scrapbot.component(name, schema)`, where the first supported field type is `"vec3"`.
 - Single-token component names such as `autorotate` are project-level components.
-- Multi-token dotted component names such as `scrapbot.transform` or `scrappyphysics.rigidbody` are reserved for engine or library components.
+- Multi-token dotted component names such as `scrapbot.transform` or `scrappyphysics.rigidbody` are reserved for engine or library components and must be registered before scene data can use them.
+- The engine registry currently contains built-in `scrapbot.transform`, `scrapbot.camera`, and `scrapbot.mesh` component names.
 - `scrapbot.component` returns a typed component handle that scripts can cast to a project-local handle type.
 - Scripts can register frame systems with `scrapbot.system(function(delta_seconds) ... end)`.
 - Scripts can query scene-defined custom components with `scrapbot.query(component_handle, callback)`.
 - Project scripts annotate query callback component parameters with their local component payload type.
 - Scripts can read and write entity rotation through `scrapbot.get_rotation(entity)` and `scrapbot.set_rotation(entity, rotation)`.
 - Scene files can attach simple custom vec3 component data with `[entities.components.<name>]` sections.
-- Scene custom component data must match a component schema defined by `scripts/main.luau`.
+- Scene custom component data must match its registered schema. Project-level component schemas come from `scripts/main.luau`; engine component schemas come from the engine registry.
 - Projects include Luau LSP metadata so editors can type-check the `scrapbot` global.
 
 ## Design Decisions
@@ -60,11 +61,17 @@ This was the first scripting slice. The current API has since grown a narrow ECS
 
 ### 5. Start custom components as simple scene data
 
-**Decision:** Allow scripts to define project components with `scrapbot.component(name, schema)` and let scene files attach matching data with `[entities.components.<name>]` sections whose initial fields are vec3 values. Single-token component names are owned by the project, while multi-token dotted names are reserved for the engine or future libraries. `scrapbot.component` returns a handle that selects the component at runtime, while query callbacks use explicit Luau annotations for the component payload type.
+**Decision:** Allow scripts to define project components with `scrapbot.component(name, schema)` and let scene files attach matching data with `[entities.components.<name>]` sections whose initial fields are vec3 values. Single-token component names are owned by the project, while multi-token dotted names are reserved for engine or future library registrations. `scrapbot.component` registers a project component schema and returns a handle that selects the component at runtime, while query callbacks use explicit Luau annotations for the component payload type.
 **Why:** This is enough for the first project-owned system, `autorotate.velocity`, while keeping the parser and Luau bridge small.
-**Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Namespaced component schemas are not registered yet. Luau receives component tables dynamically, and only transform rotation has mutation helpers.
+**Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Library component registration does not exist yet. Luau receives component tables dynamically, and only transform rotation has mutation helpers.
 
-### 6. Check project files periodically for first hot reload
+### 6. Use a registry for component ownership and scene validation
+
+**Decision:** Keep a runtime component registry with built-in engine component names and project component schemas registered by Luau.
+**Why:** The registry gives scene validation, script registration, query handles, and future editor inspection one shared source of component ownership and basic field schemas.
+**Tradeoff:** The registry is intentionally small: it supports vec3 schema fields only, does not yet expose generated Luau types, and does not yet provide a package mechanism for third-party libraries.
+
+### 7. Check project files periodically for first hot reload
 
 **Decision:** `--hot-reload` checks file modification stamps on a short interval while renderer frames are advancing.
 **Why:** Periodic checks are portable, backend-neutral, and enough to validate runtime state replacement before introducing platform file watching services.

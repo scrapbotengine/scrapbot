@@ -14,6 +14,8 @@
 
 **Component** - A typed piece of data attached to an entity, such as a transform, camera, or mesh reference. Single-token names like `autorotate` identify project-level components; dotted names like `scrapbot.transform` or `scrappyphysics.rigidbody` identify engine or library components.
 
+**Component registry** - The runtime registry of known component names and simple field schemas. Scrapbot currently registers built-in `scrapbot.*` components and project components declared from Luau.
+
 **System** - Runtime logic that reads or writes components for matching entities.
 
 **SoA (Structure of Arrays)** - A data layout used for hot component storage, taking advantage of Odin's `#soa` support.
@@ -46,10 +48,10 @@
 
 ## Scripting And Editing
 
-**Luau** - Scrapbot's embedded scripting language for project-local code, currently exposed through `scripts/main.luau` and a minimal `scrapbot` API for logging, systems, and script-defined component schemas.
+**Luau** - Scrapbot's embedded scripting language for project-local code, currently exposed through `scripts/main.luau` and a small `scrapbot` API for logging, systems, component schemas, custom component queries, and transform rotation helpers.
 
 **Native extension** - Planned project-local compiled code that can register fast systems or engine integrations.
 
-**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports polling reload for the default scene TOML and `scripts/main.luau`.
+**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for the default scene TOML and `scripts/main.luau`.
 
 **Editor GUI** - The planned in-engine editor interface toggled from a running project.

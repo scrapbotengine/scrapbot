@@ -1,7 +1,7 @@
 # FDR-002: Text-first projects
 
 **Status:** Active
-**Last reviewed:** 2026-07-07
+**Last reviewed:** 2026-07-10
 
 ## Overview
 
@@ -13,7 +13,7 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 - The manifest names the project and points at a default scene.
 - The default generated scene lives at `scenes/main.scene.toml`.
 - Scene files describe entities and known components in TOML.
-- Project validation rejects missing manifests, unsafe scene paths, malformed project metadata, and malformed scene data.
+- Project validation rejects missing manifests, unsafe scene paths, malformed project metadata, malformed scene data, and unknown namespaced scene components.
 - Example project directories live under `examples/` and can be used for smoke verification.
 
 ## Design Decisions
@@ -30,10 +30,16 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 **Why:** The first slice needed a small project contract without taking a dependency decision on a TOML parser. See ADR-002.
 **Tradeoff:** Hand-authored files that use valid TOML features outside the subset may fail validation.
 
+### 3. Validate namespaced scene components through the registry
+
+**Decision:** `scrapbot check` validates dotted scene component names against the engine component registry, while project-level component schema validation remains part of `scrapbot run` because it depends on Luau script declarations.
+**Why:** Dotted names are reserved for engine and library components, so silently accepting unknown namespaced scene data would hide misspellings and missing integrations.
+**Tradeoff:** Future third-party libraries need a registration mechanism before their dotted component names can pass project validation.
+
 ## Related
 
 - **ADRs:** ADR-002
-- **FDRs:** FDR-001
+- **FDRs:** FDR-001, FDR-004
 
 ## Open Questions
 

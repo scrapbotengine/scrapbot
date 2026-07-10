@@ -3,6 +3,7 @@ package project
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import components "../component"
 import shared "../shared"
 
 PROJECT_FILE :: shared.PROJECT_FILE
@@ -307,5 +308,24 @@ destroy_scene :: proc(scene: ^Scene) {
 check_project :: proc(root: string) -> string {
 	loaded := load_project(root)
 	defer destroy_project_load_result(&loaded)
-	return loaded.err
+	if loaded.err != "" {
+		return loaded.err
+	}
+	return validate_namespaced_scene_components(&loaded.scene)
+}
+
+validate_namespaced_scene_components :: proc(scene: ^Scene) -> string {
+	registry: components.Registry
+	components.init_registry(&registry)
+	for entity in scene.entities {
+		for scene_component in entity.custom_components {
+			if !shared.component_name_is_namespaced(scene_component.name) {
+				continue
+			}
+			if err := components.validate_custom_component(&registry, scene_component); err != "" {
+				return err
+			}
+		}
+	}
+	return ""
 }

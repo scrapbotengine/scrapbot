@@ -187,7 +187,29 @@ scrapbot.component("scrapbot.transform", {
 }
 
 @(test)
-test_luau_script_validation_skips_namespaced_scene_components :: proc(t: ^testing.T) {
+test_luau_script_validation_accepts_registered_engine_scene_components :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.scrapbot.transform]
+position = [0, 0, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `scrapbot.log("engine component")`, "=test", &world)
+
+	testing.expect(t, result.ran)
+	testing.expect(t, result.err == "")
+}
+
+@(test)
+test_luau_script_validation_rejects_unknown_namespaced_scene_components :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(`[[entities]]
 name = "Body"
 
@@ -202,10 +224,10 @@ velocity = [0, 0, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `scrapbot.log("namespaced component")`, "=test", &world)
+	result := run_source(&runtime, `scrapbot.log("unknown namespaced component")`, "=test", &world)
 
-	testing.expect(t, result.ran)
-	testing.expect(t, result.err == "")
+	testing.expect(t, !result.ran)
+	testing.expect(t, result.err == `scene component "scrappyphysics.rigidbody" is not registered`)
 }
 
 @(test)

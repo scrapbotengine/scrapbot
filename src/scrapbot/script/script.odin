@@ -6,12 +6,11 @@ import libc "core:c/libc"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import component "../component"
 import shared "../shared"
 
 DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
 DEFAULT_SCRIPT_CHUNK :: "=" + DEFAULT_SCRIPT
-MAX_SCRIPT_COMPONENTS :: 64
-MAX_SCRIPT_COMPONENT_FIELDS :: 16
 MAX_SCRIPT_SYSTEMS :: 64
 World :: shared.World
 Vec3 :: shared.Vec3
@@ -27,25 +26,9 @@ Run_Result :: struct {
 Runtime :: struct {
 	L: Lua_State,
 	world: ^World,
-	components: [MAX_SCRIPT_COMPONENTS]Component_Definition,
-	component_count: int,
+	registry: component.Registry,
 	systems: [MAX_SCRIPT_SYSTEMS]Script_System,
 	system_count: int,
-}
-
-Component_Field_Type :: enum {
-	Vec3,
-}
-
-Component_Field_Definition :: struct {
-	name: string,
-	field_type: Component_Field_Type,
-}
-
-Component_Definition :: struct {
-	name: string,
-	fields: [MAX_SCRIPT_COMPONENT_FIELDS]Component_Field_Definition,
-	field_count: int,
 }
 
 Script_System :: struct {
@@ -81,6 +64,7 @@ run_source :: proc(runtime: ^Runtime, source, chunk_name: string, world: ^World)
 	result: Run_Result
 	runtime^ = {}
 	runtime.world = world
+	component.init_registry(&runtime.registry)
 
 	L := luaL_newstate()
 	if L == nil {
@@ -249,22 +233,11 @@ scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 		return luau_push_error(L, "project scripts can only define single-token project component names")
 	}
 
-	component_index, found := find_component_definition(runtime, component_name)
-	if !found {
-		if runtime.component_count >= MAX_SCRIPT_COMPONENTS {
-			return luau_push_error(L, "too many script component definitions")
-		}
-		component_index = runtime.component_count
-		runtime.component_count += 1
-	}
-
-	component := &runtime.components[component_index]
-	component^ = {}
-	component.name = component_name
+	definition := component.Definition{name = component_name, owner = .Project}
 
 	lua_pushnil(L)
 	for lua_next(L, 2) != 0 {
-		if component.field_count >= MAX_SCRIPT_COMPONENT_FIELDS {
+		if definition.field_count >= component.MAX_COMPONENT_FIELDS {
 			return luau_push_error(L, "too many fields in script component definition")
 		}
 		if lua_type(L, -2) != LUA_TSTRING || lua_type(L, -1) != LUA_TSTRING {
@@ -283,15 +256,19 @@ scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 			return luau_push_error(L, "unsupported component field type")
 		}
 
-		component.fields[component.field_count] = Component_Field_Definition {
+		definition.fields[definition.field_count] = component.Field_Definition {
 			name = luau_string(field_name_data, field_name_length),
-			field_type = .Vec3,
+			field_type = component.Field_Type.Vec3,
 		}
-		component.field_count += 1
+		definition.field_count += 1
 		lua_settop(L, -2)
 	}
 
-	push_component_handle(L, component.name)
+	if err := component.register_project_component(&runtime.registry, definition); err != "" {
+		return luau_push_error(L, err)
+	}
+
+	push_component_handle(L, definition.name)
 	return 1
 }
 
@@ -312,66 +289,13 @@ validate_world_components :: proc(runtime: ^Runtime) -> string {
 		return ""
 	}
 
-	for component in runtime.world.custom_components {
-		if !shared.component_name_is_project_level(component.name) {
-			continue
-		}
-		definition, definition_ok := component_definition(runtime, component.name)
-		if !definition_ok {
-			return fmt.tprintf(
-				`scene component "%s" is not defined by scripts/main.luau; add scrapbot.component("%s", schema)`,
-				component.name,
-				component.name,
-			)
-		}
-
-		for field in component.vec3_fields {
-			field_definition, field_ok := component_field(definition, field.name)
-			if !field_ok {
-				return fmt.tprintf(
-					`scene component "%s" has field "%s" that is not defined by scripts/main.luau`,
-					component.name,
-					field.name,
-				)
-			}
-			if field_definition.field_type != .Vec3 {
-				return fmt.tprintf(
-					`scene component "%s" field "%s" does not accept vec3 values`,
-					component.name,
-					field.name,
-				)
-			}
+	for scene_component in runtime.world.custom_components {
+		if err := component.validate_custom_component(&runtime.registry, scene_component); err != "" {
+			return err
 		}
 	}
 
 	return ""
-}
-
-find_component_definition :: proc "c" (runtime: ^Runtime, name: string) -> (index: int, ok: bool) {
-	for component, i in runtime.components[:runtime.component_count] {
-		if component.name == name {
-			return i, true
-		}
-	}
-	return -1, false
-}
-
-component_definition :: proc(runtime: ^Runtime, name: string) -> (definition: Component_Definition, ok: bool) {
-	index, found := find_component_definition(runtime, name)
-	if !found {
-		return {}, false
-	}
-	return runtime.components[index], true
-}
-
-component_field :: proc(definition: Component_Definition, name: string) -> (field: Component_Field_Definition, ok: bool) {
-	for i in 0..<definition.field_count {
-		definition_field := definition.fields[i]
-		if definition_field.name == name {
-			return definition_field, true
-		}
-	}
-	return {}, false
 }
 
 scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
@@ -392,6 +316,9 @@ scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 	}
 	component_name := luau_string(name_data, name_length)
 	lua_settop(L, -2)
+	if _, registered := component.find_definition(&runtime.registry, component_name); !registered {
+		return luau_push_error(L, "scrapbot.query component handle is not registered")
+	}
 
 	callback_ref := lua_ref(L, 2)
 	for component in runtime.world.custom_components {

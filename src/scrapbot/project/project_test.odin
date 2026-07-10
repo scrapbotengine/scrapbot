@@ -72,6 +72,38 @@ rotation.velocity = [0, 0, 0]
 }
 
 @(test)
+test_project_check_accepts_registered_namespaced_scene_components :: proc(t: ^testing.T) {
+	scene, result := parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.scrapbot.transform]
+position = [0, 0, 0]
+`)
+	defer destroy_scene(&scene)
+
+	testing.expect(t, result.err == .None)
+	testing.expect(t, validate_namespaced_scene_components(&scene) == "")
+}
+
+@(test)
+test_project_check_rejects_unknown_namespaced_scene_components :: proc(t: ^testing.T) {
+	scene, result := parse_scene(`[[entities]]
+name = "Body"
+
+[entities.components.scrappyphysics.rigidbody]
+velocity = [0, 0, 0]
+`)
+	defer destroy_scene(&scene)
+
+	testing.expect(t, result.err == .None)
+	testing.expect(
+		t,
+		validate_namespaced_scene_components(&scene) ==
+			`scene component "scrappyphysics.rigidbody" is not registered`,
+	)
+}
+
+@(test)
 test_init_project_writes_luau_lsp_metadata :: proc(t: ^testing.T) {
 	parent, temp_err := os.make_directory_temp("", "scrapbot-init-*", context.temp_allocator)
 	testing.expect(t, temp_err == nil)

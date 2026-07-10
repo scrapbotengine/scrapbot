@@ -22,7 +22,7 @@
 
 ## ECS And Scripting
 
-- [ ] Add a reflected component registry.
+- [ ] Reflect component registry metadata into editor/tooling APIs.
 - [ ] Add scheduled systems with declared component access.
 - [x] Execute a project-local Luau entry script during `scrapbot run`.
 - [x] Add Luau LSP metadata for the built-in `scrapbot` global.
@@ -31,7 +31,8 @@
 - [x] Validate scene custom components against Luau-defined component schemas.
 - [x] Add typed Luau component handles for query callbacks.
 - [ ] Add reflected Luau component schemas and generated typed component APIs.
-- [ ] Add an engine/library component registry for dotted component names.
+- [x] Add an engine component registry for dotted component names.
+- [ ] Add library component registration for dotted component names.
 - [ ] Add a Luau analyzer check for example project scripts.
 - [ ] Add native Odin extension loading and hot reload.
 
