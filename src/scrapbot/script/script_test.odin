@@ -97,7 +97,7 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 }) :: Component<Autorotate>
 
 scrapbot.system(function(delta_seconds)
-	scrapbot.query(AutorotateComponent, function(entity, autorotate: Autorotate)
+	scrapbot.query(AutorotateComponent):each(function(entity, autorotate: Autorotate)
 		local rotation = scrapbot.get_rotation(entity)
 		rotation.x += autorotate.velocity.x * delta_seconds
 		rotation.y += autorotate.velocity.y * delta_seconds
@@ -141,19 +141,27 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 })
 assert(scrapbot.transform.id > 0)
 
-scrapbot.system({
-	reads = { AutorotateComponent },
+local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
+
+scrapbot.system(Autorotating, {
 	writes = { scrapbot.transform },
-}, function(delta_seconds)
-	scrapbot.query(scrapbot.transform, AutorotateComponent, function(entity, transform, autorotate)
-		local rotation = transform.rotation
-		rotation.y += autorotate.velocity.y * delta_seconds
-		scrapbot.set_rotation(entity, rotation)
-	end)
+}, function(delta_seconds, entity, transform, autorotate)
+	local rotation = transform.rotation
+	rotation.y += autorotate.velocity.y * delta_seconds
+	scrapbot.set_rotation(entity, rotation)
 end)
 `, "=test", &world)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
+	testing.expect(t, runtime.system_count == 1)
+	testing.expect(t, runtime.systems[0].has_query)
+	testing.expect(t, runtime.systems[0].declaration.access_count == 3)
+	testing.expect(t, runtime.systems[0].declaration.accesses[0].component == "scrapbot.transform")
+	testing.expect(t, runtime.systems[0].declaration.accesses[0].mode == .Read)
+	testing.expect(t, runtime.systems[0].declaration.accesses[1].component == "autorotate")
+	testing.expect(t, runtime.systems[0].declaration.accesses[1].mode == .Read)
+	testing.expect(t, runtime.systems[0].declaration.accesses[2].component == "scrapbot.transform")
+	testing.expect(t, runtime.systems[0].declaration.accesses[2].mode == .Write)
 
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expect(t, step_err == "")
@@ -204,7 +212,7 @@ scrapbot.system({
 	reads = { scrapbot.transform, scrapbot.mesh, AutorotateComponent },
 }, function()
 	local count = 0
-	scrapbot.query(scrapbot.transform, scrapbot.mesh, AutorotateComponent, function(entity, transform, mesh, autorotate)
+	scrapbot.query(scrapbot.transform, scrapbot.mesh, AutorotateComponent):each(function(entity, transform, mesh, autorotate)
 		count += 1
 		assert(entity.name == "Spinner")
 		assert(transform.rotation.y == 0)
@@ -252,7 +260,7 @@ scrapbot.system({
 	reads = { AutorotateComponent },
 	writes = { "scrapbot.transform" },
 }, function(delta_seconds)
-	scrapbot.query(AutorotateComponent, function(entity, autorotate)
+	scrapbot.query(AutorotateComponent):each(function(entity, autorotate)
 		local rotation = scrapbot.get_rotation(entity)
 		rotation.y += autorotate.velocity.y * delta_seconds
 		scrapbot.set_rotation(entity, rotation)
@@ -447,7 +455,7 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 scrapbot.system({
 	reads = { AutorotateComponent },
 }, function()
-	scrapbot.query(scrapbot.transform, AutorotateComponent, function() end)
+	scrapbot.query(scrapbot.transform, AutorotateComponent):each(function() end)
 end)
 `, "=test", &world)
 	testing.expect(t, result.err == "")
@@ -455,6 +463,50 @@ end)
 
 	step_err := step_runtime(&runtime, &world, 1.0)
 	testing.expect(t, step_err == "Luau system: system access declaration does not permit component read")
+}
+
+@(test)
+test_luau_declared_system_accepts_query_object_reads :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Spinner"
+
+[entities.components.autorotate]
+velocity = [0, 2, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+local AutorotateComponent = scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+local Autorotating = scrapbot.query(AutorotateComponent)
+
+scrapbot.system({
+	reads = { Autorotating },
+}, function()
+	local count = 0
+	Autorotating:each(function(entity, autorotate)
+		count += 1
+		assert(autorotate.velocity.y == 2)
+	end)
+	assert(count == 1)
+end)
+`, "=test", &world)
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+	testing.expect(t, runtime.system_count == 1)
+	testing.expect(t, runtime.systems[0].declaration.access_count == 1)
+	testing.expect(t, runtime.systems[0].declaration.accesses[0].component == "autorotate")
+	testing.expect(t, runtime.systems[0].declaration.accesses[0].mode == .Read)
+
+	step_err := step_runtime(&runtime, &world, 1.0)
+	testing.expect(t, step_err == "")
 }
 
 @(test)
@@ -481,7 +533,7 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 scrapbot.system({
 	reads = { AutorotateComponent },
 }, function()
-	scrapbot.query(AutorotateComponent, function(entity)
+	scrapbot.query(AutorotateComponent):each(function(entity)
 		scrapbot.remove_component(entity, AutorotateComponent)
 	end)
 end)
@@ -603,7 +655,7 @@ local frame = 0
 scrapbot.system(function()
 	frame += 1
 	local query_count = 0
-	scrapbot.query(AutorotateComponent, function(entity)
+	scrapbot.query(AutorotateComponent):each(function(entity)
 		query_count += 1
 		if frame == 1 then
 			scrapbot.despawn(entity)
@@ -704,7 +756,7 @@ scrapbot.system(function()
 		})
 	else
 		local query_count = 0
-		scrapbot.query(AutorotateComponent, function(entity, autorotate)
+		scrapbot.query(AutorotateComponent):each(function(entity, autorotate)
 			query_count += 1
 			assert(entity.name == "Spawned Spinner")
 			assert(autorotate.velocity.y == 5)
@@ -754,7 +806,7 @@ scrapbot.system(function()
 		assert(scrapbot.entity_count() == 1)
 		scrapbot.spawn({ name = "Probe" })
 	elseif frame == 2 then
-		scrapbot.query(AutorotateComponent, function()
+		scrapbot.query(AutorotateComponent):each(function()
 			error("component should not exist before add")
 		end)
 	end
@@ -765,7 +817,7 @@ scrapbot.system(function()
 		return
 	end
 	if frame == 2 then
-		scrapbot.query(AutorotateComponent, function()
+		scrapbot.query(AutorotateComponent):each(function()
 			error("component should still be deferred")
 		end)
 		target = { index = 1, generation = 1 }
@@ -774,7 +826,7 @@ scrapbot.system(function()
 		})
 	else
 		local query_count = 0
-		scrapbot.query(AutorotateComponent, function(entity, autorotate)
+		scrapbot.query(AutorotateComponent):each(function(entity, autorotate)
 			query_count += 1
 			assert(entity.index == 1)
 			assert(autorotate.velocity.y == 7)
@@ -819,7 +871,7 @@ local frame = 0
 scrapbot.system(function()
 	frame += 1
 	local query_count = 0
-	scrapbot.query(AutorotateComponent, function(entity)
+	scrapbot.query(AutorotateComponent):each(function(entity)
 		query_count += 1
 		if frame == 1 then
 			scrapbot.remove_component(entity, AutorotateComponent)
@@ -873,7 +925,7 @@ local frame = 0
 scrapbot.system(function()
 	frame += 1
 	if frame == 1 then
-		scrapbot.query(AutorotateComponent, function(entity)
+		scrapbot.query(AutorotateComponent):each(function(entity)
 			saved = entity
 			scrapbot.despawn(entity)
 		end)
@@ -1036,7 +1088,7 @@ scrapbot.component("autorotate", {
 })
 
 scrapbot.system(function()
-	scrapbot.query("autorotate", function() end)
+	scrapbot.query("autorotate")
 end)
 `, "=test", &world)
 	testing.expect(t, result.err == "")

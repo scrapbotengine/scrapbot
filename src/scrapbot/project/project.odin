@@ -68,17 +68,16 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = "vec3",
 }) :: AutorotateComponent
 
-scrapbot.system({
-	reads = { AutorotateComponent },
+local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
+
+scrapbot.system(Autorotating, {
 	writes = { "scrapbot.transform" },
-}, function(delta_seconds)
-	scrapbot.query(AutorotateComponent, function(entity, autorotate: Autorotate)
-		local rotation = scrapbot.get_rotation(entity)
-		rotation.x += autorotate.velocity.x * delta_seconds
-		rotation.y += autorotate.velocity.y * delta_seconds
-		rotation.z += autorotate.velocity.z * delta_seconds
-		scrapbot.set_rotation(entity, rotation)
-	end)
+}, function(delta_seconds, entity, transform: ScrapbotTransform, autorotate: Autorotate)
+	local rotation = transform.rotation
+	rotation.x += autorotate.velocity.x * delta_seconds
+	rotation.y += autorotate.velocity.y * delta_seconds
+	rotation.z += autorotate.velocity.z * delta_seconds
+	scrapbot.set_rotation(entity, rotation)
 end)
 `
 }

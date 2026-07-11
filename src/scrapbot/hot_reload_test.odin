@@ -8,14 +8,13 @@ import ecs "./ecs"
 import project "./project"
 
 HOT_RELOAD_SCRIPT_SOURCE :: `
-scrapbot.component("autorotate", {
+local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = "vec3",
 })
+local Autorotating = scrapbot.query(AutorotateComponent)
 
 scrapbot.system(function(delta_seconds)
-	scrapbot.query(scrapbot.component("autorotate", {
-		velocity = "vec3",
-	}), function(entity, autorotate)
+	Autorotating:each(function(entity, autorotate)
 		local rotation = scrapbot.get_rotation(entity)
 		rotation.x += 3 * delta_seconds
 		scrapbot.set_rotation(entity, rotation)

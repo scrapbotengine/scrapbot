@@ -17,7 +17,7 @@ test_check_project_refreshes_luau_types_from_script_registry :: proc(t: ^testing
 	testing.expect(t, write_err == nil)
 
 	check_err := check_project(root)
-	testing.expect(t, check_err == "")
+	testing.expectf(t, check_err == "", "check_project failed: %s", check_err)
 
 	types_bytes, read_err := os.read_entire_file(types_path, context.temp_allocator)
 	testing.expect(t, read_err == nil)
@@ -88,10 +88,9 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = "vec3",
 }) :: AutorotateComponent
 
-scrapbot.system({
-	reads = { scrapbot.transform, scrapbot.mesh, AutorotateComponent },
-}, function()
-	scrapbot.query(scrapbot.transform, scrapbot.mesh, AutorotateComponent, function(entity, transform: ScrapbotTransform, mesh: ScrapbotMesh, autorotate: Autorotate)
+scrapbot.system(function()
+	local RenderedAutorotating = scrapbot.query(scrapbot.transform, scrapbot.mesh, AutorotateComponent)
+	RenderedAutorotating:each(function(entity, transform: ScrapbotTransform, mesh: ScrapbotMesh, autorotate: Autorotate)
 		local y: number = transform.rotation.y + autorotate.velocity.y
 		assert(mesh ~= nil)
 		assert(y > -100)
@@ -101,7 +100,7 @@ end)
 	testing.expect(t, write_err == nil)
 
 	check_err := check_project(root)
-	testing.expect(t, check_err == "")
+	testing.expectf(t, check_err == "", "check_project failed: %s", check_err)
 }
 
 @(test)

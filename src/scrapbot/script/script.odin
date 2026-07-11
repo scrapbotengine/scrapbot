@@ -22,6 +22,7 @@ Named_Vec3 :: shared.Named_Vec3
 Component_ID :: shared.Component_ID
 Query :: ecs.Query
 Query_Term :: ecs.Query_Term
+QUERY_OBJECT_KIND : string : "scrapbot.query"
 
 Run_Result :: struct {
 	ran: bool,
@@ -47,6 +48,8 @@ Runtime :: struct {
 Script_System :: struct {
 	callback_ref: c.int,
 	declaration: schedule.System,
+	query: Query,
+	has_query: bool,
 }
 
 Component_Reference :: struct {
@@ -199,11 +202,35 @@ step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> st
 run_script_system :: proc(runtime: ^Runtime, L: Lua_State, system: Script_System, delta_seconds: f32) -> string {
 	runtime.active_system = system.declaration
 	runtime.has_active_system = true
+	defer {
+		runtime.has_active_system = false
+		runtime.active_system = {}
+	}
+
+	if system.has_query {
+		for i in 0..<ecs.query_count(runtime.world, system.query) {
+			entity_index, entity_ok := ecs.query_entity_at(runtime.world, system.query, i)
+			if !entity_ok {
+				continue
+			}
+			lua_rawgeti(L, LUA_REGISTRYINDEX, system.callback_ref)
+			lua_pushnumber(L, f64(delta_seconds))
+			push_entity_table(L, runtime.world, entity_index)
+			for term_index in 0..<system.query.term_count {
+				term := system.query.terms[term_index]
+				push_query_component_table(L, runtime.world, entity_index, term)
+			}
+			status := lua_pcall(L, c.int(system.query.term_count + 2), 0, 0)
+			if status != LUA_OK {
+				return luau_stack_error(L, "Luau system")
+			}
+		}
+		return ""
+	}
+
 	lua_rawgeti(L, LUA_REGISTRYINDEX, system.callback_ref)
 	lua_pushnumber(L, f64(delta_seconds))
 	status := lua_pcall(L, 1, 0, 0)
-	runtime.has_active_system = false
-	runtime.active_system = {}
 	if status != LUA_OK {
 		return luau_stack_error(L, "Luau system")
 	}
@@ -375,7 +402,30 @@ scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 
 	callback_index := c.int(1)
 	declaration: schedule.System
-	if lua_type(L, 1) == LUA_TTABLE && lua_type(L, 2) == LUA_TFUNCTION {
+	system_query: Query
+	has_query := false
+	if query_argument_is_query_object(L, 1) {
+		query, query_err := query_object_argument(L, runtime, 1)
+		if query_err != "" {
+			return luau_push_error(L, query_err)
+		}
+		system_query = query
+		has_query = true
+		if err := add_query_accesses(&declaration, query); err != "" {
+			return luau_push_error(L, err)
+		}
+
+		if lua_type(L, 2) == LUA_TFUNCTION {
+			callback_index = 2
+		} else if lua_type(L, 2) == LUA_TTABLE && lua_type(L, 3) == LUA_TFUNCTION {
+			if err := read_system_options(L, runtime, 2, &declaration); err != "" {
+				return luau_push_error(L, err)
+			}
+			callback_index = 3
+		} else {
+			return luau_push_error(L, "scrapbot.system expects a query, optional options table, and callback")
+		}
+	} else if lua_type(L, 1) == LUA_TTABLE && lua_type(L, 2) == LUA_TFUNCTION {
 		if err := read_system_options(L, runtime, 1, &declaration); err != "" {
 			return luau_push_error(L, err)
 		}
@@ -388,6 +438,8 @@ scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 	runtime.systems[runtime.system_count] = Script_System {
 		callback_ref = callback_ref,
 		declaration = declaration,
+		query = system_query,
+		has_query = has_query,
 	}
 	runtime.system_count += 1
 	return 0
@@ -427,6 +479,18 @@ read_system_access_list :: proc "c" (
 
 	lua_pushnil(L)
 	for lua_next(L, -2) != 0 {
+		if mode == .Read && query_argument_is_query_object(L, -1) {
+			query, query_err := query_object_argument(L, runtime, -1)
+			if query_err != "" {
+				return query_err
+			}
+			if err := add_query_accesses(declaration, query); err != "" {
+				return err
+			}
+			lua_settop(L, -2)
+			continue
+		}
+
 		component_ref, err := component_reference_argument(L, runtime, -1)
 		if err != "" {
 			if err == "component access declaration references unregistered component" {
@@ -434,17 +498,38 @@ read_system_access_list :: proc "c" (
 			}
 			return err
 		}
-		if declaration.access_count >= schedule.MAX_SYSTEM_ACCESSES {
-			return "too many system component access declarations"
+		if err := add_system_access(declaration, component_ref.name, mode); err != "" {
+			return err
 		}
-		declaration.accesses[declaration.access_count] = schedule.Access {
-			component = component_ref.name,
-			mode      = mode,
-		}
-		declaration.access_count += 1
 		lua_settop(L, -2)
 	}
 
+	return ""
+}
+
+add_query_accesses :: proc "c" (declaration: ^schedule.System, query: Query) -> string {
+	for i in 0..<query.term_count {
+		term := query.terms[i]
+		if err := add_system_access(declaration, term.name, .Read); err != "" {
+			return err
+		}
+	}
+	return ""
+}
+
+add_system_access :: proc "c" (
+	declaration: ^schedule.System,
+	component_name: string,
+	mode: schedule.Access_Mode,
+) -> string {
+	if declaration.access_count >= schedule.MAX_SYSTEM_ACCESSES {
+		return "too many system component access declarations"
+	}
+	declaration.accesses[declaration.access_count] = schedule.Access {
+		component = component_name,
+		mode      = mode,
+	}
+	declaration.access_count += 1
 	return ""
 }
 
@@ -631,6 +716,28 @@ query_argument_is_component_handle :: proc "c" (L: Lua_State, index: c.int) -> b
 	return name_data != nil
 }
 
+query_argument_is_query_object :: proc "c" (L: Lua_State, index: c.int) -> bool {
+	if lua_type(L, index) != LUA_TTABLE {
+		return false
+	}
+	length: c.size_t
+	lua_getfield(L, index, "__scrapbot_kind")
+	data := lua_tolstring(L, -1, &length)
+	lua_settop(L, -2)
+	return data != nil && luau_string(data, length) == QUERY_OBJECT_KIND
+}
+
+query_object_argument :: proc "c" (
+	L: Lua_State,
+	runtime: ^Runtime,
+	index: c.int,
+) -> (query: Query, err: string) {
+	if !query_argument_is_query_object(L, index) {
+		return {}, "expected a Scrapbot query"
+	}
+	return query_argument(L, runtime, index, .Query)
+}
+
 validate_world_components :: proc(runtime: ^Runtime) -> string {
 	if runtime == nil || runtime.world == nil {
 		return ""
@@ -653,23 +760,36 @@ validate_world_components :: proc(runtime: ^Runtime) -> string {
 
 scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
-	if runtime == nil || runtime.world == nil {
+	if runtime == nil {
 		return 0
 	}
 	arg_count := lua_gettop(L)
-	if arg_count < 2 || lua_type(L, arg_count) != LUA_TFUNCTION {
-		return luau_push_error(L, "scrapbot.query expects component handles followed by a callback")
+	if arg_count < 1 {
+		return luau_push_error(L, "scrapbot.query expects one or more component handles")
+	}
+	if lua_type(L, arg_count) == LUA_TFUNCTION {
+		return luau_push_error(L, "scrapbot.query constructs a query; call query:each(callback) to iterate")
 	}
 
-	query: Query
-	query_err: string
-	callback_index := arg_count
-
-	if arg_count == 2 {
-		query, query_err = query_argument(L, runtime, 1, .Query)
-	} else {
-		query, query_err = query_from_component_arguments(L, runtime, 1, int(arg_count - 1), .Query)
+	query, query_err := query_from_component_arguments(L, runtime, 1, int(arg_count), .Query)
+	if query_err != "" {
+		return luau_push_error(L, query_err)
 	}
+
+	push_query_object(L, query)
+	return 1
+}
+
+scrapbot_query_each :: proc "c" (L: Lua_State) -> c.int {
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	if runtime == nil || runtime.world == nil {
+		return 0
+	}
+	if !query_argument_is_query_object(L, 1) || lua_type(L, 2) != LUA_TFUNCTION {
+		return luau_push_error(L, "query:each expects a callback")
+	}
+
+	query, query_err := query_object_argument(L, runtime, 1)
 	if query_err != "" {
 		return luau_push_error(L, query_err)
 	}
@@ -677,7 +797,7 @@ scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 		return luau_push_error(L, err)
 	}
 
-	return run_query_callback(L, runtime, query, callback_index)
+	return run_query_callback(L, runtime, query, 2)
 }
 
 run_query_callback :: proc "c" (
@@ -1020,6 +1140,30 @@ push_component_handle :: proc "c" (L: Lua_State, definition: component.Definitio
 	lua_pushinteger(L, c.ptrdiff_t(definition.id))
 	lua_setfield(L, -2, "id")
 	lua_pushlstring(L, cstring(raw_data(definition.name)), c.size_t(len(definition.name)))
+	lua_setfield(L, -2, "name")
+}
+
+push_query_object :: proc "c" (L: Lua_State, query: Query) {
+	lua_createtable(L, c.int(query.term_count), 2)
+	for i in 0..<query.term_count {
+		term := query.terms[i]
+		lua_pushinteger(L, c.ptrdiff_t(i + 1))
+		push_component_handle_from_term(L, term)
+		lua_settable(L, -3)
+	}
+
+	lua_pushlstring(L, cstring(raw_data(QUERY_OBJECT_KIND)), c.size_t(len(QUERY_OBJECT_KIND)))
+	lua_setfield(L, -2, "__scrapbot_kind")
+
+	lua_pushcclosurek(L, scrapbot_query_each, "scrapbot.query.each", 0, nil)
+	lua_setfield(L, -2, "each")
+}
+
+push_component_handle_from_term :: proc "c" (L: Lua_State, term: Query_Term) {
+	lua_createtable(L, 0, 2)
+	lua_pushinteger(L, c.ptrdiff_t(term.component_id))
+	lua_setfield(L, -2, "id")
+	lua_pushlstring(L, cstring(raw_data(term.name)), c.size_t(len(term.name)))
 	lua_setfield(L, -2, "name")
 }
 

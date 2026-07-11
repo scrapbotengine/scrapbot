@@ -14,9 +14,9 @@ export type Scrapbot = {
 	transform: ScrapbotTransformComponent,
 	camera: ScrapbotCameraComponent,
 	mesh: ScrapbotMeshComponent,
-	system: ((system: (delta_seconds: number) -> ()) -> ()) & ((options: ScrapbotSystemOptions, system: (delta_seconds: number) -> ()) -> ()),
-	query: (<A>(first: ScrapbotComponent<A>, callback: (entity: ScrapbotEntity, first: A) -> ()) -> ()) & (<A, B>(first: ScrapbotComponent<A>, second: ScrapbotComponent<B>, callback: (entity: ScrapbotEntity, first: A, second: B) -> ()) -> ()) & (<A, B, C>(first: ScrapbotComponent<A>, second: ScrapbotComponent<B>, third: ScrapbotComponent<C>, callback: (entity: ScrapbotEntity, first: A, second: B, third: C) -> ()) -> ()),
-	view: (<T>(component: ScrapbotComponent<T>) -> {ScrapbotQueryItem<T>}) & ((components: {ScrapbotComponent<any>}) -> {ScrapbotQueryComponentsItem}),
+	system: ((system: (delta_seconds: number) -> ()) -> ()) & ((options: ScrapbotSystemOptions, system: (delta_seconds: number) -> ()) -> ()) & (<T...>(query: ScrapbotQuery<T...>, system: (delta_seconds: number, entity: ScrapbotEntity, T...) -> ()) -> ()) & (<T...>(query: ScrapbotQuery<T...>, options: any, system: (delta_seconds: number, entity: ScrapbotEntity, T...) -> ()) -> ()),
+	query: (<A>(first: ScrapbotComponent<A>) -> ScrapbotQuery<A>) & (<A, B>(first: ScrapbotComponent<A>, second: ScrapbotComponent<B>) -> ScrapbotQuery<A, B>) & (<A, B, C>(first: ScrapbotComponent<A>, second: ScrapbotComponent<B>, third: ScrapbotComponent<C>) -> ScrapbotQuery<A, B, C>),
+	view: (<T>(component: ScrapbotComponent<T>) -> {ScrapbotQueryItem<T>}) & ((components: {ScrapbotComponent<any>}) -> {ScrapbotQueryComponentsItem}) & ((query: ScrapbotAnyQuery) -> {ScrapbotQueryComponentsItem}),
 	get_rotation: (entity: ScrapbotEntity) -> ScrapbotVec3,
 	set_rotation: (entity: ScrapbotEntity, rotation: ScrapbotVec3) -> (),
 	spawn: (options: ScrapbotSpawnOptions?) -> (),
@@ -42,7 +42,14 @@ export type Vec3 = ScrapbotVec3
 export type ScrapbotComponent<T> = {
 	id: number,
 	name: string,
+	_type: T?,
 }
+
+export type ScrapbotQuery<T...> = {
+	each: (ScrapbotQuery<T...>, callback: (ScrapbotEntity, T...) -> ()) -> (),
+}
+
+export type ScrapbotAnyQuery = ScrapbotQuery<...any>
 
 export type ScrapbotQueryItem<T> = {
 	entity: ScrapbotEntity,
@@ -62,8 +69,8 @@ export type ScrapbotComponentSchema = {
 export type ScrapbotComponentFieldType = "vec3"
 
 export type ScrapbotSystemOptions = {
-	reads: {ScrapbotComponent<any> | string}?,
-	writes: {ScrapbotComponent<any> | string}?,
+	reads: {[number]: any}?,
+	writes: {[number]: any}?,
 }
 
 export type ScrapbotSpawnOptions = {

@@ -38,6 +38,7 @@
 - [x] Add bulk Luau query views.
 - [x] Add multi-component Luau queries.
 - [x] Add typed multi-component Luau queries.
+- [x] Add reusable Luau query objects.
 - [x] Enforce declared component access for declared Luau systems.
 - [ ] Add library component registration for dotted component names.
 - [x] Add a Luau analyzer check for example project scripts.
