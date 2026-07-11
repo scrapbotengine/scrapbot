@@ -39,7 +39,7 @@
 - [x] Add multi-component Luau queries.
 - [x] Enforce declared component access for declared Luau systems.
 - [ ] Add library component registration for dotted component names.
-- [ ] Add a Luau analyzer check for example project scripts.
+- [x] Add a Luau analyzer check for example project scripts.
 - [ ] Add native Odin extension loading and hot reload.
 
 ## Editor

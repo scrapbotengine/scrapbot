@@ -17,6 +17,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - Successful script reload replaces the active Luau runtime; failed script reload keeps the last good runtime.
 - Successful scene reload rebuilds the ECS world and validates `scripts/main.luau` against it before swapping state; failed scene reload keeps the last good world and runtime.
 - `scrapbot check` executes `scripts/main.luau` silently to collect project component schemas, validate scene data, and refresh `types/scrapbot.d.luau`.
+- When `luau-analyze` is available, `scrapbot check` also statically analyzes `scripts/main.luau` against the refreshed generated types.
 - Scripts can call `scrapbot.log(message)`.
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
 - Scripts can define project components with `scrapbot.component(name, schema)`, where the first supported field type is `"vec3"`.
@@ -43,6 +44,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - Scene files can attach simple custom vec3 component data with `[entities.components.<name>]` sections.
 - Scene custom component data must match its registered schema. Project-level component schemas come from `scripts/main.luau`; engine component schemas come from the engine registry.
 - Projects include Luau LSP metadata so editors can type-check the `scrapbot` global, engine component aliases, and project component aliases.
+- Static analyzer diagnostics fail `scrapbot check` when they include Luau type or syntax errors. Lint-only output does not currently fail the project check.
 
 ## Design Decisions
 
@@ -132,6 +134,12 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 **Why:** Gameplay systems usually operate over a set of components, not one project component plus ad hoc helper calls. Built-in handles make query code and system access declarations line up.
 **Tradeoff:** Built-in component payloads are still copied into Luau tables, and only transform exposes real fields today. Mutating those payload tables does not yet write back automatically.
 
+### 14. Analyze project scripts after type generation
+
+**Decision:** Run `luau-analyze` during `scrapbot check` when the analyzer executable is available, using a temporary analyzer fixture built from the refreshed generated types and `scripts/main.luau`.
+**Why:** Runtime script execution cannot catch editor-facing type definition regressions or statically invalid project scripts. Running the analyzer after type generation checks the same type surface users see in their editor.
+**Tradeoff:** The first implementation is optional when `luau-analyze` is not on `PATH`, and diagnostics point at a temporary combined file rather than original project paths. This should be replaced by analyzer support that consumes project-local definition files directly.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007
@@ -139,6 +147,5 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 
 ## Open Questions
 
-- Should `scrapbot check` invoke a Luau analyzer once the local Luau toolchain builds one?
 - Should Luau modules resolve from project-local script directories, engine packages, or both?
 - What file-watching contract should replace polling once Scrapbot has runtime services?

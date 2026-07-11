@@ -18,7 +18,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, and Luau LSP metadata.
-- `scrapbot check [path]` validates the project manifest, default scene, and project Luau component schemas, then refreshes generated Luau LSP types.
+- `scrapbot check [path]` validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
 - `scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--frames n] [--framegrab out.png]` loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered script systems, and submits the world through the selected renderer backend.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
@@ -79,6 +79,7 @@ Run the full local test suite with `mise test`.
 - Luau
   - [x] Luau scripting
   - [x] Luau type definitions
+  - [x] Luau analyzer checks
   - [x] Basic script components
   - [x] Basic script systems
   - [x] Script hot reload

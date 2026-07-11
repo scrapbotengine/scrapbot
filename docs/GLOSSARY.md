@@ -64,6 +64,8 @@
 
 **Generated Luau types** - Project-local type definitions in `types/scrapbot.d.luau`. `scrapbot check` refreshes them from the component registry so editors can see engine and project component payload aliases.
 
+**Luau analyzer** - The external `luau-analyze` static checker. `scrapbot check` runs it when available to catch script type and syntax errors against generated Scrapbot types.
+
 **Native extension** - Planned project-local compiled code that can register fast systems or engine integrations.
 
 **Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for the default scene TOML and `scripts/main.luau`.

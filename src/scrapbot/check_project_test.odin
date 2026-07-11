@@ -45,6 +45,58 @@ test_check_project_validates_project_level_components_with_script_registry :: pr
 	)
 }
 
+@(test)
+test_check_project_runs_luau_analyzer_when_available :: proc(t: ^testing.T) {
+	if !luau_analyzer_available() {
+		return
+	}
+
+	root, parent := make_check_project_test_project(t)
+	defer delete(root)
+	defer os.remove_all(parent)
+
+	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
+	defer delete(script_path)
+	write_err := os.write_entire_file(script_path, `
+local AutorotateComponent = scrapbot.component("autorotate", {
+	velocity = "vec3",
+}) :: AutorotateComponent
+
+local should_be_number: number = "not a number"
+`)
+	testing.expect(t, write_err == nil)
+
+	check_err := check_project(root)
+	testing.expect(t, strings.contains(check_err, "Luau analyzer failed:"))
+	testing.expect(t, strings.contains(check_err, "Expected this to be 'number', but got 'string'"))
+}
+
+@(test)
+test_luau_analyzer_fixture_declares_scrapbot_as_local :: proc(t: ^testing.T) {
+	fixture, err := luau_analyzer_fixture(
+		`--!strict
+export type Scrapbot = {}
+declare scrapbot: Scrapbot
+`,
+		`--!strict
+scrapbot.log("hello")
+`,
+	)
+	testing.expect(t, err == "")
+	defer delete(fixture)
+
+	testing.expect(t, strings.contains(fixture, "local scrapbot: Scrapbot = nil :: any"))
+	testing.expect(t, !strings.contains(fixture, "declare scrapbot"))
+	testing.expect(t, !strings.contains(fixture, "--!strict\nscrapbot.log"))
+}
+
+@(test)
+test_luau_analyzer_output_filter_ignores_lints :: proc(t: ^testing.T) {
+	testing.expect(t, luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) TypeError: bad type`))
+	testing.expect(t, luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) SyntaxError: bad syntax`))
+	testing.expect(t, !luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) LocalUnused: Variable is never used`))
+}
+
 make_check_project_test_project :: proc(t: ^testing.T) -> (string, string) {
 	parent, temp_err := os.make_directory_temp("", "scrapbot-check-*", context.temp_allocator)
 	if !testing.expect(t, temp_err == nil) {

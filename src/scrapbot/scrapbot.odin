@@ -1,5 +1,9 @@
 package scrapbot
 
+import "core:fmt"
+import "core:os"
+import "core:path/filepath"
+import "core:strings"
 import ecs "./ecs"
 import component "./component"
 import project "./project"
@@ -50,12 +54,165 @@ check_project :: proc(root: string) -> string {
 	}
 
 	if script_result.ran {
-		return project.write_luau_types(root, &runtime.registry)
+		if err := project.write_luau_types(root, &runtime.registry); err != "" {
+			return err
+		}
+		return analyze_project_luau(root)
 	}
 
 	fallback_registry: component.Registry
 	component.init_registry(&fallback_registry)
-	return project.write_luau_types(root, &fallback_registry)
+	if err := project.write_luau_types(root, &fallback_registry); err != "" {
+		return err
+	}
+	return analyze_project_luau(root)
+}
+
+analyze_project_luau :: proc(root: string) -> string {
+	script_path, join_script_err := filepath.join({root, DEFAULT_SCRIPT})
+	if join_script_err != nil {
+		return "failed to allocate script path"
+	}
+	defer delete(script_path)
+	if !os.exists(script_path) {
+		return ""
+	}
+
+	types_path, join_types_err := filepath.join({root, DEFAULT_LUAU_TYPES})
+	if join_types_err != nil {
+		return "failed to allocate Luau types path"
+	}
+	defer delete(types_path)
+
+	types_bytes, types_read_err := os.read_entire_file(types_path, context.temp_allocator)
+	if types_read_err != nil {
+		return fmt.tprintf("failed to read %s: %v", types_path, types_read_err)
+	}
+	script_bytes, script_read_err := os.read_entire_file(script_path, context.temp_allocator)
+	if script_read_err != nil {
+		return fmt.tprintf("failed to read %s: %v", script_path, script_read_err)
+	}
+
+	fixture, fixture_err := luau_analyzer_fixture(string(types_bytes), string(script_bytes))
+	if fixture_err != "" {
+		return fixture_err
+	}
+	defer delete(fixture)
+
+	temp_dir, temp_err := os.make_directory_temp("", "scrapbot-luau-analyze-*", context.temp_allocator)
+	if temp_err != nil {
+		return fmt.tprintf("failed to create Luau analyzer temp directory: %v", temp_err)
+	}
+	defer os.remove_all(temp_dir)
+
+	fixture_path, join_fixture_err := filepath.join({temp_dir, "main.analyze.luau"})
+	if join_fixture_err != nil {
+		return "failed to allocate Luau analyzer fixture path"
+	}
+	defer delete(fixture_path)
+
+	if err := os.write_entire_file(fixture_path, fixture); err != nil {
+		return fmt.tprintf("failed to write Luau analyzer fixture: %v", err)
+	}
+
+	command := []string{"luau-analyze", "--formatter=plain", "--mode=strict", fixture_path}
+	state, stdout, stderr, exec_err := os.process_exec(
+		os.Process_Desc{command = command},
+		context.allocator,
+	)
+	if len(stdout) > 0 {
+		defer delete(stdout)
+	}
+	if len(stderr) > 0 {
+		defer delete(stderr)
+	}
+	if exec_err != nil {
+		return ""
+	}
+	output := strings.trim_space(string(stderr))
+	if output == "" {
+		output = strings.trim_space(string(stdout))
+	}
+	if state.success && output == "" {
+		return ""
+	}
+	if output == "" {
+		return fmt.tprintf("Luau analyzer failed with exit code %d", state.exit_code)
+	}
+	if !luau_analyzer_output_has_errors(output) {
+		return ""
+	}
+	return fmt.tprintf("Luau analyzer failed:\n%s", output)
+}
+
+luau_analyzer_output_has_errors :: proc(output: string) -> bool {
+	return strings.contains(output, "TypeError:") || strings.contains(output, "SyntaxError:")
+}
+
+luau_analyzer_fixture :: proc(types_text, script_text: string) -> (text: string, err: string) {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+
+	if strings.has_suffix(types_text, "declare scrapbot: Scrapbot\n") {
+		strings.write_string(
+			&builder,
+			strings.trim_suffix(types_text, "declare scrapbot: Scrapbot\n"),
+		)
+		strings.write_string(&builder, "local scrapbot: Scrapbot = nil :: any\n")
+	} else if strings.has_suffix(types_text, "declare scrapbot: Scrapbot") {
+		strings.write_string(
+			&builder,
+			strings.trim_suffix(types_text, "declare scrapbot: Scrapbot"),
+		)
+		strings.write_string(&builder, "local scrapbot: Scrapbot = nil :: any\n")
+	} else {
+		strings.write_string(&builder, types_text)
+	}
+	fixture_types := strings.to_string(builder)
+	if !strings.has_suffix(fixture_types, "\n") {
+		strings.write_string(&builder, "\n")
+	}
+	strings.write_string(&builder, "\n")
+
+	script_body := strip_luau_mode_directive(script_text)
+	strings.write_string(&builder, script_body)
+	if !strings.has_suffix(script_body, "\n") {
+		strings.write_string(&builder, "\n")
+	}
+
+	cloned, clone_err := strings.clone(strings.to_string(builder))
+	if clone_err != nil {
+		return "", "failed to allocate Luau analyzer fixture"
+	}
+	return cloned, ""
+}
+
+strip_luau_mode_directive :: proc(script_text: string) -> string {
+	if strings.has_prefix(script_text, "--!strict\n") {
+		return strings.trim_prefix(script_text, "--!strict\n")
+	}
+	if strings.has_prefix(script_text, "--!nonstrict\n") {
+		return strings.trim_prefix(script_text, "--!nonstrict\n")
+	}
+	if strings.has_prefix(script_text, "--!nocheck\n") {
+		return strings.trim_prefix(script_text, "--!nocheck\n")
+	}
+	return script_text
+}
+
+luau_analyzer_available :: proc() -> bool {
+	command := []string{"luau-analyze", "--help"}
+	_, stdout, stderr, exec_err := os.process_exec(
+		os.Process_Desc{command = command},
+		context.allocator,
+	)
+	if len(stdout) > 0 {
+		defer delete(stdout)
+	}
+	if len(stderr) > 0 {
+		defer delete(stderr)
+	}
+	return exec_err == nil
 }
 
 run_headless :: proc(root: string) -> Runtime_Result {
