@@ -24,6 +24,7 @@ Component_ID :: shared.Component_ID
 Query :: ecs.Query
 Query_Term :: ecs.Query_Term
 QUERY_OBJECT_KIND : string : "scrapbot.query"
+SCHEMA_FIELD_KIND : string : "scrapbot.schema_field"
 
 Run_Result :: struct {
 	ran: bool,
@@ -498,7 +499,7 @@ step_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> st
 }
 
 register_scrapbot_api :: proc(L: Lua_State) {
-	lua_createtable(L, 0, 17)
+	lua_createtable(L, 0, 18)
 
 	lua_pushcclosurek(L, scrapbot_log, "scrapbot.log", 0, nil)
 	lua_setfield(L, -2, "log")
@@ -511,6 +512,9 @@ register_scrapbot_api :: proc(L: Lua_State) {
 
 	lua_pushcclosurek(L, scrapbot_component, "scrapbot.component", 0, nil)
 	lua_setfield(L, -2, "component")
+
+	push_schema_field_marker(L, "vec3")
+	lua_setfield(L, -2, "vec3")
 
 	push_registered_component_handle_by_name(L, "scrapbot.transform")
 	lua_setfield(L, -2, "transform")
@@ -613,25 +617,24 @@ scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 		if definition.field_count >= component.MAX_COMPONENT_FIELDS {
 			return luau_push_error(L, "too many fields in script component definition")
 		}
-		if lua_type(L, -2) != LUA_TSTRING || lua_type(L, -1) != LUA_TSTRING {
-			return luau_push_error(L, "component schema fields must map names to field type strings")
+		if lua_type(L, -2) != LUA_TSTRING {
+			return luau_push_error(L, "component schema field names must be strings")
 		}
 
 		field_name_length: c.size_t
 		field_name_data := lua_tolstring(L, -2, &field_name_length)
-		field_type_length: c.size_t
-		field_type_data := lua_tolstring(L, -1, &field_type_length)
-		if field_name_data == nil || field_type_data == nil {
-			return luau_push_error(L, "component schema fields must map names to field type strings")
+		if field_name_data == nil {
+			return luau_push_error(L, "component schema field names must be strings")
 		}
-		field_type_name := luau_string(field_type_data, field_type_length)
-		if field_type_name != "vec3" {
+
+		field_type, field_type_ok := component_schema_field_type(L, -1)
+		if !field_type_ok {
 			return luau_push_error(L, "unsupported component field type")
 		}
 
 		definition.fields[definition.field_count] = component.Field_Definition {
 			name = luau_string(field_name_data, field_name_length),
-			field_type = component.Field_Type.Vec3,
+			field_type = field_type,
 		}
 		definition.field_count += 1
 		lua_settop(L, -2)
@@ -644,6 +647,45 @@ scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 
 	push_component_handle(L, registered)
 	return 1
+}
+
+component_schema_field_type :: proc "c" (L: Lua_State, index: c.int) -> (field_type: component.Field_Type, ok: bool) {
+	if lua_type(L, index) == LUA_TSTRING {
+		field_type_length: c.size_t
+		field_type_data := lua_tolstring(L, index, &field_type_length)
+		if field_type_data == nil {
+			return {}, false
+		}
+		field_type_name := luau_string(field_type_data, field_type_length)
+		if field_type_name == "vec3" {
+			return .Vec3, true
+		}
+		return {}, false
+	}
+
+	if lua_type(L, index) != LUA_TTABLE {
+		return {}, false
+	}
+
+	length: c.size_t
+	lua_getfield(L, index, "__scrapbot_kind")
+	kind_data := lua_tolstring(L, -1, &length)
+	lua_settop(L, -2)
+	if kind_data == nil || luau_string(kind_data, length) != SCHEMA_FIELD_KIND {
+		return {}, false
+	}
+
+	lua_getfield(L, index, "name")
+	name_data := lua_tolstring(L, -1, &length)
+	lua_settop(L, -2)
+	if name_data == nil {
+		return {}, false
+	}
+	name := luau_string(name_data, length)
+	if name == "vec3" {
+		return .Vec3, true
+	}
+	return {}, false
 }
 
 scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
@@ -1478,6 +1520,14 @@ push_component_handle :: proc "c" (L: Lua_State, definition: component.Definitio
 	lua_pushinteger(L, c.ptrdiff_t(definition.id))
 	lua_setfield(L, -2, "id")
 	lua_pushlstring(L, cstring(raw_data(definition.name)), c.size_t(len(definition.name)))
+	lua_setfield(L, -2, "name")
+}
+
+push_schema_field_marker :: proc "c" (L: Lua_State, name: string) {
+	lua_createtable(L, 0, 2)
+	lua_pushlstring(L, cstring(raw_data(SCHEMA_FIELD_KIND)), c.size_t(len(SCHEMA_FIELD_KIND)))
+	lua_setfield(L, -2, "__scrapbot_kind")
+	lua_pushlstring(L, cstring(raw_data(name)), c.size_t(len(name)))
 	lua_setfield(L, -2, "name")
 }
 

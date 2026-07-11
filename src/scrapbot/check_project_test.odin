@@ -61,7 +61,7 @@ test_check_project_runs_luau_analyzer_when_available :: proc(t: ^testing.T) {
 	defer delete(script_path)
 	write_err := os.write_entire_file(script_path, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 local should_be_number: number = "not a number"
@@ -87,7 +87,7 @@ test_check_project_analyzer_accepts_typed_three_component_query :: proc(t: ^test
 	defer delete(script_path)
 	write_err := os.write_entire_file(script_path, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 scrapbot.system(function()
@@ -119,7 +119,7 @@ test_check_project_analyzer_rejects_query_each_payload_mutation :: proc(t: ^test
 	defer delete(script_path)
 	write_err := os.write_entire_file(script_path, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 scrapbot.system(function()
@@ -151,7 +151,7 @@ test_check_project_analyzer_accepts_typed_writable_query_system :: proc(t: ^test
 	defer delete(script_path)
 	write_err := os.write_entire_file(script_path, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)

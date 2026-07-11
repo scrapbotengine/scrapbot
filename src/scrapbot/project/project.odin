@@ -65,7 +65,7 @@ default_script_template :: proc() -> string {
 	return `scrapbot.log("hello from Scrapbot")
 
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)

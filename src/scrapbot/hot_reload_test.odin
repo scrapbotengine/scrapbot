@@ -9,7 +9,7 @@ import project "./project"
 
 HOT_RELOAD_SCRIPT_SOURCE :: `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local Autorotating = scrapbot.query(AutorotateComponent)
 

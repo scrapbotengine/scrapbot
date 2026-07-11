@@ -20,7 +20,8 @@ Luau scripting lets project directories include fast-iteration game code without
 - When `luau-analyze` is available, `scrapbot check` also statically analyzes `scripts/main.luau` against the refreshed generated types.
 - Scripts can call `scrapbot.log(message)`.
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
-- Scripts can define project components with `scrapbot.component(name, schema)`, where the first supported field type is `"vec3"`.
+- Scripts can define project components with `scrapbot.component(name, schema)`, where the first supported field marker is `scrapbot.vec3`.
+- Component schemas still accept the legacy `"vec3"` field type string for compatibility.
 - Single-token component names such as `autorotate` are project-level components.
 - Multi-token dotted component names such as `scrapbot.transform` or `scrappyphysics.rigidbody` are reserved for engine or library components and must be registered before scene data can use them.
 - The engine registry currently contains built-in `scrapbot.transform`, `scrapbot.camera`, and `scrapbot.mesh` component names.
@@ -88,7 +89,7 @@ Structural mutations requested by Luau systems are now deferred through an engin
 
 **Decision:** Allow scripts to define project components with `scrapbot.component(name, schema)` and let scene files attach matching data with `[entities.components.<name>]` sections whose initial fields are vec3 values. Single-token component names are owned by the project, while multi-token dotted names are reserved for engine or future library registrations. `scrapbot.component` registers a project component schema and returns a handle that selects the component at runtime, while query callbacks use generated Luau aliases for the component payload type.
 **Why:** This is enough for the first project-owned system, `autorotate.velocity`, while keeping the parser and Luau bridge small.
-**Tradeoff:** Component schemas are still string schemas at runtime, so the schema table is not yet generated from the Luau payload type. Library component registration does not exist yet. Luau receives component tables dynamically, and direct payload write-back is limited to query-driven systems.
+**Tradeoff:** Component schemas are still declared separately from payload aliases, so the schema table is not yet generated from the Luau payload type. Library component registration does not exist yet. Luau receives component tables dynamically, and direct payload write-back is limited to query-driven systems. The legacy `"vec3"` string remains accepted, but generated projects use `scrapbot.vec3`.
 
 ### 6. Use a registry for component ownership and scene validation
 

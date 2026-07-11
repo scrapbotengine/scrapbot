@@ -11,6 +11,7 @@ export type Scrapbot = {
 	entity_count: () -> number,
 	renderable_count: () -> number,
 	component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,
+	vec3: ScrapbotComponentField<Vec3, ReadonlyVec3>,
 	transform: ScrapbotTransformComponent,
 	camera: ScrapbotCameraComponent,
 	mesh: ScrapbotMeshComponent,
@@ -89,7 +90,13 @@ export type ScrapbotComponentSchema = {
 	[string]: ScrapbotComponentFieldType,
 }
 
-export type ScrapbotComponentFieldType = "vec3"
+export type ScrapbotComponentField<T, R> = {
+	name: string,
+	_type: T?,
+	_read_type: R?,
+}
+
+export type ScrapbotComponentFieldType = ScrapbotComponentField<any, any> | "vec3"
 
 export type ScrapbotComponentAccess = {
 	id: number,

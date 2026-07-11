@@ -3,7 +3,7 @@ scrapbot.log("entities: " .. tostring(scrapbot.entity_count()))
 scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))
 
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)

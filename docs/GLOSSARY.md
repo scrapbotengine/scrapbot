@@ -18,6 +18,8 @@
 
 **Component registry** - The runtime registry of known component names, IDs, and simple field schemas. Scrapbot currently registers built-in `scrapbot.*` components and project components declared from Luau, and uses that metadata to generate project Luau type aliases.
 
+**Component schema marker** - A typed Luau value such as `scrapbot.vec3` used in `scrapbot.component` schema tables to describe project component fields.
+
 **Component storage group** - The ECS world storage for all project custom component instances of one component type.
 
 **Query object** - A reusable Luau value created with `scrapbot.query(...)` that represents one component set. Query construction is order-insensitive, and repeated calls for the same component set return the same object. Query-driven systems can write back supported payloads when they declare matching write access.

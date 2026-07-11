@@ -97,6 +97,7 @@ test_luau_types_include_registered_components :: proc(t: ^testing.T) {
 	defer delete(text)
 
 	testing.expect(t, strings.contains(text, "export type ScrapbotTransform = {"))
+	testing.expect(t, strings.contains(text, "vec3: ScrapbotComponentField<Vec3, ReadonlyVec3>,"))
 	testing.expect(t, strings.contains(text, "\tposition: Vec3,"))
 	testing.expect(t, strings.contains(text, "export type ReadonlyScrapbotTransform = {"))
 	testing.expect(t, strings.contains(text, "\tread position: ReadonlyVec3,"))

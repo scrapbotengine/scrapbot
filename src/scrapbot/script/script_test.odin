@@ -32,7 +32,7 @@ type Autorotate = {
 }
 
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: Component<Autorotate>
 
 assert(scrapbot.entity_count() == 2)
@@ -93,7 +93,7 @@ type Autorotate = {
 }
 
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 }) :: Component<Autorotate>
 
 scrapbot.system(function(delta_seconds)
@@ -137,7 +137,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 assert(scrapbot.transform.id > 0)
 
@@ -189,7 +189,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
@@ -224,7 +224,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 local Autorotating = scrapbot.query(AutorotateComponent)
@@ -265,7 +265,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 local Autorotating = scrapbot.query(AutorotateComponent)
@@ -309,7 +309,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 local first = scrapbot.query(scrapbot.transform, AutorotateComponent)
@@ -375,7 +375,7 @@ velocity = [0, 3, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -422,7 +422,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 assert(AutorotateComponent.id > 0)
 
@@ -478,7 +478,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -528,7 +528,7 @@ velocity = [0, 3, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -580,7 +580,7 @@ velocity = [0, 1, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -619,7 +619,7 @@ velocity = [0, 1, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -653,7 +653,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local Autorotating = scrapbot.query(AutorotateComponent)
 
@@ -697,7 +697,7 @@ velocity = [0, 1, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -730,7 +730,7 @@ name = "Source"
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system({
@@ -818,7 +818,7 @@ velocity = [0, 1, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local frame = 0
 
@@ -904,7 +904,7 @@ name = "Source"
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local frame = 0
 
@@ -965,7 +965,7 @@ name = "Target"
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local frame = 0
 local target = nil
@@ -1034,7 +1034,7 @@ velocity = [0, 1, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local frame = 0
 
@@ -1087,7 +1087,7 @@ velocity = [0, 1, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 local AutorotateComponent = scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 local saved = nil
 local frame = 0
@@ -1165,7 +1165,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 scrapbot.component("autorotate", {
-	speed = "vec3",
+	speed = scrapbot.vec3,
 })
 `, "=test", &world)
 
@@ -1174,12 +1174,38 @@ scrapbot.component("autorotate", {
 }
 
 @(test)
+test_luau_component_schema_accepts_legacy_vec3_string :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(`[[entities]]
+name = "Spinner"
+
+[entities.components.autorotate]
+velocity = [0, 2, 0]
+`)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(&runtime, `
+scrapbot.component("autorotate", {
+	velocity = "vec3",
+})
+`, "=test", &world)
+
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+}
+
+@(test)
 test_luau_scripts_can_only_define_project_level_components :: proc(t: ^testing.T) {
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 scrapbot.component("scrapbot.transform", {
-	position = "vec3",
+	position = scrapbot.vec3,
 })
 `, "=test", nil)
 
@@ -1254,7 +1280,7 @@ velocity = [0, 2, 0]
 	defer destroy_runtime(&runtime)
 	result := run_source(&runtime, `
 scrapbot.component("autorotate", {
-	velocity = "vec3",
+	velocity = scrapbot.vec3,
 })
 
 scrapbot.system(function()
