@@ -8,6 +8,7 @@ import "core:strings"
 import "core:time"
 import component "../component"
 import api "../extension_api"
+import shared "../shared"
 
 EXTENSIONS_DIR :: "build/extensions"
 REGISTER_SYMBOL :: "scrapbot_extension_register"
@@ -34,6 +35,92 @@ Extension_Set :: struct {
 Load_Result :: struct {
 	loaded_count: int,
 	err: string,
+}
+
+Build_Result :: struct {
+	built_count: int,
+	err: string,
+}
+
+build_project_extensions :: proc(root: string, targets: []shared.Native_Extension_Target) -> Build_Result {
+	result: Build_Result
+	if len(targets) == 0 {
+		return result
+	}
+
+	extensions_dir, dir_err := project_extensions_dir(root)
+	if dir_err != "" {
+		result.err = dir_err
+		return result
+	}
+	defer delete(extensions_dir)
+
+	if !os.exists(extensions_dir) {
+		if err := os.make_directory_all(extensions_dir); err != nil {
+			result.err = fmt.tprintf("failed to create native extension output directory: %v", err)
+			return result
+		}
+	}
+
+	for target in targets {
+		if err := build_extension(root, extensions_dir, target); err != "" {
+			result.err = err
+			return result
+		}
+		result.built_count += 1
+	}
+
+	return result
+}
+
+build_extension :: proc(root, extensions_dir: string, target: shared.Native_Extension_Target) -> string {
+	source_dir, source_err := filepath.join({root, target.source})
+	if source_err != nil {
+		return fmt.tprintf("failed to allocate native extension source path for %s", target.name)
+	}
+	defer delete(source_dir)
+
+	if !os.exists(source_dir) {
+		return fmt.tprintf("native extension %s source does not exist: %s", target.name, target.source)
+	}
+
+	output_name := fmt.tprintf("%s.%s", target.name, dynlib.LIBRARY_FILE_EXTENSION)
+	output_path, output_err := filepath.join({extensions_dir, output_name})
+	if output_err != nil {
+		return fmt.tprintf("failed to allocate native extension output path for %s", target.name)
+	}
+	defer delete(output_path)
+
+	out_arg := fmt.tprintf("-out:%s", output_path)
+	command := []string {
+		"odin",
+		"build",
+		source_dir,
+		"-build-mode:shared",
+		out_arg,
+		"-collection:scrapbot=src/scrapbot",
+	}
+	state, stdout, stderr, exec_err := os.process_exec(os.Process_Desc{command = command}, context.allocator)
+	if len(stdout) > 0 {
+		defer delete(stdout)
+	}
+	if len(stderr) > 0 {
+		defer delete(stderr)
+	}
+	if exec_err != nil {
+		return fmt.tprintf("failed to build native extension %s: %v", target.name, exec_err)
+	}
+	if !state.success {
+		output := strings.trim_space(string(stderr))
+		if output == "" {
+			output = strings.trim_space(string(stdout))
+		}
+		if output == "" {
+			return fmt.tprintf("failed to build native extension %s: odin exited with code %d", target.name, state.exit_code)
+		}
+		return fmt.tprintf("failed to build native extension %s:\n%s", target.name, output)
+	}
+	return ""
 }
 
 load_project_extensions :: proc(set: ^Extension_Set, root: string, registry: ^component.Registry) -> Load_Result {
@@ -186,9 +273,9 @@ extension_field_type :: proc "c" (field_type: api.Field_Type) -> (component.Fiel
 }
 
 project_extension_paths :: proc(root: string) -> (paths: []string, err: string) {
-	extensions_dir, join_err := filepath.join({root, EXTENSIONS_DIR})
-	if join_err != nil {
-		return nil, "failed to allocate native extension directory path"
+	extensions_dir, dir_err := project_extensions_dir(root)
+	if dir_err != "" {
+		return nil, dir_err
 	}
 	defer delete(extensions_dir)
 
@@ -222,6 +309,14 @@ project_extension_paths :: proc(root: string) -> (paths: []string, err: string) 
 	delete(builder)
 	sort_strings(paths)
 	return paths, ""
+}
+
+project_extensions_dir :: proc(root: string) -> (path: string, err: string) {
+	out, join_err := filepath.join({root, EXTENSIONS_DIR})
+	if join_err != nil {
+		return "", "failed to allocate native extension directory path"
+	}
+	return out, ""
 }
 
 destroy_extension_paths :: proc(paths: []string) {

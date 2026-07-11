@@ -42,9 +42,9 @@
 
 ## Projects
 
-**Project directory** - The directory where a user runs Scrapbot. It contains `project.toml`, scene files, scripts, assets, and future native extension code.
+**Project directory** - The directory where a user runs Scrapbot. It contains `project.toml`, scene files, scripts, assets, and optional native extension code.
 
-**`project.toml`** - The project manifest in the root of a Scrapbot project directory.
+**`project.toml`** - The project manifest in the root of a Scrapbot project directory. It names the project, selects the default scene, and can declare native extension targets.
 
 **Scene file** - A TOML file that describes entities, built-in components, and simple project-defined component data. The generated default scene is `scenes/main.scene.toml`.
 
@@ -72,7 +72,7 @@
 
 **Luau analyzer** - The external `luau-analyze` static checker. `scrapbot check` runs it when available to catch script type and syntax errors against generated Scrapbot types.
 
-**Native extension** - Project-local compiled code loaded from `build/extensions` through Scrapbot's C ABI. The first extension API lets native libraries register dotted library component schemas before Luau runs.
+**Native extension** - Project-local compiled code declared in `project.toml`, built into `build/extensions`, and loaded through Scrapbot's C ABI. The first extension API lets native libraries register dotted library component schemas before Luau runs.
 
 **Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for the default scene TOML, `scripts/main.luau`, and native libraries in `build/extensions`.
 

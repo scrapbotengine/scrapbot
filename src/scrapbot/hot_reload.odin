@@ -134,6 +134,9 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	if loaded.err != "" {
 		return loaded.err
 	}
+	if err := build_native_extensions(state.root, &loaded.config); err != "" {
+		return err
+	}
 
 	next_world := ecs.build_world(&loaded.scene)
 	script_load := load_script_from_path(state.root, state.script_path, &next_world)

@@ -6,9 +6,7 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
-local RigidbodyComponent = scrapbot.library_component("scrappyphysics.rigidbody", {
-	velocity = scrapbot.vec3,
-}) :: ScrappyphysicsRigidbodyComponent
+local RigidbodyComponent = scrapbot.component_handle("scrappyphysics.rigidbody") :: ScrappyphysicsRigidbodyComponent
 
 local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
 local Rigidbodies = scrapbot.query(RigidbodyComponent)

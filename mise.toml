@@ -36,21 +36,9 @@ description = "Build and run the Scrapbot CLI"
 depends = ["build"]
 run = "bin/scrapbot \"$@\""
 
-[tasks.build-example-extensions]
-description = "Build native extensions used by example projects"
-run = '''
-case "$(uname -s)" in
-  Darwin) LIB_EXT=dylib ;;
-  Linux) LIB_EXT=so ;;
-  *) echo "unsupported native extension platform: $(uname -s)" >&2; exit 1 ;;
-esac
-mkdir -p examples/minimal/build/extensions
-odin build examples/minimal/native/scrappyphysics -build-mode:shared -out:examples/minimal/build/extensions/scrappyphysics.$LIB_EXT -collection:scrapbot=src/scrapbot
-'''
-
 [tasks.test]
 description = "Run all local checks and smoke tests"
-depends = ["build", "build-example-extensions"]
+depends = ["build"]
 run = '''
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in

@@ -1,7 +1,7 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-08
+**Last reviewed:** 2026-07-11
 
 ## Overview
 
@@ -11,6 +11,7 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 
 - Users can print the engine version.
 - Users can initialize a project directory.
+- Users can build project-declared native extensions without running the game.
 - Users can validate a project without opening a window.
 - Users can run a project through the selected renderer backend.
 - Users can request a platform window for renderer runs and limit windowed runs with `--frames`.
@@ -35,8 +36,8 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006
-- **FDRs:** FDR-002, FDR-003
+- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008
+- **FDRs:** FDR-002, FDR-003, FDR-006
 
 ## Open Questions
 

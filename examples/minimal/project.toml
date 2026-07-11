@@ -1,2 +1,6 @@
 name = "Minimal Example"
 default_scene = "scenes/main.scene.toml"
+
+[[native_extensions]]
+name = "scrappyphysics"
+source = "native/scrappyphysics"

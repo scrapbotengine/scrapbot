@@ -34,11 +34,24 @@ destroy_project_load_result :: project.destroy_project_load_result
 parse_renderer_backend :: render.parse_renderer_backend
 renderer_backend_name :: render.renderer_backend_name
 
+build_project :: proc(root: string) -> string {
+	loaded := project.load_project_config(root)
+	defer project.destroy_project_config_load_result(&loaded)
+	if loaded.err != "" {
+		return loaded.err
+	}
+
+	return build_native_extensions(root, &loaded.config)
+}
+
 check_project :: proc(root: string) -> string {
 	loaded := project.load_project(root)
 	defer project.destroy_project_load_result(&loaded)
 	if loaded.err != "" {
 		return loaded.err
+	}
+	if err := build_native_extensions(root, &loaded.config); err != "" {
+		return err
 	}
 
 	world := ecs.build_world(&loaded.scene)
@@ -239,6 +252,10 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 		result.err = loaded.err
 		return result
 	}
+	if err := build_native_extensions(root, &loaded.config); err != "" {
+		result.err = err
+		return result
+	}
 
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
@@ -286,4 +303,12 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	return result
+}
+
+build_native_extensions :: proc(root: string, config: ^shared.Project_Config) -> string {
+	if config == nil {
+		return ""
+	}
+	build_result := native.build_project_extensions(root, config.native_extensions[:])
+	return build_result.err
 }

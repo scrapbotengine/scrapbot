@@ -100,7 +100,18 @@ test_check_project_accepts_native_extension_registered_components :: proc(t: ^te
 	defer delete(root)
 	defer os.remove_all(parent)
 
-	build_check_project_native_extension(t, root)
+	write_check_project_native_extension_source(t, root)
+
+	project_path := join_check_project_path(t, root, PROJECT_FILE)
+	defer delete(project_path)
+	write_project_err := os.write_entire_file(project_path, `name = "Check Test"
+default_scene = "scenes/main.scene.toml"
+
+[[native_extensions]]
+name = "scrapbotnative"
+source = "native/scrapbotnative"
+`)
+	testing.expect(t, write_project_err == nil)
 
 	scene_path := join_check_project_path(t, root, DEFAULT_SCENE)
 	defer delete(scene_path)
@@ -136,6 +147,11 @@ end)
 	testing.expect(t, strings.contains(types_text, "component_handle: <T, R>(name: string) -> ScrapbotComponent<T, R>,"))
 	testing.expect(t, strings.contains(types_text, "export type ScrapbotnativeBody = {"))
 	testing.expect(t, strings.contains(types_text, "export type ScrapbotnativeBodyComponent = ScrapbotComponent<ScrapbotnativeBody, ReadonlyScrapbotnativeBody>"))
+
+	output_name := fmt.tprintf("scrapbotnative.%s", dynlib.LIBRARY_FILE_EXTENSION)
+	output_path := join_check_project_path(t, root, fmt.tprintf("build/extensions/%s", output_name))
+	defer delete(output_path)
+	testing.expect(t, os.exists(output_path))
 }
 
 @(test)
@@ -310,7 +326,7 @@ join_check_project_path :: proc(t: ^testing.T, root, path: string) -> string {
 	return out
 }
 
-build_check_project_native_extension :: proc(t: ^testing.T, root: string) {
+write_check_project_native_extension_source :: proc(t: ^testing.T, root: string) {
 	source_dir, source_dir_err := filepath.join({root, "native", "scrapbotnative"})
 	if !testing.expect(t, source_dir_err == nil) {
 		testing.fail_now(t)
@@ -352,51 +368,6 @@ scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
 }
 `)
 	if !testing.expect(t, write_source_err == nil) {
-		testing.fail_now(t)
-	}
-
-	extensions_dir, extensions_dir_err := filepath.join({root, "build", "extensions"})
-	if !testing.expect(t, extensions_dir_err == nil) {
-		testing.fail_now(t)
-	}
-	defer delete(extensions_dir)
-	make_extensions_err := os.make_directory_all(extensions_dir)
-	if !testing.expect(t, make_extensions_err == nil) {
-		testing.fail_now(t)
-	}
-
-	extension_file := fmt.tprintf("scrapbotnative.%s", dynlib.LIBRARY_FILE_EXTENSION)
-	extension_path, extension_path_err := filepath.join({extensions_dir, extension_file})
-	if !testing.expect(t, extension_path_err == nil) {
-		testing.fail_now(t)
-	}
-	defer delete(extension_path)
-
-	out_arg := fmt.tprintf("-out:%s", extension_path)
-	command := []string{
-		"odin",
-		"build",
-		source_dir,
-		"-build-mode:shared",
-		out_arg,
-		"-collection:scrapbot=src/scrapbot",
-	}
-	state, stdout, stderr, exec_err := os.process_exec(os.Process_Desc{command = command}, context.allocator)
-	if len(stdout) > 0 {
-		defer delete(stdout)
-	}
-	if len(stderr) > 0 {
-		defer delete(stderr)
-	}
-	if !testing.expectf(
-		t,
-		exec_err == nil && state.success,
-		"failed to build native extension: exec_err=%v exit=%d stdout=%s stderr=%s",
-		exec_err,
-		state.exit_code,
-		string(stdout),
-		string(stderr),
-	) {
 		testing.fail_now(t)
 	}
 }

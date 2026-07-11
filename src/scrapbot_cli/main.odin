@@ -16,6 +16,10 @@ Check_Options :: struct {
 	path: string `args:"pos=0" usage:"Project directory to validate."`,
 }
 
+Build_Options :: struct {
+	path: string `args:"pos=0" usage:"Project directory whose native extensions should be built."`,
+}
+
 Run_Options :: struct {
 	path:     string `args:"pos=0" usage:"Project directory to run."`,
 	backend: string `usage:"Renderer backend: null or wgpu."`,
@@ -52,6 +56,8 @@ run :: proc() -> int {
 		return run_init(args[1:])
 	case "check":
 		return run_check(args[1:])
+	case "build":
+		return run_build(args[1:])
 	case "run":
 		return run_project(args[1:])
 	case:
@@ -88,6 +94,21 @@ run_check :: proc(args: []string) -> int {
 		return 1
 	}
 	fmt.printf("%s is valid\n", scrapbot.PROJECT_FILE)
+	return 0
+}
+
+run_build :: proc(args: []string) -> int {
+	opt := Build_Options{path = "."}
+	code, should_run := parse_command_args(&opt, args, "scrapbot build")
+	if !should_run {
+		return code
+	}
+
+	if err := scrapbot.build_project(opt.path); err != "" {
+		fmt.eprintln(err)
+		return 1
+	}
+	fmt.printf("built native extensions for %s\n", opt.path)
 	return 0
 }
 
@@ -147,6 +168,8 @@ print_command_help :: proc(command: string) -> int {
 		flags.write_usage(stdout, Init_Options, "scrapbot init", PARSING_STYLE)
 	case "check":
 		flags.write_usage(stdout, Check_Options, "scrapbot check", PARSING_STYLE)
+	case "build":
+		flags.write_usage(stdout, Build_Options, "scrapbot build", PARSING_STYLE)
 	case "run":
 		flags.write_usage(stdout, Run_Options, "scrapbot run", PARSING_STYLE)
 	case:
@@ -161,6 +184,7 @@ print_help :: proc() {
 	fmt.println(`scrapbot commands:
   scrapbot init [path] [name]    Create project.toml and scenes/main.scene.toml
   scrapbot check [path]          Validate project.toml and the default scene
+  scrapbot build [path]          Build project native extensions
   scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--frames n] [--framegrab out.png]
                                   Load the project and render
   scrapbot help <command>         Print command-specific options

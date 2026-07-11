@@ -20,6 +20,12 @@ Renderer_Backend :: enum {
 Project_Config :: struct {
 	name:          string,
 	default_scene: string,
+	native_extensions: [dynamic]Native_Extension_Target,
+}
+
+Native_Extension_Target :: struct {
+	name:   string,
+	source: string,
 }
 
 Scene :: struct {

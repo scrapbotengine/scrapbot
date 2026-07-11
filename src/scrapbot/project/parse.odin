@@ -27,15 +27,47 @@ fail :: proc(err: Parse_Error, message: string) -> Parse_Result {
 }
 
 parse_project_config :: proc(source: string) -> (config: Project_Config, result: Parse_Result) {
+	section := ""
+	current_native_extension: ^shared.Native_Extension_Target
+
 	text := source
 	for raw_line in strings.split_lines_iterator(&text) {
 		line := strip_comment(strings.trim_space(raw_line))
 		if line == "" {
 			continue
 		}
+
+		if line == "[[native_extensions]]" {
+			append(&config.native_extensions, shared.Native_Extension_Target{})
+			current_native_extension = &config.native_extensions[len(config.native_extensions) - 1]
+			section = "native_extension"
+			continue
+		}
+
 		key, value, found := split_assignment(line)
 		if !found {
 			return config, fail(.Invalid_Syntax, fmt.tprintf("expected key/value assignment, got '%s'", line))
+		}
+
+		if section == "native_extension" {
+			if current_native_extension == nil {
+				return config, fail(.Invalid_Syntax, "native extension fields must appear under [[native_extensions]]")
+			}
+			switch key {
+			case "name":
+				current_native_extension.name, found = parse_basic_string(value)
+				if !found || !shared.component_token_is_valid(current_native_extension.name) {
+					return config, fail(.Invalid_Field, "native extension name must be an identifier string")
+				}
+			case "source":
+				current_native_extension.source, found = parse_basic_string(value)
+				if !found || !is_safe_relative_path(current_native_extension.source) {
+					return config, fail(.Invalid_Path, "native extension source must be a safe relative path")
+				}
+			case:
+				return config, fail(.Invalid_Field, fmt.tprintf("unknown native extension field '%s'", key))
+			}
+			continue
 		}
 
 		switch key {
@@ -59,6 +91,14 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 	}
 	if config.default_scene == "" {
 		return config, fail(.Missing_Field, "project.toml is missing default_scene")
+	}
+	for extension, index in config.native_extensions {
+		if extension.name == "" {
+			return config, fail(.Missing_Field, fmt.tprintf("native extension %d is missing name", index))
+		}
+		if extension.source == "" {
+			return config, fail(.Missing_Field, fmt.tprintf("native extension %d is missing source", index))
+		}
 	}
 	return config, ok()
 }

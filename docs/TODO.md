@@ -47,6 +47,8 @@
 - [x] Add library component registration for dotted component names.
 - [x] Add a Luau analyzer check for example project scripts.
 - [x] Add native Odin extension loading and hot reload.
+- [x] Add project-declared native extension builds.
+- [ ] Rebuild native extension sources during hot reload.
 - [ ] Add native ECS systems that participate in scheduling.
 
 ## Editor

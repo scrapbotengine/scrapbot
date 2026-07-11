@@ -11,10 +11,12 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 
 - A project has a `project.toml` manifest in its root directory.
 - The manifest names the project and points at a default scene.
+- The manifest can declare native extension targets with a name and source directory.
 - The default generated scene lives at `scenes/main.scene.toml`.
 - Scene files describe entities and known components in TOML.
 - Project validation rejects missing manifests, unsafe scene paths, malformed project metadata, malformed scene data, unknown scene components, and scene data that does not match registered component schemas.
 - Project validation refreshes generated Luau type definitions from the component registry.
+- Project validation builds declared native extension targets before loading extension schemas.
 - Example project directories live under `examples/` and can be used for smoke verification.
 
 ## Design Decisions
@@ -37,10 +39,16 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 **Why:** Project and library component data is only meaningful after scripts register matching schemas, while engine components are available from the initial registry.
 **Tradeoff:** Project scripts should keep top-level work limited to registration and other check-safe setup until Scrapbot has a module/package loader for library registration.
 
+### 4. Let project.toml declare native extension targets
+
+**Decision:** Native extension build targets live in `[[native_extensions]]` manifest tables with a stable target name and source directory.
+**Why:** Project authors should not need to remember platform output paths or external build scripts before running or checking a project.
+**Tradeoff:** The manifest parser still supports only Scrapbot's narrow TOML subset, and extension targets currently assume Odin source directories.
+
 ## Related
 
-- **ADRs:** ADR-002
-- **FDRs:** FDR-001, FDR-004
+- **ADRs:** ADR-002, ADR-008
+- **FDRs:** FDR-001, FDR-004, FDR-006
 
 ## Open Questions
 

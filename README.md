@@ -18,13 +18,14 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, and Luau LSP metadata.
-- `scrapbot check [path]` validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
-- `scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--frames n] [--framegrab out.png]` loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered script systems, and submits the world through the selected renderer backend.
+- `scrapbot check [path]` builds declared native extensions, validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
+- `scrapbot build [path]` builds declared native extensions without running or validating the scene.
+- `scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--frames n] [--framegrab out.png]` builds declared native extensions, loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered script systems, and submits the world through the selected renderer backend.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed schema markers, typed script-defined, library, and built-in component handles, access-declared scheduled systems, reusable ID-keyed query objects, joined query views, query-driven script systems with declared transform and schema-backed custom component payload write-back, deferred entity/component lifecycle commands, generation-aware entity handles, generated component type aliases, and periodic hot reload for the default scene plus `scripts/main.luau`. A small component registry validates project-level Luau components, script-registered library components, and known engine component names.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed schema markers, typed script-defined, library, native-extension, and built-in component handles, access-declared scheduled systems, reusable ID-keyed query objects, joined query views, query-driven script systems with declared transform and schema-backed custom component payload write-back, deferred entity/component lifecycle commands, generation-aware entity handles, generated component type aliases, and periodic hot reload for the default scene plus `scripts/main.luau`. A small component registry validates project-level Luau components, script-registered library components, native extension components, and known engine component names.
 
 Example projects live in [`examples/`](examples/). The minimal example can be verified with `mise scrapbot run examples/minimal`.
 
@@ -88,9 +89,9 @@ Run the full local test suite with `mise test`.
   - [x] Scheduled script systems
   - [ ] Editor scripting
 - Native
-  - [ ] Native Odin modules
-  - [ ] Native hot reload
-  - [ ] Native extension examples
+  - [x] Native Odin modules
+  - [x] Native hot reload
+  - [x] Native extension examples
   - [ ] Static native packaging
 - Developer Experience
   - [ ] Script/native diagnostics
@@ -197,7 +198,7 @@ Run the full local test suite with `mise test`.
   - [ ] Gameplay test fixtures
   - [ ] Offscreen render verification
   - [ ] Editor screenshot tests
-  - [ ] Native extension tests
+  - [x] Native extension tests
 - Project Support
   - [ ] Example projects
   - [ ] Documentation site
