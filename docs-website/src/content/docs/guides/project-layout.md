@@ -19,7 +19,8 @@ my-game/
 │       └── myextension.odin
 └── build/
     └── extensions/
-        └── myextension.dylib
+        ├── .scrapbot-extensions
+        └── myextension-<source-stamp>.dylib
 ```
 
 `build/` is generated output. Do not treat it as source.
@@ -89,10 +90,10 @@ mise scrapbot -- check my-game
 
 ## Native source and build output
 
-Native extension source belongs under a project-local source directory such as `native/scrappyphysics`. Declared targets are built into `build/extensions`:
+Native extension source belongs under a project-local source directory such as `native/scrappyphysics`. Declared targets are built into source-stamped dynamic libraries under `build/extensions`, with `.scrapbot-extensions` recording the active outputs:
 
 ```sh
 mise scrapbot -- build examples/minimal
 ```
 
-`check` and `run` also build declared native extensions automatically.
+`check` and `run` also build declared native extensions automatically. With `--hot-reload`, changes inside declared native source directories rebuild the extensions before the runtime reloads the scene and script.

@@ -15,7 +15,7 @@ name = "scrappyphysics"
 source = "native/scrappyphysics"
 ```
 
-`name` is the output library base name. `source` is an Odin package directory relative to the project root.
+`name` is the target name used in generated output filenames. `source` is an Odin package directory relative to the project root.
 
 ## Write the extension
 
@@ -59,13 +59,16 @@ mise scrapbot -- build examples/minimal
 Build output goes to:
 
 ```text
-build/extensions/<name>.<platform-library-extension>
+build/extensions/<name>-<source-stamp>.<platform-library-extension>
+build/extensions/.scrapbot-extensions
 ```
 
 Examples:
 
-- macOS: `scrappyphysics.dylib`
-- Linux: `scrappyphysics.so`
+- macOS: `scrappyphysics-<source-stamp>.dylib`
+- Linux: `scrappyphysics-<source-stamp>.so`
+
+`.scrapbot-extensions` records the active output files for the latest build. Older versioned libraries may remain in `build/extensions`.
 
 ## Use it from Luau
 
@@ -80,6 +83,6 @@ Then use it in queries, systems, views, access declarations, and lifecycle APIs 
 
 ## Hot reload status
 
-Runtime hot reload currently notices compiled library file changes in `build/extensions`. Rebuilding from edited native source during hot reload is a known next step.
+Runtime hot reload watches declared native extension source directories. When source changes, Scrapbot rebuilds declared extensions, updates `.scrapbot-extensions`, reloads the scene and Luau runtime, and loads the newly built library path.
 
-For now, rebuild explicitly or rerun `check`/`run`.
+Hot reload also notices active library file changes in `build/extensions` and `project.toml` changes that alter declared extension targets.

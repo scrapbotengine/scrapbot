@@ -148,10 +148,13 @@ end)
 	testing.expect(t, strings.contains(types_text, "export type ScrapbotnativeBody = {"))
 	testing.expect(t, strings.contains(types_text, "export type ScrapbotnativeBodyComponent = ScrapbotComponent<ScrapbotnativeBody, ReadonlyScrapbotnativeBody>"))
 
-	output_name := fmt.tprintf("scrapbotnative.%s", dynlib.LIBRARY_FILE_EXTENSION)
-	output_path := join_check_project_path(t, root, fmt.tprintf("build/extensions/%s", output_name))
-	defer delete(output_path)
-	testing.expect(t, os.exists(output_path))
+	manifest_path := join_check_project_path(t, root, "build/extensions/.scrapbot-extensions")
+	defer delete(manifest_path)
+	manifest_bytes, manifest_read_err := os.read_entire_file(manifest_path, context.temp_allocator)
+	testing.expect(t, manifest_read_err == nil)
+	manifest := string(manifest_bytes)
+	testing.expect(t, strings.contains(manifest, "scrapbotnative-"))
+	testing.expect(t, strings.contains(manifest, fmt.tprintf(".%s", dynlib.LIBRARY_FILE_EXTENSION)))
 }
 
 @(test)

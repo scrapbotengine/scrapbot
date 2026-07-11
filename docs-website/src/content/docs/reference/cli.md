@@ -60,7 +60,7 @@ Options:
 | `--backend wgpu` | Use the WebGPU renderer. |
 | `--window` | Open a platform window. |
 | `--headless` | Force headless mode. |
-| `--hot-reload` | Poll project files and reload while running. |
+| `--hot-reload` | Poll project files, scripts, and native extension source/output changes while running. |
 | `--frames n` | Limit renderer frames. |
 | `--framegrab out.png` | Write the final headless WGPU frame to a PNG. |
 

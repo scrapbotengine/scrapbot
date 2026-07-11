@@ -72,8 +72,8 @@
 
 **Luau analyzer** - The external `luau-analyze` static checker. `scrapbot check` runs it when available to catch script type and syntax errors against generated Scrapbot types.
 
-**Native extension** - Project-local compiled code declared in `project.toml`, built into `build/extensions`, and loaded through Scrapbot's C ABI. The first extension API lets native libraries register dotted library component schemas before Luau runs.
+**Native extension** - Project-local compiled code declared in `project.toml`, built into versioned dynamic libraries under `build/extensions`, and loaded through Scrapbot's C ABI. The first extension API lets native libraries register dotted library component schemas before Luau runs.
 
-**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for the default scene TOML, `scripts/main.luau`, and native libraries in `build/extensions`.
+**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for `project.toml`, the default scene TOML, `scripts/main.luau`, native libraries in `build/extensions`, and declared native extension source directories.
 
 **Editor GUI** - The planned in-engine editor interface toggled from a running project.

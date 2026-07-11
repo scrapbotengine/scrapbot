@@ -13,7 +13,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot init` creates a starter `scripts/main.luau`.
 - `scrapbot run` executes the script after scene loading and ECS world construction.
 - Script errors fail the run with a Luau diagnostic.
-- `scrapbot run --hot-reload` periodically checks `scripts/main.luau` and the default scene TOML while renderer frames are advancing.
+- `scrapbot run --hot-reload` periodically checks `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories while renderer frames are advancing.
 - Successful script reload replaces the active Luau runtime; failed script reload keeps the last good runtime.
 - Successful scene reload rebuilds the ECS world and validates `scripts/main.luau` against it before swapping state; failed scene reload keeps the last good world and runtime.
 - `scrapbot check` executes `scripts/main.luau` silently to collect project and library component schemas, validate scene data, and refresh `types/scrapbot.d.luau`.

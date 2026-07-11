@@ -13,15 +13,17 @@ Native extensions let project code add compiled engine/library behavior incremen
 - Each target has a stable `name` and an Odin source directory.
 - `scrapbot build` compiles declared native extensions without running the project.
 - `scrapbot check` and `scrapbot run` compile declared native extensions before loading them.
-- Scrapbot looks for native extension libraries in `build/extensions` under the project root.
-- Extension files use the platform dynamic-library suffix, such as `.dylib` on macOS and `.so` on Linux.
+- Scrapbot writes native extension libraries to `build/extensions` under the project root.
+- Built extension files include the target name, a source stamp, and the platform dynamic-library suffix, such as `.dylib` on macOS and `.so` on Linux.
+- `build/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a versioned C-compatible `extension_api.API`.
 - The first API supports registering library component schemas with dotted, non-`scrapbot` names.
 - `scrapbot run`, `scrapbot check`, and hot reload load native extensions before running project Luau.
 - Luau can retrieve a native-registered component handle with `scrapbot.component_handle(name)`.
 - Generated Luau types include component aliases for native-registered components after `scrapbot check`.
-- Hot reload treats extension file additions, removals, and modified stamps as project reload triggers.
+- Hot reload treats `project.toml`, extension file changes, and declared extension source directory changes as project reload triggers.
+- When declared extension source changes, hot reload rebuilds native extensions before reloading the world and Luau runtime.
 
 ## Design Decisions
 
@@ -31,11 +33,11 @@ Native extensions let project code add compiled engine/library behavior incremen
 **Why:** Game developers should be able to run `scrapbot check` or `scrapbot run` and have native extension schemas available without knowing the platform-specific `odin build -build-mode:shared` command.
 **Tradeoff:** The first builder is Odin-specific and assumes the engine source collection is available as `scrapbot` during local development.
 
-### 2. Load project-local build outputs
+### 2. Load active project-local build outputs
 
-**Decision:** Load extensions from `build/extensions`.
-**Why:** The path matches a generated-output workflow and avoids scanning source trees.
-**Tradeoff:** Stale manually placed libraries can still be loaded if they remain in the output directory.
+**Decision:** Build extensions into `build/extensions` and load only the paths listed in `.scrapbot-extensions` when that manifest exists.
+**Why:** The output directory still matches a generated-output workflow, while the manifest prevents stale libraries from being loaded after versioned hot-reload builds.
+**Tradeoff:** Old versioned libraries can accumulate in `build/extensions` until cleanup exists.
 
 ### 3. Start with schema registration only
 
@@ -49,6 +51,12 @@ Native extensions let project code add compiled engine/library behavior incremen
 **Why:** Dotted library names already distinguish non-project components in scenes and generated types.
 **Tradeoff:** There is not yet an authority model that ties a namespace to a specific package or extension binary.
 
+### 5. Use versioned output names for reloadable libraries
+
+**Decision:** Include a source tree stamp in built native extension filenames.
+**Why:** Platform dynamic loaders can keep returning the already loaded library for the same path. A source-stamped filename gives each changed build a fresh path while the previous runtime can remain alive until the new runtime is ready.
+**Tradeoff:** Source stamps are still detected by periodic polling, and the build directory needs future stale-output cleanup.
+
 ## Related
 
 - **ADRs:** ADR-008
@@ -57,5 +65,4 @@ Native extensions let project code add compiled engine/library behavior incremen
 ## Open Questions
 
 - What should the native system ABI look like once systems can participate in scheduling?
-- How should native extension source watching trigger rebuilds during hot reload?
 - Should extension metadata include declared namespace ownership?

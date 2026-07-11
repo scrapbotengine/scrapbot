@@ -46,10 +46,10 @@ Scrapbot's embedded scripting language for project-local code.
 Project-local type definitions in `types/scrapbot.d.luau`, refreshed by `scrapbot check`.
 
 **Native extension**  
-Project-local compiled code declared in `project.toml`, built into `build/extensions`, and loaded through Scrapbot's C ABI.
+Project-local compiled code declared in `project.toml`, built into versioned dynamic libraries under `build/extensions`, and loaded through Scrapbot's C ABI.
 
 **Hot reload**  
-Runtime behavior where changed project files are reloaded without restarting the engine. Current hot reload covers the default scene, `scripts/main.luau`, and compiled native extension libraries.
+Runtime behavior where changed project files are reloaded without restarting the engine. Current hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native extension source directories.
 
 ## Rendering
 

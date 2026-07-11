@@ -22,12 +22,15 @@ File_Stamp :: struct {
 
 Hot_Reload_State :: struct {
 	root:         string,
+	project_path: string,
 	scene_path:   string,
 	script_path:  string,
+	project_stamp: File_Stamp,
 	scene_stamp:  File_Stamp,
 	script_stamp: File_Stamp,
 	runtime:      script.Runtime,
 	native_extensions: native.Extension_Set,
+	native_sources: native.Source_Set,
 	last_good_script_source: string,
 	has_last_good_script:    bool,
 	seconds_until_next_check: f32,
@@ -50,20 +53,41 @@ init_hot_reload_state :: proc(
 	state^ = {}
 	state.root = root
 
+	project_path, project_join_err := filepath.join({root, shared.PROJECT_FILE})
+	if project_join_err != nil {
+		return "failed to allocate project path"
+	}
+	state.project_path = project_path
+
 	scene_path, scene_join_err := filepath.join({root, loaded.config.default_scene})
 	if scene_join_err != nil {
+		delete(state.project_path)
+		state.project_path = ""
 		return "failed to allocate scene path"
 	}
 	state.scene_path = scene_path
 
 	script_path, script_join_err := filepath.join({root, shared.DEFAULT_SCRIPT})
 	if script_join_err != nil {
+		delete(state.project_path)
+		state.project_path = ""
 		delete(state.scene_path)
 		state.scene_path = ""
 		return "failed to allocate script path"
 	}
 	state.script_path = script_path
 
+	if source_err := native.sync_project_extension_sources(&state.native_sources, root, loaded.config.native_extensions[:]); source_err != "" {
+		delete(state.project_path)
+		delete(state.scene_path)
+		delete(state.script_path)
+		state.project_path = ""
+		state.scene_path = ""
+		state.script_path = ""
+		return source_err
+	}
+
+	state.project_stamp = file_stamp(state.project_path)
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.script_stamp = file_stamp(state.script_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
@@ -74,7 +98,9 @@ init_hot_reload_state :: proc(
 destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
+	native.destroy_source_set(&state.native_sources)
 	delete(state.last_good_script_source)
+	delete(state.project_path)
 	delete(state.scene_path)
 	delete(state.script_path)
 	state^ = {}
@@ -100,31 +126,32 @@ maybe_poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World, de
 }
 
 poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
+	next_project_stamp := file_stamp(state.project_path)
 	next_scene_stamp := file_stamp(state.scene_path)
 	next_script_stamp := file_stamp(state.script_path)
+	project_changed := !file_stamps_equal(state.project_stamp, next_project_stamp)
 	scene_changed := !file_stamps_equal(state.scene_stamp, next_scene_stamp)
 	script_changed := !file_stamps_equal(state.script_stamp, next_script_stamp)
 	extensions_changed := native.project_extensions_changed(&state.native_extensions, state.root)
-	if !scene_changed && !script_changed && !extensions_changed {
+	sources_changed := native.project_extension_sources_changed(&state.native_sources, state.root)
+	if !project_changed && !scene_changed && !script_changed && !extensions_changed && !sources_changed {
 		return
 	}
 
-	if scene_changed || extensions_changed {
-		state.scene_stamp = next_scene_stamp
-		state.script_stamp = next_script_stamp
+	if project_changed || scene_changed || extensions_changed || sources_changed {
 		if err := reload_project_world_and_script(state, world); err != "" {
 			fmt.eprintf("[hot-reload] failed to reload project: %s\n", err)
 			return
 		}
-		fmt.eprintf("[hot-reload] reloaded %s, %s, and native extensions\n", state.scene_path, state.script_path)
+		fmt.eprintf("[hot-reload] reloaded %s, %s, %s, and native extensions\n", state.project_path, state.scene_path, state.script_path)
 		return
 	}
 
-	state.script_stamp = next_script_stamp
 	if err := load_script_runtime(state, world); err != "" {
 		fmt.eprintf("[hot-reload] failed to reload script: %s\n", err)
 		return
 	}
+	state.script_stamp = next_script_stamp
 	fmt.eprintf("[hot-reload] reloaded %s\n", state.script_path)
 }
 
@@ -150,18 +177,28 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		return reload_err
 	}
 
+	next_sources: native.Source_Set
+	if source_err := native.sync_project_extension_sources(&next_sources, state.root, loaded.config.native_extensions[:]); source_err != "" {
+		ecs.destroy_world(&next_world)
+		destroy_script_load(&script_load)
+		return source_err
+	}
+
 	ecs.destroy_world(world)
 	world^ = next_world
 
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
+	native.destroy_source_set(&state.native_sources)
 	delete(state.last_good_script_source)
 	state.runtime = script_load.runtime
 	state.native_extensions = script_load.native_extensions
+	state.native_sources = next_sources
 	script.rebind_runtime(&state.runtime)
 	state.last_good_script_source = script_load.source
 	state.has_last_good_script = script_load.has_source
 
+	state.project_stamp = file_stamp(state.project_path)
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.script_stamp = file_stamp(state.script_path)
 	return ""

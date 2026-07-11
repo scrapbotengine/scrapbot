@@ -70,5 +70,4 @@ Native extensions can register component schemas only. They cannot yet:
 - register native systems;
 - access ECS storage directly;
 - declare scheduler reads or writes;
-- allocate through a host allocator;
-- participate in source-level hot reload.
+- allocate through a host allocator.

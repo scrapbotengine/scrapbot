@@ -11,6 +11,7 @@ import api "../extension_api"
 import shared "../shared"
 
 EXTENSIONS_DIR :: "build/extensions"
+EXTENSIONS_MANIFEST :: ".scrapbot-extensions"
 REGISTER_SYMBOL :: "scrapbot_extension_register"
 MAX_EXTENSIONS :: 32
 
@@ -20,16 +21,34 @@ Extension_Stamp :: struct {
 	size: i64,
 }
 
+Source_Stamp :: struct {
+	exists: bool,
+	modified_ns: i64,
+	size: i64,
+	entry_count: int,
+}
+
 Extension :: struct {
 	path: string,
 	stamp: Extension_Stamp,
 	library: dynlib.Library,
 }
 
+Source_Target :: struct {
+	name: string,
+	source: string,
+	stamp: Source_Stamp,
+}
+
 Extension_Set :: struct {
 	extensions: [MAX_EXTENSIONS]Extension,
 	extension_count: int,
 	registry: ^component.Registry,
+}
+
+Source_Set :: struct {
+	targets: [MAX_EXTENSIONS]Source_Target,
+	target_count: int,
 }
 
 Load_Result :: struct {
@@ -44,16 +63,21 @@ Build_Result :: struct {
 
 build_project_extensions :: proc(root: string, targets: []shared.Native_Extension_Target) -> Build_Result {
 	result: Build_Result
-	if len(targets) == 0 {
-		return result
-	}
-
 	extensions_dir, dir_err := project_extensions_dir(root)
 	if dir_err != "" {
 		result.err = dir_err
 		return result
 	}
 	defer delete(extensions_dir)
+
+	if len(targets) == 0 {
+		if os.exists(extensions_dir) {
+			if err := write_extensions_manifest(extensions_dir, nil); err != "" {
+				result.err = err
+			}
+		}
+		return result
+	}
 
 	if !os.exists(extensions_dir) {
 		if err := os.make_directory_all(extensions_dir); err != nil {
@@ -62,32 +86,119 @@ build_project_extensions :: proc(root: string, targets: []shared.Native_Extensio
 		}
 	}
 
+	output_names: [dynamic]string
+	defer {
+		for name in output_names {
+			delete(name)
+		}
+		delete(output_names)
+	}
+
 	for target in targets {
-		if err := build_extension(root, extensions_dir, target); err != "" {
+		output_name, err := build_extension(root, extensions_dir, target)
+		if err != "" {
 			result.err = err
 			return result
 		}
+		append(&output_names, output_name)
 		result.built_count += 1
+	}
+
+	if err := write_extensions_manifest(extensions_dir, output_names[:]); err != "" {
+		result.err = err
+		return result
 	}
 
 	return result
 }
 
-build_extension :: proc(root, extensions_dir: string, target: shared.Native_Extension_Target) -> string {
+sync_project_extension_sources :: proc(
+	set: ^Source_Set,
+	root: string,
+	targets: []shared.Native_Extension_Target,
+) -> string {
+	destroy_source_set(set)
+	if len(targets) > MAX_EXTENSIONS {
+		return "too many native extension source targets"
+	}
+
+	for target in targets {
+		cloned_name, name_err := strings.clone(target.name)
+		if name_err != nil {
+			destroy_source_set(set)
+			return "failed to retain native extension source target name"
+		}
+
+		cloned_source, source_err := strings.clone(target.source)
+		if source_err != nil {
+			delete(cloned_name)
+			destroy_source_set(set)
+			return "failed to retain native extension source target path"
+		}
+
+		set.targets[set.target_count] = Source_Target {
+			name = cloned_name,
+			source = cloned_source,
+			stamp = extension_source_stamp(root, target.source),
+		}
+		set.target_count += 1
+	}
+
+	return ""
+}
+
+destroy_source_set :: proc(set: ^Source_Set) {
+	if set == nil {
+		return
+	}
+	for &target in set.targets[:set.target_count] {
+		delete(target.name)
+		delete(target.source)
+	}
+	set^ = {}
+}
+
+project_extension_sources_changed :: proc(set: ^Source_Set, root: string) -> bool {
+	if set == nil {
+		return false
+	}
+	for target in set.targets[:set.target_count] {
+		if !source_stamps_equal(target.stamp, extension_source_stamp(root, target.source)) {
+			return true
+		}
+	}
+	return false
+}
+
+build_extension :: proc(root, extensions_dir: string, target: shared.Native_Extension_Target) -> (output_name: string, err: string) {
 	source_dir, source_err := filepath.join({root, target.source})
 	if source_err != nil {
-		return fmt.tprintf("failed to allocate native extension source path for %s", target.name)
+		return "", fmt.tprintf("failed to allocate native extension source path for %s", target.name)
 	}
 	defer delete(source_dir)
 
 	if !os.exists(source_dir) {
-		return fmt.tprintf("native extension %s source does not exist: %s", target.name, target.source)
+		return "", fmt.tprintf("native extension %s source does not exist: %s", target.name, target.source)
 	}
 
-	output_name := fmt.tprintf("%s.%s", target.name, dynlib.LIBRARY_FILE_EXTENSION)
+	source_stamp := extension_source_stamp(root, target.source)
+	temp_output_name := fmt.tprintf(
+		"%s-%d-%d-%d.%s",
+		target.name,
+		source_stamp.modified_ns,
+		source_stamp.size,
+		source_stamp.entry_count,
+		dynlib.LIBRARY_FILE_EXTENSION,
+	)
+	cloned_output_name, clone_err := strings.clone(temp_output_name)
+	if clone_err != nil {
+		return "", "failed to retain native extension output name"
+	}
+	output_name = cloned_output_name
 	output_path, output_err := filepath.join({extensions_dir, output_name})
 	if output_err != nil {
-		return fmt.tprintf("failed to allocate native extension output path for %s", target.name)
+		delete(output_name)
+		return "", fmt.tprintf("failed to allocate native extension output path for %s", target.name)
 	}
 	defer delete(output_path)
 
@@ -108,7 +219,8 @@ build_extension :: proc(root, extensions_dir: string, target: shared.Native_Exte
 		defer delete(stderr)
 	}
 	if exec_err != nil {
-		return fmt.tprintf("failed to build native extension %s: %v", target.name, exec_err)
+		delete(output_name)
+		return "", fmt.tprintf("failed to build native extension %s: %v", target.name, exec_err)
 	}
 	if !state.success {
 		output := strings.trim_space(string(stderr))
@@ -116,11 +228,13 @@ build_extension :: proc(root, extensions_dir: string, target: shared.Native_Exte
 			output = strings.trim_space(string(stdout))
 		}
 		if output == "" {
-			return fmt.tprintf("failed to build native extension %s: odin exited with code %d", target.name, state.exit_code)
+			delete(output_name)
+			return "", fmt.tprintf("failed to build native extension %s: odin exited with code %d", target.name, state.exit_code)
 		}
-		return fmt.tprintf("failed to build native extension %s:\n%s", target.name, output)
+		delete(output_name)
+		return "", fmt.tprintf("failed to build native extension %s:\n%s", target.name, output)
 	}
-	return ""
+	return output_name, ""
 }
 
 load_project_extensions :: proc(set: ^Extension_Set, root: string, registry: ^component.Registry) -> Load_Result {
@@ -283,6 +397,14 @@ project_extension_paths :: proc(root: string) -> (paths: []string, err: string) 
 		return nil, ""
 	}
 
+	manifest_paths, manifest_found, manifest_err := project_extension_manifest_paths(extensions_dir)
+	if manifest_err != "" {
+		return nil, manifest_err
+	}
+	if manifest_found {
+		return manifest_paths, ""
+	}
+
 	entries, read_err := os.read_all_directory_by_path(extensions_dir, context.temp_allocator)
 	if read_err != nil {
 		return nil, fmt.tprintf("failed to read native extension directory: %v", read_err)
@@ -309,6 +431,64 @@ project_extension_paths :: proc(root: string) -> (paths: []string, err: string) 
 	delete(builder)
 	sort_strings(paths)
 	return paths, ""
+}
+
+write_extensions_manifest :: proc(extensions_dir: string, output_names: []string) -> string {
+	manifest_path, path_err := filepath.join({extensions_dir, EXTENSIONS_MANIFEST})
+	if path_err != nil {
+		return "failed to allocate native extension manifest path"
+	}
+	defer delete(manifest_path)
+
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+
+	for name in output_names {
+		strings.write_string(&builder, name)
+		strings.write_rune(&builder, '\n')
+	}
+
+	if err := os.write_entire_file(manifest_path, strings.to_string(builder)); err != nil {
+		return fmt.tprintf("failed to write native extension manifest: %v", err)
+	}
+	return ""
+}
+
+project_extension_manifest_paths :: proc(extensions_dir: string) -> (paths: []string, found: bool, err: string) {
+	manifest_path, path_err := filepath.join({extensions_dir, EXTENSIONS_MANIFEST})
+	if path_err != nil {
+		return nil, false, "failed to allocate native extension manifest path"
+	}
+	defer delete(manifest_path)
+
+	if !os.exists(manifest_path) {
+		return nil, false, ""
+	}
+
+	manifest, read_err := os.read_entire_file(manifest_path, context.temp_allocator)
+	if read_err != nil {
+		return nil, true, fmt.tprintf("failed to read native extension manifest: %v", read_err)
+	}
+
+	builder: [dynamic]string
+	text := string(manifest)
+	for raw_line in strings.split_lines_iterator(&text) {
+		name := strings.trim_space(raw_line)
+		if name == "" {
+			continue
+		}
+		path, join_err := filepath.join({extensions_dir, name})
+		if join_err != nil {
+			destroy_extension_paths(builder[:])
+			return nil, true, "failed to allocate native extension manifest entry path"
+		}
+		append(&builder, path)
+	}
+
+	paths = make([]string, len(builder))
+	copy(paths, builder[:])
+	delete(builder)
+	return paths, true, ""
 }
 
 project_extensions_dir :: proc(root: string) -> (path: string, err: string) {
@@ -354,4 +534,64 @@ extension_stamp :: proc(path: string) -> Extension_Stamp {
 
 extension_stamps_equal :: proc(a, b: Extension_Stamp) -> bool {
 	return a.exists == b.exists && a.modified_ns == b.modified_ns && a.size == b.size
+}
+
+extension_source_stamp :: proc(root, source: string) -> Source_Stamp {
+	source_dir, source_err := filepath.join({root, source})
+	if source_err != nil {
+		return {}
+	}
+	defer delete(source_dir)
+
+	stamp: Source_Stamp
+	accumulate_source_dir_stamp(source_dir, &stamp)
+	return stamp
+}
+
+accumulate_source_dir_stamp :: proc(path: string, stamp: ^Source_Stamp) {
+	accumulate_source_path_stamp(path, stamp)
+
+	entries, read_err := os.read_all_directory_by_path(path, context.temp_allocator)
+	if read_err != nil {
+		return
+	}
+
+	for entry in entries {
+		child_path, child_err := filepath.join({path, entry.name})
+		if child_err != nil {
+			continue
+		}
+
+		#partial switch entry.type {
+		case .Regular:
+			accumulate_source_path_stamp(child_path, stamp)
+		case .Directory:
+			accumulate_source_dir_stamp(child_path, stamp)
+		case:
+		}
+		delete(child_path)
+	}
+}
+
+accumulate_source_path_stamp :: proc(path: string, stamp: ^Source_Stamp) {
+	fi, err := os.stat(path, context.temp_allocator)
+	if err != nil {
+		return
+	}
+	defer os.file_info_delete(fi, context.temp_allocator)
+
+	stamp.exists = true
+	stamp.entry_count += 1
+	stamp.size += fi.size
+	modified_ns := time.to_unix_nanoseconds(fi.modification_time)
+	if modified_ns > stamp.modified_ns {
+		stamp.modified_ns = modified_ns
+	}
+}
+
+source_stamps_equal :: proc(a, b: Source_Stamp) -> bool {
+	return a.exists == b.exists &&
+		a.modified_ns == b.modified_ns &&
+		a.size == b.size &&
+		a.entry_count == b.entry_count
 }
