@@ -18,6 +18,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 - `build/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a versioned C-compatible `extension_api.API`.
+- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helper procedures for registration, access declarations, queries, transform access, and vec3 field access.
 - The API supports registering library component schemas with dotted, non-`scrapbot` names.
 - The API supports registering native systems with declared component reads and writes.
 - Native systems can query by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components through the callback context.
@@ -47,13 +48,19 @@ Native extensions let project code add compiled engine/library behavior incremen
 **Why:** This proves the “move hot Luau code to compiled code” path while keeping extension authors away from internal ECS storage, allocator ownership, and threading details.
 **Tradeoff:** Native systems can only touch the first supported ECS surface; they cannot yet spawn/despawn entities, allocate through a host allocator, or access arbitrary component field types.
 
-### 4. Reuse library component ownership
+### 4. Provide an Odin authoring wrapper over the raw ABI
+
+**Decision:** Add `scrapbot:extension` as a small Odin package that aliases the ABI types and offers helper procedures for common extension work.
+**Why:** Extension authors should write idiomatic project/library code instead of repeating nil checks, ABI version checks, raw pointer extraction, field counts, and table construction in every extension.
+**Tradeoff:** The wrapper improves Odin ergonomics only. Non-Odin extension authors still target the raw C-compatible ABI or their own language bindings.
+
+### 5. Reuse library component ownership
 
 **Decision:** Native extensions register library-owned component names.
 **Why:** Dotted library names already distinguish non-project components in scenes and generated types.
 **Tradeoff:** There is not yet an authority model that ties a namespace to a specific package or extension binary.
 
-### 5. Use versioned output names for reloadable libraries
+### 6. Use versioned output names for reloadable libraries
 
 **Decision:** Include a source tree stamp in built native extension filenames.
 **Why:** Platform dynamic loaders can keep returning the already loaded library for the same path. A source-stamped filename gives each changed build a fresh path while the previous runtime can remain alive until the new runtime is ready.

@@ -3,7 +3,7 @@ title: Native Extension ABI
 description: The current C-compatible ABI used by project native extensions.
 ---
 
-The first native extension ABI lives in `src/scrapbot/extension_api`.
+The first native extension ABI lives in `src/scrapbot/extension_api`. Odin extension authors should normally import `scrapbot:extension`, which wraps this raw ABI with typed helpers such as `scrapbot.component`, `scrapbot.system`, `scrapbot.read`, and `scrapbot.get_transform`.
 
 ## Versioning
 

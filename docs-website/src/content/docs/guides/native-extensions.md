@@ -3,7 +3,7 @@ title: Native Extensions
 description: Build project-local Odin dynamic libraries that register component schemas and scheduled systems.
 ---
 
-Native extensions are the current path for moving project/library behavior toward compiled code. The ABI is deliberately small: native code can register library component schemas and scheduled systems.
+Native extensions are the current path for moving project/library behavior toward compiled code. The loaded-library ABI is deliberately small, while Odin extension authors use the `scrapbot:extension` helper package to register component schemas and scheduled systems.
 
 ## Declare an extension target
 
@@ -22,52 +22,80 @@ source = "native/scrappyphysics"
 ```odin
 package scrappyphysics
 
-import c "core:c"
-import api "scrapbot:extension_api"
+import scrapbot "scrapbot:extension"
 
 @(export)
-scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
-	if scrapbot == nil {
-		return "Scrapbot API is not available"
-	}
-	if scrapbot.abi_version != api.ABI_VERSION {
-		return "unsupported Scrapbot extension ABI"
-	}
+scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
+	return scrapbot.register(api, register)
+}
 
-	fields := [?]api.Field_Definition {
-		{name = "velocity", field_type = .Vec3},
+register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
+	fields := [?]scrapbot.Field {
+		scrapbot.vec3("velocity"),
 	}
-	definition := api.Component_Definition {
-		name = "scrappyphysics.rigidbody",
-		fields = raw_data(fields[:]),
-		field_count = c.int(len(fields)),
-	}
-	return scrapbot.register_library_component(scrapbot, &definition)
+	return scrapbot.component(ctx, "scrappyphysics.rigidbody", fields[:])
 }
 ```
 
-Extensions must export `scrapbot_extension_register`.
+Extensions must export `scrapbot_extension_register`. The helper checks the ABI version and calls your project-local contextless `register` procedure.
 
 ## Register a system
 
 Systems declare component access and provide a callback:
 
 ```odin
-accesses := [?]api.System_Access {
-	{component = "scrapbot.transform", mode = .Read},
-	{component = "scrapbot.transform", mode = .Write},
-	{component = "scrappyphysics.rigidbody", mode = .Read},
+accesses := [?]scrapbot.Access {
+	scrapbot.read(scrapbot.TRANSFORM),
+	scrapbot.write(scrapbot.TRANSFORM),
+	scrapbot.read("scrappyphysics.rigidbody"),
 }
-system := api.System_Definition {
-	name = "scrappyphysics.motion",
-	accesses = raw_data(accesses[:]),
-	access_count = c.int(len(accesses)),
-	callback = motion_system,
-}
-return scrapbot.register_system(scrapbot, &system)
+return scrapbot.system(ctx, "scrappyphysics.motion", accesses[:], motion_system)
 ```
 
-The callback receives `api.System_Context`. The current context can query entities by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components. Native and Luau systems share the same scheduler batches.
+The callback receives `scrapbot.System_Context`. The current context can query entities by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components. Native and Luau systems share the same scheduler batches.
+
+```odin
+motion_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
+	terms := [?]scrapbot.Query_Term {
+		scrapbot.term(scrapbot.TRANSFORM),
+		scrapbot.term("scrappyphysics.rigidbody"),
+	}
+
+	count := scrapbot.query_count(ctx, terms[:])
+	if count < 0 {
+		return "failed to query rigidbodies"
+	}
+
+	for i in 0..<count {
+		entity, entity_ok := scrapbot.query_entity_at(ctx, terms[:], i)
+		if !entity_ok {
+			continue
+		}
+
+		transform, transform_ok := scrapbot.get_transform(ctx, entity)
+		if !transform_ok {
+			return "failed to read transform"
+		}
+
+		velocity, velocity_ok := scrapbot.get_vec3(ctx, entity, "scrappyphysics.rigidbody", "velocity")
+		if !velocity_ok {
+			return "failed to read velocity"
+		}
+
+		transform.position.x += velocity.x * ctx.delta_seconds
+		transform.position.y += velocity.y * ctx.delta_seconds
+		transform.position.z += velocity.z * ctx.delta_seconds
+
+		if !scrapbot.set_transform(ctx, entity, transform) {
+			return "failed to write transform"
+		}
+	}
+
+	return nil
+}
+```
+
+The raw C-compatible package remains available as `scrapbot:extension_api` for non-Odin bindings and ABI reference work.
 
 ## Build it
 

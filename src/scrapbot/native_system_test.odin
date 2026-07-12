@@ -159,68 +159,56 @@ join_native_system_test_path :: proc(t: ^testing.T, root, path: string) -> strin
 
 NATIVE_SYSTEM_TEST_EXTENSION_SOURCE :: `package nativespin
 
-import c "core:c"
-import api "scrapbot:extension_api"
+import scrapbot "scrapbot:extension"
 
 @(export)
-scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
-	if scrapbot == nil {
-		return "Scrapbot API is not available"
-	}
-	if scrapbot.abi_version != api.ABI_VERSION {
-		return "unsupported Scrapbot extension ABI"
-	}
+scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
+	return scrapbot.register(api, register)
+}
 
-	fields := [?]api.Field_Definition {
-		{name = "angular_velocity", field_type = .Vec3},
+register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
+	fields := [?]scrapbot.Field {
+		scrapbot.vec3("angular_velocity"),
 	}
-	component := api.Component_Definition {
-		name = "nativespin.spin",
-		fields = raw_data(fields[:]),
-		field_count = c.int(len(fields)),
-	}
-	if err := scrapbot.register_library_component(scrapbot, &component); err != nil {
+	if err := scrapbot.component(ctx, "nativespin.spin", fields[:]); err != nil {
 		return err
 	}
 
-	accesses := [?]api.System_Access {
-		{component = "scrapbot.transform", mode = .Read},
-		{component = "scrapbot.transform", mode = .Write},
-		{component = "nativespin.spin", mode = .Read},
+	accesses := [?]scrapbot.Access {
+		scrapbot.read(scrapbot.TRANSFORM),
+		scrapbot.write(scrapbot.TRANSFORM),
+		scrapbot.read("nativespin.spin"),
 	}
-	system := api.System_Definition {
-		name = "nativespin.spin",
-		accesses = raw_data(accesses[:]),
-		access_count = c.int(len(accesses)),
-		callback = spin_system,
-	}
-	return scrapbot.register_system(scrapbot, &system)
+	return scrapbot.system(ctx, "nativespin.spin", accesses[:], spin_system)
 }
 
-spin_system :: proc "c" (ctx: ^api.System_Context) -> cstring {
-	terms := [?]api.Query_Term {
-		{component = "scrapbot.transform"},
-		{component = "nativespin.spin"},
+spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
+	terms := [?]scrapbot.Query_Term {
+		scrapbot.term(scrapbot.TRANSFORM),
+		scrapbot.term("nativespin.spin"),
 	}
-	count := ctx.query_count(ctx, raw_data(terms[:]), c.int(len(terms)))
+	count := scrapbot.query_count(ctx, terms[:])
 	if count < 0 {
 		return "query failed"
 	}
-	for i in 0..<int(count) {
-		entity := ctx.query_entity_at(ctx, raw_data(terms[:]), c.int(len(terms)), c.int(i))
-		if entity.index < 0 {
+	for i in 0..<count {
+		entity, entity_ok := scrapbot.query_entity_at(ctx, terms[:], i)
+		if !entity_ok {
 			continue
 		}
-		transform: api.Transform
-		if ctx.get_transform(ctx, entity, &transform) == 0 {
+
+		transform, transform_ok := scrapbot.get_transform(ctx, entity)
+		if !transform_ok {
 			return "get_transform failed"
 		}
-		angular_velocity: api.Vec3
-		if ctx.get_vec3_field(ctx, entity, "nativespin.spin", "angular_velocity", &angular_velocity) == 0 {
+
+		angular_velocity, velocity_ok := scrapbot.get_vec3(ctx, entity, "nativespin.spin", "angular_velocity")
+		if !velocity_ok {
 			return "get_vec3_field failed"
 		}
+
 		transform.rotation.y += angular_velocity.y * ctx.delta_seconds
-		if ctx.set_transform(ctx, entity, &transform) == 0 {
+		if !scrapbot.set_transform(ctx, entity, transform) {
 			return "set_transform failed"
 		}
 	}
