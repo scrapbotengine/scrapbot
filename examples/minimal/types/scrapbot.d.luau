@@ -54,19 +54,25 @@ export type ScrapbotComponent<T, R> = {
 
 export type ScrapbotQuery1<A, RA> = {
 	_type_a: A?,
+	_read_type_a: RA?,
 	each: (ScrapbotQuery1<A, RA>, callback: (ScrapbotEntity, RA) -> ()) -> (),
 }
 
 export type ScrapbotQuery2<A, RA, B, RB> = {
 	_type_a: A?,
+	_read_type_a: RA?,
 	_type_b: B?,
+	_read_type_b: RB?,
 	each: (ScrapbotQuery2<A, RA, B, RB>, callback: (ScrapbotEntity, RA, RB) -> ()) -> (),
 }
 
 export type ScrapbotQuery3<A, RA, B, RB, C, RC> = {
 	_type_a: A?,
+	_read_type_a: RA?,
 	_type_b: B?,
+	_read_type_b: RB?,
 	_type_c: C?,
+	_read_type_c: RC?,
 	each: (ScrapbotQuery3<A, RA, B, RB, C, RC>, callback: (ScrapbotEntity, RA, RB, RC) -> ()) -> (),
 }
 

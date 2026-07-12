@@ -167,6 +167,8 @@ test_luau_types_include_registered_components :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(text, "export type ScrappyphysicsRigidbody = {"))
 	testing.expect(t, strings.contains(text, "export type ScrappyphysicsRigidbodyComponent = ScrapbotComponent<ScrappyphysicsRigidbody, ReadonlyScrappyphysicsRigidbody>"))
 	testing.expect(t, strings.contains(text, "export type ScrapbotQuery2<A, RA, B, RB> = {"))
+	testing.expect(t, strings.contains(text, "\t_read_type_a: RA?,"))
+	testing.expect(t, strings.contains(text, "\t_read_type_b: RB?,"))
 	testing.expect(t, strings.contains(text, "callback: (ScrapbotEntity, RA, RB) -> ()) -> (),"))
 	testing.expect(t, strings.contains(text, "<A, RA, B, RB>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>) -> ScrapbotQuery2<A, RA, B, RB>"))
 	testing.expect(t, !strings.contains(text, "query3:"))
