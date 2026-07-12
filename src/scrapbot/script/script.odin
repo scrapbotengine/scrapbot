@@ -35,6 +35,7 @@ Source_Options :: struct {
 	log_enabled: bool,
 	registry: ^component.Registry,
 	resource_registry: ^resources.Registry,
+	project_root: string,
 }
 
 Runtime :: struct {
@@ -42,6 +43,7 @@ Runtime :: struct {
 	world: ^World,
 	registry: component.Registry,
 	resource_registry: ^resources.Registry,
+	project_root: string,
 	log_enabled: bool,
 	commands: ecs.Command_Buffer,
 	systems: [MAX_SCRIPT_SYSTEMS]Script_System,
@@ -148,7 +150,9 @@ run_project_script_with_options :: proc(runtime: ^Runtime, root: string, world: 
 		return result
 	}
 
-	result = run_source_with_options(runtime, string(source), DEFAULT_SCRIPT_CHUNK, world, options)
+	project_options := options
+	project_options.project_root = root
+	result = run_source_with_options(runtime, string(source), DEFAULT_SCRIPT_CHUNK, world, project_options)
 	result.ran = result.err == ""
 	return result
 }
@@ -177,6 +181,7 @@ run_source_with_options :: proc(runtime: ^Runtime, source, chunk_name: string, w
 	runtime.world = world
 	runtime.log_enabled = options.log_enabled
 	runtime.resource_registry = options.resource_registry
+	runtime.project_root = options.project_root
 	if options.registry != nil {
 		runtime.registry = options.registry^
 	} else {

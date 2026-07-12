@@ -20,6 +20,8 @@ struct Render_Uniform {
 var<uniform> render: Render_Uniform;
 @group(0) @binding(1) var shadow_map: texture_depth_2d;
 @group(0) @binding(2) var shadow_sampler: sampler_comparison;
+@group(1) @binding(0) var base_color_texture: texture_2d<f32>;
+@group(1) @binding(1) var base_color_sampler: sampler;
 
 struct Vertex_Input {
 	@location(0) position: vec3<f32>,
@@ -34,6 +36,7 @@ struct Vertex_Output {
 	@location(2) world_normal: vec3<f32>,
 	@location(3) shadow_position: vec4<f32>,
 	@location(4) shadow_receiver: f32,
+	@location(5) uv: vec2<f32>,
 };
 
 @vertex
@@ -45,6 +48,7 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) instance_index: u32) ->
 	output.color = render.color[instance_index].rgb;
 	output.shadow_position = render.shadow_mvp[instance_index] * vec4<f32>(input.position, 1.0);
 	output.shadow_receiver = render.shadow_flags[instance_index].y;
+	output.uv = input.uv;
 	return output;
 }
 
@@ -84,7 +88,8 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 			lighting += render.point_color_intensity[i].rgb * render.point_color_intensity[i].w * diffuse * attenuation;
 		}
 	}
-	let base_color = pow(max(input.color, vec3<f32>(0.0)), vec3<f32>(2.2));
+	let texture_color = textureSample(base_color_texture, base_color_sampler, input.uv).rgb;
+	let base_color = texture_color * pow(max(input.color, vec3<f32>(0.0)), vec3<f32>(2.2));
 	let hdr = base_color * lighting;
 	let mapped = clamp(
 		(hdr * (2.51 * hdr + vec3<f32>(0.03))) /

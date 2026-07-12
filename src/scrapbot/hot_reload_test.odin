@@ -251,6 +251,21 @@ test_hot_reload_rebuilds_native_extension_sources :: proc(t: ^testing.T) {
 	testing.expect(t, body.fields[1].name == "acceleration")
 }
 
+@(test)
+test_asset_stamp_detects_texture_changes :: proc(t: ^testing.T) {
+	root, parent := make_hot_reload_test_project(t)
+	defer delete(root); defer os.remove_all(parent)
+	assets, join_err := filepath.join({root,"assets"})
+	testing.expect(t,join_err==nil); if join_err!=nil{return}; defer delete(assets)
+	texture, texture_err := filepath.join({assets,"texture.png"})
+	testing.expect(t,texture_err==nil); if texture_err!=nil{return}; defer delete(texture)
+	testing.expect(t,os.write_entire_file(texture,"first")==nil)
+	first := asset_stamp(assets)
+	testing.expect(t,os.write_entire_file(texture,"second-version")==nil)
+	second := asset_stamp(assets)
+	testing.expect(t,!asset_stamps_equal(first,second))
+}
+
 make_hot_reload_test_project :: proc(t: ^testing.T) -> (string, string) {
 	parent, temp_err := os.make_directory_temp("", "scrapbot-hot-reload-*", context.temp_allocator)
 	if !testing.expect(t, temp_err == nil) {

@@ -16,7 +16,7 @@ The `src/scrapbot` package is the public runtime facade used by the CLI. Most im
 | `package.odin` | Host-native game packaging and target selection |
 | `script` | Luau lifecycle, bindings, systems, queries, commands, and value marshaling |
 | `native` | Extension builds, discovery, loading, ABI registration, and native system execution |
-| `resources` | Geometry and material resource ownership and primitive generation |
+| `resources` | Geometry, PNG texture, and material resource ownership plus primitive generation |
 | `extension_api` | Stable C-compatible native extension contract |
 | `extension` | Higher-level Odin API used by extension authors |
 | `platform` | SDL window and event integration |

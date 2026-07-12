@@ -2,7 +2,12 @@ package resources
 
 import "core:math"
 import "core:mem"
+import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 import "core:strings"
+import c "core:c"
+import stb "vendor:stb/image"
 import shared "../shared"
 
 Vec3 :: shared.Vec3
@@ -28,6 +33,9 @@ Geometry_Desc :: struct {
 
 Material_Desc :: struct {
 	base_color: Vec4,
+	texture_pixels: []u8,
+	texture_width: u32,
+	texture_height: u32,
 }
 
 Geometry :: struct {
@@ -69,7 +77,7 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.vertices, allocator)
 		delete(geometry.indices, allocator)
 	}
-	for &material in registry.materials {delete(material.name, allocator)}
+	for &material in registry.materials {delete(material.name, allocator); delete(material.desc.texture_pixels, allocator)}
 	delete(registry.geometries)
 	delete(registry.materials)
 	registry^ = {}
@@ -108,16 +116,50 @@ register_material :: proc(registry: ^Registry, name: string, desc: Material_Desc
 	ensure_allocator(registry)
 	if name == "" {return {}, "material name must not be empty"}
 	if !finite4(desc.base_color) {return {}, "material base color must be finite"}
+	if len(desc.texture_pixels) > 0 {
+		if desc.texture_width == 0 || desc.texture_height == 0 {return {}, "material texture dimensions must be positive"}
+		if len(desc.texture_pixels) != int(desc.texture_width * desc.texture_height * 4) {return {}, "material texture must contain RGBA8 pixels"}
+	}
 	if index, found := material_index_by_name(registry, name); found {
 		material := &registry.materials[index]
-		material.desc = desc
+		delete(material.desc.texture_pixels, registry.allocator)
+		material.desc = clone_material_desc(desc, registry.allocator)
 		material.version += 1
 		return {u32(index), material.generation}, ""
 	}
 	cloned_name, clone_err := strings.clone(name, registry.allocator)
 	if clone_err != nil {return {}, "failed to allocate material name"}
-	append(&registry.materials, Material{name = cloned_name, desc = desc, generation = 1, version = 1, alive = true})
+	append(&registry.materials, Material{name = cloned_name, desc = clone_material_desc(desc, registry.allocator), generation = 1, version = 1, alive = true})
 	return {u32(len(registry.materials) - 1), 1}, ""
+}
+
+register_textured_material :: proc(registry: ^Registry, root, name, asset_path: string, base_color: Vec4) -> (Material_Handle, string) {
+	if !valid_asset_path(asset_path) {return {}, "texture path must be a relative .png file under assets/"}
+	path, join_err := filepath.join({root, asset_path})
+	if join_err != nil {return {}, "failed to allocate texture asset path"}
+	defer delete(path)
+	data, read_err := os.read_entire_file(path, context.temp_allocator)
+	if read_err != nil {return {}, fmt.tprintf("failed to read texture asset %s: %v", asset_path, read_err)}
+	if len(data) == 0 {return {}, fmt.tprintf("texture asset is empty: %s", asset_path)}
+	x, y, channels: c.int
+	pixels := stb.load_from_memory(raw_data(data), c.int(len(data)), &x, &y, &channels, 4)
+	if pixels == nil {return {}, fmt.tprintf("failed to decode texture asset %s: %s", asset_path, string(stb.failure_reason()))}
+	defer stb.image_free(pixels)
+	if x <= 0 || y <= 0 || x > 8192 || y > 8192 {return {}, fmt.tprintf("texture asset dimensions are unsupported: %s", asset_path)}
+	return register_material(registry, name, Material_Desc{base_color=base_color,texture_pixels=pixels[:int(x*y*4)],texture_width=u32(x),texture_height=u32(y)})
+}
+
+valid_asset_path :: proc(path: string) -> bool {
+	if !strings.has_prefix(path, "assets/") || !strings.has_suffix(path,".png") || filepath.is_abs(path) {return false}
+	remaining := path
+	for part in strings.split_iterator(&remaining, "/") {if part == ".." {return false}}
+	return true
+}
+
+clone_material_desc :: proc(desc: Material_Desc, allocator: mem.Allocator) -> Material_Desc {
+	result := desc
+	result.texture_pixels = clone_slice(desc.texture_pixels, allocator)
+	return result
 }
 
 get_geometry :: proc(registry: ^Registry, handle: Geometry_Handle) -> (^Geometry, bool) {

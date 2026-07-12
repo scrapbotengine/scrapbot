@@ -200,12 +200,19 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		if cached.vertex_buffer != nil {wgpu.BufferRelease(cached.vertex_buffer)}
 		if cached.index_buffer != nil {wgpu.BufferRelease(cached.index_buffer)}
 	}
+	for &cached in renderer.material_cache[:renderer.material_cache_count] {
+		if cached.bind_group != nil {wgpu.BindGroupRelease(cached.bind_group)}
+		if cached.view != nil {wgpu.TextureViewRelease(cached.view)}
+		if cached.texture != nil {wgpu.TextureRelease(cached.texture)}
+	}
 	if renderer.bind_group != nil {
 		wgpu.BindGroupRelease(renderer.bind_group)
 	}
 	if renderer.bind_group_layout != nil {
 		wgpu.BindGroupLayoutRelease(renderer.bind_group_layout)
 	}
+	if renderer.material_sampler != nil {wgpu.SamplerRelease(renderer.material_sampler)}
+	if renderer.material_bind_group_layout != nil {wgpu.BindGroupLayoutRelease(renderer.material_bind_group_layout)}
 	if renderer.shadow_sampler != nil {wgpu.SamplerRelease(renderer.shadow_sampler)}
 	if renderer.shadow_view != nil {wgpu.TextureViewRelease(renderer.shadow_view)}
 	if renderer.shadow_texture != nil {wgpu.TextureRelease(renderer.shadow_texture)}
@@ -273,13 +280,22 @@ wgpu_create_render_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.bind_group_layout == nil {
 		return "failed to create wgpu bind group layout"
 	}
+	material_layout_entries := [?]wgpu.BindGroupLayoutEntry {
+		{binding=0,visibility={.Fragment},texture={sampleType=.Float,viewDimension=._2D}},
+		{binding=1,visibility={.Fragment},sampler={type=.Filtering}},
+	}
+	renderer.material_bind_group_layout=wgpu.DeviceCreateBindGroupLayout(renderer.device,&wgpu.BindGroupLayoutDescriptor{label="Scrapbot Material Bind Group Layout",entryCount=uint(len(material_layout_entries)),entries=raw_data(material_layout_entries[:])})
+	if renderer.material_bind_group_layout==nil {return "failed to create material bind group layout"}
+	renderer.material_sampler=wgpu.DeviceCreateSampler(renderer.device,&wgpu.SamplerDescriptor{label="Scrapbot Material Sampler",addressModeU=.Repeat,addressModeV=.Repeat,addressModeW=.Repeat,magFilter=.Linear,minFilter=.Linear,mipmapFilter=.Linear,maxAnisotropy=1})
+	if renderer.material_sampler==nil {return "failed to create material sampler"}
 
+	pipeline_layouts := [?]wgpu.BindGroupLayout{renderer.bind_group_layout,renderer.material_bind_group_layout}
 	renderer.pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
 			label                = "Scrapbot Render Pipeline Layout",
-			bindGroupLayoutCount = 1,
-			bindGroupLayouts     = &renderer.bind_group_layout,
+			bindGroupLayoutCount = uint(len(pipeline_layouts)),
+			bindGroupLayouts     = raw_data(pipeline_layouts[:]),
 		},
 	)
 	if renderer.pipeline_layout == nil {

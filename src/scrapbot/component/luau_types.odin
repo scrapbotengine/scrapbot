@@ -36,6 +36,7 @@ export type Scrapbot = {
 	material: {
 		lit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
 		unlit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
+		textured: (name: string, asset_path: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
 	},
 	system: (...any) -> (),
 	query: (<A, RA>(first: ScrapbotComponent<A, RA>) -> ScrapbotQuery1<A, RA>) & (<A, RA, B, RB>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>) -> ScrapbotQuery2<A, RA, B, RB>) & (<A, RA, B, RB, C, RC>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>, third: ScrapbotComponent<C, RC>) -> ScrapbotQuery3<A, RA, B, RB, C, RC>),

@@ -12,6 +12,13 @@ near = 0.1
 far = 100
 
 [[entities]]
+name = "Ambient Light"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
+
+[[entities]]
 name = "Left Cube"
 
 [entities.transform]

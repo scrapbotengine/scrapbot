@@ -59,9 +59,10 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_pushcclosurek(L, scrapbot_geometry_pyramid, "scrapbot.geometry.pyramid", 0, nil); lua_setfield(L, -2, "pyramid")
 	lua_pushcclosurek(L, scrapbot_geometry_cylinder, "scrapbot.geometry.cylinder", 0, nil); lua_setfield(L, -2, "cylinder")
 	lua_setfield(L, -2, "geometry")
-	lua_createtable(L, 0, 1)
+	lua_createtable(L, 0, 3)
 	lua_pushcclosurek(L, scrapbot_material_unlit, "scrapbot.material.lit", 0, nil); lua_setfield(L, -2, "lit")
 	lua_pushcclosurek(L, scrapbot_material_unlit, "scrapbot.material.unlit", 0, nil); lua_setfield(L, -2, "unlit")
+	lua_pushcclosurek(L, scrapbot_material_textured, "scrapbot.material.textured", 0, nil); lua_setfield(L, -2, "textured")
 	lua_setfield(L, -2, "material")
 
 	lua_pushcclosurek(L, scrapbot_system, "scrapbot.system", 0, nil)
@@ -213,6 +214,20 @@ scrapbot_material_unlit :: proc "c" (L: Lua_State) -> c.int {
 	if err != "" {return luau_push_error(L, err)}
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "material", handle.index, handle.generation); return 1
+}
+
+scrapbot_material_textured :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, name_ok := luau_required_string(L, 1)
+	path, path_ok := luau_required_string(L, 2)
+	if runtime == nil || runtime.resource_registry == nil || runtime.project_root == "" || !name_ok || !path_ok {return luau_push_error(L, "material.textured expects a resource name and project asset path")}
+	values := [4]f32{1,1,1,1}
+	for i in 0..<4 {if lua_gettop(L) >= c.int(i+3) {is_number: c.int; values[i] = f32(lua_tonumberx(L,c.int(i+3),&is_number)); if is_number == 0 {return luau_push_error(L,"material tint values must be numbers")}}}
+	handle, err := resources.register_textured_material(runtime.resource_registry,runtime.project_root,name,path,{values[0],values[1],values[2],values[3]})
+	if err != "" {return luau_push_error(L,err)}
+	ecs.reconcile_render_instances(runtime.world,runtime.resource_registry)
+	push_resource_handle(L,"material",handle.index,handle.generation); return 1
 }
 
 luau_required_string :: proc "c" (L: Lua_State, index: c.int) -> (string, bool) {

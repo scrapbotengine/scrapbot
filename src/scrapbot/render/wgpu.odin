@@ -48,6 +48,15 @@ WGPU_Geometry_Cache :: struct {
 	valid: bool,
 }
 
+WGPU_Material_Cache :: struct {
+	handle: shared.Material_Handle,
+	version: u32,
+	texture: wgpu.Texture,
+	view: wgpu.TextureView,
+	bind_group: wgpu.BindGroup,
+	valid: bool,
+}
+
 WGPU_Request_Adapter_State :: struct {
 	completed: bool,
 	status:  wgpu.RequestAdapterStatus,
@@ -77,6 +86,8 @@ WGPU_Renderer :: struct {
 	pipeline_layout:   wgpu.PipelineLayout,
 	bind_group_layout: wgpu.BindGroupLayout,
 	bind_group:        wgpu.BindGroup,
+	material_bind_group_layout: wgpu.BindGroupLayout,
+	material_sampler: wgpu.Sampler,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
 	shadow_bind_group: wgpu.BindGroup,
 	shadow_pipeline_layout: wgpu.PipelineLayout,
@@ -85,6 +96,8 @@ WGPU_Renderer :: struct {
 	shadow_pipeline:   wgpu.RenderPipeline,
 	geometry_cache:    [64]WGPU_Geometry_Cache,
 	geometry_cache_count: int,
+	material_cache: [64]WGPU_Material_Cache,
+	material_cache_count: int,
 	uniform_buffer:    wgpu.Buffer,
 	depth_texture:     wgpu.Texture,
 	depth_view:        wgpu.TextureView,
@@ -97,6 +110,40 @@ WGPU_Renderer :: struct {
 	width:             u32,
 	height:            u32,
 	configured:        bool,
+}
+
+wgpu_material_cache :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Registry, handle: shared.Material_Handle) -> (^WGPU_Material_Cache, string) {
+	material, ok := resources.get_material(registry,handle)
+	if !ok {return nil,"render material handle is stale"}
+	cache_index := -1
+	for i in 0..<renderer.material_cache_count {if renderer.material_cache[i].handle == handle {cache_index=i; break}}
+	if cache_index < 0 {
+		if renderer.material_cache_count >= len(renderer.material_cache) {return nil,"too many cached materials"}
+		cache_index=renderer.material_cache_count; renderer.material_cache_count+=1
+	}
+	cached := &renderer.material_cache[cache_index]
+	if cached.valid && cached.version == material.version {return cached,""}
+	if cached.bind_group != nil {wgpu.BindGroupRelease(cached.bind_group)}
+	if cached.view != nil {wgpu.TextureViewRelease(cached.view)}
+	if cached.texture != nil {wgpu.TextureRelease(cached.texture)}
+	cached^ = {handle=handle,version=material.version}
+	width,height := material.desc.texture_width,material.desc.texture_height
+	pixels := material.desc.texture_pixels
+	white := [4]u8{255,255,255,255}
+	if len(pixels)==0 {width=1; height=1; pixels=white[:]}
+	cached.texture = wgpu.DeviceCreateTexture(renderer.device,&wgpu.TextureDescriptor{
+		label="Scrapbot Material Texture",usage={.TextureBinding,.CopyDst},dimension=._2D,
+		size={width=width,height=height,depthOrArrayLayers=1},format=.RGBA8UnormSrgb,mipLevelCount=1,sampleCount=1,
+	})
+	if cached.texture==nil {return nil,"failed to create material texture"}
+	wgpu.QueueWriteTexture(renderer.queue,&wgpu.TexelCopyTextureInfo{texture=cached.texture,aspect=.All},raw_data(pixels),uint(len(pixels)),&wgpu.TexelCopyBufferLayout{bytesPerRow=width*4,rowsPerImage=height},&wgpu.Extent3D{width=width,height=height,depthOrArrayLayers=1})
+	cached.view=wgpu.TextureCreateView(cached.texture)
+	if cached.view==nil {return nil,"failed to create material texture view"}
+	entries := [?]wgpu.BindGroupEntry{{binding=0,textureView=cached.view},{binding=1,sampler=renderer.material_sampler}}
+	cached.bind_group=wgpu.DeviceCreateBindGroup(renderer.device,&wgpu.BindGroupDescriptor{label="Scrapbot Material Bind Group",layout=renderer.material_bind_group_layout,entryCount=uint(len(entries)),entries=raw_data(entries[:])})
+	if cached.bind_group==nil {return nil,"failed to create material bind group"}
+	cached.valid=true
+	return cached,""
 }
 
 WGPU_OFFSCREEN_WIDTH :: u32(1280)
@@ -216,6 +263,9 @@ wgpu_encode_render_pass :: proc(
 		for batch in batches {
 			cached, cache_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
 			if cache_err != "" {return cache_err}
+			material_cached, material_err := wgpu_material_cache(renderer,registry,batch.material)
+			if material_err != "" {return material_err}
+			wgpu.RenderPassEncoderSetBindGroup(render_pass,1,material_cached.bind_group)
 			wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, cached.vertex_buffer, 0, wgpu.WHOLE_SIZE)
 			wgpu.RenderPassEncoderSetIndexBuffer(render_pass, cached.index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
 			wgpu.RenderPassEncoderDrawIndexed(render_pass, cached.index_count, batch.instance_count, 0, 0, batch.first_instance)

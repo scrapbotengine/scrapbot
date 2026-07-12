@@ -26,6 +26,11 @@ test_package_project_writes_runnable_layout :: proc(t: ^testing.T) {
 		testing.expectf(t, false, "failed to initialize project: %s", err)
 		return
 	}
+	asset_dir, asset_dir_err := filepath.join({root,"assets"},context.temp_allocator)
+	testing.expect(t,asset_dir_err==nil); if asset_dir_err!=nil{return}
+	asset_path, asset_path_err := filepath.join({asset_dir,"texture.png"},context.temp_allocator)
+	testing.expect(t,asset_path_err==nil); if asset_path_err!=nil{return}
+	testing.expect(t,os.write_entire_file(asset_path,"fixture")==nil)
 
 	result := package_project(root, {})
 	defer destroy_package_result(&result)
@@ -39,4 +44,7 @@ test_package_project_writes_runnable_layout :: proc(t: ^testing.T) {
 	manifest, manifest_err := filepath.join({result.output_directory, PROJECT_FILE}, context.temp_allocator)
 	testing.expectf(t, manifest_err == nil, "failed to allocate manifest path: %v", manifest_err)
 	if manifest_err == nil {testing.expect(t, os.exists(manifest))}
+	packaged_asset, packaged_asset_err := filepath.join({result.output_directory,"assets","texture.png"},context.temp_allocator)
+	testing.expect(t,packaged_asset_err==nil)
+	if packaged_asset_err==nil {testing.expect(t,os.exists(packaged_asset))}
 }

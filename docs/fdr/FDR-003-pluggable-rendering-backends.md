@@ -12,12 +12,12 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The runtime can submit frame data through a renderer boundary.
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
-- The `wgpu` backend renders full indexed geometry with shared base-color materials, a perspective camera, and ambient, directional, and point lighting.
+- The `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, a perspective camera, and ambient, directional, and point lighting.
 - The first directional light produces a fixed-resolution shadow map. Only entities with `ShadowCaster` contribute depth, and only entities with `ShadowReceiver` sample it.
 - Lights are ECS components extracted into a bounded backend-neutral frame packet: accumulated ambient light, four directional lights, and sixteen point lights.
 - Base colors are decoded to linear space before lighting, high-dynamic-range light accumulation is tone mapped, and WGPU renders to an sRGB target.
 - Eligible entities receive internal render-instance components automatically.
-- Shared geometry/material pairs use one instanced draw batch, and geometry uploads are cached by handle and version.
+- Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
 - The `wgpu` backend can also render a headless final-frame PNG with `--framegrab`.
 - The `wgpu` backend currently requires `--window` or `--framegrab`.
 - Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
@@ -46,9 +46,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ### 4. Render full indexed geometry
 
-**Decision:** WGPU consumes position/normal/UV vertices with `u32` triangle indices and shared base-color materials. Cube and plane helpers generate the same representation.
+**Decision:** WGPU consumes position/normal/UV vertices with `u32` triangle indices and shared base-color or PNG-textured materials. Cube and plane helpers generate the same representation.
 **Why:** Procedural, custom, and future imported geometry should follow one rendering path.
-**Tradeoff:** The canonical vertex format and simple Lambert material model will need to grow with textures and physically based shading.
+**Tradeoff:** The canonical vertex format and simple Lambert material model still need to grow toward physically based shading, mipmaps, and richer texture channels.
 
 ### 5. Keep headless framegrabs on the same render path
 
@@ -93,8 +93,14 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 - **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011
 - **FDRs:** FDR-001, FDR-002
 
+### 11. Keep decoded images in resource ownership and GPU objects in the backend
+
+**Decision:** Material resources own decoded RGBA pixels and dimensions, while WGPU lazily creates versioned textures and bind groups.
+**Why:** Project validation can decode assets without a GPU, hot reload can replace a named material while preserving handles, and renderer-specific objects stay out of ECS and shared resources.
+**Tradeoff:** The first slice retains decoded pixels after upload and has no streaming, compression, mipmap generation, or memory budget.
+
 ## Open Questions
 
-- How should the render packet evolve for textures, cascaded shadows, and culling?
+- How should the render packet evolve for richer texture channels, cascaded shadows, and culling?
 - How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

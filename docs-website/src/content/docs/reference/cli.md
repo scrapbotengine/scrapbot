@@ -39,6 +39,7 @@ Creates a project with:
 - `project.toml`
 - `scenes/main.scene.toml`
 - `scripts/main.luau`
+- `assets/`
 - `types/scrapbot.d.luau`
 - `.vscode/settings.json`
 

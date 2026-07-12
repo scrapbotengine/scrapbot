@@ -21,15 +21,18 @@ File_Stamp :: struct {
 	modified_ns: i64,
 	size:        i64,
 }
+Asset_Stamp :: struct {exists: bool, modified_ns: i64, size: i64, entry_count: int}
 
 Hot_Reload_State :: struct {
 	root:         string,
 	project_path: string,
 	scene_path:   string,
 	script_path:  string,
+	assets_path: string,
 	project_stamp: File_Stamp,
 	scene_stamp:  File_Stamp,
 	script_stamp: File_Stamp,
+	assets_stamp: Asset_Stamp,
 	runtime:      script.Runtime,
 	native_extensions: native.Extension_Set,
 	executor:          schedule.Executor,
@@ -80,6 +83,9 @@ init_hot_reload_state :: proc(
 		return "failed to allocate script path"
 	}
 	state.script_path = script_path
+	assets_path, assets_join_err := filepath.join({root,"assets"})
+	if assets_join_err != nil {return "failed to allocate assets path"}
+	state.assets_path = assets_path
 
 	if source_err := native.sync_project_extension_sources(&state.native_sources, root, loaded.config.native_extensions[:]); source_err != "" {
 		delete(state.project_path)
@@ -94,6 +100,7 @@ init_hot_reload_state :: proc(
 	state.project_stamp = file_stamp(state.project_path)
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.script_stamp = file_stamp(state.script_path)
+	state.assets_stamp = asset_stamp(state.assets_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
 	if err := init_render_resources(&state.resources, world); err != "" {return err}
@@ -110,6 +117,7 @@ destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	delete(state.project_path)
 	delete(state.scene_path)
 	delete(state.script_path)
+	delete(state.assets_path)
 	state^ = {}
 }
 
@@ -137,21 +145,23 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	next_project_stamp := file_stamp(state.project_path)
 	next_scene_stamp := file_stamp(state.scene_path)
 	next_script_stamp := file_stamp(state.script_path)
+	next_assets_stamp := asset_stamp(state.assets_path)
 	project_changed := !file_stamps_equal(state.project_stamp, next_project_stamp)
 	scene_changed := !file_stamps_equal(state.scene_stamp, next_scene_stamp)
 	script_changed := !file_stamps_equal(state.script_stamp, next_script_stamp)
+	assets_changed := !asset_stamps_equal(state.assets_stamp,next_assets_stamp)
 	extensions_changed := native.project_extensions_changed(&state.native_extensions, state.root)
 	sources_changed := native.project_extension_sources_changed(&state.native_sources, state.root)
-	if !project_changed && !scene_changed && !script_changed && !extensions_changed && !sources_changed {
+	if !project_changed && !scene_changed && !script_changed && !assets_changed && !extensions_changed && !sources_changed {
 		return
 	}
 
-	if project_changed || scene_changed || extensions_changed || sources_changed {
+	if project_changed || scene_changed || assets_changed || extensions_changed || sources_changed {
 		if err := reload_project_world_and_script(state, world); err != "" {
 			fmt.eprintf("[hot-reload] failed to reload project: %s\n", err)
 			return
 		}
-		fmt.eprintf("[hot-reload] reloaded %s, %s, %s, and native extensions\n", state.project_path, state.scene_path, state.script_path)
+		fmt.eprintf("[hot-reload] reloaded %s, %s, %s, assets, and native extensions\n", state.project_path, state.scene_path, state.script_path)
 		return
 	}
 
@@ -209,6 +219,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	state.project_stamp = file_stamp(state.project_path)
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.script_stamp = file_stamp(state.script_path)
+	state.assets_stamp = asset_stamp(state.assets_path)
 	return ""
 }
 
@@ -259,7 +270,7 @@ load_script_from_path :: proc(root, path: string, world: ^shared.World, resource
 		script.DEFAULT_SCRIPT_CHUNK,
 		world,
 		&registry,
-		script.Source_Options{log_enabled = true, resource_registry = resource_registry},
+		script.Source_Options{log_enabled = true, resource_registry = resource_registry, project_root = root},
 	)
 	if run_result.err != "" {
 		result.err = run_result.err
@@ -320,7 +331,7 @@ load_script_from_source :: proc(root, source: string, world: ^shared.World, reso
 		script.DEFAULT_SCRIPT_CHUNK,
 		world,
 		&registry,
-		script.Source_Options{log_enabled = true, resource_registry = resource_registry},
+		script.Source_Options{log_enabled = true, resource_registry = resource_registry, project_root = root},
 	)
 	if run_result.err != "" {
 		result.err = run_result.err
@@ -348,3 +359,14 @@ file_stamp :: proc(path: string) -> File_Stamp {
 file_stamps_equal :: proc(a, b: File_Stamp) -> bool {
 	return a.exists == b.exists && a.modified_ns == b.modified_ns && a.size == b.size
 }
+
+asset_stamp :: proc(path: string) -> Asset_Stamp {stamp: Asset_Stamp; accumulate_asset_stamp(path,&stamp); return stamp}
+accumulate_asset_stamp :: proc(path: string, stamp: ^Asset_Stamp) {
+	fi, err := os.stat(path,context.temp_allocator); if err != nil {return}; defer os.file_info_delete(fi,context.temp_allocator)
+	stamp.exists=true; stamp.entry_count+=1; stamp.size+=fi.size
+	modified := time.to_unix_nanoseconds(fi.modification_time); if modified>stamp.modified_ns {stamp.modified_ns=modified}
+	if fi.type != .Directory {return}
+	entries, read_err := os.read_all_directory_by_path(path,context.temp_allocator); if read_err != nil {return}; defer os.file_info_slice_delete(entries,context.temp_allocator)
+	for entry in entries {child, join_err := filepath.join({path,entry.name}); if join_err != nil {continue}; accumulate_asset_stamp(child,stamp); delete(child)}
+}
+asset_stamps_equal :: proc(a,b: Asset_Stamp) -> bool {return a==b}

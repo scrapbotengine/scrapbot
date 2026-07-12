@@ -6,7 +6,7 @@ description: Run the null and WebGPU backends, smoke-test projects, and verify g
 Scrapbot has two rendering paths today:
 
 - `null`: headless renderer for fast smoke tests.
-- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared materials, ECS lighting, directional shadows, and instanced draw batching.
+- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared base-color and PNG-textured materials, ECS lighting, directional shadows, and instanced draw batching.
 
 The WGPU path decodes material base colors to linear space, accumulates light there, tone maps the HDR result, and presents through an sRGB target. A scene with no ambient, directional, or point lights therefore renders its geometry black.
 

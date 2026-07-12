@@ -13,7 +13,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot init` creates a starter `scripts/main.luau`.
 - `scrapbot run` executes the script after scene loading and ECS world construction.
 - Script errors fail the run with a Luau diagnostic.
-- `scrapbot run --hot-reload` periodically checks `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories while renderer frames are advancing.
+- `scrapbot run --hot-reload` periodically checks `project.toml`, the default scene TOML, `scripts/main.luau`, `assets/`, native extension libraries, and declared native extension source directories while renderer frames are advancing.
 - Successful script reload replaces the active Luau runtime; failed script reload keeps the last good runtime.
 - Successful scene reload rebuilds the ECS world and validates `scripts/main.luau` against it before swapping state; failed scene reload keeps the last good world and runtime.
 - `scrapbot check` executes `scripts/main.luau` silently to collect project and library component schemas, validate scene data, and refresh `types/scrapbot.d.luau`.
@@ -31,7 +31,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot.component` and `scrapbot.library_component` return typed component handles with runtime component IDs and names. Scripts can cast them to generated component handle types.
 - `scrapbot.component_handle` returns the same handle shape for components registered before script execution, including native extension schemas.
 - The `scrapbot` API exposes public transform, camera, geometry, material, ambient-light, directional-light, and point-light component handles.
-- Scripts can define full named indexed geometry, generate cubes, planes, icospheres, UV spheres, pyramids, and capped cylinders, and define shared Lambert-lit base-color materials.
+- Scripts can define full named indexed geometry, generate cubes, planes, icospheres, UV spheres, pyramids, and capped cylinders, and define shared Lambert-lit base-color or project-PNG-textured materials.
 - Scripts can register frame systems with `scrapbot.system(function(time) ... end)`.
 - Scripts can declare system component access with `scrapbot.system({ reads = {...}, writes = {...} }, function(time) ... end)`.
 - Every system receives the same read-only time resource snapshot with delta time, smoothed delta time, elapsed time, and frame index.
@@ -112,7 +112,7 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 
 **Decision:** `--hot-reload` checks file modification stamps on a short interval while renderer frames are advancing.
 **Why:** Periodic checks are portable, backend-neutral, and enough to validate runtime state replacement before introducing platform file watching services.
-**Tradeoff:** Reloads are not immediate, and the first implementation watches the active default scene and `scripts/main.luau` rather than every project asset.
+**Tradeoff:** Reloads are not immediate, and the first implementation recursively stamps the whole assets directory rather than using platform file-watching services or dependency-specific watches.
 
 ### 8. Feed Luau system declarations into the scheduler
 

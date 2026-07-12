@@ -65,3 +65,28 @@ test_generated_primitives_reject_invalid_tessellation :: proc(t: ^testing.T) {
 	testing.expect(t, cylinder_err != "")
 	testing.expect(t, ico_err != "")
 }
+
+@(test)
+test_textured_material_loads_project_png :: proc(t: ^testing.T) {
+	registry: Registry; defer destroy_registry(&registry)
+	handle, err := register_textured_material(&registry,"examples/minimal","checker","assets/checker.png",{1,1,1,1})
+	testing.expectf(t,err=="","failed to load texture fixture: %s",err)
+	material, ok := get_material(&registry,handle)
+	testing.expect(t,ok)
+	if ok {
+		testing.expect(t,material.desc.texture_width==8)
+		testing.expect(t,material.desc.texture_height==8)
+		testing.expect(t,len(material.desc.texture_pixels)==8*8*4)
+	}
+}
+
+@(test)
+test_texture_assets_are_confined_to_assets_directory :: proc(t: ^testing.T) {
+	testing.expect(t,valid_asset_path("assets/checker.png"))
+	testing.expect(t,!valid_asset_path("checker.png"))
+	testing.expect(t,!valid_asset_path("assets/checker.jpg"))
+	testing.expect(t,!valid_asset_path("assets/../project.toml"))
+	registry: Registry; defer destroy_registry(&registry)
+	_, err := register_textured_material(&registry,"examples/minimal","bad","assets/missing.png",{1,1,1,1})
+	testing.expect(t,err!="")
+}

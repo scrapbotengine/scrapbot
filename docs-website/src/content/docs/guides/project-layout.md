@@ -12,6 +12,8 @@ my-game/
 │   └── main.scene.toml
 ├── scripts/
 │   └── main.luau
+├── assets/
+│   └── checker.png
 ├── types/
 │   └── scrapbot.d.luau
 ├── native/
@@ -80,6 +82,16 @@ Scripts usually do three things:
 - register project component schemas;
 - retrieve built-in or native component handles;
 - register systems that operate over queries.
+
+## Assets
+
+Project-owned runtime assets live under `assets/`. The first supported asset type is an 8-bit PNG texture loaded by a Luau material declaration:
+
+```lua
+scrapbot.material.textured("checker", "assets/checker.png")
+```
+
+`scrapbot check` decodes referenced textures, `--hot-reload` reloads the project when files under `assets/` change, and `scrapbot build` includes the directory in host-native packages.
 
 ## Generated Luau types
 

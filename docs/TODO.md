@@ -60,6 +60,8 @@
 - [x] Rebuild native extension sources during hot reload.
 - [x] Add native ECS systems that participate in scheduling.
 - [x] Execute conflict-free native systems in parallel.
+- [x] Add project PNG textures with validation, WGPU upload, hot reload, and packaging.
+- [ ] Expose textured materials through the project-local Odin extension API.
 
 ## Editor
 

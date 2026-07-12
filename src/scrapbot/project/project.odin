@@ -140,6 +140,11 @@ init_project :: proc(root, name: string) -> string {
 		return fmt.tprintf("failed to create scripts directory: %v", err)
 	}
 
+	assets_dir, join_assets_err := filepath.join({root,"assets"})
+	if join_assets_err != nil {return "failed to allocate assets path"}
+	defer delete(assets_dir)
+	if err := os.make_directory_all(assets_dir); err != nil {return fmt.tprintf("failed to create assets directory: %v",err)}
+
 	types_dir, join_types_err := filepath.join({root, "types"})
 	if join_types_err != nil {
 		return "failed to allocate types path"
