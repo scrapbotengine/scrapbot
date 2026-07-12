@@ -42,6 +42,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - Mutating a query-system payload table without declared write access fails the system step and leaves the world unchanged.
 - Generated Luau types provide readonly payload aliases for `query:each` and query-driven systems that do not pass options.
 - Generated Luau types validate query-system options and support mutable payload annotations for writable query-driven systems.
+- Generated Luau types keep `scrapbot.system` itself permissive because Luau LSP cannot reliably resolve overloaded generic query callbacks. Query construction, payload aliases, readonly fields, and explicitly annotated callback parameters remain typed, while the runtime validates each supported registration form.
 - Scripts can request a bulk query result with `scrapbot.view(component_handle)`, which returns alive entity/component items for the component type.
 - Scripts can request a joined bulk query result with `scrapbot.view(query)` or `scrapbot.view({ component_a, component_b })`, which returns alive entities and a component payload array in query order.
 - Runtime queries use component IDs from handles to select one component storage group, while project files and diagnostics remain name-based.
@@ -88,6 +89,8 @@ Structural mutations requested by Luau systems are now deferred through an engin
 **Decision:** Generate `types/scrapbot.d.luau` and `.vscode/settings.json` for new projects, then refresh the type file during `scrapbot check`.
 **Why:** The Luau language server uses `luau-lsp.types.definitionFiles` mappings for custom globals, and project scripts need the `scrapbot` global plus component payload aliases to be known outside the running engine.
 **Tradeoff:** The first editor integration is VS Code-oriented. Other editors may need equivalent Luau LSP settings until Scrapbot has editor-agnostic project metadata generation. `scrapbot check` must execute top-level script registration code to discover project and library component schemas.
+
+The generated `scrapbot.system` function type is intentionally permissive. Luau LSP currently reports valid generic query callbacks as ambiguous or incompatible when the API is represented as an intersection of overloads, despite the standalone analyzer accepting the same source. Strong typing therefore lives on component handles, query objects, query iteration, payload aliases, and callback annotations; runtime registration validates the system call shape and access options.
 
 ### 5. Start custom components as simple scene data
 
