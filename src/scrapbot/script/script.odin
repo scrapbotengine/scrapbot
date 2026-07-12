@@ -594,6 +594,10 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_pushcclosurek(L, scrapbot_geometry_create, "scrapbot.geometry.create", 0, nil); lua_setfield(L, -2, "create")
 	lua_pushcclosurek(L, scrapbot_geometry_cube, "scrapbot.geometry.cube", 0, nil); lua_setfield(L, -2, "cube")
 	lua_pushcclosurek(L, scrapbot_geometry_plane, "scrapbot.geometry.plane", 0, nil); lua_setfield(L, -2, "plane")
+	lua_pushcclosurek(L, scrapbot_geometry_icosphere, "scrapbot.geometry.icosphere", 0, nil); lua_setfield(L, -2, "icosphere")
+	lua_pushcclosurek(L, scrapbot_geometry_sphere, "scrapbot.geometry.sphere", 0, nil); lua_setfield(L, -2, "sphere")
+	lua_pushcclosurek(L, scrapbot_geometry_pyramid, "scrapbot.geometry.pyramid", 0, nil); lua_setfield(L, -2, "pyramid")
+	lua_pushcclosurek(L, scrapbot_geometry_cylinder, "scrapbot.geometry.cylinder", 0, nil); lua_setfield(L, -2, "cylinder")
 	lua_setfield(L, -2, "geometry")
 	lua_createtable(L, 0, 1)
 	lua_pushcclosurek(L, scrapbot_material_unlit, "scrapbot.material.lit", 0, nil); lua_setfield(L, -2, "lit")
@@ -688,6 +692,54 @@ scrapbot_geometry_plane :: proc "c" (L: Lua_State) -> c.int {
 	if register_err != "" {return luau_push_error(L, register_err)}
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
+}
+
+scrapbot_geometry_icosphere :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context(); runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L,1); if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L,"geometry.icosphere expects a resource name")}
+	radius, radius_ok := optional_f32(L,2,0.5); subdivisions, subdivisions_ok := optional_int(L,3,2)
+	if !radius_ok || !subdivisions_ok {return luau_push_error(L,"icosphere radius and subdivisions must be numbers")}
+	desc, err := resources.icosphere(radius,subdivisions); return register_generated_luau_geometry(L,runtime,name,desc,err)
+}
+
+scrapbot_geometry_sphere :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context(); runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L,1); if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L,"geometry.sphere expects a resource name")}
+	radius, radius_ok := optional_f32(L,2,0.5); segments, segments_ok := optional_int(L,3,24); rings, rings_ok := optional_int(L,4,16)
+	if !radius_ok || !segments_ok || !rings_ok {return luau_push_error(L,"sphere radius, segments, and rings must be numbers")}
+	desc, err := resources.sphere(radius,segments,rings); return register_generated_luau_geometry(L,runtime,name,desc,err)
+}
+
+scrapbot_geometry_pyramid :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context(); runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L,1); if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L,"geometry.pyramid expects a resource name")}
+	width, width_ok := optional_f32(L,2,1); height, height_ok := optional_f32(L,3,1); depth, depth_ok := optional_f32(L,4,1)
+	if !width_ok || !height_ok || !depth_ok {return luau_push_error(L,"pyramid dimensions must be numbers")}
+	desc, err := resources.pyramid(width,height,depth); return register_generated_luau_geometry(L,runtime,name,desc,err)
+}
+
+scrapbot_geometry_cylinder :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context(); runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L,1); if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L,"geometry.cylinder expects a resource name")}
+	radius, radius_ok := optional_f32(L,2,0.5); height, height_ok := optional_f32(L,3,1); segments, segments_ok := optional_int(L,4,24)
+	if !radius_ok || !height_ok || !segments_ok {return luau_push_error(L,"cylinder radius, height, and segments must be numbers")}
+	desc, err := resources.cylinder(radius,height,segments); return register_generated_luau_geometry(L,runtime,name,desc,err)
+}
+
+register_generated_luau_geometry :: proc(L: Lua_State, runtime: ^Runtime, name: string, desc: resources.Geometry_Desc, generation_err: string) -> c.int {
+	if generation_err != "" {return luau_push_error(L,generation_err)}
+	defer delete(desc.vertices); defer delete(desc.indices)
+	handle, err := resources.register_geometry(runtime.resource_registry,name,desc); if err != "" {return luau_push_error(L,err)}
+	ecs.reconcile_render_instances(runtime.world,runtime.resource_registry)
+	push_resource_handle(L,"geometry",handle.index,handle.generation); return 1
+}
+
+optional_f32 :: proc "c" (L: Lua_State, index: c.int, default: f32) -> (f32,bool) {
+	if lua_gettop(L) < index {return default,true}; ok:c.int; value := f32(lua_tonumberx(L,index,&ok)); return value,ok != 0
+}
+
+optional_int :: proc "c" (L: Lua_State, index: c.int, default: int) -> (int,bool) {
+	if lua_gettop(L) < index {return default,true}; ok:c.int; value := int(lua_tointegerx(L,index,&ok)); return value,ok != 0
 }
 
 scrapbot_material_unlit :: proc "c" (L: Lua_State) -> c.int {

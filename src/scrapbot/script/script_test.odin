@@ -40,6 +40,26 @@ scrapbot.spawn({components = {
 }
 
 @(test)
+test_luau_registers_generated_geometry_primitives :: proc(t: ^testing.T) {
+	world: ecs.World; defer ecs.destroy_world(&world)
+	registry: component.Registry; component.init_registry(&registry)
+	resource_registry: resources.Registry; resources.init_registry(&resource_registry); defer resources.destroy_registry(&resource_registry)
+	runtime: Runtime; defer destroy_runtime(&runtime)
+	result := run_source_with_registry(&runtime, `
+scrapbot.geometry.icosphere("ico", 1, 1)
+scrapbot.geometry.sphere("sphere", 1, 12, 8)
+scrapbot.geometry.pyramid("pyramid", 2, 3, 2)
+scrapbot.geometry.cylinder("cylinder", 1, 2, 12)
+`, "=primitive-test", &world, &registry, Source_Options{resource_registry=&resource_registry})
+	testing.expectf(t, result.err == "", "script failed: %s", result.err)
+	names := [?]string{"ico","sphere","pyramid","cylinder"}
+	for name in names {
+		_, ok := resources.geometry_by_name(&resource_registry,name)
+		testing.expectf(t,ok,"expected geometry %s",name)
+	}
+}
+
+@(test)
 test_luau_script_can_read_ecs_counts :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(project.default_scene_template())
 	defer project.destroy_scene(&scene)

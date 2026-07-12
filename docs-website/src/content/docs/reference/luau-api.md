@@ -41,6 +41,10 @@ Light query payloads expose `color` and `intensity`; directional lights also exp
 | `scrapbot.geometry.create(name, descriptor)` | Register full position/normal/UV vertices and `u32` triangle indices. |
 | `scrapbot.geometry.cube(name, size?)` | Generate and register indexed cube geometry. |
 | `scrapbot.geometry.plane(name, width?, depth?)` | Generate and register indexed plane geometry. |
+| `scrapbot.geometry.icosphere(name, radius?, subdivisions?)` | Generate an indexed icosphere. Subdivisions range from 0 to 4. |
+| `scrapbot.geometry.sphere(name, radius?, segments?, rings?)` | Generate an indexed UV sphere. |
+| `scrapbot.geometry.pyramid(name, width?, height?, depth?)` | Generate an indexed square pyramid. |
+| `scrapbot.geometry.cylinder(name, radius?, height?, segments?)` | Generate an indexed capped cylinder. |
 | `scrapbot.material.lit(name, r?, g?, b?, a?)` | Register a shared Lambert-lit base-color material. |
 | `scrapbot.material.unlit(name, r?, g?, b?, a?)` | Compatibility alias for `material.lit`. |
 

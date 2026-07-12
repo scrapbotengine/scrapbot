@@ -10,7 +10,7 @@
 - [x] Define the first renderable query boundary between ECS state and renderer backends.
 - [x] Expand the WGPU renderer beyond the first cube renderable.
 - [x] Expand the WGPU renderer beyond cube primitives.
-- [x] Add full indexed geometry resources with cube and plane generators.
+- [x] Add full indexed geometry resources with cube, plane, icosphere, UV sphere, pyramid, and cylinder generators.
 - [x] Add geometry/material ECS references and internal render reconciliation.
 - [x] Cache geometry and material resources in the WGPU backend.
 - [x] Add ECS ambient, directional, and point lights to the WGPU backend.

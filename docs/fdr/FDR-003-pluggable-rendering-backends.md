@@ -65,7 +65,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 **Decision:** Keep full geometry and material descriptions outside entity storage and let ECS components reference them with generational handles, as established by ADR-010. Primitive helpers produce ordinary indexed geometry rather than backend-specific primitive markers.
 **Why:** Many entities should share one CPU description and one backend GPU allocation without putting GPU ownership into the ECS.
-**Tradeoff:** Rendering needs an explicit reconciliation step and backend resource caches before the current cube-only path can be retired.
+**Tradeoff:** Rendering needs an explicit reconciliation step, resource validation, and backend cache invalidation when named geometry is replaced.
+
+The built-in indexed primitive generators cover cubes, planes, icospheres, UV spheres, square pyramids, and capped cylinders. Curved primitives expose bounded tessellation controls so projects can choose an appropriate geometry cost.
 
 ### 8. Extract ECS lights into a bounded frame packet
 

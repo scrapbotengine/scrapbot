@@ -89,6 +89,56 @@ origin = [-2.6, 0.35, 0]
 wave = [0, 1.3, 0.35]
 
 [[entities]]
+name = "Icosphere"
+[entities.transform]
+position = [-3.3, 1.75, -0.8]
+rotation = [0, 0, 0]
+scale = [0.65, 0.65, 0.65]
+[entities.geometry]
+resource = "icosphere"
+[entities.material]
+resource = "icosphere"
+[entities.components.showcase.spin]
+angular_velocity = [0.25, 0.65, 0]
+
+[[entities]]
+name = "UV Sphere"
+[entities.transform]
+position = [-1.1, 1.75, -0.8]
+rotation = [0, 0, 0]
+scale = [0.65, 0.65, 0.65]
+[entities.geometry]
+resource = "sphere"
+[entities.material]
+resource = "sphere"
+
+[[entities]]
+name = "Pyramid"
+[entities.transform]
+position = [1.1, 1.75, -0.8]
+rotation = [0, 0, 0]
+scale = [0.65, 0.65, 0.65]
+[entities.geometry]
+resource = "pyramid"
+[entities.material]
+resource = "pyramid"
+[entities.components.showcase.spin]
+angular_velocity = [0, 0.75, 0]
+
+[[entities]]
+name = "Cylinder"
+[entities.transform]
+position = [3.3, 1.75, -0.8]
+rotation = [0, 0, 0]
+scale = [0.65, 0.65, 0.65]
+[entities.geometry]
+resource = "cylinder"
+[entities.material]
+resource = "cylinder"
+[entities.components.showcase.spin]
+angular_velocity = [0.15, 0.6, 0.1]
+
+[[entities]]
 name = "Native Fountain Emitter"
 
 [entities.transform]

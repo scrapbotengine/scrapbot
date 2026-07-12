@@ -112,7 +112,7 @@ Run the full local test suite with `mise test`.
 - Scene Data
   - [x] Basic cameras
   - [ ] Lighting
-  - [x] Generated cube and plane geometry
+  - [x] Generated cube, plane, icosphere, UV sphere, pyramid, and cylinder geometry
   - [x] Shared base-color materials
   - [ ] Scene camera workflow
 - Pipeline
