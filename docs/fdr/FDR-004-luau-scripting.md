@@ -32,8 +32,9 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot.component_handle` returns the same handle shape for components registered before script execution, including native extension schemas.
 - The `scrapbot` API exposes public transform, camera, geometry, material, ambient-light, directional-light, and point-light component handles.
 - Scripts can define full named indexed geometry, generate cubes, planes, icospheres, UV spheres, pyramids, and capped cylinders, and define shared Lambert-lit base-color materials.
-- Scripts can register frame systems with `scrapbot.system(function(delta_seconds) ... end)`.
-- Scripts can declare system component access with `scrapbot.system({ reads = {...}, writes = {...} }, function(delta_seconds) ... end)`.
+- Scripts can register frame systems with `scrapbot.system(function(time) ... end)`.
+- Scripts can declare system component access with `scrapbot.system({ reads = {...}, writes = {...} }, function(time) ... end)`.
+- Every system receives the same read-only time resource snapshot with delta time, smoothed delta time, elapsed time, and frame index.
 - Script system access declarations accept component handles, query objects for reads, or registered component-name strings.
 - Scripts can create reusable query objects with `scrapbot.query(component_a, component_b, ...)`.
 - Query object construction is order-insensitive: repeated calls with the same component set return the same object, and query payloads use Scrapbot's canonical component order.
@@ -169,7 +170,7 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008
+- **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008, ADR-012
 - **FDRs:** FDR-001, FDR-002, FDR-005, FDR-006
 
 ## Open Questions

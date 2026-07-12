@@ -107,6 +107,7 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 
 run_frame_system :: proc(config: ^Run_Config, world: ^World, delta_seconds: f32) -> string {
 	if config.frame_system == nil {
+		ecs.advance_time(&world.time, delta_seconds)
 		return ""
 	}
 	return config.frame_system(config.frame_system_data, world, delta_seconds)

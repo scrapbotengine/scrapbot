@@ -22,8 +22,8 @@ local Rigidbodies = scrapbot.query(RigidbodyComponent)
 
 scrapbot.system(Floating, {
 	writes = { scrapbot.transform, FloatComponent },
-}, function(delta_seconds: number, entity: ScrapbotEntity, transform: ScrapbotTransform, float: Float)
-	float.wave.x += float.wave.y * delta_seconds
+}, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ScrapbotTransform, float: Float)
+	float.wave.x += float.wave.y * time.delta_time
 	transform.position.x = float.origin.x
 	transform.position.y = float.origin.y + math.sin(float.wave.x) * float.wave.z
 	transform.position.z = float.origin.z
@@ -31,10 +31,10 @@ end)
 
 -- Scheduling metadata: this system reads native extension component data.
 -- Systems whose declared component access does not conflict can share a scheduler batch.
-scrapbot.system(Spinners, function(delta_seconds: number, entity: ScrapbotEntity, spin: ReadonlyScrappyphysicsSpin)
+scrapbot.system(Spinners, function(time: ScrapbotTime, entity: ScrapbotEntity, spin: ReadonlyScrappyphysicsSpin)
 	assert(spin.angular_velocity.y >= -10)
 end)
 
-scrapbot.system(Rigidbodies, function(delta_seconds: number, entity: ScrapbotEntity, rigidbody: ReadonlyScrappyphysicsRigidbody)
+scrapbot.system(Rigidbodies, function(time: ScrapbotTime, entity: ScrapbotEntity, rigidbody: ReadonlyScrappyphysicsRigidbody)
 	assert(rigidbody.velocity.y >= -100)
 end)

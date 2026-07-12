@@ -35,6 +35,7 @@ export default defineConfig({
 				{
 					label: 'Reference',
 					items: [
+						{ label: 'Source Layout', slug: 'reference/source-layout' },
 						{ label: 'CLI', slug: 'reference/cli' },
 						{ label: 'Project Files', slug: 'reference/project-files' },
 						{ label: 'Luau API', slug: 'reference/luau-api' },

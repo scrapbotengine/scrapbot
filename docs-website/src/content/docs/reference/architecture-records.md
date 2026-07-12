@@ -24,6 +24,7 @@ Current decisions:
 | ADR-009 | Parallelize access-declared native systems |
 | ADR-010 | Keep render resources outside the ECS |
 | ADR-011 | Extract ECS lights into bounded render packets |
+| ADR-012 | Model frame time as a world resource |
 
 ## FDRs
 

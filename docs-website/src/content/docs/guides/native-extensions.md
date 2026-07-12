@@ -44,7 +44,7 @@ register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
 }
 ```
 
-Extensions must export `scrapbot_extension_register`. The helper checks the ABI version and calls your project-local contextless `register` procedure. Component and field descriptors keep the rest of the extension from repeating string names.
+Extensions must export `scrapbot_extension_register`. The helper validates the host table and calls your project-local contextless `register` procedure. Component and field descriptors keep the rest of the extension from repeating string names. Scrapbot currently rebuilds extensions from source and fingerprints the host extension API in each artifact name, keeping host and extension layouts in lockstep; explicit ABI version negotiation is intentionally deferred.
 
 ## Register a system
 
@@ -63,7 +63,7 @@ scrapbot.system(&reg, "scrappyphysics.motion", accesses[:], motion_system)
 return scrapbot.err(&reg)
 ```
 
-The callback receives `scrapbot.System_Context`. The current context can query entities by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components. Native and Luau systems share the same scheduler.
+The callback receives `scrapbot.System_Context`. The context includes a read-only `time` snapshot and can query entities by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components. Native and Luau systems share the same scheduler.
 
 Native systems with complete, non-conflicting access declarations run concurrently on Scrapbot's worker pool. Conflicting systems preserve registration order, Luau systems remain serial, and systems without access declarations execute exclusively. Parallel native systems queue lifecycle commands privately; Scrapbot merges those commands deterministically after the stage.
 
@@ -96,9 +96,9 @@ motion_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read velocity"
 		}
 
-		transform.position.x += velocity.x * ctx.delta_seconds
-		transform.position.y += velocity.y * ctx.delta_seconds
-		transform.position.z += velocity.z * ctx.delta_seconds
+		transform.position.x += velocity.x * ctx.time.delta_time
+		transform.position.y += velocity.y * ctx.time.delta_time
+		transform.position.z += velocity.z * ctx.time.delta_time
 
 		if !scrapbot.set(ctx, entity, transform) {
 			return "failed to write transform"

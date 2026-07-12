@@ -74,7 +74,7 @@ local RigidbodyComponent = scrapbot.library_component("scrappyphysics.rigidbody"
 
 local Rigidbodies = scrapbot.query(RigidbodyComponent)
 
-scrapbot.system(Rigidbodies, function(delta_seconds: number, entity: ScrapbotEntity, rigidbody: ReadonlyScrappyphysicsRigidbody)
+scrapbot.system(Rigidbodies, function(time: ScrapbotTime, entity: ScrapbotEntity, rigidbody: ReadonlyScrappyphysicsRigidbody)
 	local speed: number = rigidbody.velocity.y
 	assert(speed > 0)
 end)
@@ -129,7 +129,7 @@ velocity = [0, 4, 0]
 local BodyComponent = scrapbot.component_handle("scrapbotnative.body") :: ScrapbotnativeBodyComponent
 local Bodies = scrapbot.query(BodyComponent)
 
-scrapbot.system(Bodies, function(delta_seconds: number, entity: ScrapbotEntity, body: ReadonlyScrapbotnativeBody)
+scrapbot.system(Bodies, function(time: ScrapbotTime, entity: ScrapbotEntity, body: ReadonlyScrapbotnativeBody)
 	local speed: number = body.velocity.y
 	assert(speed > 0)
 end)
@@ -268,8 +268,8 @@ local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
 
 scrapbot.system(Autorotating, {
 	writes = { scrapbot.transform, AutorotateComponent },
-}, function(delta_seconds: number, entity: ScrapbotEntity, transform: ScrapbotTransform, autorotate: Autorotate)
-	transform.rotation.y += autorotate.velocity.y * delta_seconds
+}, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ScrapbotTransform, autorotate: Autorotate)
+	transform.rotation.y += autorotate.velocity.y * time.delta_time
 	autorotate.velocity.y += 1
 end)
 `)
@@ -354,9 +354,6 @@ import api "scrapbot:extension_api"
 scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
 	if scrapbot == nil {
 		return "Scrapbot API is not available"
-	}
-	if scrapbot.abi_version != api.ABI_VERSION {
-		return "unsupported Scrapbot extension ABI"
 	}
 
 	fields := [?]api.Field_Definition {

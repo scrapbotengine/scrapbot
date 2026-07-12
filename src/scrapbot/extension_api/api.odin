@@ -2,7 +2,6 @@ package extension_api
 
 import c "core:c"
 
-ABI_VERSION :: u32(5)
 MAX_COMPONENT_FIELDS :: 16
 MAX_SYSTEM_ACCESSES :: 16
 MAX_QUERY_TERMS :: 8
@@ -53,6 +52,13 @@ Transform :: struct {
 	scale:    Vec3,
 }
 
+Time :: struct {
+	delta_time: f32,
+	smooth_delta_time: f32,
+	elapsed_time: f64,
+	frame_index: u64,
+}
+
 Mesh_Payload :: struct {
 	primitive: cstring,
 }
@@ -83,10 +89,9 @@ Query_Term :: struct {
 }
 
 System_Context :: struct {
-	abi_version: u32,
 	userdata: rawptr,
 	host: rawptr,
-	delta_seconds: f32,
+	time: Time,
 
 	query_count: Query_Count_Proc,
 	query_entity_at: Query_Entity_At_Proc,
@@ -200,7 +205,6 @@ Remove_Component_Proc :: #type proc "c" (
 ) -> cstring
 
 API :: struct {
-	abi_version: u32,
 	userdata: rawptr,
 	register_library_component: Register_Library_Component_Proc,
 	register_system: Register_System_Proc,

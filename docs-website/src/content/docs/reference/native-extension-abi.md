@@ -5,14 +5,6 @@ description: The current C-compatible ABI used by project native extensions.
 
 The native extension ABI lives in `src/scrapbot/extension_api`. Odin extension authors should normally import `scrapbot:extension`, which wraps this raw ABI with component and field descriptors plus typed helpers such as `scrapbot.component`, `scrapbot.system`, `scrapbot.read`, `scrapbot.query`, `scrapbot.get`, and deferred lifecycle helpers.
 
-## Versioning
-
-```odin
-ABI_VERSION :: u32(4)
-```
-
-Extensions should reject unknown ABI versions during registration.
-
 ## Entry point
 
 Extensions export:
@@ -28,7 +20,6 @@ Return `nil` on success or a static error string on failure.
 
 ```odin
 API :: struct {
-	abi_version: u32,
 	userdata: rawptr,
 	register_library_component: Register_Library_Component_Proc,
 	register_system: Register_System_Proc,
@@ -36,6 +27,8 @@ API :: struct {
 ```
 
 The API table is host-owned and only valid for the registration call.
+
+Scrapbot currently compiles project extensions from source and treats this layout as lockstep engine code. There is no version negotiation until precompiled third-party extensions become a supported distribution model.
 
 ## Component definitions
 
@@ -88,7 +81,7 @@ System_Definition :: struct {
 }
 ```
 
-System access components must already be registered. Native systems and Luau systems are batched together by the same scheduler. Batches still execute serially.
+System access components must already be registered. Native systems and Luau systems are planned by the same access-aware scheduler. Conflict-free native systems execute concurrently on the runtime worker pool, while conflicting systems preserve registration order. Luau systems and systems without access declarations execute as serial barriers.
 
 ## System context
 
@@ -100,7 +93,7 @@ System_Proc :: #type proc "c" (ctx: ^System_Context) -> cstring
 
 The context includes:
 
-- `delta_seconds`;
+- a read-only `time` snapshot with delta time, smoothed delta time, elapsed time, and frame index;
 - extension `userdata`;
 - query helpers for component-name terms;
 - `get_transform` and `set_transform`;

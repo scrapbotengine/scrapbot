@@ -81,6 +81,7 @@ register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
 		scrapbot.write(scrapbot.Transform_Component),
 		scrapbot.write(scrapbot.Component{name="scrapbot.geometry"}),
 		scrapbot.write(scrapbot.Component{name="scrapbot.material"}),
+		scrapbot.write(scrapbot.Shadow_Caster_Component),
 		scrapbot.read(Emitter_Component),
 		scrapbot.write(Emitter_Component),
 		scrapbot.write(Lifetime_Component),
@@ -126,9 +127,9 @@ spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read angular velocity"
 		}
 
-		transform.rotation.x += angular_velocity.x * ctx.delta_seconds
-		transform.rotation.y += angular_velocity.y * ctx.delta_seconds
-		transform.rotation.z += angular_velocity.z * ctx.delta_seconds
+		transform.rotation.x += angular_velocity.x * ctx.time.delta_time
+		transform.rotation.y += angular_velocity.y * ctx.time.delta_time
+		transform.rotation.z += angular_velocity.z * ctx.time.delta_time
 
 		if !scrapbot.set(ctx, entity, transform) {
 			return "failed to write transform"
@@ -162,7 +163,7 @@ light_orbit_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read orbiting point light"
 		}
 
-		transform.rotation.y += settings.y * ctx.delta_seconds
+		transform.rotation.y += settings.y * ctx.time.delta_time
 		transform.position.x = math.cos(transform.rotation.y) * settings.x
 		transform.position.y = settings.z
 		transform.position.z = math.sin(transform.rotation.y) * settings.x
@@ -195,7 +196,7 @@ lifetime_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read lifetime"
 		}
 
-		timer.x += ctx.delta_seconds
+		timer.x += ctx.time.delta_time
 		if timer.x >= timer.y {
 			if err := scrapbot.despawn(ctx, entity); err != nil {
 				return err
@@ -239,11 +240,11 @@ velocity_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read velocity"
 		}
 
-		transform.position.x += velocity.x * ctx.delta_seconds
-		transform.position.y += velocity.y * ctx.delta_seconds
-		transform.position.z += velocity.z * ctx.delta_seconds
+		transform.position.x += velocity.x * ctx.time.delta_time
+		transform.position.y += velocity.y * ctx.time.delta_time
+		transform.position.z += velocity.z * ctx.time.delta_time
 
-		velocity.y -= 4.8 * ctx.delta_seconds
+		velocity.y -= 4.8 * ctx.time.delta_time
 		velocity.x *= 0.996
 		velocity.z *= 0.996
 
@@ -292,7 +293,7 @@ fountain_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read emitter state"
 		}
 
-		state.x += ctx.delta_seconds
+		state.x += ctx.time.delta_time
 		spawn_count := 0
 		for state.x >= state.y && spawn_count < 4 {
 			state.x -= state.y
@@ -349,6 +350,7 @@ spawn_fountain_cube :: proc "contextless" (
 	}
 
 	payloads := [?]scrapbot.Component_Payload {
+		scrapbot.payload(scrapbot.Shadow_Caster_Component, nil),
 		scrapbot.payload(Lifetime_Component, lifetime_fields[:]),
 		scrapbot.payload(Velocity_Component, velocity_fields[:]),
 		scrapbot.payload(Spin_Component, spin_fields[:]),

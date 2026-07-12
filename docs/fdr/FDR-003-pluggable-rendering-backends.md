@@ -13,6 +13,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
 - The `wgpu` backend renders full indexed geometry with shared base-color materials, a perspective camera, and ambient, directional, and point lighting.
+- The first directional light produces a fixed-resolution shadow map. Only entities with `ShadowCaster` contribute depth, and only entities with `ShadowReceiver` sample it.
 - Lights are ECS components extracted into a bounded backend-neutral frame packet: accumulated ambient light, four directional lights, and sixteen point lights.
 - Base colors are decoded to linear space before lighting, high-dynamic-range light accumulation is tone mapped, and WGPU renders to an sRGB target.
 - Eligible entities receive internal render-instance components automatically.
@@ -81,6 +82,12 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 **Why:** Directly adding strong light contributions to display-space colors clips channels independently, washes out saturated lights, and produces inconsistent output across UNORM and sRGB targets.
 **Tradeoff:** The first shader uses fixed exposure and a compact approximation rather than a configurable camera exposure and complete color-management pipeline.
 
+### 10. Make shadow participation explicit
+
+**Decision:** Expose separate engine-provided shadow caster and receiver marker components and render one shadow map from the first directional light.
+**Why:** Projects should control shadow cost and semantics independently for occluders and shaded surfaces without coupling them to geometry or material ownership.
+**Tradeoff:** The initial fixed orthographic shadow volume and single map do not cover point lights, multiple shadowed directional lights, cascades, or large scenes.
+
 ## Related
 
 - **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011
@@ -88,6 +95,6 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 ## Open Questions
 
-- How should the render packet evolve for textures, shadows, and culling?
+- How should the render packet evolve for textures, cascaded shadows, and culling?
 - How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

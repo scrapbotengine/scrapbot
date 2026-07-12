@@ -14,10 +14,10 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 })
 local Autorotating = scrapbot.query(AutorotateComponent)
 
-scrapbot.system(function(delta_seconds)
+scrapbot.system(function(time)
 	Autorotating:each(function(entity, autorotate)
 		local rotation = scrapbot.get_rotation(entity)
-		rotation.x += 3 * delta_seconds
+		rotation.x += 3 * time.delta_time
 		scrapbot.set_rotation(entity, rotation)
 	end)
 end)
@@ -346,9 +346,6 @@ scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
 	if scrapbot == nil {
 		return "Scrapbot API is not available"
 	}
-	if scrapbot.abi_version != api.ABI_VERSION {
-		return "unsupported Scrapbot extension ABI"
-	}
 
 	fields := [?]api.Field_Definition {
 		{name = "velocity", field_type = .Vec3},
@@ -371,9 +368,6 @@ import api "scrapbot:extension_api"
 scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
 	if scrapbot == nil {
 		return "Scrapbot API is not available"
-	}
-	if scrapbot.abi_version != api.ABI_VERSION {
-		return "unsupported Scrapbot extension ABI"
 	}
 
 	fields := [?]api.Field_Definition {

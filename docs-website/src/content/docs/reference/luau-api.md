@@ -31,8 +31,12 @@ Built-in handles:
 - `scrapbot.ambient_light`
 - `scrapbot.directional_light`
 - `scrapbot.point_light`
+- `scrapbot.shadow_caster`
+- `scrapbot.shadow_receiver`
 
 Light query payloads expose `color` and `intensity`; directional lights also expose `direction`, and point lights expose `range`. Systems can animate a point light by writing the same entity's transform.
+
+Shadow caster and receiver handles have empty marker payloads. They can be queried and used with deferred `spawn`, `add_component`, and `remove_component` calls.
 
 ## Render resources
 
@@ -63,6 +67,15 @@ Named registration updates an existing resource while preserving its handle. Spa
 Query construction is order-insensitive, and repeated calls for the same component set return the same object.
 
 ## Systems
+
+Every callback receives a read-only `ScrapbotTime` value as its first argument:
+
+| Field | Meaning |
+| --- | --- |
+| `delta_time` | Current simulation step in seconds. |
+| `smooth_delta_time` | Exponentially smoothed delta time for presentation. |
+| `elapsed_time` | Accumulated simulation time in seconds. |
+| `frame_index` | One-based frame count. |
 
 | API | Meaning |
 | --- | --- |

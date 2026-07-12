@@ -118,9 +118,10 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 	if state == nil {
 		return ""
 	}
+	ecs.advance_time(&world.time, delta_seconds)
 
 	maybe_poll_hot_reload(state, world, delta_seconds)
-	return step_frame_runtime_parts(&state.runtime, &state.native_extensions, &state.executor, world, delta_seconds)
+	return step_frame_runtime_parts(&state.runtime, &state.native_extensions, &state.executor, world, world.time)
 }
 
 maybe_poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World, delta_seconds: f32) {

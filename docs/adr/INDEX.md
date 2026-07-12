@@ -13,3 +13,4 @@
 | [ADR-009](ADR-009-parallelize-access-declared-native-systems.md) | Parallelize access-declared native systems | 2026-07-12 |
 | [ADR-010](ADR-010-keep-render-resources-outside-the-ecs.md) | Keep render resources outside the ECS | 2026-07-12 |
 | [ADR-011](ADR-011-extract-ecs-lights-into-bounded-render-packets.md) | Extract ECS lights into bounded render packets | 2026-07-12 |
+| [ADR-012](ADR-012-model-frame-time-as-a-world-resource.md) | Model frame time as a world resource | 2026-07-12 |

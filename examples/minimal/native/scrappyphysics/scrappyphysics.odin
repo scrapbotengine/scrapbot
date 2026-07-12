@@ -71,9 +71,9 @@ spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read angular velocity"
 		}
 
-		transform.rotation.x += angular_velocity.x * ctx.delta_seconds
-		transform.rotation.y += angular_velocity.y * ctx.delta_seconds
-		transform.rotation.z += angular_velocity.z * ctx.delta_seconds
+		transform.rotation.x += angular_velocity.x * ctx.time.delta_time
+		transform.rotation.y += angular_velocity.y * ctx.time.delta_time
+		transform.rotation.z += angular_velocity.z * ctx.time.delta_time
 
 		if !scrapbot.set(ctx, entity, transform) {
 			return "failed to write transform"
@@ -111,9 +111,9 @@ motion_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "failed to read velocity"
 		}
 
-		transform.position.x += velocity.x * ctx.delta_seconds
-		transform.position.y += velocity.y * ctx.delta_seconds
-		transform.position.z += velocity.z * ctx.delta_seconds
+		transform.position.x += velocity.x * ctx.time.delta_time
+		transform.position.y += velocity.y * ctx.time.delta_time
+		transform.position.z += velocity.z * ctx.time.delta_time
 
 		if !scrapbot.set(ctx, entity, transform) {
 			return "failed to write transform"

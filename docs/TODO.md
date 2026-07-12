@@ -14,6 +14,7 @@
 - [x] Add geometry/material ECS references and internal render reconciliation.
 - [x] Cache geometry and material resources in the WGPU backend.
 - [x] Add ECS ambient, directional, and point lights to the WGPU backend.
+- [x] Add directional shadow maps with explicit shadow caster and receiver components.
 - [ ] Add light selection or clustered lighting beyond the initial fixed limits.
 - [ ] Add visual comparison for offscreen render output.
 
@@ -27,6 +28,7 @@
 
 ## ECS And Scripting
 
+- [x] Add a shared frame time resource with raw and smoothed delta time.
 - [x] Reflect component registry metadata into editor/tooling APIs.
 - [x] Add scheduled systems with declared component access.
 - [x] Execute a project-local Luau entry script during `scrapbot run`.

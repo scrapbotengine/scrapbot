@@ -91,6 +91,15 @@ range = 6
 
 Ambient and directional lights do not need transforms. A point light reads its world-space position from the entity's transform, so moving that transform moves the light.
 
+Directional shadow markers have no fields:
+
+```toml
+[entities.shadow_caster]
+[entities.shadow_receiver]
+```
+
+Casters write to the first directional light's shadow map. Receivers sample it. The markers are independent, so geometry may cast without receiving or receive without casting.
+
 ## Custom component sections
 
 ```toml

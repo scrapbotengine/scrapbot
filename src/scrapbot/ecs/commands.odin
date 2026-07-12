@@ -42,6 +42,8 @@ Spawn_Command :: struct {
 	geometry:               Geometry_Handle,
 	has_material:           bool,
 	material:               Material_Handle,
+	has_shadow_caster:      bool,
+	has_shadow_receiver:    bool,
 	custom_components:      [MAX_COMMAND_COMPONENTS]Command_Component,
 	custom_component_count: int,
 }
@@ -57,6 +59,8 @@ Add_Component_Command :: struct {
 	geometry:      Geometry_Handle,
 	has_material:  bool,
 	material:      Material_Handle,
+	has_shadow_caster: bool,
+	has_shadow_receiver: bool,
 	component:     Command_Component,
 }
 
@@ -137,6 +141,16 @@ spawn_set_geometry :: proc "c" (spawn: ^Spawn_Command, handle: Geometry_Handle) 
 
 spawn_set_material :: proc "c" (spawn: ^Spawn_Command, handle: Material_Handle) -> string {
 	if spawn == nil {return "spawn command is not available"}; spawn.has_material = true; spawn.material = handle; return ""
+}
+
+spawn_set_marker :: proc "c" (spawn: ^Spawn_Command, name: string) -> string {
+	if spawn == nil {return "spawn command is not available"}
+	switch name {
+	case "scrapbot.shadow_caster": spawn.has_shadow_caster = true
+	case "scrapbot.shadow_receiver": spawn.has_shadow_receiver = true
+	case: return "unsupported marker component"
+	}
+	return ""
 }
 
 spawn_add_custom_component :: proc "c" (spawn: ^Spawn_Command, command_component: Command_Component) -> string {
@@ -258,6 +272,20 @@ queue_add_geometry :: proc "c" (buffer: ^Command_Buffer, entity_index: int, gene
 queue_add_material :: proc "c" (buffer: ^Command_Buffer, entity_index: int, generation: u32, handle: Material_Handle) -> string {
 	if buffer == nil || buffer.commands == nil {return "command buffer is not initialized"}; if buffer.command_count >= len(buffer.commands) {return "too many deferred world commands"}
 	buffer.commands[buffer.command_count] = {kind=.Add_Component,add_component={entity_index=entity_index,generation=generation,has_material=true,material=handle}}; buffer.command_count += 1; return ""
+}
+
+queue_add_marker :: proc "c" (buffer: ^Command_Buffer, entity_index: int, generation: u32, name: string) -> string {
+	if buffer == nil || buffer.commands == nil {return "command buffer is not initialized"}
+	if buffer.command_count >= len(buffer.commands) {return "too many deferred world commands"}
+	add := Add_Component_Command{entity_index=entity_index, generation=generation}
+	switch name {
+	case "scrapbot.shadow_caster": add.has_shadow_caster = true
+	case "scrapbot.shadow_receiver": add.has_shadow_receiver = true
+	case: return "unsupported marker component"
+	}
+	buffer.commands[buffer.command_count] = {kind=.Add_Component, add_component=add}
+	buffer.command_count += 1
+	return ""
 }
 
 queue_add_mesh :: proc "c" (
@@ -436,6 +464,8 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 			geometry_index = INVALID_COMPONENT_INDEX,
 			material_index = INVALID_COMPONENT_INDEX,
 			render_instance_index = INVALID_COMPONENT_INDEX,
+			has_shadow_caster = spawn.has_shadow_caster,
+			has_shadow_receiver = spawn.has_shadow_receiver,
 		},
 	)
 	if transform_index != INVALID_COMPONENT_INDEX && mesh_index != INVALID_COMPONENT_INDEX {
@@ -476,6 +506,8 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	entity.material_index = INVALID_COMPONENT_INDEX
 	entity.render_instance_index = INVALID_COMPONENT_INDEX
+	entity.has_shadow_caster = false
+	entity.has_shadow_receiver = false
 }
 
 apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {
@@ -492,6 +524,8 @@ apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {
 	}
 	if command.has_geometry {add_geometry(world,command.entity_index,command.geometry); return}
 	if command.has_material {add_material(world,command.entity_index,command.material); return}
+	if command.has_shadow_caster {world.entities[command.entity_index].has_shadow_caster = true; return}
+	if command.has_shadow_receiver {world.entities[command.entity_index].has_shadow_receiver = true; return}
 	add_custom_component(world, command.entity_index, &command.component)
 }
 
@@ -510,6 +544,8 @@ apply_remove_component :: proc(world: ^World, command: ^Remove_Component_Command
 	}
 	if name == "scrapbot.geometry" {remove_geometry(world,command.entity_index); return}
 	if name == "scrapbot.material" {remove_material(world,command.entity_index); return}
+	if name == "scrapbot.shadow_caster" {world.entities[command.entity_index].has_shadow_caster = false; return}
+	if name == "scrapbot.shadow_receiver" {world.entities[command.entity_index].has_shadow_receiver = false; return}
 	remove_custom_component(world, command.entity_index, command.component_id, name)
 }
 

@@ -122,11 +122,13 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			continue
 		}
 
-		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" || line == "[entities.ambient_light]" || line == "[entities.directional_light]" || line == "[entities.point_light]" {
+		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" || line == "[entities.ambient_light]" || line == "[entities.directional_light]" || line == "[entities.point_light]" || line == "[entities.shadow_caster]" || line == "[entities.shadow_receiver]" {
 			if current == nil {
 				return scene, fail(.Invalid_Syntax, fmt.tprintf("%s appears before [[entities]]", line))
 			}
 			section = line[10:len(line) - 1]
+			if section == "shadow_caster" {current.has_shadow_caster = true}
+			if section == "shadow_receiver" {current.has_shadow_receiver = true}
 			current_component = nil
 			continue
 		}
@@ -224,6 +226,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if key != "resource" {return scene, fail(.Invalid_Field, "material only supports resource")}
 			current.material_resource, found = parse_basic_string(value)
 			if !found || current.material_resource == "" {return scene, fail(.Invalid_Field, "material.resource must be a non-empty basic string")}
+		case "shadow_caster", "shadow_receiver":
+			return scene, fail(.Invalid_Field, fmt.tprintf("%s is a marker component and has no fields", section))
 		case "component":
 			if current_component == nil {
 				return scene, fail(.Invalid_Syntax, "component fields must appear under [entities.components.<name>]")

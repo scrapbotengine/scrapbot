@@ -14,6 +14,8 @@ export type Scrapbot = {
 	ambient_light: ScrapbotAmbientLightComponent,
 	directional_light: ScrapbotDirectionalLightComponent,
 	point_light: ScrapbotPointLightComponent,
+	shadow_caster: ScrapbotShadowCasterComponent,
+	shadow_receiver: ScrapbotShadowReceiverComponent,
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
@@ -45,6 +47,13 @@ export type ScrapbotEntity = {
 	index: number,
 	generation: number,
 	name: string?,
+}
+
+export type ScrapbotTime = {
+	read delta_time: number,
+	read smooth_delta_time: number,
+	read elapsed_time: number,
+	read frame_index: number,
 }
 
 export type ScrapbotGeometryResource = {kind: "geometry", index: number, generation: number}
@@ -231,6 +240,22 @@ export type ReadonlyScrapbotMaterial = {
 }
 
 export type ScrapbotMaterialComponent = ScrapbotComponent<ScrapbotMaterial, ReadonlyScrapbotMaterial>
+
+export type ScrapbotShadowCaster = {
+}
+
+export type ReadonlyScrapbotShadowCaster = {
+}
+
+export type ScrapbotShadowCasterComponent = ScrapbotComponent<ScrapbotShadowCaster, ReadonlyScrapbotShadowCaster>
+
+export type ScrapbotShadowReceiver = {
+}
+
+export type ReadonlyScrapbotShadowReceiver = {
+}
+
+export type ScrapbotShadowReceiverComponent = ScrapbotComponent<ScrapbotShadowReceiver, ReadonlyScrapbotShadowReceiver>
 
 export type ScrapbotInternalRenderInstance = {
 }

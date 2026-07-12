@@ -5,16 +5,42 @@ export type Scrapbot = {
 	log: (message: any) -> (),
 	entity_count: () -> number,
 	renderable_count: () -> number,
-	component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T>,
-	system: ((system: (delta_seconds: number) -> ()) -> ()) & ((options: ScrapbotSystemOptions, system: (delta_seconds: number) -> ()) -> ()),
-	query: <T>(component: ScrapbotComponent<T>, callback: (entity: ScrapbotEntity, component: T) -> ()) -> (),
-	view: <T>(component: ScrapbotComponent<T>) -> {ScrapbotQueryItem<T>},
+	component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,
+	library_component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,
+	component_handle: <T, R>(name: string) -> ScrapbotComponent<T, R>,
+	vec3: ScrapbotComponentField<Vec3, ReadonlyVec3>,
+	transform: ScrapbotTransformComponent,
+	camera: ScrapbotCameraComponent,
+	ambient_light: ScrapbotAmbientLightComponent,
+	directional_light: ScrapbotDirectionalLightComponent,
+	point_light: ScrapbotPointLightComponent,
+	shadow_caster: ScrapbotShadowCasterComponent,
+	shadow_receiver: ScrapbotShadowReceiverComponent,
+	mesh: ScrapbotMeshComponent,
+	geometry_component: ScrapbotGeometryComponent,
+	material_component: ScrapbotMaterialComponent,
+	geometry: {
+		create: (name: string, descriptor: ScrapbotGeometryDescriptor) -> ScrapbotGeometryResource,
+		cube: (name: string, size: number?) -> ScrapbotGeometryResource,
+		plane: (name: string, width: number?, depth: number?) -> ScrapbotGeometryResource,
+		icosphere: (name: string, radius: number?, subdivisions: number?) -> ScrapbotGeometryResource,
+		sphere: (name: string, radius: number?, segments: number?, rings: number?) -> ScrapbotGeometryResource,
+		pyramid: (name: string, width: number?, height: number?, depth: number?) -> ScrapbotGeometryResource,
+		cylinder: (name: string, radius: number?, height: number?, segments: number?) -> ScrapbotGeometryResource,
+	},
+	material: {
+		lit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
+		unlit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
+	},
+	system: (...any) -> (),
+	query: (<A, RA>(first: ScrapbotComponent<A, RA>) -> ScrapbotQuery1<A, RA>) & (<A, RA, B, RB>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>) -> ScrapbotQuery2<A, RA, B, RB>) & (<A, RA, B, RB, C, RC>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>, third: ScrapbotComponent<C, RC>) -> ScrapbotQuery3<A, RA, B, RB, C, RC>),
+	view: (<T, R>(component: ScrapbotComponent<T, R>) -> {ScrapbotQueryItem<R>}) & ((components: {ScrapbotComponent<any, any>}) -> {ScrapbotQueryComponentsItem}) & ((query: ScrapbotAnyQuery) -> {ScrapbotQueryComponentsItem}),
 	get_rotation: (entity: ScrapbotEntity) -> ScrapbotVec3,
 	set_rotation: (entity: ScrapbotEntity, rotation: ScrapbotVec3) -> (),
 	spawn: (options: ScrapbotSpawnOptions?) -> (),
 	despawn: (entity: ScrapbotEntity) -> (),
-	add_component: (<T>(entity: ScrapbotEntity, component: ScrapbotComponent<T>, payload: T) -> ()) & ((entity: ScrapbotEntity, component: string, payload: any) -> ()),
-	remove_component: (entity: ScrapbotEntity, component: ScrapbotComponent<any> | string) -> (),
+	add_component: (<T>(entity: ScrapbotEntity, component: ScrapbotComponent<T, any>, payload: T) -> ()) & ((entity: ScrapbotEntity, component: string, payload: any) -> ()),
+	remove_component: (entity: ScrapbotEntity, component: ScrapbotComponent<any, any> | string) -> (),
 }
 
 export type ScrapbotEntity = {
@@ -22,6 +48,18 @@ export type ScrapbotEntity = {
 	generation: number,
 	name: string?,
 }
+
+export type ScrapbotTime = {
+	read delta_time: number,
+	read smooth_delta_time: number,
+	read elapsed_time: number,
+	read frame_index: number,
+}
+
+export type ScrapbotGeometryResource = {kind: "geometry", index: number, generation: number}
+export type ScrapbotMaterialResource = {kind: "material", index: number, generation: number}
+export type ScrapbotGeometryVertex = {position: Vec3, normal: Vec3, uv: {x: number, y: number}}
+export type ScrapbotGeometryDescriptor = {vertices: {ScrapbotGeometryVertex}, indices: {number}}
 
 export type ScrapbotVec3 = {
 	x: number,
@@ -31,25 +69,85 @@ export type ScrapbotVec3 = {
 
 export type Vec3 = ScrapbotVec3
 
-export type ScrapbotComponent<T> = {
+export type ScrapbotReadonlyVec3 = {
+	read x: number,
+	read y: number,
+	read z: number,
+}
+
+export type ReadonlyVec3 = ScrapbotReadonlyVec3
+
+export type ScrapbotComponent<T, R> = {
 	id: number,
 	name: string,
+	_type: T?,
+	_read_type: R?,
 }
+
+export type ScrapbotQuery1<A, RA> = {
+	_arity: "1",
+	_type_a: A?,
+	_read_type_a: RA?,
+	each: (ScrapbotQuery1<A, RA>, callback: (ScrapbotEntity, RA) -> ()) -> (),
+}
+
+export type ScrapbotQuery2<A, RA, B, RB> = {
+	_arity: "2",
+	_type_a: A?,
+	_read_type_a: RA?,
+	_type_b: B?,
+	_read_type_b: RB?,
+	each: (ScrapbotQuery2<A, RA, B, RB>, callback: (ScrapbotEntity, RA, RB) -> ()) -> (),
+}
+
+export type ScrapbotQuery3<A, RA, B, RB, C, RC> = {
+	_arity: "3",
+	_type_a: A?,
+	_read_type_a: RA?,
+	_type_b: B?,
+	_read_type_b: RB?,
+	_type_c: C?,
+	_read_type_c: RC?,
+	each: (ScrapbotQuery3<A, RA, B, RB, C, RC>, callback: (ScrapbotEntity, RA, RB, RC) -> ()) -> (),
+}
+
+export type ScrapbotAnyQuery = ScrapbotQuery1<any, any> | ScrapbotQuery2<any, any, any, any> | ScrapbotQuery3<any, any, any, any, any, any>
 
 export type ScrapbotQueryItem<T> = {
 	entity: ScrapbotEntity,
 	component: T,
+	components: {any},
+}
+
+export type ScrapbotQueryComponentsItem = {
+	entity: ScrapbotEntity,
+	components: {any},
 }
 
 export type ScrapbotComponentSchema = {
 	[string]: ScrapbotComponentFieldType,
 }
 
-export type ScrapbotComponentFieldType = "vec3"
+export type ScrapbotComponentField<T, R> = {
+	name: string,
+	_type: T?,
+	_read_type: R?,
+}
+
+export type ScrapbotComponentFieldType = ScrapbotComponentField<any, any> | "vec3"
+
+export type ScrapbotComponentAccess = {
+	id: number,
+	name: string,
+}
+
+export type ScrapbotReadAccess = ScrapbotComponentAccess | ScrapbotAnyQuery | string
+
+export type ScrapbotWriteAccess = ScrapbotComponentAccess | string
 
 export type ScrapbotSystemOptions = {
-	reads: {ScrapbotComponent<any> | string}?,
-	writes: {ScrapbotComponent<any> | string}?,
+	reads: {ScrapbotReadAccess}?,
+	writes: {ScrapbotWriteAccess}?,
 }
 
 export type ScrapbotSpawnOptions = {
@@ -63,22 +161,118 @@ export type ScrapbotTransform = {
 	scale: Vec3,
 }
 
-export type ScrapbotTransformComponent = ScrapbotComponent<ScrapbotTransform>
+export type ReadonlyScrapbotTransform = {
+	read position: ReadonlyVec3,
+	read rotation: ReadonlyVec3,
+	read scale: ReadonlyVec3,
+}
+
+export type ScrapbotTransformComponent = ScrapbotComponent<ScrapbotTransform, ReadonlyScrapbotTransform>
 
 export type ScrapbotCamera = {
 }
 
-export type ScrapbotCameraComponent = ScrapbotComponent<ScrapbotCamera>
+export type ReadonlyScrapbotCamera = {
+}
+
+export type ScrapbotCameraComponent = ScrapbotComponent<ScrapbotCamera, ReadonlyScrapbotCamera>
+
+export type ScrapbotAmbientLight = {
+	color: Vec3,
+	intensity: number,
+}
+
+export type ReadonlyScrapbotAmbientLight = {
+	read color: ReadonlyVec3,
+	read intensity: number,
+}
+
+export type ScrapbotAmbientLightComponent = ScrapbotComponent<ScrapbotAmbientLight, ReadonlyScrapbotAmbientLight>
+
+export type ScrapbotDirectionalLight = {
+	direction: Vec3,
+	color: Vec3,
+	intensity: number,
+}
+
+export type ReadonlyScrapbotDirectionalLight = {
+	read direction: ReadonlyVec3,
+	read color: ReadonlyVec3,
+	read intensity: number,
+}
+
+export type ScrapbotDirectionalLightComponent = ScrapbotComponent<ScrapbotDirectionalLight, ReadonlyScrapbotDirectionalLight>
+
+export type ScrapbotPointLight = {
+	color: Vec3,
+	intensity: number,
+	range: number,
+}
+
+export type ReadonlyScrapbotPointLight = {
+	read color: ReadonlyVec3,
+	read intensity: number,
+	read range: number,
+}
+
+export type ScrapbotPointLightComponent = ScrapbotComponent<ScrapbotPointLight, ReadonlyScrapbotPointLight>
 
 export type ScrapbotMesh = {
 }
 
-export type ScrapbotMeshComponent = ScrapbotComponent<ScrapbotMesh>
+export type ReadonlyScrapbotMesh = {
+}
+
+export type ScrapbotMeshComponent = ScrapbotComponent<ScrapbotMesh, ReadonlyScrapbotMesh>
+
+export type ScrapbotGeometry = {
+}
+
+export type ReadonlyScrapbotGeometry = {
+}
+
+export type ScrapbotGeometryComponent = ScrapbotComponent<ScrapbotGeometry, ReadonlyScrapbotGeometry>
+
+export type ScrapbotMaterial = {
+}
+
+export type ReadonlyScrapbotMaterial = {
+}
+
+export type ScrapbotMaterialComponent = ScrapbotComponent<ScrapbotMaterial, ReadonlyScrapbotMaterial>
+
+export type ScrapbotShadowCaster = {
+}
+
+export type ReadonlyScrapbotShadowCaster = {
+}
+
+export type ScrapbotShadowCasterComponent = ScrapbotComponent<ScrapbotShadowCaster, ReadonlyScrapbotShadowCaster>
+
+export type ScrapbotShadowReceiver = {
+}
+
+export type ReadonlyScrapbotShadowReceiver = {
+}
+
+export type ScrapbotShadowReceiverComponent = ScrapbotComponent<ScrapbotShadowReceiver, ReadonlyScrapbotShadowReceiver>
+
+export type ScrapbotInternalRenderInstance = {
+}
+
+export type ReadonlyScrapbotInternalRenderInstance = {
+}
+
+export type ScrapbotInternalRenderInstanceComponent = ScrapbotComponent<ScrapbotInternalRenderInstance, ReadonlyScrapbotInternalRenderInstance>
 
 export type Autorotate = {
 	velocity: Vec3,
 }
 
-export type AutorotateComponent = ScrapbotComponent<Autorotate>
+export type ReadonlyAutorotate = {
+	read velocity: ReadonlyVec3,
+}
+
+export type AutorotateComponent = ScrapbotComponent<Autorotate, ReadonlyAutorotate>
 
 declare scrapbot: Scrapbot

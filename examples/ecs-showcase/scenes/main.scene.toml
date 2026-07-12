@@ -83,6 +83,8 @@ resource = "cube"
 
 [entities.material]
 resource = "marker"
+[entities.shadow_caster]
+[entities.shadow_receiver]
 
 [entities.components.float]
 origin = [-2.6, 0.35, 0]
@@ -98,6 +100,8 @@ scale = [0.65, 0.65, 0.65]
 resource = "icosphere"
 [entities.material]
 resource = "icosphere"
+[entities.shadow_caster]
+[entities.shadow_receiver]
 [entities.components.showcase.spin]
 angular_velocity = [0.25, 0.65, 0]
 
@@ -111,6 +115,8 @@ scale = [0.65, 0.65, 0.65]
 resource = "sphere"
 [entities.material]
 resource = "sphere"
+[entities.shadow_caster]
+[entities.shadow_receiver]
 
 [[entities]]
 name = "Pyramid"
@@ -122,6 +128,8 @@ scale = [0.65, 0.65, 0.65]
 resource = "pyramid"
 [entities.material]
 resource = "pyramid"
+[entities.shadow_caster]
+[entities.shadow_receiver]
 [entities.components.showcase.spin]
 angular_velocity = [0, 0.75, 0]
 
@@ -135,6 +143,8 @@ scale = [0.65, 0.65, 0.65]
 resource = "cylinder"
 [entities.material]
 resource = "cylinder"
+[entities.shadow_caster]
+[entities.shadow_receiver]
 [entities.components.showcase.spin]
 angular_velocity = [0.15, 0.6, 0.1]
 
@@ -151,6 +161,9 @@ resource = "cube"
 
 [entities.material]
 resource = "ground"
+
+[entities.shadow_caster]
+[entities.shadow_receiver]
 
 [entities.components.showcase.emitter]
 state = [0, 0.055, 0]
@@ -171,3 +184,5 @@ resource = "ground"
 
 [entities.material]
 resource = "ground"
+
+[entities.shadow_receiver]

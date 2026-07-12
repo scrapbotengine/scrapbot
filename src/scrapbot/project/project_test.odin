@@ -128,6 +128,20 @@ range = 12
 }
 
 @(test)
+test_scene_parses_shadow_marker_components :: proc(t: ^testing.T) {
+	scene, result := parse_scene(`[[entities]]
+name = "Cube"
+[entities.shadow_caster]
+[entities.shadow_receiver]
+`)
+	defer destroy_scene(&scene)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, len(scene.entities) == 1)
+	testing.expect(t, scene.entities[0].has_shadow_caster)
+	testing.expect(t, scene.entities[0].has_shadow_receiver)
+}
+
+@(test)
 test_project_check_accepts_registered_namespaced_scene_components :: proc(t: ^testing.T) {
 	scene, result := parse_scene(`[[entities]]
 name = "Body"

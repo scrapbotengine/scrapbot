@@ -3,12 +3,13 @@ package extension
 import c "core:c"
 import raw "scrapbot:extension_api"
 
-ABI_VERSION :: raw.ABI_VERSION
 TRANSFORM :: "scrapbot.transform"
 MESH :: "scrapbot.mesh"
 AMBIENT_LIGHT :: "scrapbot.ambient_light"
 DIRECTIONAL_LIGHT :: "scrapbot.directional_light"
 POINT_LIGHT :: "scrapbot.point_light"
+SHADOW_CASTER :: "scrapbot.shadow_caster"
+SHADOW_RECEIVER :: "scrapbot.shadow_receiver"
 
 Context :: struct {
 	api: ^raw.API,
@@ -43,6 +44,7 @@ Query_Term :: raw.Query_Term
 System_Context :: raw.System_Context
 System_Proc :: raw.System_Proc
 Transform :: raw.Transform
+Time :: raw.Time
 Mesh_Payload :: raw.Mesh_Payload
 Geometry_Vertex :: raw.Geometry_Vertex
 Geometry_Desc :: raw.Geometry_Desc
@@ -60,6 +62,8 @@ Mesh_Component :: Component{name = MESH}
 Ambient_Light_Component :: Component{name = AMBIENT_LIGHT}
 Directional_Light_Component :: Component{name = DIRECTIONAL_LIGHT}
 Point_Light_Component :: Component{name = POINT_LIGHT}
+Shadow_Caster_Component :: Component{name = SHADOW_CASTER}
+Shadow_Receiver_Component :: Component{name = SHADOW_RECEIVER}
 MAX_QUERY_TERMS :: 16
 
 Generated_Geometry :: struct {
@@ -96,9 +100,6 @@ register_generated_geometry :: proc "contextless" (reg: ^Registry, name: cstring
 register :: proc "contextless" (api: ^raw.API, callback: Register_Proc) -> cstring {
 	if api == nil {
 		return "Scrapbot API is not available"
-	}
-	if api.abi_version != raw.ABI_VERSION {
-		return "unsupported Scrapbot extension ABI"
 	}
 	if callback == nil {
 		return "Scrapbot extension register callback is not available"

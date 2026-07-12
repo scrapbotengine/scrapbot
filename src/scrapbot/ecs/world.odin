@@ -100,6 +100,8 @@ build_world :: proc(scene: ^Scene) -> World {
 			render_instance_index = INVALID_COMPONENT_INDEX,
 			geometry_resource = clone_world_string(entity.geometry_resource),
 			material_resource = clone_world_string(entity.material_resource),
+			has_shadow_caster = entity.has_shadow_caster,
+			has_shadow_receiver = entity.has_shadow_receiver,
 		}
 
 		if entity.has_transform {
@@ -224,6 +226,8 @@ build_resource_render_list :: proc(world: ^World, registry: ^resources.Registry)
 			transform = world.transforms[entity.transform_index],
 			geometry = Geometry_Component{handle = internal.geometry},
 			material = Material_Component{handle = internal.material},
+			shadow_caster = entity.has_shadow_caster,
+			shadow_receiver = entity.has_shadow_receiver,
 		})
 	}
 	return list
@@ -707,6 +711,8 @@ entity_has_component :: proc "c" (
 	case "scrapbot.ambient_light": return entity.ambient_light_index >= 0 && entity.ambient_light_index < len(world.ambient_lights)
 	case "scrapbot.directional_light": return entity.directional_light_index >= 0 && entity.directional_light_index < len(world.directional_lights)
 	case "scrapbot.point_light": return entity.point_light_index >= 0 && entity.point_light_index < len(world.point_lights)
+	case "scrapbot.shadow_caster": return entity.has_shadow_caster
+	case "scrapbot.shadow_receiver": return entity.has_shadow_receiver
 	case "scrapbot.mesh":
 		return entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes)
 	case "scrapbot.geometry":

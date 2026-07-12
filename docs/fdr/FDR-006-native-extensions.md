@@ -24,6 +24,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 - The API supports registering library component schemas with dotted, non-`scrapbot` names.
 - The API supports registering native systems with declared component reads and writes.
 - Native systems can query by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components through the callback context.
+- Native callback contexts expose the frame's read-only time resource snapshot.
 - Native systems can spawn entities referencing shared geometry and material resources alongside transform and schema-backed components.
 - Native lifecycle commands use the same command buffer as Luau lifecycle commands and apply after scheduled systems finish for the frame.
 - `scrapbot run`, `scrapbot check`, and hot reload load native extensions before running project Luau.
@@ -55,7 +56,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 ### 4. Provide an Odin authoring wrapper over the raw ABI
 
 **Decision:** Add `scrapbot:extension` as a small Odin package that aliases the ABI types and offers descriptors plus helper procedures for common extension work.
-**Why:** Extension authors should write idiomatic project/library code instead of repeating nil checks, ABI version checks, component strings, raw pointer extraction, field counts, and table construction in every extension.
+**Why:** Extension authors should write idiomatic project/library code instead of repeating nil checks, component strings, raw pointer extraction, field counts, and table construction in every extension.
 **Tradeoff:** The wrapper improves Odin ergonomics only. Non-Odin extension authors still target the raw C-compatible ABI or their own language bindings.
 
 ### 5. Reuse library component ownership
@@ -72,7 +73,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 ## Related
 
-- **ADRs:** ADR-008
+- **ADRs:** ADR-008, ADR-012
 - **FDRs:** FDR-004, FDR-005
 
 ## Open Questions

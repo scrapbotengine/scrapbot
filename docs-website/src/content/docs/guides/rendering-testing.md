@@ -6,9 +6,20 @@ description: Run the null and WebGPU backends, smoke-test projects, and verify g
 Scrapbot has two rendering paths today:
 
 - `null`: headless renderer for fast smoke tests.
-- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared materials, ECS lighting, and instanced draw batching.
+- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared materials, ECS lighting, directional shadows, and instanced draw batching.
 
 The WGPU path decodes material base colors to linear space, accumulates light there, tone maps the HDR result, and presents through an sRGB target. A scene with no ambient, directional, or point lights therefore renders its geometry black.
+
+## Directional shadows
+
+Shadow participation is explicit and independent:
+
+```toml
+[entities.shadow_caster]
+[entities.shadow_receiver]
+```
+
+`shadow_caster` makes an entity contribute to the first directional light's shadow map. `shadow_receiver` makes it sample that map while evaluating directional light. An entity may have either marker, both, or neither. The initial implementation uses one fixed 2048×2048 orthographic shadow map; it does not yet provide cascades or point-light shadows.
 
 ## Null renderer
 
@@ -50,7 +61,7 @@ Expected basics:
 - PNG image data, 1280 x 720, RGBA.
 - Signature starts with `8950 4e47 0d0a 1a0a`.
 - Visual output shows shaded fountain cubes and the generated ground plane under ambient and directional light.
-- Warm and cool point-light pools move around the fountain in later frames.
+- Caster geometry projects directional shadows onto the receiver ground plane.
 
 ## Full local verification
 

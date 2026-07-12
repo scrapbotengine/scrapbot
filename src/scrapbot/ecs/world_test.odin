@@ -303,6 +303,30 @@ test_deferred_commands_spawn_entities_when_applied :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_shadow_markers_participate_in_queries_and_deferred_commands :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	commands: Command_Buffer
+	init_command_buffer(&commands)
+	defer destroy_command_buffer(&commands)
+
+	spawn: Spawn_Command
+	testing.expect(t, init_spawn_command(&spawn, "Shadowed") == "")
+	testing.expect(t, spawn_set_marker(&spawn, "scrapbot.shadow_caster") == "")
+	testing.expect(t, queue_spawn_command(&commands, spawn) == "")
+	testing.expect(t, apply_commands(&world, &commands) == "")
+	testing.expect(t, entity_has_component(&world, 0, 0, "scrapbot.shadow_caster"))
+	testing.expect(t, !entity_has_component(&world, 0, 0, "scrapbot.shadow_receiver"))
+
+	testing.expect(t, queue_add_marker(&commands, 0, 1, "scrapbot.shadow_receiver") == "")
+	testing.expect(t, apply_commands(&world, &commands) == "")
+	testing.expect(t, entity_has_component(&world, 0, 0, "scrapbot.shadow_receiver"))
+	testing.expect(t, queue_remove_component(&commands, 0, 1, 0, "scrapbot.shadow_caster") == "")
+	testing.expect(t, apply_commands(&world, &commands) == "")
+	testing.expect(t, !entity_has_component(&world, 0, 0, "scrapbot.shadow_caster"))
+}
+
+@(test)
 test_deferred_command_buffers_merge_in_source_order :: proc(t: ^testing.T) {
 	destination, source: Command_Buffer
 	init_command_buffer(&destination)

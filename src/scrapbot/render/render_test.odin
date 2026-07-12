@@ -1,6 +1,7 @@
 package render
 
 import "core:testing"
+import ecs "../ecs"
 
 @(test)
 test_renderer_backend_names_parse :: proc(t: ^testing.T) {
@@ -33,9 +34,21 @@ test_null_renderer_steps_frame_system_for_max_frames :: proc(t: ^testing.T) {
 
 	testing.expectf(t, err == "", "run_renderer failed: %s", err)
 	testing.expect(t, frame_count == 5)
+	testing.expect(t, world.time.frame_index == 5)
+	testing.expect(t, world.time.delta_time == f32(1.0 / 60.0))
+}
+
+@(test)
+test_directional_shadow_matrix_is_finite_and_non_identity :: proc(t: ^testing.T) {
+	light_matrix := wgpu_build_directional_light_view_projection({-0.5, -1, -0.25})
+	testing.expect(t, light_matrix != mat4_identity())
+	for value in light_matrix {
+		testing.expect(t, value == value)
+	}
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {
+	ecs.advance_time(&world.time, delta_seconds)
 	count := cast(^int)data
 	count^ += 1
 	return ""

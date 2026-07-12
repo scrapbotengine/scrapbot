@@ -24,6 +24,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Conflicting systems preserve registration order across scheduler stages.
 - Luau systems execute serially on the calling thread and act as barriers between native stages.
 - Each parallel native system receives a private deferred-command buffer; commands merge deterministically in system order after the stage completes.
+- Every system in a frame observes the same read-only world time resource snapshot.
 - `scrapbot run --scheduler-trace` reports worker count, parallel stage count, and maximum parallel width for the run.
 - Structural world changes requested from Luau systems are queued in a deferred command buffer and applied after all scheduled systems finish for the frame.
 - Deferred commands currently support spawning named entities with initial transform/project component payloads, despawning entities without shifting existing entity indices, and adding/removing `scrapbot.transform` or project components.
@@ -72,7 +73,7 @@ Declared systems now enforce their declared component access at the Luau API bou
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-007, ADR-009
+- **ADRs:** ADR-001, ADR-006, ADR-007, ADR-009, ADR-012
 - **FDRs:** FDR-004, FDR-006
 
 ## Open Questions

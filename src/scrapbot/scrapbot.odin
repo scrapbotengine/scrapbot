@@ -45,7 +45,7 @@ Native_Work_Context :: struct {
 	world:          ^shared.World,
 	commands:       ecs.Command_Buffer,
 	registry:       ^component.Registry,
-	delta_seconds:  f32,
+	time:           shared.Time_Resource,
 	err:            string,
 }
 
@@ -377,7 +377,8 @@ step_frame_runtime :: proc(runtime: ^Frame_Runtime, world: ^shared.World, delta_
 	if runtime == nil {
 		return ""
 	}
-	return step_frame_runtime_parts(&runtime.script_runtime, &runtime.native_extensions, &runtime.executor, world, delta_seconds)
+	ecs.advance_time(&world.time, delta_seconds)
+	return step_frame_runtime_parts(&runtime.script_runtime, &runtime.native_extensions, &runtime.executor, world, world.time)
 }
 
 step_frame_runtime_parts :: proc(
@@ -385,7 +386,7 @@ step_frame_runtime_parts :: proc(
 	native_extensions: ^native.Extension_Set,
 	executor: ^schedule.Executor,
 	world: ^shared.World,
-	delta_seconds: f32,
+	time: shared.Time_Resource,
 ) -> string {
 	if script_runtime == nil || native_extensions == nil || executor == nil {
 		return ""
@@ -441,7 +442,7 @@ step_frame_runtime_parts :: proc(
 				work_context.system = &native_extensions.systems[system_index]
 				work_context.world = world
 				work_context.registry = &script_runtime.registry
-				work_context.delta_seconds = delta_seconds
+				work_context.time = time
 				native_work[native_count] = schedule.Work {
 					procedure = run_native_work,
 					data = work_context,
@@ -480,7 +481,7 @@ step_frame_runtime_parts :: proc(
 			}
 			script_index := system_index - native_extensions.system_count
 			system := script_runtime.systems[script_index]
-			if err := script.run_script_system(script_runtime, script_runtime.L, system, delta_seconds); err != "" {
+			if err := script.run_script_system(script_runtime, script_runtime.L, system, time); err != "" {
 				ecs.clear_commands(&script_runtime.commands)
 				return err
 			}
@@ -497,7 +498,7 @@ run_native_work :: proc(data: rawptr) {
 		work.world,
 		&work.commands,
 		work.registry,
-		work.delta_seconds,
+		work.time,
 	)
 }
 

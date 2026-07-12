@@ -256,7 +256,7 @@ spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 			return "get_vec3_field failed"
 		}
 
-		transform.rotation.y += angular_velocity.y * ctx.delta_seconds
+		transform.rotation.y += angular_velocity.y * ctx.time.delta_time
 		if !scrapbot.set(ctx, entity, transform) {
 			return "set_transform failed"
 		}

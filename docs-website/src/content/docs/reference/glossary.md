@@ -21,7 +21,7 @@ The runtime registry of component names, IDs, owners, and simple field schemas. 
 A reusable Luau value created with `scrapbot.query(...)` that represents one component set.
 
 **Scheduled system**  
-A system with declared component reads and writes. Scrapbot currently batches scheduled systems by access conflicts, then executes them serially.
+A system with declared component reads and writes. Scrapbot batches scheduled systems by access conflicts, executes conflict-free native systems concurrently, and treats Luau or undeclared systems as serial barriers.
 
 **Deferred command buffer**  
 A runtime queue of entity/component lifecycle mutations applied after systems finish the frame.
@@ -64,3 +64,9 @@ The placeholder renderer that accepts world-derived frame data without opening a
 
 **WebGPU**  
 The graphics API model Scrapbot targets for the first real renderer through `wgpu-native`.
+
+**Shadow caster**
+An entity marked to contribute geometry to the first directional light's shadow map.
+
+**Shadow receiver**
+An entity marked to sample the directional shadow map when its directional lighting is evaluated.

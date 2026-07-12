@@ -64,6 +64,7 @@ Run the full local test suite with `mise test`.
   - [x] Component registry
   - [x] Component lifecycles
   - [x] ID-keyed custom component storage
+  - [x] Engine-owned frame time resource
   - [ ] World snapshots
 - Scheduling
   - [x] Scheduled systems
@@ -111,13 +112,13 @@ Run the full local test suite with `mise test`.
   - [ ] Offscreen render comparison
 - Scene Data
   - [x] Basic cameras
-  - [ ] Lighting
+  - [x] Lighting
   - [x] Generated cube, plane, icosphere, UV sphere, pyramid, and cylinder geometry
   - [x] Shared base-color materials
   - [ ] Scene camera workflow
 - Pipeline
   - [x] Geometry/material render batching
-  - [ ] Shadows
+  - [x] Directional shadow maps with explicit caster/receiver components
   - [ ] HDR rendering
   - [ ] Postprocessing
   - [ ] Frustum culling

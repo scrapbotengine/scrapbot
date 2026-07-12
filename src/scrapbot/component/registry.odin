@@ -57,6 +57,8 @@ init_registry :: proc(registry: ^Registry) {
 	register_engine_component(registry, "scrapbot.mesh", {})
 	register_engine_component(registry, "scrapbot.geometry", {})
 	register_engine_component(registry, "scrapbot.material", {})
+	register_engine_component(registry, "scrapbot.shadow_caster", {})
+	register_engine_component(registry, "scrapbot.shadow_receiver", {})
 	register_engine_component(registry, "scrapbot.internal.render_instance", {})
 }
 

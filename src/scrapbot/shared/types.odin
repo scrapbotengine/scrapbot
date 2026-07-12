@@ -53,6 +53,8 @@ Scene_Entity :: struct {
 	geometry_resource: string,
 	has_material: bool,
 	material_resource: string,
+	has_shadow_caster: bool,
+	has_shadow_receiver: bool,
 
 	custom_components: [dynamic]Custom_Component,
 }
@@ -67,6 +69,13 @@ INVALID_COMPONENT_ID :: Component_ID(0)
 
 Geometry_Handle :: struct {index, generation: u32}
 Material_Handle :: struct {index, generation: u32}
+
+Time_Resource :: struct {
+	delta_time:        f32,
+	smooth_delta_time: f32,
+	elapsed_time:      f64,
+	frame_index:       u64,
+}
 
 Transform_Component :: struct {
 	position: Vec3,
@@ -126,6 +135,8 @@ World_Entity :: struct {
 	geometry_index:  int,
 	material_index:  int,
 	render_instance_index: int,
+	has_shadow_caster: bool,
+	has_shadow_receiver: bool,
 	geometry_resource: string,
 	material_resource: string,
 }
@@ -142,6 +153,8 @@ Render_Instance :: struct {
 	mesh:      Mesh_Component,
 	geometry:  Geometry_Component,
 	material:  Material_Component,
+	shadow_caster: bool,
+	shadow_receiver: bool,
 }
 
 Camera_Instance :: struct {
@@ -168,6 +181,7 @@ Render_List :: struct {
 }
 
 World :: struct {
+	time:       Time_Resource,
 	entities:   [dynamic]World_Entity,
 	transforms: #soa[dynamic]Transform_Component,
 	cameras:    [dynamic]Camera_Component,

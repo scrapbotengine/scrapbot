@@ -77,10 +77,10 @@ local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
 
 scrapbot.system(Autorotating, {
 	writes = { "scrapbot.transform" },
-}, function(delta_seconds: number, entity: ScrapbotEntity, transform: ScrapbotTransform, autorotate: Autorotate)
-	transform.rotation.x += autorotate.velocity.x * delta_seconds
-	transform.rotation.y += autorotate.velocity.y * delta_seconds
-	transform.rotation.z += autorotate.velocity.z * delta_seconds
+}, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ScrapbotTransform, autorotate: Autorotate)
+	transform.rotation.x += autorotate.velocity.x * time.delta_time
+	transform.rotation.y += autorotate.velocity.y * time.delta_time
+	transform.rotation.z += autorotate.velocity.z * time.delta_time
 end)
 `
 }
