@@ -144,6 +144,16 @@ export type ReadonlyScrapbotMesh = {
 
 export type ScrapbotMeshComponent = ScrapbotComponent<ScrapbotMesh, ReadonlyScrapbotMesh>
 
+export type ScrappyphysicsSpin = {
+	angular_velocity: Vec3,
+}
+
+export type ReadonlyScrappyphysicsSpin = {
+	read angular_velocity: ReadonlyVec3,
+}
+
+export type ScrappyphysicsSpinComponent = ScrapbotComponent<ScrappyphysicsSpin, ReadonlyScrappyphysicsSpin>
+
 export type ScrappyphysicsRigidbody = {
 	velocity: Vec3,
 }
@@ -153,15 +163,5 @@ export type ReadonlyScrappyphysicsRigidbody = {
 }
 
 export type ScrappyphysicsRigidbodyComponent = ScrapbotComponent<ScrappyphysicsRigidbody, ReadonlyScrappyphysicsRigidbody>
-
-export type Autorotate = {
-	velocity: Vec3,
-}
-
-export type ReadonlyAutorotate = {
-	read velocity: ReadonlyVec3,
-}
-
-export type AutorotateComponent = ScrapbotComponent<Autorotate, ReadonlyAutorotate>
 
 declare scrapbot: Scrapbot

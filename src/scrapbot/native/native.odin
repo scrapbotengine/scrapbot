@@ -1,5 +1,6 @@
 package native
 
+import c "core:c"
 import "core:dynlib"
 import "core:fmt"
 import "core:os"
@@ -7,13 +8,16 @@ import "core:path/filepath"
 import "core:strings"
 import "core:time"
 import component "../component"
+import ecs "../ecs"
 import api "../extension_api"
+import schedule "../schedule"
 import shared "../shared"
 
 EXTENSIONS_DIR :: "build/extensions"
 EXTENSIONS_MANIFEST :: ".scrapbot-extensions"
 REGISTER_SYMBOL :: "scrapbot_extension_register"
 MAX_EXTENSIONS :: 32
+MAX_NATIVE_SYSTEMS :: schedule.MAX_SYSTEMS
 
 Extension_Stamp :: struct {
 	exists: bool,
@@ -34,6 +38,18 @@ Extension :: struct {
 	library: dynlib.Library,
 }
 
+Native_System :: struct {
+	name: string,
+	declaration: schedule.System,
+	callback: api.System_Proc,
+	userdata: rawptr,
+}
+
+Step_Context :: struct {
+	world: ^shared.World,
+	system: ^Native_System,
+}
+
 Source_Target :: struct {
 	name: string,
 	source: string,
@@ -43,6 +59,8 @@ Source_Target :: struct {
 Extension_Set :: struct {
 	extensions: [MAX_EXTENSIONS]Extension,
 	extension_count: int,
+	systems: [MAX_NATIVE_SYSTEMS]Native_System,
+	system_count: int,
 	registry: ^component.Registry,
 }
 
@@ -315,6 +333,7 @@ load_extension :: proc(set: ^Extension_Set, path: string) -> string {
 		abi_version = api.ABI_VERSION,
 		userdata = set,
 		register_library_component = extension_register_library_component,
+		register_system = extension_register_system,
 	}
 	if register_err := register(&host_api); register_err != nil {
 		dynlib.unload_library(library)
@@ -378,12 +397,339 @@ extension_register_library_component :: proc "c" (
 	return nil
 }
 
+extension_register_system :: proc "c" (
+	host_api: ^api.API,
+	definition: ^api.System_Definition,
+) -> cstring {
+	if host_api == nil || host_api.userdata == nil || definition == nil {
+		return "native extension registration API is not available"
+	}
+	set := cast(^Extension_Set)host_api.userdata
+	if set.registry == nil {
+		return "native extension component registry is not available"
+	}
+	if set.system_count >= MAX_NATIVE_SYSTEMS {
+		return "too many native systems"
+	}
+	if definition.name == nil {
+		return "native system name is required"
+	}
+	if definition.callback == nil {
+		return "native system callback is required"
+	}
+	if definition.access_count < 0 || definition.access_count > api.MAX_SYSTEM_ACCESSES {
+		return "native system has too many access declarations"
+	}
+
+	system: Native_System
+	system.name = string(definition.name)
+	system.callback = definition.callback
+	system.userdata = definition.userdata
+
+	for i in 0..<int(definition.access_count) {
+		access := definition.accesses[i]
+		if access.component == nil {
+			return "native system access component is required"
+		}
+		component_name := string(access.component)
+		if _, found := component.find_definition(set.registry, component_name); !found {
+			return "native system access references unregistered component"
+		}
+		mode, mode_ok := extension_access_mode(access.mode)
+		if !mode_ok {
+			return "native system access mode is not supported"
+		}
+		system.declaration.accesses[system.declaration.access_count] = schedule.Access {
+			component = component_name,
+			mode      = mode,
+		}
+		system.declaration.access_count += 1
+	}
+
+	set.systems[set.system_count] = system
+	set.system_count += 1
+	return nil
+}
+
 extension_field_type :: proc "c" (field_type: api.Field_Type) -> (component.Field_Type, bool) {
 	#partial switch field_type {
 	case .Vec3:
 		return .Vec3, true
 	}
 	return {}, false
+}
+
+extension_access_mode :: proc "c" (mode: api.Access_Mode) -> (schedule.Access_Mode, bool) {
+	#partial switch mode {
+	case .Read:
+		return .Read, true
+	case .Write:
+		return .Write, true
+	}
+	return {}, false
+}
+
+step_system :: proc(system: ^Native_System, world: ^shared.World, delta_seconds: f32) -> string {
+	if system == nil || system.callback == nil {
+		return ""
+	}
+
+	step_context := Step_Context{world = world, system = system}
+	ctx := api.System_Context {
+		abi_version = api.ABI_VERSION,
+		userdata = system.userdata,
+		host = &step_context,
+		delta_seconds = delta_seconds,
+		query_count = system_query_count,
+		query_entity_at = system_query_entity_at,
+		get_transform = system_get_transform,
+		set_transform = system_set_transform,
+		get_vec3_field = system_get_vec3_field,
+		set_vec3_field = system_set_vec3_field,
+	}
+
+	if err := system.callback(&ctx); err != nil {
+		return fmt.tprintf("native system %s: %s", system.name, string(err))
+	}
+	return ""
+}
+
+system_query_count :: proc "c" (
+	ctx: ^api.System_Context,
+	terms: [^]api.Query_Term,
+	term_count: c.int,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok {
+		return -1
+	}
+	query, query_ok := system_query_from_terms(step, terms, term_count)
+	if !query_ok {
+		return -1
+	}
+	return c.int(ecs.query_count(step.world, query))
+}
+
+system_query_entity_at :: proc "c" (
+	ctx: ^api.System_Context,
+	terms: [^]api.Query_Term,
+	term_count: c.int,
+	visible_index: c.int,
+) -> api.Entity {
+	step, ok := system_step_context(ctx)
+	if !ok {
+		return api.Entity{index = -1}
+	}
+	query, query_ok := system_query_from_terms(step, terms, term_count)
+	if !query_ok {
+		return api.Entity{index = -1}
+	}
+	entity_index, entity_ok := ecs.query_entity_at(step.world, query, int(visible_index))
+	if !entity_ok {
+		return api.Entity{index = -1}
+	}
+	return api.Entity {
+		index = c.int(entity_index),
+		generation = step.world.entities[entity_index].id.generation,
+	}
+}
+
+system_get_transform :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	transform: ^api.Transform,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || transform == nil || !system_allows_component_access(step.system.declaration, "scrapbot.transform", .Read) {
+		return 0
+	}
+	entity_index := int(entity.index)
+	if !ecs.entity_is_current(step.world, entity_index, entity.generation) {
+		return 0
+	}
+	world_entity := step.world.entities[entity_index]
+	if world_entity.transform_index < 0 || world_entity.transform_index >= len(step.world.transforms) {
+		return 0
+	}
+	transform^ = api_transform_from_shared(step.world.transforms[world_entity.transform_index])
+	return 1
+}
+
+system_set_transform :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	transform: ^api.Transform,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || transform == nil || !system_allows_component_access(step.system.declaration, "scrapbot.transform", .Write) {
+		return 0
+	}
+	entity_index := int(entity.index)
+	if !ecs.entity_is_current(step.world, entity_index, entity.generation) {
+		return 0
+	}
+	world_entity := step.world.entities[entity_index]
+	if world_entity.transform_index < 0 || world_entity.transform_index >= len(step.world.transforms) {
+		return 0
+	}
+	step.world.transforms[world_entity.transform_index] = shared_transform_from_api(transform^)
+	return 1
+}
+
+system_get_vec3_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^api.Vec3,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Read) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for field in world_component.vec3_fields {
+		if field.name == string(field_name) {
+			value^ = api_vec3_from_shared(field.value)
+			return 1
+		}
+	}
+	return 0
+}
+
+system_set_vec3_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^api.Vec3,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Write) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for &field in world_component.vec3_fields {
+		if field.name == string(field_name) {
+			field.value = shared_vec3_from_api(value^)
+			return 1
+		}
+	}
+	return 0
+}
+
+system_step_context :: proc "c" (ctx: ^api.System_Context) -> (^Step_Context, bool) {
+	if ctx == nil || ctx.host == nil {
+		return nil, false
+	}
+	step := cast(^Step_Context)ctx.host
+	return step, step.world != nil && step.system != nil
+}
+
+system_query_from_terms :: proc "c" (
+	step: ^Step_Context,
+	terms: [^]api.Query_Term,
+	term_count: c.int,
+) -> (ecs.Query, bool) {
+	if step == nil || terms == nil || term_count <= 0 || term_count > api.MAX_QUERY_TERMS {
+		return {}, false
+	}
+
+	query: ecs.Query
+	for i in 0..<int(term_count) {
+		term := terms[i]
+		if term.component == nil {
+			return {}, false
+		}
+		name := string(term.component)
+		if !system_allows_component_access(step.system.declaration, name, .Read) {
+			return {}, false
+		}
+		query.terms[query.term_count] = ecs.Query_Term {
+			component_id = shared.INVALID_COMPONENT_ID,
+			name = name,
+		}
+		query.term_count += 1
+	}
+	return query, true
+}
+
+system_custom_component :: proc "c" (
+	world: ^shared.World,
+	entity: api.Entity,
+	component_name: string,
+) -> (^shared.Custom_Component, bool) {
+	entity_index := int(entity.index)
+	if !ecs.entity_is_current(world, entity_index, entity.generation) {
+		return nil, false
+	}
+	return ecs.custom_component_for_entity_ref(
+		world,
+		entity_index,
+		shared.INVALID_COMPONENT_ID,
+		component_name,
+	)
+}
+
+system_allows_component_access :: proc "c" (
+	declaration: schedule.System,
+	component_name: string,
+	mode: schedule.Access_Mode,
+) -> bool {
+	if declaration.access_count == 0 {
+		return true
+	}
+	for i in 0..<declaration.access_count {
+		access := declaration.accesses[i]
+		if access.component != component_name {
+			continue
+		}
+		if mode == .Read && (access.mode == .Read || access.mode == .Write) {
+			return true
+		}
+		if mode == .Write && access.mode == .Write {
+			return true
+		}
+	}
+	return false
+}
+
+api_transform_from_shared :: proc "c" (transform: shared.Transform_Component) -> api.Transform {
+	return api.Transform {
+		position = api_vec3_from_shared(transform.position),
+		rotation = api_vec3_from_shared(transform.rotation),
+		scale    = api_vec3_from_shared(transform.scale),
+	}
+}
+
+shared_transform_from_api :: proc "c" (transform: api.Transform) -> shared.Transform_Component {
+	return shared.Transform_Component {
+		position = shared_vec3_from_api(transform.position),
+		rotation = shared_vec3_from_api(transform.rotation),
+		scale    = shared_vec3_from_api(transform.scale),
+	}
+}
+
+api_vec3_from_shared :: proc "c" (value: shared.Vec3) -> api.Vec3 {
+	return api.Vec3{x = value.x, y = value.y, z = value.z}
+}
+
+shared_vec3_from_api :: proc "c" (value: api.Vec3) -> shared.Vec3 {
+	return shared.Vec3{x = value.x, y = value.y, z = value.z}
 }
 
 project_extension_paths :: proc(root: string) -> (paths: []string, err: string) {

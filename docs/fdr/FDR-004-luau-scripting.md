@@ -1,7 +1,7 @@
 # FDR-004: Luau scripting
 
 **Status:** Active
-**Last reviewed:** 2026-07-11
+**Last reviewed:** 2026-07-12
 
 ## Overview
 
@@ -62,7 +62,7 @@ Luau scripting lets project directories include fast-iteration game code without
 ### 1. Start with one project entry script
 
 **Decision:** Execute `scripts/main.luau` if it exists.
-**Why:** A single conventional entry point is enough to verify embedding, project layout, and CLI behavior before introducing modules or script systems.
+**Why:** A single conventional entry point is enough to verify embedding, project layout, CLI behavior, hot reload, component APIs, and system scheduling before introducing modules.
 **Tradeoff:** There is no module loading yet, and hot reload currently targets only this conventional entry script.
 
 ### 2. Expose read-only ECS inspection first

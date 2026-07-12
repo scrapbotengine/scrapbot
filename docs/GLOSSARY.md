@@ -30,9 +30,9 @@
 
 **Joined query** - A query that matches only entities that have every requested component, such as `scrapbot.transform` and a project-defined `autorotate` component. Luau uses `scrapbot.query(a, b)` to create joined query objects.
 
-**System** - Runtime logic that reads or writes components for matching entities.
+**System** - Runtime logic that reads or writes components for matching entities. Systems can currently be registered from Luau scripts or native extensions.
 
-**Scheduled system** - A system with declared component reads and writes. Scrapbot batches scheduled systems by access conflicts before executing them serially.
+**Scheduled system** - A system with declared component reads and writes. Scrapbot batches Luau and native systems together by access conflicts before executing them serially.
 
 **Deferred command buffer** - A per-runtime queue of structural ECS mutations requested while systems are running. Scrapbot currently applies queued entity and component lifecycle commands after the scheduled frame step.
 
@@ -72,7 +72,7 @@
 
 **Luau analyzer** - The external `luau-analyze` static checker. `scrapbot check` runs it when available to catch script type and syntax errors against generated Scrapbot types.
 
-**Native extension** - Project-local compiled code declared in `project.toml`, built into versioned dynamic libraries under `build/extensions`, and loaded through Scrapbot's C ABI. The first extension API lets native libraries register dotted library component schemas before Luau runs.
+**Native extension** - Project-local compiled code declared in `project.toml`, built into versioned dynamic libraries under `build/extensions`, and loaded through Scrapbot's C ABI. The extension API lets native libraries register dotted library component schemas and scheduled native systems before Luau runs.
 
 **Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for `project.toml`, the default scene TOML, `scripts/main.luau`, native libraries in `build/extensions`, and declared native extension source directories.
 

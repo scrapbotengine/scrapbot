@@ -49,7 +49,7 @@
 - [x] Add native Odin extension loading and hot reload.
 - [x] Add project-declared native extension builds.
 - [x] Rebuild native extension sources during hot reload.
-- [ ] Add native ECS systems that participate in scheduling.
+- [x] Add native ECS systems that participate in scheduling.
 
 ## Editor
 

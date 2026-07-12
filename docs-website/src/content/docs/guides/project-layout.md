@@ -90,7 +90,7 @@ mise scrapbot -- check my-game
 
 ## Native source and build output
 
-Native extension source belongs under a project-local source directory such as `native/scrappyphysics`. Declared targets are built into source-stamped dynamic libraries under `build/extensions`, with `.scrapbot-extensions` recording the active outputs:
+Native extension source belongs under a project-local source directory such as `native/scrappyphysics`. Extensions can register component schemas and scheduled native systems. Declared targets are built into source-stamped dynamic libraries under `build/extensions`, with `.scrapbot-extensions` recording the active outputs:
 
 ```sh
 mise scrapbot -- build examples/minimal

@@ -8,7 +8,7 @@ The first native extension ABI lives in `src/scrapbot/extension_api`.
 ## Versioning
 
 ```odin
-ABI_VERSION :: u32(1)
+ABI_VERSION :: u32(2)
 ```
 
 Extensions should reject unknown ABI versions during registration.
@@ -31,6 +31,7 @@ API :: struct {
 	abi_version: u32,
 	userdata: rawptr,
 	register_library_component: Register_Library_Component_Proc,
+	register_system: Register_System_Proc,
 }
 ```
 
@@ -63,11 +64,55 @@ Rules:
 - the first supported field type is vec3;
 - the maximum field count is 16.
 
+## System definitions
+
+Native systems register during `scrapbot_extension_register` after any component schemas they reference:
+
+```odin
+Access_Mode :: enum c.int {
+	Read = 1,
+	Write = 2,
+}
+
+System_Access :: struct {
+	component: cstring,
+	mode: Access_Mode,
+}
+
+System_Definition :: struct {
+	name: cstring,
+	accesses: [^]System_Access,
+	access_count: c.int,
+	callback: System_Proc,
+	userdata: rawptr,
+}
+```
+
+System access components must already be registered. Native systems and Luau systems are batched together by the same scheduler. Batches still execute serially.
+
+## System context
+
+Native callbacks receive a host-owned `System_Context`:
+
+```odin
+System_Proc :: #type proc "c" (ctx: ^System_Context) -> cstring
+```
+
+The context includes:
+
+- `delta_seconds`;
+- extension `userdata`;
+- query helpers for component-name terms;
+- `get_transform` and `set_transform`;
+- `get_vec3_field` and `set_vec3_field` for schema-backed custom components.
+
+Return `nil` on success or a static error string on failure. The host enforces declared access through the callback context.
+
 ## Current limits
 
-Native extensions can register component schemas only. They cannot yet:
+Native extensions cannot yet:
 
-- register native systems;
+- spawn or despawn entities;
 - access ECS storage directly;
-- declare scheduler reads or writes;
+- access non-vec3 custom fields;
 - allocate through a host allocator.

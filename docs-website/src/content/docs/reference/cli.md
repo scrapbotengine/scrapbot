@@ -37,7 +37,7 @@ Performs project validation:
 
 - reads `project.toml`;
 - builds declared native extensions;
-- loads native extension schemas;
+- loads native extension schemas and system declarations;
 - builds the ECS world from the default scene;
 - executes `scripts/main.luau` silently to collect schemas and systems;
 - validates scene component data against the registry;
@@ -50,7 +50,7 @@ Performs project validation:
 scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--frames n] [--framegrab out.png]
 ```
 
-Runs a project through the selected renderer backend.
+Runs a project through the selected renderer backend after stepping registered native and Luau systems.
 
 Options:
 

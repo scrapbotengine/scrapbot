@@ -9,6 +9,7 @@ import component "./component"
 import native "./native"
 import project "./project"
 import render "./render"
+import schedule "./schedule"
 import script "./script"
 import shared "./shared"
 
@@ -25,6 +26,11 @@ Project_Load_Result :: project.Project_Load_Result
 Runtime_Result :: struct {
 	frame: shared.Render_Frame,
 	err:   string,
+}
+
+Frame_Runtime :: struct {
+	script_runtime: script.Runtime,
+	native_extensions: native.Extension_Set,
 }
 
 init_project :: project.init_project
@@ -283,10 +289,11 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 		return result
 	}
 
-	script_runtime: script.Runtime
-	defer script.destroy_runtime(&script_runtime)
+	frame_runtime: Frame_Runtime
+	defer script.destroy_runtime(&frame_runtime.script_runtime)
+	defer native.destroy_extension_set(&frame_runtime.native_extensions)
 	script_result := script.run_project_script_with_registry(
-		&script_runtime,
+		&frame_runtime.script_runtime,
 		root,
 		&world,
 		&registry,
@@ -296,13 +303,87 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 		result.err = script_result.err
 		return result
 	}
-	if script_result.ran {
-		run_config.frame_system = script.step_frame_system
-		run_config.frame_system_data = &script_runtime
+	frame_runtime.native_extensions = extensions
+	extensions = {}
+	if script_result.ran || frame_runtime.native_extensions.system_count > 0 {
+		run_config.frame_system = step_frame_runtime_system
+		run_config.frame_system_data = &frame_runtime
 	}
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	return result
+}
+
+step_frame_runtime_system :: proc(data: rawptr, world: ^shared.World, delta_seconds: f32) -> string {
+	runtime := cast(^Frame_Runtime)data
+	if runtime == nil {
+		return ""
+	}
+	return step_frame_runtime(runtime, world, delta_seconds)
+}
+
+step_frame_runtime :: proc(runtime: ^Frame_Runtime, world: ^shared.World, delta_seconds: f32) -> string {
+	if runtime == nil {
+		return ""
+	}
+	return step_frame_runtime_parts(&runtime.script_runtime, &runtime.native_extensions, world, delta_seconds)
+}
+
+step_frame_runtime_parts :: proc(
+	script_runtime: ^script.Runtime,
+	native_extensions: ^native.Extension_Set,
+	world: ^shared.World,
+	delta_seconds: f32,
+) -> string {
+	if script_runtime == nil || native_extensions == nil {
+		return ""
+	}
+	if script_runtime.L != nil {
+		script_runtime.world = world
+	}
+
+	system_count := native_extensions.system_count + script_runtime.system_count
+	if system_count == 0 {
+		return ""
+	}
+	if system_count > schedule.MAX_SYSTEMS {
+		return "too many frame systems"
+	}
+
+	scheduled_systems: [schedule.MAX_SYSTEMS]schedule.System
+	index := 0
+	for system in native_extensions.systems[:native_extensions.system_count] {
+		scheduled_systems[index] = system.declaration
+		index += 1
+	}
+	for system in script_runtime.systems[:script_runtime.system_count] {
+		scheduled_systems[index] = system.declaration
+		index += 1
+	}
+
+	plan := schedule.build_plan(scheduled_systems[:system_count])
+	for batch in plan.batches[:plan.batch_count] {
+		for i in 0..<batch.system_count {
+			system_index := batch.system_indices[i]
+			if system_index < native_extensions.system_count {
+				system := &native_extensions.systems[system_index]
+				if err := native.step_system(system, world, delta_seconds); err != "" {
+					ecs.clear_commands(&script_runtime.commands)
+					return err
+				}
+				continue
+			}
+
+			script_index := system_index - native_extensions.system_count
+			system := script_runtime.systems[script_index]
+			if err := script.run_script_system(script_runtime, script_runtime.L, system, delta_seconds); err != "" {
+				ecs.clear_commands(&script_runtime.commands)
+				return err
+			}
+		}
+	}
+
+	return ecs.apply_commands(world, &script_runtime.commands)
 }
 
 build_native_extensions :: proc(root: string, config: ^shared.Project_Config) -> string {

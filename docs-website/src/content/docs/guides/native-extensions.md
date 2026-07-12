@@ -1,9 +1,9 @@
 ---
 title: Native Extensions
-description: Build project-local Odin dynamic libraries that register component schemas before Luau runs.
+description: Build project-local Odin dynamic libraries that register component schemas and scheduled systems.
 ---
 
-Native extensions are the current path for moving project/library behavior toward compiled code. The first ABI is deliberately small: native code can register library component schemas.
+Native extensions are the current path for moving project/library behavior toward compiled code. The ABI is deliberately small: native code can register library component schemas and scheduled systems.
 
 ## Declare an extension target
 
@@ -47,6 +47,27 @@ scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
 ```
 
 Extensions must export `scrapbot_extension_register`.
+
+## Register a system
+
+Systems declare component access and provide a callback:
+
+```odin
+accesses := [?]api.System_Access {
+	{component = "scrapbot.transform", mode = .Read},
+	{component = "scrapbot.transform", mode = .Write},
+	{component = "scrappyphysics.rigidbody", mode = .Read},
+}
+system := api.System_Definition {
+	name = "scrappyphysics.motion",
+	accesses = raw_data(accesses[:]),
+	access_count = c.int(len(accesses)),
+	callback = motion_system,
+}
+return scrapbot.register_system(scrapbot, &system)
+```
+
+The callback receives `api.System_Context`. The current context can query entities by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components. Native and Luau systems share the same scheduler batches.
 
 ## Build it
 

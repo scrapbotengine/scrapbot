@@ -22,7 +22,7 @@ mise scrapbot -- run examples/minimal
 
 `check` validates `project.toml`, builds declared native extensions, loads component schemas, validates the scene, refreshes Luau editor types, and runs Luau static analysis when `luau-analyze` is available.
 
-`run` builds declared native extensions, loads the scene into the ECS world, executes `scripts/main.luau`, steps registered systems, and renders through the selected backend.
+`run` builds declared native extensions, loads the scene into the ECS world, executes `scripts/main.luau`, steps registered native and Luau systems, and renders through the selected backend.
 
 ## Create a new project
 
