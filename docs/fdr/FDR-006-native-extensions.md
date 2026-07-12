@@ -11,7 +11,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 - Projects declare native extension targets in `project.toml`.
 - Each target has a stable `name` and an Odin source directory.
-- `scrapbot build` compiles declared native extensions without running the project.
+- `scrapbot build` compiles declared native extensions and includes the active outputs in a host-native game package without running the project.
 - `scrapbot check` and `scrapbot run` compile declared native extensions before loading them.
 - Scrapbot writes native extension libraries to `build/extensions` under the project root.
 - Built extension files include the target name, a source stamp, and the platform dynamic-library suffix, such as `.dylib` on macOS and `.so` on Linux.

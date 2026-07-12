@@ -69,4 +69,21 @@ case "$RUN_JSON" in
   '{"schema_version":1,"command":"run","ok":true,'*) ;;
   *) echo "unexpected run JSON: $RUN_JSON" >&2; exit 1 ;;
 esac
+BUILD_JSON="$(bin/scrapbot build examples/minimal --json)"
+case "$BUILD_JSON" in
+  '{"schema_version":1,"command":"build","ok":true,'*) ;;
+  *) echo "unexpected build JSON: $BUILD_JSON" >&2; exit 1 ;;
+esac
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) PACKAGE_EXE="examples/minimal/build/darwin_arm64/minimal-example" ;;
+  Darwin-x86_64) PACKAGE_EXE="examples/minimal/build/darwin_amd64/minimal-example" ;;
+  Linux-aarch64) PACKAGE_EXE="examples/minimal/build/linux_arm64/minimal-example" ;;
+  Linux-x86_64) PACKAGE_EXE="examples/minimal/build/linux_amd64/minimal-example" ;;
+  *) echo "unsupported package smoke host" >&2; exit 1 ;;
+esac
+PACKAGE_RUN_JSON="$("$PACKAGE_EXE" --backend null --frames 1 --json)"
+case "$PACKAGE_RUN_JSON" in
+  '{"schema_version":1,"command":"run","ok":true,'*) ;;
+  *) echo "unexpected packaged run JSON: $PACKAGE_RUN_JSON" >&2; exit 1 ;;
+esac
 '''

@@ -4,6 +4,7 @@ import "core:flags"
 import "core:fmt"
 import "core:os"
 import "core:encoding/json"
+import "core:path/filepath"
 import scrapbot "../scrapbot"
 import diagnostic "../scrapbot/diagnostic"
 
@@ -21,7 +22,8 @@ Check_Options :: struct {
 }
 
 Build_Options :: struct {
-	path: string `args:"pos=0" usage:"Project directory whose native extensions should be built."`,
+	path: string `args:"pos=0" usage:"Project directory to package."`,
+	target: string `usage:"Build target. Defaults to the host target."`,
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
 
@@ -37,6 +39,15 @@ Run_Options :: struct {
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
 
+Packaged_Run_Options :: struct {
+	backend: string `usage:"Renderer backend: null or wgpu."`,
+	window: bool `usage:"Open a platform window for renderer runs."`,
+	headless: bool `usage:"Force headless mode."`,
+	frames: u32 `usage:"Limit renderer frames."`,
+	framegrab: string `usage:"Write the final headless WGPU frame to this PNG path."`,
+	json: bool `usage:"Emit one machine-readable JSON result."`,
+}
+
 Json_Envelope :: struct($T: typeid) {
 	schema_version: int,
 	command: string,
@@ -46,6 +57,7 @@ Json_Envelope :: struct($T: typeid) {
 }
 
 Path_Result :: struct {path: string}
+Build_Result :: struct {target, output_directory, executable: string}
 Check_Result :: struct {project_file, path: string}
 Run_Result :: struct {
 	backend: string,
@@ -61,6 +73,9 @@ main :: proc() {
 
 run :: proc() -> int {
 	args := os.args[1:]
+	if is_packaged_game() {
+		return run_packaged(args)
+	}
 	if len(args) == 0 {
 		print_help()
 		return 0
@@ -132,13 +147,53 @@ run_build :: proc(args: []string) -> int {
 		return code
 	}
 
-	if err := scrapbot.build_project(opt.path); err != "" {
-		if opt.json {emit_json_error("build", "SCRAPBOT_BUILD_FAILED", err, opt.path); return 1}
-		fmt.eprintln(err)
+	result := scrapbot.package_project(opt.path, scrapbot.Package_Config{target=opt.target})
+	defer scrapbot.destroy_package_result(&result)
+	if result.err != "" {
+		code := "SCRAPBOT_BUILD_FAILED"
+		if opt.target != "" && opt.target != "host" && opt.target != scrapbot.host_target() {code = "SCRAPBOT_UNSUPPORTED_TARGET"}
+		if opt.json {emit_json_error("build", code, result.err, opt.path); return 1}
+		fmt.eprintln(result.err)
 		return 1
 	}
-	if opt.json {emit_json_success("build", Path_Result{path=opt.path}); return 0}
-	fmt.printf("built native extensions for %s\n", opt.path)
+	if opt.json {emit_json_success("build", Build_Result{target=result.target,output_directory=result.output_directory,executable=result.executable}); return 0}
+	fmt.printf("built %s package in %s\n", result.target, result.output_directory)
+	return 0
+}
+
+is_packaged_game :: proc() -> bool {
+	dir, err := os.get_executable_directory(context.temp_allocator)
+	if err != nil {return false}
+	marker, join_err := filepath.join({dir, scrapbot.PACKAGE_MARKER}, context.temp_allocator)
+	if join_err != nil {return false}
+	return os.exists(marker)
+}
+
+run_packaged :: proc(args: []string) -> int {
+	opt := Packaged_Run_Options{backend="wgpu", window=len(args) == 0}
+	code, should_run := parse_command_args(&opt, args, "scrapbot run")
+	if !should_run {return code}
+	root, root_err := os.get_executable_directory(context.temp_allocator)
+	if root_err != nil {
+		if opt.json {emit_json_error("run", "SCRAPBOT_RUN_FAILED", fmt.tprintf("failed to locate packaged game: %v", root_err), ""); return 1}
+		fmt.eprintf("failed to locate packaged game: %v\n", root_err)
+		return 1
+	}
+	backend, backend_ok := scrapbot.parse_renderer_backend(opt.backend)
+	if !backend_ok {
+		if opt.json {emit_json_error("run", "SCRAPBOT_UNKNOWN_RENDERER", fmt.tprintf("unknown renderer backend: %s", opt.backend), root); return 1}
+		fmt.eprintf("unknown renderer backend: %s\n", opt.backend)
+		return 1
+	}
+	config := scrapbot.Run_Config{backend=backend,window=opt.window&&!opt.headless,hot_reload=false,max_frames=opt.frames,framegrab_path=opt.framegrab,log_enabled=!opt.json}
+	result := scrapbot.run_packaged_project(root, config)
+	if result.err != "" {
+		if opt.json {emit_json_error("run", "SCRAPBOT_RUN_FAILED", result.err, root); return 1}
+		fmt.eprintln(result.err)
+		return 1
+	}
+	if opt.json {emit_json_success("run", Run_Result{backend=scrapbot.renderer_backend_name(backend),entities=result.frame.entity_count,cameras=result.frame.camera_count,geometries=result.frame.mesh_count,renderables=result.frame.renderable_count,draw_batches=result.draw_batches,scheduler_workers=result.scheduler_workers,parallel_stages=result.parallel_stages,max_parallel_width=result.max_parallel_width}); return 0}
+	fmt.printf("%s frame: %d entities, %d cameras, %d geometries, %d renderables, %d draw batches\n", scrapbot.renderer_backend_name(backend), result.frame.entity_count, result.frame.camera_count, result.frame.mesh_count, result.frame.renderable_count, result.draw_batches)
 	return 0
 }
 
@@ -263,7 +318,7 @@ print_help :: proc() {
 	fmt.println(`scrapbot commands:
   scrapbot init [path] [name]    Create project.toml and scenes/main.scene.toml
   scrapbot check [path]          Validate project.toml and the default scene
-  scrapbot build [path]          Build project native extensions
+  scrapbot build [path]          Build a host-native runnable game package
   scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png]
                                   Load the project and render
   scrapbot help <command>         Print command-specific options

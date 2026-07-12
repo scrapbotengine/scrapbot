@@ -55,6 +55,8 @@
 - [x] Add a Luau analyzer check for example project scripts.
 - [x] Add native Odin extension loading and hot reload.
 - [x] Add project-declared native extension builds.
+- [x] Package host-native games with project data and active extension artifacts.
+- [ ] Add target-native Luau, SDL3, and WGPU toolchains for cross-platform exports.
 - [x] Rebuild native extension sources during hot reload.
 - [x] Add native ECS systems that participate in scheduling.
 - [x] Execute conflict-free native systems in parallel.

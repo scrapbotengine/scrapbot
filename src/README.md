@@ -8,6 +8,7 @@ Scrapbot keeps `src/scrapbot` as the public runtime facade imported by the CLI. 
 - `scrapbot/component` - Component registry, schema validation helpers, and Luau type generation.
 - `scrapbot/schedule` - System access declarations and conflict-free batch planning.
 - `scrapbot/diagnostic` - Stable machine-readable diagnostic records shared by tools and command output.
+- `scrapbot/package.odin` - Host-native game packaging and target selection.
 - `scrapbot/script` - Luau runtime lifecycle, API bindings, component and system registration, queries, commands, and value marshaling.
 - `scrapbot/native` - Native extension builds and discovery, dynamic loading, ABI registration, and system execution.
 - `scrapbot/resources` - Geometry and material resource ownership and generated primitive geometry.

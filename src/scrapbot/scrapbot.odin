@@ -268,6 +268,14 @@ run_headless :: proc(root: string) -> Runtime_Result {
 }
 
 run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
+	return run_project_internal(root, config, false)
+}
+
+run_packaged_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
+	return run_project_internal(root, config, true)
+}
+
+run_project_internal :: proc(root: string, config: Run_Config, extensions_prebuilt: bool) -> Runtime_Result {
 	result: Runtime_Result
 	run_config := config
 	render_stats: render.Render_Stats
@@ -279,9 +287,11 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 		result.err = loaded.err
 		return result
 	}
-	if err := build_native_extensions(root, &loaded.config); err != "" {
-		result.err = err
-		return result
+	if !extensions_prebuilt {
+		if err := build_native_extensions(root, &loaded.config); err != "" {
+			result.err = err
+			return result
+		}
 	}
 
 	world := ecs.build_world(&loaded.scene)

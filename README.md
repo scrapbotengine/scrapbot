@@ -19,7 +19,7 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, and Luau LSP metadata.
 - `scrapbot check [path] [--json]` builds declared native extensions, validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
-- `scrapbot build [path] [--json]` builds declared native extensions without running or validating the scene.
+- `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>`, including the game executable, project data, and active native extension artifacts.
 - `scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png] [--json]` builds declared native extensions, loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered native and script systems, and submits the world through the selected renderer backend. Scheduler tracing reports native worker utilization for the run.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
@@ -50,7 +50,7 @@ Run the full local test suite with `mise test`.
   - [x] Live reload
   - [ ] Structured diagnostics
 - Distribution
-  - [ ] Host game builds
+  - [x] Host game builds
   - [ ] Package dependencies
   - [ ] Cross-platform exports
   - [ ] Console/mobile publishing

@@ -11,7 +11,10 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 
 - Users can print the engine version.
 - Users can initialize a project directory.
-- Users can build project-declared native extensions without running the game.
+- Users can build a host-native runnable game package without running the game.
+- Build packages contain project runtime data and active compiled native extensions, while omitting extension source and editor-only generated metadata.
+- Packaged executables run their adjacent project directly and default to a windowed WGPU renderer.
+- Users can name a build target, but non-host targets are rejected until Scrapbot has target-native Luau, SDL3, and WGPU dependencies.
 - Users can validate a project without opening a window.
 - Users can run a project through the selected renderer backend.
 - Users can request a platform window for renderer runs and limit windowed runs with `--frames`.
@@ -42,6 +45,12 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 **Decision:** Emit exactly one JSON envelope per command invocation with a schema version, command name, success flag, diagnostic array, and typed result.
 **Why:** Agents and automation need deterministic parsing without scraping human prose or combining log streams.
 **Tradeoff:** Command result schemas and diagnostic codes become public contracts that must evolve deliberately.
+
+### 4. Ship host packages before cross-target toolchains
+
+**Decision:** `scrapbot build` produces a runnable package for the current host and models an explicit target, while rejecting targets whose native dependency toolchain is unavailable.
+**Why:** Odin can emit cross-target code, but a usable game also requires target-built Luau, SDL3, WGPU, and native extensions. A host package provides a complete artifact now without overstating cross-compilation support.
+**Tradeoff:** Cross-platform exports require dependency toolchains and packaging rules to be added target by target.
 
 ## Related
 

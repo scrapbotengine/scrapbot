@@ -45,10 +45,21 @@ Creates a project with:
 ## `scrapbot build`
 
 ```sh
-scrapbot build [path] [--json]
+scrapbot build [path] [--target host] [--json]
 ```
 
-Builds native extension targets declared in `project.toml` into `build/extensions`.
+Builds native extension targets and creates a runnable package under `build/<target>`. The package contains a renamed Scrapbot executable, project runtime data, and only the active compiled native extension artifacts. Native extension source and generated editor metadata are omitted.
+
+The default target is the current host, such as `darwin_arm64` or `linux_amd64`. `--target host` is an explicit alias for it. Other Odin targets are modeled but currently rejected because Scrapbot does not yet provide target-built Luau, SDL3, and WGPU dependencies.
+
+Run the packaged executable directly. It defaults to a windowed WGPU game; renderer and bounded-run options remain available for testing:
+
+```sh
+build/darwin_arm64/my-game
+build/darwin_arm64/my-game --backend null --frames 1 --json
+```
+
+Successful JSON results include `target`, `output_directory`, and `executable` fields. Unsupported targets report `SCRAPBOT_UNSUPPORTED_TARGET`.
 
 ## `scrapbot check`
 
