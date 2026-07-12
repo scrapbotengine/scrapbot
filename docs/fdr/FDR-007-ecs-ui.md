@@ -16,7 +16,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - The engine reconciles alive UI entities after frame systems and removes retained nodes when their entities disappear.
 - WGPU paints UI after world geometry, including in headless framegrabs.
 - UI rendering does not require a world camera or renderable geometry.
-- The built-in KenPixel Mini font is embedded and redistributed under CC0.
+- The built-in monogram font is embedded and redistributed under CC0.
 
 ## Design Decisions
 
@@ -40,7 +40,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ### 4. Embed one permissive pixel font
 
-**Decision:** Bake the CC0 KenPixel Mini font into an ASCII atlas at runtime and sample it with nearest filtering.
+**Decision:** Bake the CC0 monogram font into an ASCII atlas at runtime and sample it with nearest filtering.
 **Why:** Scrapbot needs dependable text in packaged games and agent framegrabs without system-font discovery or platform font APIs.
 **Tradeoff:** The first text path is ASCII-only and does not provide shaping, fallback, localization, or user-supplied fonts.
 

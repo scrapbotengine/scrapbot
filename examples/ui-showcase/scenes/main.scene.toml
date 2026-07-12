@@ -81,4 +81,4 @@ size = [412, 32]
 [entities.ui_text]
 text = "PANELS + TEXT + ROW/COLUMN LAYOUT"
 color = [0.95, 0.42, 0.68, 1]
-size = 14
+size = 16

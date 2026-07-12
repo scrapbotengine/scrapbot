@@ -10,7 +10,7 @@ FONT_FIRST_CHAR :: 32
 FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 256
 FONT_BAKE_SIZE :: f32(16)
-FONT_DATA :: #load("assets/kenpixel_mini.ttf")
+FONT_DATA :: #load("assets/monogram.ttf")
 
 Rect :: struct {x,y,width,height:f32}
 Paint_Kind :: enum {Panel,Glyph}

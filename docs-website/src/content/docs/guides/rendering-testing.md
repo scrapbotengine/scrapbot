@@ -10,7 +10,7 @@ Scrapbot has two rendering paths today:
 
 The WGPU path decodes material base colors to linear space, accumulates light there, tone maps the HDR result, and presents through an sRGB target. A scene with no ambient, directional, or point lights therefore renders its geometry black.
 
-Screen-space ECS UI is reconciled after engine/project systems and painted as a blended overlay after world geometry. `examples/ui-showcase` exercises nested panels, row/column layout, and the embedded KenPixel Mini bitmap-style font.
+Screen-space ECS UI is reconciled after engine/project systems and painted as a blended overlay after world geometry. `examples/ui-showcase` exercises nested panels, row/column layout, and the embedded monogram bitmap font.
 
 ```sh
 scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png
