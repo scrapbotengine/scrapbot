@@ -24,60 +24,72 @@ package scrappyphysics
 
 import scrapbot "scrapbot:extension"
 
+Rigidbody_Component :: scrapbot.Component{name = "scrappyphysics.rigidbody"}
+Rigidbody_Velocity :: scrapbot.Vec3_Field{component = Rigidbody_Component, name = "velocity"}
+
 @(export)
 scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
 	return scrapbot.register(api, register)
 }
 
 register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
+	reg := scrapbot.registry(ctx)
+
 	fields := [?]scrapbot.Field {
-		scrapbot.vec3("velocity"),
+		scrapbot.vec3(Rigidbody_Velocity),
 	}
-	return scrapbot.component(ctx, "scrappyphysics.rigidbody", fields[:])
+	scrapbot.component(&reg, Rigidbody_Component, fields[:])
+
+	return scrapbot.err(&reg)
 }
 ```
 
-Extensions must export `scrapbot_extension_register`. The helper checks the ABI version and calls your project-local contextless `register` procedure.
+Extensions must export `scrapbot_extension_register`. The helper checks the ABI version and calls your project-local contextless `register` procedure. Component and field descriptors keep the rest of the extension from repeating string names.
 
 ## Register a system
 
 Systems declare component access and provide a callback:
 
 ```odin
+reg := scrapbot.registry(ctx)
+
 accesses := [?]scrapbot.Access {
-	scrapbot.read(scrapbot.TRANSFORM),
-	scrapbot.write(scrapbot.TRANSFORM),
-	scrapbot.read("scrappyphysics.rigidbody"),
+	scrapbot.read(scrapbot.Transform_Component),
+	scrapbot.write(scrapbot.Transform_Component),
+	scrapbot.read(Rigidbody_Component),
 }
-return scrapbot.system(ctx, "scrappyphysics.motion", accesses[:], motion_system)
+scrapbot.system(&reg, "scrappyphysics.motion", accesses[:], motion_system)
+
+return scrapbot.err(&reg)
 ```
 
 The callback receives `scrapbot.System_Context`. The current context can query entities by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components. Native and Luau systems share the same scheduler batches.
 
 ```odin
 motion_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
-	terms := [?]scrapbot.Query_Term {
-		scrapbot.term(scrapbot.TRANSFORM),
-		scrapbot.term("scrappyphysics.rigidbody"),
+	components := [?]scrapbot.Component {
+		scrapbot.Transform_Component,
+		Rigidbody_Component,
 	}
+	rigidbody_query := scrapbot.query(components[:])
 
-	count := scrapbot.query_count(ctx, terms[:])
+	count := scrapbot.count(ctx, rigidbody_query)
 	if count < 0 {
 		return "failed to query rigidbodies"
 	}
 
 	for i in 0..<count {
-		entity, entity_ok := scrapbot.query_entity_at(ctx, terms[:], i)
+		entity, entity_ok := scrapbot.entity_at(ctx, rigidbody_query, i)
 		if !entity_ok {
 			continue
 		}
 
-		transform, transform_ok := scrapbot.get_transform(ctx, entity)
+		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
 		if !transform_ok {
 			return "failed to read transform"
 		}
 
-		velocity, velocity_ok := scrapbot.get_vec3(ctx, entity, "scrappyphysics.rigidbody", "velocity")
+		velocity, velocity_ok := scrapbot.get(ctx, entity, Rigidbody_Velocity)
 		if !velocity_ok {
 			return "failed to read velocity"
 		}
@@ -86,7 +98,7 @@ motion_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 		transform.position.y += velocity.y * ctx.delta_seconds
 		transform.position.z += velocity.z * ctx.delta_seconds
 
-		if !scrapbot.set_transform(ctx, entity, transform) {
+		if !scrapbot.set(ctx, entity, transform) {
 			return "failed to write transform"
 		}
 	}

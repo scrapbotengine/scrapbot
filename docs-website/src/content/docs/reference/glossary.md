@@ -49,7 +49,7 @@ Project-local type definitions in `types/scrapbot.d.luau`, refreshed by `scrapbo
 Project-local compiled code declared in `project.toml`, built into versioned dynamic libraries under `build/extensions`, and loaded through Scrapbot's C ABI. Native extensions can register component schemas and scheduled systems.
 
 **Odin extension helper**
-The `scrapbot:extension` package that wraps Scrapbot's raw native extension ABI with Odin-friendly registration, access declaration, query, transform, and vec3 field helpers.
+The `scrapbot:extension` package that wraps Scrapbot's raw native extension ABI with Odin-friendly component and field descriptors, registration accumulation, access declaration, query, transform, and vec3 field helpers.
 
 **Hot reload**  
 Runtime behavior where changed project files are reloaded without restarting the engine. Current hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native extension source directories.

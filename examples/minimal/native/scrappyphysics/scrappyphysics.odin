@@ -2,57 +2,64 @@ package scrappyphysics
 
 import scrapbot "scrapbot:extension"
 
+Spin_Component :: scrapbot.Component{name = "scrappyphysics.spin"}
+Spin_Angular_Velocity :: scrapbot.Vec3_Field{component = Spin_Component, name = "angular_velocity"}
+
+Rigidbody_Component :: scrapbot.Component{name = "scrappyphysics.rigidbody"}
+Rigidbody_Velocity :: scrapbot.Vec3_Field{component = Rigidbody_Component, name = "velocity"}
+
 @(export)
 scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
 	return scrapbot.register(api, register)
 }
 
 register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
+	reg := scrapbot.registry(ctx)
+
 	spin_fields := [?]scrapbot.Field {
-		scrapbot.vec3("angular_velocity"),
+		scrapbot.vec3(Spin_Angular_Velocity),
 	}
-	if err := scrapbot.component(ctx, "scrappyphysics.spin", spin_fields[:]); err != nil {
-		return err
-	}
+	scrapbot.component(&reg, Spin_Component, spin_fields[:])
 
 	rigidbody_fields := [?]scrapbot.Field {
-		scrapbot.vec3("velocity"),
+		scrapbot.vec3(Rigidbody_Velocity),
 	}
-	if err := scrapbot.component(ctx, "scrappyphysics.rigidbody", rigidbody_fields[:]); err != nil {
-		return err
-	}
+	scrapbot.component(&reg, Rigidbody_Component, rigidbody_fields[:])
 
 	accesses := [?]scrapbot.Access {
-		scrapbot.read(scrapbot.TRANSFORM),
-		scrapbot.write(scrapbot.TRANSFORM),
-		scrapbot.read("scrappyphysics.spin"),
+		scrapbot.read(scrapbot.Transform_Component),
+		scrapbot.write(scrapbot.Transform_Component),
+		scrapbot.read(Spin_Component),
 	}
-	return scrapbot.system(ctx, "scrappyphysics.spin", accesses[:], spin_system)
+	scrapbot.system(&reg, "scrappyphysics.spin", accesses[:], spin_system)
+
+	return scrapbot.err(&reg)
 }
 
 spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
-	terms := [?]scrapbot.Query_Term {
-		scrapbot.term(scrapbot.TRANSFORM),
-		scrapbot.term("scrappyphysics.spin"),
+	components := [?]scrapbot.Component {
+		scrapbot.Transform_Component,
+		Spin_Component,
 	}
+	spin_query := scrapbot.query(components[:])
 
-	count := scrapbot.query_count(ctx, terms[:])
+	count := scrapbot.count(ctx, spin_query)
 	if count < 0 {
 		return "failed to query spinning entities"
 	}
 
 	for i in 0..<count {
-		entity, entity_ok := scrapbot.query_entity_at(ctx, terms[:], i)
+		entity, entity_ok := scrapbot.entity_at(ctx, spin_query, i)
 		if !entity_ok {
 			continue
 		}
 
-		transform, transform_ok := scrapbot.get_transform(ctx, entity)
+		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
 		if !transform_ok {
 			return "failed to read transform"
 		}
 
-		angular_velocity, velocity_ok := scrapbot.get_vec3(ctx, entity, "scrappyphysics.spin", "angular_velocity")
+		angular_velocity, velocity_ok := scrapbot.get(ctx, entity, Spin_Angular_Velocity)
 		if !velocity_ok {
 			return "failed to read angular velocity"
 		}
@@ -61,7 +68,7 @@ spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 		transform.rotation.y += angular_velocity.y * ctx.delta_seconds
 		transform.rotation.z += angular_velocity.z * ctx.delta_seconds
 
-		if !scrapbot.set_transform(ctx, entity, transform) {
+		if !scrapbot.set(ctx, entity, transform) {
 			return "failed to write transform"
 		}
 	}

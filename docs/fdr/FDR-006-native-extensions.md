@@ -18,7 +18,9 @@ Native extensions let project code add compiled engine/library behavior incremen
 - `build/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a versioned C-compatible `extension_api.API`.
-- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helper procedures for registration, access declarations, queries, transform access, and vec3 field access.
+- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helper procedures for descriptor-driven registration, access declarations, queries, transform access, and vec3 field access.
+- Odin extension authors can define `Component` and field descriptors once, then use those descriptors for schema registration, scheduler access, queries, and field reads/writes.
+- `scrapbot.registry(ctx)` returns a small registration accumulator that records the first registration error so extension setup code can remain linear and return `scrapbot.err(&reg)` at the end.
 - The API supports registering library component schemas with dotted, non-`scrapbot` names.
 - The API supports registering native systems with declared component reads and writes.
 - Native systems can query by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components through the callback context.
@@ -50,8 +52,8 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 ### 4. Provide an Odin authoring wrapper over the raw ABI
 
-**Decision:** Add `scrapbot:extension` as a small Odin package that aliases the ABI types and offers helper procedures for common extension work.
-**Why:** Extension authors should write idiomatic project/library code instead of repeating nil checks, ABI version checks, raw pointer extraction, field counts, and table construction in every extension.
+**Decision:** Add `scrapbot:extension` as a small Odin package that aliases the ABI types and offers descriptors plus helper procedures for common extension work.
+**Why:** Extension authors should write idiomatic project/library code instead of repeating nil checks, ABI version checks, component strings, raw pointer extraction, field counts, and table construction in every extension.
 **Tradeoff:** The wrapper improves Odin ergonomics only. Non-Odin extension authors still target the raw C-compatible ABI or their own language bindings.
 
 ### 5. Reuse library component ownership

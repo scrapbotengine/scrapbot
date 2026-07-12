@@ -161,54 +161,61 @@ NATIVE_SYSTEM_TEST_EXTENSION_SOURCE :: `package nativespin
 
 import scrapbot "scrapbot:extension"
 
+Spin_Component :: scrapbot.Component{name = "nativespin.spin"}
+Spin_Angular_Velocity :: scrapbot.Vec3_Field{component = Spin_Component, name = "angular_velocity"}
+
 @(export)
 scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
 	return scrapbot.register(api, register)
 }
 
 register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
+	reg := scrapbot.registry(ctx)
+
 	fields := [?]scrapbot.Field {
-		scrapbot.vec3("angular_velocity"),
+		scrapbot.vec3(Spin_Angular_Velocity),
 	}
-	if err := scrapbot.component(ctx, "nativespin.spin", fields[:]); err != nil {
-		return err
-	}
+	scrapbot.component(&reg, Spin_Component, fields[:])
 
 	accesses := [?]scrapbot.Access {
-		scrapbot.read(scrapbot.TRANSFORM),
-		scrapbot.write(scrapbot.TRANSFORM),
-		scrapbot.read("nativespin.spin"),
+		scrapbot.read(scrapbot.Transform_Component),
+		scrapbot.write(scrapbot.Transform_Component),
+		scrapbot.read(Spin_Component),
 	}
-	return scrapbot.system(ctx, "nativespin.spin", accesses[:], spin_system)
+	scrapbot.system(&reg, "nativespin.spin", accesses[:], spin_system)
+
+	return scrapbot.err(&reg)
 }
 
 spin_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
-	terms := [?]scrapbot.Query_Term {
-		scrapbot.term(scrapbot.TRANSFORM),
-		scrapbot.term("nativespin.spin"),
+	components := [?]scrapbot.Component {
+		scrapbot.Transform_Component,
+		Spin_Component,
 	}
-	count := scrapbot.query_count(ctx, terms[:])
+	spin_query := scrapbot.query(components[:])
+
+	count := scrapbot.count(ctx, spin_query)
 	if count < 0 {
 		return "query failed"
 	}
 	for i in 0..<count {
-		entity, entity_ok := scrapbot.query_entity_at(ctx, terms[:], i)
+		entity, entity_ok := scrapbot.entity_at(ctx, spin_query, i)
 		if !entity_ok {
 			continue
 		}
 
-		transform, transform_ok := scrapbot.get_transform(ctx, entity)
+		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
 		if !transform_ok {
 			return "get_transform failed"
 		}
 
-		angular_velocity, velocity_ok := scrapbot.get_vec3(ctx, entity, "nativespin.spin", "angular_velocity")
+		angular_velocity, velocity_ok := scrapbot.get(ctx, entity, Spin_Angular_Velocity)
 		if !velocity_ok {
 			return "get_vec3_field failed"
 		}
 
 		transform.rotation.y += angular_velocity.y * ctx.delta_seconds
-		if !scrapbot.set_transform(ctx, entity, transform) {
+		if !scrapbot.set(ctx, entity, transform) {
 			return "set_transform failed"
 		}
 	}
