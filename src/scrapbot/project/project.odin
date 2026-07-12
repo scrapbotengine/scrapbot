@@ -100,6 +100,7 @@ default_luau_types_template :: proc() -> string {
 default_vscode_settings_template :: proc() -> string {
 	return `{
   "luau-lsp.platform.type": "standard",
+  "luau-lsp.fflags.enableNewSolver": true,
   "luau-lsp.sourcemap.enabled": false,
   "luau-lsp.types.definitionFiles": {
     "scrapbot": "types/scrapbot.d.luau"

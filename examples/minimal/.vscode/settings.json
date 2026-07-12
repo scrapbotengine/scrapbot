@@ -1,5 +1,6 @@
 {
   "luau-lsp.platform.type": "standard",
+  "luau-lsp.fflags.enableNewSolver": true,
   "luau-lsp.sourcemap.enabled": false,
   "luau-lsp.types.definitionFiles": {
     "scrapbot": "types/scrapbot.d.luau"
