@@ -26,6 +26,15 @@ mise scrapbot -- run examples/minimal
 
 The minimal example intentionally contains both sides of the current ECS authoring model: Luau registers a project-level `float` component and bounded floating system, while the project-local Odin extension registers `scrappyphysics.*` components and native systems.
 
+## Run the ECS showcase
+
+```sh
+mise scrapbot -- check examples/ecs-showcase
+mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
+```
+
+The ECS showcase is a denser project for exercising the runtime. It combines a Luau-defined floating component and system with Odin-defined `showcase.*` components, scheduled native systems, component add/remove commands, despawn, and native entity spawning.
+
 ## Create a new project
 
 ```sh

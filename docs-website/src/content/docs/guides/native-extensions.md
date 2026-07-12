@@ -109,6 +109,38 @@ motion_system :: proc "c" (ctx: ^scrapbot.System_Context) -> cstring {
 
 The raw C-compatible package remains available as `scrapbot:extension_api` for non-Odin bindings and ABI reference work.
 
+## Queue lifecycle commands
+
+Native systems can queue the same deferred lifecycle commands as Luau systems. Commands are applied after the scheduled frame step, so query iteration remains stable while systems run.
+
+```odin
+fields := [?]scrapbot.Component_Vec3_Field {
+	scrapbot.vec3_value(Lifetime_Timer, {0, 4, 0}),
+}
+payload := scrapbot.payload(Lifetime_Component, fields[:])
+
+if err := scrapbot.add(ctx, entity, &payload); err != nil {
+	return err
+}
+
+if err := scrapbot.remove(ctx, entity, Promote_Component); err != nil {
+	return err
+}
+
+spawn_transform := scrapbot.Transform {
+	position = {0, -1, 0},
+	rotation = {},
+	scale = {1, 1, 1},
+}
+payloads := [?]scrapbot.Component_Payload {payload}
+spawn := scrapbot.spawn_options("Native Spawned", &spawn_transform, payloads[:])
+if err := scrapbot.spawn(ctx, &spawn); err != nil {
+	return err
+}
+```
+
+Lifecycle writes must be declared in the system access list. For example, adding or removing `Lifetime_Component` requires `scrapbot.write(Lifetime_Component)`.
+
 ## Build it
 
 ```sh

@@ -2,7 +2,7 @@ package extension_api
 
 import c "core:c"
 
-ABI_VERSION :: u32(2)
+ABI_VERSION :: u32(3)
 MAX_COMPONENT_FIELDS :: 16
 MAX_SYSTEM_ACCESSES :: 16
 MAX_QUERY_TERMS :: 8
@@ -47,6 +47,24 @@ Transform :: struct {
 	scale:    Vec3,
 }
 
+Component_Vec3_Field :: struct {
+	name: cstring,
+	value: Vec3,
+}
+
+Component_Payload :: struct {
+	component: cstring,
+	vec3_fields: [^]Component_Vec3_Field,
+	vec3_field_count: c.int,
+}
+
+Spawn_Options :: struct {
+	name: cstring,
+	transform: ^Transform,
+	components: [^]Component_Payload,
+	component_count: c.int,
+}
+
 Query_Term :: struct {
 	component: cstring,
 }
@@ -63,6 +81,11 @@ System_Context :: struct {
 	set_transform: Set_Transform_Proc,
 	get_vec3_field: Get_Vec3_Field_Proc,
 	set_vec3_field: Set_Vec3_Field_Proc,
+	spawn: Spawn_Proc,
+	despawn: Despawn_Proc,
+	add_transform: Add_Transform_Proc,
+	add_component: Add_Component_Proc,
+	remove_component: Remove_Component_Proc,
 }
 
 System_Proc :: #type proc "c" (ctx: ^System_Context) -> cstring
@@ -125,6 +148,34 @@ Set_Vec3_Field_Proc :: #type proc "c" (
 	field: cstring,
 	value: ^Vec3,
 ) -> c.int
+
+Spawn_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	options: ^Spawn_Options,
+) -> cstring
+
+Despawn_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+) -> cstring
+
+Add_Transform_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+	transform: ^Transform,
+) -> cstring
+
+Add_Component_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+	payload: ^Component_Payload,
+) -> cstring
+
+Remove_Component_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+	component: cstring,
+) -> cstring
 
 API :: struct {
 	abi_version: u32,

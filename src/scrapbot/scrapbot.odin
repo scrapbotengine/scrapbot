@@ -367,7 +367,13 @@ step_frame_runtime_parts :: proc(
 			system_index := batch.system_indices[i]
 			if system_index < native_extensions.system_count {
 				system := &native_extensions.systems[system_index]
-				if err := native.step_system(system, world, delta_seconds); err != "" {
+				if err := native.step_system(
+					system,
+					world,
+					&script_runtime.commands,
+					&script_runtime.registry,
+					delta_seconds,
+				); err != "" {
 					ecs.clear_commands(&script_runtime.commands)
 					return err
 				}

@@ -31,7 +31,7 @@ Scrapbot is a research engine. It is not trying to be stable yet. It is trying t
 		Projects define components and systems in `scripts/main.luau`, query entities by component handles, and get generated Luau types from `scrapbot check`.
 	</Card>
 	<Card title="Native extensions" icon="rocket">
-		Projects can declare Odin native extension targets. Scrapbot builds source-stamped dynamic libraries and loads schemas and scheduled systems before Luau runs.
+		Projects can declare Odin native extension targets. Scrapbot builds source-stamped dynamic libraries, loads schemas and scheduled systems before Luau runs, and exposes deferred lifecycle commands during system execution.
 	</Card>
 	<Card title="WebGPU rendering" icon="laptop">
 		The `wgpu` backend renders ECS cube renderables through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
@@ -55,6 +55,13 @@ For the checked-in example:
 ```sh
 mise scrapbot -- check examples/minimal
 mise scrapbot -- run examples/minimal
+```
+
+For a denser ECS exercise:
+
+```sh
+mise scrapbot -- check examples/ecs-showcase
+mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
 ```
 
 ## Read next

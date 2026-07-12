@@ -3,12 +3,12 @@ title: Native Extension ABI
 description: The current C-compatible ABI used by project native extensions.
 ---
 
-The first native extension ABI lives in `src/scrapbot/extension_api`. Odin extension authors should normally import `scrapbot:extension`, which wraps this raw ABI with component and field descriptors plus typed helpers such as `scrapbot.component`, `scrapbot.system`, `scrapbot.read`, `scrapbot.query`, and `scrapbot.get`.
+The native extension ABI lives in `src/scrapbot/extension_api`. Odin extension authors should normally import `scrapbot:extension`, which wraps this raw ABI with component and field descriptors plus typed helpers such as `scrapbot.component`, `scrapbot.system`, `scrapbot.read`, `scrapbot.query`, `scrapbot.get`, and deferred lifecycle helpers.
 
 ## Versioning
 
 ```odin
-ABI_VERSION :: u32(2)
+ABI_VERSION :: u32(3)
 ```
 
 Extensions should reject unknown ABI versions during registration.
@@ -104,7 +104,8 @@ The context includes:
 - extension `userdata`;
 - query helpers for component-name terms;
 - `get_transform` and `set_transform`;
-- `get_vec3_field` and `set_vec3_field` for schema-backed custom components.
+- `get_vec3_field` and `set_vec3_field` for schema-backed custom components;
+- deferred lifecycle helpers for spawn, despawn, add transform, add schema-backed component payload, and remove component.
 
 Return `nil` on success or a static error string on failure. The host enforces declared access through the callback context.
 
@@ -112,7 +113,7 @@ Return `nil` on success or a static error string on failure. The host enforces d
 
 Native extensions cannot yet:
 
-- spawn or despawn entities;
 - access ECS storage directly;
 - access non-vec3 custom fields;
+- spawn renderable mesh components;
 - allocate through a host allocator.

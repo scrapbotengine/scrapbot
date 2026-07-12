@@ -48,6 +48,8 @@ Native_System :: struct {
 Step_Context :: struct {
 	world: ^shared.World,
 	system: ^Native_System,
+	commands: ^ecs.Command_Buffer,
+	registry: ^component.Registry,
 }
 
 Source_Target :: struct {
@@ -469,12 +471,23 @@ extension_access_mode :: proc "c" (mode: api.Access_Mode) -> (schedule.Access_Mo
 	return {}, false
 }
 
-step_system :: proc(system: ^Native_System, world: ^shared.World, delta_seconds: f32) -> string {
+step_system :: proc(
+	system: ^Native_System,
+	world: ^shared.World,
+	commands: ^ecs.Command_Buffer,
+	registry: ^component.Registry,
+	delta_seconds: f32,
+) -> string {
 	if system == nil || system.callback == nil {
 		return ""
 	}
 
-	step_context := Step_Context{world = world, system = system}
+	step_context := Step_Context {
+		world = world,
+		system = system,
+		commands = commands,
+		registry = registry,
+	}
 	ctx := api.System_Context {
 		abi_version = api.ABI_VERSION,
 		userdata = system.userdata,
@@ -486,6 +499,11 @@ step_system :: proc(system: ^Native_System, world: ^shared.World, delta_seconds:
 		set_transform = system_set_transform,
 		get_vec3_field = system_get_vec3_field,
 		set_vec3_field = system_set_vec3_field,
+		spawn = system_spawn,
+		despawn = system_despawn,
+		add_transform = system_add_transform,
+		add_component = system_add_component,
+		remove_component = system_remove_component,
 	}
 
 	if err := system.callback(&ctx); err != nil {
@@ -632,12 +650,229 @@ system_set_vec3_field :: proc "c" (
 	return 0
 }
 
+system_spawn :: proc "c" (ctx: ^api.System_Context, options: ^api.Spawn_Options) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok || step.commands == nil {
+		return "native command buffer is not available"
+	}
+	if options == nil {
+		return "spawn options are not available"
+	}
+
+	name := ""
+	if options.name != nil {
+		name = string(options.name)
+	}
+	spawn: ecs.Spawn_Command
+	if err := ecs.init_spawn_command(&spawn, name); err != "" {
+		return cstring(raw_data(err))
+	}
+
+	if options.transform != nil {
+		if !system_allows_component_access(step.system.declaration, "scrapbot.transform", .Write) {
+			return "native system does not have write access to scrapbot.transform"
+		}
+		if err := ecs.spawn_set_transform(&spawn, shared_transform_from_api(options.transform^)); err != "" {
+			return cstring(raw_data(err))
+		}
+	}
+
+	if options.component_count < 0 || options.component_count > ecs.MAX_COMMAND_COMPONENTS {
+		return "invalid spawn component count"
+	}
+	if options.component_count > 0 && options.components == nil {
+		return "spawn components are not available"
+	}
+	for i in 0..<int(options.component_count) {
+		payload := options.components[i]
+		if payload.component == nil {
+			return "spawn component name is required"
+		}
+		name := string(payload.component)
+		if !system_allows_component_access(step.system.declaration, name, .Write) {
+			return "native system does not have write access to spawn component"
+		}
+		command_component: ecs.Command_Component
+		if err := command_component_from_payload(step, &payload, &command_component); err != "" {
+			return cstring(raw_data(err))
+		}
+		if err := ecs.spawn_add_custom_component(&spawn, command_component); err != "" {
+			return cstring(raw_data(err))
+		}
+	}
+
+	if err := ecs.queue_spawn_command(step.commands, spawn); err != "" {
+		return cstring(raw_data(err))
+	}
+	return nil
+}
+
+system_despawn :: proc "c" (ctx: ^api.System_Context, entity: api.Entity) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok || step.commands == nil {
+		return "native command buffer is not available"
+	}
+	if !ecs.entity_is_current(step.world, int(entity.index), entity.generation) {
+		return "native despawn entity is stale"
+	}
+	if err := ecs.queue_despawn(step.commands, int(entity.index), entity.generation); err != "" {
+		return cstring(raw_data(err))
+	}
+	return nil
+}
+
+system_add_transform :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	transform: ^api.Transform,
+) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok || step.commands == nil {
+		return "native command buffer is not available"
+	}
+	if transform == nil {
+		return "native transform payload is not available"
+	}
+	if !system_allows_component_access(step.system.declaration, "scrapbot.transform", .Write) {
+		return "native system does not have write access to scrapbot.transform"
+	}
+	if !ecs.entity_is_current(step.world, int(entity.index), entity.generation) {
+		return "native add component entity is stale"
+	}
+	if err := ecs.queue_add_transform(step.commands, int(entity.index), entity.generation, shared_transform_from_api(transform^)); err != "" {
+		return cstring(raw_data(err))
+	}
+	return nil
+}
+
+system_add_component :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	payload: ^api.Component_Payload,
+) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok || step.commands == nil {
+		return "native command buffer is not available"
+	}
+	if payload == nil || payload.component == nil {
+		return "native component payload is not available"
+	}
+	name := string(payload.component)
+	if !system_allows_component_access(step.system.declaration, name, .Write) {
+		return "native system does not have write access to component"
+	}
+	if !ecs.entity_is_current(step.world, int(entity.index), entity.generation) {
+		return "native add component entity is stale"
+	}
+	command_component: ecs.Command_Component
+	if err := command_component_from_payload(step, payload, &command_component); err != "" {
+		return cstring(raw_data(err))
+	}
+	if err := ecs.queue_add_custom_component(step.commands, int(entity.index), entity.generation, command_component); err != "" {
+		return cstring(raw_data(err))
+	}
+	return nil
+}
+
+system_remove_component :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok || step.commands == nil {
+		return "native command buffer is not available"
+	}
+	if component_name == nil {
+		return "native remove component name is required"
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Write) {
+		return "native system does not have write access to component"
+	}
+	if !ecs.entity_is_current(step.world, int(entity.index), entity.generation) {
+		return "native remove component entity is stale"
+	}
+
+	component_id := shared.INVALID_COMPONENT_ID
+	if name != "scrapbot.transform" {
+		definition, found := component.find_definition(step.registry, name)
+		if !found || (definition.owner != .Project && definition.owner != .Library) {
+			return "native component removal only supports scrapbot.transform and schema-backed custom components"
+		}
+		component_id = definition.id
+	}
+	if err := ecs.queue_remove_component(step.commands, int(entity.index), entity.generation, component_id, name); err != "" {
+		return cstring(raw_data(err))
+	}
+	return nil
+}
+
 system_step_context :: proc "c" (ctx: ^api.System_Context) -> (^Step_Context, bool) {
 	if ctx == nil || ctx.host == nil {
 		return nil, false
 	}
 	step := cast(^Step_Context)ctx.host
 	return step, step.world != nil && step.system != nil
+}
+
+command_component_from_payload :: proc "c" (
+	step: ^Step_Context,
+	payload: ^api.Component_Payload,
+	command_component: ^ecs.Command_Component,
+) -> string {
+	if step == nil || step.registry == nil {
+		return "native component registry is not available"
+	}
+	if payload == nil || payload.component == nil {
+		return "native component payload is not available"
+	}
+	definition, found := component.find_definition(step.registry, string(payload.component))
+	if !found || (definition.owner != .Project && definition.owner != .Library) {
+		return "native component payload references an unregistered component"
+	}
+	if definition.field_count < 0 || definition.field_count > ecs.MAX_COMMAND_FIELDS {
+		return "native component payload has too many fields"
+	}
+	if payload.vec3_field_count < 0 || payload.vec3_field_count > ecs.MAX_COMMAND_FIELDS {
+		return "native component payload has invalid field count"
+	}
+	if payload.vec3_field_count > 0 && payload.vec3_fields == nil {
+		return "native component payload fields are not available"
+	}
+
+	if err := ecs.init_command_component(command_component, definition.id, definition.name); err != "" {
+		return err
+	}
+
+	for i in 0..<definition.field_count {
+		field := definition.fields[i]
+		if field.field_type != component.Field_Type.Vec3 {
+			return "unsupported component field type"
+		}
+		value, found := payload_vec3_field(payload, field.name)
+		if !found {
+			return "component payload is missing a required field"
+		}
+		if err := ecs.command_component_add_vec3(command_component, field.name, shared_vec3_from_api(value)); err != "" {
+			return err
+		}
+	}
+
+	return ""
+}
+
+payload_vec3_field :: proc "c" (payload: ^api.Component_Payload, field_name: string) -> (api.Vec3, bool) {
+	if payload == nil || payload.vec3_fields == nil {
+		return {}, false
+	}
+	for i in 0..<int(payload.vec3_field_count) {
+		field := payload.vec3_fields[i]
+		if field.name != nil && string(field.name) == field_name {
+			return field.value, true
+		}
+	}
+	return {}, false
 }
 
 system_query_from_terms :: proc "c" (

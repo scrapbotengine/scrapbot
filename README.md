@@ -25,9 +25,9 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed schema markers, typed script-defined, library, native-extension, and built-in component handles, access-declared scheduled systems, reusable ID-keyed query objects, joined query views, query-driven script systems with declared transform and schema-backed custom component payload write-back, deferred entity/component lifecycle commands, generation-aware entity handles, generated component type aliases, native extension systems with scheduled ECS access through the descriptor-driven `scrapbot:extension` Odin helper package, and periodic hot reload for `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native extension source directories. A small component registry validates project-level Luau components, script-registered library components, native extension components, and known engine component names.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend uses SDL3 and `wgpu-native` to render ECS cube renderables with a perspective camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and currently exposes a small ECS bridge for project-local systems, typed schema markers, typed script-defined, library, native-extension, and built-in component handles, access-declared scheduled systems, reusable ID-keyed query objects, joined query views, query-driven script systems with declared transform and schema-backed custom component payload write-back, deferred entity/component lifecycle commands, generation-aware entity handles, generated component type aliases, native extension systems with scheduled ECS access and deferred lifecycle commands through the descriptor-driven `scrapbot:extension` Odin helper package, and periodic hot reload for `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native extension source directories. A small component registry validates project-level Luau components, script-registered library components, native extension components, and known engine component names.
 
-Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`.
+Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`. The ECS showcase layers Luau floating, native spinning, native component add/remove, native despawn, and native spawn commands into a slightly busier project.
 
 Run the full local test suite with `mise test`.
 
@@ -201,7 +201,7 @@ Run the full local test suite with `mise test`.
   - [ ] Editor screenshot tests
   - [x] Native extension tests
 - Project Support
-  - [ ] Example projects
+  - [x] Example projects
   - [ ] Documentation site
   - [ ] Agent workflow docs
   - [ ] CI workflow

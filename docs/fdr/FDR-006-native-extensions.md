@@ -18,12 +18,14 @@ Native extensions let project code add compiled engine/library behavior incremen
 - `build/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a versioned C-compatible `extension_api.API`.
-- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helper procedures for descriptor-driven registration, access declarations, queries, transform access, and vec3 field access.
+- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helper procedures for descriptor-driven registration, access declarations, queries, transform access, vec3 field access, and deferred lifecycle commands.
 - Odin extension authors can define `Component` and field descriptors once, then use those descriptors for schema registration, scheduler access, queries, and field reads/writes.
 - `scrapbot.registry(ctx)` returns a small registration accumulator that records the first registration error so extension setup code can remain linear and return `scrapbot.err(&reg)` at the end.
 - The API supports registering library component schemas with dotted, non-`scrapbot` names.
 - The API supports registering native systems with declared component reads and writes.
 - Native systems can query by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components through the callback context.
+- Native systems can queue deferred spawn, despawn, add transform, add schema-backed component payload, and remove component commands.
+- Native lifecycle commands use the same command buffer as Luau lifecycle commands and apply after scheduled systems finish for the frame.
 - `scrapbot run`, `scrapbot check`, and hot reload load native extensions before running project Luau.
 - Luau can retrieve a native-registered component handle with `scrapbot.component_handle(name)`.
 - Generated Luau types include component aliases for native-registered components after `scrapbot check`.
@@ -46,9 +48,9 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 ### 3. Keep the native ECS API narrow
 
-**Decision:** Expose component schema registration plus scheduled native systems with a small callback context for query, transform, and vec3 field access.
+**Decision:** Expose component schema registration plus scheduled native systems with a small callback context for query, transform, vec3 field access, and deferred lifecycle commands.
 **Why:** This proves the “move hot Luau code to compiled code” path while keeping extension authors away from internal ECS storage, allocator ownership, and threading details.
-**Tradeoff:** Native systems can only touch the first supported ECS surface; they cannot yet spawn/despawn entities, allocate through a host allocator, or access arbitrary component field types.
+**Tradeoff:** Native systems can only touch the first supported ECS surface; they cannot yet allocate through a host allocator, access arbitrary component field types, or spawn renderable mesh components.
 
 ### 4. Provide an Odin authoring wrapper over the raw ABI
 
@@ -76,4 +78,4 @@ Native extensions let project code add compiled engine/library behavior incremen
 ## Open Questions
 
 - Should extension metadata include declared namespace ownership?
-- What should the native ECS ABI expose next: lifecycle commands, richer field types, or host allocator hooks?
+- What should the native ECS ABI expose next: richer field types, host allocator hooks, or renderable mesh construction?

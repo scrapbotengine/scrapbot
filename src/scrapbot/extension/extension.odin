@@ -40,6 +40,9 @@ System_Context :: raw.System_Context
 System_Proc :: raw.System_Proc
 Transform :: raw.Transform
 Vec3 :: raw.Vec3
+Component_Vec3_Field :: raw.Component_Vec3_Field
+Component_Payload :: raw.Component_Payload
+Spawn_Options :: raw.Spawn_Options
 
 Transform_Component :: Component{name = TRANSFORM}
 MAX_QUERY_TERMS :: 16
@@ -91,6 +94,27 @@ vec3_by_field :: proc "contextless" (field: Vec3_Field) -> Field {
 vec3 :: proc {
 	vec3_by_name,
 	vec3_by_field,
+}
+
+vec3_value :: proc "contextless" (field: Vec3_Field, value: Vec3) -> Component_Vec3_Field {
+	return Component_Vec3_Field{name = field.name, value = value}
+}
+
+payload_by_name :: proc "contextless" (component: cstring, fields: []Component_Vec3_Field) -> Component_Payload {
+	return Component_Payload {
+		component = component,
+		vec3_fields = raw_data(fields),
+		vec3_field_count = c.int(len(fields)),
+	}
+}
+
+payload_by_descriptor :: proc "contextless" (component: Component, fields: []Component_Vec3_Field) -> Component_Payload {
+	return payload_by_name(component.name, fields)
+}
+
+payload :: proc {
+	payload_by_name,
+	payload_by_descriptor,
 }
 
 component_by_name :: proc "contextless" (ctx: ^Context, name: cstring, fields: []Field) -> cstring {
@@ -342,4 +366,67 @@ set :: proc {
 	set_transform,
 	set_transform_component,
 	set_vec3_field,
+}
+
+spawn_options :: proc "contextless" (
+	name: cstring,
+	transform: ^Transform = nil,
+	components: []Component_Payload = nil,
+) -> Spawn_Options {
+	return Spawn_Options {
+		name = name,
+		transform = transform,
+		components = raw_data(components),
+		component_count = c.int(len(components)),
+	}
+}
+
+spawn :: proc "contextless" (ctx: ^System_Context, options: ^Spawn_Options) -> cstring {
+	if ctx == nil || ctx.spawn == nil {
+		return "Scrapbot spawn API is not available"
+	}
+	return ctx.spawn(ctx, options)
+}
+
+despawn :: proc "contextless" (ctx: ^System_Context, entity: Entity) -> cstring {
+	if ctx == nil || ctx.despawn == nil {
+		return "Scrapbot despawn API is not available"
+	}
+	return ctx.despawn(ctx, entity)
+}
+
+add_transform :: proc "contextless" (ctx: ^System_Context, entity: Entity, transform: Transform) -> cstring {
+	if ctx == nil || ctx.add_transform == nil {
+		return "Scrapbot add transform API is not available"
+	}
+	next := transform
+	return ctx.add_transform(ctx, entity, &next)
+}
+
+add_payload :: proc "contextless" (ctx: ^System_Context, entity: Entity, component: ^Component_Payload) -> cstring {
+	if ctx == nil || ctx.add_component == nil {
+		return "Scrapbot add component API is not available"
+	}
+	return ctx.add_component(ctx, entity, component)
+}
+
+add :: proc {
+	add_transform,
+	add_payload,
+}
+
+remove_by_name :: proc "contextless" (ctx: ^System_Context, entity: Entity, component: cstring) -> cstring {
+	if ctx == nil || ctx.remove_component == nil {
+		return "Scrapbot remove component API is not available"
+	}
+	return ctx.remove_component(ctx, entity, component)
+}
+
+remove_by_descriptor :: proc "contextless" (ctx: ^System_Context, entity: Entity, component: Component) -> cstring {
+	return remove_by_name(ctx, entity, component.name)
+}
+
+remove :: proc {
+	remove_by_name,
+	remove_by_descriptor,
 }

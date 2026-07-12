@@ -1,0 +1,6 @@
+name = "ECS Showcase"
+default_scene = "scenes/main.scene.toml"
+
+[[native_extensions]]
+name = "showcase"
+source = "native/showcase"
