@@ -9,6 +9,7 @@ import component "./component"
 import native "./native"
 import project "./project"
 import render "./render"
+import resources "./resources"
 import schedule "./schedule"
 import script "./script"
 import shared "./shared"
@@ -29,12 +30,14 @@ Runtime_Result :: struct {
 	scheduler_workers: int,
 	parallel_stages:   int,
 	max_parallel_width: int,
+	draw_batches: int,
 }
 
 Frame_Runtime :: struct {
 	script_runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
 	executor: schedule.Executor,
+	resources: resources.Registry,
 }
 
 Native_Work_Context :: struct {
@@ -78,15 +81,18 @@ check_project :: proc(root: string) -> string {
 
 	registry: component.Registry
 	component.init_registry(&registry)
+	render_resources: resources.Registry
+	defer resources.destroy_registry(&render_resources)
+	if err := init_render_resources(&render_resources, &world); err != "" {return err}
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
-	if extension_load := native.load_project_extensions(&extensions, root, &registry); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(&extensions, root, &registry, &render_resources); extension_load.err != "" {
 		return extension_load.err
 	}
 
 	runtime: script.Runtime
 	defer script.destroy_runtime(&runtime)
-	script_result := script.run_project_script_for_check_with_registry(&runtime, root, &world, &registry)
+	script_result := script.run_project_script_with_registry(&runtime, root, &world, &registry, script.Source_Options{resource_registry = &render_resources})
 	if script_result.err != "" {
 		return script_result.err
 	}
@@ -264,6 +270,8 @@ run_headless :: proc(root: string) -> Runtime_Result {
 run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 	result: Runtime_Result
 	run_config := config
+	render_stats: render.Render_Stats
+	run_config.stats = &render_stats
 
 	loaded := project.load_project(root)
 	defer project.destroy_project_load_result(&loaded)
@@ -289,32 +297,36 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 
 		run_config.frame_system = hot_reload_frame_system
 		run_config.frame_system_data = &hot_reload
+		run_config.resource_registry = &hot_reload.resources
 		result.frame, result.err = render.run_renderer(run_config, &world)
 		result.scheduler_workers = hot_reload.executor.worker_count
 		result.parallel_stages = hot_reload.executor.parallel_stages
 		result.max_parallel_width = hot_reload.executor.max_parallel_width
+		result.draw_batches = render_stats.draw_batches
 		return result
 	}
 
 	registry: component.Registry
 	component.init_registry(&registry)
-	extensions: native.Extension_Set
-	defer native.destroy_extension_set(&extensions)
-	if extension_load := native.load_project_extensions(&extensions, root, &registry); extension_load.err != "" {
-		result.err = extension_load.err
-		return result
-	}
-
 	frame_runtime: Frame_Runtime
 	defer script.destroy_runtime(&frame_runtime.script_runtime)
 	defer native.destroy_extension_set(&frame_runtime.native_extensions)
 	defer schedule.destroy_executor(&frame_runtime.executor)
+	defer resources.destroy_registry(&frame_runtime.resources)
+	if err := init_render_resources(&frame_runtime.resources, &world); err != "" {result.err = err; return result}
+	extensions: native.Extension_Set
+	defer native.destroy_extension_set(&extensions)
+	if extension_load := native.load_project_extensions(&extensions, root, &registry, &frame_runtime.resources); extension_load.err != "" {
+		result.err = extension_load.err
+		return result
+	}
+
 	script_result := script.run_project_script_with_registry(
 		&frame_runtime.script_runtime,
 		root,
 		&world,
 		&registry,
-		script.Source_Options{log_enabled = true},
+		script.Source_Options{log_enabled = true, resource_registry = &frame_runtime.resources},
 	)
 	if script_result.err != "" {
 		result.err = script_result.err
@@ -326,12 +338,31 @@ run_project :: proc(root: string, config: Run_Config) -> Runtime_Result {
 		run_config.frame_system = step_frame_runtime_system
 		run_config.frame_system_data = &frame_runtime
 	}
+	run_config.resource_registry = &frame_runtime.resources
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	result.scheduler_workers = frame_runtime.executor.worker_count
 	result.parallel_stages = frame_runtime.executor.parallel_stages
 	result.max_parallel_width = frame_runtime.executor.max_parallel_width
+	result.draw_batches = render_stats.draw_batches
 	return result
+}
+
+init_render_resources :: proc(registry: ^resources.Registry, world: ^shared.World) -> string {
+	cube_desc, cube_err := resources.cube(2)
+	if cube_err != "" {return cube_err}
+	defer delete(cube_desc.vertices); defer delete(cube_desc.indices)
+	cube_handle, register_err := resources.register_geometry(registry, "cube", cube_desc)
+	if register_err != "" {return register_err}
+	material_handle, material_err := resources.register_material(registry, "default", {base_color = {0.3, 0.7, 0.95, 1}})
+	if material_err != "" {return material_err}
+	for entity, index in world.entities {
+		if entity.mesh_index >= 0 {
+			ecs.add_geometry(world, index, cube_handle)
+			ecs.add_material(world, index, material_handle)
+		}
+	}
+	return ""
 }
 
 step_frame_runtime_system :: proc(data: rawptr, world: ^shared.World, delta_seconds: f32) -> string {

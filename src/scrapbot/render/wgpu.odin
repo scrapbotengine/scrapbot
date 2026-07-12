@@ -6,20 +6,23 @@ import "core:time"
 import ecs "../ecs"
 import platform "../platform"
 import shared "../shared"
+import resources "../resources"
 import wgpu_sdl3 "vendor:wgpu/sdl3glue"
 import "vendor:wgpu"
 
-WGPU_CUBE_SHADER :: `
-struct Cube_Uniform {
+WGPU_RENDER_SHADER :: `
+struct Render_Uniform {
 	mvp: array<mat4x4<f32>, 64>,
+	color: array<vec4<f32>, 64>,
 };
 
 @group(0) @binding(0)
-var<uniform> cube: Cube_Uniform;
+var<uniform> render: Render_Uniform;
 
 struct Vertex_Input {
 	@location(0) position: vec3<f32>,
-	@location(1) color: vec3<f32>,
+	@location(1) normal: vec3<f32>,
+	@location(2) uv: vec2<f32>,
 };
 
 struct Vertex_Output {
@@ -30,8 +33,8 @@ struct Vertex_Output {
 @vertex
 fn vs_main(input: Vertex_Input, @builtin(instance_index) instance_index: u32) -> Vertex_Output {
 	var output: Vertex_Output;
-	output.position = cube.mvp[instance_index] * vec4<f32>(input.position, 1.0);
-	output.color = input.color;
+	output.position = render.mvp[instance_index] * vec4<f32>(input.position, 1.0);
+	output.color = render.color[instance_index].rgb;
 	return output;
 }
 
@@ -48,35 +51,27 @@ Render_List :: shared.Render_List
 
 Mat4 :: [16]f32
 
-WGPU_MAX_CUBE_INSTANCES :: 64
+WGPU_MAX_INSTANCES :: 64
 
-WGPU_Cube_Vertex :: struct {
-	position: [3]f32,
-	color:    [3]f32,
+WGPU_Render_Uniform :: struct {
+	mvp: [WGPU_MAX_INSTANCES]Mat4,
+	color: [WGPU_MAX_INSTANCES][4]f32,
 }
 
-WGPU_Cube_Uniform :: struct {
-	mvp: [WGPU_MAX_CUBE_INSTANCES]Mat4,
+WGPU_Draw_Batch :: struct {
+	geometry: shared.Geometry_Handle,
+	material: shared.Material_Handle,
+	first_instance: u32,
+	instance_count: u32,
 }
 
-WGPU_CUBE_VERTICES :: [?]WGPU_Cube_Vertex {
-	{{-1, -1, -1}, {0.93, 0.24, 0.18}},
-	{{ 1, -1, -1}, {0.95, 0.67, 0.20}},
-	{{ 1,  1, -1}, {0.22, 0.73, 0.44}},
-	{{-1,  1, -1}, {0.12, 0.50, 0.84}},
-	{{-1, -1,  1}, {0.73, 0.30, 0.80}},
-	{{ 1, -1,  1}, {0.10, 0.66, 0.70}},
-	{{ 1,  1,  1}, {0.90, 0.90, 0.55}},
-	{{-1,  1,  1}, {0.96, 0.45, 0.35}},
-}
-
-WGPU_CUBE_INDICES :: [?]u16 {
-	0, 1, 2, 0, 2, 3,
-	4, 6, 5, 4, 7, 6,
-	0, 4, 5, 0, 5, 1,
-	3, 2, 6, 3, 6, 7,
-	1, 5, 6, 1, 6, 2,
-	0, 3, 7, 0, 7, 4,
+WGPU_Geometry_Cache :: struct {
+	handle: shared.Geometry_Handle,
+	version: u32,
+	vertex_buffer: wgpu.Buffer,
+	index_buffer: wgpu.Buffer,
+	index_count: u32,
+	valid: bool,
 }
 
 WGPU_Request_Adapter_State :: struct {
@@ -110,8 +105,8 @@ WGPU_Renderer :: struct {
 	bind_group:        wgpu.BindGroup,
 	shader:            wgpu.ShaderModule,
 	pipeline:          wgpu.RenderPipeline,
-	vertex_buffer:     wgpu.Buffer,
-	index_buffer:      wgpu.Buffer,
+	geometry_cache:    [64]WGPU_Geometry_Cache,
+	geometry_cache_count: int,
 	uniform_buffer:    wgpu.Buffer,
 	depth_texture:     wgpu.Texture,
 	depth_view:        wgpu.TextureView,
@@ -287,7 +282,7 @@ wgpu_init_renderer :: proc(use_surface: bool, offscreen_format := wgpu.TextureFo
 		renderer.format = offscreen_format
 	}
 
-	if err = wgpu_create_cube_pipeline(&renderer); err != "" {
+	if err = wgpu_create_render_pipeline(&renderer); err != "" {
 		return renderer, err
 	}
 
@@ -304,11 +299,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.uniform_buffer != nil {
 		wgpu.BufferRelease(renderer.uniform_buffer)
 	}
-	if renderer.index_buffer != nil {
-		wgpu.BufferRelease(renderer.index_buffer)
-	}
-	if renderer.vertex_buffer != nil {
-		wgpu.BufferRelease(renderer.vertex_buffer)
+	for &cached in renderer.geometry_cache[:renderer.geometry_cache_count] {
+		if cached.vertex_buffer != nil {wgpu.BufferRelease(cached.vertex_buffer)}
+		if cached.index_buffer != nil {wgpu.BufferRelease(cached.index_buffer)}
 	}
 	if renderer.bind_group != nil {
 		wgpu.BindGroupRelease(renderer.bind_group)
@@ -346,18 +339,18 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	renderer^ = {}
 }
 
-wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
+wgpu_create_render_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	shader_source := wgpu.ShaderSourceWGSL {
 		chain = wgpu.ChainedStruct {
 			sType = .ShaderSourceWGSL,
 		},
-		code = WGPU_CUBE_SHADER,
+		code = WGPU_RENDER_SHADER,
 	}
 	renderer.shader = wgpu.DeviceCreateShaderModule(
 		renderer.device,
 		&wgpu.ShaderModuleDescriptor {
 			nextInChain = &shader_source,
-			label       = "Scrapbot Cube Shader",
+			label       = "Scrapbot Render Shader",
 		},
 	)
 	if renderer.shader == nil {
@@ -369,13 +362,13 @@ wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 		visibility = {.Vertex},
 		buffer = wgpu.BufferBindingLayout {
 			type           = .Uniform,
-			minBindingSize = u64(size_of(WGPU_Cube_Uniform)),
+			minBindingSize = u64(size_of(WGPU_Render_Uniform)),
 		},
 	}
 	renderer.bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
 		&wgpu.BindGroupLayoutDescriptor {
-			label      = "Scrapbot Cube Bind Group Layout",
+			label      = "Scrapbot Render Bind Group Layout",
 			entryCount = 1,
 			entries    = &bind_group_layout_entry,
 		},
@@ -387,7 +380,7 @@ wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	renderer.pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
-			label                = "Scrapbot Cube Pipeline Layout",
+			label                = "Scrapbot Render Pipeline Layout",
 			bindGroupLayoutCount = 1,
 			bindGroupLayouts     = &renderer.bind_group_layout,
 		},
@@ -399,9 +392,9 @@ wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	renderer.uniform_buffer = wgpu.DeviceCreateBuffer(
 		renderer.device,
 		&wgpu.BufferDescriptor {
-			label = "Scrapbot Cube Uniform Buffer",
+			label = "Scrapbot Render Uniform Buffer",
 			usage = {.Uniform, .CopyDst},
-			size  = u64(size_of(WGPU_Cube_Uniform)),
+			size  = u64(size_of(WGPU_Render_Uniform)),
 		},
 	)
 	if renderer.uniform_buffer == nil {
@@ -412,12 +405,12 @@ wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 		binding = 0,
 		buffer  = renderer.uniform_buffer,
 		offset  = 0,
-		size    = u64(size_of(WGPU_Cube_Uniform)),
+		size    = u64(size_of(WGPU_Render_Uniform)),
 	}
 	renderer.bind_group = wgpu.DeviceCreateBindGroup(
 		renderer.device,
 		&wgpu.BindGroupDescriptor {
-			label      = "Scrapbot Cube Bind Group",
+			label      = "Scrapbot Render Bind Group",
 			layout     = renderer.bind_group_layout,
 			entryCount = 1,
 			entries    = &bind_group_entry,
@@ -427,39 +420,14 @@ wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 		return "failed to create wgpu bind group"
 	}
 
-	cube_vertices := WGPU_CUBE_VERTICES
-	renderer.vertex_buffer = wgpu.DeviceCreateBufferWithData(
-		renderer.device,
-		&wgpu.BufferWithDataDescriptor {
-			label = "Scrapbot Cube Vertex Buffer",
-			usage = {.Vertex},
-		},
-		cube_vertices[:],
-	)
-	if renderer.vertex_buffer == nil {
-		return "failed to create wgpu vertex buffer"
-	}
-
-	cube_indices := WGPU_CUBE_INDICES
-	renderer.index_buffer = wgpu.DeviceCreateBufferWithData(
-		renderer.device,
-		&wgpu.BufferWithDataDescriptor {
-			label = "Scrapbot Cube Index Buffer",
-			usage = {.Index},
-		},
-		cube_indices[:],
-	)
-	if renderer.index_buffer == nil {
-		return "failed to create wgpu index buffer"
-	}
-
 	vertex_attributes := [?]wgpu.VertexAttribute {
 		{format = .Float32x3, offset = 0, shaderLocation = 0},
 		{format = .Float32x3, offset = 12, shaderLocation = 1},
+		{format = .Float32x2, offset = 24, shaderLocation = 2},
 	}
 	vertex_buffer_layout := wgpu.VertexBufferLayout {
 		stepMode       = .Vertex,
-		arrayStride    = u64(size_of(WGPU_Cube_Vertex)),
+		arrayStride    = u64(size_of(resources.Vertex)),
 		attributeCount = uint(len(vertex_attributes)),
 		attributes     = raw_data(vertex_attributes[:]),
 	}
@@ -476,7 +444,7 @@ wgpu_create_cube_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	renderer.pipeline = wgpu.DeviceCreateRenderPipeline(
 		renderer.device,
 		&wgpu.RenderPipelineDescriptor {
-			label  = "Scrapbot Cube Pipeline",
+			label  = "Scrapbot Render Pipeline",
 			layout = renderer.pipeline_layout,
 			vertex = wgpu.VertexState {
 				module      = renderer.shader,
@@ -610,34 +578,64 @@ wgpu_acquire_surface_texture :: proc(
 	return surface_texture, false, false
 }
 
-wgpu_update_cube_uniforms :: proc(renderer: ^WGPU_Renderer, render_list: ^Render_List, width, height: u32) -> u32 {
-	uniform: WGPU_Cube_Uniform
-	instance_count := 0
-	for instance in render_list.instances {
-		if instance.mesh.primitive != "cube" {
-			continue
+wgpu_prepare_draw_batches :: proc(renderer: ^WGPU_Renderer, render_list: ^Render_List, registry: ^resources.Registry, width, height: u32) -> ([64]WGPU_Draw_Batch, int) {
+	uniform: WGPU_Render_Uniform
+	batches: [64]WGPU_Draw_Batch
+	batch_count, instance_count := 0, 0
+	for candidate in render_list.instances {
+		already_batched := false
+		for i in 0..<batch_count {if batches[i].geometry == candidate.geometry.handle && batches[i].material == candidate.material.handle {already_batched = true; break}}
+		if already_batched {continue}
+		batch := &batches[batch_count]
+		batch.geometry = candidate.geometry.handle; batch.material = candidate.material.handle; batch.first_instance = u32(instance_count)
+		material, material_ok := resources.get_material(registry, candidate.material.handle)
+		if !material_ok {continue}
+		for instance in render_list.instances {
+			if instance.geometry.handle != batch.geometry || instance.material.handle != batch.material {continue}
+			if instance_count >= WGPU_MAX_INSTANCES {break}
+			uniform.mvp[instance_count] = wgpu_build_mvp(instance, render_list.camera, render_list.has_camera, width, height)
+			color := material.desc.base_color
+			uniform.color[instance_count] = {color.x,color.y,color.z,color.w}
+			instance_count += 1; batch.instance_count += 1
 		}
-		if instance_count >= WGPU_MAX_CUBE_INSTANCES {
-			break
-		}
-
-		uniform.mvp[instance_count] = wgpu_build_mvp(instance, render_list.camera, render_list.has_camera, width, height)
-		instance_count += 1
+		if batch.instance_count > 0 {batch_count += 1}
 	}
 	if instance_count == 0 {
-		return 0
+		return batches, 0
 	}
 
-	wgpu.QueueWriteBuffer(renderer.queue, renderer.uniform_buffer, 0, &uniform, uint(size_of(WGPU_Cube_Uniform)))
-	return u32(instance_count)
+	wgpu.QueueWriteBuffer(renderer.queue, renderer.uniform_buffer, 0, &uniform, uint(size_of(WGPU_Render_Uniform)))
+	return batches, batch_count
 }
 
-wgpu_encode_cube_pass :: proc(
+wgpu_geometry_cache :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Registry, handle: shared.Geometry_Handle) -> (^WGPU_Geometry_Cache, string) {
+	geometry, ok := resources.get_geometry(registry, handle)
+	if !ok {return nil, "render geometry handle is stale"}
+	cache_index := -1
+	for i in 0..<renderer.geometry_cache_count {if renderer.geometry_cache[i].handle == handle {cache_index = i; break}}
+	if cache_index < 0 {
+		if renderer.geometry_cache_count >= len(renderer.geometry_cache) {return nil, "too many cached geometries"}
+		cache_index = renderer.geometry_cache_count; renderer.geometry_cache_count += 1
+	}
+	cached := &renderer.geometry_cache[cache_index]
+	if cached.valid && cached.version == geometry.version {return cached, ""}
+	if cached.vertex_buffer != nil {wgpu.BufferRelease(cached.vertex_buffer)}
+	if cached.index_buffer != nil {wgpu.BufferRelease(cached.index_buffer)}
+	cached^ = {handle = handle, version = geometry.version, index_count = u32(len(geometry.indices))}
+	cached.vertex_buffer = wgpu.DeviceCreateBufferWithData(renderer.device, &wgpu.BufferWithDataDescriptor{label="Scrapbot Geometry Vertices", usage={.Vertex}}, geometry.vertices)
+	cached.index_buffer = wgpu.DeviceCreateBufferWithData(renderer.device, &wgpu.BufferWithDataDescriptor{label="Scrapbot Geometry Indices", usage={.Index}}, geometry.indices)
+	if cached.vertex_buffer == nil || cached.index_buffer == nil {return nil, "failed to upload geometry buffers"}
+	cached.valid = true
+	return cached, ""
+}
+
+wgpu_encode_render_pass :: proc(
 	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
 	color_view: wgpu.TextureView,
 	depth_view: wgpu.TextureView,
-	instance_count: u32,
+	batches: []WGPU_Draw_Batch,
+	registry: ^resources.Registry,
 	label: string,
 ) -> string {
 	color_attachment := wgpu.RenderPassColorAttachment {
@@ -669,19 +667,23 @@ wgpu_encode_cube_pass :: proc(
 	}
 	defer wgpu.RenderPassEncoderRelease(render_pass)
 
-	if instance_count > 0 {
+	if len(batches) > 0 {
 		wgpu.RenderPassEncoderSetPipeline(render_pass, renderer.pipeline)
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, renderer.bind_group)
-		wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, renderer.vertex_buffer, 0, u64(size_of(WGPU_Cube_Vertex) * len(WGPU_CUBE_VERTICES)))
-		wgpu.RenderPassEncoderSetIndexBuffer(render_pass, renderer.index_buffer, .Uint16, 0, u64(size_of(u16) * len(WGPU_CUBE_INDICES)))
-		wgpu.RenderPassEncoderDrawIndexed(render_pass, u32(len(WGPU_CUBE_INDICES)), instance_count, 0, 0, 0)
+		for batch in batches {
+			cached, cache_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
+			if cache_err != "" {return cache_err}
+			wgpu.RenderPassEncoderSetVertexBuffer(render_pass, 0, cached.vertex_buffer, 0, wgpu.WHOLE_SIZE)
+			wgpu.RenderPassEncoderSetIndexBuffer(render_pass, cached.index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
+			wgpu.RenderPassEncoderDrawIndexed(render_pass, cached.index_count, batch.instance_count, 0, 0, batch.first_instance)
+		}
 	}
 
 	wgpu.RenderPassEncoderEnd(render_pass)
 	return ""
 }
 
-wgpu_draw_cube_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^Run_Config) -> (presented, should_quit: bool, err: string) {
+wgpu_draw_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^Run_Config) -> (presented, should_quit: bool, err: string) {
 	drawable, configure_err := wgpu_configure_surface(renderer)
 	if configure_err != "" || !drawable {
 		return false, false, configure_err
@@ -720,21 +722,22 @@ wgpu_draw_cube_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^R
 	if err = run_frame_system(config, world, 1.0 / 60.0); err != "" {
 		return false, false, err
 	}
-	render_list := ecs.build_render_list(world)
+	render_list := ecs.build_resource_render_list(world, config.resource_registry)
 	defer ecs.destroy_render_list(&render_list)
-	instance_count := wgpu_update_cube_uniforms(renderer, &render_list, renderer.width, renderer.height)
+	batches, batch_count := wgpu_prepare_draw_batches(renderer, &render_list, config.resource_registry, renderer.width, renderer.height)
+	if config.stats != nil {config.stats.draw_batches = batch_count}
 
-	encoder := wgpu.DeviceCreateCommandEncoder(renderer.device, &wgpu.CommandEncoderDescriptor{label = "Scrapbot Cube Encoder"})
+	encoder := wgpu.DeviceCreateCommandEncoder(renderer.device, &wgpu.CommandEncoderDescriptor{label = "Scrapbot Render Encoder"})
 	if encoder == nil {
 		return false, false, "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
 
-	if err = wgpu_encode_cube_pass(renderer, encoder, view, renderer.depth_view, instance_count, "Scrapbot Cube Pass"); err != "" {
+	if err = wgpu_encode_render_pass(renderer, encoder, view, renderer.depth_view, batches[:batch_count], config.resource_registry, "Scrapbot Geometry Pass"); err != "" {
 		return false, false, err
 	}
 
-	command_buffer := wgpu.CommandEncoderFinish(encoder, &wgpu.CommandBufferDescriptor{label = "Scrapbot Cube Commands"})
+	command_buffer := wgpu.CommandEncoderFinish(encoder, &wgpu.CommandBufferDescriptor{label = "Scrapbot Render Commands"})
 	if command_buffer == nil {
 		return false, false, "failed to finish wgpu command encoder"
 	}
@@ -765,17 +768,18 @@ wgpu_render_offscreen_frame :: proc(
 			return err
 		}
 	}
-	render_list := ecs.build_render_list(world)
+	render_list := ecs.build_resource_render_list(world, config.resource_registry)
 	defer ecs.destroy_render_list(&render_list)
-	instance_count := wgpu_update_cube_uniforms(renderer, &render_list, width, height)
+	batches, batch_count := wgpu_prepare_draw_batches(renderer, &render_list, config.resource_registry, width, height)
+	if config != nil && config.stats != nil {config.stats.draw_batches = batch_count}
 
-	encoder := wgpu.DeviceCreateCommandEncoder(renderer.device, &wgpu.CommandEncoderDescriptor{label = "Scrapbot Headless Cube Encoder"})
+	encoder := wgpu.DeviceCreateCommandEncoder(renderer.device, &wgpu.CommandEncoderDescriptor{label = "Scrapbot Headless Render Encoder"})
 	if encoder == nil {
 		return "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
 
-	if err := wgpu_encode_cube_pass(renderer, encoder, view, depth_view, instance_count, "Scrapbot Headless Cube Pass"); err != "" {
+	if err := wgpu_encode_render_pass(renderer, encoder, view, depth_view, batches[:batch_count], config.resource_registry, "Scrapbot Headless Geometry Pass"); err != "" {
 		return err
 	}
 
@@ -801,7 +805,7 @@ wgpu_render_offscreen_frame :: proc(
 		)
 	}
 
-	command_buffer := wgpu.CommandEncoderFinish(encoder, &wgpu.CommandBufferDescriptor{label = "Scrapbot Headless Cube Commands"})
+	command_buffer := wgpu.CommandEncoderFinish(encoder, &wgpu.CommandBufferDescriptor{label = "Scrapbot Headless Render Commands"})
 	if command_buffer == nil {
 		return "failed to finish wgpu command encoder"
 	}
@@ -1126,7 +1130,7 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		}
 		wgpu.InstanceProcessEvents(renderer.instance)
 
-		_, should_quit, draw_err := wgpu_draw_cube_frame(&renderer, world, config)
+		_, should_quit, draw_err := wgpu_draw_frame(&renderer, world, config)
 		if draw_err != "" {
 			return draw_err
 		}

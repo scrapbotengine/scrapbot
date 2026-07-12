@@ -1,5 +1,6 @@
 package native
 
+import base_runtime "base:runtime"
 import c "core:c"
 import "core:dynlib"
 import "core:fmt"
@@ -11,6 +12,7 @@ import component "../component"
 import ecs "../ecs"
 import api "../extension_api"
 import schedule "../schedule"
+import resources "../resources"
 import shared "../shared"
 
 EXTENSIONS_DIR :: "build/extensions"
@@ -64,6 +66,7 @@ Extension_Set :: struct {
 	systems: [MAX_NATIVE_SYSTEMS]Native_System,
 	system_count: int,
 	registry: ^component.Registry,
+	resources: ^resources.Registry,
 }
 
 Source_Set :: struct {
@@ -257,9 +260,10 @@ build_extension :: proc(root, extensions_dir: string, target: shared.Native_Exte
 	return output_name, ""
 }
 
-load_project_extensions :: proc(set: ^Extension_Set, root: string, registry: ^component.Registry) -> Load_Result {
+load_project_extensions :: proc(set: ^Extension_Set, root: string, registry: ^component.Registry, resource_registry: ^resources.Registry = nil) -> Load_Result {
 	destroy_extension_set(set)
 	set.registry = registry
+	set.resources = resource_registry
 	defer set.registry = nil
 
 	extension_paths, paths_err := project_extension_paths(root)
@@ -336,6 +340,8 @@ load_extension :: proc(set: ^Extension_Set, path: string) -> string {
 		userdata = set,
 		register_library_component = extension_register_library_component,
 		register_system = extension_register_system,
+		register_geometry = extension_register_geometry,
+		register_material = extension_register_material,
 	}
 	if register_err := register(&host_api); register_err != nil {
 		dynlib.unload_library(library)
@@ -355,6 +361,26 @@ load_extension :: proc(set: ^Extension_Set, path: string) -> string {
 	}
 	set.extension_count += 1
 	return ""
+}
+
+extension_register_geometry :: proc "c" (host_api: ^api.API, name: cstring, desc: ^api.Geometry_Desc, out_handle: ^api.Resource_Handle) -> cstring {
+	context = base_runtime.default_context()
+	if host_api == nil || host_api.userdata == nil || name == nil || desc == nil || out_handle == nil {return "native geometry registration is not available"}
+	set := cast(^Extension_Set)host_api.userdata; if set.resources == nil {return "native geometry registry is not available"}
+	if desc.vertex_count < 0 || desc.index_count < 0 {return "native geometry counts are invalid"}
+	vertices := cast([^]resources.Vertex)desc.vertices
+	handle, err := resources.register_geometry(set.resources,string(name),{vertices=vertices[:int(desc.vertex_count)],indices=desc.indices[:int(desc.index_count)]})
+	if err != "" {return "native geometry registration failed"}
+	out_handle^ = {handle.index,handle.generation}; return nil
+}
+
+extension_register_material :: proc "c" (host_api: ^api.API, name: cstring, desc: ^api.Material_Desc, out_handle: ^api.Resource_Handle) -> cstring {
+	context = base_runtime.default_context()
+	if host_api == nil || host_api.userdata == nil || name == nil || desc == nil || out_handle == nil {return "native material registration is not available"}
+	set := cast(^Extension_Set)host_api.userdata; if set.resources == nil {return "native material registry is not available"}
+	c := desc.base_color; handle, err := resources.register_material(set.resources,string(name),{base_color={c.x,c.y,c.z,c.w}})
+	if err != "" {return "native material registration failed"}
+	out_handle^ = {handle.index,handle.generation}; return nil
 }
 
 extension_register_library_component :: proc "c" (
@@ -687,6 +713,14 @@ system_spawn :: proc "c" (ctx: ^api.System_Context, options: ^api.Spawn_Options)
 		if err := ecs.spawn_set_mesh(&spawn, string(options.mesh.primitive)); err != "" {
 			return cstring(raw_data(err))
 		}
+	}
+	if options.geometry != nil {
+		if !system_allows_component_access(step.system.declaration,"scrapbot.geometry",.Write) {return "native system does not have write access to scrapbot.geometry"}
+		ecs.spawn_set_geometry(&spawn,{options.geometry.index,options.geometry.generation})
+	}
+	if options.material != nil {
+		if !system_allows_component_access(step.system.declaration,"scrapbot.material",.Write) {return "native system does not have write access to scrapbot.material"}
+		ecs.spawn_set_material(&spawn,{options.material.index,options.material.generation})
 	}
 
 	if options.component_count < 0 || options.component_count > ecs.MAX_COMMAND_COMPONENTS {

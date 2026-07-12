@@ -4,7 +4,40 @@ import "core:testing"
 import component "../component"
 import ecs "../ecs"
 import project "../project"
+import resources "../resources"
 import shared "../shared"
+
+@(test)
+test_luau_creates_full_geometry_material_and_renderable_entity :: proc(t: ^testing.T) {
+	world: ecs.World; defer ecs.destroy_world(&world)
+	registry: component.Registry; component.init_registry(&registry)
+	resource_registry: resources.Registry; resources.init_registry(&resource_registry); defer resources.destroy_registry(&resource_registry)
+	runtime: Runtime; defer destroy_runtime(&runtime)
+	result := run_source_with_registry(&runtime, `
+local triangle = scrapbot.geometry.create("triangle", {
+  vertices = {
+    { position = {x=-1,y=0,z=0}, normal = {x=0,y=0,z=1}, uv = {x=0,y=0} },
+    { position = {x=1,y=0,z=0}, normal = {x=0,y=0,z=1}, uv = {x=1,y=0} },
+    { position = {x=0,y=1,z=0}, normal = {x=0,y=0,z=1}, uv = {x=0.5,y=1} },
+  }, indices = {0,1,2},
+})
+local red = scrapbot.material.unlit("red", 1, 0, 0, 1)
+scrapbot.spawn({components = {
+  ["scrapbot.transform"] = {position={x=0,y=0,z=0}, scale={x=1,y=1,z=1}},
+  ["scrapbot.geometry"] = triangle,
+  ["scrapbot.material"] = red,
+}})
+`, "=geometry-test", &world, &registry, Source_Options{resource_registry=&resource_registry})
+	testing.expectf(t, result.err == "", "script failed: %s", result.err)
+	testing.expect(t, ecs.apply_commands(&world, &runtime.commands) == "")
+	ecs.reconcile_render_instances(&world, &resource_registry)
+	testing.expect(t, len(world.entities) == 1)
+	testing.expect(t, world.entities[0].render_instance_index >= 0)
+	geometry, ok := resources.geometry_by_name(&resource_registry, "triangle")
+	testing.expect(t, ok)
+	geometry_data, valid := resources.get_geometry(&resource_registry, geometry)
+	testing.expect(t, valid && len(geometry_data.indices) == 3)
+}
 
 @(test)
 test_luau_script_can_read_ecs_counts :: proc(t: ^testing.T) {
@@ -448,7 +481,9 @@ end)
 	testing.expect(t, runtime.systems[0].declaration.accesses[1].mode == .Write)
 	testing.expect(t, len(world.custom_components) == 1)
 	testing.expect(t, world.custom_components[0].component_id != shared.INVALID_COMPONENT_ID)
-	testing.expect(t, world.custom_components[0].component_id == runtime.registry.definitions[3].id)
+	autorotate_definition, autorotate_found := component.find_definition(&runtime.registry, "autorotate")
+	testing.expect(t, autorotate_found)
+	testing.expect(t, world.custom_components[0].component_id == autorotate_definition.id)
 
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expect(t, step_err == "")

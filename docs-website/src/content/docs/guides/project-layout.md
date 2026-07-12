@@ -53,8 +53,11 @@ position = [-2.25, 0, 0]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
-[entities.mesh]
-primitive = "cube"
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "coral"
 
 [entities.components.autorotate]
 velocity = [0, 1.5707963, 0]
@@ -64,7 +67,7 @@ Built-in sections currently include:
 
 - `[entities.transform]`
 - `[entities.camera]`
-- `[entities.mesh]`
+- `[entities.geometry]` and `[entities.material]`
 
 Custom components use `[entities.components.<name>]`. Single-token names such as `autorotate` are project-level components. Dotted names such as `scrappyphysics.rigidbody` are engine or library components and must be registered before validation succeeds.
 

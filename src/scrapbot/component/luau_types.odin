@@ -17,6 +17,16 @@ export type Scrapbot = {
 	transform: ScrapbotTransformComponent,
 	camera: ScrapbotCameraComponent,
 	mesh: ScrapbotMeshComponent,
+	geometry_component: ScrapbotGeometryComponent,
+	material_component: ScrapbotMaterialComponent,
+	geometry: {
+		create: (name: string, descriptor: ScrapbotGeometryDescriptor) -> ScrapbotGeometryResource,
+		cube: (name: string, size: number?) -> ScrapbotGeometryResource,
+		plane: (name: string, width: number?, depth: number?) -> ScrapbotGeometryResource,
+	},
+	material: {
+		unlit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
+	},
 	system: (...any) -> (),
 	query: (<A, RA>(first: ScrapbotComponent<A, RA>) -> ScrapbotQuery1<A, RA>) & (<A, RA, B, RB>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>) -> ScrapbotQuery2<A, RA, B, RB>) & (<A, RA, B, RB, C, RC>(first: ScrapbotComponent<A, RA>, second: ScrapbotComponent<B, RB>, third: ScrapbotComponent<C, RC>) -> ScrapbotQuery3<A, RA, B, RB, C, RC>),
 	view: (<T, R>(component: ScrapbotComponent<T, R>) -> {ScrapbotQueryItem<R>}) & ((components: {ScrapbotComponent<any, any>}) -> {ScrapbotQueryComponentsItem}) & ((query: ScrapbotAnyQuery) -> {ScrapbotQueryComponentsItem}),
@@ -33,6 +43,11 @@ export type ScrapbotEntity = {
 	generation: number,
 	name: string?,
 }
+
+export type ScrapbotGeometryResource = {kind: "geometry", index: number, generation: number}
+export type ScrapbotMaterialResource = {kind: "material", index: number, generation: number}
+export type ScrapbotGeometryVertex = {position: Vec3, normal: Vec3, uv: {x: number, y: number}}
+export type ScrapbotGeometryDescriptor = {vertices: {ScrapbotGeometryVertex}, indices: {number}}
 
 export type ScrapbotVec3 = {
 	x: number,

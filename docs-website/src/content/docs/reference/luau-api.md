@@ -26,7 +26,19 @@ Built-in handles:
 
 - `scrapbot.transform`
 - `scrapbot.camera`
-- `scrapbot.mesh`
+- `scrapbot.geometry_component`
+- `scrapbot.material_component`
+
+## Render resources
+
+| API | Purpose |
+| --- | --- |
+| `scrapbot.geometry.create(name, descriptor)` | Register full position/normal/UV vertices and `u32` triangle indices. |
+| `scrapbot.geometry.cube(name, size?)` | Generate and register indexed cube geometry. |
+| `scrapbot.geometry.plane(name, width?, depth?)` | Generate and register indexed plane geometry. |
+| `scrapbot.material.unlit(name, r?, g?, b?, a?)` | Register a shared unlit material. |
+
+Named registration updates an existing resource while preserving its handle. Spawn component maps use `scrapbot.geometry` and `scrapbot.material` names with the returned handles.
 
 ## Queries and views
 

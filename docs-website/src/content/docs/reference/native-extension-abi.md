@@ -105,7 +105,8 @@ The context includes:
 - query helpers for component-name terms;
 - `get_transform` and `set_transform`;
 - `get_vec3_field` and `set_vec3_field` for schema-backed custom components;
-- deferred lifecycle helpers for spawn, despawn, add transform, add mesh, add schema-backed component payload, and remove component.
+- full indexed geometry and shared material registration;
+- deferred lifecycle helpers for resource-backed renderable spawns, despawn, transform, schema-backed payloads, and removal.
 
 Return `nil` on success or a static error string on failure. The host enforces declared access through the callback context.
 

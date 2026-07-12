@@ -9,10 +9,10 @@
 - [x] Replace the WGPU triangle loop with an ECS-driven rotating cube renderer.
 - [x] Define the first renderable query boundary between ECS state and renderer backends.
 - [x] Expand the WGPU renderer beyond the first cube renderable.
-- [ ] Expand the WGPU renderer beyond cube primitives.
+- [x] Expand the WGPU renderer beyond cube primitives.
 - [x] Add full indexed geometry resources with cube and plane generators.
-- [ ] Add geometry/material ECS references and internal render reconciliation.
-- [ ] Cache geometry and material resources in the WGPU backend.
+- [x] Add geometry/material ECS references and internal render reconciliation.
+- [x] Cache geometry and material resources in the WGPU backend.
 - [ ] Add visual comparison for offscreen render output.
 
 ## Project Runtime

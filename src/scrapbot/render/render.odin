@@ -3,9 +3,11 @@ package render
 import ecs "../ecs"
 import platform "../platform"
 import shared "../shared"
+import resources "../resources"
 
 Renderer_Backend :: shared.Renderer_Backend
 Frame_System_Proc :: #type proc(data: rawptr, world: ^World, delta_seconds: f32) -> string
+Render_Stats :: struct {draw_batches: int}
 Run_Config :: struct {
 	backend:           Renderer_Backend,
 	window:            bool,
@@ -14,6 +16,8 @@ Run_Config :: struct {
 	framegrab_path:    string,
 	frame_system:      Frame_System_Proc,
 	frame_system_data: rawptr,
+	resource_registry: ^resources.Registry,
+	stats: ^Render_Stats,
 }
 World :: shared.World
 Render_Frame :: shared.Render_Frame
@@ -58,6 +62,12 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 			}
 			defer platform.close_runtime_window()
 			platform.pump_runtime_window_events()
+		}
+		ecs.reconcile_render_instances(world, run_config.resource_registry)
+		if run_config.stats != nil {
+			list := ecs.build_resource_render_list(world, run_config.resource_registry)
+			defer ecs.destroy_render_list(&list)
+			run_config.stats.draw_batches = ecs.render_batch_count(&list)
 		}
 
 		renderer: Null_Renderer

@@ -43,6 +43,10 @@ Scene_Entity :: struct {
 
 	has_mesh: bool,
 	mesh:     Mesh_Component,
+	has_geometry: bool,
+	geometry_resource: string,
+	has_material: bool,
+	material_resource: string,
 
 	custom_components: [dynamic]Custom_Component,
 }
@@ -54,6 +58,9 @@ Entity :: struct {
 
 Component_ID :: int
 INVALID_COMPONENT_ID :: Component_ID(0)
+
+Geometry_Handle :: struct {index, generation: u32}
+Material_Handle :: struct {index, generation: u32}
 
 Transform_Component :: struct {
 	position: Vec3,
@@ -69,6 +76,13 @@ Camera_Component :: struct {
 
 Mesh_Component :: struct {
 	primitive: string,
+}
+
+Geometry_Component :: struct {handle: Geometry_Handle}
+Material_Component :: struct {handle: Material_Handle}
+Render_Instance_Component :: struct {
+	geometry: Geometry_Handle,
+	material: Material_Handle,
 }
 
 Named_Vec3 :: struct {
@@ -96,6 +110,11 @@ World_Entity :: struct {
 	transform_index: int,
 	camera_index:    int,
 	mesh_index:      int,
+	geometry_index:  int,
+	material_index:  int,
+	render_instance_index: int,
+	geometry_resource: string,
+	material_resource: string,
 }
 
 Renderable :: struct {
@@ -108,6 +127,8 @@ Render_Instance :: struct {
 	entity:    World_Entity,
 	transform: Transform_Component,
 	mesh:      Mesh_Component,
+	geometry:  Geometry_Component,
+	material:  Material_Component,
 }
 
 Camera_Instance :: struct {
@@ -128,6 +149,9 @@ World :: struct {
 	cameras:    [dynamic]Camera_Component,
 	meshes:     [dynamic]Mesh_Component,
 	renderables: [dynamic]Renderable,
+	geometries: [dynamic]Geometry_Component,
+	materials: [dynamic]Material_Component,
+	render_instances: [dynamic]Render_Instance_Component,
 	custom_components: [dynamic]Custom_Component_Storage,
 }
 

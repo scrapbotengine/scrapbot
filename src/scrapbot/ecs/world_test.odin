@@ -2,6 +2,7 @@ package ecs
 
 import "core:testing"
 import project "../project"
+import resources "../resources"
 import shared "../shared"
 
 MULTI_CUBE_SCENE :: `[[entities]]
@@ -45,6 +46,57 @@ primitive = "cube"
 [entities.components.autorotate]
 velocity = [0, -1.5707963, 0]
 `
+
+@(test)
+test_render_reconciliation_tracks_geometry_and_material_eligibility :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	cube_desc, _ := resources.cube()
+	defer delete(cube_desc.vertices); defer delete(cube_desc.indices)
+	geometry, geometry_err := resources.register_geometry(&registry, "cube", cube_desc)
+	material, material_err := resources.register_material(&registry, "white", {base_color = {1,1,1,1}})
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	world: World
+	defer destroy_world(&world)
+	append(&world.entities, World_Entity{id = {0,1}, alive = true, transform_index = 0, camera_index = -1, mesh_index = -1, geometry_index = -1, material_index = -1, render_instance_index = -1})
+	append_soa(&world.transforms, Transform_Component{scale = {1,1,1}})
+	add_geometry(&world, 0, geometry)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, world.entities[0].render_instance_index == -1)
+
+	add_material(&world, 0, material)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, world.entities[0].render_instance_index >= 0)
+	remove_material(&world, 0)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, world.entities[0].render_instance_index == -1)
+}
+
+@(test)
+test_render_batches_group_shared_geometry_and_material :: proc(t: ^testing.T) {
+	g := shared.Geometry_Handle{1,1}; a := shared.Material_Handle{1,1}; b := shared.Material_Handle{2,1}
+	list: Render_List; defer destroy_render_list(&list)
+	append(&list.instances, Render_Instance{geometry={handle=g},material={handle=a}})
+	append(&list.instances, Render_Instance{geometry={handle=g},material={handle=a}})
+	append(&list.instances, Render_Instance{geometry={handle=g},material={handle=b}})
+	testing.expect(t, render_batch_count(&list) == 2)
+}
+
+@(test)
+test_deferred_render_components_drive_reconciliation :: proc(t: ^testing.T) {
+	registry: resources.Registry; defer resources.destroy_registry(&registry)
+	desc,_:=resources.cube(); defer delete(desc.vertices); defer delete(desc.indices)
+	geometry,_:=resources.register_geometry(&registry,"cube",desc); material,_:=resources.register_material(&registry,"white",{base_color={1,1,1,1}})
+	world: World; defer destroy_world(&world)
+	append(&world.entities,World_Entity{id={0,1},alive=true,transform_index=0,camera_index=-1,mesh_index=-1,geometry_index=-1,material_index=-1,render_instance_index=-1})
+	append_soa(&world.transforms,Transform_Component{scale={1,1,1}})
+	commands: Command_Buffer; init_command_buffer(&commands); defer destroy_command_buffer(&commands)
+	testing.expect(t,queue_add_geometry(&commands,0,1,geometry)==""); testing.expect(t,queue_add_material(&commands,0,1,material)=="")
+	apply_commands(&world,&commands); reconcile_render_instances(&world,&registry); testing.expect(t,world.entities[0].render_instance_index>=0)
+	queue_remove_component(&commands,0,1,0,"scrapbot.material"); apply_commands(&world,&commands); reconcile_render_instances(&world,&registry)
+	testing.expect(t,world.entities[0].render_instance_index<0)
+}
 
 @(test)
 test_scene_builds_world_with_soa_transforms :: proc(t: ^testing.T) {

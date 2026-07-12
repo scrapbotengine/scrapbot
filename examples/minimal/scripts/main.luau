@@ -1,3 +1,7 @@
+scrapbot.geometry.cube("cube", 2)
+scrapbot.material.unlit("coral", 0.95, 0.28, 0.18, 1)
+scrapbot.material.unlit("teal", 0.08, 0.72, 0.68, 1)
+
 scrapbot.log("hello from examples/minimal")
 scrapbot.log("entities: " .. tostring(scrapbot.entity_count()))
 scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))

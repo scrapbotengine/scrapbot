@@ -12,7 +12,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The runtime can submit frame data through a renderer boundary.
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
-- The `wgpu` backend opens an SDL3 window, creates a `wgpu-native` surface, and renders ECS cube renderables with a perspective camera.
+- The `wgpu` backend renders full indexed geometry with shared unlit materials and a perspective camera.
+- Eligible entities receive internal render-instance components automatically.
+- Shared geometry/material pairs use one instanced draw batch, and geometry uploads are cached by handle and version.
 - The `wgpu` backend can also render a headless final-frame PNG with `--framegrab`.
 - The `wgpu` backend currently requires `--window` or `--framegrab`.
 - Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
@@ -39,11 +41,11 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 **Why:** SDL3 is available through Odin's vendor bindings and gives the renderer a portable surface path. See ADR-005.
 **Tradeoff:** Headful runtime work now depends on SDL3 being available in development and distribution environments.
 
-### 4. Promote the WGPU smoke path into an ECS cube renderer
+### 4. Render full indexed geometry
 
-**Decision:** The current `wgpu` backend creates a WGSL pipeline, uploads a built-in cube mesh, and draws ECS renderables that have both transform and mesh components.
-**Why:** This keeps the renderer driven by ECS state while still avoiding a premature asset, material, or batching system.
-**Tradeoff:** Only cube primitives are drawn for now; general mesh, material, and batching work remains follow-up work.
+**Decision:** WGPU consumes position/normal/UV vertices with `u32` triangle indices and shared unlit materials. Cube and plane helpers generate the same representation.
+**Why:** Procedural, custom, and future imported geometry should follow one rendering path.
+**Tradeoff:** The canonical vertex format and unlit material model will need to grow with lighting and textures.
 
 ### 5. Keep headless framegrabs on the same render path
 
@@ -53,9 +55,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ### 6. Use ECS renderable queries as the first backend boundary
 
-**Decision:** The world builder records per-entity component indexes and derives renderables from entities with both transform and mesh components. ECS builds a short-lived render list from those renderables, and render backends consume that list instead of reconstructing component relationships themselves.
+**Decision:** Engine reconciliation derives internal render-instance components from valid transform, geometry, and material references. ECS builds a short-lived render list from that state.
 **Why:** Backends need coherent scene instances, not just global component counts, and this keeps GPU code out of ECS storage.
-**Tradeoff:** The render list is deliberately narrow and will need to evolve into a fuller render packet or view once materials, lights, multiple mesh types, and culling exist.
+**Tradeoff:** Reconciliation currently scans entities linearly, and the first uniform layout caps a frame at 64 instances.
 
 ### 7. Share geometry and material resources by handle
 
@@ -70,6 +72,6 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ## Open Questions
 
-- What render packet shape should replace the current cube render list once renderer-owned resources exist?
+- How should the render packet evolve for textures, lighting, and culling?
 - How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

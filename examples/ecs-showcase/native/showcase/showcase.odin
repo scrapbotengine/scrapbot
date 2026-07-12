@@ -15,6 +15,9 @@ Velocity_Value :: scrapbot.Vec3_Field{component = Velocity_Component, name = "va
 Emitter_Component :: scrapbot.Component{name = "showcase.emitter"}
 Emitter_State :: scrapbot.Vec3_Field{component = Emitter_Component, name = "state"}
 
+Fountain_Geometry: scrapbot.Resource_Handle
+Fountain_Material: scrapbot.Resource_Handle
+
 @(export)
 scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
 	return scrapbot.register(api, register)
@@ -22,6 +25,9 @@ scrapbot_extension_register :: proc "c" (api: ^scrapbot.API) -> cstring {
 
 register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
 	reg := scrapbot.registry(ctx)
+	generated_cube := scrapbot.cube_geometry(2)
+	Fountain_Geometry = scrapbot.register_generated_geometry(&reg, "cube", &generated_cube)
+	Fountain_Material = scrapbot.material(&reg, "fountain", {0.95, 0.38, 0.18, 1})
 
 	spin_fields := [?]scrapbot.Field {
 		scrapbot.vec3(Spin_Angular_Velocity),
@@ -65,7 +71,8 @@ register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
 
 	emitter_accesses := [?]scrapbot.Access {
 		scrapbot.write(scrapbot.Transform_Component),
-		scrapbot.write(scrapbot.Mesh_Component),
+		scrapbot.write(scrapbot.Component{name="scrapbot.geometry"}),
+		scrapbot.write(scrapbot.Component{name="scrapbot.material"}),
 		scrapbot.read(Emitter_Component),
 		scrapbot.write(Emitter_Component),
 		scrapbot.write(Lifetime_Component),
@@ -295,7 +302,6 @@ spawn_fountain_cube :: proc "contextless" (
 		scrapbot.payload(Velocity_Component, velocity_fields[:]),
 		scrapbot.payload(Spin_Component, spin_fields[:]),
 	}
-	mesh := scrapbot.mesh("cube")
-	spawn := scrapbot.spawn_options("Fountain Cube", &transform, &mesh, payloads[:])
+	spawn := scrapbot.spawn_options("Fountain Cube", &transform, &Fountain_Geometry, &Fountain_Material, payloads[:])
 	return scrapbot.spawn(ctx, &spawn)
 }

@@ -27,10 +27,11 @@ Luau scripting lets project directories include fast-iteration game code without
 - Single-token component names such as `autorotate` are project-level components.
 - Multi-token dotted component names such as `scrapbot.transform` or `scrappyphysics.rigidbody` are reserved for engine or library components and must be registered before scene data can use them.
 - Library component names must be dotted and cannot use the reserved `scrapbot` namespace.
-- The engine registry currently contains built-in `scrapbot.transform`, `scrapbot.camera`, and `scrapbot.mesh` component names.
+- The engine registry contains built-in transform, camera, geometry, material, and internal render-instance component names.
 - `scrapbot.component` and `scrapbot.library_component` return typed component handles with runtime component IDs and names. Scripts can cast them to generated component handle types.
 - `scrapbot.component_handle` returns the same handle shape for components registered before script execution, including native extension schemas.
-- The `scrapbot` API exposes built-in component handles for `scrapbot.transform`, `scrapbot.camera`, and `scrapbot.mesh`.
+- The `scrapbot` API exposes public transform, camera, geometry, and material component handles.
+- Scripts can define full named indexed geometry, generate cubes and planes, and define shared unlit materials.
 - Scripts can register frame systems with `scrapbot.system(function(delta_seconds) ... end)`.
 - Scripts can declare system component access with `scrapbot.system({ reads = {...}, writes = {...} }, function(delta_seconds) ... end)`.
 - Script system access declarations accept component handles, query objects for reads, or registered component-name strings.

@@ -1,3 +1,8 @@
+scrapbot.geometry.cube("cube", 2)
+scrapbot.geometry.plane("ground", 12, 12)
+scrapbot.material.unlit("marker", 1, 0.3, 0.15, 1)
+scrapbot.material.unlit("ground", 0.12, 0.18, 0.22, 1)
+
 scrapbot.log("hello from examples/ecs-showcase")
 scrapbot.log("entities: " .. tostring(scrapbot.entity_count()))
 scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))

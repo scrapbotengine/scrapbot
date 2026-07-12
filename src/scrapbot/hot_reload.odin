@@ -10,6 +10,7 @@ import ecs "./ecs"
 import native "./native"
 import project "./project"
 import schedule "./schedule"
+import resources "./resources"
 import script "./script"
 import shared "./shared"
 
@@ -32,6 +33,7 @@ Hot_Reload_State :: struct {
 	runtime:      script.Runtime,
 	native_extensions: native.Extension_Set,
 	executor:          schedule.Executor,
+	resources:         resources.Registry,
 	native_sources: native.Source_Set,
 	last_good_script_source: string,
 	has_last_good_script:    bool,
@@ -94,6 +96,7 @@ init_hot_reload_state :: proc(
 	state.script_stamp = file_stamp(state.script_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
+	if err := init_render_resources(&state.resources, world); err != "" {return err}
 	return load_script_runtime(state, world)
 }
 
@@ -101,6 +104,7 @@ destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
 	schedule.destroy_executor(&state.executor)
+	resources.destroy_registry(&state.resources)
 	native.destroy_source_set(&state.native_sources)
 	delete(state.last_good_script_source)
 	delete(state.project_path)
@@ -169,7 +173,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	}
 
 	next_world := ecs.build_world(&loaded.scene)
-	script_load := load_script_from_path(state.root, state.script_path, &next_world)
+	script_load := load_script_from_path(state.root, state.script_path, &next_world, &state.resources)
 	if script_load.err != "" {
 		reload_err := script_load.err
 		ecs.destroy_world(&next_world)
@@ -208,7 +212,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 }
 
 load_script_runtime :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> string {
-	script_load := load_script_from_path(state.root, state.script_path, world)
+	script_load := load_script_from_path(state.root, state.script_path, world, &state.resources)
 	if script_load.err != "" {
 		reload_err := script_load.err
 		destroy_script_load(&script_load)
@@ -229,11 +233,11 @@ load_script_runtime :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> s
 	return ""
 }
 
-load_script_from_path :: proc(root, path: string, world: ^shared.World) -> Script_Load {
+load_script_from_path :: proc(root, path: string, world: ^shared.World, resource_registry: ^resources.Registry) -> Script_Load {
 	result: Script_Load
 	registry: component.Registry
 	component.init_registry(&registry)
-	if extension_load := native.load_project_extensions(&result.native_extensions, root, &registry); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(&result.native_extensions, root, &registry, resource_registry); extension_load.err != "" {
 		result.err = extension_load.err
 		return result
 	}
@@ -254,7 +258,7 @@ load_script_from_path :: proc(root, path: string, world: ^shared.World) -> Scrip
 		script.DEFAULT_SCRIPT_CHUNK,
 		world,
 		&registry,
-		script.Source_Options{log_enabled = true},
+		script.Source_Options{log_enabled = true, resource_registry = resource_registry},
 	)
 	if run_result.err != "" {
 		result.err = run_result.err
@@ -286,7 +290,7 @@ restore_last_good_script_runtime :: proc(state: ^Hot_Reload_State, world: ^share
 		return ""
 	}
 
-	script_load := load_script_from_source(state.root, state.last_good_script_source, world)
+	script_load := load_script_from_source(state.root, state.last_good_script_source, world, &state.resources)
 	if script_load.err != "" {
 		destroy_script_load(&script_load)
 		return script_load.err
@@ -300,11 +304,11 @@ restore_last_good_script_runtime :: proc(state: ^Hot_Reload_State, world: ^share
 	return ""
 }
 
-load_script_from_source :: proc(root, source: string, world: ^shared.World) -> Script_Load {
+load_script_from_source :: proc(root, source: string, world: ^shared.World, resource_registry: ^resources.Registry) -> Script_Load {
 	result: Script_Load
 	registry: component.Registry
 	component.init_registry(&registry)
-	if extension_load := native.load_project_extensions(&result.native_extensions, root, &registry); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(&result.native_extensions, root, &registry, resource_registry); extension_load.err != "" {
 		result.err = extension_load.err
 		return result
 	}
@@ -315,7 +319,7 @@ load_script_from_source :: proc(root, source: string, world: ^shared.World) -> S
 		script.DEFAULT_SCRIPT_CHUNK,
 		world,
 		&registry,
-		script.Source_Options{log_enabled = true},
+		script.Source_Options{log_enabled = true, resource_registry = resource_registry},
 	)
 	if run_result.err != "" {
 		result.err = run_result.err

@@ -51,6 +51,9 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(registry, "scrapbot.camera", {})
 	register_engine_component(registry, "scrapbot.mesh", {})
+	register_engine_component(registry, "scrapbot.geometry", {})
+	register_engine_component(registry, "scrapbot.material", {})
+	register_engine_component(registry, "scrapbot.internal.render_instance", {})
 }
 
 register_engine_component :: proc(registry: ^Registry, name: string, fields: []Field_Definition) -> string {

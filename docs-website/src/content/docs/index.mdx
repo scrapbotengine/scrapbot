@@ -34,7 +34,7 @@ Scrapbot is a research engine. It is not trying to be stable yet. It is trying t
 		Projects can declare Odin native extension targets. Scrapbot builds source-stamped dynamic libraries, loads schemas and scheduled systems before Luau runs, and exposes deferred lifecycle commands during system execution.
 	</Card>
 	<Card title="WebGPU rendering" icon="laptop">
-		The `wgpu` backend renders ECS cube renderables through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
+		The `wgpu` backend renders indexed geometry with shared materials and automatic batching through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
 	</Card>
 	<Card title="Hot reload" icon="refresh">
 		Runtime hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native source.

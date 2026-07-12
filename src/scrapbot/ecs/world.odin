@@ -1,6 +1,7 @@
 package ecs
 
 import "core:strings"
+import resources "../resources"
 import shared "../shared"
 
 Scene :: shared.Scene
@@ -19,6 +20,11 @@ Vec3 :: shared.Vec3
 Named_Vec3 :: shared.Named_Vec3
 Transform_Component :: shared.Transform_Component
 Mesh_Component :: shared.Mesh_Component
+Geometry_Component :: shared.Geometry_Component
+Material_Component :: shared.Material_Component
+Render_Instance_Component :: shared.Render_Instance_Component
+Geometry_Handle :: shared.Geometry_Handle
+Material_Handle :: shared.Material_Handle
 
 INVALID_COMPONENT_INDEX :: -1
 MAX_QUERY_TERMS :: 8
@@ -40,6 +46,8 @@ Query :: struct {
 destroy_world :: proc(world: ^World) {
 	for entity in world.entities {
 		delete(entity.name)
+		delete(entity.geometry_resource)
+		delete(entity.material_resource)
 	}
 	for mesh in world.meshes {
 		delete(mesh.primitive)
@@ -60,6 +68,9 @@ destroy_world :: proc(world: ^World) {
 	delete(world.cameras)
 	delete(world.meshes)
 	delete(world.renderables)
+	delete(world.geometries)
+	delete(world.materials)
+	delete(world.render_instances)
 	delete(world.custom_components)
 	world^ = {}
 }
@@ -75,6 +86,11 @@ build_world :: proc(scene: ^Scene) -> World {
 			transform_index = INVALID_COMPONENT_INDEX,
 			camera_index    = INVALID_COMPONENT_INDEX,
 			mesh_index      = INVALID_COMPONENT_INDEX,
+			geometry_index  = INVALID_COMPONENT_INDEX,
+			material_index  = INVALID_COMPONENT_INDEX,
+			render_instance_index = INVALID_COMPONENT_INDEX,
+			geometry_resource = clone_world_string(entity.geometry_resource),
+			material_resource = clone_world_string(entity.material_resource),
 		}
 
 		if entity.has_transform {
@@ -109,6 +125,108 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 	}
 	return world
+}
+
+add_geometry :: proc(world: ^World, entity_index: int, handle: shared.Geometry_Handle) {
+	if !entity_is_alive(world, entity_index) {return}
+	entity := &world.entities[entity_index]
+	delete(entity.geometry_resource); entity.geometry_resource = ""
+	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
+		world.geometries[entity.geometry_index].handle = handle
+		return
+	}
+	entity.geometry_index = len(world.geometries)
+	append(&world.geometries, Geometry_Component{handle = handle})
+}
+
+add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_Handle) {
+	if !entity_is_alive(world, entity_index) {return}
+	entity := &world.entities[entity_index]
+	delete(entity.material_resource); entity.material_resource = ""
+	if entity.material_index >= 0 && entity.material_index < len(world.materials) {
+		world.materials[entity.material_index].handle = handle
+		return
+	}
+	entity.material_index = len(world.materials)
+	append(&world.materials, Material_Component{handle = handle})
+}
+
+remove_geometry :: proc(world: ^World, entity_index: int) {
+	if entity_is_alive(world, entity_index) {world.entities[entity_index].geometry_index = INVALID_COMPONENT_INDEX}
+}
+
+remove_material :: proc(world: ^World, entity_index: int) {
+	if entity_is_alive(world, entity_index) {world.entities[entity_index].material_index = INVALID_COMPONENT_INDEX}
+}
+
+reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry) {
+	if world == nil || registry == nil {return}
+	for &entity in world.entities {
+		if entity.geometry_index < 0 && entity.mesh_index >= 0 {
+			if handle, found := resources.geometry_by_name(registry, "cube"); found {add_geometry(world, int(entity.id.index), handle)}
+		}
+		if entity.material_index < 0 && entity.mesh_index >= 0 {
+			if handle, found := resources.material_by_name(registry, "default"); found {add_material(world, int(entity.id.index), handle)}
+		}
+		if entity.geometry_index < 0 && entity.geometry_resource != "" {
+			if handle, found := resources.geometry_by_name(registry, entity.geometry_resource); found {add_geometry(world, int(entity.id.index), handle)}
+		}
+		if entity.material_index < 0 && entity.material_resource != "" {
+			if handle, found := resources.material_by_name(registry, entity.material_resource); found {add_material(world, int(entity.id.index), handle)}
+		}
+		eligible := entity.alive &&
+			entity.transform_index >= 0 && entity.transform_index < len(world.transforms) &&
+			entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) &&
+			entity.material_index >= 0 && entity.material_index < len(world.materials)
+		if eligible {
+			geometry := world.geometries[entity.geometry_index]
+			material := world.materials[entity.material_index]
+			_, geometry_ok := resources.get_geometry(registry, geometry.handle)
+			_, material_ok := resources.get_material(registry, material.handle)
+			eligible = geometry_ok && material_ok
+			if eligible {
+				instance := Render_Instance_Component{geometry = geometry.handle, material = material.handle}
+				if entity.render_instance_index >= 0 && entity.render_instance_index < len(world.render_instances) {
+					world.render_instances[entity.render_instance_index] = instance
+				} else {
+					entity.render_instance_index = len(world.render_instances)
+					append(&world.render_instances, instance)
+				}
+			}
+		}
+		if !eligible {entity.render_instance_index = INVALID_COMPONENT_INDEX}
+	}
+}
+
+build_resource_render_list :: proc(world: ^World, registry: ^resources.Registry) -> Render_List {
+	list: Render_List
+	list.camera, list.has_camera = first_camera_instance(world)
+	reconcile_render_instances(world, registry)
+	for entity in world.entities {
+		if !entity.alive || entity.render_instance_index < 0 || entity.render_instance_index >= len(world.render_instances) {continue}
+		if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {continue}
+		internal := world.render_instances[entity.render_instance_index]
+		append(&list.instances, Render_Instance {
+			entity = entity,
+			transform = world.transforms[entity.transform_index],
+			geometry = Geometry_Component{handle = internal.geometry},
+			material = Material_Component{handle = internal.material},
+		})
+	}
+	return list
+}
+
+render_batch_count :: proc(list: ^Render_List) -> int {
+	if list == nil {return 0}
+	count := 0
+	for instance, index in list.instances {
+		first := true
+		for previous in list.instances[:index] {
+			if previous.geometry.handle == instance.geometry.handle && previous.material.handle == instance.material.handle {first=false; break}
+		}
+		if first {count += 1}
+	}
+	return count
 }
 
 clone_world_string :: proc(value: string) -> string {
@@ -154,6 +272,8 @@ alive_entity_count :: proc "c" (world: ^World) -> int {
 
 alive_renderable_count :: proc "c" (world: ^World) -> int {
 	count := 0
+	for entity in world.entities {if entity.alive && entity.render_instance_index >= 0 && entity.render_instance_index < len(world.render_instances) {count += 1}}
+	if count > 0 || len(world.geometries) > 0 || len(world.materials) > 0 {return count}
 	for renderable in world.renderables {
 		if _, ok := render_instance_from_renderable(world, renderable); ok {
 			count += 1
@@ -175,6 +295,7 @@ alive_camera_count :: proc(world: ^World) -> int {
 alive_mesh_count :: proc(world: ^World) -> int {
 	count := 0
 	for entity in world.entities {
+		if entity.alive && entity.geometry_index >= 0 {count += 1; continue}
 		if entity.alive && entity.mesh_index >= 0 {
 			count += 1
 		}
@@ -557,6 +678,12 @@ entity_has_component :: proc "c" (
 		return entity.camera_index >= 0 && entity.camera_index < len(world.cameras)
 	case "scrapbot.mesh":
 		return entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes)
+	case "scrapbot.geometry":
+		return entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries)
+	case "scrapbot.material":
+		return entity.material_index >= 0 && entity.material_index < len(world.materials)
+	case "scrapbot.internal.render_instance":
+		return entity.render_instance_index >= 0 && entity.render_instance_index < len(world.render_instances)
 	}
 
 	_, ok := custom_component_for_entity(world, entity_index, component_id, name)

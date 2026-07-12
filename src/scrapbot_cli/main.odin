@@ -147,12 +147,13 @@ run_project :: proc(args: []string) -> int {
 		)
 	}
 	fmt.printf(
-		"%s frame: %d entities, %d cameras, %d meshes, %d renderables\n",
+		"%s frame: %d entities, %d cameras, %d geometries, %d renderables, %d draw batches\n",
 		scrapbot.renderer_backend_name(backend),
 		result.frame.entity_count,
 		result.frame.camera_count,
 		result.frame.mesh_count,
 		result.frame.renderable_count,
+		result.draw_batches,
 	)
 	return 0
 }

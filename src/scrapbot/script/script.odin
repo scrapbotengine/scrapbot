@@ -1,5 +1,6 @@
 package script
 
+import base_runtime "base:runtime"
 import "core:fmt"
 import c "core:c"
 import libc "core:c/libc"
@@ -9,6 +10,7 @@ import "core:strings"
 import component "../component"
 import ecs "../ecs"
 import schedule "../schedule"
+import resources "../resources"
 import shared "../shared"
 
 DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
@@ -34,12 +36,14 @@ Run_Result :: struct {
 Source_Options :: struct {
 	log_enabled: bool,
 	registry: ^component.Registry,
+	resource_registry: ^resources.Registry,
 }
 
 Runtime :: struct {
 	L: Lua_State,
 	world: ^World,
 	registry: component.Registry,
+	resource_registry: ^resources.Registry,
 	log_enabled: bool,
 	commands: ecs.Command_Buffer,
 	systems: [MAX_SCRIPT_SYSTEMS]Script_System,
@@ -174,6 +178,7 @@ run_source_with_options :: proc(runtime: ^Runtime, source, chunk_name: string, w
 	ecs.init_command_buffer(&runtime.commands)
 	runtime.world = world
 	runtime.log_enabled = options.log_enabled
+	runtime.resource_registry = options.resource_registry
 	if options.registry != nil {
 		runtime.registry = options.registry^
 	} else {
@@ -577,6 +582,20 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	push_registered_component_handle_by_name(L, "scrapbot.mesh")
 	lua_setfield(L, -2, "mesh")
 
+	push_registered_component_handle_by_name(L, "scrapbot.geometry")
+	lua_setfield(L, -2, "geometry_component")
+	push_registered_component_handle_by_name(L, "scrapbot.material")
+	lua_setfield(L, -2, "material_component")
+
+	lua_createtable(L, 0, 3)
+	lua_pushcclosurek(L, scrapbot_geometry_create, "scrapbot.geometry.create", 0, nil); lua_setfield(L, -2, "create")
+	lua_pushcclosurek(L, scrapbot_geometry_cube, "scrapbot.geometry.cube", 0, nil); lua_setfield(L, -2, "cube")
+	lua_pushcclosurek(L, scrapbot_geometry_plane, "scrapbot.geometry.plane", 0, nil); lua_setfield(L, -2, "plane")
+	lua_setfield(L, -2, "geometry")
+	lua_createtable(L, 0, 1)
+	lua_pushcclosurek(L, scrapbot_material_unlit, "scrapbot.material.unlit", 0, nil); lua_setfield(L, -2, "unlit")
+	lua_setfield(L, -2, "material")
+
 	lua_pushcclosurek(L, scrapbot_system, "scrapbot.system", 0, nil)
 	lua_setfield(L, -2, "system")
 
@@ -605,6 +624,90 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_setfield(L, -2, "remove_component")
 
 	lua_setfield(L, LUA_GLOBALSINDEX, "scrapbot")
+}
+
+scrapbot_geometry_cube :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L, 1)
+	if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L, "geometry.cube expects a resource name")}
+	size := f32(1); if lua_gettop(L) >= 2 {is_number: c.int; size = f32(lua_tonumberx(L, 2, &is_number)); if is_number == 0 {return luau_push_error(L, "cube size must be a number")}}
+	desc, err := resources.cube(size); if err != "" {return luau_push_error(L, err)}
+	defer delete(desc.vertices); defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(runtime.resource_registry, name, desc)
+	if register_err != "" {return luau_push_error(L, register_err)}
+	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
+	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
+}
+
+scrapbot_geometry_create :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L); name, name_ok := luau_required_string(L, 1)
+	if runtime == nil || runtime.resource_registry == nil || !name_ok || lua_type(L, 2) != LUA_TTABLE {return luau_push_error(L, "geometry.create expects a name and descriptor")}
+	vertices: [dynamic]resources.Vertex; indices: [dynamic]u32
+	defer delete(vertices); defer delete(indices)
+	lua_getfield(L, 2, "vertices")
+	if lua_type(L, -1) != LUA_TTABLE {lua_settop(L,-2); return luau_push_error(L,"geometry vertices must be an array")}
+	for i := 1; i <= 65536; i += 1 {
+		lua_rawgeti(L, -1, c.int(i)); if lua_type(L,-1) == LUA_TNIL {lua_settop(L,-2); break}
+		if lua_type(L,-1) != LUA_TTABLE {return luau_push_error(L,"geometry vertices must be tables")}
+		lua_getfield(L,-1,"position"); position, position_ok := vec3_argument(L,-1); lua_settop(L,-2)
+		lua_getfield(L,-1,"normal"); normal, normal_ok := vec3_argument(L,-1); lua_settop(L,-2)
+		lua_getfield(L,-1,"uv"); ux, ux_ok := number_field(L,-1,"x"); uy, uy_ok := number_field(L,-1,"y"); lua_settop(L,-2)
+		if !position_ok || !normal_ok || !ux_ok || !uy_ok {return luau_push_error(L,"geometry vertex requires position, normal, and uv")}
+		append(&vertices, resources.Vertex{position=position,normal=normal,uv={ux,uy}}); lua_settop(L,-2)
+	}
+	lua_settop(L,-2)
+	lua_getfield(L,2,"indices"); if lua_type(L,-1) != LUA_TTABLE {lua_settop(L,-2); return luau_push_error(L,"geometry indices must be an array")}
+	for i := 1; i <= 196608; i += 1 {
+		lua_rawgeti(L,-1,c.int(i)); if lua_type(L,-1) == LUA_TNIL {lua_settop(L,-2); break}
+		is_number:c.int; value := lua_tointegerx(L,-1,&is_number); lua_settop(L,-2)
+		if is_number == 0 || value < 0 {return luau_push_error(L,"geometry indices must be non-negative integers")}; append(&indices,u32(value))
+	}
+	lua_settop(L,-2)
+	handle, err := resources.register_geometry(runtime.resource_registry,name,{vertices=vertices[:],indices=indices[:]}); if err != "" {return luau_push_error(L,err)}
+	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
+	push_resource_handle(L,"geometry",handle.index,handle.generation); return 1
+}
+
+scrapbot_geometry_plane :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L, 1)
+	if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L, "geometry.plane expects a resource name")}
+	width, depth := f32(1), f32(1)
+	if lua_gettop(L) >= 2 {is_number: c.int; width = f32(lua_tonumberx(L, 2, &is_number)); if is_number == 0 {return luau_push_error(L, "plane width must be a number")}}
+	if lua_gettop(L) >= 3 {is_number: c.int; depth = f32(lua_tonumberx(L, 3, &is_number)); if is_number == 0 {return luau_push_error(L, "plane depth must be a number")}}
+	desc, err := resources.plane(width, depth); if err != "" {return luau_push_error(L, err)}
+	defer delete(desc.vertices); defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(runtime.resource_registry, name, desc)
+	if register_err != "" {return luau_push_error(L, register_err)}
+	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
+	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
+}
+
+scrapbot_material_unlit :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, ok := luau_required_string(L, 1)
+	if runtime == nil || runtime.resource_registry == nil || !ok {return luau_push_error(L, "material.unlit expects a resource name")}
+	values := [4]f32{1,1,1,1}
+	for i in 0..<4 {if lua_gettop(L) >= c.int(i+2) {is_number: c.int; values[i] = f32(lua_tonumberx(L, c.int(i+2), &is_number)); if is_number == 0 {return luau_push_error(L, "material color values must be numbers")}}}
+	handle, err := resources.register_material(runtime.resource_registry, name, {base_color={values[0],values[1],values[2],values[3]}})
+	if err != "" {return luau_push_error(L, err)}
+	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
+	push_resource_handle(L, "material", handle.index, handle.generation); return 1
+}
+
+luau_required_string :: proc "c" (L: Lua_State, index: c.int) -> (string, bool) {
+	length: c.size_t; data := lua_tolstring(L, index, &length); if data == nil {return "", false}; return luau_string(data, length), true
+}
+
+push_resource_handle :: proc "c" (L: Lua_State, kind: cstring, index, generation: u32) {
+	lua_createtable(L, 0, 3)
+	lua_pushlstring(L, kind, c.size_t(len(string(kind)))); lua_setfield(L, -2, "kind")
+	lua_pushinteger(L, c.ptrdiff_t(index)); lua_setfield(L, -2, "index")
+	lua_pushinteger(L, c.ptrdiff_t(generation)); lua_setfield(L, -2, "generation")
 }
 
 scrapbot_log :: proc "c" (L: Lua_State) -> c.int {
@@ -1313,6 +1416,7 @@ scrapbot_despawn :: proc "c" (L: Lua_State) -> c.int {
 }
 
 scrapbot_add_component :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
 	runtime := cast(^Runtime)lua_getthreaddata(L)
 	if runtime == nil {
 		return 0
@@ -1339,6 +1443,19 @@ scrapbot_add_component :: proc "c" (L: Lua_State) -> c.int {
 		}
 		if err = ecs.queue_add_transform(&runtime.commands, entity.index, entity.generation, transform); err != "" {
 			return luau_push_error(L, err)
+		}
+		return 0
+	}
+	if component_ref.name == "scrapbot.geometry" || component_ref.name == "scrapbot.material" {
+		if err := require_system_access(runtime,component_ref.name,.Write); err != "" {return luau_push_error(L,err)}
+		expected := "geometry"; if component_ref.name == "scrapbot.material" {expected = "material"}
+		index,generation,ok := resource_handle_fields(L,3,expected); if !ok {return luau_push_error(L,"render component expects a matching resource handle")}
+		if component_ref.name == "scrapbot.geometry" {
+			if _,valid:=resources.get_geometry(runtime.resource_registry,{index,generation}); !valid {return luau_push_error(L,"geometry resource handle is stale")}
+			if err:=ecs.queue_add_geometry(&runtime.commands,entity.index,entity.generation,{index,generation}); err!="" {return luau_push_error(L,err)}
+		} else {
+			if _,valid:=resources.get_material(runtime.resource_registry,{index,generation}); !valid {return luau_push_error(L,"material resource handle is stale")}
+			if err:=ecs.queue_add_material(&runtime.commands,entity.index,entity.generation,{index,generation}); err!="" {return luau_push_error(L,err)}
 		}
 		return 0
 	}
@@ -1369,8 +1486,8 @@ scrapbot_remove_component :: proc "c" (L: Lua_State) -> c.int {
 	if component_err != "" {
 		return luau_push_error(L, component_err)
 	}
-	if component_ref.name != "scrapbot.transform" && !component_ref_is_custom_schema_component(&runtime.registry, component_ref) {
-		return luau_push_error(L, "runtime component removal only supports scrapbot.transform and schema-backed custom components")
+	if component_ref.name != "scrapbot.transform" && component_ref.name != "scrapbot.geometry" && component_ref.name != "scrapbot.material" && !component_ref_is_custom_schema_component(&runtime.registry, component_ref) {
+		return luau_push_error(L, "runtime component removal does not support this engine component")
 	}
 	if err := require_system_access(runtime, component_ref.name, .Write); err != "" {
 		return luau_push_error(L, err)
@@ -1387,6 +1504,7 @@ read_spawn_components :: proc "c" (
 	options_index: c.int,
 	spawn: ^ecs.Spawn_Command,
 ) -> string {
+	context = base_runtime.default_context()
 	lua_getfield(L, options_index, "components")
 	defer lua_settop(L, -2)
 	if lua_type(L, -1) == LUA_TNIL {
@@ -1419,6 +1537,18 @@ read_spawn_components :: proc "c" (
 			if err = ecs.spawn_set_transform(spawn, transform); err != "" {
 				return err
 			}
+		} else if component_name == "scrapbot.geometry" {
+			if err := require_system_access(runtime, component_name, .Write); err != "" {return err}
+			index, generation, ok := resource_handle_fields(L, -1, "geometry")
+			if !ok {return "scrapbot.geometry expects a geometry resource handle"}
+			if _, valid := resources.get_geometry(runtime.resource_registry, {index,generation}); !valid {return "scrapbot.geometry references a stale resource"}
+			ecs.spawn_set_geometry(spawn, {index,generation})
+		} else if component_name == "scrapbot.material" {
+			if err := require_system_access(runtime, component_name, .Write); err != "" {return err}
+			index, generation, ok := resource_handle_fields(L, -1, "material")
+			if !ok {return "scrapbot.material expects a material resource handle"}
+			if _, valid := resources.get_material(runtime.resource_registry, {index,generation}); !valid {return "scrapbot.material references a stale resource"}
+			ecs.spawn_set_material(spawn, {index,generation})
 		} else {
 			command_component: ecs.Command_Component
 			definition, registered := component.find_definition(&runtime.registry, component_name)
@@ -1440,6 +1570,14 @@ read_spawn_components :: proc "c" (
 		lua_settop(L, -2)
 	}
 	return ""
+}
+
+resource_handle_fields :: proc "c" (L: Lua_State, index: c.int, expected_kind: string) -> (u32, u32, bool) {
+	lua_getfield(L, index, "kind"); kind, kind_ok := luau_required_string(L, -1); lua_settop(L, -2)
+	if !kind_ok || kind != expected_kind {return 0,0,false}
+	is_number: c.int; lua_getfield(L, index, "index"); handle_index := lua_tointegerx(L, -1, &is_number); lua_settop(L, -2); if is_number == 0 || handle_index < 0 {return 0,0,false}
+	lua_getfield(L, index, "generation"); generation := lua_tointegerx(L, -1, &is_number); lua_settop(L, -2); if is_number == 0 || generation <= 0 {return 0,0,false}
+	return u32(handle_index), u32(generation), true
 }
 
 read_transform_payload :: proc "c" (L: Lua_State, payload_index: c.int) -> (transform: Transform_Component, err: string) {

@@ -18,13 +18,13 @@ Native extensions let project code add compiled engine/library behavior incremen
 - `build/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a versioned C-compatible `extension_api.API`.
-- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helper procedures for descriptor-driven registration, access declarations, queries, transform access, mesh payloads, vec3 field access, and deferred lifecycle commands.
+- Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helpers for components, systems, full geometry, generated cube/plane geometry, shared materials, queries, and deferred lifecycle commands.
 - Odin extension authors can define `Component` and field descriptors once, then use those descriptors for schema registration, scheduler access, queries, and field reads/writes.
 - `scrapbot.registry(ctx)` returns a small registration accumulator that records the first registration error so extension setup code can remain linear and return `scrapbot.err(&reg)` at the end.
 - The API supports registering library component schemas with dotted, non-`scrapbot` names.
 - The API supports registering native systems with declared component reads and writes.
 - Native systems can query by component names, read/write `scrapbot.transform`, and read/write vec3 fields on schema-backed custom components through the callback context.
-- Native systems can queue deferred spawn, despawn, add transform, add mesh, add schema-backed component payload, and remove component commands.
+- Native systems can spawn entities referencing shared geometry and material resources alongside transform and schema-backed components.
 - Native lifecycle commands use the same command buffer as Luau lifecycle commands and apply after scheduled systems finish for the frame.
 - `scrapbot run`, `scrapbot check`, and hot reload load native extensions before running project Luau.
 - Luau can retrieve a native-registered component handle with `scrapbot.component_handle(name)`.

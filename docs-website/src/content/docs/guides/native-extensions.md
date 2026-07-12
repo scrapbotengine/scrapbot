@@ -135,14 +135,16 @@ spawn_transform := scrapbot.Transform {
 	scale = {1, 1, 1},
 }
 payloads := [?]scrapbot.Component_Payload {payload}
-spawn_mesh := scrapbot.mesh("cube")
-spawn := scrapbot.spawn_options("Native Spawned", &spawn_transform, &spawn_mesh, payloads[:])
+cube := scrapbot.cube_geometry(2)
+geometry := scrapbot.register_generated_geometry(&reg, "cube", &cube)
+material := scrapbot.material(&reg, "orange", {0.95, 0.38, 0.18, 1})
+spawn := scrapbot.spawn_options("Native Spawned", &spawn_transform, &geometry, &material, payloads[:])
 if err := scrapbot.spawn(ctx, &spawn); err != nil {
 	return err
 }
 ```
 
-Lifecycle writes must be declared in the system access list. For example, adding or removing `Lifetime_Component` requires `scrapbot.write(Lifetime_Component)`, and spawning a cube renderable requires `scrapbot.write(scrapbot.Transform_Component)` plus `scrapbot.write(scrapbot.Mesh_Component)`.
+Lifecycle writes must be declared in the system access list. A renderable spawn declares writes for transform, `scrapbot.geometry`, and `scrapbot.material` alongside its gameplay components.
 
 ## Build it
 

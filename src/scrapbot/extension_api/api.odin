@@ -2,7 +2,7 @@ package extension_api
 
 import c "core:c"
 
-ABI_VERSION :: u32(4)
+ABI_VERSION :: u32(5)
 MAX_COMPONENT_FIELDS :: 16
 MAX_SYSTEM_ACCESSES :: 16
 MAX_QUERY_TERMS :: 8
@@ -40,6 +40,12 @@ Entity :: struct {
 Vec3 :: struct {
 	x, y, z: f32,
 }
+Vec2 :: struct {x, y: f32}
+Vec4 :: struct {x, y, z, w: f32}
+Resource_Handle :: struct {index, generation: u32}
+Geometry_Vertex :: struct {position, normal: Vec3, uv: Vec2}
+Geometry_Desc :: struct {vertices: [^]Geometry_Vertex, vertex_count: c.int, indices: [^]u32, index_count: c.int}
+Material_Desc :: struct {base_color: Vec4}
 
 Transform :: struct {
 	position: Vec3,
@@ -66,6 +72,8 @@ Spawn_Options :: struct {
 	name: cstring,
 	transform: ^Transform,
 	mesh: ^Mesh_Payload,
+	geometry: ^Resource_Handle,
+	material: ^Resource_Handle,
 	components: [^]Component_Payload,
 	component_count: c.int,
 }
@@ -113,6 +121,8 @@ Register_System_Proc :: #type proc "c" (
 	api: ^API,
 	definition: ^System_Definition,
 ) -> cstring
+Register_Geometry_Proc :: #type proc "c" (api: ^API, name: cstring, desc: ^Geometry_Desc, out_handle: ^Resource_Handle) -> cstring
+Register_Material_Proc :: #type proc "c" (api: ^API, name: cstring, desc: ^Material_Desc, out_handle: ^Resource_Handle) -> cstring
 
 Query_Count_Proc :: #type proc "c" (
 	ctx: ^System_Context,
@@ -194,6 +204,8 @@ API :: struct {
 	userdata: rawptr,
 	register_library_component: Register_Library_Component_Proc,
 	register_system: Register_System_Proc,
+	register_geometry: Register_Geometry_Proc,
+	register_material: Register_Material_Proc,
 }
 
 Register_Proc :: #type proc "c" (api: ^API) -> cstring

@@ -6,7 +6,7 @@ description: Run the null and WebGPU backends, smoke-test projects, and verify g
 Scrapbot has two rendering paths today:
 
 - `null`: headless renderer for fast smoke tests.
-- `wgpu`: SDL3 plus `wgpu-native` for the ECS cube renderer.
+- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared materials, and instanced draw batching.
 
 ## Null renderer
 
@@ -16,7 +16,7 @@ The null backend is the default and does not open a window:
 mise scrapbot -- run examples/minimal --backend null
 ```
 
-It reports frame counts for entities, cameras, meshes, and renderables.
+It reports frame counts for entities, cameras, geometry references, renderables, and draw batches.
 
 ## Windowed WebGPU
 
@@ -47,7 +47,7 @@ Expected basics:
 
 - PNG image data, 1280 x 720, RGBA.
 - Signature starts with `8950 4e47 0d0a 1a0a`.
-- Visual output shows the example cube renderables on the dark clear color.
+- Visual output shows the fountain cubes and generated ground plane with distinct shared materials.
 
 ## Full local verification
 

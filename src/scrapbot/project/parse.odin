@@ -122,7 +122,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			continue
 		}
 
-		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" {
+		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" {
 			if current == nil {
 				return scene, fail(.Invalid_Syntax, fmt.tprintf("%s appears before [[entities]]", line))
 			}
@@ -202,6 +202,16 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if !found || current.mesh.primitive == "" {
 				return scene, fail(.Invalid_Field, "mesh.primitive must be a non-empty basic string")
 			}
+		case "geometry":
+			current.has_geometry = true
+			if key != "resource" {return scene, fail(.Invalid_Field, "geometry only supports resource")}
+			current.geometry_resource, found = parse_basic_string(value)
+			if !found || current.geometry_resource == "" {return scene, fail(.Invalid_Field, "geometry.resource must be a non-empty basic string")}
+		case "material":
+			current.has_material = true
+			if key != "resource" {return scene, fail(.Invalid_Field, "material only supports resource")}
+			current.material_resource, found = parse_basic_string(value)
+			if !found || current.material_resource == "" {return scene, fail(.Invalid_Field, "material.resource must be a non-empty basic string")}
 		case "component":
 			if current_component == nil {
 				return scene, fail(.Invalid_Syntax, "component fields must appear under [entities.components.<name>]")

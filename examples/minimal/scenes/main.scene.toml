@@ -19,8 +19,11 @@ position = [-2.25, 0, 0]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
-[entities.mesh]
-primitive = "cube"
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "coral"
 
 [entities.components.scrappyphysics.spin]
 angular_velocity = [0, 1.5707963, 0]
@@ -40,8 +43,11 @@ position = [1.25, 0, 0]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
-[entities.mesh]
-primitive = "cube"
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "teal"
 
 [entities.components.scrappyphysics.spin]
 angular_velocity = [0, -1.5707963, 0]

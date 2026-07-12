@@ -38,6 +38,10 @@ Spawn_Command :: struct {
 	transform:              Transform_Component,
 	has_mesh:               bool,
 	mesh:                   Command_Mesh,
+	has_geometry:           bool,
+	geometry:               Geometry_Handle,
+	has_material:           bool,
+	material:               Material_Handle,
 	custom_components:      [MAX_COMMAND_COMPONENTS]Command_Component,
 	custom_component_count: int,
 }
@@ -49,6 +53,10 @@ Add_Component_Command :: struct {
 	transform:     Transform_Component,
 	has_mesh:      bool,
 	mesh:          Command_Mesh,
+	has_geometry:  bool,
+	geometry:      Geometry_Handle,
+	has_material:  bool,
+	material:      Material_Handle,
 	component:     Command_Component,
 }
 
@@ -121,6 +129,14 @@ spawn_set_mesh :: proc "c" (spawn: ^Spawn_Command, primitive: string) -> string 
 		return err
 	}
 	return ""
+}
+
+spawn_set_geometry :: proc "c" (spawn: ^Spawn_Command, handle: Geometry_Handle) -> string {
+	if spawn == nil {return "spawn command is not available"}; spawn.has_geometry = true; spawn.geometry = handle; return ""
+}
+
+spawn_set_material :: proc "c" (spawn: ^Spawn_Command, handle: Material_Handle) -> string {
+	if spawn == nil {return "spawn command is not available"}; spawn.has_material = true; spawn.material = handle; return ""
 }
 
 spawn_add_custom_component :: proc "c" (spawn: ^Spawn_Command, command_component: Command_Component) -> string {
@@ -232,6 +248,16 @@ queue_add_transform :: proc "c" (
 	}
 	buffer.command_count += 1
 	return ""
+}
+
+queue_add_geometry :: proc "c" (buffer: ^Command_Buffer, entity_index: int, generation: u32, handle: Geometry_Handle) -> string {
+	if buffer == nil || buffer.commands == nil {return "command buffer is not initialized"}; if buffer.command_count >= len(buffer.commands) {return "too many deferred world commands"}
+	buffer.commands[buffer.command_count] = {kind=.Add_Component,add_component={entity_index=entity_index,generation=generation,has_geometry=true,geometry=handle}}; buffer.command_count += 1; return ""
+}
+
+queue_add_material :: proc "c" (buffer: ^Command_Buffer, entity_index: int, generation: u32, handle: Material_Handle) -> string {
+	if buffer == nil || buffer.commands == nil {return "command buffer is not initialized"}; if buffer.command_count >= len(buffer.commands) {return "too many deferred world commands"}
+	buffer.commands[buffer.command_count] = {kind=.Add_Component,add_component={entity_index=entity_index,generation=generation,has_material=true,material=handle}}; buffer.command_count += 1; return ""
 }
 
 queue_add_mesh :: proc "c" (
@@ -416,6 +442,8 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 			},
 		)
 	}
+	if spawn.has_geometry {add_geometry(world, entity_index, spawn.geometry)}
+	if spawn.has_material {add_material(world, entity_index, spawn.material)}
 
 	for i in 0..<spawn.custom_component_count {
 		add_custom_component(world, entity_index, &spawn.custom_components[i])
@@ -436,6 +464,9 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.transform_index = INVALID_COMPONENT_INDEX
 	entity.camera_index = INVALID_COMPONENT_INDEX
 	entity.mesh_index = INVALID_COMPONENT_INDEX
+	entity.geometry_index = INVALID_COMPONENT_INDEX
+	entity.material_index = INVALID_COMPONENT_INDEX
+	entity.render_instance_index = INVALID_COMPONENT_INDEX
 }
 
 apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {
@@ -450,6 +481,8 @@ apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {
 		add_mesh(world, command.entity_index, command_mesh_primitive(&command.mesh))
 		return
 	}
+	if command.has_geometry {add_geometry(world,command.entity_index,command.geometry); return}
+	if command.has_material {add_material(world,command.entity_index,command.material); return}
 	add_custom_component(world, command.entity_index, &command.component)
 }
 
@@ -466,6 +499,8 @@ apply_remove_component :: proc(world: ^World, command: ^Remove_Component_Command
 		remove_mesh(world, command.entity_index)
 		return
 	}
+	if name == "scrapbot.geometry" {remove_geometry(world,command.entity_index); return}
+	if name == "scrapbot.material" {remove_material(world,command.entity_index); return}
 	remove_custom_component(world, command.entity_index, command.component_id, name)
 }
 

@@ -62,11 +62,14 @@ far = 100
 Mesh:
 
 ```toml
-[entities.mesh]
-primitive = "cube"
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "coral"
 ```
 
-Only the `cube` primitive is rendered today.
+Geometry and material names resolve against resources created by project Luau or native Odin code. Entities become renderable once transform, geometry, and material references are valid.
 
 ## Custom component sections
 

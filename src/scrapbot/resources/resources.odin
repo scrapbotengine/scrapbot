@@ -1,6 +1,7 @@
 package resources
 
 import "core:math"
+import "core:mem"
 import "core:strings"
 import shared "../shared"
 
@@ -9,8 +10,8 @@ Vec3 :: shared.Vec3
 Vec2 :: struct {x, y: f32}
 Vec4 :: struct {x, y, z, w: f32}
 
-Geometry_Handle :: struct {index, generation: u32}
-Material_Handle :: struct {index, generation: u32}
+Geometry_Handle :: shared.Geometry_Handle
+Material_Handle :: shared.Material_Handle
 
 Vertex :: struct {
 	position: Vec3,
@@ -50,16 +51,25 @@ Material :: struct {
 Registry :: struct {
 	geometries: [dynamic]Geometry,
 	materials:  [dynamic]Material,
+	allocator: mem.Allocator,
 }
+
+ensure_allocator :: proc(registry: ^Registry) {
+	if registry.allocator.procedure == nil {registry.allocator = context.allocator}
+	if registry.geometries == nil {registry.geometries = make([dynamic]Geometry, registry.allocator)}
+	if registry.materials == nil {registry.materials = make([dynamic]Material, registry.allocator)}
+}
+init_registry :: proc(registry: ^Registry, allocator := context.allocator) {registry^ = {}; registry.allocator = allocator; ensure_allocator(registry)}
 
 destroy_registry :: proc(registry: ^Registry) {
 	if registry == nil {return}
+	allocator := registry.allocator; if allocator.procedure == nil {allocator = context.allocator}
 	for &geometry in registry.geometries {
-		delete(geometry.name)
-		delete(geometry.vertices)
-		delete(geometry.indices)
+		delete(geometry.name, allocator)
+		delete(geometry.vertices, allocator)
+		delete(geometry.indices, allocator)
 	}
-	for &material in registry.materials {delete(material.name)}
+	for &material in registry.materials {delete(material.name, allocator)}
 	delete(registry.geometries)
 	delete(registry.materials)
 	registry^ = {}
@@ -67,23 +77,24 @@ destroy_registry :: proc(registry: ^Registry) {
 
 register_geometry :: proc(registry: ^Registry, name: string, desc: Geometry_Desc) -> (Geometry_Handle, string) {
 	if registry == nil {return {}, "geometry registry is not available"}
+	ensure_allocator(registry)
 	if err := validate_geometry(desc); err != "" {return {}, err}
 	if index, found := geometry_index_by_name(registry, name); found {
 		geometry := &registry.geometries[index]
-		delete(geometry.vertices)
-		delete(geometry.indices)
-		geometry.vertices = clone_slice(desc.vertices)
-		geometry.indices = clone_slice(desc.indices)
+		delete(geometry.vertices, registry.allocator)
+		delete(geometry.indices, registry.allocator)
+		geometry.vertices = clone_slice(desc.vertices, registry.allocator)
+		geometry.indices = clone_slice(desc.indices, registry.allocator)
 		geometry.bounds = calculate_bounds(desc.vertices)
 		geometry.version += 1
 		return {u32(index), geometry.generation}, ""
 	}
-	cloned_name, clone_err := strings.clone(name)
+	cloned_name, clone_err := strings.clone(name, registry.allocator)
 	if clone_err != nil {return {}, "failed to allocate geometry name"}
 	append(&registry.geometries, Geometry {
 		name = cloned_name,
-		vertices = clone_slice(desc.vertices),
-		indices = clone_slice(desc.indices),
+		vertices = clone_slice(desc.vertices, registry.allocator),
+		indices = clone_slice(desc.indices, registry.allocator),
 		bounds = calculate_bounds(desc.vertices),
 		generation = 1,
 		version = 1,
@@ -94,6 +105,7 @@ register_geometry :: proc(registry: ^Registry, name: string, desc: Geometry_Desc
 
 register_material :: proc(registry: ^Registry, name: string, desc: Material_Desc) -> (Material_Handle, string) {
 	if registry == nil {return {}, "material registry is not available"}
+	ensure_allocator(registry)
 	if name == "" {return {}, "material name must not be empty"}
 	if !finite4(desc.base_color) {return {}, "material base color must be finite"}
 	if index, found := material_index_by_name(registry, name); found {
@@ -102,7 +114,7 @@ register_material :: proc(registry: ^Registry, name: string, desc: Material_Desc
 		material.version += 1
 		return {u32(index), material.generation}, ""
 	}
-	cloned_name, clone_err := strings.clone(name)
+	cloned_name, clone_err := strings.clone(name, registry.allocator)
 	if clone_err != nil {return {}, "failed to allocate material name"}
 	append(&registry.materials, Material{name = cloned_name, desc = desc, generation = 1, version = 1, alive = true})
 	return {u32(len(registry.materials) - 1), 1}, ""
@@ -166,8 +178,8 @@ finite2 :: proc(v: Vec2) -> bool {return finite(v.x) && finite(v.y)}
 finite3 :: proc(v: Vec3) -> bool {return finite(v.x) && finite(v.y) && finite(v.z)}
 finite4 :: proc(v: Vec4) -> bool {return finite(v.x) && finite(v.y) && finite(v.z) && finite(v.w)}
 
-clone_slice :: proc(values: []$T) -> []T {
-	result := make([]T, len(values)); copy(result, values); return result
+clone_slice :: proc(values: []$T, allocator := context.allocator) -> []T {
+	result := make([]T, len(values), allocator); copy(result, values); return result
 }
 
 cube :: proc(size: f32 = 1) -> (Geometry_Desc, string) {

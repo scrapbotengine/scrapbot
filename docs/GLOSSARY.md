@@ -12,7 +12,11 @@
 
 **Entity** - A generation-aware identifier for one object in a Scrapbot world. Luau receives entity handles with both index and generation so stale handles can be rejected.
 
-**Component** - A typed piece of data attached to an entity, such as a transform, camera, or mesh reference. Single-token names like `autorotate` identify project-level components; dotted names like `scrapbot.transform` or `scrappyphysics.rigidbody` identify engine or library components.
+**Component** - A typed piece of data attached to an entity, such as a transform, camera, geometry reference, or material reference. Single-token names identify project components; dotted names identify engine or library components.
+
+**Render resource** - Shared geometry or material data owned outside the ECS and referenced by generational handles from entity components. See [ADR-010](adr/ADR-010-keep-render-resources-outside-the-ecs.md).
+
+**Render reconciliation** - The engine step that adds, updates, or removes internal render-instance components based on an entity's transform and valid geometry/material references.
 
 **Component ID** - A runtime-local identifier assigned by the component registry. Luau component handles include both name and ID; project files remain name-based.
 

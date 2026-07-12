@@ -41,6 +41,12 @@ System_Context :: raw.System_Context
 System_Proc :: raw.System_Proc
 Transform :: raw.Transform
 Mesh_Payload :: raw.Mesh_Payload
+Geometry_Vertex :: raw.Geometry_Vertex
+Geometry_Desc :: raw.Geometry_Desc
+Material_Desc :: raw.Material_Desc
+Resource_Handle :: raw.Resource_Handle
+Vec2 :: raw.Vec2
+Vec4 :: raw.Vec4
 Vec3 :: raw.Vec3
 Component_Vec3_Field :: raw.Component_Vec3_Field
 Component_Payload :: raw.Component_Payload
@@ -49,6 +55,37 @@ Spawn_Options :: raw.Spawn_Options
 Transform_Component :: Component{name = TRANSFORM}
 Mesh_Component :: Component{name = MESH}
 MAX_QUERY_TERMS :: 16
+
+Generated_Geometry :: struct {
+	vertices: [24]Geometry_Vertex,
+	indices: [36]u32,
+	vertex_count: int,
+	index_count: int,
+}
+
+cube_geometry :: proc "contextless" (size: f32 = 1) -> Generated_Geometry {
+	result: Generated_Geometry; h := size/2
+	positions := [8]Vec3{{-h,-h,-h},{h,-h,-h},{h,h,-h},{-h,h,-h},{-h,-h,h},{h,-h,h},{h,h,h},{-h,h,h}}
+	faces := [6][4]u32{{4,5,6,7},{1,0,3,2},{0,4,7,3},{5,1,2,6},{3,7,6,2},{0,1,5,4}}
+	normals := [6]Vec3{{0,0,1},{0,0,-1},{-1,0,0},{1,0,0},{0,1,0},{0,-1,0}}
+	uvs := [4]Vec2{{0,0},{1,0},{1,1},{0,1}}
+	for face in 0..<6 {for corner in 0..<4 {result.vertices[face*4+corner]={positions[faces[face][corner]],normals[face],uvs[corner]}}}
+	for face in 0..<6 {base:=u32(face*4); o:=face*6; values:=[6]u32{base,base+1,base+2,base,base+2,base+3}; for v,i in values {result.indices[o+i]=v}}
+	result.vertex_count=24; result.index_count=36; return result
+}
+
+plane_geometry :: proc "contextless" (width, depth: f32) -> Generated_Geometry {
+	result: Generated_Geometry; w,d:=width/2,depth/2
+	result.vertices[0]={{-w,0,-d},{0,1,0},{0,0}}; result.vertices[1]={{w,0,-d},{0,1,0},{1,0}}
+	result.vertices[2]={{w,0,d},{0,1,0},{1,1}}; result.vertices[3]={{-w,0,d},{0,1,0},{0,1}}
+	values:=[6]u32{0,1,2,0,2,3}; for v,i in values {result.indices[i]=v}
+	result.vertex_count=4; result.index_count=6; return result
+}
+
+register_generated_geometry :: proc "contextless" (reg: ^Registry, name: cstring, generated: ^Generated_Geometry) -> Resource_Handle {
+	if generated == nil {record_err(reg,"generated geometry is not available"); return {}}
+	return geometry(reg,name,generated.vertices[:generated.vertex_count],generated.indices[:generated.index_count])
+}
 
 register :: proc "contextless" (api: ^raw.API, callback: Register_Proc) -> cstring {
 	if api == nil {
@@ -215,6 +252,21 @@ system_with_registry :: proc "contextless" (
 system :: proc {
 	system_by_name,
 	system_with_registry,
+}
+
+geometry :: proc "contextless" (reg: ^Registry, name: cstring, vertices: []Geometry_Vertex, indices: []u32) -> Resource_Handle {
+	handle: Resource_Handle
+	if reg == nil || reg.err != nil {return handle}
+	if reg.ctx == nil || reg.ctx.api == nil || reg.ctx.api.register_geometry == nil {record_err(reg, "Scrapbot geometry registration API is not available"); return handle}
+	desc := Geometry_Desc{vertices=raw_data(vertices),vertex_count=c.int(len(vertices)),indices=raw_data(indices),index_count=c.int(len(indices))}
+	record_err(reg, reg.ctx.api.register_geometry(reg.ctx.api,name,&desc,&handle)); return handle
+}
+
+material :: proc "contextless" (reg: ^Registry, name: cstring, base_color: Vec4) -> Resource_Handle {
+	handle: Resource_Handle
+	if reg == nil || reg.err != nil {return handle}
+	if reg.ctx == nil || reg.ctx.api == nil || reg.ctx.api.register_material == nil {record_err(reg, "Scrapbot material registration API is not available"); return handle}
+	desc := Material_Desc{base_color=base_color}; record_err(reg, reg.ctx.api.register_material(reg.ctx.api,name,&desc,&handle)); return handle
 }
 
 term_by_name :: proc "contextless" (component: cstring) -> Query_Term {
@@ -413,10 +465,15 @@ spawn_options_with_mesh :: proc "contextless" (
 	}
 }
 
+spawn_options_renderable :: proc "contextless" (name: cstring, transform: ^Transform, geometry, material: ^Resource_Handle, components: []Component_Payload = nil) -> Spawn_Options {
+	return Spawn_Options{name=name,transform=transform,geometry=geometry,material=material,components=raw_data(components),component_count=c.int(len(components))}
+}
+
 spawn_options :: proc {
 	spawn_options_basic,
 	spawn_options_with_components,
 	spawn_options_with_mesh,
+	spawn_options_renderable,
 }
 
 spawn :: proc "contextless" (ctx: ^System_Context, options: ^Spawn_Options) -> cstring {
