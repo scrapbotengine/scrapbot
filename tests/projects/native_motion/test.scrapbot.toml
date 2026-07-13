@@ -1,8 +1,0 @@
-frames = 4
-dt = 0.25
-
-[[expect.field]]
-entity = "mover"
-component = "scrapbot.transform"
-field = "position"
-equals_vec3 = [3.0, -1.5, 0.75]

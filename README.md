@@ -11,7 +11,25 @@ A compact, experimental, and probably mostly useless game engine that tries to a
 
 Scrapbot is maintained as an agent-first codebase. Before opening a PR, read [`CONTRIBUTING.md`](CONTRIBUTING.md) for contributor expectations and [`AGENTS.md`](AGENTS.md) for the rules coding agents must follow when changing this repository.
 
-The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`](docs/TODO.md), with architecture and feature decisions tracked in [`docs/adr/`](docs/adr/) and [`docs/fdr/`](docs/fdr/).
+The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`](docs/TODO.md), with architecture and feature decisions tracked in [`docs/adr/`](docs/adr/) and [`docs/fdr/`](docs/fdr/). Project vocabulary lives in [`docs/GLOSSARY.md`](docs/GLOSSARY.md).
+
+## Current Runtime Slice
+
+Scrapbot currently has a small Odin CLI and runtime skeleton:
+
+- `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, an `assets/` directory, and Luau LSP metadata.
+- `scrapbot check [path] [--json]` builds declared native extensions, validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
+- `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>`, including the game executable, project data, and active native extension artifacts.
+- `scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--json]` builds declared native extensions, loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered native and script systems, and submits the world through the selected renderer backend. `Ctrl+Esc` toggles the editor shell in a visible window, and `--editor` starts it open. Scheduler tracing reports native worker utilization. Runtime statistics report early/late engine-frame cost through render preparation, engine-allocator bytes including post-teardown retention, and ECS storage high-water marks. Windowed runtime statistics require a bounded `--frames` value. Framegrab regions preserve 1:1 output pixels and use top-left coordinates.
+- `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
+
+During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
+
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, live window resizing, and a retained ECS UI overlay with a box model, horizontal and vertical stacks, smooth clipped scroll areas, MTSDF text, pointer-aware buttons, and SDF-rounded backgrounds. An engine-owned editor shell can frame the live project viewport with top, status, scene, and inspector chrome, independently smoothed scroll panes, and an ECS-owned fly camera that navigates independently from the project's camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
+
+Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`. The ECS showcase runs a native object fountain with visible spawned cube renderables, velocity, lifetime, spin, despawn, animated point lights, editor-movable static point lights, and Luau typed queries.
+
+Run the full local test suite with `mise test`; it includes a 2,000-frame lifecycle CPU/RAM growth gate. Use `mise test-soak` for the extended 10,000-frame check and `mise test-sanitize` for the Linux AddressSanitizer lane. Linux CI runs both the normal suite and AddressSanitizer.
 
 ## Features / Roadmap
 
@@ -19,8 +37,8 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 
 - Runtime
   - [x] Single-binary CLI
-  - [x] Cross-platform runtime
-  - [x] Interactive commands
+  - [ ] Cross-platform runtime
+  - [ ] Interactive commands
   - [x] Headless commands
 - Projects
   - [x] Text-first projects
@@ -30,7 +48,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
   - [ ] Scene migrations
 - Reloading
   - [x] Live reload
-  - [x] Structured diagnostics
+  - [ ] Structured diagnostics
 - Distribution
   - [x] Host game builds
   - [ ] Package dependencies
@@ -40,63 +58,75 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### ECS Runtime
 
 - World Model
-  - [x] Shared ECS runtime
-  - [x] Reflected components
+  - [ ] Shared ECS runtime
+  - [ ] Reflected components
   - [x] Generation-aware entities
   - [x] Component registry
-  - [ ] Component lifecycles
+  - [x] Component lifecycles
+  - [x] ID-keyed custom component storage
+  - [x] Engine-owned frame time resource
   - [ ] World snapshots
 - Scheduling
   - [x] Scheduled systems
   - [x] Access-controlled systems
   - [x] Deferred mutations
-  - [ ] Parallel system scheduling
+  - [x] Parallel native system scheduling
 - Queries
   - [x] Bulk Luau query views
+  - [x] Multi-component Luau queries
+  - [x] Typed three-component Luau queries
   - [ ] Advanced queries
 
 ### Scripting And Native Extensions
 
 - Luau
   - [x] Luau scripting
-  - [x] Script components
-  - [x] Script systems
+  - [x] Luau type definitions
+  - [x] Luau analyzer checks
+  - [x] Basic script components
+  - [x] Basic script systems
   - [x] Script hot reload
-  - [ ] Luau type definitions
+  - [x] Reflected script components
+  - [x] Scheduled script systems
   - [ ] Editor scripting
 - Native
-  - [x] Native Zig modules
+  - [x] Native Odin modules
   - [x] Native hot reload
-  - [ ] Native extension examples
+  - [x] Native ECS systems
+  - [x] Native extension examples
   - [ ] Static native packaging
 - Developer Experience
-  - [x] Script/native diagnostics
+  - [ ] Script/native diagnostics
   - [ ] Performance documentation
 
 ### Rendering
 
 - Backend
-  - [x] WebGPU renderer
-  - [x] Headful rendering
-  - [x] Offscreen rendering
+  - [x] WebGPU surface smoke
+  - [x] Headful rendering smoke
+  - [x] WebGPU triangle render loop
+  - [x] Headless WebGPU framegrab
+  - [x] WebGPU ECS cube renderer
+  - [x] Multi-entity WebGPU cube renderer
+  - [x] General indexed-geometry WebGPU renderer
+  - [ ] Offscreen render comparison
 - Scene Data
-  - [x] Cameras
+  - [x] Basic cameras
   - [x] Lighting
-  - [x] Primitive meshes
-  - [x] Materials
-  - [x] Legacy cube rendering
-  - [ ] Scene camera workflow
+  - [x] Generated cube, plane, icosphere, UV sphere, pyramid, and cylinder geometry
+  - [x] Shared base-color materials
+  - [x] ECS-owned editor scene camera and captured fly navigation
 - Pipeline
-  - [x] Render batching
-  - [x] Shadows
-  - [x] HDR rendering
-  - [x] Postprocessing
+  - [x] Geometry/material render batching
+  - [x] Directional shadow maps with explicit caster/receiver components
+  - [ ] HDR rendering
+  - [ ] Postprocessing
   - [ ] Frustum culling
   - [ ] GPU-driven rendering
-  - [ ] Multi-light rendering
+  - [x] Ambient, directional, and point-light rendering
 - Assets
   - [ ] Mesh assets
-  - [ ] Texture assets
+  - [x] PNG texture assets
   - [ ] Material system
 - Tooling
   - [ ] Resource hot reload
@@ -105,56 +135,61 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Input And UI
 
 - Input
-  - [x] ECS platform input
-  - [x] Runtime input resources
+  - [ ] ECS platform input
+  - [ ] Runtime input resources
+  - [x] UI pointer position and primary-button input
   - [ ] Controller input
 - Retained UI
   - [x] Retained UI primitives
-  - [x] Retained layout system
-  - [x] UI command events
-  - [x] UI scrolling
-  - [x] Canvas scaling
-  - [x] Built-in bitmap UI text
-  - [ ] SDF-based font rendering
+  - [x] Box-model layout with horizontal, vertical, and overlay composition
+  - [x] Element hover and active hit-testing state
+  - [ ] UI command events
+  - [x] Smooth clipped vertical scroll areas
+  - [ ] Canvas scaling
+  - [x] Built-in scalable UI text
+  - [x] MTSDF-based font rendering
   - [x] UI gallery
 - Controls
+  - [x] Text and pointer-styled button controls
   - [ ] Reusable editor controls
   - [ ] Form controls
   - [ ] Text input
   - [ ] Keyboard focus
   - [ ] Clipboard support
 - Styling
-  - [ ] Public UI API
-  - [ ] Richer layout system
+  - [x] Scene-defined UI API
+  - [x] Margins, padding, backgrounds, and rounded corners
   - [ ] UI themes
 
 ### Editor
 
 - Shell
-  - [x] Editor shell
-  - [x] Game viewport
-  - [x] Resizable panels
+  - [x] Toggleable editor shell
+  - [x] Aspect-correct live game viewport
+  - [ ] Resizable panels
   - [ ] Dockable editor workspace
 - Inspection
-  - [x] System profiler
+  - [ ] System profiler
   - [x] Entity browser
   - [x] Entity selection
-  - [x] Component inspector
+  - [x] Read-only component field/value inspector
+  - [ ] Component value editing
   - [ ] Searchable browser
   - [ ] Hierarchical browser
 - Editing
-  - [x] Inspector editing
-  - [x] Inspector undo/redo
+  - [ ] Inspector editing
+  - [ ] Inspector undo/redo
   - [ ] Component management
   - [ ] Entity management
   - [ ] Scene edit persistence
   - [ ] Multi-selection editing
   - [ ] Editor transactions
 - Scene Tools
-  - [x] Playback controls
-  - [x] Translate gizmo
+  - [ ] Playback controls
+  - [x] RMB-captured WASD/Space/Ctrl scene-camera navigation
+  - [x] World-space translation gizmo
   - [ ] Transform gizmo modes
-  - [ ] Precise picking
+  - [x] Precise viewport entity picking
 - Extensibility
   - [ ] Asset browser
   - [ ] Editor plugins
@@ -163,18 +198,18 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 
 - Commands
   - [x] Project validation
-  - [x] Deterministic stepping
-  - [x] Benchmark runner
+  - [ ] Deterministic stepping
+  - [ ] Benchmark runner
   - [x] JSON command output
 - Verification
-  - [x] Gameplay test fixtures
-  - [x] Offscreen render verification
+  - [ ] Gameplay test fixtures
+  - [ ] Offscreen render verification
   - [ ] Editor screenshot tests
-  - [ ] Native extension tests
+  - [x] Native extension tests
 - Project Support
   - [x] Example projects
-  - [x] Documentation site
-  - [x] Agent workflow docs
+  - [ ] Documentation site
+  - [ ] Agent workflow docs
   - [ ] CI workflow
   - [ ] Docs checks
   - [ ] Benchmark trend reporting
@@ -182,7 +217,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 ### Assets, Simulation, And Larger Systems
 
 - Assets
-  - [x] Primitive geometry
+  - [x] Primitive geometry helpers
   - [x] Embedded UI font
   - [ ] Asset references
   - [ ] Asset import pipeline

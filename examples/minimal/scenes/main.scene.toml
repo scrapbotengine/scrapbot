@@ -1,56 +1,67 @@
-name = "Main"
-version = 1
-
 [[entities]]
-id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0001"
-name = "Primary Cube"
-
-[entities.components."scrapbot.transform"]
-position = [-0.75, 0.0, 0.0]
-rotation = [0.0, 0.0, 0.0]
-scale = [0.82, 0.82, 0.82]
-
-[entities.components."scrapbot.render.cube"]
-color = [0.0, 0.56, 1.0]
-
-[entities.components.spin]
-angular_velocity = [0.62, 1.0, 0.0]
-
-[[entities]]
-id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0002"
-name = "Accent Cube"
-
-[entities.components."scrapbot.transform"]
-position = [0.86, -0.24, -0.45]
-rotation = [0.25, 0.15, 0.0]
-scale = [0.42, 0.42, 0.42]
-
-[entities.components."scrapbot.render.cube"]
-color = [1.0, 0.62, 0.08]
-
-[entities.components.spin]
-angular_velocity = [-0.25, 0.82, 0.4]
-
-[[entities]]
-id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0100"
 name = "Main Camera"
 
-[entities.components."scrapbot.transform"]
-position = [0.0, 0.0, 4.8]
-rotation = [0.0, 0.0, 0.0]
-scale = [1.0, 1.0, 1.0]
+[entities.transform]
+position = [0, 2, 6]
+rotation = [-0.321751, 0, 0]
+scale = [1, 1, 1]
 
-[entities.components."scrapbot.camera"]
-fov_y_degrees = 48.0
+[entities.camera]
+fov = 60
 near = 0.1
-far = 100.0
+far = 100
 
 [[entities]]
-id = "018f6f78-4b6f-74a2-9f8f-5d7f3a8d0101"
-name = "Key Light"
+name = "Ambient Light"
 
-[entities.components."scrapbot.light.directional"]
-direction = [0.35, 0.68, 0.64]
-color = [1.0, 1.0, 1.0]
-intensity = 0.78
-ambient = 0.18
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
+
+[[entities]]
+name = "Left Cube"
+
+[entities.transform]
+position = [-2.25, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "coral"
+
+[entities.components.scrappyphysics.spin]
+angular_velocity = [0, 1.5707963, 0]
+
+[entities.components.scrappyphysics.rigidbody]
+velocity = [0, 0, 0]
+
+[entities.components.float]
+origin = [-2.25, 0, 0]
+wave = [0, 1.4, 0.35]
+
+[[entities]]
+name = "Right Cube"
+
+[entities.transform]
+position = [1.25, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "teal"
+
+[entities.components.scrappyphysics.spin]
+angular_velocity = [0, -1.5707963, 0]
+
+[entities.components.scrappyphysics.rigidbody]
+velocity = [0, 0, 0]
+
+[entities.components.float]
+origin = [1.25, 0, 0]
+wave = [3.1415927, 1.15, 0.3]

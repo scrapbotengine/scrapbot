@@ -1,46 +1,139 @@
 [tools]
 node = "24"
+odin = { version = "dev-2026-07", exe = "odin" }
 pnpm = "10"
-zig = "latest"
 
 [tasks.build]
-description = "Build the scrapbot CLI optimized for interactive use"
-run = "zig build -Doptimize=ReleaseFast"
+description = "Build the Scrapbot CLI"
+depends = ["luau"]
+run = '''
+mkdir -p bin
+LUAU_LIBS="third_party/luau/build/release"
+case "$(uname -s)" in
+  Darwin)
+    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -lc++"
+    ;;
+  Linux)
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    ;;
+  *)
+    echo "unsupported Luau link platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+odin build src/scrapbot_cli -out:bin/scrapbot -extra-linker-flags:"$LUAU_LINK_FLAGS"
+'''
 
-[tasks.setup]
-description = "Install workspace dependencies"
-dir = "docs-website"
-run = "pnpm install --frozen-lockfile"
-
-[tasks.build-debug]
-description = "Build the scrapbot CLI with Debug safety checks"
-run = "zig build -Doptimize=Debug"
-
-[tasks.test]
-description = "Run the full Scrapbot test suite"
-run = "zig build test && mise build && SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal && SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json && SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick && SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json && SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png && ./zig-out/bin/scrapbot test tests/projects && ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json && ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png && ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png && ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png && ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png && ./zig-out/bin/scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png && ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png && ./zig-out/bin/scrapbot visual-test tests/golden/zero_lighting tests/golden/zero_lighting/expected.png zig-out/zero-lighting-actual.png"
-
-[tasks.luau-check]
-description = "Run Luau editor type checks"
-run = "bash tools/check-luau-types.sh"
-
-[tasks.render-test]
-description = "Render and verify example scenes"
-run = "mise scrapbot render-test examples/minimal zig-out/minimal-render-test.png && mise scrapbot render-test examples/showcase zig-out/showcase-render-test.png && mise scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png && mise scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png && mise scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png"
-
-[tasks.visual-test]
-description = "Render and compare golden visual fixtures"
-run = "mise scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png && mise scrapbot visual-test tests/golden/zero_lighting tests/golden/zero_lighting/expected.png zig-out/zero-lighting-actual.png"
-
-[tasks.bench]
-description = "Run headless Scrapbot benchmarks"
-run = "mise scrapbot bench examples/spawn_swarm --frames 240"
+[tasks.luau]
+description = "Build embedded Luau"
+run = '''
+test -d third_party/luau/VM || { echo "third_party/luau missing; run git submodule update --init --recursive"; exit 1; }
+make -C third_party/luau config=release CXXFLAGS="-g -Wall -O2 -DNDEBUG -fno-math-errno -std=c++17 -ICommon/include -IVM/include -IAst/include -IBytecode/include -ICompiler/include -DLUA_USE_LONGJMP=1 -DLUA_API='extern \"C\"' -DLUACODE_API='extern \"C\"'" build/release/libluauvm.a build/release/libluaucompiler.a build/release/libluauast.a build/release/libluaubytecode.a build/release/libluaucommon.a
+'''
 
 [tasks.scrapbot]
-description = "Build and run the scrapbot CLI"
-run = "mise build && ./zig-out/bin/scrapbot"
+description = "Build and run the Scrapbot CLI"
+depends = ["build"]
+run = "bin/scrapbot \"$@\""
 
-[tasks.docs-website]
-description = "Run the docs website in development mode"
-dir = "docs-website"
-run = "pnpm dev --host 127.0.0.1 --port $CONDUCTOR_PORT"
+[tasks.test]
+description = "Run all local checks and smoke tests"
+depends = ["build"]
+run = '''
+LUAU_LIBS="third_party/luau/build/release"
+case "$(uname -s)" in
+  Darwin)
+    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -lc++"
+    ;;
+  Linux)
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    ;;
+  *)
+    echo "unsupported Luau link platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
+odin check src/scrapbot -no-entry-point
+odin test src/scrapbot -all-packages -extra-linker-flags:"$LUAU_LINK_FLAGS"
+bin/scrapbot --version
+bin/scrapbot check examples/minimal
+bin/scrapbot check examples/ui-showcase
+bin/scrapbot run examples/minimal
+bin/scrapbot run examples/ui-showcase
+CHECK_JSON="$(bin/scrapbot check examples/minimal --json)"
+case "$CHECK_JSON" in
+  '{"schema_version":1,"command":"check","ok":true,'*) ;;
+  *) echo "unexpected check JSON: $CHECK_JSON" >&2; exit 1 ;;
+esac
+RUN_JSON="$(bin/scrapbot run examples/minimal --frames 1 --json)"
+case "$RUN_JSON" in
+  '{"schema_version":1,"command":"run","ok":true,'*) ;;
+  *) echo "unexpected run JSON: $RUN_JSON" >&2; exit 1 ;;
+esac
+RUNTIME_STATS_JSON="$(bin/scrapbot run examples/minimal --frames 120 --runtime-stats --json)"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.runtime_stats;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    !stats?.enabled || stats.frames !== 120 || stats.early_update_ns_per_frame <= 0 ||
+    stats.late_update_ns_per_frame <= 0 ||
+    stats.cpu_growth_ratio <= 0 || stats.allocator_final_bytes > 65536) {
+  console.error("unexpected runtime stats JSON");
+  process.exit(1);
+}
+' "$RUNTIME_STATS_JSON"
+node tools/runtime_soak.mjs examples/ecs-showcase 2000
+UNBOUNDED_STATS_JSON="$(bin/scrapbot run examples/minimal --backend wgpu --window --runtime-stats --json || true)"
+node -e '
+const result = JSON.parse(process.argv[1]);
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== false ||
+    result.diagnostics?.[0]?.code !== "SCRAPBOT_ARGUMENT_ERROR") {
+  console.error("unexpected unbounded runtime stats diagnostic");
+  process.exit(1);
+}
+' "$UNBOUNDED_STATS_JSON"
+BUILD_JSON="$(bin/scrapbot build examples/minimal --json)"
+case "$BUILD_JSON" in
+  '{"schema_version":1,"command":"build","ok":true,'*) ;;
+  *) echo "unexpected build JSON: $BUILD_JSON" >&2; exit 1 ;;
+esac
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) PACKAGE_EXE="examples/minimal/build/darwin_arm64/minimal-example" ;;
+  Darwin-x86_64) PACKAGE_EXE="examples/minimal/build/darwin_amd64/minimal-example" ;;
+  Linux-aarch64) PACKAGE_EXE="examples/minimal/build/linux_arm64/minimal-example" ;;
+  Linux-x86_64) PACKAGE_EXE="examples/minimal/build/linux_amd64/minimal-example" ;;
+  *) echo "unsupported package smoke host" >&2; exit 1 ;;
+esac
+PACKAGE_RUN_JSON="$("$PACKAGE_EXE" --backend null --frames 1 --json)"
+case "$PACKAGE_RUN_JSON" in
+  '{"schema_version":1,"command":"run","ok":true,'*) ;;
+  *) echo "unexpected packaged run JSON: $PACKAGE_RUN_JSON" >&2; exit 1 ;;
+esac
+'''
+
+[tasks.test-soak]
+description = "Run the lifecycle-heavy CPU/RAM growth soak"
+depends = ["build"]
+run = "node tools/runtime_soak.mjs"
+
+[tasks.test-sanitize]
+description = "Run Odin tests with AddressSanitizer on Linux"
+depends = ["luau"]
+run = '''
+LUAU_LIBS="third_party/luau/build/release"
+case "$(uname -s)" in
+  Darwin)
+    echo "AddressSanitizer is skipped on macOS because the current Odin/Apple sanitizer runtimes are incompatible"
+    exit 0
+    ;;
+  Linux)
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    ;;
+  *)
+    echo "unsupported sanitizer platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+odin test src/scrapbot -all-packages -sanitize:address -extra-linker-flags:"$LUAU_LINK_FLAGS -fsanitize=address"
+'''

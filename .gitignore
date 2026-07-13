@@ -1,5 +1,4 @@
 .context/
 .scrapbot/
-.zig-cache/
-zig-pkg/
-zig-out/
+bin/
+examples/*/build/

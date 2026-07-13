@@ -14,42 +14,31 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+      - uses: actions/checkout@v6
         with:
-          version: 0.16.0
-          cache-key: ci
-          cache-size-limit: 4096
+          submodules: recursive
+      - uses: jdx/mise-action@v4
       - name: Install SDL3
         run: brew install sdl3
-      - name: Build and test
-        run: zig build test
-      - name: Build CLI
-        run: zig build -Doptimize=ReleaseFast
-      - name: Leak-checked tests
+      - name: Prepare Odin vendor libraries
         run: |
-          set -euo pipefail
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
-      - name: Project and benchmark tests
-        run: |
-          set -euo pipefail
-          ./zig-out/bin/scrapbot test tests/projects
-          ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json
-      - name: Render and visual tests
-        run: |
-          set -euo pipefail
-          ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
-          ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
-      - name: Headful smoke
-        run: ./zig-out/bin/scrapbot run examples/minimal --hidden --frames 2
+          make -C "$(odin root)/vendor/stb/src"
+          case "$(uname -m)" in
+            arm64) WGPU_ARCH="aarch64" ;;
+            x86_64) WGPU_ARCH="x86_64" ;;
+            *) echo "unsupported macOS architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          WGPU_ARCHIVE="wgpu-macos-$WGPU_ARCH-release.zip"
+          WGPU_VERSION="v29.0.1.1"
+          WGPU_LIB_DIR="$(odin root)/vendor/wgpu/lib"
+          WGPU_PACKAGE="${WGPU_ARCHIVE%.zip}"
+          mkdir -p "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+          curl --fail --location --retry 3 \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/$WGPU_ARCHIVE" \
+            --output "/tmp/$WGPU_ARCHIVE"
+          unzip -q "/tmp/$WGPU_ARCHIVE" -d "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+      - name: Test
+        run: mise test
 
   linux:
     runs-on: ubuntu-latest
@@ -58,51 +47,36 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y ca-certificates git xz-utils zstd build-essential libsdl3-dev libvulkan1 mesa-vulkan-drivers xvfb
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+          apt-get install -y ca-certificates curl git unzip xz-utils zstd build-essential clang libsdl3-dev
+      - uses: actions/checkout@v6
         with:
-          version: 0.16.0
-          cache-key: ci
-          cache-size-limit: 4096
-      - name: Build and test
-        run: zig build test
-      - name: Build CLI
-        run: zig build -Doptimize=ReleaseFast
-      - name: Leak-checked tests
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - name: Prepare Odin vendor libraries
         run: |
-          set -euo pipefail
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot check examples/minimal
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot step examples/minimal --frames=3 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot test tests/projects/health_tick
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames=60 --format=json
-          SCRAPBOT_LEAK_CHECK=1 ./zig-out/bin/scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
-      - name: Project and benchmark tests
-        run: |
-          set -euo pipefail
-          ./zig-out/bin/scrapbot test tests/projects
-          ./zig-out/bin/scrapbot bench examples/spawn_swarm --frames 60 --format=json
-      - name: Render and visual tests
-        run: |
-          set -euo pipefail
-          ./zig-out/bin/scrapbot render-test examples/minimal zig-out/minimal-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/showcase zig-out/showcase-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          ./zig-out/bin/scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
-          ./zig-out/bin/scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
-      - name: Headful smoke
-        run: xvfb-run -a ./zig-out/bin/scrapbot run examples/minimal --hidden --frames 2
+          make -C "$(odin root)/vendor/stb/src"
+          WGPU_ARCHIVE="wgpu-linux-x86_64-release.zip"
+          WGPU_VERSION="v29.0.1.1"
+          WGPU_LIB_DIR="$(odin root)/vendor/wgpu/lib"
+          WGPU_PACKAGE="${WGPU_ARCHIVE%.zip}"
+          mkdir -p "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+          curl --fail --location --retry 3 \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/$WGPU_ARCHIVE" \
+            --output "/tmp/$WGPU_ARCHIVE"
+          unzip -q "/tmp/$WGPU_ARCHIVE" -d "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+      - name: Test
+        run: mise test
+      - name: AddressSanitizer
+        run: mise test-sanitize
 
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+      - uses: actions/checkout@v6
         with:
-          version: 0.16.0
-          cache-key: ci
-          cache-size-limit: 4096
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: ilammy/msvc-dev-cmd@v1
       - name: Install SDL3
         shell: pwsh
         run: |
@@ -112,60 +86,32 @@ jobs:
           Invoke-WebRequest -Uri "https://www.libsdl.org/release/SDL3-devel-$sdlVersion-VC.zip" -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $installDir
           $sdlRoot = Join-Path $installDir "SDL3-$sdlVersion"
-          $sdlLinkDir = Join-Path $installDir "link"
-          New-Item -ItemType Directory -Path $sdlLinkDir | Out-Null
-          Copy-Item "$sdlRoot\lib\x64\SDL3.lib" $sdlLinkDir
-          Add-Content -Path $env:GITHUB_ENV -Value "SDL_ROOT=$sdlRoot"
-          Add-Content -Path $env:GITHUB_ENV -Value "SDL_LINK_DIR=$sdlLinkDir"
-          Add-Content -Path $env:GITHUB_PATH -Value "$sdlRoot\lib\x64"
-      - name: Build and test
-        shell: pwsh
-        run: zig build test -Dtarget=x86_64-windows-msvc -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
-      - name: Build CLI
-        shell: pwsh
-        run: zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast -Dsdl3_include_path="$env:SDL_ROOT\include" -Dsdl3_library_path="$env:SDL_LINK_DIR"
-      - name: Stage SDL3 runtime
-        shell: pwsh
-        run: Copy-Item "$env:SDL_ROOT\lib\x64\SDL3.dll" zig-out\bin\
-      - name: Leak-checked tests
+          Copy-Item "$sdlRoot\lib\x64\SDL3.lib" .
+      - name: Prepare Odin vendor libraries
         shell: pwsh
         run: |
-          function Invoke-Scrapbot {
-            & .\zig-out\bin\scrapbot.exe @args
+          $odin = Join-Path (mise where odin) "odin.exe"
+          $odinRoot = & $odin root
+          Push-Location "$odinRoot\vendor\stb\src"
+          try {
+            & .\build.bat
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
           }
 
-          $env:SCRAPBOT_LEAK_CHECK = "1"
-          Invoke-Scrapbot check examples/minimal
-          Invoke-Scrapbot step examples/minimal --frames=3 --format=json
-          Invoke-Scrapbot test tests/projects/health_tick
-          Invoke-Scrapbot bench examples/spawn_swarm --frames=60 --format=json
-          Invoke-Scrapbot render-test --editor --frames=60 examples/ui_gallery zig-out/ui-gallery-leak-render-test.png
-          Remove-Item Env:\SCRAPBOT_LEAK_CHECK
-      - name: Project and benchmark tests
+          $wgpuArchive = "wgpu-windows-x86_64-msvc-release.zip"
+          $wgpuVersion = "v29.0.1.1"
+          $wgpuPackage = [System.IO.Path]::GetFileNameWithoutExtension($wgpuArchive)
+          $wgpuLibDir = Join-Path $odinRoot "vendor\wgpu\lib\$wgpuPackage"
+          $wgpuDownload = Join-Path $env:RUNNER_TEMP $wgpuArchive
+          New-Item -ItemType Directory -Force -Path $wgpuLibDir | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/gfx-rs/wgpu-native/releases/download/$wgpuVersion/$wgpuArchive" -OutFile $wgpuDownload
+          & tar.exe -xf $wgpuDownload -C $wgpuLibDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check
         shell: pwsh
         run: |
-          function Invoke-Scrapbot {
-            & .\zig-out\bin\scrapbot.exe @args
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
-          Invoke-Scrapbot test tests/projects
-          Invoke-Scrapbot bench examples/spawn_swarm --frames 60 --format=json
-      - name: Render and visual tests
-        shell: pwsh
-        run: |
-          function Invoke-Scrapbot {
-            & .\zig-out\bin\scrapbot.exe @args
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
-          Invoke-Scrapbot render-test examples/minimal zig-out/minimal-render-test.png
-          Invoke-Scrapbot render-test examples/showcase zig-out/showcase-render-test.png
-          Invoke-Scrapbot render-test examples/ui_gallery zig-out/ui-gallery-render-test.png
-          Invoke-Scrapbot render-test examples/spawn_swarm zig-out/spawn-swarm-render-test.png
-          Invoke-Scrapbot render-test examples/native_motion zig-out/native-motion-render-test.png
-          Invoke-Scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
-      - name: Headful smoke
-        shell: pwsh
-        run: .\zig-out\bin\scrapbot.exe run examples/minimal --hidden --frames 2
+          $odin = Join-Path (mise where odin) "odin.exe"
+          & $odin check src/scrapbot -no-entry-point
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

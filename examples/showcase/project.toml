@@ -1,4 +1,0 @@
-name = "Scrapbot Showcase"
-version = 1
-default_scene = "scenes/main.scene.toml"
-scripts = ["scripts/gameplay.luau"]

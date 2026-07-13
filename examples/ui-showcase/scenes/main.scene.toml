@@ -1,0 +1,250 @@
+[[entities]]
+name = "HUD"
+
+[entities.ui_layout]
+position = [40, 40]
+size = [560, 600]
+padding = [28, 28, 28, 28]
+background = [0.05, 0.055, 0.065, 0.99]
+corner_radius = 24
+
+[entities.ui_vstack]
+gap = 16
+
+[[entities]]
+name = "Title"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 48]
+
+[entities.ui_text]
+text = "SCRAPBOT UI"
+color = [0.15, 0.95, 0.82, 1]
+size = 32
+
+[[entities]]
+name = "Subtitle"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 28]
+
+[entities.ui_text]
+text = "COMPOSABLE ECS CONTROLS"
+color = [0.72, 0.78, 0.92, 1]
+size = 16
+
+[[entities]]
+name = "Status Row"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 72]
+padding = [12, 12, 12, 12]
+background = [0.08, 0.12, 0.22, 1]
+corner_radius = 14
+
+[entities.ui_hstack]
+gap = 12
+
+[[entities]]
+name = "Status"
+
+[entities.ui_layout]
+parent = "Status Row"
+size = [128, 48]
+padding = [13, 16, 10, 16]
+background = [0.12, 0.72, 0.48, 1]
+corner_radius = 10
+
+[entities.ui_text]
+text = "ONLINE"
+color = [0.02, 0.08, 0.06, 1]
+size = 18
+
+[[entities]]
+name = "Entity Count"
+
+[entities.ui_layout]
+parent = "Status Row"
+size = [212, 48]
+padding = [13, 16, 10, 16]
+
+[entities.ui_text]
+text = "18 UI ENTITIES"
+color = [1, 0.82, 0.28, 1]
+size = 18
+
+[[entities]]
+name = "Actions"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 60]
+
+[entities.ui_hstack]
+gap = 12
+
+[[entities]]
+name = "Launch Button"
+
+[entities.ui_layout]
+parent = "Actions"
+size = [190, 52]
+padding = [14, 22, 12, 22]
+background = [0.31, 0.26, 0.86, 1]
+corner_radius = 12
+
+[entities.ui_button]
+text = "LAUNCH SCRAPBOT"
+color = [1, 1, 1, 1]
+size = 16
+hover_background = [0.39, 0.33, 0.96, 1]
+active_background = [0.22, 0.18, 0.68, 1]
+active_color = [0.82, 0.84, 1, 1]
+
+[[entities]]
+name = "Cancel Button"
+
+[entities.ui_layout]
+parent = "Actions"
+margin = [0, 0, 0, 4]
+size = [126, 52]
+padding = [14, 22, 12, 22]
+background = [0.16, 0.20, 0.32, 1]
+corner_radius = 12
+
+[entities.ui_button]
+text = "CANCEL"
+color = [0.82, 0.86, 0.96, 1]
+size = 16
+hover_background = [0.22, 0.27, 0.42, 1]
+active_background = [0.10, 0.13, 0.22, 1]
+active_color = [0.68, 0.72, 0.84, 1]
+
+[[entities]]
+name = "Feature Scroll"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 190]
+padding = [10, 10, 10, 10]
+background = [0.08, 0.09, 0.11, 1]
+corner_radius = 12
+
+[entities.ui_scroll_area]
+scroll_speed = 64
+smoothness = 14
+
+[[entities]]
+name = "Feature Pane"
+
+[entities.ui_layout]
+parent = "Feature Scroll"
+size = [484, 360]
+
+[entities.ui_vstack]
+gap = 8
+
+[[entities]]
+name = "Feature Layout"
+
+[entities.ui_layout]
+parent = "Feature Pane"
+size = [470, 52]
+padding = [15, 16, 10, 16]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 8
+
+[entities.ui_text]
+text = "BOX MODEL  /  MARGIN + PADDING"
+color = [0.88, 0.9, 0.93, 1]
+size = 14
+
+[[entities]]
+name = "Feature Stacks"
+
+[entities.ui_layout]
+parent = "Feature Pane"
+size = [470, 52]
+padding = [15, 16, 10, 16]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 8
+
+[entities.ui_text]
+text = "HSTACK + VSTACK  /  COMPOSABLE FLOW"
+color = [0.88, 0.9, 0.93, 1]
+size = 14
+
+[[entities]]
+name = "Feature Buttons"
+
+[entities.ui_layout]
+parent = "Feature Pane"
+size = [470, 52]
+padding = [15, 16, 10, 16]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 8
+
+[entities.ui_text]
+text = "BUTTONS  /  HOVER + ACTIVE STATES"
+color = [0.88, 0.9, 0.93, 1]
+size = 14
+
+[[entities]]
+name = "Feature Text"
+
+[entities.ui_layout]
+parent = "Feature Pane"
+size = [470, 52]
+padding = [15, 16, 10, 16]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 8
+
+[entities.ui_text]
+text = "MTSDF TEXT  /  CRISP AT ANY SCALE"
+color = [0.88, 0.9, 0.93, 1]
+size = 14
+
+[[entities]]
+name = "Feature Scroll Areas"
+
+[entities.ui_layout]
+parent = "Feature Pane"
+size = [470, 52]
+padding = [15, 16, 10, 16]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 8
+
+[entities.ui_text]
+text = "SCROLL AREAS  /  SMOOTH + CLIPPED"
+color = [0.28, 0.88, 0.76, 1]
+size = 14
+
+[[entities]]
+name = "Feature ECS"
+
+[entities.ui_layout]
+parent = "Feature Pane"
+size = [470, 52]
+padding = [15, 16, 10, 16]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 8
+
+[entities.ui_text]
+text = "ECS OWNED  /  TOML DECLARED"
+color = [0.88, 0.9, 0.93, 1]
+size = 14
+
+[[entities]]
+name = "Footer"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 32]
+
+[entities.ui_text]
+text = "SCROLL THE COMPONENT PANE"
+color = [0.95, 0.42, 0.68, 1]
+size = 16

@@ -1,4 +1,6 @@
-name = "Minimal"
-version = 1
+name = "Minimal Example"
 default_scene = "scenes/main.scene.toml"
-scripts = ["scripts/gameplay.luau"]
+
+[[native_extensions]]
+name = "scrappyphysics"
+source = "native/scrappyphysics"

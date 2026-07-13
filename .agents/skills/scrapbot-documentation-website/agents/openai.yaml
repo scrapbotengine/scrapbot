@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scrapbot Documentation Website"
-  short_description: "Document Scrapbot docs website changes"
-  default_prompt: "Use $scrapbot-documentation-website to document new built-in Scrapbot components in the docs website."

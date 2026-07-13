@@ -1,0 +1,182 @@
+---
+name: scrapbot-testing
+description: Use when testing or verifying Scrapbot changes, especially CLI behavior, generated Luau types, example projects, ECS rendering, WGPU smoke tests, headless framegrabs, PNG artifacts, documentation builds, or before committing.
+---
+
+# Scrapbot Testing
+
+Use this skill whenever Scrapbot must build, load projects, analyze generated Luau types, execute ECS systems, render through current backends, or produce a visually verifiable artifact.
+
+## Default Verification
+
+Run the normal suite first:
+
+```sh
+mise test
+git diff --check
+```
+
+`mise test` currently builds the CLI, checks `src/scrapbot`, runs all Odin package tests with `-all-packages`, checks the CLI version, validates `examples/minimal`, and runs the null backend.
+
+For narrower loops, select packages by ownership:
+
+```sh
+odin build src/scrapbot_cli -out:bin/scrapbot
+odin check src/scrapbot -no-entry-point
+odin test src/scrapbot/resources
+odin test src/scrapbot/ecs
+odin test src/scrapbot/render
+bin/scrapbot help run
+```
+
+Use `mise test` for `src/scrapbot/script` or the full package tree because Luau tests require the native linker flags from `mise.toml`.
+
+## Structured Diagnostics
+
+Prefer `--json` for agent-driven CLI checks:
+
+```sh
+bin/scrapbot check examples/minimal --json
+bin/scrapbot build examples/minimal --json
+bin/scrapbot run examples/minimal --frames 1 --json
+```
+
+JSON mode emits one versioned document on stdout. Use `ok`, diagnostic `code`, and documented `result` fields for assertions and branching. Treat diagnostic messages as human-readable context; do not match their exact text. Check `schema_version` before consuming the envelope, and fall back to human output only when the command has no structured mode.
+
+Keep `run` bounded with `--frames`. Structured success confirms command and runtime behavior, but renderer changes still require the WGPU smoke or framegrab checks described below.
+
+For CPU/RAM growth investigations, request the opt-in structured runtime report:
+
+```sh
+bin/scrapbot run examples/ecs-showcase --backend null --frames 10000 --runtime-stats --json
+```
+
+Compare allocated-slot fields across `runtime_stats.early_storage`, `late_storage`, and `final_storage`; compare `allocator_early_bytes` with `allocator_late_bytes`; check `allocator_final_bytes`; and inspect the early/late frame timing ratio. Ignore `live_entities` when the workload intentionally oscillates. These are engine-owned signals; direct Luau, SDL, WGPU, driver, GPU, and OS allocations require separate tooling.
+
+## Choose An Example
+
+- Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.
+- Use `examples/ecs-showcase` for geometry, materials, render reconciliation, batching, lighting, lifecycle-heavy ECS behavior, and visual renderer changes.
+- Use `examples/ui-showcase` for retained ECS UI hierarchy, box-model layout, horizontal/vertical stacks, smooth clipped scroll areas, SDF-rounded backgrounds, pointer-styled buttons, MTSDF text, and overlay/framegrab changes. Hidden framegrabs intentionally have no pointer interaction; verify hover/active/scroll interaction with UI tests or a bounded visible-window smoke.
+
+Validate an example with:
+
+```sh
+bin/scrapbot check examples/minimal
+bin/scrapbot check examples/ecs-showcase
+bin/scrapbot check examples/ui-showcase
+bin/scrapbot run examples/minimal
+```
+
+`scrapbot check` also regenerates `types/scrapbot.d.luau`. After changing Luau APIs or component schemas, run it for every affected example and review the generated diffs. Do not hand-edit generated declarations.
+
+## WGPU Window Smoke
+
+Windowed WGPU opens an SDL3 window and may require graphics-service approval on macOS:
+
+```sh
+bin/scrapbot run examples/minimal --backend wgpu --window --frames 3
+```
+
+Use `--frames` for automated smoke checks so the command returns. Without `--frames`, windowed mode runs until the window closes.
+
+## Headless WGPU Framegrabs
+
+Headless framegrab renders the same resource-backed ECS path into an offscreen texture, reads back the final frame, and writes a PNG:
+
+```sh
+bin/scrapbot run examples/minimal --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png
+bin/scrapbot run examples/ecs-showcase --backend wgpu --headless --frames 20 --framegrab /tmp/scrapbot-showcase.png
+bin/scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png
+bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
+```
+
+Framegrabs are losslessly compressed and preserve 1:1 pixels. The complete frame remains 1280×720. When a visual question concerns one control, label, gizmo, or panel, request a top-left-origin crop instead of passing the entire frame through image inspection:
+
+```sh
+bin/scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 \
+  --framegrab /tmp/scrapbot-ui-panel.png \
+  --framegrab-region 40,40,560,600
+```
+
+On macOS, this still creates a hidden SDL3 window internally for Metal adapter bootstrap. It therefore needs the same window-system approval as visible SDL runs. Do not add this command to the default `mise test` unless the environment can run it without GUI approval.
+
+Verify the generated artifact:
+
+```sh
+file /tmp/scrapbot-framegrab.png
+xxd -l 16 /tmp/scrapbot-framegrab.png
+```
+
+Expected basics:
+
+- `file` reports `PNG image data, 1280 x 720, 8-bit/color RGBA`.
+- `xxd` starts with `8950 4e47 0d0a 1a0a`.
+- Visual inspection matches the selected fixture and changed behavior.
+
+Use `view_image` only when the conclusion depends on visual inspection. Start with its default/high detail and one overview image per visual checkpoint. Do not request `original` detail for a complete frame by default. For a named pixel-level concern, generate the tightest useful 1:1 framegrab region and inspect that region at original detail. Reuse an existing artifact when the rendered state has not changed, and avoid emitting several near-identical screenshots in one turn.
+
+For renderer changes, inspect the artifact for:
+
+- Nonblank output, expected framing, and coherent depth ordering.
+- Geometry topology, face winding, normals, and transforms.
+- Material colors, lighting contrast, and point/directional light contributions.
+- Stable layout and expected entity visibility across multiple frames.
+- Complete editor chrome and a clipped live project viewport that fills all available center space when `--editor` is used.
+- The invariant that a lit material with no ambient, directional, or point contribution renders black.
+- Expected batching/resource sharing when frame statistics are relevant.
+
+## What Counts As Tested
+
+For ordinary code/docs changes:
+
+- `mise test`
+- `git diff --check`
+
+For renderer, geometry, material, light, camera, or render-ECS changes, also run a relevant WGPU smoke:
+
+- Window path: `--backend wgpu --window --frames 3`
+- Headless artifact path: `--backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png`
+
+For framegrab or PNG writer changes, run:
+
+- `odin test src/scrapbot/render`
+- the headless framegrab command
+- `file`/`xxd` checks
+- visual inspection with `view_image`
+
+For generated Luau API or schema changes, run:
+
+- `mise build`
+- `bin/scrapbot check` for every affected example
+- `mise test`
+- review of generated declaration diffs
+
+For documentation changes, build the website from its own directory:
+
+```sh
+cd docs-website
+pnpm run build
+```
+
+For lifecycle or suspected CPU/RAM growth changes, also run:
+
+```sh
+mise test-soak
+```
+
+The soak parses Scrapbot's JSON result, compares allocated storage across early/late/final checkpoints, allows at most 64 KiB of engine-allocator growth and post-teardown retention, and uses a generous 1.5x late/early frame-cost threshold. Its frame count and thresholds can be steered through `SCRAPBOT_SOAK_FRAMES`, `SCRAPBOT_SOAK_MAX_ALLOCATOR_GROWTH`, `SCRAPBOT_SOAK_MAX_FINAL_ALLOCATOR_BYTES`, and `SCRAPBOT_SOAK_MAX_CPU_GROWTH`.
+
+`mise test-sanitize` runs the full Odin package tree under AddressSanitizer on Linux. It is explicitly skipped on macOS because the current Odin and Apple sanitizer runtimes are incompatible.
+
+## Notes For Future Agents
+
+- Prefer `mise test` over reconstructing the suite manually.
+- Prefer versioned `--json` output over parsing human-readable CLI output.
+- Keep GPU commands out of the default suite while they require GUI/window-system approval.
+- Use `/tmp` for generated framegrabs and temporary test artifacts unless the user asks to keep them.
+- Prefer structured diagnostics plus `file`/size checks before loading image pixels into the conversation.
+- Preserve agent choice: use a full frame for composition, a 1:1 region for detail, and never downsample the only verification artifact.
+- If a WGPU command fails in the sandbox with SDL display, XPC, or window-system errors, rerun it with approval rather than changing renderer code.
+- Use enough frames to expose animated behavior, but keep automated runs bounded with `--frames`.
+- When changing test expectations, update `README.md`, FDRs, TODO, or this skill if the testing contract changed.

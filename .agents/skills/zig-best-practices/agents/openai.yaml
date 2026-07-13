@@ -1,7 +1,0 @@
-interface:
-  display_name: "Zig Best Practices"
-  short_description: "Write and review idiomatic Zig code"
-  default_prompt: "Use $zig-best-practices to guide this Zig implementation or review."
-
-policy:
-  allow_implicit_invocation: true

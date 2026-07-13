@@ -2,67 +2,50 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-import cloudflare from '@astrojs/cloudflare';
-
 // https://astro.build/config
 export default defineConfig({
-  integrations: [
-      starlight({
-          title: 'Scrapbot Engine',
-          sidebar: [
-              {
-                  label: 'Getting Started',
-                  items: [
-                      { label: 'Overview', slug: 'getting-started/overview' },
-                      { label: 'Quickstart', slug: 'getting-started/quickstart' },
-                  ],
-              },
-              {
-                  label: 'Core Concepts',
-                  items: [
-                      { label: 'Project Model', slug: 'concepts/project-model' },
-                      { label: 'Scene Authoring', slug: 'concepts/scenes' },
-                      { label: 'ECS Runtime', slug: 'concepts/ecs' },
-                  ],
-              },
-              {
-                  label: 'Scripting & Native Code',
-                  items: [
-                      { label: 'Luau Systems', slug: 'scripting/luau' },
-                      { label: 'Queries and Views', slug: 'scripting/queries-and-views' },
-                      { label: 'Project-Local Zig', slug: 'scripting/native-zig' },
-                  ],
-              },
-              {
-                  label: 'Rendering & UI',
-                  items: [
-                      { label: 'Rendering Overview', slug: 'rendering/overview' },
-                      { label: 'Geometry and Materials', slug: 'rendering/geometry-materials' },
-                      { label: 'Batching and Shadows', slug: 'rendering/batching-and-shadows' },
-                      { label: 'Editor UI Overlay', slug: 'editor-ui/debug-overlay' },
-                  ],
-              },
-              {
-                  label: 'Workflow',
-                  items: [
-                      { label: 'Live Reload', slug: 'workflow/live-reload' },
-                      { label: 'Building Games', slug: 'workflow/building-games' },
-                      { label: 'Testing and Verification', slug: 'workflow/testing' },
-                      { label: 'Diagnostics', slug: 'workflow/diagnostics' },
-                  ],
-              },
-              {
-                  label: 'Reference',
-                  items: [
-                      { label: 'CLI', slug: 'reference/cli' },
-                      { label: 'Project Files', slug: 'reference/project-files' },
-                      { label: 'Engine Components', slug: 'reference/components' },
-                      { label: 'Example Projects', slug: 'reference/examples' },
-                  ],
-              },
-          ],
-      }),
+	vite: {
+		server: {
+			allowedHosts: ['localhost', '127.0.0.1'],
+		},
+	},
+	integrations: [
+		starlight({
+			title: 'Scrapbot',
+			description: 'Documentation for the Scrapbot experimental game engine.',
+			customCss: ['./src/styles/scrapbot.css'],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/scrapbotengine/scrapbot' }],
+			sidebar: [
+				{
+					label: 'Start Here',
+					items: [
+						{ label: 'Overview', slug: '' },
+						{ label: 'Quickstart', slug: 'guides/quickstart' },
+						{ label: 'Project Layout', slug: 'guides/project-layout' },
+					],
+				},
+				{
+					label: 'Engine Guides',
+					items: [
+						{ label: 'Luau Scripting', slug: 'guides/luau-scripting' },
+						{ label: 'Native Extensions', slug: 'guides/native-extensions' },
+						{ label: 'Live Editor', slug: 'guides/live-editor' },
+						{ label: 'Rendering And Testing', slug: 'guides/rendering-testing' },
+					],
+				},
+				{
+					label: 'Reference',
+					items: [
+						{ label: 'Source Layout', slug: 'reference/source-layout' },
+						{ label: 'CLI', slug: 'reference/cli' },
+						{ label: 'Project Files', slug: 'reference/project-files' },
+						{ label: 'Luau API', slug: 'reference/luau-api' },
+						{ label: 'Native Extension ABI', slug: 'reference/native-extension-abi' },
+						{ label: 'Architecture Records', slug: 'reference/architecture-records' },
+						{ label: 'Glossary', slug: 'reference/glossary' },
+					],
+				},
+			],
+		}),
 	],
-
-  adapter: cloudflare(),
 });

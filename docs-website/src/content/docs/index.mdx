@@ -1,44 +1,77 @@
 ---
 title: Scrapbot Engine
-description: Documentation for the text-first, ECS-native game engine built for agentic workflows.
+description: Documentation for Scrapbot, an experimental Odin game engine with text-first projects, ECS runtime code, Luau scripting, native extensions, and WebGPU rendering.
 template: splash
 hero:
-  tagline: A text-first, ECS-native game engine where scenes, scripts, tests, native systems, rendering, UI, and editor tooling are all designed to be inspectable and automatable.
+  tagline: An experimental, text-first game engine built in Odin and designed for agent-assisted iteration.
   actions:
     - text: Start Building
-      link: /getting-started/quickstart/
+      link: /guides/quickstart/
       icon: right-arrow
-    - text: Explore the Runtime
-      link: /concepts/ecs/
-      icon: open-book
+    - text: Native Extensions
+      link: /guides/native-extensions/
+      icon: rocket
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Why Scrapbot Exists
+Scrapbot is a research engine. It is not trying to be stable yet. It is trying to make the engine, the project files, and the agent workflow line up cleanly enough that we can keep building without losing the thread.
 
-<CardGrid stagger>
+## What exists today
+
+<CardGrid>
 	<Card title="Text-first projects" icon="document">
-		Projects and scenes are TOML. Scripts are Luau. Native extensions are Zig. Core state is designed to be read, edited, diffed, tested, and live-reloaded.
+		Projects are ordinary directories with `project.toml`, TOML scene files, Luau scripts, generated editor types, and optional native extension source.
 	</Card>
-	<Card title="Real ECS everywhere" icon="setting">
-		Game state, script systems, native systems, render extraction, UI primitives, editor overlays, and internal render systems all use the same ECS runtime model.
+	<Card title="ECS runtime" icon="setting">
+		The runtime builds an ECS world from scene data, assigns generation-aware entities, validates component schemas, and executes scheduled systems.
 	</Card>
-	<Card title="Agent-friendly loops" icon="rocket">
-		Headless commands validate projects, step simulations, run game-shaped tests, benchmark scenes, and render deterministic PNG artifacts for verification.
+	<Card title="Luau scripting" icon="code">
+		Projects define components and systems in `scripts/main.luau`, query entities by component handles, and get generated Luau types from `scrapbot check`.
 	</Card>
-	<Card title="Prototype, then port" icon="code">
-		Write gameplay in typed Luau systems first, then move hot paths to project-local Zig systems without changing scene data or component ids.
+	<Card title="Native extensions" icon="rocket">
+		Projects can declare Odin native extension targets. Scrapbot builds source-stamped dynamic libraries, loads schemas and scheduled systems before Luau runs, and exposes deferred lifecycle commands during system execution.
 	</Card>
-	<Card title="Rendering is data-driven" icon="star">
-		Scene-authored transforms, geometry, materials, cameras, lights, shadows, batching, UI, and editor overlays all flow through ECS data.
+	<Card title="WebGPU rendering" icon="laptop">
+		The `wgpu` backend renders indexed geometry, lighting, shadows, retained ECS UI, and live-resizing windows through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
+	</Card>
+	<Card title="Live editor" icon="setting">
+		Toggle dark editor chrome around the running project, browse scene and runtime entities, inspect component fields, pick rendered geometry, fly the scene camera, and translate selections with an ECS-owned gizmo.
+	</Card>
+	<Card title="Hot reload" icon="refresh">
+		Runtime hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native source.
 	</Card>
 </CardGrid>
 
-## Good First Pages
+## The loop
 
-- [Quickstart](/getting-started/quickstart/) shows the fastest path from a project directory to validation, stepping, rendering, and headful play.
-- [Project Model](/concepts/project-model/) explains how `project.toml`, scenes, scripts, native modules, and generated cache data fit together.
-- [Luau Systems](/scripting/luau/) covers component declarations, typed queries, systems, and lifecycle commands.
-- [Testing and Verification](/workflow/testing/) covers `scrapbot test`, render tests, benchmarks, and the game-shaped fixtures in `tests/projects/`.
+```sh
+mise build
+mise scrapbot -- init my-game "My Game"
+mise scrapbot -- check my-game
+mise scrapbot -- run my-game
+```
+
+For the checked-in example:
+
+```sh
+mise scrapbot -- check examples/minimal
+mise scrapbot -- run examples/minimal
+```
+
+For a denser ECS exercise with a native object fountain:
+
+```sh
+mise scrapbot -- check examples/ecs-showcase
+mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
+```
+
+## Read next
+
+- [Quickstart](/guides/quickstart/) for the shortest route from clone to running project.
+- [Project Layout](/guides/project-layout/) for how `project.toml`, scene files, scripts, generated types, and native code fit together.
+- [Luau Scripting](/guides/luau-scripting/) for components, systems, queries, scheduling metadata, and generated types.
+- [Native Extensions](/guides/native-extensions/) for the current Odin extension flow and ABI.
+- [Live Editor](/guides/live-editor/) for scene navigation, entity inspection, viewport picking, and transform manipulation.
+- [Rendering And Testing](/guides/rendering-testing/) for WGPU smoke runs, framegrabs, and CPU/RAM growth checks.

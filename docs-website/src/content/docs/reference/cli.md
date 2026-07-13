@@ -1,153 +1,118 @@
 ---
 title: CLI Reference
-description: Commands exposed by the Scrapbot CLI.
+description: Current Scrapbot command-line interface.
 ---
 
-Scrapbot is operated through one CLI binary.
+All commands run against a project directory. When omitted, the project path defaults to the current directory.
 
-```txt
-scrapbot - agent-native game engine
+## Machine-readable output
 
-Usage:
-  scrapbot --version
-  scrapbot help
-  scrapbot init [path]
-  scrapbot check [path] [--format text|json]
-  scrapbot step [path] [--frames N] [--dt seconds] [--format text|json]
-  scrapbot bench [path] [--frames N] [--dt seconds] [--format text|json]
-  scrapbot test [tests-path|project-path] [--format text|json]
-  scrapbot build [path] [--output DIR] [--name NAME] [--force] [--format text|json]
-  scrapbot run [path] [--frames N] [--editor] [--hidden]
-  scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]
-  scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]
+`init`, `check`, `build`, and `run` accept `--json`. JSON mode emits exactly one document to stdout and suppresses project log lines:
+
+```json
+{
+  "schema_version": 1,
+  "command": "check",
+  "ok": false,
+  "diagnostics": [
+    {
+      "code": "SCRAPBOT_CHECK_FAILED",
+      "severity": "error",
+      "message": "failed to read project.toml",
+      "path": "my-game"
+    }
+  ],
+  "result": {}
+}
 ```
 
-## Commands
+Diagnostic codes are stable automation identifiers. Messages remain human-readable context. Successful command envelopes have an empty diagnostics array and command-specific result fields.
 
-| Command | Purpose |
-| --- | --- |
-| `scrapbot --version` | Print the CLI version. |
-| `scrapbot help` | Print command usage. |
-| `scrapbot init [path]` | Create a fresh project in the current or specified directory. |
-| `scrapbot check [path]` | Validate project, scene, scripts, native code, and schedule. |
-| `scrapbot step [path]` | Run deterministic headless simulation frames. |
-| `scrapbot bench [path]` | Run headless benchmark smoke coverage. |
-| `scrapbot test [path]` | Run game-shaped project tests. |
-| `scrapbot build [path]` | Package a host-platform runnable bundle. |
-| `scrapbot run [path]` | Run a headful interactive project. |
-| `scrapbot render [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` | Render one or more offscreen frames to a PNG artifact. |
-| `scrapbot render-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [path] [output.png]` | Render and verify visible output. |
-| `scrapbot visual-test [--editor] [--select entity-id] [--frames N] [--width PX] [--height PX] [--pixel-scale S] [--update] <path> <expected.png> [actual.png]` | Render and compare a golden visual fixture. |
-
-## Format Options
-
-These commands support `--format text|json`:
-
-- `check`
-- `step`
-- `bench`
-- `test`
-- `build`
-
-Use JSON for editor, CI, and agent integrations.
-
-## Init
+## `scrapbot init`
 
 ```sh
-mkdir mygame
-cd mygame
-scrapbot init
+scrapbot init [path] [name] [--json]
 ```
 
-`scrapbot init` creates a project in the current directory by default. The usual workflow is to create a project directory, enter it, and run `scrapbot init`.
-
-Passing a path also works:
-
-```sh
-scrapbot init games/hello-scrapbot
-```
-
-Scrapbot creates the target directory when needed and uses the final path segment as the project name.
-
-A fresh project contains:
+Creates a project with:
 
 - `project.toml`
 - `scenes/main.scene.toml`
-- `assets/.gitkeep`
-- a script-free scene with a cube, camera, and directional light
+- `scripts/main.luau`
+- `assets/`
+- `types/scrapbot.d.luau`
+- `.vscode/settings.json`
 
-The command is non-destructive. If `project.toml` or legacy `project.scrapbot.toml` already exists in the target directory, `scrapbot init` fails instead of overwriting project files.
-
-## Build Options
-
-```sh
-scrapbot build examples/showcase
-scrapbot build examples/native_motion --output zig-out/packages --name native-motion --force
-```
-
-`scrapbot build` validates the project and writes a host-platform bundle. The default output root is `build` inside the project directory, and the default bundle name is based on the project name and host platform.
-
-- `--output DIR` chooses the output root.
-- `--name NAME` chooses the bundle directory name.
-- `--force` replaces an existing Scrapbot-generated bundle.
-- `--format json` emits machine-readable build output.
-
-The bundle contains `bin/scrapbot`, a copied `project/` directory, a `run` launcher, and `scrapbot-build.json`. Project-local native Zig modules are compiled into a packaged `native_artifact`, so the bundled project does not need Zig installed to load native systems. When SDL3 is discoverable locally, it is copied into `lib/` and the launcher adds that directory to the platform library search path.
-
-The first build format targets the current OS and architecture only. Cross-platform export, app signing, and fully static project-native executables are future packaging work.
-
-For platform-specific bundle notes, see [Building Games](/workflow/building-games/).
-
-## Render Options
+## `scrapbot build`
 
 ```sh
-scrapbot render examples/native_motion zig-out/native-motion.png
-scrapbot render --editor --select native-cyan-box examples/native_motion zig-out/native-motion-editor.png
-scrapbot render examples/showcase --width 1280 --height 720 zig-out/showcase.png
-scrapbot render --editor --width 2560 --height 1800 --pixel-scale 2 examples/minimal zig-out/editor-hidpi.png
+scrapbot build [path] [--target host] [--json]
 ```
 
-- `--editor` renders the engine editor shell into the offscreen frame.
-- `--select entity-id` implies `--editor` and preselects a scene entity for inspector layout verification.
-- `--frames N` renders multiple fixed-step offscreen frames and writes the final frame. The default is one startup frame.
-- `--width PX` and `--height PX` set the physical offscreen output size in positive integer pixels.
-- `--pixel-scale S` sets physical pixels per logical pixel for offscreen editor/UI verification. Render output also writes a `.metadata.json` sidecar with physical size, logical size, and pixel scale.
+Builds native extension targets and creates a runnable package under `build/<target>`. The package contains a renamed Scrapbot executable, project runtime data, and only the active compiled native extension artifacts. Native extension source and generated editor metadata are omitted.
 
-## Visual Test Options
+The default target is the current host, such as `darwin_arm64` or `linux_amd64`. `--target host` is an explicit alias for it. Other Odin targets are modeled but currently rejected because Scrapbot does not yet provide target-built Luau, SDL3, and WGPU dependencies.
+
+Run the packaged executable directly. It defaults to a windowed WGPU game; renderer and bounded-run options remain available for testing:
 
 ```sh
-scrapbot visual-test tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png zig-out/postprocess-effects-actual.png
-scrapbot visual-test --update tests/golden/postprocess_effects tests/golden/postprocess_effects/expected.png
+build/darwin_arm64/my-game
+build/darwin_arm64/my-game --backend null --frames 1 --json
 ```
 
-`visual-test` renders the project offscreen, compares the actual image against a checked-in golden image, and reports max channel delta, mean channel delta, and changed-pixel ratio. Use `--update` only when the current renderer output is the intended new baseline.
+Successful JSON results include `target`, `output_directory`, and `executable` fields. Unsupported targets report `SCRAPBOT_UNSUPPORTED_TARGET`.
 
-- `--frames N` renders multiple fixed-step offscreen frames and compares or updates the final frame. The default is one startup frame.
-- `--width PX` and `--height PX` set the physical offscreen output size in positive integer pixels.
-- `--pixel-scale S` sets physical pixels per logical pixel for offscreen editor/UI verification.
-
-## Run Options
+## `scrapbot check`
 
 ```sh
-scrapbot run examples/showcase --frames 240
-scrapbot run examples/showcase --editor
-scrapbot run examples/showcase --hidden --frames 2
+scrapbot check [path] [--json]
 ```
 
-- `--frames N` exits after a bounded number of frames.
-- `--editor` starts with the editor/debug overlay visible.
-- `--hidden` creates the window and presentation surface without showing a normal visible window. It requires `--frames N`.
+Performs project validation:
 
-## Timestep Options
+- reads `project.toml`;
+- builds declared native extensions;
+- loads native extension schemas and system declarations;
+- builds the ECS world from the default scene;
+- executes `scripts/main.luau` silently to collect schemas and systems;
+- validates scene component data against the registry;
+- refreshes `types/scrapbot.d.luau`;
+- runs `luau-analyze` when available.
 
-`step` and `bench` accept:
-
-- `--frames N`
-- `--dt seconds`
-
-Example:
+## `scrapbot run`
 
 ```sh
-scrapbot step examples/showcase --frames 8 --dt 0.05
+scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--json]
 ```
+
+Runs a project through the selected renderer backend after stepping registered native and Luau systems.
+
+Options:
+
+| Option | Meaning |
+| --- | --- |
+| `--backend null` | Use the headless null renderer. |
+| `--backend wgpu` | Use the WebGPU renderer. |
+| `--window` | Open a platform window. |
+| `--headless` | Force headless mode. |
+| `--editor` | Start with the editor shell visible. `Ctrl+Esc` toggles it in a visible window. |
+| `--hot-reload` | Poll project files, scripts, and native extension source/output changes while running. |
+| `--scheduler-trace` | Print native worker count, parallel stage count, and maximum stage width. |
+| `--runtime-stats` | Collect early/late engine-frame timing through render preparation, engine-allocator bytes, and ECS storage checkpoints. Windowed runs also require nonzero `--frames`. |
+| `--frames n` | Limit renderer frames. |
+| `--framegrab out.png` | Write the final headless WGPU frame to a PNG. |
+| `--framegrab-region x,y,width,height` | Export only this top-left-origin 1:1 pixel region; requires `--framegrab`. |
+| `--json` | Emit one versioned machine-readable result. |
+
+The editor shell keeps the running project live across the complete central viewport with a camera aspect ratio derived from the available space. It creates an inspectable editor-origin scene camera without changing the project's camera. Hold right mouse inside the viewport to capture the pointer, look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest entity, reveals it in the scene sidebar, and drives a read-only inspector containing component fields and live values. The scene browser and inspector have independent pixel-continuous, smoothly scrolling, clipped panes with proportional scrollbars; neither pane snaps to lines. Selected entities with a Transform expose functional world-space X/Y/Z translation handles; these edits affect only the running world for now. The browser distinguishes scene-authored, runtime-spawned, and editor-owned entities. Combine `--editor`, `--headless`, and `--framegrab` to capture the editor deterministically. Framegrabs are losslessly compressed; region export changes the output extent without scaling its pixels.
+
+With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
+
+## `scrapbot help`
+
+```sh
+scrapbot help <command>
+scrapbot --version
+```
+
+Prints generated command help or the engine version.

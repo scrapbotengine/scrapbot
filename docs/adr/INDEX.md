@@ -2,26 +2,23 @@
 
 | # | Decision | Date |
 |---|----------|------|
-| [ADR-001](ADR-001-agent-native-text-first-project-model.md) | Agent-Native Text-First Project Model | 2026-07-01 |
-| [ADR-002](ADR-002-zig-as-engine-implementation-language.md) | Zig as the Engine Implementation Language | 2026-07-01 |
-| [ADR-003](ADR-003-single-engine-binary-with-interactive-and-headless-modes.md) | Single Engine Binary with Interactive and Headless Modes | 2026-07-01 |
-| [ADR-004](ADR-004-webgpu-graphics-through-wgpu-native.md) | WebGPU Graphics Through wgpu-native | 2026-07-01 |
-| [ADR-005](ADR-005-narrow-backend-boundaries-for-external-native-libraries.md) | Narrow Backend Boundaries for External Native Libraries | 2026-07-01 |
-| [ADR-006](ADR-006-embeddable-scripting-language-for-game-logic.md) | Embeddable Scripting Language for Game Logic | 2026-07-01 |
-| [ADR-007](ADR-007-engine-hosted-ui-for-editor-tooling.md) | Engine-Hosted UI for Editor Tooling | 2026-07-01 |
-| [ADR-008](ADR-008-component-system-runtime-model.md) | Component-System Runtime Model | 2026-07-01 |
-| [ADR-009](ADR-009-live-reload-as-a-core-runtime-capability.md) | Live Reload as a Core Runtime Capability | 2026-07-01 |
-| [ADR-010](ADR-010-local-and-qualified-ids-for-script-ecs-extensions.md) | Local and Qualified IDs for Script ECS Extensions | 2026-07-01 |
-| [ADR-011](ADR-011-structured-script-diagnostics.md) | Structured Script Diagnostics | 2026-07-01 |
-| [ADR-012](ADR-012-luau-type-functions-for-ecs-editor-types.md) | Luau Type Functions for ECS Editor Types | 2026-07-02 |
-| [ADR-013](ADR-013-shared-ecs-for-engine-internal-worlds.md) | Shared ECS for Engine-Internal Worlds | 2026-07-02 |
-| [ADR-014](ADR-014-resolved-query-plans-for-luau-ecs-iteration.md) | Resolved Query Plans for Luau ECS Iteration | 2026-07-03 |
-| [ADR-015](ADR-015-buffer-backed-luau-query-views.md) | Buffer-Backed Luau Query Views | 2026-07-03 |
-| [ADR-016](ADR-016-generation-aware-entity-handles.md) | Generation-Aware Entity Handles | 2026-07-03 |
-| [ADR-017](ADR-017-deferred-script-structural-commands.md) | Deferred Script Structural Commands | 2026-07-03 |
-| [ADR-018](ADR-018-engine-linked-native-ecs-systems.md) | Engine-Linked Native ECS Systems | 2026-07-03 |
-| [ADR-019](ADR-019-project-local-native-zig-modules.md) | Project-Local Native Zig Modules | 2026-07-03 |
-| [ADR-020](ADR-020-transient-ecs-input-resources.md) | Transient ECS Input Resources | 2026-07-03 |
-| [ADR-021](ADR-021-domain-oriented-source-layout.md) | Domain-Oriented Source Layout | 2026-07-06 |
-| [ADR-022](ADR-022-single-world-render-data-flow.md) | Single-World Render Data Flow | 2026-07-06 |
-| [ADR-023](ADR-023-query-observers-for-ecs-membership.md) | Query Observers for ECS Membership | 2026-07-06 |
+| [ADR-001](ADR-001-use-odin-for-engine-runtime.md) | Use Odin for the engine runtime | 2026-07-07 |
+| [ADR-002](ADR-002-use-text-first-project-files.md) | Use text-first project files | 2026-07-07 |
+| [ADR-003](ADR-003-use-pluggable-rendering-backends.md) | Use pluggable rendering backends | 2026-07-07 |
+| [ADR-004](ADR-004-use-core-flags-for-command-options.md) | Use core:flags for command options | 2026-07-07 |
+| [ADR-005](ADR-005-use-sdl3-for-platform-windows.md) | Use SDL3 for platform windows | 2026-07-07 |
+| [ADR-006](ADR-006-use-luau-for-project-scripting.md) | Use Luau for project scripting | 2026-07-08 |
+| [ADR-007](ADR-007-use-id-keyed-component-storage.md) | Use ID-keyed component storage | 2026-07-11 |
+| [ADR-008](ADR-008-use-a-small-c-abi-for-native-extensions.md) | Use a small C ABI for native extensions | 2026-07-12 |
+| [ADR-009](ADR-009-parallelize-access-declared-native-systems.md) | Parallelize access-declared native systems | 2026-07-12 |
+| [ADR-010](ADR-010-keep-render-resources-outside-the-ecs.md) | Keep render resources outside the ECS | 2026-07-12 |
+| [ADR-011](ADR-011-extract-ecs-lights-into-bounded-render-packets.md) | Extract ECS lights into bounded render packets | 2026-07-12 |
+| [ADR-012](ADR-012-model-frame-time-as-a-world-resource.md) | Model frame time as a world resource | 2026-07-12 |
+| [ADR-013](ADR-013-precompute-mtsdf-font-atlases.md) | Precompute MTSDF font atlases | 2026-07-12 |
+| [ADR-014](ADR-014-compose-ui-from-boxes-and-controls.md) | Compose UI from boxes and controls | 2026-07-13 |
+| [ADR-015](ADR-015-keep-editor-chrome-engine-owned.md) | Keep editor chrome engine-owned | 2026-07-13 |
+| [ADR-016](ADR-016-track-entity-origin-in-the-runtime-world.md) | Track entity origin in the runtime world | 2026-07-13 |
+| [ADR-017](ADR-017-use-cpu-triangle-rays-for-editor-picking.md) | Use CPU triangle rays for editor picking | 2026-07-13 |
+| [ADR-018](ADR-018-render-editor-gizmos-as-screen-overlays.md) | Render editor gizmos as screen overlays | 2026-07-13 |
+| [ADR-019](ADR-019-model-the-editor-scene-camera-as-a-transient-ecs-entity.md) | Model the editor scene camera as a transient ECS entity | 2026-07-13 |
+| [ADR-020](ADR-020-keep-scroll-state-in-retained-ui-and-clip-on-the-gpu.md) | Keep scroll state in retained UI and clip on the GPU | 2026-07-13 |

@@ -1,38 +1,43 @@
 # Scrapbot Documentation Website
 
-This is the Astro Starlight documentation site for Scrapbot Engine.
+[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-## Development
+This is the Astro Starlight documentation site for Scrapbot.
 
-Install dependencies from the checked-in lockfile:
+## Project Structure
 
-```sh
-pnpm install
+Documentation pages live in `src/content/docs/`:
+
+```text
+.
+├── public/
+├── src/
+│   ├── assets/
+│   ├── content/
+│   │   └── docs/
+│   ├── styles/
+│   └── content.config.ts
+├── astro.config.mjs
+├── package.json
+└── tsconfig.json
 ```
 
-Start the local docs server in the background:
+Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
 
-```sh
-pnpm astro dev --background
-```
+## Commands
 
-Build the static site:
+Run commands from `docs-website/`:
 
-```sh
-pnpm run build
-```
+| Command                   | Action                                           |
+| :------------------------ | :----------------------------------------------- |
+| `pnpm install`             | Installs dependencies                            |
+| `pnpm dev`                 | Starts local dev server at `localhost:4321`      |
+| `pnpm build`               | Builds the static site into `./dist/`            |
+| `pnpm preview`             | Previews the built site locally                  |
+| `pnpm astro ...`           | Runs Astro CLI commands                          |
 
-## Content
+## Development Notes
 
-Documentation pages live in `src/content/docs/`.
-
-The current site is organized around:
-
-- Getting started
-- Core concepts
-- Scripting and native code
-- Rendering and UI
-- Workflow
-- Reference
-
-When updating engine behavior, keep these docs aligned with source, ADRs, FDRs, examples, and CLI output.
+- Keep source-of-truth design decisions in the repository `docs/adr/` and `docs/fdr/` records.
+- Use the website for reader-facing guides and reference material.
+- Run `pnpm build` before committing docs site changes.
