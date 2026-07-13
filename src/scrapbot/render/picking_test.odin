@@ -1,5 +1,6 @@
 package render
 
+import "core:math"
 import "core:testing"
 import resources "../resources"
 import shared "../shared"
@@ -21,6 +22,18 @@ test_editor_picking_returns_nearest_transformed_triangle_hit :: proc(t:^testing.
 	testing.expect(t,entity==shared.Entity{index=2,generation=3})
 	_,found=editor_pick_entity(&list,&registry,{105,55},viewport)
 	testing.expect(t,!found)
+}
+
+@(test)
+test_editor_pick_ray_uses_camera_rotation :: proc(t: ^testing.T) {
+	list := shared.Render_List {
+		has_camera = true,
+		camera = {transform = {position = {0, 0, 6}, rotation = {0, math.PI / 2, 0}}, camera = {fov = 60}},
+	}
+	ray, ok := editor_pick_ray(&list, {400, 300}, ui.Rect{0, 0, 800, 600})
+	testing.expect(t, ok)
+	testing.expect(t, ray.direction.x > 0.999)
+	testing.expect(t, math.abs(ray.direction.z) < 0.001)
 }
 
 @(test)

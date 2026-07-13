@@ -46,7 +46,7 @@ Transform:
 ```toml
 [entities.transform]
 position = [0, 2, 6]
-rotation = [0, 0, 0]
+rotation = [-0.321751, 0, 0]
 scale = [1, 1, 1]
 ```
 
@@ -58,6 +58,8 @@ fov = 60
 near = 0.1
 far = 100
 ```
+
+A camera reads its position and Euler orientation from the entity's transform. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll.
 
 Mesh:
 

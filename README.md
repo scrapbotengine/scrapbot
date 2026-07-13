@@ -25,7 +25,7 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, and a retained ECS UI overlay with a box model, horizontal and vertical stacks, MTSDF text, pointer-aware buttons, and SDF-rounded backgrounds. An engine-owned editor shell can frame the live project viewport with top, status, scene, and inspector chrome without entering project scene data. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, and a retained ECS UI overlay with a box model, horizontal and vertical stacks, MTSDF text, pointer-aware buttons, and SDF-rounded backgrounds. An engine-owned editor shell can frame the live project viewport with top, status, scene, and inspector chrome, plus an ECS-owned fly camera that navigates independently from the project's camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
 
 Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`. The ECS showcase runs a native object fountain with visible spawned cube renderables, velocity, lifetime, spin, despawn, animated point lights, editor-movable static point lights, and Luau typed queries.
 
@@ -115,7 +115,7 @@ Run the full local test suite with `mise test`.
   - [x] Lighting
   - [x] Generated cube, plane, icosphere, UV sphere, pyramid, and cylinder geometry
   - [x] Shared base-color materials
-  - [ ] Scene camera workflow
+  - [x] ECS-owned editor scene camera and captured fly navigation
 - Pipeline
   - [x] Geometry/material render batching
   - [x] Directional shadow maps with explicit caster/receiver components
@@ -186,6 +186,7 @@ Run the full local test suite with `mise test`.
   - [ ] Editor transactions
 - Scene Tools
   - [ ] Playback controls
+  - [x] RMB-captured WASD/Space/Ctrl scene-camera navigation
   - [x] World-space translation gizmo
   - [ ] Transform gizmo modes
   - [x] Precise viewport entity picking

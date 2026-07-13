@@ -15,8 +15,12 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - The running project's world and project-authored UI always share the complete available viewport. With the editor closed that is the full window; with the editor open it is the remaining center workspace.
 - Editor chrome and the project viewport follow the current drawable size when the window is resized. The camera derives its aspect ratio from the live viewport instead of enforcing a fixed ratio.
 - Project pointer coordinates are remapped into the project viewport, and pointer interaction is unavailable over editor chrome.
+- Opening the editor creates an editor-origin scene camera entity with Transform, Camera, and Editor Scene Camera components. Its initial view matches the project's camera, but subsequent editor navigation does not mutate the project camera.
+- Holding the right mouse button inside the viewport captures relative pointer input. While captured, mouse movement changes pitch and yaw, WASD moves along the view, Space moves up, and Ctrl moves down.
+- Releasing the right mouse button restores normal pointer interaction. Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
+- Project cameras derive their view direction from transform rotation, and rendering, viewport picking, and transform gizmos use the same camera orientation.
 - The scene sidebar lists every live entity and supports pointer-wheel scrolling, hover, and stable selection.
-- Scene-authored entities use mint provenance labels; runtime-spawned entities use amber provenance labels. Both remain selectable and inspectable.
+- Scene-authored entities use mint provenance labels, runtime-spawned entities use amber labels, and editor-owned entities use violet labels. All remain selectable and inspectable.
 - Selection follows the entity's generation-aware identity and clears if that entity despawns.
 - The inspector shows the selected entity's name, identity, provenance, attached components, field names, and current values.
 - The scene browser and component inspector scroll independently, and selecting a different entity resets the inspector to its beginning.
@@ -72,13 +76,19 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** Tool ownership remains ECS-visible—including in the component inspector—while the controls stay consistently hittable and separate from serialized project components and lighting.
 **Tradeoff:** The first gizmo is always world-oriented and supports only single-axis translation without persistence or undo.
 
+### 8. Give the editor an ECS-owned scene camera
+
+**Decision:** Use a transient editor-origin entity for the scene camera and run captured fly navigation through a dedicated ECS system, following ADR-019.
+**Why:** The camera remains inspectable and composable without mutating the project's gameplay camera or hiding tool state inside the renderer.
+**Tradeoff:** The world contains engine-owned entities during editing, so provenance and camera selection must explicitly distinguish project and editor ownership.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018, ADR-019
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions
 
 - How should editor edit commands cross into the running ECS?
 - Which panel layout and sizing state should persist per project?
-- When should editor input pause, capture, or pass through to the game?
+- How should editor camera speed, bookmarks, and focus-selection navigation persist?

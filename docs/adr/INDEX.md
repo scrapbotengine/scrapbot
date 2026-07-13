@@ -20,3 +20,4 @@
 | [ADR-016](ADR-016-track-entity-origin-in-the-runtime-world.md) | Track entity origin in the runtime world | 2026-07-13 |
 | [ADR-017](ADR-017-use-cpu-triangle-rays-for-editor-picking.md) | Use CPU triangle rays for editor picking | 2026-07-13 |
 | [ADR-018](ADR-018-render-editor-gizmos-as-screen-overlays.md) | Render editor gizmos as screen overlays | 2026-07-13 |
+| [ADR-019](ADR-019-model-the-editor-scene-camera-as-a-transient-ecs-entity.md) | Model the editor scene camera as a transient ECS entity | 2026-07-13 |

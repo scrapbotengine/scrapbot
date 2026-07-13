@@ -102,7 +102,7 @@ Options:
 | `--framegrab out.png` | Write the final headless WGPU frame to a PNG. |
 | `--json` | Emit one versioned machine-readable result. |
 
-The editor shell keeps the running project live across the complete central viewport with a camera aspect ratio derived from the available space. Clicking rendered geometry selects the nearest entity, reveals it in the scene sidebar, and drives an independently scrollable read-only inspector containing component fields and live values. Selected entities with a Transform expose functional world-space X/Y/Z translation handles; these edits affect only the running world for now. The browser distinguishes scene-authored entities from runtime spawns. Combine `--editor`, `--headless`, and `--framegrab` to capture the editor deterministically.
+The editor shell keeps the running project live across the complete central viewport with a camera aspect ratio derived from the available space. It creates an inspectable editor-origin scene camera without changing the project's camera. Hold right mouse inside the viewport to capture the pointer, look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest entity, reveals it in the scene sidebar, and drives an independently scrollable read-only inspector containing component fields and live values. Selected entities with a Transform expose functional world-space X/Y/Z translation handles; these edits affect only the running world for now. The browser distinguishes scene-authored, runtime-spawned, and editor-owned entities. Combine `--editor`, `--headless`, and `--framegrab` to capture the editor deterministically.
 
 ## `scrapbot help`
 

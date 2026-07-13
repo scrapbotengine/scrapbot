@@ -510,6 +510,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.render_instance_index = INVALID_COMPONENT_INDEX
 	if entity.editor_transform_gizmo_index>=0&&entity.editor_transform_gizmo_index<len(world.editor_transform_gizmos){world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index=INVALID_COMPONENT_INDEX}
 	entity.editor_transform_gizmo_index = INVALID_COMPONENT_INDEX
+	for &camera in world.editor_scene_cameras {if camera.entity_index==entity_index{camera.entity_index=INVALID_COMPONENT_INDEX}}
 	entity.has_shadow_caster = false
 	entity.has_shadow_receiver = false
 }

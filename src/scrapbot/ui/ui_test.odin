@@ -157,6 +157,27 @@ test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection 
 }
 
 @(test)
+test_editor_scene_camera_is_inspectable_as_an_editor_entity :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	entity_index, _, ok := ecs.reconcile_editor_scene_camera(&world, true)
+	testing.expect(t, ok)
+	testing.expect(t, world.entities[entity_index].origin == .Editor)
+	testing.expect(t, entity_component_count(&world, entity_index) == 3)
+
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[entity_index].id, 720))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, state.editor_inspector_content_height > 180)
+}
+
+@(test)
 test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t:^testing.T) {
 	scene:=shared.Scene{};defer delete(scene.entities)
 	append(&scene.entities,shared.Scene_Entity{

@@ -27,7 +27,13 @@ wgpu_build_mvp :: proc(instance: Render_Instance, camera: Camera_Instance, has_c
 	}
 
 	model := wgpu_build_model(instance.transform)
-	view := mat4_look_at(eye, Vec3{0, 0, 0}, Vec3{0, 1, 0})
+	target := Vec3{0, 0, 0}
+	up := Vec3{0, 1, 0}
+	if has_camera {
+		target = shared.camera_vec3_add(eye, shared.camera_forward(camera.transform.rotation))
+		up = shared.camera_up(camera.transform.rotation)
+	}
+	view := mat4_look_at(eye, target, up)
 	projection := mat4_perspective(math.to_radians(fov), aspect, near, far)
 	return mat4_mul(projection, mat4_mul(view, model))
 }

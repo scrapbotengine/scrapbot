@@ -14,9 +14,8 @@ editor_pick_ray :: proc(render_list:^shared.Render_List,position:shared.Vec2,vie
 		eye=render_list.camera.transform.position
 		if render_list.camera.camera.fov>0{fov=render_list.camera.camera.fov}
 	}
-	forward:=vec3_normalize(vec3_sub({},eye));up:=shared.Vec3{0,1,0}
-	if math.abs(vec3_dot(forward,up))>0.99{up={0,0,1}}
-	side:=vec3_normalize(vec3_cross(forward,up));true_up:=vec3_cross(side,forward)
+	forward:=vec3_normalize(vec3_sub({},eye));side:=vec3_normalize(vec3_cross(forward,{0,1,0}));true_up:=vec3_cross(side,forward)
+	if render_list!=nil&&render_list.has_camera {forward=shared.camera_forward(render_list.camera.transform.rotation);side=shared.camera_right(render_list.camera.transform.rotation);true_up=shared.camera_up(render_list.camera.transform.rotation)}
 	ndc_x:=(position.x-viewport.x)/viewport.width*2-1
 	ndc_y:=1-(position.y-viewport.y)/viewport.height*2
 	tan_half:=math.tan(math.to_radians(fov)*0.5);aspect:=viewport.width/viewport.height

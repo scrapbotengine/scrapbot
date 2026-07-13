@@ -12,7 +12,7 @@ The WGPU path decodes material base colors to linear space, accumulates light th
 
 Screen-space ECS UI is reconciled after engine/project systems and painted as a blended overlay after world geometry. Visible windows feed pointer position and primary-button state into topmost-element hit testing; hidden framegrabs deliberately render with no pointer interaction. `examples/ui-showcase` exercises the box model, nested horizontal and vertical stacks, SDF-rounded backgrounds, pointer-styled buttons, and the embedded Inter typeface rendered from a precomputed MTSDF atlas.
 
-With `--editor`, WGPU fills the complete central project viewport with world rendering and project UI, derives camera aspect from that live rectangle, remaps project pointer coordinates, and paints engine-owned chrome in a separate full-window overlay pass. Use `examples/ecs-showcase` to verify live geometry and `examples/ui-showcase` to verify project UI scaling:
+With `--editor`, WGPU fills the complete central project viewport with world rendering and project UI, derives camera aspect from that live rectangle, remaps project pointer coordinates, and paints engine-owned chrome in a separate full-window overlay pass. The editor-origin scene-camera entity clones the initial project view and supports right-mouse-captured WASD, Space, and Ctrl fly navigation in a visible window. Use `examples/ecs-showcase` to verify live geometry and `examples/ui-showcase` to verify project UI scaling:
 
 ```sh
 bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png

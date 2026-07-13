@@ -48,6 +48,7 @@ State :: struct {
 	editor_previous_primary_down:bool,
 	editor_pick_requested:bool,
 	editor_pick_position:shared.Vec2,
+	editor_scene_camera_captures_input:bool,
 	editor_gizmo_visible:bool,
 	editor_gizmo_origin:shared.Vec2,
 	editor_gizmo_endpoints:[3]shared.Vec2,
@@ -269,6 +270,7 @@ append_editor_chrome :: proc(state:^State,world:^shared.World,width,height,proje
 	state.editor_gizmo_paint_end=state.paint_count
 	entity_status:=fmt.tprintf("RUNNING  /  %d ENTITIES",len(world.entities))
 	if err:=append_text(state,entity_status,{0.35,0.85,0.65,1},12,{14,height-EDITOR_STATUS_BAR_HEIGHT+5,260,20},{});err!=""{return err}
+	if err:=append_text(state,"RMB + WASD / SPACE / CTRL  FLY",muted,10,{max(width*0.5-140,280),height-EDITOR_STATUS_BAR_HEIGHT+7,280,18},{});err!=""{return err}
 	if err:=append_text(state,"CTRL+ESC  CLOSE EDITOR",muted,12,{width-220,height-EDITOR_STATUS_BAR_HEIGHT+5,206,20},{});err!=""{return err}
 	return ""
 }
@@ -289,9 +291,9 @@ append_editor_gizmo :: proc(state:^State)->string {
 }
 
 append_entity_browser :: proc(state:^State,world:^shared.World,width,height:f32,muted,text_color:shared.Vec4)->string {
-	scene_count,runtime_count:=0,0
-	for entity in world.entities {if entity.alive {if entity.origin==.Scene{scene_count+=1}else{runtime_count+=1}}}
-	counts:=fmt.tprintf("%d SCENE  /  %d RUNTIME",scene_count,runtime_count)
+	scene_count,runtime_count,editor_count:=0,0,0
+	for entity in world.entities {if entity.alive {switch entity.origin {case .Scene:scene_count+=1;case .Runtime:runtime_count+=1;case .Editor:editor_count+=1}}}
+	counts:=fmt.tprintf("%d SCENE / %d LIVE / %d EDITOR",scene_count,runtime_count,editor_count)
 	if err:=append_text(state,counts,muted,10,{18,86,210,16},{});err!=""{return err}
 	browser:=editor_browser_rect(width,height);visible_rows:=int(browser.height/EDITOR_ENTITY_ROW_HEIGHT);alive_row:=0
 	for entity in world.entities {
@@ -305,12 +307,13 @@ append_entity_browser :: proc(state:^State,world:^shared.World,width,height:f32,
 		else if hovered {if err:=append_paint(state,{kind=.Panel,rect=row,color={0.08,0.12,0.19,1},corner_radius=3});err!=""{return err}}
 		origin_color:=shared.Vec4{0.38,0.88,0.68,1};origin_label:="SCENE"
 		if entity.origin==.Runtime {origin_color={0.96,0.62,0.20,1};origin_label="LIVE"}
+		if entity.origin==.Editor {origin_color={0.70,0.48,1,1};origin_label="EDIT"}
 		if err:=append_paint(state,{kind=.Panel,rect={row.x,row.y,3,row.height},color=origin_color,corner_radius=1});err!=""{return err}
 		if err:=append_text(state,origin_label,origin_color,9,{row.x+9,row.y+8,46,14},{});err!=""{return err}
 		name:=entity.name;if name==""{name=fmt.tprintf("Entity %d",entity.id.index)}
 		if err:=append_text_clipped(state,name,text_color,11,{row.x+59,row.y+7,row.width-65,16});err!=""{return err}
 	}
-	alive_count:=scene_count+runtime_count
+	alive_count:=scene_count+runtime_count+editor_count
 	if alive_count>visible_rows&&visible_rows>0 {
 		track:=Rect{browser.x+browser.width-3,browser.y,2,f32(visible_rows)*EDITOR_ENTITY_ROW_HEIGHT-2}
 		thumb_height:=max(track.height*f32(visible_rows)/f32(alive_count),20)
@@ -327,6 +330,7 @@ entity_component_count :: proc(world:^shared.World,entity_index:int)->int {
 	for index in indices{if index>=0{count+=1}}
 	if entity.ui_hstack_index>=0{count+=1};if entity.ui_vstack_index>=0{count+=1};if entity.ui_button_index>=0{count+=1}
 	if entity.editor_transform_gizmo_index>=0&&entity.editor_transform_gizmo_index<len(world.editor_transform_gizmos)&&world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index==entity_index{count+=1}
+	for camera in world.editor_scene_cameras {if camera.entity_index==entity_index{count+=1;break}}
 	if entity.has_shadow_caster{count+=1};if entity.has_shadow_receiver{count+=1}
 	for storage in world.custom_components {for component in storage.components {if component.entity_index==entity_index{count+=1;break}}}
 	return count
@@ -364,7 +368,7 @@ append_entity_inspector :: proc(state:^State,world:^shared.World,width,height:f3
 	index:=int(state.editor_selected_entity.index);if index<0||index>=len(world.entities){return ""};entity:=world.entities[index]
 	name:=entity.name;if name==""{name=fmt.tprintf("Entity %d",entity.id.index)}
 	if err:=append_text_clipped(state,name,text_color,15,{x,103,content_width,22});err!=""{return err}
-	origin_label:="SCENE ENTITY";origin_color:=shared.Vec4{0.38,0.88,0.68,1};if entity.origin==.Runtime{origin_label="RUNTIME ENTITY";origin_color={0.96,0.62,0.20,1}}
+	origin_label:="SCENE ENTITY";origin_color:=shared.Vec4{0.38,0.88,0.68,1};if entity.origin==.Runtime{origin_label="RUNTIME ENTITY";origin_color={0.96,0.62,0.20,1}}else if entity.origin==.Editor{origin_label="EDITOR ENTITY";origin_color={0.70,0.48,1,1}}
 	identity:=fmt.tprintf("%s  /  #%d:%d",origin_label,entity.id.index,entity.id.generation)
 	if err:=append_text_clipped(state,identity,origin_color,10,{x,130,content_width,16});err!=""{return err}
 	component_count:=entity_component_count(world,index);heading:=fmt.tprintf("COMPONENTS  /  %d",component_count)
@@ -374,6 +378,7 @@ append_entity_inspector :: proc(state:^State,world:^shared.World,width,height:f3
 	layout:=Inspector_Layout{state=state,x=x,width=content_width,top=top,bottom=bottom,scroll=state.editor_inspector_scroll,text_color=text_color,muted=muted,value_color={0.60,0.82,0.92,1}}
 	if entity.transform_index>=0&&entity.transform_index<len(world.transforms) {value:=world.transforms[entity.transform_index];if err:=inspector_section(&layout,"Transform");err!=""{return err};if err:=inspector_field(&layout,"position",format_vec3(value.position));err!=""{return err};if err:=inspector_field(&layout,"rotation",format_vec3(value.rotation));err!=""{return err};if err:=inspector_field(&layout,"scale",format_vec3(value.scale));err!=""{return err};inspector_gap(&layout)}
 	if entity.editor_transform_gizmo_index>=0&&entity.editor_transform_gizmo_index<len(world.editor_transform_gizmos)&&world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index==index {value:=world.editor_transform_gizmos[entity.editor_transform_gizmo_index];mode:="world translation";switch value.mode{case .World_Translate:};if err:=inspector_section(&layout,"Editor Transform Gizmo");err!=""{return err};if err:=inspector_field(&layout,"mode",mode);err!=""{return err};inspector_gap(&layout)}
+	for value in world.editor_scene_cameras {if value.entity_index==index {if err:=inspector_section(&layout,"Editor Scene Camera");err!=""{return err};if err:=inspector_field(&layout,"move speed",fmt.tprintf("%.2f",value.move_speed));err!=""{return err};if err:=inspector_field(&layout,"look sensitivity",fmt.tprintf("%.4f",value.look_sensitivity));err!=""{return err};inspector_gap(&layout);break}}
 	if entity.camera_index>=0&&entity.camera_index<len(world.cameras) {value:=world.cameras[entity.camera_index];if err:=inspector_section(&layout,"Camera");err!=""{return err};if err:=inspector_field(&layout,"fov",fmt.tprintf("%.2f",value.fov));err!=""{return err};if err:=inspector_field(&layout,"near",fmt.tprintf("%.3f",value.near));err!=""{return err};if err:=inspector_field(&layout,"far",fmt.tprintf("%.2f",value.far));err!=""{return err};inspector_gap(&layout)}
 	if entity.ambient_light_index>=0&&entity.ambient_light_index<len(world.ambient_lights) {value:=world.ambient_lights[entity.ambient_light_index];if err:=inspector_section(&layout,"Ambient Light");err!=""{return err};if err:=inspector_field(&layout,"color",format_vec3(value.color));err!=""{return err};if err:=inspector_field(&layout,"intensity",fmt.tprintf("%.2f",value.intensity));err!=""{return err};inspector_gap(&layout)}
 	if entity.directional_light_index>=0&&entity.directional_light_index<len(world.directional_lights) {value:=world.directional_lights[entity.directional_light_index];if err:=inspector_section(&layout,"Directional Light");err!=""{return err};if err:=inspector_field(&layout,"direction",format_vec3(value.direction));err!=""{return err};if err:=inspector_field(&layout,"color",format_vec3(value.color));err!=""{return err};if err:=inspector_field(&layout,"intensity",fmt.tprintf("%.2f",value.intensity));err!=""{return err};inspector_gap(&layout)}

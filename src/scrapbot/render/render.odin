@@ -69,7 +69,7 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 		}
 		ecs.reconcile_render_instances(world, run_config.resource_registry)
 		if run_config.stats != nil {
-			list := ecs.build_resource_render_list(world, run_config.resource_registry)
+			list := ecs.build_resource_render_list(world, run_config.resource_registry, run_config.ui_state != nil && run_config.ui_state.editor_visible)
 			defer ecs.destroy_render_list(&list)
 			run_config.stats.draw_batches = ecs.render_batch_count(&list)
 		}
@@ -115,15 +115,20 @@ run_frame_system :: proc(config: ^Run_Config, world: ^World, delta_seconds: f32,
 	} else if err:=config.frame_system(config.frame_system_data, world, delta_seconds);err!=""{return err}
 	if config.ui_state!=nil {
 		if platform.consume_editor_toggle(){config.ui_state.editor_visible=!config.ui_state.editor_visible}
+		viewport:=ui.editor_viewport(config.ui_state,drawable_width,drawable_height)
+		camera_input:=platform.runtime_scene_camera_input(config.ui_state.editor_visible,viewport.x,viewport.y,viewport.width,viewport.height)
+		config.ui_state.editor_scene_camera_captures_input=camera_input.look_active
+		ecs.editor_scene_camera_system(world,camera_input,delta_seconds,config.ui_state.editor_visible)
 		platform_pointer:=platform.runtime_pointer_state_in_pixels()
 		pointer:=ui.Pointer_Input{position={platform_pointer.x,platform_pointer.y},wheel_y=platform_pointer.wheel_y,primary_down=platform_pointer.primary_down,available=platform_pointer.available}
-		viewport:=ui.editor_viewport(config.ui_state,drawable_width,drawable_height);camera,has_camera:=ecs.first_camera_instance(world)
+		if config.ui_state.editor_scene_camera_captures_input {pointer={}}
+		camera,has_camera:=ecs.active_camera_instance(world,config.ui_state.editor_visible)
 		editor_transform_gizmo_system(config.ui_state,world,pointer,viewport,camera,has_camera)
 		if err:=ui.reconcile(config.ui_state,world,1280,720,pointer,drawable_width,drawable_height);err!=""{return err}
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested=false
 			if config.resource_registry!=nil {
-				list:=ecs.build_resource_render_list(world,config.resource_registry);defer ecs.destroy_render_list(&list)
+				list:=ecs.build_resource_render_list(world,config.resource_registry,config.ui_state.editor_visible);defer ecs.destroy_render_list(&list)
 				if entity,found:=editor_pick_entity(&list,config.resource_registry,config.ui_state.editor_pick_position,viewport);found {ui.editor_select_entity(config.ui_state,world,entity,drawable_height)} else {ui.editor_clear_selection(config.ui_state)}
 			}
 		}

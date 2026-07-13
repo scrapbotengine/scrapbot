@@ -52,7 +52,8 @@ editor_project_gizmo :: proc(state:^ui.State,origin:shared.Vec3,world_size:f32,v
 editor_project_world :: proc(point:shared.Vec3,viewport:ui.Rect,camera:shared.Camera_Instance,has_camera:bool)->(shared.Vec2,bool) {
 	if viewport.width<=0||viewport.height<=0{return {},false};eye,fov:=editor_camera_eye_fov(camera,has_camera);near,far:=f32(0.1),f32(100)
 	if has_camera {if camera.camera.near>0{near=camera.camera.near};if camera.camera.far>near{far=camera.camera.far}}
-	view:=mat4_look_at(eye,{}, {0,1,0});projection:=mat4_perspective(math.to_radians(fov),viewport.width/viewport.height,near,far);vp:=mat4_mul(projection,view)
+	target:=shared.Vec3{};up:=shared.Vec3{0,1,0};if has_camera{target=shared.camera_vec3_add(eye,shared.camera_forward(camera.transform.rotation));up=shared.camera_up(camera.transform.rotation)}
+	view:=mat4_look_at(eye,target,up);projection:=mat4_perspective(math.to_radians(fov),viewport.width/viewport.height,near,far);vp:=mat4_mul(projection,view)
 	clip_x:=vp[0]*point.x+vp[4]*point.y+vp[8]*point.z+vp[12];clip_y:=vp[1]*point.x+vp[5]*point.y+vp[9]*point.z+vp[13];clip_w:=vp[3]*point.x+vp[7]*point.y+vp[11]*point.z+vp[15]
 	if clip_w<=0.0001{return {},false};ndc_x,ndc_y:=clip_x/clip_w,clip_y/clip_w
 	return {viewport.x+(ndc_x+1)*0.5*viewport.width,viewport.y+(1-ndc_y)*0.5*viewport.height},true

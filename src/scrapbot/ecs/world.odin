@@ -90,6 +90,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_texts)
 	delete(world.ui_buttons)
 	delete(world.editor_transform_gizmos)
+	delete(world.editor_scene_cameras)
 	delete(world.custom_components)
 	world^ = {}
 }
@@ -237,9 +238,9 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 	}
 }
 
-build_resource_render_list :: proc(world: ^World, registry: ^resources.Registry) -> Render_List {
+build_resource_render_list :: proc(world: ^World, registry: ^resources.Registry, use_editor_camera: bool = false) -> Render_List {
 	list: Render_List
-	list.camera, list.has_camera = first_camera_instance(world)
+	list.camera, list.has_camera = active_camera_instance(world, use_editor_camera)
 	extract_lights(world, &list)
 	reconcile_render_instances(world, registry)
 	for entity in world.entities {
@@ -321,6 +322,16 @@ alive_entity_count :: proc "c" (world: ^World) -> int {
 	count := 0
 	for entity in world.entities {
 		if entity.alive {
+			count += 1
+		}
+	}
+	return count
+}
+
+project_entity_count :: proc "c" (world: ^World) -> int {
+	count := 0
+	for entity in world.entities {
+		if entity.alive && entity.origin != .Editor {
 			count += 1
 		}
 	}
@@ -410,7 +421,7 @@ render_instance_from_renderable :: proc "c" (world: ^World, renderable: Renderab
 
 first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: bool) {
 	for entity in world.entities {
-		if !entity.alive {
+		if !entity.alive || entity.origin == .Editor {
 			continue
 		}
 		if entity.camera_index < 0 || entity.camera_index >= len(world.cameras) {
@@ -427,6 +438,32 @@ first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: 
 		}, true
 	}
 	return {}, false
+}
+
+editor_scene_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: bool) {
+	entity_index, _, found := editor_scene_camera_entity(world)
+	if !found {
+		return {}, false
+	}
+	entity := world.entities[entity_index]
+	if entity.camera_index < 0 || entity.camera_index >= len(world.cameras) ||
+	   entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {
+		return {}, false
+	}
+	return Camera_Instance {
+		entity    = entity,
+		transform = world.transforms[entity.transform_index],
+		camera    = world.cameras[entity.camera_index],
+	}, true
+}
+
+active_camera_instance :: proc(world: ^World, use_editor_camera: bool) -> (instance: Camera_Instance, ok: bool) {
+	if use_editor_camera {
+		if editor_camera, found := editor_scene_camera_instance(world); found {
+			return editor_camera, true
+		}
+	}
+	return first_camera_instance(world)
 }
 
 add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Component) {
@@ -705,7 +742,7 @@ query_entity_at :: proc "c" (
 }
 
 query_matches_entity :: proc "c" (world: ^World, query: Query, entity_index: int) -> bool {
-	if !entity_is_alive(world, entity_index) {
+	if !entity_is_alive(world, entity_index) || world.entities[entity_index].origin == .Editor {
 		return false
 	}
 	for i in 0..<query.term_count {

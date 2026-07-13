@@ -76,7 +76,7 @@ Entity :: struct {
 	generation: u32,
 }
 
-Entity_Origin :: enum {Scene,Runtime}
+Entity_Origin :: enum {Scene,Runtime,Editor}
 
 Component_ID :: int
 INVALID_COMPONENT_ID :: Component_ID(0)
@@ -101,6 +101,18 @@ Camera_Component :: struct {
 	fov:  f32,
 	near: f32,
 	far:  f32,
+}
+
+Editor_Scene_Camera_Component :: struct {
+	entity_index:    int,
+	move_speed:      f32,
+	look_sensitivity:f32,
+}
+
+Editor_Fly_Camera_Input :: struct {
+	movement:   Vec3,
+	look_delta: Vec2,
+	look_active:bool,
 }
 
 Ambient_Light_Component :: struct {color: Vec3, intensity: f32}
@@ -244,6 +256,7 @@ World :: struct {
 	ui_texts: [dynamic]UI_Text_Component,
 	ui_buttons: [dynamic]UI_Button_Component,
 	editor_transform_gizmos:[dynamic]Editor_Transform_Gizmo_Component,
+	editor_scene_cameras:[dynamic]Editor_Scene_Camera_Component,
 	custom_components: [dynamic]Custom_Component_Storage,
 }
 

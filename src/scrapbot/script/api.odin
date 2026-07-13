@@ -266,7 +266,7 @@ scrapbot_entity_count :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
 	count := 0
 	if runtime != nil && runtime.world != nil {
-		count = ecs.alive_entity_count(runtime.world)
+		count = ecs.project_entity_count(runtime.world)
 	}
 	lua_pushinteger(L, c.ptrdiff_t(count))
 	return 1

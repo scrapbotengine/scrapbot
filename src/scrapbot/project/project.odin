@@ -44,7 +44,7 @@ name = "Main Camera"
 
 [entities.transform]
 position = [0, 2, 6]
-rotation = [0, 0, 0]
+rotation = [-0.321751, 0, 0]
 scale = [1, 1, 1]
 
 [entities.camera]

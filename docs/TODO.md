@@ -83,6 +83,7 @@
 - [x] Add a scrollable read-only component field/value inspector for the selected entity.
 - [x] Add nearest-triangle entity picking in the live viewport.
 - [x] Add functional world-space X/Y/Z translation handles for selected entities.
+- [x] Add an editor-origin ECS scene camera with RMB-captured WASD, Space, and Ctrl fly navigation.
 - [ ] Add component value editing.
 
 ## Documentation And Examples

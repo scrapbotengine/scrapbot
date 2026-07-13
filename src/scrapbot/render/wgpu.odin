@@ -407,7 +407,7 @@ wgpu_draw_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^Run_Co
 	if err = run_frame_system(config, world, delta_time, f32(renderer.width), f32(renderer.height)); err != "" {
 		return false, false, err
 	}
-	render_list := ecs.build_resource_render_list(world, config.resource_registry)
+	render_list := ecs.build_resource_render_list(world, config.resource_registry, config.ui_state != nil && config.ui_state.editor_visible)
 	defer ecs.destroy_render_list(&render_list)
 	viewport:=ui.editor_viewport(config.ui_state,f32(renderer.width),f32(renderer.height))
 	batches, batch_count := wgpu_prepare_draw_batches(renderer, &render_list, config.resource_registry, u32(viewport.width), u32(viewport.height))
@@ -455,7 +455,7 @@ wgpu_render_offscreen_frame :: proc(
 			return err
 		}
 	}
-	render_list := ecs.build_resource_render_list(world, config.resource_registry)
+	render_list := ecs.build_resource_render_list(world, config.resource_registry, config.ui_state != nil && config.ui_state.editor_visible)
 	defer ecs.destroy_render_list(&render_list)
 	viewport:=ui.editor_viewport(config.ui_state,f32(width),f32(height))
 	batches, batch_count := wgpu_prepare_draw_batches(renderer, &render_list, config.resource_registry, u32(viewport.width), u32(viewport.height))
