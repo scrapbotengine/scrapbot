@@ -49,7 +49,7 @@ Keep `run` bounded with `--frames`. Structured success confirms command and runt
 
 - Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.
 - Use `examples/ecs-showcase` for geometry, materials, render reconciliation, batching, lighting, lifecycle-heavy ECS behavior, and visual renderer changes.
-- Use `examples/ui-showcase` for retained ECS UI hierarchy, row/column layout, panels, bitmap text, and overlay/framegrab changes.
+- Use `examples/ui-showcase` for retained ECS UI hierarchy, box-model layout, horizontal/vertical stacks, SDF-rounded backgrounds, pointer-styled buttons, MTSDF text, and overlay/framegrab changes. Hidden framegrabs intentionally have no pointer interaction; verify hover/active paint selection with UI tests or a bounded visible-window smoke.
 
 Validate an example with:
 
@@ -80,6 +80,7 @@ Headless framegrab renders the same resource-backed ECS path into an offscreen t
 bin/scrapbot run examples/minimal --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png
 bin/scrapbot run examples/ecs-showcase --backend wgpu --headless --frames 20 --framegrab /tmp/scrapbot-showcase.png
 bin/scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png
+bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
 ```
 
 On macOS, this still creates a hidden SDL3 window internally for Metal adapter bootstrap. It therefore needs the same window-system approval as visible SDL runs. Do not add this command to the default `mise test` unless the environment can run it without GUI approval.
@@ -105,6 +106,7 @@ For renderer changes, inspect the artifact for:
 - Geometry topology, face winding, normals, and transforms.
 - Material colors, lighting contrast, and point/directional light contributions.
 - Stable layout and expected entity visibility across multiple frames.
+- Complete editor chrome and a clipped live project viewport that fills all available center space when `--editor` is used.
 - The invariant that a lit material with no ambient, directional, or point contribution renders black.
 - Expected batching/resource sharing when frame statistics are relevant.
 

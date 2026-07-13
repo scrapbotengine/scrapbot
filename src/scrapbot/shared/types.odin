@@ -59,8 +59,14 @@ Scene_Entity :: struct {
 	has_shadow_receiver: bool,
 	has_ui_layout: bool,
 	ui_layout: UI_Layout_Component,
+	has_ui_hstack: bool,
+	ui_hstack: UI_Stack_Component,
+	has_ui_vstack: bool,
+	ui_vstack: UI_Stack_Component,
 	has_ui_text: bool,
 	ui_text: UI_Text_Component,
+	has_ui_button: bool,
+	ui_button: UI_Button_Component,
 
 	custom_components: [dynamic]Custom_Component,
 }
@@ -69,6 +75,8 @@ Entity :: struct {
 	index:      u32,
 	generation: u32,
 }
+
+Entity_Origin :: enum {Scene,Runtime}
 
 Component_ID :: int
 INVALID_COMPONENT_ID :: Component_ID(0)
@@ -99,17 +107,29 @@ Ambient_Light_Component :: struct {color: Vec3, intensity: f32}
 Directional_Light_Component :: struct {direction, color: Vec3, intensity: f32}
 Point_Light_Component :: struct {color: Vec3, intensity, range: f32}
 
-UI_Direction :: enum {Overlay, Row, Column}
 UI_Layout_Component :: struct {
 	parent: string,
-	direction: UI_Direction,
 	position: Vec2,
 	size: Vec2,
-	padding: f32,
-	gap: f32,
+	margin: Vec4,
+	padding: Vec4,
 	background: Vec4,
+	corner_radius: f32,
 }
+UI_Stack_Component :: struct {gap: f32}
 UI_Text_Component :: struct {text: string, color: Vec4, size: f32}
+UI_Button_Component :: struct {
+	text: string,
+	color: Vec4,
+	size: f32,
+	hover_background: Vec4,
+	active_background: Vec4,
+	hover_color: Vec4,
+	active_color: Vec4,
+}
+
+Editor_Gizmo_Mode :: enum {World_Translate}
+Editor_Transform_Gizmo_Component :: struct {entity_index:int,mode:Editor_Gizmo_Mode}
 
 Mesh_Component :: struct {
 	primitive: string,
@@ -143,6 +163,7 @@ Custom_Component_Storage :: struct {
 World_Entity :: struct {
 	id:              Entity,
 	alive:           bool,
+	origin:          Entity_Origin,
 	name:            string,
 	transform_index: int,
 	camera_index:    int,
@@ -156,7 +177,11 @@ World_Entity :: struct {
 	has_shadow_caster: bool,
 	has_shadow_receiver: bool,
 	ui_layout_index: int,
+	ui_hstack_index: int,
+	ui_vstack_index: int,
 	ui_text_index: int,
+	ui_button_index: int,
+	editor_transform_gizmo_index:int,
 	geometry_resource: string,
 	material_resource: string,
 }
@@ -214,7 +239,11 @@ World :: struct {
 	materials: [dynamic]Material_Component,
 	render_instances: [dynamic]Render_Instance_Component,
 	ui_layouts: [dynamic]UI_Layout_Component,
+	ui_hstacks: [dynamic]UI_Stack_Component,
+	ui_vstacks: [dynamic]UI_Stack_Component,
 	ui_texts: [dynamic]UI_Text_Component,
+	ui_buttons: [dynamic]UI_Button_Component,
+	editor_transform_gizmos:[dynamic]Editor_Transform_Gizmo_Component,
 	custom_components: [dynamic]Custom_Component_Storage,
 }
 

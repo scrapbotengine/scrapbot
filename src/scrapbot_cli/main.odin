@@ -33,6 +33,7 @@ Run_Options :: struct {
 	window:  bool   `usage:"Open a platform window for renderer runs."`,
 	headless: bool   `usage:"Force headless mode. This is the default unless --window is passed."`,
 	hot_reload: bool `name:"hot-reload" usage:"Reload the default scene TOML and scripts/main.luau while the renderer is running."`,
+	editor: bool `usage:"Start with the in-game editor shell visible. Ctrl+Esc toggles it."`,
 	scheduler_trace: bool `name:"scheduler-trace" usage:"Print native scheduler worker and parallel-stage statistics."`,
 	frames:  u32    `usage:"Limit renderer frames. Windowed 0 runs until close; headless 0 captures one frame."`,
 	framegrab: string `usage:"Write the final headless WGPU frame to this PNG path."`,
@@ -215,6 +216,7 @@ run_project :: proc(args: []string) -> int {
 		backend        = backend,
 		window         = opt.window && !opt.headless,
 		hot_reload     = opt.hot_reload,
+		editor         = opt.editor,
 		max_frames     = opt.frames,
 		framegrab_path = opt.framegrab,
 		log_enabled    = !opt.json,
@@ -319,7 +321,7 @@ print_help :: proc() {
   scrapbot init [path] [name]    Create project.toml and scenes/main.scene.toml
   scrapbot check [path]          Validate project.toml and the default scene
   scrapbot build [path]          Build a host-native runnable game package
-  scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png]
+  scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png]
                                   Load the project and render
   scrapbot help <command>         Print command-specific options
   scrapbot --version             Print the engine version`)

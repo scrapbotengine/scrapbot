@@ -293,6 +293,7 @@ test_deferred_commands_spawn_entities_when_applied :: proc(t: ^testing.T) {
 	testing.expect(t, commands.command_count == 0)
 	testing.expect(t, alive_entity_count(&world) == 1)
 	testing.expect(t, world.entities[0].name == "Spawned")
+	testing.expect(t, world.entities[0].origin == .Runtime)
 	testing.expect(t, world.entities[0].camera_index == INVALID_COMPONENT_INDEX)
 	testing.expect(t, world.entities[0].ambient_light_index == INVALID_COMPONENT_INDEX)
 	testing.expect(t, world.entities[0].directional_light_index == INVALID_COMPONENT_INDEX)
@@ -300,6 +301,16 @@ test_deferred_commands_spawn_entities_when_applied :: proc(t: ^testing.T) {
 	testing.expect(t, world.entities[0].geometry_index == INVALID_COMPONENT_INDEX)
 	testing.expect(t, world.entities[0].material_index == INVALID_COMPONENT_INDEX)
 	testing.expect(t, world.entities[0].render_instance_index == INVALID_COMPONENT_INDEX)
+}
+
+@(test)
+test_scene_and_runtime_entities_keep_distinct_origins :: proc(t:^testing.T) {
+	scene:=Scene{};defer delete(scene.entities);append(&scene.entities,shared.Scene_Entity{name="Authored"})
+	world:=build_world(&scene);defer destroy_world(&world)
+	testing.expect(t,world.entities[0].origin==.Scene)
+	commands:Command_Buffer;init_command_buffer(&commands);defer destroy_command_buffer(&commands)
+	testing.expect(t,queue_spawn(&commands,"Live")=="");testing.expect(t,apply_commands(&world,&commands)=="")
+	testing.expect(t,world.entities[1].origin==.Runtime)
 }
 
 @(test)

@@ -42,7 +42,10 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	push_registered_component_handle_by_name(L, "scrapbot.shadow_caster"); lua_setfield(L,-2,"shadow_caster")
 	push_registered_component_handle_by_name(L, "scrapbot.shadow_receiver"); lua_setfield(L,-2,"shadow_receiver")
 	push_registered_component_handle_by_name(L, "scrapbot.ui_layout"); lua_setfield(L,-2,"ui_layout")
+	push_registered_component_handle_by_name(L, "scrapbot.ui_hstack"); lua_setfield(L,-2,"ui_hstack")
+	push_registered_component_handle_by_name(L, "scrapbot.ui_vstack"); lua_setfield(L,-2,"ui_vstack")
 	push_registered_component_handle_by_name(L, "scrapbot.ui_text"); lua_setfield(L,-2,"ui_text")
+	push_registered_component_handle_by_name(L, "scrapbot.ui_button"); lua_setfield(L,-2,"ui_button")
 
 	push_registered_component_handle_by_name(L, "scrapbot.mesh")
 	lua_setfield(L, -2, "mesh")

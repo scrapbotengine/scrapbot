@@ -1,11 +1,11 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-12
+**Last reviewed:** 2026-07-13
 
 ## Overview
 
-The runtime CLI is the entry point for creating, validating, and running Scrapbot projects. It exists so users and agents can work with project directories before a full editor exists.
+The runtime CLI is the entry point for creating, validating, running, and opening the first editor shell around Scrapbot projects.
 
 ## Behavior
 
@@ -19,6 +19,7 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 - Users can run a project through the selected renderer backend.
 - Users can request a platform window for renderer runs and limit windowed runs with `--frames`.
 - Users can request a headless WGPU PNG framegrab with `--framegrab`.
+- Users can pass `--editor` to start with editor chrome visible, while `Ctrl+Esc` toggles it during a windowed run.
 - Users can pass `--hot-reload` to periodically check `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories while the renderer is running.
 - Users can pass `--scheduler-trace` to report native worker count, parallel stage count, and maximum parallel width after a run.
 - Users can ask for top-level help or command-specific help.
@@ -55,7 +56,7 @@ The runtime CLI is the entry point for creating, validating, and running Scrapbo
 ## Related
 
 - **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008
-- **FDRs:** FDR-002, FDR-003, FDR-006
+- **FDRs:** FDR-002, FDR-003, FDR-006, FDR-008
 
 ## Open Questions
 

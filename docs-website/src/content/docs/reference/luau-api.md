@@ -34,13 +34,16 @@ Built-in handles:
 - `scrapbot.shadow_caster`
 - `scrapbot.shadow_receiver`
 - `scrapbot.ui_layout`
+- `scrapbot.ui_hstack`
+- `scrapbot.ui_vstack`
 - `scrapbot.ui_text`
+- `scrapbot.ui_button`
 
 Light query payloads expose `color` and `intensity`; directional lights also expose `direction`, and point lights expose `range`. Systems can animate a point light by writing the same entity's transform.
 
 Shadow caster and receiver handles have empty marker payloads. They can be queried and used with deferred `spawn`, `add_component`, and `remove_component` calls.
 
-UI layout and text handles currently expose entity presence for queries. UI creation and property mutation remain scene-authored in this first slice; deferred runtime UI commands are planned next.
+UI box, stack, text, and button handles currently expose entity presence for queries. UI creation and property mutation remain scene-authored in this first slice; deferred runtime UI commands and button activation are planned next.
 
 ## Render resources
 

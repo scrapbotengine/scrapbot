@@ -20,12 +20,12 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 - `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, an `assets/` directory, and Luau LSP metadata.
 - `scrapbot check [path] [--json]` builds declared native extensions, validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
 - `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>`, including the game executable, project data, and active native extension artifacts.
-- `scrapbot run [path] [--backend null|wgpu] [--window] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png] [--json]` builds declared native extensions, loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered native and script systems, and submits the world through the selected renderer backend. Scheduler tracing reports native worker utilization for the run.
+- `scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png] [--json]` builds declared native extensions, loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered native and script systems, and submits the world through the selected renderer backend. `Ctrl+Esc` toggles the editor shell in a visible window, and `--editor` starts it open. Scheduler tracing reports native worker utilization for the run.
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, and a retained ECS UI overlay with panels and MTSDF text. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, and a retained ECS UI overlay with a box model, horizontal and vertical stacks, MTSDF text, pointer-aware buttons, and SDF-rounded backgrounds. An engine-owned editor shell can frame the live project viewport with top, status, scene, and inspector chrome without entering project scene data. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
 
 Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`. The ECS showcase runs a native object fountain with visible spawned cube renderables, velocity, lifetime, spin, despawn, animated point lights, and Luau typed queries.
 
@@ -137,10 +137,12 @@ Run the full local test suite with `mise test`.
 - Input
   - [ ] ECS platform input
   - [ ] Runtime input resources
+  - [x] UI pointer position and primary-button input
   - [ ] Controller input
 - Retained UI
   - [x] Retained UI primitives
-  - [x] Retained row/column/overlay layout
+  - [x] Box-model layout with horizontal, vertical, and overlay composition
+  - [x] Element hover and active hit-testing state
   - [ ] UI command events
   - [ ] UI scrolling
   - [ ] Canvas scaling
@@ -148,28 +150,30 @@ Run the full local test suite with `mise test`.
   - [x] MTSDF-based font rendering
   - [x] UI gallery
 - Controls
+  - [x] Text and pointer-styled button controls
   - [ ] Reusable editor controls
   - [ ] Form controls
   - [ ] Text input
   - [ ] Keyboard focus
   - [ ] Clipboard support
 - Styling
-  - [ ] Public UI API
-  - [ ] Richer layout system
+  - [x] Scene-defined UI API
+  - [x] Margins, padding, backgrounds, and rounded corners
   - [ ] UI themes
 
 ### Editor
 
 - Shell
-  - [ ] Editor shell
-  - [ ] Game viewport
+  - [x] Toggleable editor shell
+  - [x] Aspect-correct live game viewport
   - [ ] Resizable panels
   - [ ] Dockable editor workspace
 - Inspection
   - [ ] System profiler
-  - [ ] Entity browser
-  - [ ] Entity selection
-  - [ ] Component inspector
+  - [x] Entity browser
+  - [x] Entity selection
+  - [x] Read-only component field/value inspector
+  - [ ] Component value editing
   - [ ] Searchable browser
   - [ ] Hierarchical browser
 - Editing
@@ -182,9 +186,9 @@ Run the full local test suite with `mise test`.
   - [ ] Editor transactions
 - Scene Tools
   - [ ] Playback controls
-  - [ ] Translate gizmo
+  - [x] World-space translation gizmo
   - [ ] Transform gizmo modes
-  - [ ] Precise picking
+  - [x] Precise viewport entity picking
 - Extensibility
   - [ ] Asset browser
   - [ ] Editor plugins

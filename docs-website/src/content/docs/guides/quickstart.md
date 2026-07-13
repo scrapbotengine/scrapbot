@@ -76,6 +76,13 @@ Windowed WebGPU opens an SDL3 window:
 bin/scrapbot run examples/minimal --backend wgpu --window --frames 3
 ```
 
+Press `Ctrl+Esc` during an unbounded windowed run to toggle Scrapbot's editor shell around the live project. To start open or capture the shell directly, pass `--editor`:
+
+```sh
+bin/scrapbot run examples/ecs-showcase --backend wgpu --window --editor
+bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
+```
+
 Headless WebGPU can write a framegrab:
 
 ```sh

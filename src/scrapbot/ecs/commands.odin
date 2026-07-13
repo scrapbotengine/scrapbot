@@ -454,6 +454,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		World_Entity {
 			id              = id,
 			alive           = true,
+			origin          = .Runtime,
 			name            = clone_world_string(spawn_command_name(spawn)),
 			transform_index = transform_index,
 			camera_index    = INVALID_COMPONENT_INDEX,
@@ -464,6 +465,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 			geometry_index = INVALID_COMPONENT_INDEX,
 			material_index = INVALID_COMPONENT_INDEX,
 			render_instance_index = INVALID_COMPONENT_INDEX,
+			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 			has_shadow_caster = spawn.has_shadow_caster,
 			has_shadow_receiver = spawn.has_shadow_receiver,
 		},
@@ -506,6 +508,8 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	entity.material_index = INVALID_COMPONENT_INDEX
 	entity.render_instance_index = INVALID_COMPONENT_INDEX
+	if entity.editor_transform_gizmo_index>=0&&entity.editor_transform_gizmo_index<len(world.editor_transform_gizmos){world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index=INVALID_COMPONENT_INDEX}
+	entity.editor_transform_gizmo_index = INVALID_COMPONENT_INDEX
 	entity.has_shadow_caster = false
 	entity.has_shadow_receiver = false
 }

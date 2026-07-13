@@ -2,19 +2,21 @@
 name = "HUD"
 
 [entities.ui_layout]
-direction = "column"
 position = [40, 40]
-size = [460, 280]
-padding = 24
-gap = 14
-background = [0.035, 0.055, 0.105, 0.96]
+size = [560, 390]
+padding = [28, 28, 28, 28]
+background = [0.035, 0.055, 0.105, 0.98]
+corner_radius = 24
+
+[entities.ui_vstack]
+gap = 16
 
 [[entities]]
 name = "Title"
 
 [entities.ui_layout]
 parent = "HUD"
-size = [412, 52]
+size = [504, 48]
 
 [entities.ui_text]
 text = "SCRAPBOT UI"
@@ -26,10 +28,10 @@ name = "Subtitle"
 
 [entities.ui_layout]
 parent = "HUD"
-size = [412, 34]
+size = [504, 28]
 
 [entities.ui_text]
-text = "ECS ENTITIES -> RETAINED PAINT LIST"
+text = "COMPOSABLE ECS CONTROLS"
 color = [0.72, 0.78, 0.92, 1]
 size = 16
 
@@ -38,20 +40,23 @@ name = "Status Row"
 
 [entities.ui_layout]
 parent = "HUD"
-direction = "row"
-size = [412, 58]
-padding = 10
-gap = 12
+size = [504, 72]
+padding = [12, 12, 12, 12]
 background = [0.08, 0.12, 0.22, 1]
+corner_radius = 14
+
+[entities.ui_hstack]
+gap = 12
 
 [[entities]]
 name = "Status"
 
 [entities.ui_layout]
 parent = "Status Row"
-size = [120, 36]
-padding = 7
+size = [128, 48]
+padding = [13, 16, 10, 16]
 background = [0.12, 0.72, 0.48, 1]
+corner_radius = 10
 
 [entities.ui_text]
 text = "ONLINE"
@@ -63,22 +68,69 @@ name = "Entity Count"
 
 [entities.ui_layout]
 parent = "Status Row"
-size = [230, 36]
-padding = 7
+size = [212, 48]
+padding = [13, 16, 10, 16]
 
 [entities.ui_text]
-text = "7 UI ENTITIES"
+text = "10 UI ENTITIES"
 color = [1, 0.82, 0.28, 1]
 size = 18
+
+[[entities]]
+name = "Actions"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [504, 60]
+
+[entities.ui_hstack]
+gap = 12
+
+[[entities]]
+name = "Launch Button"
+
+[entities.ui_layout]
+parent = "Actions"
+size = [190, 52]
+padding = [14, 22, 12, 22]
+background = [0.31, 0.26, 0.86, 1]
+corner_radius = 12
+
+[entities.ui_button]
+text = "LAUNCH SCRAPBOT"
+color = [1, 1, 1, 1]
+size = 16
+hover_background = [0.39, 0.33, 0.96, 1]
+active_background = [0.22, 0.18, 0.68, 1]
+active_color = [0.82, 0.84, 1, 1]
+
+[[entities]]
+name = "Cancel Button"
+
+[entities.ui_layout]
+parent = "Actions"
+margin = [0, 0, 0, 4]
+size = [126, 52]
+padding = [14, 22, 12, 22]
+background = [0.16, 0.20, 0.32, 1]
+corner_radius = 12
+
+[entities.ui_button]
+text = "CANCEL"
+color = [0.82, 0.86, 0.96, 1]
+size = 16
+hover_background = [0.22, 0.27, 0.42, 1]
+active_background = [0.10, 0.13, 0.22, 1]
+active_color = [0.68, 0.72, 0.84, 1]
 
 [[entities]]
 name = "Footer"
 
 [entities.ui_layout]
 parent = "HUD"
-size = [412, 32]
+size = [504, 32]
 
 [entities.ui_text]
-text = "PANELS + TEXT + ROW/COLUMN LAYOUT"
+text = "BOX MODEL + HSTACK + VSTACK + BUTTONS"
 color = [0.95, 0.42, 0.68, 1]
 size = 16

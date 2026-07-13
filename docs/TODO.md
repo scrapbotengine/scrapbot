@@ -24,8 +24,10 @@
 - [x] Reconcile appearing and disappearing UI entities into retained state.
 - [x] Render panel and scalable MTSDF text paint commands after world geometry.
 - [x] Add row, column, and overlay hierarchy layout.
+- [x] Add per-edge margins and padding, SDF-rounded backgrounds, horizontal and vertical stack components, and button controls.
 - [ ] Expose UI creation and mutation through Luau and native extensions.
-- [ ] Add pointer input, hit testing, button state, and command events.
+- [x] Add pointer input, topmost-element hit testing, retained hover/active state, and button hover/press styling.
+- [ ] Emit button activation and other UI command events.
 - [ ] Add clipping, scrolling, canvas scaling, and richer sizing/alignment.
 
 ## Project Runtime
@@ -75,8 +77,13 @@
 
 ## Editor
 
-- [ ] Add an editor GUI toggle from a running project.
-- [ ] Add an entity browser and component inspector.
+- [x] Add an engine-owned editor shell toggled with Ctrl+Esc.
+- [x] Keep the running project live across the complete available viewport with a dynamic camera aspect ratio.
+- [x] Add a scrollable entity browser with scene/runtime provenance and stable selection.
+- [x] Add a scrollable read-only component field/value inspector for the selected entity.
+- [x] Add nearest-triangle entity picking in the live viewport.
+- [x] Add functional world-space X/Y/Z translation handles for selected entities.
+- [ ] Add component value editing.
 
 ## Documentation And Examples
 

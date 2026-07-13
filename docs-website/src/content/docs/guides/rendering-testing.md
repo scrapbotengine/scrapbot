@@ -10,7 +10,13 @@ Scrapbot has two rendering paths today:
 
 The WGPU path decodes material base colors to linear space, accumulates light there, tone maps the HDR result, and presents through an sRGB target. A scene with no ambient, directional, or point lights therefore renders its geometry black.
 
-Screen-space ECS UI is reconciled after engine/project systems and painted as a blended overlay after world geometry. `examples/ui-showcase` exercises nested panels, row/column layout, and the embedded Inter typeface rendered from a precomputed MTSDF atlas.
+Screen-space ECS UI is reconciled after engine/project systems and painted as a blended overlay after world geometry. Visible windows feed pointer position and primary-button state into topmost-element hit testing; hidden framegrabs deliberately render with no pointer interaction. `examples/ui-showcase` exercises the box model, nested horizontal and vertical stacks, SDF-rounded backgrounds, pointer-styled buttons, and the embedded Inter typeface rendered from a precomputed MTSDF atlas.
+
+With `--editor`, WGPU fills the complete central project viewport with world rendering and project UI, derives camera aspect from that live rectangle, remaps project pointer coordinates, and paints engine-owned chrome in a separate full-window overlay pass. Use `examples/ecs-showcase` to verify live geometry and `examples/ui-showcase` to verify project UI scaling:
+
+```sh
+bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
+```
 
 ```sh
 scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png

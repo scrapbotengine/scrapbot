@@ -15,3 +15,8 @@
 | [ADR-011](ADR-011-extract-ecs-lights-into-bounded-render-packets.md) | Extract ECS lights into bounded render packets | 2026-07-12 |
 | [ADR-012](ADR-012-model-frame-time-as-a-world-resource.md) | Model frame time as a world resource | 2026-07-12 |
 | [ADR-013](ADR-013-precompute-mtsdf-font-atlases.md) | Precompute MTSDF font atlases | 2026-07-12 |
+| [ADR-014](ADR-014-compose-ui-from-boxes-and-controls.md) | Compose UI from boxes and controls | 2026-07-13 |
+| [ADR-015](ADR-015-keep-editor-chrome-engine-owned.md) | Keep editor chrome engine-owned | 2026-07-13 |
+| [ADR-016](ADR-016-track-entity-origin-in-the-runtime-world.md) | Track entity origin in the runtime world | 2026-07-13 |
+| [ADR-017](ADR-017-use-cpu-triangle-rays-for-editor-picking.md) | Use CPU triangle rays for editor picking | 2026-07-13 |
+| [ADR-018](ADR-018-render-editor-gizmos-as-screen-overlays.md) | Render editor gizmos as screen overlays | 2026-07-13 |

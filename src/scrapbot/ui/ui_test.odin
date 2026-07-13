@@ -19,7 +19,7 @@ test_reconcile_tracks_ui_entity_appearance_and_disappearance :: proc(t:^testing.
 	scene:=shared.Scene{}
 	defer delete(scene.entities)
 	append(&scene.entities,
-		shared.Scene_Entity{name="Root",has_ui_layout=true,ui_layout={size={300,160},padding=10,background={0.1,0.2,0.3,1},direction=.Column}},
+		shared.Scene_Entity{name="Root",has_ui_layout=true,ui_layout={size={300,160},padding={10,10,10,10},background={0.1,0.2,0.3,1}},has_ui_vstack=true,ui_vstack={gap=0}},
 		shared.Scene_Entity{name="Label",has_ui_layout=true,ui_layout={parent="Root",size={200,40}},has_ui_text=true,ui_text={text="HELLO",color={1,1,1,1},size=16}},
 	)
 	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
@@ -37,7 +37,7 @@ test_reconcile_tracks_ui_entity_appearance_and_disappearance :: proc(t:^testing.
 test_column_layout_places_children_in_order :: proc(t:^testing.T) {
 	scene:=shared.Scene{};defer delete(scene.entities)
 	append(&scene.entities,
-		shared.Scene_Entity{name="Root",has_ui_layout=true,ui_layout={size={300,200},padding=10,gap=5,direction=.Column}},
+		shared.Scene_Entity{name="Root",has_ui_layout=true,ui_layout={size={300,200},padding={10,10,10,10}},has_ui_vstack=true,ui_vstack={gap=5}},
 		shared.Scene_Entity{name="A",has_ui_layout=true,ui_layout={parent="Root",size={100,20}}},
 		shared.Scene_Entity{name="B",has_ui_layout=true,ui_layout={parent="Root",size={100,30}}},
 	)
@@ -47,4 +47,141 @@ test_column_layout_places_children_in_order :: proc(t:^testing.T) {
 	a:=find_node_by_entity_index(state,1);b:=find_node_by_entity_index(state,2)
 	testing.expect(t,a>=0&&b>=0)
 	if a>=0&&b>=0 {testing.expect(t,state.nodes[a].rect.y==10);testing.expect(t,state.nodes[b].rect.y==35)}
+}
+
+@(test)
+test_box_model_applies_margins_padding_and_rounded_button_paint :: proc(t:^testing.T) {
+	scene:=shared.Scene{};defer delete(scene.entities)
+	append(&scene.entities,
+		shared.Scene_Entity{name="Root",has_ui_layout=true,ui_layout={position={20,30},size={300,120},padding={10,10,10,10}},has_ui_hstack=true,ui_hstack={gap=6}},
+		shared.Scene_Entity{name="Button",has_ui_layout=true,ui_layout={parent="Root",size={100,40},margin={2,3,4,5},padding={8,8,8,8},background={0.2,0.4,0.8,1},corner_radius=12},has_ui_button=true,ui_button={text="GO",color={1,1,1,1},size=16}},
+	)
+	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state)
+	testing.expect(t,reconcile(state,&world,1280,720)=="")
+	button:=find_node_by_entity_index(state,1);testing.expect(t,button>=0)
+	if button>=0 {testing.expect(t,state.nodes[button].rect.x==35);testing.expect(t,state.nodes[button].rect.y==42)}
+	testing.expect(t,state.paint_count>=3)
+	if state.paint_count>0 {testing.expect(t,state.paint[0].corner_radius==12)}
+}
+
+@(test)
+test_pointer_states_belong_to_elements_and_buttons_consume_them :: proc(t:^testing.T) {
+	scene:=shared.Scene{};defer delete(scene.entities)
+	append(&scene.entities,
+		shared.Scene_Entity{name="Root",has_ui_layout=true,ui_layout={size={300,120}}},
+		shared.Scene_Entity{name="Button",has_ui_layout=true,ui_layout={parent="Root",position={20,20},size={100,40},background={0.1,0.2,0.3,1}},has_ui_button=true,ui_button={text="GO",color={1,1,1,1},size=16,hover_background={0.2,0.4,0.6,1},active_background={0.05,0.1,0.15,1}}},
+	)
+	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state)
+	button:=1
+
+	testing.expect(t,reconcile(state,&world,1280,720,{position={30,30},available=true})=="")
+	testing.expect(t,state.nodes[button].hovered&&!state.nodes[button].active)
+	testing.expect(t,state.paint[0].color==shared.Vec4{0.2,0.4,0.6,1})
+	ink_min_x,ink_min_y,ink_max_x,ink_max_y:=f32(10000),f32(10000),f32(-10000),f32(-10000)
+	for command in state.paint[:state.paint_count] {if command.kind==.Glyph {ink_min_x=min(ink_min_x,command.rect.x);ink_min_y=min(ink_min_y,command.rect.y);ink_max_x=max(ink_max_x,command.rect.x+command.rect.width);ink_max_y=max(ink_max_y,command.rect.y+command.rect.height)}}
+	delta_x:=(ink_min_x+ink_max_x)*0.5-70;if delta_x<0{delta_x=-delta_x}
+	delta_y:=(ink_min_y+ink_max_y)*0.5-40;if delta_y<0{delta_y=-delta_y}
+	testing.expect(t,delta_x<0.001&&delta_y<0.001)
+
+	testing.expect(t,reconcile(state,&world,1280,720,{position={30,30},primary_down=true,available=true})=="")
+	testing.expect(t,state.nodes[button].hovered&&state.nodes[button].active)
+	testing.expect(t,state.paint[0].color==shared.Vec4{0.05,0.1,0.15,1})
+
+	testing.expect(t,reconcile(state,&world,1280,720,{position={500,500},primary_down=true,available=true})=="")
+	testing.expect(t,!state.nodes[button].hovered&&state.nodes[button].active)
+
+	testing.expect(t,reconcile(state,&world,1280,720,{position={500,500},available=true})=="")
+	testing.expect(t,!state.nodes[button].hovered&&!state.nodes[button].active)
+}
+
+@(test)
+test_editor_shell_reserves_live_viewport_and_appends_engine_chrome :: proc(t:^testing.T) {
+	scene:=shared.Scene{};defer delete(scene.entities)
+	append(&scene.entities,shared.Scene_Entity{name="Game UI",has_ui_layout=true,ui_layout={size={100,40},background={0.2,0.3,0.4,1}}})
+	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state)
+	state.editor_visible=true
+	testing.expect(t,reconcile(state,&world,1280,720)=="")
+	viewport:=editor_viewport(state,1280,720)
+	testing.expect(t,viewport==Rect{244,52,732,636})
+	testing.expect(t,state.editor_paint_start==1)
+	testing.expect(t,state.paint_count>state.editor_paint_start)
+	pointer:=project_pointer_input(state,{position={viewport.x+viewport.width*0.5,viewport.y+viewport.height*0.5},available=true},1280,720)
+	testing.expect(t,pointer.available&&pointer.position==shared.Vec2{640,360})
+	testing.expect(t,!project_pointer_input(state,{position={20,100},available=true},1280,720).available)
+
+	// Editor chrome and the project viewport follow the full available drawable.
+	testing.expect(t,reconcile(state,&world,1280,720,{},2048,1096)=="")
+	viewport=editor_viewport(state,2048,1096)
+	testing.expect(t,viewport==Rect{244,52,1500,1012})
+	testing.expect(t,state.paint[state.editor_paint_start].rect.width==2048)
+	pointer=project_pointer_input(state,{position={viewport.x+viewport.width*0.5,viewport.y+viewport.height*0.5},available=true},1280,720,2048,1096)
+	testing.expect(t,pointer.available&&pointer.position==shared.Vec2{640,360})
+	testing.expect(t,reconcile(state,&world,1280,720,{position={viewport.x+100,viewport.y+100},primary_down=true,available=true},2048,1096)=="")
+	testing.expect(t,state.editor_pick_requested)
+	testing.expect(t,state.editor_pick_position==shared.Vec2{viewport.x+100,viewport.y+100})
+}
+
+@(test)
+test_resized_play_view_maps_pointer_back_to_project_canvas :: proc(t:^testing.T) {
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state)
+	viewport:=editor_viewport(state,2048,1096)
+	testing.expect(t,viewport==Rect{0,0,2048,1096})
+	pointer:=project_pointer_input(state,{position={1024,548},available=true},1280,720,2048,1096)
+	testing.expect(t,pointer.available&&pointer.position==shared.Vec2{640,360})
+}
+
+@(test)
+test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection :: proc(t:^testing.T) {
+	scene:=shared.Scene{};defer delete(scene.entities)
+	for i in 0..<25 {append(&scene.entities,shared.Scene_Entity{name="Browser Entity"})}
+	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
+	world.entities[24].origin=.Runtime
+	world.entities[24].transform_index=len(world.transforms);append_soa(&world.transforms,shared.Transform_Component{})
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state);state.editor_visible=true
+
+	// A short window exposes five rows; scrolling down reaches the runtime tail.
+	testing.expect(t,reconcile(state,&world,1280,720,{position={100,150},wheel_y=-10,available=true},1280,300)=="")
+	testing.expect(t,state.editor_scroll_row==20)
+	testing.expect(t,reconcile(state,&world,1280,720,{position={100,214},primary_down=true,available=true},1280,300)=="")
+	testing.expect(t,state.editor_has_selection)
+	testing.expect(t,state.editor_selected_entity==world.entities[24].id)
+	testing.expect(t,world.entities[24].origin==.Runtime)
+	testing.expect(t,entity_component_count(&world,24)==1)
+
+	world.entities[24].alive=false
+	testing.expect(t,reconcile(state,&world,1280,720,{},1280,300)=="")
+	testing.expect(t,!state.editor_has_selection)
+}
+
+@(test)
+test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t:^testing.T) {
+	scene:=shared.Scene{};defer delete(scene.entities)
+	append(&scene.entities,shared.Scene_Entity{
+		name="Inspectable",has_transform=true,transform={position={1,2.5,-3},rotation={0.1,0.2,0.3},scale={1,1,1}},
+		has_camera=true,camera={fov=60,near=0.1,far=500},
+		has_ui_layout=true,ui_layout={parent="Root",position={20,30},size={300,120},padding={4,5,6,7},corner_radius=8},
+		has_ui_button=true,ui_button={text="Launch",size=14,color={1,1,1,1},hover_background={0.2,0.3,0.4,1}},
+	})
+	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state);state.editor_visible=true
+	testing.expect(t,reconcile(state,&world,1280,720,{position={100,105},primary_down=true,available=true},1280,300)=="")
+	testing.expect(t,state.editor_has_selection)
+	testing.expect(t,state.editor_inspector_content_height>200)
+	testing.expect(t,format_vec3({1,2.5,-3})=="(1.00, 2.50, -3.00)")
+	testing.expect(t,reconcile(state,&world,1280,720,{position={1100,220},wheel_y=-4,available=true},1280,300)=="")
+	testing.expect(t,state.editor_inspector_scroll>0)
+	testing.expect(t,state.editor_scroll_row==0)
+}
+
+@(test)
+test_editor_gizmo_appends_three_axis_lines_and_handles :: proc(t:^testing.T) {
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state)
+	state.editor_gizmo_visible=true;state.editor_gizmo_origin={100,100};state.editor_gizmo_endpoints={{180,100},{100,20},{145,145}};state.editor_gizmo_hovered_axis=.Y
+	testing.expect(t,append_editor_gizmo(state)=="")
+	line_count:=0;for command in state.paint[:state.paint_count]{if command.kind==.Line{line_count+=1}}
+	testing.expect(t,line_count==3)
+	testing.expect(t,state.paint[3].line_thickness==8)
 }

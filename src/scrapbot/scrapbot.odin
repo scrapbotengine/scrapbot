@@ -300,6 +300,7 @@ run_project_internal :: proc(root: string, config: Run_Config, extensions_prebui
 	ui_state:=new(ui.State)
 	defer free(ui_state)
 	if ui_err:=ui.init(ui_state);ui_err!=""{result.err=ui_err;return result}
+	ui_state.editor_visible=run_config.editor
 	defer ui.destroy(ui_state)
 	run_config.ui_state=ui_state
 

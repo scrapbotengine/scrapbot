@@ -209,12 +209,12 @@ test_scene_parses_ecs_ui_hierarchy :: proc(t:^testing.T) {
 	scene,result:=parse_scene(`[[entities]]
 name = "HUD"
 [entities.ui_layout]
-direction = "column"
 position = [20, 30]
 size = [400, 200]
-padding = 12
-gap = 8
+padding = [12, 12, 12, 12]
 background = [0.1, 0.2, 0.3, 0.9]
+[entities.ui_vstack]
+gap = 8
 [[entities]]
 name = "Title"
 [entities.ui_layout]
@@ -228,7 +228,8 @@ size = 24
 	defer destroy_scene(&scene)
 	testing.expectf(t,result.err==.None,"parse failed: %s",result.message)
 	testing.expect(t,len(scene.entities)==2)
-	testing.expect(t,scene.entities[0].ui_layout.direction==.Column)
+	testing.expect(t,scene.entities[0].has_ui_vstack)
+	testing.expect(t,scene.entities[0].ui_vstack.gap==8)
 	testing.expect(t,scene.entities[1].ui_layout.parent=="HUD")
 	testing.expect(t,scene.entities[1].ui_text.text=="HELLO")
 }

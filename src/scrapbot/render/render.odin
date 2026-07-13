@@ -13,6 +13,7 @@ Run_Config :: struct {
 	backend:           Renderer_Backend,
 	window:            bool,
 	hot_reload:        bool,
+	editor:            bool,
 	max_frames:        u32,
 	framegrab_path:    string,
 	frame_system:      Frame_System_Proc,
@@ -108,10 +109,25 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 	return frame, "unknown renderer backend"
 }
 
-run_frame_system :: proc(config: ^Run_Config, world: ^World, delta_seconds: f32) -> string {
+run_frame_system :: proc(config: ^Run_Config, world: ^World, delta_seconds: f32, drawable_width:f32=1280, drawable_height:f32=720) -> string {
 	if config.frame_system == nil {
 		ecs.advance_time(&world.time, delta_seconds)
 	} else if err:=config.frame_system(config.frame_system_data, world, delta_seconds);err!=""{return err}
-	if config.ui_state!=nil {return ui.reconcile(config.ui_state,world,1280,720)}
+	if config.ui_state!=nil {
+		if platform.consume_editor_toggle(){config.ui_state.editor_visible=!config.ui_state.editor_visible}
+		platform_pointer:=platform.runtime_pointer_state_in_pixels()
+		pointer:=ui.Pointer_Input{position={platform_pointer.x,platform_pointer.y},wheel_y=platform_pointer.wheel_y,primary_down=platform_pointer.primary_down,available=platform_pointer.available}
+		viewport:=ui.editor_viewport(config.ui_state,drawable_width,drawable_height);camera,has_camera:=ecs.first_camera_instance(world)
+		editor_transform_gizmo_system(config.ui_state,world,pointer,viewport,camera,has_camera)
+		if err:=ui.reconcile(config.ui_state,world,1280,720,pointer,drawable_width,drawable_height);err!=""{return err}
+		if config.ui_state.editor_pick_requested {
+			config.ui_state.editor_pick_requested=false
+			if config.resource_registry!=nil {
+				list:=ecs.build_resource_render_list(world,config.resource_registry);defer ecs.destroy_render_list(&list)
+				if entity,found:=editor_pick_entity(&list,config.resource_registry,config.ui_state.editor_pick_position,viewport);found {ui.editor_select_entity(config.ui_state,world,entity,drawable_height)} else {ui.editor_clear_selection(config.ui_state)}
+			}
+		}
+		return ""
+	}
 	return ""
 }

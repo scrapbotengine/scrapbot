@@ -347,7 +347,7 @@ push_query_component_table :: proc "c" (
 		if entity.directional_light_index>=0 && entity.directional_light_index<len(world.directional_lights) {light:=world.directional_lights[entity.directional_light_index]; lua_createtable(L,0,3); push_vec3_table(L,light.direction); lua_setfield(L,-2,"direction"); push_vec3_table(L,light.color); lua_setfield(L,-2,"color"); lua_pushnumber(L,f64(light.intensity)); lua_setfield(L,-2,"intensity"); return}
 	case "scrapbot.point_light":
 		if entity.point_light_index>=0 && entity.point_light_index<len(world.point_lights) {light:=world.point_lights[entity.point_light_index]; lua_createtable(L,0,3); push_vec3_table(L,light.color); lua_setfield(L,-2,"color"); lua_pushnumber(L,f64(light.intensity)); lua_setfield(L,-2,"intensity"); lua_pushnumber(L,f64(light.range)); lua_setfield(L,-2,"range"); return}
-	case "scrapbot.shadow_caster", "scrapbot.shadow_receiver", "scrapbot.ui_layout", "scrapbot.ui_text":
+	case "scrapbot.shadow_caster", "scrapbot.shadow_receiver", "scrapbot.ui_layout", "scrapbot.ui_hstack", "scrapbot.ui_vstack", "scrapbot.ui_text", "scrapbot.ui_button":
 		lua_createtable(L, 0, 0)
 		return
 	case "scrapbot.mesh":

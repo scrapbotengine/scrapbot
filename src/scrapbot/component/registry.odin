@@ -60,7 +60,10 @@ init_registry :: proc(registry: ^Registry) {
 	register_engine_component(registry, "scrapbot.shadow_caster", {})
 	register_engine_component(registry, "scrapbot.shadow_receiver", {})
 	register_engine_component(registry, "scrapbot.ui_layout", {})
+	register_engine_component(registry, "scrapbot.ui_hstack", {})
+	register_engine_component(registry, "scrapbot.ui_vstack", {})
 	register_engine_component(registry, "scrapbot.ui_text", {})
+	register_engine_component(registry, "scrapbot.ui_button", {})
 	register_engine_component(registry, "scrapbot.internal.render_instance", {})
 }
 

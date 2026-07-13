@@ -122,7 +122,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			continue
 		}
 
-		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" || line == "[entities.ambient_light]" || line == "[entities.directional_light]" || line == "[entities.point_light]" || line == "[entities.shadow_caster]" || line == "[entities.shadow_receiver]" || line == "[entities.ui_layout]" || line == "[entities.ui_text]" {
+		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" || line == "[entities.ambient_light]" || line == "[entities.directional_light]" || line == "[entities.point_light]" || line == "[entities.shadow_caster]" || line == "[entities.shadow_receiver]" || line == "[entities.ui_layout]" || line == "[entities.ui_hstack]" || line == "[entities.ui_vstack]" || line == "[entities.ui_text]" || line == "[entities.ui_button]" {
 			if current == nil {
 				return scene, fail(.Invalid_Syntax, fmt.tprintf("%s appears before [[entities]]", line))
 			}
@@ -130,7 +130,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if section == "shadow_caster" {current.has_shadow_caster = true}
 			if section == "shadow_receiver" {current.has_shadow_receiver = true}
 			if section == "ui_layout" {current.has_ui_layout=true}
+			if section == "ui_hstack" {current.has_ui_hstack=true}
+			if section == "ui_vstack" {current.has_ui_vstack=true}
 			if section == "ui_text" {current.has_ui_text=true; current.ui_text.color={1,1,1,1}; current.ui_text.size=16}
+			if section == "ui_button" {current.has_ui_button=true; current.ui_button.color={1,1,1,1}; current.ui_button.size=16}
 			current_component = nil
 			continue
 		}
@@ -234,21 +237,33 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			current.has_ui_layout=true
 			switch key {
 			case "parent": current.ui_layout.parent,found=parse_basic_string(value)
-			case "direction":
-				direction:string; direction,found=parse_basic_string(value)
-				if found {switch direction {case "overlay":current.ui_layout.direction=.Overlay; case "row":current.ui_layout.direction=.Row; case "column":current.ui_layout.direction=.Column; case:found=false}}
 			case "position": current.ui_layout.position,found=parse_vec2(value)
 			case "size": current.ui_layout.size,found=parse_vec2(value)
-			case "padding": current.ui_layout.padding,found=parse_f32(value)
-			case "gap": current.ui_layout.gap,found=parse_f32(value)
+			case "margin": current.ui_layout.margin,found=parse_vec4(value)
+			case "padding": current.ui_layout.padding,found=parse_vec4(value)
 			case "background": current.ui_layout.background,found=parse_vec4(value)
+			case "corner_radius": current.ui_layout.corner_radius,found=parse_f32(value)
 			case: return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_layout field '%s'",key))
 			}
 			if !found {return scene,fail(.Invalid_Field,fmt.tprintf("invalid ui_layout.%s",key))}
+		case "ui_hstack":
+			current.has_ui_hstack=true
+			if key!="gap" {return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_hstack field '%s'",key))}
+			current.ui_hstack.gap,found=parse_f32(value)
+			if !found {return scene,fail(.Invalid_Field,"invalid ui_hstack.gap")}
+		case "ui_vstack":
+			current.has_ui_vstack=true
+			if key!="gap" {return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_vstack field '%s'",key))}
+			current.ui_vstack.gap,found=parse_f32(value)
+			if !found {return scene,fail(.Invalid_Field,"invalid ui_vstack.gap")}
 		case "ui_text":
 			current.has_ui_text=true
 			switch key {case "text":current.ui_text.text,found=parse_basic_string(value); case "color":current.ui_text.color,found=parse_vec4(value); case "size":current.ui_text.size,found=parse_f32(value); case:return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_text field '%s'",key))}
 			if !found {return scene,fail(.Invalid_Field,fmt.tprintf("invalid ui_text.%s",key))}
+		case "ui_button":
+			current.has_ui_button=true
+			switch key {case "text":current.ui_button.text,found=parse_basic_string(value); case "color":current.ui_button.color,found=parse_vec4(value); case "size":current.ui_button.size,found=parse_f32(value); case "hover_background":current.ui_button.hover_background,found=parse_vec4(value); case "active_background":current.ui_button.active_background,found=parse_vec4(value); case "hover_color":current.ui_button.hover_color,found=parse_vec4(value); case "active_color":current.ui_button.active_color,found=parse_vec4(value); case:return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_button field '%s'",key))}
+			if !found {return scene,fail(.Invalid_Field,fmt.tprintf("invalid ui_button.%s",key))}
 		case "component":
 			if current_component == nil {
 				return scene, fail(.Invalid_Syntax, "component fields must appear under [entities.components.<name>]")
@@ -277,9 +292,13 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if entity.has_transform && entity.transform.scale == (Vec3{}) {
 			scene.entities[index].transform.scale = Vec3{1, 1, 1}
 		}
-		if entity.has_ui_text && !entity.has_ui_layout {return scene,fail(.Invalid_Field,fmt.tprintf("UI text entity '%s' requires ui_layout",entity.name))}
-		if entity.has_ui_layout && (entity.ui_layout.size.x<=0 || entity.ui_layout.size.y<=0 || entity.ui_layout.padding<0 || entity.ui_layout.gap<0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' requires positive size and non-negative padding/gap",entity.name))}
+		if (entity.has_ui_text || entity.has_ui_button || entity.has_ui_hstack || entity.has_ui_vstack) && !entity.has_ui_layout {return scene,fail(.Invalid_Field,fmt.tprintf("UI component on '%s' requires ui_layout",entity.name))}
+		if entity.has_ui_layout && (entity.ui_layout.size.x<=0 || entity.ui_layout.size.y<=0 || entity.ui_layout.corner_radius<0 || !vec4_is_non_negative(entity.ui_layout.margin) || !vec4_is_non_negative(entity.ui_layout.padding)) {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' requires positive size and non-negative margin, padding, and corner radius",entity.name))}
+		if entity.has_ui_hstack && entity.has_ui_vstack {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' cannot be both an hstack and vstack",entity.name))}
+		if (entity.has_ui_hstack && entity.ui_hstack.gap<0) || (entity.has_ui_vstack && entity.ui_vstack.gap<0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI stack '%s' requires a non-negative gap",entity.name))}
+		if entity.has_ui_text && entity.has_ui_button {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' cannot contain both text and a button",entity.name))}
 		if entity.has_ui_text && (entity.ui_text.text=="" || entity.ui_text.size<=0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI text entity '%s' requires text and positive size",entity.name))}
+		if entity.has_ui_button && (entity.ui_button.text=="" || entity.ui_button.size<=0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI button entity '%s' requires text and positive size",entity.name))}
 	}
 	for entity in scene.entities {if entity.has_ui_layout && entity.ui_layout.parent!="" {
 		found_parent:=false; for candidate in scene.entities {if candidate.name==entity.ui_layout.parent && candidate.has_ui_layout {found_parent=true;break}}
@@ -301,6 +320,10 @@ parse_component_section :: proc(line: string) -> (name: string, ok: bool) {
 	}
 	name = line[len(prefix):len(line) - 1]
 	return name, true
+}
+
+vec4_is_non_negative :: proc(value: Vec4) -> bool {
+	return value.x>=0 && value.y>=0 && value.z>=0 && value.w>=0
 }
 
 strip_comment :: proc(line: string) -> string {

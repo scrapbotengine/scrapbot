@@ -100,19 +100,21 @@ Directional shadow markers have no fields:
 
 Casters write to the first directional light's shadow map. Receivers sample it. The markers are independent, so geometry may cast without receiving or receive without casting.
 
-Screen-space UI entities use a retained layout component and may add bitmap text:
+Screen-space UI entities share a retained box model and compose container or content components:
 
 ```toml
 [[entities]]
 name = "HUD"
 
 [entities.ui_layout]
-direction = "column"
 position = [40, 40]
 size = [460, 280]
-padding = 24
-gap = 14
+padding = [24, 24, 24, 24]
 background = [0.035, 0.055, 0.105, 0.96]
+corner_radius = 20
+
+[entities.ui_vstack]
+gap = 14
 
 [[entities]]
 name = "Title"
@@ -125,9 +127,30 @@ size = [412, 52]
 text = "SCRAPBOT UI"
 color = [0.15, 0.95, 0.82, 1]
 size = 32
+
+[[entities]]
+name = "Launch"
+
+[entities.ui_layout]
+parent = "HUD"
+margin = [0, 0, 0, 8]
+size = [180, 48]
+padding = [13, 18, 11, 18]
+background = [0.31, 0.26, 0.86, 1]
+corner_radius = 12
+
+[entities.ui_button]
+text = "LAUNCH"
+color = [1, 1, 1, 1]
+size = 16
+hover_background = [0.39, 0.33, 0.96, 1]
+active_background = [0.22, 0.18, 0.68, 1]
+active_color = [0.82, 0.84, 1, 1]
 ```
 
-Positions and sizes are screen pixels from the top-left. `direction` accepts `overlay`, `row`, or `column`; row and column parents apply `padding` and `gap` in scene entity order. Parent names must resolve to another UI layout entity, and cycles are rejected.
+Positions and sizes are screen pixels from the top-left. `margin` and `padding` use `[top, right, bottom, left]`. Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children. Background corner radii are rendered as signed-distance rounded rectangles. Parent names must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine both stack directions or both text and button content.
+
+Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button activation events are not emitted yet.
 
 ## Custom component sections
 

@@ -7,6 +7,16 @@ import sdl "vendor:sdl3"
 
 runtime_window: ^sdl.Window
 runtime_window_ready: bool
+runtime_window_hidden: bool
+runtime_editor_toggle_requested: bool
+runtime_wheel_y: f32
+
+Pointer_State :: struct {
+	x, y: f32,
+	wheel_y: f32,
+	primary_down: bool,
+	available: bool,
+}
 
 runtime_window_flags :: proc(hidden: bool) -> sdl.WindowFlags {
 	flags := sdl.WindowFlags{.RESIZABLE}
@@ -47,6 +57,7 @@ open_runtime_window_with_visibility :: proc(title: string, width, height: int, h
 	}
 
 	runtime_window_ready = true
+	runtime_window_hidden = hidden
 	return ""
 }
 
@@ -59,6 +70,40 @@ close_runtime_window :: proc() {
 		sdl.Quit()
 		runtime_window_ready = false
 	}
+	runtime_window_hidden = false
+	runtime_editor_toggle_requested = false
+}
+
+runtime_pointer_state :: proc() -> Pointer_State {
+	if runtime_window == nil || runtime_window_hidden {
+		return {}
+	}
+	x, y: f32
+	buttons := sdl.GetMouseState(&x, &y)
+	return {x=x, y=y, wheel_y=runtime_wheel_y, primary_down=.LEFT in buttons, available=true}
+}
+
+runtime_pointer_state_in_pixels :: proc() -> Pointer_State {
+	pointer := runtime_pointer_state()
+	if !pointer.available || runtime_window == nil {return pointer}
+	window_width, window_height: c.int
+	pixel_width, pixel_height: c.int
+	if !sdl.GetWindowSize(runtime_window, &window_width, &window_height) ||
+	   !sdl.GetWindowSizeInPixels(runtime_window, &pixel_width, &pixel_height) ||
+	   window_width <= 0 || window_height <= 0 {return pointer}
+	pointer.x *= f32(pixel_width) / f32(window_width)
+	pointer.y *= f32(pixel_height) / f32(window_height)
+	return pointer
+}
+
+consume_editor_toggle :: proc() -> bool {
+	requested:=runtime_editor_toggle_requested
+	runtime_editor_toggle_requested=false
+	return requested
+}
+
+editor_toggle_shortcut :: proc(scancode:sdl.Scancode,modifiers:sdl.Keymod,repeat:bool)->bool {
+	return !repeat&&scancode==.ESCAPE&&(.LCTRL in modifiers||.RCTRL in modifiers)
 }
 
 runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {
@@ -75,11 +120,16 @@ runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {
 
 pump_runtime_window_events :: proc() -> bool {
 	should_quit := false
+	runtime_wheel_y = 0
 	event: sdl.Event
 	for sdl.PollEvent(&event) {
 		if event.type == .QUIT || event.type == .WINDOW_CLOSE_REQUESTED {
 			should_quit = true
 		}
+		if event.type==.KEY_DOWN && editor_toggle_shortcut(event.key.scancode,event.key.mod,event.key.repeat) {
+			runtime_editor_toggle_requested=true
+		}
+		if event.type==.MOUSE_WHEEL {runtime_wheel_y += event.wheel.y}
 	}
 	return should_quit
 }

@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-12
+**Last reviewed:** 2026-07-13
 
 ## Overview
 
@@ -19,6 +19,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Eligible entities receive internal render-instance components automatically.
 - Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
 - The `wgpu` backend can also render a headless final-frame PNG with `--framegrab`.
+- WGPU sizes the live world and project UI to the complete available viewport, deriving camera aspect from its dimensions, then paints engine chrome in a separate overlay pass.
 - The `wgpu` backend currently requires `--window` or `--framegrab`.
 - Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
@@ -91,7 +92,7 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 ## Related
 
 - **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011
-- **FDRs:** FDR-001, FDR-002
+- **FDRs:** FDR-001, FDR-002, FDR-008
 
 ### 11. Keep decoded images in resource ownership and GPU objects in the backend
 
