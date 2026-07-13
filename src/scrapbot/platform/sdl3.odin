@@ -133,6 +133,13 @@ scene_camera_input_from_state :: proc(keys: Scene_Camera_Key_State, look_delta: 
 	return {movement = movement, look_delta = look_delta, look_active = true}
 }
 
+scene_camera_capture_delta :: proc(delta: shared.Vec2, capture_started: bool) -> shared.Vec2 {
+	if capture_started {
+		return {}
+	}
+	return delta
+}
+
 keyboard_state_has :: proc(keyboard: [^]bool, key_count: int, scancode: sdl.Scancode) -> bool {
 	index := int(scancode)
 	return keyboard != nil && index >= 0 && index < key_count && keyboard[index]
@@ -150,6 +157,7 @@ runtime_scene_camera_input :: proc(enabled: bool, viewport_x, viewport_y, viewpo
 	pointer := runtime_pointer_state_in_pixels()
 	inside_viewport := pointer.available && pointer.x >= viewport_x && pointer.y >= viewport_y &&
 		pointer.x < viewport_x + viewport_width && pointer.y < viewport_y + viewport_height
+	capture_started := false
 	if !runtime_scene_camera_look_active {
 		if !pointer.secondary_down || !inside_viewport {
 			return {}
@@ -158,6 +166,7 @@ runtime_scene_camera_input :: proc(enabled: bool, viewport_x, viewport_y, viewpo
 			return {}
 		}
 		runtime_scene_camera_look_active = true
+		capture_started = true
 	}
 
 	delta_x, delta_y: f32
@@ -178,7 +187,8 @@ runtime_scene_camera_input :: proc(enabled: bool, viewport_x, viewport_y, viewpo
 		up       = keyboard_state_has(keyboard, int(key_count), .SPACE),
 		down     = keyboard_state_has(keyboard, int(key_count), .LCTRL) || keyboard_state_has(keyboard, int(key_count), .RCTRL),
 	}
-	return scene_camera_input_from_state(keys, {delta_x, delta_y}, true)
+	look_delta := scene_camera_capture_delta({delta_x, delta_y}, capture_started)
+	return scene_camera_input_from_state(keys, look_delta, true)
 }
 
 runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {

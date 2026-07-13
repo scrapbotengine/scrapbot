@@ -26,3 +26,10 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 	testing.expect(t, active.movement == shared.Vec3{-1, 1, 1})
 	testing.expect(t, active.look_delta == shared.Vec2{4, -2})
 }
+
+@(test)
+test_scene_camera_capture_discards_initial_relative_mouse_delta :: proc(t: ^testing.T) {
+	delta := shared.Vec2{380, -240}
+	testing.expect(t, scene_camera_capture_delta(delta, true) == shared.Vec2{})
+	testing.expect(t, scene_camera_capture_delta(delta, false) == delta)
+}
