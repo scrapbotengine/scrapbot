@@ -11,6 +11,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - name: Install SDL3
+        run: brew install sdl3
+      - name: Prepare Odin vendor libraries
+        run: |
+          make -C "$(odin root)/vendor/stb/src"
+          case "$(uname -m)" in
+            arm64) WGPU_ARCH="aarch64" ;;
+            x86_64) WGPU_ARCH="x86_64" ;;
+            *) echo "unsupported macOS architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          WGPU_ARCHIVE="wgpu-macos-$WGPU_ARCH-release.zip"
+          WGPU_VERSION="v29.0.1.1"
+          WGPU_LIB_DIR="$(odin root)/vendor/wgpu/lib"
+          WGPU_PACKAGE="${WGPU_ARCHIVE%.zip}"
+          mkdir -p "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+          curl --fail --location --retry 3 \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/$WGPU_ARCHIVE" \
+            --output "/tmp/$WGPU_ARCHIVE"
+          unzip -q "/tmp/$WGPU_ARCHIVE" -d "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+      - name: Test
+        run: mise test
+
   linux:
     runs-on: ubuntu-latest
     container: ubuntu:25.10
@@ -39,3 +68,45 @@ jobs:
         run: mise test
       - name: AddressSanitizer
         run: mise test-sanitize
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install SDL3
+        shell: pwsh
+        run: |
+          $sdlVersion = "3.4.10"
+          $archive = Join-Path $env:RUNNER_TEMP "SDL3-devel-$sdlVersion-VC.zip"
+          $installDir = Join-Path $env:RUNNER_TEMP "sdl3"
+          Invoke-WebRequest -Uri "https://www.libsdl.org/release/SDL3-devel-$sdlVersion-VC.zip" -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $installDir
+          $sdlRoot = Join-Path $installDir "SDL3-$sdlVersion"
+          Copy-Item "$sdlRoot\lib\x64\SDL3.lib" .
+      - name: Prepare Odin vendor libraries
+        shell: pwsh
+        run: |
+          $odinRoot = odin root
+          Push-Location "$odinRoot\vendor\stb\src"
+          try {
+            & .\build.bat
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+
+          $wgpuArchive = "wgpu-windows-x86_64-msvc-release.zip"
+          $wgpuVersion = "v29.0.1.1"
+          $wgpuPackage = [System.IO.Path]::GetFileNameWithoutExtension($wgpuArchive)
+          $wgpuLibDir = Join-Path $odinRoot "vendor\wgpu\lib\$wgpuPackage"
+          $wgpuDownload = Join-Path $env:RUNNER_TEMP $wgpuArchive
+          New-Item -ItemType Directory -Force -Path $wgpuLibDir | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/gfx-rs/wgpu-native/releases/download/$wgpuVersion/$wgpuArchive" -OutFile $wgpuDownload
+          Expand-Archive -Path $wgpuDownload -DestinationPath $wgpuLibDir
+      - name: Check
+        shell: pwsh
+        run: odin check src/scrapbot -no-entry-point
