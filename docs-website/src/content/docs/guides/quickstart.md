@@ -83,6 +83,8 @@ bin/scrapbot run examples/ecs-showcase --backend wgpu --window --editor
 bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
 ```
 
+The live editor can browse scene-authored and runtime entities, inspect component fields, pick geometry in the viewport, fly an independent scene camera, and translate selected entities. See [Live Editor](/guides/live-editor/) for controls and current limitations.
+
 Headless WebGPU can write a framegrab:
 
 ```sh

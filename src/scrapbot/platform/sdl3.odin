@@ -3,6 +3,7 @@ package platform
 import "core:c"
 import "core:fmt"
 import "core:strings"
+import base_runtime "base:runtime"
 import shared "../shared"
 import sdl "vendor:sdl3"
 
@@ -27,8 +28,57 @@ Scene_Camera_Key_State :: struct {
 	up, down:          bool,
 }
 
+Live_Resize_Redraw_Proc :: #type proc "c" (userdata: rawptr)
+
+Live_Resize_Watch :: struct {
+	window_id: sdl.WindowID,
+	redraw:    Live_Resize_Redraw_Proc,
+	userdata:  rawptr,
+}
+
+runtime_event_requests_live_resize_redraw :: proc(event: ^sdl.Event, window_id: sdl.WindowID) -> bool {
+	return event != nil &&
+		event.type == .WINDOW_EXPOSED &&
+		event.window.data1 == 1 &&
+		event.window.windowID == window_id
+}
+
+runtime_live_resize_event_watch :: proc "c" (userdata: rawptr, event: ^sdl.Event) -> bool {
+	context = base_runtime.default_context()
+	watch := cast(^Live_Resize_Watch)userdata
+	if watch != nil && watch.redraw != nil && runtime_event_requests_live_resize_redraw(event, watch.window_id) {
+		watch.redraw(watch.userdata)
+	}
+	return true
+}
+
+watch_runtime_live_resize :: proc(watch: ^Live_Resize_Watch, redraw: Live_Resize_Redraw_Proc, userdata: rawptr) -> string {
+	if watch == nil || redraw == nil || runtime_window == nil {
+		return "cannot watch live resize without a runtime window and redraw callback"
+	}
+	watch^ = {
+		window_id = sdl.GetWindowID(runtime_window),
+		redraw = redraw,
+		userdata = userdata,
+	}
+	if watch.window_id == 0 || !sdl.AddEventWatch(runtime_live_resize_event_watch, watch) {
+		watch^ = {}
+		return fmt.tprintf("failed to watch SDL3 live resize events: %s", sdl.GetError())
+	}
+	return ""
+}
+
+unwatch_runtime_live_resize :: proc(watch: ^Live_Resize_Watch) {
+	if watch == nil || watch.redraw == nil {return}
+	sdl.RemoveEventWatch(runtime_live_resize_event_watch, watch)
+	watch^ = {}
+}
+
 runtime_window_flags :: proc(hidden: bool) -> sdl.WindowFlags {
 	flags := sdl.WindowFlags{.RESIZABLE}
+	if !hidden {
+		flags += sdl.WINDOW_HIGH_PIXEL_DENSITY
+	}
 	when ODIN_OS == .Darwin {
 		flags += sdl.WINDOW_METAL
 	}
@@ -36,6 +86,13 @@ runtime_window_flags :: proc(hidden: bool) -> sdl.WindowFlags {
 		flags += sdl.WINDOW_HIDDEN
 	}
 	return flags
+}
+
+runtime_window_pixel_density :: proc() -> f32 {
+	if runtime_window == nil || runtime_window_hidden {return 1}
+	density:=sdl.GetWindowPixelDensity(runtime_window)
+	if density<=0 {return 1}
+	return density
 }
 
 open_runtime_window :: proc(title: string, width, height: int) -> string {

@@ -71,6 +71,28 @@ case "$RUN_JSON" in
   '{"schema_version":1,"command":"run","ok":true,'*) ;;
   *) echo "unexpected run JSON: $RUN_JSON" >&2; exit 1 ;;
 esac
+RUNTIME_STATS_JSON="$(bin/scrapbot run examples/minimal --frames 120 --runtime-stats --json)"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.runtime_stats;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    !stats?.enabled || stats.frames !== 120 || stats.early_update_ns_per_frame <= 0 ||
+    stats.late_update_ns_per_frame <= 0 ||
+    stats.cpu_growth_ratio <= 0 || stats.allocator_final_bytes > 65536) {
+  console.error("unexpected runtime stats JSON");
+  process.exit(1);
+}
+' "$RUNTIME_STATS_JSON"
+node tools/runtime_soak.mjs examples/ecs-showcase 2000
+UNBOUNDED_STATS_JSON="$(bin/scrapbot run examples/minimal --backend wgpu --window --runtime-stats --json || true)"
+node -e '
+const result = JSON.parse(process.argv[1]);
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== false ||
+    result.diagnostics?.[0]?.code !== "SCRAPBOT_ARGUMENT_ERROR") {
+  console.error("unexpected unbounded runtime stats diagnostic");
+  process.exit(1);
+}
+' "$UNBOUNDED_STATS_JSON"
 BUILD_JSON="$(bin/scrapbot build examples/minimal --json)"
 case "$BUILD_JSON" in
   '{"schema_version":1,"command":"build","ok":true,'*) ;;
@@ -88,4 +110,30 @@ case "$PACKAGE_RUN_JSON" in
   '{"schema_version":1,"command":"run","ok":true,'*) ;;
   *) echo "unexpected packaged run JSON: $PACKAGE_RUN_JSON" >&2; exit 1 ;;
 esac
+'''
+
+[tasks.test-soak]
+description = "Run the lifecycle-heavy CPU/RAM growth soak"
+depends = ["build"]
+run = "node tools/runtime_soak.mjs"
+
+[tasks.test-sanitize]
+description = "Run Odin tests with AddressSanitizer on Linux"
+depends = ["luau"]
+run = '''
+LUAU_LIBS="third_party/luau/build/release"
+case "$(uname -s)" in
+  Darwin)
+    echo "AddressSanitizer is skipped on macOS because the current Odin/Apple sanitizer runtimes are incompatible"
+    exit 0
+    ;;
+  Linux)
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    ;;
+  *)
+    echo "unsupported sanitizer platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+odin test src/scrapbot -all-packages -sanitize:address -extra-linker-flags:"$LUAU_LINK_FLAGS -fsanitize=address"
 '''

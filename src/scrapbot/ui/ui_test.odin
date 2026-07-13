@@ -2,6 +2,7 @@ package ui
 
 import ecs "../ecs"
 import shared "../shared"
+import "core:math"
 import "core:testing"
 
 @(test)
@@ -97,6 +98,48 @@ test_pointer_states_belong_to_elements_and_buttons_consume_them :: proc(t:^testi
 }
 
 @(test)
+test_scroll_area_clips_descendants_and_smoothly_approaches_wheel_target :: proc(t:^testing.T) {
+	scene:=shared.Scene{};defer delete(scene.entities)
+	append(&scene.entities,
+		shared.Scene_Entity{name="Scroll",has_ui_layout=true,ui_layout={position={20,20},size={200,100},padding={10,10,10,10},background={0.08,0.09,0.11,1}},has_ui_scroll_area=true,ui_scroll_area={scroll_speed=60,smoothness=12}},
+		shared.Scene_Entity{name="Pane",has_ui_layout=true,ui_layout={parent="Scroll",size={180,300},background={0.12,0.13,0.15,1}}},
+		shared.Scene_Entity{name="Button",has_ui_layout=true,ui_layout={parent="Pane",position={10,75},size={150,40},background={0.2,0.3,0.4,1}},has_ui_button=true,ui_button={text="CLIPPED",color={1,1,1,1},size=12}},
+	)
+	world:=ecs.build_world(&scene);defer ecs.destroy_world(&world)
+	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state)
+
+	// The button occupies this point geometrically, but the scroll viewport clips it.
+	testing.expect(t,reconcile(state,&world,1280,720,{position={40,115},available=true})=="")
+	scroll:=find_node_by_entity_index(state,0);pane:=find_node_by_entity_index(state,1);button:=find_node_by_entity_index(state,2)
+	testing.expect(t,scroll>=0&&pane>=0&&button>=0)
+	if scroll>=0&&pane>=0&&button>=0 {
+		testing.expect(t,state.nodes[scroll].scroll_max==220)
+		testing.expect(t,state.nodes[pane].clip==Rect{30,30,180,80})
+		testing.expect(t,!state.nodes[button].hovered)
+	}
+	clipped_paint:=false
+	expected_clip:=Rect{30,30,180,80}
+	for command in state.paint[:state.paint_count] {if command.has_clip&&command.clip==expected_clip{clipped_paint=true;break}}
+	testing.expect(t,clipped_paint)
+
+	initial_pane_y:=state.nodes[pane].rect.y
+	testing.expect(t,reconcile(state,&world,1280,720,{position={40,40},wheel_y=-1,available=true},0,0,1.0/60.0)=="")
+	testing.expect(t,state.nodes[scroll].scroll_target==60)
+	testing.expect(t,state.nodes[scroll].scroll_offset>0&&state.nodes[scroll].scroll_offset<60)
+	testing.expect(t,state.nodes[pane].rect.y<initial_pane_y)
+	for _ in 0..<60 {testing.expect(t,reconcile(state,&world,1280,720,{},0,0,1.0/60.0)=="")}
+	testing.expect(t,math.abs(state.nodes[scroll].scroll_offset-60)<0.02)
+
+	// A later entity occupying a released retained-node slot starts at the top.
+	for &entity in world.entities {entity.alive=false}
+	testing.expect(t,reconcile(state,&world,1280,720)=="")
+	for &entity in world.entities {entity.alive=true}
+	testing.expect(t,reconcile(state,&world,1280,720)=="")
+	scroll=find_node_by_entity_index(state,0)
+	testing.expect(t,scroll>=0&&state.nodes[scroll].scroll_offset==0&&state.nodes[scroll].scroll_target==0)
+}
+
+@(test)
 test_editor_shell_reserves_live_viewport_and_appends_engine_chrome :: proc(t:^testing.T) {
 	scene:=shared.Scene{};defer delete(scene.entities)
 	append(&scene.entities,shared.Scene_Entity{name="Game UI",has_ui_layout=true,ui_layout={size={100,40},background={0.2,0.3,0.4,1}}})
@@ -122,6 +165,13 @@ test_editor_shell_reserves_live_viewport_and_appends_engine_chrome :: proc(t:^te
 	testing.expect(t,reconcile(state,&world,1280,720,{position={viewport.x+100,viewport.y+100},primary_down=true,available=true},2048,1096)=="")
 	testing.expect(t,state.editor_pick_requested)
 	testing.expect(t,state.editor_pick_position==shared.Vec2{viewport.x+100,viewport.y+100})
+
+	// Native-density windows keep the same logical chrome size while painting at 2x resolution.
+	state.editor_pixel_density=2
+	testing.expect(t,reconcile(state,&world,1280,720,{},2560,1440)=="")
+	viewport=editor_viewport(state,2560,1440)
+	testing.expect(t,viewport==Rect{488,104,1464,1272})
+	testing.expect(t,state.paint[state.editor_paint_start].rect==Rect{0,0,2560,96})
 }
 
 @(test)
@@ -142,10 +192,24 @@ test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection 
 	world.entities[24].transform_index=len(world.transforms);append_soa(&world.transforms,shared.Transform_Component{})
 	state:=new(State);defer free(state);testing.expect(t,init(state)=="");defer destroy(state);state.editor_visible=true
 
-	// A short window exposes five rows; scrolling down reaches the runtime tail.
-	testing.expect(t,reconcile(state,&world,1280,720,{position={100,150},wheel_y=-10,available=true},1280,300)=="")
-	testing.expect(t,state.editor_scroll_row==20)
-	testing.expect(t,reconcile(state,&world,1280,720,{position={100,214},primary_down=true,available=true},1280,300)=="")
+	// A wheel step settles at a pixel offset between rows instead of snapping to one.
+	testing.expect(t,reconcile(state,&world,1280,720,{position={100,150},wheel_y=-1,available=true},1280,300)=="")
+	testing.expect(t,state.editor_browser_scroll_target==48)
+	testing.expect(t,int(state.editor_browser_scroll_target)%int(EDITOR_ENTITY_ROW_HEIGHT)!=0)
+	for _ in 0..<60 {testing.expect(t,reconcile(state,&world,1280,720,{},1280,300)=="")}
+	testing.expect(t,math.abs(state.editor_browser_scroll-48)<0.02)
+
+	// A short window can continue smoothly to the runtime tail.
+	testing.expect(t,reconcile(state,&world,1280,720,{position={100,150},wheel_y=-20,available=true},1280,300)=="")
+	testing.expect(t,state.editor_browser_scroll_target==536)
+	testing.expect(t,state.editor_browser_scroll>0&&state.editor_browser_scroll<state.editor_browser_scroll_target)
+	for _ in 0..<60 {testing.expect(t,reconcile(state,&world,1280,720,{},1280,300)=="")}
+	testing.expect(t,math.abs(state.editor_browser_scroll-state.editor_browser_scroll_target)<0.02)
+	browser_clip_found:=false
+	browser:=editor_browser_rect(1280,300)
+	for command in state.paint[:state.paint_count] {if command.has_clip&&command.clip==browser{browser_clip_found=true;break}}
+	testing.expect(t,browser_clip_found)
+	testing.expect(t,reconcile(state,&world,1280,720,{position={100,245},primary_down=true,available=true},1280,300)=="")
 	testing.expect(t,state.editor_has_selection)
 	testing.expect(t,state.editor_selected_entity==world.entities[24].id)
 	testing.expect(t,world.entities[24].origin==.Runtime)
@@ -194,7 +258,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t,format_vec3({1,2.5,-3})=="(1.00, 2.50, -3.00)")
 	testing.expect(t,reconcile(state,&world,1280,720,{position={1100,220},wheel_y=-4,available=true},1280,300)=="")
 	testing.expect(t,state.editor_inspector_scroll>0)
-	testing.expect(t,state.editor_scroll_row==0)
+	testing.expect(t,state.editor_inspector_scroll<state.editor_inspector_scroll_target)
+	testing.expect(t,state.editor_browser_scroll==0)
 }
 
 @(test)

@@ -63,6 +63,8 @@ Scene_Entity :: struct {
 	ui_hstack: UI_Stack_Component,
 	has_ui_vstack: bool,
 	ui_vstack: UI_Stack_Component,
+	has_ui_scroll_area: bool,
+	ui_scroll_area: UI_Scroll_Area_Component,
 	has_ui_text: bool,
 	ui_text: UI_Text_Component,
 	has_ui_button: bool,
@@ -129,6 +131,7 @@ UI_Layout_Component :: struct {
 	corner_radius: f32,
 }
 UI_Stack_Component :: struct {gap: f32}
+UI_Scroll_Area_Component :: struct {scroll_speed, smoothness: f32}
 UI_Text_Component :: struct {text: string, color: Vec4, size: f32}
 UI_Button_Component :: struct {
 	text: string,
@@ -191,6 +194,7 @@ World_Entity :: struct {
 	ui_layout_index: int,
 	ui_hstack_index: int,
 	ui_vstack_index: int,
+	ui_scroll_area_index: int,
 	ui_text_index: int,
 	ui_button_index: int,
 	editor_transform_gizmo_index:int,
@@ -250,9 +254,15 @@ World :: struct {
 	geometries: [dynamic]Geometry_Component,
 	materials: [dynamic]Material_Component,
 	render_instances: [dynamic]Render_Instance_Component,
+	free_transform_indices:       [dynamic]int,
+	free_mesh_indices:            [dynamic]int,
+	free_geometry_indices:        [dynamic]int,
+	free_material_indices:        [dynamic]int,
+	free_render_instance_indices: [dynamic]int,
 	ui_layouts: [dynamic]UI_Layout_Component,
 	ui_hstacks: [dynamic]UI_Stack_Component,
 	ui_vstacks: [dynamic]UI_Stack_Component,
+	ui_scroll_areas: [dynamic]UI_Scroll_Area_Component,
 	ui_texts: [dynamic]UI_Text_Component,
 	ui_buttons: [dynamic]UI_Button_Component,
 	editor_transform_gizmos:[dynamic]Editor_Transform_Gizmo_Component,

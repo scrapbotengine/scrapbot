@@ -18,8 +18,10 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Base colors are decoded to linear space before lighting, high-dynamic-range light accumulation is tone mapped, and WGPU renders to an sRGB target.
 - Eligible entities receive internal render-instance components automatically.
 - Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
-- The `wgpu` backend can also render a headless final-frame PNG with `--framegrab`.
+- The `wgpu` backend can also render a losslessly compressed headless final-frame PNG with `--framegrab`.
+- `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
 - WGPU sizes the live world and project UI to the complete available viewport, deriving camera aspect from its dimensions, then paints engine chrome in a separate overlay pass.
+- Visible WGPU windows continue stepping and presenting frames during native live resize, reconfiguring the surface to each exposed pixel size instead of waiting for the drag to end.
 - The `wgpu` backend currently requires `--window` or `--framegrab`.
 - Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
@@ -43,7 +45,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 **Decision:** Open platform windows through SDL3.
 **Why:** SDL3 is available through Odin's vendor bindings and gives the renderer a portable surface path. See ADR-005.
-**Tradeoff:** Headful runtime work now depends on SDL3 being available in development and distribution environments.
+**Tradeoff:** Headful runtime work now depends on SDL3 being available in development and distribution environments. Native live resize requires a narrowly scoped SDL exposed-event watcher because the ordinary event-poll loop can be suspended by the platform resize interaction.
 
 ### 4. Render full indexed geometry
 
@@ -53,8 +55,8 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ### 5. Keep headless framegrabs on the same render path
 
-**Decision:** Headless WGPU renders the same ECS cube pipeline into an offscreen texture, reads the final frame back to CPU memory, and writes a PNG.
-**Why:** This gives agents and tests a visual artifact that exercises the same scene-driven renderer path as the windowed backend.
+**Decision:** Headless WGPU renders the same ECS cube pipeline into an offscreen texture, reads the final frame back to CPU memory, and writes a losslessly compressed full-frame PNG or explicit 1:1 pixel crop.
+**Why:** This gives agents and tests a visual artifact that exercises the same scene-driven renderer path as the windowed backend while allowing focused inspection without shipping unrelated pixels through an agent conversation.
 **Tradeoff:** On macOS, the current implementation creates a hidden SDL3 window for Metal adapter bootstrap even though the captured frame is rendered offscreen.
 
 ### 6. Use ECS renderable queries as the first backend boundary

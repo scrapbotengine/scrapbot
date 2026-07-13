@@ -215,6 +215,9 @@ padding = [12, 12, 12, 12]
 background = [0.1, 0.2, 0.3, 0.9]
 [entities.ui_vstack]
 gap = 8
+[entities.ui_scroll_area]
+scroll_speed = 64
+smoothness = 12
 [[entities]]
 name = "Title"
 [entities.ui_layout]
@@ -230,6 +233,9 @@ size = 24
 	testing.expect(t,len(scene.entities)==2)
 	testing.expect(t,scene.entities[0].has_ui_vstack)
 	testing.expect(t,scene.entities[0].ui_vstack.gap==8)
+	testing.expect(t,scene.entities[0].has_ui_scroll_area)
+	testing.expect(t,scene.entities[0].ui_scroll_area.scroll_speed==64)
+	testing.expect(t,scene.entities[0].ui_scroll_area.smoothness==12)
 	testing.expect(t,scene.entities[1].ui_layout.parent=="HUD")
 	testing.expect(t,scene.entities[1].ui_text.text=="HELLO")
 }

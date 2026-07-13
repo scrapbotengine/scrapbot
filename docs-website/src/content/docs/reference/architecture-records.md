@@ -25,6 +25,14 @@ Current decisions:
 | ADR-010 | Keep render resources outside the ECS |
 | ADR-011 | Extract ECS lights into bounded render packets |
 | ADR-012 | Model frame time as a world resource |
+| ADR-013 | Precompute MTSDF font atlases |
+| ADR-014 | Compose UI from boxes and controls |
+| ADR-015 | Keep editor chrome engine-owned |
+| ADR-016 | Track entity origin in the runtime world |
+| ADR-017 | Use CPU triangle rays for editor picking |
+| ADR-018 | Render editor gizmos as screen overlays |
+| ADR-019 | Model the editor scene camera as a transient ECS entity |
+| ADR-020 | Keep scroll state in retained UI and clip on the GPU |
 
 ## FDRs
 
@@ -40,6 +48,8 @@ Current features:
 | FDR-004 | Luau scripting |
 | FDR-005 | System scheduling |
 | FDR-006 | Native extensions |
+| FDR-007 | ECS UI |
+| FDR-008 | Editor shell |
 
 ## When to update records
 

@@ -82,7 +82,7 @@ Performs project validation:
 ## `scrapbot run`
 
 ```sh
-scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--frames n] [--framegrab out.png] [--json]
+scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--json]
 ```
 
 Runs a project through the selected renderer backend after stepping registered native and Luau systems.
@@ -98,11 +98,15 @@ Options:
 | `--editor` | Start with the editor shell visible. `Ctrl+Esc` toggles it in a visible window. |
 | `--hot-reload` | Poll project files, scripts, and native extension source/output changes while running. |
 | `--scheduler-trace` | Print native worker count, parallel stage count, and maximum stage width. |
+| `--runtime-stats` | Collect early/late engine-frame timing through render preparation, engine-allocator bytes, and ECS storage checkpoints. Windowed runs also require nonzero `--frames`. |
 | `--frames n` | Limit renderer frames. |
 | `--framegrab out.png` | Write the final headless WGPU frame to a PNG. |
+| `--framegrab-region x,y,width,height` | Export only this top-left-origin 1:1 pixel region; requires `--framegrab`. |
 | `--json` | Emit one versioned machine-readable result. |
 
-The editor shell keeps the running project live across the complete central viewport with a camera aspect ratio derived from the available space. It creates an inspectable editor-origin scene camera without changing the project's camera. Hold right mouse inside the viewport to capture the pointer, look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest entity, reveals it in the scene sidebar, and drives an independently scrollable read-only inspector containing component fields and live values. Selected entities with a Transform expose functional world-space X/Y/Z translation handles; these edits affect only the running world for now. The browser distinguishes scene-authored, runtime-spawned, and editor-owned entities. Combine `--editor`, `--headless`, and `--framegrab` to capture the editor deterministically.
+The editor shell keeps the running project live across the complete central viewport with a camera aspect ratio derived from the available space. It creates an inspectable editor-origin scene camera without changing the project's camera. Hold right mouse inside the viewport to capture the pointer, look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest entity, reveals it in the scene sidebar, and drives a read-only inspector containing component fields and live values. The scene browser and inspector have independent pixel-continuous, smoothly scrolling, clipped panes with proportional scrollbars; neither pane snaps to lines. Selected entities with a Transform expose functional world-space X/Y/Z translation handles; these edits affect only the running world for now. The browser distinguishes scene-authored, runtime-spawned, and editor-owned entities. Combine `--editor`, `--headless`, and `--framegrab` to capture the editor deterministically. Framegrabs are losslessly compressed; region export changes the output extent without scaling its pixels.
+
+With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
 
 ## `scrapbot help`
 

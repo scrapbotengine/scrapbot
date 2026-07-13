@@ -33,3 +33,21 @@ test_scene_camera_capture_discards_initial_relative_mouse_delta :: proc(t: ^test
 	testing.expect(t, scene_camera_capture_delta(delta, true) == shared.Vec2{})
 	testing.expect(t, scene_camera_capture_delta(delta, false) == delta)
 }
+
+@(test)
+test_live_resize_redraw_only_matches_live_exposes_for_runtime_window :: proc(t: ^testing.T) {
+	window_id := sdl.WindowID(42)
+	event := sdl.Event{}
+	event.type = .WINDOW_EXPOSED
+	event.window.windowID = window_id
+	event.window.data1 = 1
+	testing.expect(t, runtime_event_requests_live_resize_redraw(&event, window_id))
+
+	event.window.data1 = 0
+	testing.expect(t, !runtime_event_requests_live_resize_redraw(&event, window_id))
+	event.window.data1 = 1
+	testing.expect(t, !runtime_event_requests_live_resize_redraw(&event, sdl.WindowID(7)))
+	event.type = .WINDOW_RESIZED
+	testing.expect(t, !runtime_event_requests_live_resize_redraw(&event, window_id))
+	testing.expect(t, !runtime_event_requests_live_resize_redraw(nil, window_id))
+}

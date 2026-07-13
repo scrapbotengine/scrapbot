@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: ubuntu:25.10
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates git xz-utils zstd build-essential clang libsdl3-dev
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - name: Test
+        run: mise test
+      - name: AddressSanitizer
+        run: mise test-sanitize

@@ -1,5 +1,7 @@
 package ecs
 
+import shared "../shared"
+
 MAX_COMMANDS :: 128
 MAX_COMMAND_NAME_BYTES :: 64
 MAX_COMMAND_COMPONENTS :: 8
@@ -432,54 +434,57 @@ append_commands :: proc(destination, source: ^Command_Buffer) -> string {
 
 spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 	entity_index := len(world.entities)
-	id := Entity{index = u32(entity_index), generation = 1}
+	generation := u32(1)
+	reusing_slot := false
+	for entity, index in world.entities {
+		if entity.alive {
+			continue
+		}
+		entity_index = index
+		generation = entity.id.generation
+		reusing_slot = true
+		break
+	}
+	id := Entity{index = u32(entity_index), generation = generation}
 	transform_index := INVALID_COMPONENT_INDEX
 	if spawn.has_transform {
-		transform_index = len(world.transforms)
-		append_soa(&world.transforms, spawn.transform)
+		transform_index = allocate_transform_slot(world, spawn.transform)
 	}
 	mesh_index := INVALID_COMPONENT_INDEX
 	if spawn.has_mesh {
-		mesh_index = len(world.meshes)
-		append(
-			&world.meshes,
-			Mesh_Component {
-				primitive = clone_world_string(command_mesh_primitive(&spawn.mesh)),
-			},
-		)
+		mesh_index = allocate_mesh_slot(world, command_mesh_primitive(&spawn.mesh))
 	}
 
-	append(
-		&world.entities,
-		World_Entity {
-			id              = id,
-			alive           = true,
-			origin          = .Runtime,
-			name            = clone_world_string(spawn_command_name(spawn)),
-			transform_index = transform_index,
-			camera_index    = INVALID_COMPONENT_INDEX,
-			ambient_light_index = INVALID_COMPONENT_INDEX,
-			directional_light_index = INVALID_COMPONENT_INDEX,
-			point_light_index = INVALID_COMPONENT_INDEX,
-			mesh_index      = mesh_index,
-			geometry_index = INVALID_COMPONENT_INDEX,
-			material_index = INVALID_COMPONENT_INDEX,
-			render_instance_index = INVALID_COMPONENT_INDEX,
-			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
-			has_shadow_caster = spawn.has_shadow_caster,
-			has_shadow_receiver = spawn.has_shadow_receiver,
-		},
-	)
-	if transform_index != INVALID_COMPONENT_INDEX && mesh_index != INVALID_COMPONENT_INDEX {
-		append(
-			&world.renderables,
-			Renderable {
-				entity_index    = entity_index,
-				transform_index = transform_index,
-				mesh_index      = mesh_index,
-			},
-		)
+	world_entity := World_Entity {
+		id                               = id,
+		alive                            = true,
+		origin                           = .Runtime,
+		name                             = clone_world_string(spawn_command_name(spawn)),
+		transform_index                  = transform_index,
+		camera_index                     = INVALID_COMPONENT_INDEX,
+		ambient_light_index              = INVALID_COMPONENT_INDEX,
+		directional_light_index          = INVALID_COMPONENT_INDEX,
+		point_light_index                = INVALID_COMPONENT_INDEX,
+		mesh_index                       = mesh_index,
+		geometry_index                   = INVALID_COMPONENT_INDEX,
+		material_index                   = INVALID_COMPONENT_INDEX,
+		render_instance_index            = INVALID_COMPONENT_INDEX,
+		ui_layout_index                  = INVALID_COMPONENT_INDEX,
+		ui_hstack_index                  = INVALID_COMPONENT_INDEX,
+		ui_vstack_index                  = INVALID_COMPONENT_INDEX,
+		ui_scroll_area_index             = INVALID_COMPONENT_INDEX,
+		ui_text_index                    = INVALID_COMPONENT_INDEX,
+		ui_button_index                  = INVALID_COMPONENT_INDEX,
+		editor_transform_gizmo_index     = INVALID_COMPONENT_INDEX,
+		has_shadow_caster                = spawn.has_shadow_caster,
+		has_shadow_receiver              = spawn.has_shadow_receiver,
 	}
+	if reusing_slot {
+		world.entities[entity_index] = world_entity
+	} else {
+		append(&world.entities, world_entity)
+	}
+	ensure_entity_renderable(world, entity_index)
 	if spawn.has_geometry {add_geometry(world, entity_index, spawn.geometry)}
 	if spawn.has_material {add_material(world, entity_index, spawn.material)}
 
@@ -496,18 +501,42 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 
 	entity := &world.entities[entity_index]
 	delete(entity.name)
+	delete(entity.geometry_resource)
+	delete(entity.material_resource)
 	entity.name = ""
+	entity.geometry_resource = ""
+	entity.material_resource = ""
 	entity.alive = false
 	entity.id.generation += 1
+	if entity.id.generation == 0 {
+		entity.id.generation = 1
+	}
+	invalidate_entity_renderables(world, entity_index)
+	release_transform_slot(world, entity.transform_index)
+	release_mesh_slot(world, entity.mesh_index)
+	release_geometry_slot(world, entity.geometry_index)
+	release_material_slot(world, entity.material_index)
+	release_entity_render_instance(world, entity)
 	entity.transform_index = INVALID_COMPONENT_INDEX
-	entity.camera_index = INVALID_COMPONENT_INDEX
-	entity.ambient_light_index = INVALID_COMPONENT_INDEX
-	entity.directional_light_index = INVALID_COMPONENT_INDEX
-	entity.point_light_index = INVALID_COMPONENT_INDEX
 	entity.mesh_index = INVALID_COMPONENT_INDEX
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	entity.material_index = INVALID_COMPONENT_INDEX
-	entity.render_instance_index = INVALID_COMPONENT_INDEX
+	for &storage in world.custom_components {
+		for &component in storage.components {
+			if component.entity_index != entity_index {
+				continue
+			}
+			delete(component.name)
+			component.name = ""
+			component.entity_index = INVALID_COMPONENT_INDEX
+			component.component_id = shared.INVALID_COMPONENT_ID
+			for field in component.vec3_fields {
+				delete(field.name)
+			}
+			delete(component.vec3_fields)
+			component.vec3_fields = nil
+		}
+	}
 	if entity.editor_transform_gizmo_index>=0&&entity.editor_transform_gizmo_index<len(world.editor_transform_gizmos){world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index=INVALID_COMPONENT_INDEX}
 	entity.editor_transform_gizmo_index = INVALID_COMPONENT_INDEX
 	for &camera in world.editor_scene_cameras {if camera.entity_index==entity_index{camera.entity_index=INVALID_COMPONENT_INDEX}}

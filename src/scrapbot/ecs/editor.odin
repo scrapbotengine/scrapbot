@@ -59,6 +59,7 @@ reconcile_editor_scene_camera :: proc(world: ^World, enabled: bool) -> (int, ^sh
 			ui_layout_index             = INVALID_COMPONENT_INDEX,
 			ui_hstack_index             = INVALID_COMPONENT_INDEX,
 			ui_vstack_index             = INVALID_COMPONENT_INDEX,
+			ui_scroll_area_index        = INVALID_COMPONENT_INDEX,
 			ui_text_index               = INVALID_COMPONENT_INDEX,
 			ui_button_index             = INVALID_COMPONENT_INDEX,
 			editor_transform_gizmo_index= INVALID_COMPONENT_INDEX,

@@ -122,7 +122,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			continue
 		}
 
-		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" || line == "[entities.ambient_light]" || line == "[entities.directional_light]" || line == "[entities.point_light]" || line == "[entities.shadow_caster]" || line == "[entities.shadow_receiver]" || line == "[entities.ui_layout]" || line == "[entities.ui_hstack]" || line == "[entities.ui_vstack]" || line == "[entities.ui_text]" || line == "[entities.ui_button]" {
+		if line == "[entities.transform]" || line == "[entities.camera]" || line == "[entities.mesh]" || line == "[entities.geometry]" || line == "[entities.material]" || line == "[entities.ambient_light]" || line == "[entities.directional_light]" || line == "[entities.point_light]" || line == "[entities.shadow_caster]" || line == "[entities.shadow_receiver]" || line == "[entities.ui_layout]" || line == "[entities.ui_hstack]" || line == "[entities.ui_vstack]" || line == "[entities.ui_scroll_area]" || line == "[entities.ui_text]" || line == "[entities.ui_button]" {
 			if current == nil {
 				return scene, fail(.Invalid_Syntax, fmt.tprintf("%s appears before [[entities]]", line))
 			}
@@ -132,6 +132,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if section == "ui_layout" {current.has_ui_layout=true}
 			if section == "ui_hstack" {current.has_ui_hstack=true}
 			if section == "ui_vstack" {current.has_ui_vstack=true}
+			if section == "ui_scroll_area" {current.has_ui_scroll_area=true;current.ui_scroll_area={scroll_speed=48,smoothness=14}}
 			if section == "ui_text" {current.has_ui_text=true; current.ui_text.color={1,1,1,1}; current.ui_text.size=16}
 			if section == "ui_button" {current.has_ui_button=true; current.ui_button.color={1,1,1,1}; current.ui_button.size=16}
 			current_component = nil
@@ -256,6 +257,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if key!="gap" {return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_vstack field '%s'",key))}
 			current.ui_vstack.gap,found=parse_f32(value)
 			if !found {return scene,fail(.Invalid_Field,"invalid ui_vstack.gap")}
+		case "ui_scroll_area":
+			current.has_ui_scroll_area=true
+			switch key {case "scroll_speed":current.ui_scroll_area.scroll_speed,found=parse_f32(value);case "smoothness":current.ui_scroll_area.smoothness,found=parse_f32(value);case:return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_scroll_area field '%s'",key))}
+			if !found {return scene,fail(.Invalid_Field,fmt.tprintf("invalid ui_scroll_area.%s",key))}
 		case "ui_text":
 			current.has_ui_text=true
 			switch key {case "text":current.ui_text.text,found=parse_basic_string(value); case "color":current.ui_text.color,found=parse_vec4(value); case "size":current.ui_text.size,found=parse_f32(value); case:return scene,fail(.Invalid_Field,fmt.tprintf("unknown ui_text field '%s'",key))}
@@ -292,10 +297,11 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if entity.has_transform && entity.transform.scale == (Vec3{}) {
 			scene.entities[index].transform.scale = Vec3{1, 1, 1}
 		}
-		if (entity.has_ui_text || entity.has_ui_button || entity.has_ui_hstack || entity.has_ui_vstack) && !entity.has_ui_layout {return scene,fail(.Invalid_Field,fmt.tprintf("UI component on '%s' requires ui_layout",entity.name))}
+		if (entity.has_ui_text || entity.has_ui_button || entity.has_ui_hstack || entity.has_ui_vstack || entity.has_ui_scroll_area) && !entity.has_ui_layout {return scene,fail(.Invalid_Field,fmt.tprintf("UI component on '%s' requires ui_layout",entity.name))}
 		if entity.has_ui_layout && (entity.ui_layout.size.x<=0 || entity.ui_layout.size.y<=0 || entity.ui_layout.corner_radius<0 || !vec4_is_non_negative(entity.ui_layout.margin) || !vec4_is_non_negative(entity.ui_layout.padding)) {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' requires positive size and non-negative margin, padding, and corner radius",entity.name))}
 		if entity.has_ui_hstack && entity.has_ui_vstack {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' cannot be both an hstack and vstack",entity.name))}
 		if (entity.has_ui_hstack && entity.ui_hstack.gap<0) || (entity.has_ui_vstack && entity.ui_vstack.gap<0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI stack '%s' requires a non-negative gap",entity.name))}
+		if entity.has_ui_scroll_area && (entity.ui_scroll_area.scroll_speed<=0 || entity.ui_scroll_area.smoothness<=0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI scroll area '%s' requires positive scroll_speed and smoothness",entity.name))}
 		if entity.has_ui_text && entity.has_ui_button {return scene,fail(.Invalid_Field,fmt.tprintf("UI entity '%s' cannot contain both text and a button",entity.name))}
 		if entity.has_ui_text && (entity.ui_text.text=="" || entity.ui_text.size<=0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI text entity '%s' requires text and positive size",entity.name))}
 		if entity.has_ui_button && (entity.ui_button.text=="" || entity.ui_button.size<=0) {return scene,fail(.Invalid_Field,fmt.tprintf("UI button entity '%s' requires text and positive size",entity.name))}

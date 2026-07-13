@@ -378,3 +378,131 @@ test_deferred_commands_despawn_entities_without_shifting_indices :: proc(t: ^tes
 	testing.expect(t, world.entities[2].id.index == 2)
 	testing.expect(t, render_frame_from_world(&world).renderable_count == 1)
 }
+
+@(test)
+test_runtime_entity_churn_reuses_generation_safe_storage :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+
+	component: Command_Component
+	testing.expect(t, init_command_component(&component, 7, "lifetime") == "")
+	testing.expect(t, command_component_add_vec3(&component, "remaining", {0, 2, 0}) == "")
+	spawn: Spawn_Command
+	testing.expect(t, init_spawn_command(&spawn, "Transient") == "")
+	testing.expect(t, spawn_set_transform(&spawn, {scale = {1, 1, 1}}) == "")
+	testing.expect(t, spawn_set_geometry(&spawn, {index = 3, generation = 1}) == "")
+	testing.expect(t, spawn_set_material(&spawn, {index = 4, generation = 1}) == "")
+	testing.expect(t, spawn_add_custom_component(&spawn, component) == "")
+
+	first_id: Entity
+	for cycle in 0..<1000 {
+		entity_index := spawn_entity(&world, &spawn)
+		testing.expect(t, entity_index == 0)
+		if cycle == 0 {
+			first_id = world.entities[entity_index].id
+		}
+		testing.expect(t, entity_is_current(&world, entity_index, world.entities[entity_index].id.generation))
+		despawn_entity(&world, entity_index, world.entities[entity_index].id.generation)
+		testing.expect(t, !entity_is_alive(&world, entity_index))
+	}
+
+	entity_index := spawn_entity(&world, &spawn)
+	testing.expect(t, len(world.entities) == 1)
+	testing.expect(t, len(world.transforms) == 1)
+	testing.expect(t, len(world.geometries) == 1)
+	testing.expect(t, len(world.materials) == 1)
+	testing.expect(t, len(world.custom_components) == 1)
+	testing.expect(t, len(world.custom_components[0].components) == 1)
+	testing.expect(t, query_view_count(&world, query_view(&world, 7, "lifetime")) == 1)
+	testing.expect(t, !entity_is_current(&world, int(first_id.index), first_id.generation))
+	testing.expect(t, world.entities[entity_index].id.generation != first_id.generation)
+	stats := world_storage_stats(&world)
+	testing.expect(t, stats.live_entities == 1)
+	testing.expect(t, stats.entity_slots == 1)
+	testing.expect(t, stats.transform_slots == 1)
+	testing.expect(t, stats.geometry_slots == 1)
+	testing.expect(t, stats.material_slots == 1)
+	testing.expect(t, stats.custom_component_slots == 1)
+	testing.expect(t, stats.total_component_slots == 4)
+}
+
+@(test)
+test_mixed_runtime_archetypes_share_released_component_slots :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+
+	renderable_spawn: Spawn_Command
+	testing.expect(t, init_spawn_command(&renderable_spawn, "Renderable") == "")
+	testing.expect(t, spawn_set_transform(&renderable_spawn, {scale = {1, 1, 1}}) == "")
+	testing.expect(t, spawn_set_mesh(&renderable_spawn, "cube") == "")
+	testing.expect(t, spawn_set_geometry(&renderable_spawn, {index = 3, generation = 1}) == "")
+	testing.expect(t, spawn_set_material(&renderable_spawn, {index = 4, generation = 1}) == "")
+	empty_spawn: Spawn_Command
+	testing.expect(t, init_spawn_command(&empty_spawn, "Empty") == "")
+
+	for _ in 0..<1000 {
+		index := spawn_entity(&world, &renderable_spawn)
+		despawn_entity(&world, index, world.entities[index].id.generation)
+		index = spawn_entity(&world, &empty_spawn)
+		despawn_entity(&world, index, world.entities[index].id.generation)
+	}
+
+	index := spawn_entity(&world, &renderable_spawn)
+	stats := world_storage_stats(&world)
+	testing.expect(t, index == 0)
+	testing.expect(t, stats.entity_slots == 1)
+	testing.expect(t, stats.transform_slots == 1)
+	testing.expect(t, stats.mesh_slots == 1)
+	testing.expect(t, stats.geometry_slots == 1)
+	testing.expect(t, stats.material_slots == 1)
+	testing.expect(t, stats.renderable_slots == 1)
+}
+
+@(test)
+test_builtin_component_add_remove_churn_reuses_storage :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, _ := resources.cube()
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	geometry, geometry_err := resources.register_geometry(&registry, "cube", desc)
+	material, material_err := resources.register_material(&registry, "white", {base_color = {1, 1, 1, 1}})
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	world: World
+	defer destroy_world(&world)
+	append(
+		&world.entities,
+		World_Entity {
+			id = {index = 0, generation = 1},
+			alive = true,
+			transform_index = INVALID_COMPONENT_INDEX,
+			camera_index = INVALID_COMPONENT_INDEX,
+			mesh_index = INVALID_COMPONENT_INDEX,
+			geometry_index = INVALID_COMPONENT_INDEX,
+			material_index = INVALID_COMPONENT_INDEX,
+			render_instance_index = INVALID_COMPONENT_INDEX,
+		},
+	)
+
+	for _ in 0..<1000 {
+		add_transform(&world, 0, {scale = {1, 1, 1}})
+		add_mesh(&world, 0, "cube")
+		add_mesh(&world, 0, "replacement")
+		add_geometry(&world, 0, geometry)
+		add_material(&world, 0, material)
+		reconcile_render_instances(&world, &registry)
+		remove_mesh(&world, 0)
+		remove_transform(&world, 0)
+		remove_geometry(&world, 0)
+		remove_material(&world, 0)
+	}
+
+	stats := world_storage_stats(&world)
+	testing.expect(t, stats.transform_slots == 1)
+	testing.expect(t, stats.mesh_slots == 1)
+	testing.expect(t, stats.geometry_slots == 1)
+	testing.expect(t, stats.material_slots == 1)
+	testing.expect(t, stats.render_instance_slots == 1)
+	testing.expect(t, stats.renderable_slots == 1)
+}

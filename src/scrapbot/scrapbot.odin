@@ -1,6 +1,7 @@
 package scrapbot
 
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -24,6 +25,10 @@ DEFAULT_LUAU_TYPES :: shared.DEFAULT_LUAU_TYPES
 
 Renderer_Backend :: shared.Renderer_Backend
 Run_Config :: render.Run_Config
+Framegrab_Region :: render.Framegrab_Region
+Runtime_Stats :: render.Runtime_Stats
+World_Storage_Stats :: ecs.World_Storage_Stats
+parse_framegrab_region :: render.parse_framegrab_region
 Project_Load_Result :: project.Project_Load_Result
 Runtime_Result :: struct {
 	frame: shared.Render_Frame,
@@ -32,6 +37,7 @@ Runtime_Result :: struct {
 	parallel_stages:   int,
 	max_parallel_width: int,
 	draw_batches: int,
+	runtime_stats: Runtime_Stats,
 }
 
 Frame_Runtime :: struct {
@@ -277,6 +283,29 @@ run_packaged_project :: proc(root: string, config: Run_Config) -> Runtime_Result
 }
 
 run_project_internal :: proc(root: string, config: Run_Config, extensions_prebuilt: bool) -> Runtime_Result {
+	if config.collect_runtime_stats {
+		backing_allocator := context.allocator
+		tracker: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&tracker, backing_allocator, backing_allocator)
+		tracked_config := config
+		stats: Runtime_Stats
+		tracked_config.runtime_stats = &stats
+		tracked_config.allocator_current_bytes = &tracker.current_memory_allocated
+		tracked_config.allocator_peak_bytes = &tracker.peak_memory_allocated
+		old_context := context
+		context.allocator = mem.tracking_allocator(&tracker)
+		result := run_project_internal_untracked(root, tracked_config, extensions_prebuilt)
+		context = old_context
+		stats.allocator_peak_bytes = tracker.peak_memory_allocated
+		stats.allocator_final_bytes = tracker.current_memory_allocated
+		result.runtime_stats = stats
+		mem.tracking_allocator_destroy(&tracker)
+		return result
+	}
+	return run_project_internal_untracked(root, config, extensions_prebuilt)
+}
+
+run_project_internal_untracked :: proc(root: string, config: Run_Config, extensions_prebuilt: bool) -> Runtime_Result {
 	result: Runtime_Result
 	run_config := config
 	render_stats: render.Render_Stats

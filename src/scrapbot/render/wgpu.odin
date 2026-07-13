@@ -3,6 +3,7 @@ package render
 import "core:fmt"
 import "core:math"
 import "core:time"
+import base_runtime "base:runtime"
 import ecs "../ecs"
 import platform "../platform"
 import shared "../shared"
@@ -58,8 +59,8 @@ WGPU_Material_Cache :: struct {
 	bind_group: wgpu.BindGroup,
 	valid: bool,
 }
-WGPU_UI_Vertex :: struct {position:[2]f32,uv:[2]f32,color:[4]f32,kind:f32,size_radius:[3]f32}
-#assert(size_of(WGPU_UI_Vertex)==48)
+WGPU_UI_Vertex :: struct {position:[2]f32,uv:[2]f32,color:[4]f32,kind:f32,size_radius:[3]f32,clip:[4]f32}
+#assert(size_of(WGPU_UI_Vertex)==64)
 
 WGPU_Request_Adapter_State :: struct {
 	completed: bool,
@@ -122,6 +123,44 @@ WGPU_Renderer :: struct {
 	width:             u32,
 	height:            u32,
 	configured:        bool,
+}
+
+WGPU_Live_Resize_State :: struct {
+	renderer:      ^WGPU_Renderer,
+	world:         ^World,
+	config:        ^Run_Config,
+	previous_tick: ^time.Tick,
+	frame_count:   ^u32,
+	drawing:       bool,
+	should_quit:   bool,
+	err:           string,
+}
+
+wgpu_next_frame_delta :: proc(previous_tick: ^time.Tick, has_previous_frame: bool) -> f32 {
+	now := time.tick_now()
+	delta_time := f32(1.0 / 60.0)
+	if has_previous_frame {
+		duration := time.tick_diff(previous_tick^, now)
+		delta_time = f32(f64(duration) / 1_000_000_000.0)
+		if delta_time <= 0 {delta_time = 1.0 / 60.0}
+	}
+	previous_tick^ = now
+	return min(delta_time, ecs.MAX_DELTA_TIME)
+}
+
+wgpu_live_resize_redraw :: proc "c" (userdata: rawptr) {
+	context = base_runtime.default_context()
+	state := cast(^WGPU_Live_Resize_State)userdata
+	if state == nil || state.drawing || state.should_quit || state.err != "" {return}
+	if state.config.max_frames != 0 && state.frame_count^ >= state.config.max_frames {return}
+
+	state.drawing = true
+	defer state.drawing = false
+	delta_time := wgpu_next_frame_delta(state.previous_tick, state.frame_count^ > 0)
+	_, state.should_quit, state.err = wgpu_draw_frame(state.renderer, state.world, state.config, delta_time, false)
+	if state.err == "" && !state.should_quit {
+		state.frame_count^ += 1
+	}
 }
 
 wgpu_material_cache :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Registry, handle: shared.Material_Handle) -> (^WGPU_Material_Cache, string) {
@@ -301,9 +340,13 @@ wgpu_encode_render_pass :: proc(
 		viewport:=ui.editor_viewport(ui_state,drawable_width,drawable_height)
 		for command,command_index in ui_state.paint[:ui_state.paint_count] {
 			rect:=command.rect;radius:=command.corner_radius
+			clip:=[4]f32{0,0,drawable_width,drawable_height}
 			if command_index<ui_state.editor_paint_start {
 				scale_x,scale_y:=viewport.width/1280,viewport.height/720
 				rect={viewport.x+rect.x*scale_x,viewport.y+rect.y*scale_y,rect.width*scale_x,rect.height*scale_y};radius*=min(scale_x,scale_y)
+				if command.has_clip {clip={viewport.x+command.clip.x*scale_x,viewport.y+command.clip.y*scale_y,viewport.x+(command.clip.x+command.clip.width)*scale_x,viewport.y+(command.clip.y+command.clip.height)*scale_y}}
+			} else if command.has_clip {
+				clip={command.clip.x,command.clip.y,command.clip.x+command.clip.width,command.clip.y+command.clip.height}
 			}
 			positions:[4][2]f32;shape_width,shape_height:=rect.width,rect.height
 			if command.kind==.Line {
@@ -321,7 +364,7 @@ wgpu_encode_render_pass :: proc(
 			if command.kind==.Panel||command.kind==.Line {u0=0;v0=0;u1=1;v1=1}
 			color:=[4]f32{command.color.x,command.color.y,command.color.z,command.color.w}
 			params:=[3]f32{shape_width,shape_height,radius}
-			append(&vertices,WGPU_UI_Vertex{position=positions[0],uv={u0,v0},color=color,kind=kind,size_radius=params},WGPU_UI_Vertex{position=positions[1],uv={u1,v0},color=color,kind=kind,size_radius=params},WGPU_UI_Vertex{position=positions[2],uv={u1,v1},color=color,kind=kind,size_radius=params},WGPU_UI_Vertex{position=positions[0],uv={u0,v0},color=color,kind=kind,size_radius=params},WGPU_UI_Vertex{position=positions[2],uv={u1,v1},color=color,kind=kind,size_radius=params},WGPU_UI_Vertex{position=positions[3],uv={u0,v1},color=color,kind=kind,size_radius=params})
+			append(&vertices,WGPU_UI_Vertex{position=positions[0],uv={u0,v0},color=color,kind=kind,size_radius=params,clip=clip},WGPU_UI_Vertex{position=positions[1],uv={u1,v0},color=color,kind=kind,size_radius=params,clip=clip},WGPU_UI_Vertex{position=positions[2],uv={u1,v1},color=color,kind=kind,size_radius=params,clip=clip},WGPU_UI_Vertex{position=positions[0],uv={u0,v0},color=color,kind=kind,size_radius=params,clip=clip},WGPU_UI_Vertex{position=positions[2],uv={u1,v1},color=color,kind=kind,size_radius=params,clip=clip},WGPU_UI_Vertex{position=positions[3],uv={u0,v1},color=color,kind=kind,size_radius=params,clip=clip})
 		}
 		buffer:=wgpu.DeviceCreateBufferWithData(renderer.device,&wgpu.BufferWithDataDescriptor{label="Scrapbot UI Vertices",usage={.Vertex}},vertices[:]);if buffer==nil{return "failed to upload UI vertices"};defer wgpu.BufferRelease(buffer)
 		wgpu.RenderPassEncoderSetViewport(ui_pass,0,0,drawable_width,drawable_height,0,1);wgpu.RenderPassEncoderSetScissorRect(ui_pass,0,0,target_width,target_height)
@@ -368,13 +411,13 @@ wgpu_encode_shadow_pass :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandE
 	return ""
 }
 
-wgpu_draw_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^Run_Config, delta_time: f32) -> (presented, should_quit: bool, err: string) {
+wgpu_draw_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^Run_Config, delta_time: f32, pump_events_on_acquire := true) -> (presented, should_quit: bool, err: string) {
 	drawable, configure_err := wgpu_configure_surface(renderer)
 	if configure_err != "" || !drawable {
 		return false, false, configure_err
 	}
 
-	surface_texture, acquired_texture, acquire_should_quit := wgpu_acquire_surface_texture(renderer)
+	surface_texture, acquired_texture, acquire_should_quit := wgpu_acquire_surface_texture(renderer, pump_events_on_acquire)
 	if acquire_should_quit {
 		return false, true, ""
 	}
@@ -404,14 +447,16 @@ wgpu_draw_frame :: proc(renderer: ^WGPU_Renderer, world: ^World, config: ^Run_Co
 	defer wgpu.TextureViewRelease(view)
 	defer wgpu.TextureRelease(texture)
 
+	frame_start := begin_runtime_frame(config)
 	if err = run_frame_system(config, world, delta_time, f32(renderer.width), f32(renderer.height)); err != "" {
 		return false, false, err
 	}
 	render_list := ecs.build_resource_render_list(world, config.resource_registry, config.ui_state != nil && config.ui_state.editor_visible)
-	defer ecs.destroy_render_list(&render_list)
 	viewport:=ui.editor_viewport(config.ui_state,f32(renderer.width),f32(renderer.height))
 	batches, batch_count := wgpu_prepare_draw_batches(renderer, &render_list, config.resource_registry, u32(viewport.width), u32(viewport.height))
 	if config.stats != nil {config.stats.draw_batches = batch_count}
+	ecs.destroy_render_list(&render_list)
+	finish_runtime_frame(config, world, frame_start)
 
 	encoder := wgpu.DeviceCreateCommandEncoder(renderer.device, &wgpu.CommandEncoderDescriptor{label = "Scrapbot Render Encoder"})
 	if encoder == nil {
@@ -450,16 +495,18 @@ wgpu_render_offscreen_frame :: proc(
 	height: u32 = 0,
 	config: ^Run_Config = nil,
 ) -> string {
+	frame_start := begin_runtime_frame(config)
 	if config != nil {
 		if err := run_frame_system(config, world, 1.0 / 60.0); err != "" {
 			return err
 		}
 	}
 	render_list := ecs.build_resource_render_list(world, config.resource_registry, config.ui_state != nil && config.ui_state.editor_visible)
-	defer ecs.destroy_render_list(&render_list)
 	viewport:=ui.editor_viewport(config.ui_state,f32(width),f32(height))
 	batches, batch_count := wgpu_prepare_draw_batches(renderer, &render_list, config.resource_registry, u32(viewport.width), u32(viewport.height))
 	if config != nil && config.stats != nil {config.stats.draw_batches = batch_count}
+	ecs.destroy_render_list(&render_list)
+	finish_runtime_frame(config, world, frame_start)
 
 	encoder := wgpu.DeviceCreateCommandEncoder(renderer.device, &wgpu.CommandEncoderDescriptor{label = "Scrapbot Headless Render Encoder"})
 	if encoder == nil {
@@ -513,6 +560,12 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 
 	width := WGPU_OFFSCREEN_WIDTH
 	height := WGPU_OFFSCREEN_HEIGHT
+	capture_x,capture_y,capture_width,capture_height:=u32(0),u32(0),width,height
+	if config.framegrab_region.width>0 {
+		region:=config.framegrab_region
+		if region.x>=width||region.y>=height||region.width>width-region.x||region.height>height-region.y {return "framegrab region must fit within the 1280x720 frame"}
+		capture_x,capture_y,capture_width,capture_height=region.x,region.y,region.width,region.height
+	}
 	row_bytes := width * 4
 	row_stride := align_to(row_bytes, 256)
 	readback_size := u64(row_stride * height)
@@ -609,15 +662,16 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	defer wgpu.BufferUnmap(readback)
 
 	mapped := wgpu.BufferGetMappedRange(readback, 0, uint(readback_size))
-	pixels := make([]u8, int(row_bytes * height))
+	capture_row_bytes:=capture_width*4
+	pixels := make([]u8, int(capture_row_bytes * capture_height))
 	defer delete(pixels)
-	for y in 0 ..< int(height) {
-		dst := y * int(row_bytes)
-		src := y * int(row_stride)
-		copy_framegrab_row(pixels[dst:dst + int(row_bytes)], mapped[src:src + int(row_bytes)], renderer.format)
+	for y in 0 ..< int(capture_height) {
+		dst := y * int(capture_row_bytes)
+		src := (y+int(capture_y))*int(row_stride)+int(capture_x*4)
+		copy_framegrab_row(pixels[dst:dst + int(capture_row_bytes)], mapped[src:src + int(capture_row_bytes)], renderer.format)
 	}
 
-	return write_png_rgba8(config.framegrab_path, pixels, width, height)
+	return write_png_rgba8(config.framegrab_path,pixels,capture_width,capture_height)
 }
 
 copy_framegrab_row :: proc(dst, src: []u8, format: wgpu.TextureFormat) {
@@ -647,21 +701,29 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 
 	frame_count: u32
 	previous_tick := time.tick_now()
+	live_resize_state := WGPU_Live_Resize_State {
+		renderer = &renderer,
+		world = world,
+		config = config,
+		previous_tick = &previous_tick,
+		frame_count = &frame_count,
+	}
+	live_resize_watch: platform.Live_Resize_Watch
+	if watch_err := platform.watch_runtime_live_resize(&live_resize_watch, wgpu_live_resize_redraw, &live_resize_state); watch_err != "" {
+		return watch_err
+	}
+	defer platform.unwatch_runtime_live_resize(&live_resize_watch)
+
 	for config.max_frames == 0 || frame_count < config.max_frames {
 		if platform.pump_runtime_window_events() {
 			break
 		}
+		if live_resize_state.err != "" {return live_resize_state.err}
+		if live_resize_state.should_quit {break}
+		if config.max_frames != 0 && frame_count >= config.max_frames {break}
 		wgpu.InstanceProcessEvents(renderer.instance)
 
-		now := time.tick_now()
-		delta_time := f32(1.0 / 60.0)
-		if frame_count > 0 {
-			duration := time.tick_diff(previous_tick, now)
-			delta_time = f32(f64(duration) / 1_000_000_000.0)
-			if delta_time <= 0 {delta_time = 1.0 / 60.0}
-		}
-		previous_tick = now
-		delta_time = min(delta_time, ecs.MAX_DELTA_TIME)
+		delta_time := wgpu_next_frame_delta(&previous_tick, frame_count > 0)
 		_, should_quit, draw_err := wgpu_draw_frame(&renderer, world, config, delta_time)
 		if draw_err != "" {
 			return draw_err

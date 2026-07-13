@@ -28,7 +28,8 @@
 - [ ] Expose UI creation and mutation through Luau and native extensions.
 - [x] Add pointer input, topmost-element hit testing, retained hover/active state, and button hover/press styling.
 - [ ] Emit button activation and other UI command events.
-- [ ] Add clipping, scrolling, canvas scaling, and richer sizing/alignment.
+- [x] Add nested paint/hit-test clipping and smooth vertical scroll areas.
+- [ ] Add canvas scaling and richer sizing/alignment.
 
 ## Project Runtime
 
@@ -79,8 +80,8 @@
 
 - [x] Add an engine-owned editor shell toggled with Ctrl+Esc.
 - [x] Keep the running project live across the complete available viewport with a dynamic camera aspect ratio.
-- [x] Add a scrollable entity browser with scene/runtime provenance and stable selection.
-- [x] Add a scrollable read-only component field/value inspector for the selected entity.
+- [x] Add a smoothly scrolling entity browser with scene/runtime provenance and stable selection.
+- [x] Add a smoothly scrolling read-only component field/value inspector for the selected entity.
 - [x] Add nearest-triangle entity picking in the live viewport.
 - [x] Add functional world-space X/Y/Z translation handles for selected entities.
 - [x] Add an editor-origin ECS scene camera with RMB-captured WASD, Space, and Ctrl fly navigation.
@@ -89,3 +90,12 @@
 ## Documentation And Examples
 
 - [ ] Add ADR/FDR update guidance to contributor documentation.
+
+## Testing And Diagnostics
+
+- [x] Add structured runtime storage, allocator, and update-cost statistics.
+- [x] Add deterministic entity/component churn invariants to the normal test suite.
+- [x] Add an opt-in lifecycle-heavy CPU/RAM growth soak.
+- [x] Add a Linux AddressSanitizer test lane.
+- [x] Run bounded lifecycle growth thresholds in the default suite and Linux CI.
+- [ ] Add OS resident-memory sampling for foreign-library and GPU allocations.

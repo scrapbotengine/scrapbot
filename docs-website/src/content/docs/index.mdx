@@ -34,7 +34,10 @@ Scrapbot is a research engine. It is not trying to be stable yet. It is trying t
 		Projects can declare Odin native extension targets. Scrapbot builds source-stamped dynamic libraries, loads schemas and scheduled systems before Luau runs, and exposes deferred lifecycle commands during system execution.
 	</Card>
 	<Card title="WebGPU rendering" icon="laptop">
-		The `wgpu` backend renders indexed geometry with shared materials and automatic batching through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
+		The `wgpu` backend renders indexed geometry, lighting, shadows, retained ECS UI, and live-resizing windows through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
+	</Card>
+	<Card title="Live editor" icon="setting">
+		Toggle dark editor chrome around the running project, browse scene and runtime entities, inspect component fields, pick rendered geometry, fly the scene camera, and translate selections with an ECS-owned gizmo.
 	</Card>
 	<Card title="Hot reload" icon="refresh">
 		Runtime hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native source.
@@ -70,3 +73,5 @@ mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
 - [Project Layout](/guides/project-layout/) for how `project.toml`, scene files, scripts, generated types, and native code fit together.
 - [Luau Scripting](/guides/luau-scripting/) for components, systems, queries, scheduling metadata, and generated types.
 - [Native Extensions](/guides/native-extensions/) for the current Odin extension flow and ABI.
+- [Live Editor](/guides/live-editor/) for scene navigation, entity inspection, viewport picking, and transform manipulation.
+- [Rendering And Testing](/guides/rendering-testing/) for WGPU smoke runs, framegrabs, and CPU/RAM growth checks.

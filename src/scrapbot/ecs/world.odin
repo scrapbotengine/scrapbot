@@ -30,6 +30,7 @@ Directional_Light_Component :: shared.Directional_Light_Component
 Point_Light_Component :: shared.Point_Light_Component
 UI_Layout_Component :: shared.UI_Layout_Component
 UI_Stack_Component :: shared.UI_Stack_Component
+UI_Scroll_Area_Component :: shared.UI_Scroll_Area_Component
 UI_Text_Component :: shared.UI_Text_Component
 UI_Button_Component :: shared.UI_Button_Component
 
@@ -48,6 +49,32 @@ Query_Term :: struct {
 Query :: struct {
 	terms:      [MAX_QUERY_TERMS]Query_Term,
 	term_count: int,
+}
+
+World_Storage_Stats :: struct {
+	live_entities:                 int,
+	entity_slots:                  int,
+	transform_slots:               int,
+	camera_slots:                  int,
+	ambient_light_slots:           int,
+	directional_light_slots:       int,
+	point_light_slots:             int,
+	mesh_slots:                    int,
+	renderable_slots:              int,
+	geometry_slots:                int,
+	material_slots:                int,
+	render_instance_slots:         int,
+	ui_layout_slots:               int,
+	ui_hstack_slots:               int,
+	ui_vstack_slots:               int,
+	ui_scroll_area_slots:          int,
+	ui_text_slots:                 int,
+	ui_button_slots:               int,
+	editor_transform_gizmo_slots: int,
+	editor_scene_camera_slots:     int,
+	custom_component_storages:     int,
+	custom_component_slots:        int,
+	total_component_slots:         int,
 }
 
 destroy_world :: proc(world: ^World) {
@@ -84,9 +111,15 @@ destroy_world :: proc(world: ^World) {
 	delete(world.geometries)
 	delete(world.materials)
 	delete(world.render_instances)
+	delete(world.free_transform_indices)
+	delete(world.free_mesh_indices)
+	delete(world.free_geometry_indices)
+	delete(world.free_material_indices)
+	delete(world.free_render_instance_indices)
 	delete(world.ui_layouts)
 	delete(world.ui_hstacks)
 	delete(world.ui_vstacks)
+	delete(world.ui_scroll_areas)
 	delete(world.ui_texts)
 	delete(world.ui_buttons)
 	delete(world.editor_transform_gizmos)
@@ -116,6 +149,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			ui_layout_index = INVALID_COMPONENT_INDEX,
 			ui_hstack_index = INVALID_COMPONENT_INDEX,
 			ui_vstack_index = INVALID_COMPONENT_INDEX,
+			ui_scroll_area_index = INVALID_COMPONENT_INDEX,
 			ui_text_index = INVALID_COMPONENT_INDEX,
 			ui_button_index = INVALID_COMPONENT_INDEX,
 			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
@@ -139,6 +173,7 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_layout {world_entity.ui_layout_index=len(world.ui_layouts); layout:=entity.ui_layout; layout.parent=clone_world_string(layout.parent); append(&world.ui_layouts,layout)}
 		if entity.has_ui_hstack {world_entity.ui_hstack_index=len(world.ui_hstacks); append(&world.ui_hstacks,entity.ui_hstack)}
 		if entity.has_ui_vstack {world_entity.ui_vstack_index=len(world.ui_vstacks); append(&world.ui_vstacks,entity.ui_vstack)}
+		if entity.has_ui_scroll_area {world_entity.ui_scroll_area_index=len(world.ui_scroll_areas); append(&world.ui_scroll_areas,entity.ui_scroll_area)}
 		if entity.has_ui_text {world_entity.ui_text_index=len(world.ui_texts); text:=entity.ui_text; text.text=clone_world_string(text.text); append(&world.ui_texts,text)}
 		if entity.has_ui_button {world_entity.ui_button_index=len(world.ui_buttons); button:=entity.ui_button; button.text=clone_world_string(button.text); append(&world.ui_buttons,button)}
 		if entity.has_mesh {
@@ -167,6 +202,133 @@ build_world :: proc(scene: ^Scene) -> World {
 	return world
 }
 
+take_free_slot :: proc(free_slots: ^[dynamic]int) -> (index: int, found: bool) {
+	if len(free_slots^) == 0 {
+		return INVALID_COMPONENT_INDEX, false
+	}
+	index = pop(free_slots)
+	return index, true
+}
+
+allocate_transform_slot :: proc(world: ^World, value: Transform_Component) -> int {
+	if index, found := take_free_slot(&world.free_transform_indices); found {
+		world.transforms[index] = value
+		return index
+	}
+	index := len(world.transforms)
+	append_soa(&world.transforms, value)
+	return index
+}
+
+release_transform_slot :: proc(world: ^World, index: int) {
+	if index < 0 || index >= len(world.transforms) {return}
+	world.transforms[index] = {}
+	append(&world.free_transform_indices, index)
+}
+
+allocate_mesh_slot :: proc(world: ^World, primitive: string) -> int {
+	mesh := Mesh_Component{primitive = clone_world_string(primitive)}
+	if index, found := take_free_slot(&world.free_mesh_indices); found {
+		world.meshes[index] = mesh
+		return index
+	}
+	index := len(world.meshes)
+	append(&world.meshes, mesh)
+	return index
+}
+
+release_mesh_slot :: proc(world: ^World, index: int) {
+	if index < 0 || index >= len(world.meshes) {return}
+	delete(world.meshes[index].primitive)
+	world.meshes[index] = {}
+	append(&world.free_mesh_indices, index)
+}
+
+allocate_geometry_slot :: proc(world: ^World, value: Geometry_Component) -> int {
+	if index, found := take_free_slot(&world.free_geometry_indices); found {
+		world.geometries[index] = value
+		return index
+	}
+	index := len(world.geometries)
+	append(&world.geometries, value)
+	return index
+}
+
+release_geometry_slot :: proc(world: ^World, index: int) {
+	if index < 0 || index >= len(world.geometries) {return}
+	world.geometries[index] = {}
+	append(&world.free_geometry_indices, index)
+}
+
+allocate_material_slot :: proc(world: ^World, value: Material_Component) -> int {
+	if index, found := take_free_slot(&world.free_material_indices); found {
+		world.materials[index] = value
+		return index
+	}
+	index := len(world.materials)
+	append(&world.materials, value)
+	return index
+}
+
+release_material_slot :: proc(world: ^World, index: int) {
+	if index < 0 || index >= len(world.materials) {return}
+	world.materials[index] = {}
+	append(&world.free_material_indices, index)
+}
+
+allocate_render_instance_slot :: proc(world: ^World, value: Render_Instance_Component) -> int {
+	if index, found := take_free_slot(&world.free_render_instance_indices); found {
+		world.render_instances[index] = value
+		return index
+	}
+	index := len(world.render_instances)
+	append(&world.render_instances, value)
+	return index
+}
+
+release_entity_render_instance :: proc(world: ^World, entity: ^World_Entity) {
+	if entity.render_instance_index < 0 || entity.render_instance_index >= len(world.render_instances) {
+		entity.render_instance_index = INVALID_COMPONENT_INDEX
+		return
+	}
+	world.render_instances[entity.render_instance_index] = {}
+	append(&world.free_render_instance_indices, entity.render_instance_index)
+	entity.render_instance_index = INVALID_COMPONENT_INDEX
+}
+
+invalidate_entity_renderables :: proc(world: ^World, entity_index: int) {
+	for &renderable in world.renderables {
+		if renderable.entity_index == entity_index {
+			renderable.entity_index = INVALID_COMPONENT_INDEX
+		}
+	}
+}
+
+ensure_entity_renderable :: proc(world: ^World, entity_index: int) {
+	if !entity_is_alive(world, entity_index) {return}
+	entity := world.entities[entity_index]
+	if entity.transform_index < 0 || entity.mesh_index < 0 {return}
+	for &renderable in world.renderables {
+		if renderable.entity_index == entity_index {
+			renderable.transform_index = entity.transform_index
+			renderable.mesh_index = entity.mesh_index
+			return
+		}
+	}
+	value := Renderable {
+		entity_index = entity_index,
+		transform_index = entity.transform_index,
+		mesh_index = entity.mesh_index,
+	}
+	for &renderable in world.renderables {
+		if renderable.entity_index < 0 {
+			renderable = value
+			return
+		}
+	}
+	append(&world.renderables, value)
+}
+
 add_geometry :: proc(world: ^World, entity_index: int, handle: shared.Geometry_Handle) {
 	if !entity_is_alive(world, entity_index) {return}
 	entity := &world.entities[entity_index]
@@ -175,8 +337,7 @@ add_geometry :: proc(world: ^World, entity_index: int, handle: shared.Geometry_H
 		world.geometries[entity.geometry_index].handle = handle
 		return
 	}
-	entity.geometry_index = len(world.geometries)
-	append(&world.geometries, Geometry_Component{handle = handle})
+	entity.geometry_index = allocate_geometry_slot(world, Geometry_Component{handle = handle})
 }
 
 add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_Handle) {
@@ -187,16 +348,23 @@ add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_H
 		world.materials[entity.material_index].handle = handle
 		return
 	}
-	entity.material_index = len(world.materials)
-	append(&world.materials, Material_Component{handle = handle})
+	entity.material_index = allocate_material_slot(world, Material_Component{handle = handle})
 }
 
 remove_geometry :: proc(world: ^World, entity_index: int) {
-	if entity_is_alive(world, entity_index) {world.entities[entity_index].geometry_index = INVALID_COMPONENT_INDEX}
+	if !entity_is_alive(world, entity_index) {return}
+	entity := &world.entities[entity_index]
+	release_geometry_slot(world, entity.geometry_index)
+	entity.geometry_index = INVALID_COMPONENT_INDEX
+	release_entity_render_instance(world, entity)
 }
 
 remove_material :: proc(world: ^World, entity_index: int) {
-	if entity_is_alive(world, entity_index) {world.entities[entity_index].material_index = INVALID_COMPONENT_INDEX}
+	if !entity_is_alive(world, entity_index) {return}
+	entity := &world.entities[entity_index]
+	release_material_slot(world, entity.material_index)
+	entity.material_index = INVALID_COMPONENT_INDEX
+	release_entity_render_instance(world, entity)
 }
 
 reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry) {
@@ -229,12 +397,11 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 				if entity.render_instance_index >= 0 && entity.render_instance_index < len(world.render_instances) {
 					world.render_instances[entity.render_instance_index] = instance
 				} else {
-					entity.render_instance_index = len(world.render_instances)
-					append(&world.render_instances, instance)
+					entity.render_instance_index = allocate_render_instance_slot(world, instance)
 				}
 			}
 		}
-		if !eligible {entity.render_instance_index = INVALID_COMPONENT_INDEX}
+		if !eligible {release_entity_render_instance(world, &entity)}
 	}
 }
 
@@ -326,6 +493,75 @@ alive_entity_count :: proc "c" (world: ^World) -> int {
 		}
 	}
 	return count
+}
+
+world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
+	if world == nil {
+		return {}
+	}
+	stats := World_Storage_Stats {
+		live_entities                 = alive_entity_count(world),
+		entity_slots                  = len(world.entities),
+		transform_slots               = len(world.transforms),
+		camera_slots                  = len(world.cameras),
+		ambient_light_slots           = len(world.ambient_lights),
+		directional_light_slots       = len(world.directional_lights),
+		point_light_slots             = len(world.point_lights),
+		mesh_slots                    = len(world.meshes),
+		renderable_slots              = len(world.renderables),
+		geometry_slots                = len(world.geometries),
+		material_slots                = len(world.materials),
+		render_instance_slots         = len(world.render_instances),
+		ui_layout_slots               = len(world.ui_layouts),
+		ui_hstack_slots               = len(world.ui_hstacks),
+		ui_vstack_slots               = len(world.ui_vstacks),
+		ui_scroll_area_slots          = len(world.ui_scroll_areas),
+		ui_text_slots                 = len(world.ui_texts),
+		ui_button_slots               = len(world.ui_buttons),
+		editor_transform_gizmo_slots = len(world.editor_transform_gizmos),
+		editor_scene_camera_slots     = len(world.editor_scene_cameras),
+		custom_component_storages     = len(world.custom_components),
+	}
+	for storage in world.custom_components {
+		stats.custom_component_slots += len(storage.components)
+	}
+	stats.total_component_slots =
+		stats.transform_slots + stats.camera_slots +
+		stats.ambient_light_slots + stats.directional_light_slots + stats.point_light_slots +
+		stats.mesh_slots + stats.geometry_slots + stats.material_slots + stats.render_instance_slots +
+		stats.ui_layout_slots + stats.ui_hstack_slots + stats.ui_vstack_slots +
+		stats.ui_scroll_area_slots + stats.ui_text_slots + stats.ui_button_slots +
+		stats.editor_transform_gizmo_slots + stats.editor_scene_camera_slots +
+		stats.custom_component_slots
+	return stats
+}
+
+world_storage_stats_max :: proc "c" (a, b: World_Storage_Stats) -> World_Storage_Stats {
+	return {
+		live_entities                 = max(a.live_entities, b.live_entities),
+		entity_slots                  = max(a.entity_slots, b.entity_slots),
+		transform_slots               = max(a.transform_slots, b.transform_slots),
+		camera_slots                  = max(a.camera_slots, b.camera_slots),
+		ambient_light_slots           = max(a.ambient_light_slots, b.ambient_light_slots),
+		directional_light_slots       = max(a.directional_light_slots, b.directional_light_slots),
+		point_light_slots             = max(a.point_light_slots, b.point_light_slots),
+		mesh_slots                    = max(a.mesh_slots, b.mesh_slots),
+		renderable_slots              = max(a.renderable_slots, b.renderable_slots),
+		geometry_slots                = max(a.geometry_slots, b.geometry_slots),
+		material_slots                = max(a.material_slots, b.material_slots),
+		render_instance_slots         = max(a.render_instance_slots, b.render_instance_slots),
+		ui_layout_slots               = max(a.ui_layout_slots, b.ui_layout_slots),
+		ui_hstack_slots               = max(a.ui_hstack_slots, b.ui_hstack_slots),
+		ui_vstack_slots               = max(a.ui_vstack_slots, b.ui_vstack_slots),
+		ui_scroll_area_slots          = max(a.ui_scroll_area_slots, b.ui_scroll_area_slots),
+		ui_text_slots                 = max(a.ui_text_slots, b.ui_text_slots),
+		ui_button_slots               = max(a.ui_button_slots, b.ui_button_slots),
+		editor_transform_gizmo_slots = max(a.editor_transform_gizmo_slots, b.editor_transform_gizmo_slots),
+		editor_scene_camera_slots     = max(a.editor_scene_camera_slots, b.editor_scene_camera_slots),
+		custom_component_storages     = max(a.custom_component_storages, b.custom_component_storages),
+		custom_component_slots        = max(a.custom_component_slots, b.custom_component_slots),
+		total_component_slots         = max(a.total_component_slots, b.total_component_slots),
+	}
 }
 
 project_entity_count :: proc "c" (world: ^World) -> int {
@@ -477,25 +713,19 @@ add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Com
 		return
 	}
 
-	entity.transform_index = len(world.transforms)
-	append_soa(&world.transforms, transform)
-	if entity.mesh_index >= 0 {
-		append(
-			&world.renderables,
-			Renderable {
-				entity_index    = entity_index,
-				transform_index = entity.transform_index,
-				mesh_index      = entity.mesh_index,
-			},
-		)
-	}
+	entity.transform_index = allocate_transform_slot(world, transform)
+	ensure_entity_renderable(world, entity_index)
 }
 
 remove_transform :: proc(world: ^World, entity_index: int) {
 	if !entity_is_alive(world, entity_index) {
 		return
 	}
-	world.entities[entity_index].transform_index = INVALID_COMPONENT_INDEX
+	entity := &world.entities[entity_index]
+	release_transform_slot(world, entity.transform_index)
+	entity.transform_index = INVALID_COMPONENT_INDEX
+	invalidate_entity_renderables(world, entity_index)
+	release_entity_render_instance(world, entity)
 }
 
 add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
@@ -504,30 +734,23 @@ add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
 	}
 
 	entity := &world.entities[entity_index]
-	entity.mesh_index = len(world.meshes)
-	append(
-		&world.meshes,
-		shared.Mesh_Component {
-			primitive = clone_world_string(primitive),
-		},
-	)
-	if entity.transform_index >= 0 {
-		append(
-			&world.renderables,
-			Renderable {
-				entity_index    = entity_index,
-				transform_index = entity.transform_index,
-				mesh_index      = entity.mesh_index,
-			},
-		)
+	if entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes) {
+		delete(world.meshes[entity.mesh_index].primitive)
+		world.meshes[entity.mesh_index].primitive = clone_world_string(primitive)
+	} else {
+		entity.mesh_index = allocate_mesh_slot(world, primitive)
 	}
+	ensure_entity_renderable(world, entity_index)
 }
 
 remove_mesh :: proc(world: ^World, entity_index: int) {
 	if !entity_is_alive(world, entity_index) {
 		return
 	}
-	world.entities[entity_index].mesh_index = INVALID_COMPONENT_INDEX
+	entity := &world.entities[entity_index]
+	release_mesh_slot(world, entity.mesh_index)
+	entity.mesh_index = INVALID_COMPONENT_INDEX
+	invalidate_entity_renderables(world, entity_index)
 }
 
 add_custom_component :: proc(world: ^World, entity_index: int, command_component: ^Command_Component) {
@@ -555,6 +778,13 @@ add_custom_component :: proc(world: ^World, entity_index: int, command_component
 		)
 	}
 	storage := ensure_custom_component_storage(world, component_id, name)
+	for &component in storage.components {
+		if component.entity_index != INVALID_COMPONENT_INDEX {
+			continue
+		}
+		component = world_component
+		return
+	}
 	append(&storage.components, world_component)
 }
 
@@ -778,6 +1008,7 @@ entity_has_component :: proc "c" (
 	case "scrapbot.ui_layout": return entity.ui_layout_index>=0&&entity.ui_layout_index<len(world.ui_layouts)
 	case "scrapbot.ui_hstack": return entity.ui_hstack_index>=0&&entity.ui_hstack_index<len(world.ui_hstacks)
 	case "scrapbot.ui_vstack": return entity.ui_vstack_index>=0&&entity.ui_vstack_index<len(world.ui_vstacks)
+	case "scrapbot.ui_scroll_area": return entity.ui_scroll_area_index>=0&&entity.ui_scroll_area_index<len(world.ui_scroll_areas)
 	case "scrapbot.ui_text": return entity.ui_text_index>=0&&entity.ui_text_index<len(world.ui_texts)
 	case "scrapbot.ui_button": return entity.ui_button_index>=0&&entity.ui_button_index<len(world.ui_buttons)
 	case "scrapbot.mesh":

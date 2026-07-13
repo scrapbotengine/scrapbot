@@ -24,6 +24,7 @@ export type Scrapbot = {
 	ui_layout: ScrapbotUiLayoutComponent,
 	ui_hstack: ScrapbotUiHstackComponent,
 	ui_vstack: ScrapbotUiVstackComponent,
+	ui_scroll_area: ScrapbotUiScrollAreaComponent,
 	ui_text: ScrapbotUiTextComponent,
 	ui_button: ScrapbotUiButtonComponent,
 	mesh: ScrapbotMeshComponent,

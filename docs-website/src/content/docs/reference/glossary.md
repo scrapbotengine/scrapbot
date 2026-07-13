@@ -70,3 +70,17 @@ An entity marked to contribute geometry to the first directional light's shadow 
 
 **Shadow receiver**
 An entity marked to sample the directional shadow map when its directional lighting is evaluated.
+
+**ECS UI**
+Screen-space UI described by entities and components. The current retained model provides boxes, horizontal and vertical stacks, smooth clipped scroll areas, text, buttons, pointer state, and SDF-rounded backgrounds.
+
+## Live editor
+
+**Entity provenance**
+The origin recorded for a live entity: scene-authored, runtime-spawned, or editor-owned. Provenance remains separate from the entity's generation-aware identity.
+
+**Editor scene camera**
+A transient editor-owned ECS entity used to navigate the live viewport without mutating the project's camera.
+
+**Transform gizmo**
+Transient editor state attached to the selected entity and rendered as screen-legible world-axis handles. The current gizmo supports X, Y, and Z translation in the running world.

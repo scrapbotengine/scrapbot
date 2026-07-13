@@ -148,11 +148,37 @@ size = 16
 hover_background = [0.39, 0.33, 0.96, 1]
 active_background = [0.22, 0.18, 0.68, 1]
 active_color = [0.82, 0.84, 1, 1]
+
+[[entities]]
+name = "Feature Scroll"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [412, 160]
+padding = [8, 8, 8, 8]
+background = [0.08, 0.09, 0.11, 1]
+corner_radius = 10
+
+[entities.ui_scroll_area]
+scroll_speed = 64
+smoothness = 14
+
+[[entities]]
+name = "Feature Pane"
+
+[entities.ui_layout]
+parent = "Feature Scroll"
+size = [396, 360]
+
+[entities.ui_vstack]
+gap = 8
 ```
 
 Positions and sizes are screen pixels from the top-left. `margin` and `padding` use `[top, right, bottom, left]`. Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children. Background corner radii are rendered as signed-distance rounded rectangles. Parent names must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine both stack directions or both text and button content.
 
 Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button activation events are not emitted yet.
+
+A `ui_scroll_area` clips descendants to its padded content rectangle and scrolls vertically when the pointer wheel is over it. Give its nested pane an explicit size larger than the viewport; that pane may contain overlays or stacks of any size. `scroll_speed` is the target movement per wheel unit and `smoothness` controls frame-time interpolation toward that target. Both must be positive. Nested scroll clips intersect, and only the topmost hovered scroll area consumes a wheel update.
 
 ## Custom component sections
 
