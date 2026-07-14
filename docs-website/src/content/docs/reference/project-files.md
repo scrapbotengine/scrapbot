@@ -216,7 +216,7 @@ Clicking a `ui_input` focuses it and selects all its text. Focused inputs suppor
 
 A `ui_scroll_area` clips descendants to its padded content rectangle and scrolls vertically when the pointer wheel is over it. Give its nested pane an explicit size larger than the viewport; that pane may contain overlays or stacks of any size. `scroll_speed` is the target movement per wheel unit and `smoothness` controls frame-time interpolation toward that target. Both must be positive. Nested scroll clips intersect, and only the topmost hovered scroll area consumes a wheel update.
 
-Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Tables place children in row-major order across 1–64 equal-width columns. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
+Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit descendants from layout, paint, focus traversal, and pointer interaction. A small SDF disclosure chevron shows the current state. Tables place children in row-major order across 1–64 equal-width columns. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
 
 ```toml
 [[entities]]
@@ -237,6 +237,8 @@ title_color = [0.9, 0.91, 0.93, 1]
 title_background = [0.10, 0.105, 0.12, 1]
 title_size = 11
 title_height = 28
+collapsible = true
+collapsed = false
 
 [entities.ui_vstack]
 

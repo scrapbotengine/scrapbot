@@ -50,6 +50,7 @@ Paint_Kind :: enum {
 	Line,
 	Triangle,
 	Ring,
+	Disclosure,
 }
 Paint_Command :: struct {
 	kind: Paint_Kind,
@@ -64,6 +65,7 @@ Paint_Command :: struct {
 	triangle: [3]shared.Vec2,
 	ring_center, ring_axis_x, ring_axis_y: shared.Vec2,
 	ring_thickness: f32,
+	disclosure_expanded: bool,
 	clip: Rect,
 	has_clip: bool,
 }
@@ -105,7 +107,7 @@ Node :: struct {
 	split_weight: f32,
 	split_parent: shared.Entity,
 	split_weight_valid: bool,
-	seen, hovered, active, has_clip: bool,
+	seen, laid_out, hovered, active, has_clip: bool,
 }
 EDITOR_HISTORY_CAPACITY :: 128
 Editor_Edit_Command :: struct {
@@ -406,8 +408,29 @@ reconcile :: proc(
 		!state.editor_previous_primary_down
 	project_pressed, project_pressed_ok := update_interaction(state, project_pointer, false)
 	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
-	if pressed_ok { handle_input_press(state, world, pressed, editor_pointer.position); handle_editor_ecs_press(state, world, pressed, editor_pointer.position) }
+	panel_changed := false
+	if pressed_ok {
+		handle_input_press(state, world, pressed, editor_pointer.position)
+		handle_editor_ecs_press(state, world, pressed, editor_pointer.position)
+		panel_changed = handle_panel_title_press(state, world, pressed, editor_pointer.position)
+	}
 	if project_pressed_ok { handle_input_press(state, world, project_pressed, project_pointer.position) }
+	if project_pressed_ok {
+		panel_changed =
+			handle_panel_title_press(state, world, project_pressed, project_pointer.position) ||
+			panel_changed
+	}
+	if panel_changed {
+		if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err }
+		if editor_ui_fit_sidebar_content(state, world) {
+			if err := layout_all(state, world, project_layout, editor_layout);
+			   err != "" { return err }
+		}
+		if editor_ui_fit_inspector_width(state, world) {
+			if err := layout_all(state, world, project_layout, editor_layout);
+			   err != "" { return err }
+		}
+	}
 	if editor_press_started &&
 	   !pressed_ok &&
 	   state.has_focused_input &&
@@ -684,8 +707,30 @@ layout_all :: proc(
 ) -> string {
 	state.next_paint_order = 0
 	state.split_handle_count = 0
+	for &node in state.nodes[:state.node_count] { node.laid_out = false }
 	for i in 0 ..< state.node_count { if state.nodes[i].parent_entity_index < 0 { viewport := project_viewport; if state.nodes[i].origin == .Editor { viewport = editor_viewport }; if err := layout_node(state, world, i, viewport, {}, false, {}, false, {}, false, 0); err != "" { return err } } }
 	return ""
+}
+
+node_panel_collapsed :: proc(world: ^shared.World, node: Node) -> bool {
+	if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
+		panel := world.ui_panels[node.panel_index]
+		return panel.collapsible && panel.collapsed && panel.title != ""
+	}
+	return false
+}
+
+node_layout_size :: proc(
+	world: ^shared.World,
+	node: Node,
+	layout: shared.UI_Layout_Component,
+) -> shared.Vec2 {
+	size := layout.size
+	if node_panel_collapsed(world, node) {
+		panel := world.ui_panels[node.panel_index]
+		size.y = min(max(panel.title_height, 0), size.y)
+	}
+	return size
 }
 
 layout_node :: proc(
@@ -703,16 +748,19 @@ layout_node :: proc(
 ) -> string {
 	if depth > MAX_NODES { return "UI hierarchy contains a cycle" }
 	node := &state.nodes[node_index]; layout := world.ui_layouts[node.layout_index]
+	node.laid_out = true
+	layout_size := node_layout_size(world, node^, layout)
 	if node.parent_entity_index < 0 {
 		node.rect = {
 			layout.position.x + layout.margin.w,
 			layout.position.y + layout.margin.x,
-			layout.size.x,
-			layout.size.y,
+			layout_size.x,
+			layout_size.y,
 		}
 	} else if flowed {
-		size := layout.size
+		size := layout_size
 		if has_flow_size { size = flow_size }
+		if layout_size.y < layout.size.y { size.y = layout_size.y }
 		node.rect = {flow_position.x, flow_position.y, size.x, size.y}
 	} else {
 		parent_padding: shared.Vec4
@@ -724,8 +772,8 @@ layout_node :: proc(
 		node.rect = {
 			parent.x + parent_padding.w + layout.position.x + layout.margin.w,
 			parent.y + parent_padding.x + layout.position.y + layout.margin.x,
-			layout.size.x,
-			layout.size.y,
+			layout_size.x,
+			layout_size.y,
 		}
 	}
 	node.paint_order = state.next_paint_order; state.next_paint_order += 1
@@ -755,6 +803,13 @@ layout_node :: proc(
 		content.y += title_height
 		content.height -= title_height
 	}
+	if is_panel && panel.collapsible && panel.collapsed {
+		node.scroll_offset = 0
+		node.scroll_target = 0
+		node.scroll_max = 0
+		node.scroll_content_height = 0
+		return ""
+	}
 	child_clip := inherited_clip; child_has_clip := has_inherited_clip
 	if is_scroll_area { if child_has_clip { child_clip = rect_intersection(child_clip, content) } else { child_clip = content }; child_has_clip = true }
 	scroll_offset := node.scroll_offset
@@ -763,11 +818,15 @@ layout_node :: proc(
 	child_count := 0
 	total_margins := f32(0)
 	total_weight := f32(0)
+	fixed_main_size := f32(0)
+	flex_child_count := 0
+	fixed_children: [MAX_NODES]bool
 	if ((is_hstack || is_vstack) && stack.fill) || is_table {
 		for child_index in 0 ..< state.node_count {
 			child := &state.nodes[child_index]
 			if child.parent_entity_index != int(node.entity.index) { continue }
-			children[child_count] = child_index
+			ordinal := child_count
+			children[ordinal] = child_index
 			child_count += 1
 			if is_table { continue }
 			child_layout := world.ui_layouts[child.layout_index]
@@ -776,6 +835,12 @@ layout_node :: proc(
 			} else {
 				total_margins += child_layout.margin.x + child_layout.margin.z
 			}
+			if is_vstack && node_panel_collapsed(world, child^) {
+				fixed_children[ordinal] = true
+				fixed_main_size += node_layout_size(world, child^, child_layout).y
+				continue
+			}
+			flex_child_count += 1
 			if !child.split_weight_valid || child.split_parent != node.entity {
 				child.split_weight = max(child_layout.size.y, 1)
 				if is_hstack { child.split_weight = max(child_layout.size.x, 1) }
@@ -786,25 +851,37 @@ layout_node :: proc(
 		}
 	}
 	available_main := content.height; if is_hstack { available_main = content.width }
-	available_main = max(available_main - total_margins - gap * f32(max(child_count - 1, 0)), 0)
+	available_main = max(
+		available_main - total_margins - gap * f32(max(child_count - 1, 0)) - fixed_main_size,
+		0,
+	)
 	child_main_sizes: [MAX_NODES]f32
 	if (is_hstack || is_vstack) && stack.fill && child_count > 0 {
 		resolved: [MAX_NODES]bool
 		remaining_size := available_main
 		remaining_weight := total_weight
-		effective_min := min(stack.min_size, available_main / f32(child_count))
+		remaining_count := flex_child_count
+		effective_min := min(stack.min_size, available_main / f32(max(flex_child_count, 1)))
+		for ordinal in 0 ..< child_count {
+			if !fixed_children[ordinal] { continue }
+			resolved[ordinal] = true
+			child := state.nodes[children[ordinal]]
+			child_layout := world.ui_layouts[child.layout_index]
+			child_main_sizes[ordinal] = node_layout_size(world, child, child_layout).y
+		}
 		for _ in 0 ..< child_count {
 			resolved_one := false
 			for ordinal in 0 ..< child_count {
 				if resolved[ordinal] { continue }
 				weight := state.nodes[children[ordinal]].split_weight
-				proposed := remaining_size / f32(max(child_count, 1))
+				proposed := remaining_size / f32(max(remaining_count, 1))
 				if remaining_weight > 0 { proposed = remaining_size * weight / remaining_weight }
 				if proposed >= effective_min { continue }
 				child_main_sizes[ordinal] = effective_min
 				resolved[ordinal] = true
 				remaining_size = max(remaining_size - effective_min, 0)
 				remaining_weight = max(remaining_weight - weight, 0)
+				remaining_count -= 1
 				resolved_one = true
 			}
 			if !resolved_one { break }
@@ -812,7 +889,7 @@ layout_node :: proc(
 		for ordinal in 0 ..< child_count {
 			if resolved[ordinal] { continue }
 			weight := state.nodes[children[ordinal]].split_weight
-			child_main_sizes[ordinal] = remaining_size / f32(max(child_count, 1))
+			child_main_sizes[ordinal] = remaining_size / f32(max(remaining_count, 1))
 			if remaining_weight >
 			   0 { child_main_sizes[ordinal] = remaining_size * weight / remaining_weight }
 		}
@@ -827,7 +904,10 @@ layout_node :: proc(
 	for child_index in 0 ..< state.node_count {
 		child := &state.nodes[child_index]; if child.parent_entity_index != int(node.entity.index) { continue }
 		child_layout := world.ui_layouts[child.layout_index]
-		position: shared.Vec2; child_flowed := false; child_size := child_layout.size; has_child_size := false
+		position: shared.Vec2
+		child_flowed := false
+		child_size := node_layout_size(world, child^, child_layout)
+		has_child_size := false
 		if (is_hstack || is_vstack) &&
 		   stack.fill { main_size := child_main_sizes[child_ordinal]; if is_hstack { child_size = {main_size, max(content.height - child_layout.margin.x - child_layout.margin.z, 0)} } else { child_size = {max(content.width - child_layout.margin.w - child_layout.margin.y, 0), main_size} }; has_child_size = true }
 		if is_table {
@@ -838,7 +918,7 @@ layout_node :: proc(
 			}
 			child_size = {
 				max(table_column_width - child_layout.margin.w - child_layout.margin.y, 0),
-				child_layout.size.y,
+				child_size.y,
 			}
 			position = {
 				content.x +
@@ -985,6 +1065,7 @@ update_scroll_areas :: proc(
 		hit := -1; highest_order := -1
 		for node, index in state.nodes[:state.node_count] {
 			if (node.origin == .Editor) != editor { continue }
+			if !node.laid_out { continue }
 			if node.scroll_area_index < 0 ||
 			   node.scroll_area_index >= len(world.ui_scroll_areas) ||
 			   node.scroll_max <= 0 { continue }
@@ -996,6 +1077,7 @@ update_scroll_areas :: proc(
 	}
 	for &node in state.nodes[:state.node_count] {
 		if (node.origin == .Editor) != editor { continue }
+		if !node.laid_out { continue }
 		if node.scroll_area_index < 0 ||
 		   node.scroll_area_index >= len(world.ui_scroll_areas) { continue }
 		component := world.ui_scroll_areas[node.scroll_area_index]
@@ -1569,6 +1651,7 @@ move_input_focus :: proc(state: ^State, world: ^shared.World, backwards: bool) {
 	for node, node_index in state.nodes[:state.node_count] {
 		if node.input_index < 0 ||
 		   node.input_index >= len(world.ui_inputs) ||
+		   !node.laid_out ||
 		   (node.origin == .Editor) != state.focused_input_editor ||
 		   ui_entity_or_ancestor_hidden(world, int(node.entity.index)) { continue }
 		order := node.paint_order
@@ -1769,6 +1852,7 @@ update_interaction :: proc(
 	highest_order := -1
 	for node, index in state.nodes[:state.node_count] {
 		if (node.origin == .Editor) != editor { continue }
+		if !node.laid_out { continue }
 		if node_pointer_contains(node, pointer.position) &&
 		   node.paint_order >= highest_order { hit = index; highest_order = node.paint_order }
 	}
@@ -1799,9 +1883,36 @@ rect_intersection :: proc(a, b: Rect) -> Rect {x0 := max(a.x, b.x); y0 := max(a.
 	y1 := min(a.y + a.height, b.y + b.height)
 	return{x0, y0, max(x1 - x0, 0), max(y1 - y0, 0)}}
 
+handle_panel_title_press :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pressed: shared.Entity,
+	position: shared.Vec2,
+) -> bool {
+	if state == nil || world == nil { return false }
+	node_index := find_node(state, pressed)
+	if node_index < 0 { return false }
+	node := &state.nodes[node_index]
+	if !node.laid_out ||
+	   node.panel_index < 0 ||
+	   node.panel_index >= len(world.ui_panels) { return false }
+	panel := &world.ui_panels[node.panel_index]
+	if !panel.collapsible || panel.title == "" { return false }
+	title_height := min(max(panel.title_height, 0), node.rect.height)
+	title_rect := Rect{node.rect.x, node.rect.y, node.rect.width, title_height}
+	if !rect_contains(title_rect, position) ||
+	   node.has_clip && !rect_contains(node.clip, position) { return false }
+	panel.collapsed = !panel.collapsed
+	if node.origin == .Editor && node.editor_role == .Inspector_Panel {
+		refresh_editor_ecs_snapshot(state, world)
+	}
+	return true
+}
+
 paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) -> string {
 	if depth > MAX_NODES { return "UI hierarchy contains a cycle" }
 	node := &state.nodes[node_index]; layout := world.ui_layouts[node.layout_index]
+	if !node.laid_out { return "" }
 	if node.has_clip {
 		visible := rect_intersection(node.rect, node.clip)
 		if visible.width <= 0 || visible.height <= 0 { return "" }
@@ -1858,10 +1969,31 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 					},
 				); err != "" { return err }
 			}
+			text_left := f32(10)
+			if panel.collapsible {
+				disclosure_size := min(f32(10), max(title_height - 10, 0))
+				disclosure_rect := Rect {
+					title_rect.x + 10,
+					title_rect.y + (title_height - disclosure_size) * 0.5,
+					disclosure_size,
+					disclosure_size,
+				}
+				if err := append_paint(
+					state,
+					{
+						kind = .Disclosure,
+						rect = disclosure_rect,
+						color = panel.title_color,
+						corner_radius = 1.35,
+						disclosure_expanded = !panel.collapsed,
+					},
+				); err != "" { return err }
+				text_left = 28
+			}
 			text_rect := Rect {
-				title_rect.x + 10,
+				title_rect.x + text_left,
 				title_rect.y + max((title_height - panel.title_size * 1.25) * 0.5, 0),
-				max(title_rect.width - 20, 0),
+				max(title_rect.width - text_left - 10, 0),
 				panel.title_size * 1.5,
 			}
 			if err := append_text(

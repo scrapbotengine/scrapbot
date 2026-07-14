@@ -14,7 +14,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - UI entities form a parent-by-UUID hierarchy validated when the scene loads. Entity names remain editable labels.
 - Horizontal and vertical stack components arrange child boxes in scene order with a configurable gap; boxes without a stack component overlay their children. Fill stacks treat child sizes as proportions, fill the cross-axis, and can expose draggable separators with minimum pane sizes.
 - Table containers arrange children in row-major order across 1–64 equal-width columns, with independent column and row gaps. A partial final row remains left aligned.
-- Panel decoration adds an optional title band with its own text and background styling and reserves that band above nested content. Panels can compose with overlay, stack, or table layout.
+- Panel decoration adds an optional title band with its own text and background styling and reserves that band above nested content. Titled panels can opt into pointer-driven collapse/expansion; collapsed state lives in the ECS component, contracts the panel to its title band, removes descendants from layout and interaction, and is indicated by an antialiased SDF disclosure chevron. Panels can compose with overlay, stack, or table layout.
 - Scroll-area containers accept an explicitly oversized child pane, clip descendants to their padded content rectangle, and smoothly approach wheel-driven vertical offsets.
 - Nested scroll clips intersect, the topmost hovered scroll area receives wheel input, and overflowing areas render a proportional scrollbar.
 - Every element receives retained hover and active state from topmost pointer hit testing. Active state is captured on primary-button press and held until release.
@@ -74,9 +74,9 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ### 8. Keep panels decorative and tables structural
 
-**Decision:** Let `ui_panel` reserve and paint a title band without becoming a flow container, while `ui_table` owns row-major child placement with equal-width columns.
+**Decision:** Let `ui_panel` reserve and paint a title band without becoming a flow container, optionally use that band to toggle ECS-owned collapsed state, and let `ui_table` own row-major child placement with equal-width columns.
 **Why:** Panels should compose around any nested layout, while tables need a generic 1–N column primitive rather than inspector-specific field rendering.
-**Tradeoff:** Column proportions, spanning, headers, and automatic row measurement are deferred; authored child height determines each row's height.
+**Tradeoff:** A collapsed panel contracts its vertical extent but retains its authored expanded size. Column proportions, spanning, headers, and automatic row measurement are deferred; authored child height determines each row's height.
 
 ### 9. Retain editing state while keeping values in the ECS
 

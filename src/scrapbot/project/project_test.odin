@@ -310,6 +310,8 @@ title_color = [0.9, 0.9, 0.9, 1]
 title_background = [0.12, 0.13, 0.14, 1]
 title_size = 11
 title_height = 28
+collapsible = true
+collapsed = true
 [entities.ui_scroll_area]
 scroll_speed = 64
 smoothness = 12
@@ -351,6 +353,8 @@ row_gap = 4
 	testing.expect(t, scene.entities[0].ui_panel.title == "METRICS")
 	testing.expect(t, scene.entities[0].ui_panel.title_size == 11)
 	testing.expect(t, scene.entities[0].ui_panel.title_height == 28)
+	testing.expect(t, scene.entities[0].ui_panel.collapsible)
+	testing.expect(t, scene.entities[0].ui_panel.collapsed)
 	testing.expect(t, scene.entities[0].ui_layout.border_color == Vec4{0.4, 0.5, 0.6, 1})
 	testing.expect(t, scene.entities[0].ui_layout.border_width == 2)
 	testing.expect(t, scene.entities[0].ui_layout.corner_radius == 6)
@@ -363,6 +367,23 @@ row_gap = 4
 	testing.expect(t, scene.entities[2].ui_table.columns == 3)
 	testing.expect(t, scene.entities[2].ui_table.column_gap == 6)
 	testing.expect(t, scene.entities[2].ui_table.row_gap == 4)
+}
+
+@(test)
+test_scene_rejects_collapsed_panel_without_collapsible_opt_in :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000010"
+name = "Invalid Panel"
+[entities.ui_layout]
+size = [200, 100]
+[entities.ui_panel]
+title = "INVALID"
+collapsed = true
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expect(t, result.err == .Invalid_Field)
 }
 
 @(test)

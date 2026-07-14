@@ -172,6 +172,8 @@ UI_Panel_Component :: struct {
 	title_background: Vec4,
 	title_size: f32,
 	title_height: f32,
+	collapsible: bool,
+	collapsed: bool,
 }
 UI_Table_Component :: struct {
 	columns: int,

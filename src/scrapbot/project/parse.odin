@@ -462,6 +462,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_panel.title_size, found = parse_f32(value)
 					case "title_height":
 						current.ui_panel.title_height, found = parse_f32(value)
+					case "collapsible":
+						current.ui_panel.collapsible, found = parse_bool(value)
+					case "collapsed":
+						current.ui_panel.collapsed, found = parse_bool(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -633,6 +637,13 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   (entity.ui_panel.title_size <= 0 ||
 				   entity.ui_panel.title_height <=
 					   0) { return scene, fail(.Invalid_Field, fmt.tprintf("UI panel '%s' requires positive title_size/title_height when titled", entity.name)) }
+		if entity.has_ui_panel &&
+		   entity.ui_panel.collapsible &&
+		   entity.ui_panel.title ==
+			   "" { return scene, fail(.Invalid_Field, fmt.tprintf("collapsible UI panel '%s' requires a title", entity.name)) }
+		if entity.has_ui_panel &&
+		   entity.ui_panel.collapsed &&
+		   !entity.ui_panel.collapsible { return scene, fail(.Invalid_Field, fmt.tprintf("collapsed UI panel '%s' must be collapsible", entity.name)) }
 		if entity.has_ui_table &&
 		   (entity.ui_table.columns < 1 ||
 				   entity.ui_table.columns > 64 ||

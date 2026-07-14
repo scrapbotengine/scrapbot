@@ -750,6 +750,7 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 			title_background = {0.027, 0.035, 0.046, 1},
 			title_size = EDITOR_TEXT_SIZE,
 			title_height = INSPECTOR_PANEL_TITLE_HEIGHT,
+			collapsible = true,
 		},
 	)
 	editor_ui_add_vstack(world, panel, {})
@@ -901,7 +902,12 @@ editor_ui_finish_inspector_component :: proc(builder: ^Inspector_ECS_Builder) {
 		table_layout.size.y +
 		panel_layout.padding.z
 	if builder.panel_count > 1 { builder.content_height += INSPECTOR_PANEL_GAP }
-	builder.content_height += panel_layout.size.y
+	panel := builder.world.ui_panels[builder.world.entities[builder.panel_entity].ui_panel_index]
+	if panel.collapsible && panel.collapsed {
+		builder.content_height += panel.title_height
+	} else {
+		builder.content_height += panel_layout.size.y
+	}
 }
 
 editor_ui_begin_inspector_component :: proc(builder: ^Inspector_ECS_Builder, title: string) {
@@ -1227,6 +1233,8 @@ editor_ui_build_inspector_panels :: proc(
 			"title height",
 			fmt.tprintf("%.2f", value.title_height),
 		)
+		editor_ui_inspector_field(&builder, "collapsible", fmt.tprintf("%v", value.collapsible))
+		editor_ui_inspector_field(&builder, "collapsed", fmt.tprintf("%v", value.collapsed))
 	}
 	if entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables) {
 		value := world.ui_tables[entity.ui_table_index]

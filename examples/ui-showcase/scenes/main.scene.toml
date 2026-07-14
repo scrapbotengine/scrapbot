@@ -184,6 +184,7 @@ title_color = [0.88, 0.9, 0.93, 1]
 title_background = [0.12, 0.13, 0.15, 1]
 title_size = 11
 title_height = 28
+collapsible = true
 
 [entities.ui_vstack]
 

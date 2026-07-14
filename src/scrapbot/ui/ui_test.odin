@@ -262,6 +262,96 @@ test_panel_title_reserves_child_space_and_paints_a_title_band :: proc(t: ^testin
 }
 
 @(test)
+test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Root"),
+			name = "Root",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 200}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Panel"),
+			name = "Panel",
+			has_ui_layout = true,
+			ui_layout = {parent = ui_test_id("Root"), size = {240, 100}},
+			has_ui_panel = true,
+			ui_panel = {
+				title = "TRANSFORM",
+				title_color = {1, 1, 1, 1},
+				title_size = 10,
+				title_height = 24,
+				collapsible = true,
+			},
+			has_ui_vstack = true,
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Panel Child"),
+			name = "Panel Child",
+			has_ui_layout = true,
+			ui_layout = {parent = ui_test_id("Panel"), size = {200, 30}},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Sibling"),
+			name = "Sibling",
+			has_ui_layout = true,
+			ui_layout = {parent = ui_test_id("Root"), size = {240, 100}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 200) == "")
+	panel_node := find_node_by_entity_index(state, 1)
+	child_node := find_node_by_entity_index(state, 2)
+	sibling_node := find_node_by_entity_index(state, 3)
+	testing.expect(t, panel_node >= 0 && child_node >= 0 && sibling_node >= 0)
+	if panel_node < 0 || child_node < 0 || sibling_node < 0 { return }
+	testing.expect(t, state.nodes[panel_node].rect.height == 100)
+	testing.expect(t, state.nodes[child_node].laid_out)
+	testing.expect(t, state.nodes[sibling_node].rect.y == 100)
+
+	press := Pointer_Input {
+		position = {5, 5},
+		primary_down = true,
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &world, 240, 200, press) == "")
+	testing.expect(t, world.ui_panels[0].collapsed)
+	testing.expect(t, state.nodes[panel_node].rect.height == 24)
+	testing.expect(t, !state.nodes[child_node].laid_out)
+	testing.expect(t, state.nodes[sibling_node].rect.y == 24)
+	testing.expect(t, state.nodes[sibling_node].rect.height == 176)
+	found_collapsed_disclosure := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Disclosure && !command.disclosure_expanded {
+			found_collapsed_disclosure = true
+			break
+		}
+	}
+	testing.expect(t, found_collapsed_disclosure)
+
+	release := Pointer_Input {
+		position = {5, 5},
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &world, 240, 200, release) == "")
+	testing.expect(t, reconcile(state, &world, 240, 200, press) == "")
+	testing.expect(t, !world.ui_panels[0].collapsed)
+	testing.expect(t, state.nodes[panel_node].rect.height == 100)
+	testing.expect(t, state.nodes[child_node].laid_out)
+	testing.expect(t, state.nodes[sibling_node].rect.y == 100)
+}
+
+@(test)
 test_single_line_input_selects_edits_navigates_and_tabs_in_paint_order :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)

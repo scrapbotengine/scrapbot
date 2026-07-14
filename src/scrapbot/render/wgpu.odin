@@ -598,11 +598,12 @@ wgpu_encode_render_pass :: proc(
 			u0, v0, u1, v1 := command.uv.x, command.uv.y, command.uv.z, command.uv.w
 			kind := f32(
 				0,
-			); if command.kind == .Glyph { kind = 1 } else if command.kind == .Triangle { kind = 2 } else if command.kind == .Ring { kind = 3 }
+			); if command.kind == .Glyph { kind = 1 } else if command.kind == .Triangle { kind = 2 } else if command.kind == .Ring { kind = 3 } else if command.kind == .Disclosure { kind = 4; if command.disclosure_expanded { radius = -radius } }
 			if command.kind == .Panel ||
 			   command.kind == .Line ||
 			   command.kind == .Triangle ||
-			   command.kind == .Ring { u0 = 0; v0 = 0; u1 = 1; v1 = 1 }
+			   command.kind == .Ring ||
+			   command.kind == .Disclosure { u0 = 0; v0 = 0; u1 = 1; v1 = 1 }
 			color := [4]f32{command.color.x, command.color.y, command.color.z, command.color.w}
 			border_color := [4]f32 {
 				command.border_color.x,
