@@ -237,10 +237,35 @@ Editor_Transform_Gizmo_Component :: struct {
 	mode: Editor_Gizmo_Mode,
 }
 
+MAX_SYSTEM_PROFILE_ENTRIES :: 64
+SYSTEM_PROFILE_NAME_CAPACITY :: 96
+
+System_Profile_Kind :: enum {
+	Native,
+	Luau,
+}
+
+System_Profile_Entry :: struct {
+	name: [SYSTEM_PROFILE_NAME_CAPACITY]u8,
+	name_length: int,
+	kind: System_Profile_Kind,
+	average_nanoseconds: f64,
+}
+
+System_Profile :: struct {
+	entries: [MAX_SYSTEM_PROFILE_ENTRIES]System_Profile_Entry,
+	entry_count: int,
+	sample_frames: int,
+	revision: u64,
+}
+
 Editor_UI_Role :: enum {
 	None,
 	Root,
 	Viewport,
+	Systems_Scroll,
+	Systems_Name,
+	Systems_Time,
 	Browser_Scroll,
 	Browser_Header,
 	Browser_Row,

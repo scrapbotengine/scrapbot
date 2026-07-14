@@ -10,6 +10,7 @@ EDITOR_UI_ROOT_NAME :: "__scrapbot_editor_root"
 EDITOR_UI_TOP_NAME :: "__scrapbot_editor_top"
 EDITOR_UI_WORKSPACE_NAME :: "__scrapbot_editor_workspace"
 EDITOR_UI_LEFT_NAME :: "__scrapbot_editor_left"
+EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
 EDITOR_UI_BROWSER_HEADER_NAME :: "__scrapbot_editor_browser_header"
 EDITOR_UI_BROWSER_NAME :: "__scrapbot_editor_browser"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
@@ -348,6 +349,32 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		},
 	)
 	editor_ui_add_vstack(world, left, {fill = true})
+	systems := editor_ui_create_box(
+		world,
+		EDITOR_UI_SYSTEMS_NAME,
+		EDITOR_UI_LEFT_NAME,
+		.Systems_Scroll,
+		{
+			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 178},
+			padding = {8, 10, 9, 10},
+			background = panel,
+			border_color = rule,
+			border_width = 1,
+		},
+	)
+	editor_ui_add_panel(
+		world,
+		systems,
+		{
+			title = "SYSTEMS / 0",
+			title_color = text,
+			title_background = raised,
+			title_size = EDITOR_TEXT_SIZE,
+			title_height = 34,
+		},
+	)
+	editor_ui_add_table(world, systems, {columns = 2, column_gap = 8, row_gap = 2})
+	editor_ui_add_scroll(world, systems)
 	left_header := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_left_header",
@@ -378,7 +405,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_BROWSER_NAME,
 		EDITOR_UI_LEFT_NAME,
 		.Browser_Scroll,
-		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 566}, padding = {7, 9, 7, 9}, background = panel},
+		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 388}, padding = {7, 9, 7, 9}, background = panel},
 	)
 	editor_ui_add_vstack(world, browser, {gap = 0})
 	editor_ui_add_scroll(world, browser)
@@ -545,6 +572,90 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
 	)
 	editor_ui_add_text(world, label, "", {0.82, 0.84, 0.88, 1}, EDITOR_TEXT_SIZE)
 	return row, label
+}
+
+SYSTEM_PROFILE_CELL_HEIGHT :: f32(24)
+
+editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, int) {
+	name_cell, name_found := editor_ui_entity(world, .Systems_Name, slot)
+	time_cell, time_found := editor_ui_entity(world, .Systems_Time, slot)
+	if name_found && time_found {
+		return name_cell, time_cell
+	}
+	name := fmt.tprintf("__scrapbot_editor_system_name_%d", slot)
+	timing := fmt.tprintf("__scrapbot_editor_system_time_%d", slot)
+	name_cell = editor_ui_create_box(
+		world,
+		name,
+		EDITOR_UI_SYSTEMS_NAME,
+		.Systems_Name,
+		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 3, 3, 3}},
+		slot,
+	)
+	editor_ui_add_text(world, name_cell, "", {0.82, 0.85, 0.90, 1}, EDITOR_TEXT_SIZE)
+	time_cell = editor_ui_create_box(
+		world,
+		timing,
+		EDITOR_UI_SYSTEMS_NAME,
+		.Systems_Time,
+		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 3, 3, 3}},
+		slot,
+	)
+	editor_ui_add_text(world, time_cell, "--", {0.42, 0.45, 0.51, 1}, EDITOR_TEXT_SIZE)
+	return name_cell, time_cell
+}
+
+format_system_profile_time :: proc(average_nanoseconds: f64, sampled: bool) -> string {
+	if !sampled {
+		return "--"
+	}
+	if average_nanoseconds >= 1_000_000 {
+		return fmt.tprintf("%.2f ms", average_nanoseconds / 1_000_000)
+	}
+	if average_nanoseconds >= 1_000 {
+		return fmt.tprintf("%.1f us", average_nanoseconds / 1_000)
+	}
+	return fmt.tprintf("%.0f ns", average_nanoseconds)
+}
+
+editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
+	entry_count := 0
+	if state.system_profile != nil {
+		entry_count = state.system_profile.entry_count
+		luau_index := 0
+		for index in 0 ..< entry_count {
+			entry := &state.system_profile.entries[index]
+			name_cell, time_cell := editor_ui_ensure_system_cells(world, index)
+			editor_ui_set_hidden(world, name_cell, false)
+			editor_ui_set_hidden(world, time_cell, false)
+			name := string(entry.name[:entry.name_length])
+			if entry.kind == .Luau {
+				luau_index += 1
+				name = fmt.tprintf("Luau System %d", luau_index)
+			}
+			editor_ui_set_text(world, name_cell, name)
+			editor_ui_set_text(
+				world,
+				time_cell,
+				format_system_profile_time(
+					entry.average_nanoseconds,
+					state.system_profile.sample_frames > 0,
+				),
+			)
+		}
+	}
+	for component in world.editor_uis {
+		if (component.role == .Systems_Name || component.role == .Systems_Time) &&
+		   component.slot >= entry_count {
+			editor_ui_set_hidden(world, component.entity_index, true)
+		}
+	}
+	if systems, found := editor_ui_entity(world, .Systems_Scroll); found {
+		editor_ui_set_panel_title(world, systems, fmt.tprintf("SYSTEMS / %d", entry_count))
+	}
+	if state.system_profile != nil {
+		state.editor_system_profile_revision = state.system_profile.revision
+	}
 }
 
 INSPECTOR_PANEL_TITLE_HEIGHT :: f32(30)
@@ -1112,6 +1223,7 @@ editor_ui_build_inspector_panels :: proc(
 }
 
 refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
+	editor_ui_refresh_system_profile(state, world)
 	scene_count, runtime_count, visible_count := 0, 0, 0
 	entity_count := len(world.entities)
 	for entity_index in 0 ..< entity_count {

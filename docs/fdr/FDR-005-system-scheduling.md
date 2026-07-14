@@ -26,6 +26,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Each parallel native system receives a private deferred-command buffer; commands merge deterministically in system order after the stage completes.
 - Every system in a frame observes the same read-only world time resource snapshot.
 - `scrapbot run --scheduler-trace` reports worker count, parallel stage count, and maximum parallel width for the run.
+- The runtime measures each native and Luau callback at its execution boundary. The editor publishes per-system averages after each ten successful frames; failed frames do not enter the sample.
 - Structural world changes requested from Luau systems are queued in a deferred command buffer and applied after all scheduled systems finish for the frame.
 - Deferred commands currently support spawning named entities with initial transform/project component payloads, despawning entities without shifting existing entity indices, and adding/removing `scrapbot.transform` or project components.
 - Runtime spawns reuse dead entity slots and world-level free pools for transform, mesh, geometry, material, and render-instance storage regardless of the previous entity archetype. Reused entity slots retain their incremented generation, so handles from the previous entity lifetime remain stale.
@@ -86,6 +87,12 @@ Declared systems now enforce their declared component access at the Luau API bou
 **Decision:** Generate and register a fresh UUID when applying a spawn command, following ADR-023.
 **Why:** Storage reuse must not make a newly spawned entity inherit the durable identity of the entity that previously occupied its slot.
 **Tradeoff:** Spawn and despawn paths maintain both a generation-aware runtime handle and the UUID lookup map.
+
+### 9. Measure callbacks at the scheduler boundary
+
+**Decision:** Time each native worker callback and serial Luau callback where the scheduler invokes it, then publish fixed-storage averages every ten successful frames.
+**Why:** The live editor needs useful per-system cost data without allocations, string formatting, or full-world work in the frame loop.
+**Tradeoff:** The measurement excludes scheduler planning, deferred-command merging and application, rendering, and GPU execution. Each callback also pays for two monotonic-clock reads.
 
 ## Related
 

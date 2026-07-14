@@ -152,6 +152,8 @@ State :: struct {
 	editor_snapshot_has_selection: bool,
 	editor_snapshot_selected_entity: shared.Entity,
 	editor_snapshot_refresh_count: u64,
+	system_profile: ^shared.System_Profile,
+	editor_system_profile_revision: u64,
 	editor_previous_primary_down: bool,
 	focused_input: shared.Entity,
 	has_focused_input: bool,
@@ -442,11 +444,15 @@ reconcile :: proc(
 	}
 	if state.editor_visible {
 		state.editor_snapshot_elapsed += max(delta_seconds, 0)
+		system_profile_changed :=
+			state.system_profile != nil &&
+			state.editor_system_profile_revision != state.system_profile.revision
 		selection_changed :=
 			state.editor_snapshot_has_selection != state.editor_has_selection ||
 			(state.editor_has_selection &&
 					state.editor_snapshot_selected_entity != state.editor_selected_entity)
 		if !state.editor_snapshot_valid ||
+		   system_profile_changed ||
 		   selection_changed ||
 		   state.editor_snapshot_elapsed >= EDITOR_SNAPSHOT_INTERVAL {
 			refresh_editor_ecs_snapshot(state, world)
@@ -647,6 +653,9 @@ handle_editor_ecs_press :: proc(
 					return
 				case .None,
 				     .Root,
+				     .Systems_Scroll,
+				     .Systems_Name,
+				     .Systems_Time,
 				     .Browser_Scroll,
 				     .Browser_Header,
 				     .Inspector_Header,

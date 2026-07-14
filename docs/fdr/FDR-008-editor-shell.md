@@ -24,6 +24,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Releasing the right mouse button restores normal pointer interaction. Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 - Project cameras derive their view direction from transform rotation, and rendering, viewport picking, and transform gizmos use the same camera orientation.
 - The scene sidebar lists scene-authored and runtime-spawned entities and supports pixel-continuous pointer-wheel and trackpad scrolling, clipped partial rows, hover, and stable selection.
+- Above the scene browser, a systems panel lists registered native and Luau systems with their average callback time per frame. It publishes a new average every ten successful frames and refreshes immediately when the system topology or published sample changes.
 - Scene-authored entity names use normal white editor text and runtime-spawned entity names use muted gray. Editor-origin entities are hidden from the browser and cannot be selected in the inspector.
 - Selection follows the entity's generation-aware identity and clears if that entity despawns.
 - The inspector shows the selected entity's name, stable UUID, provenance, attached components, field names, and current values. Components are vertically stacked titled panels, and each panel renders its fields in a two-column property table inside an independently scrollable sidebar. Values use reusable input controls: transform, camera, light, and custom Vec3 fields are live-editable, while unsupported field types remain selectable and read-only. Vec3 value cells compose three equal-width X, Y, and Z inputs with a fill HStack; scalar value cells contain one full-width input.
@@ -127,6 +128,12 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Decision:** Apply each valid numeric preview to the live ECS, but capture its starting value and add one bounded history command only when typing, stepping, or scrubbing completes, following ADR-022.
 **Why:** Scene feedback remains immediate without turning every character or pointer pixel into a separate undo step.
 **Tradeoff:** History is numeric, runtime-only, and limited to 128 commands. It does not yet include gizmo manipulation, structural edits, source persistence, or dirty tracking.
+
+### 15. Profile systems at their execution boundary
+
+**Decision:** Render the scheduler's fixed-storage ten-frame timing snapshot through a titled, two-column, smoothly scrollable ECS UI panel above the scene list.
+**Why:** System costs should be visible in the same live world the editor inspects, and the panel should dogfood the ordinary panel, table, text, and scroll-area components.
+**Tradeoff:** Native systems use their registered names, while Luau systems currently receive ordinal fallback labels. Times cover callback execution only and are diagnostic samples rather than a full frame profiler.
 
 ## Related
 

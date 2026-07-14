@@ -1,54 +1,60 @@
 package scrapbot
 
+import component "./component"
+import ecs "./ecs"
+import native "./native"
+import project "./project"
+import resources "./resources"
+import schedule "./schedule"
+import script "./script"
+import shared "./shared"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:time"
-import component "./component"
-import ecs "./ecs"
-import native "./native"
-import project "./project"
-import schedule "./schedule"
-import resources "./resources"
-import script "./script"
-import shared "./shared"
 
 HOT_RELOAD_CHECK_INTERVAL_SECONDS :: f32(0.25)
 
 File_Stamp :: struct {
-	exists:      bool,
+	exists: bool,
 	modified_ns: i64,
-	size:        i64,
+	size: i64,
 }
-Asset_Stamp :: struct {exists: bool, modified_ns: i64, size: i64, entry_count: int}
+Asset_Stamp :: struct {
+	exists: bool,
+	modified_ns: i64,
+	size: i64,
+	entry_count: int,
+}
 
 Hot_Reload_State :: struct {
-	root:         string,
+	root: string,
 	project_path: string,
-	scene_path:   string,
-	script_path:  string,
+	scene_path: string,
+	script_path: string,
 	assets_path: string,
 	project_stamp: File_Stamp,
-	scene_stamp:  File_Stamp,
+	scene_stamp: File_Stamp,
 	script_stamp: File_Stamp,
 	assets_stamp: Asset_Stamp,
-	runtime:      script.Runtime,
+	runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
-	executor:          schedule.Executor,
-	resources:         resources.Registry,
+	executor: schedule.Executor,
+	resources: resources.Registry,
+	system_profile: System_Profile_Accumulator,
 	native_sources: native.Source_Set,
 	last_good_script_source: string,
-	has_last_good_script:    bool,
+	has_last_good_script: bool,
 	seconds_until_next_check: f32,
 }
 
 Script_Load :: struct {
-	runtime:    script.Runtime,
+	runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
-	source:     string,
+	source: string,
 	has_source: bool,
-	err:        string,
+	err: string,
 }
 
 init_hot_reload_state :: proc(
@@ -83,11 +89,15 @@ init_hot_reload_state :: proc(
 		return "failed to allocate script path"
 	}
 	state.script_path = script_path
-	assets_path, assets_join_err := filepath.join({root,"assets"})
-	if assets_join_err != nil {return "failed to allocate assets path"}
+	assets_path, assets_join_err := filepath.join({root, "assets"})
+	if assets_join_err != nil { return "failed to allocate assets path" }
 	state.assets_path = assets_path
 
-	if source_err := native.sync_project_extension_sources(&state.native_sources, root, loaded.config.native_extensions[:]); source_err != "" {
+	if source_err := native.sync_project_extension_sources(
+		&state.native_sources,
+		root,
+		loaded.config.native_extensions[:],
+	); source_err != "" {
 		delete(state.project_path)
 		delete(state.scene_path)
 		delete(state.script_path)
@@ -103,7 +113,7 @@ init_hot_reload_state :: proc(
 	state.assets_stamp = asset_stamp(state.assets_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
-	if err := init_render_resources(&state.resources, world); err != "" {return err}
+	if err := init_render_resources(&state.resources, world); err != "" { return err }
 	return load_script_runtime(state, world)
 }
 
@@ -129,7 +139,14 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 	ecs.advance_time(&world.time, delta_seconds)
 
 	maybe_poll_hot_reload(state, world, delta_seconds)
-	return step_frame_runtime_parts(&state.runtime, &state.native_extensions, &state.executor, world, world.time)
+	return step_frame_runtime_parts(
+		&state.runtime,
+		&state.native_extensions,
+		&state.executor,
+		&state.system_profile,
+		world,
+		world.time,
+	)
 }
 
 maybe_poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World, delta_seconds: f32) {
@@ -149,19 +166,33 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	project_changed := !file_stamps_equal(state.project_stamp, next_project_stamp)
 	scene_changed := !file_stamps_equal(state.scene_stamp, next_scene_stamp)
 	script_changed := !file_stamps_equal(state.script_stamp, next_script_stamp)
-	assets_changed := !asset_stamps_equal(state.assets_stamp,next_assets_stamp)
+	assets_changed := !asset_stamps_equal(state.assets_stamp, next_assets_stamp)
 	extensions_changed := native.project_extensions_changed(&state.native_extensions, state.root)
 	sources_changed := native.project_extension_sources_changed(&state.native_sources, state.root)
-	if !project_changed && !scene_changed && !script_changed && !assets_changed && !extensions_changed && !sources_changed {
+	if !project_changed &&
+	   !scene_changed &&
+	   !script_changed &&
+	   !assets_changed &&
+	   !extensions_changed &&
+	   !sources_changed {
 		return
 	}
 
-	if project_changed || scene_changed || assets_changed || extensions_changed || sources_changed {
+	if project_changed ||
+	   scene_changed ||
+	   assets_changed ||
+	   extensions_changed ||
+	   sources_changed {
 		if err := reload_project_world_and_script(state, world); err != "" {
 			fmt.eprintf("[hot-reload] failed to reload project: %s\n", err)
 			return
 		}
-		fmt.eprintf("[hot-reload] reloaded %s, %s, %s, assets, and native extensions\n", state.project_path, state.scene_path, state.script_path)
+		fmt.eprintf(
+			"[hot-reload] reloaded %s, %s, %s, assets, and native extensions\n",
+			state.project_path,
+			state.scene_path,
+			state.script_path,
+		)
 		return
 	}
 
@@ -184,19 +215,32 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	}
 
 	next_world := ecs.build_world(&loaded.scene)
-	script_load := load_script_from_path(state.root, state.script_path, &next_world, &state.resources)
+	script_load := load_script_from_path(
+		state.root,
+		state.script_path,
+		&next_world,
+		&state.resources,
+	)
 	if script_load.err != "" {
 		reload_err := script_load.err
 		ecs.destroy_world(&next_world)
 		destroy_script_load(&script_load)
 		if restore_err := restore_last_good_script_runtime(state, world); restore_err != "" {
-			return fmt.tprintf("%s; failed to restore last good script: %s", reload_err, restore_err)
+			return fmt.tprintf(
+				"%s; failed to restore last good script: %s",
+				reload_err,
+				restore_err,
+			)
 		}
 		return reload_err
 	}
 
 	next_sources: native.Source_Set
-	if source_err := native.sync_project_extension_sources(&next_sources, state.root, loaded.config.native_extensions[:]); source_err != "" {
+	if source_err := native.sync_project_extension_sources(
+		&next_sources,
+		state.root,
+		loaded.config.native_extensions[:],
+	); source_err != "" {
 		ecs.destroy_world(&next_world)
 		destroy_script_load(&script_load)
 		return source_err
@@ -211,6 +255,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	delete(state.last_good_script_source)
 	state.runtime = script_load.runtime
 	state.native_extensions = script_load.native_extensions
+	state.system_profile = {}
 	state.native_sources = next_sources
 	script.rebind_runtime(&state.runtime)
 	state.last_good_script_source = script_load.source
@@ -229,7 +274,11 @@ load_script_runtime :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> s
 		reload_err := script_load.err
 		destroy_script_load(&script_load)
 		if restore_err := restore_last_good_script_runtime(state, world); restore_err != "" {
-			return fmt.tprintf("%s; failed to restore last good script: %s", reload_err, restore_err)
+			return fmt.tprintf(
+				"%s; failed to restore last good script: %s",
+				reload_err,
+				restore_err,
+			)
 		}
 		return reload_err
 	}
@@ -239,17 +288,27 @@ load_script_runtime :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> s
 	delete(state.last_good_script_source)
 	state.runtime = script_load.runtime
 	state.native_extensions = script_load.native_extensions
+	state.system_profile = {}
 	script.rebind_runtime(&state.runtime)
 	state.last_good_script_source = script_load.source
 	state.has_last_good_script = script_load.has_source
 	return ""
 }
 
-load_script_from_path :: proc(root, path: string, world: ^shared.World, resource_registry: ^resources.Registry) -> Script_Load {
+load_script_from_path :: proc(
+	root, path: string,
+	world: ^shared.World,
+	resource_registry: ^resources.Registry,
+) -> Script_Load {
 	result: Script_Load
 	registry: component.Registry
 	component.init_registry(&registry)
-	if extension_load := native.load_project_extensions(&result.native_extensions, root, &registry, resource_registry); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(
+		&result.native_extensions,
+		root,
+		&registry,
+		resource_registry,
+	); extension_load.err != "" {
 		result.err = extension_load.err
 		return result
 	}
@@ -270,7 +329,11 @@ load_script_from_path :: proc(root, path: string, world: ^shared.World, resource
 		script.DEFAULT_SCRIPT_CHUNK,
 		world,
 		&registry,
-		script.Source_Options{log_enabled = true, resource_registry = resource_registry, project_root = root},
+		script.Source_Options {
+			log_enabled = true,
+			resource_registry = resource_registry,
+			project_root = root,
+		},
 	)
 	if run_result.err != "" {
 		result.err = run_result.err
@@ -297,12 +360,20 @@ destroy_script_load :: proc(load: ^Script_Load) {
 	load^ = {}
 }
 
-restore_last_good_script_runtime :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> string {
+restore_last_good_script_runtime :: proc(
+	state: ^Hot_Reload_State,
+	world: ^shared.World,
+) -> string {
 	if !state.has_last_good_script {
 		return ""
 	}
 
-	script_load := load_script_from_source(state.root, state.last_good_script_source, world, &state.resources)
+	script_load := load_script_from_source(
+		state.root,
+		state.last_good_script_source,
+		world,
+		&state.resources,
+	)
 	if script_load.err != "" {
 		destroy_script_load(&script_load)
 		return script_load.err
@@ -312,15 +383,25 @@ restore_last_good_script_runtime :: proc(state: ^Hot_Reload_State, world: ^share
 	native.destroy_extension_set(&state.native_extensions)
 	state.runtime = script_load.runtime
 	state.native_extensions = script_load.native_extensions
+	state.system_profile = {}
 	script.rebind_runtime(&state.runtime)
 	return ""
 }
 
-load_script_from_source :: proc(root, source: string, world: ^shared.World, resource_registry: ^resources.Registry) -> Script_Load {
+load_script_from_source :: proc(
+	root, source: string,
+	world: ^shared.World,
+	resource_registry: ^resources.Registry,
+) -> Script_Load {
 	result: Script_Load
 	registry: component.Registry
 	component.init_registry(&registry)
-	if extension_load := native.load_project_extensions(&result.native_extensions, root, &registry, resource_registry); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(
+		&result.native_extensions,
+		root,
+		&registry,
+		resource_registry,
+	); extension_load.err != "" {
 		result.err = extension_load.err
 		return result
 	}
@@ -331,7 +412,11 @@ load_script_from_source :: proc(root, source: string, world: ^shared.World, reso
 		script.DEFAULT_SCRIPT_CHUNK,
 		world,
 		&registry,
-		script.Source_Options{log_enabled = true, resource_registry = resource_registry, project_root = root},
+		script.Source_Options {
+			log_enabled = true,
+			resource_registry = resource_registry,
+			project_root = root,
+		},
 	)
 	if run_result.err != "" {
 		result.err = run_result.err
@@ -350,9 +435,9 @@ file_stamp :: proc(path: string) -> File_Stamp {
 	defer os.file_info_delete(fi, context.temp_allocator)
 
 	return File_Stamp {
-		exists      = true,
+		exists = true,
 		modified_ns = time.to_unix_nanoseconds(fi.modification_time),
-		size        = fi.size,
+		size = fi.size,
 	}
 }
 
@@ -360,13 +445,28 @@ file_stamps_equal :: proc(a, b: File_Stamp) -> bool {
 	return a.exists == b.exists && a.modified_ns == b.modified_ns && a.size == b.size
 }
 
-asset_stamp :: proc(path: string) -> Asset_Stamp {stamp: Asset_Stamp; accumulate_asset_stamp(path,&stamp); return stamp}
+asset_stamp :: proc(path: string) -> Asset_Stamp {stamp: Asset_Stamp; accumulate_asset_stamp(
+		path,
+		&stamp,
+	)
+	return stamp}
 accumulate_asset_stamp :: proc(path: string, stamp: ^Asset_Stamp) {
-	fi, err := os.stat(path,context.temp_allocator); if err != nil {return}; defer os.file_info_delete(fi,context.temp_allocator)
-	stamp.exists=true; stamp.entry_count+=1; stamp.size+=fi.size
-	modified := time.to_unix_nanoseconds(fi.modification_time); if modified>stamp.modified_ns {stamp.modified_ns=modified}
-	if fi.type != .Directory {return}
-	entries, read_err := os.read_all_directory_by_path(path,context.temp_allocator); if read_err != nil {return}; defer os.file_info_slice_delete(entries,context.temp_allocator)
-	for entry in entries {child, join_err := filepath.join({path,entry.name}); if join_err != nil {continue}; accumulate_asset_stamp(child,stamp); delete(child)}
+	fi, err := os.stat(
+		path,
+		context.temp_allocator,
+	); if err != nil { return }; defer os.file_info_delete(fi, context.temp_allocator)
+	stamp.exists = true; stamp.entry_count += 1; stamp.size += fi.size
+	modified := time.to_unix_nanoseconds(
+		fi.modification_time,
+	); if modified > stamp.modified_ns { stamp.modified_ns = modified }
+	if fi.type != .Directory { return }
+	entries, read_err := os.read_all_directory_by_path(
+		path,
+		context.temp_allocator,
+	); if read_err != nil { return }; defer os.file_info_slice_delete(entries, context.temp_allocator)
+	for entry in entries {child, join_err := filepath.join({path, entry.name})
+		if join_err != nil { continue }
+		accumulate_asset_stamp(child, stamp)
+		delete(child)}
 }
-asset_stamps_equal :: proc(a,b: Asset_Stamp) -> bool {return a==b}
+asset_stamps_equal :: proc(a, b: Asset_Stamp) -> bool { return a == b }

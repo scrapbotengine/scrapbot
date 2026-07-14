@@ -39,6 +39,8 @@ Closing and reopening the editor preserves the scene-camera viewpoint for the cu
 
 ## Browse and inspect entities
 
+The top-left systems panel lists the native and Luau systems currently registered with the runtime. Its right column shows average callback time per frame, published every ten successful frames. Native systems use their registered names; Luau systems currently use ordinal labels. These values measure callback execution only, excluding scheduler setup, deferred-command application, rendering, and GPU work.
+
 The scene sidebar lists scene-authored and runtime-spawned entities, including objects that do not come from the scene TOML. Scene-authored names use normal white text and runtime-spawned names use muted gray. Transient editor-origin entities—including the shell itself and scene camera—stay hidden from the browser and inspector.
 
 The shell is itself built from transient ECS entities using the same layout, horizontal and vertical stack, draggable separator, scroll-area, panel, table, text, and button components available to project UI. Editor origin keeps those tool entities out of project data while letting the editor exercise the ordinary UI system.

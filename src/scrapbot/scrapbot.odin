@@ -1,12 +1,7 @@
 package scrapbot
 
-import "core:fmt"
-import "core:mem"
-import "core:os"
-import "core:path/filepath"
-import "core:strings"
-import ecs "./ecs"
 import component "./component"
+import ecs "./ecs"
 import native "./native"
 import project "./project"
 import render "./render"
@@ -15,6 +10,12 @@ import schedule "./schedule"
 import script "./script"
 import shared "./shared"
 import ui "./ui"
+import "core:fmt"
+import "core:mem"
+import "core:os"
+import "core:path/filepath"
+import "core:strings"
+import "core:time"
 
 VERSION :: "0.1.0-dev"
 
@@ -32,9 +33,9 @@ parse_framegrab_region :: render.parse_framegrab_region
 Project_Load_Result :: project.Project_Load_Result
 Runtime_Result :: struct {
 	frame: shared.Render_Frame,
-	err:   string,
+	err: string,
 	scheduler_workers: int,
-	parallel_stages:   int,
+	parallel_stages: int,
 	max_parallel_width: int,
 	draw_batches: int,
 	runtime_stats: Runtime_Stats,
@@ -45,15 +46,26 @@ Frame_Runtime :: struct {
 	native_extensions: native.Extension_Set,
 	executor: schedule.Executor,
 	resources: resources.Registry,
+	system_profile: System_Profile_Accumulator,
+}
+
+SYSTEM_PROFILE_WINDOW_FRAMES :: 10
+
+System_Profile_Accumulator :: struct {
+	snapshot: shared.System_Profile,
+	totals: [shared.MAX_SYSTEM_PROFILE_ENTRIES]i64,
+	window_frames: int,
 }
 
 Native_Work_Context :: struct {
-	system:         ^native.Native_System,
-	world:          ^shared.World,
-	commands:       ecs.Command_Buffer,
-	registry:       ^component.Registry,
-	time:           shared.Time_Resource,
-	err:            string,
+	system: ^native.Native_System,
+	world: ^shared.World,
+	commands: ecs.Command_Buffer,
+	registry: ^component.Registry,
+	time: shared.Time_Resource,
+	err: string,
+	duration_ns: i64,
+	system_index: int,
 }
 
 init_project :: project.init_project
@@ -90,16 +102,27 @@ check_project :: proc(root: string) -> string {
 	component.init_registry(&registry)
 	render_resources: resources.Registry
 	defer resources.destroy_registry(&render_resources)
-	if err := init_render_resources(&render_resources, &world); err != "" {return err}
+	if err := init_render_resources(&render_resources, &world); err != "" { return err }
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
-	if extension_load := native.load_project_extensions(&extensions, root, &registry, &render_resources); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(
+		&extensions,
+		root,
+		&registry,
+		&render_resources,
+	); extension_load.err != "" {
 		return extension_load.err
 	}
 
 	runtime: script.Runtime
 	defer script.destroy_runtime(&runtime)
-	script_result := script.run_project_script_with_registry(&runtime, root, &world, &registry, script.Source_Options{resource_registry = &render_resources})
+	script_result := script.run_project_script_with_registry(
+		&runtime,
+		root,
+		&world,
+		&registry,
+		script.Source_Options{resource_registry = &render_resources},
+	)
 	if script_result.err != "" {
 		return script_result.err
 	}
@@ -154,7 +177,11 @@ analyze_project_luau :: proc(root: string) -> string {
 	}
 	defer delete(fixture)
 
-	temp_dir, temp_err := os.make_directory_temp("", "scrapbot-luau-analyze-*", context.temp_allocator)
+	temp_dir, temp_err := os.make_directory_temp(
+		"",
+		"scrapbot-luau-analyze-*",
+		context.temp_allocator,
+	)
 	if temp_err != nil {
 		return fmt.tprintf("failed to create Luau analyzer temp directory: %v", temp_err)
 	}
@@ -282,7 +309,11 @@ run_packaged_project :: proc(root: string, config: Run_Config) -> Runtime_Result
 	return run_project_internal(root, config, true)
 }
 
-run_project_internal :: proc(root: string, config: Run_Config, extensions_prebuilt: bool) -> Runtime_Result {
+run_project_internal :: proc(
+	root: string,
+	config: Run_Config,
+	extensions_prebuilt: bool,
+) -> Runtime_Result {
 	if config.collect_runtime_stats {
 		backing_allocator := context.allocator
 		tracker: mem.Tracking_Allocator
@@ -305,7 +336,11 @@ run_project_internal :: proc(root: string, config: Run_Config, extensions_prebui
 	return run_project_internal_untracked(root, config, extensions_prebuilt)
 }
 
-run_project_internal_untracked :: proc(root: string, config: Run_Config, extensions_prebuilt: bool) -> Runtime_Result {
+run_project_internal_untracked :: proc(
+	root: string,
+	config: Run_Config,
+	extensions_prebuilt: bool,
+) -> Runtime_Result {
 	result: Runtime_Result
 	run_config := config
 	render_stats: render.Render_Stats
@@ -326,12 +361,12 @@ run_project_internal_untracked :: proc(root: string, config: Run_Config, extensi
 
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
-	ui_state:=new(ui.State)
+	ui_state := new(ui.State)
 	defer free(ui_state)
-	if ui_err:=ui.init(ui_state);ui_err!=""{result.err=ui_err;return result}
-	ui_state.editor_visible=run_config.editor
+	if ui_err := ui.init(ui_state); ui_err != "" { result.err = ui_err; return result }
+	ui_state.editor_visible = run_config.editor
 	defer ui.destroy(ui_state)
-	run_config.ui_state=ui_state
+	run_config.ui_state = ui_state
 
 	if run_config.hot_reload {
 		hot_reload: Hot_Reload_State
@@ -340,6 +375,7 @@ run_project_internal_untracked :: proc(root: string, config: Run_Config, extensi
 			result.err = err
 			return result
 		}
+		ui_state.system_profile = &hot_reload.system_profile.snapshot
 
 		run_config.frame_system = hot_reload_frame_system
 		run_config.frame_system_data = &hot_reload
@@ -359,10 +395,16 @@ run_project_internal_untracked :: proc(root: string, config: Run_Config, extensi
 	defer native.destroy_extension_set(&frame_runtime.native_extensions)
 	defer schedule.destroy_executor(&frame_runtime.executor)
 	defer resources.destroy_registry(&frame_runtime.resources)
-	if err := init_render_resources(&frame_runtime.resources, &world); err != "" {result.err = err; return result}
+	if err := init_render_resources(&frame_runtime.resources, &world);
+	   err != "" { result.err = err; return result }
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
-	if extension_load := native.load_project_extensions(&extensions, root, &registry, &frame_runtime.resources); extension_load.err != "" {
+	if extension_load := native.load_project_extensions(
+		&extensions,
+		root,
+		&registry,
+		&frame_runtime.resources,
+	); extension_load.err != "" {
 		result.err = extension_load.err
 		return result
 	}
@@ -372,7 +414,10 @@ run_project_internal_untracked :: proc(root: string, config: Run_Config, extensi
 		root,
 		&world,
 		&registry,
-		script.Source_Options{log_enabled = config.log_enabled, resource_registry = &frame_runtime.resources},
+		script.Source_Options {
+			log_enabled = config.log_enabled,
+			resource_registry = &frame_runtime.resources,
+		},
 	)
 	if script_result.err != "" {
 		result.err = script_result.err
@@ -380,6 +425,7 @@ run_project_internal_untracked :: proc(root: string, config: Run_Config, extensi
 	}
 	frame_runtime.native_extensions = extensions
 	extensions = {}
+	ui_state.system_profile = &frame_runtime.system_profile.snapshot
 	if script_result.ran || frame_runtime.native_extensions.system_count > 0 {
 		run_config.frame_system = step_frame_runtime_system
 		run_config.frame_system_data = &frame_runtime
@@ -396,12 +442,16 @@ run_project_internal_untracked :: proc(root: string, config: Run_Config, extensi
 
 init_render_resources :: proc(registry: ^resources.Registry, world: ^shared.World) -> string {
 	cube_desc, cube_err := resources.cube(2)
-	if cube_err != "" {return cube_err}
+	if cube_err != "" { return cube_err }
 	defer delete(cube_desc.vertices); defer delete(cube_desc.indices)
 	cube_handle, register_err := resources.register_geometry(registry, "cube", cube_desc)
-	if register_err != "" {return register_err}
-	material_handle, material_err := resources.register_material(registry, "default", {base_color = {0.3, 0.7, 0.95, 1}})
-	if material_err != "" {return material_err}
+	if register_err != "" { return register_err }
+	material_handle, material_err := resources.register_material(
+		registry,
+		"default",
+		{base_color = {0.3, 0.7, 0.95, 1}},
+	)
+	if material_err != "" { return material_err }
 	for entity, index in world.entities {
 		if entity.mesh_index >= 0 {
 			ecs.add_geometry(world, index, cube_handle)
@@ -411,7 +461,11 @@ init_render_resources :: proc(registry: ^resources.Registry, world: ^shared.Worl
 	return ""
 }
 
-step_frame_runtime_system :: proc(data: rawptr, world: ^shared.World, delta_seconds: f32) -> string {
+step_frame_runtime_system :: proc(
+	data: rawptr,
+	world: ^shared.World,
+	delta_seconds: f32,
+) -> string {
 	runtime := cast(^Frame_Runtime)data
 	if runtime == nil {
 		return ""
@@ -419,20 +473,137 @@ step_frame_runtime_system :: proc(data: rawptr, world: ^shared.World, delta_seco
 	return step_frame_runtime(runtime, world, delta_seconds)
 }
 
-step_frame_runtime :: proc(runtime: ^Frame_Runtime, world: ^shared.World, delta_seconds: f32) -> string {
+step_frame_runtime :: proc(
+	runtime: ^Frame_Runtime,
+	world: ^shared.World,
+	delta_seconds: f32,
+) -> string {
 	if runtime == nil {
 		return ""
 	}
 	ecs.advance_time(&world.time, delta_seconds)
-	return step_frame_runtime_parts(&runtime.script_runtime, &runtime.native_extensions, &runtime.executor, world, world.time)
+	return step_frame_runtime_parts(
+		&runtime.script_runtime,
+		&runtime.native_extensions,
+		&runtime.executor,
+		&runtime.system_profile,
+		world,
+		world.time,
+	)
+}
+
+system_profile_entry_matches :: proc(
+	entry: ^shared.System_Profile_Entry,
+	kind: shared.System_Profile_Kind,
+	name: string,
+) -> bool {
+	if entry == nil || entry.kind != kind {
+		return false
+	}
+	length := min(len(name), shared.SYSTEM_PROFILE_NAME_CAPACITY)
+	if entry.name_length != length {
+		return false
+	}
+	for index in 0 ..< length {
+		if entry.name[index] != name[index] {
+			return false
+		}
+	}
+	return true
+}
+
+system_profile_set_entry :: proc(
+	entry: ^shared.System_Profile_Entry,
+	kind: shared.System_Profile_Kind,
+	name: string,
+) {
+	entry^ = {}
+	entry.kind = kind
+	entry.name_length = min(len(name), shared.SYSTEM_PROFILE_NAME_CAPACITY)
+	for index in 0 ..< entry.name_length {
+		entry.name[index] = name[index]
+	}
+}
+
+system_profile_prepare :: proc(
+	profile: ^System_Profile_Accumulator,
+	native_extensions: ^native.Extension_Set,
+	script_runtime: ^script.Runtime,
+) {
+	if profile == nil || native_extensions == nil || script_runtime == nil {
+		return
+	}
+	entry_count := native_extensions.system_count + script_runtime.system_count
+	topology_changed := profile.snapshot.entry_count != entry_count
+	if !topology_changed {
+		for index in 0 ..< native_extensions.system_count {
+			if !system_profile_entry_matches(
+				&profile.snapshot.entries[index],
+				.Native,
+				native_extensions.systems[index].name,
+			) {
+				topology_changed = true
+				break
+			}
+		}
+	}
+	if !topology_changed {
+		for index in 0 ..< script_runtime.system_count {
+			profile_index := native_extensions.system_count + index
+			if !system_profile_entry_matches(&profile.snapshot.entries[profile_index], .Luau, "") {
+				topology_changed = true
+				break
+			}
+		}
+	}
+	if !topology_changed {
+		return
+	}
+	revision := profile.snapshot.revision + 1
+	profile^ = {}
+	profile.snapshot.entry_count = entry_count
+	profile.snapshot.revision = revision
+	for index in 0 ..< native_extensions.system_count {
+		system_profile_set_entry(
+			&profile.snapshot.entries[index],
+			.Native,
+			native_extensions.systems[index].name,
+		)
+	}
+	for index in 0 ..< script_runtime.system_count {
+		profile_index := native_extensions.system_count + index
+		system_profile_set_entry(&profile.snapshot.entries[profile_index], .Luau, "")
+	}
+}
+
+system_profile_commit_frame :: proc(profile: ^System_Profile_Accumulator, durations: []i64) {
+	if profile == nil {
+		return
+	}
+	for index in 0 ..< min(profile.snapshot.entry_count, len(durations)) {
+		profile.totals[index] += durations[index]
+	}
+	profile.window_frames += 1
+	if profile.window_frames < SYSTEM_PROFILE_WINDOW_FRAMES {
+		return
+	}
+	for index in 0 ..< profile.snapshot.entry_count {
+		profile.snapshot.entries[index].average_nanoseconds =
+			f64(profile.totals[index]) / f64(profile.window_frames)
+		profile.totals[index] = 0
+	}
+	profile.snapshot.sample_frames = profile.window_frames
+	profile.window_frames = 0
+	profile.snapshot.revision += 1
 }
 
 step_frame_runtime_parts :: proc(
 	script_runtime: ^script.Runtime,
 	native_extensions: ^native.Extension_Set,
 	executor: ^schedule.Executor,
+	system_profile: ^System_Profile_Accumulator,
 	world: ^shared.World,
-	time: shared.Time_Resource,
+	frame_time: shared.Time_Resource,
 ) -> string {
 	if script_runtime == nil || native_extensions == nil || executor == nil {
 		return ""
@@ -442,14 +613,16 @@ step_frame_runtime_parts :: proc(
 	}
 
 	system_count := native_extensions.system_count + script_runtime.system_count
-	if system_count == 0 {
-		return ""
-	}
 	if system_count > schedule.MAX_SYSTEMS {
 		return "too many frame systems"
 	}
+	system_profile_prepare(system_profile, native_extensions, script_runtime)
+	if system_count == 0 {
+		return ""
+	}
 
 	scheduled_systems: [schedule.MAX_SYSTEMS]schedule.System
+	frame_durations: [schedule.MAX_SYSTEMS]i64
 	index := 0
 	for system in native_extensions.systems[:native_extensions.system_count] {
 		scheduled_systems[index] = system.declaration
@@ -465,7 +638,7 @@ step_frame_runtime_parts :: proc(
 		max_native_width := 0
 		for batch in plan.batches[:plan.batch_count] {
 			native_width := 0
-			for i in 0..<batch.system_count {
+			for i in 0 ..< batch.system_count {
 				if batch.system_indices[i] < native_extensions.system_count {
 					native_width += 1
 				}
@@ -480,7 +653,7 @@ step_frame_runtime_parts :: proc(
 		native_work: [schedule.MAX_SYSTEMS]schedule.Work
 		native_contexts: [schedule.MAX_SYSTEMS]Native_Work_Context
 		native_count := 0
-		for i in 0..<batch.system_count {
+		for i in 0 ..< batch.system_count {
 			system_index := batch.system_indices[i]
 			if system_index < native_extensions.system_count {
 				work_context := &native_contexts[native_count]
@@ -488,7 +661,8 @@ step_frame_runtime_parts :: proc(
 				work_context.system = &native_extensions.systems[system_index]
 				work_context.world = world
 				work_context.registry = &script_runtime.registry
-				work_context.time = time
+				work_context.time = frame_time
+				work_context.system_index = system_index
 				native_work[native_count] = schedule.Work {
 					procedure = run_native_work,
 					data = work_context,
@@ -499,46 +673,59 @@ step_frame_runtime_parts :: proc(
 		}
 
 		schedule.run_parallel(executor, native_work[:native_count])
-		for i in 0..<native_count {
+		for i in 0 ..< native_count {
 			work_context := &native_contexts[i]
 			if work_context.err != "" {
-				for j in 0..<native_count {
+				for j in 0 ..< native_count {
 					ecs.destroy_command_buffer(&native_contexts[j].commands)
 				}
 				ecs.clear_commands(&script_runtime.commands)
 				return work_context.err
 			}
-			if err := ecs.append_commands(&script_runtime.commands, &work_context.commands); err != "" {
-				for j in 0..<native_count {
+			frame_durations[work_context.system_index] = work_context.duration_ns
+			if err := ecs.append_commands(&script_runtime.commands, &work_context.commands);
+			   err != "" {
+				for j in 0 ..< native_count {
 					ecs.destroy_command_buffer(&native_contexts[j].commands)
 				}
 				ecs.clear_commands(&script_runtime.commands)
 				return err
 			}
 		}
-		for i in 0..<native_count {
+		for i in 0 ..< native_count {
 			ecs.destroy_command_buffer(&native_contexts[i].commands)
 		}
 
-		for i in 0..<batch.system_count {
+		for i in 0 ..< batch.system_count {
 			system_index := batch.system_indices[i]
 			if system_index < native_extensions.system_count {
 				continue
 			}
 			script_index := system_index - native_extensions.system_count
 			system := script_runtime.systems[script_index]
-			if err := script.run_script_system(script_runtime, script_runtime.L, system, time); err != "" {
+			start := time.tick_now()
+			err := script.run_script_system(script_runtime, script_runtime.L, system, frame_time)
+			finish := time.tick_now()
+			frame_durations[system_index] = time.duration_nanoseconds(
+				time.tick_diff(start, finish),
+			)
+			if err != "" {
 				ecs.clear_commands(&script_runtime.commands)
 				return err
 			}
 		}
 	}
 
-	return ecs.apply_commands(world, &script_runtime.commands)
+	if err := ecs.apply_commands(world, &script_runtime.commands); err != "" {
+		return err
+	}
+	system_profile_commit_frame(system_profile, frame_durations[:system_count])
+	return ""
 }
 
 run_native_work :: proc(data: rawptr) {
 	work := cast(^Native_Work_Context)data
+	start := time.tick_now()
 	work.err = native.step_system(
 		work.system,
 		work.world,
@@ -546,6 +733,8 @@ run_native_work :: proc(data: rawptr) {
 		work.registry,
 		work.time,
 	)
+	finish := time.tick_now()
+	work.duration_ns = time.duration_nanoseconds(time.tick_diff(start, finish))
 }
 
 build_native_extensions :: proc(root: string, config: ^shared.Project_Config) -> string {

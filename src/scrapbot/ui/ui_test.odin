@@ -1787,6 +1787,73 @@ test_editor_entity_and_component_snapshots_refresh_at_five_hz :: proc(t: ^testin
 }
 
 @(test)
+test_editor_system_profile_uses_panel_table_and_scroll_components :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	profile: shared.System_Profile
+	profile.entry_count = 2
+	profile.sample_frames = 10
+	profile.revision = 1
+	profile.entries[0].kind = .Native
+	profile.entries[0].average_nanoseconds = 1_500_000
+	physics_name := "Physics"
+	profile.entries[0].name_length = len(physics_name)
+	for index in 0 ..< len(physics_name) {
+		profile.entries[0].name[index] = physics_name[index]
+	}
+	profile.entries[1].kind = .Luau
+	profile.entries[1].average_nanoseconds = 2_500
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.system_profile = &profile
+
+	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
+	systems, found := editor_ui_entity(&world, .Systems_Scroll)
+	testing.expect(t, found)
+	if found {
+		entity := world.entities[systems]
+		testing.expect(t, entity.ui_panel_index >= 0)
+		testing.expect(t, entity.ui_table_index >= 0)
+		testing.expect(t, entity.ui_scroll_area_index >= 0)
+		testing.expect(t, world.ui_panels[entity.ui_panel_index].title == "SYSTEMS / 2")
+		testing.expect(t, world.ui_tables[entity.ui_table_index].columns == 2)
+	}
+	name_cell, name_found := editor_ui_entity(&world, .Systems_Name, 0)
+	time_cell, time_found := editor_ui_entity(&world, .Systems_Time, 0)
+	luau_cell, luau_found := editor_ui_entity(&world, .Systems_Name, 1)
+	testing.expect(t, name_found && time_found && luau_found)
+	if name_found {
+		text := world.ui_texts[world.entities[name_cell].ui_text_index]
+		testing.expect(t, text.text == "Physics")
+		testing.expect(t, text.size == EDITOR_TEXT_SIZE)
+	}
+	if time_found {
+		text := world.ui_texts[world.entities[time_cell].ui_text_index]
+		testing.expect(t, text.text == "1.50 ms")
+		testing.expect(t, text.size == EDITOR_TEXT_SIZE)
+	}
+	if luau_found {
+		text := world.ui_texts[world.entities[luau_cell].ui_text_index]
+		testing.expect(t, text.text == "Luau System 1")
+	}
+
+	refresh_count := state.editor_snapshot_refresh_count
+	profile.entries[0].average_nanoseconds = 750_000
+	profile.revision += 1
+	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
+	testing.expect(t, state.editor_snapshot_refresh_count == refresh_count + 1)
+	if time_found {
+		text := world.ui_texts[world.entities[time_cell].ui_text_index]
+		testing.expect(t, text.text == "750.0 us")
+	}
+}
+
+@(test)
 test_editor_gizmo_appends_three_axis_lines_and_handles :: proc(t: ^testing.T) {
 	state := new(
 		State,

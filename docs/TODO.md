@@ -81,6 +81,7 @@
 ## Editor
 
 - [x] Add a transient ECS-built editor shell toggled with Ctrl+Esc.
+- [x] Add a smoothly scrolling system list with ten-frame callback-time averages.
 - [x] Keep the running project live across the complete available viewport with a dynamic camera aspect ratio.
 - [x] Add a smoothly scrolling entity browser with scene/runtime provenance and stable selection.
 - [x] Add a smoothly scrolling component field/value inspector for the selected entity.
