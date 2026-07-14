@@ -1,7 +1,47 @@
+[tool_alias]
+ols = "github:DanielGavin/ols"
+odinfmt = "github:DanielGavin/ols"
+
 [tools]
 node = "24"
 odin = { version = "dev-2026-07", exe = "odin" }
+ols = { version = "dev-2026-05", rename_exe = "ols" }
+odinfmt = { version = "dev-2026-05", rename_exe = "odinfmt" }
 pnpm = "10"
+
+[tasks.fmt]
+description = "Format all Odin source files"
+run = '''
+odinfmt src -w
+odinfmt examples -w
+'''
+
+[tasks.fmt-audit]
+description = "Report Odin formatting drift without changing files"
+run = '''
+find src examples -name '*.odin' -exec sh -c '
+tmp="${TMPDIR:-/tmp}/scrapbot-odinfmt-$$"
+for file do
+  cp "$file" "$tmp"
+  odinfmt "$tmp" -config:odinfmt.json -w
+  if ! cmp -s "$file" "$tmp"; then
+    echo "Odin formatting required: $file" >&2
+  fi
+done
+rm -f "$tmp"
+' sh {} +
+'''
+
+[tasks.fmt-staged]
+description = "Check staged Odin files with odinfmt"
+run = "node tools/check_staged_odin_format.mjs"
+
+[tasks.setup]
+description = "Install project tools and tracked Git hooks"
+run = '''
+mise install
+git config --local core.hooksPath .githooks
+'''
 
 [tasks.build]
 description = "Build the Scrapbot CLI"

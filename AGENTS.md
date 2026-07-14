@@ -27,3 +27,12 @@ bin/scrapbot run <path> --frames <n> --json
 - Expect exactly one JSON document on stdout. Use `schema_version` before assuming an envelope shape.
 - Keep automated runs bounded with `--frames`.
 - Use a headless WGPU framegrab when correctness depends on rendered output; structured diagnostics do not replace visual verification.
+
+## Odin Tooling
+
+- Run `mise install` to provision the pinned Odin compiler, OLS language server, and `odinfmt` formatter.
+- Format touched `.odin` files with `odinfmt <path> -w` before verification.
+- Write one statement per line and use multiline control-flow bodies; `odinfmt` preserves semicolon-packed structure and cannot make compressed source readable by itself.
+- Use `mise fmt-audit` to report formatting drift without modifying the worktree.
+- The tracked pre-commit hook checks staged Odin blobs with `mise fmt-staged`. Never bypass it with `--no-verify`.
+- Keep `ols.json` and `odinfmt.json` as the shared editor and formatting policy; do not replace them with editor-local defaults.

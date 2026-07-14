@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DanielGavin/ols/master/misc/ols.schema.json",
+  "odin_command": "odin",
+  "enable_format": true,
+  "enable_hover": true,
+  "enable_document_symbols": true,
+  "enable_references": true,
+  "enable_overload_resolution": true,
+  "enable_semantic_tokens": true,
+  "enable_checker_only_saved": true,
+  "enable_checker_workspace_diagnostics": false,
+  "checker_args": "-no-entry-point",
+  "profile": "default",
+  "profiles": [
+    {
+      "name": "default",
+      "checker_path": ["src/scrapbot", "src/scrapbot_cli"]
+    }
+  ]
+}
