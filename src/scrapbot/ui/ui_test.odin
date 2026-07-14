@@ -1584,6 +1584,77 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 }
 
 @(test)
+test_editor_history_bounds_branches_and_skips_stale_commands :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "First",
+			has_transform = true,
+			transform = {position = {0, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			name = "Second",
+			has_transform = true,
+			transform = {position = {10, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	first := shared.Editor_UI_Component {
+		target = world.entities[0].id,
+		inspector_field = .Transform_Position,
+		inspector_axis = .X,
+		numeric = true,
+	}
+	second := first
+	second.target = world.entities[1].id
+
+	for index in 0 ..< EDITOR_HISTORY_CAPACITY + 2 {
+		editor_history_push(state, &world, first, f32(index), f32(index + 1))
+	}
+	testing.expect(t, state.editor_history_count == EDITOR_HISTORY_CAPACITY)
+	testing.expect(t, state.editor_history_cursor == EDITOR_HISTORY_CAPACITY)
+	testing.expect(t, state.editor_history[0].before == 2)
+	testing.expect(t, state.editor_history[EDITOR_HISTORY_CAPACITY - 1].after == 130)
+
+	state.editor_history_count = 0
+	state.editor_history_cursor = 0
+	world.transforms[world.entities[0].transform_index].position.x = 1
+	editor_history_push(state, &world, first, 0, 1)
+	world.transforms[world.entities[0].transform_index].position.x = 2
+	editor_history_push(state, &world, first, 1, 2)
+	testing.expect(t, editor_history_apply(state, &world, false))
+	testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 1)
+	world.transforms[world.entities[0].transform_index].position.x = 3
+	editor_history_push(state, &world, first, 1, 3)
+	testing.expect(t, state.editor_history_count == 2)
+	testing.expect(t, state.editor_history_cursor == 2)
+	testing.expect(t, state.editor_history[1].after == 3)
+	testing.expect(t, !editor_history_apply(state, &world, true))
+	testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 3)
+
+	state.editor_history_count = 0
+	state.editor_history_cursor = 0
+	world.transforms[world.entities[1].transform_index].position.x = 11
+	editor_history_push(state, &world, second, 10, 11)
+	world.transforms[world.entities[0].transform_index].position.x = 4
+	editor_history_push(state, &world, first, 3, 4)
+	ecs.remove_transform(&world, 0)
+	ecs.add_transform(&world, 0, {position = {77, 0, 0}, scale = {1, 1, 1}})
+	testing.expect(t, editor_history_apply(state, &world, false))
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, state.editor_history_cursor == 0)
+	testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 77)
+	testing.expect(t, world.transforms[world.entities[1].transform_index].position.x == 10)
+}
+
+@(test)
 test_editor_entity_and_component_snapshots_refresh_at_five_hz :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
 	append(

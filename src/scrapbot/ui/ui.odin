@@ -1308,39 +1308,45 @@ editor_history_push :: proc(
 	state.editor_history_cursor = state.editor_history_count
 }
 
+editor_history_remove :: proc(state: ^State, index: int) {
+	if state == nil || index < 0 || index >= state.editor_history_count { return }
+	if index + 1 < state.editor_history_count {
+		copy(
+			state.editor_history[index:state.editor_history_count - 1],
+			state.editor_history[index + 1:state.editor_history_count],
+		)
+	}
+	state.editor_history_count -= 1
+	if state.editor_history_cursor > index { state.editor_history_cursor -= 1 }
+	state.editor_history_cursor = clamp(state.editor_history_cursor, 0, state.editor_history_count)
+}
+
 editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) -> bool {
 	if state == nil || world == nil { return false }
-	command: Editor_Edit_Command
-	value: f32
-	if redo {
-		if state.editor_history_cursor >= state.editor_history_count { return false }
-		command = state.editor_history[state.editor_history_cursor]
-		value = command.after
-		state.editor_history_cursor += 1
-	} else {
-		if state.editor_history_cursor <= 0 { return false }
-		state.editor_history_cursor -= 1
-		command = state.editor_history[state.editor_history_cursor]
-		value = command.before
+	for {
+		index := state.editor_history_cursor
+		if !redo { index -= 1 }
+		if index < 0 || index >= state.editor_history_count { return false }
+		command := state.editor_history[index]
+		binding := shared.Editor_UI_Component {
+			target = command.target,
+			inspector_field = command.field,
+			inspector_axis = command.axis,
+			custom_storage_index = command.custom_storage_index,
+			custom_field_index = command.custom_field_index,
+			numeric = true,
+		}
+		target, _, found := inspector_target(world, binding)
+		value := command.before
+		if redo { value = command.after }
+		if found &&
+		   target.component_revision == command.component_revision &&
+		   write_inspector_numeric(state, world, binding, value) {
+			if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
+			return true
+		}
+		editor_history_remove(state, index)
 	}
-	binding := shared.Editor_UI_Component {
-		target = command.target,
-		inspector_field = command.field,
-		inspector_axis = command.axis,
-		custom_storage_index = command.custom_storage_index,
-		custom_field_index = command.custom_field_index,
-		numeric = true,
-	}
-	target, _, found := inspector_target(world, binding)
-	if !found || target.component_revision != command.component_revision {
-		if redo { state.editor_history_cursor -= 1 } else { state.editor_history_cursor += 1 }
-		return false
-	}
-	if !write_inspector_numeric(state, world, binding, value) {
-		if redo { state.editor_history_cursor -= 1 } else { state.editor_history_cursor += 1 }
-		return false
-	}
-	return true
 }
 
 focused_input_binding :: proc(
