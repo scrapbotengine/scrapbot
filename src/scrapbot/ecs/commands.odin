@@ -556,6 +556,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		ui_table_index = INVALID_COMPONENT_INDEX,
 		ui_text_index = INVALID_COMPONENT_INDEX,
 		ui_button_index = INVALID_COMPONENT_INDEX,
+		ui_input_index = INVALID_COMPONENT_INDEX,
 		editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 		editor_ui_index = INVALID_COMPONENT_INDEX,
 		has_shadow_caster = spawn.has_shadow_caster,

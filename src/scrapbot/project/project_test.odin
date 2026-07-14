@@ -302,6 +302,33 @@ row_gap = 4
 }
 
 @(test)
+test_scene_parses_single_line_ui_input :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+name = "Name Input"
+[entities.ui_layout]
+size = [240, 32]
+[entities.ui_input]
+text = "Scrapbot"
+color = [0.9, 0.9, 0.9, 1]
+size = 13
+selection_background = [0.1, 0.5, 0.4, 0.5]
+focus_border_color = [0.1, 0.8, 0.7, 1]
+read_only = false
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	testing.expect(t, len(scene.entities) == 1)
+	input := scene.entities[0].ui_input
+	testing.expect(t, scene.entities[0].has_ui_input)
+	testing.expect(t, input.text == "Scrapbot")
+	testing.expect(t, input.size == 13)
+	testing.expect(t, input.selection_background == Vec4{0.1, 0.5, 0.4, 0.5})
+	testing.expect(t, input.focus_border_color == Vec4{0.1, 0.8, 0.7, 1})
+}
+
+@(test)
 test_scene_rejects_ui_parent_cycles :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]

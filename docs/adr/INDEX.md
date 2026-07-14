@@ -23,3 +23,4 @@
 | [ADR-019](ADR-019-model-the-editor-scene-camera-as-a-transient-ecs-entity.md) | Model the editor scene camera as a transient ECS entity | 2026-07-13 |
 | [ADR-020](ADR-020-keep-scroll-state-in-retained-ui-and-clip-on-the-gpu.md) | Keep scroll state in retained UI and clip on the GPU | 2026-07-13 |
 | [ADR-021](ADR-021-model-editor-chrome-as-transient-ecs-ui.md) | Model editor chrome as transient ECS UI | 2026-07-14 |
+| [ADR-022](ADR-022-record-editor-edits-as-runtime-commands.md) | Record editor edits as runtime commands | 2026-07-14 |

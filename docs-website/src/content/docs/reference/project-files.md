@@ -156,6 +156,26 @@ active_background = [0.22, 0.18, 0.68, 1]
 active_color = [0.82, 0.84, 1, 1]
 
 [[entities]]
+name = "Player Name"
+
+[entities.ui_layout]
+parent = "HUD"
+size = [240, 40]
+padding = [10, 12, 10, 12]
+background = [0.025, 0.03, 0.04, 1]
+border_color = [0.16, 0.18, 0.22, 1]
+border_width = 1
+corner_radius = 6
+
+[entities.ui_input]
+text = "SCRAPBOT"
+color = [0.92, 0.93, 0.95, 1]
+size = 16
+selection_background = [0.15, 0.45, 0.40, 0.55]
+focus_border_color = [0.15, 0.85, 0.72, 1]
+read_only = false
+
+[[entities]]
 name = "Feature Scroll"
 
 [entities.ui_layout]
@@ -180,9 +200,11 @@ size = [396, 360]
 gap = 8
 ```
 
-Positions and sizes are screen pixels from the top-left. `margin` and `padding` use `[top, right, bottom, left]`. `border_color` and non-negative `border_width` add an inset signed-distance border that follows `corner_radius`. `hidden = true` removes the box and its descendant subtree from layout, paint, and interaction without despawning their entities. Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Add `draggable = true` to turn the gaps into pointer-draggable separators; `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable stacks must also enable fill. Backgrounds, borders, and corner radii are rendered from the same signed-distance rounded rectangle. Parent names must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine both stack directions or both text and button content.
+Positions and sizes are screen pixels from the top-left. `margin` and `padding` use `[top, right, bottom, left]`. `border_color` and non-negative `border_width` add an inset signed-distance border that follows `corner_radius`. `hidden = true` removes the box and its descendant subtree from layout, paint, and interaction without despawning their entities. Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Add `draggable = true` to turn the gaps into pointer-draggable separators; `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable stacks must also enable fill. Backgrounds, borders, and corner radii are rendered from the same signed-distance rounded rectangle. Parent names must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine both stack directions or more than one of `ui_text`, `ui_button`, and `ui_input`.
 
 Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button activation events are not emitted yet.
+
+Clicking a `ui_input` focuses it and selects all its text. Focused inputs support typed single-line ASCII text, Left/Right/Home/End movement, Shift selection, Backspace/Delete, Select All, and paint-order Tab/Shift+Tab traversal. Enter accepts the current value and removes focus; Escape restores the text present when focus began. The component's `text` field changes during editing. Set `read_only = true` to retain focus, selection, and traversal without allowing mutation. Clipboard operations, IME composition, Unicode shaping, multiline editing, and public change/commit events are not implemented yet.
 
 A `ui_scroll_area` clips descendants to its padded content rectangle and scrolls vertically when the pointer wheel is over it. Give its nested pane an explicit size larger than the viewport; that pane may contain overlays or stacks of any size. `scroll_speed` is the target movement per wheel unit and `smoothness` controls frame-time interpolation toward that target. Both must be positive. Nested scroll clips intersect, and only the topmost hovered scroll area consumes a wheel update.
 

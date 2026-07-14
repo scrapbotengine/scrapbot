@@ -26,8 +26,12 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - The scene sidebar lists scene-authored and runtime-spawned entities and supports pixel-continuous pointer-wheel and trackpad scrolling, clipped partial rows, hover, and stable selection.
 - Scene-authored entity names use normal white editor text and runtime-spawned entity names use muted gray. Editor-origin entities are hidden from the browser and cannot be selected in the inspector.
 - Selection follows the entity's generation-aware identity and clears if that entity despawns.
-- The inspector shows the selected entity's name, identity, provenance, attached components, field names, and current values. Components are vertically stacked titled panels, and each panel renders its fields in a two-column property table inside an independently scrollable sidebar.
-- Entity membership, names, status counts, and formatted inspector values refresh from the running world every 200 ms. Opening the editor or changing selection refreshes immediately; hover, scrolling, picking, and gizmo input remain frame-rate responsive.
+- The inspector shows the selected entity's name, identity, provenance, attached components, field names, and current values. Components are vertically stacked titled panels, and each panel renders its fields in a two-column property table inside an independently scrollable sidebar. Values use reusable input controls: transform, camera, light, and custom Vec3 fields are live-editable, while unsupported field types remain selectable and read-only. Vec3 value cells compose three equal-width X, Y, and Z inputs with a fill HStack; scalar value cells contain one full-width input.
+- Clicking an inspector value selects its complete contents. Cursor and selection commands work inside the field, Tab and Shift+Tab traverse values in paint order—including X, Y, and Z independently—Enter commits and leaves the field, and Escape restores the value captured when editing began.
+- Numeric fields reject non-finite, unparsable, and field-invalid values with a red focus border without mutating the running world. Up and Down step by the field's default increment, Shift uses a coarse 10× step, and Ctrl/Cmd uses a fine 0.1× step. Camera planes remain positive and ordered, camera field of view stays within 1–179 degrees, and light colors and non-negative light properties remain within their valid ranges.
+- Vec3 controls expose restrained red, green, and blue X/Y/Z label strips. Dragging a strip horizontally scrubs that axis; releasing commits the complete drag as one edit.
+- Completed inspector typing, stepping, and scrubbing gestures enter a bounded runtime command history. `Ctrl/Cmd+Z` undoes and `Ctrl/Cmd+Shift+Z` redoes while the editor is open. Escape and invalid values do not create history, and editor shortcuts do not consume project input while chrome is closed or a project-owned input has focus.
+- Entity membership, names, status counts, and formatted inspector values refresh from the running world every 200 ms. Opening the editor or changing selection refreshes immediately; a focused input is not overwritten by a periodic snapshot, and hover, scrolling, picking, gizmo input, and text editing remain frame-rate responsive.
 - The scene browser and component inspector have independent pixel offsets and targets, frame-time smoothing without row or field snapping, clipping, and proportional scrollbars. Selecting a different entity resets the inspector to its beginning.
 - Clicking rendered geometry in the live viewport selects the nearest intersected entity using the active camera and current viewport dimensions.
 - Viewport selection reveals the entity in the scene browser; clicking empty viewport space clears selection.
@@ -64,11 +68,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** Debugging the running world requires access to ephemeral entities, while provenance tells users which entities belong to source data and which exist only in the current run.
 **Tradeoff:** A busy runtime can produce a long, rapidly changing list, so search, grouping, and hierarchy remain important follow-up work.
 
-### 5. Keep initial inspection read-only
+### 5. Edit common fields directly in the live world
 
-**Decision:** Selection exposes component fields and live values without allowing mutation yet.
-**Why:** This makes the inspector useful for debugging while avoiding premature commitments around validation, persistence, and undo semantics.
-**Tradeoff:** Users can diagnose current world state but cannot change it from the inspector yet.
+**Decision:** Bind input controls for transform, camera, light, and custom Vec3 fields directly to the selected entity's runtime component storage; render unsupported fields through the same control in read-only mode.
+**Why:** Common scene work becomes immediately useful while one consistent value-cell control preserves traversal and selection for every reflected field.
+**Tradeoff:** Edits affect the running world only and currently rely on field-specific parsing and constraints. General reflection-based mutation and persistence remain future work.
 
 ### 6. Pick exact rendered triangles
 
@@ -108,13 +112,25 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 12. Compose inspection from reusable panel and table entities
 
-**Decision:** Pool editor-origin panel, table, and text-cell entities and rebuild their values at the editor's snapshot cadence.
+**Decision:** Pool editor-origin panel, table, label, and input-cell entities and rebuild their values at the editor's snapshot cadence.
 **Why:** Dogfooding the public UI primitives gives components real visual hierarchy and makes future editable property controls a cell-level evolution instead of a multiline-text rewrite.
-**Tradeoff:** The initial property tables use two equal-width columns and read-only text cells; configurable proportions and editors come later.
+**Tradeoff:** The property tables use two equal-width columns; configurable proportions and type-specific controls come later.
+
+### 13. Reuse the ECS input control for inspector traversal
+
+**Decision:** Express inspector values as ordinary `ui_input` entities, with editor-only bindings describing the selected component field and optional Vec3 axis behind each writable control. Compose one or three controls inside the table's value cell through a fill HStack.
+**Why:** The editor dogfoods public focus, selection, cursor, and paint-order traversal behavior instead of maintaining a separate text editor inside the inspector.
+**Tradeoff:** The internal binding layer is field-specific and runtime-only; it is not a general public data-binding or command-event API.
+
+### 14. Preview immediately and commit one runtime command per gesture
+
+**Decision:** Apply each valid numeric preview to the live ECS, but capture its starting value and add one bounded history command only when typing, stepping, or scrubbing completes, following ADR-022.
+**Why:** Scene feedback remains immediate without turning every character or pointer pixel into a separate undo step.
+**Tradeoff:** History is numeric, runtime-only, and limited to 128 commands. It does not yet include gizmo manipulation, structural edits, source persistence, or dirty tracking.
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-022
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions

@@ -74,6 +74,8 @@ Scene_Entity :: struct {
 	ui_text: UI_Text_Component,
 	has_ui_button: bool,
 	ui_button: UI_Button_Component,
+	has_ui_input: bool,
+	ui_input: UI_Input_Component,
 	custom_components: [dynamic]Custom_Component,
 }
 
@@ -189,6 +191,40 @@ UI_Button_Component :: struct {
 	hover_color: Vec4,
 	active_color: Vec4,
 }
+UI_Input_Component :: struct {
+	text: string,
+	color: Vec4,
+	size: f32,
+	selection_background: Vec4,
+	focus_border_color: Vec4,
+	read_only: bool,
+}
+
+Editor_Inspector_Field :: enum {
+	None,
+	Transform_Position,
+	Transform_Rotation,
+	Transform_Scale,
+	Camera_Fov,
+	Camera_Near,
+	Camera_Far,
+	Ambient_Color,
+	Ambient_Intensity,
+	Directional_Direction,
+	Directional_Color,
+	Directional_Intensity,
+	Point_Color,
+	Point_Intensity,
+	Point_Range,
+	Custom_Vec3,
+}
+
+Editor_Inspector_Axis :: enum {
+	None,
+	X,
+	Y,
+	Z,
+}
 
 Editor_Gizmo_Mode :: enum {
 	Translate,
@@ -214,6 +250,7 @@ Editor_UI_Role :: enum {
 	Inspector_Panel,
 	Inspector_Table,
 	Inspector_Cell,
+	Inspector_Input,
 	Status,
 }
 
@@ -222,6 +259,16 @@ Editor_UI_Component :: struct {
 	role: Editor_UI_Role,
 	target: Entity,
 	slot: int,
+	inspector_field: Editor_Inspector_Field,
+	inspector_axis: Editor_Inspector_Axis,
+	custom_storage_index: int,
+	custom_field_index: int,
+	numeric: bool,
+	numeric_step: f32,
+	numeric_min: f32,
+	numeric_max: f32,
+	numeric_has_min: bool,
+	numeric_has_max: bool,
 }
 
 Mesh_Component :: struct {
@@ -281,6 +328,7 @@ World_Entity :: struct {
 	ui_table_index: int,
 	ui_text_index: int,
 	ui_button_index: int,
+	ui_input_index: int,
 	editor_transform_gizmo_index: int,
 	editor_ui_index: int,
 	geometry_resource: string,
@@ -357,6 +405,7 @@ World :: struct {
 	ui_tables: [dynamic]UI_Table_Component,
 	ui_texts: [dynamic]UI_Text_Component,
 	ui_buttons: [dynamic]UI_Button_Component,
+	ui_inputs: [dynamic]UI_Input_Component,
 	editor_transform_gizmos: [dynamic]Editor_Transform_Gizmo_Component,
 	editor_scene_cameras: [dynamic]Editor_Scene_Camera_Component,
 	editor_uis: [dynamic]Editor_UI_Component,

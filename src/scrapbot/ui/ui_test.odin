@@ -207,6 +207,101 @@ test_panel_title_reserves_child_space_and_paints_a_title_band :: proc(t: ^testin
 }
 
 @(test)
+test_single_line_input_selects_edits_navigates_and_tabs_in_paint_order :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "First",
+			has_ui_layout = true,
+			ui_layout = {
+				position = {10, 10},
+				size = {160, 28},
+				padding = {6, 8, 5, 8},
+				background = {0.02, 0.03, 0.04, 1},
+				border_color = {0.1, 0.1, 0.1, 1},
+				border_width = 1,
+			},
+			has_ui_input = true,
+			ui_input = {
+				text = "alpha",
+				color = {1, 1, 1, 1},
+				size = 12,
+				selection_background = {0.1, 0.5, 0.4, 0.5},
+				focus_border_color = {0.1, 0.8, 0.7, 1},
+			},
+		},
+		shared.Scene_Entity {
+			name = "Second",
+			has_ui_layout = true,
+			ui_layout = {
+				position = {10, 48},
+				size = {160, 28},
+				padding = {6, 8, 5, 8},
+				hidden = true,
+			},
+			has_ui_input = true,
+			ui_input = {text = "second", color = {1, 1, 1, 1}, size = 12},
+		},
+		shared.Scene_Entity {
+			name = "Third",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 48}, size = {160, 28}, padding = {6, 8, 5, 8}},
+			has_ui_input = true,
+			ui_input = {text = "third", color = {1, 1, 1, 1}, size = 12},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = {30, 20}, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.has_focused_input && state.focused_input == world.entities[0].id)
+	testing.expect(t, state.input_anchor == 0 && state.input_cursor == 5)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {}, 0, 0, 1.0 / 60.0, {text = "beta"}) == "",
+	)
+	testing.expect(t, world.ui_inputs[0].text == "beta")
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {}, 0, 0, 1.0 / 60.0, {home = true}) == "",
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {}, 0, 0, 1.0 / 60.0, {right = true, shift = true}) ==
+		"",
+	)
+	testing.expect(t, state.input_anchor == 0 && state.input_cursor == 1)
+	testing.expect(t, reconcile(state, &world, 200, 100, {}, 0, 0, 1.0 / 60.0, {text = "B"}) == "")
+	testing.expect(t, world.ui_inputs[0].text == "Beta")
+	testing.expect(t, reconcile(state, &world, 200, 100, {}, 0, 0, 1.0 / 60.0, {tab = true}) == "")
+	testing.expect(t, state.focused_input == world.entities[2].id)
+	testing.expect(
+		t,
+		state.input_anchor == 0 && state.input_cursor == len(world.ui_inputs[2].text),
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {}, 0, 0, 1.0 / 60.0, {tab = true, shift = true}) == "",
+	)
+	testing.expect(t, state.focused_input == world.entities[0].id)
+}
+
+@(test)
 test_fill_stack_allocates_available_space_and_drags_between_adjacent_panes :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
 	append(
@@ -1092,9 +1187,11 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	if content_found {
 		testing.expect(t, world.entities[content_entity].ui_text_index < 0)
 	}
-	panel_count, table_count, cell_count := 0, 0, 0
+	panel_count, table_count, cell_count, input_count := 0, 0, 0, 0
 	found_transform, found_button := false, false
-	found_position, found_position_value := false, false
+	found_position := false
+	position_inputs := [3]int{-1, -1, -1}
+	fov_input := -1
 	for component in world.editor_uis {
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
 		entity := world.entities[component.entity_index]
@@ -1110,17 +1207,276 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				testing.expect(t, world.ui_tables[entity.ui_table_index].columns == 2)
 			case .Inspector_Cell:
 				cell_count += 1
-				value := world.ui_texts[entity.ui_text_index].text
-				found_position = found_position || value == "position"
-				found_position_value = found_position_value || value == "(1.00, 2.50, -3.00)"
+				if entity.ui_text_index >= 0 {
+					found_position =
+						found_position || world.ui_texts[entity.ui_text_index].text == "position"
+				}
+			case .Inspector_Input:
+				input_count += 1
+				if component.inspector_field == .Camera_Fov { fov_input = component.entity_index }
+				if component.inspector_field == .Transform_Position {
+					axis_index := int(component.inspector_axis) - 1
+					if axis_index >= 0 && axis_index < len(position_inputs) {
+						position_inputs[axis_index] = component.entity_index
+					}
+				}
 		}
 	}
 	testing.expect(t, panel_count == 4)
 	testing.expect(t, table_count == panel_count)
 	testing.expect(t, cell_count > 20)
+	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, found_transform && found_button)
-	testing.expect(t, found_position && found_position_value)
+	testing.expect(t, found_position)
+	for input in position_inputs { testing.expect(t, input >= 0) }
+	testing.expect(t, fov_input >= 0)
+	if position_inputs[0] >= 0 && position_inputs[1] >= 0 && position_inputs[2] >= 0 {
+		x_node := find_node_by_entity_index(state, position_inputs[0])
+		y_node := find_node_by_entity_index(state, position_inputs[1])
+		z_node := find_node_by_entity_index(state, position_inputs[2])
+		testing.expect(t, x_node >= 0 && y_node >= 0 && z_node >= 0)
+		if x_node >= 0 && y_node >= 0 && z_node >= 0 {
+			testing.expect(t, state.nodes[x_node].rect.y == state.nodes[y_node].rect.y)
+			testing.expect(t, state.nodes[y_node].rect.y == state.nodes[z_node].rect.y)
+			testing.expect(t, state.nodes[x_node].rect.x < state.nodes[y_node].rect.x)
+			testing.expect(t, state.nodes[y_node].rect.x < state.nodes[z_node].rect.x)
+			x_axis_accent_found := false
+			for command in state.paint[:state.paint_count] {
+				if command.kind == .Glyph &&
+				   command.color.x > 0.9 &&
+				   command.color.y < 0.4 &&
+				   rect_contains(state.nodes[x_node].rect, {command.rect.x, command.rect.y}) {
+					x_axis_accent_found = true
+					break
+				}
+			}
+			testing.expect(t, x_axis_accent_found)
+		}
+	}
 	testing.expect(t, format_vec3({1, 2.5, -3}) == "(1.00, 2.50, -3.00)")
+	position_input := position_inputs[0]
+	testing.expect(t, position_input >= 0)
+	if position_input >= 0 {
+		focus_input(state, &world, position_input)
+		refresh_count := state.editor_snapshot_refresh_count
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300, 0) == "")
+		testing.expect(t, state.editor_snapshot_refresh_count == refresh_count)
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0, {text = "9"}) == "",
+		)
+		testing.expect(t, world.transforms[0].position == shared.Vec3{9, 2.5, -3})
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0, {escape = true}) == "",
+		)
+		testing.expect(t, world.transforms[0].position == shared.Vec3{1, 2.5, -3})
+		focus_input(state, &world, position_inputs[0])
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{},
+				1280,
+				300,
+				1.0 / 60.0,
+				{text = "4", tab = true},
+			) ==
+			"",
+		)
+		testing.expect(t, state.focused_input == world.entities[position_inputs[1]].id)
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{},
+				1280,
+				300,
+				1.0 / 60.0,
+				{text = "5", tab = true},
+			) ==
+			"",
+		)
+		testing.expect(t, state.focused_input == world.entities[position_inputs[2]].id)
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{},
+				1280,
+				300,
+				1.0 / 60.0,
+				{text = "6", enter = true},
+			) ==
+			"",
+		)
+		testing.expect(t, world.transforms[0].position == shared.Vec3{4, 5, 6})
+		testing.expect(t, !state.has_focused_input)
+		testing.expect(t, state.editor_history_count == 3)
+
+		// Invalid text remains local, receives invalid styling, and cannot commit.
+		focus_input(state, &world, position_inputs[0])
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0, {text = "nope"}) == "",
+		)
+		testing.expect(t, !state.input_valid)
+		testing.expect(t, world.transforms[0].position == shared.Vec3{4, 5, 6})
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0, {enter = true}) == "",
+		)
+		testing.expect(t, state.has_focused_input)
+		invalid_border_found := false
+		x_node := find_node_by_entity_index(state, position_inputs[0])
+		if x_node >= 0 {
+			for command in state.paint[:state.paint_count] {
+				if command.kind == .Panel &&
+				   command.rect == state.nodes[x_node].rect &&
+				   command.border_color.x > 0.9 &&
+				   command.border_color.y < 0.3 {
+					invalid_border_found = true
+					break
+				}
+			}
+		}
+		testing.expect(t, invalid_border_found)
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0, {escape = true}) == "",
+		)
+
+		// Stepping respects coarse/fine modifiers and records one completed command.
+		focus_input(state, &world, position_inputs[0])
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{},
+				1280,
+				300,
+				1.0 / 60.0,
+				{up = true, shift = true},
+			) ==
+			"",
+		)
+		testing.expect(t, world.transforms[0].position.x == 5)
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{},
+				1280,
+				300,
+				1.0 / 60.0,
+				{down = true, fine = true, enter = true},
+			) ==
+			"",
+		)
+		testing.expect(t, math.abs(world.transforms[0].position.x - 4.99) < 0.001)
+
+		// Dragging the X axis label scrubs, commits on release, and participates in undo/redo.
+		x_node = find_node_by_entity_index(state, position_inputs[0])
+		if x_node >= 0 {
+			start := shared.Vec2 {
+				state.nodes[x_node].rect.x + 7,
+				state.nodes[x_node].rect.y + state.nodes[x_node].rect.height * 0.5,
+			}
+			testing.expect(
+				t,
+				reconcile(
+					state,
+					&world,
+					1280,
+					720,
+					{position = start, primary_down = true, available = true},
+					1280,
+					300,
+				) ==
+				"",
+			)
+			drag := start
+			drag.x += 40
+			testing.expect(
+				t,
+				reconcile(
+					state,
+					&world,
+					1280,
+					720,
+					{position = drag, primary_down = true, available = true},
+					1280,
+					300,
+				) ==
+				"",
+			)
+			scrubbed := world.transforms[0].position.x
+			testing.expect(t, math.abs(scrubbed - 5.99) < 0.001)
+			testing.expect(
+				t,
+				reconcile(
+					state,
+					&world,
+					1280,
+					720,
+					{position = drag, available = true},
+					1280,
+					300,
+				) ==
+				"",
+			)
+			testing.expect(
+				t,
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {undo = true}) == "",
+			)
+			testing.expect(t, math.abs(world.transforms[0].position.x - 4.99) < 0.001)
+			testing.expect(
+				t,
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {redo = true}) == "",
+			)
+			testing.expect(t, math.abs(world.transforms[0].position.x - scrubbed) < 0.001)
+		}
+
+		// Field constraints reject out-of-range but syntactically valid values.
+		if fov_input >= 0 {
+			focus_input(state, &world, fov_input)
+			testing.expect(
+				t,
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {text = "200"}) == "",
+			)
+			testing.expect(t, !state.input_valid)
+			testing.expect(t, world.cameras[0].fov == 60)
+			testing.expect(
+				t,
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {escape = true}) == "",
+			)
+		}
+
+		// Editor history shortcuts do not leak into the project while chrome is closed.
+		before_hidden_undo := world.transforms[0].position.x
+		state.editor_visible = false
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {undo = true}) == "",
+		)
+		testing.expect(t, world.transforms[0].position.x == before_hidden_undo)
+		state.editor_visible = true
+	}
 	inspector_rect := state.nodes[inspector_node].rect
 	testing.expect(
 		t,

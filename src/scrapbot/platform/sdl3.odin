@@ -15,6 +15,9 @@ runtime_editor_gizmo_mode_requested: bool
 runtime_editor_gizmo_mode: shared.Editor_Gizmo_Mode
 runtime_wheel_y: f32
 runtime_scene_camera_look_active: bool
+runtime_text_bytes: [512]u8
+runtime_text_length: int
+runtime_text_navigation: Runtime_Text_Input
 
 Pointer_State :: struct {
 	x, y: f32,
@@ -28,6 +31,13 @@ Scene_Camera_Key_State :: struct {
 	forward, backward: bool,
 	left, right: bool,
 	up, down: bool,
+}
+
+Runtime_Text_Input :: struct {
+	text: string,
+	left, right, up, down, home, end: bool,
+	backspace, delete_forward: bool,
+	tab, shift, fine, enter, escape, select_all, undo, redo: bool,
 }
 
 Live_Resize_Redraw_Proc :: #type proc "c" (userdata: rawptr)
@@ -146,6 +156,7 @@ open_runtime_window_with_visibility :: proc(
 
 	runtime_window_ready = true
 	runtime_window_hidden = hidden
+	_ = sdl.StartTextInput(runtime_window)
 	return ""
 }
 
@@ -154,6 +165,7 @@ close_runtime_window :: proc() {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 	}
 	if runtime_window != nil {
+		_ = sdl.StopTextInput(runtime_window)
 		sdl.DestroyWindow(runtime_window)
 		runtime_window = nil
 	}
@@ -165,6 +177,8 @@ close_runtime_window :: proc() {
 	runtime_editor_toggle_requested = false
 	runtime_editor_gizmo_mode_requested = false
 	runtime_scene_camera_look_active = false
+	runtime_text_length = 0
+	runtime_text_navigation = {}
 }
 
 runtime_pointer_state :: proc() -> Pointer_State {
@@ -195,6 +209,12 @@ runtime_pointer_state_in_pixels :: proc() -> Pointer_State {
 	pointer.x *= f32(pixel_width) / f32(window_width)
 	pointer.y *= f32(pixel_height) / f32(window_height)
 	return pointer
+}
+
+runtime_text_input :: proc() -> Runtime_Text_Input {
+	result := runtime_text_navigation
+	result.text = string(runtime_text_bytes[:runtime_text_length])
+	return result
 }
 
 consume_editor_toggle :: proc() -> bool {
@@ -336,9 +356,60 @@ runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {
 	return int(w), int(h), true
 }
 
+runtime_text_key :: proc(
+	input: ^Runtime_Text_Input,
+	scancode: sdl.Scancode,
+	modifiers: sdl.Keymod,
+) {
+	if input == nil { return }
+	shortcut :=
+		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
+	input.shift = .LSHIFT in modifiers || .RSHIFT in modifiers
+	input.fine =
+		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
+	#partial switch scancode {
+		case .LEFT:
+			input.left = true
+		case .RIGHT:
+			input.right = true
+		case .UP:
+			input.up = true
+		case .DOWN:
+			input.down = true
+		case .HOME:
+			input.home = true
+		case .END:
+			input.end = true
+		case .BACKSPACE:
+			input.backspace = true
+		case .DELETE:
+			input.delete_forward = true
+		case .TAB:
+			input.tab = true
+		case .RETURN, .KP_ENTER:
+			input.enter = true
+		case .ESCAPE:
+			if !shortcut { input.escape = true }
+		case .A:
+			if shortcut { input.select_all = true }
+		case .Z:
+			if shortcut && input.shift {
+				input.redo = true
+			} else if shortcut {
+				input.undo = true
+			}
+	}
+}
+
 pump_runtime_window_events :: proc() -> bool {
 	should_quit := false
 	runtime_wheel_y = 0
+	runtime_text_length = 0
+	runtime_text_navigation = {}
+	modifiers := sdl.GetModState()
+	runtime_text_navigation.shift = .LSHIFT in modifiers || .RSHIFT in modifiers
+	runtime_text_navigation.fine =
+		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
 	event: sdl.Event
 	for sdl.PollEvent(&event) {
 		if event.type == .QUIT || event.type == .WINDOW_CLOSE_REQUESTED {
@@ -351,6 +422,20 @@ pump_runtime_window_events :: proc() -> bool {
 		if event.type == .KEY_DOWN {
 			if mode, requested := editor_gizmo_mode_shortcut(event.key.scancode, event.key.repeat);
 			   requested { runtime_editor_gizmo_mode = mode; runtime_editor_gizmo_mode_requested = true }
+		}
+		if event.type == .KEY_DOWN {
+			runtime_text_key(&runtime_text_navigation, event.key.scancode, event.key.mod)
+		}
+		if event.type == .TEXT_INPUT && event.text.text != nil {
+			text, err := strings.clone_from_cstring(event.text.text)
+			if err == nil {
+				for byte in transmute([]u8)text {
+					if runtime_text_length >= len(runtime_text_bytes) { break }
+					runtime_text_bytes[runtime_text_length] = byte
+					runtime_text_length += 1
+				}
+				delete(text)
+			}
 		}
 		if event.type == .MOUSE_WHEEL { runtime_wheel_y += event.wheel.y }
 	}

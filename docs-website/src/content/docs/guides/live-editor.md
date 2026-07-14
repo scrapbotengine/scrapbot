@@ -45,7 +45,15 @@ The shell is itself built from transient ECS entities using the same layout, hor
 
 Click an entry to select it, or click rendered geometry in the viewport. Viewport picking tests the rendered triangles and selects the nearest hit; clicking empty viewport space clears the selection. The browser scrolls to reveal a viewport-picked entity and automatically clears selection if that entity despawns.
 
-The inspector reports the selected entity's name, identity, provenance, attached components, field names, and current values. Each component receives a titled panel, with its fields arranged as label/value rows in a two-column property table. Entity membership and formatted values refresh every 200 ms, while selection changes refresh immediately. The scene browser and inspector scroll independently with pixel-continuous targets, frame-time smoothing without line snapping, clipped partial content, and proportional scrollbars. Fractional trackpad deltas remain fractional.
+The inspector reports the selected entity's name, identity, provenance, attached components, field names, and current values. Each component receives a titled panel, with its fields arranged as label/value rows in a two-column property table. Transform, camera, ambient/directional/point-light, and custom Vec3 values are editable; other values use the same selectable control in read-only mode. Vec3 rows provide separate X, Y, and Z inputs, while scalar rows use one full-width value input.
+
+Click a value to focus it and select its complete contents. Typed text replaces the selection. Left/Right/Home/End move the cursor, Shift extends the selection, and Backspace/Delete edit it. Use Tab or Shift+Tab to traverse fields in visual order; Vec3 traversal proceeds through the red X, green Y, and blue Z controls independently. Enter commits and leaves the field, while Escape restores that axis or scalar value from when focus began.
+
+Numeric controls update the running world as soon as their text becomes valid. Invalid numbers receive a red border and remain local to the control. Use Up/Down for the field's normal step, Shift+Up/Down for a 10× step, or Ctrl/Cmd+Up/Down for a 0.1× step. Drag an X/Y/Z label horizontally to scrub that axis. `Ctrl/Cmd+Z` undoes the last completed inspector gesture and `Ctrl/Cmd+Shift+Z` redoes it. A complete typing, stepping, or scrubbing gesture occupies one bounded runtime history entry.
+
+Inspector edits are not persisted to the scene file yet. Closing the process discards both edits and undo history.
+
+Entity membership and formatted values refresh every 200 ms, while selection changes refresh immediately. A periodic refresh leaves the actively edited text alone. The scene browser and inspector scroll independently with pixel-continuous targets, frame-time smoothing without line snapping, clipped partial content, and proportional scrollbars. Fractional trackpad deltas remain fractional.
 
 ## Transform an entity
 

@@ -20,8 +20,11 @@ export type Scrapbot = {
 	ui_hstack: ScrapbotUiHstackComponent,
 	ui_vstack: ScrapbotUiVstackComponent,
 	ui_scroll_area: ScrapbotUiScrollAreaComponent,
+	ui_panel: ScrapbotUiPanelComponent,
+	ui_table: ScrapbotUiTableComponent,
 	ui_text: ScrapbotUiTextComponent,
 	ui_button: ScrapbotUiButtonComponent,
+	ui_input: ScrapbotUiInputComponent,
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
@@ -296,6 +299,22 @@ export type ReadonlyScrapbotUiScrollArea = {
 
 export type ScrapbotUiScrollAreaComponent = ScrapbotComponent<ScrapbotUiScrollArea, ReadonlyScrapbotUiScrollArea>
 
+export type ScrapbotUiPanel = {
+}
+
+export type ReadonlyScrapbotUiPanel = {
+}
+
+export type ScrapbotUiPanelComponent = ScrapbotComponent<ScrapbotUiPanel, ReadonlyScrapbotUiPanel>
+
+export type ScrapbotUiTable = {
+}
+
+export type ReadonlyScrapbotUiTable = {
+}
+
+export type ScrapbotUiTableComponent = ScrapbotComponent<ScrapbotUiTable, ReadonlyScrapbotUiTable>
+
 export type ScrapbotUiText = {
 }
 
@@ -311,6 +330,14 @@ export type ReadonlyScrapbotUiButton = {
 }
 
 export type ScrapbotUiButtonComponent = ScrapbotComponent<ScrapbotUiButton, ReadonlyScrapbotUiButton>
+
+export type ScrapbotUiInput = {
+}
+
+export type ReadonlyScrapbotUiInput = {
+}
+
+export type ScrapbotUiInputComponent = ScrapbotComponent<ScrapbotUiInput, ReadonlyScrapbotUiInput>
 
 export type ScrapbotInternalRenderInstance = {
 }

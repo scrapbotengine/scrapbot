@@ -265,7 +265,8 @@ run_frame_system_unmeasured :: proc(
 		if mode, requested := platform.consume_editor_gizmo_mode();
 		   requested &&
 		   config.ui_state.editor_visible &&
-		   !camera_input.look_active { ui.editor_set_gizmo_mode(config.ui_state, mode) }
+		   !camera_input.look_active &&
+		   !ui.has_text_focus(config.ui_state) { ui.editor_set_gizmo_mode(config.ui_state, mode) }
 		ecs.editor_scene_camera_system(
 			world,
 			camera_input,
@@ -280,6 +281,26 @@ run_frame_system_unmeasured :: proc(
 			available = platform_pointer.available,
 		}
 		if config.ui_state.editor_scene_camera_captures_input { pointer = {} }
+		platform_keyboard := platform.runtime_text_input()
+		keyboard := ui.Keyboard_Input {
+			text = platform_keyboard.text,
+			left = platform_keyboard.left,
+			right = platform_keyboard.right,
+			up = platform_keyboard.up,
+			down = platform_keyboard.down,
+			home = platform_keyboard.home,
+			end = platform_keyboard.end,
+			backspace = platform_keyboard.backspace,
+			delete_forward = platform_keyboard.delete_forward,
+			tab = platform_keyboard.tab,
+			shift = platform_keyboard.shift,
+			fine = platform_keyboard.fine,
+			enter = platform_keyboard.enter,
+			escape = platform_keyboard.escape,
+			select_all = platform_keyboard.select_all,
+			undo = platform_keyboard.undo,
+			redo = platform_keyboard.redo,
+		}
 		camera, has_camera := ecs.active_camera_instance(world, config.ui_state.editor_visible)
 		editor_transform_gizmo_system(
 			config.ui_state,
@@ -298,6 +319,7 @@ run_frame_system_unmeasured :: proc(
 			drawable_width,
 			drawable_height,
 			delta_seconds,
+			keyboard,
 		); err != "" { return err }
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested = false

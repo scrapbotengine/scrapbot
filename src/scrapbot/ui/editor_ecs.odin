@@ -61,7 +61,13 @@ editor_ui_create_box :: proc(
 	append(&world.ui_layouts, layout_value)
 	append(
 		&world.editor_uis,
-		shared.Editor_UI_Component{entity_index = entity_index, role = role, slot = slot},
+		shared.Editor_UI_Component {
+			entity_index = entity_index,
+			role = role,
+			slot = slot,
+			custom_storage_index = -1,
+			custom_field_index = -1,
+		},
 	)
 	append(
 		&world.entities,
@@ -87,6 +93,7 @@ editor_ui_create_box :: proc(
 			ui_table_index = -1,
 			ui_text_index = -1,
 			ui_button_index = -1,
+			ui_input_index = -1,
 			editor_transform_gizmo_index = -1,
 			editor_ui_index = role_index,
 		},
@@ -122,6 +129,17 @@ editor_ui_add_button :: proc(world: ^shared.World, entity_index: int) {
 			active_background = {0.030, 0.041, 0.054, 1},
 		},
 	)
+}
+
+editor_ui_add_input :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	value: shared.UI_Input_Component,
+) {
+	input := value
+	input.text = editor_ui_clone_string(value.text)
+	world.entities[entity_index].ui_input_index = len(world.ui_inputs)
+	append(&world.ui_inputs, input)
 }
 
 editor_ui_add_hstack :: proc(
@@ -536,7 +554,12 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 	return panel, table
 }
 
-editor_ui_ensure_inspector_cell :: proc(world: ^shared.World, slot: int, parent: string) -> int {
+editor_ui_ensure_inspector_cell :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent: string,
+	value_cell: bool,
+) -> int {
 	if cell, found := editor_ui_entity(world, .Inspector_Cell, slot); found {
 		editor_ui_set_parent(world, cell, parent)
 		return cell
@@ -550,19 +573,98 @@ editor_ui_ensure_inspector_cell :: proc(world: ^shared.World, slot: int, parent:
 		{size = {120, INSPECTOR_CELL_HEIGHT}, padding = {4, 2, 2, 2}},
 		slot,
 	)
-	editor_ui_add_text(world, cell, "", {0.66, 0.70, 0.77, 1}, 10)
+	if value_cell {
+		layout := &world.ui_layouts[world.entities[cell].ui_layout_index]
+		layout.padding = {}
+		editor_ui_add_hstack(world, cell, {gap = 4, fill = true})
+	} else {
+		editor_ui_add_text(world, cell, "", {0.34, 0.38, 0.45, 1}, 10)
+	}
 	return cell
 }
 
+editor_ui_ensure_inspector_input :: proc(world: ^shared.World, slot: int, parent: string) -> int {
+	if input, found := editor_ui_entity(world, .Inspector_Input, slot); found {
+		editor_ui_set_parent(world, input, parent)
+		return input
+	}
+	name := fmt.tprintf("__scrapbot_editor_inspector_input_%d", slot)
+	input := editor_ui_create_box(
+		world,
+		name,
+		parent,
+		.Inspector_Input,
+		{
+			size = {1, INSPECTOR_CELL_HEIGHT},
+			padding = {4, 5, 3, 5},
+			background = {0.010, 0.014, 0.020, 1},
+			border_color = {0.065, 0.078, 0.098, 1},
+			border_width = 1,
+			corner_radius = 3,
+		},
+		slot,
+	)
+	editor_ui_add_input(
+		world,
+		input,
+		{
+			color = {0.76, 0.79, 0.85, 1},
+			size = 10,
+			selection_background = {0.08, 0.48, 0.40, 0.48},
+			focus_border_color = {0.12, 0.78, 0.66, 1},
+		},
+	)
+	return input
+}
+
 Inspector_ECS_Builder :: struct {
+	state: ^State,
 	world: ^shared.World,
+	target: shared.Entity,
 	content_entity: int,
 	panel_entity: int,
 	table_entity: int,
 	panel_count: int,
 	cell_count: int,
+	input_count: int,
 	row_count: int,
 	content_height: f32,
+}
+
+editor_ui_set_numeric_metadata :: proc(
+	role: ^shared.Editor_UI_Component,
+	field: shared.Editor_Inspector_Field,
+) {
+	if role == nil { return }
+	role.numeric = field != .None
+	role.numeric_step = 0.1
+	role.numeric_min = 0
+	role.numeric_max = 0
+	role.numeric_has_min = false
+	role.numeric_has_max = false
+	#partial switch field {
+		case .Transform_Rotation, .Transform_Scale:
+			role.numeric_step = 0.01
+		case .Camera_Fov:
+			role.numeric_step = 1
+			role.numeric_min = 1
+			role.numeric_max = 179
+			role.numeric_has_min = true
+			role.numeric_has_max = true
+		case .Camera_Near, .Camera_Far:
+			role.numeric_step = 0.1
+			role.numeric_min = 0.001
+			role.numeric_has_min = true
+		case .Ambient_Color, .Directional_Color, .Point_Color:
+			role.numeric_step = 0.01
+			role.numeric_min = 0
+			role.numeric_max = 1
+			role.numeric_has_min = true
+			role.numeric_has_max = true
+		case .Ambient_Intensity, .Directional_Intensity, .Point_Intensity, .Point_Range:
+			role.numeric_min = 0
+			role.numeric_has_min = true
+	}
 }
 
 editor_ui_finish_inspector_component :: proc(builder: ^Inspector_ECS_Builder) {
@@ -601,12 +703,19 @@ editor_ui_begin_inspector_component :: proc(builder: ^Inspector_ECS_Builder, tit
 	editor_ui_set_panel_title(builder.world, panel, title)
 }
 
-editor_ui_inspector_field :: proc(builder: ^Inspector_ECS_Builder, label, value: string) {
+editor_ui_inspector_field_values :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	values: []string,
+	field: shared.Editor_Inspector_Field = .None,
+	custom_storage_index: int = -1,
+	custom_field_index: int = -1,
+) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
-	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent)
+	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, false)
 	builder.cell_count += 1
-	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent)
+	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, true)
 	builder.cell_count += 1
 	cells := [2]int{label_cell, value_cell}
 	for cell in cells {
@@ -615,12 +724,71 @@ editor_ui_inspector_field :: proc(builder: ^Inspector_ECS_Builder, label, value:
 		layout.size.y = INSPECTOR_CELL_HEIGHT
 	}
 	label_text := &builder.world.ui_texts[builder.world.entities[label_cell].ui_text_index]
-	value_text := &builder.world.ui_texts[builder.world.entities[value_cell].ui_text_index]
 	label_text.color = {0.34, 0.38, 0.45, 1}
-	value_text.color = {0.72, 0.76, 0.83, 1}
 	editor_ui_set_text(builder.world, label_cell, label)
-	editor_ui_set_text(builder.world, value_cell, value)
+	value_parent := builder.world.entities[value_cell].name
+	for value, value_index in values {
+		input_entity := editor_ui_ensure_inspector_input(
+			builder.world,
+			builder.input_count,
+			value_parent,
+		)
+		builder.input_count += 1
+		layout := &builder.world.ui_layouts[builder.world.entities[input_entity].ui_layout_index]
+		layout.hidden = false
+		layout.size = {1, INSPECTOR_CELL_HEIGHT}
+		value_input := &builder.world.ui_inputs[builder.world.entities[input_entity].ui_input_index]
+		value_input.read_only = field == .None
+		if builder.state == nil ||
+		   !builder.state.has_focused_input ||
+		   builder.state.focused_input != builder.world.entities[input_entity].id {
+			if value_input.text != value {
+				delete(value_input.text)
+				value_input.text = editor_ui_clone_string(value)
+			}
+		}
+		role := &builder.world.editor_uis[builder.world.entities[input_entity].editor_ui_index]
+		role.target = builder.target
+		role.inspector_field = field
+		role.inspector_axis = .None
+		if len(values) == 3 { role.inspector_axis = shared.Editor_Inspector_Axis(value_index + 1) }
+		role.custom_storage_index = custom_storage_index
+		role.custom_field_index = custom_field_index
+		editor_ui_set_numeric_metadata(role, field)
+	}
 	builder.row_count += 1
+}
+
+editor_ui_inspector_field :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label, value: string,
+	field: shared.Editor_Inspector_Field = .None,
+) {
+	values := [1]string{value}
+	editor_ui_inspector_field_values(builder, label, values[:], field)
+}
+
+editor_ui_inspector_vec3 :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	value: shared.Vec3,
+	field: shared.Editor_Inspector_Field,
+	custom_storage_index: int = -1,
+	custom_field_index: int = -1,
+) {
+	values := [3]string {
+		fmt.tprintf("%.2f", value.x),
+		fmt.tprintf("%.2f", value.y),
+		fmt.tprintf("%.2f", value.z),
+	}
+	editor_ui_inspector_field_values(
+		builder,
+		label,
+		values[:],
+		field,
+		custom_storage_index,
+		custom_field_index,
+	)
 }
 
 editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
@@ -640,6 +808,9 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 			case .Inspector_Cell:
 				if component.slot >=
 				   builder.cell_count { builder.world.ui_layouts[entity.ui_layout_index].hidden = true }
+			case .Inspector_Input:
+				if component.slot >=
+				   builder.input_count { builder.world.ui_layouts[entity.ui_layout_index].hidden = true }
 			case:
 		}
 	}
@@ -647,8 +818,13 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 	content_layout.size.y = max(builder.content_height, 1)
 }
 
-editor_ui_build_inspector_panels :: proc(world: ^shared.World, content_entity, entity_index: int) {
+editor_ui_build_inspector_panels :: proc(
+	state: ^State,
+	world: ^shared.World,
+	content_entity, entity_index: int,
+) {
 	builder := Inspector_ECS_Builder {
+		state = state,
 		world = world,
 		content_entity = content_entity,
 		panel_entity = -1,
@@ -659,40 +835,61 @@ editor_ui_build_inspector_panels :: proc(world: ^shared.World, content_entity, e
 		return
 	}
 	entity := world.entities[entity_index]
+	builder.target = entity.id
 	if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
 		value := world.transforms[entity.transform_index]
 		editor_ui_begin_inspector_component(&builder, "TRANSFORM")
-		editor_ui_inspector_field(&builder, "position", format_vec3(value.position))
-		editor_ui_inspector_field(&builder, "rotation", format_vec3(value.rotation))
-		editor_ui_inspector_field(&builder, "scale", format_vec3(value.scale))
+		editor_ui_inspector_vec3(&builder, "position", value.position, .Transform_Position)
+		editor_ui_inspector_vec3(&builder, "rotation", value.rotation, .Transform_Rotation)
+		editor_ui_inspector_vec3(&builder, "scale", value.scale, .Transform_Scale)
 	}
 	if entity.camera_index >= 0 && entity.camera_index < len(world.cameras) {
 		value := world.cameras[entity.camera_index]
 		editor_ui_begin_inspector_component(&builder, "CAMERA")
-		editor_ui_inspector_field(&builder, "fov", fmt.tprintf("%.2f", value.fov))
-		editor_ui_inspector_field(&builder, "near", fmt.tprintf("%.3f", value.near))
-		editor_ui_inspector_field(&builder, "far", fmt.tprintf("%.2f", value.far))
+		editor_ui_inspector_field(&builder, "fov", fmt.tprintf("%.2f", value.fov), .Camera_Fov)
+		editor_ui_inspector_field(&builder, "near", fmt.tprintf("%.3f", value.near), .Camera_Near)
+		editor_ui_inspector_field(&builder, "far", fmt.tprintf("%.2f", value.far), .Camera_Far)
 	}
 	if entity.ambient_light_index >= 0 && entity.ambient_light_index < len(world.ambient_lights) {
 		value := world.ambient_lights[entity.ambient_light_index]
 		editor_ui_begin_inspector_component(&builder, "AMBIENT LIGHT")
-		editor_ui_inspector_field(&builder, "color", format_vec3(value.color))
-		editor_ui_inspector_field(&builder, "intensity", fmt.tprintf("%.2f", value.intensity))
+		editor_ui_inspector_vec3(&builder, "color", value.color, .Ambient_Color)
+		editor_ui_inspector_field(
+			&builder,
+			"intensity",
+			fmt.tprintf("%.2f", value.intensity),
+			.Ambient_Intensity,
+		)
 	}
 	if entity.directional_light_index >= 0 &&
 	   entity.directional_light_index < len(world.directional_lights) {
 		value := world.directional_lights[entity.directional_light_index]
 		editor_ui_begin_inspector_component(&builder, "DIRECTIONAL LIGHT")
-		editor_ui_inspector_field(&builder, "direction", format_vec3(value.direction))
-		editor_ui_inspector_field(&builder, "color", format_vec3(value.color))
-		editor_ui_inspector_field(&builder, "intensity", fmt.tprintf("%.2f", value.intensity))
+		editor_ui_inspector_vec3(&builder, "direction", value.direction, .Directional_Direction)
+		editor_ui_inspector_vec3(&builder, "color", value.color, .Directional_Color)
+		editor_ui_inspector_field(
+			&builder,
+			"intensity",
+			fmt.tprintf("%.2f", value.intensity),
+			.Directional_Intensity,
+		)
 	}
 	if entity.point_light_index >= 0 && entity.point_light_index < len(world.point_lights) {
 		value := world.point_lights[entity.point_light_index]
 		editor_ui_begin_inspector_component(&builder, "POINT LIGHT")
-		editor_ui_inspector_field(&builder, "color", format_vec3(value.color))
-		editor_ui_inspector_field(&builder, "intensity", fmt.tprintf("%.2f", value.intensity))
-		editor_ui_inspector_field(&builder, "range", fmt.tprintf("%.2f", value.range))
+		editor_ui_inspector_vec3(&builder, "color", value.color, .Point_Color)
+		editor_ui_inspector_field(
+			&builder,
+			"intensity",
+			fmt.tprintf("%.2f", value.intensity),
+			.Point_Intensity,
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"range",
+			fmt.tprintf("%.2f", value.range),
+			.Point_Range,
+		)
 	}
 	if entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes) {
 		editor_ui_begin_inspector_component(&builder, "MESH")
@@ -842,11 +1039,20 @@ editor_ui_build_inspector_panels :: proc(world: ^shared.World, content_entity, e
 			format_vec4(value.active_background),
 		)
 	}
-	for storage in world.custom_components {
+	for storage, storage_index in world.custom_components {
 		for component in storage.components {
 			if component.entity_index != entity_index { continue }
 			editor_ui_begin_inspector_component(&builder, storage.name)
-			for field in component.vec3_fields { editor_ui_inspector_field(&builder, field.name, format_vec3(field.value)) }
+			for field, field_index in component.vec3_fields {
+				editor_ui_inspector_vec3(
+					&builder,
+					field.name,
+					field.value,
+					.Custom_Vec3,
+					storage_index,
+					field_index,
+				)
+			}
 			break
 		}
 	}
@@ -924,7 +1130,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	if content, found := editor_ui_entity(world, .Inspector_Content); found {
 		selected_index := -1
 		if state.editor_has_selection { selected_index = int(state.editor_selected_entity.index) }
-		editor_ui_build_inspector_panels(world, content, selected_index)
+		editor_ui_build_inspector_panels(state, world, content, selected_index)
 	}
 	state.editor_snapshot_elapsed = 0
 	state.editor_snapshot_valid = true

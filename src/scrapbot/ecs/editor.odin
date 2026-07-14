@@ -75,6 +75,7 @@ reconcile_editor_scene_camera :: proc(
 			ui_table_index = INVALID_COMPONENT_INDEX,
 			ui_text_index = INVALID_COMPONENT_INDEX,
 			ui_button_index = INVALID_COMPONENT_INDEX,
+			ui_input_index = INVALID_COMPONENT_INDEX,
 			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 			editor_ui_index = INVALID_COMPONENT_INDEX,
 		},

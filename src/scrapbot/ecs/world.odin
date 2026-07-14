@@ -35,6 +35,7 @@ UI_Panel_Component :: shared.UI_Panel_Component
 UI_Table_Component :: shared.UI_Table_Component
 UI_Text_Component :: shared.UI_Text_Component
 UI_Button_Component :: shared.UI_Button_Component
+UI_Input_Component :: shared.UI_Input_Component
 
 INVALID_COMPONENT_INDEX :: -1
 MAX_QUERY_TERMS :: 8
@@ -74,6 +75,7 @@ World_Storage_Stats :: struct {
 	ui_table_slots: int,
 	ui_text_slots: int,
 	ui_button_slots: int,
+	ui_input_slots: int,
 	editor_transform_gizmo_slots: int,
 	editor_scene_camera_slots: int,
 	editor_ui_slots: int,
@@ -95,6 +97,7 @@ destroy_world :: proc(world: ^World) {
 	for panel in world.ui_panels { delete(panel.title) }
 	for text in world.ui_texts { delete(text.text) }
 	for button in world.ui_buttons { delete(button.text) }
+	for input in world.ui_inputs { delete(input.text) }
 	for &storage in world.custom_components {
 		delete(storage.name)
 		for &component in storage.components {
@@ -130,6 +133,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_tables)
 	delete(world.ui_texts)
 	delete(world.ui_buttons)
+	delete(world.ui_inputs)
 	delete(world.editor_transform_gizmos)
 	delete(world.editor_scene_cameras)
 	delete(world.editor_uis)
@@ -166,6 +170,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			ui_table_index = INVALID_COMPONENT_INDEX,
 			ui_text_index = INVALID_COMPONENT_INDEX,
 			ui_button_index = INVALID_COMPONENT_INDEX,
+			ui_input_index = INVALID_COMPONENT_INDEX,
 			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 			editor_ui_index = INVALID_COMPONENT_INDEX,
 			geometry_resource = clone_world_string(entity.geometry_resource),
@@ -193,6 +198,7 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_table { world_entity.ui_table_index = len(world.ui_tables); append(&world.ui_tables, entity.ui_table) }
 		if entity.has_ui_text { world_entity.ui_text_index = len(world.ui_texts); text := entity.ui_text; text.text = clone_world_string(text.text); append(&world.ui_texts, text) }
 		if entity.has_ui_button { world_entity.ui_button_index = len(world.ui_buttons); button := entity.ui_button; button.text = clone_world_string(button.text); append(&world.ui_buttons, button) }
+		if entity.has_ui_input { world_entity.ui_input_index = len(world.ui_inputs); input := entity.ui_input; input.text = clone_world_string(input.text); append(&world.ui_inputs, input) }
 		if entity.has_mesh {
 			world_entity.mesh_index = len(world.meshes)
 			mesh := entity.mesh
@@ -579,6 +585,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		ui_table_slots = len(world.ui_tables),
 		ui_text_slots = len(world.ui_texts),
 		ui_button_slots = len(world.ui_buttons),
+		ui_input_slots = len(world.ui_inputs),
 		editor_transform_gizmo_slots = len(world.editor_transform_gizmos),
 		editor_scene_camera_slots = len(world.editor_scene_cameras),
 		editor_ui_slots = len(world.editor_uis),
@@ -605,6 +612,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		stats.ui_table_slots +
 		stats.ui_text_slots +
 		stats.ui_button_slots +
+		stats.ui_input_slots +
 		stats.editor_transform_gizmo_slots +
 		stats.editor_scene_camera_slots +
 		stats.editor_ui_slots +

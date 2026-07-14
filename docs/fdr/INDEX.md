@@ -8,5 +8,5 @@
 | [FDR-004](FDR-004-luau-scripting.md) | Luau scripting | Active | 2026-07-13 |
 | [FDR-005](FDR-005-system-scheduling.md) | System scheduling | Active | 2026-07-12 |
 | [FDR-006](FDR-006-native-extensions.md) | Native extensions | Active | 2026-07-12 |
-| [FDR-007](FDR-007-ecs-ui.md) | ECS UI | Active | 2026-07-13 |
-| [FDR-008](FDR-008-editor-shell.md) | Editor shell | Active | 2026-07-13 |
+| [FDR-007](FDR-007-ecs-ui.md) | ECS UI | Active | 2026-07-14 |
+| [FDR-008](FDR-008-editor-shell.md) | Editor shell | Active | 2026-07-14 |

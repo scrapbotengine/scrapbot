@@ -19,6 +19,8 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - Nested scroll clips intersect, the topmost hovered scroll area receives wheel input, and overflowing areas render a proportional scrollbar.
 - Every element receives retained hover and active state from topmost pointer hit testing. Active state is captured on primary-button press and held until release.
 - Text and button controls provide labels with RGBA color and pixel size. Buttons consume generic element state with optional hover and active background and text colors.
+- Single-line input controls store authored text in their ECS component while the retained UI state owns focus, cursor, selection, horizontal reveal, and blink state. Clicking selects all text.
+- Focused inputs accept typed text, Left/Right/Home/End cursor movement, Shift-extended selection, Backspace/Delete, and Select All. Tab and Shift+Tab traverse inputs in paint order; Enter commits and leaves the field, while Escape restores the value present when focus began.
 - Backgrounds and inset borders use GPU-evaluated signed-distance rounded rectangles, including square corners at a zero radius.
 - The engine reconciles alive UI entities after frame systems and removes retained nodes when their entities disappear.
 - WGPU paints UI after world geometry, including in headless framegrabs.
@@ -48,7 +50,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ### 4. Compose controls from a shared box model
 
-**Decision:** Keep geometry and visual box styling in one layout component, then add independent stack, table, panel, text, and button components to an entity.
+**Decision:** Keep geometry and visual box styling in one layout component, then add independent stack, table, panel, text, button, and input components to an entity.
 **Why:** A shared box model makes margins, padding, backgrounds, and rounded corners consistent while ECS composition keeps layout and content roles explicit. See ADR-014.
 **Tradeoff:** Invalid combinations require scene validation. Buttons expose visual press feedback, but activation commands still await the UI event system.
 
@@ -75,6 +77,12 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 **Decision:** Let `ui_panel` reserve and paint a title band without becoming a flow container, while `ui_table` owns row-major child placement with equal-width columns.
 **Why:** Panels should compose around any nested layout, while tables need a generic 1–N column primitive rather than inspector-specific field rendering.
 **Tradeoff:** Column proportions, spanning, headers, and automatic row measurement are deferred; authored child height determines each row's height.
+
+### 9. Retain editing state while keeping values in the ECS
+
+**Decision:** Store an input's current text and styling in its public ECS component, but retain transient focus, cursor, selection, original value, horizontal offset, and caret blink state in the UI reconciler.
+**Why:** Systems and tools can observe the value through the ordinary world while frame-local interaction survives reconciliation without polluting scene data.
+**Tradeoff:** This first control is single-line and ASCII-only. It does not yet provide clipboard operations, IME composition, Unicode shaping, multiline editing, validation events, or a public commit/change event API.
 
 ## Related
 

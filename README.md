@@ -25,7 +25,7 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
-This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, live window resizing, and a retained ECS UI overlay with a box model, fixed or proportional horizontal and vertical stacks, draggable separators, hidden subtrees, smooth clipped scroll areas, MTSDF text, pointer-aware buttons, and SDF-rounded backgrounds and borders. A transient ECS-built editor shell can frame the live project viewport with top, status, resizable scene and inspector chrome, independently smoothed scroll panes, and an ECS-owned fly camera that navigates independently from the project's camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
+This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, live window resizing, and a retained ECS UI overlay with a box model, fixed or proportional horizontal and vertical stacks, draggable separators, hidden subtrees, smooth clipped scroll areas, MTSDF text, pointer-aware buttons, keyboard-focused single-line inputs, and SDF-rounded backgrounds and borders. A transient ECS-built editor shell can frame the live project viewport with top, status, resizable scene and inspector chrome, independently smoothed scroll panes, and an ECS-owned fly camera that navigates independently from the project's camera. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
 
 Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`. The ECS showcase runs a native object fountain with visible spawned cube renderables, velocity, lifetime, spin, despawn, animated point lights, editor-movable static point lights, and Luau typed queries.
 
@@ -152,10 +152,10 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] UI gallery
 - Controls
   - [x] Text and pointer-styled button controls
-  - [ ] Reusable editor controls
+  - [x] Reusable numeric editor controls with validation, stepping, and scrubbing
   - [ ] Form controls
-  - [ ] Text input
-  - [ ] Keyboard focus
+  - [x] Single-line text input with cursor movement and selection
+  - [x] Keyboard focus with Tab and Shift+Tab traversal
   - [ ] Clipboard support
 - Styling
   - [x] Scene-defined UI API
@@ -173,13 +173,13 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [ ] System profiler
   - [x] Entity browser
   - [x] Entity selection
-  - [x] Read-only component field/value inspector
-  - [ ] Component value editing
+  - [x] Component field/value inspector with editable common fields
+  - [ ] General component value editing
   - [ ] Searchable browser
   - [ ] Hierarchical browser
 - Editing
-  - [ ] Inspector editing
-  - [ ] Inspector undo/redo
+  - [x] Live transform, camera, light, and custom Vec3 inspector editing
+  - [x] Runtime inspector undo/redo
   - [ ] Component management
   - [ ] Entity management
   - [ ] Scene edit persistence

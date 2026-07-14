@@ -24,6 +24,7 @@ export type Scrapbot = {
 	ui_table: ScrapbotUiTableComponent,
 	ui_text: ScrapbotUiTextComponent,
 	ui_button: ScrapbotUiButtonComponent,
+	ui_input: ScrapbotUiInputComponent,
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
@@ -329,6 +330,14 @@ export type ReadonlyScrapbotUiButton = {
 }
 
 export type ScrapbotUiButtonComponent = ScrapbotComponent<ScrapbotUiButton, ReadonlyScrapbotUiButton>
+
+export type ScrapbotUiInput = {
+}
+
+export type ReadonlyScrapbotUiInput = {
+}
+
+export type ScrapbotUiInputComponent = ScrapbotComponent<ScrapbotUiInput, ReadonlyScrapbotUiInput>
 
 export type ScrapbotInternalRenderInstance = {
 }

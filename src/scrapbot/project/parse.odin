@@ -163,7 +163,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.ui_panel]" ||
 		   line == "[entities.ui_table]" ||
 		   line == "[entities.ui_text]" ||
-		   line == "[entities.ui_button]" {
+		   line == "[entities.ui_button]" ||
+		   line == "[entities.ui_input]" {
 			if current == nil {
 				return scene, fail(
 					.Invalid_Syntax,
@@ -191,6 +192,15 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   "ui_text" { current.has_ui_text = true; current.ui_text.color = {1, 1, 1, 1}; current.ui_text.size = 16 }
 			if section ==
 			   "ui_button" { current.has_ui_button = true; current.ui_button.color = {1, 1, 1, 1}; current.ui_button.size = 16 }
+			if section == "ui_input" {
+				current.has_ui_input = true
+				current.ui_input = {
+					color = {1, 1, 1, 1},
+					size = 16,
+					selection_background = {0.15, 0.45, 0.40, 0.55},
+					focus_border_color = {0.15, 0.85, 0.72, 1},
+				}
+			}
 			current_component = nil
 			continue
 		}
@@ -484,6 +494,28 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 							fmt.tprintf("unknown ui_button field '%s'", key),
 						)}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_button.%s", key)) }
+			case "ui_input":
+				current.has_ui_input = true
+				switch key {
+					case "text":
+						current.ui_input.text, found = parse_basic_string(value)
+					case "color":
+						current.ui_input.color, found = parse_vec4(value)
+					case "size":
+						current.ui_input.size, found = parse_f32(value)
+					case "selection_background":
+						current.ui_input.selection_background, found = parse_vec4(value)
+					case "focus_border_color":
+						current.ui_input.focus_border_color, found = parse_vec4(value)
+					case "read_only":
+						current.ui_input.read_only, found = parse_bool(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_input field '%s'", key),
+						)
+				}
+				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_input.%s", key)) }
 			case "component":
 				if current_component == nil {
 					return scene, fail(
@@ -530,7 +562,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   entity.has_ui_vstack ||
 			   entity.has_ui_scroll_area ||
 			   entity.has_ui_panel ||
-			   entity.has_ui_table) &&
+			   entity.has_ui_table ||
+			   entity.has_ui_input) &&
 		   !entity.has_ui_layout { return scene, fail(.Invalid_Field, fmt.tprintf("UI component on '%s' requires ui_layout", entity.name)) }
 		if entity.has_ui_layout &&
 		   (entity.ui_layout.size.x <= 0 ||
@@ -571,8 +604,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				   entity.ui_table.column_gap < 0 ||
 				   entity.ui_table.row_gap <
 					   0) { return scene, fail(.Invalid_Field, fmt.tprintf("UI table '%s' requires 1..64 columns and non-negative gaps", entity.name)) }
-		if entity.has_ui_text &&
-		   entity.has_ui_button { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' cannot contain both text and a button", entity.name)) }
+		content_count := 0
+		if entity.has_ui_text { content_count += 1 }
+		if entity.has_ui_button { content_count += 1 }
+		if entity.has_ui_input { content_count += 1 }
+		if content_count >
+		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, or ui_input", entity.name)) }
 		if entity.has_ui_text &&
 		   (entity.ui_text.text == "" ||
 				   entity.ui_text.size <=
@@ -581,6 +618,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   (entity.ui_button.text == "" ||
 				   entity.ui_button.size <=
 					   0) { return scene, fail(.Invalid_Field, fmt.tprintf("UI button entity '%s' requires text and positive size", entity.name)) }
+		if entity.has_ui_input && entity.ui_input.size <= 0 {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI input entity '%s' requires positive size", entity.name),
+			)
+		}
 	}
 	for entity in scene.entities {if entity.has_ui_layout && entity.ui_layout.parent != "" {
 			found_parent :=
