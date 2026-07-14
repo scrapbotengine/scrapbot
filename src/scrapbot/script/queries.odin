@@ -1,10 +1,10 @@
 package script
 
 
-import c "core:c"
 import component "../component"
 import ecs "../ecs"
 import schedule "../schedule"
+import c "core:c"
 
 scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
@@ -16,7 +16,10 @@ scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
 		return luau_push_error(L, "scrapbot.query expects one or more component handles")
 	}
 	if lua_type(L, arg_count) == LUA_TFUNCTION {
-		return luau_push_error(L, "scrapbot.query constructs a query; call query:each(callback) to iterate")
+		return luau_push_error(
+			L,
+			"scrapbot.query constructs a query; call query:each(callback) to iterate",
+		)
 	}
 
 	query, query_err := query_from_component_arguments(L, runtime, 1, int(arg_count), .Query)
@@ -58,14 +61,14 @@ run_query_callback :: proc "c" (
 	callback_index: c.int,
 ) -> c.int {
 	callback_ref := lua_ref(L, callback_index)
-	for i in 0..<ecs.query_count(runtime.world, query) {
+	for i in 0 ..< ecs.query_count(runtime.world, query) {
 		entity_index, entity_ok := ecs.query_entity_at(runtime.world, query, i)
 		if !entity_ok {
 			continue
 		}
 		lua_rawgeti(L, LUA_REGISTRYINDEX, callback_ref)
 		push_entity_table(L, runtime.world, entity_index)
-		for term_index in 0..<query.term_count {
+		for term_index in 0 ..< query.term_count {
 			term := query.terms[term_index]
 			push_query_component_table(L, runtime.world, entity_index, term)
 		}
@@ -99,7 +102,7 @@ scrapbot_view :: proc "c" (L: Lua_State) -> c.int {
 
 	count := ecs.query_count(runtime.world, query)
 	lua_createtable(L, c.int(count), 0)
-	for i in 0..<count {
+	for i in 0 ..< count {
 		entity_index, entity_ok := ecs.query_entity_at(runtime.world, query, i)
 		if !entity_ok {
 			continue
@@ -143,7 +146,7 @@ push_schema_field_marker :: proc "c" (L: Lua_State, name: string) {
 }
 
 normalize_query :: proc "c" (query: ^Query) {
-	for i in 1..<query.term_count {
+	for i in 1 ..< query.term_count {
 		term := query.terms[i]
 		j := i
 		for j > 0 && query.terms[j - 1].component_id > term.component_id {
@@ -154,7 +157,7 @@ normalize_query :: proc "c" (query: ^Query) {
 	}
 
 	write_index := 0
-	for read_index in 0..<query.term_count {
+	for read_index in 0 ..< query.term_count {
 		term := query.terms[read_index]
 		if write_index > 0 && query.terms[write_index - 1].component_id == term.component_id {
 			continue
@@ -196,7 +199,7 @@ queries_have_same_components :: proc "c" (a, b: Query) -> bool {
 	if a.term_count != b.term_count {
 		return false
 	}
-	for i in 0..<a.term_count {
+	for i in 0 ..< a.term_count {
 		if a.terms[i].component_id != b.terms[i].component_id {
 			return false
 		}
@@ -206,7 +209,7 @@ queries_have_same_components :: proc "c" (a, b: Query) -> bool {
 
 push_query_object :: proc "c" (L: Lua_State, query: Query) {
 	lua_createtable(L, c.int(query.term_count), 2)
-	for i in 0..<query.term_count {
+	for i in 0 ..< query.term_count {
 		term := query.terms[i]
 		lua_pushinteger(L, c.ptrdiff_t(i + 1))
 		push_component_handle_from_term(L, term)
@@ -311,7 +314,7 @@ push_query_item_table :: proc "c" (L: Lua_State, world: ^World, entity_index: in
 	}
 
 	lua_createtable(L, c.int(query.term_count), 0)
-	for i in 0..<query.term_count {
+	for i in 0 ..< query.term_count {
 		term := query.terms[i]
 		lua_pushinteger(L, c.ptrdiff_t(i + 1))
 		push_query_component_table(L, world, entity_index, term)
@@ -333,29 +336,56 @@ push_query_component_table :: proc "c" (
 
 	entity := world.entities[entity_index]
 	switch term.name {
-	case "scrapbot.transform":
-		if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
-			push_transform_table(L, world.transforms[entity.transform_index])
+		case "scrapbot.transform":
+			if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
+				push_transform_table(L, world.transforms[entity.transform_index])
+				return
+			}
+		case "scrapbot.camera":
+			lua_createtable(L, 0, 0)
 			return
-		}
-	case "scrapbot.camera":
-		lua_createtable(L, 0, 0)
-		return
-	case "scrapbot.ambient_light":
-		if entity.ambient_light_index>=0 && entity.ambient_light_index<len(world.ambient_lights) {light:=world.ambient_lights[entity.ambient_light_index]; lua_createtable(L,0,2); push_vec3_table(L,light.color); lua_setfield(L,-2,"color"); lua_pushnumber(L,f64(light.intensity)); lua_setfield(L,-2,"intensity"); return}
-	case "scrapbot.directional_light":
-		if entity.directional_light_index>=0 && entity.directional_light_index<len(world.directional_lights) {light:=world.directional_lights[entity.directional_light_index]; lua_createtable(L,0,3); push_vec3_table(L,light.direction); lua_setfield(L,-2,"direction"); push_vec3_table(L,light.color); lua_setfield(L,-2,"color"); lua_pushnumber(L,f64(light.intensity)); lua_setfield(L,-2,"intensity"); return}
-	case "scrapbot.point_light":
-		if entity.point_light_index>=0 && entity.point_light_index<len(world.point_lights) {light:=world.point_lights[entity.point_light_index]; lua_createtable(L,0,3); push_vec3_table(L,light.color); lua_setfield(L,-2,"color"); lua_pushnumber(L,f64(light.intensity)); lua_setfield(L,-2,"intensity"); lua_pushnumber(L,f64(light.range)); lua_setfield(L,-2,"range"); return}
-	case "scrapbot.shadow_caster", "scrapbot.shadow_receiver", "scrapbot.ui_layout", "scrapbot.ui_hstack", "scrapbot.ui_vstack", "scrapbot.ui_scroll_area", "scrapbot.ui_text", "scrapbot.ui_button":
-		lua_createtable(L, 0, 0)
-		return
-	case "scrapbot.mesh":
-		lua_createtable(L, 0, 0)
-		return
+		case "scrapbot.ambient_light":
+			if entity.ambient_light_index >= 0 &&
+			   entity.ambient_light_index <
+				   len(
+					   world.ambient_lights,
+				   ) { light := world.ambient_lights[entity.ambient_light_index]; lua_createtable(L, 0, 2); push_vec3_table(L, light.color); lua_setfield(L, -2, "color"); lua_pushnumber(L, f64(light.intensity)); lua_setfield(L, -2, "intensity"); return }
+		case "scrapbot.directional_light":
+			if entity.directional_light_index >= 0 &&
+			   entity.directional_light_index <
+				   len(
+					   world.directional_lights,
+				   ) { light := world.directional_lights[entity.directional_light_index]; lua_createtable(L, 0, 3); push_vec3_table(L, light.direction); lua_setfield(L, -2, "direction"); push_vec3_table(L, light.color); lua_setfield(L, -2, "color"); lua_pushnumber(L, f64(light.intensity)); lua_setfield(L, -2, "intensity"); return }
+		case "scrapbot.point_light":
+			if entity.point_light_index >= 0 &&
+			   entity.point_light_index <
+				   len(
+					   world.point_lights,
+				   ) { light := world.point_lights[entity.point_light_index]; lua_createtable(L, 0, 3); push_vec3_table(L, light.color); lua_setfield(L, -2, "color"); lua_pushnumber(L, f64(light.intensity)); lua_setfield(L, -2, "intensity"); lua_pushnumber(L, f64(light.range)); lua_setfield(L, -2, "range"); return }
+		case "scrapbot.shadow_caster",
+		     "scrapbot.shadow_receiver",
+		     "scrapbot.ui_layout",
+		     "scrapbot.ui_hstack",
+		     "scrapbot.ui_vstack",
+		     "scrapbot.ui_scroll_area",
+		     "scrapbot.ui_panel",
+		     "scrapbot.ui_table",
+		     "scrapbot.ui_text",
+		     "scrapbot.ui_button",
+		     "scrapbot.ui_input":
+			lua_createtable(L, 0, 0)
+			return
+		case "scrapbot.mesh":
+			lua_createtable(L, 0, 0)
+			return
 	}
 
-	if custom_component, ok := ecs.custom_component_for_entity(world, entity_index, term.component_id, term.name); ok {
+	if custom_component, ok := ecs.custom_component_for_entity(
+		world,
+		entity_index,
+		term.component_id,
+		term.name,
+	); ok {
 		push_component_table(L, custom_component)
 		return
 	}
@@ -415,7 +445,7 @@ require_query_access :: proc "c" (
 	query: Query,
 	mode: schedule.Access_Mode,
 ) -> string {
-	for i in 0..<query.term_count {
+	for i in 0 ..< query.term_count {
 		term := query.terms[i]
 		if err := require_system_access(runtime, term.name, mode); err != "" {
 			return err
@@ -425,11 +455,18 @@ require_query_access :: proc "c" (
 }
 
 Script_Entity :: struct {
-	index:      int,
+	index: int,
 	generation: u32,
 }
 
-entity_argument :: proc "c" (L: Lua_State, index: c.int, world: ^World) -> (entity: Script_Entity, ok: bool) {
+entity_argument :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	world: ^World,
+) -> (
+	entity: Script_Entity,
+	ok: bool,
+) {
 	if lua_type(L, index) != LUA_TTABLE {
 		return {}, false
 	}
@@ -449,7 +486,10 @@ entity_argument :: proc "c" (L: Lua_State, index: c.int, world: ^World) -> (enti
 		return {}, false
 	}
 
-	entity = Script_Entity{index = int(value) - 1, generation = u32(generation)}
+	entity = Script_Entity {
+		index = int(value) - 1,
+		generation = u32(generation),
+	}
 	if !ecs.entity_is_current(world, entity.index, entity.generation) {
 		return {}, false
 	}

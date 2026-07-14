@@ -243,6 +243,17 @@ reconcile :: proc(
 		if !finish_input_edit(state, world) { cancel_input_edit(state, world) }
 		clear_input_focus(state)
 	}
+	if state.has_focused_input && state.focused_input_editor {
+		binding, _, found := focused_input_binding(state, world)
+		available := found
+		if available && binding.role == .Inspector_Input {
+			_, _, available = inspector_target(world, binding)
+			if available && binding.numeric {
+				_, available = read_inspector_numeric(world, binding)
+			}
+		}
+		if !available { clear_input_focus(state) }
+	}
 	project_pointer := project_pointer_input(
 		state,
 		pointer,
@@ -2117,6 +2128,14 @@ append_input :: proc(
 			}
 		}
 	}
+	clip := content
+	axis_content := content
+	axis_width := f32(0)
+	if axis != .None {
+		axis_width = min(f32(13), content.width)
+		content.x += axis_width + 2
+		content.width = max(content.width - axis_width - 2, 0)
+	}
 	focused := state.has_focused_input && state.focused_input == node.entity
 	cursor := len(input.text)
 	anchor := cursor
@@ -2132,7 +2151,6 @@ append_input :: proc(
 		if caret_x - scroll_x < 0 { scroll_x = caret_x }
 		state.input_scroll_x = max(scroll_x, 0)
 	}
-	clip := content
 	if node.has_clip { clip = rect_intersection(clip, node.clip) }
 	start := state.paint_count
 	if axis != .None {
@@ -2140,12 +2158,11 @@ append_input :: proc(
 		axis_color := shared.Vec4{0.92, 0.30, 0.32, 1}
 		if axis == .Y { axis_text = "Y"; axis_color = {0.34, 0.82, 0.42, 1} }
 		if axis == .Z { axis_text = "Z"; axis_color = {0.34, 0.55, 0.96, 1} }
-		axis_width := min(f32(13), content.width)
 		if err := append_paint(
 			state,
 			{
 				kind = .Panel,
-				rect = {content.x, content.y, axis_width, content.height},
+				rect = {axis_content.x, axis_content.y, axis_width, axis_content.height},
 				color = {axis_color.x, axis_color.y, axis_color.z, 0.12},
 				corner_radius = 2,
 			},
@@ -2155,12 +2172,12 @@ append_input :: proc(
 			axis_text,
 			axis_color,
 			max(input.size - 1, 7),
-			content.x + 3,
-			content.y + max((content.height - input.size) * 0.5, 0) + FONT_ASCENDER * input.size,
-			content.x + 3,
+			axis_content.x + 3,
+			axis_content.y +
+			max((axis_content.height - input.size) * 0.5, 0) +
+			FONT_ASCENDER * input.size,
+			axis_content.x + 3,
 		); err != "" { return err }
-		content.x += axis_width + 2
-		content.width = max(content.width - axis_width - 2, 0)
 	}
 	selection_start := min(cursor, anchor)
 	selection_end := max(cursor, anchor)

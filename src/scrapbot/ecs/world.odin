@@ -642,6 +642,7 @@ world_storage_stats_max :: proc "c" (a, b: World_Storage_Stats) -> World_Storage
 		ui_table_slots = max(a.ui_table_slots, b.ui_table_slots),
 		ui_text_slots = max(a.ui_text_slots, b.ui_text_slots),
 		ui_button_slots = max(a.ui_button_slots, b.ui_button_slots),
+		ui_input_slots = max(a.ui_input_slots, b.ui_input_slots),
 		editor_transform_gizmo_slots = max(
 			a.editor_transform_gizmo_slots,
 			b.editor_transform_gizmo_slots,
@@ -1150,10 +1151,16 @@ entity_has_component :: proc "c" (
 				entity.ui_scroll_area_index >= 0 &&
 				entity.ui_scroll_area_index < len(world.ui_scroll_areas) \
 			)
+		case "scrapbot.ui_panel":
+			return entity.ui_panel_index >= 0 && entity.ui_panel_index < len(world.ui_panels)
+		case "scrapbot.ui_table":
+			return entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables)
 		case "scrapbot.ui_text":
 			return entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts)
 		case "scrapbot.ui_button":
 			return entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons)
+		case "scrapbot.ui_input":
+			return entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs)
 		case "scrapbot.mesh":
 			return entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes)
 		case "scrapbot.geometry":

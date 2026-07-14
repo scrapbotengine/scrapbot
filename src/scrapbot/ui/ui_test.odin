@@ -1323,6 +1323,32 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		testing.expect(t, !state.has_focused_input)
 		testing.expect(t, state.editor_history_count == 3)
 
+		// Axis prefixes reserve text width while horizontal reveal keeps the caret inside.
+		focus_input(state, &world, position_inputs[0])
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0, {text = "123456789"}) ==
+			"",
+		)
+		testing.expect(t, state.input_scroll_x > 0)
+		x_node := find_node_by_entity_index(state, position_inputs[0])
+		caret_inside := false
+		if x_node >= 0 {
+			for command in state.paint[:state.paint_count] {
+				if command.kind == .Panel && command.rect.width == 1 {
+					caret_inside =
+						command.rect.x >= state.nodes[x_node].rect.x &&
+						command.rect.x <
+							state.nodes[x_node].rect.x + state.nodes[x_node].rect.width
+				}
+			}
+		}
+		testing.expect(t, caret_inside)
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {escape = true}) == "",
+		)
+
 		// Invalid text remains local, receives invalid styling, and cannot commit.
 		focus_input(state, &world, position_inputs[0])
 		testing.expect(
@@ -1337,7 +1363,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		)
 		testing.expect(t, state.has_focused_input)
 		invalid_border_found := false
-		x_node := find_node_by_entity_index(state, position_inputs[0])
+		x_node = find_node_by_entity_index(state, position_inputs[0])
 		if x_node >= 0 {
 			for command in state.paint[:state.paint_count] {
 				if command.kind == .Panel &&
@@ -1502,6 +1528,22 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	)
 	browser_node := find_editor_role_node(state, .Browser_Scroll)
 	testing.expect(t, browser_node >= 0 && state.nodes[browser_node].scroll_offset == 0)
+
+	// Inspector focus cannot outlive the target component or entity represented by a pooled input.
+	if position_input >= 0 {
+		focus_input(state, &world, position_input)
+		transform_index := world.entities[0].transform_index
+		world.entities[0].transform_index = -1
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300, 0) == "")
+		testing.expect(t, !state.has_focused_input)
+		world.entities[0].transform_index = transform_index
+
+		focus_input(state, &world, position_input)
+		world.entities[0].alive = false
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300, 0) == "")
+		testing.expect(t, !state.has_focused_input)
+		testing.expect(t, !state.editor_has_selection)
+	}
 }
 
 @(test)
