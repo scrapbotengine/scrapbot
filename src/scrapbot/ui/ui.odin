@@ -106,6 +106,7 @@ Node :: struct {
 EDITOR_HISTORY_CAPACITY :: 128
 Editor_Edit_Command :: struct {
 	target: shared.Entity,
+	component_revision: u64,
 	field: shared.Editor_Inspector_Field,
 	axis: shared.Editor_Inspector_Axis,
 	custom_storage_index: int,
@@ -243,17 +244,7 @@ reconcile :: proc(
 		if !finish_input_edit(state, world) { cancel_input_edit(state, world) }
 		clear_input_focus(state)
 	}
-	if state.has_focused_input && state.focused_input_editor {
-		binding, _, found := focused_input_binding(state, world)
-		available := found
-		if available && binding.role == .Inspector_Input {
-			_, _, available = inspector_target(world, binding)
-			if available && binding.numeric {
-				_, available = read_inspector_numeric(world, binding)
-			}
-		}
-		if !available { clear_input_focus(state) }
-	}
+	validate_focused_editor_input(state, world)
 	project_pointer := project_pointer_input(
 		state,
 		pointer,
@@ -352,6 +343,7 @@ reconcile :: proc(
 			refresh_editor_ecs_snapshot(state, world)
 		}
 	}
+	validate_focused_editor_input(state, world)
 	state.editor_snapshot_was_visible = state.editor_visible
 	if state.editor_pick_requested { state.editor_pick_position.x *= editor_scale; state.editor_pick_position.y *= editor_scale }
 	state.paint_count = 0
@@ -1288,12 +1280,16 @@ apply_inspector_input :: proc(state: ^State, world: ^shared.World, entity_index:
 
 editor_history_push :: proc(
 	state: ^State,
+	world: ^shared.World,
 	binding: shared.Editor_UI_Component,
 	before, after: f32,
 ) {
-	if state == nil || before == after { return }
+	if state == nil || world == nil || before == after { return }
+	target, _, found := inspector_target(world, binding)
+	if !found { return }
 	command := Editor_Edit_Command {
 		target = binding.target,
+		component_revision = target.component_revision,
 		field = binding.inspector_field,
 		axis = binding.inspector_axis,
 		custom_storage_index = binding.custom_storage_index,
@@ -1335,6 +1331,11 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 		custom_field_index = command.custom_field_index,
 		numeric = true,
 	}
+	target, _, found := inspector_target(world, binding)
+	if !found || target.component_revision != command.component_revision {
+		if redo { state.editor_history_cursor -= 1 } else { state.editor_history_cursor += 1 }
+		return false
+	}
 	if !write_inspector_numeric(state, world, binding, value) {
 		if redo { state.editor_history_cursor -= 1 } else { state.editor_history_cursor += 1 }
 		return false
@@ -1361,6 +1362,21 @@ focused_input_binding :: proc(
 	return world.editor_uis[entity.editor_ui_index], entity_index, true
 }
 
+validate_focused_editor_input :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil || !state.has_focused_input || !state.focused_input_editor {
+		return
+	}
+	binding, input_entity, found := focused_input_binding(state, world)
+	available := found && !ui_entity_or_ancestor_hidden(world, input_entity)
+	if available && binding.role == .Inspector_Input {
+		_, _, available = inspector_target(world, binding)
+		if available && binding.numeric {
+			_, available = read_inspector_numeric(world, binding)
+		}
+	}
+	if !available { clear_input_focus(state) }
+}
+
 finish_input_edit :: proc(state: ^State, world: ^shared.World) -> bool {
 	binding, entity_index, found := focused_input_binding(state, world)
 	if !found || !binding.numeric { return true }
@@ -1377,7 +1393,7 @@ finish_input_edit :: proc(state: ^State, world: ^shared.World) -> bool {
 		return false
 	}
 	if state.input_has_original_number {
-		editor_history_push(state, binding, state.input_original_number, number)
+		editor_history_push(state, world, binding, state.input_original_number, number)
 	}
 	state.input_original_number = number
 	state.input_has_original_number = true
@@ -1779,7 +1795,11 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 apply_paint_clip :: proc(state: ^State, start, end: int, clip: Rect, has_clip: bool) {
 	if !has_clip { return }
 	for &command in state.paint[start:end] {
-		command.clip = clip
+		if command.has_clip {
+			command.clip = rect_intersection(command.clip, clip)
+		} else {
+			command.clip = clip
+		}
 		command.has_clip = true
 	}
 }
@@ -2128,7 +2148,6 @@ append_input :: proc(
 			}
 		}
 	}
-	clip := content
 	axis_content := content
 	axis_width := f32(0)
 	if axis != .None {
@@ -2151,8 +2170,7 @@ append_input :: proc(
 		if caret_x - scroll_x < 0 { scroll_x = caret_x }
 		state.input_scroll_x = max(scroll_x, 0)
 	}
-	if node.has_clip { clip = rect_intersection(clip, node.clip) }
-	start := state.paint_count
+	axis_start := state.paint_count
 	if axis != .None {
 		axis_text := "X"
 		axis_color := shared.Vec4{0.92, 0.30, 0.32, 1}
@@ -2179,6 +2197,12 @@ append_input :: proc(
 			axis_content.x + 3,
 		); err != "" { return err }
 	}
+	axis_clip := axis_content
+	if node.has_clip { axis_clip = rect_intersection(axis_clip, node.clip) }
+	apply_paint_clip(state, axis_start, state.paint_count, axis_clip, true)
+	clip := content
+	if node.has_clip { clip = rect_intersection(clip, node.clip) }
+	start := state.paint_count
 	selection_start := min(cursor, anchor)
 	selection_end := max(cursor, anchor)
 	if focused && selection_start != selection_end && input.selection_background.w > 0 {

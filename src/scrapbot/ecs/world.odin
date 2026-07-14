@@ -153,6 +153,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			alive = true,
 			origin = .Scene,
 			name = clone_world_string(entity.name),
+			component_revision = 1,
 			transform_index = INVALID_COMPONENT_INDEX,
 			camera_index = INVALID_COMPONENT_INDEX,
 			ambient_light_index = INVALID_COMPONENT_INDEX,
@@ -231,6 +232,14 @@ take_free_slot :: proc(free_slots: ^[dynamic]int) -> (index: int, found: bool) {
 	}
 	index = pop(free_slots)
 	return index, true
+}
+
+bump_component_revision :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) { return }
+	world.entities[entity_index].component_revision += 1
+	if world.entities[entity_index].component_revision == 0 {
+		world.entities[entity_index].component_revision = 1
+	}
 }
 
 allocate_transform_slot :: proc(world: ^World, value: Transform_Component) -> int {
@@ -364,6 +373,7 @@ add_geometry :: proc(world: ^World, entity_index: int, handle: shared.Geometry_H
 		return
 	}
 	entity.geometry_index = allocate_geometry_slot(world, Geometry_Component{handle = handle})
+	bump_component_revision(world, entity_index)
 }
 
 add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_Handle) {
@@ -375,22 +385,27 @@ add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_H
 		return
 	}
 	entity.material_index = allocate_material_slot(world, Material_Component{handle = handle})
+	bump_component_revision(world, entity_index)
 }
 
 remove_geometry :: proc(world: ^World, entity_index: int) {
 	if !entity_is_alive(world, entity_index) { return }
 	entity := &world.entities[entity_index]
+	if entity.geometry_index < 0 || entity.geometry_index >= len(world.geometries) { return }
 	release_geometry_slot(world, entity.geometry_index)
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	release_entity_render_instance(world, entity)
+	bump_component_revision(world, entity_index)
 }
 
 remove_material :: proc(world: ^World, entity_index: int) {
 	if !entity_is_alive(world, entity_index) { return }
 	entity := &world.entities[entity_index]
+	if entity.material_index < 0 || entity.material_index >= len(world.materials) { return }
 	release_material_slot(world, entity.material_index)
 	entity.material_index = INVALID_COMPONENT_INDEX
 	release_entity_render_instance(world, entity)
+	bump_component_revision(world, entity_index)
 }
 
 reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry) {
@@ -823,6 +838,7 @@ add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Com
 
 	entity.transform_index = allocate_transform_slot(world, transform)
 	ensure_entity_renderable(world, entity_index)
+	bump_component_revision(world, entity_index)
 }
 
 remove_transform :: proc(world: ^World, entity_index: int) {
@@ -830,10 +846,12 @@ remove_transform :: proc(world: ^World, entity_index: int) {
 		return
 	}
 	entity := &world.entities[entity_index]
+	if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) { return }
 	release_transform_slot(world, entity.transform_index)
 	entity.transform_index = INVALID_COMPONENT_INDEX
 	invalidate_entity_renderables(world, entity_index)
 	release_entity_render_instance(world, entity)
+	bump_component_revision(world, entity_index)
 }
 
 add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
@@ -847,6 +865,7 @@ add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
 		world.meshes[entity.mesh_index].primitive = clone_world_string(primitive)
 	} else {
 		entity.mesh_index = allocate_mesh_slot(world, primitive)
+		bump_component_revision(world, entity_index)
 	}
 	ensure_entity_renderable(world, entity_index)
 }
@@ -856,9 +875,11 @@ remove_mesh :: proc(world: ^World, entity_index: int) {
 		return
 	}
 	entity := &world.entities[entity_index]
+	if entity.mesh_index < 0 || entity.mesh_index >= len(world.meshes) { return }
 	release_mesh_slot(world, entity.mesh_index)
 	entity.mesh_index = INVALID_COMPONENT_INDEX
 	invalidate_entity_renderables(world, entity_index)
+	bump_component_revision(world, entity_index)
 }
 
 add_custom_component :: proc(
@@ -895,9 +916,11 @@ add_custom_component :: proc(
 			continue
 		}
 		component = world_component
+		bump_component_revision(world, entity_index)
 		return
 	}
 	append(&storage.components, world_component)
+	bump_component_revision(world, entity_index)
 }
 
 remove_custom_component :: proc(
@@ -910,6 +933,7 @@ remove_custom_component :: proc(
 	if storage == nil {
 		return
 	}
+	removed := false
 	for &world_component in storage.components {
 		if world_component.entity_index != entity_index {
 			continue
@@ -923,7 +947,9 @@ remove_custom_component :: proc(
 		}
 		delete(world_component.vec3_fields)
 		world_component.vec3_fields = nil
+		removed = true
 	}
+	if removed { bump_component_revision(world, entity_index) }
 }
 
 add_scene_custom_component :: proc(

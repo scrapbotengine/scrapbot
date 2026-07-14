@@ -1192,6 +1192,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	found_position := false
 	position_inputs := [3]int{-1, -1, -1}
 	fov_input := -1
+	button_input := -1
 	for component in world.editor_uis {
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
 		entity := world.entities[component.entity_index]
@@ -1213,6 +1214,11 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				}
 			case .Inspector_Input:
 				input_count += 1
+				if entity.ui_input_index >= 0 &&
+				   entity.ui_input_index < len(world.ui_inputs) &&
+				   world.ui_inputs[entity.ui_input_index].text == "Launch" {
+					button_input = component.entity_index
+				}
 				if component.inspector_field == .Camera_Fov { fov_input = component.entity_index }
 				if component.inspector_field == .Transform_Position {
 					axis_index := int(component.inspector_axis) - 1
@@ -1230,6 +1236,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, found_position)
 	for input in position_inputs { testing.expect(t, input >= 0) }
 	testing.expect(t, fov_input >= 0)
+	testing.expect(t, button_input >= 0)
 	if position_inputs[0] >= 0 && position_inputs[1] >= 0 && position_inputs[2] >= 0 {
 		x_node := find_node_by_entity_index(state, position_inputs[0])
 		y_node := find_node_by_entity_index(state, position_inputs[1])
@@ -1344,6 +1351,21 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			}
 		}
 		testing.expect(t, caret_inside)
+		text_clipped_behind_axis := true
+		if x_node >= 0 {
+			text_viewport_left := state.nodes[x_node].rect.x + 20
+			input_color := world.ui_inputs[world.entities[position_inputs[0]].ui_input_index].color
+			for command in state.paint[:state.paint_count] {
+				if command.kind == .Glyph &&
+				   command.color == input_color &&
+				   rect_contains(state.nodes[x_node].rect, {command.rect.x, command.rect.y}) &&
+				   (!command.has_clip || command.clip.x < text_viewport_left) {
+					text_clipped_behind_axis = false
+					break
+				}
+			}
+		}
+		testing.expect(t, text_clipped_behind_axis)
 		testing.expect(
 			t,
 			reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {escape = true}) == "",
@@ -1502,6 +1524,12 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		)
 		testing.expect(t, world.transforms[0].position.x == before_hidden_undo)
 		state.editor_visible = true
+
+		// History refuses to cross a component remove/re-add boundary on the same entity.
+		ecs.remove_transform(&world, 0)
+		ecs.add_transform(&world, 0, {position = {77, 8, 9}, scale = {1, 1, 1}})
+		testing.expect(t, !editor_history_apply(state, &world, false))
+		testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 77)
 	}
 	inspector_rect := state.nodes[inspector_node].rect
 	testing.expect(
@@ -1531,6 +1559,15 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 
 	// Inspector focus cannot outlive the target component or entity represented by a pooled input.
 	if position_input >= 0 {
+		if button_input >= 0 {
+			focus_input(state, &world, button_input)
+			button_index := world.entities[0].ui_button_index
+			world.entities[0].ui_button_index = -1
+			testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300, 0.21) == "")
+			testing.expect(t, !state.has_focused_input)
+			world.entities[0].ui_button_index = button_index
+		}
+
 		focus_input(state, &world, position_input)
 		transform_index := world.entities[0].transform_index
 		world.entities[0].transform_index = -1

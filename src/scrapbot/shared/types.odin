@@ -309,6 +309,7 @@ World_Entity :: struct {
 	alive: bool,
 	origin: Entity_Origin,
 	name: string,
+	component_revision: u64,
 	transform_index: int,
 	camera_index: int,
 	ambient_light_index: int,

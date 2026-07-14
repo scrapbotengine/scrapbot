@@ -539,6 +539,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		alive = true,
 		origin = .Runtime,
 		name = clone_world_string(spawn_command_name(spawn)),
+		component_revision = 1,
 		transform_index = transform_index,
 		camera_index = INVALID_COMPONENT_INDEX,
 		ambient_light_index = INVALID_COMPONENT_INDEX,
@@ -645,8 +646,8 @@ apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {
 	}
 	if command.has_geometry { add_geometry(world, command.entity_index, command.geometry); return }
 	if command.has_material { add_material(world, command.entity_index, command.material); return }
-	if command.has_shadow_caster { world.entities[command.entity_index].has_shadow_caster = true; return }
-	if command.has_shadow_receiver { world.entities[command.entity_index].has_shadow_receiver = true; return }
+	if command.has_shadow_caster { if !world.entities[command.entity_index].has_shadow_caster { world.entities[command.entity_index].has_shadow_caster = true; bump_component_revision(world, command.entity_index) }; return }
+	if command.has_shadow_receiver { if !world.entities[command.entity_index].has_shadow_receiver { world.entities[command.entity_index].has_shadow_receiver = true; bump_component_revision(world, command.entity_index) }; return }
 	add_custom_component(world, command.entity_index, &command.component)
 }
 
@@ -666,9 +667,9 @@ apply_remove_component :: proc(world: ^World, command: ^Remove_Component_Command
 	if name == "scrapbot.geometry" { remove_geometry(world, command.entity_index); return }
 	if name == "scrapbot.material" { remove_material(world, command.entity_index); return }
 	if name ==
-	   "scrapbot.shadow_caster" { world.entities[command.entity_index].has_shadow_caster = false; return }
+	   "scrapbot.shadow_caster" { if world.entities[command.entity_index].has_shadow_caster { world.entities[command.entity_index].has_shadow_caster = false; bump_component_revision(world, command.entity_index) }; return }
 	if name ==
-	   "scrapbot.shadow_receiver" { world.entities[command.entity_index].has_shadow_receiver = false; return }
+	   "scrapbot.shadow_receiver" { if world.entities[command.entity_index].has_shadow_receiver { world.entities[command.entity_index].has_shadow_receiver = false; bump_component_revision(world, command.entity_index) }; return }
 	remove_custom_component(world, command.entity_index, command.component_id, name)
 }
 
