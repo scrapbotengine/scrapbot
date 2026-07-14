@@ -239,15 +239,33 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 
 		switch section {
 			case "entity":
-				if key != "name" {
-					return scene, fail(
-						.Invalid_Field,
-						fmt.tprintf("unknown entity field '%s'", key),
-					)
-				}
-				current.name, found = parse_basic_string(value)
-				if !found {
-					return scene, fail(.Invalid_Field, "entity name must be a basic string")
+				switch key {
+					case "id":
+						raw_id, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.id, found = shared.entity_uuid_parse(raw_id)
+						} else {
+							found = false
+						}
+						if !found {
+							return scene, fail(
+								.Invalid_Field,
+								"entity id must be a non-zero UUID string",
+							)
+						}
+					case "name":
+						current.name, found = parse_basic_string(value)
+						if !found {
+							return scene, fail(
+								.Invalid_Field,
+								"entity name must be a basic string",
+							)
+						}
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown entity field '%s'", key),
+						)
 				}
 			case "transform":
 				current.has_transform = true
@@ -364,7 +382,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				current.has_ui_layout = true
 				switch key {
 					case "parent":
-						current.ui_layout.parent, found = parse_basic_string(value)
+						raw_parent, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_layout.parent, found = shared.entity_uuid_parse(raw_parent)
+						} else {
+							found = false
+						}
 					case "position":
 						current.ui_layout.position, found = parse_vec2(value)
 					case "size":
@@ -550,8 +573,19 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		return scene, fail(.Missing_Field, "scene must contain at least one entity")
 	}
 	for entity, index in scene.entities {
+		if entity.id == (shared.Entity_UUID{}) {
+			return scene, fail(.Missing_Field, fmt.tprintf("entity %d is missing id", index))
+		}
 		if entity.name == "" {
 			return scene, fail(.Missing_Field, fmt.tprintf("entity %d is missing name", index))
+		}
+		for previous in scene.entities[:index] {
+			if previous.id == entity.id {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("entity %d has a duplicate id", index),
+				)
+			}
 		}
 		if entity.has_transform && entity.transform.scale == (Vec3{}) {
 			scene.entities[index].transform.scale = Vec3{1, 1, 1}
@@ -625,18 +659,54 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			)
 		}
 	}
-	for entity in scene.entities {if entity.has_ui_layout && entity.ui_layout.parent != "" {
-			found_parent :=
-				false; for candidate in scene.entities { if candidate.name == entity.ui_layout.parent && candidate.has_ui_layout { found_parent = true; break } }
-			if !found_parent { return scene, fail(.Invalid_Field, fmt.tprintf("UI parent '%s' for '%s' does not exist", entity.ui_layout.parent, entity.name)) }
-			if entity.ui_layout.parent ==
-			   entity.name { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' cannot parent itself", entity.name)) }
-		}}
-	for entity in scene.entities {if entity.has_ui_layout {
-			parent := entity.ui_layout.parent; steps := 0
-			for parent !=
-			    "" { steps += 1; if steps > len(scene.entities) { return scene, fail(.Invalid_Field, fmt.tprintf("UI hierarchy containing '%s' has a cycle", entity.name)) }; next := ""; for candidate in scene.entities { if candidate.name == parent && candidate.has_ui_layout { next = candidate.ui_layout.parent; break } }; parent = next }
-		}}
+	for entity in scene.entities {
+		if !entity.has_ui_layout || entity.ui_layout.parent == (shared.Entity_UUID{}) {
+			continue
+		}
+		found_parent := false
+		for candidate in scene.entities {
+			if candidate.id == entity.ui_layout.parent && candidate.has_ui_layout {
+				found_parent = true
+				break
+			}
+		}
+		if !found_parent {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI parent for '%s' does not exist", entity.name),
+			)
+		}
+		if entity.ui_layout.parent == entity.id {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI entity '%s' cannot parent itself", entity.name),
+			)
+		}
+	}
+	for entity in scene.entities {
+		if !entity.has_ui_layout {
+			continue
+		}
+		parent := entity.ui_layout.parent
+		steps := 0
+		for parent != (shared.Entity_UUID{}) {
+			steps += 1
+			if steps > len(scene.entities) {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("UI hierarchy containing '%s' has a cycle", entity.name),
+				)
+			}
+			next: shared.Entity_UUID
+			for candidate in scene.entities {
+				if candidate.id == parent && candidate.has_ui_layout {
+					next = candidate.ui_layout.parent
+					break
+				}
+			}
+			parent = next
+		}
+	}
 
 	return scene, ok()
 }

@@ -4,6 +4,7 @@ package script
 import component "../component"
 import ecs "../ecs"
 import schedule "../schedule"
+import shared "../shared"
 import c "core:c"
 
 scrapbot_query :: proc "c" (L: Lua_State) -> c.int {
@@ -282,10 +283,14 @@ scrapbot_set_rotation :: proc "c" (L: Lua_State) -> c.int {
 }
 
 push_entity_table :: proc "c" (L: Lua_State, world: ^World, entity_index: int) {
-	lua_createtable(L, 0, 3)
+	lua_createtable(L, 0, 4)
 	lua_pushinteger(L, c.ptrdiff_t(entity_index + 1))
 	lua_setfield(L, -2, "index")
 	if ecs.entity_is_alive(world, entity_index) {
+		id_buffer: [36]u8
+		id := shared.entity_uuid_to_string(world.entities[entity_index].uuid, id_buffer[:])
+		lua_pushlstring(L, cstring(raw_data(id)), c.size_t(len(id)))
+		lua_setfield(L, -2, "id")
 		lua_pushinteger(L, c.ptrdiff_t(world.entities[entity_index].id.generation))
 		lua_setfield(L, -2, "generation")
 		name := world.entities[entity_index].name

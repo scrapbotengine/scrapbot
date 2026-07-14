@@ -10,13 +10,15 @@
 
 **ECS (Entity Component System)** - Scrapbot's runtime world model, where entities are identifiers, components hold data, and systems operate over matching component sets.
 
-**Entity** - A generation-aware identifier for one object in a Scrapbot world. Luau receives entity handles with both index and generation so stale handles can be rejected.
+**Entity** - One object in a Scrapbot world. Every entity has a stable UUID for project-wide identity plus an index-and-generation runtime handle so stale in-memory references can be rejected.
+
+**Entity UUID** - A non-zero RFC UUID that identifies an entity independently from its editable name, scene order, or runtime storage slot. Scene UUIDs are serialized; each runtime-spawned lifetime receives a new UUID.
 
 **Component** - A typed piece of data attached to an entity, such as a transform, camera, geometry reference, or material reference. Single-token names identify project components; dotted names identify engine or library components.
 
 **Render resource** - Shared geometry or material data owned outside the ECS and referenced by generational handles from entity components. See [ADR-010](adr/ADR-010-keep-render-resources-outside-the-ecs.md).
 
-**Render reconciliation** - The engine step that adds, updates, or removes internal render-instance components based on an entity's transform and valid geometry/material references.
+**Render reconciliation** - The change-driven engine step that adds, updates, or removes internal render-instance components based on an entity's transform and valid geometry/material references. Structural dirty entities are synchronized into a dense active-renderable set instead of rescanning all entity membership every frame.
 
 **Component ID** - A runtime-local identifier assigned by the component registry. Luau component handles include both name and ID; project files remain name-based.
 

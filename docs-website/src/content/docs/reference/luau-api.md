@@ -77,6 +77,8 @@ Named registration updates an existing resource while preserving its handle. Spa
 
 Query construction is order-insensitive, and repeated calls for the same component set return the same object.
 
+Query callbacks receive a `ScrapbotEntity` table with `id`, `name`, `index`, and `generation`. Use the UUID string in `id` for durable identity. Index and generation form the runtime handle used by immediate ECS operations and stale-reference checks.
+
 ## Systems
 
 Every callback receives a read-only `ScrapbotTime` value as its first argument:

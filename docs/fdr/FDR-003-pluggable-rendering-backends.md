@@ -61,9 +61,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ### 6. Use ECS renderable queries as the first backend boundary
 
-**Decision:** Engine reconciliation derives internal render-instance components from valid transform, geometry, and material references. ECS builds a short-lived render list from that state.
-**Why:** Backends need coherent scene instances, not just global component counts, and this keeps GPU code out of ECS storage.
-**Tradeoff:** Reconciliation currently scans entities linearly, and the first uniform layout caps a frame at 64 instances.
+**Decision:** Change-driven engine synchronization derives internal render-instance components from valid transform, geometry, and material references and maintains a dense active-renderable set. ECS builds a short-lived render list from that state.
+**Why:** Backends need coherent scene instances, not just global component counts, and this keeps GPU code out of ECS storage without rescanning unchanged membership every frame. See ADR-024.
+**Tradeoff:** Every structural render mutation must mark its entity dirty, and the first uniform layout caps a frame at 64 instances.
 
 ### 7. Share geometry and material resources by handle
 

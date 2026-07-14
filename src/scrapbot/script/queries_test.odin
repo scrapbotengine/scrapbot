@@ -1,15 +1,17 @@
 package script
 
-import "core:testing"
 import component "../component"
 import ecs "../ecs"
 import project "../project"
 import resources "../resources"
 import shared "../shared"
+import "core:testing"
 
 @(test)
 test_luau_system_rotates_entities_with_custom_component :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000001"
 name = "Spinner"
 
 [entities.transform]
@@ -22,7 +24,8 @@ primitive = "cube"
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -31,7 +34,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 type Vec3 = {
 	x: number,
 	y: number,
@@ -51,6 +56,7 @@ local AutorotateComponent = scrapbot.component("autorotate", {
 
 scrapbot.system(function(time)
 	scrapbot.query(AutorotateComponent):each(function(entity, autorotate: Autorotate)
+		assert(entity.id == "a9000000-0000-4000-8000-000000000001")
 		local rotation = scrapbot.get_rotation(entity)
 		rotation.x += autorotate.velocity.x * time.delta_time
 		rotation.y += autorotate.velocity.y * time.delta_time
@@ -58,7 +64,10 @@ scrapbot.system(function(time)
 		scrapbot.set_rotation(entity, rotation)
 	end)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -69,7 +78,9 @@ end)
 
 @(test)
 test_luau_system_queries_transform_and_custom_component_together :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000002"
 name = "Spinner"
 
 [entities.transform]
@@ -79,7 +90,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -88,7 +100,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -101,7 +115,10 @@ scrapbot.system(Autorotating, {
 }, function(time, entity, transform, autorotate)
 	transform.rotation.y += autorotate.velocity.y * time.delta_time
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 	testing.expect(t, runtime.system_count == 1)
@@ -121,7 +138,9 @@ end)
 
 @(test)
 test_luau_query_system_rejects_transform_payload_write_without_access :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000003"
 name = "Spinner"
 
 [entities.transform]
@@ -131,7 +150,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -140,7 +160,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -150,23 +172,32 @@ local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
 scrapbot.system(Autorotating, function(time, entity, transform, autorotate)
 	transform.rotation.y += autorotate.velocity.y * time.delta_time
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
 	step_err := step_runtime(&runtime, &world, 0.5)
-	testing.expect(t, step_err == "Luau system: system access declaration does not permit component write")
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component write",
+	)
 	testing.expect(t, world.transforms[0].rotation.y == 0)
 }
 
 @(test)
 test_luau_query_system_writes_project_component_payload :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000004"
 name = "Spinner"
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -175,7 +206,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -187,7 +220,10 @@ scrapbot.system(Autorotating, {
 }, function(time, entity, autorotate)
 	autorotate.velocity.y += 3 * time.delta_time
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -201,13 +237,18 @@ end)
 }
 
 @(test)
-test_luau_query_system_rejects_project_component_payload_write_without_access :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+test_luau_query_system_rejects_project_component_payload_write_without_access :: proc(
+	t: ^testing.T,
+) {
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000005"
 name = "Spinner"
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -216,7 +257,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -226,12 +269,18 @@ local Autorotating = scrapbot.query(AutorotateComponent)
 scrapbot.system(Autorotating, function(time, entity, autorotate)
 	autorotate.velocity.y += 3 * time.delta_time
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
 	step_err := step_runtime(&runtime, &world, 0.5)
-	testing.expect(t, step_err == "Luau system: system access declaration does not permit component write")
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component write",
+	)
 
 	autorotate_id := runtime.registry.definitions[3].id
 	autorotate, ok := ecs.custom_component_for_entity(&world, 0, autorotate_id, "autorotate")
@@ -241,7 +290,9 @@ end)
 
 @(test)
 test_luau_query_reuses_cached_object_for_same_component_set :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000006"
 name = "Spinner"
 
 [entities.transform]
@@ -251,7 +302,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -260,7 +312,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -282,7 +336,10 @@ scrapbot.system({
 	end)
 	assert(count == 1)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 	testing.expect(t, runtime.query_object_count == 1)
@@ -293,7 +350,9 @@ end)
 
 @(test)
 test_luau_query_matches_three_components :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000007"
 name = "Spinner"
 
 [entities.transform]
@@ -308,6 +367,7 @@ primitive = "cube"
 velocity = [0, 2, 0]
 
 [[entities]]
+id = "a9000000-0000-4000-8000-000000000008"
 name = "No Mesh"
 
 [entities.transform]
@@ -317,7 +377,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 3, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -326,7 +387,9 @@ velocity = [0, 3, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -344,7 +407,10 @@ scrapbot.system({
 	end)
 	assert(count == 1)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -354,7 +420,9 @@ end)
 
 @(test)
 test_luau_system_accepts_declared_component_access :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000009"
 name = "Spinner"
 
 [entities.transform]
@@ -364,7 +432,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -373,7 +442,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -389,7 +460,10 @@ scrapbot.system({
 		scrapbot.set_rotation(entity, rotation)
 	end)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 	testing.expect(t, runtime.system_count == 1)
@@ -400,7 +474,10 @@ end)
 	testing.expect(t, runtime.systems[0].declaration.accesses[1].mode == .Write)
 	testing.expect(t, len(world.custom_components) == 1)
 	testing.expect(t, world.custom_components[0].component_id != shared.INVALID_COMPONENT_ID)
-	autorotate_definition, autorotate_found := component.find_definition(&runtime.registry, "autorotate")
+	autorotate_definition, autorotate_found := component.find_definition(
+		&runtime.registry,
+		"autorotate",
+	)
 	testing.expect(t, autorotate_found)
 	testing.expect(t, world.custom_components[0].component_id == autorotate_definition.id)
 
@@ -411,18 +488,22 @@ end)
 
 @(test)
 test_luau_view_returns_query_items_from_component_storage :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-00000000000a"
 name = "First"
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
 
 [[entities]]
+id = "a9000000-0000-4000-8000-00000000000b"
 name = "Second"
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -431,7 +512,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -446,7 +529,10 @@ scrapbot.system({
 	assert(view[2].entity.name == "Second")
 	assert(view[2].component.velocity.y == 2)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -456,7 +542,9 @@ end)
 
 @(test)
 test_luau_view_returns_multi_component_query_items :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-00000000000c"
 name = "Spinner"
 
 [entities.transform]
@@ -468,11 +556,13 @@ scale = [1, 1, 1]
 velocity = [0, 2, 0]
 
 [[entities]]
+id = "a9000000-0000-4000-8000-00000000000d"
 name = "Data Only"
 
 [entities.components.autorotate]
 velocity = [0, 3, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -481,7 +571,9 @@ velocity = [0, 3, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -495,7 +587,10 @@ scrapbot.system({
 	assert(view[1].components[1].rotation.y == 4)
 	assert(view[1].components[2].velocity.y == 2)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -507,24 +602,35 @@ end)
 test_luau_system_rejects_unregistered_access_components :: proc(t: ^testing.T) {
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 scrapbot.system({
 	writes = { "scrappyphysics.rigidbody" },
 }, function() end)
-`, "=test", nil)
+`,
+		"=test",
+		nil,
+	)
 
 	testing.expect(t, !result.ran)
-	testing.expect(t, result.err == "=test: system access declaration references unregistered component")
+	testing.expect(
+		t,
+		result.err == "=test: system access declaration references unregistered component",
+	)
 }
 
 @(test)
 test_luau_declared_system_rejects_undeclared_component_reads :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-00000000000e"
 name = "Spinner"
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -533,7 +639,9 @@ velocity = [0, 1, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -543,17 +651,25 @@ scrapbot.system({
 }, function()
 	scrapbot.view(AutorotateComponent)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
 	step_err := step_runtime(&runtime, &world, 1.0)
-	testing.expect(t, step_err == "Luau system: system access declaration does not permit component read")
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component read",
+	)
 }
 
 @(test)
 test_luau_declared_system_rejects_undeclared_multi_query_reads :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-00000000000f"
 name = "Spinner"
 
 [entities.transform]
@@ -563,7 +679,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -572,7 +689,9 @@ velocity = [0, 1, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -582,22 +701,31 @@ scrapbot.system({
 }, function()
 	scrapbot.query(scrapbot.transform, AutorotateComponent):each(function() end)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
 	step_err := step_runtime(&runtime, &world, 1.0)
-	testing.expect(t, step_err == "Luau system: system access declaration does not permit component read")
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component read",
+	)
 }
 
 @(test)
 test_luau_declared_system_accepts_query_object_reads :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000010"
 name = "Spinner"
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -606,7 +734,9 @@ velocity = [0, 2, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -622,7 +752,10 @@ scrapbot.system({
 	end)
 	assert(count == 1)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 	testing.expect(t, runtime.system_count == 1)
@@ -636,12 +769,15 @@ end)
 
 @(test)
 test_luau_declared_system_rejects_undeclared_component_writes :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000011"
 name = "Spinner"
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -650,7 +786,9 @@ velocity = [0, 1, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -662,19 +800,28 @@ scrapbot.system({
 		scrapbot.remove_component(entity, AutorotateComponent)
 	end)
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
 	step_err := step_runtime(&runtime, &world, 1.0)
-	testing.expect(t, step_err == "Luau system: system access declaration does not permit component write")
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component write",
+	)
 }
 
 @(test)
 test_luau_declared_system_rejects_undeclared_spawn_component_writes :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000012"
 name = "Source"
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -683,7 +830,9 @@ name = "Source"
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -700,11 +849,17 @@ scrapbot.system({
 		},
 	})
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
 	step_err := step_runtime(&runtime, &world, 1.0)
-	testing.expect(t, step_err == "Luau system: system access declaration does not permit component write")
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component write",
+	)
 	testing.expect(t, ecs.alive_entity_count(&world) == 1)
 }

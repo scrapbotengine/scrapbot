@@ -1,4 +1,5 @@
 [[entities]]
+id = "30000000-0000-4000-8000-000000000001"
 name = "HUD"
 
 [entities.ui_layout]
@@ -14,10 +15,11 @@ corner_radius = 24
 gap = 16
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000002"
 name = "Title"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "30000000-0000-4000-8000-000000000001"
 size = [504, 48]
 
 [entities.ui_text]
@@ -26,10 +28,11 @@ color = [0.15, 0.95, 0.82, 1]
 size = 32
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000003"
 name = "Subtitle"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "30000000-0000-4000-8000-000000000001"
 size = [504, 28]
 
 [entities.ui_text]
@@ -38,10 +41,11 @@ color = [0.72, 0.78, 0.92, 1]
 size = 16
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000004"
 name = "Status Row"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "30000000-0000-4000-8000-000000000001"
 size = [504, 72]
 padding = [12, 12, 12, 12]
 background = [0.08, 0.12, 0.22, 1]
@@ -54,10 +58,11 @@ draggable = true
 min_size = 80
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000005"
 name = "Status"
 
 [entities.ui_layout]
-parent = "Status Row"
+parent = "30000000-0000-4000-8000-000000000004"
 size = [128, 48]
 padding = [13, 16, 10, 16]
 background = [0.12, 0.72, 0.48, 1]
@@ -69,10 +74,11 @@ color = [0.02, 0.08, 0.06, 1]
 size = 18
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000006"
 name = "Entity Count"
 
 [entities.ui_layout]
-parent = "Status Row"
+parent = "30000000-0000-4000-8000-000000000004"
 size = [212, 48]
 padding = [13, 16, 10, 16]
 
@@ -82,20 +88,22 @@ color = [1, 0.82, 0.28, 1]
 size = 18
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000007"
 name = "Actions"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "30000000-0000-4000-8000-000000000001"
 size = [504, 60]
 
 [entities.ui_hstack]
 gap = 12
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000008"
 name = "Launch Button"
 
 [entities.ui_layout]
-parent = "Actions"
+parent = "30000000-0000-4000-8000-000000000007"
 size = [190, 52]
 padding = [14, 22, 12, 22]
 background = [0.31, 0.26, 0.86, 1]
@@ -110,10 +118,11 @@ active_background = [0.22, 0.18, 0.68, 1]
 active_color = [0.82, 0.84, 1, 1]
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000009"
 name = "Cancel Button"
 
 [entities.ui_layout]
-parent = "Actions"
+parent = "30000000-0000-4000-8000-000000000007"
 margin = [0, 0, 0, 4]
 size = [126, 52]
 padding = [14, 22, 12, 22]
@@ -129,10 +138,11 @@ active_background = [0.10, 0.13, 0.22, 1]
 active_color = [0.68, 0.72, 0.84, 1]
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000000a"
 name = "Feature Scroll"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "30000000-0000-4000-8000-000000000001"
 size = [504, 190]
 padding = [10, 10, 10, 10]
 background = [0.08, 0.09, 0.11, 1]
@@ -145,20 +155,22 @@ scroll_speed = 64
 smoothness = 14
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000000b"
 name = "Feature Pane"
 
 [entities.ui_layout]
-parent = "Feature Scroll"
+parent = "30000000-0000-4000-8000-00000000000a"
 size = [484, 360]
 
 [entities.ui_vstack]
 gap = 8
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000000c"
 name = "Feature Components"
 
 [entities.ui_layout]
-parent = "Feature Pane"
+parent = "30000000-0000-4000-8000-00000000000b"
 size = [470, 112]
 padding = [6, 8, 8, 8]
 background = [0.075, 0.082, 0.095, 1]
@@ -176,10 +188,11 @@ title_height = 28
 [entities.ui_vstack]
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000000d"
 name = "Feature Stacks"
 
 [entities.ui_layout]
-parent = "Feature Pane"
+parent = "30000000-0000-4000-8000-00000000000b"
 size = [470, 52]
 padding = [15, 16, 10, 16]
 background = [0.12, 0.13, 0.15, 1]
@@ -191,10 +204,11 @@ color = [0.88, 0.9, 0.93, 1]
 size = 14
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000000e"
 name = "Feature Buttons"
 
 [entities.ui_layout]
-parent = "Feature Pane"
+parent = "30000000-0000-4000-8000-00000000000b"
 size = [470, 52]
 padding = [15, 16, 10, 16]
 background = [0.12, 0.13, 0.15, 1]
@@ -206,10 +220,11 @@ color = [0.88, 0.9, 0.93, 1]
 size = 14
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000000f"
 name = "Feature Text"
 
 [entities.ui_layout]
-parent = "Feature Pane"
+parent = "30000000-0000-4000-8000-00000000000b"
 size = [470, 52]
 padding = [15, 16, 10, 16]
 background = [0.12, 0.13, 0.15, 1]
@@ -221,10 +236,11 @@ color = [0.88, 0.9, 0.93, 1]
 size = 14
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000010"
 name = "Feature Layout"
 
 [entities.ui_layout]
-parent = "Feature Pane"
+parent = "30000000-0000-4000-8000-00000000000b"
 size = [470, 52]
 padding = [15, 16, 10, 16]
 background = [0.12, 0.13, 0.15, 1]
@@ -236,10 +252,11 @@ color = [0.88, 0.9, 0.93, 1]
 size = 14
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000011"
 name = "Feature Table"
 
 [entities.ui_layout]
-parent = "Feature Components"
+parent = "30000000-0000-4000-8000-00000000000c"
 size = [454, 64]
 
 [entities.ui_table]
@@ -248,9 +265,10 @@ column_gap = 6
 row_gap = 4
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000012"
 name = "Panel Cell"
 [entities.ui_layout]
-parent = "Feature Table"
+parent = "30000000-0000-4000-8000-000000000011"
 size = [1, 30]
 padding = [7, 6, 4, 6]
 [entities.ui_text]
@@ -259,9 +277,10 @@ color = [0.68, 0.72, 0.79, 1]
 size = 10
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000013"
 name = "Table Cell"
 [entities.ui_layout]
-parent = "Feature Table"
+parent = "30000000-0000-4000-8000-000000000011"
 size = [1, 30]
 padding = [7, 6, 4, 6]
 [entities.ui_text]
@@ -270,9 +289,10 @@ color = [0.68, 0.72, 0.79, 1]
 size = 10
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000014"
 name = "Equal Cell"
 [entities.ui_layout]
-parent = "Feature Table"
+parent = "30000000-0000-4000-8000-000000000011"
 size = [1, 30]
 padding = [6, 6, 5, 6]
 background = [0.035, 0.045, 0.055, 1]
@@ -287,9 +307,10 @@ selection_background = [0.08, 0.48, 0.40, 0.48]
 focus_border_color = [0.12, 0.78, 0.66, 1]
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000015"
 name = "ECS Cell"
 [entities.ui_layout]
-parent = "Feature Table"
+parent = "30000000-0000-4000-8000-000000000011"
 size = [1, 30]
 padding = [7, 6, 4, 6]
 [entities.ui_text]
@@ -298,9 +319,10 @@ color = [0.28, 0.88, 0.76, 1]
 size = 10
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000016"
 name = "TOML Cell"
 [entities.ui_layout]
-parent = "Feature Table"
+parent = "30000000-0000-4000-8000-000000000011"
 size = [1, 30]
 padding = [7, 6, 4, 6]
 [entities.ui_text]
@@ -309,9 +331,10 @@ color = [0.28, 0.88, 0.76, 1]
 size = 10
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000017"
 name = "Flow Cell"
 [entities.ui_layout]
-parent = "Feature Table"
+parent = "30000000-0000-4000-8000-000000000011"
 size = [1, 30]
 padding = [7, 6, 4, 6]
 [entities.ui_text]
@@ -320,10 +343,11 @@ color = [0.28, 0.88, 0.76, 1]
 size = 10
 
 [[entities]]
+id = "30000000-0000-4000-8000-000000000018"
 name = "Footer"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "30000000-0000-4000-8000-000000000001"
 size = [504, 32]
 
 [entities.ui_text]

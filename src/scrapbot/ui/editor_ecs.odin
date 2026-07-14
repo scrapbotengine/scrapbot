@@ -1,5 +1,6 @@
 package ui
 
+import ecs "../ecs"
 import shared "../shared"
 import "core:fmt"
 import "core:math"
@@ -57,7 +58,10 @@ editor_ui_create_box :: proc(
 	layout_index := len(world.ui_layouts)
 	role_index := len(world.editor_uis)
 	layout_value := layout
-	layout_value.parent = editor_ui_clone_string(parent)
+	if parent != "" {
+		layout_value.parent = shared.entity_uuid_from_engine_name(parent)
+	}
+	entity_uuid := shared.entity_uuid_from_engine_name(name)
 	append(&world.ui_layouts, layout_value)
 	append(
 		&world.editor_uis,
@@ -73,6 +77,7 @@ editor_ui_create_box :: proc(
 		&world.entities,
 		shared.World_Entity {
 			id = {index = u32(entity_index), generation = 1},
+			uuid = entity_uuid,
 			alive = true,
 			origin = .Editor,
 			name = editor_ui_clone_string(name),
@@ -85,6 +90,7 @@ editor_ui_create_box :: proc(
 			geometry_index = -1,
 			material_index = -1,
 			render_instance_index = -1,
+			render_active_index = -1,
 			ui_layout_index = layout_index,
 			ui_hstack_index = -1,
 			ui_vstack_index = -1,
@@ -98,6 +104,11 @@ editor_ui_create_box :: proc(
 			editor_ui_index = role_index,
 		},
 	)
+	if world.entity_by_uuid == nil {
+		world.entity_by_uuid = make(map[shared.Entity_UUID]int)
+	}
+	world.entity_by_uuid[entity_uuid] = entity_index
+	ecs.mark_ui_entity_dirty(world, entity_index)
 	return entity_index
 }
 
@@ -192,21 +203,45 @@ editor_ui_add_table :: proc(
 }
 
 editor_ui_set_text :: proc(world: ^shared.World, entity_index: int, value: string) {
-	if entity_index < 0 || entity_index >= len(world.entities) { return }
+	if entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
 	index := world.entities[entity_index].ui_text_index
-	if index < 0 || index >= len(world.ui_texts) || world.ui_texts[index].text == value { return }
+	if index < 0 || index >= len(world.ui_texts) || world.ui_texts[index].text == value {
+		return
+	}
 	delete(world.ui_texts[index].text)
 	world.ui_texts[index].text = editor_ui_clone_string(value)
 }
 
 editor_ui_set_parent :: proc(world: ^shared.World, entity_index: int, value: string) {
-	if entity_index < 0 || entity_index >= len(world.entities) { return }
+	if entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
 	index := world.entities[entity_index].ui_layout_index
-	if index < 0 ||
-	   index >= len(world.ui_layouts) ||
-	   world.ui_layouts[index].parent == value { return }
-	delete(world.ui_layouts[index].parent)
-	world.ui_layouts[index].parent = editor_ui_clone_string(value)
+	parent: shared.Entity_UUID
+	if value != "" {
+		parent = shared.entity_uuid_from_engine_name(value)
+	}
+	if index < 0 || index >= len(world.ui_layouts) || world.ui_layouts[index].parent == parent {
+		return
+	}
+	world.ui_layouts[index].parent = parent
+	ecs.mark_ui_subtree_dirty(world, entity_index)
+}
+
+editor_ui_set_hidden :: proc(world: ^shared.World, entity_index: int, hidden: bool) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	layout_index := world.entities[entity_index].ui_layout_index
+	if layout_index < 0 ||
+	   layout_index >= len(world.ui_layouts) ||
+	   world.ui_layouts[layout_index].hidden == hidden {
+		return
+	}
+	world.ui_layouts[layout_index].hidden = hidden
+	ecs.mark_ui_subtree_dirty(world, entity_index)
 }
 
 editor_ui_set_panel_title :: proc(world: ^shared.World, entity_index: int, value: string) {
@@ -222,8 +257,8 @@ editor_ui_set_panel_title :: proc(world: ^shared.World, entity_index: int, value
 editor_ui_create_shell :: proc(world: ^shared.World) {
 	if _, found := editor_ui_entity(world, .Root); found { return }
 	text := shared.Vec4{0.82, 0.85, 0.90, 1}
-	muted := shared.Vec4{0.34, 0.38, 0.45, 1}
-	quiet := shared.Vec4{0.20, 0.23, 0.28, 1}
+	muted := shared.Vec4{0.42, 0.45, 0.51, 1}
+	quiet := shared.Vec4{0.28, 0.31, 0.36, 1}
 	mint := shared.Vec4{0.06, 0.72, 0.63, 1}
 	void := shared.Vec4{0.004, 0.005, 0.007, 1}
 	panel := shared.Vec4{0.009, 0.012, 0.016, 1}
@@ -246,31 +281,31 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"__scrapbot_editor_signal_rail",
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{position = {14, 11}, size = {3, 26}, background = mint, corner_radius = 1.5},
+		{position = {14, 13}, size = {3, 26}, background = mint, corner_radius = 1.5},
 	)
 	brand := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_brand",
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{position = {23, 8}, size = {110, 30}},
+		{position = {23, 10}, size = {110, 30}},
 	)
-	editor_ui_add_text(world, brand, "SCRAPBOT", text, 17)
+	editor_ui_add_text(world, brand, "SCRAPBOT", text, EDITOR_TEXT_SIZE)
 	subtitle := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_subtitle",
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{position = {132, 12}, size = {240, 24}},
+		{position = {132, 14}, size = {240, 24}},
 	)
-	editor_ui_add_text(world, subtitle, "EDITOR  /  LIVE PROJECT", muted, 11)
+	editor_ui_add_text(world, subtitle, "EDITOR  /  LIVE PROJECT", muted, EDITOR_TEXT_SIZE)
 	tool_hint := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_tool_hint",
 		EDITOR_UI_TOP_NAME,
 		.None,
 		{
-			position = {480, 9},
+			position = {480, 11},
 			size = {320, 30},
 			padding = {8, 14, 6, 14},
 			background = raised,
@@ -279,7 +314,13 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			corner_radius = 4,
 		},
 	)
-	editor_ui_add_text(world, tool_hint, "W  MOVE     E  ROTATE     R  SCALE", muted, 9)
+	editor_ui_add_text(
+		world,
+		tool_hint,
+		"W  MOVE     E  ROTATE     R  SCALE",
+		muted,
+		EDITOR_TEXT_SIZE,
+	)
 	_ = top
 
 	workspace := editor_ui_create_box(
@@ -287,7 +328,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_WORKSPACE_NAME,
 		EDITOR_UI_ROOT_NAME,
 		.None,
-		{position = {0, EDITOR_TOP_BAR_HEIGHT}, size = {1280, 644}},
+		{position = {0, EDITOR_TOP_BAR_HEIGHT}, size = {1280, 638}},
 	)
 	editor_ui_add_hstack(
 		world,
@@ -300,7 +341,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_WORKSPACE_NAME,
 		.None,
 		{
-			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 644},
+			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 638},
 			background = panel,
 			border_color = rule,
 			border_width = 1,
@@ -313,22 +354,22 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_LEFT_NAME,
 		.None,
 		{
-			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 68},
-			padding = {15, 16, 8, 16},
+			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 72},
+			padding = {17, 18, 9, 18},
 			background = raised,
 			border_color = rule,
 			border_width = 1,
 		},
 	)
-	editor_ui_add_text(world, left_header, "SCENE", text, 12)
+	editor_ui_add_text(world, left_header, "SCENE", text, EDITOR_TEXT_SIZE)
 	counts := editor_ui_create_box(
 		world,
 		EDITOR_UI_BROWSER_HEADER_NAME,
 		"__scrapbot_editor_left_header",
 		.Browser_Header,
-		{position = {0, 29}, size = {2000, 18}},
+		{position = {0, 31}, size = {2000, 18}},
 	)
-	editor_ui_add_text(world, counts, "0 SCENE / 0 LIVE", muted, 9)
+	editor_ui_add_text(world, counts, "0 SCENE / 0 LIVE", muted, EDITOR_TEXT_SIZE)
 	// The count label deliberately has a generous authored width so it never
 	// reflows, but the header must contain it when the sidebar is narrowed.
 	editor_ui_add_scroll(world, left_header)
@@ -337,7 +378,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_BROWSER_NAME,
 		EDITOR_UI_LEFT_NAME,
 		.Browser_Scroll,
-		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 576}, padding = {6, 7, 6, 7}, background = panel},
+		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 566}, padding = {7, 9, 7, 9}, background = panel},
 	)
 	editor_ui_add_vstack(world, browser, {gap = 0})
 	editor_ui_add_scroll(world, browser)
@@ -347,7 +388,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_VIEWPORT_NAME,
 		EDITOR_UI_WORKSPACE_NAME,
 		.Viewport,
-		{size = {740, 644}, border_color = rule, border_width = 1},
+		{size = {660, 638}, border_color = rule, border_width = 1},
 	)
 
 	right := editor_ui_create_box(
@@ -356,7 +397,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_WORKSPACE_NAME,
 		.None,
 		{
-			size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 644},
+			size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 638},
 			background = panel,
 			border_color = rule,
 			border_width = 1,
@@ -369,28 +410,34 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_RIGHT_NAME,
 		.None,
 		{
-			size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 104},
-			padding = {15, 16, 8, 16},
+			size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 110},
+			padding = {17, 18, 9, 18},
 			background = raised,
 			border_color = rule,
 			border_width = 1,
 		},
 	)
-	editor_ui_add_text(world, right_header, "INSPECTOR", text, 12)
+	editor_ui_add_text(world, right_header, "INSPECTOR", text, EDITOR_TEXT_SIZE)
 	inspector_header := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_inspector_identity",
 		EDITOR_UI_INSPECTOR_HEADER_NAME,
 		.Inspector_Header,
-		{position = {0, 33}, size = {2000, 56}},
+		{position = {0, 35}, size = {2000, 58}},
 	)
-	editor_ui_add_text(world, inspector_header, "Select an entity to inspect", muted, 11)
+	editor_ui_add_text(
+		world,
+		inspector_header,
+		"Select an entity to inspect",
+		muted,
+		EDITOR_TEXT_SIZE,
+	)
 	inspector := editor_ui_create_box(
 		world,
 		EDITOR_UI_INSPECTOR_NAME,
 		EDITOR_UI_RIGHT_NAME,
 		.Inspector_Scroll,
-		{size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 540}, padding = {10, 12, 10, 12}, background = panel},
+		{size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 528}, padding = {12, 14, 12, 14}, background = panel},
 	)
 	editor_ui_add_scroll(world, inspector)
 	content := editor_ui_create_box(
@@ -398,9 +445,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_INSPECTOR_CONTENT_NAME,
 		EDITOR_UI_INSPECTOR_NAME,
 		.Inspector_Content,
-		{size = {276, 500}},
+		{size = {332, 500}},
 	)
-	editor_ui_add_vstack(world, content, {gap = 8})
+	editor_ui_add_vstack(world, content, {gap = 10})
 
 	status := editor_ui_create_box(
 		world,
@@ -420,22 +467,22 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"__scrapbot_editor_status_text",
 		EDITOR_UI_STATUS_NAME,
 		.Status,
-		{position = {14, 6}, size = {600, 18}},
+		{position = {14, 7}, size = {600, 18}},
 	)
-	editor_ui_add_text(world, status_text, "RUNNING", mint, 10)
+	editor_ui_add_text(world, status_text, "RUNNING", mint, EDITOR_TEXT_SIZE)
 	status_hint := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_status_hint",
 		EDITOR_UI_STATUS_NAME,
 		.None,
-		{position = {430, 6}, size = {520, 18}},
+		{position = {430, 7}, size = {520, 18}},
 	)
 	editor_ui_add_text(
 		world,
 		status_hint,
 		"RMB + WASD / SPACE / CTRL  FLY     CTRL+ESC  CLOSE EDITOR",
 		quiet,
-		9,
+		EDITOR_TEXT_SIZE,
 	)
 	_ = status
 	_ = editor_ui_create_box(world, EDITOR_UI_ROOT_NAME, "", .Root, {size = {1280, 720}})
@@ -447,7 +494,7 @@ editor_ui_update_shell_size :: proc(world: ^shared.World, width, height: f32) {
 	world.ui_layouts[world.entities[root].ui_layout_index].size = {width, height}
 	names := [3]string{EDITOR_UI_TOP_NAME, EDITOR_UI_WORKSPACE_NAME, EDITOR_UI_STATUS_NAME}
 	for name in names {
-		for &entity in world.entities {
+		for &entity, entity_index in world.entities {
 			if entity.name != name { continue }
 			layout := &world.ui_layouts[entity.ui_layout_index]
 			layout.size.x = width
@@ -463,10 +510,10 @@ editor_ui_update_shell_size :: proc(world: ^shared.World, width, height: f32) {
 		minimum_width: f32,
 	}{{"__scrapbot_editor_tool_hint", 900}, {"__scrapbot_editor_status_hint", 1000}}
 	for item in responsive {
-		for &entity in world.entities {
+		for &entity, entity_index in world.entities {
 			if !entity.alive || entity.origin != .Editor || entity.name != item.name { continue }
 			if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
-				world.ui_layouts[entity.ui_layout_index].hidden = width < item.minimum_width
+				editor_ui_set_hidden(world, entity_index, width < item.minimum_width)
 			}
 			break
 		}
@@ -493,17 +540,17 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
 		label_name,
 		row_name,
 		.Browser_Row_Label,
-		{position = {9, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {7, 0, 5, 0}},
+		{position = {11, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
 		slot,
 	)
-	editor_ui_add_text(world, label, "", {0.791, 0.815, 0.847, 1}, 11)
+	editor_ui_add_text(world, label, "", {0.82, 0.84, 0.88, 1}, EDITOR_TEXT_SIZE)
 	return row, label
 }
 
-INSPECTOR_PANEL_TITLE_HEIGHT :: f32(28)
-INSPECTOR_CELL_HEIGHT :: f32(20)
-INSPECTOR_TABLE_ROW_GAP :: f32(2)
-INSPECTOR_PANEL_GAP :: f32(8)
+INSPECTOR_PANEL_TITLE_HEIGHT :: f32(30)
+INSPECTOR_CELL_HEIGHT :: f32(24)
+INSPECTOR_TABLE_ROW_GAP :: f32(3)
+INSPECTOR_PANEL_GAP :: f32(10)
 
 editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (int, int) {
 	panel, panel_found := editor_ui_entity(world, .Inspector_Panel, slot)
@@ -517,12 +564,12 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 		EDITOR_UI_INSPECTOR_CONTENT_NAME,
 		.Inspector_Panel,
 		{
-			size = {276, 64},
-			padding = {8, 10, 10, 10},
-			background = {0.017, 0.022, 0.030, 1},
+			size = {332, 70},
+			padding = {10, 12, 12, 12},
+			background = {0.019, 0.024, 0.032, 1},
 			border_color = {0.055, 0.067, 0.088, 1},
 			border_width = 1,
-			corner_radius = 4,
+			corner_radius = 5,
 		},
 		slot,
 	)
@@ -531,9 +578,9 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 		panel,
 		{
 			title = "COMPONENT",
-			title_color = {0.82, 0.85, 0.90, 1},
-			title_background = {0.025, 0.032, 0.043, 1},
-			title_size = 10,
+			title_color = {0.86, 0.88, 0.92, 1},
+			title_background = {0.027, 0.035, 0.046, 1},
+			title_size = EDITOR_TEXT_SIZE,
 			title_height = INSPECTOR_PANEL_TITLE_HEIGHT,
 		},
 	)
@@ -543,13 +590,13 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 		table_name,
 		panel_name,
 		.Inspector_Table,
-		{size = {256, INSPECTOR_CELL_HEIGHT}},
+		{size = {308, INSPECTOR_CELL_HEIGHT}},
 		slot,
 	)
 	editor_ui_add_table(
 		world,
 		table,
-		{columns = 2, column_gap = 8, row_gap = INSPECTOR_TABLE_ROW_GAP},
+		{columns = 2, column_gap = 10, row_gap = INSPECTOR_TABLE_ROW_GAP},
 	)
 	return panel, table
 }
@@ -570,7 +617,7 @@ editor_ui_ensure_inspector_cell :: proc(
 		name,
 		parent,
 		.Inspector_Cell,
-		{size = {120, INSPECTOR_CELL_HEIGHT}, padding = {4, 2, 2, 2}},
+		{size = {144, INSPECTOR_CELL_HEIGHT}, padding = {5, 3, 3, 3}},
 		slot,
 	)
 	if value_cell {
@@ -578,7 +625,7 @@ editor_ui_ensure_inspector_cell :: proc(
 		layout.padding = {}
 		editor_ui_add_hstack(world, cell, {gap = 4, fill = true})
 	} else {
-		editor_ui_add_text(world, cell, "", {0.34, 0.38, 0.45, 1}, 10)
+		editor_ui_add_text(world, cell, "", {0.46, 0.49, 0.55, 1}, EDITOR_TEXT_SIZE)
 	}
 	return cell
 }
@@ -596,11 +643,11 @@ editor_ui_ensure_inspector_input :: proc(world: ^shared.World, slot: int, parent
 		.Inspector_Input,
 		{
 			size = {1, INSPECTOR_CELL_HEIGHT},
-			padding = {4, 5, 3, 5},
-			background = {0.010, 0.014, 0.020, 1},
-			border_color = {0.065, 0.078, 0.098, 1},
+			padding = {5, 5, 4, 5},
+			background = {0.013, 0.018, 0.025, 1},
+			border_color = {0.075, 0.090, 0.115, 1},
 			border_width = 1,
-			corner_radius = 3,
+			corner_radius = 4,
 		},
 		slot,
 	)
@@ -608,8 +655,8 @@ editor_ui_ensure_inspector_input :: proc(world: ^shared.World, slot: int, parent
 		world,
 		input,
 		{
-			color = {0.76, 0.79, 0.85, 1},
-			size = 10,
+			color = {0.82, 0.84, 0.88, 1},
+			size = EDITOR_TEXT_SIZE,
 			selection_background = {0.08, 0.48, 0.40, 0.48},
 			focus_border_color = {0.12, 0.78, 0.66, 1},
 		},
@@ -672,10 +719,10 @@ editor_ui_finish_inspector_component :: proc(builder: ^Inspector_ECS_Builder) {
 	table_layout := &builder.world.ui_layouts[builder.world.entities[builder.table_entity].ui_layout_index]
 	panel_layout := &builder.world.ui_layouts[builder.world.entities[builder.panel_entity].ui_layout_index]
 	if builder.row_count == 0 {
-		table_layout.hidden = true
+		editor_ui_set_hidden(builder.world, builder.table_entity, true)
 		table_layout.size.y = 1
 	} else {
-		table_layout.hidden = false
+		editor_ui_set_hidden(builder.world, builder.table_entity, false)
 		table_layout.size.y =
 			f32(builder.row_count) * INSPECTOR_CELL_HEIGHT +
 			f32(max(builder.row_count - 1, 0)) * INSPECTOR_TABLE_ROW_GAP
@@ -698,8 +745,8 @@ editor_ui_begin_inspector_component :: proc(builder: ^Inspector_ECS_Builder, tit
 	builder.panel_count += 1
 	panel_layout := &builder.world.ui_layouts[builder.world.entities[panel].ui_layout_index]
 	table_layout := &builder.world.ui_layouts[builder.world.entities[table].ui_layout_index]
-	panel_layout.hidden = false
-	table_layout.hidden = false
+	editor_ui_set_hidden(builder.world, panel, false)
+	editor_ui_set_hidden(builder.world, table, false)
 	editor_ui_set_panel_title(builder.world, panel, title)
 }
 
@@ -720,11 +767,11 @@ editor_ui_inspector_field_values :: proc(
 	cells := [2]int{label_cell, value_cell}
 	for cell in cells {
 		layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
-		layout.hidden = false
+		editor_ui_set_hidden(builder.world, cell, false)
 		layout.size.y = INSPECTOR_CELL_HEIGHT
 	}
 	label_text := &builder.world.ui_texts[builder.world.entities[label_cell].ui_text_index]
-	label_text.color = {0.34, 0.38, 0.45, 1}
+	label_text.color = {0.46, 0.49, 0.55, 1}
 	editor_ui_set_text(builder.world, label_cell, label)
 	value_parent := builder.world.entities[value_cell].name
 	for value, value_index in values {
@@ -735,7 +782,7 @@ editor_ui_inspector_field_values :: proc(
 		)
 		builder.input_count += 1
 		layout := &builder.world.ui_layouts[builder.world.entities[input_entity].ui_layout_index]
-		layout.hidden = false
+		editor_ui_set_hidden(builder.world, input_entity, false)
 		layout.size = {1, INSPECTOR_CELL_HEIGHT}
 		value_input := &builder.world.ui_inputs[builder.world.entities[input_entity].ui_input_index]
 		value_input.read_only = field == .None
@@ -804,13 +851,13 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 		#partial switch component.role {
 			case .Inspector_Panel, .Inspector_Table:
 				if component.slot >=
-				   builder.panel_count { builder.world.ui_layouts[entity.ui_layout_index].hidden = true }
+				   builder.panel_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case .Inspector_Cell:
 				if component.slot >=
-				   builder.cell_count { builder.world.ui_layouts[entity.ui_layout_index].hidden = true }
+				   builder.cell_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case .Inspector_Input:
 				if component.slot >=
-				   builder.input_count { builder.world.ui_layouts[entity.ui_layout_index].hidden = true }
+				   builder.input_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case:
 		}
 	}
@@ -949,7 +996,12 @@ editor_ui_build_inspector_panels :: proc(
 	if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
 		value := world.ui_layouts[entity.ui_layout_index]
 		editor_ui_begin_inspector_component(&builder, "UI LAYOUT")
-		editor_ui_inspector_field(&builder, "parent", value.parent)
+		parent_text := "none"
+		parent_buffer: [36]u8
+		if value.parent != (shared.Entity_UUID{}) {
+			parent_text = shared.entity_uuid_to_string(value.parent, parent_buffer[:])
+		}
+		editor_ui_inspector_field(&builder, "parent", parent_text)
 		editor_ui_inspector_field(&builder, "position", format_vec2(value.position))
 		editor_ui_inspector_field(&builder, "size", format_vec2(value.size))
 		editor_ui_inspector_field(&builder, "margin", format_vec4(value.margin))
@@ -1069,8 +1121,8 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		row, label := editor_ui_ensure_row(world, visible_count)
 		world.entities[row].alive = true
 		world.entities[label].alive = true
-		world.ui_layouts[world.entities[row].ui_layout_index].hidden = false
-		world.ui_layouts[world.entities[label].ui_layout_index].hidden = false
+		editor_ui_set_hidden(world, row, false)
+		editor_ui_set_hidden(world, label, false)
 		world.editor_uis[world.entities[row].editor_ui_index].target = entity.id
 		world.editor_uis[world.entities[label].editor_ui_index].target = entity.id
 		row_layout := &world.ui_layouts[world.entities[row].ui_layout_index]
@@ -1084,7 +1136,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		}
 		label_text := &world.ui_texts[world.entities[label].ui_text_index]
 		label_text.color = {0.82, 0.85, 0.90, 1}
-		if entity.origin == .Runtime { label_text.color = {0.40, 0.44, 0.51, 1} }
+		if entity.origin == .Runtime { label_text.color = {0.54, 0.57, 0.63, 1} }
 		editor_ui_set_text(world, label, entity.name)
 		visible_count += 1
 	}
@@ -1098,7 +1150,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			   entity.origin != .Editor ||
 			   entity.ui_layout_index < 0 ||
 			   entity.ui_layout_index >= len(world.ui_layouts) { continue }
-			world.ui_layouts[entity.ui_layout_index].hidden = true
+			editor_ui_set_hidden(world, component.entity_index, true)
 		}
 	}
 	if header, found := editor_ui_entity(world, .Browser_Header);
@@ -1113,16 +1165,12 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 				entity := world.entities[index]
 				origin := "SCENE ENTITY"
 				if entity.origin == .Runtime { origin = "RUNTIME ENTITY" }
+				id_buffer: [36]u8
+				id := shared.entity_uuid_to_string(entity.uuid, id_buffer[:])
 				editor_ui_set_text(
 					world,
 					header,
-					fmt.tprintf(
-						"%s\n%s  /  #%d:%d",
-						entity.name,
-						origin,
-						entity.id.index,
-						entity.id.generation,
-					),
+					fmt.tprintf("%s\n%s  /  %s", entity.name, origin, id),
 				)
 			}
 		}

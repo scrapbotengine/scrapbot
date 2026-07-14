@@ -21,7 +21,7 @@
 ## ECS UI
 
 - [x] Add scene-defined UI layout and text components.
-- [x] Reconcile appearing and disappearing UI entities into retained state.
+- [x] Incrementally synchronize appearing and disappearing UI entities into retained state.
 - [x] Render panel and scalable MTSDF text paint commands after world geometry.
 - [x] Add row, column, and overlay hierarchy layout.
 - [x] Add per-edge margins and padding, SDF-rounded backgrounds, horizontal and vertical stack components, and button controls.

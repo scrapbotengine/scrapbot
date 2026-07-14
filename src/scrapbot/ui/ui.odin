@@ -1,5 +1,6 @@
 package ui
 
+import ecs "../ecs"
 import shared "../shared"
 import "core:fmt"
 import "core:math"
@@ -14,14 +15,17 @@ FONT_ATLAS_SIZE :: 512
 FONT_ASCENDER :: f32(0.96875)
 FONT_ATLAS_DATA :: #load("assets/inter_mtsdf.bin")
 
-EDITOR_TOP_BAR_HEIGHT :: f32(48)
-EDITOR_STATUS_BAR_HEIGHT :: f32(28)
-EDITOR_LEFT_SIDEBAR_WIDTH :: f32(240)
-EDITOR_RIGHT_SIDEBAR_WIDTH :: f32(300)
-EDITOR_SIDEBAR_MIN_WIDTH :: f32(150)
+EDITOR_TOP_BAR_HEIGHT :: f32(52)
+EDITOR_STATUS_BAR_HEIGHT :: f32(30)
+EDITOR_LEFT_SIDEBAR_WIDTH :: f32(260)
+EDITOR_RIGHT_SIDEBAR_WIDTH :: f32(360)
+EDITOR_SIDEBAR_MIN_WIDTH :: f32(180)
 EDITOR_VIEWPORT_MIN_WIDTH :: f32(320)
 EDITOR_VIEWPORT_INSET :: f32(4)
-EDITOR_ENTITY_ROW_HEIGHT :: f32(28)
+EDITOR_ENTITY_ROW_HEIGHT :: f32(30)
+EDITOR_TEXT_SIZE :: f32(12)
+EDITOR_INPUT_AXIS_WIDTH :: f32(13)
+EDITOR_INPUT_AXIS_GAP :: f32(3)
 EDITOR_SCROLL_SPEED :: f32(48)
 EDITOR_SCROLL_SMOOTHNESS :: f32(18)
 EDITOR_SNAPSHOT_INTERVAL :: f32(0.2)
@@ -120,6 +124,11 @@ State :: struct {
 	paint: [MAX_PAINT_COMMANDS]Paint_Command,
 	paint_count: int,
 	font: Font_Atlas,
+	ui_world_uuid: shared.Entity_UUID,
+	ui_structure_revision: u64,
+	ui_structure_synced: bool,
+	ui_structure_sync_count: u64,
+	ui_editor_visible: bool,
 	active_entity: shared.Entity,
 	has_active_entity: bool,
 	previous_primary_down: bool,
@@ -205,6 +214,120 @@ destroy :: proc(state: ^State) {
 	state^ = {}
 }
 
+remove_ui_node :: proc(state: ^State, node_index: int) {
+	if state == nil || node_index < 0 || node_index >= state.node_count {
+		return
+	}
+	for index in node_index ..< state.node_count - 1 {
+		state.nodes[index] = state.nodes[index + 1]
+	}
+	state.node_count -= 1
+	state.nodes[state.node_count] = {}
+}
+
+insert_ui_node :: proc(state: ^State, entity_index: int) -> int {
+	insert_index := state.node_count
+	for node, node_index in state.nodes[:state.node_count] {
+		if int(node.entity.index) > entity_index {
+			insert_index = node_index
+			break
+		}
+	}
+	for node_index := state.node_count; node_index > insert_index; node_index -= 1 {
+		state.nodes[node_index] = state.nodes[node_index - 1]
+	}
+	state.node_count += 1
+	state.nodes[insert_index] = {}
+	return insert_index
+}
+
+sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
+	world_changed := !state.ui_structure_synced || state.ui_world_uuid != world.instance_uuid
+	if world_changed {
+		state.node_count = 0
+		state.ui_world_uuid = world.instance_uuid
+		clear_input_focus(state)
+		for entity, entity_index in world.entities {
+			if entity.alive && entity.ui_layout_index >= 0 {
+				ecs.mark_ui_entity_dirty(world, entity_index)
+			}
+		}
+	}
+	if world_changed || state.ui_editor_visible != state.editor_visible {
+		for entity, entity_index in world.entities {
+			if entity.alive && entity.origin == .Editor && entity.ui_layout_index >= 0 {
+				ecs.mark_ui_entity_dirty(world, entity_index)
+			}
+		}
+		state.ui_editor_visible = state.editor_visible
+	}
+	if state.ui_structure_synced &&
+	   state.ui_structure_revision == world.ui_structure_revision &&
+	   len(world.ui_dirty_entities) == 0 {
+		return ""
+	}
+
+	dirty_cursor := 0
+	for dirty_cursor < len(world.ui_dirty_entities) {
+		entity_index := world.ui_dirty_entities[dirty_cursor]
+		dirty_cursor += 1
+		if entity_index < 0 || entity_index >= len(world.entities) {
+			continue
+		}
+		entity := &world.entities[entity_index]
+		entity.ui_dirty = false
+		node_index := find_node_by_entity_index(state, entity_index)
+		eligible :=
+			entity.alive &&
+			(entity.origin != .Editor || state.editor_visible) &&
+			entity.ui_layout_index >= 0 &&
+			entity.ui_layout_index < len(world.ui_layouts) &&
+			!ui_entity_or_ancestor_hidden(world, entity_index)
+		if !eligible {
+			if node_index >= 0 {
+				remove_ui_node(state, node_index)
+			}
+			continue
+		}
+		if node_index >= 0 && state.nodes[node_index].entity != entity.id {
+			remove_ui_node(state, node_index)
+			node_index = -1
+		}
+		if node_index < 0 {
+			if state.node_count >= MAX_NODES {
+				return "too many UI entities"
+			}
+			node_index = insert_ui_node(state, entity_index)
+		}
+		node := &state.nodes[node_index]
+		node.entity = entity.id
+		node.origin = entity.origin
+		node.editor_role = .None
+		if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
+			node.editor_role = world.editor_uis[entity.editor_ui_index].role
+		}
+		node.layout_index = entity.ui_layout_index
+		node.hstack_index = entity.ui_hstack_index
+		node.vstack_index = entity.ui_vstack_index
+		node.scroll_area_index = entity.ui_scroll_area_index
+		node.panel_index = entity.ui_panel_index
+		node.table_index = entity.ui_table_index
+		node.text_index = entity.ui_text_index
+		node.button_index = entity.ui_button_index
+		node.input_index = entity.ui_input_index
+		node.parent_entity_index = find_parent_entity(
+			world,
+			world.ui_layouts[entity.ui_layout_index].parent,
+			entity.origin,
+		)
+	}
+	clear(&world.ui_dirty_entities)
+	state.ui_structure_revision = world.ui_structure_revision
+	state.ui_structure_synced = true
+	state.ui_structure_sync_count += 1
+	return ""
+}
+
 reconcile :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -223,21 +346,7 @@ reconcile :: proc(
 	editor_width := surface_width / editor_scale
 	editor_height := surface_height / editor_scale
 	reconcile_editor_ui_world(state, world, editor_width, editor_height)
-	for &node in state.nodes[:state.node_count] { node.seen = false }
-	for &entity in world.entities {
-		if !entity.alive ||
-		   (entity.origin == .Editor && !state.editor_visible) ||
-		   entity.ui_layout_index < 0 ||
-		   entity.ui_layout_index >= len(world.ui_layouts) ||
-		   ui_entity_or_ancestor_hidden(world, int(entity.id.index)) { continue }
-		index := find_node(state, entity.id)
-		if index <
-		   0 { if state.node_count >= MAX_NODES { return "too many UI entities" }; index = state.node_count; state.node_count += 1; state.nodes[index] = {} }
-		node := &state.nodes[index]; node.entity = entity.id; node.origin = entity.origin; node.editor_role = .None; if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) { node.editor_role = world.editor_uis[entity.editor_ui_index].role }; node.layout_index = entity.ui_layout_index; node.hstack_index = entity.ui_hstack_index; node.vstack_index = entity.ui_vstack_index; node.scroll_area_index = entity.ui_scroll_area_index; node.panel_index = entity.ui_panel_index; node.table_index = entity.ui_table_index; node.text_index = entity.ui_text_index; node.button_index = entity.ui_button_index; node.input_index = entity.ui_input_index; node.parent_entity_index = find_parent_entity(world, world.ui_layouts[entity.ui_layout_index].parent, entity.origin); node.seen = true
-	}
-	for i := 0;
-	    i <
-	    state.node_count; { if state.nodes[i].seen { i += 1 } else { state.node_count -= 1; state.nodes[i] = state.nodes[state.node_count] } }
+	if err := sync_ui_structure(state, world); err != "" { return err }
 	project_layout := Rect{0, 0, width, height}
 	editor_layout := Rect{0, 0, editor_width, editor_height}
 	if !state.editor_visible && state.has_focused_input && state.focused_input_editor {
@@ -371,7 +480,7 @@ ui_entity_or_ancestor_hidden :: proc(world: ^shared.World, entity_index: int) ->
 		   entity.ui_layout_index >= len(world.ui_layouts) { return false }
 		layout := world.ui_layouts[entity.ui_layout_index]
 		if layout.hidden { return true }
-		if layout.parent == "" { return false }
+		if layout.parent == (shared.Entity_UUID{}) { return false }
 		index = find_parent_entity(world, layout.parent, entity.origin)
 		if index < 0 { return false }
 	}
@@ -500,14 +609,15 @@ find_node_by_entity_index :: proc(state: ^State, index: int) -> int {
 
 find_parent_entity :: proc(
 	world: ^shared.World,
-	name: string,
+	id: shared.Entity_UUID,
 	origin: shared.Entity_Origin,
 ) -> int {
-	if name == "" { return -1 }
-	for entity in world.entities {
-		if entity.alive &&
-		   entity.origin == origin &&
-		   entity.name == name { return int(entity.id.index) }
+	if id == (shared.Entity_UUID{}) {
+		return -1
+	}
+	if index, found := ecs.entity_index_by_uuid(world, id);
+	   found && world.entities[index].origin == origin {
+		return index
 	}
 	return -1
 }
@@ -967,10 +1077,19 @@ handle_input_press :: proc(
 	if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
 		binding := world.editor_uis[entity.editor_ui_index]
 		node_index := find_node(state, entity.id)
+		axis_hit_end := f32(0)
+		if node_index >= 0 &&
+		   entity.ui_layout_index >= 0 &&
+		   entity.ui_layout_index < len(world.ui_layouts) {
+			axis_hit_end =
+				state.nodes[node_index].rect.x +
+				world.ui_layouts[entity.ui_layout_index].padding.w +
+				EDITOR_INPUT_AXIS_WIDTH
+		}
 		if binding.numeric &&
 		   binding.inspector_axis != .None &&
 		   node_index >= 0 &&
-		   position.x <= state.nodes[node_index].rect.x + 15 {
+		   position.x <= axis_hit_end {
 			state.input_scrub_armed = state.input_has_original_number
 			state.input_scrub_start_x = position.x
 			state.input_scrub_start_number = state.input_original_number
@@ -1988,8 +2107,8 @@ append_editor_gizmo :: proc(state: ^State) -> string {
 			state,
 			labels[index],
 			color,
-			9 * scale,
-			{label_center.x - 7 * scale, label_center.y - 7 * scale, 14 * scale, 14 * scale},
+			EDITOR_TEXT_SIZE * scale,
+			{label_center.x - 9 * scale, label_center.y - 9 * scale, 18 * scale, 18 * scale},
 			{},
 		); err != "" { return err }
 	}
@@ -2157,9 +2276,9 @@ append_input :: proc(
 	axis_content := content
 	axis_width := f32(0)
 	if axis != .None {
-		axis_width = min(f32(13), content.width)
-		content.x += axis_width + 2
-		content.width = max(content.width - axis_width - 2, 0)
+		axis_width = min(EDITOR_INPUT_AXIS_WIDTH, content.width)
+		content.x += axis_width + EDITOR_INPUT_AXIS_GAP
+		content.width = max(content.width - axis_width - EDITOR_INPUT_AXIS_GAP, 0)
 	}
 	focused := state.has_focused_input && state.focused_input == node.entity
 	cursor := len(input.text)
@@ -2195,7 +2314,7 @@ append_input :: proc(
 			state,
 			axis_text,
 			axis_color,
-			max(input.size - 1, 7),
+			input.size,
 			axis_content.x + 3,
 			axis_content.y +
 			max((axis_content.height - input.size) * 0.5, 0) +

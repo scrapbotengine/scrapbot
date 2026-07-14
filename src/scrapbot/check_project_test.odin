@@ -28,7 +28,13 @@ test_check_project_refreshes_luau_types_from_script_registry :: proc(t: ^testing
 	testing.expect(t, strings.contains(types_text, "\tvelocity: Vec3,"))
 	testing.expect(t, strings.contains(types_text, "export type ReadonlyAutorotate = {"))
 	testing.expect(t, strings.contains(types_text, "\tread velocity: ReadonlyVec3,"))
-	testing.expect(t, strings.contains(types_text, "export type AutorotateComponent = ScrapbotComponent<Autorotate, ReadonlyAutorotate>"))
+	testing.expect(
+		t,
+		strings.contains(
+			types_text,
+			"export type AutorotateComponent = ScrapbotComponent<Autorotate, ReadonlyAutorotate>",
+		),
+	)
 }
 
 @(test)
@@ -45,7 +51,8 @@ test_check_project_validates_project_level_components_with_script_registry :: pr
 	check_err := check_project(root)
 	testing.expect(
 		t,
-		check_err == `scene component "autorotate" is not defined by scripts/main.luau; add scrapbot.component("autorotate", schema)`,
+		check_err ==
+		`scene component "autorotate" is not defined by scripts/main.luau; add scrapbot.component("autorotate", schema)`,
 	)
 }
 
@@ -57,17 +64,23 @@ test_check_project_accepts_script_registered_library_components :: proc(t: ^test
 
 	scene_path := join_check_project_path(t, root, DEFAULT_SCENE)
 	defer delete(scene_path)
-	write_scene_err := os.write_entire_file(scene_path, `[[entities]]
+	write_scene_err := os.write_entire_file(
+		scene_path,
+		`[[entities]]
+id = "a1000000-0000-4000-8000-000000000001"
 name = "Body"
 
 [entities.components.scrappyphysics.rigidbody]
 velocity = [0, 4, 0]
-`)
+`,
+	)
 	testing.expect(t, write_scene_err == nil)
 
 	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_script_err := os.write_entire_file(script_path, `
+	write_script_err := os.write_entire_file(
+		script_path,
+		`
 local RigidbodyComponent = scrapbot.library_component("scrappyphysics.rigidbody", {
 	velocity = scrapbot.vec3,
 }) :: ScrappyphysicsRigidbodyComponent
@@ -78,7 +91,8 @@ scrapbot.system(Rigidbodies, function(time: ScrapbotTime, entity: ScrapbotEntity
 	local speed: number = rigidbody.velocity.y
 	assert(speed > 0)
 end)
-`)
+`,
+	)
 	testing.expect(t, write_script_err == nil)
 
 	check_err := check_project(root)
@@ -89,9 +103,21 @@ end)
 	types_bytes, read_err := os.read_entire_file(types_path, context.temp_allocator)
 	testing.expect(t, read_err == nil)
 	types_text := string(types_bytes)
-	testing.expect(t, strings.contains(types_text, "library_component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,"))
+	testing.expect(
+		t,
+		strings.contains(
+			types_text,
+			"library_component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,",
+		),
+	)
 	testing.expect(t, strings.contains(types_text, "export type ScrappyphysicsRigidbody = {"))
-	testing.expect(t, strings.contains(types_text, "export type ScrappyphysicsRigidbodyComponent = ScrapbotComponent<ScrappyphysicsRigidbody, ReadonlyScrappyphysicsRigidbody>"))
+	testing.expect(
+		t,
+		strings.contains(
+			types_text,
+			"export type ScrappyphysicsRigidbodyComponent = ScrapbotComponent<ScrappyphysicsRigidbody, ReadonlyScrappyphysicsRigidbody>",
+		),
+	)
 }
 
 @(test)
@@ -104,28 +130,37 @@ test_check_project_accepts_native_extension_registered_components :: proc(t: ^te
 
 	project_path := join_check_project_path(t, root, PROJECT_FILE)
 	defer delete(project_path)
-	write_project_err := os.write_entire_file(project_path, `name = "Check Test"
+	write_project_err := os.write_entire_file(
+		project_path,
+		`name = "Check Test"
 default_scene = "scenes/main.scene.toml"
 
 [[native_extensions]]
 name = "scrapbotnative"
 source = "native/scrapbotnative"
-`)
+`,
+	)
 	testing.expect(t, write_project_err == nil)
 
 	scene_path := join_check_project_path(t, root, DEFAULT_SCENE)
 	defer delete(scene_path)
-	write_scene_err := os.write_entire_file(scene_path, `[[entities]]
+	write_scene_err := os.write_entire_file(
+		scene_path,
+		`[[entities]]
+id = "a1000000-0000-4000-8000-000000000002"
 name = "Native Body"
 
 [entities.components.scrapbotnative.body]
 velocity = [0, 4, 0]
-`)
+`,
+	)
 	testing.expect(t, write_scene_err == nil)
 
 	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_script_err := os.write_entire_file(script_path, `
+	write_script_err := os.write_entire_file(
+		script_path,
+		`
 local BodyComponent = scrapbot.component_handle("scrapbotnative.body") :: ScrapbotnativeBodyComponent
 local Bodies = scrapbot.query(BodyComponent)
 
@@ -133,7 +168,8 @@ scrapbot.system(Bodies, function(time: ScrapbotTime, entity: ScrapbotEntity, bod
 	local speed: number = body.velocity.y
 	assert(speed > 0)
 end)
-`)
+`,
+	)
 	testing.expect(t, write_script_err == nil)
 
 	check_err := check_project(root)
@@ -144,9 +180,21 @@ end)
 	types_bytes, read_err := os.read_entire_file(types_path, context.temp_allocator)
 	testing.expect(t, read_err == nil)
 	types_text := string(types_bytes)
-	testing.expect(t, strings.contains(types_text, "component_handle: <T, R>(name: string) -> ScrapbotComponent<T, R>,"))
+	testing.expect(
+		t,
+		strings.contains(
+			types_text,
+			"component_handle: <T, R>(name: string) -> ScrapbotComponent<T, R>,",
+		),
+	)
 	testing.expect(t, strings.contains(types_text, "export type ScrapbotnativeBody = {"))
-	testing.expect(t, strings.contains(types_text, "export type ScrapbotnativeBodyComponent = ScrapbotComponent<ScrapbotnativeBody, ReadonlyScrapbotnativeBody>"))
+	testing.expect(
+		t,
+		strings.contains(
+			types_text,
+			"export type ScrapbotnativeBodyComponent = ScrapbotComponent<ScrapbotnativeBody, ReadonlyScrapbotnativeBody>",
+		),
+	)
 
 	manifest_path := join_check_project_path(t, root, "build/extensions/.scrapbot-extensions")
 	defer delete(manifest_path)
@@ -154,7 +202,10 @@ end)
 	testing.expect(t, manifest_read_err == nil)
 	manifest := string(manifest_bytes)
 	testing.expect(t, strings.contains(manifest, "scrapbotnative-"))
-	testing.expect(t, strings.contains(manifest, fmt.tprintf(".%s", dynlib.LIBRARY_FILE_EXTENSION)))
+	testing.expect(
+		t,
+		strings.contains(manifest, fmt.tprintf(".%s", dynlib.LIBRARY_FILE_EXTENSION)),
+	)
 }
 
 @(test)
@@ -169,18 +220,24 @@ test_check_project_runs_luau_analyzer_when_available :: proc(t: ^testing.T) {
 
 	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_err := os.write_entire_file(script_path, `
+	write_err := os.write_entire_file(
+		script_path,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
 
 local should_be_number: number = "not a number"
-`)
+`,
+	)
 	testing.expect(t, write_err == nil)
 
 	check_err := check_project(root)
 	testing.expect(t, strings.contains(check_err, "Luau analyzer failed:"))
-	testing.expect(t, strings.contains(check_err, "Expected this to be 'number', but got 'string'"))
+	testing.expect(
+		t,
+		strings.contains(check_err, "Expected this to be 'number', but got 'string'"),
+	)
 }
 
 @(test)
@@ -195,7 +252,9 @@ test_check_project_analyzer_accepts_typed_three_component_query :: proc(t: ^test
 
 	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_err := os.write_entire_file(script_path, `
+	write_err := os.write_entire_file(
+		script_path,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
@@ -208,7 +267,8 @@ scrapbot.system(function()
 		assert(y > -100)
 	end)
 end)
-`)
+`,
+	)
 	testing.expect(t, write_err == nil)
 
 	check_err := check_project(root)
@@ -227,7 +287,9 @@ test_check_project_analyzer_rejects_query_each_payload_mutation :: proc(t: ^test
 
 	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_err := os.write_entire_file(script_path, `
+	write_err := os.write_entire_file(
+		script_path,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
@@ -238,7 +300,8 @@ scrapbot.system(function()
 		autorotate.velocity.y += 1
 	end)
 end)
-`)
+`,
+	)
 	testing.expect(t, write_err == nil)
 
 	check_err := check_project(root)
@@ -259,7 +322,9 @@ test_check_project_analyzer_accepts_typed_writable_query_system :: proc(t: ^test
 
 	script_path := join_check_project_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_err := os.write_entire_file(script_path, `
+	write_err := os.write_entire_file(
+		script_path,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 }) :: AutorotateComponent
@@ -272,7 +337,8 @@ scrapbot.system(Autorotating, {
 	transform.rotation.y += autorotate.velocity.y * time.delta_time
 	autorotate.velocity.y += 1
 end)
-`)
+`,
+	)
 	testing.expect(t, write_err == nil)
 
 	check_err := check_project(root)
@@ -301,8 +367,16 @@ scrapbot.log("hello")
 @(test)
 test_luau_analyzer_output_filter_ignores_lints :: proc(t: ^testing.T) {
 	testing.expect(t, luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) TypeError: bad type`))
-	testing.expect(t, luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) SyntaxError: bad syntax`))
-	testing.expect(t, !luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) LocalUnused: Variable is never used`))
+	testing.expect(
+		t,
+		luau_analyzer_output_has_errors(`main.luau:1:1-2: (W0) SyntaxError: bad syntax`),
+	)
+	testing.expect(
+		t,
+		!luau_analyzer_output_has_errors(
+			`main.luau:1:1-2: (W0) LocalUnused: Variable is never used`,
+		),
+	)
 }
 
 make_check_project_test_project :: proc(t: ^testing.T) -> (string, string) {
@@ -345,7 +419,9 @@ write_check_project_native_extension_source :: proc(t: ^testing.T, root: string)
 		testing.fail_now(t)
 	}
 	defer delete(source_path)
-	write_source_err := os.write_entire_file(source_path, `package scrapbotnative
+	write_source_err := os.write_entire_file(
+		source_path,
+		`package scrapbotnative
 
 import c "core:c"
 import api "scrapbot:extension_api"
@@ -366,7 +442,8 @@ scrapbot_extension_register :: proc "c" (scrapbot: ^api.API) -> cstring {
 	}
 	return scrapbot.register_library_component(scrapbot, &definition)
 }
-`)
+`,
+	)
 	if !testing.expect(t, write_source_err == nil) {
 		testing.fail_now(t)
 	}

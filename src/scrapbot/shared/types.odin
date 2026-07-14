@@ -39,6 +39,7 @@ Scene :: struct {
 }
 
 Scene_Entity :: struct {
+	id: Entity_UUID,
 	name: string,
 	has_transform: bool,
 	transform: Transform_Component,
@@ -145,7 +146,7 @@ Point_Light_Component :: struct {
 }
 
 UI_Layout_Component :: struct {
-	parent: string,
+	parent: Entity_UUID,
 	position: Vec2,
 	size: Vec2,
 	margin: Vec4,
@@ -306,6 +307,7 @@ Custom_Component_Storage :: struct {
 
 World_Entity :: struct {
 	id: Entity,
+	uuid: Entity_UUID,
 	alive: bool,
 	origin: Entity_Origin,
 	name: string,
@@ -319,6 +321,9 @@ World_Entity :: struct {
 	geometry_index: int,
 	material_index: int,
 	render_instance_index: int,
+	render_active_index: int,
+	render_dirty: bool,
+	ui_dirty: bool,
 	has_shadow_caster: bool,
 	has_shadow_receiver: bool,
 	ui_layout_index: int,
@@ -381,8 +386,10 @@ Render_List :: struct {
 }
 
 World :: struct {
+	instance_uuid: Entity_UUID,
 	time: Time_Resource,
 	entities: [dynamic]World_Entity,
+	entity_by_uuid: map[Entity_UUID]int,
 	transforms: #soa[dynamic]Transform_Component,
 	cameras: [dynamic]Camera_Component,
 	ambient_lights: [dynamic]Ambient_Light_Component,
@@ -393,6 +400,9 @@ World :: struct {
 	geometries: [dynamic]Geometry_Component,
 	materials: [dynamic]Material_Component,
 	render_instances: [dynamic]Render_Instance_Component,
+	render_active_entities: [dynamic]int,
+	render_dirty_entities: [dynamic]int,
+	render_structure_sync_count: u64,
 	free_transform_indices: [dynamic]int,
 	free_mesh_indices: [dynamic]int,
 	free_geometry_indices: [dynamic]int,
@@ -411,6 +421,8 @@ World :: struct {
 	editor_scene_cameras: [dynamic]Editor_Scene_Camera_Component,
 	editor_uis: [dynamic]Editor_UI_Component,
 	custom_components: [dynamic]Custom_Component_Storage,
+	ui_structure_revision: u64,
+	ui_dirty_entities: [dynamic]int,
 }
 
 Render_Frame :: struct {

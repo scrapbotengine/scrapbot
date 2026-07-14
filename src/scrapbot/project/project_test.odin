@@ -1,5 +1,6 @@
 package project
 
+import shared "../shared"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
@@ -59,9 +60,27 @@ source = "../faststuff"
 }
 
 @(test)
+test_default_scene_template_mints_fresh_entity_ids :: proc(t: ^testing.T) {
+	first_source := default_scene_template()
+	second_source := default_scene_template()
+	first, first_result := parse_scene(first_source)
+	defer destroy_scene(&first)
+	second, second_result := parse_scene(second_source)
+	defer destroy_scene(&second)
+	testing.expect(t, first_result.err == .None && second_result.err == .None)
+	testing.expect(t, len(first.entities) == 2 && len(second.entities) == 2)
+	if len(first.entities) == 2 && len(second.entities) == 2 {
+		testing.expect(t, first.entities[0].id != first.entities[1].id)
+		testing.expect(t, first.entities[0].id != second.entities[0].id)
+		testing.expect(t, first.entities[1].id != second.entities[1].id)
+	}
+}
+
+@(test)
 test_scene_accepts_namespaced_component_names :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000001"
 name = "Body"
 
 [entities.components.scrappyphysics.rigidbody]
@@ -80,6 +99,7 @@ velocity = [0, 0, 0]
 test_scene_rejects_malformed_component_names :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000002"
 name = "Body"
 
 [entities.components.scrappyphysics..rigidbody]
@@ -92,9 +112,41 @@ velocity = [0, 0, 0]
 }
 
 @(test)
+test_scene_requires_valid_unique_entity_ids :: proc(t: ^testing.T) {
+	missing_scene, missing_result := parse_scene(`[[entities]]
+name = "Missing ID"
+`)
+	defer destroy_scene(&missing_scene)
+	testing.expect(t, missing_result.err == .Missing_Field)
+
+	invalid_scene, invalid_result := parse_scene(
+		`[[entities]]
+id = "not-a-uuid"
+name = "Invalid ID"
+`,
+	)
+	defer destroy_scene(&invalid_scene)
+	testing.expect(t, invalid_result.err == .Invalid_Field)
+
+	duplicate_scene, duplicate_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000020"
+name = "First"
+
+[[entities]]
+id = "a6000000-0000-4000-8000-000000000020"
+name = "Second"
+`,
+	)
+	defer destroy_scene(&duplicate_scene)
+	testing.expect(t, duplicate_result.err == .Invalid_Field)
+}
+
+@(test)
 test_scene_component_fields_are_single_tokens :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000003"
 name = "Body"
 
 [entities.components.autorotate]
@@ -110,12 +162,14 @@ rotation.velocity = [0, 0, 0]
 test_scene_parses_engine_light_components :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000004"
 name = "Ambient"
 [entities.ambient_light]
 color = [0.2, 0.3, 0.4]
 intensity = 0.5
 
 [[entities]]
+id = "a6000000-0000-4000-8000-000000000005"
 name = "Sun"
 [entities.directional_light]
 direction = [-1, -2, -3]
@@ -123,6 +177,7 @@ color = [1, 0.9, 0.8]
 intensity = 1.25
 
 [[entities]]
+id = "a6000000-0000-4000-8000-000000000006"
 name = "Lamp"
 [entities.point_light]
 color = [0.1, 0.4, 1]
@@ -147,6 +202,7 @@ range = 12
 test_scene_parses_shadow_marker_components :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000007"
 name = "Cube"
 [entities.shadow_caster]
 [entities.shadow_receiver]
@@ -163,6 +219,7 @@ name = "Cube"
 test_project_check_accepts_registered_namespaced_scene_components :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000008"
 name = "Body"
 
 [entities.components.scrapbot.transform]
@@ -179,6 +236,7 @@ position = [0, 0, 0]
 test_project_check_rejects_unknown_namespaced_scene_components :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000009"
 name = "Body"
 
 [entities.components.scrappyphysics.rigidbody]
@@ -230,6 +288,7 @@ test_init_project_writes_luau_lsp_metadata :: proc(t: ^testing.T) {
 test_scene_parses_ecs_ui_hierarchy :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-00000000000a"
 name = "HUD"
 [entities.ui_layout]
 position = [20, 30]
@@ -255,18 +314,20 @@ title_height = 28
 scroll_speed = 64
 smoothness = 12
 [[entities]]
+id = "a6000000-0000-4000-8000-00000000000b"
 name = "Title"
 [entities.ui_layout]
-parent = "HUD"
+parent = "a6000000-0000-4000-8000-00000000000a"
 size = [300, 40]
 [entities.ui_text]
 text = "HELLO"
 color = [1, 0.8, 0.2, 1]
 size = 24
 [[entities]]
+id = "a6000000-0000-4000-8000-00000000000c"
 name = "Stats"
 [entities.ui_layout]
-parent = "HUD"
+parent = "a6000000-0000-4000-8000-00000000000a"
 size = [300, 80]
 [entities.ui_table]
 columns = 3
@@ -293,7 +354,8 @@ row_gap = 4
 	testing.expect(t, scene.entities[0].ui_layout.border_width == 2)
 	testing.expect(t, scene.entities[0].ui_layout.corner_radius == 6)
 	testing.expect(t, scene.entities[0].ui_layout.hidden)
-	testing.expect(t, scene.entities[1].ui_layout.parent == "HUD")
+	hud_id, hud_id_ok := shared.entity_uuid_parse("a6000000-0000-4000-8000-00000000000a")
+	testing.expect(t, hud_id_ok && scene.entities[1].ui_layout.parent == hud_id)
 	testing.expect(t, scene.entities[1].ui_text.text == "HELLO")
 	testing.expect(t, scene.entities[2].has_ui_table)
 	testing.expect(t, scene.entities[2].ui_table.columns == 3)
@@ -305,6 +367,7 @@ row_gap = 4
 test_scene_parses_single_line_ui_input :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-00000000000d"
 name = "Name Input"
 [entities.ui_layout]
 size = [240, 32]
@@ -332,14 +395,16 @@ read_only = false
 test_scene_rejects_ui_parent_cycles :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]
+id = "a6000000-0000-4000-8000-00000000000e"
 name = "A"
 [entities.ui_layout]
-parent = "B"
+parent = "a6000000-0000-4000-8000-00000000000f"
 size = [10, 10]
 [[entities]]
+id = "a6000000-0000-4000-8000-00000000000f"
 name = "B"
 [entities.ui_layout]
-parent = "A"
+parent = "a6000000-0000-4000-8000-00000000000e"
 size = [10, 10]
 `,
 	)

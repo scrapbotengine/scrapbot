@@ -34,10 +34,11 @@ Entities use repeated `[[entities]]` tables.
 
 ```toml
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 ```
 
-Every entity must have a name.
+Every entity must have a unique, non-zero RFC UUID in `id` and a `name`. The ID is stable project identity; the name is an editable display label.
 
 ## Built-in component sections
 
@@ -106,6 +107,7 @@ Screen-space UI entities share a retained box model and compose container or con
 
 ```toml
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000010"
 name = "HUD"
 
 [entities.ui_layout]
@@ -125,10 +127,11 @@ draggable = true
 min_size = 64
 
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000011"
 name = "Title"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "d4000000-0000-4000-8000-000000000010"
 size = [412, 52]
 
 [entities.ui_text]
@@ -137,10 +140,11 @@ color = [0.15, 0.95, 0.82, 1]
 size = 32
 
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000012"
 name = "Launch"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "d4000000-0000-4000-8000-000000000010"
 margin = [0, 0, 0, 8]
 size = [180, 48]
 padding = [13, 18, 11, 18]
@@ -156,10 +160,11 @@ active_background = [0.22, 0.18, 0.68, 1]
 active_color = [0.82, 0.84, 1, 1]
 
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000013"
 name = "Player Name"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "d4000000-0000-4000-8000-000000000010"
 size = [240, 40]
 padding = [10, 12, 10, 12]
 background = [0.025, 0.03, 0.04, 1]
@@ -176,10 +181,11 @@ focus_border_color = [0.15, 0.85, 0.72, 1]
 read_only = false
 
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000014"
 name = "Feature Scroll"
 
 [entities.ui_layout]
-parent = "HUD"
+parent = "d4000000-0000-4000-8000-000000000010"
 size = [412, 160]
 padding = [8, 8, 8, 8]
 background = [0.08, 0.09, 0.11, 1]
@@ -190,17 +196,18 @@ scroll_speed = 64
 smoothness = 14
 
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000015"
 name = "Feature Pane"
 
 [entities.ui_layout]
-parent = "Feature Scroll"
+parent = "d4000000-0000-4000-8000-000000000014"
 size = [396, 360]
 
 [entities.ui_vstack]
 gap = 8
 ```
 
-Positions and sizes are screen pixels from the top-left. `margin` and `padding` use `[top, right, bottom, left]`. `border_color` and non-negative `border_width` add an inset signed-distance border that follows `corner_radius`. `hidden = true` removes the box and its descendant subtree from layout, paint, and interaction without despawning their entities. Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Add `draggable = true` to turn the gaps into pointer-draggable separators; `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable stacks must also enable fill. Backgrounds, borders, and corner radii are rendered from the same signed-distance rounded rectangle. Parent names must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine both stack directions or more than one of `ui_text`, `ui_button`, and `ui_input`.
+Positions and sizes are screen pixels from the top-left. `margin` and `padding` use `[top, right, bottom, left]`. `border_color` and non-negative `border_width` add an inset signed-distance border that follows `corner_radius`. `hidden = true` removes the box and its descendant subtree from layout, paint, and interaction without despawning their entities. Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Add `draggable = true` to turn the gaps into pointer-draggable separators; `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable stacks must also enable fill. Backgrounds, borders, and corner radii are rendered from the same signed-distance rounded rectangle. Parent UUIDs must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine both stack directions or more than one of `ui_text`, `ui_button`, and `ui_input`.
 
 Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button activation events are not emitted yet.
 
@@ -212,6 +219,7 @@ Panels add a styled title band without choosing how their children flow, so they
 
 ```toml
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000020"
 name = "Stats Panel"
 
 [entities.ui_layout]
@@ -232,10 +240,11 @@ title_height = 28
 [entities.ui_vstack]
 
 [[entities]]
+id = "d4000000-0000-4000-8000-000000000021"
 name = "Stats Table"
 
 [entities.ui_layout]
-parent = "Stats Panel"
+parent = "d4000000-0000-4000-8000-000000000020"
 size = [340, 100]
 
 [entities.ui_table]

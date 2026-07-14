@@ -217,6 +217,7 @@ scrapbot_geometry_cube :: proc "c" (L: Lua_State) -> c.int {
 	defer delete(desc.vertices); defer delete(desc.indices)
 	handle, register_err := resources.register_geometry(runtime.resource_registry, name, desc)
 	if register_err != "" { return luau_push_error(L, register_err) }
+	ecs.mark_all_render_entities_dirty(runtime.world)
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
 }
@@ -277,6 +278,7 @@ scrapbot_geometry_create :: proc "c" (L: Lua_State) -> c.int {
 		name,
 		{vertices = vertices[:], indices = indices[:]},
 	); if err != "" { return luau_push_error(L, err) }
+	ecs.mark_all_render_entities_dirty(runtime.world)
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
 }
@@ -297,6 +299,7 @@ scrapbot_geometry_plane :: proc "c" (L: Lua_State) -> c.int {
 	defer delete(desc.vertices); defer delete(desc.indices)
 	handle, register_err := resources.register_geometry(runtime.resource_registry, name, desc)
 	if register_err != "" { return luau_push_error(L, register_err) }
+	ecs.mark_all_render_entities_dirty(runtime.world)
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
 }
@@ -397,6 +400,7 @@ register_generated_luau_geometry :: proc(
 		name,
 		desc,
 	); if err != "" { return luau_push_error(L, err) }
+	ecs.mark_all_render_entities_dirty(runtime.world)
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
 }
@@ -426,6 +430,7 @@ scrapbot_material_unlit :: proc "c" (L: Lua_State) -> c.int {
 		{base_color = {values[0], values[1], values[2], values[3]}},
 	)
 	if err != "" { return luau_push_error(L, err) }
+	ecs.mark_all_render_entities_dirty(runtime.world)
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "material", handle.index, handle.generation); return 1
 }
@@ -450,6 +455,7 @@ scrapbot_material_textured :: proc "c" (L: Lua_State) -> c.int {
 		{values[0], values[1], values[2], values[3]},
 	)
 	if err != "" { return luau_push_error(L, err) }
+	ecs.mark_all_render_entities_dirty(runtime.world)
 	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
 	push_resource_handle(L, "material", handle.index, handle.generation); return 1
 }

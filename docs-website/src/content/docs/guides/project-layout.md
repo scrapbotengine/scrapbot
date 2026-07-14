@@ -48,6 +48,7 @@ Scene files describe entities, built-in components, and schema-backed custom com
 
 ```toml
 [[entities]]
+id = "d5000000-0000-4000-8000-000000000001"
 name = "Left Cube"
 
 [entities.transform]

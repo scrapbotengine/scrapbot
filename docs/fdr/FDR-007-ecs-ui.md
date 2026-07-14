@@ -11,7 +11,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 - Every UI entity describes a rectangular box with an explicit size, optional position, per-edge margin and padding, background color, SDF border color and width, corner radius, and hidden state.
 - A hidden box removes its complete descendant subtree from retained layout, painting, and pointer interaction without despawning any entities.
-- UI entities form a parent-by-name hierarchy validated when the scene loads.
+- UI entities form a parent-by-UUID hierarchy validated when the scene loads. Entity names remain editable labels.
 - Horizontal and vertical stack components arrange child boxes in scene order with a configurable gap; boxes without a stack component overlay their children. Fill stacks treat child sizes as proportions, fill the cross-axis, and can expose draggable separators with minimum pane sizes.
 - Table containers arrange children in row-major order across 1–64 equal-width columns, with independent column and row gaps. A partial final row remains left aligned.
 - Panel decoration adds an optional title band with its own text and background styling and reserves that band above nested content. Panels can compose with overlay, stack, or table layout.
@@ -22,7 +22,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - Single-line input controls store authored text in their ECS component while the retained UI state owns focus, cursor, selection, horizontal reveal, and blink state. Clicking selects all text.
 - Focused inputs accept typed text, Left/Right/Home/End cursor movement, Shift-extended selection, Backspace/Delete, and Select All. Tab and Shift+Tab traverse inputs in paint order; Enter commits and leaves the field, while Escape restores the value present when focus began.
 - Backgrounds and inset borders use GPU-evaluated signed-distance rounded rectangles, including square corners at a zero radius.
-- The engine reconciles alive UI entities after frame systems and removes retained nodes when their entities disappear.
+- Structural dirty notifications add, update, or remove only affected retained nodes when UI components or entities appear and disappear. Unchanged frames do not rescan world membership.
 - WGPU paints UI after world geometry, including in headless framegrabs.
 - UI rendering does not require a world camera or renderable geometry.
 - The built-in Inter font is embedded and redistributed under the SIL Open Font License 1.1.
@@ -38,9 +38,9 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ### 2. Maintain retained derived state
 
-**Decision:** An engine-owned reconciliation step tracks eligible entities, resolves their hierarchy, computes layout, and emits a bounded paint list.
+**Decision:** An engine-owned synchronization step consumes structural dirty entities and updates retained membership in place. It then resolves hierarchy, computes layout, and emits a bounded paint list.
 **Why:** Renderers need ordered, resolved rectangles and glyphs rather than repeated ECS queries or project-owned GPU handles.
-**Tradeoff:** The implementation has fixed node/paint limits and recomputes layout each frame. The same reconciler maintains distinct project and transient editor UI coordinate and interaction domains.
+**Tradeoff:** The implementation has fixed node/paint limits and still recomputes responsive layout and paint each frame. Every structural mutation path must notify the retained index. The same reconciler maintains distinct project and transient editor UI coordinate and interaction domains. See ADR-024.
 
 ### 3. Use explicit pixels with opt-in proportional fill
 
@@ -86,7 +86,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020
+- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024
 - **FDRs:** FDR-002, FDR-003, FDR-005, FDR-008
 
 ## Open Questions

@@ -8,6 +8,7 @@ import "core:testing"
 test_luau_exposes_and_queries_all_public_ui_container_and_input_components :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(
 		`[[entities]]
+id = "aa000000-0000-4000-8000-000000000001"
 name = "Inspector Field"
 [entities.ui_layout]
 size = [240, 32]

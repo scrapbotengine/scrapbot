@@ -14,7 +14,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - The shell provides a top bar, bottom status bar, left scene sidebar, and right entity/component inspector sidebar.
 - The vertical boundaries around the project viewport are draggable. Resizing either sidebar preserves a minimum center viewport and the center automatically fills the remaining width.
 - Editor chrome uses neutral near-black and charcoal surfaces, gray-to-white text, quiet gray selection, and restrained mint accents for a dense professional tool aesthetic.
-- Header bands, inspector surfaces, viewport seams, and selection use the shared ECS box border fields; pooled browser rows use hidden subtrees rather than leaving the ECS lifecycle.
+- Header bands, inspector surfaces, viewport seams, and selection use the shared ECS box border fields; pooled browser rows use hidden subtrees rather than leaving the ECS lifecycle. The default desktop density uses 30-pixel scene rows, 24-pixel inspector rows, and a wider inspector pane so labels and three-axis controls remain comfortable without becoming oversized.
 - The running project's world and project-authored UI always share the complete available viewport. With the editor closed that is the full window; with the editor open it is the remaining center workspace.
 - Editor chrome and the project viewport follow the current drawable size when the window is resized. The camera derives its aspect ratio from the live viewport instead of enforcing a fixed ratio.
 - Visible windows request a native high-pixel-density backbuffer. Editor chrome keeps logical dimensions while text and controls paint at the display's physical pixel density.
@@ -26,7 +26,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - The scene sidebar lists scene-authored and runtime-spawned entities and supports pixel-continuous pointer-wheel and trackpad scrolling, clipped partial rows, hover, and stable selection.
 - Scene-authored entity names use normal white editor text and runtime-spawned entity names use muted gray. Editor-origin entities are hidden from the browser and cannot be selected in the inspector.
 - Selection follows the entity's generation-aware identity and clears if that entity despawns.
-- The inspector shows the selected entity's name, identity, provenance, attached components, field names, and current values. Components are vertically stacked titled panels, and each panel renders its fields in a two-column property table inside an independently scrollable sidebar. Values use reusable input controls: transform, camera, light, and custom Vec3 fields are live-editable, while unsupported field types remain selectable and read-only. Vec3 value cells compose three equal-width X, Y, and Z inputs with a fill HStack; scalar value cells contain one full-width input.
+- The inspector shows the selected entity's name, stable UUID, provenance, attached components, field names, and current values. Components are vertically stacked titled panels, and each panel renders its fields in a two-column property table inside an independently scrollable sidebar. Values use reusable input controls: transform, camera, light, and custom Vec3 fields are live-editable, while unsupported field types remain selectable and read-only. Vec3 value cells compose three equal-width X, Y, and Z inputs with a fill HStack; scalar value cells contain one full-width input.
 - Clicking an inspector value selects its complete contents. Cursor and selection commands work inside the field, Tab and Shift+Tab traverse values in paint order—including X, Y, and Z independently—Enter commits and leaves the field, and Escape restores the value captured when editing began.
 - Numeric fields reject non-finite, unparsable, and field-invalid values with a red focus border without mutating the running world. Up and Down step by the field's default increment, Shift uses a coarse 10× step, and Ctrl/Cmd uses a fine 0.1× step. Camera planes remain positive and ordered, camera field of view stays within 1–179 degrees, and light colors and non-negative light properties remain within their valid ranges.
 - Vec3 controls expose restrained red, green, and blue X/Y/Z label strips. Dragging a strip horizontally scrubs that axis; releasing commits the complete drag as one edit.
@@ -94,7 +94,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 9. Reserve color for identity and state
 
-**Decision:** Build editor hierarchy from neutral dark surfaces and legible gray text, using Scrapbot mint as a thin identity and status signal rather than a panel tint.
+**Decision:** Build editor hierarchy from neutral dark surfaces and legible gray text, using Scrapbot mint as a thin identity and status signal rather than a panel tint. Use one 12-pixel text size throughout editor chrome and tooling; express hierarchy only through normal or bold weight and full-strength or faded color. Pair that invariant with modestly padded controls and enough default inspector width for three-axis editing.
 **Why:** Low-chroma chrome keeps attention on live project content and dense inspection data while retaining a recognizable Scrapbot accent.
 **Tradeoff:** Provenance and gizmo colors remain intentionally saturated semantic exceptions and must continue to meet contrast requirements.
 
@@ -130,7 +130,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-022
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-022, ADR-023, ADR-024
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions

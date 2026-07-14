@@ -55,6 +55,7 @@ reconcile_editor_scene_camera :: proc(
 		&world.entities,
 		World_Entity {
 			id = {index = u32(entity_index), generation = 1},
+			uuid = shared.entity_uuid_from_engine_name(EDITOR_SCENE_CAMERA_NAME),
 			alive = true,
 			origin = .Editor,
 			name = clone_world_string(EDITOR_SCENE_CAMERA_NAME),
@@ -67,6 +68,7 @@ reconcile_editor_scene_camera :: proc(
 			geometry_index = INVALID_COMPONENT_INDEX,
 			material_index = INVALID_COMPONENT_INDEX,
 			render_instance_index = INVALID_COMPONENT_INDEX,
+			render_active_index = INVALID_COMPONENT_INDEX,
 			ui_layout_index = INVALID_COMPONENT_INDEX,
 			ui_hstack_index = INVALID_COMPONENT_INDEX,
 			ui_vstack_index = INVALID_COMPONENT_INDEX,
@@ -80,6 +82,10 @@ reconcile_editor_scene_camera :: proc(
 			editor_ui_index = INVALID_COMPONENT_INDEX,
 		},
 	)
+	if world.entity_by_uuid == nil {
+		world.entity_by_uuid = make(map[shared.Entity_UUID]int)
+	}
+	world.entity_by_uuid[world.entities[entity_index].uuid] = entity_index
 	return entity_index, &world.editor_scene_cameras[component_index], true
 }
 

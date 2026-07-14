@@ -29,6 +29,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Structural world changes requested from Luau systems are queued in a deferred command buffer and applied after all scheduled systems finish for the frame.
 - Deferred commands currently support spawning named entities with initial transform/project component payloads, despawning entities without shifting existing entity indices, and adding/removing `scrapbot.transform` or project components.
 - Runtime spawns reuse dead entity slots and world-level free pools for transform, mesh, geometry, material, and render-instance storage regardless of the previous entity archetype. Reused entity slots retain their incremented generation, so handles from the previous entity lifetime remain stale.
+- Every runtime-spawned entity lifetime receives a fresh UUID and is registered in the world's UUID lookup, even when its runtime storage slot is reused.
 - Removing and re-adding supported built-in components returns their storage to the same free pools; mesh replacement updates owned storage and renderable records in place.
 - Despawning invalidates the entity's custom-component and legacy-renderable records; later spawns reuse those records instead of growing per-frame query and render scans indefinitely.
 
@@ -80,9 +81,15 @@ Declared systems now enforce their declared component access at the Luau API bou
 **Why:** Short-lived runtime entities must not make per-frame entity, query, and render scans grow for the rest of the run. Incrementing the slot generation before reuse preserves stable indices without allowing stale handles to target a new entity lifetime.
 **Tradeoff:** Component storage remains sparse, and every supported removal/despawn path must release ownership before a later entity can claim the slot.
 
+### 8. Give each runtime lifetime a durable identity
+
+**Decision:** Generate and register a fresh UUID when applying a spawn command, following ADR-023.
+**Why:** Storage reuse must not make a newly spawned entity inherit the durable identity of the entity that previously occupied its slot.
+**Tradeoff:** Spawn and despawn paths maintain both a generation-aware runtime handle and the UUID lookup map.
+
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-007, ADR-009, ADR-012
+- **ADRs:** ADR-001, ADR-006, ADR-007, ADR-009, ADR-012, ADR-023, ADR-024
 - **FDRs:** FDR-004, FDR-006
 
 ## Open Questions

@@ -1,10 +1,10 @@
 package project
 
+import components "../component"
+import shared "../shared"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
-import components "../component"
-import shared "../shared"
 
 PROJECT_FILE :: shared.PROJECT_FILE
 DEFAULT_SCENE :: shared.DEFAULT_SCENE
@@ -23,13 +23,13 @@ Named_Vec3 :: shared.Named_Vec3
 
 Project_Load_Result :: struct {
 	config: Project_Config,
-	scene:  Scene,
-	err:    string,
+	scene: Scene,
+	err: string,
 }
 
 Project_Config_Load_Result :: struct {
 	config: Project_Config,
-	err:    string,
+	err: string,
 }
 
 project_toml_template :: proc(name: string) -> string {
@@ -39,7 +39,12 @@ default_scene = "%s"
 }
 
 default_scene_template :: proc() -> string {
-	return `[[entities]]
+	camera_buffer, cube_buffer: [36]u8
+	camera_id := shared.entity_uuid_to_string(shared.entity_uuid_generate(), camera_buffer[:])
+	cube_id := shared.entity_uuid_to_string(shared.entity_uuid_generate(), cube_buffer[:])
+	return fmt.tprintf(
+		`[[entities]]
+id = "%s"
 name = "Main Camera"
 
 [entities.transform]
@@ -53,6 +58,7 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "%s"
 name = "Cube"
 
 [entities.transform]
@@ -65,11 +71,16 @@ primitive = "cube"
 
 [entities.components.autorotate]
 velocity = [0, 1.5707963, 0]
-`
+
+`,
+		camera_id,
+		cube_id,
+	)
 }
 
 default_script_template :: proc() -> string {
-	return `scrapbot.log("hello from Scrapbot")
+	return(
+		`scrapbot.log("hello from Scrapbot")
 
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
@@ -84,7 +95,8 @@ scrapbot.system(Autorotating, {
 	transform.rotation.y += autorotate.velocity.y * time.delta_time
 	transform.rotation.z += autorotate.velocity.z * time.delta_time
 end)
-`
+` \
+	)
 }
 
 default_luau_types_template :: proc() -> string {
@@ -100,7 +112,8 @@ default_luau_types_template :: proc() -> string {
 }
 
 default_vscode_settings_template :: proc() -> string {
-	return `{
+	return(
+		`{
   "luau-lsp.platform.type": "standard",
   "luau-lsp.fflags.enableNewSolver": true,
   "luau-lsp.sourcemap.enabled": false,
@@ -108,7 +121,8 @@ default_vscode_settings_template :: proc() -> string {
     "scrapbot": "types/scrapbot.d.luau"
   }
 }
-`
+` \
+	)
 }
 
 init_project :: proc(root, name: string) -> string {
@@ -142,10 +156,11 @@ init_project :: proc(root, name: string) -> string {
 		return fmt.tprintf("failed to create scripts directory: %v", err)
 	}
 
-	assets_dir, join_assets_err := filepath.join({root,"assets"})
-	if join_assets_err != nil {return "failed to allocate assets path"}
+	assets_dir, join_assets_err := filepath.join({root, "assets"})
+	if join_assets_err != nil { return "failed to allocate assets path" }
 	defer delete(assets_dir)
-	if err := os.make_directory_all(assets_dir); err != nil {return fmt.tprintf("failed to create assets directory: %v",err)}
+	if err := os.make_directory_all(assets_dir);
+	   err != nil { return fmt.tprintf("failed to create assets directory: %v", err) }
 
 	types_dir, join_types_err := filepath.join({root, "types"})
 	if join_types_err != nil {
@@ -211,7 +226,8 @@ init_project :: proc(root, name: string) -> string {
 		return "failed to allocate editor settings file path"
 	}
 	defer delete(vscode_settings_path)
-	if err := os.write_entire_file(vscode_settings_path, default_vscode_settings_template()); err != nil {
+	if err := os.write_entire_file(vscode_settings_path, default_vscode_settings_template());
+	   err != nil {
 		return fmt.tprintf("failed to write %s: %v", vscode_settings_path, err)
 	}
 
@@ -344,8 +360,14 @@ write_luau_types :: proc(root: string, registry: ^components.Registry) -> string
 }
 
 register_default_project_components :: proc(registry: ^components.Registry) {
-	definition := components.Definition{name = "autorotate", field_count = 1}
-	definition.fields[0] = components.Field_Definition{name = "velocity", field_type = .Vec3}
+	definition := components.Definition {
+		name = "autorotate",
+		field_count = 1,
+	}
+	definition.fields[0] = components.Field_Definition {
+		name = "velocity",
+		field_type = .Vec3,
+	}
 	components.register_project_component(registry, definition)
 }
 

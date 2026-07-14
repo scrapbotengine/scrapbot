@@ -1,17 +1,20 @@
 package script
 
-import "core:testing"
 import component "../component"
 import ecs "../ecs"
 import project "../project"
 import resources "../resources"
 import shared "../shared"
+import "core:testing"
 
 @(test)
 test_luau_spawn_is_deferred_until_after_system_step :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000001"
 name = "Source"
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -20,7 +23,9 @@ name = "Source"
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local frame = 0
 
 scrapbot.system(function()
@@ -33,7 +38,10 @@ scrapbot.system(function()
 		assert(scrapbot.entity_count() == 2)
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -48,18 +56,22 @@ end)
 }
 @(test)
 test_luau_despawn_is_deferred_until_after_query_iteration :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000002"
 name = "First"
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
 
 [[entities]]
+id = "a7000000-0000-4000-8000-000000000003"
 name = "Second"
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -68,7 +80,9 @@ velocity = [0, 1, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -92,7 +106,10 @@ scrapbot.system(function()
 		assert(scrapbot.entity_count() == 0)
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -107,9 +124,12 @@ end)
 
 @(test)
 test_luau_deferred_commands_are_discarded_when_system_errors :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000004"
 name = "Source"
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -118,7 +138,9 @@ name = "Source"
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local frame = 0
 
 scrapbot.system(function()
@@ -128,7 +150,10 @@ scrapbot.system(function()
 		error("failed frame")
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -143,9 +168,12 @@ end)
 
 @(test)
 test_luau_spawn_can_include_initial_transform_and_custom_components :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000005"
 name = "Source"
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -154,7 +182,9 @@ name = "Source"
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -188,7 +218,10 @@ scrapbot.system(function()
 		assert(query_count == 1)
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -204,9 +237,12 @@ end)
 
 @(test)
 test_luau_add_component_is_deferred_until_after_system_step :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000006"
 name = "Target"
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -215,7 +251,9 @@ name = "Target"
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -256,7 +294,10 @@ scrapbot.system(function()
 		assert(query_count == 1)
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -270,12 +311,15 @@ end)
 
 @(test)
 test_luau_remove_component_is_deferred_until_after_query_iteration :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000007"
 name = "Spinner"
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -284,7 +328,9 @@ velocity = [0, 1, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -306,7 +352,10 @@ scrapbot.system(function()
 		assert(query_count == 0)
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 
@@ -318,7 +367,9 @@ end)
 
 @(test)
 test_luau_entity_handles_reject_stale_generations :: proc(t: ^testing.T) {
-	scene, parse_result := project.parse_scene(`[[entities]]
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000008"
 name = "Spinner"
 
 [entities.transform]
@@ -328,7 +379,8 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 1, 0]
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, parse_result.err == .None)
 
@@ -337,7 +389,9 @@ velocity = [0, 1, 0]
 
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
-	result := run_source(&runtime, `
+	result := run_source(
+		&runtime,
+		`
 local AutorotateComponent = scrapbot.component("autorotate", {
 	velocity = scrapbot.vec3,
 })
@@ -356,7 +410,10 @@ scrapbot.system(function()
 		scrapbot.set_rotation(saved, { x = 9, y = 9, z = 9 })
 	end
 end)
-`, "=test", &world)
+`,
+		"=test",
+		&world,
+	)
 	testing.expect(t, result.err == "")
 	testing.expect(t, result.ran)
 

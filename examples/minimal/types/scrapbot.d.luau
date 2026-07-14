@@ -54,6 +54,7 @@ export type Scrapbot = {
 }
 
 export type ScrapbotEntity = {
+	id: string,
 	index: number,
 	generation: number,
 	name: string?,

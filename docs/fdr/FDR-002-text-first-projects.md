@@ -1,7 +1,7 @@
 # FDR-002: Text-first projects
 
 **Status:** Active
-**Last reviewed:** 2026-07-11
+**Last reviewed:** 2026-07-14
 
 ## Overview
 
@@ -14,6 +14,7 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 - The manifest can declare native extension targets with a name and source directory.
 - The default generated scene lives at `scenes/main.scene.toml`.
 - Scene files describe entities and known components in TOML.
+- Every scene entity has a required, non-zero, project-wide UUID. Names are editable display labels, and cross-entity references use UUIDs.
 - Project validation rejects missing manifests, unsafe scene paths, malformed project metadata, malformed scene data, unknown scene components, and scene data that does not match registered component schemas.
 - Project validation refreshes generated Luau type definitions from the component registry.
 - Project validation builds declared native extension targets before loading extension schemas.
@@ -45,9 +46,15 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 **Why:** Project authors should not need to remember platform output paths or external build scripts before running or checking a project.
 **Tradeoff:** The manifest parser still supports only Scrapbot's narrow TOML subset, and extension targets currently assume Odin source directories.
 
+### 5. Serialize entity identity separately from labels
+
+**Decision:** Require a unique UUID in each scene entity's `id` field and reserve `name` for display, following ADR-023.
+**Why:** Renaming a label must not break hierarchy links, editor selection, or future serialized references.
+**Tradeoff:** Existing scene files need explicit IDs, and duplication tools must mint new IDs instead of copying them blindly.
+
 ## Related
 
-- **ADRs:** ADR-002, ADR-008
+- **ADRs:** ADR-002, ADR-008, ADR-023
 - **FDRs:** FDR-001, FDR-004, FDR-006
 
 ## Open Questions

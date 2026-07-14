@@ -1,4 +1,5 @@
 [[entities]]
+id = "20000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 
 [entities.transform]
@@ -12,6 +13,7 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000002"
 name = "Ambient Light"
 
 [entities.ambient_light]
@@ -19,6 +21,7 @@ color = [0.12, 0.18, 0.32]
 intensity = 0.12
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000003"
 name = "Sun"
 
 [entities.directional_light]
@@ -27,6 +30,7 @@ color = [1, 0.72, 0.42]
 intensity = 1.15
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000004"
 name = "Warm Orbiting Light"
 
 [entities.transform]
@@ -49,6 +53,7 @@ range = 5
 settings = [2.1, 1.1, 1.05]
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000005"
 name = "Cool Orbiting Light"
 
 [entities.transform]
@@ -71,6 +76,7 @@ range = 5.5
 settings = [2.7, -0.8, 0.2]
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000006"
 name = "Static Amber Light"
 
 [entities.transform]
@@ -90,6 +96,7 @@ intensity = 10
 range = 4.5
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000007"
 name = "Static Green Light"
 
 [entities.transform]
@@ -109,6 +116,7 @@ intensity = 11
 range = 4.5
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000008"
 name = "Static Violet Light"
 
 [entities.transform]
@@ -128,6 +136,7 @@ intensity = 10
 range = 4.5
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000009"
 name = "Luau Float Marker"
 
 [entities.transform]
@@ -148,6 +157,7 @@ origin = [-2.6, 0.35, 0]
 wave = [0, 1.3, 0.35]
 
 [[entities]]
+id = "20000000-0000-4000-8000-00000000000a"
 name = "Icosphere"
 [entities.transform]
 position = [-3.3, 1.75, -0.8]
@@ -163,6 +173,7 @@ resource = "icosphere"
 angular_velocity = [0.25, 0.65, 0]
 
 [[entities]]
+id = "20000000-0000-4000-8000-00000000000b"
 name = "UV Sphere"
 [entities.transform]
 position = [-1.1, 1.75, -0.8]
@@ -176,6 +187,7 @@ resource = "sphere"
 [entities.shadow_receiver]
 
 [[entities]]
+id = "20000000-0000-4000-8000-00000000000c"
 name = "Pyramid"
 [entities.transform]
 position = [1.1, 1.75, -0.8]
@@ -191,6 +203,7 @@ resource = "pyramid"
 angular_velocity = [0, 0.75, 0]
 
 [[entities]]
+id = "20000000-0000-4000-8000-00000000000d"
 name = "Cylinder"
 [entities.transform]
 position = [3.3, 1.75, -0.8]
@@ -206,6 +219,7 @@ resource = "cylinder"
 angular_velocity = [0.15, 0.6, 0.1]
 
 [[entities]]
+id = "20000000-0000-4000-8000-00000000000e"
 name = "Native Fountain Emitter"
 
 [entities.transform]
@@ -229,6 +243,7 @@ state = [0, 0.055, 0]
 angular_velocity = [0, 0.9, 0]
 
 [[entities]]
+id = "20000000-0000-4000-8000-00000000000f"
 name = "Ground Plane"
 
 [entities.transform]

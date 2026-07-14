@@ -1,4 +1,5 @@
 [[entities]]
+id = "10000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 
 [entities.transform]
@@ -12,6 +13,7 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "10000000-0000-4000-8000-000000000002"
 name = "Ambient Light"
 
 [entities.ambient_light]
@@ -19,6 +21,7 @@ color = [1, 1, 1]
 intensity = 1
 
 [[entities]]
+id = "10000000-0000-4000-8000-000000000003"
 name = "Left Cube"
 
 [entities.transform]
@@ -43,6 +46,7 @@ origin = [-2.25, 0, 0]
 wave = [0, 1.4, 0.35]
 
 [[entities]]
+id = "10000000-0000-4000-8000-000000000004"
 name = "Right Cube"
 
 [entities.transform]

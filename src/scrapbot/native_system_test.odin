@@ -1,14 +1,14 @@
 package scrapbot
 
-import "core:os"
-import "core:path/filepath"
-import "core:testing"
 import component "./component"
 import ecs "./ecs"
 import native "./native"
 import project "./project"
 import schedule "./schedule"
 import script "./script"
+import "core:os"
+import "core:path/filepath"
+import "core:testing"
 
 @(test)
 test_native_extension_system_steps_world :: proc(t: ^testing.T) {
@@ -36,7 +36,12 @@ test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
 	extension_load := native.load_project_extensions(&extensions, root, &registry)
-	testing.expectf(t, extension_load.err == "", "load_project_extensions failed: %s", extension_load.err)
+	testing.expectf(
+		t,
+		extension_load.err == "",
+		"load_project_extensions failed: %s",
+		extension_load.err,
+	)
 	testing.expect(t, extensions.system_count == 2)
 	testing.expect(t, extensions.systems[0].declaration.access_count == 6)
 
@@ -58,13 +63,24 @@ test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 
 	step_err := step_frame_runtime(&frame_runtime, &world, 1.0)
 	testing.expectf(t, step_err == "", "step_frame_runtime failed: %s", step_err)
-	testing.expectf(t, world.transforms[1].rotation.y > 1.5, "rotation.y=%v", world.transforms[1].rotation.y)
+	testing.expectf(
+		t,
+		world.transforms[1].rotation.y > 1.5,
+		"rotation.y=%v",
+		world.transforms[1].rotation.y,
+	)
 	testing.expect(t, !ecs.entity_has_component(&world, 1, ecs.Component_ID(0), "nativespin.spin"))
-	testing.expect(t, ecs.entity_has_component(&world, 1, ecs.Component_ID(0), "nativespin.marker"))
+	testing.expect(
+		t,
+		ecs.entity_has_component(&world, 1, ecs.Component_ID(0), "nativespin.marker"),
+	)
 	testing.expect(t, len(world.entities) == 4)
 	testing.expect(t, !world.entities[2].alive)
 	testing.expect(t, world.entities[3].alive)
-	testing.expect(t, ecs.entity_has_component(&world, 3, ecs.Component_ID(0), "nativespin.marker"))
+	testing.expect(
+		t,
+		ecs.entity_has_component(&world, 3, ecs.Component_ID(0), "nativespin.marker"),
+	)
 	testing.expect(t, ecs.entity_has_component(&world, 3, ecs.Component_ID(0), "scrapbot.mesh"))
 	testing.expect(t, ecs.alive_renderable_count(&world) == 2)
 }
@@ -90,18 +106,24 @@ make_native_system_test_project :: proc(t: ^testing.T) -> (string, string) {
 write_native_system_test_project :: proc(t: ^testing.T, root: string) {
 	project_path := join_native_system_test_path(t, root, PROJECT_FILE)
 	defer delete(project_path)
-	write_project_err := os.write_entire_file(project_path, `name = "Native System Test"
+	write_project_err := os.write_entire_file(
+		project_path,
+		`name = "Native System Test"
 default_scene = "scenes/main.scene.toml"
 
 [[native_extensions]]
 name = "nativespin"
 source = "native/nativespin"
-`)
+`,
+	)
 	testing.expect(t, write_project_err == nil)
 
 	scene_path := join_native_system_test_path(t, root, DEFAULT_SCENE)
 	defer delete(scene_path)
-	write_scene_err := os.write_entire_file(scene_path, `[[entities]]
+	write_scene_err := os.write_entire_file(
+		scene_path,
+		`[[entities]]
+id = "a4000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 
 [entities.transform]
@@ -115,6 +137,7 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "a4000000-0000-4000-8000-000000000002"
 name = "Cube"
 
 [entities.transform]
@@ -129,23 +152,28 @@ primitive = "cube"
 angular_velocity = [0, 1.5707963, 0]
 
 [[entities]]
+id = "a4000000-0000-4000-8000-000000000003"
 name = "Temporary"
 
 [entities.components.nativespin.despawn]
 value = [0, 0, 0]
-`)
+`,
+	)
 	testing.expect(t, write_scene_err == nil)
 
 	script_path := join_native_system_test_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_script_err := os.write_entire_file(script_path, `
+	write_script_err := os.write_entire_file(
+		script_path,
+		`
 local SpinComponent = scrapbot.component_handle("nativespin.spin") :: NativespinSpinComponent
 local MarkerComponent = scrapbot.component_handle("nativespin.marker") :: NativespinMarkerComponent
 local DespawnComponent = scrapbot.component_handle("nativespin.despawn") :: NativespinDespawnComponent
 assert(SpinComponent.name == "nativespin.spin")
 assert(MarkerComponent.name == "nativespin.marker")
 assert(DespawnComponent.name == "nativespin.despawn")
-`)
+`,
+	)
 	testing.expect(t, write_script_err == nil)
 }
 

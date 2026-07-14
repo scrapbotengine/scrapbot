@@ -1,11 +1,13 @@
 package ecs
 
-import "core:testing"
 import project "../project"
 import resources "../resources"
 import shared "../shared"
+import "core:strings"
+import "core:testing"
 
 MULTI_CUBE_SCENE :: `[[entities]]
+id = "a2000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 
 [entities.transform]
@@ -19,6 +21,7 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "a2000000-0000-4000-8000-000000000002"
 name = "Left Cube"
 
 [entities.transform]
@@ -33,6 +36,7 @@ primitive = "cube"
 velocity = [0, 1.5707963, 0]
 
 [[entities]]
+id = "a2000000-0000-4000-8000-000000000003"
 name = "Right Cube"
 
 [entities.transform]
@@ -54,20 +58,40 @@ test_render_reconciliation_tracks_geometry_and_material_eligibility :: proc(t: ^
 	cube_desc, _ := resources.cube()
 	defer delete(cube_desc.vertices); defer delete(cube_desc.indices)
 	geometry, geometry_err := resources.register_geometry(&registry, "cube", cube_desc)
-	material, material_err := resources.register_material(&registry, "white", {base_color = {1,1,1,1}})
+	material, material_err := resources.register_material(
+		&registry,
+		"white",
+		{base_color = {1, 1, 1, 1}},
+	)
 	testing.expect(t, geometry_err == "" && material_err == "")
 
 	world: World
 	defer destroy_world(&world)
-	append(&world.entities, World_Entity{id = {0,1}, alive = true, transform_index = 0, camera_index = -1, mesh_index = -1, geometry_index = -1, material_index = -1, render_instance_index = -1})
-	append_soa(&world.transforms, Transform_Component{scale = {1,1,1}})
+	append(
+		&world.entities,
+		World_Entity {
+			id = {0, 1},
+			alive = true,
+			transform_index = 0,
+			camera_index = -1,
+			mesh_index = -1,
+			geometry_index = -1,
+			material_index = -1,
+			render_instance_index = -1,
+		},
+	)
+	append_soa(&world.transforms, Transform_Component{scale = {1, 1, 1}})
 	add_geometry(&world, 0, geometry)
 	reconcile_render_instances(&world, &registry)
 	testing.expect(t, world.entities[0].render_instance_index == -1)
+	testing.expect(t, world.render_structure_sync_count == 1)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, world.render_structure_sync_count == 1)
 
 	add_material(&world, 0, material)
 	reconcile_render_instances(&world, &registry)
 	testing.expect(t, world.entities[0].render_instance_index >= 0)
+	testing.expect(t, world.render_structure_sync_count == 2)
 	remove_material(&world, 0)
 	reconcile_render_instances(&world, &registry)
 	testing.expect(t, world.entities[0].render_instance_index == -1)
@@ -75,23 +99,29 @@ test_render_reconciliation_tracks_geometry_and_material_eligibility :: proc(t: ^
 
 @(test)
 test_render_batches_group_shared_geometry_and_material :: proc(t: ^testing.T) {
-	g := shared.Geometry_Handle{1,1}; a := shared.Material_Handle{1,1}; b := shared.Material_Handle{2,1}
+	g := shared.Geometry_Handle {
+		1,
+		1,
+	}; a := shared.Material_Handle{1, 1}; b := shared.Material_Handle{2, 1}
 	list: Render_List; defer destroy_render_list(&list)
-	append(&list.instances, Render_Instance{geometry={handle=g},material={handle=a}})
-	append(&list.instances, Render_Instance{geometry={handle=g},material={handle=a}})
-	append(&list.instances, Render_Instance{geometry={handle=g},material={handle=b}})
+	append(&list.instances, Render_Instance{geometry = {handle = g}, material = {handle = a}})
+	append(&list.instances, Render_Instance{geometry = {handle = g}, material = {handle = a}})
+	append(&list.instances, Render_Instance{geometry = {handle = g}, material = {handle = b}})
 	testing.expect(t, render_batch_count(&list) == 2)
 }
 
 @(test)
 test_render_list_extracts_ambient_directional_and_point_lights :: proc(t: ^testing.T) {
-	scene, result := project.parse_scene(`[[entities]]
+	scene, result := project.parse_scene(
+		`[[entities]]
+id = "a2000000-0000-4000-8000-000000000004"
 name = "Ambient"
 [entities.ambient_light]
 color = [0.2, 0.4, 0.6]
 intensity = 0.5
 
 [[entities]]
+id = "a2000000-0000-4000-8000-000000000005"
 name = "Sun"
 [entities.directional_light]
 direction = [0, -1, 0]
@@ -99,6 +129,7 @@ color = [1, 0.9, 0.8]
 intensity = 1.5
 
 [[entities]]
+id = "a2000000-0000-4000-8000-000000000006"
 name = "Lamp"
 [entities.transform]
 position = [2, 3, 4]
@@ -108,7 +139,8 @@ scale = [1, 1, 1]
 color = [0.1, 0.2, 1]
 intensity = 12
 range = 7
-`)
+`,
+	)
 	defer project.destroy_scene(&scene)
 	testing.expect(t, result.err == .None)
 
@@ -129,16 +161,44 @@ range = 7
 @(test)
 test_deferred_render_components_drive_reconciliation :: proc(t: ^testing.T) {
 	registry: resources.Registry; defer resources.destroy_registry(&registry)
-	desc,_:=resources.cube(); defer delete(desc.vertices); defer delete(desc.indices)
-	geometry,_:=resources.register_geometry(&registry,"cube",desc); material,_:=resources.register_material(&registry,"white",{base_color={1,1,1,1}})
+	desc, _ := resources.cube(); defer delete(desc.vertices); defer delete(desc.indices)
+	geometry, _ := resources.register_geometry(
+		&registry,
+		"cube",
+		desc,
+	); material, _ := resources.register_material(&registry, "white", {base_color = {1, 1, 1, 1}})
 	world: World; defer destroy_world(&world)
-	append(&world.entities,World_Entity{id={0,1},alive=true,transform_index=0,camera_index=-1,mesh_index=-1,geometry_index=-1,material_index=-1,render_instance_index=-1})
-	append_soa(&world.transforms,Transform_Component{scale={1,1,1}})
+	append(
+		&world.entities,
+		World_Entity {
+			id = {0, 1},
+			alive = true,
+			transform_index = 0,
+			camera_index = -1,
+			mesh_index = -1,
+			geometry_index = -1,
+			material_index = -1,
+			render_instance_index = -1,
+		},
+	)
+	append_soa(&world.transforms, Transform_Component{scale = {1, 1, 1}})
 	commands: Command_Buffer; init_command_buffer(&commands); defer destroy_command_buffer(&commands)
-	testing.expect(t,queue_add_geometry(&commands,0,1,geometry)==""); testing.expect(t,queue_add_material(&commands,0,1,material)=="")
-	apply_commands(&world,&commands); reconcile_render_instances(&world,&registry); testing.expect(t,world.entities[0].render_instance_index>=0)
-	queue_remove_component(&commands,0,1,0,"scrapbot.material"); apply_commands(&world,&commands); reconcile_render_instances(&world,&registry)
-	testing.expect(t,world.entities[0].render_instance_index<0)
+	testing.expect(
+		t,
+		queue_add_geometry(&commands, 0, 1, geometry) == "",
+	); testing.expect(t, queue_add_material(&commands, 0, 1, material) == "")
+	apply_commands(
+		&world,
+		&commands,
+	); reconcile_render_instances(&world, &registry); testing.expect(t, world.entities[0].render_instance_index >= 0)
+	queue_remove_component(
+		&commands,
+		0,
+		1,
+		0,
+		"scrapbot.material",
+	); apply_commands(&world, &commands); reconcile_render_instances(&world, &registry)
+	testing.expect(t, world.entities[0].render_instance_index < 0)
 }
 
 @(test)
@@ -255,8 +315,13 @@ test_query_matches_entities_with_all_requested_components :: proc(t: ^testing.T)
 	defer destroy_world(&world)
 
 	query: Query
-	query.terms[0] = Query_Term{name = "scrapbot.transform"}
-	query.terms[1] = Query_Term{component_id = shared.INVALID_COMPONENT_ID, name = "autorotate"}
+	query.terms[0] = Query_Term {
+		name = "scrapbot.transform",
+	}
+	query.terms[1] = Query_Term {
+		component_id = shared.INVALID_COMPONENT_ID,
+		name = "autorotate",
+	}
 	query.term_count = 2
 
 	testing.expect(t, query_count(&world, query) == 2)
@@ -301,16 +366,42 @@ test_deferred_commands_spawn_entities_when_applied :: proc(t: ^testing.T) {
 	testing.expect(t, world.entities[0].geometry_index == INVALID_COMPONENT_INDEX)
 	testing.expect(t, world.entities[0].material_index == INVALID_COMPONENT_INDEX)
 	testing.expect(t, world.entities[0].render_instance_index == INVALID_COMPONENT_INDEX)
+	testing.expect(t, world.entities[0].uuid != (shared.Entity_UUID{}))
+	entity_index, found := entity_index_by_uuid(&world, world.entities[0].uuid)
+	testing.expect(t, found && entity_index == 0)
 }
 
 @(test)
-test_scene_and_runtime_entities_keep_distinct_origins :: proc(t:^testing.T) {
-	scene:=Scene{};defer delete(scene.entities);append(&scene.entities,shared.Scene_Entity{name="Authored"})
-	world:=build_world(&scene);defer destroy_world(&world)
-	testing.expect(t,world.entities[0].origin==.Scene)
-	commands:Command_Buffer;init_command_buffer(&commands);defer destroy_command_buffer(&commands)
-	testing.expect(t,queue_spawn(&commands,"Live")=="");testing.expect(t,apply_commands(&world,&commands)=="")
-	testing.expect(t,world.entities[1].origin==.Runtime)
+test_scene_entity_uuid_is_stable_and_independent_from_name :: proc(t: ^testing.T) {
+	id, id_ok := shared.entity_uuid_parse("a2000000-0000-4000-8000-000000000020")
+	testing.expect(t, id_ok)
+	scene := Scene{}
+	defer delete(scene.entities)
+	append(&scene.entities, shared.Scene_Entity{id = id, name = "Original Label"})
+	world := build_world(&scene)
+	defer destroy_world(&world)
+
+	testing.expect(t, world.entities[0].uuid == id)
+	entity_index, found := entity_index_by_uuid(&world, id)
+	testing.expect(t, found && entity_index == 0)
+	delete(world.entities[0].name)
+	world.entities[0].name, _ = strings.clone("Renamed Label")
+	entity_index, found = entity_index_by_uuid(&world, id)
+	testing.expect(t, found && entity_index == 0)
+}
+
+@(test)
+test_scene_and_runtime_entities_keep_distinct_origins :: proc(t: ^testing.T) {
+	scene :=
+		Scene{}; defer delete(scene.entities); append(&scene.entities, shared.Scene_Entity{name = "Authored"})
+	world := build_world(&scene); defer destroy_world(&world)
+	testing.expect(t, world.entities[0].origin == .Scene)
+	commands: Command_Buffer; init_command_buffer(&commands); defer destroy_command_buffer(&commands)
+	testing.expect(
+		t,
+		queue_spawn(&commands, "Live") == "",
+	); testing.expect(t, apply_commands(&world, &commands) == "")
+	testing.expect(t, world.entities[1].origin == .Runtime)
 }
 
 @(test)
@@ -395,13 +486,18 @@ test_runtime_entity_churn_reuses_generation_safe_storage :: proc(t: ^testing.T) 
 	testing.expect(t, spawn_add_custom_component(&spawn, component) == "")
 
 	first_id: Entity
-	for cycle in 0..<1000 {
+	first_uuid: shared.Entity_UUID
+	for cycle in 0 ..< 1000 {
 		entity_index := spawn_entity(&world, &spawn)
 		testing.expect(t, entity_index == 0)
 		if cycle == 0 {
 			first_id = world.entities[entity_index].id
+			first_uuid = world.entities[entity_index].uuid
 		}
-		testing.expect(t, entity_is_current(&world, entity_index, world.entities[entity_index].id.generation))
+		testing.expect(
+			t,
+			entity_is_current(&world, entity_index, world.entities[entity_index].id.generation),
+		)
 		despawn_entity(&world, entity_index, world.entities[entity_index].id.generation)
 		testing.expect(t, !entity_is_alive(&world, entity_index))
 	}
@@ -416,6 +512,14 @@ test_runtime_entity_churn_reuses_generation_safe_storage :: proc(t: ^testing.T) 
 	testing.expect(t, query_view_count(&world, query_view(&world, 7, "lifetime")) == 1)
 	testing.expect(t, !entity_is_current(&world, int(first_id.index), first_id.generation))
 	testing.expect(t, world.entities[entity_index].id.generation != first_id.generation)
+	testing.expect(t, world.entities[entity_index].uuid != first_uuid)
+	_, old_uuid_found := entity_index_by_uuid(&world, first_uuid)
+	testing.expect(t, !old_uuid_found)
+	current_index, current_uuid_found := entity_index_by_uuid(
+		&world,
+		world.entities[entity_index].uuid,
+	)
+	testing.expect(t, current_uuid_found && current_index == entity_index)
 	stats := world_storage_stats(&world)
 	testing.expect(t, stats.live_entities == 1)
 	testing.expect(t, stats.entity_slots == 1)
@@ -440,7 +544,7 @@ test_mixed_runtime_archetypes_share_released_component_slots :: proc(t: ^testing
 	empty_spawn: Spawn_Command
 	testing.expect(t, init_spawn_command(&empty_spawn, "Empty") == "")
 
-	for _ in 0..<1000 {
+	for _ in 0 ..< 1000 {
 		index := spawn_entity(&world, &renderable_spawn)
 		despawn_entity(&world, index, world.entities[index].id.generation)
 		index = spawn_entity(&world, &empty_spawn)
@@ -466,7 +570,11 @@ test_builtin_component_add_remove_churn_reuses_storage :: proc(t: ^testing.T) {
 	defer delete(desc.vertices)
 	defer delete(desc.indices)
 	geometry, geometry_err := resources.register_geometry(&registry, "cube", desc)
-	material, material_err := resources.register_material(&registry, "white", {base_color = {1, 1, 1, 1}})
+	material, material_err := resources.register_material(
+		&registry,
+		"white",
+		{base_color = {1, 1, 1, 1}},
+	)
 	testing.expect(t, geometry_err == "" && material_err == "")
 
 	world: World
@@ -485,7 +593,7 @@ test_builtin_component_add_remove_churn_reuses_storage :: proc(t: ^testing.T) {
 		},
 	)
 
-	for _ in 0..<1000 {
+	for _ in 0 ..< 1000 {
 		add_transform(&world, 0, {scale = {1, 1, 1}})
 		add_mesh(&world, 0, "cube")
 		add_mesh(&world, 0, "replacement")

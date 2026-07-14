@@ -93,7 +93,6 @@ destroy_world :: proc(world: ^World) {
 	for mesh in world.meshes {
 		delete(mesh.primitive)
 	}
-	for layout in world.ui_layouts { delete(layout.parent) }
 	for panel in world.ui_panels { delete(panel.title) }
 	for text in world.ui_texts { delete(text.text) }
 	for button in world.ui_buttons { delete(button.text) }
@@ -110,6 +109,7 @@ destroy_world :: proc(world: ^World) {
 		delete(storage.components)
 	}
 	delete(world.entities)
+	delete(world.entity_by_uuid)
 	delete(world.transforms)
 	delete(world.cameras)
 	delete(world.ambient_lights)
@@ -120,6 +120,8 @@ destroy_world :: proc(world: ^World) {
 	delete(world.geometries)
 	delete(world.materials)
 	delete(world.render_instances)
+	delete(world.render_active_entities)
+	delete(world.render_dirty_entities)
 	delete(world.free_transform_indices)
 	delete(world.free_mesh_indices)
 	delete(world.free_geometry_indices)
@@ -138,11 +140,14 @@ destroy_world :: proc(world: ^World) {
 	delete(world.editor_scene_cameras)
 	delete(world.editor_uis)
 	delete(world.custom_components)
+	delete(world.ui_dirty_entities)
 	world^ = {}
 }
 
 build_world :: proc(scene: ^Scene) -> World {
 	world: World
+	world.instance_uuid = shared.entity_uuid_generate()
+	world.entity_by_uuid = make(map[shared.Entity_UUID]int)
 	for entity in scene.entities {
 		id := Entity {
 			index = u32(len(world.entities)),
@@ -150,6 +155,7 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 		world_entity := World_Entity {
 			id = id,
+			uuid = entity.id,
 			alive = true,
 			origin = .Scene,
 			name = clone_world_string(entity.name),
@@ -163,6 +169,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			geometry_index = INVALID_COMPONENT_INDEX,
 			material_index = INVALID_COMPONENT_INDEX,
 			render_instance_index = INVALID_COMPONENT_INDEX,
+			render_active_index = INVALID_COMPONENT_INDEX,
 			ui_layout_index = INVALID_COMPONENT_INDEX,
 			ui_hstack_index = INVALID_COMPONENT_INDEX,
 			ui_vstack_index = INVALID_COMPONENT_INDEX,
@@ -191,7 +198,10 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ambient_light { world_entity.ambient_light_index = len(world.ambient_lights); append(&world.ambient_lights, entity.ambient_light) }
 		if entity.has_directional_light { world_entity.directional_light_index = len(world.directional_lights); append(&world.directional_lights, entity.directional_light) }
 		if entity.has_point_light { world_entity.point_light_index = len(world.point_lights); append(&world.point_lights, entity.point_light) }
-		if entity.has_ui_layout { world_entity.ui_layout_index = len(world.ui_layouts); layout := entity.ui_layout; layout.parent = clone_world_string(layout.parent); append(&world.ui_layouts, layout) }
+		if entity.has_ui_layout {
+			world_entity.ui_layout_index = len(world.ui_layouts)
+			append(&world.ui_layouts, entity.ui_layout)
+		}
 		if entity.has_ui_hstack { world_entity.ui_hstack_index = len(world.ui_hstacks); append(&world.ui_hstacks, entity.ui_hstack) }
 		if entity.has_ui_vstack { world_entity.ui_vstack_index = len(world.ui_vstacks); append(&world.ui_vstacks, entity.ui_vstack) }
 		if entity.has_ui_scroll_area { world_entity.ui_scroll_area_index = len(world.ui_scroll_areas); append(&world.ui_scroll_areas, entity.ui_scroll_area) }
@@ -211,6 +221,14 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 
 		append(&world.entities, world_entity)
+		if world.entities[len(world.entities) - 1].uuid == (shared.Entity_UUID{}) {
+			world.entities[len(world.entities) - 1].uuid = shared.entity_uuid_generate()
+		}
+		world.entity_by_uuid[world.entities[len(world.entities) - 1].uuid] = int(id.index)
+		if world_entity.ui_layout_index >= 0 {
+			mark_ui_entity_dirty(&world, int(id.index))
+		}
+		mark_render_entity_dirty(&world, int(id.index))
 		if world_entity.transform_index != INVALID_COMPONENT_INDEX &&
 		   world_entity.mesh_index != INVALID_COMPONENT_INDEX {
 			append(
@@ -224,6 +242,97 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 	}
 	return world
+}
+
+entity_index_by_uuid :: proc(world: ^World, id: shared.Entity_UUID) -> (int, bool) {
+	if world == nil || id == (shared.Entity_UUID{}) || world.entity_by_uuid == nil {
+		return -1, false
+	}
+	index, found := world.entity_by_uuid[id]
+	if !found || !entity_is_alive(world, index) || world.entities[index].uuid != id {
+		return -1, false
+	}
+	return index, true
+}
+
+mark_ui_structure_changed :: proc(world: ^World) {
+	if world == nil {
+		return
+	}
+	world.ui_structure_revision += 1
+	if world.ui_structure_revision == 0 {
+		world.ui_structure_revision = 1
+	}
+}
+
+mark_ui_entity_dirty :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if !entity.ui_dirty {
+		entity.ui_dirty = true
+		append(&world.ui_dirty_entities, entity_index)
+		mark_ui_structure_changed(world)
+	}
+}
+
+mark_ui_subtree_dirty :: proc(world: ^World, root_entity_index: int) {
+	if world == nil || root_entity_index < 0 || root_entity_index >= len(world.entities) {
+		return
+	}
+	root_uuid := world.entities[root_entity_index].uuid
+	mark_ui_entity_dirty(world, root_entity_index)
+	if root_uuid == (shared.Entity_UUID{}) {
+		return
+	}
+	for entity, entity_index in world.entities {
+		if entity_index == root_entity_index ||
+		   entity.ui_layout_index < 0 ||
+		   entity.ui_layout_index >= len(world.ui_layouts) {
+			continue
+		}
+		parent := world.ui_layouts[entity.ui_layout_index].parent
+		for depth in 0 ..< len(world.entities) {
+			if parent == root_uuid {
+				mark_ui_entity_dirty(world, entity_index)
+				break
+			}
+			parent_index, found := entity_index_by_uuid(world, parent)
+			if !found {
+				break
+			}
+			parent_entity := world.entities[parent_index]
+			if parent_entity.ui_layout_index < 0 ||
+			   parent_entity.ui_layout_index >= len(world.ui_layouts) {
+				break
+			}
+			parent = world.ui_layouts[parent_entity.ui_layout_index].parent
+		}
+	}
+}
+
+mark_render_entity_dirty :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if entity.render_dirty {
+		return
+	}
+	entity.render_dirty = true
+	append(&world.render_dirty_entities, entity_index)
+}
+
+mark_all_render_entities_dirty :: proc(world: ^World) {
+	if world == nil {
+		return
+	}
+	for entity, index in world.entities {
+		if entity.alive {
+			mark_render_entity_dirty(world, index)
+		}
+	}
 }
 
 take_free_slot :: proc(free_slots: ^[dynamic]int) -> (index: int, found: bool) {
@@ -321,6 +430,7 @@ allocate_render_instance_slot :: proc(world: ^World, value: Render_Instance_Comp
 }
 
 release_entity_render_instance :: proc(world: ^World, entity: ^World_Entity) {
+	remove_entity_from_active_render_set(world, int(entity.id.index))
 	if entity.render_instance_index < 0 ||
 	   entity.render_instance_index >= len(world.render_instances) {
 		entity.render_instance_index = INVALID_COMPONENT_INDEX
@@ -329,6 +439,38 @@ release_entity_render_instance :: proc(world: ^World, entity: ^World_Entity) {
 	world.render_instances[entity.render_instance_index] = {}
 	append(&world.free_render_instance_indices, entity.render_instance_index)
 	entity.render_instance_index = INVALID_COMPONENT_INDEX
+}
+
+remove_entity_from_active_render_set :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) { return }
+	entity := &world.entities[entity_index]
+	active_index := entity.render_active_index
+	if active_index < 0 || active_index >= len(world.render_active_entities) {
+		entity.render_active_index = INVALID_COMPONENT_INDEX
+		return
+	}
+	last_index := len(world.render_active_entities) - 1
+	moved_entity_index := world.render_active_entities[last_index]
+	world.render_active_entities[active_index] = moved_entity_index
+	pop(&world.render_active_entities)
+	if active_index < len(world.render_active_entities) &&
+	   moved_entity_index >= 0 &&
+	   moved_entity_index < len(world.entities) {
+		world.entities[moved_entity_index].render_active_index = active_index
+	}
+	entity.render_active_index = INVALID_COMPONENT_INDEX
+}
+
+ensure_entity_in_active_render_set :: proc(world: ^World, entity_index: int) {
+	if world == nil || !entity_is_alive(world, entity_index) { return }
+	entity := &world.entities[entity_index]
+	if entity.render_active_index >= 0 &&
+	   entity.render_active_index < len(world.render_active_entities) &&
+	   world.render_active_entities[entity.render_active_index] == entity_index {
+		return
+	}
+	entity.render_active_index = len(world.render_active_entities)
+	append(&world.render_active_entities, entity_index)
 }
 
 invalidate_entity_renderables :: proc(world: ^World, entity_index: int) {
@@ -370,10 +512,12 @@ add_geometry :: proc(world: ^World, entity_index: int, handle: shared.Geometry_H
 	delete(entity.geometry_resource); entity.geometry_resource = ""
 	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
 		world.geometries[entity.geometry_index].handle = handle
+		mark_render_entity_dirty(world, entity_index)
 		return
 	}
 	entity.geometry_index = allocate_geometry_slot(world, Geometry_Component{handle = handle})
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_Handle) {
@@ -382,10 +526,12 @@ add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_H
 	delete(entity.material_resource); entity.material_resource = ""
 	if entity.material_index >= 0 && entity.material_index < len(world.materials) {
 		world.materials[entity.material_index].handle = handle
+		mark_render_entity_dirty(world, entity_index)
 		return
 	}
 	entity.material_index = allocate_material_slot(world, Material_Component{handle = handle})
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 remove_geometry :: proc(world: ^World, entity_index: int) {
@@ -396,6 +542,7 @@ remove_geometry :: proc(world: ^World, entity_index: int) {
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	release_entity_render_instance(world, entity)
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 remove_material :: proc(world: ^World, entity_index: int) {
@@ -406,26 +553,38 @@ remove_material :: proc(world: ^World, entity_index: int) {
 	entity.material_index = INVALID_COMPONENT_INDEX
 	release_entity_render_instance(world, entity)
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry) {
-	if world == nil || registry == nil { return }
-	for &entity in world.entities {
+	if world == nil || registry == nil || len(world.render_dirty_entities) == 0 {
+		return
+	}
+	world.render_structure_sync_count += 1
+	dirty_cursor := 0
+	for dirty_cursor < len(world.render_dirty_entities) {
+		entity_index := world.render_dirty_entities[dirty_cursor]
+		dirty_cursor += 1
+		if entity_index < 0 || entity_index >= len(world.entities) {
+			continue
+		}
+		entity := &world.entities[entity_index]
+		entity.render_dirty = false
 		if entity.geometry_index < 0 && entity.mesh_index >= 0 {
 			if handle, found := resources.geometry_by_name(registry, "cube");
-			   found { add_geometry(world, int(entity.id.index), handle) }
+			   found { add_geometry(world, entity_index, handle) }
 		}
 		if entity.material_index < 0 && entity.mesh_index >= 0 {
 			if handle, found := resources.material_by_name(registry, "default");
-			   found { add_material(world, int(entity.id.index), handle) }
+			   found { add_material(world, entity_index, handle) }
 		}
 		if entity.geometry_index < 0 && entity.geometry_resource != "" {
 			if handle, found := resources.geometry_by_name(registry, entity.geometry_resource);
-			   found { add_geometry(world, int(entity.id.index), handle) }
+			   found { add_geometry(world, entity_index, handle) }
 		}
 		if entity.material_index < 0 && entity.material_resource != "" {
 			if handle, found := resources.material_by_name(registry, entity.material_resource);
-			   found { add_material(world, int(entity.id.index), handle) }
+			   found { add_material(world, entity_index, handle) }
 		}
 		eligible :=
 			entity.alive &&
@@ -452,10 +611,14 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 				} else {
 					entity.render_instance_index = allocate_render_instance_slot(world, instance)
 				}
+				ensure_entity_in_active_render_set(world, entity_index)
 			}
 		}
-		if !eligible { release_entity_render_instance(world, &entity) }
+		if !eligible {
+			release_entity_render_instance(world, entity)
+		}
 	}
+	clear(&world.render_dirty_entities)
 }
 
 build_resource_render_list :: proc(
@@ -466,8 +629,14 @@ build_resource_render_list :: proc(
 	list: Render_List
 	list.camera, list.has_camera = active_camera_instance(world, use_editor_camera)
 	extract_lights(world, &list)
-	reconcile_render_instances(world, registry)
-	for entity in world.entities {
+	if len(world.render_dirty_entities) > 0 {
+		reconcile_render_instances(world, registry)
+	}
+	for entity_index in world.render_active_entities {
+		if entity_index < 0 || entity_index >= len(world.entities) {
+			continue
+		}
+		entity := world.entities[entity_index]
 		if !entity.alive ||
 		   entity.render_instance_index < 0 ||
 		   entity.render_instance_index >= len(world.render_instances) { continue }
@@ -839,6 +1008,7 @@ add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Com
 	entity.transform_index = allocate_transform_slot(world, transform)
 	ensure_entity_renderable(world, entity_index)
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 remove_transform :: proc(world: ^World, entity_index: int) {
@@ -852,6 +1022,7 @@ remove_transform :: proc(world: ^World, entity_index: int) {
 	invalidate_entity_renderables(world, entity_index)
 	release_entity_render_instance(world, entity)
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
@@ -868,6 +1039,7 @@ add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
 		bump_component_revision(world, entity_index)
 	}
 	ensure_entity_renderable(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 remove_mesh :: proc(world: ^World, entity_index: int) {
@@ -880,6 +1052,7 @@ remove_mesh :: proc(world: ^World, entity_index: int) {
 	entity.mesh_index = INVALID_COMPONENT_INDEX
 	invalidate_entity_renderables(world, entity_index)
 	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 add_custom_component :: proc(

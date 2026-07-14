@@ -9,7 +9,10 @@ description: Scrapbot project vocabulary.
 Scrapbot's world model. Entities are identifiers, components hold data, and systems operate over matching component sets.
 
 **Entity**  
-A generation-aware identifier for one object in a Scrapbot world.
+A Scrapbot world object with two complementary identities: a stable project-wide UUID and a generation-aware runtime handle.
+
+**Entity UUID**<br>
+A non-zero RFC UUID that identifies an entity independently from its editable name, scene order, or runtime storage slot. Scene UUIDs are serialized; runtime spawns mint a new UUID for each lifetime.
 
 **Component**  
 A typed piece of data attached to an entity. Single-token names such as `autorotate` identify project-level components. Dotted names such as `scrapbot.transform` or `scrappyphysics.rigidbody` identify engine or library components.

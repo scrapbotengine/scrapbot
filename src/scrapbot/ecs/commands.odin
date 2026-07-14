@@ -525,6 +525,16 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		index = u32(entity_index),
 		generation = generation,
 	}
+	if world.entity_by_uuid == nil {
+		world.entity_by_uuid = make(map[shared.Entity_UUID]int)
+	}
+	entity_uuid := shared.entity_uuid_generate()
+	for {
+		if _, found := world.entity_by_uuid[entity_uuid]; !found {
+			break
+		}
+		entity_uuid = shared.entity_uuid_generate()
+	}
 	transform_index := INVALID_COMPONENT_INDEX
 	if spawn.has_transform {
 		transform_index = allocate_transform_slot(world, spawn.transform)
@@ -536,6 +546,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 
 	world_entity := World_Entity {
 		id = id,
+		uuid = entity_uuid,
 		alive = true,
 		origin = .Runtime,
 		name = clone_world_string(spawn_command_name(spawn)),
@@ -549,6 +560,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		geometry_index = INVALID_COMPONENT_INDEX,
 		material_index = INVALID_COMPONENT_INDEX,
 		render_instance_index = INVALID_COMPONENT_INDEX,
+		render_active_index = INVALID_COMPONENT_INDEX,
 		ui_layout_index = INVALID_COMPONENT_INDEX,
 		ui_hstack_index = INVALID_COMPONENT_INDEX,
 		ui_vstack_index = INVALID_COMPONENT_INDEX,
@@ -568,6 +580,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 	} else {
 		append(&world.entities, world_entity)
 	}
+	world.entity_by_uuid[entity_uuid] = entity_index
 	ensure_entity_renderable(world, entity_index)
 	if spawn.has_geometry { add_geometry(world, entity_index, spawn.geometry) }
 	if spawn.has_material { add_material(world, entity_index, spawn.material) }
@@ -575,6 +588,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 	for i in 0 ..< spawn.custom_component_count {
 		add_custom_component(world, entity_index, &spawn.custom_components[i])
 	}
+	mark_render_entity_dirty(world, entity_index)
 	return entity_index
 }
 
@@ -584,6 +598,12 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	}
 
 	entity := &world.entities[entity_index]
+	if world.entity_by_uuid != nil {
+		delete_key(&world.entity_by_uuid, entity.uuid)
+	}
+	if entity.ui_layout_index >= 0 {
+		mark_ui_subtree_dirty(world, entity_index)
+	}
 	delete(entity.name)
 	delete(entity.geometry_resource)
 	delete(entity.material_resource)
@@ -591,6 +611,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.geometry_resource = ""
 	entity.material_resource = ""
 	entity.alive = false
+	entity.uuid = {}
 	entity.id.generation += 1
 	if entity.id.generation == 0 {
 		entity.id.generation = 1
@@ -630,6 +651,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	for &camera in world.editor_scene_cameras { if camera.entity_index == entity_index { camera.entity_index = INVALID_COMPONENT_INDEX } }
 	entity.has_shadow_caster = false
 	entity.has_shadow_receiver = false
+	entity.render_dirty = false
 }
 
 apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {

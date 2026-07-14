@@ -1,12 +1,12 @@
 package scrapbot
 
+import component "./component"
+import ecs "./ecs"
+import project "./project"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
 import "core:time"
-import component "./component"
-import ecs "./ecs"
-import project "./project"
 
 HOT_RELOAD_SCRIPT_SOURCE :: `
 local AutorotateComponent = scrapbot.component("autorotate", {
@@ -24,6 +24,7 @@ end)
 `
 
 HOT_RELOAD_TWO_CUBE_SCENE :: `[[entities]]
+id = "a3000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 
 [entities.transform]
@@ -37,6 +38,7 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "a3000000-0000-4000-8000-000000000002"
 name = "Left Cube"
 
 [entities.transform]
@@ -51,6 +53,7 @@ primitive = "cube"
 velocity = [0, 1, 0]
 
 [[entities]]
+id = "a3000000-0000-4000-8000-000000000003"
 name = "Right Cube"
 
 [entities.transform]
@@ -120,11 +123,19 @@ test_hot_reload_checks_files_periodically :: proc(t: ^testing.T) {
 	write_err := os.write_entire_file(script_path, HOT_RELOAD_SCRIPT_SOURCE)
 	testing.expect(t, write_err == nil)
 
-	step_err := hot_reload_frame_system(cast(rawptr)&state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS / 2)
+	step_err := hot_reload_frame_system(
+		cast(rawptr)&state,
+		&world,
+		HOT_RELOAD_CHECK_INTERVAL_SECONDS / 2,
+	)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[1].rotation.x == 0)
 
-	step_err = hot_reload_frame_system(cast(rawptr)&state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
+	step_err = hot_reload_frame_system(
+		cast(rawptr)&state,
+		&world,
+		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
+	)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[1].rotation.x > 0.7)
 }
@@ -152,7 +163,11 @@ test_hot_reload_replaces_scene_world :: proc(t: ^testing.T) {
 	write_err := os.write_entire_file(scene_path, HOT_RELOAD_TWO_CUBE_SCENE)
 	testing.expect(t, write_err == nil)
 
-	step_err := hot_reload_frame_system(cast(rawptr)&state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
+	step_err := hot_reload_frame_system(
+		cast(rawptr)&state,
+		&world,
+		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
+	)
 	testing.expectf(t, step_err == "", "hot_reload_frame_system failed: %s", step_err)
 	testing.expect(t, len(world.entities) == 3)
 	testing.expect(t, len(world.renderables) == 2)
@@ -186,7 +201,13 @@ test_hot_reload_keeps_last_good_script_on_reload_error :: proc(t: ^testing.T) {
 	step_err = hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
 	testing.expect(t, step_err == "")
 	second_frame_y := world.transforms[1].rotation.y
-	testing.expectf(t, second_frame_y > before_reload_y + 1.5, "second frame did not advance: before=%v after=%v", before_reload_y, second_frame_y)
+	testing.expectf(
+		t,
+		second_frame_y > before_reload_y + 1.5,
+		"second frame did not advance: before=%v after=%v",
+		before_reload_y,
+		second_frame_y,
+	)
 	before_reload_y = second_frame_y
 
 	script_path := join_hot_reload_path(t, root, project.DEFAULT_SCRIPT)
@@ -200,7 +221,12 @@ test_hot_reload_keeps_last_good_script_on_reload_error :: proc(t: ^testing.T) {
 
 	step_err = hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
 	testing.expect(t, step_err == "")
-	testing.expectf(t, state.runtime.system_count == 1, "system_count=%d", state.runtime.system_count)
+	testing.expectf(
+		t,
+		state.runtime.system_count == 1,
+		"system_count=%d",
+		state.runtime.system_count,
+	)
 	testing.expectf(
 		t,
 		world.transforms[1].rotation.y > before_reload_y + 1.5,
@@ -241,7 +267,11 @@ test_hot_reload_rebuilds_native_extension_sources :: proc(t: ^testing.T) {
 	time.sleep(5 * time.Millisecond)
 	write_hot_reload_native_extension_source(t, root, true)
 
-	step_err := hot_reload_frame_system(cast(rawptr)&state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
+	step_err := hot_reload_frame_system(
+		cast(rawptr)&state,
+		&world,
+		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
+	)
 	testing.expectf(t, step_err == "", "hot_reload_frame_system failed: %s", step_err)
 
 	body, body_ok = component.find_definition(&state.runtime.registry, "scrapbotnative.body")
@@ -255,15 +285,15 @@ test_hot_reload_rebuilds_native_extension_sources :: proc(t: ^testing.T) {
 test_asset_stamp_detects_texture_changes :: proc(t: ^testing.T) {
 	root, parent := make_hot_reload_test_project(t)
 	defer delete(root); defer os.remove_all(parent)
-	assets, join_err := filepath.join({root,"assets"})
-	testing.expect(t,join_err==nil); if join_err!=nil{return}; defer delete(assets)
-	texture, texture_err := filepath.join({assets,"texture.png"})
-	testing.expect(t,texture_err==nil); if texture_err!=nil{return}; defer delete(texture)
-	testing.expect(t,os.write_entire_file(texture,"first")==nil)
+	assets, join_err := filepath.join({root, "assets"})
+	testing.expect(t, join_err == nil); if join_err != nil { return }; defer delete(assets)
+	texture, texture_err := filepath.join({assets, "texture.png"})
+	testing.expect(t, texture_err == nil); if texture_err != nil { return }; defer delete(texture)
+	testing.expect(t, os.write_entire_file(texture, "first") == nil)
 	first := asset_stamp(assets)
-	testing.expect(t,os.write_entire_file(texture,"second-version")==nil)
+	testing.expect(t, os.write_entire_file(texture, "second-version") == nil)
 	second := asset_stamp(assets)
-	testing.expect(t,!asset_stamps_equal(first,second))
+	testing.expect(t, !asset_stamps_equal(first, second))
 }
 
 make_hot_reload_test_project :: proc(t: ^testing.T) -> (string, string) {
@@ -293,36 +323,50 @@ join_hot_reload_path :: proc(t: ^testing.T, root, path: string) -> string {
 write_hot_reload_native_extension_project :: proc(t: ^testing.T, root: string) {
 	project_path := join_hot_reload_path(t, root, PROJECT_FILE)
 	defer delete(project_path)
-	write_project_err := os.write_entire_file(project_path, `name = "Hot Reload Test"
+	write_project_err := os.write_entire_file(
+		project_path,
+		`name = "Hot Reload Test"
 default_scene = "scenes/main.scene.toml"
 
 [[native_extensions]]
 name = "scrapbotnative"
 source = "native/scrapbotnative"
-`)
+`,
+	)
 	testing.expect(t, write_project_err == nil)
 
 	scene_path := join_hot_reload_path(t, root, DEFAULT_SCENE)
 	defer delete(scene_path)
-	write_scene_err := os.write_entire_file(scene_path, `[[entities]]
+	write_scene_err := os.write_entire_file(
+		scene_path,
+		`[[entities]]
+id = "a3000000-0000-4000-8000-000000000004"
 name = "Native Body"
 
 [entities.components.scrapbotnative.body]
 velocity = [0, 4, 0]
-`)
+`,
+	)
 	testing.expect(t, write_scene_err == nil)
 
 	script_path := join_hot_reload_path(t, root, DEFAULT_SCRIPT)
 	defer delete(script_path)
-	write_script_err := os.write_entire_file(script_path, `
+	write_script_err := os.write_entire_file(
+		script_path,
+		`
 local BodyComponent = scrapbot.component_handle("scrapbotnative.body") :: ScrapbotnativeBodyComponent
 local Bodies = scrapbot.query(BodyComponent)
 assert(Bodies ~= nil)
-`)
+`,
+	)
 	testing.expect(t, write_script_err == nil)
 }
 
-write_hot_reload_native_extension_source :: proc(t: ^testing.T, root: string, include_acceleration: bool) {
+write_hot_reload_native_extension_source :: proc(
+	t: ^testing.T,
+	root: string,
+	include_acceleration: bool,
+) {
 	source_dir, source_dir_err := filepath.join({root, "native", "scrapbotnative"})
 	if !testing.expect(t, source_dir_err == nil) {
 		testing.fail_now(t)
