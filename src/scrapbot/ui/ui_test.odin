@@ -2361,6 +2361,14 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		cell := state.nodes[first_cell_node]
 		testing.expect(t, math.abs(table.rect.x - panel.rect.x) < 0.01)
 		testing.expect(t, math.abs(table.rect.width - panel.rect.width) < 0.01)
+		testing.expect(
+			t,
+			math.abs(table.rect.y - panel.rect.y - INSPECTOR_PANEL_TITLE_HEIGHT) < 0.01,
+		)
+		testing.expect(
+			t,
+			math.abs(table.rect.y + table.rect.height - panel.rect.y - panel.rect.height) < 0.01,
+		)
 		testing.expect(t, math.abs(cell.rect.x - table.rect.x) < 0.01)
 	}
 	panel_count, table_count, cell_count, input_count, checkbox_count := 0, 0, 0, 0, 0
