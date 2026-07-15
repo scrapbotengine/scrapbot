@@ -842,12 +842,13 @@ editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
 }
 
 INSPECTOR_PANEL_TITLE_HEIGHT :: EDITOR_SECTION_TITLE_HEIGHT
-INSPECTOR_CELL_HEIGHT :: f32(28)
+INSPECTOR_CELL_HEIGHT :: f32(32)
+INSPECTOR_CONTROL_HEIGHT :: f32(28)
 INSPECTOR_TABLE_ROW_GAP :: f32(3)
 INSPECTOR_PANEL_GAP :: f32(10)
 INSPECTOR_PANEL_PADDING :: shared.Vec4{}
-INSPECTOR_LABEL_CELL_PADDING :: shared.Vec4{5, 8, 3, 12}
-INSPECTOR_VALUE_CELL_PADDING :: shared.Vec4{0, 12, 0, 8}
+INSPECTOR_LABEL_CELL_PADDING :: shared.Vec4{2, 8, 2, 12}
+INSPECTOR_VALUE_CELL_PADDING :: shared.Vec4{2, 12, 2, 8}
 
 editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (int, int) {
 	panel, panel_found := editor_ui_entity(world, .Inspector_Panel, slot)
@@ -943,7 +944,7 @@ editor_ui_ensure_inspector_input :: proc(world: ^shared.World, slot: int, parent
 		parent,
 		.Inspector_Input,
 		{
-			size = {1, INSPECTOR_CELL_HEIGHT},
+			size = {1, INSPECTOR_CONTROL_HEIGHT},
 			padding = {5, 5, 4, 5},
 			background = {0.013, 0.018, 0.025, 1},
 			border_color = {0.075, 0.090, 0.115, 1},
@@ -976,7 +977,7 @@ editor_ui_ensure_inspector_checkbox :: proc(
 		name,
 		parent,
 		.Inspector_Checkbox,
-		{size = {1, INSPECTOR_CELL_HEIGHT}},
+		{size = {1, INSPECTOR_CONTROL_HEIGHT}},
 		slot,
 	)
 	value := shared.ui_checkbox_default()
@@ -1091,7 +1092,7 @@ editor_ui_inspector_field_values :: proc(
 		builder.input_count += 1
 		layout := &builder.world.ui_layouts[builder.world.entities[input_entity].ui_layout_index]
 		editor_ui_set_hidden(builder.world, input_entity, false)
-		layout.size = {1, INSPECTOR_CELL_HEIGHT}
+		layout.size = {1, INSPECTOR_CONTROL_HEIGHT}
 		value_input := &builder.world.ui_inputs[builder.world.entities[input_entity].ui_input_index]
 		value_input.read_only = field == .None
 		if builder.state == nil ||

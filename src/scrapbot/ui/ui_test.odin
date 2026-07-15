@@ -2421,7 +2421,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				input_count += 1
 				testing.expect(
 					t,
-					world.ui_layouts[entity.ui_layout_index].size.y == INSPECTOR_CELL_HEIGHT,
+					world.ui_layouts[entity.ui_layout_index].size.y == INSPECTOR_CONTROL_HEIGHT,
 				)
 				testing.expect(t, world.ui_layouts[entity.ui_layout_index].corner_radius == 4)
 				testing.expect(t, world.ui_inputs[entity.ui_input_index].size == EDITOR_TEXT_SIZE)
@@ -2440,6 +2440,10 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			case .Inspector_Checkbox:
 				checkbox_count += 1
 				testing.expect(t, entity.ui_checkbox_index >= 0)
+				testing.expect(
+					t,
+					world.ui_layouts[entity.ui_layout_index].size.y == INSPECTOR_CONTROL_HEIGHT,
+				)
 				checkbox := world.ui_checkboxes[entity.ui_checkbox_index]
 				if component.inspector_field == .None {
 					found_read_only_checkbox = checkbox.read_only && checkbox.checked
@@ -2465,6 +2469,22 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		z_node := find_node_by_entity_index(state, position_inputs[2])
 		testing.expect(t, x_node >= 0 && y_node >= 0 && z_node >= 0)
 		if x_node >= 0 && y_node >= 0 && z_node >= 0 {
+			x_cell_node := find_node_by_entity_index(
+				state,
+				state.nodes[x_node].parent_entity_index,
+			)
+			testing.expect(t, x_cell_node >= 0)
+			testing.expect(t, state.nodes[x_node].rect.height == INSPECTOR_CONTROL_HEIGHT)
+			if x_cell_node >= 0 {
+				cell := state.nodes[x_cell_node]
+				input := state.nodes[x_node]
+				testing.expect(t, input.rect.y - cell.rect.y == INSPECTOR_VALUE_CELL_PADDING.x)
+				testing.expect(
+					t,
+					cell.rect.y + cell.rect.height - input.rect.y - input.rect.height ==
+					INSPECTOR_VALUE_CELL_PADDING.z,
+				)
+			}
 			testing.expect(t, state.nodes[x_node].rect.y == state.nodes[y_node].rect.y)
 			testing.expect(t, state.nodes[y_node].rect.y == state.nodes[z_node].rect.y)
 			testing.expect(t, state.nodes[x_node].rect.x < state.nodes[y_node].rect.x)
