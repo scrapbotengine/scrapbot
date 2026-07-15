@@ -1002,10 +1002,42 @@ layout_node :: proc(
 	child_ordinal := 0
 	table_y, table_row_height := f32(0), f32(0)
 	table_columns := max(table.columns, 1)
-	table_column_width := max(
-		(content.width - table.column_gap * f32(max(table_columns - 1, 0))) / f32(table_columns),
+	table_column_widths: [MAX_NODES]f32
+	table_column_offsets: [MAX_NODES]f32
+	table_available_width := max(
+		content.width - table.column_gap * f32(max(table_columns - 1, 0)),
 		0,
 	)
+	table_total_weight := f32(table_columns)
+	if is_table && table.proportional_columns {
+		table_total_weight = 0
+		for column in 0 ..< table_columns {
+			weight := f32(1)
+			if column < child_count {
+				column_node := &state.nodes[children[column]]
+				column_layout := world.ui_layouts[column_node.layout_index]
+				if !column_node.split_weight_valid || column_node.split_parent != node.entity {
+					column_node.split_weight = max(column_layout.size.x, 1)
+					column_node.split_parent = node.entity
+					column_node.split_weight_valid = true
+				}
+				weight = column_node.split_weight
+			}
+			table_column_widths[column] = weight
+			table_total_weight += weight
+		}
+	}
+	table_offset := f32(0)
+	for column in 0 ..< table_columns {
+		if table.proportional_columns {
+			table_column_widths[column] =
+				table_available_width * table_column_widths[column] / max(table_total_weight, 1)
+		} else {
+			table_column_widths[column] = table_available_width / f32(table_columns)
+		}
+		table_column_offsets[column] = table_offset
+		table_offset += table_column_widths[column] + table.column_gap
+	}
 	for child_index in 0 ..< state.node_count {
 		child := &state.nodes[child_index]; if child.parent_entity_index != int(node.entity.index) { continue }
 		child_layout := world.ui_layouts[child.layout_index]
@@ -1047,14 +1079,37 @@ layout_node :: proc(
 				table_row_height = 0
 			}
 			child_size = {
-				max(table_column_width - child_layout.margin.w - child_layout.margin.y, 0),
+				max(
+					table_column_widths[column] - child_layout.margin.w - child_layout.margin.y,
+					0,
+				),
 				child_size.y,
 			}
 			position = {
-				content.x +
-				f32(column) * (table_column_width + table.column_gap) +
-				child_layout.margin.w,
+				content.x + table_column_offsets[column] + child_layout.margin.w,
 				content.y + table_y + child_layout.margin.x,
+			}
+			if table.resizable_columns &&
+			   child_ordinal < table_columns - 1 &&
+			   child_ordinal < child_count - 1 &&
+			   state.split_handle_count < MAX_NODES {
+				handle_width := max(table.column_gap, 8)
+				handle_rect := Rect {
+					content.x + table_column_offsets[column] + table_column_widths[column],
+					content.y,
+					handle_width,
+					content.height,
+				}
+				handle_rect.x += (table.column_gap - handle_width) * 0.5
+				state.split_handles[state.split_handle_count] = {
+					rect = handle_rect,
+					before_node = child_index,
+					after_node = children[child_ordinal + 1],
+					horizontal = true,
+					editor = node.origin == .Editor,
+					min_size = table.min_column_width,
+				}
+				state.split_handle_count += 1
 			}
 			table_row_height = max(
 				table_row_height,

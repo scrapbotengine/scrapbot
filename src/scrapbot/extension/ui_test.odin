@@ -41,6 +41,16 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	scroll_style.scrollbar_corner_radius = 0
 	scroll_payload := ui_scroll_area(scroll_style)
 	testing.expect(t, scroll_payload.scroll_area.scrollbar_corner_radius == 0)
+	table_style := ui_table_default()
+	testing.expect(t, table_style.columns == 1)
+	testing.expect(t, table_style.min_column_width == 32)
+	table_style.columns = 2
+	table_style.proportional_columns = 1
+	table_style.resizable_columns = 1
+	table_payload := ui_table(table_style)
+	testing.expect(t, table_payload.component == UI_TABLE)
+	testing.expect(t, table_payload.table.proportional_columns != 0)
+	testing.expect(t, table_payload.table.resizable_columns != 0)
 
 	text_style := ui_text_default()
 	text_style.size = 13

@@ -68,6 +68,12 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	checkbox.check_inset = 5
 	checkbox.check_corner_radius = 0
 	testing.expect(t, ecs.set_ui_checkbox(&world, entity_index, checkbox))
+	table := shared.ui_table_default()
+	table.columns = 2
+	table.proportional_columns = true
+	table.resizable_columns = true
+	table.min_column_width = 56
+	testing.expect(t, ecs.set_ui_table(&world, entity_index, table))
 
 	commands: ecs.Command_Buffer
 	ecs.init_command_buffer(&commands)
@@ -152,6 +158,20 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, layout_payload.layout.fill_width != 0)
 	testing.expect(t, layout_payload.layout.fit_content_height != 0)
 	testing.expect(t, layout_payload.layout.fixed_in_fill != 0)
+	table_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_table", &table_payload) != 0,
+	)
+	testing.expect(t, table_payload.table.columns == 2)
+	testing.expect(t, table_payload.table.proportional_columns != 0)
+	testing.expect(t, table_payload.table.resizable_columns != 0)
+	testing.expect(t, table_payload.table.min_column_width == 56)
+	table_payload.table.min_column_width = 72
+	testing.expect(t, system_set_ui_component(&ctx, entity, &table_payload) == nil)
+	testing.expect(t, ecs.apply_commands(&world, &commands) == "")
+	stored_table := world.ui_tables[world.entities[entity_index].ui_table_index]
+	testing.expect(t, stored_table.min_column_width == 72)
 
 	text_payload.text.size = 20
 	testing.expect(t, api_payload_set_strings(&text_payload, "After", "Project Font"))

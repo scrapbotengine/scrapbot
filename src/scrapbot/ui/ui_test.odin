@@ -523,6 +523,101 @@ test_table_layout_uses_equal_width_columns_and_wraps_rows :: proc(t: ^testing.T)
 }
 
 @(test)
+test_table_layout_uses_first_row_proportions_and_draggable_separators :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Proportional Table"),
+			name = "Proportional Table",
+			has_ui_layout = true,
+			ui_layout = {size = {320, 100}, padding = {10, 10, 10, 10}},
+			has_ui_table = true,
+			ui_table = {
+				columns = 2,
+				column_gap = 10,
+				proportional_columns = true,
+				resizable_columns = true,
+				min_column_width = 48,
+			},
+		},
+	)
+	for ordinal in 0 ..< 4 {
+		width := f32(1)
+		if ordinal % 2 == 1 { width = 2 }
+		append(
+			&scene.entities,
+			shared.Scene_Entity {
+				name = "Cell",
+				has_ui_layout = true,
+				ui_layout = {parent = ui_test_id("Proportional Table"), size = {width, 20}},
+			},
+		)
+	}
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 320, 100) == "")
+	first := find_node_by_entity_index(state, 1)
+	second := find_node_by_entity_index(state, 2)
+	third := find_node_by_entity_index(state, 3)
+	fourth := find_node_by_entity_index(state, 4)
+	testing.expect(t, first >= 0 && second >= 0 && third >= 0 && fourth >= 0)
+	testing.expect(t, state.split_handle_count == 1)
+	if first < 0 || second < 0 || third < 0 || fourth < 0 { return }
+	testing.expect(t, math.abs(state.nodes[first].rect.width - 290.0 / 3.0) < 0.01)
+	testing.expect(t, math.abs(state.nodes[second].rect.width - 580.0 / 3.0) < 0.01)
+	testing.expect(
+		t,
+		math.abs(state.nodes[third].rect.width - state.nodes[first].rect.width) < 0.01,
+	)
+	testing.expect(
+		t,
+		math.abs(state.nodes[fourth].rect.width - state.nodes[second].rect.width) < 0.01,
+	)
+	handle := state.split_handles[0]
+	point := shared.Vec2{handle.rect.x + handle.rect.width * 0.5, handle.rect.y + 20}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			320,
+			100,
+			{position = point, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
+	point.x += 30
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			320,
+			100,
+			{position = point, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.nodes[first].rect.width > 120)
+	testing.expect(t, state.nodes[second].rect.width < 180)
+	testing.expect(
+		t,
+		math.abs(state.nodes[third].rect.width - state.nodes[first].rect.width) < 0.01,
+	)
+	testing.expect(
+		t,
+		math.abs(state.nodes[fourth].rect.width - state.nodes[second].rect.width) < 0.01,
+	)
+}
+
+@(test)
 test_panel_title_reserves_child_space_and_paints_a_title_band :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
@@ -2278,8 +2373,12 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				found_button = found_button || panel.title == "UI BUTTON"
 			case .Inspector_Table:
 				table_count += 1
-				testing.expect(t, world.ui_tables[entity.ui_table_index].columns == 2)
-				testing.expect(t, world.ui_tables[entity.ui_table_index].column_gap == 10)
+				table := world.ui_tables[entity.ui_table_index]
+				testing.expect(t, table.columns == 2)
+				testing.expect(t, table.column_gap == 10)
+				testing.expect(t, table.proportional_columns)
+				testing.expect(t, table.resizable_columns)
+				testing.expect(t, table.min_column_width == 72)
 			case .Inspector_Cell:
 				cell_count += 1
 				testing.expect(

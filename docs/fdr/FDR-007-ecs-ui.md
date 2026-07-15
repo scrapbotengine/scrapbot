@@ -81,9 +81,9 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ### 8. Keep panels decorative and tables structural
 
-**Decision:** Let `ui_panel` reserve and paint a title band without becoming a flow container, optionally use that band to toggle ECS-owned collapsed state, and let `ui_table` own row-major child placement with equal-width columns.
+**Decision:** Let `ui_panel` reserve and paint a title band without becoming a flow container, optionally use that band to toggle ECS-owned collapsed state, and let `ui_table` own row-major child placement. Tables default to equal columns, can derive reusable column proportions from the first row's authored widths, and can expose pointer-draggable separators that resize adjacent columns for the retained UI session.
 **Why:** Panels should compose around any nested layout, while tables need a generic 1–N column primitive rather than inspector-specific field rendering.
-**Tradeoff:** A collapsed panel contracts its vertical extent but retains its authored expanded size. Column proportions, spanning, headers, and automatic row measurement are deferred; authored child height determines each row's height.
+**Tradeoff:** A collapsed panel contracts its vertical extent but retains its authored expanded size. Resized table proportions are transient reconciler state rather than serialized scene edits. Spanning, headers, and automatic row measurement are deferred; authored child height determines each row's height.
 
 ### 9. Retain editing state while keeping values in the ECS
 

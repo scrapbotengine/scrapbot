@@ -556,11 +556,14 @@ push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component)
 }
 
 push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component) {
-	lua_createtable(L, 0, 3)
+	lua_createtable(L, 0, 6)
 	lua_pushinteger(L, c.ptrdiff_t(value.columns))
 	lua_setfield(L, -2, "columns")
 	push_number_field(L, "column_gap", value.column_gap)
 	push_number_field(L, "row_gap", value.row_gap)
+	push_bool_field(L, "proportional_columns", value.proportional_columns)
+	push_bool_field(L, "resizable_columns", value.resizable_columns)
+	push_number_field(L, "min_column_width", value.min_column_width)
 }
 
 push_ui_list_table :: proc "c" (L: Lua_State, value: shared.UI_List_Component) {

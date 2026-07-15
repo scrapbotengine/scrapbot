@@ -90,6 +90,8 @@ Use layout policy instead of repairing rectangles after layout:
 - `fixed_in_fill` preserves a bar or control's authored main-axis size inside a fill stack.
 - Stack `fill = true` distributes remaining space proportionally.
 - Stack `draggable = true` turns gaps into resize handles; `min_size` limits pane shrinking.
+- Table `proportional_columns = true` treats the first row's authored widths as column weights for every row.
+- Table `resizable_columns = true` turns column gaps into resize handles; `min_column_width` limits shrinking.
 - `hidden = true` removes the complete subtree from layout, painting, focus traversal, and pointer input without despawning it.
 
 Use `ui_scroll_area` when content can exceed its viewport. Its content moves by continuous pixel offsets, including fractional trackpad deltas, and nested scroll areas consume wheel input from the deepest hovered viewport.

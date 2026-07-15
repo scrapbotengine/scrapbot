@@ -208,9 +208,27 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "row_gap", &value.row_gap);
 			   err != "" { return err }
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"proportional_columns",
+				&value.proportional_columns,
+			); err != "" { return err }
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"resizable_columns",
+				&value.resizable_columns,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"min_column_width",
+				&value.min_column_width,
+			); err != "" { return err }
 			if !shared.ui_table_is_valid(
 				value,
-			) { return "ui_table requires 1..64 columns and non-negative gaps" }
+			) { return "ui_table requires valid columns, gaps, proportions, and minimum width" }
 			command.table = value
 			return ecs.init_ui_component_command(command, .Table)
 		case "scrapbot.ui_list":

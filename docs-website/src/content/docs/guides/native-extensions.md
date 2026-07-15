@@ -159,7 +159,7 @@ if err != nil {
 _ = uuid // stable project-wide identity, also usable as a UI parent
 ```
 
-Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`, reusable `scrapbot.ui_progress` values, and numeric/scrubbable `scrapbot.ui_input` controls with optional prefix badges. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions are stable edge counters for native systems that react less frequently than rendering; `valid` exposes numeric validation.
+Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; and numeric/scrubbable `scrapbot.ui_input` controls with optional prefix badges. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions are stable edge counters for native systems that react less frequently than rendering; `valid` exposes numeric validation.
 
 The raw ABI stores text, font names, and input prefixes in fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_text`, `ui_panel`, `ui_button`, `ui_input`, `ui_payload_text`, `ui_payload_font`, and `ui_payload_prefix`.
 

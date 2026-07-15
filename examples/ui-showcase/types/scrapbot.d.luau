@@ -439,12 +439,18 @@ export type ScrapbotUiTable = {
 	columns: number?,
 	column_gap: number?,
 	row_gap: number?,
+	proportional_columns: boolean?,
+	resizable_columns: boolean?,
+	min_column_width: number?,
 }
 
 export type ReadonlyScrapbotUiTable = {
 	read columns: number,
 	read column_gap: number,
 	read row_gap: number,
+	read proportional_columns: boolean,
+	read resizable_columns: boolean,
+	read min_column_width: number,
 }
 
 export type ScrapbotUiTableComponent = ScrapbotComponent<ScrapbotUiTable, ReadonlyScrapbotUiTable>

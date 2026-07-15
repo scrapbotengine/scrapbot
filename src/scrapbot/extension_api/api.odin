@@ -157,6 +157,9 @@ UI_Table_Payload :: struct {
 	columns: c.int,
 	column_gap: f32,
 	row_gap: f32,
+	proportional_columns: c.int,
+	resizable_columns: c.int,
+	min_column_width: f32,
 }
 
 UI_List_Payload :: struct {

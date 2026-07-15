@@ -156,6 +156,9 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "columns", field_type = .Number},
 			Field_Definition{name = "column_gap", field_type = .Number},
 			Field_Definition{name = "row_gap", field_type = .Number},
+			Field_Definition{name = "proportional_columns", field_type = .Bool},
+			Field_Definition{name = "resizable_columns", field_type = .Bool},
+			Field_Definition{name = "min_column_width", field_type = .Number},
 		},
 	)
 	register_engine_component(

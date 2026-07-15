@@ -102,6 +102,9 @@ system_get_ui_component :: proc "c" (
 				columns = c.int(value.columns),
 				column_gap = value.column_gap,
 				row_gap = value.row_gap,
+				proportional_columns = bool_to_c_int(value.proportional_columns),
+				resizable_columns = bool_to_c_int(value.resizable_columns),
+				min_column_width = value.min_column_width,
 			}
 		case "scrapbot.ui_list":
 			if world_entity.ui_list_index < 0 ||
@@ -370,6 +373,9 @@ ui_command_from_api_payload :: proc "c" (
 				columns = int(payload.table.columns),
 				column_gap = payload.table.column_gap,
 				row_gap = payload.table.row_gap,
+				proportional_columns = payload.table.proportional_columns != 0,
+				resizable_columns = payload.table.resizable_columns != 0,
+				min_column_width = payload.table.min_column_width,
 			}
 			if !shared.ui_table_is_valid(value) {
 				return "native ui_table payload is invalid"

@@ -306,7 +306,7 @@ smoothness = 14
 
 Each direct child supplies its own row height and may use an overlay or another flow container for its contents. A list cannot share its entity with another flow container.
 
-Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit descendants from layout, paint, focus traversal, and pointer interaction. A small SDF disclosure chevron shows the current state. Tables place children in row-major order across 1–64 equal-width columns. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
+Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit descendants from layout, paint, focus traversal, and pointer interaction. A small SDF disclosure chevron shows the current state. Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row; for example, widths `1` and `2` create a one-third/two-thirds split. `resizable_columns = true` turns column gaps into draggable separators and requires proportional columns; `min_column_width` limits adjacent-column shrinking. Resized proportions remain local to the current UI session. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
 
 ```toml
 [[entities]]
@@ -344,9 +344,12 @@ size = [340, 100]
 columns = 3
 column_gap = 8
 row_gap = 4
+proportional_columns = true
+resizable_columns = true
+min_column_width = 48
 ```
 
-Each child of `Stats Table` occupies the next table cell. A table is a flow container and therefore cannot share an entity with `ui_hstack`, `ui_vstack`, or `ui_list`; a panel is decoration and may share an entity with any flow container.
+Each child of `Stats Table` occupies the next table cell. Give the first three child layouts the desired width weights; subsequent rows reuse them. A table is a flow container and therefore cannot share an entity with `ui_hstack`, `ui_vstack`, or `ui_list`; a panel is decoration and may share an entity with any flow container.
 
 ## Custom component sections
 

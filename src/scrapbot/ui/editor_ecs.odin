@@ -874,7 +874,14 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 	editor_ui_add_table(
 		world,
 		table,
-		{columns = 2, column_gap = 10, row_gap = INSPECTOR_TABLE_ROW_GAP},
+		{
+			columns = 2,
+			column_gap = 10,
+			row_gap = INSPECTOR_TABLE_ROW_GAP,
+			proportional_columns = true,
+			resizable_columns = true,
+			min_column_width = 72,
+		},
 	)
 	return panel, table
 }
@@ -887,6 +894,9 @@ editor_ui_ensure_inspector_cell :: proc(
 ) -> int {
 	if cell, found := editor_ui_entity(world, .Inspector_Cell, slot); found {
 		editor_ui_set_parent(world, cell, parent)
+		layout := &world.ui_layouts[world.entities[cell].ui_layout_index]
+		layout.size.x = 1
+		if value_cell { layout.size.x = 2 }
 		return cell
 	}
 	name := fmt.tprintf("__scrapbot_editor_inspector_cell_%d", slot)
@@ -895,11 +905,12 @@ editor_ui_ensure_inspector_cell :: proc(
 		name,
 		parent,
 		.Inspector_Cell,
-		{size = {144, INSPECTOR_CELL_HEIGHT}, padding = {5, 3, 3, 3}},
+		{size = {1, INSPECTOR_CELL_HEIGHT}, padding = {5, 3, 3, 3}},
 		slot,
 	)
 	if value_cell {
 		layout := &world.ui_layouts[world.entities[cell].ui_layout_index]
+		layout.size.x = 2
 		layout.padding = {}
 		editor_ui_add_hstack(world, cell, {gap = 6, fill = true})
 	} else {
@@ -1473,6 +1484,21 @@ editor_ui_build_inspector_panels :: proc(
 		editor_ui_inspector_field(&builder, "columns", fmt.tprintf("%d", value.columns))
 		editor_ui_inspector_field(&builder, "column gap", fmt.tprintf("%.2f", value.column_gap))
 		editor_ui_inspector_field(&builder, "row gap", fmt.tprintf("%.2f", value.row_gap))
+		editor_ui_inspector_field(
+			&builder,
+			"proportional columns",
+			fmt.tprintf("%v", value.proportional_columns),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"resizable columns",
+			fmt.tprintf("%v", value.resizable_columns),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"minimum width",
+			fmt.tprintf("%.2f", value.min_column_width),
+		)
 	}
 	if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
 		value := world.ui_lists[entity.ui_list_index]

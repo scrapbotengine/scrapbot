@@ -108,7 +108,7 @@ ui_panel_default :: proc "contextless" () -> UI_Panel {
 }
 
 ui_table_default :: proc "contextless" () -> UI_Table {
-	return {columns = 1}
+	return {columns = 1, min_column_width = 32}
 }
 
 ui_list_default :: proc "contextless" () -> UI_List {

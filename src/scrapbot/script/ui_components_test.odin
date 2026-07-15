@@ -26,6 +26,9 @@ scrollbar_corner_radius = 0
 scrollbar_thumb_color = [0.7, 0.8, 0.9, 1]
 [entities.ui_table]
 columns = 1
+proportional_columns = true
+resizable_columns = true
+min_column_width = 44
 [entities.ui_input]
 text = "42"
 font = "Inter"
@@ -100,7 +103,7 @@ assert(scrapbot.ui_state.id > 0)
 
 scrapbot.system(function()
 	local count = 0
-	scrapbot.query(scrapbot.ui_layout, scrapbot.ui_panel, scrapbot.ui_table):each(function(_, layout, panel, table)
+	scrapbot.query(scrapbot.ui_layout, scrapbot.ui_panel, scrapbot.ui_table):each(function(entity, layout, panel, table)
 		assert(layout.size.x == 240 and layout.size.y == 32)
 		assert(layout.min_size.x == 120 and layout.min_size.y == 24)
 		assert(layout.fill_width == true)
@@ -111,6 +114,10 @@ scrapbot.system(function()
 		assert(panel.disclosure_size == 9 and panel.disclosure_corner_radius == 0)
 		assert(panel.collapsed == false)
 		assert(table.columns == 1)
+		assert(table.proportional_columns == true)
+		assert(table.resizable_columns == true)
+		assert(table.min_column_width == 44)
+		scrapbot.add_component(entity, scrapbot.ui_table, {min_column_width = 60})
 		count += 1
 	end)
 	assert(count == 1)
@@ -208,6 +215,9 @@ end)
 	progress := world.ui_progresses[world.entities[0].ui_progress_index]
 	testing.expect(t, progress.value == 6 && progress.maximum == 10)
 	testing.expect(t, progress.right_to_left)
+	table := world.ui_tables[world.entities[0].ui_table_index]
+	testing.expect(t, table.proportional_columns && table.resizable_columns)
+	testing.expect(t, table.min_column_width == 60)
 	button_index := world.entities[1].ui_button_index
 	testing.expect(t, button_index >= 0 && button_index < len(world.ui_buttons))
 	if button_index >= 0 && button_index < len(world.ui_buttons) {

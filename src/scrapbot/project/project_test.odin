@@ -422,6 +422,9 @@ size = [300, 80]
 columns = 3
 column_gap = 6
 row_gap = 4
+proportional_columns = true
+resizable_columns = true
+min_column_width = 48
 `,
 	)
 	defer destroy_scene(&scene)
@@ -464,6 +467,9 @@ row_gap = 4
 	testing.expect(t, scene.entities[2].ui_table.columns == 3)
 	testing.expect(t, scene.entities[2].ui_table.column_gap == 6)
 	testing.expect(t, scene.entities[2].ui_table.row_gap == 4)
+	testing.expect(t, scene.entities[2].ui_table.proportional_columns)
+	testing.expect(t, scene.entities[2].ui_table.resizable_columns)
+	testing.expect(t, scene.entities[2].ui_table.min_column_width == 48)
 }
 
 @(test)

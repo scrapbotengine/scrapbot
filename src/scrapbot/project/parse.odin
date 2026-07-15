@@ -600,6 +600,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_table.column_gap, found = parse_f32(value)
 					case "row_gap":
 						current.ui_table.row_gap, found = parse_f32(value)
+					case "proportional_columns":
+						current.ui_table.proportional_columns, found = parse_bool(value)
+					case "resizable_columns":
+						current.ui_table.resizable_columns, found = parse_bool(value)
+					case "min_column_width":
+						current.ui_table.min_column_width, found = parse_f32(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -915,7 +921,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf(
-					"UI table '%s' requires 1..64 columns and non-negative gaps",
+					"UI table '%s' requires 1..64 columns, non-negative gaps and minimum width, and proportional columns when resizable",
 					entity.name,
 				),
 			)

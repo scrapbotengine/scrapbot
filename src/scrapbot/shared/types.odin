@@ -221,6 +221,9 @@ UI_Table_Component :: struct {
 	columns: int,
 	column_gap: f32,
 	row_gap: f32,
+	proportional_columns: bool,
+	resizable_columns: bool,
+	min_column_width: f32,
 }
 UI_List_Component :: struct {
 	selected: Entity_UUID,
@@ -362,7 +365,7 @@ ui_panel_default :: proc "contextless" () -> UI_Panel_Component {
 }
 
 ui_table_default :: proc "contextless" () -> UI_Table_Component {
-	return {columns = 1}
+	return {columns = 1, min_column_width = 32}
 }
 
 ui_list_default :: proc "contextless" () -> UI_List_Component {
@@ -467,7 +470,14 @@ ui_panel_is_valid :: proc "contextless" (value: UI_Panel_Component) -> bool {
 }
 
 ui_table_is_valid :: proc "contextless" (value: UI_Table_Component) -> bool {
-	return value.columns >= 1 && value.columns <= 64 && value.column_gap >= 0 && value.row_gap >= 0
+	return(
+		value.columns >= 1 &&
+		value.columns <= 64 &&
+		value.column_gap >= 0 &&
+		value.row_gap >= 0 &&
+		value.min_column_width >= 0 &&
+		(!value.resizable_columns || value.proportional_columns) \
+	)
 }
 
 ui_list_is_valid :: proc "contextless" (value: UI_List_Component) -> bool {
