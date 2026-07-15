@@ -586,15 +586,15 @@ query_object_argument :: proc "c" (
 	return query_argument(L, runtime, index, .Query)
 }
 
-validate_world_components :: proc(runtime: ^Runtime) -> string {
-	if runtime == nil || runtime.world == nil {
+validate_runtime_world :: proc(runtime: ^Runtime, world: ^World) -> string {
+	if runtime == nil || world == nil {
 		return ""
 	}
 
-	for &storage in runtime.world.custom_components {
+	for &storage in world.custom_components {
 		definition, found := component.find_definition(&runtime.registry, storage.name)
 		if found {
-			ecs.bind_custom_component_storage(runtime.world, storage.name, definition.id)
+			ecs.bind_custom_component_storage(world, storage.name, definition.id)
 		}
 		for scene_component in storage.components {
 			if err := component.validate_custom_component(&runtime.registry, scene_component);
@@ -605,4 +605,11 @@ validate_world_components :: proc(runtime: ^Runtime) -> string {
 	}
 
 	return ""
+}
+
+validate_world_components :: proc(runtime: ^Runtime) -> string {
+	if runtime == nil {
+		return ""
+	}
+	return validate_runtime_world(runtime, runtime.world)
 }

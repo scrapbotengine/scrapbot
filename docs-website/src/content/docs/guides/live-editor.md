@@ -27,9 +27,10 @@ The top bar contains the Scrapbot title and the project simulation controls. The
 | --- | --- |
 | Play | Run project systems with normal frame deltas. |
 | Pause | Freeze project systems and world time at their current state. Rendering, editor UI, scene-camera navigation, picking, and gizmos remain responsive. |
+| Stop | Replace all entities from the project scene at the next frame boundary, discard runtime mutations and spawned entities, retain the loaded Luau and Odin systems, and remain stopped. |
 | Step | While pausing normal playback, run one fixed 1/60-second project update. |
 
-Pause does not reload the scene or discard runtime changes in this slice; Play resumes from the frozen world.
+Pause preserves the current runtime world so Play can resume it. Stop intentionally returns to the source-authored scene baseline without reloading code; it does not write runtime changes back to disk.
 
 ## Navigate the scene view
 

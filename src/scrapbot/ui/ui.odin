@@ -159,7 +159,9 @@ State :: struct {
 	pointer_cursor: Pointer_Cursor,
 	editor_visible: bool,
 	editor_simulation_playing: bool,
+	editor_simulation_stopped: bool,
 	editor_simulation_step_requested: bool,
+	editor_scene_reload_requested: bool,
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
@@ -248,6 +250,15 @@ select_font :: proc(state: ^State, name: string) {
 editor_play :: proc(state: ^State) {
 	if state == nil { return }
 	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	state.editor_simulation_step_requested = false
+	state.editor_snapshot_valid = false
+}
+
+editor_pause :: proc(state: ^State) {
+	if state == nil { return }
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = false
 	state.editor_simulation_step_requested = false
 	state.editor_snapshot_valid = false
 }
@@ -255,15 +266,26 @@ editor_play :: proc(state: ^State) {
 editor_stop :: proc(state: ^State) {
 	if state == nil { return }
 	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
 	state.editor_simulation_step_requested = false
+	state.editor_scene_reload_requested = true
 	state.editor_snapshot_valid = false
 }
 
 editor_step :: proc(state: ^State) {
 	if state == nil { return }
 	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = false
 	state.editor_simulation_step_requested = true
 	state.editor_snapshot_valid = false
+}
+
+consume_scene_reload_request :: proc(state: ^State) -> bool {
+	if state == nil || !state.editor_scene_reload_requested {
+		return false
+	}
+	state.editor_scene_reload_requested = false
+	return true
 }
 
 consume_simulation_delta :: proc(state: ^State, delta_seconds: f32) -> (f32, bool) {

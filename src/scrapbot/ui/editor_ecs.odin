@@ -72,6 +72,9 @@ editor_ui_handle_activation :: proc(
 				case .Transport_Play:
 					editor_play(state)
 					return
+				case .Transport_Pause:
+					editor_pause(state)
+					return
 				case .Transport_Stop:
 					editor_stop(state)
 					return
@@ -396,7 +399,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{size = {182, 30}},
+		{size = {244, 30}},
 	)
 	editor_ui_add_hstack(world, transport, {gap = 4})
 	_ = editor_ui_create_transport_button(
@@ -408,9 +411,16 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	_ = editor_ui_create_transport_button(
 		world,
-		"__scrapbot_editor_stop",
+		"__scrapbot_editor_pause",
 		EDITOR_UI_TRANSPORT_NAME,
 		"PAUSE",
+		.Transport_Pause,
+	)
+	_ = editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_stop",
+		EDITOR_UI_TRANSPORT_NAME,
+		"STOP",
 		.Transport_Stop,
 	)
 	_ = editor_ui_create_transport_button(
@@ -740,6 +750,7 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || world == nil { return }
 	for component in world.editor_uis {
 		if component.role != .Transport_Play &&
+		   component.role != .Transport_Pause &&
 		   component.role != .Transport_Stop &&
 		   component.role != .Transport_Step { continue }
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
@@ -751,7 +762,10 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		   entity.ui_button_index >= len(world.ui_buttons) { continue }
 		selected :=
 			component.role == .Transport_Play && state.editor_simulation_playing ||
-			component.role == .Transport_Stop && !state.editor_simulation_playing
+			component.role == .Transport_Pause &&
+				!state.editor_simulation_playing &&
+				!state.editor_simulation_stopped ||
+			component.role == .Transport_Stop && state.editor_simulation_stopped
 		layout := &world.ui_layouts[entity.ui_layout_index]
 		button := &world.ui_buttons[entity.ui_button_index]
 		layout.background = {0.017, 0.022, 0.030, 1}
@@ -1735,6 +1749,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	if status, found := editor_ui_entity(world, .Status); found {
 		mode := "PAUSED"
 		if state.editor_simulation_playing { mode = "RUNNING" }
+		if state.editor_simulation_stopped { mode = "STOPPED" }
 		editor_ui_set_text(world, status, mode)
 	}
 

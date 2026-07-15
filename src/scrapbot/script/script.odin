@@ -298,6 +298,14 @@ rebind_runtime :: proc(runtime: ^Runtime) {
 	}
 }
 
+bind_runtime_world :: proc(runtime: ^Runtime, world: ^World) {
+	if runtime == nil {
+		return
+	}
+	ecs.clear_commands(&runtime.commands)
+	runtime.world = world
+}
+
 step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> string {
 	if runtime == nil || runtime.L == nil {
 		return ""

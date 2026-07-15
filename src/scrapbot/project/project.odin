@@ -32,6 +32,11 @@ Project_Config_Load_Result :: struct {
 	err: string,
 }
 
+Scene_Load_Result :: struct {
+	scene: Scene,
+	err: string,
+}
+
 project_toml_template :: proc(name: string) -> string {
 	return fmt.tprintf(`name = "%s"
 default_scene = "%s"
@@ -267,6 +272,27 @@ load_project :: proc(root: string) -> Project_Load_Result {
 		result.err = font_err
 	}
 	return result
+}
+
+load_scene_file :: proc(path: string) -> Scene_Load_Result {
+	result: Scene_Load_Result
+	scene_bytes, scene_err := os.read_entire_file(path, context.temp_allocator)
+	if scene_err != nil {
+		result.err = fmt.tprintf("failed to read %s: %v", path, scene_err)
+		return result
+	}
+	scene, parse_result := parse_scene(string(scene_bytes))
+	if parse_result.err != .None {
+		result.err = fmt.tprintf("%s: %s", path, parse_result.message)
+		return result
+	}
+	result.scene = scene
+	return result
+}
+
+destroy_scene_load_result :: proc(result: ^Scene_Load_Result) {
+	destroy_scene(&result.scene)
+	result^ = {}
 }
 
 validate_scene_font_references :: proc(scene: ^Scene, config: ^Project_Config) -> string {

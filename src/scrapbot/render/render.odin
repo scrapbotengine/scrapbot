@@ -11,6 +11,7 @@ import "core:time"
 
 Renderer_Backend :: shared.Renderer_Backend
 Frame_System_Proc :: #type proc(data: rawptr, world: ^World, delta_seconds: f32) -> string
+Runtime_Reset_Proc :: #type proc(data: rawptr, world: ^World) -> string
 Render_Stats :: struct {
 	draw_batches: int,
 }
@@ -55,6 +56,8 @@ Run_Config :: struct {
 	framegrab_region: Framegrab_Region,
 	frame_system: Frame_System_Proc,
 	frame_system_data: rawptr,
+	runtime_reset: Runtime_Reset_Proc,
+	runtime_reset_data: rawptr,
 	resource_registry: ^resources.Registry,
 	stats: ^Render_Stats,
 	collect_runtime_stats: bool,
@@ -244,6 +247,14 @@ run_frame_system_unmeasured :: proc(
 	drawable_width: f32 = 1280,
 	drawable_height: f32 = 720,
 ) -> string {
+	if ui.consume_scene_reload_request(config.ui_state) {
+		if config.runtime_reset == nil {
+			return "editor stop requires a runtime reset callback"
+		}
+		if err := config.runtime_reset(config.runtime_reset_data, world); err != "" {
+			return err
+		}
+	}
 	simulation_delta, run_simulation := ui.consume_simulation_delta(config.ui_state, delta_seconds)
 	if run_simulation {
 		if config.frame_system == nil {

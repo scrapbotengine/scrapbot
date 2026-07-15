@@ -150,6 +150,14 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 	)
 }
 
+hot_reload_runtime_reset :: proc(data: rawptr, world: ^shared.World) -> string {
+	state := cast(^Hot_Reload_State)data
+	if state == nil || world == nil {
+		return "cannot reset an unavailable hot-reload runtime"
+	}
+	return reset_scene_world(state.scene_path, &state.runtime, world)
+}
+
 maybe_poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World, delta_seconds: f32) {
 	state.seconds_until_next_check -= delta_seconds
 	if state.seconds_until_next_check > 0 {
@@ -319,6 +327,10 @@ load_script_from_path :: proc(
 		result.err = extension_load.err
 		return result
 	}
+	result.runtime.registry = registry
+	result.runtime.world = world
+	result.runtime.resource_registry = resource_registry
+	result.runtime.project_root = root
 
 	if !os.exists(path) {
 		return result

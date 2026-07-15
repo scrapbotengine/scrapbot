@@ -618,6 +618,7 @@ Editor_UI_Role :: enum {
 	Root,
 	Viewport,
 	Transport_Play,
+	Transport_Pause,
 	Transport_Stop,
 	Transport_Step,
 	Systems_Scroll,

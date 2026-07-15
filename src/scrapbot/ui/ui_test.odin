@@ -1655,7 +1655,7 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_editor_transport_buttons_play_pause_and_step_simulation :: proc(t: ^testing.T) {
+test_editor_transport_buttons_control_simulation_and_request_stop_reload :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)
 	state := new(State)
@@ -1665,13 +1665,16 @@ test_editor_transport_buttons_play_pause_and_step_simulation :: proc(t: ^testing
 	state.editor_visible = true
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	play := find_editor_role_node(state, .Transport_Play)
-	pause := find_editor_role_node(state, .Transport_Stop)
+	pause := find_editor_role_node(state, .Transport_Pause)
+	stop := find_editor_role_node(state, .Transport_Stop)
 	step := find_editor_role_node(state, .Transport_Step)
 	status := find_editor_role_node(state, .Status)
-	testing.expect(t, play >= 0 && pause >= 0 && step >= 0 && status >= 0)
-	if play < 0 || pause < 0 || step < 0 || status < 0 { return }
+	testing.expect(t, play >= 0 && pause >= 0 && stop >= 0 && step >= 0 && status >= 0)
+	if play < 0 || pause < 0 || stop < 0 || step < 0 || status < 0 { return }
 	pause_entity := world.entities[int(state.nodes[pause].entity.index)]
 	testing.expect(t, world.ui_buttons[pause_entity.ui_button_index].text == "PAUSE")
+	stop_entity := world.entities[int(state.nodes[stop].entity.index)]
+	testing.expect(t, world.ui_buttons[stop_entity.ui_button_index].text == "STOP")
 	status_entity := world.entities[int(state.nodes[status].entity.index)]
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
 
@@ -1706,6 +1709,13 @@ test_editor_transport_buttons_play_pause_and_step_simulation :: proc(t: ^testing
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
 	delta, run = consume_simulation_delta(state, 0.2)
 	testing.expect(t, run && delta == 0.2)
+
+	press(state, &world, stop)
+	testing.expect(t, !state.editor_simulation_playing)
+	testing.expect(t, state.editor_simulation_stopped)
+	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED")
+	testing.expect(t, consume_scene_reload_request(state))
+	testing.expect(t, !consume_scene_reload_request(state))
 }
 
 @(test)

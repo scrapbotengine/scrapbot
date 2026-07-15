@@ -42,6 +42,7 @@ Runtime_Result :: struct {
 }
 
 Frame_Runtime :: struct {
+	scene_path: string,
 	script_runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
 	executor: schedule.Executor,
@@ -390,6 +391,8 @@ run_project_internal_untracked :: proc(
 
 		run_config.frame_system = hot_reload_frame_system
 		run_config.frame_system_data = &hot_reload
+		run_config.runtime_reset = hot_reload_runtime_reset
+		run_config.runtime_reset_data = &hot_reload
 		run_config.resource_registry = &hot_reload.resources
 		result.frame, result.err = render.run_renderer(run_config, &world)
 		result.scheduler_workers = hot_reload.executor.worker_count
@@ -402,6 +405,13 @@ run_project_internal_untracked :: proc(
 	registry: component.Registry
 	component.init_registry(&registry)
 	frame_runtime: Frame_Runtime
+	scene_path, scene_path_err := filepath.join({root, loaded.config.default_scene})
+	if scene_path_err != nil {
+		result.err = "failed to allocate scene path"
+		return result
+	}
+	frame_runtime.scene_path = scene_path
+	defer delete(frame_runtime.scene_path)
 	defer script.destroy_runtime(&frame_runtime.script_runtime)
 	defer native.destroy_extension_set(&frame_runtime.native_extensions)
 	defer schedule.destroy_executor(&frame_runtime.executor)
@@ -434,6 +444,11 @@ run_project_internal_untracked :: proc(
 		result.err = script_result.err
 		return result
 	}
+	if !script_result.ran {
+		frame_runtime.script_runtime.registry = registry
+		frame_runtime.script_runtime.world = &world
+		frame_runtime.script_runtime.resource_registry = &frame_runtime.resources
+	}
 	frame_runtime.native_extensions = extensions
 	extensions = {}
 	ui_state.system_profile = &frame_runtime.system_profile.snapshot
@@ -442,6 +457,8 @@ run_project_internal_untracked :: proc(
 		run_config.frame_system_data = &frame_runtime
 	}
 	run_config.resource_registry = &frame_runtime.resources
+	run_config.runtime_reset = frame_runtime_reset
+	run_config.runtime_reset_data = &frame_runtime
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	result.scheduler_workers = frame_runtime.executor.worker_count
@@ -493,6 +510,35 @@ step_frame_runtime_system :: proc(
 		return ""
 	}
 	return step_frame_runtime(runtime, world, delta_seconds)
+}
+
+frame_runtime_reset :: proc(data: rawptr, world: ^shared.World) -> string {
+	runtime := cast(^Frame_Runtime)data
+	if runtime == nil || world == nil {
+		return "cannot reset an unavailable project runtime"
+	}
+	return reset_scene_world(runtime.scene_path, &runtime.script_runtime, world)
+}
+
+reset_scene_world :: proc(
+	scene_path: string,
+	script_runtime: ^script.Runtime,
+	world: ^shared.World,
+) -> string {
+	loaded := project.load_scene_file(scene_path)
+	defer project.destroy_scene_load_result(&loaded)
+	if loaded.err != "" {
+		return loaded.err
+	}
+	next_world := ecs.build_world(&loaded.scene)
+	if err := script.validate_runtime_world(script_runtime, &next_world); err != "" {
+		ecs.destroy_world(&next_world)
+		return err
+	}
+	ecs.destroy_world(world)
+	world^ = next_world
+	script.bind_runtime_world(script_runtime, world)
+	return ""
 }
 
 step_frame_runtime :: proc(
