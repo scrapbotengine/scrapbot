@@ -847,7 +847,7 @@ INSPECTOR_CONTROL_HEIGHT :: f32(28)
 INSPECTOR_TABLE_ROW_GAP :: f32(3)
 INSPECTOR_PANEL_GAP :: f32(10)
 INSPECTOR_PANEL_PADDING :: shared.Vec4{}
-INSPECTOR_LABEL_CELL_PADDING :: shared.Vec4{2, 8, 2, 12}
+INSPECTOR_LABEL_CELL_PADDING :: shared.Vec4{10, 8, 9, 12}
 INSPECTOR_VALUE_CELL_PADDING :: shared.Vec4{2, 12, 2, 8}
 
 editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (int, int) {

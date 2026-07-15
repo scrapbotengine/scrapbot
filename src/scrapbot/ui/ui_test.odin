@@ -2374,6 +2374,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	panel_count, table_count, cell_count, input_count, checkbox_count := 0, 0, 0, 0, 0
 	found_transform, found_button := false, false
 	found_position := false
+	position_label_cell := -1
 	found_read_only_checkbox, found_bound_checkbox := false, false
 	position_inputs := [3]int{-1, -1, -1}
 	fov_input := -1
@@ -2416,6 +2417,10 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					)
 					found_position =
 						found_position || world.ui_texts[entity.ui_text_index].text == "position"
+					if position_label_cell < 0 &&
+					   world.ui_texts[entity.ui_text_index].text == "position" {
+						position_label_cell = component.entity_index
+					}
 				}
 			case .Inspector_Input:
 				input_count += 1
@@ -2483,6 +2488,32 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					t,
 					cell.rect.y + cell.rect.height - input.rect.y - input.rect.height ==
 					INSPECTOR_VALUE_CELL_PADDING.z,
+				)
+			}
+			label_node := find_node_by_entity_index(state, position_label_cell)
+			testing.expect(t, label_node >= 0)
+			if label_node >= 0 {
+				input_layout :=
+					world.ui_layouts[world.entities[position_inputs[0]].ui_layout_index]
+				input_content_height :=
+					state.nodes[x_node].rect.height -
+					input_layout.padding.x -
+					input_layout.padding.z
+				label_baseline :=
+					state.nodes[label_node].rect.y +
+					INSPECTOR_LABEL_CELL_PADDING.x +
+					state.font.ascender * EDITOR_TEXT_SIZE
+				input_baseline :=
+					state.nodes[x_node].rect.y +
+					input_layout.padding.x +
+					max((input_content_height - EDITOR_TEXT_SIZE) * 0.5, 0) +
+					state.font.ascender * EDITOR_TEXT_SIZE
+				testing.expectf(
+					t,
+					math.abs(label_baseline - input_baseline) < 0.01,
+					"label baseline %.2f differs from input baseline %.2f",
+					label_baseline,
+					input_baseline,
 				)
 			}
 			testing.expect(t, state.nodes[x_node].rect.y == state.nodes[y_node].rect.y)
