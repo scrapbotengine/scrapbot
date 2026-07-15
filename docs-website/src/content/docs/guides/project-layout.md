@@ -74,6 +74,8 @@ Built-in sections currently include:
 
 Custom components use `[entities.components.<name>]`. Single-token names such as `autorotate` are project-level components. Dotted names such as `scrappyphysics.rigidbody` are engine or library components and must be registered before validation succeeds.
 
+Scene entities can also compose the complete public `scrapbot.ui_*` component set. UI parents reference stable entity UUIDs, and the same component values can be queried, spawned, or updated from Luau and native Odin. See [ECS UI](/guides/ecs-ui/) for the component model and [Project File Reference](/reference/project-files/#built-in-component-sections) for every TOML field.
+
 ## Scripts
 
 `scripts/main.luau` is the current project entry point. It runs after the scene is loaded and before systems step.

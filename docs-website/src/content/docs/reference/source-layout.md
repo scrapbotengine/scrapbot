@@ -17,7 +17,7 @@ The `src/scrapbot` package is the public runtime facade used by the CLI. Most im
 | `script` | Luau lifecycle, bindings, systems, queries, commands, and value marshaling |
 | `native` | Extension builds, discovery, loading, ABI registration, and native system execution |
 | `resources` | Geometry, PNG texture, and material resource ownership plus primitive generation |
-| `ui` | ECS UI reconciliation, hierarchy layout, paint lists, and the embedded MTSDF font atlas |
+| `ui` | Generic ECS UI reconciliation, hierarchy layout, interaction, paint lists, editor composition/adapters, and the embedded MTSDF font atlas |
 | `extension_api` | Stable C-compatible native extension contract |
 | `extension` | Higher-level Odin API used by extension authors |
 | `platform` | SDL window and event integration |
@@ -31,6 +31,8 @@ Large integration packages are split by responsibility without introducing artif
 
 - `script.odin` owns Luau runtime setup and stepping; sibling files own API registration, components and systems, queries, deferred commands, and error conversion.
 - `native.odin` owns loaded extensions and host ABI dispatch; `build.odin` and `files.odin` own compilation and source/output discovery.
+- `ecs/ui_components.odin` owns typed public UI storage/lifecycle; `script/ui_mutation.odin`, `native/ui.odin`, and `extension/ui.odin` expose the same component contract to project code.
+- `ui/ui.odin` owns generic retained behavior; `ui/editor_ecs.odin` composes editor chrome from public components, while `ui/editor_inspector_binding.odin` keeps editor-only field binding and history outside generic control mechanics.
 - `wgpu.odin` owns frame rendering and command encoding; `wgpu_setup.odin`, `wgpu_shader.odin`, and `wgpu_math.odin` isolate device setup, shader, and transform concerns.
 
 When adding engine code, use the narrowest package and file that owns the behavior. Keep the root `scrapbot` package focused on orchestration and the public API used by tools.

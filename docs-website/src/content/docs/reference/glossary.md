@@ -75,7 +75,7 @@ An entity marked to contribute geometry to the first directional light's shadow 
 An entity marked to sample the directional shadow map when its directional lighting is evaluated.
 
 **ECS UI**
-Screen-space UI described by entities and components. The current retained model provides boxes with hidden subtrees and SDF backgrounds/borders, horizontal and vertical stacks, smooth clipped scroll areas, text, buttons, and pointer state.
+Screen-space UI described by public `scrapbot.ui_*` entities and components. Scene TOML, Luau, native Odin, and editor chrome share the same retained layout, panels, tables, selectable lists, progress indicators, scrolling, controls, styles, and renderer-owned interaction state.
 
 ## Live editor
 

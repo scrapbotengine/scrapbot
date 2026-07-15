@@ -116,6 +116,8 @@ Casters write to the first directional light's shadow map. Receivers sample it. 
 
 Screen-space UI entities share a retained box model and compose container or content components:
 
+For a task-oriented introduction covering layout, runtime construction, and interaction state, see [ECS UI](/guides/ecs-ui/).
+
 ```toml
 [[entities]]
 id = "d4000000-0000-4000-8000-000000000010"

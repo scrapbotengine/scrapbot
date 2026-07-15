@@ -34,6 +34,10 @@ Current decisions:
 | ADR-019 | Model the editor scene camera as a transient ECS entity |
 | ADR-020 | Keep scroll state in retained UI and clip on the GPU |
 | ADR-021 | Model editor chrome as transient ECS UI |
+| ADR-022 | Record editor edits as runtime commands |
+| ADR-023 | Identify entities with project-wide UUIDs |
+| ADR-024 | Update derived ECS state from structural changes |
+| ADR-025 | Use one public ECS UI contract |
 
 ## FDRs
 

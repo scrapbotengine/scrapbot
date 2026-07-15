@@ -36,8 +36,11 @@ Scrapbot is a research engine. It is not trying to be stable yet. It is trying t
 	<Card title="WebGPU rendering" icon="laptop">
 		The `wgpu` backend renders indexed geometry, lighting, shadows, retained ECS UI, and live-resizing windows through SDL3 and `wgpu-native`; the null backend supports fast smoke tests.
 	</Card>
+	<Card title="Reusable ECS UI" icon="document">
+		Scenes, Luau, native Odin, and the editor share one component contract for responsive boxes, stacks, scrolling, panels, lists, tables, indicators, controls, interaction state, and per-entity styling.
+	</Card>
 	<Card title="Live editor" icon="setting">
-		Toggle dark editor chrome around the running project, browse scene and runtime entities, inspect component fields, pick rendered geometry, fly the scene camera, and translate selections with an ECS-owned gizmo.
+		Toggle dark editor chrome around the running project, browse scene and runtime entities, inspect component fields, profile systems, pick geometry, fly the scene camera, and translate, rotate, or scale selections.
 	</Card>
 	<Card title="Hot reload" icon="refresh">
 		Runtime hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native source.
@@ -71,6 +74,7 @@ mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
 
 - [Quickstart](/guides/quickstart/) for the shortest route from clone to running project.
 - [Project Layout](/guides/project-layout/) for how `project.toml`, scene files, scripts, generated types, and native code fit together.
+- [ECS UI](/guides/ecs-ui/) for responsive layout, controls, styling, interaction state, and runtime construction.
 - [Luau Scripting](/guides/luau-scripting/) for components, systems, queries, scheduling metadata, and generated types.
 - [Native Extensions](/guides/native-extensions/) for the current Odin extension flow and ABI.
 - [Live Editor](/guides/live-editor/) for scene navigation, entity inspection, viewport picking, and transform manipulation.
