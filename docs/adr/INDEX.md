@@ -27,3 +27,4 @@
 | [ADR-023](ADR-023-identify-entities-with-project-wide-uuids.md) | Identify entities with project-wide UUIDs | 2026-07-14 |
 | [ADR-024](ADR-024-update-derived-ecs-state-from-structural-changes.md) | Update derived ECS state from structural changes | 2026-07-14 |
 | [ADR-025](ADR-025-use-one-public-ecs-ui-contract.md) | Use one public ECS UI contract | 2026-07-15 |
+| [ADR-026](ADR-026-separate-authoring-persistence-from-runtime-playback.md) | Separate authoring persistence from runtime playback | 2026-07-15 |

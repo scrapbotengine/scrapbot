@@ -38,6 +38,7 @@ Current decisions:
 | ADR-023 | Identify entities with project-wide UUIDs |
 | ADR-024 | Update derived ECS state from structural changes |
 | ADR-025 | Use one public ECS UI contract |
+| ADR-026 | Separate authoring persistence from runtime playback |
 
 ## FDRs
 

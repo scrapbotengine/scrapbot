@@ -85,6 +85,8 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 	testing.expect(t, input.down && input.fine)
 	runtime_text_key(&input, .A, sdl.Keymod{.LGUI})
 	testing.expect(t, input.select_all)
+	runtime_text_key(&input, .S, sdl.Keymod{.LGUI})
+	testing.expect(t, input.save)
 	runtime_text_key(&input, .Z, sdl.Keymod{.LGUI})
 	testing.expect(t, input.undo)
 	runtime_text_key(&input, .Z, sdl.Keymod{.LGUI, .LSHIFT})

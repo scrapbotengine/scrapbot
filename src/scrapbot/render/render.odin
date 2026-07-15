@@ -5,6 +5,7 @@ import platform "../platform"
 import resources "../resources"
 import shared "../shared"
 import ui "../ui"
+import "core:fmt"
 import "core:strconv"
 import "core:strings"
 import "core:time"
@@ -12,6 +13,7 @@ import "core:time"
 Renderer_Backend :: shared.Renderer_Backend
 Frame_System_Proc :: #type proc(data: rawptr, world: ^World, delta_seconds: f32) -> string
 Runtime_Reset_Proc :: #type proc(data: rawptr, world: ^World) -> string
+Runtime_Save_Proc :: #type proc(data: rawptr, world: ^World) -> string
 Render_Stats :: struct {
 	draw_batches: int,
 }
@@ -58,6 +60,8 @@ Run_Config :: struct {
 	frame_system_data: rawptr,
 	runtime_reset: Runtime_Reset_Proc,
 	runtime_reset_data: rawptr,
+	runtime_save: Runtime_Save_Proc,
+	runtime_save_data: rawptr,
 	resource_registry: ^resources.Registry,
 	stats: ^Render_Stats,
 	collect_runtime_stats: bool,
@@ -255,6 +259,16 @@ run_frame_system_unmeasured :: proc(
 			return err
 		}
 	}
+	if ui.consume_scene_save_request(config.ui_state) {
+		save_err := "editor save requires a runtime save callback"
+		if config.runtime_save != nil {
+			save_err = config.runtime_save(config.runtime_save_data, world)
+		}
+		ui.complete_scene_save(config.ui_state, save_err == "")
+		if save_err != "" {
+			fmt.eprintf("[editor] failed to save scene: %s\n", save_err)
+		}
+	}
 	simulation_delta, run_simulation := ui.consume_simulation_delta(config.ui_state, delta_seconds)
 	if run_simulation {
 		if config.frame_system == nil {
@@ -312,6 +326,7 @@ run_frame_system_unmeasured :: proc(
 			enter = platform_keyboard.enter,
 			escape = platform_keyboard.escape,
 			select_all = platform_keyboard.select_all,
+			save = platform_keyboard.save,
 			undo = platform_keyboard.undo,
 			redo = platform_keyboard.redo,
 		}

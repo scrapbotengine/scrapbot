@@ -247,7 +247,10 @@ write_inspector_numeric :: proc(
 				break
 			}
 	}
-	if written && state != nil { state.editor_snapshot_valid = false }
+	if written && state != nil {
+		state.editor_snapshot_valid = false
+		editor_mark_scene_dirty(state, target)
+	}
 	return written
 }
 
@@ -370,7 +373,10 @@ write_inspector_bool :: proc(
 				written = true
 			}
 	}
-	if written && state != nil { state.editor_snapshot_valid = false }
+	if written && state != nil {
+		state.editor_snapshot_valid = false
+		editor_mark_scene_dirty(state, target)
+	}
 	return written
 }
 

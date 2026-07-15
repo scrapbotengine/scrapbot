@@ -621,6 +621,7 @@ Editor_UI_Role :: enum {
 	Transport_Pause,
 	Transport_Stop,
 	Transport_Step,
+	Transport_Save,
 	Systems_Scroll,
 	Systems_Row,
 	Systems_Name,

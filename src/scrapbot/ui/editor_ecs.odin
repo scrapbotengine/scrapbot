@@ -81,6 +81,9 @@ editor_ui_handle_activation :: proc(
 				case .Transport_Step:
 					editor_step(state)
 					return
+				case .Transport_Save:
+					editor_save(state)
+					return
 				case .Viewport:
 					if !state.editor_gizmo_captures_pointer {
 						state.editor_pick_requested = true
@@ -399,7 +402,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{size = {244, 30}},
+		{size = {306, 30}},
 	)
 	editor_ui_add_hstack(world, transport, {gap = 4})
 	_ = editor_ui_create_transport_button(
@@ -429,6 +432,13 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		"STEP",
 		.Transport_Step,
+	)
+	_ = editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_save",
+		EDITOR_UI_TRANSPORT_NAME,
+		"SAVE",
+		.Transport_Save,
 	)
 	workspace := editor_ui_create_box(
 		world,
@@ -752,7 +762,8 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		if component.role != .Transport_Play &&
 		   component.role != .Transport_Pause &&
 		   component.role != .Transport_Stop &&
-		   component.role != .Transport_Step { continue }
+		   component.role != .Transport_Step &&
+		   component.role != .Transport_Save { continue }
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
 		entity := world.entities[component.entity_index]
 		if !entity.alive ||
@@ -773,6 +784,14 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		button.color = {0.64, 0.67, 0.73, 1}
 		button.hover_background = {0.026, 0.034, 0.045, 1}
 		button.active_background = {0.010, 0.014, 0.020, 1}
+		if component.role == .Transport_Save && state.editor_scene_dirty {
+			layout.background = {0.100, 0.075, 0.020, 1}
+			layout.border_color = {0.82, 0.58, 0.16, 0.9}
+			button.color = {1.0, 0.82, 0.42, 1}
+			button.hover_background = {0.145, 0.105, 0.026, 1}
+			button.active_background = {0.075, 0.052, 0.014, 1}
+			continue
+		}
 		if selected && component.role == .Transport_Play {
 			layout.background = {0.025, 0.120, 0.105, 1}
 			layout.border_color = {0.06, 0.72, 0.63, 0.8}
@@ -1750,6 +1769,8 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		mode := "PAUSED"
 		if state.editor_simulation_playing { mode = "RUNNING" }
 		if state.editor_simulation_stopped { mode = "STOPPED" }
+		if state.editor_scene_dirty { mode = "STOPPED  /  UNSAVED" }
+		if state.editor_scene_save_failed { mode = "SAVE FAILED  /  UNSAVED" }
 		editor_ui_set_text(world, status, mode)
 	}
 
@@ -1890,5 +1911,30 @@ editor_ui_handle_history_shortcut :: proc(
 		clear_input_focus(state)
 	}
 	_ = editor_history_apply(state, world, keyboard.redo)
+	return true
+}
+
+editor_ui_handle_save_shortcut :: proc(
+	state: ^State,
+	world: ^shared.World,
+	keyboard: Keyboard_Input,
+) -> bool {
+	if state == nil ||
+	   world == nil ||
+	   !state.editor_visible ||
+	   (state.has_focused_input && !state.focused_input_editor) ||
+	   !keyboard.save {
+		return false
+	}
+	if state.has_focused_input {
+		entity_index := int(state.focused_input.index)
+		if !finish_input_edit(state, world) {
+			cancel_input_edit(state, world)
+		}
+		sync_ui_interaction_states(state, world)
+		editor_ui_consume_input_state(state, world, entity_index)
+		clear_input_focus(state)
+	}
+	editor_save(state)
 	return true
 }

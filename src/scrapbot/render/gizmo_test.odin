@@ -20,7 +20,7 @@ test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {
 	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); state.editor_visible = true; state.editor_simulation_stopped = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}
@@ -85,6 +85,7 @@ test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, world.transforms[0].position.x > 0.1)
 	testing.expect(t, world.transforms[0].position.y == 0 && world.transforms[0].position.z == 0)
+	testing.expect(t, state.editor_scene_dirty)
 	editor_transform_gizmo_system(
 		state,
 		&world,

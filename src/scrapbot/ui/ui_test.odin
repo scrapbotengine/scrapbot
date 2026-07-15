@@ -1668,13 +1668,21 @@ test_editor_transport_buttons_control_simulation_and_request_stop_reload :: proc
 	pause := find_editor_role_node(state, .Transport_Pause)
 	stop := find_editor_role_node(state, .Transport_Stop)
 	step := find_editor_role_node(state, .Transport_Step)
+	save := find_editor_role_node(state, .Transport_Save)
 	status := find_editor_role_node(state, .Status)
-	testing.expect(t, play >= 0 && pause >= 0 && stop >= 0 && step >= 0 && status >= 0)
-	if play < 0 || pause < 0 || stop < 0 || step < 0 || status < 0 { return }
+	testing.expect(
+		t,
+		play >= 0 && pause >= 0 && stop >= 0 && step >= 0 && save >= 0 && status >= 0,
+	)
+	if play < 0 || pause < 0 || stop < 0 || step < 0 || save < 0 || status < 0 {
+		return
+	}
 	pause_entity := world.entities[int(state.nodes[pause].entity.index)]
 	testing.expect(t, world.ui_buttons[pause_entity.ui_button_index].text == "PAUSE")
 	stop_entity := world.entities[int(state.nodes[stop].entity.index)]
 	testing.expect(t, world.ui_buttons[stop_entity.ui_button_index].text == "STOP")
+	save_entity := world.entities[int(state.nodes[save].entity.index)]
+	testing.expect(t, world.ui_buttons[save_entity.ui_button_index].text == "SAVE")
 	status_entity := world.entities[int(state.nodes[status].entity.index)]
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
 
@@ -1716,6 +1724,49 @@ test_editor_transport_buttons_control_simulation_and_request_stop_reload :: proc
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED")
 	testing.expect(t, consume_scene_reload_request(state))
 	testing.expect(t, !consume_scene_reload_request(state))
+	state.editor_scene_dirty = true
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED  /  UNSAVED")
+	press(state, &world, save)
+	testing.expect(t, consume_scene_save_request(state))
+	testing.expect(t, !consume_scene_save_request(state))
+	complete_scene_save(state, true)
+	testing.expect(t, !state.editor_scene_dirty)
+	state.editor_scene_dirty = true
+	state.editor_snapshot_valid = false
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {save = true}) == "",
+	)
+	testing.expect(t, consume_scene_save_request(state))
+	complete_scene_save(state, true)
+	testing.expect(t, !state.editor_scene_dirty)
+
+	// Stopped authoring cannot accidentally transition to paused playback.
+	editor_pause(state)
+	testing.expect(t, state.editor_simulation_stopped)
+}
+
+@(test)
+test_editor_scene_dirty_only_tracks_stopped_scene_entities :: proc(t: ^testing.T) {
+	state := new(State)
+	defer free(state)
+	state.editor_simulation_stopped = true
+	scene_entity := shared.World_Entity {
+		origin = .Scene,
+	}
+	runtime_entity := shared.World_Entity {
+		origin = .Runtime,
+	}
+	editor_mark_scene_dirty(state, &runtime_entity)
+	testing.expect(t, !state.editor_scene_dirty)
+	editor_mark_scene_dirty(state, &scene_entity)
+	testing.expect(t, state.editor_scene_dirty)
+	state.editor_scene_dirty = false
+	state.editor_simulation_stopped = false
+	editor_mark_scene_dirty(state, &scene_entity)
+	testing.expect(t, !state.editor_scene_dirty)
 }
 
 @(test)

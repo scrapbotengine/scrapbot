@@ -12,8 +12,8 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - A windowed WGPU project starts with editor chrome hidden unless `--editor` is passed.
 - Pressing `Ctrl+Esc` toggles the editor shell without restarting or pausing the project.
 - The shell provides a top bar, bottom status bar, left scene sidebar, and right entity/component inspector sidebar.
-- The top bar contains only the Scrapbot brand and Play, Pause, Stop, and Step controls. Play runs project systems with normal frame deltas; Pause freezes project systems and world time while editor rendering and tools remain responsive; Stop replaces the world with freshly spawned entities from the project scene at the next frame boundary while retaining the loaded Luau and Odin systems, then remains stopped; Step advances one fixed 1/60-second project update and remains paused.
-- The bottom bar contains only the current simulation status, such as `RUNNING`, `PAUSED`, or `STOPPED`; runtime statistics and keyboard hints stay in their relevant tool surfaces or documentation instead of the persistent chrome. Both bars use ordinary ECS HStacks for layout.
+- The top bar contains only the Scrapbot brand and Play, Pause, Stop, Step, and Save controls. Play runs project systems with normal frame deltas; Pause freezes project systems and world time while editor rendering and tools remain responsive; Stop replaces the world with freshly spawned entities from the project scene at the next frame boundary while retaining the loaded Luau and Odin systems, then remains stopped; Step advances one fixed 1/60-second project update and remains paused; Save explicitly persists supported authored values while stopped.
+- The bottom bar contains only the current simulation status, such as `RUNNING`, `PAUSED`, `STOPPED`, `STOPPED / UNSAVED`, or `SAVE FAILED / UNSAVED`; runtime statistics and keyboard hints stay in their relevant tool surfaces or documentation instead of the persistent chrome. Both bars use ordinary ECS HStacks for layout.
 - The vertical boundaries around the project viewport are draggable. Resizing either sidebar preserves a minimum center viewport and the center automatically fills the remaining width.
 - Each complete sidebar is a smooth scroll viewport with a contrasting 10-pixel frame around a minimum-height content pane, so the dock inset remains visually clear and short windows can reach every tool section. Systems, Scene, Inspector identity, and component sections use the same titled, collapsible ECS panel treatment: one title height, disclosure icon, charcoal title/body colors, border, and radius. The Scene panel removes inner padding so its selectable rows fill the panel from edge to edge. Separate Systems and Scene sections use a six-pixel gutter. Nested Systems, Scene, and inspector scroll areas receive wheel input when hovered; hovering sidebar padding or non-scrollable chrome addresses the outer sidebar.
 - Editor chrome uses neutral near-black and charcoal surfaces, gray-to-white text, quiet gray selection, and restrained mint accents for a dense professional tool aesthetic.
@@ -34,7 +34,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Clicking an inspector value selects its complete contents. Cursor and selection commands work inside the field, Tab and Shift+Tab traverse values in paint order—including X, Y, and Z independently—Enter commits and leaves the field, and Escape restores the value captured when editing began.
 - Numeric fields reject non-finite, unparsable, and field-invalid values with a red focus border without mutating the running world. Up and Down step by the field's default increment, Shift uses a coarse 10× step, and Ctrl/Cmd uses a fine 0.1× step. Camera planes remain positive and ordered, camera field of view stays within 1–179 degrees, and light colors and non-negative light properties remain within their valid ranges.
 - Vec3 controls expose restrained red, green, and blue X/Y/Z label strips. Dragging a strip horizontally scrubs that axis; releasing commits the complete drag as one edit.
-- Completed inspector typing, stepping, and scrubbing gestures enter a bounded runtime command history. `Ctrl/Cmd+Z` undoes and `Ctrl/Cmd+Shift+Z` redoes while the editor is open. Escape and invalid values do not create history, and editor shortcuts do not consume project input while chrome is closed or a project-owned input has focus.
+- Completed inspector typing, stepping, and scrubbing gestures enter a bounded command history. `Ctrl/Cmd+Z` undoes, `Ctrl/Cmd+Shift+Z` redoes, and `Ctrl/Cmd+S` saves supported scene-authoring changes while the editor is open. Escape and invalid values do not create history, and editor shortcuts do not consume project input while chrome is closed or a project-owned input has focus.
 - Entity membership, names, status counts, and formatted inspector values refresh from the running world every 200 ms. Opening the editor or changing selection refreshes immediately; a focused input is not overwritten by a periodic snapshot, and hover, scrolling, picking, gizmo input, and text editing remain frame-rate responsive.
 - The scene browser and component inspector have independent pixel offsets and targets, frame-time smoothing without row or field snapping, clipping, and proportional scrollbars. Selecting a different entity resets the inspector to its beginning.
 - Clicking rendered geometry in the live viewport selects the nearest intersected entity using the active camera and current viewport dimensions.
@@ -43,7 +43,9 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Move and scale modes include XY, XZ, and YZ plane walls. Their center handle provides camera-plane free translation in move mode and uniform XYZ scaling in scale mode.
 - The editor expresses gizmo ownership as a transient `EditorTransformGizmo` component on the selected entity; changing selection or closing the editor removes it.
 - Hovering emphasizes the nearest axis, plane, or center handle. Dragging captures the pointer and updates position, rotation, or scale according to the gizmo's ECS-visible mode. Mode shortcuts are ignored during RMB fly-camera capture.
-- Gizmo changes affect the running world only; scene persistence, snapping, and undo are not part of this slice.
+- Gizmo changes to scene-origin entities are authoring changes while stopped and runtime-only changes while playing or paused. Snapping and gizmo undo are not part of this slice.
+- Stopped is the authoring state. Supported inspector and gizmo edits to scene-origin entities mark the scene dirty; runtime-spawned and editor-owned entities never become save candidates. Play and Step remain blocked until dirty changes are explicitly saved or discarded with Stop.
+- Save updates supported component values in the scene TOML by stable entity UUID, so duplicate names are safe. It preserves unrelated source structure and comments and atomically replaces the source file. Running and paused mutations remain disposable runtime state.
 - Headless WGPU runs can combine `--editor` with `--framegrab` for deterministic editor-shell screenshots.
 
 ## Design Decisions
@@ -72,11 +74,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** Debugging the running world requires access to ephemeral entities, while provenance tells users which entities belong to source data and which exist only in the current run.
 **Tradeoff:** A busy runtime can produce a long, rapidly changing list, so search, grouping, and hierarchy remain important follow-up work.
 
-### 5. Edit common fields directly in the live world
+### 5. Edit common fields directly in the active world
 
-**Decision:** Bind input controls for transform, camera, light, and custom Vec3 fields directly to the selected entity's runtime component storage; render unsupported fields through the same control in read-only mode.
+**Decision:** Bind input controls for transform, camera, light, and custom Vec3 fields directly to the selected entity's active component storage; render unsupported fields through the same control in read-only mode. Treat those mutations as authoring changes only when stopped and targeting a scene-origin entity.
 **Why:** Common scene work becomes immediately useful while one consistent value-cell control preserves traversal and selection for every reflected field.
-**Tradeoff:** Edits affect the running world only and currently rely on field-specific parsing and constraints. General reflection-based mutation and persistence remain future work.
+**Tradeoff:** Editing and persistence currently rely on field-specific parsing and constraints. General reflection-based mutation and structural editing remain future work.
 
 ### 6. Pick exact rendered triangles
 
@@ -126,11 +128,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** The editor dogfoods public focus, selection, cursor, pointer, and boolean-control behavior instead of maintaining separate inspector widgets.
 **Tradeoff:** The internal binding layer is field-specific and runtime-only; it is not a general public data-binding or command-event API.
 
-### 14. Preview immediately and commit one runtime command per gesture
+### 14. Preview immediately and commit one command per gesture
 
 **Decision:** Apply each valid numeric preview to the live ECS, but capture its starting value and add one bounded history command only when typing, stepping, or scrubbing completes, following ADR-022.
 **Why:** Scene feedback remains immediate without turning every character or pointer pixel into a separate undo step.
-**Tradeoff:** History is numeric, runtime-only, and limited to 128 commands. It does not yet include gizmo manipulation, structural edits, source persistence, or dirty tracking.
+**Tradeoff:** History is numeric and limited to 128 commands. It does not yet include gizmo manipulation or structural edits; dirty tracking is conservative across previews, cancellation, and undo.
 
 ### 15. Profile systems at their execution boundary
 
@@ -144,13 +146,19 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** Transport controls must stop project mutation without making the editor itself unresponsive, a fixed step gives frame-by-frame inspection stable time semantics, and Stop needs a fast deterministic clean world without destroying or reloading code during a running system callback.
 **Tradeoff:** Stop discards all unpersisted runtime mutations and runtime-spawned entities, but project-script global state remains alive because code runtimes are intentionally retained. Scene replacement is the initial single-world playback model; maintaining separate authoring and play worlds remains future work.
 
+### 17. Make stopped authoring persistence explicit
+
+**Decision:** Following ADR-026, treat Stopped as authoring mode, mark supported edits to scene-origin entities dirty, and require Save or Stop before Play or Step. Save patches supported scene fields by stable UUID and excludes runtime/editor entities.
+**Why:** Explicit persistence prevents simulation output from leaking into source while still making the live ECS world useful for authoring. Stable UUIDs keep persistence correct when names are duplicated or changed.
+**Tradeoff:** The single-world model cannot preserve an unsaved authoring world alongside an independently running play world. Save currently covers supported value edits, not structural entity or component changes.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-022, ADR-023, ADR-024
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-022, ADR-023, ADR-024, ADR-026
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions
 
-- How should editor edit commands cross into the running ECS?
+- Should Scrapbot eventually maintain separate authoring and playback worlds?
 - Which panel layout and sizing state should persist per project?
 - How should editor camera speed, bookmarks, and focus-selection navigation persist?

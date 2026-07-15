@@ -49,7 +49,7 @@ Keyboard_Input :: struct {
 	text: string,
 	left, right, up, down, home, end: bool,
 	backspace, delete_forward: bool,
-	tab, shift, fine, enter, escape, select_all, undo, redo: bool,
+	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
 }
 Paint_Kind :: enum {
 	Panel,
@@ -162,6 +162,9 @@ State :: struct {
 	editor_simulation_stopped: bool,
 	editor_simulation_step_requested: bool,
 	editor_scene_reload_requested: bool,
+	editor_scene_save_requested: bool,
+	editor_scene_dirty: bool,
+	editor_scene_save_failed: bool,
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
@@ -249,6 +252,9 @@ select_font :: proc(state: ^State, name: string) {
 
 editor_play :: proc(state: ^State) {
 	if state == nil { return }
+	if state.editor_simulation_stopped && state.editor_scene_dirty {
+		return
+	}
 	state.editor_simulation_playing = true
 	state.editor_simulation_stopped = false
 	state.editor_simulation_step_requested = false
@@ -256,7 +262,7 @@ editor_play :: proc(state: ^State) {
 }
 
 editor_pause :: proc(state: ^State) {
-	if state == nil { return }
+	if state == nil || state.editor_simulation_stopped { return }
 	state.editor_simulation_playing = false
 	state.editor_simulation_stopped = false
 	state.editor_simulation_step_requested = false
@@ -269,11 +275,37 @@ editor_stop :: proc(state: ^State) {
 	state.editor_simulation_stopped = true
 	state.editor_simulation_step_requested = false
 	state.editor_scene_reload_requested = true
+	state.editor_scene_save_requested = false
+	state.editor_scene_dirty = false
+	state.editor_scene_save_failed = false
+	state.editor_snapshot_valid = false
+}
+
+editor_save :: proc(state: ^State) {
+	if state == nil || !state.editor_simulation_stopped || !state.editor_scene_dirty {
+		return
+	}
+	state.editor_scene_save_requested = true
+	state.editor_scene_save_failed = false
+}
+
+editor_mark_scene_dirty :: proc(state: ^State, entity: ^shared.World_Entity) {
+	if state == nil ||
+	   entity == nil ||
+	   !state.editor_simulation_stopped ||
+	   entity.origin != .Scene {
+		return
+	}
+	state.editor_scene_dirty = true
+	state.editor_scene_save_failed = false
 	state.editor_snapshot_valid = false
 }
 
 editor_step :: proc(state: ^State) {
 	if state == nil { return }
+	if state.editor_simulation_stopped && state.editor_scene_dirty {
+		return
+	}
 	state.editor_simulation_playing = false
 	state.editor_simulation_stopped = false
 	state.editor_simulation_step_requested = true
@@ -286,6 +318,25 @@ consume_scene_reload_request :: proc(state: ^State) -> bool {
 	}
 	state.editor_scene_reload_requested = false
 	return true
+}
+
+consume_scene_save_request :: proc(state: ^State) -> bool {
+	if state == nil || !state.editor_scene_save_requested {
+		return false
+	}
+	state.editor_scene_save_requested = false
+	return true
+}
+
+complete_scene_save :: proc(state: ^State, ok: bool) {
+	if state == nil {
+		return
+	}
+	state.editor_scene_save_failed = !ok
+	if ok {
+		state.editor_scene_dirty = false
+	}
+	state.editor_snapshot_valid = false
 }
 
 consume_simulation_delta :: proc(state: ^State, delta_seconds: f32) -> (f32, bool) {
@@ -554,6 +605,10 @@ reconcile :: proc(
 		if !finish_input_edit(state, world) { cancel_input_edit(state, world) }
 		clear_input_focus(state)
 	}
+	editor_save_shortcut :=
+		state.editor_visible &&
+		(!state.has_focused_input || state.focused_input_editor) &&
+		keyboard.save
 	editor_history_shortcut :=
 		state.editor_visible &&
 		(!state.has_focused_input || state.focused_input_editor) &&
@@ -562,9 +617,13 @@ reconcile :: proc(
 	if state.has_focused_input {
 		input_event_entity_index = int(state.focused_input.index)
 	}
+	editor_save_handled :=
+		editor_save_shortcut && editor_ui_handle_save_shortcut(state, world, keyboard)
 	editor_history_handled :=
-		editor_history_shortcut && editor_ui_handle_history_shortcut(state, world, keyboard)
-	if !editor_history_handled {
+		!editor_save_handled &&
+		editor_history_shortcut &&
+		editor_ui_handle_history_shortcut(state, world, keyboard)
+	if !editor_save_handled && !editor_history_handled {
 		update_focused_input(state, world, keyboard, delta_seconds)
 		update_input_scrub(state, world, editor_pointer, keyboard)
 	} else {

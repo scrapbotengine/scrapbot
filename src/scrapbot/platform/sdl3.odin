@@ -40,7 +40,7 @@ Runtime_Text_Input :: struct {
 	text: string,
 	left, right, up, down, home, end: bool,
 	backspace, delete_forward: bool,
-	tab, shift, fine, enter, escape, select_all, undo, redo: bool,
+	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
 }
 
 Runtime_Pointer_Cursor :: enum {
@@ -454,6 +454,8 @@ runtime_text_key :: proc(
 			if !shortcut { input.escape = true }
 		case .A:
 			if shortcut { input.select_all = true }
+		case .S:
+			if shortcut { input.save = true }
 		case .Z:
 			if shortcut && input.shift {
 				input.redo = true

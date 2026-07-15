@@ -188,11 +188,11 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Runtime inspector undo/redo
   - [ ] Component management
   - [ ] Entity management
-  - [ ] Scene edit persistence
+  - [x] Explicit stopped-mode scene persistence by stable entity UUID
   - [ ] Multi-selection editing
   - [ ] Editor transactions
 - Scene Tools
-  - [x] Play, Pause, scene-reloading Stop, and single-frame Step controls
+  - [x] Play, Pause, scene-reloading Stop, single-frame Step, and explicit Save controls
   - [x] RMB-captured WASD/Space/Ctrl scene-camera navigation
   - [x] World-space translation gizmo
   - [x] Translation, rotation, and scale gizmo modes

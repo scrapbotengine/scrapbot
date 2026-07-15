@@ -173,6 +173,7 @@ editor_transform_gizmo_system :: proc(
 							transform.scale.z *= factor; case .None, .XY, .XZ, .YZ:}
 				}
 		}
+		ui.editor_mark_scene_dirty(state, entity)
 		_ = editor_project_gizmo(
 			state,
 			transform.position,

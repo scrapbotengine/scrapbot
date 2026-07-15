@@ -158,6 +158,18 @@ hot_reload_runtime_reset :: proc(data: rawptr, world: ^shared.World) -> string {
 	return reset_scene_world(state.scene_path, &state.runtime, world)
 }
 
+hot_reload_scene_save :: proc(data: rawptr, world: ^shared.World) -> string {
+	state := cast(^Hot_Reload_State)data
+	if state == nil || world == nil {
+		return "cannot save an unavailable hot-reload runtime"
+	}
+	if err := save_scene_world(state.scene_path, world); err != "" {
+		return err
+	}
+	state.scene_stamp = file_stamp(state.scene_path)
+	return ""
+}
+
 maybe_poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World, delta_seconds: f32) {
 	state.seconds_until_next_check -= delta_seconds
 	if state.seconds_until_next_check > 0 {

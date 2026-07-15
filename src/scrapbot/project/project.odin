@@ -283,6 +283,7 @@ load_scene_file :: proc(path: string) -> Scene_Load_Result {
 	}
 	scene, parse_result := parse_scene(string(scene_bytes))
 	if parse_result.err != .None {
+		destroy_scene(&scene)
 		result.err = fmt.tprintf("%s: %s", path, parse_result.message)
 		return result
 	}
