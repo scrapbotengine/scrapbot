@@ -10,6 +10,7 @@ description: Use when adding or changing Scrapbot engine features, public APIs, 
 1. Read the relevant roadmap section in `README.md`, open items in `docs/TODO.md`, and related ADRs/FDRs.
 2. Trace the existing implementation end to end before choosing a design. Prefer established package boundaries and public APIs.
 3. Call out material choices when multiple user-visible or architectural options remain. Breaking changes are acceptable, but accidental surface divergence is not.
+4. Inspect the worktree and assigned scope. In multi-agent work, keep writers file-disjoint and leave shared registries, generated files, indexes, and integration checks to an explicit integration owner.
 
 ## Public Surface Audit
 
@@ -24,6 +25,8 @@ For every feature, decide explicitly which layers it affects:
 - README, TODO, ADRs, FDRs, and documentation website.
 
 Do not assume every feature belongs on every surface. When one surface intentionally trails another, record that decision or follow-up rather than overlooking it.
+
+For ECS UI work, also use the `scrapbot-ui-development` skill. The editor must remain a consumer of the public UI contract, and a public field is incomplete until every applicable authoring and runtime surface agrees.
 
 ## Generated Luau Types
 
@@ -44,3 +47,4 @@ Never hand-edit generated example declarations without changing their generator.
 - Add or amend an ADR only for a durable architectural decision.
 - Keep `README.md`, `docs/TODO.md`, examples, and the documentation website synchronized with shipped behavior.
 - Finish with `mise test`, `git diff --check`, and any feature-specific verification.
+- When integrating delegated work, review the combined diff rather than trusting per-agent test reports; cross-surface omissions usually appear only at integration time.

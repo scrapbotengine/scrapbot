@@ -29,8 +29,9 @@ It is imperative to note that the three steps "Writing Code", "Running tests" an
 
 ### Environment Setup
 
-- Make sure you work in a git worktree. The user is likely using an agent orchestrator that will already have set this up for you. If we're not in a worktree, stop and alert the user.
+- Make sure you work in a git worktree. The user is likely using an agent orchestrator that will already have set this up for you. Use that worktree directly; do not create a nested worktree. If no worktree or branch scope is available, stop and alert the user.
 - Make sure to name the branch something that properly reflects the work being done. Please follow any instructions the user has provided about the naming conventions of these branches. When in doubt, use Conventional Commit style branch names (eg. `fix/...`, `feat/...` etc.)
+- Record the base branch, assigned file/surface ownership, and any sibling-agent boundaries in the context file. Do not edit, stage, or commit another agent's files.
 
 ### Planning
 
@@ -54,6 +55,7 @@ It is imperative to note that the three steps "Writing Code", "Running tests" an
 - Be sure to follow any additional guidance the user may have given you for this.
 - Write new tests as you go along, or update existing tests. Please respect the user's preference for tests.
 - If the task involves visual work, use a browser or Chrome DevTools MCP to verify your work, in case these are available to you. Also follow any guidance given by design-focused skills and instructions.
+- When delegating, partition tasks by ownership boundary and file set. Give one integration owner responsibility for shared registries, generated artifacts, documentation indexes, cross-surface tests, and the final combined diff.
 
 ### Running tests
 
@@ -66,6 +68,7 @@ It is imperative to note that the three steps "Writing Code", "Running tests" an
 - Perform a review of the changes. Please consult any skills related to this for guidance.
 - Address any findings identified in the Code Review.
 - Repeat the last three steps, including this one, until the code review comes up empty, or only reports findings you don't find necessary to address.
+- Review the integrated branch after delegated changes land. A clean review of isolated agent diffs does not replace the combined cross-surface review.
 
 ### Pull Request
 

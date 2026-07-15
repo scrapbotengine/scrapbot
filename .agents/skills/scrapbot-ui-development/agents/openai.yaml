@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scrapbot UI Development"
+  short_description: "Build reusable ECS UI across every Scrapbot surface"
+  default_prompt: "Use the Scrapbot UI development workflow to implement this UI change with project/editor parity."

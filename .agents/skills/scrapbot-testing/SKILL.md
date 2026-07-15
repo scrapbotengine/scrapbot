@@ -18,6 +18,8 @@ git diff --check
 
 `mise test` currently builds the CLI, checks `src/scrapbot`, runs all Odin package tests with `-all-packages`, checks the CLI version, validates `examples/minimal`, and runs the null backend.
 
+In a multi-agent workflow, individual agents run the narrow checks for their owned files. The integration owner runs `mise test`, generated-example checks, documentation builds, and any required WGPU verification against the combined branch.
+
 For narrower loops, select packages by ownership:
 
 ```sh
@@ -151,6 +153,8 @@ For generated Luau API or schema changes, run:
 - `bin/scrapbot check` for every affected example
 - `mise test`
 - review of generated declaration diffs
+
+For public ECS UI component changes, run all three example checks and verify TOML parsing, Luau query/partial mutation, native payload round-tripping, lifecycle cleanup, and editor composition. Use the `scrapbot-ui-development` skill for the ownership checklist.
 
 For documentation changes, build the website from its own directory:
 
