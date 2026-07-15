@@ -1,11 +1,11 @@
 package script
 
 
-import c "core:c"
 import component "../component"
 import ecs "../ecs"
 import schedule "../schedule"
 import shared "../shared"
+import c "core:c"
 
 scrapbot_component :: proc "c" (L: Lua_State) -> c.int {
 	return register_luau_component(L, .Project, "scrapbot.component")
@@ -45,9 +45,15 @@ register_luau_component :: proc "c" (
 	runtime := cast(^Runtime)lua_getthreaddata(L)
 	if runtime == nil || lua_type(L, 1) != LUA_TSTRING || lua_type(L, 2) != LUA_TTABLE {
 		if api_name == "scrapbot.library_component" {
-			return luau_push_error(L, "scrapbot.library_component expects a component name and field schema table")
+			return luau_push_error(
+				L,
+				"scrapbot.library_component expects a component name and field schema table",
+			)
 		}
-		return luau_push_error(L, "scrapbot.component expects a component name and field schema table")
+		return luau_push_error(
+			L,
+			"scrapbot.component expects a component name and field schema table",
+		)
 	}
 
 	name_length: c.size_t
@@ -63,7 +69,10 @@ register_luau_component :: proc "c" (
 		return luau_push_error(L, "component name must be dot-separated identifier tokens")
 	}
 
-	definition := component.Definition{name = component_name, owner = owner}
+	definition := component.Definition {
+		name = component_name,
+		owner = owner,
+	}
 
 	lua_pushnil(L)
 	for lua_next(L, 2) != 0 {
@@ -94,18 +103,23 @@ register_luau_component :: proc "c" (
 	}
 
 	switch owner {
-	case .Project:
-		if err := component.register_project_component(&runtime.registry, definition); err != "" {
-			return luau_push_error(L, err)
-		}
-	case .Library:
-		if err := component.register_library_component(&runtime.registry, definition); err != "" {
-			return luau_push_error(L, err)
-		}
-	case .Engine:
-		return luau_push_error(L, "script components cannot register engine-owned component names")
-	case:
-		return luau_push_error(L, "unsupported script component owner")
+		case .Project:
+			if err := component.register_project_component(&runtime.registry, definition);
+			   err != "" {
+				return luau_push_error(L, err)
+			}
+		case .Library:
+			if err := component.register_library_component(&runtime.registry, definition);
+			   err != "" {
+				return luau_push_error(L, err)
+			}
+		case .Engine:
+			return luau_push_error(
+				L,
+				"script components cannot register engine-owned component names",
+			)
+		case:
+			return luau_push_error(L, "unsupported script component owner")
 	}
 
 	registered, _ := component.find_definition(&runtime.registry, definition.name)
@@ -114,7 +128,13 @@ register_luau_component :: proc "c" (
 	return 1
 }
 
-component_schema_field_type :: proc "c" (L: Lua_State, index: c.int) -> (field_type: component.Field_Type, ok: bool) {
+component_schema_field_type :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+) -> (
+	field_type: component.Field_Type,
+	ok: bool,
+) {
 	if lua_type(L, index) == LUA_TSTRING {
 		field_type_length: c.size_t
 		field_type_data := lua_tolstring(L, index, &field_type_length)
@@ -163,46 +183,45 @@ scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 	}
 
 	callback_index := c.int(1)
-	declaration: schedule.System
-	system_query: Query
-	has_query := false
+	system: Script_System
 	if query_argument_is_query_object(L, 1) {
 		query, query_err := query_object_argument(L, runtime, 1)
 		if query_err != "" {
 			return luau_push_error(L, query_err)
 		}
-		system_query = query
-		has_query = true
-		if err := add_query_accesses(&declaration, query); err != "" {
+		system.query = query
+		system.has_query = true
+		if err := add_query_accesses(&system.declaration, query); err != "" {
 			return luau_push_error(L, err)
 		}
 
 		if lua_type(L, 2) == LUA_TFUNCTION {
 			callback_index = 2
 		} else if lua_type(L, 2) == LUA_TTABLE && lua_type(L, 3) == LUA_TFUNCTION {
-			if err := read_system_options(L, runtime, 2, &declaration); err != "" {
+			if err := read_system_options(L, runtime, 2, &system); err != "" {
 				return luau_push_error(L, err)
 			}
 			callback_index = 3
 		} else {
-			return luau_push_error(L, "scrapbot.system expects a query, optional options table, and callback")
+			return luau_push_error(
+				L,
+				"scrapbot.system expects a query, optional options table, and callback",
+			)
 		}
 	} else if lua_type(L, 1) == LUA_TTABLE && lua_type(L, 2) == LUA_TFUNCTION {
-		if err := read_system_options(L, runtime, 1, &declaration); err != "" {
+		if err := read_system_options(L, runtime, 1, &system); err != "" {
 			return luau_push_error(L, err)
 		}
 		callback_index = 2
 	} else if lua_type(L, 1) != LUA_TFUNCTION {
-		return luau_push_error(L, "scrapbot.system expects a callback or options table and callback")
+		return luau_push_error(
+			L,
+			"scrapbot.system expects a callback or options table and callback",
+		)
 	}
 
-	callback_ref := lua_ref(L, callback_index)
-	runtime.systems[runtime.system_count] = Script_System {
-		callback_ref = callback_ref,
-		declaration = declaration,
-		query = system_query,
-		has_query = has_query,
-	}
+	system.callback_ref = lua_ref(L, callback_index)
+	runtime.systems[runtime.system_count] = system
 	runtime.system_count += 1
 	return 0
 }
@@ -211,13 +230,62 @@ read_system_options :: proc "c" (
 	L: Lua_State,
 	runtime: ^Runtime,
 	options_index: c.int,
-	declaration: ^schedule.System,
+	system: ^Script_System,
 ) -> string {
-	if err := read_system_access_list(L, runtime, options_index, "reads", .Read, declaration); err != "" {
+	if err := read_system_name(L, options_index, system); err != "" {
 		return err
 	}
-	if err := read_system_access_list(L, runtime, options_index, "writes", .Write, declaration); err != "" {
+	if err := read_system_access_list(
+		L,
+		runtime,
+		options_index,
+		"reads",
+		.Read,
+		&system.declaration,
+	); err != "" {
 		return err
+	}
+	if err := read_system_access_list(
+		L,
+		runtime,
+		options_index,
+		"writes",
+		.Write,
+		&system.declaration,
+	); err != "" {
+		return err
+	}
+	return ""
+}
+
+read_system_name :: proc "c" (
+	L: Lua_State,
+	options_index: c.int,
+	system: ^Script_System,
+) -> string {
+	lua_getfield(L, options_index, "name")
+	defer lua_settop(L, -2)
+	if lua_type(L, -1) == LUA_TNIL {
+		return ""
+	}
+	if lua_type(L, -1) != LUA_TSTRING {
+		return "system name must be a string"
+	}
+	name_length: c.size_t
+	name_data := lua_tolstring(L, -1, &name_length)
+	if name_data == nil {
+		return "system name must be a string"
+	}
+	name := luau_string(name_data, name_length)
+	if len(name) == 0 {
+		return "system name must not be empty"
+	}
+	if len(name) > len(system.name) {
+		return "system name is too long"
+	}
+	system.name_length = len(name)
+	for index in 0 ..< system.name_length {
+		system.name[index] = name[index]
 	}
 	return ""
 }
@@ -270,7 +338,7 @@ read_system_access_list :: proc "c" (
 }
 
 add_query_accesses :: proc "c" (declaration: ^schedule.System, query: Query) -> string {
-	for i in 0..<query.term_count {
+	for i in 0 ..< query.term_count {
 		term := query.terms[i]
 		if err := add_system_access(declaration, term.name, .Read); err != "" {
 			return err
@@ -289,7 +357,7 @@ add_system_access :: proc "c" (
 	}
 	declaration.accesses[declaration.access_count] = schedule.Access {
 		component = component_name,
-		mode      = mode,
+		mode = mode,
 	}
 	declaration.access_count += 1
 	return ""
@@ -299,14 +367,18 @@ component_reference_argument :: proc "c" (
 	L: Lua_State,
 	runtime: ^Runtime,
 	index: c.int,
-) -> (component_ref: Component_Reference, err: string) {
+) -> (
+	component_ref: Component_Reference,
+	err: string,
+) {
 	id := shared.INVALID_COMPONENT_ID
 	name := ""
 	if lua_type(L, index) == LUA_TSTRING {
 		name_length: c.size_t
 		name_data := lua_tolstring(L, index, &name_length)
 		if name_data == nil {
-			return {}, "component access declaration must be a component handle or registered component name"
+			return {},
+				"component access declaration must be a component handle or registered component name"
 		}
 		name = luau_string(name_data, name_length)
 	} else if lua_type(L, index) == LUA_TTABLE {
@@ -328,7 +400,8 @@ component_reference_argument :: proc "c" (
 			id = Component_ID(id_value)
 		}
 	} else {
-		return {}, "component access declaration must be a component handle or registered component name"
+		return {},
+			"component access declaration must be a component handle or registered component name"
 	}
 
 	if id != shared.INVALID_COMPONENT_ID {
@@ -351,7 +424,10 @@ query_argument :: proc "c" (
 	runtime: ^Runtime,
 	index: c.int,
 	api: Query_API,
-) -> (query: Query, err: string) {
+) -> (
+	query: Query,
+	err: string,
+) {
 	if lua_type(L, index) != LUA_TTABLE {
 		return {}, query_error(api, .Array_Contains_Non_Handle)
 	}
@@ -362,13 +438,13 @@ query_argument :: proc "c" (
 		}
 		query.terms[0] = Query_Term {
 			component_id = component_ref.id,
-			name         = component_ref.name,
+			name = component_ref.name,
 		}
 		query.term_count = 1
 		return query, ""
 	}
 
-	for i in 0..<ecs.MAX_QUERY_TERMS {
+	for i in 0 ..< ecs.MAX_QUERY_TERMS {
 		lua_rawgeti(L, index, c.int(i + 1))
 		if lua_type(L, -1) == LUA_TNIL {
 			lua_settop(L, -2)
@@ -386,7 +462,7 @@ query_argument :: proc "c" (
 		}
 		query.terms[query.term_count] = Query_Term {
 			component_id = component_ref.id,
-			name         = component_ref.name,
+			name = component_ref.name,
 		}
 		query.term_count += 1
 		lua_settop(L, -2)
@@ -412,21 +488,28 @@ query_from_component_arguments :: proc "c" (
 	first_index: c.int,
 	count: int,
 	api: Query_API,
-) -> (query: Query, err: string) {
+) -> (
+	query: Query,
+	err: string,
+) {
 	if count <= 0 || count > ecs.MAX_QUERY_TERMS {
 		return {}, query_error(api, .Array_Too_Large)
 	}
-	for i in 0..<count {
+	for i in 0 ..< count {
 		if lua_type(L, first_index + c.int(i)) != LUA_TTABLE {
 			return {}, query_error(api, .Array_Contains_Non_Handle)
 		}
-		component_ref, component_err := component_reference_argument(L, runtime, first_index + c.int(i))
+		component_ref, component_err := component_reference_argument(
+			L,
+			runtime,
+			first_index + c.int(i),
+		)
 		if component_err != "" {
 			return {}, query_error(api, .Component_Not_Registered)
 		}
 		query.terms[i] = Query_Term {
 			component_id = component_ref.id,
-			name         = component_ref.name,
+			name = component_ref.name,
 		}
 		query.term_count += 1
 	}
@@ -443,26 +526,26 @@ Query_Error :: enum {
 query_error :: proc "c" (api: Query_API, err: Query_Error) -> string {
 	if api == .View {
 		#partial switch err {
-		case .Component_Not_Registered:
-			return "scrapbot.view component handle is not registered"
-		case .Array_Contains_Non_Handle:
-			return "scrapbot.view component arrays must contain component handles"
-		case .Array_Empty:
-			return "scrapbot.view component arrays must not be empty"
-		case .Array_Too_Large:
-			return "scrapbot.view component arrays are too large"
+			case .Component_Not_Registered:
+				return "scrapbot.view component handle is not registered"
+			case .Array_Contains_Non_Handle:
+				return "scrapbot.view component arrays must contain component handles"
+			case .Array_Empty:
+				return "scrapbot.view component arrays must not be empty"
+			case .Array_Too_Large:
+				return "scrapbot.view component arrays are too large"
 		}
 	}
 
 	#partial switch err {
-	case .Component_Not_Registered:
-		return "scrapbot.query component handle is not registered"
-	case .Array_Contains_Non_Handle:
-		return "scrapbot.query component arguments must be component handles"
-	case .Array_Empty:
-		return "scrapbot.query component arrays must not be empty"
-	case .Array_Too_Large:
-		return "scrapbot.query accepts at most eight component handles"
+		case .Component_Not_Registered:
+			return "scrapbot.query component handle is not registered"
+		case .Array_Contains_Non_Handle:
+			return "scrapbot.query component arguments must be component handles"
+		case .Array_Empty:
+			return "scrapbot.query component arrays must not be empty"
+		case .Array_Too_Large:
+			return "scrapbot.query accepts at most eight component handles"
 	}
 	return "invalid query component argument"
 }
@@ -493,7 +576,10 @@ query_object_argument :: proc "c" (
 	L: Lua_State,
 	runtime: ^Runtime,
 	index: c.int,
-) -> (query: Query, err: string) {
+) -> (
+	query: Query,
+	err: string,
+) {
 	if !query_argument_is_query_object(L, index) {
 		return {}, "expected a Scrapbot query"
 	}
@@ -511,7 +597,8 @@ validate_world_components :: proc(runtime: ^Runtime) -> string {
 			ecs.bind_custom_component_storage(runtime.world, storage.name, definition.id)
 		}
 		for scene_component in storage.components {
-			if err := component.validate_custom_component(&runtime.registry, scene_component); err != "" {
+			if err := component.validate_custom_component(&runtime.registry, scene_component);
+			   err != "" {
 				return err
 			}
 		}

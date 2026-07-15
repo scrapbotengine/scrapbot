@@ -263,7 +263,37 @@ load_project :: proc(root: string) -> Project_Load_Result {
 	}
 
 	result.scene = scene
+	if font_err := validate_scene_font_references(&result.scene, &result.config); font_err != "" {
+		result.err = font_err
+	}
 	return result
+}
+
+validate_scene_font_references :: proc(scene: ^Scene, config: ^Project_Config) -> string {
+	if scene == nil || config == nil { return "" }
+	for entity in scene.entities {
+		font_names := [4]string {
+			entity.ui_panel.font,
+			entity.ui_text.font,
+			entity.ui_button.font,
+			entity.ui_input.font,
+		}
+		for font_name in font_names {
+			if font_name == "" { continue }
+			found := false
+			for font in config.fonts {
+				if font.name == font_name { found = true; break }
+			}
+			if !found {
+				return fmt.tprintf(
+					"scene entity '%s' references undeclared font '%s'",
+					entity.name,
+					font_name,
+				)
+			}
+		}
+	}
+	return ""
 }
 
 load_project_config :: proc(root: string) -> Project_Config_Load_Result {
@@ -306,6 +336,7 @@ destroy_project_load_result :: proc(result: ^Project_Load_Result) {
 
 destroy_project_config :: proc(config: ^Project_Config) {
 	delete(config.native_extensions)
+	delete(config.fonts)
 	config^ = {}
 }
 

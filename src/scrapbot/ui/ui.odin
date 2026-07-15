@@ -1,6 +1,7 @@
 package ui
 
 import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import "core:fmt"
 import "core:math"
@@ -9,11 +10,12 @@ import "core:strings"
 
 MAX_NODES :: 4096
 MAX_PAINT_COMMANDS :: 16384
-FONT_FIRST_CHAR :: 32
-FONT_CHAR_COUNT :: 95
-FONT_ATLAS_SIZE :: 512
+FONT_FIRST_CHAR :: shared.FONT_FIRST_CHAR
+FONT_CHAR_COUNT :: shared.FONT_CHAR_COUNT
+FONT_ATLAS_SIZE :: shared.FONT_ATLAS_SIZE
 FONT_ASCENDER :: f32(0.96875)
 FONT_ATLAS_DATA :: #load("assets/inter_mtsdf.bin")
+Font_Glyph :: shared.Font_Glyph
 
 EDITOR_TOP_BAR_HEIGHT :: f32(52)
 EDITOR_STATUS_BAR_HEIGHT :: f32(30)
@@ -38,6 +40,11 @@ Pointer_Input :: struct {
 	wheel_y: f32,
 	primary_down, available: bool,
 }
+Pointer_Cursor :: enum {
+	Default,
+	Horizontal_Resize,
+	Vertical_Resize,
+}
 Keyboard_Input :: struct {
 	text: string,
 	left, right, up, down, home, end: bool,
@@ -51,6 +58,7 @@ Paint_Kind :: enum {
 	Triangle,
 	Ring,
 	Disclosure,
+	Checkmark,
 }
 Paint_Command :: struct {
 	kind: Paint_Kind,
@@ -66,6 +74,7 @@ Paint_Command :: struct {
 	ring_center, ring_axis_x, ring_axis_y: shared.Vec2,
 	ring_thickness: f32,
 	disclosure_expanded: bool,
+	font_layer: f32,
 	clip: Rect,
 	has_clip: bool,
 }
@@ -80,12 +89,10 @@ Editor_Gizmo_Handle :: enum {
 	Center,
 }
 EDITOR_GIZMO_RING_POINT_COUNT :: 64
-Font_Glyph :: struct {
-	advance: f32,
-	plane, uv: shared.Vec4,
-}
 Font_Atlas :: struct {
-	glyphs: [FONT_CHAR_COUNT]Font_Glyph,
+	glyphs: ^[FONT_CHAR_COUNT]shared.Font_Glyph,
+	ascender: f32,
+	layer: f32,
 	ready: bool,
 }
 Split_Handle :: struct {
@@ -100,7 +107,7 @@ Node :: struct {
 	entity: shared.Entity,
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
-	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, text_index, button_index, input_index, parent_entity_index: int,
+	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, text_index, button_index, input_index, checkbox_index, parent_entity_index: int,
 	rect, clip: Rect,
 	paint_order: int,
 	scroll_offset, scroll_target, scroll_max, scroll_content_height: f32,
@@ -126,6 +133,7 @@ State :: struct {
 	paint: [MAX_PAINT_COMMANDS]Paint_Command,
 	paint_count: int,
 	font: Font_Atlas,
+	resource_registry: ^resources.Registry,
 	ui_world_uuid: shared.Entity_UUID,
 	ui_structure_revision: u64,
 	ui_structure_synced: bool,
@@ -143,7 +151,10 @@ State :: struct {
 	editor_split_previous_primary_down: bool,
 	active_split_editor: bool,
 	split_drag_pointer: f32,
+	pointer_cursor: Pointer_Cursor,
 	editor_visible: bool,
+	editor_simulation_playing: bool,
+	editor_simulation_step_requested: bool,
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
@@ -206,10 +217,59 @@ State :: struct {
 init :: proc(state: ^State) -> string {
 	state^ = {}
 	state.editor_pixel_density = 1
+	state.editor_simulation_playing = true
 	state.active_split_handle = -1
-	state.font.glyphs = FONT_GLYPHS
+	state.font.glyphs = &FONT_GLYPHS
+	state.font.ascender = FONT_ASCENDER
+	state.font.layer = 0
 	state.font.ready = true
 	return ""
+}
+
+select_font :: proc(state: ^State, name: string) {
+	state.font.glyphs = &FONT_GLYPHS
+	state.font.ascender = FONT_ASCENDER
+	state.font.layer = 0
+	if name == "" || state.resource_registry == nil { return }
+	handle, found := resources.font_by_name(state.resource_registry, name)
+	if !found { return }
+	font, alive := resources.get_font(state.resource_registry, handle)
+	if !alive || handle.index >= shared.MAX_PROJECT_FONTS { return }
+	state.font.glyphs = &font.desc.glyphs
+	state.font.ascender = font.desc.ascender
+	state.font.layer = f32(handle.index + 1)
+}
+
+editor_play :: proc(state: ^State) {
+	if state == nil { return }
+	state.editor_simulation_playing = true
+	state.editor_simulation_step_requested = false
+	state.editor_snapshot_valid = false
+}
+
+editor_stop :: proc(state: ^State) {
+	if state == nil { return }
+	state.editor_simulation_playing = false
+	state.editor_simulation_step_requested = false
+	state.editor_snapshot_valid = false
+}
+
+editor_step :: proc(state: ^State) {
+	if state == nil { return }
+	state.editor_simulation_playing = false
+	state.editor_simulation_step_requested = true
+	state.editor_snapshot_valid = false
+}
+
+consume_simulation_delta :: proc(state: ^State, delta_seconds: f32) -> (f32, bool) {
+	if state == nil || state.editor_simulation_playing {
+		return delta_seconds, true
+	}
+	if state.editor_simulation_step_requested {
+		state.editor_simulation_step_requested = false
+		return 1.0 / 60.0, true
+	}
+	return 0, false
 }
 
 destroy :: proc(state: ^State) {
@@ -319,6 +379,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		node.text_index = entity.ui_text_index
 		node.button_index = entity.ui_button_index
 		node.input_index = entity.ui_input_index
+		node.checkbox_index = entity.ui_checkbox_index
 		node.parent_entity_index = find_parent_entity(
 			world,
 			world.ui_layouts[entity.ui_layout_index].parent,
@@ -341,11 +402,13 @@ reconcile :: proc(
 	drawable_height: f32 = 0,
 	delta_seconds: f32 = 1.0 / 60.0,
 	keyboard: Keyboard_Input = {},
+	resource_registry: ^resources.Registry = nil,
 ) -> string {
 	if state == nil || world == nil { return "UI state or world is unavailable" }
 	surface_width := drawable_width; if surface_width <= 0 { surface_width = width }
 	surface_height := drawable_height; if surface_height <= 0 { surface_height = height }
 	if !state.font.ready { if err := init(state); err != "" { return err } }
+	state.resource_registry = resource_registry
 	editor_scale := max(state.editor_pixel_density, 1)
 	editor_width := surface_width / editor_scale
 	editor_height := surface_height / editor_scale
@@ -385,6 +448,7 @@ reconcile :: proc(
 		editor_pointer,
 		true,
 	) { if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err }; if editor_ui_fit_sidebar_content(state, world) { if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err } }; if editor_ui_fit_inspector_width(state, world) { if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err } }; _ = update_split_interaction(state, editor_pointer, true) }
+	state.pointer_cursor = split_pointer_cursor(state)
 	if state.active_split_handle >= 0 { project_pointer = {}; editor_pointer = {} }
 	if update_scroll_areas(
 		state,
@@ -411,10 +475,16 @@ reconcile :: proc(
 	panel_changed := false
 	if pressed_ok {
 		handle_input_press(state, world, pressed, editor_pointer.position)
+		panel_changed = handle_checkbox_press(state, world, pressed) || panel_changed
 		handle_editor_ecs_press(state, world, pressed, editor_pointer.position)
-		panel_changed = handle_panel_title_press(state, world, pressed, editor_pointer.position)
+		panel_changed =
+			handle_panel_title_press(state, world, pressed, editor_pointer.position) ||
+			panel_changed
 	}
-	if project_pressed_ok { handle_input_press(state, world, project_pressed, project_pointer.position) }
+	if project_pressed_ok {
+		handle_input_press(state, world, project_pressed, project_pointer.position)
+		panel_changed = handle_checkbox_press(state, world, project_pressed) || panel_changed
+	}
 	if project_pressed_ok {
 		panel_changed =
 			handle_panel_title_press(state, world, project_pressed, project_pointer.position) ||
@@ -497,6 +567,7 @@ reconcile :: proc(
 		if editor_scale !=
 		   1 { for i in state.editor_paint_start ..< state.paint_count { scale_paint_command(&state.paint[i], editor_scale) } }
 		state.editor_gizmo_paint_start = state.paint_count
+		select_font(state, "")
 		if err := append_editor_gizmo(state); err != "" { return err }
 		state.editor_gizmo_paint_end = state.paint_count
 	}
@@ -674,6 +745,15 @@ handle_editor_ecs_press :: proc(
 						0,
 					) { state.editor_snapshot_valid = false }
 					return
+				case .Transport_Play:
+					editor_play(state)
+					return
+				case .Transport_Stop:
+					editor_stop(state)
+					return
+				case .Transport_Step:
+					editor_step(state)
+					return
 				case .Viewport:
 					if !state.editor_gizmo_captures_pointer { state.editor_pick_requested = true; state.editor_pick_position = position }
 					return
@@ -691,6 +771,7 @@ handle_editor_ecs_press :: proc(
 				     .Inspector_Table,
 				     .Inspector_Cell,
 				     .Inspector_Input,
+				     .Inspector_Checkbox,
 				     .Status:
 			}
 		}
@@ -985,6 +1066,27 @@ smooth_scroll_step :: proc(offset, target, smoothness, delta_seconds: f32) -> f3
 	next := offset + (target - offset) * alpha
 	if math.abs(target - next) < 0.02 { return target }
 	return next
+}
+
+split_handle_pointer_cursor :: proc(handle: Split_Handle) -> Pointer_Cursor {
+	if handle.horizontal { return .Horizontal_Resize }
+	return .Vertical_Resize
+}
+
+split_pointer_cursor :: proc(state: ^State) -> Pointer_Cursor {
+	if state == nil { return .Default }
+	if state.active_split_handle >= 0 && state.active_split_handle < state.split_handle_count {
+		return split_handle_pointer_cursor(state.split_handles[state.active_split_handle])
+	}
+	for handle in state.split_handles[:state.split_handle_count] {
+		if handle.hovered { return split_handle_pointer_cursor(handle) }
+	}
+	return .Default
+}
+
+current_pointer_cursor :: proc(state: ^State) -> Pointer_Cursor {
+	if state == nil { return .Default }
+	return state.pointer_cursor
 }
 
 update_split_interaction :: proc(state: ^State, pointer: Pointer_Input, editor: bool) -> bool {
@@ -1475,6 +1577,129 @@ write_inspector_numeric :: proc(
 	return written
 }
 
+read_inspector_bool :: proc(
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+) -> (
+	bool,
+	bool,
+) {
+	target, _, ok := inspector_target(world, binding)
+	if !ok { return false, false }
+	#partial switch binding.inspector_field {
+		case .UI_Layout_Hidden:
+			if target.ui_layout_index >= 0 && target.ui_layout_index < len(world.ui_layouts) {
+				return world.ui_layouts[target.ui_layout_index].hidden, true
+			}
+		case .UI_HStack_Fill, .UI_HStack_Draggable:
+			if target.ui_hstack_index >= 0 && target.ui_hstack_index < len(world.ui_hstacks) {
+				stack := world.ui_hstacks[target.ui_hstack_index]
+				if binding.inspector_field == .UI_HStack_Fill { return stack.fill, true }
+				return stack.draggable, true
+			}
+		case .UI_VStack_Fill, .UI_VStack_Draggable:
+			if target.ui_vstack_index >= 0 && target.ui_vstack_index < len(world.ui_vstacks) {
+				stack := world.ui_vstacks[target.ui_vstack_index]
+				if binding.inspector_field == .UI_VStack_Fill { return stack.fill, true }
+				return stack.draggable, true
+			}
+		case .UI_Panel_Collapsible, .UI_Panel_Collapsed:
+			if target.ui_panel_index >= 0 && target.ui_panel_index < len(world.ui_panels) {
+				panel := world.ui_panels[target.ui_panel_index]
+				if binding.inspector_field ==
+				   .UI_Panel_Collapsible { return panel.collapsible, true }
+				return panel.collapsed, true
+			}
+		case .UI_Input_Read_Only:
+			if target.ui_input_index >= 0 && target.ui_input_index < len(world.ui_inputs) {
+				return world.ui_inputs[target.ui_input_index].read_only, true
+			}
+		case .UI_Checkbox_Checked, .UI_Checkbox_Read_Only:
+			if target.ui_checkbox_index >= 0 &&
+			   target.ui_checkbox_index < len(world.ui_checkboxes) {
+				checkbox := world.ui_checkboxes[target.ui_checkbox_index]
+				if binding.inspector_field ==
+				   .UI_Checkbox_Checked { return checkbox.checked, true }
+				return checkbox.read_only, true
+			}
+	}
+	return false, false
+}
+
+write_inspector_bool :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	value: bool,
+) -> bool {
+	target, target_index, ok := inspector_target(world, binding)
+	if !ok { return false }
+	written := false
+	#partial switch binding.inspector_field {
+		case .UI_Layout_Hidden:
+			if target.ui_layout_index >= 0 && target.ui_layout_index < len(world.ui_layouts) {
+				world.ui_layouts[target.ui_layout_index].hidden = value
+				ecs.mark_ui_subtree_dirty(world, target_index)
+				written = true
+			}
+		case .UI_HStack_Fill, .UI_HStack_Draggable:
+			if target.ui_hstack_index >= 0 && target.ui_hstack_index < len(world.ui_hstacks) {
+				stack := &world.ui_hstacks[target.ui_hstack_index]
+				if binding.inspector_field == .UI_HStack_Fill {
+					stack.fill = value
+					if !value { stack.draggable = false }
+				} else {
+					stack.draggable = value
+					if value { stack.fill = true }
+				}
+				written = true
+			}
+		case .UI_VStack_Fill, .UI_VStack_Draggable:
+			if target.ui_vstack_index >= 0 && target.ui_vstack_index < len(world.ui_vstacks) {
+				stack := &world.ui_vstacks[target.ui_vstack_index]
+				if binding.inspector_field == .UI_VStack_Fill {
+					stack.fill = value
+					if !value { stack.draggable = false }
+				} else {
+					stack.draggable = value
+					if value { stack.fill = true }
+				}
+				written = true
+			}
+		case .UI_Panel_Collapsible, .UI_Panel_Collapsed:
+			if target.ui_panel_index >= 0 && target.ui_panel_index < len(world.ui_panels) {
+				panel := &world.ui_panels[target.ui_panel_index]
+				if binding.inspector_field == .UI_Panel_Collapsible {
+					panel.collapsible = value
+					if !value { panel.collapsed = false }
+				} else if panel.collapsible || !value {
+					panel.collapsed = value
+				} else {
+					return false
+				}
+				written = true
+			}
+		case .UI_Input_Read_Only:
+			if target.ui_input_index >= 0 && target.ui_input_index < len(world.ui_inputs) {
+				world.ui_inputs[target.ui_input_index].read_only = value
+				written = true
+			}
+		case .UI_Checkbox_Checked, .UI_Checkbox_Read_Only:
+			if target.ui_checkbox_index >= 0 &&
+			   target.ui_checkbox_index < len(world.ui_checkboxes) {
+				checkbox := &world.ui_checkboxes[target.ui_checkbox_index]
+				if binding.inspector_field == .UI_Checkbox_Checked {
+					checkbox.checked = value
+				} else {
+					checkbox.read_only = value
+				}
+				written = true
+			}
+	}
+	if written && state != nil { state.editor_snapshot_valid = false }
+	return written
+}
+
 apply_inspector_input :: proc(state: ^State, world: ^shared.World, entity_index: int) -> bool {
 	if entity_index < 0 || entity_index >= len(world.entities) { return false }
 	entity := world.entities[entity_index]
@@ -1909,6 +2134,37 @@ handle_panel_title_press :: proc(
 	return true
 }
 
+handle_checkbox_press :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pressed: shared.Entity,
+) -> bool {
+	if state == nil || world == nil { return false }
+	node_index := find_node(state, pressed)
+	if node_index < 0 { return false }
+	node := &state.nodes[node_index]
+	if !node.laid_out ||
+	   node.checkbox_index < 0 ||
+	   node.checkbox_index >= len(world.ui_checkboxes) { return false }
+	checkbox := &world.ui_checkboxes[node.checkbox_index]
+	if checkbox.read_only { return false }
+	next := !checkbox.checked
+	entity_index := int(node.entity.index)
+	if entity_index >= 0 && entity_index < len(world.entities) {
+		entity := world.entities[entity_index]
+		if entity.origin == .Editor &&
+		   entity.editor_ui_index >= 0 &&
+		   entity.editor_ui_index < len(world.editor_uis) {
+			binding := world.editor_uis[entity.editor_ui_index]
+			if binding.role == .Inspector_Checkbox {
+				if !write_inspector_bool(state, world, binding, next) { return false }
+			}
+		}
+	}
+	checkbox.checked = next
+	return true
+}
+
 paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) -> string {
 	if depth > MAX_NODES { return "UI hierarchy contains a cycle" }
 	node := &state.nodes[node_index]; layout := world.ui_layouts[node.layout_index]
@@ -1956,6 +2212,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
 		panel := world.ui_panels[node.panel_index]
 		if panel.title != "" {
+			select_font(state, panel.font)
 			title_height := min(max(panel.title_height, 0), node.rect.height)
 			title_rect := Rect{node.rect.x, node.rect.y, node.rect.width, title_height}
 			if panel.title_background.w > 0 {
@@ -2010,8 +2267,9 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	   node.text_index <
 		   len(
 			   world.ui_texts,
-		   ) { text := world.ui_texts[node.text_index]; if err := append_text(state, text.text, text.color, text.size, node.rect, layout.padding, text.alignment); err != "" { return err } }
+		   ) { text := world.ui_texts[node.text_index]; select_font(state, text.font); if err := append_text(state, text.text, text.color, text.size, node.rect, layout.padding, text.alignment); err != "" { return err } }
 	if node.input_index >= 0 && node.input_index < len(world.ui_inputs) {
+		select_font(state, world.ui_inputs[node.input_index].font)
 		if err := append_input(
 			state,
 			world,
@@ -2020,11 +2278,58 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			layout.padding,
 		); err != "" { return err }
 	}
+	if node.checkbox_index >= 0 && node.checkbox_index < len(world.ui_checkboxes) {
+		checkbox := world.ui_checkboxes[node.checkbox_index]
+		box_size := min(max(checkbox.box_size, 1), min(node.rect.width, node.rect.height))
+		box_rect := Rect {
+			node.rect.x + layout.padding.w,
+			node.rect.y + (node.rect.height - box_size) * 0.5,
+			box_size,
+			box_size,
+		}
+		box_background := checkbox.background
+		if checkbox.checked { box_background = checkbox.checked_background }
+		if !checkbox.read_only {
+			if node.active && checkbox.active_background.w > 0 {
+				box_background = checkbox.active_background
+			} else if node.hovered && checkbox.hover_background.w > 0 {
+				box_background = checkbox.hover_background
+			}
+		}
+		if err := append_paint(
+			state,
+			{
+				kind = .Panel,
+				rect = box_rect,
+				color = box_background,
+				corner_radius = min(box_size * 0.22, 4),
+				border_color = checkbox.border_color,
+				border_width = 1,
+			},
+		); err != "" { return err }
+		if checkbox.checked {
+			inset := max(box_size * 0.22, 3)
+			if err := append_paint(
+				state,
+				{
+					kind = .Checkmark,
+					rect = {
+						box_rect.x + inset,
+						box_rect.y + inset,
+						max(box_rect.width - inset * 2, 0),
+						max(box_rect.height - inset * 2, 0),
+					},
+					color = checkbox.check_color,
+					corner_radius = max(box_size * 0.12, 1.25),
+				},
+			); err != "" { return err }
+		}
+	}
 	if node.button_index >= 0 &&
 	   node.button_index <
 		   len(
 			   world.ui_buttons,
-		   ) { button := world.ui_buttons[node.button_index]; color := button.color; if node.active && button.active_color.w > 0 { color = button.active_color } else if node.hovered && button.hover_color.w > 0 { color = button.hover_color }; if err := append_centered_text(state, button.text, color, button.size, node.rect, layout.padding); err != "" { return err } }
+		   ) { button := world.ui_buttons[node.button_index]; select_font(state, button.font); color := button.color; if node.active && button.active_color.w > 0 { color = button.active_color } else if node.hovered && button.hover_color.w > 0 { color = button.hover_color }; if err := append_centered_text(state, button.text, color, button.size, node.rect, layout.padding); err != "" { return err } }
 	apply_paint_clip(state, paint_start, state.paint_count, node.clip, node.has_clip)
 	for child_index in 0 ..< state.node_count { if state.nodes[child_index].parent_entity_index == int(node.entity.index) { if err := paint_node(state, world, child_index, depth + 1); err != "" { return err } } }
 	if node.scroll_area_index >= 0 &&
@@ -2333,6 +2638,7 @@ entity_component_count :: proc(world: ^shared.World, entity_index: int) -> int {
 	if entity.ui_vstack_index >= 0 { count += 1 }
 	if entity.ui_button_index >= 0 { count += 1 }
 	if entity.ui_input_index >= 0 { count += 1 }
+	if entity.ui_checkbox_index >= 0 { count += 1 }
 	if entity.editor_transform_gizmo_index >= 0 &&
 	   entity.editor_transform_gizmo_index < len(world.editor_transform_gizmos) &&
 	   world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index ==
@@ -2378,7 +2684,7 @@ append_text :: proc(
 ) -> string {
 	content_x := rect.x + padding.w
 	content_width := max(rect.width - padding.w - padding.y, 0)
-	baseline := rect.y + padding.x + FONT_ASCENDER * size
+	baseline := rect.y + padding.x + state.font.ascender * size
 	line_start := 0
 	bytes := transmute([]u8)text
 	for byte, index in bytes {
@@ -2440,7 +2746,7 @@ text_advance_to :: proc(state: ^State, text: string, size: f32, byte_index: int)
 		if code < FONT_FIRST_CHAR || code >= FONT_FIRST_CHAR + FONT_CHAR_COUNT {
 			code = int('?')
 		}
-		x += state.font.glyphs[code - FONT_FIRST_CHAR].advance * size
+		x += state.font.glyphs^[code - FONT_FIRST_CHAR].advance * size
 	}
 	return x
 }
@@ -2514,7 +2820,7 @@ append_input :: proc(
 			axis_content.x + 3,
 			axis_content.y +
 			max((axis_content.height - input.size) * 0.5, 0) +
-			FONT_ASCENDER * input.size,
+			state.font.ascender * input.size,
 			axis_content.x + 3,
 		); err != "" { return err }
 	}
@@ -2541,7 +2847,7 @@ append_input :: proc(
 		); err != "" { return err }
 	}
 	baseline :=
-		content.y + max((content.height - input.size) * 0.5, 0) + FONT_ASCENDER * input.size
+		content.y + max((content.height - input.size) * 0.5, 0) + state.font.ascender * input.size
 	if err := append_text_at(
 		state,
 		input.text,
@@ -2573,11 +2879,11 @@ append_text_clipped :: proc(
 	size: f32,
 	rect: Rect,
 ) -> string {
-	x := rect.x; baseline := rect.y + FONT_ASCENDER * size
+	x := rect.x; baseline := rect.y + state.font.ascender * size
 	for character in text {
 		code := int(
 			character,
-		); if code < FONT_FIRST_CHAR || code >= FONT_FIRST_CHAR + FONT_CHAR_COUNT { code = int('?') }; glyph := state.font.glyphs[code - FONT_FIRST_CHAR]
+		); if code < FONT_FIRST_CHAR || code >= FONT_FIRST_CHAR + FONT_CHAR_COUNT { code = int('?') }; glyph := state.font.glyphs^[code - FONT_FIRST_CHAR]
 		width :=
 			(glyph.plane.z - glyph.plane.x) *
 			size; height := (glyph.plane.w - glyph.plane.y) * size; glyph_x := x + glyph.plane.x * size
@@ -2623,7 +2929,7 @@ append_text_at :: proc(
 		code := int(
 			character,
 		); if code < FONT_FIRST_CHAR || code >= FONT_FIRST_CHAR + FONT_CHAR_COUNT { code = int('?') }
-		glyph := state.font.glyphs[code - FONT_FIRST_CHAR]
+		glyph := state.font.glyphs^[code - FONT_FIRST_CHAR]
 		width :=
 			(glyph.plane.z - glyph.plane.x) *
 			size; height := (glyph.plane.w - glyph.plane.y) * size
@@ -2642,7 +2948,7 @@ measure_text_ink :: proc(state: ^State, text: string, size: f32) -> (Rect, bool)
 		code := int(
 			character,
 		); if code < FONT_FIRST_CHAR || code >= FONT_FIRST_CHAR + FONT_CHAR_COUNT { code = int('?') }
-		glyph := state.font.glyphs[code - FONT_FIRST_CHAR]
+		glyph := state.font.glyphs^[code - FONT_FIRST_CHAR]
 		x0 :=
 			x +
 			glyph.plane.x *
@@ -2655,8 +2961,12 @@ measure_text_ink :: proc(state: ^State, text: string, size: f32) -> (Rect, bool)
 	return {min_x, min_y, max_x - min_x, max_y - min_y}, has_ink
 }
 
-append_paint :: proc(state: ^State, command: Paint_Command) -> string {if state.paint_count >=
-	   MAX_PAINT_COMMANDS { return "too many UI paint commands" }
+append_paint :: proc(
+	state: ^State,
+	command_value: Paint_Command,
+) -> string {if state.paint_count >= MAX_PAINT_COMMANDS { return "too many UI paint commands" }
+	command := command_value
+	if command.kind == .Glyph { command.font_layer = state.font.layer }
 	state.paint[state.paint_count] = command
 	state.paint_count += 1
 	return ""}

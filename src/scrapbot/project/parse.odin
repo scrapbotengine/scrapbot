@@ -29,6 +29,7 @@ fail :: proc(err: Parse_Error, message: string) -> Parse_Result {
 parse_project_config :: proc(source: string) -> (config: Project_Config, result: Parse_Result) {
 	section := ""
 	current_native_extension: ^shared.Native_Extension_Target
+	current_font: ^shared.Project_Font
 
 	text := source
 	for raw_line in strings.split_lines_iterator(&text) {
@@ -41,6 +42,12 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			append(&config.native_extensions, shared.Native_Extension_Target{})
 			current_native_extension = &config.native_extensions[len(config.native_extensions) - 1]
 			section = "native_extension"
+			continue
+		}
+		if line == "[[fonts]]" {
+			append(&config.fonts, shared.Project_Font{})
+			current_font = &config.fonts[len(config.fonts) - 1]
+			section = "font"
 			continue
 		}
 
@@ -80,6 +87,35 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					return config, fail(
 						.Invalid_Field,
 						fmt.tprintf("unknown native extension field '%s'", key),
+					)
+			}
+			continue
+		}
+		if section == "font" {
+			if current_font == nil {
+				return config, fail(.Invalid_Syntax, "font fields must appear under [[fonts]]")
+			}
+			switch key {
+				case "name":
+					current_font.name, found = parse_basic_string(value)
+					if !found || !shared.component_token_is_valid(current_font.name) {
+						return config, fail(
+							.Invalid_Field,
+							"font name must be an identifier string",
+						)
+					}
+				case "source":
+					current_font.source, found = parse_basic_string(value)
+					if !found || !valid_font_source_path(current_font.source) {
+						return config, fail(
+							.Invalid_Path,
+							"font source must be a safe .ttf or .otf path under assets/",
+						)
+					}
+				case:
+					return config, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown font field '%s'", key),
 					)
 			}
 			continue
@@ -124,7 +160,37 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			)
 		}
 	}
+	if len(config.fonts) > shared.MAX_PROJECT_FONTS {
+		return config, fail(
+			.Invalid_Field,
+			fmt.tprintf("project supports at most %d fonts", shared.MAX_PROJECT_FONTS),
+		)
+	}
+	for font, index in config.fonts {
+		if font.name == "" {
+			return config, fail(.Missing_Field, fmt.tprintf("font %d is missing name", index))
+		}
+		if font.source == "" {
+			return config, fail(.Missing_Field, fmt.tprintf("font %d is missing source", index))
+		}
+		for previous in config.fonts[:index] {
+			if previous.name == font.name {
+				return config, fail(
+					.Invalid_Field,
+					fmt.tprintf("font '%s' is declared twice", font.name),
+				)
+			}
+		}
+	}
 	return config, ok()
+}
+
+valid_font_source_path :: proc(path: string) -> bool {
+	if !is_safe_relative_path(path) || !strings.has_prefix(path, "assets/") || len(path) < 4 {
+		return false
+	}
+	extension := path[len(path) - 4:]
+	return strings.equal_fold(extension, ".ttf") || strings.equal_fold(extension, ".otf")
 }
 
 parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
@@ -164,7 +230,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.ui_table]" ||
 		   line == "[entities.ui_text]" ||
 		   line == "[entities.ui_button]" ||
-		   line == "[entities.ui_input]" {
+		   line == "[entities.ui_input]" ||
+		   line == "[entities.ui_checkbox]" {
 			if current == nil {
 				return scene, fail(
 					.Invalid_Syntax,
@@ -199,6 +266,18 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 					size = 16,
 					selection_background = {0.15, 0.45, 0.40, 0.55},
 					focus_border_color = {0.15, 0.85, 0.72, 1},
+				}
+			}
+			if section == "ui_checkbox" {
+				current.has_ui_checkbox = true
+				current.ui_checkbox = {
+					box_size = 18,
+					background = {0.025, 0.030, 0.040, 1},
+					checked_background = {0.08, 0.55, 0.46, 1},
+					border_color = {0.24, 0.27, 0.32, 1},
+					check_color = {0.95, 0.97, 0.98, 1},
+					hover_background = {0.12, 0.64, 0.54, 1},
+					active_background = {0.06, 0.42, 0.36, 1},
 				}
 			}
 			current_component = nil
@@ -454,6 +533,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				switch key {
 					case "title":
 						current.ui_panel.title, found = parse_basic_string(value)
+					case "font":
+						current.ui_panel.font, found = parse_basic_string(value)
 					case "title_color":
 						current.ui_panel.title_color, found = parse_vec4(value)
 					case "title_background":
@@ -492,7 +573,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			case "ui_text":
 				current.has_ui_text = true
 				switch key {case "text":
-						current.ui_text.text, found = parse_basic_string(value); case "color":
+						current.ui_text.text, found = parse_basic_string(value); case "font":
+						current.ui_text.font, found = parse_basic_string(value); case "color":
 						current.ui_text.color, found = parse_vec4(value); case "size":
 						current.ui_text.size, found = parse_f32(value); case "alignment":
 						current.ui_text.alignment, found = parse_ui_text_alignment(value); case:
@@ -504,7 +586,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			case "ui_button":
 				current.has_ui_button = true
 				switch key {case "text":
-						current.ui_button.text, found = parse_basic_string(value); case "color":
+						current.ui_button.text, found = parse_basic_string(value); case "font":
+						current.ui_button.font, found = parse_basic_string(value); case "color":
 						current.ui_button.color, found = parse_vec4(value); case "size":
 						current.ui_button.size, found = parse_f32(value); case "hover_background":
 						current.ui_button.hover_background, found = parse_vec4(
@@ -527,6 +610,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				switch key {
 					case "text":
 						current.ui_input.text, found = parse_basic_string(value)
+					case "font":
+						current.ui_input.font, found = parse_basic_string(value)
 					case "color":
 						current.ui_input.color, found = parse_vec4(value)
 					case "size":
@@ -544,6 +629,34 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						)
 				}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_input.%s", key)) }
+			case "ui_checkbox":
+				current.has_ui_checkbox = true
+				switch key {
+					case "checked":
+						current.ui_checkbox.checked, found = parse_bool(value)
+					case "box_size":
+						current.ui_checkbox.box_size, found = parse_f32(value)
+					case "background":
+						current.ui_checkbox.background, found = parse_vec4(value)
+					case "checked_background":
+						current.ui_checkbox.checked_background, found = parse_vec4(value)
+					case "border_color":
+						current.ui_checkbox.border_color, found = parse_vec4(value)
+					case "check_color":
+						current.ui_checkbox.check_color, found = parse_vec4(value)
+					case "hover_background":
+						current.ui_checkbox.hover_background, found = parse_vec4(value)
+					case "active_background":
+						current.ui_checkbox.active_background, found = parse_vec4(value)
+					case "read_only":
+						current.ui_checkbox.read_only, found = parse_bool(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_checkbox field '%s'", key),
+						)
+				}
+				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_checkbox.%s", key)) }
 			case "component":
 				if current_component == nil {
 					return scene, fail(
@@ -602,7 +715,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   entity.has_ui_scroll_area ||
 			   entity.has_ui_panel ||
 			   entity.has_ui_table ||
-			   entity.has_ui_input) &&
+			   entity.has_ui_input ||
+			   entity.has_ui_checkbox) &&
 		   !entity.has_ui_layout { return scene, fail(.Invalid_Field, fmt.tprintf("UI component on '%s' requires ui_layout", entity.name)) }
 		if entity.has_ui_layout &&
 		   (entity.ui_layout.size.x <= 0 ||
@@ -654,8 +768,9 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if entity.has_ui_text { content_count += 1 }
 		if entity.has_ui_button { content_count += 1 }
 		if entity.has_ui_input { content_count += 1 }
+		if entity.has_ui_checkbox { content_count += 1 }
 		if content_count >
-		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, or ui_input", entity.name)) }
+		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, ui_input, or ui_checkbox", entity.name)) }
 		if entity.has_ui_text &&
 		   (entity.ui_text.text == "" ||
 				   entity.ui_text.size <=
@@ -668,6 +783,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf("UI input entity '%s' requires positive size", entity.name),
+			)
+		}
+		if entity.has_ui_checkbox && entity.ui_checkbox.box_size <= 0 {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI checkbox entity '%s' requires positive box_size", entity.name),
 			)
 		}
 	}

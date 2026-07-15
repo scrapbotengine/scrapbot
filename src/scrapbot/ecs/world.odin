@@ -36,6 +36,7 @@ UI_Table_Component :: shared.UI_Table_Component
 UI_Text_Component :: shared.UI_Text_Component
 UI_Button_Component :: shared.UI_Button_Component
 UI_Input_Component :: shared.UI_Input_Component
+UI_Checkbox_Component :: shared.UI_Checkbox_Component
 
 INVALID_COMPONENT_INDEX :: -1
 MAX_QUERY_TERMS :: 8
@@ -76,6 +77,7 @@ World_Storage_Stats :: struct {
 	ui_text_slots: int,
 	ui_button_slots: int,
 	ui_input_slots: int,
+	ui_checkbox_slots: int,
 	editor_transform_gizmo_slots: int,
 	editor_scene_camera_slots: int,
 	editor_ui_slots: int,
@@ -93,10 +95,10 @@ destroy_world :: proc(world: ^World) {
 	for mesh in world.meshes {
 		delete(mesh.primitive)
 	}
-	for panel in world.ui_panels { delete(panel.title) }
-	for text in world.ui_texts { delete(text.text) }
-	for button in world.ui_buttons { delete(button.text) }
-	for input in world.ui_inputs { delete(input.text) }
+	for panel in world.ui_panels { delete(panel.title); delete(panel.font) }
+	for text in world.ui_texts { delete(text.text); delete(text.font) }
+	for button in world.ui_buttons { delete(button.text); delete(button.font) }
+	for input in world.ui_inputs { delete(input.text); delete(input.font) }
 	for &storage in world.custom_components {
 		delete(storage.name)
 		for &component in storage.components {
@@ -121,6 +123,10 @@ destroy_world :: proc(world: ^World) {
 	delete(world.materials)
 	delete(world.render_instances)
 	delete(world.render_active_entities)
+	delete(world.render_active_camera_entities)
+	delete(world.render_active_ambient_light_entities)
+	delete(world.render_active_directional_light_entities)
+	delete(world.render_active_point_light_entities)
 	delete(world.render_dirty_entities)
 	delete(world.free_transform_indices)
 	delete(world.free_mesh_indices)
@@ -136,6 +142,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_texts)
 	delete(world.ui_buttons)
 	delete(world.ui_inputs)
+	delete(world.ui_checkboxes)
 	delete(world.editor_transform_gizmos)
 	delete(world.editor_scene_cameras)
 	delete(world.editor_uis)
@@ -170,6 +177,10 @@ build_world :: proc(scene: ^Scene) -> World {
 			material_index = INVALID_COMPONENT_INDEX,
 			render_instance_index = INVALID_COMPONENT_INDEX,
 			render_active_index = INVALID_COMPONENT_INDEX,
+			render_camera_active_index = INVALID_COMPONENT_INDEX,
+			render_ambient_light_active_index = INVALID_COMPONENT_INDEX,
+			render_directional_light_active_index = INVALID_COMPONENT_INDEX,
+			render_point_light_active_index = INVALID_COMPONENT_INDEX,
 			ui_layout_index = INVALID_COMPONENT_INDEX,
 			ui_hstack_index = INVALID_COMPONENT_INDEX,
 			ui_vstack_index = INVALID_COMPONENT_INDEX,
@@ -179,6 +190,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			ui_text_index = INVALID_COMPONENT_INDEX,
 			ui_button_index = INVALID_COMPONENT_INDEX,
 			ui_input_index = INVALID_COMPONENT_INDEX,
+			ui_checkbox_index = INVALID_COMPONENT_INDEX,
 			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 			editor_ui_index = INVALID_COMPONENT_INDEX,
 			geometry_resource = clone_world_string(entity.geometry_resource),
@@ -205,11 +217,12 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_hstack { world_entity.ui_hstack_index = len(world.ui_hstacks); append(&world.ui_hstacks, entity.ui_hstack) }
 		if entity.has_ui_vstack { world_entity.ui_vstack_index = len(world.ui_vstacks); append(&world.ui_vstacks, entity.ui_vstack) }
 		if entity.has_ui_scroll_area { world_entity.ui_scroll_area_index = len(world.ui_scroll_areas); append(&world.ui_scroll_areas, entity.ui_scroll_area) }
-		if entity.has_ui_panel { world_entity.ui_panel_index = len(world.ui_panels); panel := entity.ui_panel; panel.title = clone_world_string(panel.title); append(&world.ui_panels, panel) }
+		if entity.has_ui_panel { world_entity.ui_panel_index = len(world.ui_panels); panel := entity.ui_panel; panel.title = clone_world_string(panel.title); panel.font = clone_world_string(panel.font); append(&world.ui_panels, panel) }
 		if entity.has_ui_table { world_entity.ui_table_index = len(world.ui_tables); append(&world.ui_tables, entity.ui_table) }
-		if entity.has_ui_text { world_entity.ui_text_index = len(world.ui_texts); text := entity.ui_text; text.text = clone_world_string(text.text); append(&world.ui_texts, text) }
-		if entity.has_ui_button { world_entity.ui_button_index = len(world.ui_buttons); button := entity.ui_button; button.text = clone_world_string(button.text); append(&world.ui_buttons, button) }
-		if entity.has_ui_input { world_entity.ui_input_index = len(world.ui_inputs); input := entity.ui_input; input.text = clone_world_string(input.text); append(&world.ui_inputs, input) }
+		if entity.has_ui_text { world_entity.ui_text_index = len(world.ui_texts); text := entity.ui_text; text.text = clone_world_string(text.text); text.font = clone_world_string(text.font); append(&world.ui_texts, text) }
+		if entity.has_ui_button { world_entity.ui_button_index = len(world.ui_buttons); button := entity.ui_button; button.text = clone_world_string(button.text); button.font = clone_world_string(button.font); append(&world.ui_buttons, button) }
+		if entity.has_ui_input { world_entity.ui_input_index = len(world.ui_inputs); input := entity.ui_input; input.text = clone_world_string(input.text); input.font = clone_world_string(input.font); append(&world.ui_inputs, input) }
+		if entity.has_ui_checkbox { world_entity.ui_checkbox_index = len(world.ui_checkboxes); append(&world.ui_checkboxes, entity.ui_checkbox) }
 		if entity.has_mesh {
 			world_entity.mesh_index = len(world.meshes)
 			mesh := entity.mesh
@@ -221,6 +234,7 @@ build_world :: proc(scene: ^Scene) -> World {
 		}
 
 		append(&world.entities, world_entity)
+		sync_render_watch_memberships(&world, int(id.index))
 		if world.entities[len(world.entities) - 1].uuid == (shared.Entity_UUID{}) {
 			world.entities[len(world.entities) - 1].uuid = shared.entity_uuid_generate()
 		}
@@ -473,6 +487,112 @@ ensure_entity_in_active_render_set :: proc(world: ^World, entity_index: int) {
 	append(&world.render_active_entities, entity_index)
 }
 
+Render_Watch_Kind :: enum {
+	Camera,
+	Ambient_Light,
+	Directional_Light,
+	Point_Light,
+}
+
+render_watch_entities :: proc(world: ^World, kind: Render_Watch_Kind) -> ^[dynamic]int {
+	switch kind {
+		case .Camera:
+			return &world.render_active_camera_entities
+		case .Ambient_Light:
+			return &world.render_active_ambient_light_entities
+		case .Directional_Light:
+			return &world.render_active_directional_light_entities
+		case .Point_Light:
+			return &world.render_active_point_light_entities
+	}
+	return nil
+}
+
+render_watch_active_index :: proc(entity: ^World_Entity, kind: Render_Watch_Kind) -> ^int {
+	switch kind {
+		case .Camera:
+			return &entity.render_camera_active_index
+		case .Ambient_Light:
+			return &entity.render_ambient_light_active_index
+		case .Directional_Light:
+			return &entity.render_directional_light_active_index
+		case .Point_Light:
+			return &entity.render_point_light_active_index
+	}
+	return nil
+}
+
+remove_entity_from_render_watch :: proc(
+	world: ^World,
+	entity_index: int,
+	kind: Render_Watch_Kind,
+) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) { return }
+	entities := render_watch_entities(world, kind)
+	active_index := render_watch_active_index(&world.entities[entity_index], kind)
+	if entities == nil || active_index == nil { return }
+	if active_index^ < 0 ||
+	   active_index^ >= len(entities^) ||
+	   entities^[active_index^] != entity_index {
+		active_index^ = INVALID_COMPONENT_INDEX
+		return
+	}
+	last_index := len(entities^) - 1
+	moved_entity_index := entities^[last_index]
+	entities^[active_index^] = moved_entity_index
+	pop(entities)
+	if active_index^ < len(entities^) &&
+	   moved_entity_index >= 0 &&
+	   moved_entity_index < len(world.entities) {
+		moved_active_index := render_watch_active_index(&world.entities[moved_entity_index], kind)
+		if moved_active_index != nil { moved_active_index^ = active_index^ }
+	}
+	active_index^ = INVALID_COMPONENT_INDEX
+}
+
+ensure_entity_in_render_watch :: proc(world: ^World, entity_index: int, kind: Render_Watch_Kind) {
+	if world == nil || !entity_is_alive(world, entity_index) { return }
+	entities := render_watch_entities(world, kind)
+	active_index := render_watch_active_index(&world.entities[entity_index], kind)
+	if entities == nil || active_index == nil { return }
+	if active_index^ >= 0 &&
+	   active_index^ < len(entities^) &&
+	   entities^[active_index^] == entity_index { return }
+	active_index^ = len(entities^)
+	append(entities, entity_index)
+}
+
+sync_render_watch_memberships :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) { return }
+	entity := world.entities[entity_index]
+	watching := [4]bool {
+		entity.alive &&
+		entity.camera_index >= 0 &&
+		entity.camera_index < len(world.cameras) &&
+		entity.transform_index >= 0 &&
+		entity.transform_index < len(world.transforms),
+		entity.alive &&
+		entity.ambient_light_index >= 0 &&
+		entity.ambient_light_index < len(world.ambient_lights),
+		entity.alive &&
+		entity.directional_light_index >= 0 &&
+		entity.directional_light_index < len(world.directional_lights),
+		entity.alive &&
+		entity.point_light_index >= 0 &&
+		entity.point_light_index < len(world.point_lights) &&
+		entity.transform_index >= 0 &&
+		entity.transform_index < len(world.transforms),
+	}
+	for active, index in watching {
+		kind := Render_Watch_Kind(index)
+		if active {
+			ensure_entity_in_render_watch(world, entity_index, kind)
+		} else {
+			remove_entity_from_render_watch(world, entity_index, kind)
+		}
+	}
+}
+
 invalidate_entity_renderables :: proc(world: ^World, entity_index: int) {
 	for &renderable in world.renderables {
 		if renderable.entity_index == entity_index {
@@ -570,6 +690,7 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 		}
 		entity := &world.entities[entity_index]
 		entity.render_dirty = false
+		sync_render_watch_memberships(world, entity_index)
 		if entity.geometry_index < 0 && entity.mesh_index >= 0 {
 			if handle, found := resources.geometry_by_name(registry, "cube");
 			   found { add_geometry(world, entity_index, handle) }
@@ -627,11 +748,11 @@ build_resource_render_list :: proc(
 	use_editor_camera: bool = false,
 ) -> Render_List {
 	list: Render_List
-	list.camera, list.has_camera = active_camera_instance(world, use_editor_camera)
-	extract_lights(world, &list)
 	if len(world.render_dirty_entities) > 0 {
 		reconcile_render_instances(world, registry)
 	}
+	list.camera, list.has_camera = active_camera_instance(world, use_editor_camera)
+	extract_lights(world, &list)
 	for entity_index in world.render_active_entities {
 		if entity_index < 0 || entity_index >= len(world.entities) {
 			continue
@@ -659,30 +780,41 @@ build_resource_render_list :: proc(
 }
 
 extract_lights :: proc(world: ^World, list: ^Render_List) {
-	for entity in world.entities {
-		if !entity.alive { continue }
-		if entity.ambient_light_index >= 0 &&
-		   entity.ambient_light_index < len(world.ambient_lights) {
-			light :=
-				world.ambient_lights[entity.ambient_light_index]; list.ambient.x += light.color.x * light.intensity; list.ambient.y += light.color.y * light.intensity; list.ambient.z += light.color.z * light.intensity
+	if world == nil || list == nil { return }
+	for entity_index in world.render_active_ambient_light_entities {
+		if !entity_is_alive(world, entity_index) { continue }
+		entity := world.entities[entity_index]
+		if entity.ambient_light_index < 0 ||
+		   entity.ambient_light_index >= len(world.ambient_lights) { continue }
+		light := world.ambient_lights[entity.ambient_light_index]
+		list.ambient.x += light.color.x * light.intensity
+		list.ambient.y += light.color.y * light.intensity
+		list.ambient.z += light.color.z * light.intensity
+	}
+	for entity_index in world.render_active_directional_light_entities {
+		if list.directional_light_count >= len(list.directional_lights) { break }
+		if !entity_is_alive(world, entity_index) { continue }
+		entity := world.entities[entity_index]
+		if entity.directional_light_index < 0 ||
+		   entity.directional_light_index >= len(world.directional_lights) { continue }
+		list.directional_lights[list.directional_light_count] = {
+			light = world.directional_lights[entity.directional_light_index],
 		}
-		if entity.directional_light_index >= 0 &&
-		   entity.directional_light_index < len(world.directional_lights) &&
-		   list.directional_light_count < len(list.directional_lights) {
-			list.directional_lights[list.directional_light_count] = {
-				light = world.directional_lights[entity.directional_light_index],
-			}; list.directional_light_count += 1
+		list.directional_light_count += 1
+	}
+	for entity_index in world.render_active_point_light_entities {
+		if list.point_light_count >= len(list.point_lights) { break }
+		if !entity_is_alive(world, entity_index) { continue }
+		entity := world.entities[entity_index]
+		if entity.point_light_index < 0 ||
+		   entity.point_light_index >= len(world.point_lights) ||
+		   entity.transform_index < 0 ||
+		   entity.transform_index >= len(world.transforms) { continue }
+		list.point_lights[list.point_light_count] = {
+			position = world.transforms[entity.transform_index].position,
+			light = world.point_lights[entity.point_light_index],
 		}
-		if entity.point_light_index >= 0 &&
-		   entity.point_light_index < len(world.point_lights) &&
-		   entity.transform_index >= 0 &&
-		   entity.transform_index < len(world.transforms) &&
-		   list.point_light_count < len(list.point_lights) {
-			list.point_lights[list.point_light_count] = {
-				position = world.transforms[entity.transform_index].position,
-				light = world.point_lights[entity.point_light_index],
-			}; list.point_light_count += 1
-		}
+		list.point_light_count += 1
 	}
 }
 
@@ -770,6 +902,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		ui_text_slots = len(world.ui_texts),
 		ui_button_slots = len(world.ui_buttons),
 		ui_input_slots = len(world.ui_inputs),
+		ui_checkbox_slots = len(world.ui_checkboxes),
 		editor_transform_gizmo_slots = len(world.editor_transform_gizmos),
 		editor_scene_camera_slots = len(world.editor_scene_cameras),
 		editor_ui_slots = len(world.editor_uis),
@@ -797,6 +930,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		stats.ui_text_slots +
 		stats.ui_button_slots +
 		stats.ui_input_slots +
+		stats.ui_checkbox_slots +
 		stats.editor_transform_gizmo_slots +
 		stats.editor_scene_camera_slots +
 		stats.editor_ui_slots +
@@ -827,6 +961,7 @@ world_storage_stats_max :: proc "c" (a, b: World_Storage_Stats) -> World_Storage
 		ui_text_slots = max(a.ui_text_slots, b.ui_text_slots),
 		ui_button_slots = max(a.ui_button_slots, b.ui_button_slots),
 		ui_input_slots = max(a.ui_input_slots, b.ui_input_slots),
+		ui_checkbox_slots = max(a.ui_checkbox_slots, b.ui_checkbox_slots),
 		editor_transform_gizmo_slots = max(
 			a.editor_transform_gizmo_slots,
 			b.editor_transform_gizmo_slots,
@@ -863,8 +998,10 @@ alive_renderable_count :: proc "c" (world: ^World) -> int {
 
 alive_camera_count :: proc(world: ^World) -> int {
 	count := 0
-	for entity in world.entities {
-		if entity.alive && entity.camera_index >= 0 {
+	for entity_index in world.render_active_camera_entities {
+		if !entity_is_alive(world, entity_index) { continue }
+		entity := world.entities[entity_index]
+		if entity.camera_index >= 0 && entity.camera_index < len(world.cameras) {
 			count += 1
 		}
 	}
@@ -938,7 +1075,10 @@ render_instance_from_renderable :: proc "c" (
 }
 
 first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: bool) {
-	for entity in world.entities {
+	selected_entity_index := INVALID_COMPONENT_INDEX
+	for entity_index in world.render_active_camera_entities {
+		if entity_index < 0 || entity_index >= len(world.entities) { continue }
+		entity := world.entities[entity_index]
 		if !entity.alive || entity.origin == .Editor {
 			continue
 		}
@@ -949,14 +1089,18 @@ first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: 
 			continue
 		}
 
-		return Camera_Instance {
-				entity = entity,
-				transform = world.transforms[entity.transform_index],
-				camera = world.cameras[entity.camera_index],
-			},
-			true
+		if selected_entity_index < 0 || entity_index < selected_entity_index {
+			selected_entity_index = entity_index
+		}
 	}
-	return {}, false
+	if selected_entity_index < 0 { return {}, false }
+	entity := world.entities[selected_entity_index]
+	return Camera_Instance {
+			entity = entity,
+			transform = world.transforms[entity.transform_index],
+			camera = world.cameras[entity.camera_index],
+		},
+		true
 }
 
 editor_scene_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: bool) {
@@ -1360,6 +1504,11 @@ entity_has_component :: proc "c" (
 			return entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons)
 		case "scrapbot.ui_input":
 			return entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs)
+		case "scrapbot.ui_checkbox":
+			return(
+				entity.ui_checkbox_index >= 0 &&
+				entity.ui_checkbox_index < len(world.ui_checkboxes) \
+			)
 		case "scrapbot.mesh":
 			return entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes)
 		case "scrapbot.geometry":

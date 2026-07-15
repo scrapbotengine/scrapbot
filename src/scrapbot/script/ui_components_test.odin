@@ -18,6 +18,13 @@ title = "FIELD"
 columns = 1
 [entities.ui_input]
 text = "42"
+[[entities]]
+id = "aa000000-0000-4000-8000-000000000002"
+name = "Checkbox"
+[entities.ui_layout]
+size = [32, 32]
+[entities.ui_checkbox]
+checked = true
 `,
 	)
 	defer project.destroy_scene(&scene)
@@ -34,6 +41,7 @@ text = "42"
 assert(scrapbot.ui_panel.id > 0)
 assert(scrapbot.ui_table.id > 0)
 assert(scrapbot.ui_input.id > 0)
+assert(scrapbot.ui_checkbox.id > 0)
 
 scrapbot.system(function()
 	local count = 0
@@ -44,6 +52,12 @@ scrapbot.system(function()
 		count += 1
 	end)
 	assert(count == 1)
+	local checkbox_count = 0
+	scrapbot.query(scrapbot.ui_checkbox):each(function(_, checkbox)
+		assert(type(checkbox) == "table")
+		checkbox_count += 1
+	end)
+	assert(checkbox_count == 1)
 end)
 `,
 		"=test",

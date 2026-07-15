@@ -68,8 +68,9 @@ WGPU_UI_Vertex :: struct {
 	clip: [4]f32,
 	border_color: [4]f32,
 	border_width: f32,
+	font_layer: f32,
 }
-#assert(size_of(WGPU_UI_Vertex) == 84)
+#assert(size_of(WGPU_UI_Vertex) == 88)
 
 WGPU_Request_Adapter_State :: struct {
 	completed: bool,
@@ -110,6 +111,7 @@ WGPU_Renderer :: struct {
 	ui_font_texture: wgpu.Texture,
 	ui_font_view: wgpu.TextureView,
 	ui_font_sampler: wgpu.Sampler,
+	ui_font_versions: [shared.MAX_PROJECT_FONTS]u32,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
 	shadow_bind_group: wgpu.BindGroup,
 	shadow_pipeline_layout: wgpu.PipelineLayout,
@@ -411,6 +413,7 @@ wgpu_encode_render_pass :: proc(
 	label: string,
 	target_width, target_height: u32,
 ) -> string {
+	if err := wgpu_sync_ui_fonts(renderer, registry); err != "" { return err }
 	color_attachment := wgpu.RenderPassColorAttachment {
 		view = color_view,
 		depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
@@ -598,12 +601,13 @@ wgpu_encode_render_pass :: proc(
 			u0, v0, u1, v1 := command.uv.x, command.uv.y, command.uv.z, command.uv.w
 			kind := f32(
 				0,
-			); if command.kind == .Glyph { kind = 1 } else if command.kind == .Triangle { kind = 2 } else if command.kind == .Ring { kind = 3 } else if command.kind == .Disclosure { kind = 4; if command.disclosure_expanded { radius = -radius } }
+			); if command.kind == .Glyph { kind = 1 } else if command.kind == .Triangle { kind = 2 } else if command.kind == .Ring { kind = 3 } else if command.kind == .Disclosure { kind = 4; if command.disclosure_expanded { radius = -radius } } else if command.kind == .Checkmark { kind = 5 }
 			if command.kind == .Panel ||
 			   command.kind == .Line ||
 			   command.kind == .Triangle ||
 			   command.kind == .Ring ||
-			   command.kind == .Disclosure { u0 = 0; v0 = 0; u1 = 1; v1 = 1 }
+			   command.kind == .Disclosure ||
+			   command.kind == .Checkmark { u0 = 0; v0 = 0; u1 = 1; v1 = 1 }
 			color := [4]f32{command.color.x, command.color.y, command.color.z, command.color.w}
 			border_color := [4]f32 {
 				command.border_color.x,
@@ -612,6 +616,7 @@ wgpu_encode_render_pass :: proc(
 				command.border_color.w,
 			}
 			border_width := command.border_width
+			font_layer := command.font_layer
 			if command_index <
 			   ui_state.editor_paint_start { border_width *= min(viewport.width / 1280, viewport.height / 720) }
 			params := [3]f32{shape_width, shape_height, radius}
@@ -626,6 +631,7 @@ wgpu_encode_render_pass :: proc(
 					clip = clip,
 					border_color = border_color,
 					border_width = border_width,
+					font_layer = font_layer,
 				},
 				WGPU_UI_Vertex {
 					position = positions[1],
@@ -636,6 +642,7 @@ wgpu_encode_render_pass :: proc(
 					clip = clip,
 					border_color = border_color,
 					border_width = border_width,
+					font_layer = font_layer,
 				},
 				WGPU_UI_Vertex {
 					position = positions[2],
@@ -646,6 +653,7 @@ wgpu_encode_render_pass :: proc(
 					clip = clip,
 					border_color = border_color,
 					border_width = border_width,
+					font_layer = font_layer,
 				},
 				WGPU_UI_Vertex {
 					position = positions[0],
@@ -656,6 +664,7 @@ wgpu_encode_render_pass :: proc(
 					clip = clip,
 					border_color = border_color,
 					border_width = border_width,
+					font_layer = font_layer,
 				},
 				WGPU_UI_Vertex {
 					position = positions[2],
@@ -666,6 +675,7 @@ wgpu_encode_render_pass :: proc(
 					clip = clip,
 					border_color = border_color,
 					border_width = border_width,
+					font_layer = font_layer,
 				},
 				WGPU_UI_Vertex {
 					position = positions[3],
@@ -676,6 +686,7 @@ wgpu_encode_render_pass :: proc(
 					clip = clip,
 					border_color = border_color,
 					border_width = border_width,
+					font_layer = font_layer,
 				},
 			)
 		}
@@ -722,6 +733,41 @@ wgpu_encode_render_pass :: proc(
 			wgpu.RenderPassEncoderDraw(ui_pass, u32(len(vertices)), 1, 0, 0)
 		}
 		wgpu.RenderPassEncoderEnd(ui_pass)
+	}
+	return ""
+}
+
+wgpu_sync_ui_fonts :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Registry) -> string {
+	if renderer == nil || registry == nil { return "" }
+	font_count := min(len(registry.fonts), shared.MAX_PROJECT_FONTS)
+	for index in 0 ..< font_count {
+		font := &registry.fonts[index]
+		if !font.alive || renderer.ui_font_versions[index] == font.version { continue }
+		if font.desc.width != ui.FONT_ATLAS_SIZE ||
+		   font.desc.height != ui.FONT_ATLAS_SIZE ||
+		   len(font.desc.pixels) != ui.FONT_ATLAS_SIZE * ui.FONT_ATLAS_SIZE * 4 {
+			return fmt.tprintf("font %q has an invalid UI atlas", font.name)
+		}
+		wgpu.QueueWriteTexture(
+			renderer.queue,
+			&wgpu.TexelCopyTextureInfo {
+				texture = renderer.ui_font_texture,
+				origin = {z = u32(index + 1)},
+				aspect = .All,
+			},
+			raw_data(font.desc.pixels),
+			uint(len(font.desc.pixels)),
+			&wgpu.TexelCopyBufferLayout {
+				bytesPerRow = ui.FONT_ATLAS_SIZE * 4,
+				rowsPerImage = ui.FONT_ATLAS_SIZE,
+			},
+			&wgpu.Extent3D {
+				width = ui.FONT_ATLAS_SIZE,
+				height = ui.FONT_ATLAS_SIZE,
+				depthOrArrayLayers = 1,
+			},
+		)
+		renderer.ui_font_versions[index] = font.version
 	}
 	return ""
 }

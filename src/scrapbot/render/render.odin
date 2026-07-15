@@ -244,10 +244,13 @@ run_frame_system_unmeasured :: proc(
 	drawable_width: f32 = 1280,
 	drawable_height: f32 = 720,
 ) -> string {
-	if config.frame_system == nil {
-		ecs.advance_time(&world.time, delta_seconds)
-	} else if err := config.frame_system(config.frame_system_data, world, delta_seconds);
-	   err != "" { return err }
+	simulation_delta, run_simulation := ui.consume_simulation_delta(config.ui_state, delta_seconds)
+	if run_simulation {
+		if config.frame_system == nil {
+			ecs.advance_time(&world.time, simulation_delta)
+		} else if err := config.frame_system(config.frame_system_data, world, simulation_delta);
+		   err != "" { return err }
+	}
 	if config.ui_state != nil {
 		config.ui_state.editor_pixel_density = platform.runtime_window_pixel_density()
 		if platform.consume_editor_toggle() {
@@ -320,7 +323,17 @@ run_frame_system_unmeasured :: proc(
 			drawable_height,
 			delta_seconds,
 			keyboard,
+			config.resource_registry,
 		); err != "" { return err }
+		cursor: platform.Runtime_Pointer_Cursor
+		switch ui.current_pointer_cursor(config.ui_state) {
+			case .Default:
+			case .Horizontal_Resize:
+				cursor = .Horizontal_Resize
+			case .Vertical_Resize:
+				cursor = .Vertical_Resize
+		}
+		platform.set_runtime_pointer_cursor(cursor)
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested = false
 			if config.resource_registry != nil {

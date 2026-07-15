@@ -5,6 +5,13 @@ import "core:testing"
 import sdl "vendor:sdl3"
 
 @(test)
+test_runtime_pointer_cursor_maps_resize_directions_to_sdl :: proc(t: ^testing.T) {
+	testing.expect(t, runtime_pointer_system_cursor(.Default) == .DEFAULT)
+	testing.expect(t, runtime_pointer_system_cursor(.Horizontal_Resize) == .EW_RESIZE)
+	testing.expect(t, runtime_pointer_system_cursor(.Vertical_Resize) == .NS_RESIZE)
+}
+
+@(test)
 test_editor_toggle_shortcut_requires_ctrl_escape_press :: proc(t: ^testing.T) {
 	testing.expect(t, editor_toggle_shortcut(.ESCAPE, sdl.Keymod{.LCTRL}, false))
 	testing.expect(t, editor_toggle_shortcut(.ESCAPE, sdl.Keymod{.RCTRL}, false))

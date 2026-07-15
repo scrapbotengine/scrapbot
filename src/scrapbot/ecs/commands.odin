@@ -561,6 +561,10 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		material_index = INVALID_COMPONENT_INDEX,
 		render_instance_index = INVALID_COMPONENT_INDEX,
 		render_active_index = INVALID_COMPONENT_INDEX,
+		render_camera_active_index = INVALID_COMPONENT_INDEX,
+		render_ambient_light_active_index = INVALID_COMPONENT_INDEX,
+		render_directional_light_active_index = INVALID_COMPONENT_INDEX,
+		render_point_light_active_index = INVALID_COMPONENT_INDEX,
 		ui_layout_index = INVALID_COMPONENT_INDEX,
 		ui_hstack_index = INVALID_COMPONENT_INDEX,
 		ui_vstack_index = INVALID_COMPONENT_INDEX,
@@ -570,6 +574,7 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 		ui_text_index = INVALID_COMPONENT_INDEX,
 		ui_button_index = INVALID_COMPONENT_INDEX,
 		ui_input_index = INVALID_COMPONENT_INDEX,
+		ui_checkbox_index = INVALID_COMPONENT_INDEX,
 		editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 		editor_ui_index = INVALID_COMPONENT_INDEX,
 		has_shadow_caster = spawn.has_shadow_caster,
@@ -611,6 +616,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.geometry_resource = ""
 	entity.material_resource = ""
 	entity.alive = false
+	sync_render_watch_memberships(world, entity_index)
 	entity.uuid = {}
 	entity.id.generation += 1
 	if entity.id.generation == 0 {

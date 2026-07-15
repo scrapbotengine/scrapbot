@@ -377,7 +377,8 @@ push_query_component_table :: proc "c" (
 		     "scrapbot.ui_table",
 		     "scrapbot.ui_text",
 		     "scrapbot.ui_button",
-		     "scrapbot.ui_input":
+		     "scrapbot.ui_input",
+		     "scrapbot.ui_checkbox":
 			lua_createtable(L, 0, 0)
 			return
 		case "scrapbot.mesh":

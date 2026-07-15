@@ -25,6 +25,7 @@ export type Scrapbot = {
 	ui_text: ScrapbotUiTextComponent,
 	ui_button: ScrapbotUiButtonComponent,
 	ui_input: ScrapbotUiInputComponent,
+	ui_checkbox: ScrapbotUiCheckboxComponent,
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
@@ -157,6 +158,7 @@ export type ScrapbotReadAccess = ScrapbotComponentAccess | ScrapbotAnyQuery | st
 export type ScrapbotWriteAccess = ScrapbotComponentAccess | string
 
 export type ScrapbotSystemOptions = {
+	name: string?,
 	reads: {ScrapbotReadAccess}?,
 	writes: {ScrapbotWriteAccess}?,
 }
@@ -339,6 +341,14 @@ export type ReadonlyScrapbotUiInput = {
 }
 
 export type ScrapbotUiInputComponent = ScrapbotComponent<ScrapbotUiInput, ReadonlyScrapbotUiInput>
+
+export type ScrapbotUiCheckbox = {
+}
+
+export type ReadonlyScrapbotUiCheckbox = {
+}
+
+export type ScrapbotUiCheckboxComponent = ScrapbotComponent<ScrapbotUiCheckbox, ReadonlyScrapbotUiCheckbox>
 
 export type ScrapbotInternalRenderInstance = {
 }

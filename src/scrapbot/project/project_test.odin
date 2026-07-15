@@ -37,6 +37,75 @@ source = "native/scrappyphysics"
 }
 
 @(test)
+test_project_config_accepts_project_fonts :: proc(t: ^testing.T) {
+	config, result := parse_project_config(
+		`name = "Font Demo"
+default_scene = "scenes/main.scene.toml"
+
+[[fonts]]
+name = "display"
+source = "assets/fonts/display.otf"
+`,
+	)
+	defer destroy_project_config(&config)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, len(config.fonts) == 1)
+	if len(config.fonts) == 1 {
+		testing.expect(t, config.fonts[0].name == "display")
+		testing.expect(t, config.fonts[0].source == "assets/fonts/display.otf")
+	}
+}
+
+@(test)
+test_project_config_rejects_unsafe_or_duplicate_fonts :: proc(t: ^testing.T) {
+	unsafe, unsafe_result := parse_project_config(
+		`name = "Font Demo"
+default_scene = "scenes/main.scene.toml"
+[[fonts]]
+name = "display"
+source = "../display.ttf"
+`,
+	)
+	defer destroy_project_config(&unsafe)
+	testing.expect(t, unsafe_result.err == .Invalid_Path)
+
+	duplicate, duplicate_result := parse_project_config(
+		`name = "Font Demo"
+default_scene = "scenes/main.scene.toml"
+[[fonts]]
+name = "display"
+source = "assets/fonts/first.ttf"
+[[fonts]]
+name = "display"
+source = "assets/fonts/second.ttf"
+`,
+	)
+	defer destroy_project_config(&duplicate)
+	testing.expect(t, duplicate_result.err == .Invalid_Field)
+}
+
+@(test)
+test_scene_font_references_must_be_declared_by_the_project :: proc(t: ^testing.T) {
+	config := shared.Project_Config{}
+	defer destroy_project_config(&config)
+	append(&config.fonts, shared.Project_Font{name = "display", source = "assets/display.ttf"})
+	scene := shared.Scene{}
+	defer destroy_scene(&scene)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Title",
+			has_ui_layout = true,
+			has_ui_text = true,
+			ui_text = {text = "Hello", font = "missing"},
+		},
+	)
+	testing.expect(t, validate_scene_font_references(&scene, &config) != "")
+	scene.entities[0].ui_text.font = "display"
+	testing.expect(t, validate_scene_font_references(&scene, &config) == "")
+}
+
+@(test)
 test_project_config_rejects_unescaped_string_bodies :: proc(t: ^testing.T) {
 	_, result := parse_project_config(
 		"name = \"Bad \\ Game\"\ndefault_scene = \"scenes/main.scene.toml\"\n",
@@ -412,6 +481,32 @@ read_only = false
 	testing.expect(t, input.size == 13)
 	testing.expect(t, input.selection_background == Vec4{0.1, 0.5, 0.4, 0.5})
 	testing.expect(t, input.focus_border_color == Vec4{0.1, 0.8, 0.7, 1})
+}
+
+@(test)
+test_scene_parses_ui_checkbox :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000021"
+name = "Enabled"
+[entities.ui_layout]
+size = [32, 32]
+[entities.ui_checkbox]
+checked = true
+box_size = 20
+checked_background = [0.1, 0.6, 0.5, 1]
+read_only = true
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	testing.expect(t, len(scene.entities) == 1)
+	checkbox := scene.entities[0].ui_checkbox
+	testing.expect(t, scene.entities[0].has_ui_checkbox)
+	testing.expect(t, checkbox.checked)
+	testing.expect(t, checkbox.box_size == 20)
+	testing.expect(t, checkbox.checked_background == Vec4{0.1, 0.6, 0.5, 1})
+	testing.expect(t, checkbox.read_only)
 }
 
 @(test)

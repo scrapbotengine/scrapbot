@@ -38,6 +38,7 @@ local Spinners = scrapbot.query(SpinComponent)
 local OrbitingLights = scrapbot.query(scrapbot.point_light, LightOrbitComponent)
 
 scrapbot.system(Floating, {
+	name = "Floating",
 	writes = { scrapbot.transform, FloatComponent },
 }, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ScrapbotTransform, float: Float)
 	float.wave.x += float.wave.y * time.delta_time
@@ -46,21 +47,21 @@ scrapbot.system(Floating, {
 	transform.position.z = float.origin.z
 end)
 
-scrapbot.system(Emitters, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ReadonlyScrapbotTransform, emitter: ReadonlyShowcaseEmitter)
+scrapbot.system(Emitters, { name = "Emitter Validation" }, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ReadonlyScrapbotTransform, emitter: ReadonlyShowcaseEmitter)
 	assert(emitter.state.y > 0)
 	assert(type(transform.position.y) == "number")
 end)
 
-scrapbot.system(FountainBodies, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ReadonlyScrapbotTransform, lifetime: ReadonlyShowcaseLifetime, velocity: ReadonlyShowcaseVelocity)
+scrapbot.system(FountainBodies, { name = "Fountain Bodies" }, function(time: ScrapbotTime, entity: ScrapbotEntity, transform: ReadonlyScrapbotTransform, lifetime: ReadonlyShowcaseLifetime, velocity: ReadonlyShowcaseVelocity)
 	assert(lifetime.timer.y > 0)
 	assert(velocity.value.y < 5)
 end)
 
-scrapbot.system(Spinners, function(time: ScrapbotTime, entity: ScrapbotEntity, spin: ReadonlyShowcaseSpin)
+scrapbot.system(Spinners, { name = "Spinner Validation" }, function(time: ScrapbotTime, entity: ScrapbotEntity, spin: ReadonlyShowcaseSpin)
 	assert(spin.angular_velocity.y ~= 0)
 end)
 
-scrapbot.system(OrbitingLights, function(time: ScrapbotTime, entity: ScrapbotEntity, light: ReadonlyScrapbotPointLight, orbit: ReadonlyShowcaseLightOrbit)
+scrapbot.system(OrbitingLights, { name = "Orbiting Lights" }, function(time: ScrapbotTime, entity: ScrapbotEntity, light: ReadonlyScrapbotPointLight, orbit: ReadonlyShowcaseLightOrbit)
 	assert(light.range > 0)
 	assert(orbit.settings.x > 0)
 end)

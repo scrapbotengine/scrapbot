@@ -2,6 +2,7 @@ package render
 
 import platform "../platform"
 import resources "../resources"
+import shared "../shared"
 import ui "../ui"
 import "core:fmt"
 import "core:time"
@@ -567,7 +568,7 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 		{
 			binding = 0,
 			visibility = {.Fragment},
-			texture = {sampleType = .Float, viewDimension = ._2D},
+			texture = {sampleType = .Float, viewDimension = ._2DArray},
 		},
 		{binding = 1, visibility = {.Fragment}, sampler = {type = .Filtering}},
 	}
@@ -596,7 +597,7 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 			size = {
 				width = ui.FONT_ATLAS_SIZE,
 				height = ui.FONT_ATLAS_SIZE,
-				depthOrArrayLayers = 1,
+				depthOrArrayLayers = shared.MAX_PROJECT_FONTS + 1,
 			},
 			format = .RGBA8Unorm,
 			mipLevelCount = 1,
@@ -620,6 +621,16 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 	)
 	renderer.ui_font_view = wgpu.TextureCreateView(
 		renderer.ui_font_texture,
+		&wgpu.TextureViewDescriptor {
+			format = .RGBA8Unorm,
+			dimension = ._2DArray,
+			baseMipLevel = 0,
+			mipLevelCount = 1,
+			baseArrayLayer = 0,
+			arrayLayerCount = shared.MAX_PROJECT_FONTS + 1,
+			aspect = .All,
+			usage = {.TextureBinding},
+		},
 	); if renderer.ui_font_view == nil { return "failed to create UI font view" }
 	renderer.ui_font_sampler = wgpu.DeviceCreateSampler(
 		renderer.device,
@@ -656,6 +667,7 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 		{format = .Float32x4, offset = 48, shaderLocation = 5},
 		{format = .Float32x4, offset = 64, shaderLocation = 6},
 		{format = .Float32, offset = 80, shaderLocation = 7},
+		{format = .Float32, offset = 84, shaderLocation = 8},
 	}
 	buffer_layout := wgpu.VertexBufferLayout {
 		arrayStride = u64(size_of(WGPU_UI_Vertex)),

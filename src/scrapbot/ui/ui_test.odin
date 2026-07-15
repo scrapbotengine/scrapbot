@@ -1,6 +1,7 @@
 package ui
 
 import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import "core:math"
 import "core:strings"
@@ -50,6 +51,55 @@ test_embedded_mtsdf_font_has_expected_atlas_and_proportional_metrics :: proc(t: 
 	testing.expect(t, i.advance > 0)
 	testing.expect(t, w.advance > i.advance)
 	testing.expect(t, w.uv.z > w.uv.x && w.uv.w > w.uv.y)
+}
+
+@(test)
+test_checkbox_paints_sdf_mark_and_toggles_unless_read_only :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Checkbox"),
+			name = "Checkbox",
+			has_ui_layout = true,
+			ui_layout = {position = {20, 20}, size = {80, 32}},
+			has_ui_checkbox = true,
+			ui_checkbox = {
+				checked = true,
+				box_size = 20,
+				background = {0.02, 0.03, 0.04, 1},
+				checked_background = {0.08, 0.55, 0.46, 1},
+				border_color = {0.24, 0.27, 0.32, 1},
+				check_color = {1, 1, 1, 1},
+			},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 200, 120) == "")
+	found_checkmark := false
+	for command in state.paint[:state.paint_count] {
+		found_checkmark = found_checkmark || command.kind == .Checkmark
+	}
+	testing.expect(t, found_checkmark)
+	pointer := Pointer_Input {
+		position = {30, 30},
+		primary_down = true,
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &world, 200, 120, pointer) == "")
+	testing.expect(t, !world.ui_checkboxes[0].checked)
+	pointer.primary_down = false
+	testing.expect(t, reconcile(state, &world, 200, 120, pointer) == "")
+	world.ui_checkboxes[0].read_only = true
+	pointer.primary_down = true
+	testing.expect(t, reconcile(state, &world, 200, 120, pointer) == "")
+	testing.expect(t, !world.ui_checkboxes[0].checked)
 }
 
 @(test)
@@ -506,6 +556,7 @@ test_fill_stack_allocates_available_space_and_drags_between_adjacent_panes :: pr
 			) ==
 			"",
 		)
+		testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
 		point.x += 40
 		testing.expect(
 			t,
@@ -576,6 +627,7 @@ test_vertical_fill_stack_drags_and_fills_the_cross_axis :: proc(t: ^testing.T) {
 			) ==
 			"",
 		)
+		testing.expect(t, current_pointer_cursor(state) == .Vertical_Resize)
 		point.y += 30
 		testing.expect(
 			t,
@@ -625,10 +677,60 @@ test_ui_text_right_alignment_uses_the_padded_content_edge :: proc(t: ^testing.T)
 	}
 	testing.expect(t, first_glyph >= 0)
 	if first_glyph >= 0 {
-		glyph := state.font.glyphs[int('1') - FONT_FIRST_CHAR]
+		glyph := state.font.glyphs^[int('1') - FONT_FIRST_CHAR]
 		expected_ink_x := expected_start + glyph.plane.x * 12
 		testing.expect(t, math.abs(state.paint[first_glyph].rect.x - expected_ink_x) < 0.001)
 	}
+}
+
+@(test)
+test_ui_text_selects_a_project_font_atlas_layer :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	pixels := make([]u8, FONT_ATLAS_SIZE * FONT_ATLAS_SIZE * 4)
+	defer delete(pixels)
+	desc := resources.Font_Desc {
+		pixels = pixels,
+		width = FONT_ATLAS_SIZE,
+		height = FONT_ATLAS_SIZE,
+		ascender = 0.8,
+	}
+	desc.glyphs[int('A') - FONT_FIRST_CHAR] = {
+		advance = 0.75,
+		plane = {0, -0.8, 0.7, 0.2},
+		uv = {0, 0, 0.1, 0.1},
+	}
+	_, font_err := resources.register_font(&registry, "display", desc)
+	testing.expect(t, font_err == "")
+
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Title",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 20}, size = {100, 30}},
+			has_ui_text = true,
+			ui_text = {text = "A", font = "display", color = {1, 1, 1, 1}, size = 10},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 120, 60, {}, 0, 0, 1.0 / 60.0, {}, &registry) == "")
+
+	glyph_found := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind != .Glyph { continue }
+		glyph_found = true
+		testing.expect(t, command.font_layer == 1)
+		break
+	}
+	testing.expect(t, glyph_found)
 }
 
 @(test)
@@ -1013,15 +1115,79 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 		state.paint[state.editor_paint_start].rect == Rect{0, 0, 2560, EDITOR_TOP_BAR_HEIGHT * 2},
 	)
 
-	// Secondary tool hints collapse through ordinary hidden-subtree layout on narrow windows.
+	// The chrome is composed from the same ECS stack components as project UI.
 	state.editor_pixel_density = 1
 	testing.expect(t, reconcile(state, &world, 760, 720, {}, 760, 720) == "")
-	for entity in world.entities {
-		if entity.name != "__scrapbot_editor_tool_hint" &&
-		   entity.name != "__scrapbot_editor_status_hint" { continue }
-		testing.expect(t, world.ui_layouts[entity.ui_layout_index].hidden)
-		testing.expect(t, find_node_by_entity_index(state, int(entity.id.index)) < 0)
+	top_index, status_index := -1, -1
+	for entity, entity_index in world.entities {
+		switch entity.name {
+			case EDITOR_UI_TOP_NAME:
+				top_index = entity_index
+			case EDITOR_UI_STATUS_NAME:
+				status_index = entity_index
+			case "__scrapbot_editor_signal_rail",
+			     "__scrapbot_editor_subtitle",
+			     "__scrapbot_editor_tool_hint",
+			     "__scrapbot_editor_status_hint":
+				testing.expect(t, false)
+		}
 	}
+	testing.expect(t, top_index >= 0 && world.entities[top_index].ui_hstack_index >= 0)
+	testing.expect(t, status_index >= 0 && world.entities[status_index].ui_hstack_index >= 0)
+}
+
+@(test)
+test_editor_transport_buttons_play_pause_and_step_simulation :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	play := find_editor_role_node(state, .Transport_Play)
+	pause := find_editor_role_node(state, .Transport_Stop)
+	step := find_editor_role_node(state, .Transport_Step)
+	status := find_editor_role_node(state, .Status)
+	testing.expect(t, play >= 0 && pause >= 0 && step >= 0 && status >= 0)
+	if play < 0 || pause < 0 || step < 0 || status < 0 { return }
+	pause_entity := world.entities[int(state.nodes[pause].entity.index)]
+	testing.expect(t, world.ui_buttons[pause_entity.ui_button_index].text == "PAUSE")
+	status_entity := world.entities[int(state.nodes[status].entity.index)]
+	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
+
+	press := proc(state: ^State, world: ^shared.World, node_index: int) {
+		rect := state.nodes[node_index].rect
+		point := shared.Vec2{rect.x + rect.width * 0.5, rect.y + rect.height * 0.5}
+		_ = reconcile(
+			state,
+			world,
+			1280,
+			720,
+			{position = point, primary_down = true, available = true},
+		)
+		_ = reconcile(state, world, 1280, 720, {position = point, available = true})
+	}
+
+	testing.expect(t, state.editor_simulation_playing)
+	press(state, &world, pause)
+	testing.expect(t, !state.editor_simulation_playing)
+	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "PAUSED")
+	delta, run := consume_simulation_delta(state, 0.2)
+	testing.expect(t, !run && delta == 0)
+
+	press(state, &world, step)
+	delta, run = consume_simulation_delta(state, 0.2)
+	testing.expect(t, run && delta == f32(1.0 / 60.0))
+	_, run = consume_simulation_delta(state, 0.2)
+	testing.expect(t, !run)
+
+	press(state, &world, play)
+	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
+	delta, run = consume_simulation_delta(state, 0.2)
+	testing.expect(t, run && delta == 0.2)
 }
 
 @(test)
@@ -1033,6 +1199,7 @@ test_editor_sidebar_separators_resize_panes_and_preserve_the_center_fill :: proc
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state); state.editor_visible = true
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, current_pointer_cursor(state) == .Default)
 	viewport := editor_viewport(state, 1280, 720)
 	initial := viewport
 	editor_handles := [2]int{-1, -1}
@@ -1052,6 +1219,7 @@ test_editor_sidebar_separators_resize_panes_and_preserve_the_center_fill :: proc
 		) ==
 		"",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
 	point.x += 80
 	testing.expect(
 		t,
@@ -1064,6 +1232,7 @@ test_editor_sidebar_separators_resize_panes_and_preserve_the_center_fill :: proc
 		) ==
 		"",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
 	viewport = editor_viewport(state, 1280, 720)
 	testing.expect(t, math.abs(viewport.x - initial.x - 80) < 0.1)
 	testing.expect(t, math.abs(viewport.width - initial.width + 80) < 0.1)
@@ -1084,6 +1253,7 @@ test_editor_sidebar_separators_resize_panes_and_preserve_the_center_fill :: proc
 		) ==
 		"",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
 	point.x -= 60
 	testing.expect(
 		t,
@@ -1099,6 +1269,11 @@ test_editor_sidebar_separators_resize_panes_and_preserve_the_center_fill :: proc
 	final_viewport := editor_viewport(state, 1280, 720)
 	testing.expect(t, math.abs(final_viewport.x - viewport.x) < 0.1)
 	testing.expect(t, math.abs(final_viewport.width - viewport.width + 60) < 0.1)
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {position = {500, 500}, available = true}) == "",
+	)
+	testing.expect(t, current_pointer_cursor(state) == .Default)
 }
 
 @(test)
@@ -1145,6 +1320,7 @@ test_editor_systems_separator_resizes_profiler_and_scene_panes :: proc(t: ^testi
 		) ==
 		"",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Vertical_Resize)
 	point.y += 60
 	testing.expect(
 		t,
@@ -1157,8 +1333,64 @@ test_editor_systems_separator_resizes_profiler_and_scene_panes :: proc(t: ^testi
 		) ==
 		"",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Vertical_Resize)
 	testing.expect(t, state.nodes[systems].rect.height > initial_system_height + 59)
 	testing.expect(t, state.nodes[browser].rect.height < initial_browser_height - 40)
+}
+
+@(test)
+test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(&scene.entities, shared.Scene_Entity{name = "Entity"})
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+
+	systems := find_editor_role_node(state, .Systems_Scroll)
+	scene_panel := find_editor_name_node(state, &world, EDITOR_UI_SCENE_NAME)
+	inspector := find_editor_name_node(state, &world, EDITOR_UI_INSPECTOR_HEADER_NAME)
+	sections := [3]int{systems, scene_panel, inspector}
+	expected_titles := [3]string{"SYSTEMS / 0", "SCENE", "INSPECTOR"}
+	for node_index, section_index in sections {
+		testing.expect(t, node_index >= 0)
+		if node_index < 0 { continue }
+		node := state.nodes[node_index]
+		testing.expect(t, node.panel_index >= 0)
+		if node.panel_index < 0 { continue }
+		panel := world.ui_panels[node.panel_index]
+		layout := world.ui_layouts[node.layout_index]
+		testing.expect(t, panel.title == expected_titles[section_index])
+		testing.expect(t, panel.collapsible)
+		testing.expect(t, panel.title_height == EDITOR_SECTION_TITLE_HEIGHT)
+		testing.expect(t, panel.title_color == EDITOR_SECTION_TITLE_COLOR)
+		testing.expect(t, panel.title_background == EDITOR_SECTION_TITLE_BACKGROUND)
+		testing.expect(t, layout.background == EDITOR_SECTION_BACKGROUND)
+		testing.expect(t, layout.border_color == EDITOR_SECTION_BORDER)
+		testing.expect(t, layout.corner_radius == EDITOR_SECTION_RADIUS)
+	}
+
+	if scene_panel >= 0 {
+		node := state.nodes[scene_panel]
+		point := shared.Vec2{node.rect.x + 18, node.rect.y + EDITOR_SECTION_TITLE_HEIGHT * 0.5}
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{position = point, primary_down = true, available = true},
+			) ==
+			"",
+		)
+		testing.expect(t, world.ui_panels[node.panel_index].collapsed)
+	}
 }
 
 @(test)
@@ -1535,6 +1767,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			transform = {position = {1, 2.5, -3}, rotation = {0.1, 0.2, 0.3}, scale = {1, 1, 1}},
 			has_camera = true,
 			camera = {fov = 60, near = 0.1, far = 500},
+			has_shadow_caster = true,
 			has_ui_layout = true,
 			ui_layout = {
 				parent = ui_test_id("Root"),
@@ -1564,10 +1797,24 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, content_found && inspector_node >= 0)
 	if content_found {
 		testing.expect(t, world.entities[content_entity].ui_text_index < 0)
+		testing.expect(t, world.entities[content_entity].name == EDITOR_UI_RIGHT_CONTENT_NAME)
+		testing.expect(t, world.entities[content_entity].ui_vstack_index >= 0)
 	}
-	panel_count, table_count, cell_count, input_count := 0, 0, 0, 0
+	header_node := find_editor_name_node(state, &world, EDITOR_UI_INSPECTOR_HEADER_NAME)
+	first_panel_node := find_editor_role_node(state, .Inspector_Panel)
+	testing.expect(t, header_node >= 0 && first_panel_node >= 0)
+	if content_found && header_node >= 0 && first_panel_node >= 0 {
+		header := state.nodes[header_node]
+		panel := state.nodes[first_panel_node]
+		testing.expect(t, header.parent_entity_index == content_entity)
+		testing.expect(t, panel.parent_entity_index == content_entity)
+		testing.expect(t, math.abs(header.rect.x - panel.rect.x) < 0.01)
+		testing.expect(t, math.abs(header.rect.width - panel.rect.width) < 0.01)
+	}
+	panel_count, table_count, cell_count, input_count, checkbox_count := 0, 0, 0, 0, 0
 	found_transform, found_button := false, false
 	found_position := false
+	found_read_only_checkbox, found_bound_checkbox := false, false
 	position_inputs := [3]int{-1, -1, -1}
 	fov_input := -1
 	button_input := -1
@@ -1621,12 +1868,23 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 						position_inputs[axis_index] = component.entity_index
 					}
 				}
+			case .Inspector_Checkbox:
+				checkbox_count += 1
+				testing.expect(t, entity.ui_checkbox_index >= 0)
+				checkbox := world.ui_checkboxes[entity.ui_checkbox_index]
+				if component.inspector_field == .None {
+					found_read_only_checkbox = checkbox.read_only && checkbox.checked
+				} else if component.inspector_field == .UI_Layout_Hidden {
+					found_bound_checkbox = !checkbox.read_only && !checkbox.checked
+				}
 		}
 	}
-	testing.expect(t, panel_count == 4)
+	testing.expect(t, panel_count == 5)
 	testing.expect(t, table_count == panel_count)
 	testing.expect(t, cell_count > 20)
 	testing.expect(t, input_count > cell_count / 2)
+	testing.expect(t, checkbox_count == 2)
+	testing.expect(t, found_read_only_checkbox && found_bound_checkbox)
 	testing.expect(t, found_transform && found_button)
 	testing.expect(t, found_position)
 	for input in position_inputs { testing.expect(t, input >= 0) }
@@ -2102,7 +2360,7 @@ test_editor_system_profile_uses_panel_table_and_scroll_components :: proc(t: ^te
 	world := ecs.build_world(&scene)
 	defer ecs.destroy_world(&world)
 	profile: shared.System_Profile
-	profile.entry_count = 2
+	profile.entry_count = 3
 	profile.sample_frames = 10
 	profile.revision = 1
 	profile.entries[0].kind = .Native
@@ -2114,6 +2372,13 @@ test_editor_system_profile_uses_panel_table_and_scroll_components :: proc(t: ^te
 	}
 	profile.entries[1].kind = .Luau
 	profile.entries[1].average_nanoseconds = 2_500
+	luau_name := "Orbit Lights"
+	profile.entries[1].name_length = len(luau_name)
+	for index in 0 ..< len(luau_name) {
+		profile.entries[1].name[index] = luau_name[index]
+	}
+	profile.entries[2].kind = .Luau
+	profile.entries[2].average_nanoseconds = 4_000
 	state := new(State)
 	defer free(state)
 	testing.expect(t, init(state) == "")
@@ -2129,13 +2394,15 @@ test_editor_system_profile_uses_panel_table_and_scroll_components :: proc(t: ^te
 		testing.expect(t, entity.ui_panel_index >= 0)
 		testing.expect(t, entity.ui_table_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
-		testing.expect(t, world.ui_panels[entity.ui_panel_index].title == "SYSTEMS / 2")
+		testing.expect(t, world.ui_panels[entity.ui_panel_index].title == "SYSTEMS / 3")
 		testing.expect(t, world.ui_tables[entity.ui_table_index].columns == 2)
 	}
 	name_cell, name_found := editor_ui_entity(&world, .Systems_Name, 0)
 	time_cell, time_found := editor_ui_entity(&world, .Systems_Time, 0)
 	luau_cell, luau_found := editor_ui_entity(&world, .Systems_Name, 1)
-	testing.expect(t, name_found && time_found && luau_found)
+	luau_time_cell, luau_time_found := editor_ui_entity(&world, .Systems_Time, 1)
+	fallback_cell, fallback_found := editor_ui_entity(&world, .Systems_Name, 2)
+	testing.expect(t, name_found && time_found && luau_found && luau_time_found && fallback_found)
 	if name_found {
 		text := world.ui_texts[world.entities[name_cell].ui_text_index]
 		testing.expect(t, text.text == "Physics")
@@ -2143,13 +2410,21 @@ test_editor_system_profile_uses_panel_table_and_scroll_components :: proc(t: ^te
 	}
 	if time_found {
 		text := world.ui_texts[world.entities[time_cell].ui_text_index]
-		testing.expect(t, text.text == "1.50 ms")
+		testing.expect(t, text.text == "1.500 ms")
 		testing.expect(t, text.size == EDITOR_TEXT_SIZE)
 		testing.expect(t, text.alignment == .Right)
 	}
 	if luau_found {
 		text := world.ui_texts[world.entities[luau_cell].ui_text_index]
-		testing.expect(t, text.text == "Luau System 1")
+		testing.expect(t, text.text == luau_name)
+	}
+	if luau_time_found {
+		text := world.ui_texts[world.entities[luau_time_cell].ui_text_index]
+		testing.expect(t, text.text == "0.003 ms")
+	}
+	if fallback_found {
+		text := world.ui_texts[world.entities[fallback_cell].ui_text_index]
+		testing.expect(t, text.text == "Luau System 2")
 	}
 
 	refresh_count := state.editor_snapshot_refresh_count
@@ -2159,7 +2434,7 @@ test_editor_system_profile_uses_panel_table_and_scroll_components :: proc(t: ^te
 	testing.expect(t, state.editor_snapshot_refresh_count == refresh_count + 1)
 	if time_found {
 		text := world.ui_texts[world.entities[time_cell].ui_text_index]
-		testing.expect(t, text.text == "750.0 us")
+		testing.expect(t, text.text == "0.750 ms")
 	}
 }
 

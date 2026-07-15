@@ -11,6 +11,11 @@ test_system_profile_publishes_ten_frame_averages :: proc(t: ^testing.T) {
 	native_extensions.systems[0].name = "Physics"
 	script_runtime: script.Runtime
 	script_runtime.system_count = 1
+	script_name := "Orbit Lights"
+	script_runtime.systems[0].name_length = len(script_name)
+	for index in 0 ..< len(script_name) {
+		script_runtime.systems[0].name[index] = script_name[index]
+	}
 	profile: System_Profile_Accumulator
 
 	system_profile_prepare(&profile, &native_extensions, &script_runtime)
@@ -19,6 +24,12 @@ test_system_profile_publishes_ten_frame_averages :: proc(t: ^testing.T) {
 	testing.expect(t, profile.snapshot.entries[0].kind == .Native)
 	testing.expect(t, profile.snapshot.entries[0].name_length == len("Physics"))
 	testing.expect(t, profile.snapshot.entries[1].kind == .Luau)
+	testing.expect(t, profile.snapshot.entries[1].name_length == len(script_name))
+	testing.expect(
+		t,
+		string(profile.snapshot.entries[1].name[:profile.snapshot.entries[1].name_length]) ==
+		script_name,
+	)
 	testing.expect(t, profile.snapshot.sample_frames == 0)
 
 	durations := [2]i64{1_000, 3_000}

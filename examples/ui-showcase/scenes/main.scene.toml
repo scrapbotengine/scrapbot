@@ -83,7 +83,7 @@ size = [212, 48]
 padding = [13, 16, 10, 16]
 
 [entities.ui_text]
-text = "18 UI ENTITIES"
+text = "25 UI ENTITIES"
 color = [1, 0.82, 0.28, 1]
 size = 18
 
@@ -136,6 +136,19 @@ size = 16
 hover_background = [0.22, 0.27, 0.42, 1]
 active_background = [0.10, 0.13, 0.22, 1]
 active_color = [0.68, 0.72, 0.84, 1]
+
+[[entities]]
+id = "30000000-0000-4000-8000-000000000019"
+name = "Enabled Checkbox"
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-000000000007"
+size = [52, 52]
+padding = [0, 0, 0, 14]
+
+[entities.ui_checkbox]
+checked = true
+box_size = 22
 
 [[entities]]
 id = "30000000-0000-4000-8000-00000000000a"

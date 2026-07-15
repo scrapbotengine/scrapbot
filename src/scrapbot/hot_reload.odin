@@ -113,7 +113,8 @@ init_hot_reload_state :: proc(
 	state.assets_stamp = asset_stamp(state.assets_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
-	if err := init_render_resources(&state.resources, world); err != "" { return err }
+	if err := init_render_resources(&state.resources, world, root, &loaded.config);
+	   err != "" { return err }
 	return load_script_runtime(state, world)
 }
 
@@ -213,6 +214,12 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	if err := build_native_extensions(state.root, &loaded.config); err != "" {
 		return err
 	}
+	if err := project.prepare_project_fonts(state.root, &loaded.config); err != "" { return err }
+	if err := resources.register_project_fonts(
+		&state.resources,
+		state.root,
+		loaded.config.fonts[:],
+	); err != "" { return err }
 
 	next_world := ecs.build_world(&loaded.scene)
 	script_load := load_script_from_path(

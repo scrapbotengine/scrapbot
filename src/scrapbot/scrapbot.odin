@@ -81,6 +81,7 @@ build_project :: proc(root: string) -> string {
 	if loaded.err != "" {
 		return loaded.err
 	}
+	if err := project.prepare_project_fonts(root, &loaded.config); err != "" { return err }
 
 	return build_native_extensions(root, &loaded.config)
 }
@@ -91,6 +92,7 @@ check_project :: proc(root: string) -> string {
 	if loaded.err != "" {
 		return loaded.err
 	}
+	if err := project.prepare_project_fonts(root, &loaded.config); err != "" { return err }
 	if err := build_native_extensions(root, &loaded.config); err != "" {
 		return err
 	}
@@ -102,7 +104,8 @@ check_project :: proc(root: string) -> string {
 	component.init_registry(&registry)
 	render_resources: resources.Registry
 	defer resources.destroy_registry(&render_resources)
-	if err := init_render_resources(&render_resources, &world); err != "" { return err }
+	if err := init_render_resources(&render_resources, &world, root, &loaded.config);
+	   err != "" { return err }
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
 	if extension_load := native.load_project_extensions(
@@ -352,6 +355,10 @@ run_project_internal_untracked :: proc(
 		result.err = loaded.err
 		return result
 	}
+	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
+		result.err = err
+		return result
+	}
 	if !extensions_prebuilt {
 		if err := build_native_extensions(root, &loaded.config); err != "" {
 			result.err = err
@@ -395,7 +402,7 @@ run_project_internal_untracked :: proc(
 	defer native.destroy_extension_set(&frame_runtime.native_extensions)
 	defer schedule.destroy_executor(&frame_runtime.executor)
 	defer resources.destroy_registry(&frame_runtime.resources)
-	if err := init_render_resources(&frame_runtime.resources, &world);
+	if err := init_render_resources(&frame_runtime.resources, &world, root, &loaded.config);
 	   err != "" { result.err = err; return result }
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
@@ -440,7 +447,12 @@ run_project_internal_untracked :: proc(
 	return result
 }
 
-init_render_resources :: proc(registry: ^resources.Registry, world: ^shared.World) -> string {
+init_render_resources :: proc(
+	registry: ^resources.Registry,
+	world: ^shared.World,
+	root: string = "",
+	config: ^shared.Project_Config = nil,
+) -> string {
 	cube_desc, cube_err := resources.cube(2)
 	if cube_err != "" { return cube_err }
 	defer delete(cube_desc.vertices); defer delete(cube_desc.indices)
@@ -452,6 +464,12 @@ init_render_resources :: proc(registry: ^resources.Registry, world: ^shared.Worl
 		{base_color = {0.3, 0.7, 0.95, 1}},
 	)
 	if material_err != "" { return material_err }
+	if config != nil && len(config.fonts) > 0 {
+		if font_err := resources.register_project_fonts(registry, root, config.fonts[:]);
+		   font_err != "" {
+			return font_err
+		}
+	}
 	for entity, index in world.entities {
 		if entity.mesh_index >= 0 {
 			ecs.add_geometry(world, index, cube_handle)
@@ -550,7 +568,13 @@ system_profile_prepare :: proc(
 	if !topology_changed {
 		for index in 0 ..< script_runtime.system_count {
 			profile_index := native_extensions.system_count + index
-			if !system_profile_entry_matches(&profile.snapshot.entries[profile_index], .Luau, "") {
+			system := &script_runtime.systems[index]
+			name := string(system.name[:system.name_length])
+			if !system_profile_entry_matches(
+				&profile.snapshot.entries[profile_index],
+				.Luau,
+				name,
+			) {
 				topology_changed = true
 				break
 			}
@@ -572,7 +596,9 @@ system_profile_prepare :: proc(
 	}
 	for index in 0 ..< script_runtime.system_count {
 		profile_index := native_extensions.system_count + index
-		system_profile_set_entry(&profile.snapshot.entries[profile_index], .Luau, "")
+		system := &script_runtime.systems[index]
+		name := string(system.name[:system.name_length])
+		system_profile_set_entry(&profile.snapshot.entries[profile_index], .Luau, name)
 	}
 }
 

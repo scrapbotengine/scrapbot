@@ -15,6 +15,9 @@ runtime_editor_gizmo_mode_requested: bool
 runtime_editor_gizmo_mode: shared.Editor_Gizmo_Mode
 runtime_wheel_y: f32
 runtime_scene_camera_look_active: bool
+runtime_pointer_cursor: Runtime_Pointer_Cursor
+runtime_horizontal_resize_cursor: ^sdl.Cursor
+runtime_vertical_resize_cursor: ^sdl.Cursor
 runtime_text_bytes: [512]u8
 runtime_text_length: int
 runtime_text_navigation: Runtime_Text_Input
@@ -38,6 +41,12 @@ Runtime_Text_Input :: struct {
 	left, right, up, down, home, end: bool,
 	backspace, delete_forward: bool,
 	tab, shift, fine, enter, escape, select_all, undo, redo: bool,
+}
+
+Runtime_Pointer_Cursor :: enum {
+	Default,
+	Horizontal_Resize,
+	Vertical_Resize,
 }
 
 Live_Resize_Redraw_Proc :: #type proc "c" (userdata: rawptr)
@@ -156,6 +165,7 @@ open_runtime_window_with_visibility :: proc(
 
 	runtime_window_ready = true
 	runtime_window_hidden = hidden
+	runtime_pointer_cursor = .Default
 	_ = sdl.StartTextInput(runtime_window)
 	return ""
 }
@@ -165,6 +175,17 @@ close_runtime_window :: proc() {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 	}
 	if runtime_window != nil {
+		if runtime_pointer_cursor != .Default {
+			_ = sdl.SetCursor(sdl.GetDefaultCursor())
+		}
+		if runtime_horizontal_resize_cursor != nil {
+			sdl.DestroyCursor(runtime_horizontal_resize_cursor)
+			runtime_horizontal_resize_cursor = nil
+		}
+		if runtime_vertical_resize_cursor != nil {
+			sdl.DestroyCursor(runtime_vertical_resize_cursor)
+			runtime_vertical_resize_cursor = nil
+		}
 		_ = sdl.StopTextInput(runtime_window)
 		sdl.DestroyWindow(runtime_window)
 		runtime_window = nil
@@ -177,8 +198,49 @@ close_runtime_window :: proc() {
 	runtime_editor_toggle_requested = false
 	runtime_editor_gizmo_mode_requested = false
 	runtime_scene_camera_look_active = false
+	runtime_pointer_cursor = .Default
 	runtime_text_length = 0
 	runtime_text_navigation = {}
+}
+
+runtime_pointer_system_cursor :: proc(cursor: Runtime_Pointer_Cursor) -> sdl.SystemCursor {
+	switch cursor {
+		case .Default:
+			return .DEFAULT
+		case .Horizontal_Resize:
+			return .EW_RESIZE
+		case .Vertical_Resize:
+			return .NS_RESIZE
+	}
+	return .DEFAULT
+}
+
+set_runtime_pointer_cursor :: proc(cursor: Runtime_Pointer_Cursor) {
+	if runtime_window == nil ||
+	   runtime_window_hidden ||
+	   cursor == runtime_pointer_cursor { return }
+	system_cursor: ^sdl.Cursor
+	switch cursor {
+		case .Default:
+			system_cursor = sdl.GetDefaultCursor()
+		case .Horizontal_Resize:
+			if runtime_horizontal_resize_cursor == nil {
+				runtime_horizontal_resize_cursor = sdl.CreateSystemCursor(
+					runtime_pointer_system_cursor(cursor),
+				)
+			}
+			system_cursor = runtime_horizontal_resize_cursor
+		case .Vertical_Resize:
+			if runtime_vertical_resize_cursor == nil {
+				runtime_vertical_resize_cursor = sdl.CreateSystemCursor(
+					runtime_pointer_system_cursor(cursor),
+				)
+			}
+			system_cursor = runtime_vertical_resize_cursor
+	}
+	if system_cursor != nil && sdl.SetCursor(system_cursor) {
+		runtime_pointer_cursor = cursor
+	}
 }
 
 runtime_pointer_state :: proc() -> Pointer_State {

@@ -8,6 +8,7 @@ import "core:strings"
 
 EDITOR_UI_ROOT_NAME :: "__scrapbot_editor_root"
 EDITOR_UI_TOP_NAME :: "__scrapbot_editor_top"
+EDITOR_UI_TRANSPORT_NAME :: "__scrapbot_editor_transport"
 EDITOR_UI_WORKSPACE_NAME :: "__scrapbot_editor_workspace"
 EDITOR_UI_LEFT_NAME :: "__scrapbot_editor_left"
 EDITOR_UI_LEFT_CONTENT_NAME :: "__scrapbot_editor_left_content"
@@ -19,12 +20,16 @@ EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
 EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
 EDITOR_UI_INSPECTOR_HEADER_NAME :: "__scrapbot_editor_inspector_header"
-EDITOR_UI_INSPECTOR_NAME :: "__scrapbot_editor_inspector"
-EDITOR_UI_INSPECTOR_CONTENT_NAME :: "__scrapbot_editor_inspector_content"
 EDITOR_UI_STATUS_NAME :: "__scrapbot_editor_status"
 EDITOR_SIDEBAR_PADDING :: f32(10)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(618)
+EDITOR_SECTION_TITLE_HEIGHT :: f32(30)
+EDITOR_SECTION_BACKGROUND :: shared.Vec4{0.019, 0.024, 0.032, 1}
+EDITOR_SECTION_TITLE_BACKGROUND :: shared.Vec4{0.027, 0.035, 0.046, 1}
+EDITOR_SECTION_BORDER :: shared.Vec4{0.055, 0.067, 0.088, 1}
+EDITOR_SECTION_TITLE_COLOR :: shared.Vec4{0.86, 0.88, 0.92, 1}
+EDITOR_SECTION_RADIUS :: f32(5)
 
 editor_ui_clone_string :: proc(value: string) -> string {
 	if value == "" { return "" }
@@ -98,6 +103,10 @@ editor_ui_create_box :: proc(
 			material_index = -1,
 			render_instance_index = -1,
 			render_active_index = -1,
+			render_camera_active_index = -1,
+			render_ambient_light_active_index = -1,
+			render_directional_light_active_index = -1,
+			render_point_light_active_index = -1,
 			ui_layout_index = layout_index,
 			ui_hstack_index = -1,
 			ui_vstack_index = -1,
@@ -107,6 +116,7 @@ editor_ui_create_box :: proc(
 			ui_text_index = -1,
 			ui_button_index = -1,
 			ui_input_index = -1,
+			ui_checkbox_index = -1,
 			editor_transform_gizmo_index = -1,
 			editor_ui_index = role_index,
 		},
@@ -149,6 +159,33 @@ editor_ui_add_button :: proc(world: ^shared.World, entity_index: int) {
 	)
 }
 
+editor_ui_create_transport_button :: proc(
+	world: ^shared.World,
+	name, parent, label: string,
+	role: shared.Editor_UI_Role,
+) -> int {
+	button := editor_ui_create_box(
+		world,
+		name,
+		parent,
+		role,
+		{
+			size = {58, 30},
+			background = {0.017, 0.022, 0.030, 1},
+			border_color = {0.055, 0.067, 0.088, 1},
+			border_width = 1,
+			corner_radius = 4,
+		},
+	)
+	editor_ui_add_button(world, button)
+	value := &world.ui_buttons[world.entities[button].ui_button_index]
+	delete(value.text)
+	value.text = editor_ui_clone_string(label)
+	value.color = {0.64, 0.67, 0.73, 1}
+	value.size = EDITOR_TEXT_SIZE
+	return button
+}
+
 editor_ui_add_input :: proc(
 	world: ^shared.World,
 	entity_index: int,
@@ -158,6 +195,15 @@ editor_ui_add_input :: proc(
 	input.text = editor_ui_clone_string(value.text)
 	world.entities[entity_index].ui_input_index = len(world.ui_inputs)
 	append(&world.ui_inputs, input)
+}
+
+editor_ui_add_checkbox :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	value: shared.UI_Checkbox_Component,
+) {
+	world.entities[entity_index].ui_checkbox_index = len(world.ui_checkboxes)
+	append(&world.ui_checkboxes, value)
 }
 
 editor_ui_add_hstack :: proc(
@@ -198,6 +244,32 @@ editor_ui_add_panel :: proc(
 	panel.title = editor_ui_clone_string(value.title)
 	world.entities[entity_index].ui_panel_index = len(world.ui_panels)
 	append(&world.ui_panels, panel)
+}
+
+editor_ui_section_layout :: proc(size: shared.Vec2) -> shared.UI_Layout_Component {
+	return {
+		size = size,
+		padding = {10, 12, 12, 12},
+		background = EDITOR_SECTION_BACKGROUND,
+		border_color = EDITOR_SECTION_BORDER,
+		border_width = 1,
+		corner_radius = EDITOR_SECTION_RADIUS,
+	}
+}
+
+editor_ui_add_section_panel :: proc(world: ^shared.World, entity_index: int, title: string) {
+	editor_ui_add_panel(
+		world,
+		entity_index,
+		{
+			title = title,
+			title_color = EDITOR_SECTION_TITLE_COLOR,
+			title_background = EDITOR_SECTION_TITLE_BACKGROUND,
+			title_size = EDITOR_TEXT_SIZE,
+			title_height = EDITOR_SECTION_TITLE_HEIGHT,
+			collapsible = true,
+		},
+	)
 }
 
 editor_ui_add_table :: proc(
@@ -265,11 +337,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	if _, found := editor_ui_entity(world, .Root); found { return }
 	text := shared.Vec4{0.82, 0.85, 0.90, 1}
 	muted := shared.Vec4{0.42, 0.45, 0.51, 1}
-	quiet := shared.Vec4{0.28, 0.31, 0.36, 1}
 	mint := shared.Vec4{0.06, 0.72, 0.63, 1}
 	void := shared.Vec4{0.004, 0.005, 0.007, 1}
 	panel := shared.Vec4{0.009, 0.012, 0.016, 1}
-	raised := shared.Vec4{0.017, 0.022, 0.030, 1}
 	rule := shared.Vec4{0.055, 0.067, 0.088, 1}
 	top := editor_ui_create_box(
 		world,
@@ -278,58 +348,50 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.None,
 		{
 			size = {1280, EDITOR_TOP_BAR_HEIGHT},
+			padding = {11, 14, 11, 14},
 			background = void,
 			border_color = rule,
 			border_width = 1,
 		},
 	)
-	_ = editor_ui_create_box(
-		world,
-		"__scrapbot_editor_signal_rail",
-		EDITOR_UI_TOP_NAME,
-		.None,
-		{position = {14, 13}, size = {3, 26}, background = mint, corner_radius = 1.5},
-	)
+	editor_ui_add_hstack(world, top, {gap = 16})
 	brand := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_brand",
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{position = {23, 10}, size = {110, 30}},
+		{size = {340, 30}},
 	)
 	editor_ui_add_text(world, brand, "SCRAPBOT", text, EDITOR_TEXT_SIZE)
-	subtitle := editor_ui_create_box(
+	transport := editor_ui_create_box(
 		world,
-		"__scrapbot_editor_subtitle",
+		EDITOR_UI_TRANSPORT_NAME,
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{position = {132, 14}, size = {240, 24}},
+		{size = {182, 30}},
 	)
-	editor_ui_add_text(world, subtitle, "EDITOR  /  LIVE PROJECT", muted, EDITOR_TEXT_SIZE)
-	tool_hint := editor_ui_create_box(
+	editor_ui_add_hstack(world, transport, {gap = 4})
+	_ = editor_ui_create_transport_button(
 		world,
-		"__scrapbot_editor_tool_hint",
-		EDITOR_UI_TOP_NAME,
-		.None,
-		{
-			position = {480, 11},
-			size = {320, 30},
-			padding = {8, 14, 6, 14},
-			background = raised,
-			border_color = rule,
-			border_width = 1,
-			corner_radius = 4,
-		},
+		"__scrapbot_editor_play",
+		EDITOR_UI_TRANSPORT_NAME,
+		"PLAY",
+		.Transport_Play,
 	)
-	editor_ui_add_text(
+	_ = editor_ui_create_transport_button(
 		world,
-		tool_hint,
-		"W  MOVE     E  ROTATE     R  SCALE",
-		muted,
-		EDITOR_TEXT_SIZE,
+		"__scrapbot_editor_stop",
+		EDITOR_UI_TRANSPORT_NAME,
+		"PAUSE",
+		.Transport_Stop,
 	)
-	_ = top
-
+	_ = editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_step",
+		EDITOR_UI_TRANSPORT_NAME,
+		"STEP",
+		.Transport_Step,
+	)
 	workspace := editor_ui_create_box(
 		world,
 		EDITOR_UI_WORKSPACE_NAME,
@@ -383,25 +445,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_SYSTEMS_NAME,
 		EDITOR_UI_LEFT_CONTENT_NAME,
 		.Systems_Scroll,
-		{
-			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 178},
-			padding = {8, 10, 9, 10},
-			background = panel,
-			border_color = rule,
-			border_width = 1,
-		},
+		editor_ui_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 178}),
 	)
-	editor_ui_add_panel(
-		world,
-		systems,
-		{
-			title = "SYSTEMS / 0",
-			title_color = text,
-			title_background = raised,
-			title_size = EDITOR_TEXT_SIZE,
-			title_height = 34,
-		},
-	)
+	editor_ui_add_section_panel(world, systems, "SYSTEMS / 0")
 	editor_ui_add_table(world, systems, {columns = 2, column_gap = 8, row_gap = 2})
 	editor_ui_add_scroll(world, systems)
 	scene := editor_ui_create_box(
@@ -409,29 +455,23 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_SCENE_NAME,
 		EDITOR_UI_LEFT_CONTENT_NAME,
 		.None,
-		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 434}, background = panel},
+		editor_ui_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 434}),
 	)
-	editor_ui_add_vstack(world, scene, {fill = true, min_size = 72})
+	editor_ui_add_section_panel(world, scene, "SCENE")
+	editor_ui_add_vstack(world, scene, {fill = true, min_size = 32})
 	left_header := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_left_header",
 		EDITOR_UI_SCENE_NAME,
 		.None,
-		{
-			size = {EDITOR_LEFT_SIDEBAR_WIDTH, 72},
-			padding = {17, 18, 9, 18},
-			background = raised,
-			border_color = rule,
-			border_width = 1,
-		},
+		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 42}},
 	)
-	editor_ui_add_text(world, left_header, "SCENE", text, EDITOR_TEXT_SIZE)
 	counts := editor_ui_create_box(
 		world,
 		EDITOR_UI_BROWSER_HEADER_NAME,
 		"__scrapbot_editor_left_header",
 		.Browser_Header,
-		{position = {0, 31}, size = {2000, 18}},
+		{position = {6, 10}, size = {2000, 18}},
 	)
 	editor_ui_add_text(world, counts, "0 SCENE / 0 LIVE", muted, EDITOR_TEXT_SIZE)
 	// The count label deliberately has a generous authored width so it never
@@ -459,7 +499,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		EDITOR_UI_RIGHT_NAME,
 		EDITOR_UI_WORKSPACE_NAME,
-		.None,
+		.Inspector_Scroll,
 		{
 			size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 638},
 			padding = {
@@ -478,7 +518,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		EDITOR_UI_RIGHT_CONTENT_NAME,
 		EDITOR_UI_RIGHT_NAME,
-		.None,
+		.Inspector_Content,
 		{
 			size = {
 				EDITOR_RIGHT_SIDEBAR_WIDTH - EDITOR_SIDEBAR_PADDING * 2,
@@ -486,27 +526,21 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			},
 		},
 	)
-	editor_ui_add_vstack(world, right_content, {fill = true})
+	editor_ui_add_vstack(world, right_content, {gap = INSPECTOR_PANEL_GAP})
 	right_header := editor_ui_create_box(
 		world,
 		EDITOR_UI_INSPECTOR_HEADER_NAME,
 		EDITOR_UI_RIGHT_CONTENT_NAME,
 		.None,
-		{
-			size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 110},
-			padding = {17, 18, 9, 18},
-			background = raised,
-			border_color = rule,
-			border_width = 1,
-		},
+		editor_ui_section_layout({EDITOR_RIGHT_SIDEBAR_WIDTH, 110}),
 	)
-	editor_ui_add_text(world, right_header, "INSPECTOR", text, EDITOR_TEXT_SIZE)
+	editor_ui_add_section_panel(world, right_header, "INSPECTOR")
 	inspector_header := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_inspector_identity",
 		EDITOR_UI_INSPECTOR_HEADER_NAME,
 		.Inspector_Header,
-		{position = {0, 35}, size = {2000, 58}},
+		{position = {0, 34}, size = {2000, 58}},
 	)
 	editor_ui_add_text(
 		world,
@@ -515,22 +549,6 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		muted,
 		EDITOR_TEXT_SIZE,
 	)
-	inspector := editor_ui_create_box(
-		world,
-		EDITOR_UI_INSPECTOR_NAME,
-		EDITOR_UI_RIGHT_CONTENT_NAME,
-		.Inspector_Scroll,
-		{size = {EDITOR_RIGHT_SIDEBAR_WIDTH, 508}, padding = {12, 14, 12, 14}, background = panel},
-	)
-	editor_ui_add_scroll(world, inspector)
-	content := editor_ui_create_box(
-		world,
-		EDITOR_UI_INSPECTOR_CONTENT_NAME,
-		EDITOR_UI_INSPECTOR_NAME,
-		.Inspector_Content,
-		{size = {332, 500}},
-	)
-	editor_ui_add_vstack(world, content, {gap = 10})
 
 	status := editor_ui_create_box(
 		world,
@@ -540,34 +558,21 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		{
 			position = {0, 692},
 			size = {1280, EDITOR_STATUS_BAR_HEIGHT},
+			padding = {6, 14, 6, 14},
 			background = void,
 			border_color = rule,
 			border_width = 1,
 		},
 	)
+	editor_ui_add_hstack(world, status, {gap = 8})
 	status_text := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_status_text",
 		EDITOR_UI_STATUS_NAME,
 		.Status,
-		{position = {14, 7}, size = {600, 18}},
+		{size = {300, 18}},
 	)
 	editor_ui_add_text(world, status_text, "RUNNING", mint, EDITOR_TEXT_SIZE)
-	status_hint := editor_ui_create_box(
-		world,
-		"__scrapbot_editor_status_hint",
-		EDITOR_UI_STATUS_NAME,
-		.None,
-		{position = {430, 7}, size = {520, 18}},
-	)
-	editor_ui_add_text(
-		world,
-		status_hint,
-		"RMB + WASD / SPACE / CTRL  FLY     CTRL+ESC  CLOSE EDITOR",
-		quiet,
-		EDITOR_TEXT_SIZE,
-	)
-	_ = status
 	_ = editor_ui_create_box(world, EDITOR_UI_ROOT_NAME, "", .Root, {size = {1280, 720}})
 }
 
@@ -585,19 +590,6 @@ editor_ui_update_shell_size :: proc(world: ^shared.World, width, height: f32) {
 			   EDITOR_UI_WORKSPACE_NAME { layout.size.y = max(height - EDITOR_TOP_BAR_HEIGHT - EDITOR_STATUS_BAR_HEIGHT, 0) }
 			if name ==
 			   EDITOR_UI_STATUS_NAME { layout.position.y = max(height - EDITOR_STATUS_BAR_HEIGHT, 0) }
-			break
-		}
-	}
-	responsive := [2]struct {
-		name: string,
-		minimum_width: f32,
-	}{{"__scrapbot_editor_tool_hint", 900}, {"__scrapbot_editor_status_hint", 1000}}
-	for item in responsive {
-		for &entity, entity_index in world.entities {
-			if !entity.alive || entity.origin != .Editor || entity.name != item.name { continue }
-			if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
-				editor_ui_set_hidden(world, entity_index, width < item.minimum_width)
-			}
 			break
 		}
 	}
@@ -666,13 +658,55 @@ format_system_profile_time :: proc(average_nanoseconds: f64, sampled: bool) -> s
 	if !sampled {
 		return "--"
 	}
-	if average_nanoseconds >= 1_000_000 {
-		return fmt.tprintf("%.2f ms", average_nanoseconds / 1_000_000)
+	return fmt.tprintf("%.3f ms", average_nanoseconds / 1_000_000)
+}
+
+editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil { return }
+	for component in world.editor_uis {
+		if component.role != .Transport_Play &&
+		   component.role != .Transport_Stop &&
+		   component.role != .Transport_Step { continue }
+		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
+		entity := world.entities[component.entity_index]
+		if !entity.alive ||
+		   entity.ui_layout_index < 0 ||
+		   entity.ui_layout_index >= len(world.ui_layouts) ||
+		   entity.ui_button_index < 0 ||
+		   entity.ui_button_index >= len(world.ui_buttons) { continue }
+		selected :=
+			component.role == .Transport_Play && state.editor_simulation_playing ||
+			component.role == .Transport_Stop && !state.editor_simulation_playing
+		layout := &world.ui_layouts[entity.ui_layout_index]
+		button := &world.ui_buttons[entity.ui_button_index]
+		layout.background = {0.017, 0.022, 0.030, 1}
+		layout.border_color = {0.055, 0.067, 0.088, 1}
+		button.color = {0.64, 0.67, 0.73, 1}
+		button.hover_background = {0.026, 0.034, 0.045, 1}
+		button.active_background = {0.010, 0.014, 0.020, 1}
+		if selected && component.role == .Transport_Play {
+			layout.background = {0.025, 0.120, 0.105, 1}
+			layout.border_color = {0.06, 0.72, 0.63, 0.8}
+			button.color = {0.42, 0.92, 0.82, 1}
+			button.hover_background = {0.032, 0.165, 0.142, 1}
+			button.active_background = {0.018, 0.090, 0.078, 1}
+		} else if selected {
+			layout.background = {0.135, 0.035, 0.045, 1}
+			layout.border_color = {0.78, 0.20, 0.27, 0.85}
+			button.color = {0.96, 0.55, 0.59, 1}
+			button.hover_background = {0.180, 0.045, 0.058, 1}
+			button.active_background = {0.100, 0.025, 0.034, 1}
+		}
 	}
-	if average_nanoseconds >= 1_000 {
-		return fmt.tprintf("%.1f us", average_nanoseconds / 1_000)
+	if status, found := editor_ui_entity(world, .Status); found {
+		entity := world.entities[status]
+		if entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts) {
+			world.ui_texts[entity.ui_text_index].color = {0.96, 0.55, 0.59, 1}
+			if state.editor_simulation_playing {
+				world.ui_texts[entity.ui_text_index].color = {0.06, 0.72, 0.63, 1}
+			}
+		}
 	}
-	return fmt.tprintf("%.0f ns", average_nanoseconds)
 }
 
 editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
@@ -688,7 +722,9 @@ editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
 			name := string(entry.name[:entry.name_length])
 			if entry.kind == .Luau {
 				luau_index += 1
-				name = fmt.tprintf("Luau System %d", luau_index)
+				if name == "" {
+					name = fmt.tprintf("Luau System %d", luau_index)
+				}
 			}
 			editor_ui_set_text(world, name_cell, name)
 			editor_ui_set_text(
@@ -715,7 +751,7 @@ editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
 	}
 }
 
-INSPECTOR_PANEL_TITLE_HEIGHT :: f32(30)
+INSPECTOR_PANEL_TITLE_HEIGHT :: EDITOR_SECTION_TITLE_HEIGHT
 INSPECTOR_CELL_HEIGHT :: f32(24)
 INSPECTOR_TABLE_ROW_GAP :: f32(3)
 INSPECTOR_PANEL_GAP :: f32(10)
@@ -729,30 +765,12 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 	panel = editor_ui_create_box(
 		world,
 		panel_name,
-		EDITOR_UI_INSPECTOR_CONTENT_NAME,
+		EDITOR_UI_RIGHT_CONTENT_NAME,
 		.Inspector_Panel,
-		{
-			size = {332, 70},
-			padding = {10, 12, 12, 12},
-			background = {0.019, 0.024, 0.032, 1},
-			border_color = {0.055, 0.067, 0.088, 1},
-			border_width = 1,
-			corner_radius = 5,
-		},
+		editor_ui_section_layout({332, 70}),
 		slot,
 	)
-	editor_ui_add_panel(
-		world,
-		panel,
-		{
-			title = "COMPONENT",
-			title_color = {0.86, 0.88, 0.92, 1},
-			title_background = {0.027, 0.035, 0.046, 1},
-			title_size = EDITOR_TEXT_SIZE,
-			title_height = INSPECTOR_PANEL_TITLE_HEIGHT,
-			collapsible = true,
-		},
-	)
+	editor_ui_add_section_panel(world, panel, "COMPONENT")
 	editor_ui_add_vstack(world, panel, {})
 	table = editor_ui_create_box(
 		world,
@@ -833,6 +851,40 @@ editor_ui_ensure_inspector_input :: proc(world: ^shared.World, slot: int, parent
 	return input
 }
 
+editor_ui_ensure_inspector_checkbox :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent: string,
+) -> int {
+	if checkbox, found := editor_ui_entity(world, .Inspector_Checkbox, slot); found {
+		editor_ui_set_parent(world, checkbox, parent)
+		return checkbox
+	}
+	name := fmt.tprintf("__scrapbot_editor_inspector_checkbox_%d", slot)
+	checkbox := editor_ui_create_box(
+		world,
+		name,
+		parent,
+		.Inspector_Checkbox,
+		{size = {1, INSPECTOR_CELL_HEIGHT}},
+		slot,
+	)
+	editor_ui_add_checkbox(
+		world,
+		checkbox,
+		{
+			box_size = 18,
+			background = {0.013, 0.018, 0.025, 1},
+			checked_background = {0.08, 0.55, 0.46, 1},
+			border_color = {0.24, 0.27, 0.32, 1},
+			check_color = {0.95, 0.97, 0.98, 1},
+			hover_background = {0.12, 0.64, 0.54, 1},
+			active_background = {0.06, 0.42, 0.36, 1},
+		},
+	)
+	return checkbox
+}
+
 Inspector_ECS_Builder :: struct {
 	state: ^State,
 	world: ^shared.World,
@@ -843,6 +895,7 @@ Inspector_ECS_Builder :: struct {
 	panel_count: int,
 	cell_count: int,
 	input_count: int,
+	checkbox_count: int,
 	row_count: int,
 	content_height: f32,
 }
@@ -989,6 +1042,45 @@ editor_ui_inspector_field :: proc(
 	editor_ui_inspector_field_values(builder, label, values[:], field)
 }
 
+editor_ui_inspector_bool :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	value: bool,
+	field: shared.Editor_Inspector_Field = .None,
+) {
+	if builder.table_entity < 0 { return }
+	parent := builder.world.entities[builder.table_entity].name
+	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, false)
+	builder.cell_count += 1
+	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, true)
+	builder.cell_count += 1
+	cells := [2]int{label_cell, value_cell}
+	for cell in cells {
+		layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
+		editor_ui_set_hidden(builder.world, cell, false)
+		layout.size.y = INSPECTOR_CELL_HEIGHT
+	}
+	label_text := &builder.world.ui_texts[builder.world.entities[label_cell].ui_text_index]
+	label_text.color = {0.46, 0.49, 0.55, 1}
+	editor_ui_set_text(builder.world, label_cell, label)
+	checkbox_entity := editor_ui_ensure_inspector_checkbox(
+		builder.world,
+		builder.checkbox_count,
+		builder.world.entities[value_cell].name,
+	)
+	builder.checkbox_count += 1
+	editor_ui_set_hidden(builder.world, checkbox_entity, false)
+	checkbox := &builder.world.ui_checkboxes[builder.world.entities[checkbox_entity].ui_checkbox_index]
+	checkbox.checked = value
+	checkbox.read_only = field == .None
+	role := &builder.world.editor_uis[builder.world.entities[checkbox_entity].editor_ui_index]
+	role.target = builder.target
+	role.inspector_field = field
+	role.inspector_axis = .None
+	role.numeric = false
+	builder.row_count += 1
+}
+
 editor_ui_inspector_vec3 :: proc(
 	builder: ^Inspector_ECS_Builder,
 	label: string,
@@ -1032,11 +1124,18 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 			case .Inspector_Input:
 				if component.slot >=
 				   builder.input_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
+			case .Inspector_Checkbox:
+				if component.slot >=
+				   builder.checkbox_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case:
 		}
 	}
 	content_layout := &builder.world.ui_layouts[builder.world.entities[builder.content_entity].ui_layout_index]
-	content_layout.size.y = max(builder.content_height, 1)
+	stack_height := f32(110)
+	if builder.panel_count > 0 {
+		stack_height += INSPECTOR_PANEL_GAP + builder.content_height
+	}
+	content_layout.size.y = max(stack_height, EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT)
 }
 
 editor_ui_build_inspector_panels :: proc(
@@ -1161,11 +1260,11 @@ editor_ui_build_inspector_panels :: proc(
 	}
 	if entity.has_shadow_caster {
 		editor_ui_begin_inspector_component(&builder, "SHADOW CASTER")
-		editor_ui_inspector_field(&builder, "enabled", "true")
+		editor_ui_inspector_bool(&builder, "enabled", true)
 	}
 	if entity.has_shadow_receiver {
 		editor_ui_begin_inspector_component(&builder, "SHADOW RECEIVER")
-		editor_ui_inspector_field(&builder, "enabled", "true")
+		editor_ui_inspector_bool(&builder, "enabled", true)
 	}
 	if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
 		value := world.ui_layouts[entity.ui_layout_index]
@@ -1188,22 +1287,22 @@ editor_ui_build_inspector_panels :: proc(
 			fmt.tprintf("%.2f", value.border_width),
 		)
 		editor_ui_inspector_field(&builder, "radius", fmt.tprintf("%.2f", value.corner_radius))
-		editor_ui_inspector_field(&builder, "hidden", fmt.tprintf("%v", value.hidden))
+		editor_ui_inspector_bool(&builder, "hidden", value.hidden, .UI_Layout_Hidden)
 	}
 	if entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks) {
 		value := world.ui_hstacks[entity.ui_hstack_index]
 		editor_ui_begin_inspector_component(&builder, "UI HSTACK")
 		editor_ui_inspector_field(&builder, "gap", fmt.tprintf("%.2f", value.gap))
-		editor_ui_inspector_field(&builder, "fill", fmt.tprintf("%v", value.fill))
-		editor_ui_inspector_field(&builder, "draggable", fmt.tprintf("%v", value.draggable))
+		editor_ui_inspector_bool(&builder, "fill", value.fill, .UI_HStack_Fill)
+		editor_ui_inspector_bool(&builder, "draggable", value.draggable, .UI_HStack_Draggable)
 		editor_ui_inspector_field(&builder, "min size", fmt.tprintf("%.2f", value.min_size))
 	}
 	if entity.ui_vstack_index >= 0 && entity.ui_vstack_index < len(world.ui_vstacks) {
 		value := world.ui_vstacks[entity.ui_vstack_index]
 		editor_ui_begin_inspector_component(&builder, "UI VSTACK")
 		editor_ui_inspector_field(&builder, "gap", fmt.tprintf("%.2f", value.gap))
-		editor_ui_inspector_field(&builder, "fill", fmt.tprintf("%v", value.fill))
-		editor_ui_inspector_field(&builder, "draggable", fmt.tprintf("%v", value.draggable))
+		editor_ui_inspector_bool(&builder, "fill", value.fill, .UI_VStack_Fill)
+		editor_ui_inspector_bool(&builder, "draggable", value.draggable, .UI_VStack_Draggable)
 		editor_ui_inspector_field(&builder, "min size", fmt.tprintf("%.2f", value.min_size))
 	}
 	if entity.ui_scroll_area_index >= 0 &&
@@ -1221,6 +1320,8 @@ editor_ui_build_inspector_panels :: proc(
 		value := world.ui_panels[entity.ui_panel_index]
 		editor_ui_begin_inspector_component(&builder, "UI PANEL")
 		editor_ui_inspector_field(&builder, "title", value.title)
+		font := value.font; if font == "" { font = "Inter (default)" }
+		editor_ui_inspector_field(&builder, "font", font)
 		editor_ui_inspector_field(&builder, "title color", format_vec4(value.title_color))
 		editor_ui_inspector_field(
 			&builder,
@@ -1233,8 +1334,8 @@ editor_ui_build_inspector_panels :: proc(
 			"title height",
 			fmt.tprintf("%.2f", value.title_height),
 		)
-		editor_ui_inspector_field(&builder, "collapsible", fmt.tprintf("%v", value.collapsible))
-		editor_ui_inspector_field(&builder, "collapsed", fmt.tprintf("%v", value.collapsed))
+		editor_ui_inspector_bool(&builder, "collapsible", value.collapsible, .UI_Panel_Collapsible)
+		editor_ui_inspector_bool(&builder, "collapsed", value.collapsed, .UI_Panel_Collapsed)
 	}
 	if entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables) {
 		value := world.ui_tables[entity.ui_table_index]
@@ -1247,6 +1348,8 @@ editor_ui_build_inspector_panels :: proc(
 		value := world.ui_texts[entity.ui_text_index]
 		editor_ui_begin_inspector_component(&builder, "UI TEXT")
 		editor_ui_inspector_field(&builder, "text", value.text)
+		font := value.font; if font == "" { font = "Inter (default)" }
+		editor_ui_inspector_field(&builder, "font", font)
 		editor_ui_inspector_field(&builder, "color", format_vec4(value.color))
 		editor_ui_inspector_field(&builder, "size", fmt.tprintf("%.2f", value.size))
 		alignment := "left"
@@ -1263,6 +1366,8 @@ editor_ui_build_inspector_panels :: proc(
 		value := world.ui_buttons[entity.ui_button_index]
 		editor_ui_begin_inspector_component(&builder, "UI BUTTON")
 		editor_ui_inspector_field(&builder, "text", value.text)
+		font := value.font; if font == "" { font = "Inter (default)" }
+		editor_ui_inspector_field(&builder, "font", font)
 		editor_ui_inspector_field(&builder, "color", format_vec4(value.color))
 		editor_ui_inspector_field(&builder, "size", fmt.tprintf("%.2f", value.size))
 		editor_ui_inspector_field(
@@ -1275,6 +1380,23 @@ editor_ui_build_inspector_panels :: proc(
 			"active background",
 			format_vec4(value.active_background),
 		)
+	}
+	if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
+		value := world.ui_inputs[entity.ui_input_index]
+		editor_ui_begin_inspector_component(&builder, "UI INPUT")
+		editor_ui_inspector_field(&builder, "text", value.text)
+		font := value.font; if font == "" { font = "Inter (default)" }
+		editor_ui_inspector_field(&builder, "font", font)
+		editor_ui_inspector_field(&builder, "color", format_vec4(value.color))
+		editor_ui_inspector_field(&builder, "size", fmt.tprintf("%.2f", value.size))
+		editor_ui_inspector_bool(&builder, "read only", value.read_only, .UI_Input_Read_Only)
+	}
+	if entity.ui_checkbox_index >= 0 && entity.ui_checkbox_index < len(world.ui_checkboxes) {
+		value := world.ui_checkboxes[entity.ui_checkbox_index]
+		editor_ui_begin_inspector_component(&builder, "UI CHECKBOX")
+		editor_ui_inspector_bool(&builder, "checked", value.checked, .UI_Checkbox_Checked)
+		editor_ui_inspector_field(&builder, "box size", fmt.tprintf("%.2f", value.box_size))
+		editor_ui_inspector_bool(&builder, "read only", value.read_only, .UI_Checkbox_Read_Only)
 	}
 	for storage, storage_index in world.custom_components {
 		for component in storage.components {
@@ -1341,8 +1463,11 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	}
 	if header, found := editor_ui_entity(world, .Browser_Header);
 	   found { editor_ui_set_text(world, header, fmt.tprintf("%d SCENE / %d LIVE", scene_count, runtime_count)) }
-	if status, found := editor_ui_entity(world, .Status);
-	   found { editor_ui_set_text(world, status, fmt.tprintf("RUNNING  /  %d ENTITIES", visible_count)) }
+	if status, found := editor_ui_entity(world, .Status); found {
+		mode := "PAUSED"
+		if state.editor_simulation_playing { mode = "RUNNING" }
+		editor_ui_set_text(world, status, mode)
+	}
 
 	if header, found := editor_ui_entity(world, .Inspector_Header); found {
 		if !state.editor_has_selection { editor_ui_set_text(world, header, "Select an entity to inspect") } else {
@@ -1377,6 +1502,7 @@ reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World, width, he
 	if state == nil || world == nil || !state.editor_visible { return }
 	editor_ui_create_shell(world)
 	editor_ui_update_shell_size(world, width, height)
+	editor_ui_update_transport(state, world)
 	if !state.editor_snapshot_valid ||
 	   !state.editor_snapshot_was_visible { refresh_editor_ecs_snapshot(state, world) }
 }
@@ -1417,7 +1543,44 @@ editor_ui_fit_inspector_width :: proc(state: ^State, world: ^shared.World) -> bo
 		}
 		if math.abs(layout.size.x - width) > 0.01 { layout.size.x = width; changed = true }
 	}
+	for &entity in world.entities {
+		if !entity.alive ||
+		   entity.origin != .Editor ||
+		   entity.name != EDITOR_UI_INSPECTOR_HEADER_NAME ||
+		   entity.ui_layout_index < 0 ||
+		   entity.ui_layout_index >= len(world.ui_layouts) { continue }
+		layout := &world.ui_layouts[entity.ui_layout_index]
+		if math.abs(layout.size.x - inspector_width) > 0.01 {
+			layout.size.x = inspector_width
+			changed = true
+		}
+		break
+	}
 	return changed
+}
+
+editor_ui_right_stack_height :: proc(world: ^shared.World) -> f32 {
+	if world == nil { return 0 }
+	parent := shared.entity_uuid_from_engine_name(EDITOR_UI_RIGHT_CONTENT_NAME)
+	height := f32(0)
+	child_count := 0
+	for entity in world.entities {
+		if !entity.alive ||
+		   entity.origin != .Editor ||
+		   entity.ui_layout_index < 0 ||
+		   entity.ui_layout_index >= len(world.ui_layouts) { continue }
+		layout := world.ui_layouts[entity.ui_layout_index]
+		if layout.parent != parent || layout.hidden { continue }
+		child_height := layout.size.y
+		if entity.ui_panel_index >= 0 && entity.ui_panel_index < len(world.ui_panels) {
+			panel := world.ui_panels[entity.ui_panel_index]
+			if panel.collapsible && panel.collapsed { child_height = panel.title_height }
+		}
+		if child_count > 0 { height += INSPECTOR_PANEL_GAP }
+		height += child_height + layout.margin.x + layout.margin.z
+		child_count += 1
+	}
+	return height
 }
 
 editor_ui_fit_sidebar_content :: proc(state: ^State, world: ^shared.World) -> bool {
@@ -1460,6 +1623,9 @@ editor_ui_fit_sidebar_content :: proc(state: ^State, world: ^shared.World) -> bo
 				viewport.rect.height - viewport_layout.padding.x - viewport_layout.padding.z,
 				EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT,
 			),
+		}
+		if pair.content == EDITOR_UI_RIGHT_CONTENT_NAME {
+			next_size.y = max(next_size.y, editor_ui_right_stack_height(world))
 		}
 		if content_layout.size != next_size {
 			content_layout.size = next_size

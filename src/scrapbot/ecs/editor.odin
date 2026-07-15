@@ -69,6 +69,10 @@ reconcile_editor_scene_camera :: proc(
 			material_index = INVALID_COMPONENT_INDEX,
 			render_instance_index = INVALID_COMPONENT_INDEX,
 			render_active_index = INVALID_COMPONENT_INDEX,
+			render_camera_active_index = INVALID_COMPONENT_INDEX,
+			render_ambient_light_active_index = INVALID_COMPONENT_INDEX,
+			render_directional_light_active_index = INVALID_COMPONENT_INDEX,
+			render_point_light_active_index = INVALID_COMPONENT_INDEX,
 			ui_layout_index = INVALID_COMPONENT_INDEX,
 			ui_hstack_index = INVALID_COMPONENT_INDEX,
 			ui_vstack_index = INVALID_COMPONENT_INDEX,
@@ -78,6 +82,7 @@ reconcile_editor_scene_camera :: proc(
 			ui_text_index = INVALID_COMPONENT_INDEX,
 			ui_button_index = INVALID_COMPONENT_INDEX,
 			ui_input_index = INVALID_COMPONENT_INDEX,
+			ui_checkbox_index = INVALID_COMPONENT_INDEX,
 			editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 			editor_ui_index = INVALID_COMPONENT_INDEX,
 		},
@@ -86,6 +91,7 @@ reconcile_editor_scene_camera :: proc(
 		world.entity_by_uuid = make(map[shared.Entity_UUID]int)
 	}
 	world.entity_by_uuid[world.entities[entity_index].uuid] = entity_index
+	sync_render_watch_memberships(world, entity_index)
 	return entity_index, &world.editor_scene_cameras[component_index], true
 }
 

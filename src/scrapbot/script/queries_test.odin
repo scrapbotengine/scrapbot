@@ -111,6 +111,7 @@ assert(scrapbot.transform.id > 0)
 local Autorotating = scrapbot.query(scrapbot.transform, AutorotateComponent)
 
 scrapbot.system(Autorotating, {
+	name = "Autorotate",
 	writes = { scrapbot.transform },
 }, function(time, entity, transform, autorotate)
 	transform.rotation.y += autorotate.velocity.y * time.delta_time
@@ -123,6 +124,10 @@ end)
 	testing.expect(t, result.ran)
 	testing.expect(t, runtime.system_count == 1)
 	testing.expect(t, runtime.systems[0].has_query)
+	testing.expect(
+		t,
+		string(runtime.systems[0].name[:runtime.systems[0].name_length]) == "Autorotate",
+	)
 	testing.expect(t, runtime.systems[0].declaration.access_count == 3)
 	testing.expect(t, runtime.systems[0].declaration.accesses[0].component == "scrapbot.transform")
 	testing.expect(t, runtime.systems[0].declaration.accesses[0].mode == .Read)

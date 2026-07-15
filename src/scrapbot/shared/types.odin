@@ -8,6 +8,12 @@ DEFAULT_VSCODE_SETTINGS :: ".vscode/settings.json"
 
 VERSION :: "0.1.0-dev"
 
+FONT_FIRST_CHAR :: 32
+FONT_CHAR_COUNT :: 95
+FONT_ATLAS_SIZE :: 512
+MAX_PROJECT_FONTS :: 15
+PROJECT_FONT_BUILD_DIR :: "build/fonts"
+
 Vec3 :: struct {
 	x, y, z: f32,
 }
@@ -27,9 +33,15 @@ Project_Config :: struct {
 	name: string,
 	default_scene: string,
 	native_extensions: [dynamic]Native_Extension_Target,
+	fonts: [dynamic]Project_Font,
 }
 
 Native_Extension_Target :: struct {
+	name: string,
+	source: string,
+}
+
+Project_Font :: struct {
 	name: string,
 	source: string,
 }
@@ -77,6 +89,8 @@ Scene_Entity :: struct {
 	ui_button: UI_Button_Component,
 	has_ui_input: bool,
 	ui_input: UI_Input_Component,
+	has_ui_checkbox: bool,
+	ui_checkbox: UI_Checkbox_Component,
 	custom_components: [dynamic]Custom_Component,
 }
 
@@ -98,6 +112,9 @@ Geometry_Handle :: struct {
 	index, generation: u32,
 }
 Material_Handle :: struct {
+	index, generation: u32,
+}
+Font_Handle :: struct {
 	index, generation: u32,
 }
 
@@ -168,6 +185,7 @@ UI_Scroll_Area_Component :: struct {
 }
 UI_Panel_Component :: struct {
 	title: string,
+	font: string,
 	title_color: Vec4,
 	title_background: Vec4,
 	title_size: f32,
@@ -187,12 +205,14 @@ UI_Text_Alignment :: enum {
 }
 UI_Text_Component :: struct {
 	text: string,
+	font: string,
 	color: Vec4,
 	size: f32,
 	alignment: UI_Text_Alignment,
 }
 UI_Button_Component :: struct {
 	text: string,
+	font: string,
 	color: Vec4,
 	size: f32,
 	hover_background: Vec4,
@@ -202,10 +222,27 @@ UI_Button_Component :: struct {
 }
 UI_Input_Component :: struct {
 	text: string,
+	font: string,
 	color: Vec4,
 	size: f32,
 	selection_background: Vec4,
 	focus_border_color: Vec4,
+	read_only: bool,
+}
+
+Font_Glyph :: struct {
+	advance: f32,
+	plane, uv: Vec4,
+}
+UI_Checkbox_Component :: struct {
+	checked: bool,
+	box_size: f32,
+	background: Vec4,
+	checked_background: Vec4,
+	border_color: Vec4,
+	check_color: Vec4,
+	hover_background: Vec4,
+	active_background: Vec4,
 	read_only: bool,
 }
 
@@ -226,6 +263,16 @@ Editor_Inspector_Field :: enum {
 	Point_Intensity,
 	Point_Range,
 	Custom_Vec3,
+	UI_Layout_Hidden,
+	UI_HStack_Fill,
+	UI_HStack_Draggable,
+	UI_VStack_Fill,
+	UI_VStack_Draggable,
+	UI_Panel_Collapsible,
+	UI_Panel_Collapsed,
+	UI_Input_Read_Only,
+	UI_Checkbox_Checked,
+	UI_Checkbox_Read_Only,
 }
 
 Editor_Inspector_Axis :: enum {
@@ -271,6 +318,9 @@ Editor_UI_Role :: enum {
 	None,
 	Root,
 	Viewport,
+	Transport_Play,
+	Transport_Stop,
+	Transport_Step,
 	Systems_Scroll,
 	Systems_Name,
 	Systems_Time,
@@ -285,6 +335,7 @@ Editor_UI_Role :: enum {
 	Inspector_Table,
 	Inspector_Cell,
 	Inspector_Input,
+	Inspector_Checkbox,
 	Status,
 }
 
@@ -355,6 +406,10 @@ World_Entity :: struct {
 	material_index: int,
 	render_instance_index: int,
 	render_active_index: int,
+	render_camera_active_index: int,
+	render_ambient_light_active_index: int,
+	render_directional_light_active_index: int,
+	render_point_light_active_index: int,
 	render_dirty: bool,
 	ui_dirty: bool,
 	has_shadow_caster: bool,
@@ -368,6 +423,7 @@ World_Entity :: struct {
 	ui_text_index: int,
 	ui_button_index: int,
 	ui_input_index: int,
+	ui_checkbox_index: int,
 	editor_transform_gizmo_index: int,
 	editor_ui_index: int,
 	geometry_resource: string,
@@ -434,6 +490,10 @@ World :: struct {
 	materials: [dynamic]Material_Component,
 	render_instances: [dynamic]Render_Instance_Component,
 	render_active_entities: [dynamic]int,
+	render_active_camera_entities: [dynamic]int,
+	render_active_ambient_light_entities: [dynamic]int,
+	render_active_directional_light_entities: [dynamic]int,
+	render_active_point_light_entities: [dynamic]int,
 	render_dirty_entities: [dynamic]int,
 	render_structure_sync_count: u64,
 	free_transform_indices: [dynamic]int,
@@ -450,6 +510,7 @@ World :: struct {
 	ui_texts: [dynamic]UI_Text_Component,
 	ui_buttons: [dynamic]UI_Button_Component,
 	ui_inputs: [dynamic]UI_Input_Component,
+	ui_checkboxes: [dynamic]UI_Checkbox_Component,
 	editor_transform_gizmos: [dynamic]Editor_Transform_Gizmo_Component,
 	editor_scene_cameras: [dynamic]Editor_Scene_Camera_Component,
 	editor_uis: [dynamic]Editor_UI_Component,

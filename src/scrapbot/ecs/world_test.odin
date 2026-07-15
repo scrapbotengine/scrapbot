@@ -146,6 +146,9 @@ range = 7
 
 	world := build_world(&scene)
 	defer destroy_world(&world)
+	testing.expect(t, len(world.render_active_ambient_light_entities) == 1)
+	testing.expect(t, len(world.render_active_directional_light_entities) == 1)
+	testing.expect(t, len(world.render_active_point_light_entities) == 1)
 	list: Render_List
 	extract_lights(&world, &list)
 
@@ -156,6 +159,78 @@ range = 7
 	testing.expect(t, list.point_light_count == 1)
 	testing.expect(t, list.point_lights[0].position == shared.Vec3{2, 3, 4})
 	testing.expect(t, list.point_lights[0].light.range == 7)
+}
+
+@(test)
+test_render_watch_membership_tracks_transform_changes_and_despawns :: proc(t: ^testing.T) {
+	scene, result := project.parse_scene(
+		`[[entities]]
+id = "a2000000-0000-4000-8000-000000000021"
+name = "Camera"
+[entities.transform]
+position = [0, 0, 5]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+
+[[entities]]
+id = "a2000000-0000-4000-8000-000000000022"
+name = "First Light"
+[entities.transform]
+position = [1, 2, 3]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[entities.point_light]
+color = [1, 0, 0]
+intensity = 2
+range = 5
+
+[[entities]]
+id = "a2000000-0000-4000-8000-000000000023"
+name = "Second Light"
+[entities.transform]
+position = [4, 5, 6]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[entities.point_light]
+color = [0, 1, 0]
+intensity = 3
+range = 6
+`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, result.err == .None)
+
+	world := build_world(&scene)
+	defer destroy_world(&world)
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	reconcile_render_instances(&world, &registry)
+
+	testing.expect(t, len(world.render_active_camera_entities) == 1)
+	testing.expect(t, len(world.render_active_point_light_entities) == 2)
+	remove_transform(&world, 2)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, len(world.render_active_point_light_entities) == 1)
+	testing.expect(t, world.entities[2].render_point_light_active_index == -1)
+
+	add_transform(&world, 2, Transform_Component{position = {7, 8, 9}, scale = {1, 1, 1}})
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, len(world.render_active_point_light_entities) == 2)
+
+	despawn_entity(&world, 1, world.entities[1].id.generation)
+	testing.expect(t, len(world.render_active_point_light_entities) == 1)
+	testing.expect(t, world.render_active_point_light_entities[0] == 2)
+	testing.expect(t, world.entities[2].render_point_light_active_index == 0)
+
+	remove_transform(&world, 0)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, len(world.render_active_camera_entities) == 0)
+	_, camera_ok := first_camera_instance(&world)
+	testing.expect(t, !camera_ok)
 }
 
 @(test)

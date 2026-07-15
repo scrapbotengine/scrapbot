@@ -1,15 +1,15 @@
 package script
 
-import "core:fmt"
+import component "../component"
+import ecs "../ecs"
+import resources "../resources"
+import schedule "../schedule"
+import shared "../shared"
 import c "core:c"
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import component "../component"
-import ecs "../ecs"
-import schedule "../schedule"
-import resources "../resources"
-import shared "../shared"
 
 DEFAULT_SCRIPT :: shared.DEFAULT_SCRIPT
 DEFAULT_SCRIPT_CHUNK :: "=" + DEFAULT_SCRIPT
@@ -23,8 +23,8 @@ Named_Vec3 :: shared.Named_Vec3
 Component_ID :: shared.Component_ID
 Query :: ecs.Query
 Query_Term :: ecs.Query_Term
-QUERY_OBJECT_KIND : string : "scrapbot.query"
-SCHEMA_FIELD_KIND : string : "scrapbot.schema_field"
+QUERY_OBJECT_KIND: string : "scrapbot.query"
+SCHEMA_FIELD_KIND: string : "scrapbot.schema_field"
 
 Run_Result :: struct {
 	ran: bool,
@@ -59,6 +59,8 @@ Script_System :: struct {
 	declaration: schedule.System,
 	query: Query,
 	has_query: bool,
+	name: [shared.SYSTEM_PROFILE_NAME_CAPACITY]u8,
+	name_length: int,
 }
 
 Query_Object :: struct {
@@ -93,7 +95,7 @@ Prepared_Custom_Component_Writebacks :: struct {
 
 Component_Reference :: struct {
 	name: string,
-	id:   Component_ID,
+	id: Component_ID,
 }
 
 Query_API :: enum {
@@ -102,10 +104,19 @@ Query_API :: enum {
 }
 
 run_project_script :: proc(runtime: ^Runtime, root: string, world: ^World) -> Run_Result {
-	return run_project_script_with_options(runtime, root, world, Source_Options{log_enabled = true})
+	return run_project_script_with_options(
+		runtime,
+		root,
+		world,
+		Source_Options{log_enabled = true},
+	)
 }
 
-run_project_script_for_check :: proc(runtime: ^Runtime, root: string, world: ^World) -> Run_Result {
+run_project_script_for_check :: proc(
+	runtime: ^Runtime,
+	root: string,
+	world: ^World,
+) -> Run_Result {
 	return run_project_script_with_options(runtime, root, world, Source_Options{})
 }
 
@@ -130,7 +141,12 @@ run_project_script_for_check_with_registry :: proc(
 	return run_project_script_with_registry(runtime, root, world, registry, Source_Options{})
 }
 
-run_project_script_with_options :: proc(runtime: ^Runtime, root: string, world: ^World, options: Source_Options) -> Run_Result {
+run_project_script_with_options :: proc(
+	runtime: ^Runtime,
+	root: string,
+	world: ^World,
+	options: Source_Options,
+) -> Run_Result {
 	result: Run_Result
 
 	script_path, join_err := filepath.join({root, DEFAULT_SCRIPT})
@@ -152,13 +168,25 @@ run_project_script_with_options :: proc(runtime: ^Runtime, root: string, world: 
 
 	project_options := options
 	project_options.project_root = root
-	result = run_source_with_options(runtime, string(source), DEFAULT_SCRIPT_CHUNK, world, project_options)
+	result = run_source_with_options(
+		runtime,
+		string(source),
+		DEFAULT_SCRIPT_CHUNK,
+		world,
+		project_options,
+	)
 	result.ran = result.err == ""
 	return result
 }
 
 run_source :: proc(runtime: ^Runtime, source, chunk_name: string, world: ^World) -> Run_Result {
-	return run_source_with_options(runtime, source, chunk_name, world, Source_Options{log_enabled = true})
+	return run_source_with_options(
+		runtime,
+		source,
+		chunk_name,
+		world,
+		Source_Options{log_enabled = true},
+	)
 }
 
 run_source_with_registry :: proc(
@@ -173,7 +201,12 @@ run_source_with_registry :: proc(
 	return run_source_with_options(runtime, source, chunk_name, world, registry_options)
 }
 
-run_source_with_options :: proc(runtime: ^Runtime, source, chunk_name: string, world: ^World, options: Source_Options) -> Run_Result {
+run_source_with_options :: proc(
+	runtime: ^Runtime,
+	source, chunk_name: string,
+	world: ^World,
+	options: Source_Options,
+) -> Run_Result {
 	result: Run_Result
 	destroy_runtime(runtime)
 	runtime^ = {}
@@ -202,9 +235,17 @@ run_source_with_options :: proc(runtime: ^Runtime, source, chunk_name: string, w
 	luaL_sandbox(L)
 	luaL_sandboxthread(L)
 
-	options := Compile_Options{optimization_level = 1, debug_level = 1}
+	options := Compile_Options {
+		optimization_level = 1,
+		debug_level = 1,
+	}
 	bytecode_size: c.size_t
-	bytecode := luau_compile(cstring(raw_data(source)), c.size_t(len(source)), &options, &bytecode_size)
+	bytecode := luau_compile(
+		cstring(raw_data(source)),
+		c.size_t(len(source)),
+		&options,
+		&bytecode_size,
+	)
 	if bytecode == nil {
 		result.err = fmt.tprintf("%s: failed to compile Luau source", chunk_name)
 		return result
@@ -271,7 +312,7 @@ step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> st
 	plan := schedule.build_plan(scheduled_systems[:runtime.system_count])
 
 	for batch in plan.batches[:plan.batch_count] {
-		for i in 0..<batch.system_count {
+		for i in 0 ..< batch.system_count {
 			system_index := batch.system_indices[i]
 			system := runtime.systems[system_index]
 			if err := run_script_system(runtime, L, system, world.time); err != "" {
@@ -283,7 +324,12 @@ step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> st
 	return ecs.apply_commands(world, &runtime.commands)
 }
 
-run_script_system :: proc(runtime: ^Runtime, L: Lua_State, system: Script_System, time: shared.Time_Resource) -> string {
+run_script_system :: proc(
+	runtime: ^Runtime,
+	L: Lua_State,
+	system: Script_System,
+	time: shared.Time_Resource,
+) -> string {
 	runtime.active_system = system.declaration
 	runtime.has_active_system = true
 	defer {
@@ -292,7 +338,7 @@ run_script_system :: proc(runtime: ^Runtime, L: Lua_State, system: Script_System
 	}
 
 	if system.has_query {
-		for i in 0..<ecs.query_count(runtime.world, system.query) {
+		for i in 0 ..< ecs.query_count(runtime.world, system.query) {
 			entity_index, entity_ok := ecs.query_entity_at(runtime.world, system.query, i)
 			if !entity_ok {
 				continue
@@ -304,7 +350,7 @@ run_script_system :: proc(runtime: ^Runtime, L: Lua_State, system: Script_System
 			writeback_count := 0
 			component_writebacks: [ecs.MAX_QUERY_TERMS]Custom_Component_Writeback
 			component_writeback_count := 0
-			for term_index in 0..<system.query.term_count {
+			for term_index in 0 ..< system.query.term_count {
 				term := system.query.terms[term_index]
 				push_query_component_table(L, runtime.world, entity_index, term)
 				if term.name == "scrapbot.transform" {
@@ -314,19 +360,33 @@ run_script_system :: proc(runtime: ^Runtime, L: Lua_State, system: Script_System
 							ref = lua_ref(L, -1),
 							transform_index = transform_index,
 							original = runtime.world.transforms[transform_index],
-							can_write = system_allows_component_access(system.declaration, "scrapbot.transform", .Write),
+							can_write = system_allows_component_access(
+								system.declaration,
+								"scrapbot.transform",
+								.Write,
+							),
 						}
 						writeback_count += 1
 					}
 				} else if query_term_is_custom_schema_component(&runtime.registry, term) {
-					if _, ok := ecs.custom_component_for_entity_ref(runtime.world, entity_index, term.component_id, term.name); ok {
-						component_writebacks[component_writeback_count] = Custom_Component_Writeback {
-							ref = lua_ref(L, -1),
-							entity_index = entity_index,
-							component_id = term.component_id,
-							name = term.name,
-							can_write = system_allows_component_access(system.declaration, term.name, .Write),
-						}
+					if _, ok := ecs.custom_component_for_entity_ref(
+						runtime.world,
+						entity_index,
+						term.component_id,
+						term.name,
+					); ok {
+						component_writebacks[component_writeback_count] =
+							Custom_Component_Writeback {
+								ref = lua_ref(L, -1),
+								entity_index = entity_index,
+								component_id = term.component_id,
+								name = term.name,
+								can_write = system_allows_component_access(
+									system.declaration,
+									term.name,
+									.Write,
+								),
+							}
 						component_writeback_count += 1
 					}
 				}
@@ -435,7 +495,9 @@ apply_transform_writebacks :: proc "c" (
 	prepared: ^Prepared_Transform_Writebacks,
 ) {
 	for writeback, index in writebacks {
-		if world != nil && writeback.transform_index >= 0 && writeback.transform_index < len(world.transforms) {
+		if world != nil &&
+		   writeback.transform_index >= 0 &&
+		   writeback.transform_index < len(world.transforms) {
 			if prepared.changed[index] {
 				world.transforms[writeback.transform_index] = prepared.transforms[index]
 			}
@@ -453,7 +515,10 @@ prepare_custom_component_writebacks :: proc(
 
 	for writeback, index in writebacks {
 		lua_rawgeti(L, LUA_REGISTRYINDEX, writeback.ref)
-		component_ref := Component_Reference{name = writeback.name, id = writeback.component_id}
+		component_ref := Component_Reference {
+			name = writeback.name,
+			id = writeback.component_id,
+		}
 		component_data: ecs.Command_Component
 		err := read_custom_component_payload(L, runtime, component_ref, -1, &component_data)
 		lua_settop(L, -2)
@@ -525,7 +590,7 @@ system_allows_component_access :: proc "c" (
 	if declaration.access_count == 0 {
 		return true
 	}
-	for i in 0..<declaration.access_count {
+	for i in 0 ..< declaration.access_count {
 		access := declaration.accesses[i]
 		if access.component != component_name {
 			continue
@@ -543,9 +608,16 @@ system_allows_component_access :: proc "c" (
 	return false
 }
 
-query_term_is_custom_schema_component :: proc "c" (registry: ^component.Registry, term: Query_Term) -> bool {
+query_term_is_custom_schema_component :: proc "c" (
+	registry: ^component.Registry,
+	term: Query_Term,
+) -> bool {
 	definition, ok := component.find_definition_by_id(registry, term.component_id)
-	return ok && definition.name == term.name && (definition.owner == .Project || definition.owner == .Library)
+	return(
+		ok &&
+		definition.name == term.name &&
+		(definition.owner == .Project || definition.owner == .Library) \
+	)
 }
 
 component_ref_is_custom_schema_component :: proc "c" (
@@ -553,7 +625,11 @@ component_ref_is_custom_schema_component :: proc "c" (
 	component_ref: Component_Reference,
 ) -> bool {
 	definition, ok := component.find_definition_by_id(registry, component_ref.id)
-	return ok && definition.name == component_ref.name && (definition.owner == .Project || definition.owner == .Library)
+	return(
+		ok &&
+		definition.name == component_ref.name &&
+		(definition.owner == .Project || definition.owner == .Library) \
+	)
 }
 
 step_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {

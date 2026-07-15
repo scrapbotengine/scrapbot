@@ -91,6 +91,7 @@ init_registry :: proc(registry: ^Registry) {
 	register_engine_component(registry, "scrapbot.ui_text", {})
 	register_engine_component(registry, "scrapbot.ui_button", {})
 	register_engine_component(registry, "scrapbot.ui_input", {})
+	register_engine_component(registry, "scrapbot.ui_checkbox", {})
 	register_engine_component(registry, "scrapbot.internal.render_instance", {})
 }
 
