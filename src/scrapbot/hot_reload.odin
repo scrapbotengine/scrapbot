@@ -158,12 +158,16 @@ hot_reload_runtime_reset :: proc(data: rawptr, world: ^shared.World) -> string {
 	return reset_scene_world(state.scene_path, &state.runtime, world)
 }
 
-hot_reload_scene_save :: proc(data: rawptr, world: ^shared.World) -> string {
+hot_reload_scene_save :: proc(
+	data: rawptr,
+	world: ^shared.World,
+	dirty_entities: []shared.Entity_UUID,
+) -> string {
 	state := cast(^Hot_Reload_State)data
 	if state == nil || world == nil {
 		return "cannot save an unavailable hot-reload runtime"
 	}
-	if err := save_scene_world(state.scene_path, world); err != "" {
+	if err := save_scene_world(state.scene_path, world, dirty_entities); err != "" {
 		return err
 	}
 	state.scene_stamp = file_stamp(state.scene_path)

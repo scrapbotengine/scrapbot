@@ -389,23 +389,89 @@ editor_history_push :: proc(
 	if state == nil || world == nil || before == after { return }
 	target, _, found := inspector_target(world, binding)
 	if !found { return }
-	command := Editor_Edit_Command {
-		target = binding.target,
+	transaction: Editor_Edit_Transaction
+	transaction.changes[0] = {
+		target_uuid = target.uuid,
 		component_revision = target.component_revision,
 		field = binding.inspector_field,
 		axis = binding.inspector_axis,
 		custom_storage_index = binding.custom_storage_index,
 		custom_field_index = binding.custom_field_index,
-		before = before,
-		after = after,
+		kind = .Number,
+		before_number = before,
+		after_number = after,
 	}
+	transaction.change_count = 1
+	editor_history_push_transaction(state, transaction)
+}
+
+editor_history_push_bool :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	before, after: bool,
+) {
+	if state == nil || world == nil || before == after { return }
+	target, _, found := inspector_target(world, binding)
+	if !found { return }
+	transaction: Editor_Edit_Transaction
+	transaction.changes[0] = {
+		target_uuid = target.uuid,
+		component_revision = target.component_revision,
+		field = binding.inspector_field,
+		axis = binding.inspector_axis,
+		custom_storage_index = binding.custom_storage_index,
+		custom_field_index = binding.custom_field_index,
+		kind = .Boolean,
+		before_boolean = before,
+		after_boolean = after,
+	}
+	transaction.change_count = 1
+	editor_history_push_transaction(state, transaction)
+}
+
+editor_history_push_transform :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	field: shared.Editor_Inspector_Field,
+	before, after: shared.Vec3,
+) {
+	if state == nil || world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	target := &world.entities[entity_index]
+	if !target.alive { return }
+	transaction: Editor_Edit_Transaction
+	before_values := [3]f32{before.x, before.y, before.z}
+	after_values := [3]f32{after.x, after.y, after.z}
+	axes := [3]shared.Editor_Inspector_Axis{.X, .Y, .Z}
+	for before_value, index in before_values {
+		if before_value == after_values[index] { continue }
+		change_index := transaction.change_count
+		transaction.changes[change_index] = {
+			target_uuid = target.uuid,
+			component_revision = target.component_revision,
+			field = field,
+			axis = axes[index],
+			kind = .Number,
+			before_number = before_value,
+			after_number = after_values[index],
+		}
+		transaction.change_count += 1
+	}
+	editor_history_push_transaction(state, transaction)
+}
+
+editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_Transaction) {
+	if state == nil || transaction.change_count <= 0 { return }
 	state.editor_history_count = state.editor_history_cursor
 	if state.editor_history_count >= EDITOR_HISTORY_CAPACITY {
 		copy(state.editor_history[0:EDITOR_HISTORY_CAPACITY - 1], state.editor_history[1:])
 		state.editor_history_count = EDITOR_HISTORY_CAPACITY - 1
 		state.editor_history_cursor = state.editor_history_count
 	}
-	state.editor_history[state.editor_history_count] = command
+	state.editor_history[state.editor_history_count] = transaction
 	state.editor_history_count += 1
 	state.editor_history_cursor = state.editor_history_count
 }
@@ -429,22 +495,45 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 		index := state.editor_history_cursor
 		if !redo { index -= 1 }
 		if index < 0 || index >= state.editor_history_count { return false }
-		command := state.editor_history[index]
-		binding := shared.Editor_UI_Component {
-			target = command.target,
-			inspector_field = command.field,
-			inspector_axis = command.axis,
-			custom_storage_index = command.custom_storage_index,
-			custom_field_index = command.custom_field_index,
+		transaction := state.editor_history[index]
+		valid := true
+		for change in transaction.changes[:transaction.change_count] {
+			entity_index, found := ecs.entity_index_by_uuid(world, change.target_uuid)
+			if !found ||
+			   entity_index < 0 ||
+			   entity_index >= len(world.entities) ||
+			   !world.entities[entity_index].alive ||
+			   world.entities[entity_index].component_revision != change.component_revision {
+				valid = false
+				break
+			}
 		}
-		target, _, found := inspector_target(world, binding)
-		value := command.before
-		if redo { value = command.after }
-		if found &&
-		   target.component_revision == command.component_revision &&
-		   write_inspector_numeric(state, world, binding, value) {
-			if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
-			return true
+		if valid {
+			applied := true
+			for change in transaction.changes[:transaction.change_count] {
+				entity_index, _ := ecs.entity_index_by_uuid(world, change.target_uuid)
+				binding := shared.Editor_UI_Component {
+					target = world.entities[entity_index].id,
+					inspector_field = change.field,
+					inspector_axis = change.axis,
+					custom_storage_index = change.custom_storage_index,
+					custom_field_index = change.custom_field_index,
+				}
+				switch change.kind {
+					case .Number:
+						value := change.before_number
+						if redo { value = change.after_number }
+						applied = write_inspector_numeric(state, world, binding, value) && applied
+					case .Boolean:
+						value := change.before_boolean
+						if redo { value = change.after_boolean }
+						applied = write_inspector_bool(state, world, binding, value) && applied
+				}
+			}
+			if applied {
+				if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
+				return true
+			}
 		}
 		editor_history_remove(state, index)
 	}

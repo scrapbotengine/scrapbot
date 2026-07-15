@@ -13,7 +13,11 @@ import "core:time"
 Renderer_Backend :: shared.Renderer_Backend
 Frame_System_Proc :: #type proc(data: rawptr, world: ^World, delta_seconds: f32) -> string
 Runtime_Reset_Proc :: #type proc(data: rawptr, world: ^World) -> string
-Runtime_Save_Proc :: #type proc(data: rawptr, world: ^World) -> string
+Runtime_Save_Proc :: #type proc(
+	data: rawptr,
+	world: ^World,
+	dirty_entities: []shared.Entity_UUID,
+) -> string
 Render_Stats :: struct {
 	draw_batches: int,
 }
@@ -262,7 +266,11 @@ run_frame_system_unmeasured :: proc(
 	if ui.consume_scene_save_request(config.ui_state) {
 		save_err := "editor save requires a runtime save callback"
 		if config.runtime_save != nil {
-			save_err = config.runtime_save(config.runtime_save_data, world)
+			save_err = config.runtime_save(
+				config.runtime_save_data,
+				world,
+				config.ui_state.editor_dirty_entities[:],
+			)
 		}
 		ui.complete_scene_save(config.ui_state, save_err == "")
 		if save_err != "" {

@@ -1,6 +1,7 @@
 package render
 
 import ecs "../ecs"
+import shared "../shared"
 import ui "../ui"
 import "core:testing"
 
@@ -111,7 +112,7 @@ test_editor_save_runs_once_and_clears_dirty_only_after_success :: proc(t: ^testi
 	state.editor_scene_dirty = true
 	save_count := 0
 	config := Run_Config {
-		runtime_save = test_count_runtime_reset,
+		runtime_save = test_count_runtime_save,
 		runtime_save_data = &save_count,
 		ui_state = state,
 	}
@@ -193,5 +194,11 @@ test_count_runtime_reset :: proc(data: rawptr, world: ^World) -> string {
 	count := cast(^int)data
 	count^ += 1
 	world.time = {}
+	return ""
+}
+
+test_count_runtime_save :: proc(data: rawptr, _: ^World, _: []shared.Entity_UUID) -> string {
+	count := cast(^int)data
+	count^ += 1
 	return ""
 }

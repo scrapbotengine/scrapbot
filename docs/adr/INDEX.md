@@ -23,8 +23,9 @@
 | [ADR-019](ADR-019-model-the-editor-scene-camera-as-a-transient-ecs-entity.md) | Model the editor scene camera as a transient ECS entity | 2026-07-13 |
 | [ADR-020](ADR-020-keep-scroll-state-in-retained-ui-and-clip-on-the-gpu.md) | Keep scroll state in retained UI and clip on the GPU | 2026-07-13 |
 | [ADR-021](ADR-021-model-editor-chrome-as-transient-ecs-ui.md) | Model editor chrome as transient ECS UI | 2026-07-14 |
-| [ADR-022](ADR-022-record-editor-edits-as-runtime-commands.md) | Record editor edits as runtime commands | 2026-07-14 |
+| [ADR-022](ADR-022-record-editor-edits-as-runtime-commands.md) | Record editor edits as runtime commands (superseded by ADR-027) | 2026-07-14 |
 | [ADR-023](ADR-023-identify-entities-with-project-wide-uuids.md) | Identify entities with project-wide UUIDs | 2026-07-14 |
 | [ADR-024](ADR-024-update-derived-ecs-state-from-structural-changes.md) | Update derived ECS state from structural changes | 2026-07-14 |
 | [ADR-025](ADR-025-use-one-public-ecs-ui-contract.md) | Use one public ECS UI contract | 2026-07-15 |
 | [ADR-026](ADR-026-separate-authoring-persistence-from-runtime-playback.md) | Separate authoring persistence from runtime playback | 2026-07-15 |
+| [ADR-027](ADR-027-use-authoring-transactions-for-editor-changes.md) | Use authoring transactions for editor changes | 2026-07-15 |

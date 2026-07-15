@@ -7,20 +7,23 @@ import "core:testing"
 
 @(test)
 test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos)
+	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos); world.entity_by_uuid = make(map[shared.Entity_UUID]int); defer delete(world.entity_by_uuid)
+	uuid := shared.entity_uuid_from_engine_name("gizmo-history-target")
 	append(
 		&world.entities,
 		shared.World_Entity {
 			id = {index = 0, generation = 1},
+			uuid = uuid,
 			alive = true,
 			transform_index = 0,
 			editor_transform_gizmo_index = -1,
 		},
 	)
+	world.entity_by_uuid[uuid] = 0
 	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_simulation_stopped = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); defer ui.destroy(state); state.editor_visible = true; state.editor_simulation_stopped = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}
@@ -98,6 +101,10 @@ test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {
 		t,
 		state.editor_gizmo_active_handle == .None && !state.editor_gizmo_captures_pointer,
 	)
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, state.editor_history[0].change_count == 1)
+	testing.expect(t, ui.editor_history_apply(state, &world, false))
+	testing.expect(t, world.transforms[0].position == shared.Vec3{})
 }
 
 @(test)

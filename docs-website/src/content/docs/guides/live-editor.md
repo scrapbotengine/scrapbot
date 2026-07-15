@@ -33,7 +33,7 @@ The top bar contains the Scrapbot title and the project simulation controls. The
 
 Pause preserves the current runtime world so Play can resume it. Stop intentionally returns to the source-authored scene baseline without reloading code. Stopped is authoring mode: supported inspector and gizmo edits to scene-authored entities mark the scene dirty, and the bottom bar reports `STOPPED / UNSAVED`. Save—or `Ctrl/Cmd+S`—writes those values explicitly. Play and Step remain blocked until the changes are saved or discarded with Stop.
 
-Save matches authored entities by stable UUID, not by name, and atomically replaces the scene file while preserving unrelated source structure and comments. Runtime-spawned and editor-owned entities are never written. Changes made while running or paused remain disposable runtime state.
+Save matches authored entities by stable UUID, not by name. Completed authoring transactions identify candidate entities, then Save compares their typed values with the parsed authored baseline and patches only semantic differences. Unchanged floating-point literals, unrelated source structure, and comments remain byte-for-byte intact before the scene file is atomically replaced. Runtime-spawned and editor-owned entities are never written. Changes made while running or paused remain disposable runtime state.
 
 ## Navigate the scene view
 
@@ -67,7 +67,7 @@ The inspector reports the selected entity's name, identity, provenance, attached
 
 Click a value to focus it and select its complete contents. Typed text replaces the selection. Left/Right/Home/End move the cursor, Shift extends the selection, and Backspace/Delete edit it. Use Tab or Shift+Tab to traverse fields in visual order; Vec3 traversal proceeds through the red X, green Y, and blue Z controls independently. Enter commits and leaves the field, while Escape restores that axis or scalar value from when focus began.
 
-Numeric controls update the active world as soon as their text becomes valid. Invalid numbers receive a red border and remain local to the control. Use Up/Down for the field's normal step, Shift+Up/Down for a 10× step, or Ctrl/Cmd+Up/Down for a 0.1× step. Drag an X/Y/Z label horizontally to scrub that axis. `Ctrl/Cmd+Z` undoes the last completed inspector gesture and `Ctrl/Cmd+Shift+Z` redoes it. A complete typing, stepping, or scrubbing gesture occupies one bounded history entry. While stopped, supported edits to scene-authored entities can be persisted with Save; edits to runtime entities and all edits made while running or paused are session-only.
+Numeric controls update the active world as soon as their text becomes valid. Invalid numbers receive a red border and remain local to the control. Use Up/Down for the field's normal step, Shift+Up/Down for a 10× step, or Ctrl/Cmd+Up/Down for a 0.1× step. Drag an X/Y/Z label horizontally to scrub that axis. `Ctrl/Cmd+Z` undoes the last completed authoring transaction and `Ctrl/Cmd+Shift+Z` redoes it. Complete typing, stepping, scrubbing, boolean changes, and transform-gizmo drags each occupy one bounded history entry. While stopped, supported edits to scene-authored entities can be persisted with Save; edits to runtime entities and all edits made while running or paused are session-only.
 
 Entity membership and formatted values refresh every 200 ms, while selection changes refresh immediately. A periodic refresh leaves the actively edited text alone. The scene browser and inspector scroll independently with pixel-continuous targets, frame-time smoothing without line snapping, clipped partial content, and proportional scrollbars. Fractional trackpad deltas remain fractional.
 
@@ -89,7 +89,7 @@ The axis colors remain consistent in every mode:
 
 Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. In move mode, the center handle translates freely in the camera plane. In scale mode, it changes all three scale components uniformly. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. W/E/R mode shortcuts are ignored while the right mouse button is capturing fly-camera input.
 
-While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. Gizmo undo, snapping, local/world orientation switching, and multi-selection are not implemented yet.
+While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete gizmo drag is one undoable transaction, including multi-axis handles. Snapping, local/world orientation switching, and multi-selection are not implemented yet.
 
 ## Capture the editor
 

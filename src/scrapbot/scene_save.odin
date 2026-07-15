@@ -5,9 +5,14 @@ import project "./project"
 import shared "./shared"
 import "core:fmt"
 import "core:os"
+import "core:strconv"
 import "core:strings"
 
-save_scene_world :: proc(scene_path: string, world: ^shared.World) -> string {
+save_scene_world :: proc(
+	scene_path: string,
+	world: ^shared.World,
+	dirty_entities: []shared.Entity_UUID,
+) -> string {
 	if world == nil {
 		return "cannot save an unavailable scene world"
 	}
@@ -15,6 +20,13 @@ save_scene_world :: proc(scene_path: string, world: ^shared.World) -> string {
 	defer project.destroy_scene_load_result(&loaded)
 	if loaded.err != "" {
 		return loaded.err
+	}
+	baseline_world := ecs.build_world(&loaded.scene)
+	defer ecs.destroy_world(&baseline_world)
+	dirty_lookup := make(map[shared.Entity_UUID]bool, len(dirty_entities))
+	defer delete(dirty_lookup)
+	for id in dirty_entities {
+		dirty_lookup[id] = true
 	}
 	source_bytes, read_err := os.read_entire_file(scene_path, context.temp_allocator)
 	if read_err != nil {
@@ -38,11 +50,13 @@ save_scene_world :: proc(scene_path: string, world: ^shared.World) -> string {
 			write_missing_scene_fields(
 				&builder,
 				world,
+				&baseline_world,
 				&loaded.scene,
 				entity_ordinal,
 				section,
 				custom_component,
 				seen_keys[:seen_key_count],
+				dirty_lookup,
 			)
 			seen_key_count = 0
 		}
@@ -69,16 +83,31 @@ save_scene_world :: proc(scene_path: string, world: ^shared.World) -> string {
 					seen_key_count += 1
 				}
 				scene_entity := loaded.scene.entities[entity_ordinal]
-				if entity_index, found := ecs.entity_index_by_uuid(world, scene_entity.id); found {
-					entity := &world.entities[entity_index]
-					if entity.alive && entity.origin == .Scene {
-						replacement, replace = scene_world_field_value(
-							world,
-							entity_index,
-							section,
-							custom_component,
-							key,
-						)
+				if scene_entity_is_dirty(dirty_lookup, scene_entity.id) {
+					entity_index, found := ecs.entity_index_by_uuid(world, scene_entity.id)
+					baseline_index, baseline_found := ecs.entity_index_by_uuid(
+						&baseline_world,
+						scene_entity.id,
+					)
+					if found && baseline_found {
+						entity := &world.entities[entity_index]
+						if entity.alive && entity.origin == .Scene {
+							replacement, replace = scene_world_field_value(
+								world,
+								entity_index,
+								section,
+								custom_component,
+								key,
+							)
+							baseline, baseline_available := scene_world_field_value(
+								&baseline_world,
+								baseline_index,
+								section,
+								custom_component,
+								key,
+							)
+							replace = replace && (!baseline_available || replacement != baseline)
+						}
 					}
 				}
 			}
@@ -93,11 +122,13 @@ save_scene_world :: proc(scene_path: string, world: ^shared.World) -> string {
 	write_missing_scene_fields(
 		&builder,
 		world,
+		&baseline_world,
 		&loaded.scene,
 		entity_ordinal,
 		section,
 		custom_component,
 		seen_keys[:seen_key_count],
+		dirty_lookup,
 	)
 
 	temp_path, clone_err := strings.concatenate({scene_path, ".scrapbot-save.tmp"})
@@ -118,20 +149,28 @@ save_scene_world :: proc(scene_path: string, world: ^shared.World) -> string {
 write_missing_scene_fields :: proc(
 	builder: ^strings.Builder,
 	world: ^shared.World,
+	baseline_world: ^shared.World,
 	scene: ^shared.Scene,
 	entity_ordinal: int,
 	section, custom_component: string,
 	seen_keys: []string,
+	dirty_entities: map[shared.Entity_UUID]bool,
 ) {
 	if builder == nil ||
 	   world == nil ||
+	   baseline_world == nil ||
 	   scene == nil ||
 	   entity_ordinal < 0 ||
 	   entity_ordinal >= len(scene.entities) {
 		return
 	}
-	entity_index, found := ecs.entity_index_by_uuid(world, scene.entities[entity_ordinal].id)
-	if !found || world.entities[entity_index].origin != .Scene {
+	entity_uuid := scene.entities[entity_ordinal].id
+	if !scene_entity_is_dirty(dirty_entities, entity_uuid) {
+		return
+	}
+	entity_index, found := ecs.entity_index_by_uuid(world, entity_uuid)
+	baseline_index, baseline_found := ecs.entity_index_by_uuid(baseline_world, entity_uuid)
+	if !found || !baseline_found || world.entities[entity_index].origin != .Scene {
 		return
 	}
 	keys: [3]string
@@ -191,11 +230,28 @@ write_missing_scene_fields :: proc(
 		if !available {
 			continue
 		}
+		baseline, baseline_available := scene_world_field_value(
+			baseline_world,
+			baseline_index,
+			section,
+			custom_component,
+			key,
+		)
+		if baseline_available && baseline == value {
+			continue
+		}
 		strings.write_string(builder, key)
 		strings.write_string(builder, " = ")
 		strings.write_string(builder, value)
 		strings.write_rune(builder, '\n')
 	}
+}
+
+scene_entity_is_dirty :: proc(
+	dirty_entities: map[shared.Entity_UUID]bool,
+	id: shared.Entity_UUID,
+) -> bool {
+	return dirty_entities[id]
 }
 
 write_replaced_scene_line :: proc(builder: ^strings.Builder, raw_line, replacement: string) {
@@ -231,11 +287,16 @@ scene_comment_index :: proc(line: string, start: int) -> int {
 }
 
 scene_f32 :: proc(value: f32) -> string {
-	return fmt.tprintf("%.9g", value)
+	buffer: [32]byte
+	formatted := strconv.write_float(buffer[:], f64(value), 'g', -1, 32)
+	if len(formatted) > 0 && formatted[0] == '+' {
+		formatted = formatted[1:]
+	}
+	return fmt.tprintf("%s", formatted)
 }
 
 scene_vec3 :: proc(value: shared.Vec3) -> string {
-	return fmt.tprintf("[%.9g, %.9g, %.9g]", value.x, value.y, value.z)
+	return fmt.tprintf("[%s, %s, %s]", scene_f32(value.x), scene_f32(value.y), scene_f32(value.z))
 }
 
 scene_bool :: proc(value: bool) -> string {

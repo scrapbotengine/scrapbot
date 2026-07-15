@@ -524,12 +524,16 @@ frame_runtime_reset :: proc(data: rawptr, world: ^shared.World) -> string {
 	return reset_scene_world(runtime.scene_path, &runtime.script_runtime, world)
 }
 
-frame_runtime_save :: proc(data: rawptr, world: ^shared.World) -> string {
+frame_runtime_save :: proc(
+	data: rawptr,
+	world: ^shared.World,
+	dirty_entities: []shared.Entity_UUID,
+) -> string {
 	runtime := cast(^Frame_Runtime)data
 	if runtime == nil || world == nil {
 		return "cannot save an unavailable project runtime"
 	}
-	return save_scene_world(runtime.scene_path, world)
+	return save_scene_world(runtime.scene_path, world, dirty_entities)
 }
 
 reset_scene_world :: proc(

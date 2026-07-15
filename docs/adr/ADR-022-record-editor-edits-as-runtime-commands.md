@@ -2,6 +2,8 @@
 
 **Date:** 2026-07-14
 
+**Superseded by:** ADR-027
+
 ## Context
 
 Inspector controls need live feedback while a value is typed, stepped, or scrubbed, but treating every preview update as an independent edit makes undo unusable. Direct ECS mutation also loses the value that existed before a gesture and cannot distinguish a completed edit from an invalid or cancelled one. Scene persistence is not ready yet, so the first command model must remain useful without claiming that runtime edits modify source TOML.

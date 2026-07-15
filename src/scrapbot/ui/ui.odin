@@ -121,15 +121,27 @@ Node :: struct {
 	fill_width_valid, fill_height_valid: bool,
 }
 EDITOR_HISTORY_CAPACITY :: 128
-Editor_Edit_Command :: struct {
-	target: shared.Entity,
+EDITOR_TRANSACTION_MAX_CHANGES :: 3
+Editor_Edit_Value_Kind :: enum {
+	Number,
+	Boolean,
+}
+Editor_Edit_Change :: struct {
+	target_uuid: shared.Entity_UUID,
 	component_revision: u64,
 	field: shared.Editor_Inspector_Field,
 	axis: shared.Editor_Inspector_Axis,
 	custom_storage_index: int,
 	custom_field_index: int,
-	before: f32,
-	after: f32,
+	kind: Editor_Edit_Value_Kind,
+	before_number: f32,
+	after_number: f32,
+	before_boolean: bool,
+	after_boolean: bool,
+}
+Editor_Edit_Transaction :: struct {
+	changes: [EDITOR_TRANSACTION_MAX_CHANGES]Editor_Edit_Change,
+	change_count: int,
 }
 State :: struct {
 	nodes: [MAX_NODES]Node,
@@ -165,6 +177,8 @@ State :: struct {
 	editor_scene_save_requested: bool,
 	editor_scene_dirty: bool,
 	editor_scene_save_failed: bool,
+	editor_dirty_entities: [dynamic]shared.Entity_UUID,
+	editor_dirty_entity_lookup: map[shared.Entity_UUID]bool,
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
@@ -192,7 +206,7 @@ State :: struct {
 	input_scrubbing: bool,
 	input_scrub_start_x: f32,
 	input_scrub_start_number: f32,
-	editor_history: [EDITOR_HISTORY_CAPACITY]Editor_Edit_Command,
+	editor_history: [EDITOR_HISTORY_CAPACITY]Editor_Edit_Transaction,
 	editor_history_count: int,
 	editor_history_cursor: int,
 	editor_pick_requested: bool,
@@ -278,6 +292,10 @@ editor_stop :: proc(state: ^State) {
 	state.editor_scene_save_requested = false
 	state.editor_scene_dirty = false
 	state.editor_scene_save_failed = false
+	clear(&state.editor_dirty_entities)
+	clear(&state.editor_dirty_entity_lookup)
+	state.editor_history_count = 0
+	state.editor_history_cursor = 0
 	state.editor_snapshot_valid = false
 }
 
@@ -295,6 +313,13 @@ editor_mark_scene_dirty :: proc(state: ^State, entity: ^shared.World_Entity) {
 	   !state.editor_simulation_stopped ||
 	   entity.origin != .Scene {
 		return
+	}
+	if state.editor_dirty_entity_lookup == nil {
+		state.editor_dirty_entity_lookup = make(map[shared.Entity_UUID]bool)
+	}
+	if !state.editor_dirty_entity_lookup[entity.uuid] {
+		state.editor_dirty_entity_lookup[entity.uuid] = true
+		append(&state.editor_dirty_entities, entity.uuid)
 	}
 	state.editor_scene_dirty = true
 	state.editor_scene_save_failed = false
@@ -335,6 +360,8 @@ complete_scene_save :: proc(state: ^State, ok: bool) {
 	state.editor_scene_save_failed = !ok
 	if ok {
 		state.editor_scene_dirty = false
+		clear(&state.editor_dirty_entities)
+		clear(&state.editor_dirty_entity_lookup)
 	}
 	state.editor_snapshot_valid = false
 }
@@ -353,6 +380,8 @@ consume_simulation_delta :: proc(state: ^State, delta_seconds: f32) -> (f32, boo
 destroy :: proc(state: ^State) {
 	if state == nil { return }
 	delete(state.input_original_text)
+	delete(state.editor_dirty_entities)
+	delete(state.editor_dirty_entity_lookup)
 	state^ = {}
 }
 

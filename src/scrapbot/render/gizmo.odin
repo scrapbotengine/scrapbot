@@ -98,6 +98,35 @@ editor_transform_gizmo_system :: proc(
 			}
 		}
 	} else if !pointer.primary_down {
+		switch gizmo.mode {
+			case .Translate:
+				ui.editor_history_push_transform(
+					state,
+					world,
+					entity_index,
+					.Transform_Position,
+					state.editor_gizmo_drag_position,
+					transform.position,
+				)
+			case .Rotate:
+				ui.editor_history_push_transform(
+					state,
+					world,
+					entity_index,
+					.Transform_Rotation,
+					state.editor_gizmo_drag_rotation,
+					transform.rotation,
+				)
+			case .Scale:
+				ui.editor_history_push_transform(
+					state,
+					world,
+					entity_index,
+					.Transform_Scale,
+					state.editor_gizmo_drag_scale,
+					transform.scale,
+				)
+		}
 		state.editor_gizmo_active_handle = .None; state.editor_gizmo_captures_pointer = false
 	} else {
 		state.editor_gizmo_captures_pointer =

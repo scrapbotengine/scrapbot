@@ -34,7 +34,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Clicking an inspector value selects its complete contents. Cursor and selection commands work inside the field, Tab and Shift+Tab traverse values in paint order—including X, Y, and Z independently—Enter commits and leaves the field, and Escape restores the value captured when editing began.
 - Numeric fields reject non-finite, unparsable, and field-invalid values with a red focus border without mutating the running world. Up and Down step by the field's default increment, Shift uses a coarse 10× step, and Ctrl/Cmd uses a fine 0.1× step. Camera planes remain positive and ordered, camera field of view stays within 1–179 degrees, and light colors and non-negative light properties remain within their valid ranges.
 - Vec3 controls expose restrained red, green, and blue X/Y/Z label strips. Dragging a strip horizontally scrubs that axis; releasing commits the complete drag as one edit.
-- Completed inspector typing, stepping, and scrubbing gestures enter a bounded command history. `Ctrl/Cmd+Z` undoes, `Ctrl/Cmd+Shift+Z` redoes, and `Ctrl/Cmd+S` saves supported scene-authoring changes while the editor is open. Escape and invalid values do not create history, and editor shortcuts do not consume project input while chrome is closed or a project-owned input has focus.
+- Completed inspector typing, stepping, scrubbing, boolean changes, and transform-gizmo drags enter a bounded transaction history. `Ctrl/Cmd+Z` undoes, `Ctrl/Cmd+Shift+Z` redoes, and `Ctrl/Cmd+S` saves supported scene-authoring changes while the editor is open. Each complete gesture is one history step, Escape and invalid values do not create history, and editor shortcuts do not consume project input while chrome is closed or a project-owned input has focus.
 - Entity membership, names, status counts, and formatted inspector values refresh from the running world every 200 ms. Opening the editor or changing selection refreshes immediately; a focused input is not overwritten by a periodic snapshot, and hover, scrolling, picking, gizmo input, and text editing remain frame-rate responsive.
 - The scene browser and component inspector have independent pixel offsets and targets, frame-time smoothing without row or field snapping, clipping, and proportional scrollbars. Selecting a different entity resets the inspector to its beginning.
 - Clicking rendered geometry in the live viewport selects the nearest intersected entity using the active camera and current viewport dimensions.
@@ -43,9 +43,9 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Move and scale modes include XY, XZ, and YZ plane walls. Their center handle provides camera-plane free translation in move mode and uniform XYZ scaling in scale mode.
 - The editor expresses gizmo ownership as a transient `EditorTransformGizmo` component on the selected entity; changing selection or closing the editor removes it.
 - Hovering emphasizes the nearest axis, plane, or center handle. Dragging captures the pointer and updates position, rotation, or scale according to the gizmo's ECS-visible mode. Mode shortcuts are ignored during RMB fly-camera capture.
-- Gizmo changes to scene-origin entities are authoring changes while stopped and runtime-only changes while playing or paused. Snapping and gizmo undo are not part of this slice.
+- Gizmo changes to scene-origin entities are undoable authoring transactions while stopped and undoable runtime-only transactions while playing or paused. Snapping is not part of this slice.
 - Stopped is the authoring state. Supported inspector and gizmo edits to scene-origin entities mark the scene dirty; runtime-spawned and editor-owned entities never become save candidates. Play and Step remain blocked until dirty changes are explicitly saved or discarded with Stop.
-- Save updates supported component values in the scene TOML by stable entity UUID, so duplicate names are safe. It preserves unrelated source structure and comments and atomically replaces the source file. Running and paused mutations remain disposable runtime state.
+- Save uses the dirty UUID candidates produced by authoring transactions, compares their current typed values with the parsed authored baseline, and updates only semantic differences in the scene TOML. Duplicate names are safe, unchanged floating-point literals remain byte-for-byte intact, unrelated source structure and comments are preserved, and the source file is replaced atomically. Running and paused mutations remain disposable runtime state.
 - Headless WGPU runs can combine `--editor` with `--framegrab` for deterministic editor-shell screenshots.
 
 ## Design Decisions
@@ -128,11 +128,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** The editor dogfoods public focus, selection, cursor, pointer, and boolean-control behavior instead of maintaining separate inspector widgets.
 **Tradeoff:** The internal binding layer is field-specific and runtime-only; it is not a general public data-binding or command-event API.
 
-### 14. Preview immediately and commit one command per gesture
+### 14. Preview immediately and commit one authoring transaction per gesture
 
-**Decision:** Apply each valid numeric preview to the live ECS, but capture its starting value and add one bounded history command only when typing, stepping, or scrubbing completes, following ADR-022.
+**Decision:** Following ADR-027, apply valid previews to the active ECS, but capture starting values and add one UUID-addressed transaction only when typing, stepping, scrubbing, a boolean change, or a complete gizmo drag commits. A transaction may contain multiple typed field changes, so a three-axis gizmo drag remains one undo step.
 **Why:** Scene feedback remains immediate without turning every character or pointer pixel into a separate undo step.
-**Tradeoff:** History is numeric and limited to 128 commands. It does not yet include gizmo manipulation or structural edits; dirty tracking is conservative across previews, cancellation, and undo.
+**Tradeoff:** History is limited to 128 transactions and currently supports numeric and boolean property values rather than structural entity/component edits. Dirty candidates are conservative across previews, cancellation, and undo; semantic comparison at Save determines whether source actually differs.
 
 ### 15. Profile systems at their execution boundary
 
@@ -148,13 +148,13 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 17. Make stopped authoring persistence explicit
 
-**Decision:** Following ADR-026, treat Stopped as authoring mode, mark supported edits to scene-origin entities dirty, and require Save or Stop before Play or Step. Save patches supported scene fields by stable UUID and excludes runtime/editor entities.
+**Decision:** Following ADR-026 and ADR-027, treat Stopped as authoring mode, mark transaction target UUIDs for scene-origin entities as dirty candidates, and require Save or Stop before Play or Step. Save compares those candidates with the authored baseline, patches only semantic differences, and excludes runtime/editor entities.
 **Why:** Explicit persistence prevents simulation output from leaking into source while still making the live ECS world useful for authoring. Stable UUIDs keep persistence correct when names are duplicated or changed.
 **Tradeoff:** The single-world model cannot preserve an unsaved authoring world alongside an independently running play world. Save currently covers supported value edits, not structural entity or component changes.
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-022, ADR-023, ADR-024, ADR-026
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-023, ADR-024, ADR-026, ADR-027
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions

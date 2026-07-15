@@ -136,7 +136,13 @@ editor_ui_handle_checkbox_change :: proc(
 	binding := world.editor_uis[entity.editor_ui_index]
 	if binding.role != .Inspector_Checkbox { return }
 	checkbox := world.ui_checkboxes[entity.ui_checkbox_index]
-	if write_inspector_bool(state, world, binding, checkbox.checked) { return }
+	before, before_ok := read_inspector_bool(world, binding)
+	if write_inspector_bool(state, world, binding, checkbox.checked) {
+		if before_ok {
+			editor_history_push_bool(state, world, binding, before, checkbox.checked)
+		}
+		return
+	}
 	if reflected, ok := read_inspector_bool(world, binding); ok {
 		checkbox.checked = reflected
 		_ = ecs.set_ui_checkbox(world, entity_index, checkbox)

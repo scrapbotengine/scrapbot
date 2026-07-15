@@ -101,8 +101,9 @@
 - [x] Add an editor-origin ECS scene camera with RMB-captured WASD, Space, and Ctrl fly navigation.
 - [x] Add live inspector editing for transform, camera, light, and custom Vec3 fields.
 - [x] Add numeric validation, keyboard stepping, axis-label scrubbing, and bounded inspector undo/redo.
+- [x] Unify numeric, boolean, and transform-gizmo edits as UUID-addressed authoring transactions.
 - [x] Add top-bar Play, Pause, scene-reloading Stop, fixed-frame Step, and explicit Save controls.
-- [x] Persist supported stopped-mode inspector and gizmo edits to scene TOML by stable entity UUID while excluding runtime entities.
+- [x] Persist only semantic differences for dirty stopped-mode scene entities while preserving unchanged TOML text and excluding runtime entities.
 - [ ] Generalize component value editing across every reflected field type.
 
 ## Documentation And Examples

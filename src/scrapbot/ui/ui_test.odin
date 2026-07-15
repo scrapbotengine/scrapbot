@@ -1752,8 +1752,10 @@ test_editor_transport_buttons_control_simulation_and_request_stop_reload :: proc
 test_editor_scene_dirty_only_tracks_stopped_scene_entities :: proc(t: ^testing.T) {
 	state := new(State)
 	defer free(state)
+	defer destroy(state)
 	state.editor_simulation_stopped = true
 	scene_entity := shared.World_Entity {
+		uuid = shared.entity_uuid_from_engine_name("scene-dirty"),
 		origin = .Scene,
 	}
 	runtime_entity := shared.World_Entity {
@@ -1763,6 +1765,9 @@ test_editor_scene_dirty_only_tracks_stopped_scene_entities :: proc(t: ^testing.T
 	testing.expect(t, !state.editor_scene_dirty)
 	editor_mark_scene_dirty(state, &scene_entity)
 	testing.expect(t, state.editor_scene_dirty)
+	testing.expect(t, len(state.editor_dirty_entities) == 1)
+	editor_mark_scene_dirty(state, &scene_entity)
+	testing.expect(t, len(state.editor_dirty_entities) == 1)
 	state.editor_scene_dirty = false
 	state.editor_simulation_stopped = false
 	editor_mark_scene_dirty(state, &scene_entity)
@@ -2830,8 +2835,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			testing.expect(t, state.editor_history_count > 0)
 			if state.editor_history_count > 0 {
 				command := state.editor_history[state.editor_history_count - 1]
-				testing.expect(t, math.abs(command.before - 4.99) < 0.001)
-				testing.expect(t, math.abs(command.after - scrubbed) < 0.001)
+				testing.expect(t, math.abs(command.changes[0].before_number - 4.99) < 0.001)
+				testing.expect(t, math.abs(command.changes[0].after_number - scrubbed) < 0.001)
 			}
 			testing.expect(
 				t,
@@ -2967,8 +2972,11 @@ test_editor_history_bounds_branches_and_skips_stale_commands :: proc(t: ^testing
 	}
 	testing.expect(t, state.editor_history_count == EDITOR_HISTORY_CAPACITY)
 	testing.expect(t, state.editor_history_cursor == EDITOR_HISTORY_CAPACITY)
-	testing.expect(t, state.editor_history[0].before == 2)
-	testing.expect(t, state.editor_history[EDITOR_HISTORY_CAPACITY - 1].after == 130)
+	testing.expect(t, state.editor_history[0].changes[0].before_number == 2)
+	testing.expect(
+		t,
+		state.editor_history[EDITOR_HISTORY_CAPACITY - 1].changes[0].after_number == 130,
+	)
 
 	state.editor_history_count = 0
 	state.editor_history_cursor = 0
@@ -2982,7 +2990,7 @@ test_editor_history_bounds_branches_and_skips_stale_commands :: proc(t: ^testing
 	editor_history_push(state, &world, first, 1, 3)
 	testing.expect(t, state.editor_history_count == 2)
 	testing.expect(t, state.editor_history_cursor == 2)
-	testing.expect(t, state.editor_history[1].after == 3)
+	testing.expect(t, state.editor_history[1].changes[0].after_number == 3)
 	testing.expect(t, !editor_history_apply(state, &world, true))
 	testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 3)
 
@@ -2999,6 +3007,51 @@ test_editor_history_bounds_branches_and_skips_stale_commands :: proc(t: ^testing
 	testing.expect(t, state.editor_history_cursor == 0)
 	testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 77)
 	testing.expect(t, world.transforms[world.entities[1].transform_index].position.x == 10)
+}
+
+@(test)
+test_editor_history_transactions_undo_and_redo_boolean_changes :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Undo Checkbox"),
+			name = "Undo Checkbox",
+			has_ui_layout = true,
+			ui_layout = {size = {80, 32}},
+			has_ui_checkbox = true,
+			ui_checkbox = shared.ui_checkbox_default(),
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	binding := shared.Editor_UI_Component {
+		target = world.entities[0].id,
+		inspector_field = .UI_Checkbox_Checked,
+	}
+	testing.expect(t, write_inspector_bool(state, &world, binding, true))
+	editor_history_push_bool(state, &world, binding, false, true)
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, state.editor_history[0].changes[0].kind == .Boolean)
+	complete_scene_save(state, true)
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, !state.editor_scene_dirty && len(state.editor_dirty_entities) == 0)
+	testing.expect(t, editor_history_apply(state, &world, false))
+	testing.expect(t, !world.ui_checkboxes[world.entities[0].ui_checkbox_index].checked)
+	testing.expect(t, state.editor_scene_dirty && len(state.editor_dirty_entities) == 1)
+	testing.expect(t, editor_history_apply(state, &world, true))
+	testing.expect(t, world.ui_checkboxes[world.entities[0].ui_checkbox_index].checked)
+	testing.expect(t, len(state.editor_dirty_entities) == 1)
+	editor_stop(state)
+	testing.expect(t, state.editor_history_count == 0)
+	testing.expect(t, !state.editor_scene_dirty && len(state.editor_dirty_entities) == 0)
 }
 
 @(test)

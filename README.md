@@ -185,7 +185,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [ ] Hierarchical browser
 - Editing
   - [x] Live transform, camera, light, and custom Vec3 inspector editing
-  - [x] Runtime inspector undo/redo
+  - [x] UUID-addressed authoring transactions with inspector and gizmo undo/redo
   - [ ] Component management
   - [ ] Entity management
   - [x] Explicit stopped-mode scene persistence by stable entity UUID
