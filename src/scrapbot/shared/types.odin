@@ -590,7 +590,7 @@ Editor_Transform_Gizmo_Component :: struct {
 	mode: Editor_Gizmo_Mode,
 }
 
-MAX_SYSTEM_PROFILE_ENTRIES :: 64
+MAX_SYSTEM_PROFILE_ENTRIES :: 80
 SYSTEM_PROFILE_NAME_CAPACITY :: 96
 
 System_Profile_Kind :: enum {

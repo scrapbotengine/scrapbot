@@ -49,6 +49,46 @@ test_null_renderer_steps_frame_system_for_max_frames :: proc(t: ^testing.T) {
 	testing.expect(t, world.time.delta_time == f32(1.0 / 60.0))
 }
 
+Test_System_Profile_Events :: struct {
+	begin_count: int,
+	commit_count: int,
+	phase_counts: [Engine_System_Profile_Phase.Count]int,
+}
+
+@(test)
+test_null_renderer_profiles_every_engine_frame_system :: proc(t: ^testing.T) {
+	world: World
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	events: Test_System_Profile_Events
+
+	_, err := run_renderer(
+		Run_Config {
+			backend = .Null,
+			max_frames = 2,
+			ui_state = state,
+			system_profile_begin = test_system_profile_begin,
+			system_profile_record = test_system_profile_record,
+			system_profile_commit = test_system_profile_commit,
+			system_profile_data = &events,
+		},
+		&world,
+	)
+
+	testing.expectf(t, err == "", "run_renderer failed: %s", err)
+	testing.expect(t, events.begin_count == 2)
+	testing.expect(t, events.commit_count == 2)
+	for phase in Engine_System_Profile_Phase {
+		if phase == .Count {
+			continue
+		}
+		testing.expect(t, events.phase_counts[phase] == 2)
+	}
+}
+
 @(test)
 test_stopped_editor_simulation_only_runs_requested_step :: proc(t: ^testing.T) {
 	world: World
@@ -231,4 +271,19 @@ test_count_runtime_save :: proc(data: rawptr, _: ^World, _: []shared.Entity_UUID
 	count := cast(^int)data
 	count^ += 1
 	return ""
+}
+
+test_system_profile_begin :: proc(data: rawptr) {
+	events := cast(^Test_System_Profile_Events)data
+	events.begin_count += 1
+}
+
+test_system_profile_record :: proc(data: rawptr, phase: Engine_System_Profile_Phase, _: i64) {
+	events := cast(^Test_System_Profile_Events)data
+	events.phase_counts[phase] += 1
+}
+
+test_system_profile_commit :: proc(data: rawptr) {
+	events := cast(^Test_System_Profile_Events)data
+	events.commit_count += 1
 }

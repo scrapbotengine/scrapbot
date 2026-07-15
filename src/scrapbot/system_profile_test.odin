@@ -1,6 +1,7 @@
 package scrapbot
 
 import native "./native"
+import render "./render"
 import script "./script"
 import "core:testing"
 
@@ -19,20 +20,36 @@ test_system_profile_publishes_five_frame_updates_over_a_fifty_frame_window :: pr
 	profile: System_Profile_Accumulator
 
 	system_profile_prepare(&profile, &native_extensions, &script_runtime)
-	testing.expect(t, profile.snapshot.entry_count == 2)
+	testing.expect(t, profile.snapshot.entry_count == ENGINE_SYSTEM_PROFILE_COUNT + 2)
 	testing.expect(t, profile.snapshot.revision == 1)
-	testing.expect(t, profile.snapshot.entries[0].kind == .Project_Odin)
-	testing.expect(t, profile.snapshot.entries[0].name_length == len("Physics"))
-	testing.expect(t, profile.snapshot.entries[1].kind == .Luau)
-	testing.expect(t, profile.snapshot.entries[1].name_length == len(script_name))
+	for phase in render.Engine_System_Profile_Phase {
+		if phase == .Count {
+			continue
+		}
+		entry := &profile.snapshot.entries[int(phase)]
+		testing.expect(t, entry.kind == .Engine)
+		name := engine_system_profile_name(phase)
+		testing.expect(t, string(entry.name[:entry.name_length]) == name)
+	}
+	odin_index := ENGINE_SYSTEM_PROFILE_COUNT
+	luau_index := odin_index + 1
+	testing.expect(t, profile.snapshot.entries[odin_index].kind == .Project_Odin)
+	testing.expect(t, profile.snapshot.entries[odin_index].name_length == len("Physics"))
+	testing.expect(t, profile.snapshot.entries[luau_index].kind == .Luau)
+	testing.expect(t, profile.snapshot.entries[luau_index].name_length == len(script_name))
 	testing.expect(
 		t,
-		string(profile.snapshot.entries[1].name[:profile.snapshot.entries[1].name_length]) ==
+		string(
+			profile.snapshot.entries[luau_index].name[:profile.snapshot.entries[luau_index].name_length],
+		) ==
 		script_name,
 	)
 	testing.expect(t, profile.snapshot.sample_frames == 0)
 
-	durations := [2]i64{1_000, 3_000}
+	durations: [ENGINE_SYSTEM_PROFILE_COUNT + 2]i64
+	durations[int(render.Engine_System_Profile_Phase.UI)] = 500
+	durations[odin_index] = 1_000
+	durations[luau_index] = 3_000
 	for _ in 0 ..< SYSTEM_PROFILE_PUBLISH_INTERVAL_FRAMES - 1 {
 		system_profile_commit_frame(&profile, durations[:])
 	}
@@ -42,21 +59,28 @@ test_system_profile_publishes_five_frame_updates_over_a_fifty_frame_window :: pr
 	system_profile_commit_frame(&profile, durations[:])
 	testing.expect(t, profile.snapshot.revision == 2)
 	testing.expect(t, profile.snapshot.sample_frames == SYSTEM_PROFILE_PUBLISH_INTERVAL_FRAMES)
-	testing.expect(t, profile.snapshot.entries[0].average_nanoseconds == 1_000)
-	testing.expect(t, profile.snapshot.entries[1].average_nanoseconds == 3_000)
+	testing.expect(
+		t,
+		profile.snapshot.entries[int(render.Engine_System_Profile_Phase.UI)].average_nanoseconds ==
+		500,
+	)
+	testing.expect(t, profile.snapshot.entries[odin_index].average_nanoseconds == 1_000)
+	testing.expect(t, profile.snapshot.entries[luau_index].average_nanoseconds == 3_000)
 	testing.expect(t, profile.frames_since_publish == 0)
 
 	for _ in SYSTEM_PROFILE_PUBLISH_INTERVAL_FRAMES ..< SYSTEM_PROFILE_ROLLING_WINDOW_FRAMES {
 		system_profile_commit_frame(&profile, durations[:])
 	}
 	testing.expect(t, profile.snapshot.sample_frames == SYSTEM_PROFILE_ROLLING_WINDOW_FRAMES)
-	high_durations := [2]i64{6_000, 8_000}
+	high_durations := durations
+	high_durations[odin_index] = 6_000
+	high_durations[luau_index] = 8_000
 	for _ in 0 ..< SYSTEM_PROFILE_PUBLISH_INTERVAL_FRAMES {
 		system_profile_commit_frame(&profile, high_durations[:])
 	}
 	testing.expect(t, profile.snapshot.sample_frames == SYSTEM_PROFILE_ROLLING_WINDOW_FRAMES)
-	testing.expect(t, profile.snapshot.entries[0].average_nanoseconds == 1_500)
-	testing.expect(t, profile.snapshot.entries[1].average_nanoseconds == 3_500)
+	testing.expect(t, profile.snapshot.entries[odin_index].average_nanoseconds == 1_500)
+	testing.expect(t, profile.snapshot.entries[luau_index].average_nanoseconds == 3_500)
 
 	native_extensions.systems[0].name = "Movement"
 	system_profile_prepare(&profile, &native_extensions, &script_runtime)

@@ -880,6 +880,7 @@ wgpu_draw_frame :: proc(
 	defer wgpu.TextureViewRelease(view)
 	defer wgpu.TextureRelease(texture)
 
+	begin_system_profile_frame(config)
 	frame_start := begin_runtime_frame(config)
 	if err = run_frame_system(
 		config,
@@ -890,6 +891,7 @@ wgpu_draw_frame :: proc(
 	); err != "" {
 		return false, false, err
 	}
+	render_prepare_start := time.tick_now()
 	render_list := ecs.build_resource_render_list(
 		world,
 		config.resource_registry,
@@ -905,8 +907,10 @@ wgpu_draw_frame :: proc(
 	)
 	if config.stats != nil { config.stats.draw_batches = batch_count }
 	ecs.destroy_render_list(&render_list)
+	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
 
+	render_submit_start := time.tick_now()
 	encoder := wgpu.DeviceCreateCommandEncoder(
 		renderer.device,
 		&wgpu.CommandEncoderDescriptor{label = "Scrapbot Render Encoder"},
@@ -950,6 +954,8 @@ wgpu_draw_frame :: proc(
 	if wgpu.SurfacePresent(renderer.surface) != .Success {
 		return false, false, "failed to present wgpu surface"
 	}
+	record_system_profile_phase(config, .Render_Submit, render_submit_start)
+	commit_system_profile_frame(config)
 
 	return true, false, ""
 }
@@ -966,12 +972,14 @@ wgpu_render_offscreen_frame :: proc(
 	height: u32 = 0,
 	config: ^Run_Config = nil,
 ) -> string {
+	begin_system_profile_frame(config)
 	frame_start := begin_runtime_frame(config)
 	if config != nil {
 		if err := run_frame_system(config, world, 1.0 / 60.0); err != "" {
 			return err
 		}
 	}
+	render_prepare_start := time.tick_now()
 	render_list := ecs.build_resource_render_list(
 		world,
 		config.resource_registry,
@@ -987,8 +995,10 @@ wgpu_render_offscreen_frame :: proc(
 	)
 	if config != nil && config.stats != nil { config.stats.draw_batches = batch_count }
 	ecs.destroy_render_list(&render_list)
+	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
 
+	render_submit_start := time.tick_now()
 	encoder := wgpu.DeviceCreateCommandEncoder(
 		renderer.device,
 		&wgpu.CommandEncoderDescriptor{label = "Scrapbot Headless Render Encoder"},
@@ -1044,6 +1054,8 @@ wgpu_render_offscreen_frame :: proc(
 	defer wgpu.CommandBufferRelease(command_buffer)
 
 	wgpu.QueueSubmit(renderer.queue, []wgpu.CommandBuffer{command_buffer})
+	record_system_profile_phase(config, .Render_Submit, render_submit_start)
+	commit_system_profile_frame(config)
 	return ""
 }
 

@@ -55,6 +55,7 @@
 - [x] Add scheduled systems with declared component access.
 - [x] Add optional project-facing names for Luau systems and expose them in the profiler.
 - [x] Show system provenance and full-width absolute callback-time bars in the live profiler.
+- [x] Include editor, ECS UI, render preparation, and render submission systems in the live profiler.
 - [x] Execute a project-local Luau entry script during `scrapbot run`.
 - [x] Add Luau LSP metadata for the built-in `scrapbot` global.
 - [x] Add a first Luau system bridge for project-local systems.

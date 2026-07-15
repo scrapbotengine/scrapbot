@@ -13,6 +13,22 @@ import "core:time"
 Renderer_Backend :: shared.Renderer_Backend
 Frame_System_Proc :: #type proc(data: rawptr, world: ^World, delta_seconds: f32) -> string
 Runtime_World_Proc :: #type proc(data: rawptr, world: ^World) -> string
+Engine_System_Profile_Phase :: enum {
+	Editor_Camera,
+	Editor_Gizmo,
+	UI,
+	Picking,
+	Render_Prepare,
+	Render_Submit,
+	Count,
+}
+System_Profile_Begin_Proc :: #type proc(data: rawptr)
+System_Profile_Record_Proc :: #type proc(
+	data: rawptr,
+	phase: Engine_System_Profile_Phase,
+	duration_nanoseconds: i64,
+)
+System_Profile_Commit_Proc :: #type proc(data: rawptr)
 Runtime_Save_Proc :: #type proc(
 	data: rawptr,
 	world: ^World,
@@ -64,6 +80,10 @@ Run_Config :: struct {
 	ui_dump_path: string,
 	frame_system: Frame_System_Proc,
 	frame_system_data: rawptr,
+	system_profile_begin: System_Profile_Begin_Proc,
+	system_profile_record: System_Profile_Record_Proc,
+	system_profile_commit: System_Profile_Commit_Proc,
+	system_profile_data: rawptr,
 	runtime_playback_begin: Runtime_World_Proc,
 	runtime_playback_begin_data: rawptr,
 	runtime_playback_stop: Runtime_World_Proc,
@@ -190,11 +210,14 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				frame_count = 1
 			}
 			for i in 0 ..< frame_count {
+				begin_system_profile_frame(&run_config)
 				frame_start := begin_runtime_frame(&run_config)
 				if err = run_frame_system(&run_config, world, 1.0 / 60.0); err != "" {
 					return
 				}
-				if run_config.runtime_stats_collector != nil {
+				render_prepare_start := time.tick_now()
+				if run_config.runtime_stats_collector != nil ||
+				   run_config.system_profile_record != nil {
 					list := ecs.build_resource_render_list(
 						world,
 						run_config.resource_registry,
@@ -205,7 +228,11 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 					}
 					ecs.destroy_render_list(&list)
 				}
+				record_system_profile_phase(&run_config, .Render_Prepare, render_prepare_start)
 				finish_runtime_frame(&run_config, world, frame_start)
+				render_submit_start := time.tick_now()
+				record_system_profile_phase(&run_config, .Render_Submit, render_submit_start)
+				commit_system_profile_frame(&run_config)
 				if run_config.ui_driver != nil &&
 				   ui.diagnostic_driver_is_complete(run_config.ui_driver) {
 					break
@@ -290,6 +317,34 @@ run_frame_system :: proc(
 		drawable_width,
 		drawable_height,
 	)
+}
+
+begin_system_profile_frame :: proc(config: ^Run_Config) {
+	if config != nil && config.system_profile_begin != nil {
+		config.system_profile_begin(config.system_profile_data)
+	}
+}
+
+record_system_profile_phase :: proc(
+	config: ^Run_Config,
+	phase: Engine_System_Profile_Phase,
+	start: time.Tick,
+) {
+	if config == nil || config.system_profile_record == nil {
+		return
+	}
+	finish := time.tick_now()
+	config.system_profile_record(
+		config.system_profile_data,
+		phase,
+		time.duration_nanoseconds(time.tick_diff(start, finish)),
+	)
+}
+
+commit_system_profile_frame :: proc(config: ^Run_Config) {
+	if config != nil && config.system_profile_commit != nil {
+		config.system_profile_commit(config.system_profile_data)
+	}
 }
 
 begin_runtime_frame :: proc(config: ^Run_Config) -> time.Tick {
@@ -379,12 +434,14 @@ run_frame_system_unmeasured :: proc(
 		   config.ui_state.editor_visible &&
 		   !camera_input.look_active &&
 		   !ui.has_text_focus(config.ui_state) { ui.editor_set_gizmo_mode(config.ui_state, mode) }
+		camera_system_start := time.tick_now()
 		ecs.editor_scene_camera_system(
 			world,
 			camera_input,
 			delta_seconds,
 			config.ui_state.editor_visible,
 		)
+		record_system_profile_phase(config, .Editor_Camera, camera_system_start)
 		platform_pointer := platform.runtime_pointer_state_in_pixels()
 		pointer := ui.Pointer_Input {
 			position = {platform_pointer.x, platform_pointer.y},
@@ -429,6 +486,7 @@ run_frame_system_unmeasured :: proc(
 			keyboard = driver_keyboard
 		}
 		camera, has_camera := ecs.active_camera_instance(world, config.ui_state.editor_visible)
+		gizmo_system_start := time.tick_now()
 		editor_transform_gizmo_system(
 			config.ui_state,
 			world,
@@ -437,6 +495,8 @@ run_frame_system_unmeasured :: proc(
 			camera,
 			has_camera,
 		)
+		record_system_profile_phase(config, .Editor_Gizmo, gizmo_system_start)
+		ui_system_start := time.tick_now()
 		if err := ui.reconcile(
 			config.ui_state,
 			world,
@@ -449,6 +509,7 @@ run_frame_system_unmeasured :: proc(
 			keyboard,
 			config.resource_registry,
 		); err != "" { return err }
+		record_system_profile_phase(config, .UI, ui_system_start)
 		cursor: platform.Runtime_Pointer_Cursor
 		switch ui.current_pointer_cursor(config.ui_state) {
 			case .Default:
@@ -458,6 +519,7 @@ run_frame_system_unmeasured :: proc(
 				cursor = .Vertical_Resize
 		}
 		platform.set_runtime_pointer_cursor(cursor)
+		picking_system_start := time.tick_now()
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested = false
 			if config.resource_registry != nil {
@@ -475,6 +537,7 @@ run_frame_system_unmeasured :: proc(
 				found { ui.editor_select_entity(config.ui_state, world, entity, drawable_height / max(config.ui_state.editor_pixel_density, 1)) } else { ui.editor_clear_selection(config.ui_state) }
 			}
 		}
+		record_system_profile_phase(config, .Picking, picking_system_start)
 		return ""
 	}
 	return ""

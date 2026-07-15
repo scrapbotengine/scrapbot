@@ -4,6 +4,7 @@ import component "./component"
 import ecs "./ecs"
 import native "./native"
 import project "./project"
+import render "./render"
 import resources "./resources"
 import schedule "./schedule"
 import script "./script"
@@ -151,6 +152,34 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 		world,
 		world.time,
 	)
+}
+
+hot_reload_system_profile_begin :: proc(data: rawptr) {
+	state := cast(^Hot_Reload_State)data
+	if state == nil {
+		return
+	}
+	system_profile_begin_frame(&state.system_profile, &state.native_extensions, &state.runtime)
+}
+
+hot_reload_system_profile_record :: proc(
+	data: rawptr,
+	phase: render.Engine_System_Profile_Phase,
+	duration_nanoseconds: i64,
+) {
+	state := cast(^Hot_Reload_State)data
+	if state == nil {
+		return
+	}
+	system_profile_record_engine(&state.system_profile, phase, duration_nanoseconds)
+}
+
+hot_reload_system_profile_commit :: proc(data: rawptr) {
+	state := cast(^Hot_Reload_State)data
+	if state == nil {
+		return
+	}
+	system_profile_commit_pending_frame(&state.system_profile)
 }
 
 hot_reload_playback_begin :: proc(data: rawptr, world: ^shared.World) -> string {

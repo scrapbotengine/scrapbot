@@ -58,9 +58,31 @@ System_Profile_Accumulator :: struct {
 	snapshot: shared.System_Profile,
 	totals: [shared.MAX_SYSTEM_PROFILE_ENTRIES]i64,
 	samples: [shared.MAX_SYSTEM_PROFILE_ENTRIES][SYSTEM_PROFILE_ROLLING_WINDOW_FRAMES]i64,
+	pending_durations: [shared.MAX_SYSTEM_PROFILE_ENTRIES]i64,
 	sample_cursor: int,
 	sample_count: int,
 	frames_since_publish: int,
+}
+
+ENGINE_SYSTEM_PROFILE_COUNT :: int(render.Engine_System_Profile_Phase.Count)
+
+engine_system_profile_name :: proc(phase: render.Engine_System_Profile_Phase) -> string {
+	switch phase {
+		case .Editor_Camera:
+			return "scrapbot.camera"
+		case .Editor_Gizmo:
+			return "scrapbot.gizmo"
+		case .UI:
+			return "scrapbot.ui"
+		case .Picking:
+			return "scrapbot.pick"
+		case .Render_Prepare:
+			return "scrapbot.prepare"
+		case .Render_Submit:
+			return "scrapbot.render"
+		case .Count:
+	}
+	return ""
 }
 
 Native_Work_Context :: struct {
@@ -393,6 +415,10 @@ run_project_internal_untracked :: proc(
 
 		run_config.frame_system = hot_reload_frame_system
 		run_config.frame_system_data = &hot_reload
+		run_config.system_profile_begin = hot_reload_system_profile_begin
+		run_config.system_profile_record = hot_reload_system_profile_record
+		run_config.system_profile_commit = hot_reload_system_profile_commit
+		run_config.system_profile_data = &hot_reload
 		run_config.runtime_playback_begin = hot_reload_playback_begin
 		run_config.runtime_playback_begin_data = &hot_reload
 		run_config.runtime_playback_stop = hot_reload_playback_stop
@@ -467,6 +493,10 @@ run_project_internal_untracked :: proc(
 		run_config.frame_system_data = &frame_runtime
 	}
 	run_config.resource_registry = &frame_runtime.resources
+	run_config.system_profile_begin = frame_runtime_system_profile_begin
+	run_config.system_profile_record = frame_runtime_system_profile_record
+	run_config.system_profile_commit = frame_runtime_system_profile_commit
+	run_config.system_profile_data = &frame_runtime
 	run_config.runtime_playback_begin = frame_runtime_playback_begin
 	run_config.runtime_playback_begin_data = &frame_runtime
 	run_config.runtime_playback_stop = frame_runtime_playback_stop
@@ -524,6 +554,38 @@ step_frame_runtime_system :: proc(
 		return ""
 	}
 	return step_frame_runtime(runtime, world, delta_seconds)
+}
+
+frame_runtime_system_profile_begin :: proc(data: rawptr) {
+	runtime := cast(^Frame_Runtime)data
+	if runtime == nil {
+		return
+	}
+	system_profile_begin_frame(
+		&runtime.system_profile,
+		&runtime.native_extensions,
+		&runtime.script_runtime,
+	)
+}
+
+frame_runtime_system_profile_record :: proc(
+	data: rawptr,
+	phase: render.Engine_System_Profile_Phase,
+	duration_nanoseconds: i64,
+) {
+	runtime := cast(^Frame_Runtime)data
+	if runtime == nil {
+		return
+	}
+	system_profile_record_engine(&runtime.system_profile, phase, duration_nanoseconds)
+}
+
+frame_runtime_system_profile_commit :: proc(data: rawptr) {
+	runtime := cast(^Frame_Runtime)data
+	if runtime == nil {
+		return
+	}
+	system_profile_commit_pending_frame(&runtime.system_profile)
 }
 
 frame_runtime_playback_begin :: proc(data: rawptr, world: ^shared.World) -> string {
@@ -635,12 +697,28 @@ system_profile_prepare :: proc(
 	if profile == nil || native_extensions == nil || script_runtime == nil {
 		return
 	}
-	entry_count := native_extensions.system_count + script_runtime.system_count
+	entry_count :=
+		ENGINE_SYSTEM_PROFILE_COUNT + native_extensions.system_count + script_runtime.system_count
 	topology_changed := profile.snapshot.entry_count != entry_count
+	if !topology_changed {
+		for phase in render.Engine_System_Profile_Phase {
+			if phase == .Count {
+				continue
+			}
+			if !system_profile_entry_matches(
+				&profile.snapshot.entries[int(phase)],
+				.Engine,
+				engine_system_profile_name(phase),
+			) {
+				topology_changed = true
+				break
+			}
+		}
+	}
 	if !topology_changed {
 		for index in 0 ..< native_extensions.system_count {
 			if !system_profile_entry_matches(
-				&profile.snapshot.entries[index],
+				&profile.snapshot.entries[ENGINE_SYSTEM_PROFILE_COUNT + index],
 				.Project_Odin,
 				native_extensions.systems[index].name,
 			) {
@@ -651,7 +729,7 @@ system_profile_prepare :: proc(
 	}
 	if !topology_changed {
 		for index in 0 ..< script_runtime.system_count {
-			profile_index := native_extensions.system_count + index
+			profile_index := ENGINE_SYSTEM_PROFILE_COUNT + native_extensions.system_count + index
 			system := &script_runtime.systems[index]
 			name := string(system.name[:system.name_length])
 			if !system_profile_entry_matches(
@@ -671,15 +749,25 @@ system_profile_prepare :: proc(
 	profile^ = {}
 	profile.snapshot.entry_count = entry_count
 	profile.snapshot.revision = revision
+	for phase in render.Engine_System_Profile_Phase {
+		if phase == .Count {
+			continue
+		}
+		system_profile_set_entry(
+			&profile.snapshot.entries[int(phase)],
+			.Engine,
+			engine_system_profile_name(phase),
+		)
+	}
 	for index in 0 ..< native_extensions.system_count {
 		system_profile_set_entry(
-			&profile.snapshot.entries[index],
+			&profile.snapshot.entries[ENGINE_SYSTEM_PROFILE_COUNT + index],
 			.Project_Odin,
 			native_extensions.systems[index].name,
 		)
 	}
 	for index in 0 ..< script_runtime.system_count {
-		profile_index := native_extensions.system_count + index
+		profile_index := ENGINE_SYSTEM_PROFILE_COUNT + native_extensions.system_count + index
 		system := &script_runtime.systems[index]
 		name := string(system.name[:system.name_length])
 		system_profile_set_entry(&profile.snapshot.entries[profile_index], .Luau, name)
@@ -711,6 +799,36 @@ system_profile_commit_frame :: proc(profile: ^System_Profile_Accumulator, durati
 	profile.snapshot.sample_frames = profile.sample_count
 	profile.frames_since_publish = 0
 	profile.snapshot.revision += 1
+}
+
+system_profile_begin_frame :: proc(
+	profile: ^System_Profile_Accumulator,
+	native_extensions: ^native.Extension_Set,
+	script_runtime: ^script.Runtime,
+) {
+	if profile == nil {
+		return
+	}
+	system_profile_prepare(profile, native_extensions, script_runtime)
+	profile.pending_durations = {}
+}
+
+system_profile_record_engine :: proc(
+	profile: ^System_Profile_Accumulator,
+	phase: render.Engine_System_Profile_Phase,
+	duration_nanoseconds: i64,
+) {
+	if profile == nil || phase == .Count {
+		return
+	}
+	profile.pending_durations[int(phase)] = duration_nanoseconds
+}
+
+system_profile_commit_pending_frame :: proc(profile: ^System_Profile_Accumulator) {
+	if profile == nil || profile.snapshot.entry_count == 0 {
+		return
+	}
+	system_profile_commit_frame(profile, profile.pending_durations[:profile.snapshot.entry_count])
 }
 
 step_frame_runtime_parts :: proc(
@@ -835,7 +953,10 @@ step_frame_runtime_parts :: proc(
 	if err := ecs.apply_commands(world, &script_runtime.commands); err != "" {
 		return err
 	}
-	system_profile_commit_frame(system_profile, frame_durations[:system_count])
+	for index in 0 ..< system_count {
+		system_profile.pending_durations[ENGINE_SYSTEM_PROFILE_COUNT + index] =
+			frame_durations[index]
+	}
 	return ""
 }
 

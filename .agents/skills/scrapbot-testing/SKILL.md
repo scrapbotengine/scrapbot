@@ -99,6 +99,8 @@ bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless \
 
 Use `tests/fixtures/ui/playback-authoring.json` when changing Play, Step, Stop, authoring baselines, dirty-state preservation, or world replacement. It creates an unsaved scene entity, runs a complete Play/Stop round trip, and asserts that the authored entity remains visible.
 
+Use `tests/fixtures/ui/system-profiler.json` when changing system registration, provenance, timing publication, or the editor profiler. It asserts the complete engine profiler topology in the ECS UI and captures the Systems panel.
+
 Framegrabs are losslessly compressed and preserve 1:1 pixels. The complete frame remains 1280×720. When a visual question concerns one control, label, gizmo, or panel, request a top-left-origin crop instead of passing the entire frame through image inspection:
 
 ```sh
