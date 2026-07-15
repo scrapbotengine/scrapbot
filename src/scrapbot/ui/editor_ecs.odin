@@ -23,7 +23,7 @@ EDITOR_UI_STATUS_NAME :: "__scrapbot_editor_status"
 EDITOR_SIDEBAR_PADDING :: f32(10)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(618)
-EDITOR_SECTION_TITLE_HEIGHT :: f32(30)
+EDITOR_SECTION_TITLE_HEIGHT :: f32(34)
 EDITOR_SECTION_BACKGROUND :: shared.Vec4{0.019, 0.024, 0.032, 1}
 EDITOR_LIST_BACKGROUND :: shared.Vec4{0.010, 0.014, 0.020, 1}
 EDITOR_SECTION_TITLE_BACKGROUND :: shared.Vec4{0.027, 0.035, 0.046, 1}
@@ -627,7 +627,7 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
 	return row, label
 }
 
-SYSTEM_PROFILE_CELL_HEIGHT :: f32(24)
+SYSTEM_PROFILE_CELL_HEIGHT :: f32(26)
 SYSTEM_PROFILE_BAR_MAX_NANOSECONDS :: f64(10_000_000)
 
 system_profile_origin_color :: proc(kind: shared.System_Profile_Kind) -> shared.Vec4 {
@@ -842,7 +842,7 @@ editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
 }
 
 INSPECTOR_PANEL_TITLE_HEIGHT :: EDITOR_SECTION_TITLE_HEIGHT
-INSPECTOR_CELL_HEIGHT :: f32(24)
+INSPECTOR_CELL_HEIGHT :: f32(28)
 INSPECTOR_TABLE_ROW_GAP :: f32(3)
 INSPECTOR_PANEL_GAP :: f32(10)
 
@@ -901,7 +901,7 @@ editor_ui_ensure_inspector_cell :: proc(
 	if value_cell {
 		layout := &world.ui_layouts[world.entities[cell].ui_layout_index]
 		layout.padding = {}
-		editor_ui_add_hstack(world, cell, {gap = 4, fill = true})
+		editor_ui_add_hstack(world, cell, {gap = 6, fill = true})
 	} else {
 		editor_ui_add_text(world, cell, "", {0.46, 0.49, 0.55, 1}, EDITOR_TEXT_SIZE)
 	}

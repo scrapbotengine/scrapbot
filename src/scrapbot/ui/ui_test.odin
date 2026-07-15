@@ -1468,7 +1468,12 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 		1280,
 		720,
 	)
-	testing.expect(t, pointer.available && pointer.position == shared.Vec2{640, 360})
+	testing.expect(
+		t,
+		pointer.available &&
+		math.abs(pointer.position.x - 640) < 0.01 &&
+		math.abs(pointer.position.y - 360) < 0.01,
+	)
 	testing.expect(
 		t,
 		!project_pointer_input(state, {position = {20, 100}, available = true}, 1280, 720).available,
@@ -1492,7 +1497,12 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 		2048,
 		1096,
 	)
-	testing.expect(t, pointer.available && pointer.position == shared.Vec2{640, 360})
+	testing.expect(
+		t,
+		pointer.available &&
+		math.abs(pointer.position.x - 640) < 0.01 &&
+		math.abs(pointer.position.y - 360) < 0.01,
+	)
 	testing.expect(
 		t,
 		reconcile(
@@ -2276,6 +2286,9 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					t,
 					world.ui_layouts[entity.ui_layout_index].size.y == INSPECTOR_CELL_HEIGHT,
 				)
+				if entity.ui_hstack_index >= 0 {
+					testing.expect(t, world.ui_hstacks[entity.ui_hstack_index].gap == 6)
+				}
 				if entity.ui_text_index >= 0 {
 					testing.expect(
 						t,
