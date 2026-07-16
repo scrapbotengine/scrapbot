@@ -79,7 +79,7 @@ Selecting an entity with a Transform adds a screen-legible transform gizmo. Choo
 
 | Shortcut | Mode | Handles |
 | --- | --- | --- |
-| `W` | Move | World-axis rails, plane walls, and a free-move center |
+| `W` | Move | Axis rails, plane walls, and a free-move center |
 | `E` | Rotate | Axis rings |
 | `R` | Scale | Axis rails, plane walls, and a uniform-scale center |
 
@@ -91,7 +91,9 @@ The axis colors remain consistent in every mode:
 
 Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. In move mode, the center handle translates freely in the camera plane. In scale mode, it changes all three scale components uniformly. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. W/E/R mode shortcuts are ignored while the right mouse button is capturing fly-camera input.
 
-While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete gizmo drag is one undoable transaction, including multi-axis handles. Snapping, local/world orientation switching, and multi-selection are not implemented yet.
+Use the `WORLD` and `LOCAL` controls in the viewport's upper-left corner to choose the gizmo orientation. World keeps the rails, walls, and rings aligned to the scene axes. Local rotates them with the selected entity: movement follows its rotated axes, rotation composes around those axes, and scale continues to edit the corresponding local X, Y, or Z scale. The selected space is stored on the transient gizmo component. A drag freezes its basis when it begins, so the handle stays stable even while the transform changes.
+
+While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete gizmo drag is one undoable transaction, including multi-axis handles. Snapping and multi-selection are not implemented yet.
 
 ## Capture the editor
 

@@ -487,10 +487,14 @@ run_frame_system_unmeasured :: proc(
 		}
 		camera, has_camera := ecs.active_camera_instance(world, config.ui_state.editor_visible)
 		gizmo_system_start := time.tick_now()
+		gizmo_pointer := pointer
+		if ui.editor_pointer_over_gizmo_toolbar(config.ui_state, pointer) {
+			gizmo_pointer = {}
+		}
 		editor_transform_gizmo_system(
 			config.ui_state,
 			world,
-			pointer,
+			gizmo_pointer,
 			viewport,
 			camera,
 			has_camera,

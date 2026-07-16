@@ -585,9 +585,14 @@ Editor_Gizmo_Mode :: enum {
 	Rotate,
 	Scale,
 }
+Editor_Gizmo_Space :: enum {
+	World,
+	Local,
+}
 Editor_Transform_Gizmo_Component :: struct {
 	entity_index: int,
 	mode: Editor_Gizmo_Mode,
+	space: Editor_Gizmo_Space,
 }
 
 MAX_SYSTEM_PROFILE_ENTRIES :: 80
@@ -617,6 +622,9 @@ Editor_UI_Role :: enum {
 	None,
 	Root,
 	Viewport,
+	Gizmo_Toolbar,
+	Gizmo_Space_World,
+	Gizmo_Space_Local,
 	Transport_Play,
 	Transport_Pause,
 	Transport_Stop,

@@ -22,6 +22,7 @@ editor_transform_gizmo_system :: proc(
 		state.editor_selected_entity,
 		state.editor_visible && state.editor_has_selection,
 		state.editor_gizmo_mode,
+		state.editor_gizmo_space,
 	)
 	entity_index, gizmo, has_gizmo := ecs.editor_transform_gizmo_entity(world)
 	if !has_gizmo { editor_hide_gizmo(state); return }
@@ -41,10 +42,15 @@ editor_transform_gizmo_system :: proc(
 		EDITOR_GIZMO_SCREEN_SIZE,
 		0.05,
 	)
+	world_axes := editor_gizmo_axes(transform.rotation, gizmo.space)
+	if state.editor_gizmo_active_handle != .None {
+		world_axes = state.editor_gizmo_drag_world_axes
+	}
 	if !editor_project_gizmo(
 		state,
 		transform.position,
 		world_size,
+		world_axes,
 		gizmo.mode,
 		viewport,
 		camera,
@@ -88,6 +94,7 @@ editor_transform_gizmo_system :: proc(
 					delta.y / max(screen_length(delta), 0.001),
 				}
 				for endpoint, index in state.editor_gizmo_endpoints { state.editor_gizmo_drag_screen_axes[index] = screen_sub(endpoint, state.editor_gizmo_origin) }
+				state.editor_gizmo_drag_world_axes = world_axes
 				state.editor_gizmo_drag_camera_right = shared.camera_right(
 					camera.transform.rotation,
 				)
@@ -142,7 +149,22 @@ editor_transform_gizmo_system :: proc(
 						state.editor_gizmo_drag_screen_axes[first],
 						state.editor_gizmo_drag_screen_axes[second],
 					)
-					if solved { vec3_add_axis(&transform.position, first, first_amount * state.editor_gizmo_drag_world_scale); vec3_add_axis(&transform.position, second, second_amount * state.editor_gizmo_drag_world_scale) }
+					if solved {
+						transform.position = vec3_add(
+							transform.position,
+							vec3_mul(
+								state.editor_gizmo_drag_world_axes[first],
+								first_amount * state.editor_gizmo_drag_world_scale,
+							),
+						)
+						transform.position = vec3_add(
+							transform.position,
+							vec3_mul(
+								state.editor_gizmo_drag_world_axes[second],
+								second_amount * state.editor_gizmo_drag_world_scale,
+							),
+						)
+					}
 				} else if state.editor_gizmo_active_handle == .Center {
 					world_per_pixel :=
 						state.editor_gizmo_drag_world_scale / EDITOR_GIZMO_SCREEN_SIZE
@@ -159,10 +181,15 @@ editor_transform_gizmo_system :: proc(
 						delta.x * state.editor_gizmo_drag_direction.x +
 						delta.y *
 							state.editor_gizmo_drag_direction.y; amount := pixels / state.editor_gizmo_drag_pixels * state.editor_gizmo_drag_world_scale
-					switch state.editor_gizmo_active_handle {case .X:
-							transform.position.x += amount; case .Y:
-							transform.position.y += amount; case .Z:
-							transform.position.z += amount; case .None, .XY, .XZ, .YZ, .Center:}
+					axis_index, axis_ok := editor_gizmo_single_axis(
+						state.editor_gizmo_active_handle,
+					)
+					if axis_ok {
+						transform.position = vec3_add(
+							transform.position,
+							vec3_mul(state.editor_gizmo_drag_world_axes[axis_index], amount),
+						)
+					}
 				}
 			case .Rotate:
 				previous := screen_sub(
@@ -172,12 +199,15 @@ editor_transform_gizmo_system :: proc(
 				current := screen_sub(pointer.position, state.editor_gizmo_origin)
 				state.editor_gizmo_drag_angle += screen_rotation_delta(previous, current)
 				state.editor_gizmo_drag_last_pointer = pointer.position
-				transform.rotation = state.editor_gizmo_drag_rotation
-				switch state.editor_gizmo_active_handle {case .X:
-						transform.rotation.x += state.editor_gizmo_drag_angle; case .Y:
-						transform.rotation.y += state.editor_gizmo_drag_angle; case .Z:
-						transform.rotation.z +=
-							state.editor_gizmo_drag_angle; case .None, .XY, .XZ, .YZ, .Center:}
+				axis_index, axis_ok := editor_gizmo_single_axis(state.editor_gizmo_active_handle)
+				if axis_ok {
+					transform.rotation = editor_gizmo_rotated_euler(
+						state.editor_gizmo_drag_rotation,
+						axis_index,
+						state.editor_gizmo_drag_angle,
+						gizmo.space,
+					)
+				}
 			case .Scale:
 				delta := screen_sub(pointer.position, state.editor_gizmo_drag_pointer)
 				transform.scale = state.editor_gizmo_drag_scale
@@ -207,6 +237,7 @@ editor_transform_gizmo_system :: proc(
 			state,
 			transform.position,
 			world_size,
+			state.editor_gizmo_drag_world_axes,
 			gizmo.mode,
 			viewport,
 			camera,
@@ -225,6 +256,7 @@ editor_project_gizmo :: proc(
 	state: ^ui.State,
 	origin: shared.Vec3,
 	world_size: f32,
+	world_axes: [3]shared.Vec3,
 	mode: shared.Editor_Gizmo_Mode,
 	viewport: ui.Rect,
 	camera: shared.Camera_Instance,
@@ -236,10 +268,9 @@ editor_project_gizmo :: proc(
 		camera,
 		has_camera,
 	); if !ok { return false }
-	world_endpoints := [3]shared.Vec3 {
-		{origin.x + world_size, origin.y, origin.z},
-		{origin.x, origin.y + world_size, origin.z},
-		{origin.x, origin.y, origin.z + world_size},
+	world_endpoints: [3]shared.Vec3
+	for axis, index in world_axes {
+		world_endpoints[index] = vec3_add(origin, vec3_mul(axis, world_size))
 	}
 	endpoints: [3]shared.Vec2
 	for endpoint, index in world_endpoints {projected, projected_ok := editor_project_world(
@@ -257,8 +288,9 @@ editor_project_gizmo :: proc(
 			first_factor := f32(0.22); second_factor := f32(0.22)
 			if corner == 1 || corner == 2 { first_factor = 0.43 }
 			if corner >= 2 { second_factor = 0.43 }
-			point :=
-				origin; vec3_add_axis(&point, pair[0], world_size * first_factor); vec3_add_axis(&point, pair[1], world_size * second_factor)
+			point := origin
+			point = vec3_add(point, vec3_mul(world_axes[pair[0]], world_size * first_factor))
+			point = vec3_add(point, vec3_mul(world_axes[pair[1]], world_size * second_factor))
 			projected, projected_ok := editor_project_world(
 				point,
 				viewport,
@@ -273,11 +305,19 @@ editor_project_gizmo :: proc(
 			for point_index in 0 ..< ui.EDITOR_GIZMO_RING_POINT_COUNT {
 				angle := f32(point_index) / f32(ui.EDITOR_GIZMO_RING_POINT_COUNT) * 2 * math.PI
 				c, s := f32(math.cos(angle)) * world_size, f32(math.sin(angle)) * world_size
-				point := origin
-				switch axis {case 0:
-						point.y += c; point.z += s; case 1:
-						point.x += c; point.z += s; case 2:
-						point.x += c; point.y += s}
+				first, second := 0, 1
+				switch axis {
+					case 0:
+						first, second = 1, 2
+					case 1:
+						first, second = 0, 2
+					case 2:
+						first, second = 0, 1
+				}
+				point := vec3_add(
+					origin,
+					vec3_add(vec3_mul(world_axes[first], c), vec3_mul(world_axes[second], s)),
+				)
 				projected, projected_ok := editor_project_world(
 					point,
 					viewport,
@@ -372,6 +412,86 @@ editor_gizmo_pair_axes :: proc(handle: ui.Editor_Gizmo_Handle) -> (int, int, boo
 			return 1, 2, true; case .None, .X, .Y, .Z, .Center:
 			return 0, 0, false}
 	return 0, 0, false}
+
+editor_gizmo_single_axis :: proc(handle: ui.Editor_Gizmo_Handle) -> (int, bool) {
+	switch handle {
+		case .X:
+			return 0, true
+		case .Y:
+			return 1, true
+		case .Z:
+			return 2, true
+		case .None, .XY, .XZ, .YZ, .Center:
+			return 0, false
+	}
+	return 0, false
+}
+
+editor_gizmo_rotation_matrix :: proc(rotation: shared.Vec3) -> Mat4 {
+	return mat4_mul(
+		mat4_rotate_z(rotation.z),
+		mat4_mul(mat4_rotate_y(rotation.y), mat4_rotate_x(rotation.x)),
+	)
+}
+
+editor_gizmo_axes :: proc(
+	rotation: shared.Vec3,
+	space: shared.Editor_Gizmo_Space,
+) -> [3]shared.Vec3 {
+	if space == .World {
+		return {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	}
+	rotation_matrix := editor_gizmo_rotation_matrix(rotation)
+	return {
+		{rotation_matrix[0], rotation_matrix[1], rotation_matrix[2]},
+		{rotation_matrix[4], rotation_matrix[5], rotation_matrix[6]},
+		{rotation_matrix[8], rotation_matrix[9], rotation_matrix[10]},
+	}
+}
+
+editor_gizmo_matrix_euler :: proc(rotation_matrix: Mat4) -> shared.Vec3 {
+	sin_y := clamp(-rotation_matrix[2], -1, 1)
+	y := f32(math.asin(sin_y))
+	cos_y := f32(math.cos(y))
+	if math.abs(cos_y) > 0.00001 {
+		return {
+			f32(math.atan2(rotation_matrix[6], rotation_matrix[10])),
+			y,
+			f32(math.atan2(rotation_matrix[1], rotation_matrix[0])),
+		}
+	}
+	x := f32(math.atan2(rotation_matrix[4], rotation_matrix[5]))
+	if sin_y < 0 {
+		x = -x
+	}
+	return {x, y, 0}
+}
+
+editor_gizmo_rotated_euler :: proc(
+	start: shared.Vec3,
+	axis: int,
+	angle: f32,
+	space: shared.Editor_Gizmo_Space,
+) -> shared.Vec3 {
+	delta := mat4_identity()
+	switch axis {
+		case 0:
+			delta = mat4_rotate_x(angle)
+		case 1:
+			delta = mat4_rotate_y(angle)
+		case 2:
+			delta = mat4_rotate_z(angle)
+		case:
+			return start
+	}
+	start_matrix := editor_gizmo_rotation_matrix(start)
+	result := mat4_mul(delta, start_matrix)
+	if space == .Local {
+		result = mat4_mul(start_matrix, delta)
+	}
+	return editor_gizmo_matrix_euler(result)
+}
+
 screen_solve_basis :: proc(delta, first, second: shared.Vec2) -> (f32, f32, bool) {det :=
 		first.x * second.y - first.y * second.x
 	if math.abs(det) < 0.001 { return 0, 0, false }
@@ -390,10 +510,6 @@ screen_point_in_triangle :: proc(point, a, b, c: shared.Vec2) -> bool {ab := scr
 	ca := screen_cross(screen_sub(a, c), screen_sub(point, c))
 	return (ab >= 0 && bc >= 0 && ca >= 0) || (ab <= 0 && bc <= 0 && ca <= 0)}
 screen_cross :: proc(a, b: shared.Vec2) -> f32 { return a.x * b.y - a.y * b.x }
-vec3_add_axis :: proc(value: ^shared.Vec3, axis: int, amount: f32) {switch axis {case 0:
-			value.x += amount; case 1:
-			value.y += amount; case 2:
-			value.z += amount; case:}}
 vec3_mul_axis :: proc(value: ^shared.Vec3, axis: int, factor: f32) {switch axis {case 0:
 			value.x *= factor; case 1:
 			value.y *= factor; case 2:

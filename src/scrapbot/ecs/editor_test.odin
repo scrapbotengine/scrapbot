@@ -28,9 +28,9 @@ test_editor_transform_gizmo_component_follows_selection :: proc(t: ^testing.T) {
 	entity_index, gizmo, ok := editor_transform_gizmo_entity(&world)
 	testing.expect(t, ok && entity_index == 0 && gizmo.mode == .Translate)
 	testing.expect(t, world.entities[0].editor_transform_gizmo_index >= 0)
-	reconcile_editor_transform_gizmo(&world, {index = 0, generation = 1}, true, .Rotate)
+	reconcile_editor_transform_gizmo(&world, {index = 0, generation = 1}, true, .Rotate, .Local)
 	_, gizmo, ok = editor_transform_gizmo_entity(&world)
-	testing.expect(t, ok && gizmo.mode == .Rotate)
+	testing.expect(t, ok && gizmo.mode == .Rotate && gizmo.space == .Local)
 
 	reconcile_editor_transform_gizmo(&world, {index = 1, generation = 1}, true)
 	entity_index, _, ok = editor_transform_gizmo_entity(&world)

@@ -132,6 +132,7 @@ reconcile_editor_transform_gizmo :: proc(
 	selected: shared.Entity,
 	enabled: bool,
 	mode: shared.Editor_Gizmo_Mode = .Translate,
+	space: shared.Editor_Gizmo_Space = .World,
 ) {
 	if world == nil { return }; target := INVALID_COMPONENT_INDEX
 	if enabled { index := int(selected.index); if index >= 0 && index < len(world.entities) && world.entities[index].alive && world.entities[index].id.generation == selected.generation && world.entities[index].transform_index >= 0 { target = index } }
@@ -147,13 +148,17 @@ reconcile_editor_transform_gizmo :: proc(
 	target_component_index := world.entities[target].editor_transform_gizmo_index
 	if target_component_index >= 0 &&
 	   target_component_index < len(world.editor_transform_gizmos) &&
-	   world.editor_transform_gizmos[target_component_index].entity_index ==
-		   target { world.editor_transform_gizmos[target_component_index].mode = mode; return }
+	   world.editor_transform_gizmos[target_component_index].entity_index == target {
+		world.editor_transform_gizmos[target_component_index].mode = mode
+		world.editor_transform_gizmos[target_component_index].space = space
+		return
+	}
 	component_index := INVALID_COMPONENT_INDEX
 	for component, index in world.editor_transform_gizmos { if component.entity_index < 0 { component_index = index; break } }
 	component := shared.Editor_Transform_Gizmo_Component {
 		entity_index = target,
 		mode = mode,
+		space = space,
 	}
 	if component_index <
 	   0 { component_index = len(world.editor_transform_gizmos); append(&world.editor_transform_gizmos, component) } else { world.editor_transform_gizmos[component_index] = component }

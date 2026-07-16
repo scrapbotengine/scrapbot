@@ -18,6 +18,7 @@ EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
 EDITOR_UI_SCENE_NAME :: "__scrapbot_editor_scene"
 EDITOR_UI_SCENE_TOOLS_NAME :: "__scrapbot_editor_scene_tools"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
+EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
 EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
 EDITOR_UI_INSPECTOR_HEADER_NAME :: "__scrapbot_editor_inspector_header"
@@ -88,6 +89,12 @@ editor_ui_handle_activation :: proc(
 				case .Transport_Save:
 					editor_save(state)
 					return
+				case .Gizmo_Space_World:
+					editor_set_gizmo_space(state, .World)
+					return
+				case .Gizmo_Space_Local:
+					editor_set_gizmo_space(state, .Local)
+					return
 				case .Entity_Create:
 					_, _ = editor_authoring_create_entity(state, world)
 					return
@@ -147,6 +154,7 @@ editor_ui_handle_activation :: proc(
 					return
 				case .None,
 				     .Root,
+				     .Gizmo_Toolbar,
 				     .Systems_Scroll,
 				     .Systems_Row,
 				     .Systems_Name,
@@ -681,6 +689,39 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.Viewport,
 		{size = {660, 638}, border_color = rule, border_width = 1},
 	)
+	gizmo_toolbar := editor_ui_create_box(
+		world,
+		EDITOR_UI_GIZMO_TOOLBAR_NAME,
+		EDITOR_UI_VIEWPORT_NAME,
+		.Gizmo_Toolbar,
+		{
+			position = {10, 10},
+			size = {126, 34},
+			padding = {2, 2, 2, 2},
+			background = {0.006, 0.008, 0.012, 0.94},
+			border_color = rule,
+			border_width = 1,
+			corner_radius = 5,
+			hidden = true,
+		},
+	)
+	editor_ui_add_hstack(world, gizmo_toolbar, {gap = 2})
+	world_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_gizmo_world",
+		EDITOR_UI_GIZMO_TOOLBAR_NAME,
+		"WORLD",
+		.Gizmo_Space_World,
+	)
+	local_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_gizmo_local",
+		EDITOR_UI_GIZMO_TOOLBAR_NAME,
+		"LOCAL",
+		.Gizmo_Space_Local,
+	)
+	world.ui_layouts[world.entities[world_button].ui_layout_index].size.x = 60
+	world.ui_layouts[world.entities[local_button].ui_layout_index].size.x = 60
 
 	right := editor_ui_create_box(
 		world,
@@ -977,6 +1018,46 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			if state.editor_simulation_playing {
 				world.ui_texts[entity.ui_text_index].color = {0.06, 0.72, 0.63, 1}
 			}
+		}
+	}
+}
+
+editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil { return }
+	toolbar, toolbar_found := editor_ui_entity(world, .Gizmo_Toolbar)
+	if !toolbar_found { return }
+	visible := false
+	if selected, ok := editor_selected_world_index(state, world); ok {
+		entity := world.entities[selected]
+		visible = entity.transform_index >= 0 && entity.transform_index < len(world.transforms)
+	}
+	editor_ui_set_hidden(world, toolbar, !visible)
+	for component in world.editor_uis {
+		if component.role != .Gizmo_Space_World && component.role != .Gizmo_Space_Local {
+			continue
+		}
+		if component.entity_index < 0 || component.entity_index >= len(world.entities) {
+			continue
+		}
+		entity := world.entities[component.entity_index]
+		if entity.ui_layout_index < 0 ||
+		   entity.ui_layout_index >= len(world.ui_layouts) ||
+		   entity.ui_button_index < 0 ||
+		   entity.ui_button_index >= len(world.ui_buttons) {
+			continue
+		}
+		selected :=
+			component.role == .Gizmo_Space_World && state.editor_gizmo_space == .World ||
+			component.role == .Gizmo_Space_Local && state.editor_gizmo_space == .Local
+		layout := &world.ui_layouts[entity.ui_layout_index]
+		button := &world.ui_buttons[entity.ui_button_index]
+		layout.background = {0.017, 0.022, 0.030, 1}
+		layout.border_color = {0.055, 0.067, 0.088, 1}
+		button.color = {0.64, 0.67, 0.73, 1}
+		if selected {
+			layout.background = {0.025, 0.120, 0.105, 1}
+			layout.border_color = {0.06, 0.72, 0.63, 0.8}
+			button.color = {0.42, 0.92, 0.82, 1}
 		}
 	}
 }
@@ -1932,8 +2013,13 @@ editor_ui_build_inspector_panels :: proc(
 		switch value.mode {case .Translate:; case .Rotate:
 				mode = "rotate"; case .Scale:
 				mode = "scale"}
+		space := "world"
+		if value.space == .Local {
+			space = "local"
+		}
 		editor_ui_begin_inspector_component(&builder, "EDITOR TRANSFORM GIZMO")
 		editor_ui_inspector_field(&builder, "mode", mode)
+		editor_ui_inspector_field(&builder, "space", space)
 	}
 	if entity.has_shadow_caster {
 		editor_ui_begin_inspector_component(&builder, "SHADOW CASTER")
@@ -2368,6 +2454,7 @@ reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || world == nil || !state.editor_visible { return }
 	editor_ui_create_shell(world)
 	editor_ui_update_transport(state, world)
+	editor_ui_update_gizmo_toolbar(state, world)
 	if !state.editor_snapshot_valid ||
 	   !state.editor_snapshot_was_visible { refresh_editor_ecs_snapshot(state, world) }
 }

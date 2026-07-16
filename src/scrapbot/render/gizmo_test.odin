@@ -3,7 +3,156 @@ package render
 import ecs "../ecs"
 import shared "../shared"
 import ui "../ui"
+import "core:math"
 import "core:testing"
+
+gizmo_vec3_near :: proc(a, b: shared.Vec3, epsilon: f32 = 0.001) -> bool {
+	return(
+		math.abs(a.x - b.x) <= epsilon &&
+		math.abs(a.y - b.y) <= epsilon &&
+		math.abs(a.z - b.z) <= epsilon \
+	)
+}
+
+@(test)
+test_transform_gizmo_world_and_local_axes_follow_the_selected_space :: proc(t: ^testing.T) {
+	rotation := shared.Vec3{0, 0, math.PI / 2}
+	world_axes := editor_gizmo_axes(rotation, .World)
+	local_axes := editor_gizmo_axes(rotation, .Local)
+	testing.expect(t, gizmo_vec3_near(world_axes[0], {1, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(world_axes[1], {0, 1, 0}))
+	testing.expect(t, gizmo_vec3_near(local_axes[0], {0, 1, 0}))
+	testing.expect(t, gizmo_vec3_near(local_axes[1], {-1, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(local_axes[2], {0, 0, 1}))
+}
+
+@(test)
+test_transform_gizmo_rotation_composes_in_selected_space :: proc(t: ^testing.T) {
+	start := shared.Vec3{0, 0, math.PI / 2}
+	local_rotation := editor_gizmo_rotated_euler(start, 0, math.PI / 2, .Local)
+	world_rotation := editor_gizmo_rotated_euler(start, 0, math.PI / 2, .World)
+	local_axes := editor_gizmo_axes(local_rotation, .Local)
+	world_result_axes := editor_gizmo_axes(world_rotation, .Local)
+
+	// Local X remains the object's already-rotated X axis. World X rotates that axis in world space.
+	testing.expect(t, gizmo_vec3_near(local_axes[0], {0, 1, 0}))
+	testing.expect(t, gizmo_vec3_near(world_result_axes[0], {0, 0, 1}))
+}
+
+@(test)
+test_transform_gizmo_rotation_round_trips_arbitrary_world_and_local_composition :: proc(
+	t: ^testing.T,
+) {
+	start := shared.Vec3{0.31, -0.47, 0.63}
+	start_matrix := editor_gizmo_rotation_matrix(start)
+	for axis in 0 ..< 3 {
+		delta := mat4_identity()
+		switch axis {
+			case 0:
+				delta = mat4_rotate_x(0.28)
+			case 1:
+				delta = mat4_rotate_y(0.28)
+			case 2:
+				delta = mat4_rotate_z(0.28)
+		}
+		for space in shared.Editor_Gizmo_Space {
+			expected := mat4_mul(delta, start_matrix)
+			if space == .Local {
+				expected = mat4_mul(start_matrix, delta)
+			}
+			actual := editor_gizmo_rotation_matrix(
+				editor_gizmo_rotated_euler(start, axis, 0.28, space),
+			)
+			for column in 0 ..< 3 {
+				for row in 0 ..< 3 {
+					index := column * 4 + row
+					testing.expect(t, math.abs(actual[index] - expected[index]) < 0.001)
+				}
+			}
+		}
+	}
+}
+
+@(test)
+test_transform_gizmo_local_x_translation_uses_and_freezes_the_rotated_axis :: proc(t: ^testing.T) {
+	world: shared.World
+	defer delete(world.entities)
+	defer delete(world.transforms)
+	defer delete(world.editor_transform_gizmos)
+	append(
+		&world.entities,
+		shared.World_Entity {
+			id = {index = 0, generation = 1},
+			alive = true,
+			transform_index = 0,
+			editor_transform_gizmo_index = -1,
+		},
+	)
+	append_soa(
+		&world.transforms,
+		shared.Transform_Component{rotation = {0, 0, math.PI / 2}, scale = {1, 1, 1}},
+	)
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	state.editor_has_selection = true
+	state.editor_selected_entity = {
+		index = 0,
+		generation = 1,
+	}
+	state.editor_gizmo_space = .Local
+	camera := shared.Camera_Instance {
+		transform = {position = {4, 4, 8}},
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+	viewport := ui.Rect{240, 48, 740, 644}
+	editor_transform_gizmo_system(state, &world, {}, viewport, camera, true)
+	_, gizmo, ok := ecs.editor_transform_gizmo_entity(&world)
+	testing.expect(t, ok && gizmo.space == .Local)
+	delta := screen_sub(state.editor_gizmo_endpoints[0], state.editor_gizmo_origin)
+	length := screen_length(delta)
+	start := shared.Vec2 {
+		state.editor_gizmo_origin.x + delta.x * 0.65,
+		state.editor_gizmo_origin.y + delta.y * 0.65,
+	}
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = start, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = start, primary_down = true, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, state.editor_gizmo_active_handle == .X)
+	testing.expect(t, gizmo_vec3_near(state.editor_gizmo_drag_world_axes[0], {0, 1, 0}))
+
+	// Changing the entity's orientation during the gesture must not move the active rail.
+	world.transforms[0].rotation = {}
+	state.editor_previous_primary_down = true
+	drag := shared.Vec2 {
+		start.x + state.editor_gizmo_drag_direction.x * length * 0.5,
+		start.y + state.editor_gizmo_drag_direction.y * length * 0.5,
+	}
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = drag, primary_down = true, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, math.abs(world.transforms[0].position.x) < 0.001)
+	testing.expect(t, world.transforms[0].position.y > 0.1)
+	testing.expect(t, math.abs(world.transforms[0].position.z) < 0.001)
+}
 
 @(test)
 test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {

@@ -195,7 +195,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
 - Scene Tools
   - [x] Play/Pause/Step with an in-memory authoring baseline, non-destructive Stop, and explicit Save
   - [x] RMB-captured WASD/Space/Ctrl scene-camera navigation
-  - [x] World-space translation gizmo
+  - [x] World/local translation, rotation, and scale gizmo orientation
   - [x] Translation, rotation, and scale gizmo modes
   - [x] Two-axis plane handles and center free/uniform transform handles
   - [x] Precise viewport entity picking

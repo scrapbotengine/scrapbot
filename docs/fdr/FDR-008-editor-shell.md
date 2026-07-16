@@ -1,7 +1,7 @@
 # FDR-008: Editor shell
 
 **Status:** Active
-**Last reviewed:** 2026-07-15
+**Last reviewed:** 2026-07-16
 
 ## Overview
 
@@ -39,10 +39,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - The scene browser and component inspector have independent pixel offsets and targets, frame-time smoothing without row or field snapping, clipping, and proportional scrollbars. Selecting a different entity resets the inspector to its beginning.
 - Clicking rendered geometry in the live viewport selects the nearest intersected entity using the active camera and current viewport dimensions.
 - Viewport selection reveals the entity in the scene browser; clicking empty viewport space clears selection.
-- A selected entity with a Transform displays a transform gizmo in the viewport. W selects world-axis translation rails, E selects axis rotation rings, and R selects scale rails with square handles.
+- A selected entity with a Transform displays a transform gizmo in the viewport. W selects translation rails, E selects axis rotation rings, and R selects scale rails with square handles. An ECS-built viewport toolbar chooses World or Local orientation and appears only while a transform-bearing entity is selected.
 - Move and scale modes include XY, XZ, and YZ plane walls. Their center handle provides camera-plane free translation in move mode and uniform XYZ scaling in scale mode.
-- The editor expresses gizmo ownership as a transient `EditorTransformGizmo` component on the selected entity; changing selection or closing the editor removes it.
-- Hovering emphasizes the nearest axis, plane, or center handle. Dragging captures the pointer and updates position, rotation, or scale according to the gizmo's ECS-visible mode. Mode shortcuts are ignored during RMB fly-camera capture.
+- The editor expresses gizmo ownership as a transient `EditorTransformGizmo` component on the selected entity; its mode and World/Local space are ECS-visible, and changing selection or closing the editor removes it.
+- World space keeps canonical scene axes. Local space derives the visible rails, walls, and rings from the selected Transform's rotation; translation follows those rotated axes, rotation composes around them, and scale edits the matching local scale components. A gesture freezes its world and screen bases at pointer-down so its active handles remain stable throughout the drag.
+- Hovering emphasizes the nearest axis, plane, or center handle. Dragging captures the pointer and updates position, rotation, or scale according to the gizmo's ECS-visible mode and space. Mode shortcuts are ignored during RMB fly-camera capture, and the orientation toolbar receives pointer input ahead of coincident gizmo handles.
 - Gizmo changes to scene-origin entities are undoable authoring transactions while stopped and undoable runtime-only transactions while playing or paused. Snapping is not part of this slice.
 - Stopped is the authoring state. Inspector, gizmo, entity, and component operations on scene-origin entities mark the scene dirty. Runtime-spawned entities remain disposable unless explicitly promoted with Keep; editor-owned entities never become save candidates. Play and Step include unsaved authoring changes in their in-memory baseline. Stop removes playback-only changes while preserving dirty state, undo history, selected authored UUID, and unsaved authored entities.
 - Save uses the dirty UUID candidates produced by authoring transactions and compares them with the parsed authored baseline. Value-only edits patch semantic field differences. Structural saves preserve every clean entity block verbatim, normalize only dirty entity blocks, omit deleted UUIDs, and append created or promoted UUIDs in transaction order. Duplicate names are safe and the source file is replaced atomically. Running and paused mutations remain disposable runtime state.
@@ -90,7 +91,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 **Decision:** Reconcile an engine-owned gizmo component onto the selected entity, then let a dedicated editor system project fixed-apparent-size translation rails, rotation rings, or scale rails and manipulate the chosen Transform axis, following ADR-018.
 **Why:** Tool ownership remains ECS-visible—including in the component inspector—while the controls stay consistently hittable and separate from serialized project components and lighting.
-**Tradeoff:** The gizmo supports single-axis, two-axis plane, free camera-plane translation, axis rotation, per-axis scaling, and uniform scaling without local orientation switching, persistence, snapping, or undo.
+**Tradeoff:** The gizmo supports world/local single-axis and two-axis plane translation, free camera-plane translation, world/local axis rotation, local-component per-axis scaling, and uniform scaling. It does not yet support snapping, depth-aware handles, or multi-selection.
 
 ### 8. Give the editor an ECS-owned scene camera
 

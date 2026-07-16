@@ -230,6 +230,7 @@ State :: struct {
 	editor_scene_camera_captures_input: bool,
 	editor_gizmo_visible: bool,
 	editor_gizmo_mode: shared.Editor_Gizmo_Mode,
+	editor_gizmo_space: shared.Editor_Gizmo_Space,
 	editor_gizmo_origin: shared.Vec2,
 	editor_gizmo_endpoints: [3]shared.Vec2,
 	editor_gizmo_plane_points: [3][4]shared.Vec2,
@@ -245,6 +246,7 @@ State :: struct {
 	editor_gizmo_drag_scale: shared.Vec3,
 	editor_gizmo_drag_direction: shared.Vec2,
 	editor_gizmo_drag_screen_axes: [3]shared.Vec2,
+	editor_gizmo_drag_world_axes: [3]shared.Vec3,
 	editor_gizmo_drag_camera_right: shared.Vec3,
 	editor_gizmo_drag_camera_up: shared.Vec3,
 	editor_gizmo_drag_pixels: f32,
@@ -902,6 +904,32 @@ editor_set_gizmo_mode :: proc(state: ^State, mode: shared.Editor_Gizmo_Mode) {
 	state.editor_gizmo_hovered_handle = .None
 	state.editor_gizmo_captures_pointer = false
 	state.editor_snapshot_valid = false
+}
+
+editor_set_gizmo_space :: proc(state: ^State, space: shared.Editor_Gizmo_Space) {
+	if state == nil || state.editor_gizmo_space == space { return }
+	state.editor_gizmo_space = space
+	state.editor_gizmo_active_handle = .None
+	state.editor_gizmo_hovered_handle = .None
+	state.editor_gizmo_captures_pointer = false
+	state.editor_snapshot_valid = false
+}
+
+editor_pointer_over_gizmo_toolbar :: proc(state: ^State, pointer: Pointer_Input) -> bool {
+	if state == nil || !pointer.available {
+		return false
+	}
+	point := pointer.position
+	scale := max(state.editor_pixel_density, 1)
+	point.x /= scale
+	point.y /= scale
+	for node in state.nodes[:state.node_count] {
+		if node.origin != .Editor || node.editor_role != .Gizmo_Toolbar || !node.laid_out {
+			continue
+		}
+		return node_pointer_contains(node, point)
+	}
+	return false
 }
 
 editor_select_entity :: proc(

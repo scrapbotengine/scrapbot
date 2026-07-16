@@ -86,4 +86,4 @@ The origin recorded for a live entity: scene-authored, runtime-spawned, or edito
 A transient editor-owned ECS entity used to navigate the live viewport without mutating the project's camera.
 
 **Transform gizmo**
-Transient editor state attached to the selected entity and rendered as screen-legible handles. Its ECS-visible mode supports X, Y, and Z translation, rotation, and scale in the running world.
+Transient editor state attached to the selected entity and rendered as screen-legible handles. Its ECS-visible mode and World/Local orientation support X, Y, and Z translation, rotation, and scale in the running world.

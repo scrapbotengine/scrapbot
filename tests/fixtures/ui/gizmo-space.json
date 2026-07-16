@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"text": "Icosphere", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"text": "WORLD", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "LOCAL", "origin": "editor"}, "expect": "visible"},
+    {"action": "click", "target": {"text": "LOCAL", "origin": "editor"}},
+    {"action": "wait", "frames": 1},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_gizmo_toolbar", "origin": "editor"}, "padding": 8}
+  ]
+}

@@ -1741,6 +1741,86 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Rotated Cube",
+			has_transform = true,
+			transform = {rotation = {0, 0, math.PI / 2}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	toolbar, toolbar_found := editor_ui_entity(&world, .Gizmo_Toolbar)
+	world_button, world_found := editor_ui_entity(&world, .Gizmo_Space_World)
+	local_button, local_found := editor_ui_entity(&world, .Gizmo_Space_Local)
+	testing.expect(t, toolbar_found && world_found && local_found)
+	if !toolbar_found || !world_found || !local_found {
+		return
+	}
+	toolbar_layout := world.entities[toolbar].ui_layout_index
+	testing.expect(t, toolbar_layout >= 0 && world.ui_layouts[toolbar_layout].hidden)
+
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	toolbar_node := find_editor_role_node(state, .Gizmo_Toolbar)
+	viewport_node := find_editor_role_node(state, .Viewport)
+	testing.expect(t, toolbar_node >= 0 && viewport_node >= 0)
+	testing.expect(t, !world.ui_layouts[toolbar_layout].hidden)
+	if toolbar_node >= 0 {
+		point := shared.Vec2 {
+			state.nodes[toolbar_node].rect.x + state.nodes[toolbar_node].rect.width * 0.5,
+			state.nodes[toolbar_node].rect.y + state.nodes[toolbar_node].rect.height * 0.5,
+		}
+		testing.expect(
+			t,
+			editor_pointer_over_gizmo_toolbar(state, {position = point, available = true}),
+		)
+	}
+	if viewport_node >= 0 {
+		viewport_point := shared.Vec2 {
+			state.nodes[viewport_node].rect.x + state.nodes[viewport_node].rect.width * 0.5,
+			state.nodes[viewport_node].rect.y + state.nodes[viewport_node].rect.height * 0.5,
+		}
+		testing.expect(
+			t,
+			!editor_pointer_over_gizmo_toolbar(
+				state,
+				{position = viewport_point, available = true},
+			),
+		)
+	}
+
+	state.editor_gizmo_active_handle = .X
+	state.editor_gizmo_captures_pointer = true
+	state.editor_snapshot_valid = true
+	editor_ui_handle_activation(state, &world, world.entities[local_button].id, {})
+	testing.expect(t, state.editor_gizmo_space == .Local)
+	testing.expect(t, state.editor_gizmo_active_handle == .None)
+	testing.expect(t, !state.editor_gizmo_captures_pointer && !state.editor_snapshot_valid)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	local_layout := world.entities[local_button].ui_layout_index
+	world_layout := world.entities[world_button].ui_layout_index
+	testing.expect(
+		t,
+		world.ui_layouts[local_layout].background.y > world.ui_layouts[world_layout].background.y,
+	)
+
+	editor_clear_selection(state)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, world.ui_layouts[toolbar_layout].hidden)
+}
+
+@(test)
 test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)
