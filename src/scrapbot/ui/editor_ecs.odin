@@ -239,10 +239,10 @@ editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
 		return
 	}
 	if keyboard.run_stop {
-		if state.editor_simulation_stopped {
-			editor_play(state)
-		} else {
+		if state.editor_simulation_playing {
 			editor_stop(state)
+		} else {
+			editor_play(state)
 		}
 		return
 	}

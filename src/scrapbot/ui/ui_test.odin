@@ -1990,6 +1990,18 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 	delta: f32
 	delta, run = consume_simulation_delta(state, 0.25)
 	testing.expect(t, run && delta == f32(1.0 / 60.0))
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {run_stop = true}) == "",
+	)
+	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(t, !state.editor_simulation_stopped)
+	testing.expect(t, !consume_playback_begin_request(state))
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {pause_step = true}) == "",
+	)
+	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 
 	state.has_focused_input = true
 	state.focused_input_editor = false

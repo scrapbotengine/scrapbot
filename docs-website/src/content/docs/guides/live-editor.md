@@ -38,7 +38,7 @@ The transport also has command shortcuts while the editor is open:
 | Shortcut | Behavior |
 | --- | --- |
 | `Cmd/Ctrl+E` | Open or close the editor without changing playback. |
-| `Cmd/Ctrl+R` | Play when stopped; Stop when running or paused. |
+| `Cmd/Ctrl+R` | Play when stopped, resume when paused, and stop when running. |
 | `Cmd/Ctrl+T` | Pause when running; advance one fixed step when paused or stopped. |
 
 Transport shortcuts are ignored while the scene camera captures the pointer or a project-owned input has focus. Command-modified E and R do not change the transform-gizmo mode.
