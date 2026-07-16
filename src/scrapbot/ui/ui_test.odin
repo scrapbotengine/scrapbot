@@ -2447,9 +2447,18 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	state.editor_selected_entity = world.entities[0].id
 	state.editor_has_selection = true
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
-	_, button_found := editor_ui_entity(&world, .Inspector_Component_Menu_Button)
+	button, button_found := editor_ui_entity(&world, .Inspector_Component_Menu_Button)
 	menu, menu_found := editor_ui_entity(&world, .Inspector_Component_Menu)
 	testing.expect(t, button_found && menu_found)
+	if button_found {
+		button_entity := world.entities[button]
+		button_layout := world.ui_layouts[button_entity.ui_layout_index]
+		button_value := world.ui_buttons[button_entity.ui_button_index]
+		testing.expect(t, button_layout.border_color == shared.Vec4{0.075, 0.090, 0.115, 1})
+		testing.expect(t, button_value.text == "+  Add Component")
+		testing.expect(t, button_value.alignment == .Center)
+		testing.expect(t, button_value.hover_color.w == 1)
+	}
 	if !menu_found {
 		return
 	}

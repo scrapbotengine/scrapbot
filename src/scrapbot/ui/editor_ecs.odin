@@ -1369,9 +1369,9 @@ editor_ui_ensure_component_menu_button :: proc(world: ^shared.World, parent: str
 		parent,
 		.Inspector_Component_Menu_Button,
 		{
-			size = {1, 32},
-			background = {0.013, 0.018, 0.025, 1},
-			border_color = {0.10, 0.36, 0.32, 1},
+			size = {1, 30},
+			background = {0.022, 0.029, 0.039, 1},
+			border_color = {0.075, 0.090, 0.115, 1},
 			border_width = 1,
 			corner_radius = 4,
 			fill_width = true,
@@ -1379,10 +1379,14 @@ editor_ui_ensure_component_menu_button :: proc(world: ^shared.World, parent: str
 	)
 	editor_ui_add_button(world, button)
 	value := world.ui_buttons[world.entities[button].ui_button_index]
-	value.text = "+  ADD COMPONENT"
+	value.text = "+  Add Component"
 	value.size = EDITOR_TEXT_SIZE
-	value.color = {0.42, 0.92, 0.82, 1}
-	value.alignment = .Left
+	value.color = {0.70, 0.73, 0.78, 1}
+	value.alignment = .Center
+	value.hover_background = {0.030, 0.105, 0.092, 1}
+	value.active_background = {0.018, 0.065, 0.057, 1}
+	value.hover_color = {0.70, 0.95, 0.89, 1}
+	value.active_color = {0.82, 1.00, 0.96, 1}
 	_ = ecs.set_ui_button(world, button, value)
 	return button
 }
@@ -1753,7 +1757,8 @@ editor_ui_build_component_controls :: proc(builder: ^Inspector_ECS_Builder, enti
 	editor_ui_set_hidden(builder.world, cell, false)
 	cell_layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
 	cell_layout.size.x = 1
-	cell_layout.padding = {0, 0, 0, 0}
+	cell_layout.size.y = 46
+	cell_layout.padding = {8, 12, 8, 12}
 	button := editor_ui_ensure_component_menu_button(
 		builder.world,
 		builder.world.entities[cell].name,
