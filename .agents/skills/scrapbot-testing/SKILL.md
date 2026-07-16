@@ -103,6 +103,8 @@ Use `tests/fixtures/ui/system-profiler.json` when changing system registration, 
 
 Use `tests/fixtures/ui/ui-performance.json` for repeatable editor-UI performance comparisons. It selects the component-heavy Icosphere inspector, waits 80 frames for the rolling profiler to settle, and captures the Systems panel. Pair it with `--ui-dump`, then read `__scrapbot_editor_system_time_2` from the dump for the `scrapbot.ui` average. Treat timings as same-machine before/after evidence; the deterministic hierarchy tests enforce the underlying retained traversal contract in CI.
 
+The retained UI tests instrument layout and paint only under `ODIN_TEST`. Keep their large-tree node and edge visit assertions intact: they are the deterministic CI guard against quadratic child discovery, while the value-mutation matrix ensures already-attached component updates do not trigger structural synchronization. Do not replace either contract with a wall-clock threshold.
+
 Framegrabs are losslessly compressed and preserve 1:1 pixels. The complete frame remains 1280×720. When a visual question concerns one control, label, gizmo, or panel, request a top-left-origin crop instead of passing the entire frame through image inspection:
 
 ```sh

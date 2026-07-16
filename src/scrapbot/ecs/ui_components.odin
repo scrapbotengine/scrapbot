@@ -188,8 +188,15 @@ set_ui_layout :: proc(world: ^World, entity_index: int, value: UI_Layout_Compone
 	}
 	entity := &world.entities[entity_index]
 	if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
-		world.ui_layouts[entity.ui_layout_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_layout_indices); found {
+		current := &world.ui_layouts[entity.ui_layout_index]
+		hierarchy_changed := current.parent != value.parent || current.hidden != value.hidden
+		current^ = value
+		if hierarchy_changed {
+			mark_ui_subtree_dirty(world, entity_index)
+		}
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_layout_indices); found {
 		entity.ui_layout_index = index
 		world.ui_layouts[index] = value
 	} else {
@@ -207,7 +214,9 @@ set_ui_hstack :: proc(world: ^World, entity_index: int, value: UI_Stack_Componen
 	entity := &world.entities[entity_index]
 	if entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks) {
 		world.ui_hstacks[entity.ui_hstack_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_hstack_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_hstack_indices); found {
 		entity.ui_hstack_index = index
 		world.ui_hstacks[index] = value
 	} else {
@@ -225,7 +234,9 @@ set_ui_vstack :: proc(world: ^World, entity_index: int, value: UI_Stack_Componen
 	entity := &world.entities[entity_index]
 	if entity.ui_vstack_index >= 0 && entity.ui_vstack_index < len(world.ui_vstacks) {
 		world.ui_vstacks[entity.ui_vstack_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_vstack_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_vstack_indices); found {
 		entity.ui_vstack_index = index
 		world.ui_vstacks[index] = value
 	} else {
@@ -248,7 +259,9 @@ set_ui_scroll_area :: proc(
 	if entity.ui_scroll_area_index >= 0 &&
 	   entity.ui_scroll_area_index < len(world.ui_scroll_areas) {
 		world.ui_scroll_areas[entity.ui_scroll_area_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_scroll_area_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_scroll_area_indices); found {
 		entity.ui_scroll_area_index = index
 		world.ui_scroll_areas[index] = value
 	} else {
@@ -272,7 +285,9 @@ set_ui_panel :: proc(world: ^World, entity_index: int, value: UI_Panel_Component
 		delete_world_string(world, current.title)
 		delete_world_string(world, current.font)
 		current^ = panel
-	} else if index, found := take_free_slot(&world.free_ui_panel_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_panel_indices); found {
 		entity.ui_panel_index = index
 		world.ui_panels[index] = panel
 	} else {
@@ -290,7 +305,9 @@ set_ui_table :: proc(world: ^World, entity_index: int, value: UI_Table_Component
 	entity := &world.entities[entity_index]
 	if entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables) {
 		world.ui_tables[entity.ui_table_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_table_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_table_indices); found {
 		entity.ui_table_index = index
 		world.ui_tables[index] = value
 	} else {
@@ -308,7 +325,9 @@ set_ui_list :: proc(world: ^World, entity_index: int, value: UI_List_Component) 
 	entity := &world.entities[entity_index]
 	if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
 		world.ui_lists[entity.ui_list_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_list_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_list_indices); found {
 		entity.ui_list_index = index
 		world.ui_lists[index] = value
 	} else {
@@ -352,7 +371,9 @@ set_ui_text :: proc(world: ^World, entity_index: int, value: UI_Text_Component) 
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		current^ = text
-	} else if index, found := take_free_slot(&world.free_ui_text_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_text_indices); found {
 		entity.ui_text_index = index
 		world.ui_texts[index] = text
 	} else {
@@ -376,7 +397,9 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		current^ = button
-	} else if index, found := take_free_slot(&world.free_ui_button_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_button_indices); found {
 		entity.ui_button_index = index
 		world.ui_buttons[index] = button
 	} else {
@@ -402,7 +425,9 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 		delete_world_string(world, current.font)
 		delete_world_string(world, current.prefix)
 		current^ = input
-	} else if index, found := take_free_slot(&world.free_ui_input_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_input_indices); found {
 		entity.ui_input_index = index
 		world.ui_inputs[index] = input
 	} else {
@@ -420,7 +445,9 @@ set_ui_checkbox :: proc(world: ^World, entity_index: int, value: UI_Checkbox_Com
 	entity := &world.entities[entity_index]
 	if entity.ui_checkbox_index >= 0 && entity.ui_checkbox_index < len(world.ui_checkboxes) {
 		world.ui_checkboxes[entity.ui_checkbox_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_checkbox_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_checkbox_indices); found {
 		entity.ui_checkbox_index = index
 		world.ui_checkboxes[index] = value
 	} else {
@@ -512,7 +539,6 @@ set_ui_input_prefix :: proc(world: ^World, entity_index: int, value: string) -> 
 	next := clone_world_string(world, value)
 	delete_world_string(world, input.prefix)
 	input.prefix = next
-	mark_ui_entity_dirty(world, entity_index)
 	return true
 }
 

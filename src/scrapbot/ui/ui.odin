@@ -163,6 +163,10 @@ State :: struct {
 	ui_structure_revision: u64,
 	ui_structure_synced: bool,
 	ui_structure_sync_count: u64,
+	layout_node_visit_count: u64,
+	layout_child_edge_visit_count: u64,
+	paint_node_visit_count: u64,
+	paint_child_edge_visit_count: u64,
 	ui_editor_visible: bool,
 	active_entity: shared.Entity,
 	has_active_entity: bool,
@@ -485,6 +489,15 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		state.node_count = 0
 		state.ui_world_uuid = world.instance_uuid
 		clear_input_focus(state)
+		state.active_entity = {}
+		state.has_active_entity = false
+		state.previous_primary_down = false
+		state.editor_ui_active_entity = {}
+		state.editor_ui_has_active_entity = false
+		state.editor_previous_primary_down = false
+		state.active_split_handle = -1
+		state.split_previous_primary_down = false
+		state.editor_split_previous_primary_down = false
 		for entity, entity_index in world.entities {
 			if entity.alive && entity.ui_layout_index >= 0 {
 				ecs.mark_ui_entity_dirty(world, entity_index)
@@ -563,7 +576,9 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 			entity.origin,
 		)
 	}
-	rebuild_ui_node_hierarchy(state)
+	if err := rebuild_ui_node_hierarchy(state); err != "" {
+		return err
+	}
 	clear(&world.ui_dirty_entities)
 	state.ui_structure_revision = world.ui_structure_revision
 	state.ui_structure_synced = true
@@ -583,6 +598,12 @@ reconcile :: proc(
 	resource_registry: ^resources.Registry = nil,
 ) -> string {
 	if state == nil || world == nil { return "UI state or world is unavailable" }
+	when ODIN_TEST {
+		state.layout_node_visit_count = 0
+		state.layout_child_edge_visit_count = 0
+		state.paint_node_visit_count = 0
+		state.paint_child_edge_visit_count = 0
+	}
 	for &interaction in world.ui_states {
 		interaction.activated = false
 		interaction.changed = false
@@ -802,7 +823,7 @@ ui_entity_or_ancestor_hidden :: proc(world: ^shared.World, entity_index: int) ->
 		index = find_parent_entity(world, layout.parent, entity.origin)
 		if index < 0 { return false }
 	}
-	return true
+	return false
 }
 
 editor_viewport :: proc(
@@ -943,11 +964,13 @@ find_node_by_entity_index :: proc(state: ^State, index: int) -> int {
 	return -1
 }
 
-rebuild_ui_node_hierarchy :: proc(state: ^State) {
+rebuild_ui_node_hierarchy :: proc(state: ^State) -> string {
 	if state == nil {
-		return
+		return ""
 	}
 	last_children: [MAX_NODES]int
+	visit_states: [MAX_NODES]u8
+	path: [MAX_NODES]int
 	for index in 0 ..< state.node_count {
 		state.nodes[index].parent_node_index = -1
 		state.nodes[index].first_child_node = -1
@@ -964,6 +987,35 @@ rebuild_ui_node_hierarchy :: proc(state: ^State) {
 			continue
 		}
 		node.parent_node_index = parent_index
+	}
+	for start in 0 ..< state.node_count {
+		if visit_states[start] == 2 {
+			continue
+		}
+		path_count := 0
+		index := start
+		for index >= 0 {
+			if visit_states[index] == 1 {
+				return "UI hierarchy contains a cycle"
+			}
+			if visit_states[index] == 2 {
+				break
+			}
+			visit_states[index] = 1
+			path[path_count] = index
+			path_count += 1
+			index = state.nodes[index].parent_node_index
+		}
+		for path_index in 0 ..< path_count {
+			visit_states[path[path_index]] = 2
+		}
+	}
+	for index in 0 ..< state.node_count {
+		node := &state.nodes[index]
+		parent_index := node.parent_node_index
+		if parent_index < 0 {
+			continue
+		}
 		if state.nodes[parent_index].first_child_node < 0 {
 			state.nodes[parent_index].first_child_node = index
 		} else {
@@ -971,6 +1023,7 @@ rebuild_ui_node_hierarchy :: proc(state: ^State) {
 		}
 		last_children[parent_index] = index
 	}
+	return ""
 }
 
 find_parent_entity :: proc(
@@ -1065,6 +1118,9 @@ layout_node :: proc(
 	depth: int,
 ) -> string {
 	if depth > MAX_NODES { return "UI hierarchy contains a cycle" }
+	when ODIN_TEST {
+		state.layout_node_visit_count += 1
+	}
 	node := &state.nodes[node_index]; layout := world.ui_layouts[node.layout_index]
 	node.laid_out = true
 	layout_size := node_layout_size(world, node^, layout)
@@ -1159,6 +1215,9 @@ layout_node :: proc(
 	if ((is_hstack || is_vstack) && stack.fill) || is_table {
 		child_index := node.first_child_node
 		for child_index >= 0 {
+			when ODIN_TEST {
+				state.layout_child_edge_visit_count += 1
+			}
 			child := &state.nodes[child_index]
 			next_child_index := child.next_sibling_node
 			child_layout := world.ui_layouts[child.layout_index]
@@ -1289,6 +1348,9 @@ layout_node :: proc(
 	}
 	child_index := node.first_child_node
 	for child_index >= 0 {
+		when ODIN_TEST {
+			state.layout_child_edge_visit_count += 1
+		}
 		child := &state.nodes[child_index]
 		next_child_index := child.next_sibling_node
 		child_layout := world.ui_layouts[child.layout_index]
@@ -2187,6 +2249,9 @@ handle_checkbox_press :: proc(
 
 paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) -> string {
 	if depth > MAX_NODES { return "UI hierarchy contains a cycle" }
+	when ODIN_TEST {
+		state.paint_node_visit_count += 1
+	}
 	node := &state.nodes[node_index]; layout := world.ui_layouts[node.layout_index]
 	if !node.laid_out { return "" }
 	if node.has_clip {
@@ -2422,6 +2487,9 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	apply_paint_clip(state, paint_start, state.paint_count, node.clip, node.has_clip)
 	child_index := node.first_child_node
 	for child_index >= 0 {
+		when ODIN_TEST {
+			state.paint_child_edge_visit_count += 1
+		}
 		next_child_index := state.nodes[child_index].next_sibling_node
 		if err := paint_node(state, world, child_index, depth + 1); err != "" {
 			return err
