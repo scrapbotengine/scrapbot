@@ -109,6 +109,7 @@ Node :: struct {
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
 	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, text_index, button_index, input_index, checkbox_index, parent_entity_index: int,
+	parent_node_index, first_child_node, next_sibling_node: int,
 	rect, clip: Rect,
 	resolved_size: shared.Vec2,
 	fill_available_size: shared.Vec2,
@@ -562,6 +563,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 			entity.origin,
 		)
 	}
+	rebuild_ui_node_hierarchy(state)
 	clear(&world.ui_dirty_entities)
 	state.ui_structure_revision = world.ui_structure_revision
 	state.ui_structure_synced = true
@@ -910,17 +912,65 @@ editor_select_entity :: proc(
 }
 
 find_node :: proc(state: ^State, entity: shared.Entity) -> int {
-	for node, i in state.nodes[:state.node_count] {
-		if node.entity == entity { return i }
+	if state == nil {
+		return -1
+	}
+	index := find_node_by_entity_index(state, int(entity.index))
+	if index >= 0 && state.nodes[index].entity == entity {
+		return index
 	}
 	return -1
 }
 
 find_node_by_entity_index :: proc(state: ^State, index: int) -> int {
-	for node, i in state.nodes[:state.node_count] {
-		if int(node.entity.index) == index { return i }
+	if state == nil || index < 0 {
+		return -1
+	}
+	left := 0
+	right := state.node_count
+	for left < right {
+		middle := left + (right - left) / 2
+		entity_index := int(state.nodes[middle].entity.index)
+		if entity_index < index {
+			left = middle + 1
+		} else {
+			right = middle
+		}
+	}
+	if left < state.node_count && int(state.nodes[left].entity.index) == index {
+		return left
 	}
 	return -1
+}
+
+rebuild_ui_node_hierarchy :: proc(state: ^State) {
+	if state == nil {
+		return
+	}
+	last_children: [MAX_NODES]int
+	for index in 0 ..< state.node_count {
+		state.nodes[index].parent_node_index = -1
+		state.nodes[index].first_child_node = -1
+		state.nodes[index].next_sibling_node = -1
+		last_children[index] = -1
+	}
+	for index in 0 ..< state.node_count {
+		node := &state.nodes[index]
+		if node.parent_entity_index < 0 {
+			continue
+		}
+		parent_index := find_node_by_entity_index(state, node.parent_entity_index)
+		if parent_index < 0 {
+			continue
+		}
+		node.parent_node_index = parent_index
+		if state.nodes[parent_index].first_child_node < 0 {
+			state.nodes[parent_index].first_child_node = index
+		} else {
+			state.nodes[last_children[parent_index]].next_sibling_node = index
+		}
+		last_children[parent_index] = index
+	}
 }
 
 find_parent_entity :: proc(
@@ -1107,15 +1157,22 @@ layout_node :: proc(
 	flex_child_count := 0
 	fixed_children: [MAX_NODES]bool
 	if ((is_hstack || is_vstack) && stack.fill) || is_table {
-		for child_index in 0 ..< state.node_count {
+		child_index := node.first_child_node
+		for child_index >= 0 {
 			child := &state.nodes[child_index]
-			if child.parent_entity_index != int(node.entity.index) { continue }
+			next_child_index := child.next_sibling_node
 			child_layout := world.ui_layouts[child.layout_index]
-			if child_layout.hidden { continue }
+			if child_layout.hidden {
+				child_index = next_child_index
+				continue
+			}
 			ordinal := child_count
 			children[ordinal] = child_index
 			child_count += 1
-			if is_table { continue }
+			if is_table {
+				child_index = next_child_index
+				continue
+			}
 			if is_hstack {
 				total_margins += child_layout.margin.w + child_layout.margin.y
 			} else {
@@ -1129,6 +1186,7 @@ layout_node :: proc(
 					fixed_child_main_size = fixed_size.x
 				}
 				fixed_main_size += fixed_child_main_size
+				child_index = next_child_index
 				continue
 			}
 			flex_child_count += 1
@@ -1139,6 +1197,7 @@ layout_node :: proc(
 				child.split_weight_valid = true
 			}
 			total_weight += child.split_weight
+			child_index = next_child_index
 		}
 	}
 	available_main := content.height; if is_hstack { available_main = content.width }
@@ -1228,10 +1287,15 @@ layout_node :: proc(
 		table_column_offsets[column] = table_offset
 		table_offset += table_column_widths[column] + table.column_gap
 	}
-	for child_index in 0 ..< state.node_count {
-		child := &state.nodes[child_index]; if child.parent_entity_index != int(node.entity.index) { continue }
+	child_index := node.first_child_node
+	for child_index >= 0 {
+		child := &state.nodes[child_index]
+		next_child_index := child.next_sibling_node
 		child_layout := world.ui_layouts[child.layout_index]
-		if child_layout.hidden { continue }
+		if child_layout.hidden {
+			child_index = next_child_index
+			continue
+		}
 		position: shared.Vec2
 		child_flowed := false
 		child_size := node_layout_size(world, child^, child_layout)
@@ -1358,6 +1422,7 @@ layout_node :: proc(
 			child_layout.margin.y
 		content_right = max(content_right, unscrolled_right - content.x)
 		child_ordinal += 1
+		child_index = next_child_index
 	}
 	if is_table &&
 	   child_count > 0 { content_bottom = max(content_bottom, table_y + table_row_height) }
@@ -1971,7 +2036,7 @@ mark_interaction_chain :: proc(state: ^State, node_index: int, active: bool) {
 	index := node_index
 	for index >= 0 {
 		if active { state.nodes[index].active = true } else { state.nodes[index].hovered = true }
-		index = find_node_by_entity_index(state, state.nodes[index].parent_entity_index)
+		index = state.nodes[index].parent_node_index
 	}
 }
 
@@ -2355,7 +2420,14 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			   world.ui_buttons,
 		   ) { button := world.ui_buttons[node.button_index]; select_font(state, button.font); color := button.color; if node.active && button.active_color.w > 0 { color = button.active_color } else if node.hovered && button.hover_color.w > 0 { color = button.hover_color }; if err := append_centered_text(state, button.text, color, button.size, node.rect, layout.padding, button.alignment); err != "" { return err } }
 	apply_paint_clip(state, paint_start, state.paint_count, node.clip, node.has_clip)
-	for child_index in 0 ..< state.node_count { if state.nodes[child_index].parent_entity_index == int(node.entity.index) { if err := paint_node(state, world, child_index, depth + 1); err != "" { return err } } }
+	child_index := node.first_child_node
+	for child_index >= 0 {
+		next_child_index := state.nodes[child_index].next_sibling_node
+		if err := paint_node(state, world, child_index, depth + 1); err != "" {
+			return err
+		}
+		child_index = next_child_index
+	}
 	if node.scroll_area_index >= 0 &&
 	   node.scroll_area_index < len(world.ui_scroll_areas) &&
 	   node.scroll_max > 0 {

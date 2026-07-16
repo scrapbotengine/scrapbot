@@ -7,6 +7,8 @@ Scrapbot UI is ordinary ECS data. Scene TOML, Luau systems, native Odin extensio
 
 The editor is the first large consumer of this API, not a separate widget toolkit. A panel, list, input, checkbox, or scroll area improved for the editor is available to projects through the same component fields.
 
+Appearing, disappearing, reparented, and hidden elements update a retained hierarchy through structural dirty notifications. Unchanged frames do not rebuild an element inventory: layout and paint walk retained parent/child/sibling links in linear time.
+
 ## Component model
 
 Every visible element starts with `scrapbot.ui_layout`. Add at most one flow container and at most one content control to the same entity:

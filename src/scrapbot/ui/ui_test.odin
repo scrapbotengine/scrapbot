@@ -77,6 +77,7 @@ test_progress_paints_overridable_track_and_right_anchored_fill :: proc(t: ^testi
 		},
 	)
 	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
 	state := new(State)
 	defer free(state)
 	testing.expect(t, init(state) == "")
@@ -93,6 +94,16 @@ test_progress_paints_overridable_track_and_right_anchored_fill :: proc(t: ^testi
 		testing.expect(t, fill.rect == (Rect{165, 24, 45, 12}))
 		testing.expect(t, fill.color == (shared.Vec4{0.2, 0.8, 0.6, 1}))
 		testing.expect(t, fill.corner_radius == 3)
+	}
+	structure_sync_count := state.ui_structure_sync_count
+	progress := world.ui_progresses[world.entities[0].ui_progress_index]
+	progress.value = 50
+	testing.expect(t, ecs.set_ui_progress(&world, 0, progress))
+	testing.expect(t, reconcile(state, &world, 320, 120) == "")
+	testing.expect(t, state.ui_structure_sync_count == structure_sync_count)
+	testing.expect(t, state.paint_count == 2)
+	if state.paint_count == 2 {
+		testing.expect(t, state.paint[1].rect == (Rect{120, 24, 90, 12}))
 	}
 }
 
@@ -401,8 +412,15 @@ test_reconcile_tracks_ui_entity_appearance_and_disappearance :: proc(t: ^testing
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state)
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	testing.expect(t, state.node_count == 2)
+	root_node := find_node_by_entity_index(state, 0)
 	label_node := find_node_by_entity_index(state, 1)
-	testing.expect(t, label_node >= 0 && state.nodes[label_node].parent_entity_index == 0)
+	testing.expect(t, root_node >= 0 && label_node >= 0)
+	if root_node >= 0 && label_node >= 0 {
+		testing.expect(t, state.nodes[label_node].parent_entity_index == 0)
+		testing.expect(t, state.nodes[label_node].parent_node_index == root_node)
+		testing.expect(t, state.nodes[root_node].first_child_node == label_node)
+		testing.expect(t, state.nodes[label_node].next_sibling_node == -1)
+	}
 	testing.expect(t, state.paint_count > 2)
 	testing.expect(t, state.ui_structure_sync_count == 1)
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
@@ -473,7 +491,75 @@ test_column_layout_places_children_in_order :: proc(t: ^testing.T) {
 	if a >= 0 && b >= 0 {
 		testing.expect(t, state.nodes[a].rect.y == 10)
 		testing.expect(t, state.nodes[b].rect.y == 35)
+		root := find_node_by_entity_index(state, 0)
+		testing.expect(t, root >= 0)
+		if root >= 0 {
+			testing.expect(t, state.nodes[root].first_child_node == a)
+			testing.expect(t, state.nodes[a].next_sibling_node == b)
+			testing.expect(t, state.nodes[b].next_sibling_node == -1)
+		}
 	}
+}
+
+@(test)
+test_retained_hierarchy_links_follow_reparenting :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	left_id := ui_test_id("Left Root")
+	right_id := ui_test_id("Right Root")
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = left_id,
+			name = "Left Root",
+			has_ui_layout = true,
+			ui_layout = {size = {100, 100}},
+			has_ui_vstack = true,
+		},
+		shared.Scene_Entity {
+			id = right_id,
+			name = "Right Root",
+			has_ui_layout = true,
+			ui_layout = {position = {200, 0}, size = {100, 100}},
+			has_ui_vstack = true,
+		},
+		shared.Scene_Entity {
+			name = "Child",
+			has_ui_layout = true,
+			ui_layout = {parent = left_id, size = {40, 20}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	left := find_node_by_entity_index(state, 0)
+	right := find_node_by_entity_index(state, 1)
+	child := find_node_by_entity_index(state, 2)
+	testing.expect(t, left >= 0 && right >= 0 && child >= 0)
+	if left < 0 || right < 0 || child < 0 {
+		return
+	}
+	testing.expect(t, state.nodes[child].parent_node_index == left)
+	testing.expect(t, state.nodes[left].first_child_node == child)
+	testing.expect(t, state.nodes[right].first_child_node == -1)
+	testing.expect(t, state.nodes[child].rect.x == 0)
+
+	layout := world.ui_layouts[world.entities[2].ui_layout_index]
+	layout.parent = right_id
+	testing.expect(t, ecs.set_ui_layout(&world, 2, layout))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	left = find_node_by_entity_index(state, 0)
+	right = find_node_by_entity_index(state, 1)
+	child = find_node_by_entity_index(state, 2)
+	testing.expect(t, state.nodes[child].parent_node_index == right)
+	testing.expect(t, state.nodes[left].first_child_node == -1)
+	testing.expect(t, state.nodes[right].first_child_node == child)
+	testing.expect(t, state.nodes[child].rect.x == 200)
 }
 
 @(test)

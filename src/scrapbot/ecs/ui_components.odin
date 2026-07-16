@@ -326,7 +326,9 @@ set_ui_progress :: proc(world: ^World, entity_index: int, value: UI_Progress_Com
 	entity := &world.entities[entity_index]
 	if entity.ui_progress_index >= 0 && entity.ui_progress_index < len(world.ui_progresses) {
 		world.ui_progresses[entity.ui_progress_index] = value
-	} else if index, found := take_free_slot(&world.free_ui_progress_indices); found {
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_progress_indices); found {
 		entity.ui_progress_index = index
 		world.ui_progresses[index] = value
 	} else {
