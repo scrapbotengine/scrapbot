@@ -81,6 +81,7 @@ active_background = [0.06, 0.08, 0.11, 1]
 Positions and sizes use top-left screen pixels. Margin, padding, and inset values use `[top, right, bottom, left]`. Parent cycles and incompatible container/content combinations fail project validation.
 
 See the [Project File Reference](/reference/project-files/#built-in-component-sections) for every field and validation rule.
+The [Engine Component Reference](/reference/components/#ui-composition-rules) is the compact field/default inventory for every `scrapbot.ui_*` component.
 
 ## Make layout responsive
 

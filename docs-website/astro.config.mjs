@@ -41,6 +41,7 @@ export default defineConfig({
 						{ label: 'Source Layout', slug: 'reference/source-layout' },
 						{ label: 'CLI', slug: 'reference/cli' },
 						{ label: 'Project Files', slug: 'reference/project-files' },
+						{ label: 'Engine Components', slug: 'reference/components' },
 						{ label: 'Luau API', slug: 'reference/luau-api' },
 						{ label: 'Native Extension ABI', slug: 'reference/native-extension-abi' },
 						{ label: 'Architecture Records', slug: 'reference/architecture-records' },

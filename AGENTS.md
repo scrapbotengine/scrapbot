@@ -33,6 +33,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 
 - `README.md` is the feature/roadmap overview, `docs/adr/` records durable architecture decisions, and `docs/fdr/` records current feature behavior and rationale.
 - `docs-website/` is the public user documentation. Update it in the same change when commands, project files, Luau/native APIs, editor behavior, rendering/testing workflows, or public UI behavior change.
+- `docs-website/src/content/docs/reference/components.md` is the canonical inventory of engine-provided components; `src/scrapbot/component/registry.odin` is its source of truth. Run `node .agents/skills/scrapbot-feature-development/scripts/check_component_docs.mjs` after component changes.
 - Prefer updating the canonical page and linking to it over duplicating exhaustive field lists. Build the site with `pnpm run build` from `docs-website/`.
 
 ## Agent Diagnostics

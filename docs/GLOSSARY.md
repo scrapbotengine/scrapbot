@@ -84,4 +84,4 @@
 
 **Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for `project.toml`, the default scene TOML, `scripts/main.luau`, native libraries in `build/extensions`, and declared native extension source directories.
 
-**Editor GUI** - The planned in-engine editor interface toggled from a running project.
+**Editor GUI** - The in-engine live editor toggled from a running project. It uses transient editor-origin entities and the same public ECS UI components available to projects.

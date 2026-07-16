@@ -1,6 +1,6 @@
 ---
 name: scrapbot-feature-development
-description: Use when adding or changing Scrapbot engine features, public APIs, ECS behavior, rendering, scripting, native extensions, examples, or project tooling. Covers cross-surface implementation, documentation, generated types, and verification expectations.
+description: Use when adding, changing, documenting, or auditing Scrapbot engine features, public APIs, ECS components, rendering, scripting, native extensions, examples, or project tooling. Covers cross-surface implementation, component documentation, generated types, and verification expectations.
 ---
 
 # Scrapbot Feature Development
@@ -48,3 +48,15 @@ Never hand-edit generated example declarations without changing their generator.
 - Keep `README.md`, `docs/TODO.md`, examples, and the documentation website synchronized with shipped behavior.
 - Finish with `mise test`, `git diff --check`, and any feature-specific verification.
 - When integrating delegated work, review the combined diff rather than trusting per-agent test reports; cross-surface omissions usually appear only at integration time.
+
+## Documentation Audits
+
+Treat `docs-website/src/content/docs/reference/components.md` as the canonical public inventory of engine-provided components. Treat `src/scrapbot/component/registry.odin` as its source of truth.
+
+When adding, removing, renaming, or changing an engine component:
+
+1. Update the canonical component page with its registry name, public fields, scene name, Luau handle, native descriptor/access pattern, defaults, constraints, ownership, and renderer-only behavior where applicable.
+2. Run `node .agents/skills/scrapbot-feature-development/scripts/check_component_docs.mjs` to catch registry entries missing from the canonical page.
+3. Check `reference/project-files.md`, `reference/luau-api.md`, `guides/native-extensions.md`, and `guides/ecs-ui.md` only for surface-specific behavior. Link to the component page instead of duplicating exhaustive field inventories.
+4. Audit both `docs/GLOSSARY.md` and the public website glossary for stale feature-state language.
+5. Build the documentation website with `pnpm run build` from `docs-website/`.

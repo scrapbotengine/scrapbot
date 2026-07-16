@@ -53,6 +53,8 @@ Every entity must have a unique, non-zero RFC UUID in `id` and a `name`. The ID 
 
 ## Built-in component sections
 
+For a complete inventory of all 23 public engine components, reflected fields, defaults, constraints, and cross-surface names, see the [Engine Component Reference](/reference/components/).
+
 Transform:
 
 ```toml
@@ -73,7 +75,16 @@ far = 100
 
 A camera reads its position and Euler orientation from the entity's transform. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll.
 
-Mesh:
+Built-in primitive convenience:
+
+```toml
+[entities.mesh]
+primitive = "cube"
+```
+
+The mesh component currently resolves `cube` into the built-in cube geometry and default material needed by the entity. It is the compact path used by generated projects.
+
+Explicit render resources:
 
 ```toml
 [entities.geometry]

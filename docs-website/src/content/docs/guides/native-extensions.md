@@ -115,6 +115,8 @@ Project system callbacks are ordinary contextless Odin procedures. The extension
 
 The raw C-compatible package remains available as `scrapbot:extension_api` for non-Odin bindings and ABI reference work.
 
+See the [Engine Component Reference](/reference/components/) for every engine-owned component name and its public fields. Not every engine component has a predefined Odin helper descriptor yet; construct `scrapbot.Component{name = "scrapbot.<name>"}` when a system only needs to declare or query membership.
+
 ## Build ECS UI from native systems
 
 Declare reads and writes for the UI components a system uses, just like gameplay components:
