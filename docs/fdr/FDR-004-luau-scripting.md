@@ -13,7 +13,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot init` creates a starter `scripts/main.luau`.
 - `scrapbot run` executes the script after scene loading and ECS world construction.
 - Script errors fail the run with a Luau diagnostic.
-- `scrapbot run --hot-reload` periodically checks `project.toml`, the default scene TOML, `scripts/main.luau`, `assets/`, native extension libraries, and declared native extension source directories while renderer frames are advancing.
+- Source-project runs periodically check `project.toml`, the default scene TOML, `scripts/main.luau`, `assets/`, native extension libraries, and declared native extension source directories while renderer frames are advancing. `--no-hot-reload` disables this development behavior.
 - Successful script reload replaces the active Luau runtime; failed script reload keeps the last good runtime.
 - Successful scene reload rebuilds the ECS world and validates `scripts/main.luau` against it before swapping state; failed scene reload keeps the last good world and runtime.
 - `scrapbot check` executes `scripts/main.luau` silently to collect project and library component schemas, validate scene data, and refresh `.scrapbot/types/scrapbot.d.luau`.
@@ -111,7 +111,7 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 
 ### 7. Check project files periodically for first hot reload
 
-**Decision:** `--hot-reload` checks file modification stamps on a short interval while renderer frames are advancing.
+**Decision:** The default source-project hot-reload mode checks file modification stamps on a short interval while renderer frames are advancing; `--no-hot-reload` opts out.
 **Why:** Periodic checks are portable, backend-neutral, and enough to validate runtime state replacement before introducing platform file watching services.
 **Tradeoff:** Reloads are not immediate, and the first implementation recursively stamps the whole assets directory rather than using platform file-watching services or dependency-specific watches.
 

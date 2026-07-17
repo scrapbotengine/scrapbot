@@ -43,7 +43,7 @@ Prefer Scrapbot's structured CLI output when inspecting projects or verifying ch
 ```sh
 bin/scrapbot check <path> --json
 bin/scrapbot build <path> --json
-bin/scrapbot run <path> --frames <n> --json
+bin/scrapbot run <path> --backend null --headless --no-hot-reload --frames <n> --json
 bin/scrapbot run <path> --backend wgpu --editor --headless --ui-script <actions.json> --ui-dump /tmp/ui-tree.json --framegrab /tmp/ui.png --json
 ```
 

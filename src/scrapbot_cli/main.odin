@@ -29,10 +29,11 @@ Build_Options :: struct {
 
 Run_Options :: struct {
 	path: string `args:"pos=0" usage:"Project directory to run."`,
-	backend: string `usage:"Renderer backend: null or wgpu."`,
-	window: bool `usage:"Open a platform window for renderer runs."`,
-	headless: bool `usage:"Force headless mode. This is the default unless --window is passed."`,
-	hot_reload: bool `name:"hot-reload" usage:"Reload the default scene TOML and scripts/main.luau while the renderer is running."`,
+	backend: string `usage:"Renderer backend: null or wgpu. Defaults to wgpu."`,
+	window: bool `usage:"Open a platform window. Enabled by default for source-project runs."`,
+	headless: bool `usage:"Run without a visible window; use the null backend or request a framegrab."`,
+	hot_reload: bool `name:"hot-reload" usage:"Enable project hot reload. Enabled by default for source-project runs."`,
+	no_hot_reload: bool `name:"no-hot-reload" usage:"Disable project hot reload for this run."`,
 	editor: bool `usage:"Start with the in-game editor shell visible. Cmd/Ctrl+E toggles it."`,
 	scheduler_trace: bool `name:"scheduler-trace" usage:"Print native scheduler worker and parallel-stage statistics."`,
 	runtime_stats: bool `name:"runtime-stats" usage:"Collect ECS storage, engine allocator, and early/late engine-frame timing statistics."`,
@@ -265,7 +266,9 @@ run_packaged :: proc(args: []string) -> int {
 run_project :: proc(args: []string) -> int {
 	opt := Run_Options {
 		path = ".",
-		backend = "null",
+		backend = "wgpu",
+		window = true,
+		hot_reload = true,
 	}
 	code, should_run := parse_command_args(&opt, args, "scrapbot run")
 	if !should_run {
@@ -278,21 +281,22 @@ run_project :: proc(args: []string) -> int {
 		fmt.eprintf("unknown renderer backend: %s\n", opt.backend)
 		return 1
 	}
+	windowed := backend == .WGPU && opt.window && !opt.headless
+	hot_reload := opt.hot_reload && !opt.no_hot_reload
 	framegrab_region, region_ok := scrapbot.parse_framegrab_region(opt.framegrab_region)
 	if !region_ok ||
 	   opt.framegrab_region != "" &&
 		   opt.framegrab ==
 			   "" { message := "--framegrab-region requires x,y,width,height and --framegrab"; if opt.json { emit_json_error("run", "SCRAPBOT_ARGUMENT_ERROR", message, opt.path) } else { fmt.eprintln(message) }; return 1 }
 	if opt.runtime_stats &&
-	   opt.window &&
-	   !opt.headless &&
+	   windowed &&
 	   opt.frames ==
 		   0 { message := "--runtime-stats requires --frames for windowed runs"; if opt.json { emit_json_error("run", "SCRAPBOT_ARGUMENT_ERROR", message, opt.path) } else { fmt.eprintln(message) }; return 1 }
 
 	config := scrapbot.Run_Config {
 		backend = backend,
-		window = opt.window && !opt.headless,
-		hot_reload = opt.hot_reload,
+		window = windowed,
+		hot_reload = hot_reload,
 		editor = opt.editor,
 		max_frames = opt.frames,
 		framegrab_path = opt.framegrab,

@@ -91,10 +91,10 @@ Shadow participation is explicit and independent:
 
 ## Null renderer
 
-The null backend is the default and does not open a window:
+The null backend is the deterministic automation path and does not open a window:
 
 ```sh
-mise scrapbot -- run examples/minimal --backend null
+mise scrapbot -- run examples/minimal --backend null --headless --no-hot-reload --frames 1
 ```
 
 It reports frame counts for entities, cameras, geometry references, renderables, and draw batches.

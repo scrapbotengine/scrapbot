@@ -99,19 +99,19 @@ odin test src/scrapbot -all-packages -extra-linker-flags:"$LUAU_LINK_FLAGS"
 bin/scrapbot --version
 bin/scrapbot check examples/minimal
 bin/scrapbot check examples/ui-showcase
-bin/scrapbot run examples/minimal
-bin/scrapbot run examples/ui-showcase
+bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
+bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload --frames 1
 CHECK_JSON="$(bin/scrapbot check examples/minimal --json)"
 case "$CHECK_JSON" in
   '{"schema_version":1,"command":"check","ok":true,'*) ;;
   *) echo "unexpected check JSON: $CHECK_JSON" >&2; exit 1 ;;
 esac
-RUN_JSON="$(bin/scrapbot run examples/minimal --frames 1 --json)"
+RUN_JSON="$(bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1 --json)"
 case "$RUN_JSON" in
   '{"schema_version":1,"command":"run","ok":true,'*) ;;
   *) echo "unexpected run JSON: $RUN_JSON" >&2; exit 1 ;;
 esac
-RUNTIME_STATS_JSON="$(bin/scrapbot run examples/minimal --frames 120 --runtime-stats --json)"
+RUNTIME_STATS_JSON="$(bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 120 --runtime-stats --json)"
 node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.runtime_stats;

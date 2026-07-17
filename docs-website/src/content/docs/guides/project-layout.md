@@ -99,7 +99,7 @@ Project-owned runtime assets live under `assets/`. The first supported asset typ
 scrapbot.material.textured("checker", "assets/checker.png")
 ```
 
-`scrapbot check` decodes referenced textures, `--hot-reload` reloads the project when files under `assets/` change, and `scrapbot build` includes the directory in host-native packages.
+`scrapbot check` decodes referenced textures, the default source-project hot reload reloads the project when files under `assets/` change, and `scrapbot build` includes the directory in host-native packages.
 
 ## Generated Luau types
 
@@ -119,7 +119,7 @@ Native extension source belongs under a project-local source directory such as `
 mise scrapbot -- build examples/minimal
 ```
 
-`check` and `run` also build declared native extensions automatically. With `--hot-reload`, changes inside declared native source directories rebuild the extensions before the runtime reloads the scene and script.
+`check` and `run` also build declared native extensions automatically. During the default source-project hot reload, changes inside declared native source directories rebuild the extensions before the runtime reloads the scene and script.
 
 ## Create the layout
 

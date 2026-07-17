@@ -40,7 +40,7 @@ Prefer `--json` for agent-driven CLI checks:
 ```sh
 bin/scrapbot check examples/minimal --json
 bin/scrapbot build examples/minimal --json
-bin/scrapbot run examples/minimal --frames 1 --json
+bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1 --json
 ```
 
 JSON mode emits one versioned document on stdout. Use `ok`, diagnostic `code`, and documented `result` fields for assertions and branching. Treat diagnostic messages as human-readable context; do not match their exact text. Check `schema_version` before consuming the envelope, and fall back to human output only when the command has no structured mode.
@@ -50,7 +50,7 @@ Keep `run` bounded with `--frames`. Structured success confirms command and runt
 For CPU/RAM growth investigations, request the opt-in structured runtime report:
 
 ```sh
-bin/scrapbot run examples/ecs-showcase --backend null --frames 10000 --runtime-stats --json
+bin/scrapbot run examples/ecs-showcase --backend null --headless --no-hot-reload --frames 10000 --runtime-stats --json
 ```
 
 Compare allocated-slot fields across `runtime_stats.early_storage`, `late_storage`, and `final_storage`; compare `allocator_early_bytes` with `allocator_late_bytes`; check `allocator_final_bytes`; and inspect the early/late frame timing ratio. Ignore `live_entities` when the workload intentionally oscillates. These are engine-owned signals; direct Luau, SDL, WGPU, driver, GPU, and OS allocations require separate tooling.
@@ -67,7 +67,7 @@ Validate an example with:
 bin/scrapbot check examples/minimal
 bin/scrapbot check examples/ecs-showcase
 bin/scrapbot check examples/ui-showcase
-bin/scrapbot run examples/minimal
+bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
 ```
 
 `scrapbot check` also regenerates `.scrapbot/types/scrapbot.d.luau`. After changing Luau APIs or component schemas, run it for every affected example and inspect the generated output. It is ignored engine state; do not hand-edit or commit it.

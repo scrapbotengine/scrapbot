@@ -87,21 +87,28 @@ Performs project validation:
 ## `scrapbot run`
 
 ```sh
-scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json] [--json]
+scrapbot run [path] [--backend null|wgpu] [--window|--headless] [--hot-reload|--no-hot-reload] [--editor] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json] [--json]
 ```
 
-Runs a project through the selected renderer backend after stepping registered native and Luau systems.
+Runs a project through the selected renderer backend after stepping registered native and Luau systems. Source-project runs default to WGPU, a visible window, and hot reload:
+
+```sh
+scrapbot run my-game
+```
+
+Packaged executables also default to windowed WGPU, but do not watch development source files.
 
 Options:
 
 | Option | Meaning |
 | --- | --- |
-| `--backend null` | Use the headless null renderer. |
-| `--backend wgpu` | Use the WebGPU renderer. |
-| `--window` | Open a platform window. |
-| `--headless` | Force headless mode. |
+| `--backend null` | Use the null renderer instead of the default WGPU renderer. |
+| `--backend wgpu` | Explicitly use the default WebGPU renderer. |
+| `--window` | Explicitly open the default platform window. |
+| `--headless` | Run without a visible window; select the null backend or request a WGPU framegrab. |
 | `--editor` | Start with the editor shell visible. `Cmd/Ctrl+E` toggles it in a visible window. |
-| `--hot-reload` | Poll project files, scripts, and native extension source/output changes while running. |
+| `--hot-reload` | Explicitly enable the default project-file, script, asset, and native-extension polling. |
+| `--no-hot-reload` | Disable source-project hot reload for deterministic runs. |
 | `--scheduler-trace` | Print native worker count, parallel stage count, and maximum stage width. |
 | `--runtime-stats` | Collect early/late engine-frame timing through render preparation, engine-allocator bytes, and ECS storage checkpoints. Windowed runs also require nonzero `--frames`. |
 | `--frames n` | Limit renderer frames. |

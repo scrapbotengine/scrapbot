@@ -10,13 +10,13 @@ Scrapbot's editor is part of the running project rather than a separate executab
 Start a visible WGPU run and press `Cmd+E` on macOS or `Ctrl+E` elsewhere to toggle the editor:
 
 ```sh
-bin/scrapbot run examples/ecs-showcase --backend wgpu --window
+bin/scrapbot run examples/ecs-showcase
 ```
 
 Pass `--editor` to start with the editor already open:
 
 ```sh
-bin/scrapbot run examples/ecs-showcase --backend wgpu --window --editor
+bin/scrapbot run examples/ecs-showcase --editor
 ```
 
 Opening or closing the editor does not change the project's current playback state. Its world and project-authored UI fill all currently available center space without enforcing a fixed aspect ratio. Drag either vertical separator beside the viewport to resize the scene or inspector sidebar; the center viewport automatically fills the remainder and the panes keep their proportions as the window changes. Each complete sidebar also has a contrasting 10-pixel frame around its smooth scroll viewport, with a small gutter between separate tool sections, so the dock hierarchy stays legible and every section remains reachable in a short window. Systems, Scene, Inspector, and component sections share the same titled card, colors, disclosure arrow, and collapse behavior; click any title band to fold that section. Wheel input over a nested Systems, scene-browser, or inspector pane scrolls that pane; wheel input over sidebar padding or non-scrollable chrome scrolls the complete sidebar. During a native window resize, the simulation, surface, camera aspect, viewport, and editor layout continue updating throughout the drag.

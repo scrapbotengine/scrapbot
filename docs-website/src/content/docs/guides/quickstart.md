@@ -22,7 +22,7 @@ mise scrapbot -- run examples/minimal
 
 `check` validates `project.toml`, builds declared native extensions, loads component schemas, validates the scene, refreshes Luau editor types, and runs Luau static analysis when `luau-analyze` is available.
 
-`run` builds declared native extensions, loads the scene into the ECS world, executes `scripts/main.luau`, steps registered native and Luau systems, and renders through the selected backend.
+`run` builds declared native extensions, loads the scene into the ECS world, executes `scripts/main.luau`, steps registered native and Luau systems, and opens a WGPU window with hot reload. Use `--backend null --headless --no-hot-reload --frames 1` for a bounded automation run.
 
 The minimal example intentionally contains both sides of the current ECS authoring model: Luau registers a project-level `float` component and bounded floating system, while the project-local Odin extension registers `scrappyphysics.*` components and native systems.
 
@@ -30,7 +30,7 @@ The minimal example intentionally contains both sides of the current ECS authori
 
 ```sh
 mise scrapbot -- check examples/ecs-showcase
-mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
+mise scrapbot -- run examples/ecs-showcase --backend null --headless --no-hot-reload --frames 540
 ```
 
 The ECS showcase is a denser project for exercising the runtime. It combines a Luau-defined floating marker with an Odin-driven object fountain that spawns visible cube renderables, moves them through native velocity systems, spins them, and despawns them after their lifetimes expire. Ambient and directional lights shade the scene while two point-light entities orbit through a native ECS system.
@@ -70,22 +70,22 @@ Use `mise test` before committing engine changes. It builds the CLI, runs Odin p
 
 ## Renderer smoke tests
 
-The null backend is the default:
+Use the null backend for a fast bounded smoke test without a window:
 
 ```sh
-mise scrapbot -- run examples/minimal --backend null
+mise scrapbot -- run examples/minimal --backend null --headless --no-hot-reload --frames 1
 ```
 
 Windowed WebGPU opens an SDL3 window:
 
 ```sh
-bin/scrapbot run examples/minimal --backend wgpu --window --frames 3
+bin/scrapbot run examples/minimal --frames 3
 ```
 
 Press `Cmd/Ctrl+E` during an unbounded windowed run to open Scrapbot's editor shell around the live project. A running game pauses while the shell is open and resumes when it closes; an already paused or stopped game keeps its state. To start open or capture the shell directly, pass `--editor`:
 
 ```sh
-bin/scrapbot run examples/ecs-showcase --backend wgpu --window --editor
+bin/scrapbot run examples/ecs-showcase --editor
 bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
 ```
 

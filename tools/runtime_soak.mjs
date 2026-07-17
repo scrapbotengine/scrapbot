@@ -29,7 +29,18 @@ if (!Number.isInteger(maxFinalAllocatorBytes) || maxFinalAllocatorBytes < 0) {
 
 const run = spawnSync(
 	path.join(root, "bin", "scrapbot"),
-	["run", project, "--backend", "null", "--frames", String(frames), "--runtime-stats", "--json"],
+	[
+		"run",
+		project,
+		"--backend",
+		"null",
+		"--headless",
+		"--no-hot-reload",
+		"--frames",
+		String(frames),
+		"--runtime-stats",
+		"--json",
+	],
 	{ cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
 );
 

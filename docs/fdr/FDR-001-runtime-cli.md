@@ -1,7 +1,7 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-16
+**Last reviewed:** 2026-07-17
 
 ## Overview
 
@@ -16,11 +16,11 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 - Packaged executables run their adjacent project directly and default to a windowed WGPU renderer.
 - Users can name a build target, but non-host targets are rejected until Scrapbot has target-native Luau, SDL3, and WGPU dependencies.
 - Users can validate a project without opening a window.
-- Users can run a project through the selected renderer backend.
-- Users can request a platform window for renderer runs and limit windowed runs with `--frames`.
+- Source-project runs default to a windowed WGPU renderer with hot reload enabled.
+- Users can select another renderer, force headless execution, disable hot reload, and limit runs with `--frames`.
 - Users can request a headless WGPU PNG framegrab with `--framegrab`.
 - Users can pass `--editor` to start with editor chrome visible, while `Cmd/Ctrl+E` toggles it during a windowed run.
-- Users can pass `--hot-reload` to periodically check `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories while the renderer is running.
+- Users can pass `--no-hot-reload` to disable the default periodic checks of `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories. `--hot-reload` remains available as an explicit, backward-compatible spelling.
 - Users can pass `--scheduler-trace` to report native worker count, parallel stage count, and maximum parallel width after a run.
 - Users can pass `--runtime-stats` to collect early/late engine-frame cost through render preparation, engine-allocator bytes, and detailed ECS storage checkpoints for bounded runs.
 - Windowed runtime-stat runs require a nonzero `--frames` limit; unbounded sessions are rejected because they have no deterministic late sample window.
@@ -60,6 +60,12 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 **Decision:** Instrument bounded runs with opt-in engine-frame timing through render-list preparation, Odin engine-allocator bytes including a post-teardown checkpoint, and per-storage ECS slot counts, then expose the report through the existing structured run result.
 **Why:** Comparing warm steady-state windows catches workload and memory growth without relying on noisy CPU percentages or platform-specific resident-memory accounting.
 **Tradeoff:** The report excludes allocations owned directly by Luau, SDL, WGPU, GPU drivers, and the operating system. Those require a separate process/GPU telemetry layer.
+
+### 6. Optimize source-project runs for the interactive loop
+
+**Decision:** Make WGPU, a visible window, and hot reload the defaults for `scrapbot run <project>`. Keep packaged executables windowed but without source hot reload. Provide `--headless`, `--backend null`, and `--no-hot-reload` as explicit automation controls.
+**Why:** Running a game during development is the primary human path and should require only the project path. Automation benefits more from explicit execution constraints than from inheriting historical development defaults.
+**Tradeoff:** Existing scripts that relied on an implicit null renderer must add explicit deterministic flags. WGPU still requires a usable platform graphics environment.
 
 ## Related
 
