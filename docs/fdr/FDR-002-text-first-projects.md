@@ -1,7 +1,7 @@
 # FDR-002: Text-first projects
 
 **Status:** Active
-**Last reviewed:** 2026-07-14
+**Last reviewed:** 2026-07-17
 
 ## Overview
 
@@ -13,6 +13,9 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 - The manifest names the project and points at a default scene.
 - The manifest can declare native extension targets with a name and source directory.
 - The default generated scene lives at `scenes/main.scene.toml`, and its default material lives at `resources/default.resource.toml`.
+- Authored project inputs use the conventional top-level directories `assets/`, `native/`, `resources/`, `scenes/`, and `scripts/`.
+- Engine-generated editor metadata and caches live under ignored `.scrapbot/`; distributable package output alone lives under `build/`.
+- `scrapbot init` creates a runnable camera-and-cube starter, derives the project name from the destination when omitted, creates ignore and Luau editor metadata, and refuses to overwrite any file it owns.
 - Scene files describe entities and known components in TOML.
 - Every scene entity has a required, non-zero, project-wide UUID. Names are editable display labels, and cross-entity references use UUIDs.
 - Authored resources live in standalone `resources/**/*.resource.toml` files, have their own project-wide UUIDs, and are referenced by UUID from scenes. Resources are project data outside the ECS and are not owned by a scene.
@@ -53,9 +56,15 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 **Why:** Renaming a label must not break hierarchy links, editor selection, or future serialized references.
 **Tradeoff:** Existing scene files need explicit IDs, and duplication tools must mint new IDs instead of copying them blindly.
 
+### 6. Separate authored inputs, engine state, and products
+
+**Decision:** Keep authored inputs in plainly named source directories, put regenerable engine state under `.scrapbot/`, and reserve `build/` for packages. See ADR-032.
+**Why:** Projects should be easy to navigate and version-control without mixing source, IDE metadata, caches, and distributable output at the same level.
+**Tradeoff:** Existing generated `types/` and `build/extensions`/`build/fonts` paths move and must be regenerated.
+
 ## Related
 
-- **ADRs:** ADR-002, ADR-008, ADR-023
+- **ADRs:** ADR-002, ADR-008, ADR-023, ADR-032
 - **FDRs:** FDR-001, FDR-004, FDR-006
 
 ## Open Questions

@@ -155,7 +155,7 @@ default_vscode_settings_template :: proc() -> string {
   "luau-lsp.fflags.enableNewSolver": true,
   "luau-lsp.sourcemap.enabled": false,
   "luau-lsp.types.definitionFiles": {
-    "scrapbot": "types/scrapbot.d.luau"
+    "scrapbot": ".scrapbot/types/scrapbot.d.luau"
   }
 }
 ` \
@@ -165,65 +165,66 @@ default_vscode_settings_template :: proc() -> string {
 init_project :: proc(root, name: string) -> string {
 	project_name := name
 	if project_name == "" {
-		project_name = "Scrapbot Game"
+		project_name = project_name_from_root(root)
 	}
 	if !is_basic_string_body(project_name) {
 		return "project name cannot contain quotes, backslashes, or newlines"
 	}
 
-	if err := os.make_directory_all(root); err != nil {
-		return fmt.tprintf("failed to create project directory: %v", err)
+	if os.exists(root) && !os.is_dir(root) {
+		return "project path exists and is not a directory"
+	}
+	if !os.exists(root) {
+		if err := os.make_directory_all(root); err != nil {
+			return fmt.tprintf("failed to create project directory: %v", err)
+		}
+	}
+	project_files := []string {
+		PROJECT_FILE,
+		DEFAULT_SCENE,
+		"resources/default.resource.toml",
+		DEFAULT_SCRIPT,
+		DEFAULT_LUAU_TYPES,
+		DEFAULT_VSCODE_SETTINGS,
+	}
+	for relative_path in project_files {
+		path, path_err := filepath.join({root, relative_path})
+		if path_err != nil {
+			return fmt.tprintf("failed to allocate path for %s", relative_path)
+		}
+		conflicts := os.exists(path)
+		delete(path)
+		if conflicts {
+			return fmt.tprintf("refusing to overwrite existing project file %s", relative_path)
+		}
 	}
 
-	scenes_dir, join_err := filepath.join({root, "scenes"})
-	if join_err != nil {
-		return "failed to allocate scenes path"
+	project_directories := []string {
+		"assets",
+		"native",
+		"resources",
+		"scenes",
+		"scripts",
+		".scrapbot/types",
+		".vscode",
 	}
-	defer delete(scenes_dir)
-	if err := os.make_directory_all(scenes_dir); err != nil {
-		return fmt.tprintf("failed to create scenes directory: %v", err)
-	}
-
-	scripts_dir, join_scripts_err := filepath.join({root, "scripts"})
-	if join_scripts_err != nil {
-		return "failed to allocate scripts path"
-	}
-	defer delete(scripts_dir)
-	if err := os.make_directory_all(scripts_dir); err != nil {
-		return fmt.tprintf("failed to create scripts directory: %v", err)
-	}
-
-	assets_dir, join_assets_err := filepath.join({root, "assets"})
-	if join_assets_err != nil { return "failed to allocate assets path" }
-	defer delete(assets_dir)
-	if err := os.make_directory_all(assets_dir);
-	   err != nil { return fmt.tprintf("failed to create assets directory: %v", err) }
-
-	resources_dir, join_resources_err := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
-	if join_resources_err != nil {
-		return "failed to allocate resources path"
-	}
-	defer delete(resources_dir)
-	if err := os.make_directory_all(resources_dir); err != nil {
-		return fmt.tprintf("failed to create resources directory: %v", err)
-	}
-
-	types_dir, join_types_err := filepath.join({root, "types"})
-	if join_types_err != nil {
-		return "failed to allocate types path"
-	}
-	defer delete(types_dir)
-	if err := os.make_directory_all(types_dir); err != nil {
-		return fmt.tprintf("failed to create types directory: %v", err)
-	}
-
-	vscode_dir, join_vscode_err := filepath.join({root, ".vscode"})
-	if join_vscode_err != nil {
-		return "failed to allocate editor settings path"
-	}
-	defer delete(vscode_dir)
-	if err := os.make_directory_all(vscode_dir); err != nil {
-		return fmt.tprintf("failed to create editor settings directory: %v", err)
+	for relative_directory in project_directories {
+		directory, path_err := filepath.join({root, relative_directory})
+		if path_err != nil {
+			return fmt.tprintf("failed to allocate path for %s", relative_directory)
+		}
+		make_err: os.Error
+		if os.exists(directory) && !os.is_dir(directory) {
+			delete(directory)
+			return fmt.tprintf("project path %s exists and is not a directory", relative_directory)
+		}
+		if !os.exists(directory) {
+			make_err = os.make_directory_all(directory)
+		}
+		delete(directory)
+		if make_err != nil {
+			return fmt.tprintf("failed to create %s directory: %v", relative_directory, make_err)
+		}
 	}
 
 	project_path, join_project_err := filepath.join({root, PROJECT_FILE})
@@ -231,9 +232,6 @@ init_project :: proc(root, name: string) -> string {
 		return "failed to allocate project path"
 	}
 	defer delete(project_path)
-	if os.exists(project_path) {
-		return fmt.tprintf("%s already exists", project_path)
-	}
 	if err := os.write_entire_file(project_path, project_toml_template(project_name)); err != nil {
 		return fmt.tprintf("failed to write %s: %v", project_path, err)
 	}
@@ -251,7 +249,9 @@ init_project :: proc(root, name: string) -> string {
 		return fmt.tprintf("failed to write %s: %v", scene_path, err)
 	}
 
-	material_path, material_join_err := filepath.join({resources_dir, "default.resource.toml"})
+	material_path, material_join_err := filepath.join(
+		{root, shared.PROJECT_RESOURCES_DIR, "default.resource.toml"},
+	)
 	if material_join_err != nil {
 		return "failed to allocate default resource path"
 	}
@@ -293,7 +293,34 @@ init_project :: proc(root, name: string) -> string {
 		return fmt.tprintf("failed to write %s: %v", vscode_settings_path, err)
 	}
 
+	gitignore_path, gitignore_join_err := filepath.join({root, ".gitignore"})
+	if gitignore_join_err != nil {
+		return "failed to allocate .gitignore path"
+	}
+	defer delete(gitignore_path)
+	if !os.exists(gitignore_path) {
+		if err := os.write_entire_file(gitignore_path, ".scrapbot/\nbuild/\n"); err != nil {
+			return fmt.tprintf("failed to write %s: %v", gitignore_path, err)
+		}
+	}
+
 	return ""
+}
+
+project_name_from_root :: proc(root: string) -> string {
+	name := os.base(root)
+	if name != "" && name != "." {
+		return name
+	}
+	current_directory, current_directory_err := os.getwd(context.temp_allocator)
+	if current_directory_err != nil {
+		return "Scrapbot Game"
+	}
+	name = os.base(current_directory)
+	if name == "" || name == "." {
+		return "Scrapbot Game"
+	}
+	return name
 }
 
 load_project :: proc(root: string) -> Project_Load_Result {
@@ -459,7 +486,7 @@ check_project :: proc(root: string) -> string {
 }
 
 write_luau_types :: proc(root: string, registry: ^components.Registry) -> string {
-	types_dir, join_types_dir_err := filepath.join({root, "types"})
+	types_dir, join_types_dir_err := filepath.join({root, shared.PROJECT_STATE_DIR, "types"})
 	if join_types_dir_err != nil {
 		return "failed to allocate Luau types directory path"
 	}

@@ -6,7 +6,8 @@ import "core:math"
 PROJECT_FILE :: "project.toml"
 DEFAULT_SCENE :: "scenes/main.scene.toml"
 DEFAULT_SCRIPT :: "scripts/main.luau"
-DEFAULT_LUAU_TYPES :: "types/scrapbot.d.luau"
+PROJECT_STATE_DIR :: ".scrapbot"
+DEFAULT_LUAU_TYPES :: ".scrapbot/types/scrapbot.d.luau"
 DEFAULT_VSCODE_SETTINGS :: ".vscode/settings.json"
 
 VERSION :: "0.1.0" // x-release-please-version
@@ -15,7 +16,8 @@ FONT_FIRST_CHAR :: 32
 FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 512
 MAX_PROJECT_FONTS :: 15
-PROJECT_FONT_BUILD_DIR :: "build/fonts"
+PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
+PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
 PROJECT_RESOURCES_DIR :: "resources"
 
 Vec3 :: struct {

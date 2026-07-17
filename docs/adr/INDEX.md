@@ -33,3 +33,4 @@
 | [ADR-029](ADR-029-postprocess-hdr-world-before-ui.md) | Postprocess the HDR world before UI composition | 2026-07-16 |
 | [ADR-030](ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md) | Identify project resources by UUID outside the ECS | 2026-07-17 |
 | [ADR-031](ADR-031-commit-project-save-as-one-recoverable-transaction.md) | Commit project Save as one recoverable transaction | 2026-07-17 |
+| [ADR-032](ADR-032-separate-project-source-state-and-products.md) | Separate project source, engine state, and products | 2026-07-17 |

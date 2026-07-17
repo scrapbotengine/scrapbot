@@ -49,7 +49,7 @@ bin/scrapbot check examples/ecs-showcase --json
 git diff --check
 ```
 
-Review generated `types/scrapbot.d.luau` rather than editing it directly. Build `docs-website/` when behavior or public fields change.
+Review generated `.scrapbot/types/scrapbot.d.luau` rather than editing it directly. Build `docs-website/` when behavior or public fields change.
 
 Add focused tests at each changed boundary. Maintain the registry reflection contract so canonical struct fields cannot silently disappear from public schemas. Cover partial Luau updates, native read/write conversion, parser validation, deferred structural mutation, lifecycle cleanup, and editor use of the public component.
 

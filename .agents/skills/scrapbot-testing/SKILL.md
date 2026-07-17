@@ -70,7 +70,7 @@ bin/scrapbot check examples/ui-showcase
 bin/scrapbot run examples/minimal
 ```
 
-`scrapbot check` also regenerates `types/scrapbot.d.luau`. After changing Luau APIs or component schemas, run it for every affected example and review the generated diffs. Do not hand-edit generated declarations.
+`scrapbot check` also regenerates `.scrapbot/types/scrapbot.d.luau`. After changing Luau APIs or component schemas, run it for every affected example and inspect the generated output. It is ignored engine state; do not hand-edit or commit it.
 
 ## WGPU Window Smoke
 
@@ -105,9 +105,11 @@ Use `tests/fixtures/ui/resource-inspector.json` when changing project-resource l
 
 Use `tests/fixtures/ui/resource-browser.json` when changing the editor resource browser, resource selection, identity fields, usage reporting, or dedicated resource inspection. It stops simulation, semantically selects the resource-row occurrence of Icosphere, asserts its editable Name and Path fields, and captures the Resources panel tightly. Pair it with the structural lifecycle unit test when changing create, duplicate, rename, move, delete, Find Usage, or Undo/Redo.
 
+Use `tests/fixtures/ui/resource-to-entity-selection.json` when changing editor selection ownership or inspector routing. It selects an authored resource, then the same-named scene entity, and proves that the entity inspector replaces the resource inspector.
+
 Use `tests/fixtures/ui/resource-inputs.json` when changing inline resource input bindings or playback behavior. It edits one material channel through typing and another through whole-control scrubbing while simulation is running, waits through inspector refreshes, and asserts both live values.
 
-Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or Play/Stop and Pause/Step command shortcuts. It drives the same editor keyboard input used by the platform, verifies every transport transition, closes and reopens the shell, and captures the transport group.
+Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or Play/Stop and Pause/Step command shortcuts. It drives the same editor keyboard input used by the platform, verifies every transport transition, proves that reopening over a running game temporarily pauses it, resets the scene, and proves that close-time resume survives that world replacement. Pair it with the state-machine unit test for the hidden close-time transition.
 
 Use `tests/fixtures/ui/system-profiler.json` when changing system registration, provenance, timing publication, or the editor profiler. It asserts the complete engine profiler topology in the ECS UI and captures the Systems panel.
 

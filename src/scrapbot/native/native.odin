@@ -1,16 +1,16 @@
 package native
 
-import "core:dynlib"
-import "core:fmt"
-import "core:strings"
 import component "../component"
 import ecs "../ecs"
 import api "../extension_api"
-import schedule "../schedule"
 import resources "../resources"
+import schedule "../schedule"
 import shared "../shared"
+import "core:dynlib"
+import "core:fmt"
+import "core:strings"
 
-EXTENSIONS_DIR :: "build/extensions"
+EXTENSIONS_DIR :: shared.PROJECT_EXTENSION_BUILD_DIR
 EXTENSIONS_MANIFEST :: ".scrapbot-extensions"
 REGISTER_SYMBOL :: "scrapbot_extension_register"
 MAX_EXTENSIONS :: 32
@@ -80,7 +80,12 @@ Build_Result :: struct {
 }
 
 
-load_project_extensions :: proc(set: ^Extension_Set, root: string, registry: ^component.Registry, resource_registry: ^resources.Registry = nil) -> Load_Result {
+load_project_extensions :: proc(
+	set: ^Extension_Set,
+	root: string,
+	registry: ^component.Registry,
+	resource_registry: ^resources.Registry = nil,
+) -> Load_Result {
 	destroy_extension_set(set)
 	set.registry = registry
 	set.resources = resource_registry
@@ -94,7 +99,10 @@ load_project_extensions :: proc(set: ^Extension_Set, root: string, registry: ^co
 
 	for path in extension_paths {
 		if set.extension_count >= MAX_EXTENSIONS {
-			return Load_Result{loaded_count = set.extension_count, err = "too many native extensions"}
+			return Load_Result {
+				loaded_count = set.extension_count,
+				err = "too many native extensions",
+			}
 		}
 		if err := load_extension(set, path); err != "" {
 			return Load_Result{loaded_count = set.extension_count, err = err}
@@ -164,7 +172,11 @@ load_extension :: proc(set: ^Extension_Set, path: string) -> string {
 	}
 	if register_err := register(&host_api); register_err != nil {
 		dynlib.unload_library(library)
-		return fmt.tprintf("native extension %s failed to register: %s", path, string(register_err))
+		return fmt.tprintf(
+			"native extension %s failed to register: %s",
+			path,
+			string(register_err),
+		)
 	}
 
 	cloned_path, clone_err := strings.clone(path)
@@ -186,7 +198,7 @@ api_transform_from_shared :: proc "c" (transform: shared.Transform_Component) ->
 	return api.Transform {
 		position = api_vec3_from_shared(transform.position),
 		rotation = api_vec3_from_shared(transform.rotation),
-		scale    = api_vec3_from_shared(transform.scale),
+		scale = api_vec3_from_shared(transform.scale),
 	}
 }
 
@@ -194,7 +206,7 @@ shared_transform_from_api :: proc "c" (transform: api.Transform) -> shared.Trans
 	return shared.Transform_Component {
 		position = shared_vec3_from_api(transform.position),
 		rotation = shared_vec3_from_api(transform.rotation),
-		scale    = shared_vec3_from_api(transform.scale),
+		scale = shared_vec3_from_api(transform.scale),
 	}
 }
 

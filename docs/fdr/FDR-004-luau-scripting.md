@@ -16,7 +16,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - `scrapbot run --hot-reload` periodically checks `project.toml`, the default scene TOML, `scripts/main.luau`, `assets/`, native extension libraries, and declared native extension source directories while renderer frames are advancing.
 - Successful script reload replaces the active Luau runtime; failed script reload keeps the last good runtime.
 - Successful scene reload rebuilds the ECS world and validates `scripts/main.luau` against it before swapping state; failed scene reload keeps the last good world and runtime.
-- `scrapbot check` executes `scripts/main.luau` silently to collect project and library component schemas, validate scene data, and refresh `types/scrapbot.d.luau`.
+- `scrapbot check` executes `scripts/main.luau` silently to collect project and library component schemas, validate scene data, and refresh `.scrapbot/types/scrapbot.d.luau`.
 - When `luau-analyze` is available, `scrapbot check` also statically analyzes `scripts/main.luau` against the refreshed generated types.
 - Scripts can call `scrapbot.log(message)`.
 - Scripts can read `scrapbot.entity_count()` and `scrapbot.renderable_count()`.
@@ -89,7 +89,7 @@ Structural mutations requested by Luau systems are now deferred through an engin
 
 ### 4. Ship project-local Luau editor definitions
 
-**Decision:** Generate `types/scrapbot.d.luau` and `.vscode/settings.json` for new projects, then refresh the type file during `scrapbot check`.
+**Decision:** Generate `.scrapbot/types/scrapbot.d.luau` and `.vscode/settings.json` for new projects, then refresh the type file during `scrapbot check`.
 **Why:** The Luau language server uses `luau-lsp.types.definitionFiles` mappings for custom globals, and project scripts need the `scrapbot` global plus component payload aliases to be known outside the running engine.
 **Tradeoff:** The first editor integration is VS Code-oriented. Other editors may need equivalent Luau LSP settings until Scrapbot has editor-agnostic project metadata generation. `scrapbot check` must execute top-level script registration code to discover project and library component schemas.
 

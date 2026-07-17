@@ -414,6 +414,113 @@ test_init_project_writes_luau_lsp_metadata :: proc(t: ^testing.T) {
 	testing.expect(t, settings_err == nil)
 	testing.expect(t, string(settings_bytes) == default_vscode_settings_template())
 }
+
+@(test)
+test_init_project_bootstraps_a_valid_clean_project :: proc(t: ^testing.T) {
+	parent, temp_err := os.make_directory_temp(
+		"",
+		"scrapbot-init-layout-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, temp_err == nil)
+	defer os.remove_all(parent)
+
+	root, join_root_err := filepath.join({parent, "little-orbit"})
+	testing.expect(t, join_root_err == nil)
+	defer delete(root)
+
+	init_err := init_project(root, "")
+	testing.expectf(t, init_err == "", "init_project failed: %s", init_err)
+
+	generated_files := []string {
+		PROJECT_FILE,
+		DEFAULT_SCENE,
+		"resources/default.resource.toml",
+		DEFAULT_SCRIPT,
+		DEFAULT_LUAU_TYPES,
+		DEFAULT_VSCODE_SETTINGS,
+		".gitignore",
+	}
+	for relative_path in generated_files {
+		path, path_err := filepath.join({root, relative_path})
+		testing.expect(t, path_err == nil)
+		testing.expectf(t, os.exists(path), "expected generated file %s", relative_path)
+		delete(path)
+	}
+	expected_directories := []string {
+		"assets",
+		"native",
+		"resources",
+		"scenes",
+		"scripts",
+		".scrapbot/types",
+		".vscode",
+	}
+	for relative_path in expected_directories {
+		path, path_err := filepath.join({root, relative_path})
+		testing.expect(t, path_err == nil)
+		testing.expectf(t, os.is_dir(path), "expected generated directory %s", relative_path)
+		delete(path)
+	}
+
+	project_path, project_path_err := filepath.join({root, PROJECT_FILE})
+	testing.expect(t, project_path_err == nil)
+	defer delete(project_path)
+	project_bytes, project_read_err := os.read_entire_file(project_path, context.temp_allocator)
+	testing.expect(t, project_read_err == nil)
+	testing.expect(t, string(project_bytes) == project_toml_template("little-orbit"))
+
+	gitignore_path, gitignore_path_err := filepath.join({root, ".gitignore"})
+	testing.expect(t, gitignore_path_err == nil)
+	defer delete(gitignore_path)
+	gitignore_bytes, gitignore_read_err := os.read_entire_file(
+		gitignore_path,
+		context.temp_allocator,
+	)
+	testing.expect(t, gitignore_read_err == nil)
+	testing.expect(t, string(gitignore_bytes) == ".scrapbot/\nbuild/\n")
+
+	loaded := load_project(root)
+	defer destroy_project_load_result(&loaded)
+	testing.expectf(t, loaded.err == "", "generated project did not load: %s", loaded.err)
+	testing.expect(t, loaded.config.name == "little-orbit")
+	testing.expect(t, len(loaded.scene.entities) == 2)
+	testing.expect(t, len(loaded.resources) == 1)
+}
+
+@(test)
+test_init_project_refuses_to_overwrite_any_generated_file :: proc(t: ^testing.T) {
+	root, temp_err := os.make_directory_temp(
+		"",
+		"scrapbot-init-conflict-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, temp_err == nil)
+	defer os.remove_all(root)
+
+	scene_path, scene_path_err := filepath.join({root, DEFAULT_SCENE})
+	testing.expect(t, scene_path_err == nil)
+	defer delete(scene_path)
+	scene_directory := os.dir(scene_path)
+	testing.expect(t, os.make_directory_all(scene_directory) == nil)
+	testing.expect(t, os.write_entire_file(scene_path, "keep me") == nil)
+
+	init_err := init_project(root, "No Clobber")
+	testing.expectf(
+		t,
+		init_err == "refusing to overwrite existing project file scenes/main.scene.toml",
+		"unexpected init error: %s",
+		init_err,
+	)
+
+	scene_bytes, scene_read_err := os.read_entire_file(scene_path, context.temp_allocator)
+	testing.expect(t, scene_read_err == nil)
+	testing.expect(t, string(scene_bytes) == "keep me")
+	project_path, project_path_err := filepath.join({root, PROJECT_FILE})
+	testing.expect(t, project_path_err == nil)
+	defer delete(project_path)
+	testing.expect(t, !os.exists(project_path))
+}
 @(test)
 test_scene_parses_ecs_ui_hierarchy :: proc(t: ^testing.T) {
 	scene, result := parse_scene(

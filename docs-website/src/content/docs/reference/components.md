@@ -22,7 +22,7 @@ Most components use the same suffix in every public surface:
 
 `scrapbot.geometry` and `scrapbot.material` are resource-creation namespaces in Luau, so their component handles use the `_component` suffix. Scene geometry names, material UUIDs, and `mesh.primitive` strings resolve to generational resource handles when the world is built.
 
-The generated `types/scrapbot.d.luau` file is the precise type reference for the current project. Camera fields and the resource-backed mesh, geometry, and material payloads are not exposed for Luau mutation yet; their handles currently provide query membership.
+The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type reference for the current project. Camera fields and the resource-backed mesh, geometry, and material payloads are not exposed for Luau mutation yet; their handles currently provide query membership.
 
 ## Complete public inventory
 

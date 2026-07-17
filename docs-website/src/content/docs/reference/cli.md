@@ -38,10 +38,15 @@ Creates a project with:
 
 - `project.toml`
 - `scenes/main.scene.toml`
+- `resources/default.resource.toml`
 - `scripts/main.luau`
 - `assets/`
-- `types/scrapbot.d.luau`
+- `native/`
+- `.scrapbot/types/scrapbot.d.luau`
 - `.vscode/settings.json`
+- `.gitignore`
+
+When `name` is omitted, Scrapbot uses the destination directory name. The command accepts a new or existing directory but preflights its owned files and refuses to overwrite any of them. `.scrapbot/` contains ignored generated state; `build/` is reserved for packages.
 
 ## `scrapbot build`
 
@@ -76,7 +81,7 @@ Performs project validation:
 - builds the ECS world from the default scene;
 - executes `scripts/main.luau` silently to collect schemas and systems;
 - validates scene component data against the registry;
-- refreshes `types/scrapbot.d.luau`;
+- refreshes `.scrapbot/types/scrapbot.d.luau`;
 - runs `luau-analyze` when available.
 
 ## `scrapbot run`

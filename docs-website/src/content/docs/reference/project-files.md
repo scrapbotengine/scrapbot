@@ -35,7 +35,7 @@ Fields:
 | `fonts.name` | Yes | Resource name used by UI components. Must be a unique identifier token. |
 | `fonts.source` | Yes | Safe path under `assets/` ending in `.ttf` or `.otf`. |
 
-Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `build/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
+Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
 
 Embedded Inter is always available as the default and runtime fallback. The current font slice supports printable ASCII only; unsupported characters render as `?`, and shaping, kerning, variable-font axes, and Unicode fallback chains are not implemented yet.
 

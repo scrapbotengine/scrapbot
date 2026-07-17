@@ -80,14 +80,14 @@
 
 **Luau** - Scrapbot's embedded scripting language for project-local code, currently exposed through `scripts/main.luau` and a small `scrapbot` API for logging, systems, component schemas, custom component queries, and transform rotation helpers.
 
-**Generated Luau types** - Project-local type definitions in `types/scrapbot.d.luau`. `scrapbot check` refreshes them from the component registry so editors can see engine, project, and library component payload aliases, including readonly aliases for query snapshot payloads.
+**Generated Luau types** - Project-local type definitions in `.scrapbot/types/scrapbot.d.luau`. `scrapbot check` refreshes them from the component registry so editors can see engine, project, and library component payload aliases, including readonly aliases for query snapshot payloads.
 
 **Luau analyzer** - The external `luau-analyze` static checker. `scrapbot check` runs it when available to catch script type and syntax errors against generated Scrapbot types.
 
-**Native extension** - Project-local compiled code declared in `project.toml`, built into versioned dynamic libraries under `build/extensions`, and loaded through Scrapbot's C ABI. The extension API lets native libraries register dotted library component schemas, scheduled native systems, and deferred lifecycle commands, including spawning simple renderables, before Luau runs.
+**Native extension** - Project-local compiled code declared in `project.toml`, cached as versioned dynamic libraries under `.scrapbot/cache/extensions`, and loaded through Scrapbot's C ABI. The extension API lets native libraries register dotted library component schemas, scheduled native systems, and deferred lifecycle commands, including spawning simple renderables, before Luau runs.
 
 **Odin extension helper** - The `scrapbot:extension` package that wraps Scrapbot's raw native extension ABI with Odin-friendly component and field descriptors, registration accumulation, access declaration, query, transform, vec3 field, and lifecycle command helpers.
 
-**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for `project.toml`, the default scene TOML, `scripts/main.luau`, native libraries in `build/extensions`, and declared native extension source directories.
+**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for `project.toml`, the default scene TOML, `scripts/main.luau`, native libraries in `.scrapbot/cache/extensions`, and declared native extension source directories.
 
 **Editor GUI** - The in-engine live editor toggled from a running project. It uses transient editor-origin entities and the same public ECS UI components available to projects.

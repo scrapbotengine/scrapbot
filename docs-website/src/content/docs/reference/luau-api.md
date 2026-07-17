@@ -3,7 +3,7 @@ title: Luau API Reference
 description: Current project scripting API exposed through the scrapbot global.
 ---
 
-The generated `types/scrapbot.d.luau` file is the most precise API reference for a specific project. This page summarizes the current runtime surface.
+The generated `.scrapbot/types/scrapbot.d.luau` file is the most precise API reference for a specific project. This page summarizes the current runtime surface.
 
 ## Runtime information
 

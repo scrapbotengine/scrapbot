@@ -10,7 +10,7 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 ## Behavior
 
 - Users can print the engine version.
-- Users can initialize a project directory.
+- Users can initialize a new or existing project directory without overwriting any owned project file; omitted project names derive from the destination directory.
 - Users can build a host-native runnable game package without running the game.
 - Build packages contain project runtime data and active compiled native extensions, while omitting extension source and editor-only generated metadata.
 - Packaged executables run their adjacent project directly and default to a windowed WGPU renderer.

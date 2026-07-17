@@ -47,9 +47,15 @@ Generated projects include:
 
 - `project.toml`
 - `scenes/main.scene.toml`
+- `resources/default.resource.toml`
 - `scripts/main.luau`
-- `types/scrapbot.d.luau`
+- `assets/`
+- `native/`
+- `.scrapbot/types/scrapbot.d.luau`
 - `.vscode/settings.json`
+- `.gitignore`
+
+Omit the display name to derive it from the destination directory. `init` refuses to overwrite any project file it owns.
 
 ## Useful commands
 
@@ -76,7 +82,7 @@ Windowed WebGPU opens an SDL3 window:
 bin/scrapbot run examples/minimal --backend wgpu --window --frames 3
 ```
 
-Press `Cmd/Ctrl+E` during an unbounded windowed run to toggle Scrapbot's editor shell around the live project. To start open or capture the shell directly, pass `--editor`:
+Press `Cmd/Ctrl+E` during an unbounded windowed run to open Scrapbot's editor shell around the live project. A running game pauses while the shell is open and resumes when it closes; an already paused or stopped game keeps its state. To start open or capture the shell directly, pass `--editor`:
 
 ```sh
 bin/scrapbot run examples/ecs-showcase --backend wgpu --window --editor

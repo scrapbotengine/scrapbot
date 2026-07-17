@@ -12,7 +12,7 @@ Generate font atlases with `msdf-atlas-gen`, using MTSDF so the RGB channels pre
 
 The engine embeds Inter as its always-available screen-oriented fallback. The source font and its SIL Open Font License remain beside the generated atlas.
 
-Projects may declare up to 15 named TTF or OTF resources from their `assets/` directory. `check`, `build`, `run`, hot reload, and packaging hash each source font plus the atlas settings and automatically invoke `msdf-atlas-gen` only when its generated `build/fonts/` artifacts are absent or stale. The generator is therefore an asset-development dependency on a cache miss, not a packaged-game runtime dependency. `SCRAPBOT_MSDF_ATLAS_GEN` may override the executable path.
+Projects may declare up to 15 named TTF or OTF resources from their `assets/` directory. `check`, `build`, `run`, hot reload, and packaging hash each source font plus the atlas settings and automatically invoke `msdf-atlas-gen` only when its generated `.scrapbot/cache/fonts/` artifacts are absent or stale. The generator is therefore an asset-development dependency on a cache miss, not a packaged-game runtime dependency. `SCRAPBOT_MSDF_ATLAS_GEN` may override the executable path.
 
 WGPU stores embedded Inter in layer zero of a fixed texture array and project fonts in layers one through fifteen. Each glyph paint command carries its atlas layer, preserving mixed-font paint order and clipping without regrouping commands into per-font passes. UI text, buttons, inputs, and panel titles select fonts by declared project resource name; an unavailable runtime resource resolves to Inter.
 

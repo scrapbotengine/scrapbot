@@ -196,7 +196,11 @@ end)
 		),
 	)
 
-	manifest_path := join_check_project_path(t, root, "build/extensions/.scrapbot-extensions")
+	manifest_path := join_check_project_path(
+		t,
+		root,
+		".scrapbot/cache/extensions/.scrapbot-extensions",
+	)
 	defer delete(manifest_path)
 	manifest_bytes, manifest_read_err := os.read_entire_file(manifest_path, context.temp_allocator)
 	testing.expect(t, manifest_read_err == nil)

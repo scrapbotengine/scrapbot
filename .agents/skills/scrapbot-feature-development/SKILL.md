@@ -38,7 +38,7 @@ When changing built-in components, Luau APIs, query types, or component schemas:
 1. Update the canonical type generator in `src/scrapbot/component/luau_types.odin`.
 2. Build the CLI.
 3. Run `bin/scrapbot check <example>` for every affected example.
-4. Review generated `types/scrapbot.d.luau` diffs and run the Luau analyzer through the normal test suite.
+4. Inspect generated `.scrapbot/types/scrapbot.d.luau` output and run the Luau analyzer through the normal test suite. The generated state is ignored and must not be hand-edited or committed.
 
 Never hand-edit generated example declarations without changing their generator.
 

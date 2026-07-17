@@ -13,9 +13,9 @@ Native extensions let project code add compiled engine/library behavior incremen
 - Each target has a stable `name` and an Odin source directory.
 - `scrapbot build` compiles declared native extensions and includes the active outputs in a host-native game package without running the project.
 - `scrapbot check` and `scrapbot run` compile declared native extensions before loading them.
-- Scrapbot writes native extension libraries to `build/extensions` under the project root.
+- Scrapbot writes native extension libraries to `.scrapbot/cache/extensions` under the project root.
 - Built extension files include the target name, a source stamp, and the platform dynamic-library suffix, such as `.dylib` on macOS and `.so` on Linux.
-- `build/extensions/.scrapbot-extensions` records the active output files for the latest build.
+- `.scrapbot/cache/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a lockstep C-compatible `extension_api.API`.
 - Odin extensions can import `scrapbot:extension`, which wraps the raw ABI with helpers for components, systems, full geometry, generated cube/plane geometry, shared lit and emissive HDR materials, public ECS UI, queries, and deferred lifecycle commands.
@@ -40,15 +40,15 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 ### 1. Declare and build project-local extension targets
 
-**Decision:** Put native extension targets in `project.toml` and let Scrapbot compile them into `build/extensions`.
+**Decision:** Put native extension targets in `project.toml` and let Scrapbot compile them into `.scrapbot/cache/extensions`.
 **Why:** Game developers should be able to run `scrapbot check` or `scrapbot run` and have native extension schemas available without knowing the platform-specific `odin build -build-mode:shared` command.
 **Tradeoff:** The first builder is Odin-specific and assumes the engine source collection is available as `scrapbot` during local development.
 
 ### 2. Load active project-local build outputs
 
-**Decision:** Build extensions into `build/extensions` and load only the paths listed in `.scrapbot-extensions` when that manifest exists.
-**Why:** The output directory still matches a generated-output workflow, while the manifest prevents stale libraries from being loaded after versioned hot-reload builds.
-**Tradeoff:** Old versioned libraries can accumulate in `build/extensions` until cleanup exists.
+**Decision:** Build extensions into `.scrapbot/cache/extensions` and load only the paths listed in `.scrapbot-extensions` when that manifest exists.
+**Why:** The cache is explicitly engine-owned and ignored, while the manifest prevents stale libraries from being loaded after versioned hot-reload builds.
+**Tradeoff:** Old versioned libraries can accumulate in `.scrapbot/cache/extensions` until cleanup exists.
 
 ### 3. Keep the native ECS API narrow
 

@@ -140,8 +140,9 @@ copy_project_payload :: proc(root, output_dir: string) -> string {
 	for entry in entries {
 		if entry.name == "build" ||
 		   entry.name == "native" ||
-		   entry.name == "types" ||
+		   entry.name == shared.PROJECT_STATE_DIR ||
 		   entry.name == ".git" ||
+		   entry.name == ".gitignore" ||
 		   entry.name == ".vscode" { continue }
 		dst, join_err := filepath.join({output_dir, entry.name})
 		if join_err != nil { return "failed to allocate package payload path" }
@@ -150,11 +151,11 @@ copy_project_payload :: proc(root, output_dir: string) -> string {
 		if err != "" { return err }
 	}
 
-	extensions_src, src_err := filepath.join({root, "build", "extensions"})
+	extensions_src, src_err := filepath.join({root, shared.PROJECT_EXTENSION_BUILD_DIR})
 	if src_err != nil { return "failed to allocate extension source path" }
 	defer delete(extensions_src)
 	if os.exists(extensions_src) {
-		extensions_dst, dst_err := filepath.join({output_dir, "build", "extensions"})
+		extensions_dst, dst_err := filepath.join({output_dir, shared.PROJECT_EXTENSION_BUILD_DIR})
 		if dst_err != nil { return "failed to allocate packaged extension path" }
 		defer delete(extensions_dst)
 		if err := copy_active_extensions(extensions_src, extensions_dst); err != "" { return err }

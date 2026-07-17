@@ -11,7 +11,7 @@ import "core:path/filepath"
 PARSING_STYLE :: flags.Parsing_Style.Unix
 
 Init_Options :: struct {
-	path: string `args:"pos=0" usage:"Project directory to create."`,
+	path: string `args:"pos=0" usage:"Project directory to initialize."`,
 	name: string `args:"pos=1" usage:"Project display name."`,
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
@@ -130,7 +130,6 @@ run :: proc() -> int {
 run_init :: proc(args: []string) -> int {
 	opt := Init_Options {
 		path = ".",
-		name = "Scrapbot Game",
 	}
 	code, should_run := parse_command_args(&opt, args, "scrapbot init")
 	if !should_run {
