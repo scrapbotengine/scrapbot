@@ -27,7 +27,7 @@ For every feature, decide explicitly which layers it affects:
 
 Do not assume every feature belongs on every surface. When one surface intentionally trails another, record that decision or follow-up rather than overlooking it.
 
-For project-resource work, keep persistent identity separate from runtime storage: authored resources live outside ECS, scene/project files reference stable UUIDs, registries expose generational handles and versions, and ECS components hold resolved handles. Audit discovery, duplicate/reference validation, disappearance/reappearance, packaging, hot reload, editor Save/Revert/Undo/Redo, and the distinction between authored and transient runtime resources.
+For project-resource work, keep persistent identity separate from runtime storage: authored resources live outside ECS, scene/project files reference stable UUIDs, registries expose generational handles and versions, and ECS components hold resolved handles. Audit recursive discovery, duplicate/reference validation, disappearance/reappearance, packaging, hot reload, editor create/duplicate/rename/move/delete, reference-aware deletion, Save/Revert/Undo/Redo, and the distinction between authored and transient runtime resources. Lifecycle edits remain in-memory authoring until explicit Save; Save must derive create/write/delete operations from the disk baseline and commit them through the recoverable project transaction.
 
 For ECS UI work, also use the `scrapbot-ui-development` skill. The editor must remain a consumer of the public UI contract, and a public field is incomplete until every applicable authoring and runtime surface agrees.
 

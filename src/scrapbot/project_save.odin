@@ -61,7 +61,7 @@ save_project_world_with_committer :: proc(
 		}
 		append(&files, project.Save_File{path = owned_scene_path, source = scene_source})
 	}
-	if validation_err := validate_project_save_references(root, scene_path, files[:]);
+	if validation_err := validate_project_save_references(root, scene_path, registry, files[:]);
 	   validation_err != "" {
 		return validation_err
 	}
@@ -71,6 +71,7 @@ save_project_world_with_committer :: proc(
 @(private)
 validate_project_save_references :: proc(
 	root, scene_path: string,
+	registry: ^resources.Registry,
 	files: []project.Save_File,
 ) -> string {
 	loaded := project.load_project(root)
@@ -93,5 +94,23 @@ validate_project_save_references :: proc(
 		scene = &candidate
 		break
 	}
-	return project.validate_scene_resource_references(scene, loaded.resources[:])
+	candidate_resources: [dynamic]shared.Project_Resource
+	defer delete(candidate_resources)
+	if registry != nil {
+		for material in registry.materials {
+			if !material.alive || !material.authored {
+				continue
+			}
+			append(
+				&candidate_resources,
+				shared.Project_Resource {
+					id = material.id,
+					kind = .Material,
+					name = material.name,
+					source = material.source,
+				},
+			)
+		}
+	}
+	return project.validate_scene_resource_references(scene, candidate_resources[:])
 }

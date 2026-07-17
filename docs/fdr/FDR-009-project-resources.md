@@ -16,7 +16,9 @@ Project resources are reusable, typed bags of authored data stored outside the E
 - Project loading rejects malformed resources, duplicate UUIDs, unsafe paths, invalid material data, and unresolved scene material references.
 - Authored resources load before scene render reconciliation. Content reload preserves runtime handle identity and increments the resource version; removal invalidates old handles; reappearance reuses the registry slot with a new generation.
 - Runtime-created Luau or native materials remain transient, name-addressed resources and cannot overwrite authored project materials.
-- The editor material panel presents the referenced resource, stable UUID, and inline numeric controls for base color and emissive color. A reusable ECS-built popup switches references between known authored materials.
+- A reusable ECS-built resource browser lists authored materials alongside the scene browser. Selecting a resource opens the ordinary inspector stack with editable name and relative source path, inline base-color and emissive controls, texture metadata, usage count, deletion availability, and Find Usage.
+- While stopped, the browser can create, duplicate, rename, move, and delete resources. These operations preserve UUID references, enter bounded structural Undo/Redo history, and remain in memory until Save. Deletion is blocked while any live non-editor entity references the resource UUID.
+- The entity material panel presents the referenced resource, stable UUID, and inline numeric controls for base color and emissive color. A reusable ECS-built popup switches references between known authored materials.
 - Inline material values use the ordinary numeric input contract during every playback state. Running or paused edits preview immediately as disposable runtime changes and Stop restores the captured authoring resource values. Stopped edits become authoring transactions with Undo/Redo. Resource-reference changes remain stopped-mode structural authoring. Save validates every dirty resource and scene candidate, then commits their standalone files together through one recoverable project transaction. Revert reloads project resources and scene entities without reloading Luau or Odin.
 - Resource data itself is not an ECS entity or component. Only editor presentation uses the public ECS UI contract.
 
@@ -45,6 +47,12 @@ Project resources are reusable, typed bags of authored data stored outside the E
 **Decision:** Resolve UUIDs to generational handles when loading the world and let renderer caches use handle plus version.
 **Why:** Runtime code needs compact validated references and efficient cache invalidation, while project files need stable identity.
 **Tradeoff:** The engine maintains both persistent UUID identity and transient runtime identity.
+
+### 5. Treat resource lifecycle as stopped authoring
+
+**Decision:** Apply lifecycle operations to the registry through before/after resource snapshots and persist them only through explicit project Save.
+**Why:** Undo/Redo, Play/Stop, Revert, and Save need one coherent authoring model, while runtime systems must never create accidental file mutations.
+**Tradeoff:** Save must derive a filesystem delta from the disk baseline and the live registry, and deletion needs reference-aware validation.
 
 ## Related
 

@@ -52,12 +52,14 @@ load_project_resource_directory :: proc(
 	defer os.file_info_slice_delete(entries, context.allocator)
 	for entry in entries {
 		relative_path := entry.name
+		owned_relative_path := ""
+		defer delete(owned_relative_path)
 		if relative_dir != "" {
 			joined, join_err := filepath.join({relative_dir, entry.name})
 			if join_err != nil {
 				return "failed to allocate relative resource path"
 			}
-			defer delete(joined)
+			owned_relative_path = joined
 			relative_path = joined
 		}
 		#partial switch entry.type {

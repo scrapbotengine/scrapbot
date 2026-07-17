@@ -58,6 +58,8 @@ texture = "assets/coral.png"
 
 `base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, and `texture` is optional. Texture paths must be safe relative `.png` paths under `assets/`. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
 
+The live editor's Resources browser creates, duplicates, renames, moves, and deletes material resources as stopped-mode in-memory authoring transactions. Scene references remain stable because these operations preserve the resource UUID. Delete is unavailable while a live entity references the UUID. Explicit Save derives the required file writes and deletions from the disk baseline, rejects destination conflicts, and commits the complete project file set through the recoverable Save transaction.
+
 ## Scene entities
 
 Entities use repeated `[[entities]]` tables.

@@ -154,12 +154,18 @@ Editor_Structural_Change :: struct {
 	before: ^ecs.Entity_Snapshot,
 	after: ^ecs.Entity_Snapshot,
 }
+Editor_Resource_Structural_Change :: struct {
+	resource_id: shared.Resource_UUID,
+	before: ^resources.Project_Material_Snapshot,
+	after: ^resources.Project_Material_Snapshot,
+}
 Editor_Edit_Transaction :: struct {
 	changes: [EDITOR_TRANSACTION_MAX_CHANGES]Editor_Edit_Change,
 	change_count: int,
 	resource_changes: [4]Editor_Resource_Change,
 	resource_change_count: int,
 	structural: ^Editor_Structural_Change,
+	resource_structural: ^Editor_Resource_Structural_Change,
 }
 State :: struct {
 	nodes: [MAX_NODES]Node,
@@ -211,6 +217,8 @@ State :: struct {
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
 	editor_has_selection: bool,
+	editor_selected_resource: shared.Resource_UUID,
+	editor_has_resource_selection: bool,
 	editor_snapshot_elapsed: f32,
 	editor_snapshot_valid: bool,
 	editor_snapshot_was_visible: bool,
@@ -523,6 +531,7 @@ complete_scene_revert :: proc(state: ^State, ok: bool) {
 	state.editor_scene_revert_failed = !ok
 	if ok {
 		editor_history_clear(state)
+		state.editor_has_resource_selection = false
 		state.editor_scene_dirty = false
 		clear(&state.editor_dirty_entities)
 		clear(&state.editor_dirty_entity_lookup)
@@ -2029,6 +2038,41 @@ finish_input_edit :: proc(state: ^State, world: ^shared.World) -> bool {
 				interaction.valid = false
 			}
 			return false
+		}
+		if (binding.role == .Inspector_Resource_Name ||
+			   binding.role == .Inspector_Resource_Source) &&
+		   state.resource_registry != nil &&
+		   state.editor_has_resource_selection {
+			handle, found := resources.material_by_uuid(
+				state.resource_registry,
+				state.editor_selected_resource,
+			)
+			if found {
+				material, alive := resources.get_material(state.resource_registry, handle)
+				if alive {
+					name := material.name
+					source := material.source
+					if binding.role == .Inspector_Resource_Name {
+						name = input.text
+					} else {
+						source = input.text
+					}
+					if resources.validate_project_material_identity(
+						   state.resource_registry,
+						   state.editor_selected_resource,
+						   name,
+						   source,
+					   ) !=
+					   "" {
+						state.input_valid = false
+						if interaction := ecs.ensure_ui_state(world, entity_index);
+						   interaction != nil {
+							interaction.valid = false
+						}
+						return false
+					}
+				}
+			}
 		}
 	}
 	_ = ecs.mark_ui_submitted(world, entity_index)

@@ -187,6 +187,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Entity selection
   - [x] Registry-driven component inspector with generic Bool, String, Number, Vec2, Vec3, and Vec4 editing
   - [x] Material resource-reference picker and inline resource fields
+  - [x] ECS-built material resource browser with selection and inline inspection
   - [ ] Specialized enum, color, entity-reference, array, and nested-value editors
   - [ ] Searchable browser
   - [ ] Hierarchical browser
@@ -195,6 +196,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] UUID-addressed authoring transactions with inspector and gizmo undo/redo
   - [x] Registry-driven, namespaced component picker with add/remove undo/redo
   - [x] Entity create, duplicate, rename, delete, and runtime promotion
+  - [x] Resource create, duplicate, rename, move, delete, usage lookup, and structural undo/redo
   - [x] Explicit stopped-mode scene persistence by stable entity UUID
   - [x] Recoverable project-wide Save transactions across scene and resource files
   - [ ] Multi-selection editing

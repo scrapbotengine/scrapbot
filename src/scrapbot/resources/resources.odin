@@ -77,6 +77,14 @@ Material :: struct {
 	alive: bool,
 }
 
+Project_Material_Snapshot :: struct {
+	id: shared.Resource_UUID,
+	name: string,
+	source: string,
+	texture_asset: string,
+	desc: Material_Desc,
+}
+
 Prepared_Project_Material :: struct {
 	declaration_index: int,
 	desc: Material_Desc,
@@ -457,6 +465,169 @@ register_project_material :: proc(
 	return {u32(len(registry.materials) - 1), 1}, ""
 }
 
+capture_project_material :: proc(
+	registry: ^Registry,
+	id: shared.Resource_UUID,
+) -> (
+	^Project_Material_Snapshot,
+	bool,
+) {
+	if registry == nil {
+		return nil, false
+	}
+	index, found := material_index_by_uuid_any(registry, id)
+	if !found || !registry.materials[index].alive {
+		return nil, false
+	}
+	material := registry.materials[index]
+	snapshot := new(Project_Material_Snapshot)
+	snapshot.id = material.id
+	snapshot.name, _ = strings.clone(material.name)
+	snapshot.source, _ = strings.clone(material.source)
+	snapshot.texture_asset, _ = strings.clone(material.texture_asset)
+	snapshot.desc = clone_material_desc(material.desc, context.allocator)
+	return snapshot, true
+}
+
+clone_project_material_snapshot :: proc(
+	source: ^Project_Material_Snapshot,
+) -> ^Project_Material_Snapshot {
+	if source == nil {
+		return nil
+	}
+	result := new(Project_Material_Snapshot)
+	result.id = source.id
+	result.name, _ = strings.clone(source.name)
+	result.source, _ = strings.clone(source.source)
+	result.texture_asset, _ = strings.clone(source.texture_asset)
+	result.desc = clone_material_desc(source.desc, context.allocator)
+	return result
+}
+
+destroy_project_material_snapshot :: proc(snapshot: ^Project_Material_Snapshot) {
+	if snapshot == nil {
+		return
+	}
+	delete(snapshot.name)
+	delete(snapshot.source)
+	delete(snapshot.texture_asset)
+	delete(snapshot.desc.texture_pixels)
+	snapshot^ = {}
+}
+
+valid_project_resource_source :: proc(source: string) -> bool {
+	if source == "" || filepath.is_abs(source) || !strings.has_suffix(source, ".resource.toml") {
+		return false
+	}
+	segment_start := 0
+	for value, index in source {
+		if value == '\\' {
+			return false
+		}
+		if value != '/' {
+			continue
+		}
+		segment := source[segment_start:index]
+		if segment == "" || segment == "." || segment == ".." {
+			return false
+		}
+		segment_start = index + 1
+	}
+	segment := source[segment_start:]
+	return segment != "" && segment != "." && segment != ".."
+}
+
+validate_project_material_identity :: proc(
+	registry: ^Registry,
+	id: shared.Resource_UUID,
+	name, source: string,
+) -> string {
+	if registry == nil {
+		return "material registry is not available"
+	}
+	if strings.trim_space(name) == "" ||
+	   strings.contains(name, "\n") ||
+	   strings.contains(name, "\"") {
+		return "material name must be non-empty and contain no quotes or newlines"
+	}
+	if !valid_project_resource_source(source) {
+		return "material source must be a relative .resource.toml path under resources/"
+	}
+	for material in registry.materials {
+		if !material.alive || !material.authored || material.id == id {
+			continue
+		}
+		if material.name == name {
+			return fmt.tprintf("material name '%s' is already used", name)
+		}
+		if material.source == source {
+			return fmt.tprintf("material source '%s' is already used", source)
+		}
+	}
+	return ""
+}
+
+apply_project_material_snapshot :: proc(
+	registry: ^Registry,
+	id: shared.Resource_UUID,
+	snapshot: ^Project_Material_Snapshot,
+) -> string {
+	if registry == nil {
+		return "material registry is not available"
+	}
+	if snapshot == nil {
+		index, found := material_index_by_uuid_any(registry, id)
+		if !found || !registry.materials[index].alive {
+			return "project material does not exist"
+		}
+		material := &registry.materials[index]
+		material.alive = false
+		material.generation += 1
+		material.version += 1
+		return ""
+	}
+	if snapshot.id != id {
+		return "project material snapshot UUID does not match"
+	}
+	if err := validate_project_material_identity(registry, id, snapshot.name, snapshot.source);
+	   err != "" {
+		return err
+	}
+	_, err := register_project_material(
+		registry,
+		snapshot.id,
+		snapshot.name,
+		snapshot.source,
+		snapshot.desc,
+		snapshot.texture_asset,
+	)
+	return err
+}
+
+unique_project_material_identity :: proc(
+	registry: ^Registry,
+	base_name, base_source: string,
+) -> (
+	name, source: string,
+) {
+	for ordinal := 1; ordinal < 10000; ordinal += 1 {
+		candidate_name := base_name
+		candidate_source := base_source
+		if ordinal > 1 {
+			candidate_name = fmt.tprintf("%s %d", base_name, ordinal)
+			stem := base_source[:len(base_source) - len(".resource.toml")]
+			candidate_source = fmt.tprintf("%s-%d.resource.toml", stem, ordinal)
+		}
+		if validate_project_material_identity(registry, {}, candidate_name, candidate_source) ==
+		   "" {
+			name, _ = strings.clone(candidate_name)
+			source, _ = strings.clone(candidate_source)
+			return
+		}
+	}
+	return
+}
+
 register_project_materials :: proc(
 	registry: ^Registry,
 	root: string,
@@ -573,6 +744,9 @@ prepare_project_material_save_files :: proc(
 	if files == nil {
 		return "project save file collection is not available"
 	}
+	baseline, load_err := project.load_project_resources(root)
+	_ = load_err
+	defer project.destroy_project_resources(&baseline)
 	seen := make(map[shared.Resource_UUID]bool, len(ids))
 	defer delete(seen)
 	for id in ids {
@@ -580,13 +754,53 @@ prepare_project_material_save_files :: proc(
 			continue
 		}
 		seen[id] = true
-		handle, found := material_by_uuid(registry, id)
-		if !found {
-			return "dirty project material no longer exists"
+		baseline_source := ""
+		for declaration in baseline {
+			if declaration.kind == .Material && declaration.id == id {
+				baseline_source = declaration.source
+				break
+			}
 		}
-		material, alive := get_material(registry, handle)
-		if !alive || !material.authored {
-			return "dirty material is not a project resource"
+		material: ^Material
+		current_alive := false
+		if index, found := material_index_by_uuid_any(registry, id); found {
+			material = &registry.materials[index]
+			current_alive = material.alive && material.authored
+		}
+		if baseline_source == "" && current_alive {
+			current_path, join_err := filepath.join(
+				{root, shared.PROJECT_RESOURCES_DIR, material.source},
+			)
+			if join_err != nil {
+				return "failed to allocate current project material path"
+			}
+			if os.exists(current_path) {
+				baseline_source = material.source
+			}
+			delete(current_path)
+		}
+		if baseline_source == "" && !current_alive {
+			continue
+		}
+		if baseline_source != "" && (!current_alive || material.source != baseline_source) {
+			old_path, join_err := filepath.join(
+				{root, shared.PROJECT_RESOURCES_DIR, baseline_source},
+			)
+			if join_err != nil {
+				return "failed to allocate old project material path"
+			}
+			append(files, project.Save_File{path = old_path, action = .Delete})
+		}
+		if !current_alive {
+			continue
+		}
+		if err := validate_project_material_identity(
+			registry,
+			material.id,
+			material.name,
+			material.source,
+		); err != "" {
+			return err
 		}
 		resource_path, join_err := filepath.join(
 			{root, shared.PROJECT_RESOURCES_DIR, material.source},
@@ -644,7 +858,14 @@ emissive = [%.9g, %.9g, %.9g]
 			delete(resource_path)
 			return "generated project material changed meaning during serialization"
 		}
-		append(files, project.Save_File{path = resource_path, source = source})
+		append(
+			files,
+			project.Save_File {
+				path = resource_path,
+				source = source,
+				expect_missing = baseline_source == "" || baseline_source != material.source,
+			},
+		)
 	}
 	return ""
 }

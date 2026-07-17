@@ -103,6 +103,8 @@ Use `tests/fixtures/ui/authoring-history.json` when changing Undo, Redo, Save, R
 
 Use `tests/fixtures/ui/resource-inspector.json` when changing project-resource loading, material UUID resolution, inline resource inspection, or the resource-reference picker. It stops simulation, selects an authored material entity, opens the ECS-built resource menu, asserts known authored materials, and captures the menu tightly.
 
+Use `tests/fixtures/ui/resource-browser.json` when changing the editor resource browser, resource selection, identity fields, usage reporting, or dedicated resource inspection. It stops simulation, semantically selects the resource-row occurrence of Icosphere, asserts its editable Name and Path fields, and captures the Resources panel tightly. Pair it with the structural lifecycle unit test when changing create, duplicate, rename, move, delete, Find Usage, or Undo/Redo.
+
 Use `tests/fixtures/ui/resource-inputs.json` when changing inline resource input bindings or playback behavior. It edits one material channel through typing and another through whole-control scrubbing while simulation is running, waits through inspector refreshes, and asserts both live values.
 
 Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or Play/Stop and Pause/Step command shortcuts. It drives the same editor keyboard input used by the platform, verifies every transport transition, closes and reopens the shell, and captures the transport group.
@@ -226,6 +228,7 @@ When one Save can touch both scene and resource files, preserve the transaction 
 - Prepare and parse every candidate before the first destination changes; validate scene resource references against the complete candidate project state.
 - Inject an ordinary error at every pre-commit filesystem checkpoint and require every original file plus all transaction markers, stages, and backups to be restored exactly.
 - Inject a crash on both sides of the committed marker. Project recovery must roll backward before it and preserve the complete new file set after it.
+- Exercise resource create, move, and delete explicitly. A move is one Delete plus one create-only Write; rollback restores the old path and removes the new path, committed recovery keeps only the new path, and create-only writes must reject existing destinations.
 - Reload a jointly changed scene and resource registry, compare the authored values, and require a byte-identical repeated Save.
 
 Do not weaken project atomicity to per-file atomic renames. Production editor and hot-reload Save paths must use `save_project_world`; `save_project_materials` and `save_scene_world` remain narrow wrappers for package-level compatibility and focused tests.

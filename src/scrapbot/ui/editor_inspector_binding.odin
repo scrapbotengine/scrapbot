@@ -1,6 +1,7 @@
 package ui
 
 import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import "core:math"
 import "core:strconv"
@@ -565,7 +566,8 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 	}
 	if transaction.change_count <= 0 &&
 	   transaction.resource_change_count <= 0 &&
-	   transaction.structural == nil {
+	   transaction.structural == nil &&
+	   transaction.resource_structural == nil {
 		editor_recompute_scene_dirty(state)
 		return
 	}
@@ -623,6 +625,34 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 		if !redo { index -= 1 }
 		if index < 0 || index >= state.editor_history_count { return false }
 		transaction := state.editor_history[index]
+		if transaction.resource_structural != nil {
+			change := transaction.resource_structural
+			desired := change.before
+			if redo {
+				desired = change.after
+			}
+			if resources.apply_project_material_snapshot(
+				   state.resource_registry,
+				   change.resource_id,
+				   desired,
+			   ) ==
+			   "" {
+				editor_mark_resource_dirty(state, change.resource_id)
+				state.editor_has_resource_selection = desired != nil
+				if desired != nil {
+					state.editor_selected_resource = change.resource_id
+				}
+				if redo {
+					state.editor_history_cursor = index + 1
+				} else {
+					state.editor_history_cursor = index
+				}
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			editor_history_remove(state, index)
+			continue
+		}
 		if transaction.structural != nil {
 			change := transaction.structural
 			desired := change.before
@@ -730,19 +760,33 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 }
 
 editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction) {
-	if transaction == nil || transaction.structural == nil {
+	if transaction == nil {
 		return
 	}
-	change := transaction.structural
-	if change.before != nil {
-		ecs.destroy_entity_snapshot(change.before)
-		free(change.before)
+	if transaction.structural != nil {
+		change := transaction.structural
+		if change.before != nil {
+			ecs.destroy_entity_snapshot(change.before)
+			free(change.before)
+		}
+		if change.after != nil {
+			ecs.destroy_entity_snapshot(change.after)
+			free(change.after)
+		}
+		free(change)
 	}
-	if change.after != nil {
-		ecs.destroy_entity_snapshot(change.after)
-		free(change.after)
+	if transaction.resource_structural != nil {
+		change := transaction.resource_structural
+		if change.before != nil {
+			resources.destroy_project_material_snapshot(change.before)
+			free(change.before)
+		}
+		if change.after != nil {
+			resources.destroy_project_material_snapshot(change.after)
+			free(change.after)
+		}
+		free(change)
 	}
-	free(change)
 	transaction^ = {}
 }
 

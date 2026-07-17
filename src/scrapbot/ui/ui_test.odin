@@ -52,6 +52,99 @@ test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^
 }
 
 @(test)
+test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: proc(
+	t: ^testing.T,
+) {
+	resource_id, valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000021")
+	testing.expect(t, valid)
+	id_text := "a3000000-0000-4000-8000-000000000021"
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Resource User"),
+			name = "Resource User",
+			has_material = true,
+			material_resource = id_text,
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	_, register_err := resources.register_project_material(
+		&registry,
+		resource_id,
+		"Original",
+		"original.resource.toml",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, register_err == "")
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.resource_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	state.editor_selected_resource = resource_id
+	state.editor_has_resource_selection = true
+
+	testing.expect(
+		t,
+		editor_authoring_update_resource_identity(state, "Renamed", "library/moved.resource.toml"),
+	)
+	handle, found := resources.material_by_uuid(&registry, resource_id)
+	testing.expect(t, found)
+	material, alive := resources.get_material(&registry, handle)
+	testing.expect(t, alive)
+	testing.expect_value(t, material.name, "Renamed")
+	testing.expect_value(t, material.source, "library/moved.resource.toml")
+	testing.expect(t, editor_undo(state, &world))
+	handle, _ = resources.material_by_uuid(&registry, resource_id)
+	material, _ = resources.get_material(&registry, handle)
+	testing.expect_value(t, material.name, "Original")
+	testing.expect_value(t, material.source, "original.resource.toml")
+	testing.expect(t, editor_redo(state, &world))
+
+	testing.expect_value(t, editor_resource_usage_count(&world, resource_id), 1)
+	testing.expect(t, !editor_authoring_delete_resource(state, &world))
+	testing.expect(t, editor_select_first_resource_usage(state, &world, resource_id))
+	testing.expect(t, state.editor_has_selection)
+	testing.expect(t, !state.editor_has_resource_selection)
+
+	testing.expect(t, editor_authoring_create_resource(state))
+	created_id := state.editor_selected_resource
+	testing.expect(t, created_id != resource_id)
+	testing.expect(t, editor_authoring_duplicate_resource(state))
+	duplicate_id := state.editor_selected_resource
+	testing.expect(t, duplicate_id != created_id)
+	testing.expect(t, editor_authoring_delete_resource(state, &world))
+	_, duplicate_alive := resources.material_by_uuid(&registry, duplicate_id)
+	testing.expect(t, !duplicate_alive)
+	testing.expect(t, editor_undo(state, &world))
+	_, duplicate_alive = resources.material_by_uuid(&registry, duplicate_id)
+	testing.expect(t, duplicate_alive)
+	testing.expect(t, state.editor_has_resource_selection)
+
+	testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
+	resource_rows := 0
+	for binding in world.editor_uis {
+		if binding.role == .Project_Resource_Row &&
+		   binding.entity_index >= 0 &&
+		   !world.ui_layouts[world.entities[binding.entity_index].ui_layout_index].hidden {
+			resource_rows += 1
+		}
+	}
+	testing.expect_value(t, resource_rows, 3)
+	_, browser_found := editor_ui_entity(&world, .Project_Resources_Scroll)
+	testing.expect(t, browser_found)
+	_, resource_name_found := editor_ui_entity(&world, .Inspector_Resource_Name)
+	testing.expect(t, resource_name_found)
+}
+
+@(test)
 test_project_material_runtime_edits_preview_without_authoring_history :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)

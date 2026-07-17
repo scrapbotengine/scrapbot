@@ -15,10 +15,19 @@ SAVE_TRANSACTION_COMMIT_STAGE :: ".scrapbot-save.commit-stage"
 SAVE_TRANSACTION_STAGE_SUFFIX :: ".scrapbot-save.stage"
 @(private)
 SAVE_TRANSACTION_BACKUP_SUFFIX :: ".scrapbot-save.backup"
+@(private)
+SAVE_TRANSACTION_NEW_SUFFIX :: ".scrapbot-save.new"
+
+Save_File_Action :: enum {
+	Write,
+	Delete,
+}
 
 Save_File :: struct {
 	path: string,
 	source: string,
+	action: Save_File_Action,
+	expect_missing: bool,
 }
 
 @(private)
@@ -119,6 +128,26 @@ commit_project_save_controlled :: proc(
 	}
 
 	for file in files {
+		if file.action == .Delete {
+			continue
+		}
+		if parent_err := ensure_save_parent_directory(file.path); parent_err != "" {
+			err = parent_err
+			break
+		}
+		if !os.exists(file.path) {
+			new_path := save_artifact_path(file.path, SAVE_TRANSACTION_NEW_SUFFIX)
+			if new_path == "" {
+				err = "failed to allocate project save creation marker path"
+				break
+			}
+			if write_err := os.write_entire_file(new_path, "new\n"); write_err != nil {
+				err = fmt.tprintf("failed to mark new project save file: %v", write_err)
+				delete(new_path)
+				break
+			}
+			delete(new_path)
+		}
 		stage_path := save_artifact_path(file.path, SAVE_TRANSACTION_STAGE_SUFFIX)
 		if stage_path == "" {
 			err = "failed to allocate project save stage path"
@@ -137,6 +166,9 @@ commit_project_save_controlled :: proc(
 	}
 	if err == "" {
 		for file in files {
+			if !os.exists(file.path) {
+				continue
+			}
 			backup_path := save_artifact_path(file.path, SAVE_TRANSACTION_BACKUP_SUFFIX)
 			if backup_path == "" {
 				err = "failed to allocate project save backup path"
@@ -156,6 +188,9 @@ commit_project_save_controlled :: proc(
 	}
 	if err == "" {
 		for file in files {
+			if file.action == .Delete {
+				continue
+			}
 			stage_path := save_artifact_path(file.path, SAVE_TRANSACTION_STAGE_SUFFIX)
 			if stage_path == "" {
 				err = "failed to allocate project save stage path"
@@ -204,6 +239,26 @@ commit_project_save_controlled :: proc(
 }
 
 @(private)
+ensure_save_parent_directory :: proc(path: string) -> string {
+	separator := -1
+	for value, index in path {
+		if value == '/' || value == '\\' {
+			separator = index
+		}
+	}
+	if separator <= 0 {
+		return ""
+	}
+	if os.exists(path[:separator]) {
+		return ""
+	}
+	if make_err := os.make_directory_all(path[:separator]); make_err != nil {
+		return fmt.tprintf("failed to create project save directory: %v", make_err)
+	}
+	return ""
+}
+
+@(private)
 validate_save_files :: proc(root: string, files: []Save_File) -> string {
 	seen := make(map[string]bool, len(files))
 	defer delete(seen)
@@ -223,14 +278,24 @@ validate_save_files :: proc(root: string, files: []Save_File) -> string {
 			return "project save file is outside the project root"
 		}
 		if strings.has_suffix(file.path, SAVE_TRANSACTION_STAGE_SUFFIX) ||
-		   strings.has_suffix(file.path, SAVE_TRANSACTION_BACKUP_SUFFIX) {
+		   strings.has_suffix(file.path, SAVE_TRANSACTION_BACKUP_SUFFIX) ||
+		   strings.has_suffix(file.path, SAVE_TRANSACTION_NEW_SUFFIX) {
 			return "project save file uses a reserved transaction suffix"
 		}
 		if seen[file.path] {
 			return "project save contains the same file more than once"
 		}
-		if !os.exists(file.path) {
-			return "project save cannot replace a missing source file"
+		if file.action == .Delete {
+			if !os.exists(file.path) {
+				return "project save cannot delete a missing source file"
+			}
+			if file.source != "" {
+				return "project save deletion must not contain source"
+			}
+		} else if file.source == "" {
+			return "project save write source is empty"
+		} else if file.expect_missing && os.exists(file.path) {
+			return "project save cannot create a file that already exists"
 		}
 		seen[file.path] = true
 	}
@@ -270,6 +335,21 @@ recover_save_artifacts_in_directory :: proc(
 		if strings.has_suffix(entry.name, SAVE_TRANSACTION_STAGE_SUFFIX) {
 			if remove_err := os.remove(entry.fullpath); remove_err != nil {
 				return fmt.tprintf("failed to remove project save stage: %v", remove_err)
+			}
+			continue
+		}
+		if strings.has_suffix(entry.name, SAVE_TRANSACTION_NEW_SUFFIX) {
+			destination := entry.fullpath[:len(entry.fullpath) - len(SAVE_TRANSACTION_NEW_SUFFIX)]
+			if !committed && os.exists(destination) {
+				if remove_err := os.remove(destination); remove_err != nil {
+					return fmt.tprintf(
+						"failed to remove incomplete new project save file: %v",
+						remove_err,
+					)
+				}
+			}
+			if remove_err := os.remove(entry.fullpath); remove_err != nil {
+				return fmt.tprintf("failed to remove project save creation marker: %v", remove_err)
 			}
 			continue
 		}

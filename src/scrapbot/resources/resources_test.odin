@@ -1,8 +1,10 @@
 package resources
 
+import project "../project"
 import shared "../shared"
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -83,6 +85,122 @@ test_project_material_save_rejects_changed_serialized_meaning_before_disk_write 
 	if read_err == nil {
 		testing.expect_value(t, string(bytes), "last valid resource\n")
 	}
+}
+
+@(test)
+test_project_material_save_derives_create_move_and_delete_deltas_from_uuid :: proc(t: ^testing.T) {
+	root, temp_err := os.make_directory_temp(
+		"",
+		"scrapbot-resource-lifecycle-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, temp_err == nil)
+	if temp_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	resources_dir, _ := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
+	defer delete(resources_dir)
+	testing.expect(t, os.make_directory_all(resources_dir) == nil)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000022")
+	testing.expect(t, valid)
+	old_path, _ := filepath.join({resources_dir, "old.resource.toml"})
+	defer delete(old_path)
+	old_source := `id = "a2000000-0000-4000-8000-000000000022"
+type = "scrapbot.material"
+name = "Lifecycle"
+
+[material]
+base_color = [1, 1, 1, 1]
+emissive = [0, 0, 0]
+`
+	testing.expect(t, os.write_entire_file(old_path, old_source) == nil)
+	registry: Registry
+	defer destroy_registry(&registry)
+	_, register_err := register_project_material(
+		&registry,
+		id,
+		"Lifecycle",
+		"old.resource.toml",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, register_err == "")
+	before, captured := capture_project_material(&registry, id)
+	testing.expect(t, captured)
+	defer {
+		destroy_project_material_snapshot(before)
+		free(before)
+	}
+	moved := clone_project_material_snapshot(before)
+	delete(moved.source)
+	moved.source, _ = strings.clone("nested/moved.resource.toml")
+	testing.expect(t, apply_project_material_snapshot(&registry, id, moved) == "")
+	destroy_project_material_snapshot(moved)
+	free(moved)
+	files: [dynamic]project.Save_File
+	testing.expect(
+		t,
+		prepare_project_material_save_files(&registry, root, []shared.Resource_UUID{id}, &files) ==
+		"",
+	)
+	testing.expect_value(t, len(files), 2)
+	testing.expect(t, files[0].action == .Delete)
+	testing.expect(t, files[1].action == .Write && files[1].expect_missing)
+	move_result := project.commit_project_save(root, files[:])
+	testing.expectf(t, move_result == "", "resource move failed: %s", move_result)
+	project.destroy_owned_save_files(&files)
+	moved_path, _ := filepath.join({resources_dir, "nested", "moved.resource.toml"})
+	defer delete(moved_path)
+	testing.expect(t, !os.exists(old_path) && os.exists(moved_path))
+	loaded, load_err := project.load_project_resources(root)
+	testing.expectf(t, load_err == "", "moved resource did not reload: %s", load_err)
+	if len(loaded) == 1 {
+		testing.expect_value(t, loaded[0].source, "nested/moved.resource.toml")
+	}
+	project.destroy_project_resources(&loaded)
+
+	testing.expect(t, apply_project_material_snapshot(&registry, id, nil) == "")
+	testing.expect(
+		t,
+		prepare_project_material_save_files(&registry, root, []shared.Resource_UUID{id}, &files) ==
+		"",
+	)
+	testing.expect_value(t, len(files), 1)
+	testing.expect(t, files[0].action == .Delete)
+	testing.expectf(
+		t,
+		files[0].path == moved_path,
+		"deletion targeted %s instead of %s",
+		files[0].path,
+		moved_path,
+	)
+	delete_result := project.commit_project_save(root, files[:])
+	testing.expectf(t, delete_result == "", "resource deletion failed: %s", delete_result)
+	project.destroy_owned_save_files(&files)
+	testing.expect(t, !os.exists(moved_path))
+
+	created := clone_project_material_snapshot(before)
+	created.id = shared.resource_uuid_generate()
+	delete(created.name)
+	delete(created.source)
+	created.name, _ = strings.clone("Created")
+	created.source, _ = strings.clone("created.resource.toml")
+	testing.expect(t, apply_project_material_snapshot(&registry, created.id, created) == "")
+	testing.expect(
+		t,
+		prepare_project_material_save_files(
+			&registry,
+			root,
+			[]shared.Resource_UUID{created.id},
+			&files,
+		) ==
+		"",
+	)
+	testing.expect_value(t, len(files), 1)
+	testing.expect(t, files[0].action == .Write && files[0].expect_missing)
+	project.destroy_owned_save_files(&files)
+	destroy_project_material_snapshot(created)
+	free(created)
 }
 
 @(test)

@@ -86,6 +86,65 @@ test_project_save_transaction_commits_all_files_together :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_project_save_transaction_moves_files_atomically_across_every_crash_boundary :: proc(
+	t: ^testing.T,
+) {
+	for fail_at in 1 ..= 7 {
+		root, old_path, unused_path, ok := make_save_transaction_fixture(t)
+		if !ok {
+			return
+		}
+		new_path, join_err := filepath.join({root, "nested", "moved.resource.toml"})
+		testing.expect(t, join_err == nil)
+		if join_err != nil {
+			destroy_save_transaction_fixture(root, old_path, unused_path)
+			return
+		}
+		control := Save_Transaction_Control {
+			fail_at = fail_at,
+			mode = .Crash,
+		}
+		files := []Save_File {
+			{path = old_path, action = .Delete},
+			{path = new_path, source = "moved resource\n", expect_missing = true},
+		}
+		_, crashed := commit_project_save_controlled(root, files, &control)
+		testing.expectf(t, crashed, "move crash step %d did not crash", fail_at)
+		testing.expectf(
+			t,
+			recover_project_save(root) == "",
+			"move recovery failed after step %d",
+			fail_at,
+		)
+		if fail_at == 7 {
+			testing.expect(t, !os.exists(old_path))
+			expect_save_file_text(t, new_path, "moved resource\n")
+		} else {
+			expect_save_file_text(t, old_path, "old scene\n")
+			testing.expect(t, !os.exists(new_path))
+		}
+		expect_no_save_transaction_artifacts(t, root, old_path, new_path)
+		delete(new_path)
+		destroy_save_transaction_fixture(root, old_path, unused_path)
+	}
+}
+
+@(test)
+test_project_save_transaction_refuses_create_destination_conflicts :: proc(t: ^testing.T) {
+	root, first_path, second_path, ok := make_save_transaction_fixture(t)
+	if !ok {
+		return
+	}
+	defer destroy_save_transaction_fixture(root, first_path, second_path)
+	files := []Save_File {
+		{path = second_path, source = "must not replace\n", expect_missing = true},
+	}
+	result := commit_project_save(root, files)
+	testing.expect(t, result != "")
+	expect_save_file_text(t, second_path, "old resource\n")
+}
+
+@(test)
 test_project_load_recovers_interrupted_project_save_before_parsing :: proc(t: ^testing.T) {
 	failure_steps := [?]int{6, 10}
 	for fail_at in failure_steps {
@@ -218,6 +277,8 @@ expect_no_save_transaction_artifacts :: proc(
 	first_backup := save_artifact_path(first_path, SAVE_TRANSACTION_BACKUP_SUFFIX)
 	second_stage := save_artifact_path(second_path, SAVE_TRANSACTION_STAGE_SUFFIX)
 	second_backup := save_artifact_path(second_path, SAVE_TRANSACTION_BACKUP_SUFFIX)
+	first_new := save_artifact_path(first_path, SAVE_TRANSACTION_NEW_SUFFIX)
+	second_new := save_artifact_path(second_path, SAVE_TRANSACTION_NEW_SUFFIX)
 	defer delete(pending_path)
 	defer delete(committed_path)
 	defer delete(commit_stage_path)
@@ -225,6 +286,8 @@ expect_no_save_transaction_artifacts :: proc(
 	defer delete(first_backup)
 	defer delete(second_stage)
 	defer delete(second_backup)
+	defer delete(first_new)
+	defer delete(second_new)
 	testing.expect(t, !os.exists(pending_path))
 	testing.expect(t, !os.exists(committed_path))
 	testing.expect(t, !os.exists(commit_stage_path))
@@ -232,4 +295,6 @@ expect_no_save_transaction_artifacts :: proc(
 	testing.expect(t, !os.exists(first_backup))
 	testing.expect(t, !os.exists(second_stage))
 	testing.expect(t, !os.exists(second_backup))
+	testing.expect(t, !os.exists(first_new))
+	testing.expect(t, !os.exists(second_new))
 }

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"text": "Icosphere", "origin": "editor", "occurrence": 1}},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_resource_name", "origin": "editor"}, "expect": "text", "text": "Icosphere"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_resource_source", "origin": "editor"}, "expect": "text", "text": "icosphere.resource.toml"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_resources", "origin": "editor"}, "padding": 10}
+  ]
+}

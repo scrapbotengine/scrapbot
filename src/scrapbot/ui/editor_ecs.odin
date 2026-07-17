@@ -18,6 +18,8 @@ EDITOR_UI_LEFT_CONTENT_NAME :: "__scrapbot_editor_left_content"
 EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
 EDITOR_UI_SCENE_NAME :: "__scrapbot_editor_scene"
 EDITOR_UI_SCENE_TOOLS_NAME :: "__scrapbot_editor_scene_tools"
+EDITOR_UI_RESOURCES_NAME :: "__scrapbot_editor_resources"
+EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
@@ -74,8 +76,33 @@ editor_ui_handle_activation :: proc(
 			switch component.role {
 				case .Browser_Row, .Browser_Row_Label:
 					if editor_select_entity(state, world, component.target, 0) {
+						state.editor_has_resource_selection = false
 						state.editor_snapshot_valid = false
 					}
+					return
+				case .Project_Resource_Row, .Project_Resource_Row_Label:
+					if component.resource_id != (shared.Resource_UUID{}) {
+						state.editor_selected_resource = component.resource_id
+						state.editor_has_resource_selection = true
+						state.editor_has_selection = false
+						state.editor_snapshot_valid = false
+					}
+					return
+				case .Project_Resource_Create:
+					_ = editor_authoring_create_resource(state)
+					return
+				case .Project_Resource_Duplicate:
+					_ = editor_authoring_duplicate_resource(state)
+					return
+				case .Project_Resource_Delete:
+					_ = editor_authoring_delete_resource(state, world)
+					return
+				case .Project_Resource_Find_Usage:
+					_ = editor_select_first_resource_usage(
+						state,
+						world,
+						state.editor_selected_resource,
+					)
 					return
 				case .Transport_Play:
 					editor_play(state)
@@ -198,8 +225,11 @@ editor_ui_handle_activation :: proc(
 				     .Systems_Time,
 				     .Systems_Origin,
 				     .Browser_Scroll,
+				     .Project_Resources_Scroll,
 				     .Inspector_Header,
 				     .Inspector_Entity_Name,
+				     .Inspector_Resource_Name,
+				     .Inspector_Resource_Source,
 				     .Inspector_Scroll,
 				     .Inspector_Content,
 				     .Inspector_Panel,
@@ -827,6 +857,57 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	world.ui_layouts[world.entities[promote_button].ui_layout_index].size.x = 48
 
+	resource_browser := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCES_NAME,
+		EDITOR_UI_LEFT_CONTENT_NAME,
+		.Project_Resources_Scroll,
+		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 240}),
+	)
+	editor_ui_add_section_panel(world, resource_browser, "RESOURCES / 0")
+	editor_ui_add_list(
+		world,
+		resource_browser,
+		{
+			selection_background = {0.040, 0.088, 0.098, 1},
+			hover_background = {0.028, 0.038, 0.050, 1},
+			active_background = {0.050, 0.067, 0.088, 1},
+		},
+	)
+	editor_ui_add_scroll(world, resource_browser)
+	resource_tools := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_TOOLS_NAME,
+		EDITOR_UI_RESOURCES_NAME,
+		.None,
+		{size = {2000, 34}, padding = {2, 6, 2, 6}, background = EDITOR_SECTION_BACKGROUND},
+	)
+	editor_ui_add_hstack(world, resource_tools, {gap = 4})
+	resource_create := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_resource_create",
+		EDITOR_UI_RESOURCE_TOOLS_NAME,
+		"+",
+		.Project_Resource_Create,
+	)
+	world.ui_layouts[world.entities[resource_create].ui_layout_index].size.x = 32
+	resource_duplicate := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_resource_duplicate",
+		EDITOR_UI_RESOURCE_TOOLS_NAME,
+		"DUP",
+		.Project_Resource_Duplicate,
+	)
+	world.ui_layouts[world.entities[resource_duplicate].ui_layout_index].size.x = 48
+	resource_delete := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_resource_delete",
+		EDITOR_UI_RESOURCE_TOOLS_NAME,
+		"DEL",
+		.Project_Resource_Delete,
+	)
+	world.ui_layouts[world.entities[resource_delete].ui_layout_index].size.x = 42
+
 	_ = editor_ui_create_box(
 		world,
 		EDITOR_UI_VIEWPORT_NAME,
@@ -931,6 +1012,59 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	name_value.text = ""
 	name_value.size = EDITOR_TEXT_SIZE
 	editor_ui_add_input(world, name_input, name_value)
+	resource_name_input := editor_ui_create_box(
+		world,
+		"__scrapbot_editor_inspector_resource_name",
+		EDITOR_UI_INSPECTOR_HEADER_NAME,
+		.Inspector_Resource_Name,
+		{
+			position = {10, 42},
+			size = {2000, 28},
+			background = {0.012, 0.017, 0.024, 1},
+			border_color = EDITOR_SECTION_BORDER,
+			border_width = 1,
+			corner_radius = 4,
+			fill_width = true,
+			hidden = true,
+		},
+	)
+	resource_name_value := shared.ui_input_default()
+	resource_name_value.size = EDITOR_TEXT_SIZE
+	editor_ui_add_input(world, resource_name_input, resource_name_value)
+	_ = ecs.set_ui_input_prefix(world, resource_name_input, "NAME")
+	world.ui_inputs[world.entities[resource_name_input].ui_input_index].prefix_width = 52
+	resource_source_input := editor_ui_create_box(
+		world,
+		"__scrapbot_editor_inspector_resource_source",
+		EDITOR_UI_INSPECTOR_HEADER_NAME,
+		.Inspector_Resource_Source,
+		{
+			position = {10, 78},
+			size = {2000, 28},
+			background = {0.012, 0.017, 0.024, 1},
+			border_color = EDITOR_SECTION_BORDER,
+			border_width = 1,
+			corner_radius = 4,
+			fill_width = true,
+			hidden = true,
+		},
+	)
+	resource_source_value := shared.ui_input_default()
+	resource_source_value.size = EDITOR_TEXT_SIZE
+	editor_ui_add_input(world, resource_source_input, resource_source_value)
+	_ = ecs.set_ui_input_prefix(world, resource_source_input, "PATH")
+	world.ui_inputs[world.entities[resource_source_input].ui_input_index].prefix_width = 52
+	find_usage_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_resource_find_usage",
+		EDITOR_UI_INSPECTOR_HEADER_NAME,
+		"FIND USAGE",
+		.Project_Resource_Find_Usage,
+	)
+	find_usage_layout := &world.ui_layouts[world.entities[find_usage_button].ui_layout_index]
+	find_usage_layout.position = {10, 146}
+	find_usage_layout.size = {110, 28}
+	find_usage_layout.hidden = true
 	inspector_header := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_inspector_identity",
@@ -990,6 +1124,34 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
 		label_name,
 		row_name,
 		.Browser_Row_Label,
+		{position = {11, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
+		slot,
+	)
+	editor_ui_add_text(world, label, "", {0.82, 0.84, 0.88, 1}, EDITOR_TEXT_SIZE)
+	return row, label
+}
+
+editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
+	row, row_found := editor_ui_entity(world, .Project_Resource_Row, slot)
+	label, label_found := editor_ui_entity(world, .Project_Resource_Row_Label, slot)
+	if row_found && label_found {
+		return row, label
+	}
+	row_name := fmt.tprintf("__scrapbot_editor_resource_row_%d", slot)
+	label_name := fmt.tprintf("__scrapbot_editor_resource_row_label_%d", slot)
+	row = editor_ui_create_box(
+		world,
+		row_name,
+		EDITOR_UI_RESOURCES_NAME,
+		.Project_Resource_Row,
+		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
+		slot,
+	)
+	label = editor_ui_create_box(
+		world,
+		label_name,
+		row_name,
+		.Project_Resource_Row_Label,
 		{position = {11, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
 		slot,
 	)
@@ -3124,6 +3286,75 @@ editor_ui_build_inspector_panels :: proc(
 	editor_ui_finish_inspector(&builder)
 }
 
+editor_ui_build_resource_inspector_panels :: proc(
+	state: ^State,
+	world: ^shared.World,
+	content_entity: int,
+	id: shared.Resource_UUID,
+) {
+	builder := Inspector_ECS_Builder {
+		state = state,
+		world = world,
+		content_entity = content_entity,
+		panel_entity = -1,
+		table_entity = -1,
+	}
+	if state == nil || state.resource_registry == nil {
+		editor_ui_finish_inspector(&builder)
+		return
+	}
+	handle, found := resources.material_by_uuid(state.resource_registry, id)
+	if !found {
+		editor_ui_finish_inspector(&builder)
+		return
+	}
+	material, alive := resources.get_material(state.resource_registry, handle)
+	if !alive || !material.authored {
+		editor_ui_finish_inspector(&builder)
+		return
+	}
+	editor_ui_begin_inspector_component(&builder, "MATERIAL")
+	base_values := [4]string {
+		fmt.tprintf("%.2f", material.desc.base_color.x),
+		fmt.tprintf("%.2f", material.desc.base_color.y),
+		fmt.tprintf("%.2f", material.desc.base_color.z),
+		fmt.tprintf("%.2f", material.desc.base_color.w),
+	}
+	editor_ui_inspector_resource_values(
+		&builder,
+		"base color",
+		base_values[:],
+		.Material_Base_Color,
+		material.id,
+	)
+	emissive_values := [3]string {
+		fmt.tprintf("%.2f", material.desc.emissive.x),
+		fmt.tprintf("%.2f", material.desc.emissive.y),
+		fmt.tprintf("%.2f", material.desc.emissive.z),
+	}
+	editor_ui_inspector_resource_values(
+		&builder,
+		"emissive",
+		emissive_values[:],
+		.Material_Emissive,
+		material.id,
+	)
+	texture := material.texture_asset
+	if texture == "" {
+		texture = "None"
+	}
+	editor_ui_inspector_field(&builder, "texture", texture)
+	editor_ui_begin_inspector_component(&builder, "REFERENCES")
+	usage_count := editor_resource_usage_count(world, id)
+	editor_ui_inspector_field(&builder, "scene usages", fmt.tprintf("%d", usage_count))
+	delete_status := "Blocked while referenced"
+	if usage_count == 0 {
+		delete_status = "Available"
+	}
+	editor_ui_inspector_field(&builder, "delete", delete_status)
+	editor_ui_finish_inspector(&builder)
+}
+
 refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	editor_ui_refresh_system_profile(state, world)
 	visible_count := 0
@@ -3167,6 +3398,49 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			world.ui_lists[entity.ui_list_index].selected = selected_row
 		}
 	}
+	resource_count := 0
+	selected_resource_row: shared.Entity_UUID
+	if state.resource_registry != nil {
+		for material in state.resource_registry.materials {
+			if !material.alive || !material.authored {
+				continue
+			}
+			row, label := editor_ui_ensure_resource_row(world, resource_count)
+			world.entities[row].alive = true
+			world.entities[label].alive = true
+			editor_ui_set_hidden(world, row, false)
+			editor_ui_set_hidden(world, label, false)
+			world.editor_uis[world.entities[row].editor_ui_index].resource_id = material.id
+			world.editor_uis[world.entities[label].editor_ui_index].resource_id = material.id
+			if state.editor_has_resource_selection &&
+			   state.editor_selected_resource == material.id {
+				selected_resource_row = world.entities[row].uuid
+			}
+			editor_ui_set_text(world, label, material.name)
+			resource_count += 1
+		}
+	}
+	for component in world.editor_uis {
+		if (component.role == .Project_Resource_Row ||
+			   component.role == .Project_Resource_Row_Label) &&
+		   component.slot >= resource_count {
+			if component.entity_index < 0 || component.entity_index >= len(world.entities) {
+				continue
+			}
+			entity := world.entities[component.entity_index]
+			if !entity.alive || entity.origin != .Editor {
+				continue
+			}
+			editor_ui_set_hidden(world, component.entity_index, true)
+		}
+	}
+	if browser, found := editor_ui_entity(world, .Project_Resources_Scroll); found {
+		editor_ui_set_panel_title(world, browser, fmt.tprintf("RESOURCES / %d", resource_count))
+		if world.entities[browser].ui_list_index >= 0 &&
+		   world.entities[browser].ui_list_index < len(world.ui_lists) {
+			world.ui_lists[world.entities[browser].ui_list_index].selected = selected_resource_row
+		}
+	}
 	if status, found := editor_ui_entity(world, .Status); found {
 		mode := "PAUSED"
 		if state.editor_simulation_playing { mode = "RUNNING" }
@@ -3186,7 +3460,19 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	}
 
 	if header, found := editor_ui_entity(world, .Inspector_Header); found {
-		if !state.editor_has_selection { editor_ui_set_text(world, header, "Select an entity to inspect") } else {
+		header_layout := &world.ui_layouts[world.entities[header].ui_layout_index]
+		header_layout.position.y = 82
+		if state.editor_has_resource_selection {
+			header_layout.position.y = 114
+			id_buffer: [36]u8
+			editor_ui_set_text(
+				world,
+				header,
+				shared.resource_uuid_to_string(state.editor_selected_resource, id_buffer[:]),
+			)
+		} else if !state.editor_has_selection {
+			editor_ui_set_text(world, header, "Select an entity or resource to inspect")
+		} else {
 			index := int(state.editor_selected_entity.index)
 			if index >= 0 && index < len(world.entities) {
 				entity := world.entities[index]
@@ -3199,7 +3485,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		}
 	}
 	if name_input, found := editor_ui_entity(world, .Inspector_Entity_Name); found {
-		hidden := !state.editor_has_selection
+		hidden := !state.editor_has_selection || state.editor_has_resource_selection
 		editor_ui_set_hidden(world, name_input, hidden)
 		if !hidden {
 			selected_index := int(state.editor_selected_entity.index)
@@ -3219,10 +3505,77 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			}
 		}
 	}
+	resource_name, resource_name_found := editor_ui_entity(world, .Inspector_Resource_Name)
+	resource_source, resource_source_found := editor_ui_entity(world, .Inspector_Resource_Source)
+	find_usage, find_usage_found := editor_ui_entity(world, .Project_Resource_Find_Usage)
+	resource_selected :=
+		state.editor_has_resource_selection &&
+		state.resource_registry != nil &&
+		resource_name_found &&
+		resource_source_found
+	if resource_name_found {
+		editor_ui_set_hidden(world, resource_name, !resource_selected)
+	}
+	if resource_source_found {
+		editor_ui_set_hidden(world, resource_source, !resource_selected)
+	}
+	if find_usage_found {
+		editor_ui_set_hidden(
+			world,
+			find_usage,
+			!resource_selected ||
+			editor_resource_usage_count(world, state.editor_selected_resource) == 0,
+		)
+	}
+	if resource_selected {
+		handle, resource_found := resources.material_by_uuid(
+			state.resource_registry,
+			state.editor_selected_resource,
+		)
+		if resource_found {
+			material, alive := resources.get_material(state.resource_registry, handle)
+			if alive {
+				inputs := [2]int{resource_name, resource_source}
+				values := [2]string{material.name, material.source}
+				for input_entity, input_index in inputs {
+					input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
+					input.read_only = !state.editor_simulation_stopped
+					if !state.has_focused_input ||
+					   state.focused_input != world.entities[input_entity].id {
+						_ = ecs.set_ui_input_value(world, input_entity, values[input_index])
+					}
+				}
+			} else {
+				state.editor_has_resource_selection = false
+			}
+		} else {
+			state.editor_has_resource_selection = false
+		}
+	}
+	if header_entity := find_parent_entity(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_INSPECTOR_HEADER_NAME),
+		.Editor,
+	); header_entity >= 0 {
+		header_layout := &world.ui_layouts[world.entities[header_entity].ui_layout_index]
+		header_layout.size.y = 132
+		if resource_selected {
+			header_layout.size.y = 184
+		}
+	}
 	if content, found := editor_ui_entity(world, .Inspector_Content); found {
-		selected_index := -1
-		if state.editor_has_selection { selected_index = int(state.editor_selected_entity.index) }
-		editor_ui_build_inspector_panels(state, world, content, selected_index)
+		if state.editor_has_resource_selection {
+			editor_ui_build_resource_inspector_panels(
+				state,
+				world,
+				content,
+				state.editor_selected_resource,
+			)
+		} else {
+			selected_index := -1
+			if state.editor_has_selection { selected_index = int(state.editor_selected_entity.index) }
+			editor_ui_build_inspector_panels(state, world, content, selected_index)
+		}
 	}
 	state.editor_snapshot_elapsed = 0
 	state.editor_snapshot_valid = true
@@ -3333,7 +3686,10 @@ editor_ui_input_binding :: proc(
 		return {}, nil, false
 	}
 	binding := &world.editor_uis[entity.editor_ui_index]
-	if binding.role != .Inspector_Input && binding.role != .Inspector_Entity_Name {
+	if binding.role != .Inspector_Input &&
+	   binding.role != .Inspector_Entity_Name &&
+	   binding.role != .Inspector_Resource_Name &&
+	   binding.role != .Inspector_Resource_Source {
 		return {}, nil, false
 	}
 	return binding, &world.ui_inputs[entity.ui_input_index], true
@@ -3381,6 +3737,30 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 		if interaction.submitted {
 			if selected, ok := editor_selected_world_index(state, world); ok {
 				_ = editor_authoring_rename_entity(state, world, selected, input.text)
+			}
+		}
+		return
+	}
+	if binding.role == .Inspector_Resource_Name || binding.role == .Inspector_Resource_Source {
+		if interaction.submitted &&
+		   state.editor_has_resource_selection &&
+		   state.resource_registry != nil {
+			handle, resource_found := resources.material_by_uuid(
+				state.resource_registry,
+				state.editor_selected_resource,
+			)
+			if resource_found {
+				material, alive := resources.get_material(state.resource_registry, handle)
+				if alive {
+					name := material.name
+					source := material.source
+					if binding.role == .Inspector_Resource_Name {
+						name = input.text
+					} else {
+						source = input.text
+					}
+					_ = editor_authoring_update_resource_identity(state, name, source)
+				}
 			}
 		}
 		return
