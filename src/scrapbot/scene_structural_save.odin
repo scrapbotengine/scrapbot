@@ -7,27 +7,74 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-scene_has_structural_changes :: proc(
+@(private)
+Scene_Save_Stats :: struct {
+	dirty_candidates: int,
+	unique_dirty_candidates: int,
+	structural_candidates: int,
+	value_candidates: int,
+	ignored_candidates: int,
+}
+
+@(private)
+classify_scene_dirty_entities :: proc(
 	world: ^shared.World,
 	baseline: ^shared.Scene,
 	dirty_entities: []shared.Entity_UUID,
-) -> bool {
+	structural, values: ^map[shared.Entity_UUID]bool,
+	stats: ^Scene_Save_Stats = nil,
+) {
+	baseline_lookup := make(map[shared.Entity_UUID]int, len(baseline.entities))
+	defer delete(baseline_lookup)
+	for entity, index in baseline.entities {
+		baseline_lookup[entity.id] = index + 1
+	}
+	seen := make(map[shared.Entity_UUID]bool, len(dirty_entities))
+	defer delete(seen)
 	for id in dirty_entities {
-		baseline_entity, baseline_found := scene_entity_by_uuid(baseline, id)
-		entity_index, current_found := ecs.entity_index_by_uuid(world, id)
-		if baseline_found != current_found {
-			return true
+		if stats != nil {
+			stats.dirty_candidates += 1
 		}
-		if !baseline_found {
+		if seen[id] {
 			continue
 		}
-		current := world.entities[entity_index]
-		if current.origin != .Scene ||
-		   scene_entity_structure_differs(baseline_entity, world, entity_index) {
-			return true
+		seen[id] = true
+		if stats != nil {
+			stats.unique_dirty_candidates += 1
+		}
+		baseline_ordinal, baseline_found := baseline_lookup[id]
+		entity_index, current_found := ecs.entity_index_by_uuid(world, id)
+		if !baseline_found {
+			if current_found && world.entities[entity_index].origin == .Scene {
+				structural^[id] = true
+				if stats != nil {
+					stats.structural_candidates += 1
+				}
+			} else if stats != nil {
+				stats.ignored_candidates += 1
+			}
+			continue
+		}
+		if !current_found || world.entities[entity_index].origin != .Scene {
+			structural^[id] = true
+			if stats != nil {
+				stats.structural_candidates += 1
+			}
+			continue
+		}
+		baseline_entity := &baseline.entities[baseline_ordinal - 1]
+		if scene_entity_structure_differs(baseline_entity, world, entity_index) {
+			structural^[id] = true
+			if stats != nil {
+				stats.structural_candidates += 1
+			}
+		} else {
+			values^[id] = true
+			if stats != nil {
+				stats.value_candidates += 1
+			}
 		}
 	}
-	return false
 }
 
 scene_entity_structure_differs :: proc(
@@ -82,18 +129,22 @@ scene_entity_structure_differs :: proc(
 	return false
 }
 
-save_scene_world_structural :: proc(
-	scene_path, source: string,
+@(private)
+build_scene_world_structural_source :: proc(
+	source: string,
 	world: ^shared.World,
 	baseline: ^shared.Scene,
-	dirty: map[shared.Entity_UUID]bool,
+	structural: map[shared.Entity_UUID]bool,
 	dirty_order: []shared.Entity_UUID,
-) -> string {
+) -> (
+	string,
+	string,
+) {
 	headers: [dynamic]int
 	defer delete(headers)
 	find_scene_entity_headers(source, &headers)
 	if len(headers) != len(baseline.entities) {
-		return "scene entity blocks no longer match the parsed scene"
+		return "", "scene entity blocks no longer match the parsed scene"
 	}
 
 	builder := strings.builder_make()
@@ -108,7 +159,7 @@ save_scene_world_structural :: proc(
 		start := headers[ordinal]
 		end := len(source)
 		if ordinal + 1 < len(headers) { end = headers[ordinal + 1] }
-		if !dirty[entity.id] {
+		if !structural[entity.id] {
 			strings.write_string(&builder, source[start:end])
 			continue
 		}
@@ -121,7 +172,7 @@ save_scene_world_structural :: proc(
 	}
 	appending_started := false
 	for id in dirty_order {
-		if baseline_lookup[id] {
+		if baseline_lookup[id] || !structural[id] {
 			continue
 		}
 		entity_index, found := ecs.entity_index_by_uuid(world, id)
@@ -135,7 +186,11 @@ save_scene_world_structural :: proc(
 		_ = write_scene_world_entity(&builder, world, entity_index)
 		strings.write_rune(&builder, '\n')
 	}
-	return write_scene_atomically(scene_path, strings.to_string(builder))
+	result, clone_err := strings.clone(strings.to_string(builder))
+	if clone_err != nil {
+		return "", "failed to allocate structural scene source"
+	}
+	return result, ""
 }
 
 find_scene_entity_headers :: proc(source: string, headers: ^[dynamic]int) {

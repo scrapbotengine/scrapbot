@@ -8,13 +8,33 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
+@(private)
+Scene_Save_Writer :: #type proc(path, source: string) -> string
+
 save_scene_world :: proc(
 	scene_path: string,
 	world: ^shared.World,
 	dirty_entities: []shared.Entity_UUID,
 ) -> string {
+	return save_scene_world_with_writer(scene_path, world, dirty_entities, write_scene_atomically)
+}
+
+@(private)
+save_scene_world_with_writer :: proc(
+	scene_path: string,
+	world: ^shared.World,
+	dirty_entities: []shared.Entity_UUID,
+	writer: Scene_Save_Writer,
+	stats: ^Scene_Save_Stats = nil,
+) -> string {
 	if world == nil {
 		return "cannot save an unavailable scene world"
+	}
+	if writer == nil {
+		return "cannot save without a scene writer"
+	}
+	if stats != nil {
+		stats^ = {}
 	}
 	loaded := project.load_scene_file(scene_path)
 	defer project.destroy_scene_load_result(&loaded)
@@ -23,26 +43,71 @@ save_scene_world :: proc(
 	}
 	baseline_world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&baseline_world)
-	dirty_lookup := make(map[shared.Entity_UUID]bool, len(dirty_entities))
-	defer delete(dirty_lookup)
-	for id in dirty_entities {
-		dirty_lookup[id] = true
-	}
+	structural := make(map[shared.Entity_UUID]bool, len(dirty_entities))
+	defer delete(structural)
+	values := make(map[shared.Entity_UUID]bool, len(dirty_entities))
+	defer delete(values)
+	classify_scene_dirty_entities(
+		world,
+		&loaded.scene,
+		dirty_entities,
+		&structural,
+		&values,
+		stats,
+	)
 	source_bytes, read_err := os.read_entire_file(scene_path, context.temp_allocator)
 	if read_err != nil {
 		return fmt.tprintf("failed to read %s: %v", scene_path, read_err)
 	}
-	if scene_has_structural_changes(world, &loaded.scene, dirty_entities) {
-		return save_scene_world_structural(
-			scene_path,
-			string(source_bytes),
+	value_source, patch_err := patch_scene_world_values(
+		string(source_bytes),
+		world,
+		&baseline_world,
+		&loaded.scene,
+		values,
+	)
+	if patch_err != "" {
+		return patch_err
+	}
+	defer delete(value_source)
+	candidate := value_source
+	structural_source := ""
+	defer delete(structural_source)
+	if len(structural) > 0 {
+		structural_source, patch_err = build_scene_world_structural_source(
+			value_source,
 			world,
 			&loaded.scene,
-			dirty_lookup,
+			structural,
 			dirty_entities,
 		)
+		if patch_err != "" {
+			return patch_err
+		}
+		candidate = structural_source
 	}
+	validated_scene, parse_result := project.parse_scene(candidate)
+	defer project.destroy_scene(&validated_scene)
+	if parse_result.err != .None {
+		return fmt.tprintf(
+			"refusing to replace scene with invalid generated TOML: %s",
+			parse_result.message,
+		)
+	}
+	return writer(scene_path, candidate)
+}
 
+@(private)
+patch_scene_world_values :: proc(
+	source: string,
+	world: ^shared.World,
+	baseline_world: ^shared.World,
+	scene: ^shared.Scene,
+	dirty_lookup: map[shared.Entity_UUID]bool,
+) -> (
+	string,
+	string,
+) {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 	entity_ordinal := -1
@@ -50,8 +115,8 @@ save_scene_world :: proc(
 	custom_component := ""
 	seen_keys: [8]string
 	seen_key_count := 0
-	source := string(source_bytes)
-	for raw_line in strings.split_lines_iterator(&source) {
+	text := source
+	for raw_line in strings.split_lines_iterator(&text) {
 		clean := project.strip_comment(strings.trim_space(raw_line))
 		is_entity_header := clean == "[[entities]]"
 		is_component_header :=
@@ -60,8 +125,8 @@ save_scene_world :: proc(
 			write_missing_scene_fields(
 				&builder,
 				world,
-				&baseline_world,
-				&loaded.scene,
+				baseline_world,
+				scene,
 				entity_ordinal,
 				section,
 				custom_component,
@@ -86,17 +151,17 @@ save_scene_world :: proc(
 
 		replacement := ""
 		replace := false
-		if entity_ordinal >= 0 && entity_ordinal < len(loaded.scene.entities) {
+		if entity_ordinal >= 0 && entity_ordinal < len(scene.entities) {
 			if key, _, assignment := project.split_assignment(clean); assignment {
 				if seen_key_count < len(seen_keys) {
 					seen_keys[seen_key_count] = key
 					seen_key_count += 1
 				}
-				scene_entity := loaded.scene.entities[entity_ordinal]
+				scene_entity := scene.entities[entity_ordinal]
 				if scene_entity_is_dirty(dirty_lookup, scene_entity.id) {
 					entity_index, found := ecs.entity_index_by_uuid(world, scene_entity.id)
 					baseline_index, baseline_found := ecs.entity_index_by_uuid(
-						&baseline_world,
+						baseline_world,
 						scene_entity.id,
 					)
 					if found && baseline_found {
@@ -110,7 +175,7 @@ save_scene_world :: proc(
 								key,
 							)
 							baseline, baseline_available := scene_world_field_value(
-								&baseline_world,
+								baseline_world,
 								baseline_index,
 								section,
 								custom_component,
@@ -132,8 +197,8 @@ save_scene_world :: proc(
 	write_missing_scene_fields(
 		&builder,
 		world,
-		&baseline_world,
-		&loaded.scene,
+		baseline_world,
+		scene,
 		entity_ordinal,
 		section,
 		custom_component,
@@ -141,19 +206,11 @@ save_scene_world :: proc(
 		dirty_lookup,
 	)
 
-	temp_path, clone_err := strings.concatenate({scene_path, ".scrapbot-save.tmp"})
+	result, clone_err := strings.clone(strings.to_string(builder))
 	if clone_err != nil {
-		return "failed to allocate temporary scene path"
+		return "", "failed to allocate patched scene source"
 	}
-	defer delete(temp_path)
-	defer os.remove(temp_path)
-	if write_err := os.write_entire_file(temp_path, strings.to_string(builder)); write_err != nil {
-		return fmt.tprintf("failed to write temporary scene: %v", write_err)
-	}
-	if rename_err := os.rename(temp_path, scene_path); rename_err != nil {
-		return fmt.tprintf("failed to replace scene file: %v", rename_err)
-	}
-	return ""
+	return result, ""
 }
 
 write_missing_scene_fields :: proc(

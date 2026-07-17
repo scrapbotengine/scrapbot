@@ -1,6 +1,6 @@
 ---
 name: scrapbot-testing
-description: Use when testing or verifying Scrapbot changes, especially CLI behavior, generated Luau types, example projects, ECS rendering, WGPU smoke tests, headless framegrabs, PNG artifacts, documentation builds, or before committing.
+description: Use when testing or verifying Scrapbot changes, especially scene persistence and authoring savepoints, lifecycle integrity, CLI behavior, generated Luau types, example projects, ECS rendering, WGPU smoke tests, headless framegrabs, PNG artifacts, documentation builds, or before committing.
 ---
 
 # Scrapbot Testing
@@ -207,6 +207,17 @@ Call `ecs.validate_world_integrity` after the mutation under investigation when 
 Tests validate every deferred command flush and playback restoration automatically. To enable the same checks in another diagnostic build, pass `-define:SCRAPBOT_WORLD_INTEGRITY_CHECKS=true`; do not enable it for ordinary release frames because it intentionally scans structural ownership.
 
 `scrapbot.test_seeded_editor_lifecycle_preserves_world_integrity` runs 600 deterministic authoring and playback operations from seed `0x5c4a9b71d203e8f6`. Preserve the seed and failing step in new assertions. When fixing a lifecycle failure, strengthen the validator or sequence at the ownership boundary rather than adding a late array guard.
+
+## Scene Persistence Reproduction
+
+When changing Save, Revert, Undo/Redo savepoints, scene serialization, dirty candidate tracking, or authored/runtime provenance, preserve the contracts in `src/scrapbot/scene_persistence_test.odin`:
+
+- `test_scene_persistence_scales_candidate_work_and_preserves_value_blocks` uses a 512-entity fixture and fixed seed `0x7a914e2dc6b8035f`. Keep candidate-work assertions based on unique dirty UUIDs, never wall-clock duration or whole-scene entity counts.
+- `test_scene_persistence_write_failure_never_changes_original` and `test_scene_persistence_rejects_invalid_generated_toml_before_write` prove the last valid file survives both writer failure and invalid generated content.
+- `test_scene_persistence_structural_roundtrip_covers_every_scene_component` is the schema-drift guard. Extend it whenever a scene component or serialized field is added.
+- `test_scene_persistence_savepoints_roundtrip_through_undo_redo_and_revert` crosses the editor history clean cursor and disk boundary. Keep the checked-in `authoring-history.json` semantic fixture as the rendered editor companion.
+
+For exact-text assertions, change only the intended UUID block, require a byte-identical second Save, preserve untouched comments/formatting, and assert that runtime/editor entities never reach disk. Use `save_scene_world_with_writer` only inside package tests to inject a failure; production callers must keep the atomic writer.
 
 ## Notes For Future Agents
 

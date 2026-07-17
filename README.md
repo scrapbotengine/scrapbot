@@ -222,6 +222,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [ ] Editor screenshot tests
   - [x] Compile-time-gated world-integrity validation
   - [x] Seeded editor lifecycle state-machine tests
+  - [x] Large-scene persistence torture tests with exact-text, savepoint, schema-roundtrip, and failure-injection coverage
   - [x] Native extension tests
   - [x] Lifecycle CPU/RAM growth gate
   - [x] Linux AddressSanitizer lane
