@@ -52,6 +52,39 @@ test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^
 }
 
 @(test)
+test_project_material_runtime_edits_preview_without_authoring_history :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	resource_id, valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000002")
+	testing.expect(t, valid)
+	_, register_err := resources.register_project_material(
+		&registry,
+		resource_id,
+		"Runtime Preview",
+		"runtime-preview.resource.toml",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, register_err == "")
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.resource_registry = &registry
+	binding := shared.Editor_UI_Component {
+		resource_id = resource_id,
+		inspector_field = .Material_Base_Color,
+		inspector_axis = .X,
+	}
+	testing.expect(t, editor_resource_write_number(state, binding, 0.4))
+	editor_history_push_resource(state, binding, 1, 0.4)
+	value, read_ok := editor_resource_number(state, binding)
+	testing.expect(t, read_ok)
+	testing.expect_value(t, value, f32(0.4))
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect_value(t, state.editor_history_count, 0)
+}
+
+@(test)
 test_project_material_reference_switch_is_structural_and_undoable :: proc(t: ^testing.T) {
 	first_id, first_valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000011")
 	second_id, second_valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000012")

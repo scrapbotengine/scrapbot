@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"text": "Icosphere", "origin": "editor", "occurrence": 0}},
+    {"action": "type", "target": {"name": "__scrapbot_editor_inspector_input_11", "origin": "editor"}, "text": "0.33"},
+    {"action": "wait", "frames": 20},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_input_11", "origin": "editor"}, "expect": "text", "text": "0.33"},
+    {"action": "drag", "target": {"name": "__scrapbot_editor_inspector_input_12", "origin": "editor"}, "delta_x": 30, "delta_y": 0},
+    {"action": "wait", "frames": 20},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_input_12", "origin": "editor"}, "expect": "text", "text": "0.825"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_inspector_panel_2", "origin": "editor"}, "padding": 8}
+  ]
+}

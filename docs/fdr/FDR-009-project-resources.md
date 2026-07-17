@@ -17,7 +17,7 @@ Project resources are reusable, typed bags of authored data stored outside the E
 - Authored resources load before scene render reconciliation. Content reload preserves runtime handle identity and increments the resource version; removal invalidates old handles; reappearance reuses the registry slot with a new generation.
 - Runtime-created Luau or native materials remain transient, name-addressed resources and cannot overwrite authored project materials.
 - The editor material panel presents the referenced resource, stable UUID, and inline numeric controls for base color and emissive color. A reusable ECS-built popup switches references between known authored materials.
-- Inline resource edits and reference changes are stopped-mode authoring transactions with Undo/Redo. Save atomically writes each dirty resource to its own file and then persists dirty scene references. Revert reloads project resources and scene entities without reloading Luau or Odin.
+- Inline material values use the ordinary numeric input contract during every playback state. Running or paused edits preview immediately as disposable runtime changes and Stop restores the captured authoring resource values. Stopped edits become authoring transactions with Undo/Redo. Resource-reference changes remain stopped-mode structural authoring. Save atomically writes each dirty resource to its own file and then persists dirty scene references. Revert reloads project resources and scene entities without reloading Luau or Odin.
 - Resource data itself is not an ECS entity or component. Only editor presentation uses the public ECS UI contract.
 
 ## Design Decisions

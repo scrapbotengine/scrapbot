@@ -1,6 +1,7 @@
 package scrapbot
 
 import ecs "./ecs"
+import resources "./resources"
 import script "./script"
 import shared "./shared"
 import ui "./ui"
@@ -71,6 +72,43 @@ test_playback_baseline_restores_authored_entities_and_discards_runtime_state :: 
 		)
 		transform_index := world.entities[entity_index].transform_index
 		testing.expect(t, world.transforms[transform_index].position == shared.Vec3{1, 2, 3})
+	}
+}
+
+@(test)
+test_playback_baseline_restores_runtime_material_edits :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	runtime: script.Runtime
+	runtime.world = &world
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	resource_id, valid := shared.resource_uuid_parse("a4000000-0000-4000-8000-000000000001")
+	testing.expect(t, valid)
+	handle, register_err := resources.register_project_material(
+		&registry,
+		resource_id,
+		"Playback Material",
+		"playback.resource.toml",
+		{base_color = {0.2, 0.3, 0.4, 1}, emissive = {1, 2, 3}},
+	)
+	testing.expect(t, register_err == "")
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world, &registry) == "")
+	material, alive := resources.get_material(&registry, handle)
+	testing.expect(t, alive)
+	material.desc.base_color = {0.9, 0.8, 0.7, 0.6}
+	material.desc.emissive = {8, 7, 6}
+	material.version += 1
+	mutated_version := material.version
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world, &registry) == "")
+	material, alive = resources.get_material(&registry, handle)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, material.desc.base_color, resources.Vec4{0.2, 0.3, 0.4, 1})
+		testing.expect_value(t, material.desc.emissive, shared.Vec3{1, 2, 3})
+		testing.expect_value(t, material.version, mutated_version + 1)
 	}
 }
 

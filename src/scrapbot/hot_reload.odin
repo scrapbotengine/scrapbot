@@ -130,7 +130,10 @@ init_hot_reload_state :: proc(
 		&loaded.config,
 		loaded.resources[:],
 	); err != "" { return err }
-	if err := capture_playback_baseline(&state.playback_baseline, world); err != "" { return err }
+	if err := capture_playback_baseline(&state.playback_baseline, world, &state.resources);
+	   err != "" {
+		return err
+	}
 	return load_script_runtime(state, world)
 }
 
@@ -201,7 +204,7 @@ hot_reload_playback_begin :: proc(data: rawptr, world: ^shared.World) -> string 
 	if state == nil || world == nil {
 		return "cannot snapshot an unavailable hot-reload runtime"
 	}
-	return capture_playback_baseline(&state.playback_baseline, world)
+	return capture_playback_baseline(&state.playback_baseline, world, &state.resources)
 }
 
 hot_reload_playback_stop :: proc(data: rawptr, world: ^shared.World) -> string {
@@ -209,7 +212,12 @@ hot_reload_playback_stop :: proc(data: rawptr, world: ^shared.World) -> string {
 	if state == nil || world == nil {
 		return "cannot restore an unavailable hot-reload runtime"
 	}
-	return restore_playback_baseline(&state.playback_baseline, &state.runtime, world)
+	return restore_playback_baseline(
+		&state.playback_baseline,
+		&state.runtime,
+		world,
+		&state.resources,
+	)
 }
 
 hot_reload_scene_save :: proc(
@@ -373,7 +381,8 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		return source_err
 	}
 	next_baseline: Playback_Baseline
-	if baseline_err := capture_playback_baseline(&next_baseline, &next_world); baseline_err != "" {
+	if baseline_err := capture_playback_baseline(&next_baseline, &next_world, &state.resources);
+	   baseline_err != "" {
 		ecs.destroy_world(&next_world)
 		destroy_script_load(&script_load)
 		native.destroy_source_set(&next_sources)

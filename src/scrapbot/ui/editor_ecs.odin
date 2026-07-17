@@ -1913,9 +1913,7 @@ editor_ui_inspector_field_values :: proc(
 		value_input.read_only =
 			(field == .None &&
 				reflected_component_id == shared.INVALID_COMPONENT_ID &&
-				resource_id == (shared.Resource_UUID{})) ||
-			(resource_id != (shared.Resource_UUID{}) &&
-					(builder.state == nil || !builder.state.editor_simulation_stopped))
+				resource_id == (shared.Resource_UUID{}))
 		if builder.state == nil ||
 		   !builder.state.has_focused_input ||
 		   builder.state.focused_input != builder.world.entities[input_entity].id {

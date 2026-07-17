@@ -1,6 +1,7 @@
 package scrapbot
 
 import ecs "./ecs"
+import resources "./resources"
 import script "./script"
 import shared "./shared"
 import "core:fmt"
@@ -16,10 +17,21 @@ Playback_Baseline_Entity :: struct {
 
 Playback_Baseline :: struct {
 	entities: [dynamic]Playback_Baseline_Entity,
+	materials: [dynamic]Playback_Baseline_Material,
 	valid: bool,
 }
 
-capture_playback_baseline :: proc(baseline: ^Playback_Baseline, world: ^shared.World) -> string {
+Playback_Baseline_Material :: struct {
+	id: shared.Resource_UUID,
+	base_color: resources.Vec4,
+	emissive: shared.Vec3,
+}
+
+capture_playback_baseline :: proc(
+	baseline: ^Playback_Baseline,
+	world: ^shared.World,
+	registry: ^resources.Registry = nil,
+) -> string {
 	if baseline == nil || world == nil {
 		return "cannot capture an unavailable authoring world"
 	}
@@ -47,6 +59,21 @@ capture_playback_baseline :: proc(baseline: ^Playback_Baseline, world: ^shared.W
 		}
 		append(&next.entities, entry)
 	}
+	if registry != nil {
+		for material in registry.materials {
+			if !material.alive || !material.authored {
+				continue
+			}
+			append(
+				&next.materials,
+				Playback_Baseline_Material {
+					id = material.id,
+					base_color = material.desc.base_color,
+					emissive = material.desc.emissive,
+				},
+			)
+		}
+	}
 	next.valid = true
 	destroy_playback_baseline(baseline)
 	baseline^ = next
@@ -57,6 +84,7 @@ restore_playback_baseline :: proc(
 	baseline: ^Playback_Baseline,
 	runtime: ^script.Runtime,
 	world: ^shared.World,
+	registry: ^resources.Registry = nil,
 ) -> string {
 	if baseline == nil || !baseline.valid || runtime == nil || world == nil {
 		return "cannot restore an unavailable authoring baseline"
@@ -87,6 +115,24 @@ restore_playback_baseline :: proc(
 	ecs.destroy_world(world)
 	world^ = next_world
 	script.bind_runtime_world(runtime, world)
+	if registry != nil {
+		for baseline_material in baseline.materials {
+			handle, found := resources.material_by_uuid(registry, baseline_material.id)
+			if !found {
+				continue
+			}
+			material, alive := resources.get_material(registry, handle)
+			if !alive {
+				continue
+			}
+			if material.desc.base_color != baseline_material.base_color ||
+			   material.desc.emissive != baseline_material.emissive {
+				material.desc.base_color = baseline_material.base_color
+				material.desc.emissive = baseline_material.emissive
+				material.version += 1
+			}
+		}
+	}
 	return ""
 }
 
@@ -98,5 +144,6 @@ destroy_playback_baseline :: proc(baseline: ^Playback_Baseline) {
 		ecs.destroy_entity_snapshot(&entry.snapshot)
 	}
 	delete(baseline.entities)
+	delete(baseline.materials)
 	baseline^ = {}
 }

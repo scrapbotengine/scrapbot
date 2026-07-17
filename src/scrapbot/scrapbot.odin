@@ -465,8 +465,11 @@ run_project_internal_untracked :: proc(
 		&loaded.config,
 		loaded.resources[:],
 	); err != "" { result.err = err; return result }
-	if err := capture_playback_baseline(&frame_runtime.playback_baseline, &world);
-	   err != "" { result.err = err; return result }
+	if err := capture_playback_baseline(
+		&frame_runtime.playback_baseline,
+		&world,
+		&frame_runtime.resources,
+	); err != "" { result.err = err; return result }
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
 	if extension_load := native.load_project_extensions(
@@ -615,7 +618,7 @@ frame_runtime_playback_begin :: proc(data: rawptr, world: ^shared.World) -> stri
 	if runtime == nil || world == nil {
 		return "cannot snapshot an unavailable project runtime"
 	}
-	return capture_playback_baseline(&runtime.playback_baseline, world)
+	return capture_playback_baseline(&runtime.playback_baseline, world, &runtime.resources)
 }
 
 frame_runtime_playback_stop :: proc(data: rawptr, world: ^shared.World) -> string {
@@ -623,7 +626,12 @@ frame_runtime_playback_stop :: proc(data: rawptr, world: ^shared.World) -> strin
 	if runtime == nil || world == nil {
 		return "cannot restore an unavailable project runtime"
 	}
-	return restore_playback_baseline(&runtime.playback_baseline, &runtime.script_runtime, world)
+	return restore_playback_baseline(
+		&runtime.playback_baseline,
+		&runtime.script_runtime,
+		world,
+		&runtime.resources,
+	)
 }
 
 frame_runtime_save :: proc(

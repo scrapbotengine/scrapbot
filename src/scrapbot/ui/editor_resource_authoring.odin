@@ -49,7 +49,6 @@ editor_resource_write_number :: proc(
 	number: f32,
 ) -> bool {
 	if state == nil ||
-	   !state.editor_simulation_stopped ||
 	   state.resource_registry == nil ||
 	   math.is_nan(number) ||
 	   math.is_inf(number) {
