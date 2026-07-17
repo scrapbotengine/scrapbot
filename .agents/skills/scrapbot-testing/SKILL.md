@@ -97,6 +97,8 @@ bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless \
   --framegrab /tmp/scrapbot-component-picker.png
 ```
 
+Use `tests/fixtures/ui/component-picker.json` when changing component authoring, live component mutation, registry-driven discovery, namespace grouping, panel title actions, or component-menu rendering. It proves running-mode attachment/removal, Stop-time disposal, stopped-mode membership changes, picker hover feedback, and the reusable panel-action hit target through `target.part = "panel_action"`.
+
 Use `tests/fixtures/ui/playback-authoring.json` when changing Play, Step, Stop, authoring baselines, dirty-state preservation, or world replacement. It creates an unsaved scene entity, runs a complete Play/Stop round trip, and asserts that the authored entity remains visible.
 
 Use `tests/fixtures/ui/authoring-history.json` when changing Undo, Redo, Save, Revert, savepoint-based dirty state, or disk-scene restoration. It edits a scene Transform, traverses away from and back to the clean history cursor, reverts from disk, asserts the original value, and captures the complete transport group.

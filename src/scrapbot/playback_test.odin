@@ -1,5 +1,6 @@
 package scrapbot
 
+import component "./component"
 import ecs "./ecs"
 import resources "./resources"
 import script "./script"
@@ -477,4 +478,62 @@ test_created_entity_survives_play_stop_and_remains_undoable :: proc(t: ^testing.
 	testing.expect(t, ui.editor_history_apply(state, &world, false))
 	_, found = ecs.entity_index_by_uuid(&world, created_uuid)
 	testing.expect(t, !found)
+}
+
+@(test)
+test_stop_discards_live_component_membership_changes :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shared.entity_uuid_from_engine_name("live-component-target"),
+			name = "Live Component Target",
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = true
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	ui.editor_play(state)
+	testing.expect(t, ui.consume_playback_begin_request(state))
+	camera_index, found := component.find_definition_index(&registry, "scrapbot.camera")
+	testing.expect(t, found)
+	if !found {
+		return
+	}
+	testing.expect(
+		t,
+		ui.editor_set_registered_component(
+			state,
+			&world,
+			0,
+			&registry.definitions[camera_index],
+			true,
+		),
+	)
+	testing.expect(t, world.entities[0].camera_index >= 0)
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, state.editor_history_count == 0)
+
+	ui.editor_stop(state)
+	runtime: script.Runtime
+	runtime.world = &world
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+	ui.editor_world_restored(state, &world, {}, false)
+	testing.expect(t, world.entities[0].camera_index < 0)
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, state.editor_history_count == 0)
+	failure, integrity_ok := ecs.validate_world_integrity(&world)
+	testing.expectf(t, integrity_ok, "%s", ecs.format_world_integrity_failure(failure))
 }

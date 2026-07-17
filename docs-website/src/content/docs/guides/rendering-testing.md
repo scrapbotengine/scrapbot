@@ -44,7 +44,7 @@ Region coordinates are `x,y,width,height` from the top-left of the complete fram
 
 Use `--ui-script` to reproduce interactions against public project UI or transient editor UI by UUID, entity name, or visible text. The driver resolves the target from the retained tree, reveals it through clipped ancestor scroll areas, and feeds ordinary pointer and keyboard state back through the normal reconciler. `--ui-dump` writes the final tree even when the run fails, including hierarchy, text, control kinds, clipping, raw and visible screen rectangles, paint order, hover/active/focus state, and the pending script action.
 
-The checked-in component-picker scenario stops the project, selects an entity, opens the popup, hovers Camera, asserts the hover state, and requests a small target crop:
+The checked-in component-picker scenario exercises live and stopped component addition, removes components through the panel title action, verifies Stop-time disposal, and requests a tight action crop:
 
 ```sh
 bin/scrapbot run examples/ecs-showcase \
@@ -68,15 +68,15 @@ Scripts use schema version 1 and execute actions sequentially:
   "schema_version": 1,
   "timeout_frames": 120,
   "actions": [
-    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
-    {"action": "hover", "target": {"text": "+  camera", "origin": "editor"}},
-    {"action": "expect", "target": {"text": "+  camera"}, "expect": "hovered"},
-    {"action": "capture", "target": {"text": "+  camera"}, "padding": 12}
+    {"action": "click", "target": {"text": "Add Component", "origin": "editor"}},
+    {"action": "hover", "target": {"text": "camera", "origin": "editor"}},
+    {"action": "expect", "target": {"text": "camera"}, "expect": "hovered"},
+    {"action": "capture", "target": {"text": "CAMERA", "part": "panel_action"}, "padding": 8}
   ]
 }
 ```
 
-Available actions are `click`, `hover`, `scroll` (`wheel_y`), `type` (`text`), `drag` (`delta_x`, `delta_y`), `key`, `wait` (`frames`), `expect`, and `capture`. Drag presses the target center, moves by the requested screen-space offset, and releases on the following frame. Keys include navigation, editing, Tab, Enter, Escape, Select All, Save, Undo, Redo, Editor Toggle, Run/Stop, and Pause/Step. Expectations cover `visible`, `hovered`, `active`, `focused`, `text`, and `inside_parent`; a text expectation compares the action's `text` value. Targets may combine `uuid`, `name`, `text`, and `origin`, plus a zero-based `occurrence` for duplicate matches. A capture target supplies the framegrab region unless `--framegrab-region` is explicitly present. When `--frames` is omitted, a scripted run receives a 240-frame safety bound and exits as soon as all actions complete.
+Available actions are `click`, `hover`, `scroll` (`wheel_y`), `type` (`text`), `drag` (`delta_x`, `delta_y`), `key`, `wait` (`frames`), `expect`, and `capture`. Drag presses the target center, moves by the requested screen-space offset, and releases on the following frame. Keys include navigation, editing, Tab, Enter, Escape, Select All, Save, Undo, Redo, Editor Toggle, Run/Stop, and Pause/Step. Expectations cover `visible`, `hovered`, `active`, `focused`, `text`, and `inside_parent`; a text expectation compares the action's `text` value. Targets may combine `uuid`, `name`, `text`, and `origin`, plus a zero-based `occurrence` for duplicate matches. Set `part` to `panel_action` to address a panel's built-in trailing action instead of its complete rectangle. A capture target supplies the framegrab region unless `--framegrab-region` is explicitly present. When `--frames` is omitted, a scripted run receives a 240-frame safety bound and exits as soon as all actions complete.
 
 ## Directional shadows
 

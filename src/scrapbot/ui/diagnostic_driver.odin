@@ -14,6 +14,7 @@ Diagnostic_Target :: struct {
 	name: string,
 	text: string,
 	origin: string,
+	part: string,
 	occurrence: int,
 }
 
@@ -147,6 +148,7 @@ diagnostic_driver_destroy :: proc(driver: ^Diagnostic_Driver) {
 			delete(action.target.name)
 			delete(action.target.text)
 			delete(action.target.origin)
+			delete(action.target.part)
 			delete(action.expect)
 			delete(action.text)
 			delete(action.key)
@@ -184,6 +186,9 @@ diagnostic_target_is_valid :: proc(target: Diagnostic_Target) -> bool {
 	   target.origin != "scene" &&
 	   target.origin != "runtime" &&
 	   target.origin != "editor" {
+		return false
+	}
+	if target.part != "" && target.part != "panel_action" {
 		return false
 	}
 	if target.uuid != "" {
@@ -321,7 +326,10 @@ diagnostic_driver_input :: proc(
 	if !found {
 		return diagnostic_driver_missing_target(driver, action)
 	}
-	visible_rect := diagnostic_node_visible_rect(state.nodes[node_index])
+	visible_rect, target_rect_ok := diagnostic_target_rect(state, world, node_index, action.target)
+	if !target_rect_ok {
+		return diagnostic_driver_missing_target(driver, action)
+	}
 	if visible_rect.width <= 0 || visible_rect.height <= 0 {
 		if diagnostic_reveal_target(state, world, node_index) {
 			driver.missing_frames = 0
@@ -512,6 +520,36 @@ diagnostic_node_visible_rect :: proc(node: Node) -> Rect {
 	return node.rect
 }
 
+diagnostic_target_rect :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	target: Diagnostic_Target,
+) -> (
+	Rect,
+	bool,
+) {
+	if state == nil || world == nil || node_index < 0 || node_index >= state.node_count {
+		return {}, false
+	}
+	node := state.nodes[node_index]
+	if target.part == "panel_action" {
+		if node.panel_index < 0 || node.panel_index >= len(world.ui_panels) {
+			return {}, false
+		}
+		rect, ok := panel_title_action_rect(node, world.ui_panels[node.panel_index])
+		if !ok {
+			return {}, false
+		}
+		if node.has_clip {
+			rect = rect_intersection(rect, node.clip)
+		}
+		return rect, rect.width > 0 && rect.height > 0
+	}
+	rect := diagnostic_node_visible_rect(node)
+	return rect, rect.width > 0 && rect.height > 0
+}
+
 diagnostic_reveal_target :: proc(state: ^State, world: ^shared.World, node_index: int) -> bool {
 	if state == nil || world == nil || node_index < 0 || node_index >= state.node_count {
 		return false
@@ -667,7 +705,15 @@ diagnostic_driver_capture_rect :: proc(
 	if !found {
 		return {}, false
 	}
-	visible_rect := diagnostic_node_visible_rect(state.nodes[node_index])
+	visible_rect, rect_ok := diagnostic_target_rect(
+		state,
+		world,
+		node_index,
+		driver.capture_target,
+	)
+	if !rect_ok {
+		return {}, false
+	}
 	rect := diagnostic_rect_to_screen(
 		state,
 		state.nodes[node_index],

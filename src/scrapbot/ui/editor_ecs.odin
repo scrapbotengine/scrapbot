@@ -162,17 +162,12 @@ editor_ui_handle_activation :: proc(
 						   component.slot >= 0 &&
 						   component.slot < state.component_registry.definition_count {
 							definition := &state.component_registry.definitions[component.slot]
-							present := editor_entity_has_registered_component(
-								world,
-								selected,
-								definition,
-							)
-							_ = editor_authoring_set_registered_component(
+							_ = editor_set_registered_component(
 								state,
 								world,
 								selected,
 								definition,
-								!present,
+								true,
 							)
 						}
 					}
@@ -248,6 +243,43 @@ editor_ui_handle_activation :: proc(
 		}
 		entity_index = find_parent_entity(world, world.ui_layouts[layout_index].parent, .Editor)
 	}
+}
+
+editor_ui_handle_panel_action :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pressed: shared.Entity,
+) -> bool {
+	if state == nil || world == nil || state.component_registry == nil {
+		return false
+	}
+	entity_index := int(pressed.index)
+	if !ecs.entity_is_alive(world, entity_index) || world.entities[entity_index].id != pressed {
+		return false
+	}
+	binding_index := world.entities[entity_index].editor_ui_index
+	if binding_index < 0 || binding_index >= len(world.editor_uis) {
+		return false
+	}
+	binding := world.editor_uis[binding_index]
+	if binding.role != .Inspector_Panel ||
+	   binding.reflected_component_id == shared.INVALID_COMPONENT_ID {
+		return false
+	}
+	definition, found := component.find_definition_by_id(
+		state.component_registry,
+		binding.reflected_component_id,
+	)
+	if !found {
+		return false
+	}
+	target_index := int(binding.target.index)
+	if !ecs.entity_is_alive(world, target_index) ||
+	   world.entities[target_index].id != binding.target ||
+	   !editor_set_registered_component(state, world, target_index, &definition, false) {
+		return false
+	}
+	return true
 }
 
 editor_ui_resource_menu_contains :: proc(world: ^shared.World, entity: shared.Entity) -> bool {
@@ -1826,7 +1858,7 @@ editor_ui_ensure_component_menu_button :: proc(world: ^shared.World, parent: str
 	)
 	editor_ui_add_button(world, button)
 	value := world.ui_buttons[world.entities[button].ui_button_index]
-	value.text = "Manage Components"
+	value.text = "Add Component"
 	value.size = EDITOR_TEXT_SIZE
 	value.color = {0.70, 0.73, 0.78, 1}
 	value.alignment = .Center
@@ -2012,7 +2044,11 @@ editor_ui_finish_inspector_component :: proc(builder: ^Inspector_ECS_Builder) {
 	}
 }
 
-editor_ui_begin_inspector_component :: proc(builder: ^Inspector_ECS_Builder, title: string) {
+editor_ui_begin_inspector_component :: proc(
+	builder: ^Inspector_ECS_Builder,
+	title: string,
+	definition: ^component.Definition = nil,
+) {
 	editor_ui_finish_inspector_component(builder)
 	panel, table := editor_ui_ensure_inspector_panel(builder.world, builder.panel_count)
 	builder.panel_entity = panel
@@ -2026,6 +2062,22 @@ editor_ui_begin_inspector_component :: proc(builder: ^Inspector_ECS_Builder, tit
 	table_value.resizable_columns = true
 	editor_ui_set_hidden(builder.world, panel, false)
 	editor_ui_set_hidden(builder.world, table, false)
+	panel_value := builder.world.ui_panels[builder.world.entities[panel].ui_panel_index]
+	panel_value.action_enabled =
+		definition != nil &&
+		editor_authoring_definition_is_supported(definition) &&
+		editor_component_membership_available(
+			builder.state,
+			builder.world,
+			int(builder.target.index),
+		)
+	_ = ecs.set_ui_panel(builder.world, panel, panel_value)
+	binding := &builder.world.editor_uis[builder.world.entities[panel].editor_ui_index]
+	binding.target = builder.target
+	binding.reflected_component_id = shared.INVALID_COMPONENT_ID
+	if panel_value.action_enabled {
+		binding.reflected_component_id = definition.id
+	}
 	editor_ui_set_panel_title(builder.world, panel, title)
 }
 
@@ -2395,6 +2447,9 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 	content_name := world.entities[content].name
 	for definition_index in indices[:count] {
 		definition := &registry.definitions[definition_index]
+		if editor_entity_has_registered_component(world, entity_index, definition) {
+			continue
+		}
 		tokens := strings.split(definition.name, ".")
 		if len(tokens) == 1 {
 			previous_count = 0
@@ -2436,18 +2491,14 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 				previous_tokens[index] = tokens[index]
 			}
 		}
-		present := editor_entity_has_registered_component(world, entity_index, definition)
-		label := fmt.tprintf("+  %s", tokens[len(tokens) - 1])
-		if present {
-			label = fmt.tprintf("-  %s", tokens[len(tokens) - 1])
-		}
+		label := tokens[len(tokens) - 1]
 		item := editor_ui_ensure_component_menu_item(
 			world,
 			definition_index,
 			len(tokens),
 			content_name,
 			label,
-			present,
+			false,
 		)
 		editor_ui_set_hidden(world, item, false)
 		row_count += 1
@@ -2587,7 +2638,7 @@ editor_ui_build_reflected_inspector_panels :: proc(
 		}
 		title_buffer: [128]u8
 		title := editor_component_title(definition.name, title_buffer[:])
-		editor_ui_begin_inspector_component(builder, title)
+		editor_ui_begin_inspector_component(builder, title, definition)
 		if definition.name == "scrapbot.transform" &&
 		   entity.transform_index >= 0 &&
 		   entity.transform_index < len(builder.world.transforms) {
@@ -2805,7 +2856,7 @@ editor_ui_build_reflected_inspector_panels :: proc(
 		editor_ui_inspector_field(builder, "mode", mode)
 		editor_ui_inspector_field(builder, "space", space)
 	}
-	if builder.state.editor_simulation_stopped && entity.origin == .Scene {
+	if editor_component_membership_available(builder.state, builder.world, entity_index) {
 		editor_ui_build_component_controls(builder, entity_index)
 	}
 	editor_ui_finish_inspector(builder)
@@ -3276,7 +3327,7 @@ editor_ui_build_inspector_panels :: proc(
 			break
 		}
 	}
-	if state.editor_simulation_stopped && entity.origin == .Scene {
+	if editor_component_membership_available(state, world, entity_index) {
 		editor_ui_build_component_controls(&builder, entity_index)
 	}
 	editor_ui_finish_inspector(&builder)

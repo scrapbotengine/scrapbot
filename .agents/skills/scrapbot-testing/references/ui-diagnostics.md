@@ -4,7 +4,7 @@ Use this workflow for hover, click, focus, typing, scrolling, clipping, popup, a
 
 ## Tight debugging loop
 
-1. Create a small versioned script under `tests/fixtures/ui/` when it is a durable regression, or under `/tmp` for one-off exploration.
+1. Create a small versioned script under `tests/fixtures/ui/` when it is a durable regression, or under `/tmp` for one-off exploration. Use `target.part = "panel_action"` to click or tightly capture a panel's built-in trailing title action instead of guessing an offset inside the panel title.
 2. Select targets by stable UUID or name when available. Use visible text for user-facing controls. Add `origin` (`scene`, `runtime`, or `editor`) and zero-based `occurrence` to disambiguate.
 3. Reproduce the minimum interaction sequence. The driver automatically scrolls clipped targets into view.
 4. Assert the state that proves the behavior: `visible`, `hovered`, `active`, `focused`, `text`, or `inside_parent`.

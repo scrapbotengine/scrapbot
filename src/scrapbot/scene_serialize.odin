@@ -147,8 +147,24 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 			"disclosure_corner_radius",
 			scene_f32(value.disclosure_corner_radius),
 		)
+		write_scene_value(builder, "action_size", scene_f32(value.action_size))
+		write_scene_value(builder, "action_margin", scene_f32(value.action_margin))
+		write_scene_value(builder, "action_icon_inset", scene_f32(value.action_icon_inset))
+		write_scene_value(builder, "action_corner_radius", scene_f32(value.action_corner_radius))
+		write_scene_value(builder, "action_color", scene_vec4(value.action_color))
+		write_scene_value(
+			builder,
+			"action_hover_background",
+			scene_vec4(value.action_hover_background),
+		)
+		write_scene_value(
+			builder,
+			"action_active_background",
+			scene_vec4(value.action_active_background),
+		)
 		write_scene_value(builder, "collapsible", scene_bool(value.collapsible))
 		write_scene_value(builder, "collapsed", scene_bool(value.collapsed))
+		write_scene_value(builder, "action_enabled", scene_bool(value.action_enabled))
 	}
 	if entity.has_ui_table {
 		value := entity.ui_table

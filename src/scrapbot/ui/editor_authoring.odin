@@ -109,9 +109,6 @@ editor_authoring_set_registered_component :: proc(
 	if definition == nil || !editor_authoring_definition_is_supported(definition) {
 		return false
 	}
-	if builtin, found := editor_authoring_component_from_name(definition.name); found {
-		return editor_authoring_set_component(state, world, entity_index, builtin, present)
-	}
 	if !editor_authoring_available(state, world) || !ecs.entity_is_alive(world, entity_index) {
 		return false
 	}
@@ -125,37 +122,10 @@ editor_authoring_set_registered_component :: proc(
 		destroy_snapshot_pointer(before)
 		return false
 	}
-	found_index := -1
-	for custom, index in after.entity.custom_components {
-		if custom.name == definition.name {
-			found_index = index
-			break
-		}
-	}
-	if (found_index >= 0) == present {
+	if !set_snapshot_registered_component(&after.entity, definition, present) {
 		destroy_snapshot_pointer(before)
 		destroy_snapshot_pointer(after)
 		return false
-	}
-	if present {
-		value: shared.Custom_Component
-		value.component_id = definition.id
-		value.name = ecs.clone_snapshot_string(definition.name)
-		for field in definition.fields[:definition.field_count] {
-			append(
-				&value.vec3_fields,
-				shared.Named_Vec3{name = ecs.clone_snapshot_string(field.name)},
-			)
-		}
-		append(&after.entity.custom_components, value)
-	} else {
-		value := &after.entity.custom_components[found_index]
-		delete(value.name)
-		for field in value.vec3_fields {
-			delete(field.name)
-		}
-		delete(value.vec3_fields)
-		ordered_remove(&after.entity.custom_components, found_index)
 	}
 	if _, ok := ecs.apply_entity_snapshot(world, after); !ok {
 		destroy_snapshot_pointer(before)
@@ -165,6 +135,59 @@ editor_authoring_set_registered_component :: proc(
 	push_structural_change(state, before.entity.id, before, after)
 	editor_authoring_select(state, world, entity_index)
 	return true
+}
+
+editor_set_registered_component :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	definition: ^component.Definition,
+	present: bool,
+) -> bool {
+	if state == nil || world == nil || definition == nil {
+		return false
+	}
+	if state.editor_simulation_stopped {
+		return editor_authoring_set_registered_component(
+			state,
+			world,
+			entity_index,
+			definition,
+			present,
+		)
+	}
+	if !editor_authoring_definition_is_supported(definition) ||
+	   !ecs.entity_is_alive(world, entity_index) ||
+	   world.entities[entity_index].origin == .Editor {
+		return false
+	}
+	after := capture_snapshot_pointer(world, entity_index)
+	if after == nil || !set_snapshot_registered_component(&after.entity, definition, present) {
+		destroy_snapshot_pointer(after)
+		return false
+	}
+	if _, ok := ecs.apply_entity_snapshot(world, after); !ok {
+		destroy_snapshot_pointer(after)
+		return false
+	}
+	destroy_snapshot_pointer(after)
+	editor_authoring_select(state, world, entity_index)
+	return true
+}
+
+editor_component_membership_available :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+) -> bool {
+	if state == nil || world == nil || !ecs.entity_is_alive(world, entity_index) {
+		return false
+	}
+	origin := world.entities[entity_index].origin
+	if state.editor_simulation_stopped {
+		return origin == .Scene
+	}
+	return origin != .Editor
 }
 
 editor_authoring_create_entity :: proc(
@@ -577,5 +600,49 @@ set_snapshot_component :: proc(
 			entity.has_ui_checkbox = present
 			if present { entity.ui_checkbox = shared.ui_checkbox_default() }
 	}
+	return true
+}
+
+set_snapshot_registered_component :: proc(
+	entity: ^shared.Scene_Entity,
+	definition: ^component.Definition,
+	present: bool,
+) -> bool {
+	if entity == nil || definition == nil {
+		return false
+	}
+	if builtin, found := editor_authoring_component_from_name(definition.name); found {
+		return set_snapshot_component(entity, builtin, present)
+	}
+	found_index := -1
+	for custom, index in entity.custom_components {
+		if custom.name == definition.name {
+			found_index = index
+			break
+		}
+	}
+	if (found_index >= 0) == present {
+		return false
+	}
+	if present {
+		value: shared.Custom_Component
+		value.component_id = definition.id
+		value.name = ecs.clone_snapshot_string(definition.name)
+		for field in definition.fields[:definition.field_count] {
+			append(
+				&value.vec3_fields,
+				shared.Named_Vec3{name = ecs.clone_snapshot_string(field.name)},
+			)
+		}
+		append(&entity.custom_components, value)
+		return true
+	}
+	value := &entity.custom_components[found_index]
+	delete(value.name)
+	for field in value.vec3_fields {
+		delete(field.name)
+	}
+	delete(value.vec3_fields)
+	ordered_remove(&entity.custom_components, found_index)
 	return true
 }

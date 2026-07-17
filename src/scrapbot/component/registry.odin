@@ -145,8 +145,16 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "disclosure_margin", field_type = .Number},
 			Field_Definition{name = "disclosure_gap", field_type = .Number},
 			Field_Definition{name = "disclosure_corner_radius", field_type = .Number},
+			Field_Definition{name = "action_size", field_type = .Number},
+			Field_Definition{name = "action_margin", field_type = .Number},
+			Field_Definition{name = "action_icon_inset", field_type = .Number},
+			Field_Definition{name = "action_corner_radius", field_type = .Number},
+			Field_Definition{name = "action_color", field_type = .Vec4},
+			Field_Definition{name = "action_hover_background", field_type = .Vec4},
+			Field_Definition{name = "action_active_background", field_type = .Vec4},
 			Field_Definition{name = "collapsible", field_type = .Bool},
 			Field_Definition{name = "collapsed", field_type = .Bool},
+			Field_Definition{name = "action_enabled", field_type = .Bool},
 		},
 	)
 	register_engine_component(

@@ -540,7 +540,7 @@ push_ui_scroll_area_table :: proc "c" (L: Lua_State, value: shared.UI_Scroll_Are
 }
 
 push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component) {
-	lua_createtable(L, 0, 12)
+	lua_createtable(L, 0, 20)
 	push_string_field(L, "title", value.title)
 	push_string_field(L, "font", value.font)
 	push_vec4_field(L, "title_color", value.title_color)
@@ -551,8 +551,16 @@ push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component)
 	push_number_field(L, "disclosure_margin", value.disclosure_margin)
 	push_number_field(L, "disclosure_gap", value.disclosure_gap)
 	push_number_field(L, "disclosure_corner_radius", value.disclosure_corner_radius)
+	push_number_field(L, "action_size", value.action_size)
+	push_number_field(L, "action_margin", value.action_margin)
+	push_number_field(L, "action_icon_inset", value.action_icon_inset)
+	push_number_field(L, "action_corner_radius", value.action_corner_radius)
+	push_vec4_field(L, "action_color", value.action_color)
+	push_vec4_field(L, "action_hover_background", value.action_hover_background)
+	push_vec4_field(L, "action_active_background", value.action_active_background)
 	push_bool_field(L, "collapsible", value.collapsible)
 	push_bool_field(L, "collapsed", value.collapsed)
+	push_bool_field(L, "action_enabled", value.action_enabled)
 }
 
 push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component) {

@@ -688,10 +688,26 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_panel.disclosure_gap, found = parse_f32(value)
 					case "disclosure_corner_radius":
 						current.ui_panel.disclosure_corner_radius, found = parse_f32(value)
+					case "action_size":
+						current.ui_panel.action_size, found = parse_f32(value)
+					case "action_margin":
+						current.ui_panel.action_margin, found = parse_f32(value)
+					case "action_icon_inset":
+						current.ui_panel.action_icon_inset, found = parse_f32(value)
+					case "action_corner_radius":
+						current.ui_panel.action_corner_radius, found = parse_f32(value)
+					case "action_color":
+						current.ui_panel.action_color, found = parse_vec4(value)
+					case "action_hover_background":
+						current.ui_panel.action_hover_background, found = parse_vec4(value)
+					case "action_active_background":
+						current.ui_panel.action_active_background, found = parse_vec4(value)
 					case "collapsible":
 						current.ui_panel.collapsible, found = parse_bool(value)
 					case "collapsed":
 						current.ui_panel.collapsed, found = parse_bool(value)
+					case "action_enabled":
+						current.ui_panel.action_enabled, found = parse_bool(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -1021,8 +1037,18 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   entity.ui_panel.title ==
 			   "" { return scene, fail(.Invalid_Field, fmt.tprintf("collapsible UI panel '%s' requires a title", entity.name)) }
 		if entity.has_ui_panel &&
+		   entity.ui_panel.action_enabled &&
+		   entity.ui_panel.title ==
+			   "" { return scene, fail(.Invalid_Field, fmt.tprintf("action-enabled UI panel '%s' requires a title", entity.name)) }
+		if entity.has_ui_panel &&
 		   entity.ui_panel.collapsed &&
 		   !entity.ui_panel.collapsible { return scene, fail(.Invalid_Field, fmt.tprintf("collapsed UI panel '%s' must be collapsible", entity.name)) }
+		if entity.has_ui_panel && !shared.ui_panel_is_valid(entity.ui_panel) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI panel '%s' has invalid title-action geometry", entity.name),
+			)
+		}
 		if entity.has_ui_table && !shared.ui_table_is_valid(entity.ui_table) {
 			return scene, fail(
 				.Invalid_Field,

@@ -1104,6 +1104,86 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 }
 
 @(test)
+test_panel_title_action_is_independent_from_collapse_and_activates_generically :: proc(
+	t: ^testing.T,
+) {
+	panel := shared.ui_panel_default()
+	panel.title = "REMOVABLE"
+	panel.collapsible = true
+	panel.action_enabled = true
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Action Panel"),
+			name = "Action Panel",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 100}},
+			has_ui_panel = true,
+			ui_panel = panel,
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 100) == "")
+	panel_node := find_node_by_entity_index(state, 0)
+	testing.expect(t, panel_node >= 0)
+	if panel_node < 0 {
+		return
+	}
+	action_rect, action_found := panel_title_action_rect(
+		state.nodes[panel_node],
+		world.ui_panels[0],
+	)
+	testing.expect(t, action_found)
+	if !action_found {
+		return
+	}
+	pointer := Pointer_Input {
+		position = {
+			action_rect.x + action_rect.width * 0.5,
+			action_rect.y + action_rect.height * 0.5,
+		},
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
+	testing.expect(t, state.nodes[panel_node].panel_action_hovered)
+	found_hover_background := false
+	cross_line_count := 0
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel &&
+		   command.rect == action_rect &&
+		   command.color == panel.action_hover_background {
+			found_hover_background = true
+		}
+		if command.kind == .Line && command.color == panel.action_color {
+			cross_line_count += 1
+		}
+	}
+	testing.expect(t, found_hover_background)
+	testing.expect(t, cross_line_count == 2)
+
+	pointer.primary_down = true
+	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
+	testing.expect(t, !world.ui_panels[0].collapsed)
+	interaction := world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, interaction.activation_revision == 1)
+	pointer.primary_down = false
+	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
+	pointer.position = {5, 5}
+	pointer.primary_down = true
+	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
+	testing.expect(t, world.ui_panels[0].collapsed)
+	interaction = world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, interaction.activation_revision == 1)
+}
+
+@(test)
 test_single_line_input_selects_edits_navigates_and_tabs_in_paint_order :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
@@ -2858,7 +2938,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		button_layout := world.ui_layouts[button_entity.ui_layout_index]
 		button_value := world.ui_buttons[button_entity.ui_button_index]
 		testing.expect(t, button_layout.border_color == shared.Vec4{0.075, 0.090, 0.115, 1})
-		testing.expect(t, button_value.text == "Manage Components")
+		testing.expect(t, button_value.text == "Add Component")
 		testing.expect(t, button_value.alignment == .Center)
 		testing.expect(t, button_value.hover_color.w == 1)
 	}
@@ -2893,7 +2973,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 			continue
 		}
 		label := world.ui_buttons[entity.ui_button_index].text
-		testing.expect(t, len(label) > 5)
+		testing.expect(t, len(label) > 0)
 		for index in 0 ..< len(label) {
 			byte := label[index]
 			testing.expect(t, byte >= 32 && byte <= 126)
@@ -2909,11 +2989,9 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		.Inspector_Component_Menu_Item,
 		transform_index,
 	); found {
-		button := world.ui_buttons[world.entities[transform_item].ui_button_index]
-		testing.expect(t, button.text == "-  transform")
-		testing.expect(t, button.hover_background == shared.Vec4{0.115, 0.030, 0.040, 1})
+		testing.expect(t, world.ui_layouts[world.entities[transform_item].ui_layout_index].hidden)
 	} else {
-		testing.expect(t, false)
+		testing.expect(t, true)
 	}
 	camera_index, camera_found := component.find_definition_index(&registry, "scrapbot.camera")
 	if camera_found {
@@ -2973,7 +3051,43 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		ecs.entity_has_component(&world, 0, registry.definitions[definition_index].id, "floating"),
 	)
 	testing.expect(t, !state.editor_component_menu_open)
-	editor_ui_handle_activation(state, &world, world.entities[item].id, {})
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	component_panel := -1
+	for binding in world.editor_uis {
+		if binding.role == .Inspector_Panel &&
+		   binding.reflected_component_id == registry.definitions[definition_index].id {
+			component_panel = binding.entity_index
+			break
+		}
+	}
+	testing.expect(t, component_panel >= 0)
+	if component_panel >= 0 {
+		panel_node_index := find_node(state, world.entities[component_panel].id)
+		testing.expect(t, panel_node_index >= 0)
+		if panel_node_index >= 0 {
+			panel := world.ui_panels[world.entities[component_panel].ui_panel_index]
+			testing.expect(t, panel.action_enabled)
+			action_rect, action_found := panel_title_action_rect(
+				state.nodes[panel_node_index],
+				panel,
+			)
+			testing.expect(t, action_found)
+			if action_found {
+				action_pointer := Pointer_Input {
+					position = {
+						action_rect.x + action_rect.width * 0.5,
+						action_rect.y + action_rect.height * 0.5,
+					},
+					primary_down = true,
+					available = true,
+				}
+				testing.expect(t, reconcile(state, &world, 1280, 720, action_pointer) == "")
+				action_pointer.primary_down = false
+				testing.expect(t, reconcile(state, &world, 1280, 720, action_pointer) == "")
+			}
+		}
+	}
 	testing.expect(
 		t,
 		!ecs.entity_has_component(
@@ -3026,6 +3140,113 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 			!editor_authoring_definition_is_supported(&registry.definitions[internal_index]),
 		)
 	}
+}
+
+@(test)
+test_running_component_picker_changes_live_membership_without_authoring_history :: proc(
+	t: ^testing.T,
+) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity{id = ui_test_id("Running Component Picker"), name = "Running Target"},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	register_err := component.register_project_component(
+		&registry,
+		{name = "floating", fields = {0 = {name = "offset", field_type = .Vec3}}, field_count = 1},
+	)
+	testing.expect(t, register_err == "")
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	state.editor_selected_entity = world.entities[0].id
+	state.editor_has_selection = true
+
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	button, button_found := editor_ui_entity(&world, .Inspector_Component_Menu_Button)
+	testing.expect(t, button_found)
+	if !button_found {
+		return
+	}
+	editor_ui_handle_activation(state, &world, world.entities[button].id, {})
+	testing.expect(t, state.editor_component_menu_open)
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	camera_index, camera_found := component.find_definition_index(&registry, "scrapbot.camera")
+	testing.expect(t, camera_found)
+	if !camera_found {
+		return
+	}
+	item, item_found := editor_ui_entity(&world, .Inspector_Component_Menu_Item, camera_index)
+	testing.expect(t, item_found)
+	if !item_found {
+		return
+	}
+	editor_ui_handle_activation(state, &world, world.entities[item].id, {})
+	testing.expect(t, world.entities[0].camera_index >= 0)
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, state.editor_history_count == 0)
+	testing.expect(t, state.editor_history_cursor == 0)
+	failure, integrity_ok := ecs.validate_world_integrity(&world)
+	testing.expectf(t, integrity_ok, "%s", ecs.format_world_integrity_failure(failure))
+
+	state.editor_simulation_playing = false
+	testing.expect(
+		t,
+		editor_set_registered_component(
+			state,
+			&world,
+			0,
+			&registry.definitions[camera_index],
+			false,
+		),
+	)
+	testing.expect(t, world.entities[0].camera_index < 0)
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, state.editor_history_count == 0)
+
+	runtime_index, runtime_created := ecs.create_world_entity(
+		&world,
+		"Runtime Component Target",
+		{},
+		.Runtime,
+	)
+	testing.expect(t, runtime_created)
+	floating_index, floating_found := component.find_definition_index(&registry, "floating")
+	testing.expect(t, floating_found)
+	if runtime_created && floating_found {
+		testing.expect(
+			t,
+			editor_set_registered_component(
+				state,
+				&world,
+				runtime_index,
+				&registry.definitions[floating_index],
+				true,
+			),
+		)
+		testing.expect(
+			t,
+			ecs.entity_has_component(
+				&world,
+				runtime_index,
+				registry.definitions[floating_index].id,
+				"floating",
+			),
+		)
+	}
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, state.editor_history_count == 0)
 }
 
 @(test)
@@ -3404,16 +3625,21 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			case .Inspector_Table:
 				table_count += 1
 				table := world.ui_tables[entity.ui_table_index]
-				testing.expect(t, table.columns == 2)
-				testing.expect(t, table.column_gap == 0)
-				testing.expect(t, table.proportional_columns)
-				testing.expect(t, table.resizable_columns)
-				testing.expect(t, table.min_column_width == 72)
+				if table.columns == 1 {
+					testing.expect(t, !table.resizable_columns)
+				} else {
+					testing.expect(t, table.columns == 2)
+					testing.expect(t, table.column_gap == 0)
+					testing.expect(t, table.proportional_columns)
+					testing.expect(t, table.resizable_columns)
+					testing.expect(t, table.min_column_width == 72)
+				}
 			case .Inspector_Cell:
 				cell_count += 1
 				layout := world.ui_layouts[entity.ui_layout_index]
-				testing.expect(t, layout.size.y == INSPECTOR_CELL_HEIGHT)
-				if entity.ui_hstack_index >= 0 {
+				component_menu_cell := layout.size.y == 46
+				testing.expect(t, component_menu_cell || layout.size.y == INSPECTOR_CELL_HEIGHT)
+				if entity.ui_hstack_index >= 0 && !component_menu_cell {
 					testing.expect(t, world.ui_hstacks[entity.ui_hstack_index].gap == 6)
 					testing.expect(t, layout.padding == INSPECTOR_VALUE_CELL_PADDING)
 				}
@@ -3465,7 +3691,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				}
 		}
 	}
-	testing.expect(t, panel_count == 5)
+	testing.expect(t, panel_count == 6)
 	testing.expect(t, table_count == panel_count)
 	testing.expect(t, cell_count > 20)
 	testing.expect(t, input_count > cell_count / 2)

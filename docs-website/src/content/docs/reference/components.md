@@ -154,7 +154,10 @@ Speed and smoothness must be positive; scrollbar geometry is non-negative. Desce
 | `title_color: Vec4`, `title_background: Vec4` | White title text and transparent background by default. |
 | `title_size: number`, `title_height: number` | `12`, `32`; both must be positive when a title is present. |
 | `disclosure_size`, `disclosure_margin`, `disclosure_gap`, `disclosure_corner_radius` | `10`, `10`, `8`, `1.35`; all non-negative. |
+| `action_size`, `action_margin`, `action_icon_inset`, `action_corner_radius` | `22`, `5`, `6`, `4`; all non-negative, and twice the inset cannot exceed the action size. |
+| `action_color`, `action_hover_background`, `action_active_background` | Cross-icon and interaction colors. |
 | `collapsible: bool`, `collapsed: bool` | A collapsed panel must be collapsible. |
+| `action_enabled: bool` | Shows an independent trailing title action. Requires a title; activation advances the panel's `ui_state.activation_revision`. |
 
 ### `scrapbot.ui_table`
 

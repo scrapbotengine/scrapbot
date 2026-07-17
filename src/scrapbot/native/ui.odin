@@ -90,8 +90,16 @@ system_get_ui_component :: proc "c" (
 				disclosure_margin = value.disclosure_margin,
 				disclosure_gap = value.disclosure_gap,
 				disclosure_corner_radius = value.disclosure_corner_radius,
+				action_size = value.action_size,
+				action_margin = value.action_margin,
+				action_icon_inset = value.action_icon_inset,
+				action_corner_radius = value.action_corner_radius,
+				action_color = api_vec4_from_shared(value.action_color),
+				action_hover_background = api_vec4_from_shared(value.action_hover_background),
+				action_active_background = api_vec4_from_shared(value.action_active_background),
 				collapsible = bool_to_c_int(value.collapsible),
 				collapsed = bool_to_c_int(value.collapsed),
+				action_enabled = bool_to_c_int(value.action_enabled),
 			}
 			if !api_ui_payload_set_strings(payload, value.title, value.font) { return 0 }
 		case "scrapbot.ui_table":
@@ -357,8 +365,20 @@ ui_command_from_api_payload :: proc "c" (
 				disclosure_margin = payload.panel.disclosure_margin,
 				disclosure_gap = payload.panel.disclosure_gap,
 				disclosure_corner_radius = payload.panel.disclosure_corner_radius,
+				action_size = payload.panel.action_size,
+				action_margin = payload.panel.action_margin,
+				action_icon_inset = payload.panel.action_icon_inset,
+				action_corner_radius = payload.panel.action_corner_radius,
+				action_color = shared_vec4_from_api(payload.panel.action_color),
+				action_hover_background = shared_vec4_from_api(
+					payload.panel.action_hover_background,
+				),
+				action_active_background = shared_vec4_from_api(
+					payload.panel.action_active_background,
+				),
 				collapsible = payload.panel.collapsible != 0,
 				collapsed = payload.panel.collapsed != 0,
+				action_enabled = payload.panel.action_enabled != 0,
 			}
 			if !shared.ui_panel_is_valid(value) {
 				return "native ui_panel payload is invalid"

@@ -150,8 +150,16 @@ UI_Panel_Payload :: struct {
 	disclosure_margin: f32,
 	disclosure_gap: f32,
 	disclosure_corner_radius: f32,
+	action_size: f32,
+	action_margin: f32,
+	action_icon_inset: f32,
+	action_corner_radius: f32,
+	action_color: Vec4,
+	action_hover_background: Vec4,
+	action_active_background: Vec4,
 	collapsible: c.int,
 	collapsed: c.int,
+	action_enabled: c.int,
 }
 
 UI_Table_Payload :: struct {

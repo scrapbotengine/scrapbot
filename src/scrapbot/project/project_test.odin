@@ -557,8 +557,16 @@ disclosure_size = 9
 disclosure_margin = 7
 disclosure_gap = 6
 disclosure_corner_radius = 0
+action_size = 20
+action_margin = 4
+action_icon_inset = 5
+action_corner_radius = 3
+action_color = [0.8, 0.7, 0.6, 1]
+action_hover_background = [0.2, 0.3, 0.4, 1]
+action_active_background = [0.5, 0.1, 0.1, 1]
 collapsible = true
 collapsed = true
+action_enabled = true
 [entities.ui_scroll_area]
 scroll_speed = 64
 smoothness = 12
@@ -615,8 +623,14 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_panel.title_height == 28)
 	testing.expect(t, scene.entities[0].ui_panel.disclosure_size == 9)
 	testing.expect(t, scene.entities[0].ui_panel.disclosure_corner_radius == 0)
+	testing.expect(t, scene.entities[0].ui_panel.action_size == 20)
+	testing.expect(t, scene.entities[0].ui_panel.action_margin == 4)
+	testing.expect(t, scene.entities[0].ui_panel.action_icon_inset == 5)
+	testing.expect(t, scene.entities[0].ui_panel.action_corner_radius == 3)
+	testing.expect(t, scene.entities[0].ui_panel.action_color == Vec4{0.8, 0.7, 0.6, 1})
 	testing.expect(t, scene.entities[0].ui_panel.collapsible)
 	testing.expect(t, scene.entities[0].ui_panel.collapsed)
+	testing.expect(t, scene.entities[0].ui_panel.action_enabled)
 	testing.expect(t, scene.entities[0].ui_layout.border_color == Vec4{0.4, 0.5, 0.6, 1})
 	testing.expect(t, scene.entities[0].ui_layout.border_width == 2)
 	testing.expect(t, scene.entities[0].ui_layout.corner_radius == 6)
@@ -722,6 +736,22 @@ size = [200, 100]
 [entities.ui_panel]
 title = "INVALID"
 collapsed = true
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expect(t, result.err == .Invalid_Field)
+}
+
+@(test)
+test_scene_rejects_panel_action_without_title :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000011"
+name = "Invalid Panel Action"
+[entities.ui_layout]
+size = [200, 100]
+[entities.ui_panel]
+action_enabled = true
 `,
 	)
 	defer destroy_scene(&scene)

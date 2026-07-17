@@ -104,7 +104,7 @@ Use `ui_scroll_area` when content can exceed its viewport. Its content moves by 
 Layout backgrounds, borders, and corner radii are SDF shapes. Controls expose their own internal chrome as component fields:
 
 - Scrollbar track/thumb geometry and colors.
-- Panel title and disclosure-arrow geometry.
+- Panel title, disclosure-arrow, and trailing-action geometry and colors.
 - Button hover/active backgrounds and text colors.
 - Input prefix, selection, focus/invalid border, and caret styling.
 - Checkbox box, border, checkmark, hover, and active styling.

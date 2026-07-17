@@ -187,10 +187,50 @@ read_ui_component_command_from_luau :: proc "c" (
 				"disclosure_corner_radius",
 				&value.disclosure_corner_radius,
 			); err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "action_size", &value.action_size);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"action_margin",
+				&value.action_margin,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"action_icon_inset",
+				&value.action_icon_inset,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"action_corner_radius",
+				&value.action_corner_radius,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "action_color", &value.action_color);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"action_hover_background",
+				&value.action_hover_background,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"action_active_background",
+				&value.action_active_background,
+			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "collapsible", &value.collapsible);
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "collapsed", &value.collapsed);
 			   err != "" { return err }
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"action_enabled",
+				&value.action_enabled,
+			); err != "" { return err }
 			if !shared.ui_panel_is_valid(
 				value,
 			) { return "ui_panel title and collapse settings are invalid" }

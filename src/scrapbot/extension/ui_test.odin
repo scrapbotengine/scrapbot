@@ -51,6 +51,17 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, table_payload.component == UI_TABLE)
 	testing.expect(t, table_payload.table.proportional_columns != 0)
 	testing.expect(t, table_payload.table.resizable_columns != 0)
+	panel_style := ui_panel_default()
+	testing.expect(t, panel_style.action_size == 22)
+	panel_style.action_enabled = 1
+	panel_style.action_size = 20
+	panel_style.action_icon_inset = 5
+	panel_style.action_color = {0.8, 0.7, 0.6, 1}
+	panel_payload, panel_ok := ui_panel(panel_style, "Closable", "Inter")
+	testing.expect(t, panel_ok)
+	testing.expect(t, panel_payload.panel.action_enabled != 0)
+	testing.expect(t, panel_payload.panel.action_icon_inset == 5)
+	testing.expect(t, panel_payload.panel.action_color.x == 0.8)
 
 	text_style := ui_text_default()
 	text_style.size = 13
