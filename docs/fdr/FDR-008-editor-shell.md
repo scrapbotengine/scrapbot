@@ -10,7 +10,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 ## Behavior
 
 - A windowed WGPU project starts with editor chrome hidden unless `--editor` is passed.
-- Pressing `Cmd/Ctrl+E` toggles the editor shell without restarting or changing the project's playback state.
+- Pressing `Cmd/Ctrl+E` opens the editor shell without restarting the project. Opening it over a running game temporarily pauses project systems and world time; closing it resumes that borrowed playback. The borrowed running state survives Pause, Step, Stop/reset, and scene world replacement, so closing after a reset starts the fresh scene. A game that was already paused or stopped before the shell opened remains paused or stopped when it closes.
 - The shell provides a top bar, bottom status bar, left scene sidebar, and right entity/component inspector sidebar.
 - The top bar contains only the Scrapbot brand and Play, Pause, Stop, Step, Undo, Redo, Save, and Revert controls. Play captures the current authoring world and then runs project systems with normal frame deltas; Pause freezes project systems and world time while editor rendering and tools remain responsive; Stop restores the captured in-memory authoring world while retaining loaded Luau and Odin systems, then remains stopped; Step captures authoring state when necessary, advances one fixed 1/60-second project update, and remains paused. Undo and Redo traverse stopped-mode authoring transactions. Save prepares and validates every dirty authored scene and resource value, then commits the complete file set as one recoverable project transaction. Revert reloads resources and scene entities from disk without reloading project code.
 - The bottom bar contains only the current simulation and persistence status, such as `RUNNING`, `PAUSED`, `STOPPED`, the corresponding state with `/ UNSAVED`, `SAVE FAILED / UNSAVED`, or `REVERT FAILED / UNSAVED`; runtime statistics and keyboard hints stay in their relevant tool surfaces or documentation instead of the persistent chrome. Both bars use ordinary ECS HStacks for layout.
@@ -163,9 +163,9 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 19. Reserve command-modified keys for editor commands
 
-**Decision:** Route command-modified E, R, and T through the editor input path as shell toggle, Play/Stop, and Pause/Step commands. Ignore command-modified E and R in the unmodified transform-gizmo shortcut path, and gate transport commands while project text input or fly-camera capture owns the keyboard.
-**Why:** Playback controls need fast platform-native shortcuts without stealing ordinary project input or accidentally changing the active transform tool.
-**Tradeoff:** The shell toggle remains global by design, while transport shortcuts only work when the editor is visible and no higher-priority project or camera interaction owns input.
+**Decision:** Route command-modified E, R, and T through the editor input path as shell toggle, Play/Stop, and Pause/Step commands. Opening the shell with E temporarily pauses a running game and records that the shell owns its pre-open running state; closing restores that state even after Pause, Step, Stop/reset, or scene world replacement. Ignore command-modified E and R in the unmodified transform-gizmo shortcut path, and gate transport commands while project text input or fly-camera capture owns the keyboard.
+**Why:** Playback controls need fast platform-native shortcuts without stealing ordinary project input or accidentally changing the active transform tool. Temporarily pausing on entry gives inspection a stable world without turning shell closure into an unconditional Play command.
+**Tradeoff:** The shell toggle remains global by design, while transport shortcuts only work when the editor is visible and no higher-priority project or camera interaction owns input. Closing a shell that opened over a running game always resumes, even if the user stopped or stepped while inspecting it; a project that was already paused or stopped before opening is left unchanged. Starting with `--editor` does not borrow playback because there was no running closed-shell session to restore.
 
 ### 20. Keep reflection metadata honest across public surfaces
 
