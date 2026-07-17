@@ -45,6 +45,8 @@
 
 ## Project Runtime
 
+- [x] Add standalone UUID-backed project resources with material resources as the first type.
+- [x] Resolve scene material UUID references through the runtime registry and hot-reload changed resources.
 - [ ] Add a real TOML parser or formalize the supported scene subset.
 - [x] Add component indexes so sparse ECS component storage maps entities precisely.
 - [x] Add polling hot reload for the default scene and project Luau script.
@@ -112,7 +114,8 @@
 - [x] Persist only semantic differences for dirty stopped-mode scene entities while preserving unchanged TOML text and excluding runtime entities.
 - [x] Add UUID-addressed create, duplicate, rename, delete, runtime promotion, and component add/remove transactions with structural scene persistence.
 - [x] Generalize component value editing across every currently registered Bool, String, Number, Vec2, Vec3, and Vec4 field shape.
-- [ ] Add specialized enum, color, entity-reference, and resource-reference inspector pickers, followed by array and nested-value editing.
+- [x] Add a resource-reference picker and inline authoring for project material resources.
+- [ ] Add specialized enum, color, and entity-reference inspector pickers, followed by array and nested-value editing.
 
 ## Documentation And Examples
 

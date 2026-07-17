@@ -2,6 +2,7 @@ package project
 
 import shared "../shared"
 import "core:fmt"
+import "core:math"
 import "core:strconv"
 import "core:strings"
 
@@ -16,6 +17,113 @@ Parse_Error :: enum {
 Parse_Result :: struct {
 	err: Parse_Error,
 	message: string,
+}
+
+parse_project_resource :: proc(
+	source: string,
+) -> (
+	resource: shared.Project_Resource,
+	result: Parse_Result,
+) {
+	resource.kind = .Material
+	resource.material.base_color = {1, 1, 1, 1}
+	section := ""
+	type_name := ""
+	text := source
+	for raw_line in strings.split_lines_iterator(&text) {
+		line := strip_comment(strings.trim_space(raw_line))
+		if line == "" {
+			continue
+		}
+		if line == "[material]" {
+			section = "material"
+			continue
+		}
+		if len(line) > 0 && line[0] == '[' {
+			return resource, fail(
+				.Invalid_Syntax,
+				fmt.tprintf("unknown resource section '%s'", line),
+			)
+		}
+		key, value, found := split_assignment(line)
+		if !found {
+			return resource, fail(
+				.Invalid_Syntax,
+				fmt.tprintf("expected key/value assignment, got '%s'", line),
+			)
+		}
+		if section == "material" {
+			switch key {
+				case "base_color":
+					resource.material.base_color, found = parse_vec4(value)
+				case "emissive":
+					resource.material.emissive, found = parse_vec3(value)
+				case "texture":
+					resource.material.texture, found = parse_basic_string(value)
+					if found && !valid_resource_texture_path(resource.material.texture) {
+						return resource, fail(
+							.Invalid_Path,
+							"material.texture must be a safe .png path under assets/",
+						)
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown material field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid material.%s", key))
+			}
+			continue
+		}
+		switch key {
+			case "id":
+				raw_id, string_ok := parse_basic_string(value)
+				if string_ok {
+					resource.id, found = shared.resource_uuid_parse(raw_id)
+				} else {
+					found = false
+				}
+			case "type":
+				type_name, found = parse_basic_string(value)
+			case "name":
+				resource.name, found = parse_basic_string(value)
+			case:
+				return resource, fail(
+					.Invalid_Field,
+					fmt.tprintf("unknown resource field '%s'", key),
+				)
+		}
+		if !found {
+			return resource, fail(.Invalid_Field, fmt.tprintf("invalid resource.%s", key))
+		}
+	}
+	if resource.id == (shared.Resource_UUID{}) {
+		return resource, fail(.Missing_Field, "resource is missing id")
+	}
+	if type_name == "" {
+		return resource, fail(.Missing_Field, "resource is missing type")
+	}
+	if type_name != "scrapbot.material" {
+		return resource, fail(
+			.Invalid_Field,
+			fmt.tprintf("unsupported resource type '%s'", type_name),
+		)
+	}
+	if resource.name == "" {
+		return resource, fail(.Missing_Field, "resource is missing name")
+	}
+	if !finite_vec4(resource.material.base_color) {
+		return resource, fail(.Invalid_Field, "material.base_color must be finite")
+	}
+	if !finite_vec3(resource.material.emissive) ||
+	   resource.material.emissive.x < 0 ||
+	   resource.material.emissive.y < 0 ||
+	   resource.material.emissive.z < 0 {
+		return resource, fail(.Invalid_Field, "material.emissive must be finite and non-negative")
+	}
+	return resource, ok()
 }
 
 ok :: proc() -> Parse_Result {
@@ -1175,4 +1283,31 @@ is_safe_relative_path :: proc(path: string) -> bool {
 		return false
 	}
 	return true
+}
+
+valid_resource_texture_path :: proc(path: string) -> bool {
+	return(
+		strings.has_prefix(path, "assets/") &&
+		strings.has_suffix(path, ".png") &&
+		is_safe_relative_path(path) \
+	)
+}
+
+finite_vec3 :: proc(value: Vec3) -> bool {
+	return(
+		!math.is_nan(value.x) &&
+		!math.is_inf(value.x) &&
+		!math.is_nan(value.y) &&
+		!math.is_inf(value.y) &&
+		!math.is_nan(value.z) &&
+		!math.is_inf(value.z) \
+	)
+}
+
+finite_vec4 :: proc(value: Vec4) -> bool {
+	return(
+		finite_vec3({value.x, value.y, value.z}) &&
+		!math.is_nan(value.w) &&
+		!math.is_inf(value.w) \
+	)
 }

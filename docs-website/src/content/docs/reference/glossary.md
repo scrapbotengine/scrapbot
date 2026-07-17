@@ -32,7 +32,16 @@ A runtime queue of entity/component lifecycle mutations applied after systems fi
 ## Projects
 
 **Project directory**  
-The directory where a user runs Scrapbot. It contains `project.toml`, scene files, scripts, generated types, assets, and optional native extension source.
+The directory where a user runs Scrapbot. It contains `project.toml`, scene files, standalone resources, scripts, generated types, assets, and optional native extension source.
+
+**Project resource**<br>
+A persistent typed bag of reusable project data stored outside the ECS in `resources/**/*.resource.toml`. Materials are the first supported type.
+
+**Resource UUID**<br>
+A stable project-wide UUID serialized in a resource file and used by scene references. It resolves to a transient generational runtime handle.
+
+**Runtime resource**<br>
+Registry-owned geometry, material, or font data for the current run. Authored project resources resolve into runtime resources; scripts and native code can also create transient name-addressed resources.
 
 **Text-first project**  
 A project whose source of truth is ordinary text files that can be edited by humans, tools, and agents.
@@ -55,7 +64,7 @@ Project-local compiled code declared in `project.toml`, built into versioned dyn
 The `scrapbot:extension` package that wraps Scrapbot's raw native extension ABI with Odin-friendly component and field descriptors, registration accumulation, access declaration, query, transform, vec3 field, and lifecycle command helpers.
 
 **Hot reload**  
-Runtime behavior where changed project files are reloaded without restarting the engine. Current hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native extension source directories.
+Runtime behavior where changed project files are reloaded without restarting the engine. Current hot reload covers `project.toml`, the default scene, standalone resources, `scripts/main.luau`, native extension libraries, and declared native extension source directories.
 
 ## Rendering
 

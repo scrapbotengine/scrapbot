@@ -1,0 +1,7 @@
+id = "20000000-0000-4000-8000-000000000001"
+type = "scrapbot.material"
+name = "Marker"
+
+[material]
+base_color = [1, 0.3, 0.15, 1]
+emissive = [0, 0, 0]

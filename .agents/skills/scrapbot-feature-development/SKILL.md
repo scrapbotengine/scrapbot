@@ -20,11 +20,14 @@ For every feature, decide explicitly which layers it affects:
 - Luau runtime bindings and generated Luau declarations.
 - Project-local Odin extension wrapper and raw extension ABI.
 - Scene/project file parsing and validation.
+- Standalone project-resource schemas, UUID references, registry lifetimes, and hot reload.
 - CLI behavior and diagnostics.
 - Example projects.
 - README, TODO, ADRs, FDRs, and documentation website.
 
 Do not assume every feature belongs on every surface. When one surface intentionally trails another, record that decision or follow-up rather than overlooking it.
+
+For project-resource work, keep persistent identity separate from runtime storage: authored resources live outside ECS, scene/project files reference stable UUIDs, registries expose generational handles and versions, and ECS components hold resolved handles. Audit discovery, duplicate/reference validation, disappearance/reappearance, packaging, hot reload, editor Save/Revert/Undo/Redo, and the distinction between authored and transient runtime resources.
 
 For ECS UI work, also use the `scrapbot-ui-development` skill. The editor must remain a consumer of the public UI contract, and a public field is incomplete until every applicable authoring and runtime surface agrees.
 

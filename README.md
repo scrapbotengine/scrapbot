@@ -17,7 +17,7 @@ The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`]
 
 Scrapbot currently has a small Odin CLI and runtime skeleton:
 
-- `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `scripts/main.luau`, an `assets/` directory, and Luau LSP metadata.
+- `scrapbot init [path] [name]` creates a text-first project with `project.toml`, `scenes/main.scene.toml`, `resources/default.resource.toml`, `scripts/main.luau`, an `assets/` directory, and Luau LSP metadata.
 - `scrapbot check [path] [--json]` builds declared native extensions, validates the project manifest, default scene, and project Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
 - `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>`, including the game executable, project data, and active native extension artifacts.
 - `scrapbot run [path] [--backend null|wgpu] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json] [--json]` builds declared native extensions, loads the scene into a tiny native ECS world, executes `scripts/main.luau` if present, runs registered native and script systems, and submits the world through the selected renderer backend. `Cmd/Ctrl+E` toggles the editor shell in a visible window, and `--editor` starts it open. While the editor is open, `Cmd/Ctrl+R` plays or resumes when stopped or paused and stops when running; `Cmd/Ctrl+T` pauses or advances one fixed step. Scheduler tracing reports native worker utilization. Runtime statistics report early/late engine-frame cost through render preparation, engine-allocator bytes including post-teardown retention, and ECS storage high-water marks. Windowed runtime statistics require a bounded `--frames` value. Framegrab regions preserve 1:1 output pixels and use top-left coordinates. UI diagnostic scripts semantically target reconciled ECS controls by UUID, name, or text, automatically reveal clipped targets, replay interactions, assert state, and select tight capture regions; UI dumps expose the final logical and screen-space tree as structured JSON.
@@ -26,6 +26,8 @@ Scrapbot currently has a small Odin CLI and runtime skeleton:
 During development, use `mise build` to compile the CLI and `mise scrapbot -- [args...]` to compile and run it with arguments forwarded to Scrapbot.
 
 This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Every scene entity has a required project-wide UUID distinct from its editable name, and runtime spawns receive fresh UUIDs. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared base-color and PNG-textured materials, ECS ambient/directional/point lights, backend-owned GPU caches, automatic instanced batching, live window resizing, and a retained ECS UI overlay with a responsive box model, fixed or proportional horizontal and vertical stacks, draggable separators, per-axis fill and fit-to-content sizing, hidden subtrees, smooth clipped scroll areas, selectable lists, reusable progress indicators, collapsible titled panels with SDF disclosure icons, horizontally aligned MTSDF text, pointer-aware buttons, keyboard-focused single-line inputs, reusable SDF checkboxes, and SDF-rounded backgrounds and borders. Scene TOML, Luau systems, native Odin extensions, and transient editor chrome construct and mutate the same typed UI component values and per-entity styles; the renderer publishes shared read-only interaction state. UI, render-instance, camera, and light membership update from structural dirty queues and compact active sets instead of being discovered by rescanning the complete world every frame; retained UI parent/child/sibling links make steady-state layout and paint linear in the visible hierarchy. A transient ECS-built editor shell can frame the live project viewport with top, status, resizable scene and inspector chrome, independently smoothed scroll panes, an ECS-owned fly camera, and a system profiler that publishes engine, project-Odin, and Luau callback timings every five frames from a rolling 50-frame window. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
+
+Authored project resources live outside ECS and scenes as UUID-identified `resources/**/*.resource.toml` files; materials are the first resource type. Scenes serialize stable material UUID references, while the runtime resolves them to generational registry handles.
 
 World geometry now renders into a floating-point HDR target. Shared emissive materials feed a five-level bloom chain before one ACES-style tone-map pass, while project UI, gizmos, and editor chrome stay crisp in the later overlay pass.
 
@@ -45,6 +47,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
 - Projects
   - [x] Text-first projects
   - [x] TOML scene files
+  - [x] Standalone UUID-backed project resource files
   - [x] Project initialization
   - [ ] Project templates
   - [ ] Scene migrations
@@ -131,9 +134,9 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
 - Assets
   - [ ] Mesh assets
   - [x] PNG texture assets
-  - [ ] Material system
+  - [x] UUID-backed material resources
 - Tooling
-  - [ ] Resource hot reload
+  - [x] Resource hot reload
   - [ ] Render debug views
 
 ### Input And UI
@@ -183,7 +186,8 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Entity browser
   - [x] Entity selection
   - [x] Registry-driven component inspector with generic Bool, String, Number, Vec2, Vec3, and Vec4 editing
-  - [ ] Specialized enum, color, entity-reference, resource-reference, array, and nested-value editors
+  - [x] Material resource-reference picker and inline resource fields
+  - [ ] Specialized enum, color, entity-reference, array, and nested-value editors
   - [ ] Searchable browser
   - [ ] Hierarchical browser
 - Editing

@@ -322,7 +322,12 @@ test_fail_runtime_world_action :: proc(_: rawptr, _: ^World) -> string {
 	return "expected test failure"
 }
 
-test_count_runtime_save :: proc(data: rawptr, _: ^World, _: []shared.Entity_UUID) -> string {
+test_count_runtime_save :: proc(
+	data: rawptr,
+	_: ^World,
+	_: []shared.Entity_UUID,
+	_: []shared.Resource_UUID,
+) -> string {
 	count := cast(^int)data
 	count^ += 1
 	return ""

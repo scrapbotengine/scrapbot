@@ -24,6 +24,7 @@ Named_Vec3 :: shared.Named_Vec3
 Project_Load_Result :: struct {
 	config: Project_Config,
 	scene: Scene,
+	resources: [dynamic]shared.Project_Resource,
 	err: string,
 }
 
@@ -44,9 +45,24 @@ default_scene = "%s"
 }
 
 default_scene_template :: proc() -> string {
+	return default_scene_template_with_material({})
+}
+
+default_scene_template_with_material :: proc(material_id: shared.Resource_UUID) -> string {
 	camera_buffer, cube_buffer: [36]u8
 	camera_id := shared.entity_uuid_to_string(shared.entity_uuid_generate(), camera_buffer[:])
 	cube_id := shared.entity_uuid_to_string(shared.entity_uuid_generate(), cube_buffer[:])
+	material_section := ""
+	if material_id != (shared.Resource_UUID{}) {
+		material_buffer: [36]u8
+		material_section = fmt.tprintf(
+			`[entities.material]
+resource = "%s"
+
+`,
+			shared.resource_uuid_to_string(material_id, material_buffer[:]),
+		)
+	}
 	return fmt.tprintf(
 		`[[entities]]
 id = "%s"
@@ -74,12 +90,28 @@ scale = [1, 1, 1]
 [entities.mesh]
 primitive = "cube"
 
-[entities.components.autorotate]
+%s[entities.components.autorotate]
 velocity = [0, 1.5707963, 0]
 
 `,
 		camera_id,
 		cube_id,
+		material_section,
+	)
+}
+
+default_material_resource_template :: proc(id: shared.Resource_UUID) -> string {
+	id_buffer: [36]u8
+	return fmt.tprintf(
+		`id = "%s"
+type = "scrapbot.material"
+name = "Default Material"
+
+[material]
+base_color = [0.3, 0.7, 0.95, 1]
+emissive = [0, 0, 0]
+`,
+		shared.resource_uuid_to_string(id, id_buffer[:]),
 	)
 }
 
@@ -167,6 +199,15 @@ init_project :: proc(root, name: string) -> string {
 	if err := os.make_directory_all(assets_dir);
 	   err != nil { return fmt.tprintf("failed to create assets directory: %v", err) }
 
+	resources_dir, join_resources_err := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
+	if join_resources_err != nil {
+		return "failed to allocate resources path"
+	}
+	defer delete(resources_dir)
+	if err := os.make_directory_all(resources_dir); err != nil {
+		return fmt.tprintf("failed to create resources directory: %v", err)
+	}
+
 	types_dir, join_types_err := filepath.join({root, "types"})
 	if join_types_err != nil {
 		return "failed to allocate types path"
@@ -202,8 +243,24 @@ init_project :: proc(root, name: string) -> string {
 		return "failed to allocate scene path"
 	}
 	defer delete(scene_path)
-	if err := os.write_entire_file(scene_path, default_scene_template()); err != nil {
+	default_material_id := shared.resource_uuid_generate()
+	if err := os.write_entire_file(
+		scene_path,
+		default_scene_template_with_material(default_material_id),
+	); err != nil {
 		return fmt.tprintf("failed to write %s: %v", scene_path, err)
+	}
+
+	material_path, material_join_err := filepath.join({resources_dir, "default.resource.toml"})
+	if material_join_err != nil {
+		return "failed to allocate default resource path"
+	}
+	defer delete(material_path)
+	if err := os.write_entire_file(
+		material_path,
+		default_material_resource_template(default_material_id),
+	); err != nil {
+		return fmt.tprintf("failed to write %s: %v", material_path, err)
 	}
 
 	script_path, join_script_err := filepath.join({root, DEFAULT_SCRIPT})
@@ -268,8 +325,17 @@ load_project :: proc(root: string) -> Project_Load_Result {
 	}
 
 	result.scene = scene
+	result.resources, result.err = load_project_resources(root)
+	if result.err != "" {
+		return result
+	}
 	if font_err := validate_scene_font_references(&result.scene, &result.config); font_err != "" {
 		result.err = font_err
+		return result
+	}
+	if resource_err := validate_scene_resource_references(&result.scene, result.resources[:]);
+	   resource_err != "" {
+		result.err = resource_err
 	}
 	return result
 }
@@ -357,6 +423,7 @@ destroy_project_config_load_result :: proc(result: ^Project_Config_Load_Result) 
 
 destroy_project_load_result :: proc(result: ^Project_Load_Result) {
 	destroy_scene(&result.scene)
+	destroy_project_resources(&result.resources)
 	destroy_project_config(&result.config)
 	result^ = {}
 }

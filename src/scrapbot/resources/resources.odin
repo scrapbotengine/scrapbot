@@ -65,11 +65,20 @@ Geometry :: struct {
 }
 
 Material :: struct {
+	id: shared.Resource_UUID,
 	name: string,
+	source: string,
+	texture_asset: string,
+	authored: bool,
 	desc: Material_Desc,
 	generation: u32,
 	version: u32,
 	alive: bool,
+}
+
+Prepared_Project_Material :: struct {
+	declaration_index: int,
+	desc: Material_Desc,
 }
 
 Font :: struct {
@@ -108,7 +117,12 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.vertices, allocator)
 		delete(geometry.indices, allocator)
 	}
-	for &material in registry.materials { delete(material.name, allocator); delete(material.desc.texture_pixels, allocator) }
+	for &material in registry.materials {
+		delete(material.name, allocator)
+		delete(material.source, allocator)
+		delete(material.texture_asset, allocator)
+		delete(material.desc.texture_pixels, allocator)
+	}
 	for &font in registry.fonts { delete(font.name, allocator); delete(font.desc.pixels, allocator) }
 	delete(registry.geometries)
 	delete(registry.materials)
@@ -326,23 +340,14 @@ register_material :: proc(
 	if registry == nil { return {}, "material registry is not available" }
 	ensure_allocator(registry)
 	if name == "" { return {}, "material name must not be empty" }
-	if !finite4(desc.base_color) { return {}, "material base color must be finite" }
-	if !finite3(desc.emissive) ||
-	   desc.emissive.x < 0 ||
-	   desc.emissive.y < 0 ||
-	   desc.emissive.z < 0 {
-		return {}, "material emissive color must be finite and non-negative"
-	}
-	if len(desc.texture_pixels) > 0 {
-		if desc.texture_width == 0 ||
-		   desc.texture_height == 0 { return {}, "material texture dimensions must be positive" }
-		if len(desc.texture_pixels) !=
-		   int(
-			   desc.texture_width * desc.texture_height * 4,
-		   ) { return {}, "material texture must contain RGBA8 pixels" }
+	if err := validate_material_desc(desc); err != "" {
+		return {}, err
 	}
 	if index, found := material_index_by_name(registry, name); found {
 		material := &registry.materials[index]
+		if material.authored {
+			return {}, fmt.tprintf("material name '%s' belongs to a project resource and cannot be replaced at runtime", name)
+		}
 		delete(material.desc.texture_pixels, registry.allocator)
 		material.desc = clone_material_desc(desc, registry.allocator)
 		material.version += 1
@@ -363,6 +368,260 @@ register_material :: proc(
 	return {u32(len(registry.materials) - 1), 1}, ""
 }
 
+register_project_material :: proc(
+	registry: ^Registry,
+	id: shared.Resource_UUID,
+	name, source: string,
+	desc: Material_Desc,
+	texture_asset: string = "",
+) -> (
+	Material_Handle,
+	string,
+) {
+	if registry == nil {
+		return {}, "material registry is not available"
+	}
+	if id == (shared.Resource_UUID{}) {
+		return {}, "project material UUID must not be empty"
+	}
+	if source == "" {
+		return {}, "project material source must not be empty"
+	}
+	if err := validate_material_desc(desc); err != "" {
+		return {}, err
+	}
+	ensure_allocator(registry)
+	if index, found := material_index_by_uuid_any(registry, id); found {
+		material := &registry.materials[index]
+		cloned_name, name_err := strings.clone(name, registry.allocator)
+		if name_err != nil {
+			return {}, "failed to allocate material name"
+		}
+		cloned_source, source_err := strings.clone(source, registry.allocator)
+		if source_err != nil {
+			delete(cloned_name, registry.allocator)
+			return {}, "failed to allocate material source"
+		}
+		cloned_texture, texture_err := strings.clone(texture_asset, registry.allocator)
+		if texture_err != nil {
+			delete(cloned_name, registry.allocator)
+			delete(cloned_source, registry.allocator)
+			return {}, "failed to allocate material texture path"
+		}
+		delete(material.name, registry.allocator)
+		delete(material.source, registry.allocator)
+		delete(material.texture_asset, registry.allocator)
+		delete(material.desc.texture_pixels, registry.allocator)
+		material.name = cloned_name
+		material.source = cloned_source
+		material.texture_asset = cloned_texture
+		material.authored = true
+		material.desc = clone_material_desc(desc, registry.allocator)
+		material.alive = true
+		material.version += 1
+		return {u32(index), material.generation}, ""
+	}
+	if _, found := material_index_by_name(registry, name); found {
+		return {}, fmt.tprintf("material name '%s' is already registered", name)
+	}
+	cloned_name, name_err := strings.clone(name, registry.allocator)
+	if name_err != nil {
+		return {}, "failed to allocate material name"
+	}
+	cloned_source, source_err := strings.clone(source, registry.allocator)
+	if source_err != nil {
+		delete(cloned_name, registry.allocator)
+		return {}, "failed to allocate material source"
+	}
+	cloned_texture, texture_err := strings.clone(texture_asset, registry.allocator)
+	if texture_err != nil {
+		delete(cloned_name, registry.allocator)
+		delete(cloned_source, registry.allocator)
+		return {}, "failed to allocate material texture path"
+	}
+	append(
+		&registry.materials,
+		Material {
+			id = id,
+			name = cloned_name,
+			source = cloned_source,
+			texture_asset = cloned_texture,
+			authored = true,
+			desc = clone_material_desc(desc, registry.allocator),
+			generation = 1,
+			version = 1,
+			alive = true,
+		},
+	)
+	return {u32(len(registry.materials) - 1), 1}, ""
+}
+
+register_project_materials :: proc(
+	registry: ^Registry,
+	root: string,
+	declarations: []shared.Project_Resource,
+) -> string {
+	seen := make(map[shared.Resource_UUID]bool)
+	defer delete(seen)
+	names := make(map[string]shared.Resource_UUID)
+	defer delete(names)
+	prepared := make([dynamic]Prepared_Project_Material)
+	defer {
+		for item in prepared {
+			delete(item.desc.texture_pixels)
+		}
+		delete(prepared)
+	}
+	for declaration, declaration_index in declarations {
+		if declaration.kind != .Material {
+			continue
+		}
+		seen[declaration.id] = true
+		if existing_id, duplicate_name := names[declaration.name];
+		   duplicate_name && existing_id != declaration.id {
+			return fmt.tprintf(
+				"resources/%s: material name '%s' is already used by another project resource",
+				declaration.source,
+				declaration.name,
+			)
+		}
+		names[declaration.name] = declaration.id
+		if existing_index, found := material_index_by_name(registry, declaration.name);
+		   found && registry.materials[existing_index].id != declaration.id {
+			return fmt.tprintf(
+				"resources/%s: material name '%s' is already registered",
+				declaration.source,
+				declaration.name,
+			)
+		}
+		desc := Material_Desc {
+			base_color = {
+				declaration.material.base_color.x,
+				declaration.material.base_color.y,
+				declaration.material.base_color.z,
+				declaration.material.base_color.w,
+			},
+			emissive = declaration.material.emissive,
+		}
+		if declaration.material.texture != "" {
+			texture_desc, texture_err := load_material_texture(
+				root,
+				declaration.material.texture,
+				desc.base_color,
+				desc.emissive,
+			)
+			if texture_err != "" {
+				return fmt.tprintf("resources/%s: %s", declaration.source, texture_err)
+			}
+			desc = texture_desc
+		}
+		append(
+			&prepared,
+			Prepared_Project_Material{declaration_index = declaration_index, desc = desc},
+		)
+	}
+	for item in prepared {
+		declaration := declarations[item.declaration_index]
+		_, register_err := register_project_material(
+			registry,
+			declaration.id,
+			declaration.name,
+			declaration.source,
+			item.desc,
+			declaration.material.texture,
+		)
+		if register_err != "" {
+			return fmt.tprintf("resources/%s: %s", declaration.source, register_err)
+		}
+	}
+	for &material in registry.materials {
+		if !material.alive || !material.authored {
+			continue
+		}
+		if !seen[material.id] {
+			material.alive = false
+			material.generation += 1
+			material.version += 1
+		}
+	}
+	return ""
+}
+
+save_project_materials :: proc(
+	registry: ^Registry,
+	root: string,
+	ids: []shared.Resource_UUID,
+) -> string {
+	if registry == nil {
+		return "resource registry is not available"
+	}
+	for id in ids {
+		handle, found := material_by_uuid(registry, id)
+		if !found {
+			return "dirty project material no longer exists"
+		}
+		material, alive := get_material(registry, handle)
+		if !alive || !material.authored {
+			return "dirty material is not a project resource"
+		}
+		resource_path, join_err := filepath.join(
+			{root, shared.PROJECT_RESOURCES_DIR, material.source},
+		)
+		if join_err != nil {
+			return "failed to allocate project material path"
+		}
+		builder := strings.builder_make()
+		id_buffer: [36]u8
+		fmt.sbprintf(
+			&builder,
+			`id = "%s"
+type = "scrapbot.material"
+name = "%s"
+
+[material]
+base_color = [%.9g, %.9g, %.9g, %.9g]
+emissive = [%.9g, %.9g, %.9g]
+`,
+			shared.resource_uuid_to_string(material.id, id_buffer[:]),
+			material.name,
+			material.desc.base_color.x,
+			material.desc.base_color.y,
+			material.desc.base_color.z,
+			material.desc.base_color.w,
+			material.desc.emissive.x,
+			material.desc.emissive.y,
+			material.desc.emissive.z,
+		)
+		if material.texture_asset != "" {
+			fmt.sbprintf(&builder, "texture = \"%s\"\n", material.texture_asset)
+		}
+		temp_path, temp_err := strings.concatenate({resource_path, ".scrapbot-save.tmp"})
+		if temp_err != nil {
+			strings.builder_destroy(&builder)
+			delete(resource_path)
+			return "failed to allocate temporary resource path"
+		}
+		write_err := os.write_entire_file(temp_path, strings.to_string(builder))
+		strings.builder_destroy(&builder)
+		if write_err != nil {
+			os.remove(temp_path)
+			delete(temp_path)
+			delete(resource_path)
+			return fmt.tprintf("failed to write temporary resource: %v", write_err)
+		}
+		rename_err := os.rename(temp_path, resource_path)
+		if rename_err != nil {
+			os.remove(temp_path)
+			delete(temp_path)
+			delete(resource_path)
+			return fmt.tprintf("failed to replace resource file: %v", rename_err)
+		}
+		delete(temp_path)
+		delete(resource_path)
+	}
+	return ""
+}
+
 register_textured_material :: proc(
 	registry: ^Registry,
 	root, name, asset_path: string,
@@ -371,36 +630,55 @@ register_textured_material :: proc(
 	Material_Handle,
 	string,
 ) {
-	if !valid_asset_path(
-		asset_path,
-	) { return {}, "texture path must be a relative .png file under assets/" }
+	desc, load_err := load_material_texture(root, asset_path, base_color, {})
+	if load_err != "" {
+		return {}, load_err
+	}
+	defer delete(desc.texture_pixels)
+	return register_material(registry, name, desc)
+}
+
+load_material_texture :: proc(
+	root, asset_path: string,
+	base_color: Vec4,
+	emissive: Vec3,
+) -> (
+	Material_Desc,
+	string,
+) {
+	if !valid_asset_path(asset_path) {
+		return {}, "texture path must be a relative .png file under assets/"
+	}
 	path, join_err := filepath.join({root, asset_path})
-	if join_err != nil { return {}, "failed to allocate texture asset path" }
+	if join_err != nil {
+		return {}, "failed to allocate texture asset path"
+	}
 	defer delete(path)
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
-	if read_err !=
-	   nil { return {}, fmt.tprintf("failed to read texture asset %s: %v", asset_path, read_err) }
-	if len(data) == 0 { return {}, fmt.tprintf("texture asset is empty: %s", asset_path) }
+	if read_err != nil {
+		return {}, fmt.tprintf("failed to read texture asset %s: %v", asset_path, read_err)
+	}
+	if len(data) == 0 {
+		return {}, fmt.tprintf("texture asset is empty: %s", asset_path)
+	}
 	x, y, channels: c.int
 	pixels := stb.load_from_memory(raw_data(data), c.int(len(data)), &x, &y, &channels, 4)
-	if pixels ==
-	   nil { return {}, fmt.tprintf("failed to decode texture asset %s: %s", asset_path, string(stb.failure_reason())) }
+	if pixels == nil {
+		return {}, fmt.tprintf("failed to decode texture asset %s: %s", asset_path, string(stb.failure_reason()))
+	}
 	defer stb.image_free(pixels)
-	if x <= 0 ||
-	   y <= 0 ||
-	   x > 8192 ||
-	   y >
-		   8192 { return {}, fmt.tprintf("texture asset dimensions are unsupported: %s", asset_path) }
-	return register_material(
-		registry,
-		name,
-		Material_Desc {
+	if x <= 0 || y <= 0 || x > 8192 || y > 8192 {
+		return {}, fmt.tprintf("texture asset dimensions are unsupported: %s", asset_path)
+	}
+	owned_pixels := clone_slice(pixels[:int(x * y * 4)])
+	return Material_Desc {
 			base_color = base_color,
-			texture_pixels = pixels[:int(x * y * 4)],
+			emissive = emissive,
+			texture_pixels = owned_pixels,
 			texture_width = u32(x),
 			texture_height = u32(y),
 		},
-	)
+		""
 }
 
 valid_asset_path :: proc(path: string) -> bool {
@@ -448,6 +726,20 @@ material_by_name :: proc(registry: ^Registry, name: string) -> (Material_Handle,
 	return {u32(index), registry.materials[index].generation}, true
 }
 
+material_by_uuid :: proc(
+	registry: ^Registry,
+	id: shared.Resource_UUID,
+) -> (
+	Material_Handle,
+	bool,
+) {
+	index, found := material_index_by_uuid(registry, id)
+	if !found {
+		return {}, false
+	}
+	return {u32(index), registry.materials[index].generation}, true
+}
+
 font_by_name :: proc(registry: ^Registry, name: string) -> (Font_Handle, bool) {
 	index, found := font_index_by_name(registry, name)
 	if !found { return {}, false }
@@ -462,6 +754,51 @@ geometry_index_by_name :: proc(registry: ^Registry, name: string) -> (int, bool)
 material_index_by_name :: proc(registry: ^Registry, name: string) -> (int, bool) {
 	for material, index in registry.materials { if material.alive && material.name == name { return index, true } }
 	return -1, false
+}
+
+material_index_by_uuid :: proc(registry: ^Registry, id: shared.Resource_UUID) -> (int, bool) {
+	if registry == nil || id == (shared.Resource_UUID{}) {
+		return -1, false
+	}
+	for material, index in registry.materials {
+		if material.alive && material.authored && material.id == id {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
+material_index_by_uuid_any :: proc(registry: ^Registry, id: shared.Resource_UUID) -> (int, bool) {
+	if registry == nil || id == (shared.Resource_UUID{}) {
+		return -1, false
+	}
+	for material, index in registry.materials {
+		if material.authored && material.id == id {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
+validate_material_desc :: proc(desc: Material_Desc) -> string {
+	if !finite4(desc.base_color) {
+		return "material base color must be finite"
+	}
+	if !finite3(desc.emissive) ||
+	   desc.emissive.x < 0 ||
+	   desc.emissive.y < 0 ||
+	   desc.emissive.z < 0 {
+		return "material emissive color must be finite and non-negative"
+	}
+	if len(desc.texture_pixels) > 0 {
+		if desc.texture_width == 0 || desc.texture_height == 0 {
+			return "material texture dimensions must be positive"
+		}
+		if len(desc.texture_pixels) != int(desc.texture_width * desc.texture_height * 4) {
+			return "material texture must contain RGBA8 pixels"
+		}
+	}
+	return ""
 }
 
 font_index_by_name :: proc(registry: ^Registry, name: string) -> (int, bool) {

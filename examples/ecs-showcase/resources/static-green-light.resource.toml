@@ -1,0 +1,7 @@
+id = "20000000-0000-4000-8000-00000000000a"
+type = "scrapbot.material"
+name = "Static Green Light"
+
+[material]
+base_color = [0.02, 1, 0.12, 1]
+emissive = [0.14, 7, 0.84]

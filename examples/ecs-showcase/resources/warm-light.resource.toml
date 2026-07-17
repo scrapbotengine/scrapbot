@@ -1,0 +1,7 @@
+id = "20000000-0000-4000-8000-000000000007"
+type = "scrapbot.material"
+name = "Warm Light"
+
+[material]
+base_color = [1, 0.04, 0.01, 1]
+emissive = [8, 0.32, 0.08]

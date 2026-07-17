@@ -31,3 +31,4 @@
 | [ADR-027](ADR-027-use-authoring-transactions-for-editor-changes.md) | Use authoring transactions for editor changes | 2026-07-15 |
 | [ADR-028](ADR-028-persist-structural-authoring-by-uuid-scoped-entity-blocks.md) | Persist structural authoring by UUID-scoped entity blocks | 2026-07-15 |
 | [ADR-029](ADR-029-postprocess-hdr-world-before-ui.md) | Postprocess the HDR world before UI composition | 2026-07-16 |
+| [ADR-030](ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md) | Identify project resources by UUID outside the ECS | 2026-07-17 |

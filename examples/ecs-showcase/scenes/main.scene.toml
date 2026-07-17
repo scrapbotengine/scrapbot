@@ -42,7 +42,7 @@ scale = [0.12, 0.12, 0.12]
 resource = "cube"
 
 [entities.material]
-resource = "warm-light"
+resource = "20000000-0000-4000-8000-000000000007"
 
 [entities.point_light]
 color = [1, 0.03, 0.01]
@@ -65,7 +65,7 @@ scale = [0.12, 0.12, 0.12]
 resource = "cube"
 
 [entities.material]
-resource = "cool-light"
+resource = "20000000-0000-4000-8000-000000000008"
 
 [entities.point_light]
 color = [0.01, 0.12, 1]
@@ -88,7 +88,7 @@ scale = [0.16, 0.16, 0.16]
 resource = "cube"
 
 [entities.material]
-resource = "static-amber-light"
+resource = "20000000-0000-4000-8000-000000000009"
 
 [entities.point_light]
 color = [1, 0.32, 0.03]
@@ -108,7 +108,7 @@ scale = [0.16, 0.16, 0.16]
 resource = "cube"
 
 [entities.material]
-resource = "static-green-light"
+resource = "20000000-0000-4000-8000-00000000000a"
 
 [entities.point_light]
 color = [0.03, 1, 0.24]
@@ -128,7 +128,7 @@ scale = [0.16, 0.16, 0.16]
 resource = "cube"
 
 [entities.material]
-resource = "static-violet-light"
+resource = "20000000-0000-4000-8000-00000000000b"
 
 [entities.point_light]
 color = [0.58, 0.04, 1]
@@ -148,7 +148,7 @@ scale = [0.35, 0.35, 0.35]
 resource = "cube"
 
 [entities.material]
-resource = "marker"
+resource = "20000000-0000-4000-8000-000000000001"
 [entities.shadow_caster]
 [entities.shadow_receiver]
 
@@ -166,7 +166,7 @@ scale = [0.65, 0.65, 0.65]
 [entities.geometry]
 resource = "icosphere"
 [entities.material]
-resource = "icosphere"
+resource = "20000000-0000-4000-8000-000000000003"
 [entities.shadow_caster]
 [entities.shadow_receiver]
 [entities.components.showcase.spin]
@@ -182,7 +182,7 @@ scale = [0.65, 0.65, 0.65]
 [entities.geometry]
 resource = "sphere"
 [entities.material]
-resource = "sphere"
+resource = "20000000-0000-4000-8000-000000000004"
 [entities.shadow_caster]
 [entities.shadow_receiver]
 
@@ -196,7 +196,7 @@ scale = [0.65, 0.65, 0.65]
 [entities.geometry]
 resource = "pyramid"
 [entities.material]
-resource = "pyramid"
+resource = "20000000-0000-4000-8000-000000000005"
 [entities.shadow_caster]
 [entities.shadow_receiver]
 [entities.components.showcase.spin]
@@ -212,7 +212,7 @@ scale = [0.65, 0.65, 0.65]
 [entities.geometry]
 resource = "cylinder"
 [entities.material]
-resource = "cylinder"
+resource = "20000000-0000-4000-8000-000000000006"
 [entities.shadow_caster]
 [entities.shadow_receiver]
 [entities.components.showcase.spin]
@@ -231,7 +231,7 @@ scale = [0.45, 0.18, 0.45]
 resource = "cube"
 
 [entities.material]
-resource = "ground"
+resource = "20000000-0000-4000-8000-000000000002"
 
 [entities.shadow_caster]
 [entities.shadow_receiver]
@@ -255,6 +255,6 @@ scale = [1, 1, 1]
 resource = "ground"
 
 [entities.material]
-resource = "ground"
+resource = "20000000-0000-4000-8000-000000000002"
 
 [entities.shadow_receiver]

@@ -563,7 +563,9 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 		editor_history_destroy_transaction(&discarded)
 		return
 	}
-	if transaction.change_count <= 0 && transaction.structural == nil {
+	if transaction.change_count <= 0 &&
+	   transaction.resource_change_count <= 0 &&
+	   transaction.structural == nil {
 		editor_recompute_scene_dirty(state)
 		return
 	}
@@ -651,6 +653,32 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 					state.editor_has_selection = true
 				}
 				if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			editor_history_remove(state, index)
+			continue
+		}
+		if transaction.resource_change_count > 0 {
+			applied := true
+			for change in transaction.resource_changes[:transaction.resource_change_count] {
+				binding := shared.Editor_UI_Component {
+					resource_id = change.resource_id,
+					inspector_field = change.field,
+					inspector_axis = change.axis,
+				}
+				value := change.before_number
+				if redo {
+					value = change.after_number
+				}
+				applied = editor_resource_write_number(state, binding, value) && applied
+			}
+			if applied {
+				if redo {
+					state.editor_history_cursor = index + 1
+				} else {
+					state.editor_history_cursor = index
+				}
 				editor_recompute_scene_dirty(state)
 				return true
 			}
@@ -757,15 +785,19 @@ validate_focused_editor_input :: proc(state: ^State, world: ^shared.World) {
 	binding, input_entity, found := focused_input_binding(state, world)
 	available := found && !ui_entity_or_ancestor_hidden(world, input_entity)
 	if available && binding.role == .Inspector_Input {
-		_, _, available = inspector_target(world, binding)
-		if available && binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
-			_, available = editor_reflected_definition(state, binding)
-		} else if available {
-			entity := world.entities[input_entity]
-			if entity.ui_input_index >= 0 &&
-			   entity.ui_input_index < len(world.ui_inputs) &&
-			   world.ui_inputs[entity.ui_input_index].numeric {
-				_, available = read_inspector_numeric(world, binding)
+		if binding.resource_id != (shared.Resource_UUID{}) {
+			_, available = editor_resource_number(state, binding)
+		} else {
+			_, _, available = inspector_target(world, binding)
+			if available && binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
+				_, available = editor_reflected_definition(state, binding)
+			} else if available {
+				entity := world.entities[input_entity]
+				if entity.ui_input_index >= 0 &&
+				   entity.ui_input_index < len(world.ui_inputs) &&
+				   world.ui_inputs[entity.ui_input_index].numeric {
+					_, available = read_inspector_numeric(world, binding)
+				}
 			}
 		}
 	}

@@ -1,0 +1,7 @@
+id = "20000000-0000-4000-8000-00000000000b"
+type = "scrapbot.material"
+name = "Static Violet Light"
+
+[material]
+base_color = [0.48, 0.02, 1, 1]
+emissive = [3.84, 0.16, 8]

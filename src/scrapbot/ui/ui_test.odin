@@ -7,6 +7,107 @@ import shared "../shared"
 import "core:math"
 import "core:testing"
 
+@(test)
+test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	resource_id, valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000001")
+	testing.expect(t, valid)
+	_, register_err := resources.register_project_material(
+		&registry,
+		resource_id,
+		"Editable",
+		"editable.resource.toml",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, register_err == "")
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.resource_registry = &registry
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	binding := shared.Editor_UI_Component {
+		resource_id = resource_id,
+		inspector_field = .Material_Base_Color,
+		inspector_axis = .X,
+	}
+	testing.expect(t, editor_resource_write_number(state, binding, 0.25))
+	editor_history_push_resource(state, binding, 1, 0.25)
+	testing.expect(t, state.editor_scene_dirty)
+	testing.expect_value(t, len(state.editor_dirty_resources), 1)
+	testing.expect(t, editor_undo(state, &world))
+	value, read_ok := editor_resource_number(state, binding)
+	testing.expect(t, read_ok)
+	testing.expect_value(t, value, f32(1))
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, editor_redo(state, &world))
+	value, read_ok = editor_resource_number(state, binding)
+	testing.expect(t, read_ok)
+	testing.expect_value(t, value, f32(0.25))
+}
+
+@(test)
+test_project_material_reference_switch_is_structural_and_undoable :: proc(t: ^testing.T) {
+	first_id, first_valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000011")
+	second_id, second_valid := shared.resource_uuid_parse("a3000000-0000-4000-8000-000000000012")
+	testing.expect(t, first_valid && second_valid)
+	first_text := "a3000000-0000-4000-8000-000000000011"
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Resource Target"),
+			name = "Resource Target",
+			has_material = true,
+			material_resource = first_text,
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	first_handle, first_err := resources.register_project_material(
+		&registry,
+		first_id,
+		"First",
+		"first.resource.toml",
+		{base_color = {1, 0, 0, 1}},
+	)
+	second_handle, second_err := resources.register_project_material(
+		&registry,
+		second_id,
+		"Second",
+		"second.resource.toml",
+		{base_color = {0, 1, 0, 1}},
+	)
+	testing.expect(t, first_err == "" && second_err == "")
+	ecs.reconcile_render_instances(&world, &registry)
+	testing.expect_value(t, world.materials[world.entities[0].material_index].handle, first_handle)
+
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.resource_registry = &registry
+	state.editor_simulation_stopped = true
+	testing.expect(t, editor_authoring_set_material_resource(state, &world, 0, second_id))
+	ecs.reconcile_render_instances(&world, &registry)
+	testing.expect_value(
+		t,
+		world.materials[world.entities[0].material_index].handle,
+		second_handle,
+	)
+	testing.expect(t, editor_undo(state, &world))
+	ecs.reconcile_render_instances(&world, &registry)
+	testing.expect_value(t, world.materials[world.entities[0].material_index].handle, first_handle)
+}
+
 ui_test_id :: proc(name: string) -> shared.Entity_UUID {
 	return shared.entity_uuid_from_engine_name(name)
 }

@@ -2,6 +2,7 @@ package ui
 
 import component "../component"
 import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import "core:fmt"
 import "core:math"
@@ -25,6 +26,8 @@ EDITOR_UI_INSPECTOR_HEADER_NAME :: "__scrapbot_editor_inspector_header"
 EDITOR_UI_STATUS_NAME :: "__scrapbot_editor_status"
 EDITOR_UI_COMPONENT_MENU_NAME :: "__scrapbot_editor_component_menu"
 EDITOR_UI_COMPONENT_MENU_CONTENT_NAME :: "__scrapbot_editor_component_menu_content"
+EDITOR_UI_RESOURCE_MENU_NAME :: "__scrapbot_editor_resource_menu"
+EDITOR_UI_RESOURCE_MENU_CONTENT_NAME :: "__scrapbot_editor_resource_menu_content"
 EDITOR_SIDEBAR_PADDING :: f32(10)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(618)
@@ -155,6 +158,31 @@ editor_ui_handle_activation :: proc(
 						editor_ui_set_hidden(world, menu, true)
 					}
 					return
+				case .Inspector_Resource_Menu_Button:
+					if !state.editor_simulation_stopped {
+						return
+					}
+					state.editor_resource_menu_open = !state.editor_resource_menu_open
+					state.editor_layout_invalidated = true
+					if menu, found := editor_ui_entity(world, .Inspector_Resource_Menu); found {
+						editor_ui_set_hidden(world, menu, !state.editor_resource_menu_open)
+					}
+					return
+				case .Inspector_Resource_Menu_Item:
+					if selected, ok := editor_selected_world_index(state, world); ok {
+						_ = editor_authoring_set_material_resource(
+							state,
+							world,
+							selected,
+							component.resource_id,
+						)
+					}
+					state.editor_resource_menu_open = false
+					state.editor_layout_invalidated = true
+					if menu, found := editor_ui_entity(world, .Inspector_Resource_Menu); found {
+						editor_ui_set_hidden(world, menu, true)
+					}
+					return
 				case .Viewport:
 					if !state.editor_gizmo_captures_pointer {
 						state.editor_pick_requested = true
@@ -182,6 +210,8 @@ editor_ui_handle_activation :: proc(
 				     .Inspector_Component_Menu,
 				     .Inspector_Component_Menu_Content,
 				     .Inspector_Component_Menu_Group,
+				     .Inspector_Resource_Menu,
+				     .Inspector_Resource_Menu_Content,
 				     .Status:
 			}
 		}
@@ -191,6 +221,34 @@ editor_ui_handle_activation :: proc(
 		}
 		entity_index = find_parent_entity(world, world.ui_layouts[layout_index].parent, .Editor)
 	}
+}
+
+editor_ui_resource_menu_contains :: proc(world: ^shared.World, entity: shared.Entity) -> bool {
+	if world == nil {
+		return false
+	}
+	entity_index := int(entity.index)
+	for entity_index >= 0 && entity_index < len(world.entities) {
+		value := world.entities[entity_index]
+		if value.editor_ui_index >= 0 && value.editor_ui_index < len(world.editor_uis) {
+			role := world.editor_uis[value.editor_ui_index].role
+			if role == .Inspector_Resource_Menu_Button ||
+			   role == .Inspector_Resource_Menu ||
+			   role == .Inspector_Resource_Menu_Content ||
+			   role == .Inspector_Resource_Menu_Item {
+				return true
+			}
+		}
+		if value.ui_layout_index < 0 || value.ui_layout_index >= len(world.ui_layouts) {
+			break
+		}
+		parent := world.ui_layouts[value.ui_layout_index].parent
+		if parent == (shared.Entity_UUID{}) {
+			break
+		}
+		entity_index = find_parent_entity(world, parent, .Editor)
+	}
+	return false
 }
 
 editor_ui_component_menu_contains :: proc(world: ^shared.World, entity: shared.Entity) -> bool {
@@ -231,6 +289,7 @@ editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
 		state.editor_snapshot_valid = false
 		if !state.editor_visible {
 			state.editor_component_menu_open = false
+			state.editor_resource_menu_open = false
 		}
 	}
 	if !state.editor_visible ||
@@ -262,6 +321,17 @@ editor_ui_close_component_menu :: proc(state: ^State, world: ^shared.World) {
 	state.editor_component_menu_open = false
 	state.editor_layout_invalidated = true
 	if menu, found := editor_ui_entity(world, .Inspector_Component_Menu); found {
+		editor_ui_set_hidden(world, menu, true)
+	}
+}
+
+editor_ui_close_resource_menu :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || !state.editor_resource_menu_open {
+		return
+	}
+	state.editor_resource_menu_open = false
+	state.editor_layout_invalidated = true
+	if menu, found := editor_ui_entity(world, .Inspector_Resource_Menu); found {
 		editor_ui_set_hidden(world, menu, true)
 	}
 }
@@ -1400,6 +1470,181 @@ Inspector_ECS_Builder :: struct {
 	checkbox_count: int,
 	row_count: int,
 	component_menu_visible: bool,
+	resource_menu_visible: bool,
+}
+
+editor_ui_ensure_resource_menu_button :: proc(world: ^shared.World, parent, label: string) -> int {
+	button, found := editor_ui_entity(world, .Inspector_Resource_Menu_Button)
+	if !found {
+		button = editor_ui_create_box(
+			world,
+			"__scrapbot_editor_resource_menu_button",
+			parent,
+			.Inspector_Resource_Menu_Button,
+			{
+				size = {1, INSPECTOR_CONTROL_HEIGHT},
+				padding = {5, 8, 4, 8},
+				background = {0.013, 0.018, 0.025, 1},
+				border_color = {0.075, 0.090, 0.115, 1},
+				border_width = 1,
+				corner_radius = 4,
+				fill_width = true,
+			},
+		)
+		editor_ui_add_button(world, button)
+	} else {
+		editor_ui_set_parent(world, button, parent)
+	}
+	value := world.ui_buttons[world.entities[button].ui_button_index]
+	value.text = label
+	value.size = EDITOR_TEXT_SIZE
+	value.alignment = .Left
+	value.color = {0.82, 0.84, 0.88, 1}
+	value.hover_background = {0.030, 0.105, 0.092, 1}
+	value.active_background = {0.018, 0.065, 0.057, 1}
+	_ = ecs.set_ui_button(world, button, value)
+	return button
+}
+
+editor_ui_ensure_resource_menu :: proc(world: ^shared.World) -> (int, int) {
+	menu, menu_found := editor_ui_entity(world, .Inspector_Resource_Menu)
+	content, content_found := editor_ui_entity(world, .Inspector_Resource_Menu_Content)
+	if menu_found && content_found {
+		return menu, content
+	}
+	menu = editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_MENU_NAME,
+		"",
+		.Inspector_Resource_Menu,
+		{
+			size = {320, 240},
+			padding = {5, 5, 5, 5},
+			background = {0.009, 0.012, 0.017, 1},
+			border_color = {0.11, 0.14, 0.18, 1},
+			border_width = 1,
+			corner_radius = 5,
+			hidden = true,
+		},
+	)
+	editor_ui_add_scroll(world, menu)
+	content = editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_MENU_CONTENT_NAME,
+		EDITOR_UI_RESOURCE_MENU_NAME,
+		.Inspector_Resource_Menu_Content,
+		{size = {310, 1}, fill_width = true},
+	)
+	editor_ui_add_vstack(world, content, {gap = 1})
+	return menu, content
+}
+
+editor_ui_ensure_resource_menu_item :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent, label: string,
+	resource_id: shared.Resource_UUID,
+) -> int {
+	item, found := editor_ui_entity(world, .Inspector_Resource_Menu_Item, slot)
+	if !found {
+		item = editor_ui_create_box(
+			world,
+			fmt.tprintf("__scrapbot_editor_resource_menu_item_%d", slot),
+			parent,
+			.Inspector_Resource_Menu_Item,
+			{size = {1, 30}, padding = {5, 10, 5, 10}, corner_radius = 3, fill_width = true},
+			slot,
+		)
+		editor_ui_add_button(world, item)
+	} else {
+		editor_ui_set_parent(world, item, parent)
+	}
+	value := world.ui_buttons[world.entities[item].ui_button_index]
+	value.text = label
+	value.size = EDITOR_TEXT_SIZE
+	value.alignment = .Left
+	value.color = {0.82, 0.85, 0.90, 1}
+	value.hover_background = {0.030, 0.105, 0.092, 1}
+	value.active_background = {0.018, 0.065, 0.057, 1}
+	_ = ecs.set_ui_button(world, item, value)
+	role := &world.editor_uis[world.entities[item].editor_ui_index]
+	role.resource_id = resource_id
+	return item
+}
+
+editor_ui_inspector_resource_reference :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label, resource_name: string,
+) {
+	parent := builder.world.entities[builder.table_entity].name
+	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, false)
+	builder.cell_count += 1
+	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, true)
+	builder.cell_count += 1
+	cells := [2]int{label_cell, value_cell}
+	for cell in cells {
+		editor_ui_set_hidden(builder.world, cell, false)
+		builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index].size.y =
+			INSPECTOR_CELL_HEIGHT
+	}
+	editor_ui_set_text(builder.world, label_cell, label)
+	button := editor_ui_ensure_resource_menu_button(
+		builder.world,
+		builder.world.entities[value_cell].name,
+		resource_name,
+	)
+	editor_ui_set_hidden(builder.world, button, false)
+	role := &builder.world.editor_uis[builder.world.entities[button].editor_ui_index]
+	role.target = builder.target
+	builder.resource_menu_visible = true
+	builder.row_count += 1
+}
+
+editor_ui_build_resource_menu :: proc(state: ^State, world: ^shared.World) {
+	menu, content := editor_ui_ensure_resource_menu(world)
+	editor_ui_set_hidden(world, menu, state == nil || !state.editor_resource_menu_open)
+	count := 0
+	if state != nil && state.resource_registry != nil {
+		parent := world.entities[content].name
+		indices: [dynamic]int
+		defer delete(indices)
+		for material, index in state.resource_registry.materials {
+			if !material.alive || !material.authored {
+				continue
+			}
+			append(&indices, index)
+		}
+		for index in 1 ..< len(indices) {
+			value := indices[index]
+			cursor := index
+			for cursor > 0 &&
+			    state.resource_registry.materials[value].name <
+				    state.resource_registry.materials[indices[cursor - 1]].name {
+				indices[cursor] = indices[cursor - 1]
+				cursor -= 1
+			}
+			indices[cursor] = value
+		}
+		for index in indices {
+			material := state.resource_registry.materials[index]
+			item := editor_ui_ensure_resource_menu_item(
+				world,
+				count,
+				parent,
+				material.name,
+				material.id,
+			)
+			editor_ui_set_hidden(world, item, false)
+			count += 1
+		}
+	}
+	content_layout := &world.ui_layouts[world.entities[content].ui_layout_index]
+	content_layout.size.y = max(f32(count * 31), 1)
+	for binding in world.editor_uis {
+		if binding.role == .Inspector_Resource_Menu_Item && binding.slot >= count {
+			editor_ui_set_hidden(world, binding.entity_index, true)
+		}
+	}
 }
 
 editor_ui_ensure_component_menu_button :: proc(world: ^shared.World, parent: string) -> int {
@@ -1565,13 +1810,17 @@ editor_ui_set_numeric_metadata :: proc(
 			input.step = 0.1
 			input.minimum = 0.001
 			input.has_minimum = true
-		case .Ambient_Color, .Directional_Color, .Point_Color:
+		case .Ambient_Color, .Directional_Color, .Point_Color, .Material_Base_Color:
 			input.step = 0.01
 			input.minimum = 0
 			input.maximum = 1
 			input.has_minimum = true
 			input.has_maximum = true
 		case .Ambient_Intensity, .Directional_Intensity, .Point_Intensity, .Point_Range:
+			input.minimum = 0
+			input.has_minimum = true
+		case .Material_Emissive:
+			input.step = 0.1
 			input.minimum = 0
 			input.has_minimum = true
 	}
@@ -1632,6 +1881,7 @@ editor_ui_inspector_field_values :: proc(
 	reflected_component_id: shared.Component_ID = shared.INVALID_COMPONENT_ID,
 	reflected_field_index: int = -1,
 	reflected_field_type: component.Field_Type = .String,
+	resource_id: shared.Resource_UUID = {},
 ) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
@@ -1661,7 +1911,11 @@ editor_ui_inspector_field_values :: proc(
 		layout.size = {1, INSPECTOR_CONTROL_HEIGHT}
 		value_input := &builder.world.ui_inputs[builder.world.entities[input_entity].ui_input_index]
 		value_input.read_only =
-			field == .None && reflected_component_id == shared.INVALID_COMPONENT_ID
+			(field == .None &&
+				reflected_component_id == shared.INVALID_COMPONENT_ID &&
+				resource_id == (shared.Resource_UUID{})) ||
+			(resource_id != (shared.Resource_UUID{}) &&
+					(builder.state == nil || !builder.state.editor_simulation_stopped))
 		if builder.state == nil ||
 		   !builder.state.has_focused_input ||
 		   builder.state.focused_input != builder.world.entities[input_entity].id {
@@ -1675,6 +1929,7 @@ editor_ui_inspector_field_values :: proc(
 		role.custom_field_index = custom_field_index
 		role.reflected_component_id = reflected_component_id
 		role.reflected_field_index = reflected_field_index
+		role.resource_id = resource_id
 		editor_ui_set_numeric_metadata(value_input, field)
 		if reflected_component_id != shared.INVALID_COMPONENT_ID {
 			editor_ui_set_reflected_numeric_metadata(value_input, reflected_field_type)
@@ -1716,6 +1971,27 @@ editor_ui_inspector_field_values :: proc(
 		}
 	}
 	builder.row_count += 1
+}
+
+editor_ui_inspector_resource_values :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	values: []string,
+	field: shared.Editor_Inspector_Field,
+	resource_id: shared.Resource_UUID,
+) {
+	editor_ui_inspector_field_values(
+		builder,
+		label,
+		values,
+		field,
+		-1,
+		-1,
+		shared.INVALID_COMPONENT_ID,
+		-1,
+		.Number,
+		resource_id,
+	)
 }
 
 editor_ui_inspector_field :: proc(
@@ -1863,12 +2139,24 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 					component.entity_index,
 					!builder.component_menu_visible,
 				)
+			case .Inspector_Resource_Menu_Button:
+				editor_ui_set_hidden(
+					builder.world,
+					component.entity_index,
+					!builder.resource_menu_visible,
+				)
 			case:
 		}
 	}
 	if !builder.component_menu_visible {
 		builder.state.editor_component_menu_open = false
 		if menu, found := editor_ui_entity(builder.world, .Inspector_Component_Menu); found {
+			editor_ui_set_hidden(builder.world, menu, true)
+		}
+	}
+	if !builder.resource_menu_visible {
+		builder.state.editor_resource_menu_open = false
+		if menu, found := editor_ui_entity(builder.world, .Inspector_Resource_Menu); found {
 			editor_ui_set_hidden(builder.world, menu, true)
 		}
 	}
@@ -2198,6 +2486,49 @@ editor_ui_build_reflected_inspector_panels :: proc(
 				.Point_Range,
 			)
 			continue
+		}
+		if definition.name == "scrapbot.material" &&
+		   entity.material_index >= 0 &&
+		   entity.material_index < len(builder.world.materials) &&
+		   builder.state.resource_registry != nil {
+			handle := builder.world.materials[entity.material_index].handle
+			material, alive := resources.get_material(builder.state.resource_registry, handle)
+			if alive && material.authored {
+				id_buffer: [36]u8
+				editor_ui_inspector_resource_reference(builder, "resource", material.name)
+				editor_ui_inspector_field(
+					builder,
+					"uuid",
+					shared.resource_uuid_to_string(material.id, id_buffer[:]),
+				)
+				base_values := [4]string {
+					fmt.tprintf("%.2f", material.desc.base_color.x),
+					fmt.tprintf("%.2f", material.desc.base_color.y),
+					fmt.tprintf("%.2f", material.desc.base_color.z),
+					fmt.tprintf("%.2f", material.desc.base_color.w),
+				}
+				editor_ui_inspector_resource_values(
+					builder,
+					"base color",
+					base_values[:],
+					.Material_Base_Color,
+					material.id,
+				)
+				emissive_values := [3]string {
+					fmt.tprintf("%.2f", material.desc.emissive.x),
+					fmt.tprintf("%.2f", material.desc.emissive.y),
+					fmt.tprintf("%.2f", material.desc.emissive.z),
+				}
+				editor_ui_inspector_resource_values(
+					builder,
+					"emissive",
+					emissive_values[:],
+					.Material_Emissive,
+					material.id,
+				)
+				editor_ui_build_resource_menu(builder.state, builder.world)
+				continue
+			}
 		}
 		if definition.owner != .Engine {
 			for storage, storage_index in builder.world.custom_components {
@@ -2947,6 +3278,42 @@ editor_ui_anchor_component_menu :: proc(state: ^State, world: ^shared.World, wid
 	}
 }
 
+editor_ui_anchor_resource_menu :: proc(state: ^State, world: ^shared.World, width, height: f32) {
+	if state == nil || world == nil {
+		return
+	}
+	menu, found := editor_ui_entity(world, .Inspector_Resource_Menu)
+	if !found {
+		return
+	}
+	button_rect: Rect
+	button_found := false
+	for node in state.nodes[:state.node_count] {
+		if node.origin == .Editor && node.editor_role == .Inspector_Resource_Menu_Button {
+			button_rect = node.rect
+			button_found = true
+			break
+		}
+	}
+	if !button_found || button_rect.width <= 0 {
+		return
+	}
+	layout := &world.ui_layouts[world.entities[menu].ui_layout_index]
+	content_height := f32(100)
+	if content, content_found := editor_ui_entity(world, .Inspector_Resource_Menu_Content);
+	   content_found {
+		content_layout := world.ui_layouts[world.entities[content].ui_layout_index]
+		content_height = content_layout.size.y + 10
+	}
+	layout.size.x = clamp(button_rect.width, 220, 420)
+	layout.size.y = min(content_height, min(f32(300), height - 20))
+	layout.position.x = clamp(button_rect.x, 10, max(width - layout.size.x - 10, 10))
+	layout.position.y = button_rect.y + button_rect.height + 4
+	if layout.position.y + layout.size.y > height - EDITOR_STATUS_BAR_HEIGHT - 6 {
+		layout.position.y = max(button_rect.y - layout.size.y - 4, EDITOR_TOP_BAR_HEIGHT + 6)
+	}
+}
+
 editor_ui_input_binding :: proc(
 	world: ^shared.World,
 	entity_index: int,
@@ -2979,6 +3346,15 @@ editor_ui_prepare_input_focus :: proc(state: ^State, world: ^shared.World, entit
 	if !found || !input.numeric {
 		return
 	}
+	if binding.resource_id != (shared.Resource_UUID{}) {
+		if number, ok := editor_resource_number(state, binding^); ok {
+			set_numeric_input_text(state, world, entity_index, input, number)
+			binding.input_original_number = number
+			binding.input_has_original_number = true
+			binding.input_was_scrubbed = false
+		}
+		return
+	}
 	if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
 		binding.input_original_number = input.number
 		binding.input_has_original_number = true
@@ -3008,6 +3384,36 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 			if selected, ok := editor_selected_world_index(state, world); ok {
 				_ = editor_authoring_rename_entity(state, world, selected, input.text)
 			}
+		}
+		return
+	}
+	if binding.resource_id != (shared.Resource_UUID{}) {
+		if (interaction.changed || interaction.submitted || interaction.cancelled) &&
+		   !binding.input_has_original_number {
+			if number, ok := editor_resource_number(state, binding^); ok {
+				binding.input_original_number = number
+				binding.input_has_original_number = true
+			}
+		}
+		if interaction.changed && interaction.valid {
+			_ = editor_resource_write_number(state, binding^, input.number)
+		}
+		if interaction.cancelled {
+			_ = editor_resource_write_number(state, binding^, input.number)
+			binding.input_has_original_number = false
+			editor_recompute_scene_dirty(state)
+		}
+		if interaction.submitted {
+			_ = editor_resource_write_number(state, binding^, input.number)
+			if binding.input_has_original_number {
+				editor_history_push_resource(
+					state,
+					binding^,
+					binding.input_original_number,
+					input.number,
+				)
+			}
+			binding.input_has_original_number = false
 		}
 		return
 	}

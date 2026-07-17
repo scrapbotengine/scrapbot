@@ -12,10 +12,11 @@ Text-first projects let users run Scrapbot from an ordinary project directory co
 - A project has a `project.toml` manifest in its root directory.
 - The manifest names the project and points at a default scene.
 - The manifest can declare native extension targets with a name and source directory.
-- The default generated scene lives at `scenes/main.scene.toml`.
+- The default generated scene lives at `scenes/main.scene.toml`, and its default material lives at `resources/default.resource.toml`.
 - Scene files describe entities and known components in TOML.
 - Every scene entity has a required, non-zero, project-wide UUID. Names are editable display labels, and cross-entity references use UUIDs.
-- Project validation rejects missing manifests, unsafe scene paths, malformed project metadata, malformed scene data, unknown scene components, and scene data that does not match registered component schemas.
+- Authored resources live in standalone `resources/**/*.resource.toml` files, have their own project-wide UUIDs, and are referenced by UUID from scenes. Resources are project data outside the ECS and are not owned by a scene.
+- Project validation rejects missing manifests, unsafe scene or resource paths, malformed project metadata, malformed scene or resource data, duplicate resource UUIDs, unresolved resource references, unknown scene components, and scene data that does not match registered component schemas.
 - Project validation refreshes generated Luau type definitions from the component registry.
 - Project validation builds declared native extension targets before loading extension schemas.
 - Example project directories live under `examples/` and can be used for smoke verification.

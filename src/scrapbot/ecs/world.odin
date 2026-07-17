@@ -776,6 +776,44 @@ add_material :: proc(world: ^World, entity_index: int, handle: shared.Material_H
 	mark_render_entity_dirty(world, entity_index)
 }
 
+resolve_geometry_reference :: proc(
+	world: ^World,
+	entity_index: int,
+	handle: shared.Geometry_Handle,
+) {
+	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
+		world.geometries[entity.geometry_index].handle = handle
+		mark_render_entity_dirty(world, entity_index)
+		return
+	}
+	entity.geometry_index = allocate_geometry_slot(world, Geometry_Component{handle = handle})
+	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
+}
+
+resolve_material_reference :: proc(
+	world: ^World,
+	entity_index: int,
+	handle: shared.Material_Handle,
+) {
+	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if entity.material_index >= 0 && entity.material_index < len(world.materials) {
+		world.materials[entity.material_index].handle = handle
+		mark_render_entity_dirty(world, entity_index)
+		return
+	}
+	entity.material_index = allocate_material_slot(world, Material_Component{handle = handle})
+	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
+}
+
 remove_geometry :: proc(world: ^World, entity_index: int) {
 	if !entity_is_alive(world, entity_index) { return }
 	entity := &world.entities[entity_index]
@@ -823,11 +861,17 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 		}
 		if entity.geometry_index < 0 && entity.geometry_resource != "" {
 			if handle, found := resources.geometry_by_name(registry, entity.geometry_resource);
-			   found { add_geometry(world, entity_index, handle) }
+			   found {
+				resolve_geometry_reference(world, entity_index, handle)
+			}
 		}
 		if entity.material_index < 0 && entity.material_resource != "" {
-			if handle, found := resources.material_by_name(registry, entity.material_resource);
-			   found { add_material(world, entity_index, handle) }
+			resource_id, valid := shared.resource_uuid_parse(entity.material_resource)
+			if valid {
+				if handle, found := resources.material_by_uuid(registry, resource_id); found {
+					resolve_material_reference(world, entity_index, handle)
+				}
+			}
 		}
 		eligible :=
 			entity.alive &&

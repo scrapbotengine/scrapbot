@@ -18,6 +18,12 @@
 
 **Render resource** - Shared geometry or material data owned outside the ECS and referenced by generational handles from entity components. See [ADR-010](adr/ADR-010-keep-render-resources-outside-the-ecs.md).
 
+**Project resource** - A persistent typed bag of reusable project data stored outside the ECS in a standalone `resources/**/*.resource.toml` file. Each project resource has a stable UUID; materials are the first supported type.
+
+**Resource UUID** - The non-zero project-wide UUID serialized in a project resource file and used by scene references. It remains stable across resource renames and moves and resolves to a transient generational runtime handle.
+
+**Runtime resource** - Registry-owned geometry, material, or font data created while a project is loaded. Authored project resources resolve into runtime resources; Luau or native code can also create transient name-addressed runtime resources that are not saved automatically.
+
 **Render reconciliation** - The change-driven engine step that adds, updates, or removes internal render-instance components based on an entity's transform and valid geometry/material references. Structural dirty entities are synchronized into a dense active-renderable set instead of rescanning all entity membership every frame.
 
 **Component ID** - A runtime-local identifier assigned by the component registry. Luau component handles include both name and ID; project files remain name-based.
@@ -48,7 +54,7 @@
 
 ## Projects
 
-**Project directory** - The directory where a user runs Scrapbot. It contains `project.toml`, scene files, scripts, assets, and optional native extension code.
+**Project directory** - The directory where a user runs Scrapbot. It contains `project.toml`, scene files, standalone resources, scripts, assets, and optional native extension code.
 
 **`project.toml`** - The project manifest in the root of a Scrapbot project directory. It names the project, selects the default scene, and can declare native extension targets.
 

@@ -16,6 +16,7 @@ FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 512
 MAX_PROJECT_FONTS :: 15
 PROJECT_FONT_BUILD_DIR :: "build/fonts"
+PROJECT_RESOURCES_DIR :: "resources"
 
 Vec3 :: struct {
 	x, y, z: f32,
@@ -47,6 +48,24 @@ Native_Extension_Target :: struct {
 Project_Font :: struct {
 	name: string,
 	source: string,
+}
+
+Project_Resource_Kind :: enum {
+	Material,
+}
+
+Project_Material_Resource :: struct {
+	base_color: Vec4,
+	emissive: Vec3,
+	texture: string,
+}
+
+Project_Resource :: struct {
+	id: Resource_UUID,
+	kind: Project_Resource_Kind,
+	name: string,
+	source: string,
+	material: Project_Material_Resource,
 }
 
 Scene :: struct {
@@ -559,6 +578,8 @@ Editor_Inspector_Field :: enum {
 	Point_Color,
 	Point_Intensity,
 	Point_Range,
+	Material_Base_Color,
+	Material_Emissive,
 	Custom_Vec3,
 	UI_Layout_Hidden,
 	UI_HStack_Fill,
@@ -659,6 +680,10 @@ Editor_UI_Role :: enum {
 	Inspector_Component_Menu_Content,
 	Inspector_Component_Menu_Group,
 	Inspector_Component_Menu_Item,
+	Inspector_Resource_Menu_Button,
+	Inspector_Resource_Menu,
+	Inspector_Resource_Menu_Content,
+	Inspector_Resource_Menu_Item,
 	Status,
 }
 
@@ -673,6 +698,7 @@ Editor_UI_Component :: struct {
 	custom_field_index: int,
 	reflected_component_id: Component_ID,
 	reflected_field_index: int,
+	resource_id: Resource_UUID,
 	input_original_number: f32,
 	input_has_original_number: bool,
 	input_was_scrubbed: bool,

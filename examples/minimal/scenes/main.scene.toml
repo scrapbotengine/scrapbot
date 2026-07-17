@@ -33,7 +33,7 @@ scale = [1, 1, 1]
 resource = "cube"
 
 [entities.material]
-resource = "coral"
+resource = "10000000-0000-4000-8000-000000000001"
 
 [entities.components.scrappyphysics.spin]
 angular_velocity = [0, 1.5707963, 0]
@@ -58,7 +58,7 @@ scale = [1, 1, 1]
 resource = "cube"
 
 [entities.material]
-resource = "teal"
+resource = "10000000-0000-4000-8000-000000000002"
 
 [entities.components.scrappyphysics.spin]
 angular_velocity = [0, -1.5707963, 0]

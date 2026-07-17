@@ -1,7 +1,4 @@
 scrapbot.geometry.cube("cube", 2)
-scrapbot.material.textured("coral", "assets/checker.png")
-scrapbot.material.unlit("teal", 0.08, 0.72, 0.68, 1)
-
 scrapbot.log("hello from examples/minimal")
 scrapbot.log("entities: " .. tostring(scrapbot.entity_count()))
 scrapbot.log("renderables: " .. tostring(scrapbot.renderable_count()))

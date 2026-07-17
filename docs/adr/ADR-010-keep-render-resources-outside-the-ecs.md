@@ -8,8 +8,8 @@ Geometry and material data may be shared by many entities and may have backend-s
 
 ## Decision
 
-Own geometry and material descriptions in engine resource registries addressed by stable generational handles. Store only those handles in public ECS components. Generate primitive geometry through the same full indexed-geometry representation used by custom and imported meshes. Keep backend GPU objects in backend-owned caches keyed by resource handle and content version.
+Own geometry and material descriptions in engine resource registries addressed by generational runtime handles. Authored project resources additionally have stable project-wide UUIDs outside the ECS; scene files serialize those UUIDs and world loading resolves them to handles. Store only resolved handles in public ECS components. Generate primitive geometry through the same full indexed-geometry representation used by custom and imported meshes. Keep backend GPU objects in backend-owned caches keyed by resource handle and content version. See ADR-030.
 
 ## Consequences
 
-Entities can cheaply share geometry and materials, named resource updates preserve handle identity across reloads, and rendering backends remain free to manage their own GPU lifetimes. The runtime must explicitly coordinate resource-registry, ECS-world, and backend-cache lifetimes. Resource references require validation and stale handles make an entity temporarily non-renderable.
+Entities can cheaply share geometry and materials, authored resource updates preserve handle identity across reloads, and rendering backends remain free to manage their own GPU lifetimes. The runtime must explicitly coordinate resource-registry, ECS-world, and backend-cache lifetimes. Persistent UUID references require validation and stale handles make an entity temporarily non-renderable.

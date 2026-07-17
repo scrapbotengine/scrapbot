@@ -42,6 +42,7 @@ Current decisions:
 | ADR-027 | Use authoring transactions for editor changes |
 | ADR-028 | Persist structural authoring by UUID-scoped entity blocks |
 | ADR-029 | Postprocess the HDR world before UI composition |
+| ADR-030 | Identify project resources by UUID outside the ECS |
 
 ## FDRs
 
@@ -59,6 +60,7 @@ Current features:
 | FDR-006 | Native extensions |
 | FDR-007 | ECS UI |
 | FDR-008 | Editor shell |
+| FDR-009 | Project resources |
 
 ## When to update records
 

@@ -20,7 +20,7 @@ Most components use the same suffix in every public surface:
 | `scrapbot.material` | `[entities.material]` | `scrapbot.material_component` | Use `scrapbot.Component{name = "scrapbot.material"}` for membership. |
 | `scrapbot.<name>` | `[entities.<name>]` | `scrapbot.<name>` | `scrapbot.<Name>_Component` when the helper exports one. |
 
-`scrapbot.geometry` and `scrapbot.material` are resource-creation namespaces in Luau, so their component handles use the `_component` suffix. Scene `resource` and `mesh.primitive` strings resolve to generational resource handles when the world is built.
+`scrapbot.geometry` and `scrapbot.material` are resource-creation namespaces in Luau, so their component handles use the `_component` suffix. Scene geometry names, material UUIDs, and `mesh.primitive` strings resolve to generational resource handles when the world is built.
 
 The generated `types/scrapbot.d.luau` file is the precise type reference for the current project. Camera fields and the resource-backed mesh, geometry, and material payloads are not exposed for Luau mutation yet; their handles currently provide query membership.
 
@@ -35,7 +35,7 @@ The generated `types/scrapbot.d.luau` file is the precise type reference for the
 | `scrapbot.point_light` | Data | Distance-attenuated light positioned by a Transform. |
 | `scrapbot.mesh` | Resource reference | Built-in primitive convenience component. |
 | `scrapbot.geometry` | Resource reference | Named shared geometry reference. |
-| `scrapbot.material` | Resource reference | Named shared material reference. |
+| `scrapbot.material` | Resource reference | UUID-backed shared project material reference. |
 | `scrapbot.shadow_caster` | Marker | Opts renderable geometry into directional shadow casting. |
 | `scrapbot.shadow_receiver` | Marker | Opts renderable geometry into directional shadow sampling. |
 | `scrapbot.ui_layout` | UI box | Required geometry, hierarchy, sizing, and SDF box style. |
@@ -89,9 +89,9 @@ This is the legacy convenience path used by generated projects. It currently res
 | Component | Scene field | Meaning |
 | --- | --- | --- |
 | `scrapbot.geometry` | `resource` | Non-empty geometry name registered by Luau or native Odin. |
-| `scrapbot.material` | `resource` | Non-empty material name registered by Luau or native Odin. |
+| `scrapbot.material` | `resource` | UUID of an authored `scrapbot.material` project resource. |
 
-An entity using this resource-backed path becomes renderable when it has a Transform plus valid geometry and material handles. Materials may contribute a lit base color, a PNG texture, and unbounded linear HDR emission that feeds world bloom. The ECS stores generational resource handles; scene files store names. See [Luau API: Render resources](/reference/luau-api/#render-resources) and [Native Extensions](/guides/native-extensions/) for resource creation.
+An entity using this resource-backed path becomes renderable when it has a Transform plus valid geometry and material handles. Materials may contribute a lit base color, a PNG texture, and unbounded linear HDR emission that feeds world bloom. The ECS stores generational resource handles; scene files store geometry names and stable material resource UUIDs. Luau and native material creation remains a transient runtime facility rather than authored project-resource persistence. See [Project File Reference](/reference/project-files/#project-resources) and [Luau API: Render resources](/reference/luau-api/#render-resources).
 
 ## Lights and shadows
 

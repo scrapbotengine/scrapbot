@@ -42,6 +42,7 @@ Runtime_Result :: struct {
 }
 
 Frame_Runtime :: struct {
+	root: string,
 	scene_path: string,
 	playback_baseline: Playback_Baseline,
 	script_runtime: script.Runtime,
@@ -132,8 +133,13 @@ check_project :: proc(root: string) -> string {
 	component.init_registry(&registry)
 	render_resources: resources.Registry
 	defer resources.destroy_registry(&render_resources)
-	if err := init_render_resources(&render_resources, &world, root, &loaded.config);
-	   err != "" { return err }
+	if err := init_render_resources(
+		&render_resources,
+		&world,
+		root,
+		&loaded.config,
+		loaded.resources[:],
+	); err != "" { return err }
 	extensions: native.Extension_Set
 	defer native.destroy_extension_set(&extensions)
 	if extension_load := native.load_project_extensions(
@@ -445,14 +451,20 @@ run_project_internal_untracked :: proc(
 		return result
 	}
 	frame_runtime.scene_path = scene_path
+	frame_runtime.root = root
 	defer delete(frame_runtime.scene_path)
 	defer destroy_playback_baseline(&frame_runtime.playback_baseline)
 	defer script.destroy_runtime(&frame_runtime.script_runtime)
 	defer native.destroy_extension_set(&frame_runtime.native_extensions)
 	defer schedule.destroy_executor(&frame_runtime.executor)
 	defer resources.destroy_registry(&frame_runtime.resources)
-	if err := init_render_resources(&frame_runtime.resources, &world, root, &loaded.config);
-	   err != "" { result.err = err; return result }
+	if err := init_render_resources(
+		&frame_runtime.resources,
+		&world,
+		root,
+		&loaded.config,
+		loaded.resources[:],
+	); err != "" { result.err = err; return result }
 	if err := capture_playback_baseline(&frame_runtime.playback_baseline, &world);
 	   err != "" { result.err = err; return result }
 	extensions: native.Extension_Set
@@ -521,6 +533,7 @@ init_render_resources :: proc(
 	world: ^shared.World,
 	root: string = "",
 	config: ^shared.Project_Config = nil,
+	project_resources: []shared.Project_Resource = nil,
 ) -> string {
 	cube_desc, cube_err := resources.cube(2)
 	if cube_err != "" { return cube_err }
@@ -539,9 +552,14 @@ init_render_resources :: proc(
 			return font_err
 		}
 	}
+	if err := resources.register_project_materials(registry, root, project_resources); err != "" {
+		return err
+	}
 	for entity, index in world.entities {
-		if entity.mesh_index >= 0 {
+		if entity.mesh_index >= 0 && entity.geometry_resource == "" {
 			ecs.add_geometry(world, index, cube_handle)
+		}
+		if entity.mesh_index >= 0 && entity.material_resource == "" {
 			ecs.add_material(world, index, material_handle)
 		}
 	}
@@ -612,10 +630,15 @@ frame_runtime_save :: proc(
 	data: rawptr,
 	world: ^shared.World,
 	dirty_entities: []shared.Entity_UUID,
+	dirty_resources: []shared.Resource_UUID,
 ) -> string {
 	runtime := cast(^Frame_Runtime)data
 	if runtime == nil || world == nil {
 		return "cannot save an unavailable project runtime"
+	}
+	if err := resources.save_project_materials(&runtime.resources, runtime.root, dirty_resources);
+	   err != "" {
+		return err
 	}
 	return save_scene_world(runtime.scene_path, world, dirty_entities)
 }
@@ -624,6 +647,18 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	runtime := cast(^Frame_Runtime)data
 	if runtime == nil || world == nil {
 		return "cannot revert an unavailable project runtime"
+	}
+	loaded := project.load_project(runtime.root)
+	defer project.destroy_project_load_result(&loaded)
+	if loaded.err != "" {
+		return loaded.err
+	}
+	if err := resources.register_project_materials(
+		&runtime.resources,
+		runtime.root,
+		loaded.resources[:],
+	); err != "" {
+		return err
 	}
 	return reset_scene_world(runtime.scene_path, &runtime.script_runtime, world)
 }

@@ -3,6 +3,9 @@ package scrapbot
 import component "./component"
 import ecs "./ecs"
 import project "./project"
+import resources "./resources"
+import shared "./shared"
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
@@ -173,6 +176,69 @@ test_hot_reload_replaces_scene_world :: proc(t: ^testing.T) {
 	testing.expect(t, len(world.renderables) == 2)
 	testing.expect(t, world.entities[1].name == "Left Cube")
 	testing.expect(t, world.entities[2].name == "Right Cube")
+}
+
+@(test)
+test_hot_reload_updates_project_material_without_changing_handle :: proc(t: ^testing.T) {
+	root, parent := make_hot_reload_test_project(t)
+	defer delete(root)
+	defer os.remove_all(parent)
+
+	loaded := project.load_project(root)
+	testing.expect(t, loaded.err == "")
+	testing.expect(t, len(loaded.resources) == 1)
+	resource_id := loaded.resources[0].id
+	material_path := join_hot_reload_path(
+		t,
+		root,
+		fmt.tprintf("%s/%s", shared.PROJECT_RESOURCES_DIR, loaded.resources[0].source),
+	)
+	defer delete(material_path)
+	world := ecs.build_world(&loaded.scene)
+
+	state: Hot_Reload_State
+	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	project.destroy_project_load_result(&loaded)
+	testing.expect(t, init_err == "")
+	defer destroy_hot_reload_state(&state)
+	defer ecs.destroy_world(&world)
+
+	before, before_found := resources.material_by_uuid(&state.resources, resource_id)
+	testing.expect(t, before_found)
+	id_buffer: [36]u8
+	time.sleep(5 * time.Millisecond)
+	write_err := os.write_entire_file(
+		material_path,
+		fmt.tprintf(
+			`id = "%s"
+type = "scrapbot.material"
+name = "Reloaded"
+
+[material]
+base_color = [0.125, 0.25, 0.5, 1]
+emissive = [2, 1, 0]
+`,
+			shared.resource_uuid_to_string(resource_id, id_buffer[:]),
+		),
+	)
+	testing.expect(t, write_err == nil)
+
+	step_err := hot_reload_frame_system(
+		cast(rawptr)&state,
+		&world,
+		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
+	)
+	testing.expectf(t, step_err == "", "hot_reload_frame_system failed: %s", step_err)
+	after, after_found := resources.material_by_uuid(&state.resources, resource_id)
+	testing.expect(t, after_found)
+	testing.expect_value(t, after, before)
+	material, alive := resources.get_material(&state.resources, after)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, material.name, "Reloaded")
+		testing.expect_value(t, material.desc.base_color.x, f32(0.125))
+		testing.expect_value(t, material.desc.emissive.x, f32(2))
+	}
 }
 
 @(test)

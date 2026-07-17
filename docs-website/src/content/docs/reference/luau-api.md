@@ -76,7 +76,7 @@ UI query payloads expose the same complete layout, value, and style fields used 
 
 Texture paths must be project-relative paths beginning with `assets/`; absolute paths and parent traversal are rejected. Missing, invalid, oversized, or undecodable images fail `scrapbot check` and `run` while the script registers resources.
 
-Named registration updates an existing resource while preserving its handle. Spawn component maps use `scrapbot.geometry` and `scrapbot.material` names with the returned handles.
+Named registration updates an existing transient runtime resource while preserving its handle. Spawn component maps use `scrapbot.geometry` and `scrapbot.material` names with the returned handles. These functions do not create persistent project resources; authored materials live in standalone `.resource.toml` files and scenes reference their UUIDs.
 
 ## Queries and views
 

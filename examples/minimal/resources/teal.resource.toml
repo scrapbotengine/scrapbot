@@ -1,0 +1,7 @@
+id = "10000000-0000-4000-8000-000000000002"
+type = "scrapbot.material"
+name = "Teal"
+
+[material]
+base_color = [0.08, 0.72, 0.68, 1]
+emissive = [0, 0, 0]

@@ -1,6 +1,149 @@
 package resources
 
+import shared "../shared"
+import "core:os"
+import "core:path/filepath"
 import "core:testing"
+
+@(test)
+test_project_material_save_writes_only_its_standalone_resource :: proc(t: ^testing.T) {
+	root, temp_err := os.make_directory_temp(
+		"",
+		"scrapbot-resource-save-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, temp_err == nil)
+	if temp_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	resources_dir, _ := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
+	defer delete(resources_dir)
+	testing.expect(t, os.make_directory_all(resources_dir) == nil)
+	resource_path, _ := filepath.join({resources_dir, "editable.resource.toml"})
+	defer delete(resource_path)
+	testing.expect(t, os.write_entire_file(resource_path, "untouched") == nil)
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000002")
+	testing.expect(t, valid)
+	_, register_err := register_project_material(
+		&registry,
+		id,
+		"Editable",
+		"editable.resource.toml",
+		{base_color = {0.25, 0.5, 0.75, 1}, emissive = {4, 2, 1}},
+	)
+	testing.expect(t, register_err == "")
+	testing.expect(t, save_project_materials(&registry, root, []shared.Resource_UUID{id}) == "")
+	bytes, read_err := os.read_entire_file(resource_path, context.temp_allocator)
+	testing.expect(t, read_err == nil)
+	if read_err == nil {
+		text := string(bytes)
+		testing.expect(t, len(text) > len("untouched"))
+		testing.expect(t, text != "untouched")
+	}
+}
+
+@(test)
+test_project_material_uuid_updates_preserve_runtime_handle :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000001")
+	testing.expect(t, valid)
+	first, first_err := register_project_material(
+		&registry,
+		id,
+		"First Name",
+		"first.resource.toml",
+		{base_color = {1, 0, 0, 1}},
+	)
+	second, second_err := register_project_material(
+		&registry,
+		id,
+		"Renamed",
+		"moved.resource.toml",
+		{base_color = {0, 1, 0, 1}},
+	)
+	testing.expect(t, first_err == "" && second_err == "")
+	testing.expect_value(t, second, first)
+	by_id, found := material_by_uuid(&registry, id)
+	testing.expect(t, found)
+	testing.expect_value(t, by_id, first)
+	material, alive := get_material(&registry, first)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, material.name, "Renamed")
+		testing.expect_value(t, material.source, "moved.resource.toml")
+		testing.expect_value(t, material.version, u32(2))
+	}
+}
+
+@(test)
+test_project_material_uuid_reuses_slot_after_disappearing_and_reappearing :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000003")
+	testing.expect(t, valid)
+	first, first_err := register_project_material(
+		&registry,
+		id,
+		"Transient",
+		"transient.resource.toml",
+		{base_color = {1, 0, 0, 1}},
+	)
+	testing.expect(t, first_err == "")
+	testing.expect(t, register_project_materials(&registry, "", nil) == "")
+	_, old_alive := get_material(&registry, first)
+	testing.expect(t, !old_alive)
+
+	revived, revived_err := register_project_material(
+		&registry,
+		id,
+		"Revived",
+		"revived.resource.toml",
+		{base_color = {0, 1, 0, 1}},
+	)
+	testing.expect(t, revived_err == "")
+	testing.expect_value(t, revived.index, first.index)
+	testing.expect(t, revived.generation != first.generation)
+	material, alive := get_material(&registry, revived)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, material.name, "Revived")
+	}
+}
+
+@(test)
+test_project_material_batch_validation_does_not_partially_apply :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	_, runtime_err := register_material(&registry, "Reserved", {base_color = {1, 1, 1, 1}})
+	testing.expect(t, runtime_err == "")
+	first_id, first_valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000004")
+	second_id, second_valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000005")
+	testing.expect(t, first_valid && second_valid)
+	declarations := []shared.Project_Resource {
+		{
+			id = first_id,
+			kind = .Material,
+			name = "Would Otherwise Apply",
+			source = "first.resource.toml",
+			material = {base_color = {1, 0, 0, 1}},
+		},
+		{
+			id = second_id,
+			kind = .Material,
+			name = "Reserved",
+			source = "second.resource.toml",
+			material = {base_color = {0, 1, 0, 1}},
+		},
+	}
+	testing.expect(t, register_project_materials(&registry, "", declarations) != "")
+	_, first_found := material_by_uuid(&registry, first_id)
+	_, second_found := material_by_uuid(&registry, second_id)
+	testing.expect(t, !first_found && !second_found)
+}
 
 @(test)
 test_cube_is_full_indexed_geometry :: proc(t: ^testing.T) {

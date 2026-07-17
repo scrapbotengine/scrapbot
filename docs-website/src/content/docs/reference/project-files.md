@@ -1,6 +1,6 @@
 ---
 title: Project File Reference
-description: The current manifest and scene file subset supported by Scrapbot.
+description: The current manifest, resource, and scene file subset supported by Scrapbot.
 ---
 
 Scrapbot's file formats intentionally cover a narrow subset right now. Valid TOML outside this subset may still fail.
@@ -38,6 +38,25 @@ Fields:
 Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `build/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
 
 Embedded Inter is always available as the default and runtime fallback. The current font slice supports printable ASCII only; unsupported characters render as `?`, and shaping, kerning, variable-font axes, and Unicode fallback chains are not implemented yet.
+
+## Project resources
+
+Scrapbot recursively discovers standalone files under `resources/` whose names end in `.resource.toml`. Resources are typed project data outside the ECS and are not owned by a scene. Every resource has a unique, non-zero UUID; names and file paths remain editable labels and storage locations.
+
+The first resource type is a material:
+
+```toml
+id = "b1000000-0000-4000-8000-000000000001"
+type = "scrapbot.material"
+name = "Coral"
+
+[material]
+base_color = [1.0, 0.25, 0.08, 1.0]
+emissive = [0.0, 0.0, 0.0]
+texture = "assets/coral.png"
+```
+
+`base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, and `texture` is optional. Texture paths must be safe relative `.png` paths under `assets/`. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
 
 ## Scene entities
 
@@ -91,10 +110,10 @@ Explicit render resources:
 resource = "cube"
 
 [entities.material]
-resource = "coral"
+resource = "b1000000-0000-4000-8000-000000000001"
 ```
 
-Geometry and material names resolve against resources created by project Luau or native Odin code. Entities become renderable once transform, geometry, and material references are valid.
+Geometry remains a runtime name reference in this slice. Material is a stable project resource UUID and must resolve to an authored `scrapbot.material` resource. Entities become renderable once transform, geometry, and material references are valid.
 
 Lights:
 

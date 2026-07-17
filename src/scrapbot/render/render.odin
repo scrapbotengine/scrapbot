@@ -33,6 +33,7 @@ Runtime_Save_Proc :: #type proc(
 	data: rawptr,
 	world: ^World,
 	dirty_entities: []shared.Entity_UUID,
+	dirty_resources: []shared.Resource_UUID,
 ) -> string
 Render_Stats :: struct {
 	draw_batches: int,
@@ -398,6 +399,7 @@ run_frame_system_unmeasured :: proc(
 				config.runtime_save_data,
 				world,
 				config.ui_state.editor_dirty_entities[:],
+				config.ui_state.editor_dirty_resources[:],
 			)
 		}
 		ui.complete_scene_save(config.ui_state, save_err == "")

@@ -1,0 +1,7 @@
+id = "20000000-0000-4000-8000-000000000009"
+type = "scrapbot.material"
+name = "Static Amber Light"
+
+[material]
+base_color = [1, 0.22, 0.02, 1]
+emissive = [7, 1.54, 0.14]

@@ -30,8 +30,8 @@ The top bar contains the Scrapbot title and the project simulation controls. The
 | Stop | Restore the in-memory authoring state captured when playback began, discard playback mutations and runtime spawns, retain loaded Luau and Odin systems, and remain stopped. |
 | Step | While pausing normal playback, run one fixed 1/60-second project update. |
 | Undo / Redo | While stopped, traverse complete authoring transactions. The controls dim when no matching history step is available. |
-| Save | While stopped, write dirty value and structural scene-authoring changes back to the scene TOML. |
-| Revert | While stopped and dirty, discard unsaved authoring and reload scene entities from disk without reloading Luau, Odin, systems, or render resources. Revert clears authoring history. |
+| Save | While stopped, write dirty scene authoring and inline project-resource changes to their source files. |
+| Revert | While stopped and dirty, discard unsaved authoring and reload project resources and scene entities from disk without reloading Luau, Odin, or systems. Revert clears authoring history. |
 
 The transport also has command shortcuts while the editor is open:
 
@@ -44,6 +44,8 @@ The transport also has command shortcuts while the editor is open:
 Transport shortcuts are ignored while the scene camera captures the pointer or a project-owned input has focus. Command-modified E and R do not change the transform-gizmo mode.
 
 Pause preserves the current runtime world so Play can resume it. Play and Step capture the current stopped authoring state in memory before simulation advances. Stop returns to that captured state without reloading code or the scene file: unsaved authored entities, dirty state, selection, and undo history survive, while playback mutations and runtime-spawned entities disappear. Stopped is authoring mode. The bottom bar retains `/ UNSAVED` beside the current playback state until Save—or `Ctrl/Cmd+S`—writes those changes explicitly, Undo/Redo returns to the clean history position, or Revert discards them.
+
+Project resources participate in the same authoring state. Save addresses entities and resources by stable UUID, atomically writes each dirty resource to its own standalone file, and then persists dirty scene references. Resource names and paths can change without changing scene identity.
 
 Save matches authored entities by stable UUID, not by name. Completed authoring transactions identify candidate entities, then Save compares them with the parsed authored baseline. Value-only edits patch semantic differences. Structural saves rewrite only dirty entity blocks, omit deleted UUIDs, and append created or explicitly kept runtime UUIDs in action order; every clean entity block remains byte-for-byte intact before the file is atomically replaced. A successful Save marks the current history position as clean, so undoing away from it reports unsaved changes and redoing back clears them. Unpromoted runtime and editor-owned entities are never written. Changes made while running or paused remain disposable runtime state.
 
@@ -76,6 +78,8 @@ The shell is itself built from transient ECS entities using the same responsive 
 Click an entry to select it, or click rendered geometry in the viewport. Viewport picking tests the rendered triangles and selects the nearest hit; clicking empty viewport space clears the selection. The browser scrolls to reveal a viewport-picked entity and automatically clears selection if that entity despawns.
 
 The inspector reports the selected entity's editable name, identity, provenance, attached components, field names, and current values. Each component receives a titled panel, with its fields arranged as label/value rows in an edge-to-edge two-column property table. The initial split gives labels one third and values two thirds of the width; drag the column boundary to resize it. Spacing belongs to the individual cells, so controls stay comfortably inset without shrinking the table itself. Click a panel title or its SDF disclosure arrow to collapse or expand that component.
+
+An authored Material panel shows its resource name and UUID, editable base color and HDR emissive channels, and a stopped-mode selector populated from known material resources. Switching the reference and editing inline resource fields are undoable authoring transactions. Resource data remains registry-owned outside ECS; the selector and controls themselves use the public ECS UI system.
 
 Every truthfully registered Bool, String, Number, Vec2, Vec3, and Vec4 field is editable through the same reusable checkbox and input controls available to project UI. Vector rows provide one input per axis, while scalar and string rows use one full-width input. UUID references and text alignment are validated text for now; color fields use vector inputs. Transform, camera, light, and custom Vec3 fields retain their specialized live-preview constraints. Engine-derived state and opaque render handles remain read-only until they gain an honest public editing contract. A complete stopped-mode reflected edit becomes one authoring transaction, so Undo, Redo, Save, and Revert work without field-specific editor history code.
 

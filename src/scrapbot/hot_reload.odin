@@ -35,10 +35,12 @@ Hot_Reload_State :: struct {
 	scene_path: string,
 	script_path: string,
 	assets_path: string,
+	resources_path: string,
 	project_stamp: File_Stamp,
 	scene_stamp: File_Stamp,
 	script_stamp: File_Stamp,
 	assets_stamp: Asset_Stamp,
+	resources_stamp: Asset_Stamp,
 	playback_baseline: Playback_Baseline,
 	runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
@@ -94,6 +96,11 @@ init_hot_reload_state :: proc(
 	assets_path, assets_join_err := filepath.join({root, "assets"})
 	if assets_join_err != nil { return "failed to allocate assets path" }
 	state.assets_path = assets_path
+	resources_path, resources_join_err := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
+	if resources_join_err != nil {
+		return "failed to allocate resources path"
+	}
+	state.resources_path = resources_path
 
 	if source_err := native.sync_project_extension_sources(
 		&state.native_sources,
@@ -113,10 +120,16 @@ init_hot_reload_state :: proc(
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.script_stamp = file_stamp(state.script_path)
 	state.assets_stamp = asset_stamp(state.assets_path)
+	state.resources_stamp = asset_stamp(state.resources_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
-	if err := init_render_resources(&state.resources, world, root, &loaded.config);
-	   err != "" { return err }
+	if err := init_render_resources(
+		&state.resources,
+		world,
+		root,
+		&loaded.config,
+		loaded.resources[:],
+	); err != "" { return err }
 	if err := capture_playback_baseline(&state.playback_baseline, world); err != "" { return err }
 	return load_script_runtime(state, world)
 }
@@ -133,6 +146,7 @@ destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	delete(state.scene_path)
 	delete(state.script_path)
 	delete(state.assets_path)
+	delete(state.resources_path)
 	state^ = {}
 }
 
@@ -202,15 +216,21 @@ hot_reload_scene_save :: proc(
 	data: rawptr,
 	world: ^shared.World,
 	dirty_entities: []shared.Entity_UUID,
+	dirty_resources: []shared.Resource_UUID,
 ) -> string {
 	state := cast(^Hot_Reload_State)data
 	if state == nil || world == nil {
 		return "cannot save an unavailable hot-reload runtime"
 	}
+	if err := resources.save_project_materials(&state.resources, state.root, dirty_resources);
+	   err != "" {
+		return err
+	}
 	if err := save_scene_world(state.scene_path, world, dirty_entities); err != "" {
 		return err
 	}
 	state.scene_stamp = file_stamp(state.scene_path)
+	state.resources_stamp = asset_stamp(state.resources_path)
 	return ""
 }
 
@@ -219,10 +239,23 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if state == nil || world == nil {
 		return "cannot revert an unavailable hot-reload runtime"
 	}
+	loaded := project.load_project(state.root)
+	defer project.destroy_project_load_result(&loaded)
+	if loaded.err != "" {
+		return loaded.err
+	}
+	if err := resources.register_project_materials(
+		&state.resources,
+		state.root,
+		loaded.resources[:],
+	); err != "" {
+		return err
+	}
 	if err := reset_scene_world(state.scene_path, &state.runtime, world); err != "" {
 		return err
 	}
 	state.scene_stamp = file_stamp(state.scene_path)
+	state.resources_stamp = asset_stamp(state.resources_path)
 	return ""
 }
 
@@ -240,16 +273,19 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	next_scene_stamp := file_stamp(state.scene_path)
 	next_script_stamp := file_stamp(state.script_path)
 	next_assets_stamp := asset_stamp(state.assets_path)
+	next_resources_stamp := asset_stamp(state.resources_path)
 	project_changed := !file_stamps_equal(state.project_stamp, next_project_stamp)
 	scene_changed := !file_stamps_equal(state.scene_stamp, next_scene_stamp)
 	script_changed := !file_stamps_equal(state.script_stamp, next_script_stamp)
 	assets_changed := !asset_stamps_equal(state.assets_stamp, next_assets_stamp)
+	resources_changed := !asset_stamps_equal(state.resources_stamp, next_resources_stamp)
 	extensions_changed := native.project_extensions_changed(&state.native_extensions, state.root)
 	sources_changed := native.project_extension_sources_changed(&state.native_sources, state.root)
 	if !project_changed &&
 	   !scene_changed &&
 	   !script_changed &&
 	   !assets_changed &&
+	   !resources_changed &&
 	   !extensions_changed &&
 	   !sources_changed {
 		return
@@ -258,6 +294,7 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	if project_changed ||
 	   scene_changed ||
 	   assets_changed ||
+	   resources_changed ||
 	   extensions_changed ||
 	   sources_changed {
 		if err := reload_project_world_and_script(state, world); err != "" {
@@ -265,7 +302,7 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 			return
 		}
 		fmt.eprintf(
-			"[hot-reload] reloaded %s, %s, %s, assets, and native extensions\n",
+			"[hot-reload] reloaded %s, %s, %s, resources, assets, and native extensions\n",
 			state.project_path,
 			state.scene_path,
 			state.script_path,
@@ -296,6 +333,13 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		state.root,
 		loaded.config.fonts[:],
 	); err != "" { return err }
+	if err := resources.register_project_materials(
+		&state.resources,
+		state.root,
+		loaded.resources[:],
+	); err != "" {
+		return err
+	}
 
 	next_world := ecs.build_world(&loaded.scene)
 	script_load := load_script_from_path(
@@ -357,6 +401,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.script_stamp = file_stamp(state.script_path)
 	state.assets_stamp = asset_stamp(state.assets_path)
+	state.resources_stamp = asset_stamp(state.resources_path)
 	return ""
 }
 

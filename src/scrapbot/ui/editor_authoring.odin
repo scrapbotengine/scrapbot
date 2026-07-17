@@ -2,6 +2,7 @@ package ui
 
 import component "../component"
 import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import "core:fmt"
 
@@ -279,6 +280,49 @@ editor_authoring_rename_entity :: proc(
 	return true
 }
 
+editor_authoring_set_material_resource :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	resource_id: shared.Resource_UUID,
+) -> bool {
+	if !editor_authoring_available(state, world) ||
+	   state.resource_registry == nil ||
+	   !ecs.entity_is_alive(world, entity_index) {
+		return false
+	}
+	if _, found := resources.material_by_uuid(state.resource_registry, resource_id); !found {
+		return false
+	}
+	before := capture_snapshot_pointer(world, entity_index)
+	if before == nil || before.origin != .Scene {
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	id_buffer: [36]u8
+	value := shared.resource_uuid_to_string(resource_id, id_buffer[:])
+	if before.entity.material_resource == value {
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	after := capture_snapshot_pointer(world, entity_index)
+	if after == nil {
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	delete(after.entity.material_resource)
+	after.entity.material_resource = ecs.clone_snapshot_string(value)
+	after.entity.has_material = true
+	if _, ok := ecs.apply_entity_snapshot(world, after); !ok {
+		destroy_snapshot_pointer(before)
+		destroy_snapshot_pointer(after)
+		return false
+	}
+	push_structural_change(state, before.entity.id, before, after)
+	editor_authoring_select(state, world, entity_index)
+	return true
+}
+
 resolve_snapshot_resource_names :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -307,9 +351,12 @@ resolve_snapshot_resource_names :: proc(
 		handle := world.materials[entity.material_index].handle
 		if int(handle.index) < len(state.resource_registry.materials) {
 			resource := state.resource_registry.materials[handle.index]
-			if resource.alive && resource.generation == handle.generation {
+			if resource.alive && resource.authored && resource.generation == handle.generation {
+				id_buffer: [36]u8
 				snapshot.entity.has_material = true
-				snapshot.entity.material_resource = ecs.clone_snapshot_string(resource.name)
+				snapshot.entity.material_resource = ecs.clone_snapshot_string(
+					shared.resource_uuid_to_string(resource.id, id_buffer[:]),
+				)
 			}
 		}
 	}

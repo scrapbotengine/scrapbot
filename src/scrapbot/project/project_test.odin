@@ -6,6 +6,67 @@ import "core:path/filepath"
 import "core:testing"
 
 @(test)
+test_project_material_resource_parser :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000001"
+type = "scrapbot.material"
+name = "Neon"
+
+[material]
+base_color = [0.1, 0.2, 0.3, 1]
+emissive = [8, 2, 0.5]
+texture = "assets/checker.png"
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect_value(t, resource.name, "Neon")
+	testing.expect_value(t, resource.material.base_color, Vec4{0.1, 0.2, 0.3, 1})
+	testing.expect_value(t, resource.material.emissive, Vec3{8, 2, 0.5})
+	testing.expect_value(t, resource.material.texture, "assets/checker.png")
+}
+
+@(test)
+test_project_material_resource_parser_rejects_invalid_values :: proc(t: ^testing.T) {
+	_, missing_id := parse_project_resource(
+		`type = "scrapbot.material"
+name = "Missing"
+[material]
+base_color = [1, 1, 1, 1]
+`,
+	)
+	testing.expect(t, missing_id.err == .Missing_Field)
+	_, unsafe_texture := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000002"
+type = "scrapbot.material"
+name = "Unsafe"
+[material]
+texture = "../outside.png"
+`,
+	)
+	testing.expect(t, unsafe_texture.err == .Invalid_Path)
+}
+
+@(test)
+test_scene_material_references_require_known_resource_uuids :: proc(t: ^testing.T) {
+	scene := Scene{}
+	defer destroy_scene(&scene)
+	append(
+		&scene.entities,
+		Scene_Entity {
+			name = "Body",
+			has_material = true,
+			material_resource = "a1000000-0000-4000-8000-000000000003",
+		},
+	)
+	resource_id, valid := shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000003")
+	testing.expect(t, valid)
+	resources := []shared.Project_Resource{{id = resource_id, kind = .Material}}
+	testing.expect(t, validate_scene_resource_references(&scene, resources) == "")
+	scene.entities[0].material_resource = "not-a-uuid"
+	testing.expect(t, validate_scene_resource_references(&scene, resources) != "")
+}
+
+@(test)
 test_project_config_requires_safe_scene_path :: proc(t: ^testing.T) {
 	config, result := parse_project_config(
 		`name = "Demo"

@@ -142,6 +142,13 @@ Editor_Edit_Change :: struct {
 	before_boolean: bool,
 	after_boolean: bool,
 }
+Editor_Resource_Change :: struct {
+	resource_id: shared.Resource_UUID,
+	field: shared.Editor_Inspector_Field,
+	axis: shared.Editor_Inspector_Axis,
+	before_number: f32,
+	after_number: f32,
+}
 Editor_Structural_Change :: struct {
 	target_uuid: shared.Entity_UUID,
 	before: ^ecs.Entity_Snapshot,
@@ -150,6 +157,8 @@ Editor_Structural_Change :: struct {
 Editor_Edit_Transaction :: struct {
 	changes: [EDITOR_TRANSACTION_MAX_CHANGES]Editor_Edit_Change,
 	change_count: int,
+	resource_changes: [4]Editor_Resource_Change,
+	resource_change_count: int,
 	structural: ^Editor_Structural_Change,
 }
 State :: struct {
@@ -196,6 +205,8 @@ State :: struct {
 	editor_scene_revert_failed: bool,
 	editor_dirty_entities: [dynamic]shared.Entity_UUID,
 	editor_dirty_entity_lookup: map[shared.Entity_UUID]bool,
+	editor_dirty_resources: [dynamic]shared.Resource_UUID,
+	editor_dirty_resource_lookup: map[shared.Resource_UUID]bool,
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
@@ -207,6 +218,7 @@ State :: struct {
 	editor_snapshot_selected_entity: shared.Entity,
 	editor_snapshot_refresh_count: u64,
 	editor_component_menu_open: bool,
+	editor_resource_menu_open: bool,
 	editor_layout_invalidated: bool,
 	system_profile: ^shared.System_Profile,
 	editor_system_profile_revision: u64,
@@ -478,6 +490,8 @@ editor_recompute_scene_dirty :: proc(state: ^State) {
 	if !state.editor_scene_dirty {
 		clear(&state.editor_dirty_entities)
 		clear(&state.editor_dirty_entity_lookup)
+		clear(&state.editor_dirty_resources)
+		clear(&state.editor_dirty_resource_lookup)
 		state.editor_scene_save_failed = false
 		state.editor_scene_revert_failed = false
 	}
@@ -493,6 +507,8 @@ complete_scene_save :: proc(state: ^State, ok: bool) {
 		state.editor_scene_dirty = false
 		clear(&state.editor_dirty_entities)
 		clear(&state.editor_dirty_entity_lookup)
+		clear(&state.editor_dirty_resources)
+		clear(&state.editor_dirty_resource_lookup)
 		state.editor_history_clean_cursor = state.editor_history_cursor
 		state.editor_history_clean_valid = true
 		state.editor_scene_revert_failed = false
@@ -510,6 +526,8 @@ complete_scene_revert :: proc(state: ^State, ok: bool) {
 		state.editor_scene_dirty = false
 		clear(&state.editor_dirty_entities)
 		clear(&state.editor_dirty_entity_lookup)
+		clear(&state.editor_dirty_resources)
+		clear(&state.editor_dirty_resource_lookup)
 		state.editor_scene_save_failed = false
 	}
 	state.editor_snapshot_valid = false
@@ -532,6 +550,8 @@ destroy :: proc(state: ^State) {
 	delete(state.input_original_text)
 	delete(state.editor_dirty_entities)
 	delete(state.editor_dirty_entity_lookup)
+	delete(state.editor_dirty_resources)
+	delete(state.editor_dirty_resource_lookup)
 	state^ = {}
 }
 
@@ -700,6 +720,7 @@ reconcile :: proc(
 	reconcile_editor_ui_world(state, world)
 	if err := sync_ui_structure(state, world); err != "" { return err }
 	editor_ui_anchor_component_menu(state, world, editor_width, editor_height)
+	editor_ui_anchor_resource_menu(state, world, editor_width, editor_height)
 	project_layout := Rect{0, 0, width, height}
 	editor_layout := Rect{0, 0, editor_width, editor_height}
 	if !state.editor_visible && state.has_focused_input && state.focused_input_editor {
@@ -751,6 +772,7 @@ reconcile :: proc(
 		!state.editor_previous_primary_down
 	project_pressed, project_pressed_ok := update_interaction(state, project_pointer, false)
 	component_menu_was_open := state.editor_component_menu_open
+	resource_menu_was_open := state.editor_resource_menu_open
 	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
 	if state.pointer_cursor == .Default {
 		state.pointer_cursor = numeric_input_pointer_cursor(state, world)
@@ -789,6 +811,16 @@ reconcile :: proc(
 	}
 	if state.editor_component_menu_open && keyboard.escape {
 		editor_ui_close_component_menu(state, world)
+		panel_changed = true
+	}
+	if resource_menu_was_open &&
+	   editor_press_started &&
+	   (!pressed_ok || !editor_ui_resource_menu_contains(world, pressed)) {
+		editor_ui_close_resource_menu(state, world)
+		panel_changed = true
+	}
+	if state.editor_resource_menu_open && keyboard.escape {
+		editor_ui_close_resource_menu(state, world)
 		panel_changed = true
 	}
 	if project_pressed_ok {
