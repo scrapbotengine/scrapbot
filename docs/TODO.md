@@ -115,6 +115,7 @@
 - [x] Add UUID-addressed create, duplicate, rename, delete, runtime promotion, and component add/remove transactions with structural scene persistence.
 - [x] Generalize component value editing across every currently registered Bool, String, Number, Vec2, Vec3, and Vec4 field shape.
 - [x] Add a resource-reference picker and inline authoring for project material resources.
+- [x] Commit dirty scene and resource files through one validated, recoverable project Save transaction.
 - [ ] Add specialized enum, color, and entity-reference inspector pickers, followed by array and nested-value editing.
 
 ## Documentation And Examples
@@ -127,6 +128,7 @@
 - [ ] Apply a dedicated baseline `odinfmt` pass and promote format checking into the default test gate.
 - [x] Add compile-time-gated world-integrity validation and seeded editor lifecycle state-machine coverage.
 - [x] Add a large-scene persistence torture harness for mixed value/structural diffs, idempotent saves, runtime exclusion, Save/Undo/Redo/Revert savepoints, complete scene-component round trips, and failed-write preservation.
+- [x] Inject project-save failures and crashes across staging, backup, installation, commit, rollback, and startup recovery.
 - [x] Add structured runtime storage, allocator, and update-cost statistics.
 - [x] Add deterministic entity/component churn invariants to the normal test suite.
 - [x] Add an opt-in lifecycle-heavy CPU/RAM growth soak.

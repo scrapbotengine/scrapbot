@@ -43,6 +43,7 @@ Current decisions:
 | ADR-028 | Persist structural authoring by UUID-scoped entity blocks |
 | ADR-029 | Postprocess the HDR world before UI composition |
 | ADR-030 | Identify project resources by UUID outside the ECS |
+| ADR-031 | Commit project Save as one recoverable transaction |
 
 ## FDRs
 

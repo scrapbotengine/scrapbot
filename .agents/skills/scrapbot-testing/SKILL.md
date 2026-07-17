@@ -219,6 +219,17 @@ When changing Save, Revert, Undo/Redo savepoints, scene serialization, dirty can
 
 For exact-text assertions, change only the intended UUID block, require a byte-identical second Save, preserve untouched comments/formatting, and assert that runtime/editor entities never reach disk. Use `save_scene_world_with_writer` only inside package tests to inject a failure; production callers must keep the atomic writer.
 
+## Project Save Transaction Reproduction
+
+When one Save can touch both scene and resource files, preserve the transaction contracts in `src/scrapbot/project/save_transaction_test.odin` and `src/scrapbot/project_save_test.odin`:
+
+- Prepare and parse every candidate before the first destination changes; validate scene resource references against the complete candidate project state.
+- Inject an ordinary error at every pre-commit filesystem checkpoint and require every original file plus all transaction markers, stages, and backups to be restored exactly.
+- Inject a crash on both sides of the committed marker. Project recovery must roll backward before it and preserve the complete new file set after it.
+- Reload a jointly changed scene and resource registry, compare the authored values, and require a byte-identical repeated Save.
+
+Do not weaken project atomicity to per-file atomic renames. Production editor and hot-reload Save paths must use `save_project_world`; `save_project_materials` and `save_scene_world` remain narrow wrappers for package-level compatibility and focused tests.
+
 ## Notes For Future Agents
 
 - Prefer `mise test` over reconstructing the suite manually.

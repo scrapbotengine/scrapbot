@@ -1,5 +1,6 @@
 package resources
 
+import project "../project"
 import shared "../shared"
 import c "core:c"
 import "core:encoding/json"
@@ -552,10 +553,33 @@ save_project_materials :: proc(
 	root: string,
 	ids: []shared.Resource_UUID,
 ) -> string {
+	files: [dynamic]project.Save_File
+	defer project.destroy_owned_save_files(&files)
+	if err := prepare_project_material_save_files(registry, root, ids, &files); err != "" {
+		return err
+	}
+	return project.commit_project_save(root, files[:])
+}
+
+prepare_project_material_save_files :: proc(
+	registry: ^Registry,
+	root: string,
+	ids: []shared.Resource_UUID,
+	files: ^[dynamic]project.Save_File,
+) -> string {
 	if registry == nil {
 		return "resource registry is not available"
 	}
+	if files == nil {
+		return "project save file collection is not available"
+	}
+	seen := make(map[shared.Resource_UUID]bool, len(ids))
+	defer delete(seen)
 	for id in ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		handle, found := material_by_uuid(registry, id)
 		if !found {
 			return "dirty project material no longer exists"
@@ -595,29 +619,32 @@ emissive = [%.9g, %.9g, %.9g]
 		if material.texture_asset != "" {
 			fmt.sbprintf(&builder, "texture = \"%s\"\n", material.texture_asset)
 		}
-		temp_path, temp_err := strings.concatenate({resource_path, ".scrapbot-save.tmp"})
-		if temp_err != nil {
-			strings.builder_destroy(&builder)
-			delete(resource_path)
-			return "failed to allocate temporary resource path"
-		}
-		write_err := os.write_entire_file(temp_path, strings.to_string(builder))
+		source, clone_err := strings.clone(strings.to_string(builder))
 		strings.builder_destroy(&builder)
-		if write_err != nil {
-			os.remove(temp_path)
-			delete(temp_path)
+		if clone_err != nil {
 			delete(resource_path)
-			return fmt.tprintf("failed to write temporary resource: %v", write_err)
+			return "failed to allocate project material source"
 		}
-		rename_err := os.rename(temp_path, resource_path)
-		if rename_err != nil {
-			os.remove(temp_path)
-			delete(temp_path)
+		parsed, parse_result := project.parse_project_resource(source)
+		if parse_result.err != .None {
+			delete(source)
 			delete(resource_path)
-			return fmt.tprintf("failed to replace resource file: %v", rename_err)
+			return fmt.tprintf(
+				"refusing to replace resource with invalid generated TOML: %s",
+				parse_result.message,
+			)
 		}
-		delete(temp_path)
-		delete(resource_path)
+		if parsed.id != material.id ||
+		   parsed.kind != .Material ||
+		   parsed.name != material.name ||
+		   parsed.material.base_color != shared.Vec4(material.desc.base_color) ||
+		   parsed.material.emissive != material.desc.emissive ||
+		   parsed.material.texture != material.texture_asset {
+			delete(source)
+			delete(resource_path)
+			return "generated project material changed meaning during serialization"
+		}
+		append(files, project.Save_File{path = resource_path, source = source})
 	}
 	return ""
 }

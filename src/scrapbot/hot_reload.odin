@@ -230,11 +230,14 @@ hot_reload_scene_save :: proc(
 	if state == nil || world == nil {
 		return "cannot save an unavailable hot-reload runtime"
 	}
-	if err := resources.save_project_materials(&state.resources, state.root, dirty_resources);
-	   err != "" {
-		return err
-	}
-	if err := save_scene_world(state.scene_path, world, dirty_entities); err != "" {
+	if err := save_project_world(
+		state.root,
+		state.scene_path,
+		&state.resources,
+		world,
+		dirty_entities,
+		dirty_resources,
+	); err != "" {
 		return err
 	}
 	state.scene_stamp = file_stamp(state.scene_path)

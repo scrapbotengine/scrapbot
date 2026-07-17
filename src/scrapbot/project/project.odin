@@ -298,6 +298,10 @@ init_project :: proc(root, name: string) -> string {
 
 load_project :: proc(root: string) -> Project_Load_Result {
 	result: Project_Load_Result
+	if recovery_err := recover_project_save(root); recovery_err != "" {
+		result.err = recovery_err
+		return result
+	}
 
 	config_result := load_project_config(root)
 	if config_result.err != "" {

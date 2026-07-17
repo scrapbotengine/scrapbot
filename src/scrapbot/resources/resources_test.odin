@@ -46,6 +46,46 @@ test_project_material_save_writes_only_its_standalone_resource :: proc(t: ^testi
 }
 
 @(test)
+test_project_material_save_rejects_changed_serialized_meaning_before_disk_write :: proc(
+	t: ^testing.T,
+) {
+	root, temp_err := os.make_directory_temp(
+		"",
+		"scrapbot-resource-save-validation-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, temp_err == nil)
+	if temp_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	resources_dir, _ := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
+	defer delete(resources_dir)
+	testing.expect(t, os.make_directory_all(resources_dir) == nil)
+	resource_path, _ := filepath.join({resources_dir, "invalid.resource.toml"})
+	defer delete(resource_path)
+	testing.expect(t, os.write_entire_file(resource_path, "last valid resource\n") == nil)
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000012")
+	testing.expect(t, valid)
+	_, register_err := register_project_material(
+		&registry,
+		id,
+		`Invalid " Name`,
+		"invalid.resource.toml",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, register_err == "")
+	testing.expect(t, save_project_materials(&registry, root, []shared.Resource_UUID{id}) != "")
+	bytes, read_err := os.read_entire_file(resource_path, context.temp_allocator)
+	testing.expect(t, read_err == nil)
+	if read_err == nil {
+		testing.expect_value(t, string(bytes), "last valid resource\n")
+	}
+}
+
+@(test)
 test_project_material_uuid_updates_preserve_runtime_handle :: proc(t: ^testing.T) {
 	registry: Registry
 	defer destroy_registry(&registry)

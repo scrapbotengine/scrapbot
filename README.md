@@ -196,6 +196,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Registry-driven, namespaced component picker with add/remove undo/redo
   - [x] Entity create, duplicate, rename, delete, and runtime promotion
   - [x] Explicit stopped-mode scene persistence by stable entity UUID
+  - [x] Recoverable project-wide Save transactions across scene and resource files
   - [ ] Multi-selection editing
   - [x] Bounded field and structural editor transactions
 - Scene Tools
@@ -223,6 +224,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Compile-time-gated world-integrity validation
   - [x] Seeded editor lifecycle state-machine tests
   - [x] Large-scene persistence torture tests with exact-text, savepoint, schema-roundtrip, and failure-injection coverage
+  - [x] Project-save rollback and crash-recovery fault matrix across every filesystem phase
   - [x] Native extension tests
   - [x] Lifecycle CPU/RAM growth gate
   - [x] Linux AddressSanitizer lane

@@ -644,11 +644,14 @@ frame_runtime_save :: proc(
 	if runtime == nil || world == nil {
 		return "cannot save an unavailable project runtime"
 	}
-	if err := resources.save_project_materials(&runtime.resources, runtime.root, dirty_resources);
-	   err != "" {
-		return err
-	}
-	return save_scene_world(runtime.scene_path, world, dirty_entities)
+	return save_project_world(
+		runtime.root,
+		runtime.scene_path,
+		&runtime.resources,
+		world,
+		dirty_entities,
+		dirty_resources,
+	)
 }
 
 frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {

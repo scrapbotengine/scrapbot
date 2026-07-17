@@ -27,11 +27,29 @@ save_scene_world_with_writer :: proc(
 	writer: Scene_Save_Writer,
 	stats: ^Scene_Save_Stats = nil,
 ) -> string {
-	if world == nil {
-		return "cannot save an unavailable scene world"
-	}
 	if writer == nil {
 		return "cannot save without a scene writer"
+	}
+	candidate, prepare_err := prepare_scene_world_save(scene_path, world, dirty_entities, stats)
+	if prepare_err != "" {
+		return prepare_err
+	}
+	defer delete(candidate)
+	return writer(scene_path, candidate)
+}
+
+@(private)
+prepare_scene_world_save :: proc(
+	scene_path: string,
+	world: ^shared.World,
+	dirty_entities: []shared.Entity_UUID,
+	stats: ^Scene_Save_Stats = nil,
+) -> (
+	string,
+	string,
+) {
+	if world == nil {
+		return "", "cannot save an unavailable scene world"
 	}
 	if stats != nil {
 		stats^ = {}
@@ -39,7 +57,7 @@ save_scene_world_with_writer :: proc(
 	loaded := project.load_scene_file(scene_path)
 	defer project.destroy_scene_load_result(&loaded)
 	if loaded.err != "" {
-		return loaded.err
+		return "", loaded.err
 	}
 	baseline_world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&baseline_world)
@@ -57,7 +75,7 @@ save_scene_world_with_writer :: proc(
 	)
 	source_bytes, read_err := os.read_entire_file(scene_path, context.temp_allocator)
 	if read_err != nil {
-		return fmt.tprintf("failed to read %s: %v", scene_path, read_err)
+		return "", fmt.tprintf("failed to read %s: %v", scene_path, read_err)
 	}
 	value_source, patch_err := patch_scene_world_values(
 		string(source_bytes),
@@ -67,7 +85,7 @@ save_scene_world_with_writer :: proc(
 		values,
 	)
 	if patch_err != "" {
-		return patch_err
+		return "", patch_err
 	}
 	defer delete(value_source)
 	candidate := value_source
@@ -82,19 +100,23 @@ save_scene_world_with_writer :: proc(
 			dirty_entities,
 		)
 		if patch_err != "" {
-			return patch_err
+			return "", patch_err
 		}
 		candidate = structural_source
 	}
 	validated_scene, parse_result := project.parse_scene(candidate)
 	defer project.destroy_scene(&validated_scene)
 	if parse_result.err != .None {
-		return fmt.tprintf(
+		return "", fmt.tprintf(
 			"refusing to replace scene with invalid generated TOML: %s",
 			parse_result.message,
 		)
 	}
-	return writer(scene_path, candidate)
+	result, clone_err := strings.clone(candidate)
+	if clone_err != nil {
+		return "", "failed to allocate prepared scene source"
+	}
+	return result, ""
 }
 
 @(private)
