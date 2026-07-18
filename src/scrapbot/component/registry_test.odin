@@ -14,7 +14,12 @@ test_registry_contains_engine_components :: proc(t: ^testing.T) {
 	testing.expect(t, transform_ok)
 	testing.expect(t, transform.id != shared.INVALID_COMPONENT_ID)
 	testing.expect(t, transform.owner == .Engine)
+	testing.expect(t, transform.storage_kind == .Transform)
+	testing.expect(t, definition_is_authorable(transform))
 	testing.expect(t, transform.field_count == 3)
+	testing.expect(t, transform.name_token_count == 2)
+	testing.expect(t, transform.name_tokens[0] == "scrapbot")
+	testing.expect(t, transform.name_tokens[1] == "transform")
 
 	camera, camera_ok := find_definition(&registry, "scrapbot.camera")
 	testing.expect(t, camera_ok)
@@ -22,6 +27,28 @@ test_registry_contains_engine_components :: proc(t: ^testing.T) {
 	mesh, mesh_ok := find_definition(&registry, "scrapbot.mesh")
 	testing.expect(t, mesh_ok)
 	testing.expect(t, mesh.id != camera.id)
+	ui_state, ui_state_ok := find_definition(&registry, "scrapbot.ui_state")
+	render_instance, render_instance_ok := find_definition(
+		&registry,
+		"scrapbot.internal.render_instance",
+	)
+	testing.expect(t, ui_state_ok && render_instance_ok)
+	testing.expect(t, ui_state.storage_kind == .UI_State)
+	testing.expect(t, !definition_is_authorable(ui_state))
+	testing.expect(t, render_instance.storage_kind == .Derived)
+	testing.expect(t, !definition_is_authorable(render_instance))
+}
+
+@(test)
+test_registry_revision_changes_with_definition_updates :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	initial_revision := registry.revision
+	testing.expect(t, initial_revision == u64(registry.definition_count))
+	testing.expect(t, register_project_component(&registry, {name = "health"}) == "")
+	testing.expect(t, registry.revision == initial_revision + 1)
+	testing.expect(t, register_project_component(&registry, {name = "health"}) == "")
+	testing.expect(t, registry.revision == initial_revision + 2)
 }
 
 @(test)
@@ -94,6 +121,8 @@ test_registry_rejects_project_component_name_collisions :: proc(t: ^testing.T) {
 	autorotate, autorotate_ok := find_definition(&registry, "autorotate")
 	testing.expect(t, autorotate_ok)
 	testing.expect(t, autorotate.owner == .Project)
+	testing.expect(t, autorotate.storage_kind == .Custom)
+	testing.expect(t, definition_is_authorable(autorotate))
 	testing.expect(t, autorotate.id != shared.INVALID_COMPONENT_ID)
 	by_id, by_id_ok := find_definition_by_id(&registry, autorotate.id)
 	testing.expect(t, by_id_ok)
@@ -135,6 +164,8 @@ test_registry_registers_library_components :: proc(t: ^testing.T) {
 	rigidbody, rigidbody_ok := find_definition(&registry, "scrappyphysics.rigidbody")
 	testing.expect(t, rigidbody_ok)
 	testing.expect(t, rigidbody.owner == .Library)
+	testing.expect(t, rigidbody.storage_kind == .Custom)
+	testing.expect(t, definition_is_authorable(rigidbody))
 	testing.expect(t, rigidbody.id != shared.INVALID_COMPONENT_ID)
 	testing.expect(t, rigidbody.field_count == 1)
 

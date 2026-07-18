@@ -432,7 +432,7 @@ test_layout_fill_and_fit_content_are_reusable_and_ignore_hidden_children :: proc
 		state.nodes[root_node].scroll_max,
 	)
 
-	world.ui_layouts[world.entities[3].ui_layout_index].hidden = true
+	testing.expect(t, ecs.set_ui_hidden(&world, 3, true))
 	testing.expect(t, reconcile(state, &world, 320, 180) == "")
 	content_layout = world.ui_layouts[world.entities[1].ui_layout_index]
 	testing.expect(t, content_layout.size.y == 10)
@@ -1104,24 +1104,34 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 }
 
 @(test)
-test_panel_title_action_is_independent_from_collapse_and_activates_generically :: proc(
-	t: ^testing.T,
-) {
+test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
+	panel_id := ui_test_id("Composable Action Panel")
 	panel := shared.ui_panel_default()
-	panel.title = "REMOVABLE"
+	panel.title = "COMPOSABLE"
 	panel.collapsible = true
-	panel.action_enabled = true
+	button := shared.ui_button_default()
+	button.icon = .Close
+	button.panel_action = true
+	button.hover_background = {0.2, 0.3, 0.4, 1}
 	scene: shared.Scene
 	defer delete(scene.entities)
 	append(
 		&scene.entities,
 		shared.Scene_Entity {
-			id = ui_test_id("Action Panel"),
-			name = "Action Panel",
+			id = panel_id,
+			name = "Composable Action Panel",
 			has_ui_layout = true,
 			ui_layout = {size = {240, 100}},
 			has_ui_panel = true,
 			ui_panel = panel,
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Composable Close Action"),
+			name = "Composable Close Action",
+			has_ui_layout = true,
+			ui_layout = {parent = panel_id, size = {22, 22}, margin = {5, 5, 5, 5}},
+			has_ui_button = true,
+			ui_button = button,
 		},
 	)
 	world := ecs.build_world(&scene)
@@ -1131,56 +1141,101 @@ test_panel_title_action_is_independent_from_collapse_and_activates_generically :
 	testing.expect(t, init(state) == "")
 	defer destroy(state)
 	testing.expect(t, reconcile(state, &world, 240, 100) == "")
-	panel_node := find_node_by_entity_index(state, 0)
-	testing.expect(t, panel_node >= 0)
-	if panel_node < 0 {
+	action_node := find_node_by_entity_index(state, 1)
+	testing.expect(t, action_node >= 0)
+	if action_node < 0 {
 		return
 	}
-	action_rect, action_found := panel_title_action_rect(
-		state.nodes[panel_node],
-		world.ui_panels[0],
+	action_rect := state.nodes[action_node].rect
+	testing.expect(
+		t,
+		action_rect.x > 200 && action_rect.y >= 0 && action_rect.y < panel.title_height,
 	)
-	testing.expect(t, action_found)
-	if !action_found {
-		return
-	}
 	pointer := Pointer_Input {
 		position = {
 			action_rect.x + action_rect.width * 0.5,
 			action_rect.y + action_rect.height * 0.5,
 		},
+		primary_down = true,
 		available = true,
 	}
 	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
-	testing.expect(t, state.nodes[panel_node].panel_action_hovered)
-	found_hover_background := false
-	cross_line_count := 0
+	testing.expect(t, !world.ui_panels[0].collapsed)
+	testing.expect(t, world.ui_states[world.entities[1].ui_state_index].activated)
+	events := ui_events(state)
+	testing.expect(t, len(events) == 1)
+	if len(events) == 1 {
+		testing.expect(t, events[0].kind == .Activated)
+		testing.expect(t, events[0].entity == world.entities[1].id)
+	}
+	line_count := 0
 	for command in state.paint[:state.paint_count] {
-		if command.kind == .Panel &&
-		   command.rect == action_rect &&
-		   command.color == panel.action_hover_background {
-			found_hover_background = true
-		}
-		if command.kind == .Line && command.color == panel.action_color {
-			cross_line_count += 1
+		if command.kind == .Line && command.color == button.color {
+			line_count += 1
 		}
 	}
-	testing.expect(t, found_hover_background)
-	testing.expect(t, cross_line_count == 2)
+	testing.expect(t, line_count == 2)
+}
 
-	pointer.primary_down = true
-	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
-	testing.expect(t, !world.ui_panels[0].collapsed)
-	interaction := world.ui_states[world.entities[0].ui_state_index]
-	testing.expect(t, interaction.activation_revision == 1)
-	pointer.primary_down = false
-	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
-	pointer.position = {5, 5}
-	pointer.primary_down = true
-	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
-	testing.expect(t, world.ui_panels[0].collapsed)
-	interaction = world.ui_states[world.entities[0].ui_state_index]
-	testing.expect(t, interaction.activation_revision == 1)
+@(test)
+test_popup_helpers_share_ancestry_flip_and_viewport_clamping :: proc(t: ^testing.T) {
+	anchor_id := ui_test_id("Popup Helper Anchor")
+	popup_id := ui_test_id("Popup Helper Menu")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = anchor_id,
+			name = "Popup Helper Anchor",
+			has_ui_layout = true,
+			ui_layout = {position = {180, 100}, size = {100, 20}},
+		},
+		shared.Scene_Entity {
+			id = popup_id,
+			name = "Popup Helper Menu",
+			has_ui_layout = true,
+			ui_layout = {size = {10, 10}},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Popup Helper Item"),
+			name = "Popup Helper Item",
+			has_ui_layout = true,
+			ui_layout = {parent = popup_id, size = {80, 24}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 130) == "")
+	testing.expect(
+		t,
+		place_popup(
+			state,
+			&world,
+			1,
+			0,
+			90,
+			240,
+			130,
+			{
+				minimum_width = 100,
+				maximum_width = 160,
+				maximum_height = 100,
+				viewport_margin = 8,
+				gap = 4,
+			},
+		),
+	)
+	layout := world.ui_layouts[world.entities[1].ui_layout_index]
+	testing.expect(t, layout.size == shared.Vec2{100, 90})
+	testing.expect(t, layout.position == shared.Vec2{132, 8})
+	testing.expect(t, popup_contains_entity(&world, world.entities[0].id, 0, 1))
+	testing.expect(t, popup_contains_entity(&world, world.entities[1].id, 0, 1))
+	testing.expect(t, popup_contains_entity(&world, world.entities[2].id, 0, 1))
 }
 
 @(test)
@@ -2185,6 +2240,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	save := find_editor_role_node(state, .Transport_Save)
 	revert := find_editor_role_node(state, .Transport_Revert)
 	status := find_editor_role_node(state, .Status)
+	viewport := find_editor_role_node(state, .Viewport)
 	testing.expect(
 		t,
 		play >= 0 &&
@@ -2195,7 +2251,8 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		redo >= 0 &&
 		save >= 0 &&
 		revert >= 0 &&
-		status >= 0,
+		status >= 0 &&
+		viewport >= 0,
 	)
 	if play < 0 ||
 	   pause < 0 ||
@@ -2205,7 +2262,8 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	   redo < 0 ||
 	   save < 0 ||
 	   revert < 0 ||
-	   status < 0 {
+	   status < 0 ||
+	   viewport < 0 {
 		return
 	}
 	pause_entity := world.entities[int(state.nodes[pause].entity.index)]
@@ -2221,7 +2279,38 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	revert_entity := world.entities[int(state.nodes[revert].entity.index)]
 	testing.expect(t, world.ui_buttons[revert_entity.ui_button_index].text == "REVERT")
 	status_entity := world.entities[int(state.nodes[status].entity.index)]
-	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
+	testing.expect(
+		t,
+		world.ui_texts[status_entity.ui_text_index].text ==
+		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
+	)
+	top_index, top_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_TOP_NAME),
+	)
+	status_bar_index, status_bar_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_STATUS_NAME),
+	)
+	viewport_entity_index := int(state.nodes[viewport].entity.index)
+	testing.expect(t, top_found && status_bar_found)
+	if top_found && status_bar_found {
+		testing.expect(
+			t,
+			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
+			EDITOR_PLAYBACK_TOP_BACKGROUND,
+		)
+		testing.expect(
+			t,
+			world.ui_layouts[world.entities[status_bar_index].ui_layout_index].background ==
+			EDITOR_PLAYBACK_STATUS_BACKGROUND,
+		)
+	}
+	testing.expect(
+		t,
+		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_color ==
+		EDITOR_PLAYBACK_BORDER,
+	)
 
 	press := proc(state: ^State, world: ^shared.World, node_index: int) {
 		rect := state.nodes[node_index].rect
@@ -2239,7 +2328,11 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(t, state.editor_simulation_playing)
 	press(state, &world, pause)
 	testing.expect(t, !state.editor_simulation_playing)
-	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "PAUSED")
+	testing.expect(
+		t,
+		world.ui_texts[status_entity.ui_text_index].text ==
+		"PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY",
+	)
 	delta, run := consume_simulation_delta(state, 0.2)
 	testing.expect(t, !run && delta == 0)
 
@@ -2251,7 +2344,11 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 
 	press(state, &world, play)
 	testing.expect(t, state.editor_simulation_playing)
-	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "RUNNING")
+	testing.expect(
+		t,
+		world.ui_texts[status_entity.ui_text_index].text ==
+		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
+	)
 	delta, run = consume_simulation_delta(state, 0.2)
 	testing.expect(t, run && delta == 0.2)
 
@@ -2259,6 +2356,23 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(t, !state.editor_simulation_playing)
 	testing.expect(t, state.editor_simulation_stopped)
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED")
+	if top_found && status_bar_found {
+		testing.expect(
+			t,
+			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
+			EDITOR_CHROME_BACKGROUND,
+		)
+		testing.expect(
+			t,
+			world.ui_layouts[world.entities[status_bar_index].ui_layout_index].background ==
+			EDITOR_CHROME_BACKGROUND,
+		)
+	}
+	testing.expect(
+		t,
+		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_color ==
+		EDITOR_CHROME_BORDER,
+	)
 	testing.expect(t, consume_playback_stop_request(state))
 	testing.expect(t, !consume_playback_stop_request(state))
 	press(state, &world, stop)
@@ -2832,6 +2946,14 @@ test_editor_structural_authoring_is_uuid_addressed_and_undoable :: proc(t: ^test
 	defer free(state)
 	testing.expect(t, init(state) == "")
 	defer destroy(state)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state.component_registry = &registry
+	point_light_definition, point_light_found := component.find_definition(
+		&registry,
+		"scrapbot.point_light",
+	)
+	testing.expect(t, point_light_found)
 	state.editor_simulation_playing = false
 	state.editor_simulation_stopped = true
 
@@ -2864,15 +2986,57 @@ test_editor_structural_authoring_is_uuid_addressed_and_undoable :: proc(t: ^test
 	testing.expect(t, editor_history_apply(state, &world, true))
 	testing.expect(t, world.entities[duplicate_index].name == "Renamed")
 
+	transform_index := world.entities[duplicate_index].transform_index
 	testing.expect(
 		t,
-		editor_authoring_set_component(state, &world, duplicate_index, .Point_Light, true),
+		editor_authoring_set_registered_component(
+			state,
+			&world,
+			duplicate_index,
+			&point_light_definition,
+			true,
+		),
 	)
 	testing.expect(t, world.entities[duplicate_index].point_light_index >= 0)
+	testing.expect(t, world.entities[duplicate_index].transform_index == transform_index)
+	testing.expect(
+		t,
+		state.editor_history[state.editor_history_cursor - 1].component_structural != nil,
+	)
 	testing.expect(t, editor_history_apply(state, &world, false))
 	testing.expect(t, world.entities[duplicate_index].point_light_index < 0)
+	testing.expect(t, world.entities[duplicate_index].transform_index == transform_index)
 	testing.expect(t, editor_history_apply(state, &world, true))
 	testing.expect(t, world.entities[duplicate_index].point_light_index >= 0)
+	testing.expect(t, world.entities[duplicate_index].transform_index == transform_index)
+	point_light_index := world.entities[duplicate_index].point_light_index
+	world.point_lights[point_light_index] = {
+		color = {0.125, 0.5, 0.875},
+		intensity = 7.25,
+		range = 42,
+	}
+	point_light_before_remove := world.point_lights[point_light_index]
+	testing.expect(
+		t,
+		editor_authoring_set_registered_component(
+			state,
+			&world,
+			duplicate_index,
+			&point_light_definition,
+			false,
+		),
+	)
+	testing.expect(t, world.entities[duplicate_index].point_light_index < 0)
+	testing.expect(t, world.entities[duplicate_index].transform_index == transform_index)
+	testing.expect(t, editor_history_apply(state, &world, false))
+	point_light_index = world.entities[duplicate_index].point_light_index
+	testing.expect(t, point_light_index >= 0)
+	if point_light_index >= 0 {
+		testing.expect(t, world.point_lights[point_light_index] == point_light_before_remove)
+	}
+	testing.expect(t, world.entities[duplicate_index].transform_index == transform_index)
+	testing.expect(t, editor_history_apply(state, &world, true))
+	testing.expect(t, world.entities[duplicate_index].point_light_index < 0)
 
 	runtime_index, runtime_created := ecs.create_world_entity(&world, "Runtime", {}, .Runtime)
 	testing.expect(t, runtime_created)
@@ -3053,27 +3217,23 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	testing.expect(t, !state.editor_component_menu_open)
 	state.editor_snapshot_valid = false
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
-	component_panel := -1
+	component_action := -1
 	for binding in world.editor_uis {
-		if binding.role == .Inspector_Panel &&
+		if binding.role == .Inspector_Panel_Action &&
 		   binding.reflected_component_id == registry.definitions[definition_index].id {
-			component_panel = binding.entity_index
+			component_action = binding.entity_index
 			break
 		}
 	}
-	testing.expect(t, component_panel >= 0)
-	if component_panel >= 0 {
-		panel_node_index := find_node(state, world.entities[component_panel].id)
-		testing.expect(t, panel_node_index >= 0)
-		if panel_node_index >= 0 {
-			panel := world.ui_panels[world.entities[component_panel].ui_panel_index]
-			testing.expect(t, panel.action_enabled)
-			action_rect, action_found := panel_title_action_rect(
-				state.nodes[panel_node_index],
-				panel,
-			)
-			testing.expect(t, action_found)
-			if action_found {
+	testing.expect(t, component_action >= 0)
+	if component_action >= 0 {
+		action_node_index := find_node(state, world.entities[component_action].id)
+		testing.expect(t, action_node_index >= 0)
+		if action_node_index >= 0 {
+			action_rect := state.nodes[action_node_index].rect
+			button := world.ui_buttons[world.entities[component_action].ui_button_index]
+			testing.expect(t, button.panel_action && button.icon == .Close)
+			if action_rect.width > 0 && action_rect.height > 0 {
 				action_pointer := Pointer_Input {
 					position = {
 						action_rect.x + action_rect.width * 0.5,
@@ -3140,6 +3300,44 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 			!editor_authoring_definition_is_supported(&registry.definitions[internal_index]),
 		)
 	}
+}
+
+@(test)
+test_component_menu_cache_tracks_registry_identity_and_revision :: proc(t: ^testing.T) {
+	first_registry: component.Registry
+	component.init_registry(&first_registry)
+	testing.expect(t, component.register_project_component(&first_registry, {name = "zeta"}) == "")
+	second_registry: component.Registry
+	component.init_registry(&second_registry)
+	testing.expect(
+		t,
+		component.register_project_component(&second_registry, {name = "alpha"}) == "",
+	)
+	testing.expect(t, first_registry.revision == second_registry.revision)
+
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &first_registry
+	editor_ui_refresh_component_menu_cache(state)
+	found_zeta := false
+	for index in state.component_menu_definition_indices[:state.component_menu_definition_count] {
+		found_zeta = found_zeta || first_registry.definitions[index].name == "zeta"
+	}
+	testing.expect(t, found_zeta)
+
+	state.component_registry = &second_registry
+	editor_ui_refresh_component_menu_cache(state)
+	found_alpha := false
+	found_stale_zeta := false
+	for index in state.component_menu_definition_indices[:state.component_menu_definition_count] {
+		name := second_registry.definitions[index].name
+		found_alpha = found_alpha || name == "alpha"
+		found_stale_zeta = found_stale_zeta || name == "zeta"
+	}
+	testing.expect(t, found_alpha)
+	testing.expect(t, !found_stale_zeta)
 }
 
 @(test)
@@ -3956,6 +4154,9 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		// Dragging the X axis label scrubs, commits on release, and participates in undo/redo.
 		x_node = find_node_by_entity_index(state, position_inputs[0])
 		if x_node >= 0 {
+			state.editor_snapshot_elapsed = 0
+			state.editor_snapshot_valid = true
+			scrub_refresh_count := state.editor_snapshot_refresh_count
 			start := shared.Vec2 {
 				state.nodes[x_node].rect.x + 7,
 				state.nodes[x_node].rect.y + state.nodes[x_node].rect.height * 0.5,
@@ -3974,20 +4175,24 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				"",
 			)
 			drag := start
-			drag.x += 40
-			testing.expect(
-				t,
-				reconcile(
-					state,
-					&world,
-					1280,
-					720,
-					{position = drag, primary_down = true, available = true},
-					1280,
-					300,
-				) ==
-				"",
-			)
+			for step in 1 ..= 18 {
+				drag.x = start.x + f32(4 + step * 2)
+				testing.expect(
+					t,
+					reconcile(
+						state,
+						&world,
+						1280,
+						720,
+						{position = drag, primary_down = true, available = true},
+						1280,
+						300,
+					) ==
+					"",
+				)
+			}
+			testing.expect(t, state.input_scrubbing)
+			testing.expect(t, state.editor_snapshot_refresh_count == scrub_refresh_count)
 			scrubbed := world.transforms[0].position.x
 			testing.expect(t, math.abs(scrubbed - 5.99) < 0.001)
 			testing.expect(
@@ -4479,8 +4684,13 @@ test_reflected_inspector_edits_every_registry_field_shape_with_structural_undo :
 	testing.expect(t, !state.editor_scene_dirty)
 
 	color_w := binding(&world, layout, field_index(layout, "background"), .W)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	structure_revision := world.ui_structure_revision
+	layout_index := world.entities[0].ui_layout_index
 	testing.expect(t, editor_reflected_preview_number(state, &world, color_w, 0.75))
 	testing.expect(t, world.ui_layouts[world.entities[0].ui_layout_index].background.w == 0.75)
+	testing.expect(t, world.entities[0].ui_layout_index == layout_index)
+	testing.expect(t, world.ui_structure_revision == structure_revision)
 	testing.expect(t, state.editor_scene_dirty)
 	testing.expect(t, editor_reflected_finish_number_scrub(state, &world, color_w, 1, 0.75, false))
 	testing.expect(t, state.editor_history_count == 1 && state.editor_history_cursor == 1)
@@ -4709,7 +4919,8 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 	profile.entries[0].average_nanoseconds = 750_000
 	profile.revision += 1
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
-	testing.expect(t, state.editor_snapshot_refresh_count == refresh_count + 1)
+	testing.expect(t, state.editor_snapshot_refresh_count == refresh_count)
+	testing.expect(t, state.editor_system_profile_revision == profile.revision)
 	if time_found {
 		text := world.ui_texts[world.entities[time_cell].ui_text_index]
 		testing.expect(t, text.text == "0.750 ms")

@@ -1,11 +1,287 @@
 package ecs
 
+import component "../component"
 import shared "../shared"
 import "core:strings"
 
 Entity_Snapshot :: struct {
 	entity: shared.Scene_Entity,
 	origin: shared.Entity_Origin,
+}
+
+Registered_Component_Snapshot :: struct {
+	component_id: component.Component_ID,
+	name: string,
+	storage_kind: component.Storage_Kind,
+	present: bool,
+	value: shared.Scene_Entity,
+}
+
+capture_registered_component_snapshot :: proc(
+	world: ^World,
+	entity_index: int,
+	definition: ^component.Definition,
+) -> (
+	Registered_Component_Snapshot,
+	bool,
+) {
+	if world == nil ||
+	   definition == nil ||
+	   !component.definition_is_authorable(definition^) ||
+	   !entity_is_alive(world, entity_index) {
+		return {}, false
+	}
+	snapshot := Registered_Component_Snapshot {
+		component_id = definition.id,
+		name = clone_snapshot_string(definition.name),
+		storage_kind = definition.storage_kind,
+		present = registered_component_is_present(world, entity_index, definition),
+		value = {id = world.entities[entity_index].uuid},
+	}
+	if !snapshot.present {
+		return snapshot, true
+	}
+	entity := world.entities[entity_index]
+	value := &snapshot.value
+	switch definition.storage_kind {
+		case .Custom:
+			custom, found := custom_component_for_entity_ref(
+				world,
+				entity_index,
+				definition.id,
+				definition.name,
+			)
+			if !found {
+				destroy_registered_component_snapshot(&snapshot)
+				return {}, false
+			}
+			copy := shared.Custom_Component {
+				component_id = custom.component_id,
+				name = clone_snapshot_string(custom.name),
+			}
+			for field in custom.vec3_fields {
+				append(
+					&copy.vec3_fields,
+					shared.Named_Vec3 {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
+			append(&value.custom_components, copy)
+		case .Transform:
+			value.has_transform = true
+			value.transform = world.transforms[entity.transform_index]
+		case .Camera:
+			value.has_camera = true
+			value.camera = world.cameras[entity.camera_index]
+		case .Ambient_Light:
+			value.has_ambient_light = true
+			value.ambient_light = world.ambient_lights[entity.ambient_light_index]
+		case .Directional_Light:
+			value.has_directional_light = true
+			value.directional_light = world.directional_lights[entity.directional_light_index]
+		case .Point_Light:
+			value.has_point_light = true
+			value.point_light = world.point_lights[entity.point_light_index]
+		case .Mesh:
+			value.has_mesh = true
+			value.mesh = world.meshes[entity.mesh_index]
+			value.mesh.primitive = clone_snapshot_string(value.mesh.primitive)
+		case .Geometry:
+			value.has_geometry = true
+			value.geometry_resource = clone_snapshot_string(entity.geometry_resource)
+		case .Material:
+			value.has_material = true
+			value.material_resource = clone_snapshot_string(entity.material_resource)
+		case .Shadow_Caster:
+			value.has_shadow_caster = true
+		case .Shadow_Receiver:
+			value.has_shadow_receiver = true
+		case .UI_Layout:
+			value.has_ui_layout = true
+			value.ui_layout = world.ui_layouts[entity.ui_layout_index]
+		case .UI_HStack:
+			value.has_ui_hstack = true
+			value.ui_hstack = world.ui_hstacks[entity.ui_hstack_index]
+		case .UI_VStack:
+			value.has_ui_vstack = true
+			value.ui_vstack = world.ui_vstacks[entity.ui_vstack_index]
+		case .UI_Scroll_Area:
+			value.has_ui_scroll_area = true
+			value.ui_scroll_area = world.ui_scroll_areas[entity.ui_scroll_area_index]
+		case .UI_Panel:
+			value.has_ui_panel = true
+			value.ui_panel = world.ui_panels[entity.ui_panel_index]
+			value.ui_panel.title = clone_snapshot_string(value.ui_panel.title)
+			value.ui_panel.font = clone_snapshot_string(value.ui_panel.font)
+		case .UI_Table:
+			value.has_ui_table = true
+			value.ui_table = world.ui_tables[entity.ui_table_index]
+		case .UI_List:
+			value.has_ui_list = true
+			value.ui_list = world.ui_lists[entity.ui_list_index]
+		case .UI_Progress:
+			value.has_ui_progress = true
+			value.ui_progress = world.ui_progresses[entity.ui_progress_index]
+		case .UI_Text:
+			value.has_ui_text = true
+			value.ui_text = world.ui_texts[entity.ui_text_index]
+			value.ui_text.text = clone_snapshot_string(value.ui_text.text)
+			value.ui_text.font = clone_snapshot_string(value.ui_text.font)
+		case .UI_Button:
+			value.has_ui_button = true
+			value.ui_button = world.ui_buttons[entity.ui_button_index]
+			value.ui_button.text = clone_snapshot_string(value.ui_button.text)
+			value.ui_button.font = clone_snapshot_string(value.ui_button.font)
+		case .UI_Input:
+			value.has_ui_input = true
+			value.ui_input = world.ui_inputs[entity.ui_input_index]
+			value.ui_input.text = clone_snapshot_string(value.ui_input.text)
+			value.ui_input.font = clone_snapshot_string(value.ui_input.font)
+			value.ui_input.prefix = clone_snapshot_string(value.ui_input.prefix)
+		case .UI_Checkbox:
+			value.has_ui_checkbox = true
+			value.ui_checkbox = world.ui_checkboxes[entity.ui_checkbox_index]
+		case .UI_State, .Derived:
+			destroy_registered_component_snapshot(&snapshot)
+			return {}, false
+	}
+	return snapshot, true
+}
+
+destroy_registered_component_snapshot :: proc(snapshot: ^Registered_Component_Snapshot) {
+	if snapshot == nil {
+		return
+	}
+	delete(snapshot.name)
+	entity_snapshot := Entity_Snapshot {
+		entity = snapshot.value,
+	}
+	destroy_entity_snapshot(&entity_snapshot)
+	snapshot^ = {}
+}
+
+apply_registered_component_snapshot :: proc(
+	world: ^World,
+	entity_index: int,
+	snapshot: ^Registered_Component_Snapshot,
+) -> bool {
+	if world == nil || snapshot == nil || !entity_is_alive(world, entity_index) {
+		return false
+	}
+	definition := component.Definition {
+		id = snapshot.component_id,
+		name = snapshot.name,
+		storage_kind = snapshot.storage_kind,
+		lifecycle = .Authored,
+	}
+	currently_present := registered_component_is_present(world, entity_index, &definition)
+	if !snapshot.present {
+		return(
+			currently_present &&
+			set_registered_component_membership(world, entity_index, &definition, false) \
+		)
+	}
+	if !currently_present &&
+	   !set_registered_component_membership(world, entity_index, &definition, true) {
+		return false
+	}
+	value := &snapshot.value
+	switch snapshot.storage_kind {
+		case .Custom:
+			if len(value.custom_components) != 1 {
+				return false
+			}
+			remove_custom_component(world, entity_index, snapshot.component_id, snapshot.name)
+			custom := value.custom_components[0]
+			storage := ensure_custom_component_storage(world, snapshot.component_id, snapshot.name)
+			copy := Custom_Component {
+				entity_index = entity_index,
+				component_id = snapshot.component_id,
+				name = clone_world_string(world, custom.name),
+			}
+			for field in custom.vec3_fields {
+				append(
+					&copy.vec3_fields,
+					Named_Vec3{name = clone_world_string(world, field.name), value = field.value},
+				)
+			}
+			ensure_custom_component_entity_capacity(storage, entity_index + 1)
+			component_index := INVALID_COMPONENT_INDEX
+			for &slot, slot_index in storage.components {
+				if slot.entity_index != INVALID_COMPONENT_INDEX {
+					continue
+				}
+				slot = copy
+				activate_custom_component_slot(storage, slot_index)
+				component_index = slot_index
+				break
+			}
+			if component_index == INVALID_COMPONENT_INDEX {
+				append(&storage.components, copy)
+				component_index = len(storage.components) - 1
+				activate_custom_component_slot(storage, component_index)
+			}
+			storage.entity_component_indices[entity_index] = component_index
+			append_entity_custom_storage(world, entity_index, storage.storage_index)
+			bump_component_revision(world, entity_index)
+		case .Transform:
+			add_transform(world, entity_index, value.transform)
+		case .Camera:
+			set_optional_camera(world, entity_index, true, value.camera)
+			mark_render_entity_dirty(world, entity_index)
+		case .Ambient_Light:
+			set_optional_ambient_light(world, entity_index, true, value.ambient_light)
+			mark_render_entity_dirty(world, entity_index)
+		case .Directional_Light:
+			set_optional_directional_light(world, entity_index, true, value.directional_light)
+			mark_render_entity_dirty(world, entity_index)
+		case .Point_Light:
+			set_optional_point_light(world, entity_index, true, value.point_light)
+			mark_render_entity_dirty(world, entity_index)
+		case .Mesh:
+			add_mesh(world, entity_index, value.mesh.primitive)
+		case .Geometry:
+			set_entity_resource(world, entity_index, true, value.geometry_resource)
+			mark_render_entity_dirty(world, entity_index)
+		case .Material:
+			set_entity_resource(world, entity_index, false, value.material_resource)
+			mark_render_entity_dirty(world, entity_index)
+		case .Shadow_Caster:
+			world.entities[entity_index].has_shadow_caster = true
+			mark_render_entity_dirty(world, entity_index)
+		case .Shadow_Receiver:
+			world.entities[entity_index].has_shadow_receiver = true
+			mark_render_entity_dirty(world, entity_index)
+		case .UI_Layout:
+			_ = set_ui_layout(world, entity_index, value.ui_layout)
+		case .UI_HStack:
+			_ = set_ui_hstack(world, entity_index, value.ui_hstack)
+		case .UI_VStack:
+			_ = set_ui_vstack(world, entity_index, value.ui_vstack)
+		case .UI_Scroll_Area:
+			_ = set_ui_scroll_area(world, entity_index, value.ui_scroll_area)
+		case .UI_Panel:
+			_ = set_ui_panel(world, entity_index, value.ui_panel)
+		case .UI_Table:
+			_ = set_ui_table(world, entity_index, value.ui_table)
+		case .UI_List:
+			_ = set_ui_list(world, entity_index, value.ui_list)
+		case .UI_Progress:
+			_ = set_ui_progress(world, entity_index, value.ui_progress)
+		case .UI_Text:
+			_ = set_ui_text(world, entity_index, value.ui_text)
+		case .UI_Button:
+			_ = set_ui_button(world, entity_index, value.ui_button)
+		case .UI_Input:
+			_ = set_ui_input(world, entity_index, value.ui_input)
+		case .UI_Checkbox:
+			_ = set_ui_checkbox(world, entity_index, value.ui_checkbox)
+		case .UI_State, .Derived:
+			return false
+	}
+	return registered_component_is_present(world, entity_index, &definition)
 }
 
 capture_entity_snapshot :: proc(world: ^World, entity_index: int) -> (Entity_Snapshot, bool) {
@@ -107,6 +383,234 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	}
 	delete(entity.custom_components)
 	snapshot^ = {}
+}
+
+registered_component_is_present :: proc(
+	world: ^World,
+	entity_index: int,
+	definition: ^component.Definition,
+) -> bool {
+	if world == nil || definition == nil || !entity_is_alive(world, entity_index) {
+		return false
+	}
+	entity := world.entities[entity_index]
+	if definition.storage_kind == .Geometry && entity.geometry_resource != "" {
+		return true
+	}
+	if definition.storage_kind == .Material && entity.material_resource != "" {
+		return true
+	}
+	return entity_has_component(world, entity_index, definition.id, definition.name)
+}
+
+set_registered_component_membership :: proc(
+	world: ^World,
+	entity_index: int,
+	definition: ^component.Definition,
+	present: bool,
+) -> bool {
+	if world == nil ||
+	   definition == nil ||
+	   !component.definition_is_authorable(definition^) ||
+	   !entity_is_alive(world, entity_index) ||
+	   registered_component_is_present(world, entity_index, definition) == present {
+		return false
+	}
+	switch definition.storage_kind {
+		case .Custom:
+			if present {
+				value := Custom_Component {
+					entity_index = entity_index,
+					component_id = definition.id,
+					name = clone_world_string(world, definition.name),
+				}
+				for field in definition.fields[:definition.field_count] {
+					if field.field_type != .Vec3 {
+						continue
+					}
+					append(
+						&value.vec3_fields,
+						Named_Vec3{name = clone_world_string(world, field.name)},
+					)
+				}
+				storage := ensure_custom_component_storage(world, definition.id, definition.name)
+				ensure_custom_component_entity_capacity(storage, entity_index + 1)
+				component_index := INVALID_COMPONENT_INDEX
+				for &slot, slot_index in storage.components {
+					if slot.entity_index != INVALID_COMPONENT_INDEX {
+						continue
+					}
+					slot = value
+					activate_custom_component_slot(storage, slot_index)
+					component_index = slot_index
+					break
+				}
+				if component_index == INVALID_COMPONENT_INDEX {
+					append(&storage.components, value)
+					component_index = len(storage.components) - 1
+					activate_custom_component_slot(storage, component_index)
+				}
+				storage.entity_component_indices[entity_index] = component_index
+				append_entity_custom_storage(world, entity_index, storage.storage_index)
+				bump_component_revision(world, entity_index)
+			} else {
+				remove_custom_component(world, entity_index, definition.id, definition.name)
+			}
+		case .Transform:
+			if present {
+				add_transform(world, entity_index, Transform_Component{scale = {1, 1, 1}})
+			} else {
+				remove_transform(world, entity_index)
+			}
+		case .Camera:
+			set_optional_camera(world, entity_index, present, {fov = 60, near = 0.1, far = 1000})
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Ambient_Light:
+			set_optional_ambient_light(
+				world,
+				entity_index,
+				present,
+				{color = {1, 1, 1}, intensity = 0.1},
+			)
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Directional_Light:
+			set_optional_directional_light(
+				world,
+				entity_index,
+				present,
+				{direction = {0, -1, 0}, color = {1, 1, 1}, intensity = 1},
+			)
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Point_Light:
+			set_optional_point_light(
+				world,
+				entity_index,
+				present,
+				{color = {1, 1, 1}, intensity = 1, range = 10},
+			)
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Mesh:
+			if present {
+				add_mesh(world, entity_index, "cube")
+			} else {
+				remove_mesh(world, entity_index)
+			}
+		case .Geometry:
+			value := ""
+			if present {
+				value = "cube"
+			}
+			set_entity_resource(world, entity_index, true, value)
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Material:
+			value := ""
+			if present {
+				value = "default"
+			}
+			set_entity_resource(world, entity_index, false, value)
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Shadow_Caster:
+			world.entities[entity_index].has_shadow_caster = present
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .Shadow_Receiver:
+			world.entities[entity_index].has_shadow_receiver = present
+			bump_component_revision(world, entity_index)
+			mark_render_entity_dirty(world, entity_index)
+		case .UI_Layout:
+			if present {
+				_ = set_ui_layout(world, entity_index, shared.ui_layout_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_HStack:
+			if present {
+				_ = set_ui_hstack(world, entity_index, shared.ui_stack_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_VStack:
+			if present {
+				_ = set_ui_vstack(world, entity_index, shared.ui_stack_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Scroll_Area:
+			if present {
+				_ = set_ui_scroll_area(world, entity_index, shared.ui_scroll_area_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Panel:
+			if present {
+				_ = set_ui_panel(world, entity_index, shared.ui_panel_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Table:
+			if present {
+				_ = set_ui_table(world, entity_index, shared.ui_table_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_List:
+			if present {
+				_ = set_ui_list(world, entity_index, shared.ui_list_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Progress:
+			if present {
+				_ = set_ui_progress(world, entity_index, shared.ui_progress_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Text:
+			if present {
+				_ = set_ui_text(world, entity_index, shared.ui_text_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Button:
+			if present {
+				_ = set_ui_button(world, entity_index, shared.ui_button_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Input:
+			if present {
+				_ = set_ui_input(world, entity_index, shared.ui_input_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Checkbox:
+			if present {
+				_ = set_ui_checkbox(world, entity_index, shared.ui_checkbox_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_State, .Derived:
+			return false
+	}
+	return registered_component_is_present(world, entity_index, definition) == present
 }
 
 apply_entity_snapshot :: proc(world: ^World, snapshot: ^Entity_Snapshot) -> (int, bool) {
@@ -438,16 +942,15 @@ replace_custom_components :: proc(
 	entity_index: int,
 	components: []shared.Custom_Component,
 ) {
-	for &storage in world.custom_components {
-		for component in storage.components {
-			if component.entity_index == entity_index {
-				remove_custom_component(
-					world,
-					entity_index,
-					component.component_id,
-					component.name,
-				)
+	if entity_index >= 0 && entity_index < len(world.entities) {
+		for len(world.entities[entity_index].custom_component_storage_indices) > 0 {
+			storage_index := world.entities[entity_index].custom_component_storage_indices[0]
+			if storage_index < 0 || storage_index >= len(world.custom_components) {
+				unordered_remove(&world.entities[entity_index].custom_component_storage_indices, 0)
+				continue
 			}
+			storage := &world.custom_components[storage_index]
+			remove_custom_component(world, entity_index, storage.component_id, storage.name)
 		}
 	}
 	for component in components {

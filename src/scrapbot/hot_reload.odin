@@ -45,6 +45,7 @@ Hot_Reload_State :: struct {
 	runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
 	executor: schedule.Executor,
+	frame_systems: Frame_System_Cache,
 	resources: resources.Registry,
 	system_profile: System_Profile_Accumulator,
 	native_sources: native.Source_Set,
@@ -140,6 +141,7 @@ init_hot_reload_state :: proc(
 destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
+	destroy_frame_system_cache(&state.frame_systems)
 	schedule.destroy_executor(&state.executor)
 	resources.destroy_registry(&state.resources)
 	native.destroy_source_set(&state.native_sources)
@@ -165,6 +167,7 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 		&state.runtime,
 		&state.native_extensions,
 		&state.executor,
+		&state.frame_systems,
 		&state.system_profile,
 		world,
 		world.time,
@@ -395,6 +398,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	ecs.destroy_world(world)
 	world^ = next_world
 
+	invalidate_frame_system_plan(&state.frame_systems)
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
 	native.destroy_source_set(&state.native_sources)
@@ -432,6 +436,7 @@ load_script_runtime :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> s
 		return reload_err
 	}
 
+	invalidate_frame_system_plan(&state.frame_systems)
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
 	delete(state.last_good_script_source)
@@ -532,6 +537,7 @@ restore_last_good_script_runtime :: proc(
 		return script_load.err
 	}
 
+	invalidate_frame_system_plan(&state.frame_systems)
 	script.destroy_runtime(&state.runtime)
 	native.destroy_extension_set(&state.native_extensions)
 	state.runtime = script_load.runtime

@@ -151,19 +151,20 @@ create_world_entity :: proc(
 	entity_index = len(world.entities)
 	generation := u32(1)
 	reusing_slot := false
-	if reuse_dead_slot {
-		for entity, index in world.entities {
-			if entity.alive {
-				continue
-			}
-			entity_index = index
-			generation = entity.id.generation
+	if reuse_dead_slot && len(world.free_entity_indices) > 0 {
+		entity_index = pop(&world.free_entity_indices)
+		if entity_index >= 0 && entity_index < len(world.entities) {
+			generation = world.entities[entity_index].id.generation
 			reusing_slot = true
-			break
+		} else {
+			entity_index = len(world.entities)
 		}
 	}
 	entity := init_world_entity(world, entity_index, generation, entity_uuid, origin, name)
 	if reusing_slot {
+		entity.custom_component_storage_indices =
+			world.entities[entity_index].custom_component_storage_indices
+		clear(&entity.custom_component_storage_indices)
 		entity.render_dirty = coalesce_dirty_entity_entries(
 			&world.render_dirty_entities,
 			entity_index,
@@ -230,6 +231,7 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, entity.name)
 		delete_world_string(world, entity.geometry_resource)
 		delete_world_string(world, entity.material_resource)
+		delete(entity.custom_component_storage_indices)
 	}
 	for mesh in world.meshes {
 		delete_world_string(world, mesh.primitive)
@@ -252,8 +254,12 @@ destroy_world :: proc(world: ^World) {
 			delete(component.vec3_fields)
 		}
 		delete(storage.components)
+		delete(storage.entity_component_indices)
+		delete(storage.active_component_indices)
+		delete(storage.component_active_indices)
 	}
 	delete(world.entities)
+	delete(world.free_entity_indices)
 	delete(world.entity_by_uuid)
 	delete(world.transforms)
 	delete(world.cameras)
@@ -378,11 +384,10 @@ build_world :: proc(scene: ^Scene) -> World {
 			mesh.primitive = clone_world_string(&world, entity.mesh.primitive)
 			append(&world.meshes, mesh)
 		}
+		append(&world.entities, world_entity)
 		for component in entity.custom_components {
 			add_scene_custom_component(&world, int(id.index), component)
 		}
-
-		append(&world.entities, world_entity)
 		sync_render_watch_memberships(&world, int(id.index))
 		if world.entities[len(world.entities) - 1].uuid == (shared.Entity_UUID{}) {
 			world.entities[len(world.entities) - 1].uuid = shared.entity_uuid_generate()
@@ -428,6 +433,34 @@ mark_ui_structure_changed :: proc(world: ^World) {
 	}
 }
 
+mark_ui_layout_changed :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	revision := &world.ui_project_layout_revision
+	if world.entities[entity_index].origin == .Editor {
+		revision = &world.ui_editor_layout_revision
+	}
+	revision^ += 1
+	if revision^ == 0 {
+		revision^ = 1
+	}
+}
+
+mark_ui_intrinsic_layout_changed :: proc(world: ^World, entity_index: int) {
+	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	entity := world.entities[entity_index]
+	if entity.ui_layout_index < 0 || entity.ui_layout_index >= len(world.ui_layouts) {
+		return
+	}
+	layout := world.ui_layouts[entity.ui_layout_index]
+	if layout.fit_content_width || layout.fit_content_height {
+		mark_ui_layout_changed(world, entity_index)
+	}
+}
+
 mark_ui_entity_dirty :: proc(world: ^World, entity_index: int) {
 	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
 		return
@@ -437,6 +470,7 @@ mark_ui_entity_dirty :: proc(world: ^World, entity_index: int) {
 		entity.ui_dirty = true
 		append(&world.ui_dirty_entities, entity_index)
 		mark_ui_structure_changed(world)
+		mark_ui_layout_changed(world, entity_index)
 	}
 }
 
@@ -604,6 +638,16 @@ release_entity_render_instance :: proc(world: ^World, entity: ^World_Entity) {
 	entity.render_instance_index = INVALID_COMPONENT_INDEX
 }
 
+mark_render_topology_changed :: proc(world: ^World) {
+	if world == nil {
+		return
+	}
+	world.render_topology_revision += 1
+	if world.render_topology_revision == 0 {
+		world.render_topology_revision = 1
+	}
+}
+
 remove_entity_from_active_render_set :: proc(world: ^World, entity_index: int) {
 	if world == nil || entity_index < 0 || entity_index >= len(world.entities) { return }
 	entity := &world.entities[entity_index]
@@ -616,6 +660,7 @@ remove_entity_from_active_render_set :: proc(world: ^World, entity_index: int) {
 	moved_entity_index := world.render_active_entities[last_index]
 	world.render_active_entities[active_index] = moved_entity_index
 	pop(&world.render_active_entities)
+	mark_render_topology_changed(world)
 	if active_index < len(world.render_active_entities) &&
 	   moved_entity_index >= 0 &&
 	   moved_entity_index < len(world.entities) {
@@ -634,6 +679,7 @@ ensure_entity_in_active_render_set :: proc(world: ^World, entity_index: int) {
 	}
 	entity.render_active_index = len(world.render_active_entities)
 	append(&world.render_active_entities, entity_index)
+	mark_render_topology_changed(world)
 }
 
 Render_Watch_Kind :: enum {
@@ -921,6 +967,11 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 				}
 				if entity.render_instance_index >= 0 &&
 				   entity.render_instance_index < len(world.render_instances) {
+					previous := world.render_instances[entity.render_instance_index]
+					if previous.geometry != instance.geometry ||
+					   previous.material != instance.material {
+						mark_render_topology_changed(world)
+					}
 					world.render_instances[entity.render_instance_index] = instance
 				} else {
 					entity.render_instance_index = allocate_render_instance_slot(world, instance)
@@ -941,11 +992,30 @@ build_resource_render_list :: proc(
 	use_editor_camera: bool = false,
 ) -> Render_List {
 	list: Render_List
+	populate_resource_render_list(world, registry, &list, use_editor_camera)
+	return list
+}
+
+populate_resource_render_list :: proc(
+	world: ^World,
+	registry: ^resources.Registry,
+	list: ^Render_List,
+	use_editor_camera: bool = false,
+) {
+	if world == nil || list == nil {
+		return
+	}
+	instances := list.instances
+	clear(&instances)
+	list^ = {}
+	list.instances = instances
+	list.world_uuid = world.instance_uuid
 	if len(world.render_dirty_entities) > 0 {
 		reconcile_render_instances(world, registry)
 	}
+	list.topology_revision = world.render_topology_revision
 	list.camera, list.has_camera = active_camera_instance(world, use_editor_camera)
-	extract_lights(world, &list)
+	extract_lights(world, list)
 	for entity_index in world.render_active_entities {
 		if entity_index < 0 || entity_index >= len(world.entities) {
 			continue
@@ -969,7 +1039,6 @@ build_resource_render_list :: proc(
 			},
 		)
 	}
-	return list
 }
 
 extract_lights :: proc(world: ^World, list: ^Render_List) {
@@ -1445,15 +1514,22 @@ add_custom_component :: proc(
 		)
 	}
 	storage := ensure_custom_component_storage(world, component_id, name)
-	for &component in storage.components {
+	ensure_custom_component_entity_capacity(storage, entity_index + 1)
+	for &component, component_index in storage.components {
 		if component.entity_index != INVALID_COMPONENT_INDEX {
 			continue
 		}
 		component = world_component
+		activate_custom_component_slot(storage, component_index)
+		storage.entity_component_indices[entity_index] = component_index
+		append_entity_custom_storage(world, entity_index, storage.storage_index)
 		bump_component_revision(world, entity_index)
 		return
 	}
 	append(&storage.components, world_component)
+	activate_custom_component_slot(storage, len(storage.components) - 1)
+	storage.entity_component_indices[entity_index] = len(storage.components) - 1
+	append_entity_custom_storage(world, entity_index, storage.storage_index)
 	bump_component_revision(world, entity_index)
 }
 
@@ -1467,21 +1543,10 @@ remove_custom_component :: proc(
 	if storage == nil {
 		return
 	}
-	removed := false
-	for &world_component in storage.components {
-		if world_component.entity_index != entity_index {
-			continue
-		}
-		delete_world_string(world, world_component.name)
-		world_component.name = ""
-		world_component.entity_index = INVALID_COMPONENT_INDEX
-		world_component.component_id = shared.INVALID_COMPONENT_ID
-		for field in world_component.vec3_fields {
-			delete_world_string(world, field.name)
-		}
-		delete(world_component.vec3_fields)
-		world_component.vec3_fields = nil
-		removed = true
+	component_index, removed := custom_component_index_for_entity(storage, entity_index)
+	if removed {
+		release_custom_component_slot(world, storage, component_index)
+		remove_entity_custom_storage(world, entity_index, storage.storage_index)
 	}
 	if removed { bump_component_revision(world, entity_index) }
 }
@@ -1496,6 +1561,7 @@ add_scene_custom_component :: proc(
 		shared.INVALID_COMPONENT_ID,
 		scene_component.name,
 	)
+	ensure_custom_component_entity_capacity(storage, entity_index + 1)
 	world_component := Custom_Component {
 		entity_index = entity_index,
 		component_id = shared.INVALID_COMPONENT_ID,
@@ -1506,7 +1572,137 @@ add_scene_custom_component :: proc(
 		world_field.name = clone_world_string(world, field.name)
 		append(&world_component.vec3_fields, world_field)
 	}
-	append(&storage.components, world_component)
+	component_index := -1
+	for component, index in storage.components {
+		if component.entity_index == INVALID_COMPONENT_INDEX {
+			component_index = index
+			break
+		}
+	}
+	if component_index < 0 {
+		component_index = len(storage.components)
+		append(&storage.components, world_component)
+	} else {
+		storage.components[component_index] = world_component
+	}
+	activate_custom_component_slot(storage, component_index)
+	storage.entity_component_indices[entity_index] = component_index
+	append_entity_custom_storage(world, entity_index, storage.storage_index)
+}
+
+ensure_custom_component_entity_capacity :: proc(
+	storage: ^Custom_Component_Storage,
+	required: int,
+) {
+	if storage == nil || required <= len(storage.entity_component_indices) {
+		return
+	}
+	previous := len(storage.entity_component_indices)
+	resize(&storage.entity_component_indices, required)
+	for index in previous ..< required {
+		storage.entity_component_indices[index] = INVALID_COMPONENT_INDEX
+	}
+}
+
+custom_component_index_for_entity :: proc "contextless" (
+	storage: ^Custom_Component_Storage,
+	entity_index: int,
+) -> (
+	int,
+	bool,
+) {
+	if storage == nil ||
+	   entity_index < 0 ||
+	   entity_index >= len(storage.entity_component_indices) {
+		return INVALID_COMPONENT_INDEX, false
+	}
+	component_index := storage.entity_component_indices[entity_index]
+	if component_index < 0 ||
+	   component_index >= len(storage.components) ||
+	   storage.components[component_index].entity_index != entity_index {
+		return INVALID_COMPONENT_INDEX, false
+	}
+	return component_index, true
+}
+
+append_entity_custom_storage :: proc(world: ^World, entity_index, storage_index: int) {
+	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	for existing in world.entities[entity_index].custom_component_storage_indices {
+		if existing == storage_index {
+			return
+		}
+	}
+	append(&world.entities[entity_index].custom_component_storage_indices, storage_index)
+}
+
+remove_entity_custom_storage :: proc(world: ^World, entity_index, storage_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	storages := &world.entities[entity_index].custom_component_storage_indices
+	for existing, index in storages^ {
+		if existing == storage_index {
+			unordered_remove(storages, index)
+			return
+		}
+	}
+}
+
+activate_custom_component_slot :: proc(storage: ^Custom_Component_Storage, component_index: int) {
+	if storage == nil || component_index < 0 || component_index >= len(storage.components) {
+		return
+	}
+	previous := len(storage.component_active_indices)
+	if previous <= component_index {
+		resize(&storage.component_active_indices, len(storage.components))
+		for index in previous ..< len(storage.component_active_indices) {
+			storage.component_active_indices[index] = INVALID_COMPONENT_INDEX
+		}
+	}
+	if storage.component_active_indices[component_index] >= 0 {
+		return
+	}
+	storage.component_active_indices[component_index] = len(storage.active_component_indices)
+	append(&storage.active_component_indices, component_index)
+}
+
+release_custom_component_slot :: proc(
+	world: ^World,
+	storage: ^Custom_Component_Storage,
+	component_index: int,
+) {
+	if storage == nil || component_index < 0 || component_index >= len(storage.components) {
+		return
+	}
+	component := &storage.components[component_index]
+	entity_index := component.entity_index
+	if component_index < len(storage.component_active_indices) {
+		active_index := storage.component_active_indices[component_index]
+		if active_index >= 0 && active_index < len(storage.active_component_indices) {
+			last_active_index := len(storage.active_component_indices) - 1
+			moved_component_index := storage.active_component_indices[last_active_index]
+			storage.active_component_indices[active_index] = moved_component_index
+			pop(&storage.active_component_indices)
+			storage.component_active_indices[component_index] = INVALID_COMPONENT_INDEX
+			if active_index < len(storage.active_component_indices) {
+				storage.component_active_indices[moved_component_index] = active_index
+			}
+		}
+	}
+	delete_world_string(world, component.name)
+	for field in component.vec3_fields {
+		delete_world_string(world, field.name)
+	}
+	delete(component.vec3_fields)
+	component^ = {
+		entity_index = INVALID_COMPONENT_INDEX,
+		component_id = shared.INVALID_COMPONENT_ID,
+	}
+	if entity_index >= 0 && entity_index < len(storage.entity_component_indices) {
+		storage.entity_component_indices[entity_index] = INVALID_COMPONENT_INDEX
+	}
 }
 
 ensure_custom_component_storage :: proc(
@@ -1529,11 +1725,14 @@ ensure_custom_component_storage :: proc(
 	append(
 		&world.custom_components,
 		Custom_Component_Storage {
+			storage_index = len(world.custom_components),
 			component_id = component_id,
 			name = clone_world_string(world, name),
 		},
 	)
-	return &world.custom_components[len(world.custom_components) - 1]
+	storage = &world.custom_components[len(world.custom_components) - 1]
+	ensure_custom_component_entity_capacity(storage, len(world.entities))
+	return storage
 }
 
 find_custom_component_storage :: proc "c" (
@@ -1616,13 +1815,13 @@ query_count :: proc "c" (world: ^World, query: Query) -> int {
 	}
 
 	count := 0
-	for entity, entity_index in world.entities {
-		if !entity.alive {
-			continue
+	cursor := 0
+	for {
+		_, found := query_next(world, query, &cursor)
+		if !found {
+			break
 		}
-		if query_matches_entity(world, query, entity_index) {
-			count += 1
-		}
+		count += 1
 	}
 	return count
 }
@@ -1639,20 +1838,81 @@ query_entity_at :: proc "c" (
 		return -1, false
 	}
 
-	current := 0
-	for entity, index in world.entities {
-		if !entity.alive {
-			continue
-		}
-		if !query_matches_entity(world, query, index) {
-			continue
+	cursor := 0
+	for current := 0; current <= visible_index; current += 1 {
+		index, found := query_next(world, query, &cursor)
+		if !found {
+			return -1, false
 		}
 		if current == visible_index {
 			return index, true
 		}
-		current += 1
 	}
 	return -1, false
+}
+
+query_next :: proc "c" (
+	world: ^World,
+	query: Query,
+	next_entity_index: ^int,
+) -> (
+	entity_index: int,
+	ok: bool,
+) {
+	if world == nil || query.term_count == 0 || next_entity_index == nil {
+		return -1, false
+	}
+	anchor := query_smallest_custom_storage(world, query)
+	if anchor != nil {
+		for candidate_index := max(next_entity_index^, 0);
+		    candidate_index < len(anchor.active_component_indices);
+		    candidate_index += 1 {
+			when ODIN_TEST {
+				world.query_candidate_visit_count += 1
+			}
+			next_entity_index^ = candidate_index + 1
+			component_index := anchor.active_component_indices[candidate_index]
+			entity_index := anchor.components[component_index].entity_index
+			if query_matches_entity(world, query, entity_index) {
+				return entity_index, true
+			}
+		}
+		return -1, false
+	}
+	for entity_index := max(next_entity_index^, 0);
+	    entity_index < len(world.entities);
+	    entity_index += 1 {
+		when ODIN_TEST {
+			world.query_candidate_visit_count += 1
+		}
+		next_entity_index^ = entity_index + 1
+		if query_matches_entity(world, query, entity_index) {
+			return entity_index, true
+		}
+	}
+	return -1, false
+}
+
+query_smallest_custom_storage :: proc "contextless" (
+	world: ^World,
+	query: Query,
+) -> ^Custom_Component_Storage {
+	if world == nil {
+		return nil
+	}
+	best: ^Custom_Component_Storage
+	for term_index in 0 ..< query.term_count {
+		term := query.terms[term_index]
+		storage := find_custom_component_storage(world, term.component_id, term.name)
+		if storage == nil {
+			continue
+		}
+		if best == nil ||
+		   len(storage.active_component_indices) < len(best.active_component_indices) {
+			best = storage
+		}
+	}
+	return best
 }
 
 query_matches_entity :: proc "c" (world: ^World, query: Query, entity_index: int) -> bool {
@@ -1789,11 +2049,9 @@ custom_component_for_entity_ref :: proc "c" (
 	if storage == nil {
 		return nil, false
 	}
-	for &component in storage.components {
-		if component.entity_index == entity_index &&
-		   entity_is_alive(world, component.entity_index) {
-			return &component, true
-		}
+	component_index, found := custom_component_index_for_entity(storage, entity_index)
+	if !found || !entity_is_alive(world, entity_index) {
+		return nil, false
 	}
-	return nil, false
+	return &storage.components[component_index], true
 }

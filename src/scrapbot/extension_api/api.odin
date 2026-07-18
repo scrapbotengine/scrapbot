@@ -103,6 +103,12 @@ UI_Text_Alignment :: enum c.int {
 	Right  = 2,
 }
 
+UI_Icon :: enum c.int {
+	None  = 0,
+	Close = 1,
+	Plus  = 2,
+}
+
 UI_Layout_Payload :: struct {
 	parent: UUID,
 	position: Vec2,
@@ -150,16 +156,8 @@ UI_Panel_Payload :: struct {
 	disclosure_margin: f32,
 	disclosure_gap: f32,
 	disclosure_corner_radius: f32,
-	action_size: f32,
-	action_margin: f32,
-	action_icon_inset: f32,
-	action_corner_radius: f32,
-	action_color: Vec4,
-	action_hover_background: Vec4,
-	action_active_background: Vec4,
 	collapsible: c.int,
 	collapsed: c.int,
-	action_enabled: c.int,
 }
 
 UI_Table_Payload :: struct {
@@ -203,6 +201,10 @@ UI_Button_Payload :: struct {
 	active_background: Vec4,
 	hover_color: Vec4,
 	active_color: Vec4,
+	icon: UI_Icon,
+	icon_inset: f32,
+	icon_stroke: f32,
+	panel_action: c.int,
 }
 
 UI_Input_Payload :: struct {
@@ -309,6 +311,7 @@ System_Context :: struct {
 	time: Time,
 	query_count: Query_Count_Proc,
 	query_entity_at: Query_Entity_At_Proc,
+	query_next: Query_Next_Proc,
 	get_transform: Get_Transform_Proc,
 	set_transform: Set_Transform_Proc,
 	get_vec3_field: Get_Vec3_Field_Proc,
@@ -363,6 +366,13 @@ Query_Entity_At_Proc :: #type proc "c" (
 	terms: [^]Query_Term,
 	term_count: c.int,
 	visible_index: c.int,
+) -> Entity
+
+Query_Next_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	terms: [^]Query_Term,
+	term_count: c.int,
+	next_entity_index: ^c.int,
 ) -> Entity
 
 Get_Transform_Proc :: #type proc "c" (

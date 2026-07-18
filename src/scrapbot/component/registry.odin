@@ -5,6 +5,7 @@ import "core:fmt"
 
 MAX_COMPONENTS :: 128
 MAX_COMPONENT_FIELDS :: 32
+MAX_COMPONENT_NAME_TOKENS :: 16
 
 Custom_Component :: shared.Custom_Component
 Component_ID :: shared.Component_ID
@@ -24,6 +25,39 @@ Field_Type :: enum {
 	Number,
 }
 
+Storage_Kind :: enum {
+	Custom,
+	Transform,
+	Camera,
+	Ambient_Light,
+	Directional_Light,
+	Point_Light,
+	Mesh,
+	Geometry,
+	Material,
+	Shadow_Caster,
+	Shadow_Receiver,
+	UI_Layout,
+	UI_HStack,
+	UI_VStack,
+	UI_Scroll_Area,
+	UI_Panel,
+	UI_Table,
+	UI_List,
+	UI_Progress,
+	UI_Text,
+	UI_Button,
+	UI_Input,
+	UI_Checkbox,
+	UI_State,
+	Derived,
+}
+
+Lifecycle :: enum {
+	Authored,
+	Derived,
+}
+
 Field_Definition :: struct {
 	name: string,
 	field_type: Field_Type,
@@ -33,13 +67,18 @@ Definition :: struct {
 	id: Component_ID,
 	name: string,
 	owner: Owner,
+	storage_kind: Storage_Kind,
+	lifecycle: Lifecycle,
 	fields: [MAX_COMPONENT_FIELDS]Field_Definition,
 	field_count: int,
+	name_tokens: [MAX_COMPONENT_NAME_TOKENS]string,
+	name_token_count: int,
 }
 
 Registry :: struct {
 	definitions: [MAX_COMPONENTS]Definition,
 	definition_count: int,
+	revision: u64,
 }
 
 init_registry :: proc(registry: ^Registry) {
@@ -145,16 +184,8 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "disclosure_margin", field_type = .Number},
 			Field_Definition{name = "disclosure_gap", field_type = .Number},
 			Field_Definition{name = "disclosure_corner_radius", field_type = .Number},
-			Field_Definition{name = "action_size", field_type = .Number},
-			Field_Definition{name = "action_margin", field_type = .Number},
-			Field_Definition{name = "action_icon_inset", field_type = .Number},
-			Field_Definition{name = "action_corner_radius", field_type = .Number},
-			Field_Definition{name = "action_color", field_type = .Vec4},
-			Field_Definition{name = "action_hover_background", field_type = .Vec4},
-			Field_Definition{name = "action_active_background", field_type = .Vec4},
 			Field_Definition{name = "collapsible", field_type = .Bool},
 			Field_Definition{name = "collapsed", field_type = .Bool},
-			Field_Definition{name = "action_enabled", field_type = .Bool},
 		},
 	)
 	register_engine_component(
@@ -235,6 +266,10 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "active_background", field_type = .Vec4},
 			Field_Definition{name = "hover_color", field_type = .Vec4},
 			Field_Definition{name = "active_color", field_type = .Vec4},
+			Field_Definition{name = "icon", field_type = .String},
+			Field_Definition{name = "icon_inset", field_type = .Number},
+			Field_Definition{name = "icon_stroke", field_type = .Number},
+			Field_Definition{name = "panel_action", field_type = .Bool},
 		},
 	)
 	register_engine_component(
@@ -298,9 +333,12 @@ register_engine_component :: proc(
 	name: string,
 	fields: []Field_Definition,
 ) -> string {
+	storage_kind, lifecycle := engine_component_storage(name)
 	definition := Definition {
 		name = name,
 		owner = .Engine,
+		storage_kind = storage_kind,
+		lifecycle = lifecycle,
 	}
 	if err := copy_fields(&definition, fields); err != "" {
 		return err
@@ -318,6 +356,8 @@ register_project_component :: proc "c" (registry: ^Registry, definition: Definit
 
 	project_definition := definition
 	project_definition.owner = .Project
+	project_definition.storage_kind = .Custom
+	project_definition.lifecycle = .Authored
 	return register_definition(registry, project_definition)
 }
 
@@ -334,7 +374,65 @@ register_library_component :: proc "c" (registry: ^Registry, definition: Definit
 
 	library_definition := definition
 	library_definition.owner = .Library
+	library_definition.storage_kind = .Custom
+	library_definition.lifecycle = .Authored
 	return register_definition(registry, library_definition)
+}
+
+definition_is_authorable :: proc "contextless" (definition: Definition) -> bool {
+	return definition.lifecycle == .Authored
+}
+
+engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, Lifecycle) {
+	switch name {
+		case "scrapbot.transform":
+			return .Transform, .Authored
+		case "scrapbot.camera":
+			return .Camera, .Authored
+		case "scrapbot.ambient_light":
+			return .Ambient_Light, .Authored
+		case "scrapbot.directional_light":
+			return .Directional_Light, .Authored
+		case "scrapbot.point_light":
+			return .Point_Light, .Authored
+		case "scrapbot.mesh":
+			return .Mesh, .Authored
+		case "scrapbot.geometry":
+			return .Geometry, .Authored
+		case "scrapbot.material":
+			return .Material, .Authored
+		case "scrapbot.shadow_caster":
+			return .Shadow_Caster, .Authored
+		case "scrapbot.shadow_receiver":
+			return .Shadow_Receiver, .Authored
+		case "scrapbot.ui_layout":
+			return .UI_Layout, .Authored
+		case "scrapbot.ui_hstack":
+			return .UI_HStack, .Authored
+		case "scrapbot.ui_vstack":
+			return .UI_VStack, .Authored
+		case "scrapbot.ui_scroll_area":
+			return .UI_Scroll_Area, .Authored
+		case "scrapbot.ui_panel":
+			return .UI_Panel, .Authored
+		case "scrapbot.ui_table":
+			return .UI_Table, .Authored
+		case "scrapbot.ui_list":
+			return .UI_List, .Authored
+		case "scrapbot.ui_progress":
+			return .UI_Progress, .Authored
+		case "scrapbot.ui_text":
+			return .UI_Text, .Authored
+		case "scrapbot.ui_button":
+			return .UI_Button, .Authored
+		case "scrapbot.ui_input":
+			return .UI_Input, .Authored
+		case "scrapbot.ui_checkbox":
+			return .UI_Checkbox, .Authored
+		case "scrapbot.ui_state":
+			return .UI_State, .Derived
+	}
+	return .Derived, .Derived
 }
 
 register_definition :: proc "c" (registry: ^Registry, definition: Definition) -> string {
@@ -345,14 +443,17 @@ register_definition :: proc "c" (registry: ^Registry, definition: Definition) ->
 		return "component name must be dot-separated identifier tokens"
 	}
 
+	prepared := definition
+	cache_definition_name_tokens(&prepared)
 	if index, found := find_definition_index(registry, definition.name); found {
 		existing := registry.definitions[index]
 		if existing.owner != definition.owner {
 			return "component is already registered"
 		}
-		registered := definition
+		registered := prepared
 		registered.id = existing.id
 		registry.definitions[index] = registered
+		registry.revision += 1
 		return ""
 	}
 
@@ -360,11 +461,31 @@ register_definition :: proc "c" (registry: ^Registry, definition: Definition) ->
 		return "too many component definitions"
 	}
 
-	registered := definition
+	registered := prepared
 	registered.id = Component_ID(registry.definition_count + 1)
 	registry.definitions[registry.definition_count] = registered
 	registry.definition_count += 1
+	registry.revision += 1
 	return ""
+}
+
+cache_definition_name_tokens :: proc "contextless" (definition: ^Definition) {
+	if definition == nil {
+		return
+	}
+	definition.name_token_count = 0
+	start := 0
+	for index in 0 ..= len(definition.name) {
+		if index < len(definition.name) && definition.name[index] != '.' {
+			continue
+		}
+		if definition.name_token_count >= MAX_COMPONENT_NAME_TOKENS {
+			return
+		}
+		definition.name_tokens[definition.name_token_count] = definition.name[start:index]
+		definition.name_token_count += 1
+		start = index + 1
+	}
 }
 
 find_definition :: proc "c" (

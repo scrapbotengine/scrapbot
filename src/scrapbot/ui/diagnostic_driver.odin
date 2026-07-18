@@ -163,8 +163,10 @@ diagnostic_driver_destroy :: proc(driver: ^Diagnostic_Driver) {
 
 diagnostic_action_is_valid :: proc(action: Diagnostic_Action) -> bool {
 	switch action.action {
-		case "click", "hover", "scroll", "type", "drag", "capture":
+		case "click", "hover", "scroll", "type", "capture":
 			return diagnostic_target_is_valid(action.target)
+		case "drag":
+			return diagnostic_target_is_valid(action.target) && action.frames >= 0
 		case "expect":
 			return(
 				diagnostic_target_is_valid(action.target) &&
@@ -251,6 +253,11 @@ diagnostic_driver_input :: proc(
 	if driver.complete {
 		return driver.last_pointer, {}, ""
 	}
+	if state != nil && world != nil && state.ui_world_uuid != world.instance_uuid {
+		// Runtime Stop/Revert can replace the world between input and UI reconciliation.
+		// Let the retained tree bind to the new world before resolving semantic targets.
+		return driver.last_pointer, {}, ""
+	}
 	if driver.action_index < 0 || driver.action_index >= len(driver.script.actions) {
 		driver.complete = true
 		return driver.last_pointer, {}, ""
@@ -294,11 +301,15 @@ diagnostic_driver_input :: proc(
 	}
 	if action.action == "drag" {
 		if driver.phase == 1 {
-			pointer.position.x += action.delta_x
-			pointer.position.y += action.delta_y
+			steps := max(action.frames, 1)
+			pointer.position.x += action.delta_x / f32(steps)
+			pointer.position.y += action.delta_y / f32(steps)
 			pointer.primary_down = true
 			driver.last_pointer = pointer
-			driver.phase = 2
+			driver.wait_remaining += 1
+			if driver.wait_remaining >= steps {
+				driver.phase = 2
+			}
 			return pointer, keyboard, ""
 		}
 		if driver.phase == 2 {
@@ -534,17 +545,16 @@ diagnostic_target_rect :: proc(
 	}
 	node := state.nodes[node_index]
 	if target.part == "panel_action" {
-		if node.panel_index < 0 || node.panel_index >= len(world.ui_panels) {
-			return {}, false
+		panel_entity_index := int(node.entity.index)
+		for &child in state.nodes[:state.node_count] {
+			if child.parent_entity_index != panel_entity_index ||
+			   !node_is_panel_action(world, &child) {
+				continue
+			}
+			rect := diagnostic_node_visible_rect(child)
+			return rect, rect.width > 0 && rect.height > 0
 		}
-		rect, ok := panel_title_action_rect(node, world.ui_panels[node.panel_index])
-		if !ok {
-			return {}, false
-		}
-		if node.has_clip {
-			rect = rect_intersection(rect, node.clip)
-		}
-		return rect, rect.width > 0 && rect.height > 0
+		return {}, false
 	}
 	rect := diagnostic_node_visible_rect(node)
 	return rect, rect.width > 0 && rect.height > 0
@@ -580,6 +590,7 @@ diagnostic_reveal_target :: proc(state: ^State, world: ^shared.World, node_index
 					ancestor.scroll_max,
 				)
 				ancestor.scroll_offset = ancestor.scroll_target
+				state.ui_layout_valid = false
 				return true
 			}
 		}

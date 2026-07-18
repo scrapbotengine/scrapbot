@@ -1,5 +1,6 @@
 package render
 
+import ecs "../ecs"
 import platform "../platform"
 import resources "../resources"
 import shared "../shared"
@@ -142,10 +143,13 @@ wgpu_init_renderer :: proc(
 	}
 	renderer.adapter = adapter_state.adapter
 
+	device_descriptor := wgpu.DeviceDescriptor {
+		label = "Scrapbot Device",
+	}
 	device_state: WGPU_Request_Device_State
 	wgpu.AdapterRequestDevice(
 		renderer.adapter,
-		&wgpu.DeviceDescriptor{label = "Scrapbot Device"},
+		&device_descriptor,
 		wgpu.RequestDeviceCallbackInfo {
 			mode = .AllowSpontaneos,
 			callback = wgpu_request_device_callback,
@@ -165,7 +169,6 @@ wgpu_init_renderer :: proc(
 	if renderer.queue == nil {
 		return renderer, "failed to get wgpu queue"
 	}
-
 	if use_surface {
 		capabilities, caps_status := wgpu.SurfaceGetCapabilities(
 			renderer.surface,
@@ -219,6 +222,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.ui_font_sampler != nil { wgpu.SamplerRelease(renderer.ui_font_sampler) }
 	if renderer.ui_font_view != nil { wgpu.TextureViewRelease(renderer.ui_font_view) }
 	if renderer.ui_font_texture != nil { wgpu.TextureRelease(renderer.ui_font_texture) }
+	if renderer.ui_vertex_buffer != nil { wgpu.BufferRelease(renderer.ui_vertex_buffer) }
+	delete(renderer.ui_vertices)
+	ecs.destroy_render_list(&renderer.render_list)
 	if renderer.ui_pipeline_layout !=
 	   nil { wgpu.PipelineLayoutRelease(renderer.ui_pipeline_layout) }
 	if renderer.ui_bind_group_layout !=

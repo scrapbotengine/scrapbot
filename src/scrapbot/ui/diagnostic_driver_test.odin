@@ -14,7 +14,7 @@ DIAGNOSTIC_DRIVER_TEST_SCRIPT :: `{
     {"action": "click", "target": {"text": "OPEN"}},
     {"action": "hover", "target": {"text": "CHOICE"}},
     {"action": "expect", "target": {"text": "CHOICE"}, "expect": "hovered"},
-    {"action": "drag", "target": {"name": "Driver Number"}, "delta_x": 1.5},
+    {"action": "drag", "target": {"name": "Driver Number"}, "delta_x": 1.5, "frames": 4},
     {"action": "expect", "target": {"name": "Driver Number"}, "expect": "text", "text": "2"},
     {"action": "capture", "target": {"text": "CHOICE"}, "padding": 4}
   ]
@@ -176,6 +176,77 @@ test_diagnostic_driver_rejects_an_unknown_schema :: proc(t: ^testing.T) {
 	err := diagnostic_driver_load(&driver, script_path)
 	testing.expect(t, strings.contains(err, "schema_version"))
 	diagnostic_driver_destroy(&driver)
+}
+
+@(test)
+test_diagnostic_driver_waits_for_retained_tree_after_world_replacement :: proc(t: ^testing.T) {
+	directory, directory_err := os.make_directory_temp(
+		"",
+		"scrapbot-ui-driver-world-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, directory_err == nil)
+	if directory_err != nil { return }
+	defer os.remove_all(directory)
+	script_path, path_err := filepath.join({directory, "actions.json"})
+	testing.expect(t, path_err == nil)
+	if path_err != nil { return }
+	defer delete(script_path)
+	testing.expect(
+		t,
+		os.write_entire_file(
+			script_path,
+			`{"schema_version":1,"actions":[{"action":"expect","target":{"name":"Replacement Status"},"expect":"text","text":"READY"}]}`,
+		) ==
+		nil,
+	)
+
+	old_scene := shared.Scene{}
+	defer delete(old_scene.entities)
+	append(
+		&old_scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Old Status"),
+			name = "Old Status",
+			has_ui_layout = true,
+			ui_layout = {size = {100, 30}},
+			has_ui_text = true,
+			ui_text = {text = "OLD", color = {1, 1, 1, 1}, size = 16},
+		},
+	)
+	world := ecs.build_world(&old_scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+
+	driver: Diagnostic_Driver
+	testing.expect(t, diagnostic_driver_load(&driver, script_path) == "")
+	defer diagnostic_driver_destroy(&driver)
+
+	new_scene := shared.Scene{}
+	defer delete(new_scene.entities)
+	append(
+		&new_scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Replacement Status"),
+			name = "Replacement Status",
+			has_ui_layout = true,
+			ui_layout = {size = {100, 30}},
+			has_ui_text = true,
+			ui_text = {text = "READY", color = {1, 1, 1, 1}, size = 16},
+		},
+	)
+	replacement := ecs.build_world(&new_scene)
+	ecs.destroy_world(&world)
+	world = replacement
+
+	_, _, driver_err := diagnostic_driver_input(&driver, state, &world, 1280, 720)
+	testing.expect(t, driver_err == "")
+	testing.expect(t, driver.action_index == 0)
+	testing.expect(t, !diagnostic_driver_is_complete(&driver))
 }
 
 @(test)

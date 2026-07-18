@@ -41,6 +41,12 @@ EDITOR_SECTION_BORDER :: shared.Vec4{0.055, 0.067, 0.088, 1}
 EDITOR_SECTION_TITLE_COLOR :: shared.Vec4{0.86, 0.88, 0.92, 1}
 EDITOR_RUNTIME_ENTITY_COLOR :: shared.Vec4{0.42, 0.45, 0.51, 1}
 EDITOR_SECTION_RADIUS :: f32(5)
+EDITOR_CHROME_BACKGROUND :: shared.Vec4{0.004, 0.005, 0.007, 1}
+EDITOR_CHROME_BORDER :: shared.Vec4{0.055, 0.067, 0.088, 1}
+EDITOR_PLAYBACK_TOP_BACKGROUND :: shared.Vec4{0.035, 0.018, 0.007, 1}
+EDITOR_PLAYBACK_STATUS_BACKGROUND :: shared.Vec4{0.105, 0.046, 0.010, 1}
+EDITOR_PLAYBACK_BORDER :: shared.Vec4{0.94, 0.46, 0.12, 1}
+EDITOR_PLAYBACK_TEXT :: shared.Vec4{1.0, 0.73, 0.36, 1}
 
 editor_ui_entity :: proc(
 	world: ^shared.World,
@@ -72,14 +78,14 @@ editor_ui_handle_activation :: proc(
 	for entity_index >= 0 && entity_index < len(world.entities) {
 		entity := world.entities[entity_index]
 		if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
-			component := world.editor_uis[entity.editor_ui_index]
-			switch component.role {
+			binding := world.editor_uis[entity.editor_ui_index]
+			switch binding.role {
 				case .Browser_Row, .Browser_Row_Label:
-					_ = editor_select_entity(state, world, component.target, 0)
+					_ = editor_select_entity(state, world, binding.target, 0)
 					return
 				case .Project_Resource_Row, .Project_Resource_Row_Label:
-					if component.resource_id != (shared.Resource_UUID{}) {
-						state.editor_selected_resource = component.resource_id
+					if binding.resource_id != (shared.Resource_UUID{}) {
+						state.editor_selected_resource = binding.resource_id
 						state.editor_has_resource_selection = true
 						state.editor_has_selection = false
 						state.editor_snapshot_valid = false
@@ -156,12 +162,35 @@ editor_ui_handle_activation :: proc(
 						editor_ui_set_hidden(world, menu, !state.editor_component_menu_open)
 					}
 					return
+				case .Inspector_Panel_Action:
+					if state.component_registry == nil ||
+					   binding.reflected_component_id == shared.INVALID_COMPONENT_ID {
+						return
+					}
+					definition, found := component.find_definition_by_id(
+						state.component_registry,
+						binding.reflected_component_id,
+					)
+					if found {
+						target_index := int(binding.target.index)
+						if ecs.entity_is_alive(world, target_index) &&
+						   world.entities[target_index].id == binding.target {
+							_ = editor_set_registered_component(
+								state,
+								world,
+								target_index,
+								&definition,
+								false,
+							)
+						}
+					}
+					return
 				case .Inspector_Component_Menu_Item:
 					if selected, ok := editor_selected_world_index(state, world); ok {
 						if state.component_registry != nil &&
-						   component.slot >= 0 &&
-						   component.slot < state.component_registry.definition_count {
-							definition := &state.component_registry.definitions[component.slot]
+						   binding.slot >= 0 &&
+						   binding.slot < state.component_registry.definition_count {
+							definition := &state.component_registry.definitions[binding.slot]
 							_ = editor_set_registered_component(
 								state,
 								world,
@@ -193,7 +222,7 @@ editor_ui_handle_activation :: proc(
 							state,
 							world,
 							selected,
-							component.resource_id,
+							binding.resource_id,
 						)
 					}
 					state.editor_resource_menu_open = false
@@ -245,98 +274,54 @@ editor_ui_handle_activation :: proc(
 	}
 }
 
-editor_ui_handle_panel_action :: proc(
-	state: ^State,
-	world: ^shared.World,
-	pressed: shared.Entity,
-) -> bool {
-	if state == nil || world == nil || state.component_registry == nil {
+editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil {
 		return false
 	}
-	entity_index := int(pressed.index)
-	if !ecs.entity_is_alive(world, entity_index) || world.entities[entity_index].id != pressed {
-		return false
+	layout_changed := false
+	for event in ui_events(state) {
+		switch event.kind {
+			case .Activated:
+				editor_ui_handle_activation(state, world, event.entity, event.position)
+			case .Changed:
+				if event.part == .Panel_Title {
+					editor_ui_handle_panel_change(state, world, event.entity)
+				} else {
+					editor_ui_handle_checkbox_change(state, world, event.entity)
+				}
+		}
 	}
-	binding_index := world.entities[entity_index].editor_ui_index
-	if binding_index < 0 || binding_index >= len(world.editor_uis) {
-		return false
-	}
-	binding := world.editor_uis[binding_index]
-	if binding.role != .Inspector_Panel ||
-	   binding.reflected_component_id == shared.INVALID_COMPONENT_ID {
-		return false
-	}
-	definition, found := component.find_definition_by_id(
-		state.component_registry,
-		binding.reflected_component_id,
-	)
-	if !found {
-		return false
-	}
-	target_index := int(binding.target.index)
-	if !ecs.entity_is_alive(world, target_index) ||
-	   world.entities[target_index].id != binding.target ||
-	   !editor_set_registered_component(state, world, target_index, &definition, false) {
-		return false
-	}
-	return true
+	layout_changed = state.editor_layout_invalidated || layout_changed
+	state.editor_layout_invalidated = false
+	return layout_changed
 }
 
 editor_ui_resource_menu_contains :: proc(world: ^shared.World, entity: shared.Entity) -> bool {
-	if world == nil {
-		return false
-	}
-	entity_index := int(entity.index)
-	for entity_index >= 0 && entity_index < len(world.entities) {
-		value := world.entities[entity_index]
-		if value.editor_ui_index >= 0 && value.editor_ui_index < len(world.editor_uis) {
-			role := world.editor_uis[value.editor_ui_index].role
-			if role == .Inspector_Resource_Menu_Button ||
-			   role == .Inspector_Resource_Menu ||
-			   role == .Inspector_Resource_Menu_Content ||
-			   role == .Inspector_Resource_Menu_Item {
-				return true
-			}
-		}
-		if value.ui_layout_index < 0 || value.ui_layout_index >= len(world.ui_layouts) {
-			break
-		}
-		parent := world.ui_layouts[value.ui_layout_index].parent
-		if parent == (shared.Entity_UUID{}) {
-			break
-		}
-		entity_index = find_parent_entity(world, parent, .Editor)
-	}
-	return false
+	return editor_ui_popup_contains(
+		world,
+		entity,
+		.Inspector_Resource_Menu_Button,
+		.Inspector_Resource_Menu,
+	)
 }
 
 editor_ui_component_menu_contains :: proc(world: ^shared.World, entity: shared.Entity) -> bool {
-	if world == nil {
-		return false
-	}
-	entity_index := int(entity.index)
-	for entity_index >= 0 && entity_index < len(world.entities) {
-		value := world.entities[entity_index]
-		if value.editor_ui_index >= 0 && value.editor_ui_index < len(world.editor_uis) {
-			role := world.editor_uis[value.editor_ui_index].role
-			if role == .Inspector_Component_Menu_Button ||
-			   role == .Inspector_Component_Menu ||
-			   role == .Inspector_Component_Menu_Content ||
-			   role == .Inspector_Component_Menu_Group ||
-			   role == .Inspector_Component_Menu_Item {
-				return true
-			}
-		}
-		if value.ui_layout_index < 0 || value.ui_layout_index >= len(world.ui_layouts) {
-			break
-		}
-		parent := world.ui_layouts[value.ui_layout_index].parent
-		if parent == (shared.Entity_UUID{}) {
-			break
-		}
-		entity_index = find_parent_entity(world, parent, .Editor)
-	}
-	return false
+	return editor_ui_popup_contains(
+		world,
+		entity,
+		.Inspector_Component_Menu_Button,
+		.Inspector_Component_Menu,
+	)
+}
+
+editor_ui_popup_contains :: proc(
+	world: ^shared.World,
+	entity: shared.Entity,
+	button_role, menu_role: shared.Editor_UI_Role,
+) -> bool {
+	button, button_found := editor_ui_entity(world, button_role)
+	menu, menu_found := editor_ui_entity(world, menu_role)
+	return button_found && menu_found && popup_contains_entity(world, entity, button, menu)
 }
 
 editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
@@ -376,20 +361,33 @@ editor_ui_close_component_menu :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || !state.editor_component_menu_open {
 		return
 	}
-	state.editor_component_menu_open = false
-	state.editor_layout_invalidated = true
-	if menu, found := editor_ui_entity(world, .Inspector_Component_Menu); found {
-		editor_ui_set_hidden(world, menu, true)
-	}
+	editor_ui_close_popup(
+		state,
+		world,
+		&state.editor_component_menu_open,
+		.Inspector_Component_Menu,
+	)
 }
 
 editor_ui_close_resource_menu :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || !state.editor_resource_menu_open {
 		return
 	}
-	state.editor_resource_menu_open = false
+	editor_ui_close_popup(state, world, &state.editor_resource_menu_open, .Inspector_Resource_Menu)
+}
+
+editor_ui_close_popup :: proc(
+	state: ^State,
+	world: ^shared.World,
+	open: ^bool,
+	menu_role: shared.Editor_UI_Role,
+) {
+	if state == nil || world == nil || open == nil {
+		return
+	}
+	open^ = false
 	state.editor_layout_invalidated = true
-	if menu, found := editor_ui_entity(world, .Inspector_Resource_Menu); found {
+	if menu, found := editor_ui_entity(world, menu_role); found {
 		editor_ui_set_hidden(world, menu, true)
 	}
 }
@@ -658,8 +656,8 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	text := shared.Vec4{0.82, 0.85, 0.90, 1}
 	muted := shared.Vec4{0.42, 0.45, 0.51, 1}
 	mint := shared.Vec4{0.06, 0.72, 0.63, 1}
-	void := shared.Vec4{0.004, 0.005, 0.007, 1}
-	rule := shared.Vec4{0.055, 0.067, 0.088, 1}
+	void := EDITOR_CHROME_BACKGROUND
+	rule := EDITOR_CHROME_BORDER
 	root := editor_ui_create_box(
 		world,
 		EDITOR_UI_ROOT_NAME,
@@ -1128,7 +1126,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"__scrapbot_editor_status_text",
 		EDITOR_UI_STATUS_NAME,
 		.Status,
-		{size = {300, 18}},
+		{size = {1200, 18}, fill_width = true},
 	)
 	editor_ui_add_text(world, status_text, "RUNNING", mint, EDITOR_TEXT_SIZE)
 }
@@ -1298,6 +1296,40 @@ format_system_profile_time :: proc(average_nanoseconds: f64, sampled: bool) -> s
 
 editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || world == nil { return }
+	playback := !state.editor_simulation_stopped
+	if top, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_TOP_NAME),
+	); found {
+		layout := &world.ui_layouts[world.entities[top].ui_layout_index]
+		layout.background = EDITOR_CHROME_BACKGROUND
+		layout.border_color = EDITOR_CHROME_BORDER
+		if playback {
+			layout.background = EDITOR_PLAYBACK_TOP_BACKGROUND
+			layout.border_color = EDITOR_PLAYBACK_BORDER
+		}
+	}
+	if viewport, found := editor_ui_entity(world, .Viewport); found {
+		layout := &world.ui_layouts[world.entities[viewport].ui_layout_index]
+		layout.border_color = EDITOR_CHROME_BORDER
+		layout.border_width = 1
+		if playback {
+			layout.border_color = EDITOR_PLAYBACK_BORDER
+			layout.border_width = 2
+		}
+	}
+	if status_bar, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_STATUS_NAME),
+	); found {
+		layout := &world.ui_layouts[world.entities[status_bar].ui_layout_index]
+		layout.background = EDITOR_CHROME_BACKGROUND
+		layout.border_color = EDITOR_CHROME_BORDER
+		if playback {
+			layout.background = EDITOR_PLAYBACK_STATUS_BACKGROUND
+			layout.border_color = EDITOR_PLAYBACK_BORDER
+		}
+	}
 	for component in world.editor_uis {
 		if component.role != .Transport_Play &&
 		   component.role != .Transport_Pause &&
@@ -1383,10 +1415,8 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 	if status, found := editor_ui_entity(world, .Status); found {
 		entity := world.entities[status]
 		if entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts) {
-			world.ui_texts[entity.ui_text_index].color = {0.96, 0.55, 0.59, 1}
-			if state.editor_simulation_playing {
-				world.ui_texts[entity.ui_text_index].color = {0.06, 0.72, 0.63, 1}
-			}
+			world.ui_texts[entity.ui_text_index].color = {0.06, 0.72, 0.63, 1}
+			if playback { world.ui_texts[entity.ui_text_index].color = EDITOR_PLAYBACK_TEXT }
 		}
 	}
 }
@@ -1540,6 +1570,37 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 		},
 	)
 	return panel, table
+}
+
+editor_ui_ensure_inspector_panel_action :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent: string,
+) -> int {
+	if action, found := editor_ui_entity(world, .Inspector_Panel_Action, slot); found {
+		editor_ui_set_parent(world, action, parent)
+		return action
+	}
+	name := fmt.tprintf("__scrapbot_editor_inspector_panel_action_%d", slot)
+	action := editor_ui_create_box(
+		world,
+		name,
+		parent,
+		.Inspector_Panel_Action,
+		{size = {22, 22}, margin = {5, 5, 5, 5}, corner_radius = 4, fixed_in_fill = true},
+		slot,
+	)
+	editor_ui_add_button(world, action)
+	button := shared.ui_button_default()
+	button.icon = .Close
+	button.panel_action = true
+	button.color = {0.76, 0.78, 0.82, 1}
+	button.hover_background = {0.18, 0.20, 0.24, 1}
+	button.active_background = {0.26, 0.10, 0.12, 1}
+	button.icon_inset = 6
+	button.icon_stroke = 1.5
+	_ = ecs.set_ui_button(world, action, button)
+	return action
 }
 
 editor_ui_ensure_inspector_cell :: proc(
@@ -1932,7 +1993,6 @@ editor_ui_ensure_component_menu_item :: proc(
 	world: ^shared.World,
 	definition_index, depth: int,
 	parent, label: string,
-	present: bool,
 ) -> int {
 	item, found := editor_ui_entity(world, .Inspector_Component_Menu_Item, definition_index)
 	if !found {
@@ -1965,13 +2025,6 @@ editor_ui_ensure_component_menu_item :: proc(
 	value.active_background = {0.018, 0.065, 0.057, 1}
 	value.hover_color = {0.70, 0.95, 0.89, 1}
 	value.active_color = {0.82, 1.00, 0.96, 1}
-	if present {
-		value.color = {0.78, 0.61, 0.64, 1}
-		value.hover_background = {0.115, 0.030, 0.040, 1}
-		value.active_background = {0.070, 0.018, 0.025, 1}
-		value.hover_color = {0.98, 0.72, 0.76, 1}
-		value.active_color = {1.00, 0.84, 0.87, 1}
-	}
 	_ = ecs.set_ui_button(world, item, value)
 	return item
 }
@@ -2063,7 +2116,7 @@ editor_ui_begin_inspector_component :: proc(
 	editor_ui_set_hidden(builder.world, panel, false)
 	editor_ui_set_hidden(builder.world, table, false)
 	panel_value := builder.world.ui_panels[builder.world.entities[panel].ui_panel_index]
-	panel_value.action_enabled =
+	can_remove :=
 		definition != nil &&
 		editor_authoring_definition_is_supported(definition) &&
 		editor_component_membership_available(
@@ -2075,8 +2128,17 @@ editor_ui_begin_inspector_component :: proc(
 	binding := &builder.world.editor_uis[builder.world.entities[panel].editor_ui_index]
 	binding.target = builder.target
 	binding.reflected_component_id = shared.INVALID_COMPONENT_ID
-	if panel_value.action_enabled {
-		binding.reflected_component_id = definition.id
+	action := editor_ui_ensure_inspector_panel_action(
+		builder.world,
+		builder.panel_count - 1,
+		builder.world.entities[panel].name,
+	)
+	editor_ui_set_hidden(builder.world, action, !can_remove)
+	action_binding := &builder.world.editor_uis[builder.world.entities[action].editor_ui_index]
+	action_binding.target = builder.target
+	action_binding.reflected_component_id = shared.INVALID_COMPONENT_ID
+	if can_remove {
+		action_binding.reflected_component_id = definition.id
 	}
 	editor_ui_set_panel_title(builder.world, panel, title)
 }
@@ -2402,6 +2464,42 @@ editor_component_definition_less :: proc(a, b: ^component.Definition) -> bool {
 	return a.name < b.name
 }
 
+editor_ui_refresh_component_menu_cache :: proc(state: ^State) {
+	if state == nil || state.component_registry == nil {
+		return
+	}
+	registry := state.component_registry
+	if state.component_menu_cached_registry == registry &&
+	   state.component_menu_registry_revision == registry.revision {
+		return
+	}
+	state.component_menu_definition_count = 0
+	for index in 0 ..< registry.definition_count {
+		definition := &registry.definitions[index]
+		if !editor_authoring_definition_is_supported(definition) {
+			continue
+		}
+		state.component_menu_definition_indices[state.component_menu_definition_count] = index
+		state.component_menu_definition_count += 1
+	}
+	for index in 1 ..< state.component_menu_definition_count {
+		value := state.component_menu_definition_indices[index]
+		cursor := index
+		for cursor > 0 &&
+		    editor_component_definition_less(
+			    &registry.definitions[value],
+			    &registry.definitions[state.component_menu_definition_indices[cursor - 1]],
+		    ) {
+			state.component_menu_definition_indices[cursor] =
+				state.component_menu_definition_indices[cursor - 1]
+			cursor -= 1
+		}
+		state.component_menu_definition_indices[cursor] = value
+	}
+	state.component_menu_cached_registry = registry
+	state.component_menu_registry_revision = registry.revision
+}
+
 editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, entity_index: int) {
 	menu, content := editor_ui_ensure_component_menu(world)
 	editor_ui_set_hidden(world, menu, state == nil || !state.editor_component_menu_open)
@@ -2416,41 +2514,19 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 		return
 	}
 	registry := state.component_registry
-	indices: [component.MAX_COMPONENTS]int
-	count := 0
-	for index in 0 ..< registry.definition_count {
-		definition := &registry.definitions[index]
-		if !editor_authoring_definition_is_supported(definition) {
-			continue
-		}
-		indices[count] = index
-		count += 1
-	}
-	for index in 1 ..< count {
-		value := indices[index]
-		cursor := index
-		for cursor > 0 &&
-		    editor_component_definition_less(
-			    &registry.definitions[value],
-			    &registry.definitions[indices[cursor - 1]],
-		    ) {
-			indices[cursor] = indices[cursor - 1]
-			cursor -= 1
-		}
-		indices[cursor] = value
-	}
+	editor_ui_refresh_component_menu_cache(state)
 	group_slot := 0
 	row_count := 0
 	project_group_emitted := false
 	previous_tokens: [16]string
 	previous_count := 0
 	content_name := world.entities[content].name
-	for definition_index in indices[:count] {
+	for definition_index in state.component_menu_definition_indices[:state.component_menu_definition_count] {
 		definition := &registry.definitions[definition_index]
 		if editor_entity_has_registered_component(world, entity_index, definition) {
 			continue
 		}
-		tokens := strings.split(definition.name, ".")
+		tokens := definition.name_tokens[:definition.name_token_count]
 		if len(tokens) == 1 {
 			previous_count = 0
 			if !project_group_emitted {
@@ -2498,70 +2574,12 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 			len(tokens),
 			content_name,
 			label,
-			false,
 		)
 		editor_ui_set_hidden(world, item, false)
 		row_count += 1
-		delete(tokens)
 	}
 	content_layout := &world.ui_layouts[world.entities[content].ui_layout_index]
 	content_layout.size.y = max(f32(row_count * 30), 1)
-}
-
-editor_entity_has_component :: proc(
-	world: ^shared.World,
-	entity_index: int,
-	component: Editor_Authoring_Component,
-) -> bool {
-	if !ecs.entity_is_alive(world, entity_index) { return false }
-	entity := world.entities[entity_index]
-	switch component {
-		case .Transform:
-			return entity.transform_index >= 0
-		case .Camera:
-			return entity.camera_index >= 0
-		case .Ambient_Light:
-			return entity.ambient_light_index >= 0
-		case .Directional_Light:
-			return entity.directional_light_index >= 0
-		case .Point_Light:
-			return entity.point_light_index >= 0
-		case .Mesh:
-			return entity.mesh_index >= 0
-		case .Geometry:
-			return entity.geometry_resource != ""
-		case .Material:
-			return entity.material_resource != ""
-		case .Shadow_Caster:
-			return entity.has_shadow_caster
-		case .Shadow_Receiver:
-			return entity.has_shadow_receiver
-		case .UI_Layout:
-			return entity.ui_layout_index >= 0
-		case .UI_HStack:
-			return entity.ui_hstack_index >= 0
-		case .UI_VStack:
-			return entity.ui_vstack_index >= 0
-		case .UI_Scroll_Area:
-			return entity.ui_scroll_area_index >= 0
-		case .UI_Panel:
-			return entity.ui_panel_index >= 0
-		case .UI_Table:
-			return entity.ui_table_index >= 0
-		case .UI_List:
-			return entity.ui_list_index >= 0
-		case .UI_Progress:
-			return entity.ui_progress_index >= 0
-		case .UI_Text:
-			return entity.ui_text_index >= 0
-		case .UI_Button:
-			return entity.ui_button_index >= 0
-		case .UI_Input:
-			return entity.ui_input_index >= 0
-		case .UI_Checkbox:
-			return entity.ui_checkbox_index >= 0
-	}
-	return false
 }
 
 editor_entity_has_registered_component :: proc(
@@ -2569,13 +2587,7 @@ editor_entity_has_registered_component :: proc(
 	entity_index: int,
 	definition: ^component.Definition,
 ) -> bool {
-	if definition == nil || !ecs.entity_is_alive(world, entity_index) {
-		return false
-	}
-	if builtin, found := editor_authoring_component_from_name(definition.name); found {
-		return editor_entity_has_component(world, entity_index, builtin)
-	}
-	return ecs.entity_has_component(world, entity_index, definition.id, definition.name)
+	return ecs.registered_component_is_present(world, entity_index, definition)
 }
 
 editor_component_title :: proc(name: string, buffer: []u8) -> string {
@@ -3489,16 +3501,18 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		}
 	}
 	if status, found := editor_ui_entity(world, .Status); found {
-		mode := "PAUSED"
-		if state.editor_simulation_playing { mode = "RUNNING" }
+		mode := "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"
+		if state.editor_simulation_playing {
+			mode = "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY"
+		}
 		if state.editor_simulation_stopped { mode = "STOPPED" }
 		if state.editor_scene_dirty {
 			if state.editor_simulation_playing {
-				mode = "RUNNING  /  UNSAVED"
+				mode = "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY  /  UNSAVED AUTHORING"
 			} else if state.editor_simulation_stopped {
 				mode = "STOPPED  /  UNSAVED"
 			} else {
-				mode = "PAUSED  /  UNSAVED"
+				mode = "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY  /  UNSAVED AUTHORING"
 			}
 		}
 		if state.editor_scene_save_failed { mode = "SAVE FAILED  /  UNSAVED" }
@@ -3641,75 +3655,66 @@ reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World) {
 }
 
 editor_ui_anchor_component_menu :: proc(state: ^State, world: ^shared.World, width, height: f32) {
-	if state == nil || world == nil {
-		return
-	}
-	menu, found := editor_ui_entity(world, .Inspector_Component_Menu)
-	if !found {
-		return
-	}
-	button_rect: Rect
-	button_found := false
-	for node in state.nodes[:state.node_count] {
-		if node.origin == .Editor && node.editor_role == .Inspector_Component_Menu_Button {
-			button_rect = node.rect
-			button_found = true
-			break
-		}
-	}
-	if !button_found || button_rect.width <= 0 {
-		return
-	}
-	layout := &world.ui_layouts[world.entities[menu].ui_layout_index]
-	content_height := f32(120)
-	content, content_found := editor_ui_entity(world, .Inspector_Component_Menu_Content)
-	if content_found {
-		content_layout := world.ui_layouts[world.entities[content].ui_layout_index]
-		content_height = content_layout.size.y + 10
-	}
-	layout.size.x = clamp(button_rect.width, 220, 420)
-	layout.size.y = min(content_height, min(f32(360), height - 20))
-	layout.position.x = clamp(button_rect.x, 10, max(width - layout.size.x - 10, 10))
-	layout.position.y = button_rect.y + button_rect.height + 4
-	if layout.position.y + layout.size.y > height - EDITOR_STATUS_BAR_HEIGHT - 6 {
-		layout.position.y = max(button_rect.y - layout.size.y - 4, EDITOR_TOP_BAR_HEIGHT + 6)
-	}
+	editor_ui_anchor_popup(
+		state,
+		world,
+		width,
+		height,
+		.Inspector_Component_Menu,
+		.Inspector_Component_Menu_Button,
+		.Inspector_Component_Menu_Content,
+		120,
+		360,
+	)
 }
 
 editor_ui_anchor_resource_menu :: proc(state: ^State, world: ^shared.World, width, height: f32) {
+	editor_ui_anchor_popup(
+		state,
+		world,
+		width,
+		height,
+		.Inspector_Resource_Menu,
+		.Inspector_Resource_Menu_Button,
+		.Inspector_Resource_Menu_Content,
+		100,
+		300,
+	)
+}
+
+editor_ui_anchor_popup :: proc(
+	state: ^State,
+	world: ^shared.World,
+	width, height: f32,
+	menu_role, button_role, content_role: shared.Editor_UI_Role,
+	default_content_height, maximum_height: f32,
+) {
 	if state == nil || world == nil {
 		return
 	}
-	menu, found := editor_ui_entity(world, .Inspector_Resource_Menu)
+	menu, found := editor_ui_entity(world, menu_role)
 	if !found {
 		return
 	}
-	button_rect: Rect
-	button_found := false
-	for node in state.nodes[:state.node_count] {
-		if node.origin == .Editor && node.editor_role == .Inspector_Resource_Menu_Button {
-			button_rect = node.rect
-			button_found = true
-			break
-		}
-	}
-	if !button_found || button_rect.width <= 0 {
+	button, button_found := editor_ui_entity(world, button_role)
+	if !button_found {
 		return
 	}
-	layout := &world.ui_layouts[world.entities[menu].ui_layout_index]
-	content_height := f32(100)
-	if content, content_found := editor_ui_entity(world, .Inspector_Resource_Menu_Content);
-	   content_found {
+	content_height := default_content_height
+	if content, content_found := editor_ui_entity(world, content_role); content_found {
 		content_layout := world.ui_layouts[world.entities[content].ui_layout_index]
 		content_height = content_layout.size.y + 10
 	}
-	layout.size.x = clamp(button_rect.width, 220, 420)
-	layout.size.y = min(content_height, min(f32(300), height - 20))
-	layout.position.x = clamp(button_rect.x, 10, max(width - layout.size.x - 10, 10))
-	layout.position.y = button_rect.y + button_rect.height + 4
-	if layout.position.y + layout.size.y > height - EDITOR_STATUS_BAR_HEIGHT - 6 {
-		layout.position.y = max(button_rect.y - layout.size.y - 4, EDITOR_TOP_BAR_HEIGHT + 6)
-	}
+	_ = place_popup(
+		state,
+		world,
+		menu,
+		button,
+		content_height,
+		width,
+		height,
+		{220, 420, maximum_height, 10, 4, EDITOR_TOP_BAR_HEIGHT - 4, EDITOR_STATUS_BAR_HEIGHT - 4},
+	)
 }
 
 editor_ui_input_binding :: proc(

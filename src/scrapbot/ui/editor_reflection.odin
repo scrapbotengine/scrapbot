@@ -703,30 +703,30 @@ editor_reflected_preview_number :: proc(
 	if !target_ok {
 		return false
 	}
-	snapshot := capture_snapshot_pointer(world, target_index)
-	if snapshot == nil {
+	snapshot, captured := ecs.capture_registered_component_snapshot(
+		world,
+		target_index,
+		definition,
+	)
+	if !captured {
 		return false
 	}
+	defer ecs.destroy_registered_component_snapshot(&snapshot)
 	changed, valid := editor_reflected_set_field_text(
-		&snapshot.entity,
+		&snapshot.value,
 		definition,
 		binding.reflected_field_index,
 		binding.inspector_axis,
 		fmt.tprintf("%.9g", number),
 	)
 	if !valid || !changed {
-		destroy_snapshot_pointer(snapshot)
 		return valid
 	}
-	if _, applied := ecs.apply_entity_snapshot(world, snapshot); !applied {
-		destroy_snapshot_pointer(snapshot)
+	if !ecs.apply_registered_component_snapshot(world, target_index, &snapshot) {
 		return false
 	}
-	destroy_snapshot_pointer(snapshot)
-	state.editor_snapshot_valid = false
 	if ecs.entity_is_alive(world, target_index) {
 		editor_mark_scene_dirty(state, &world.entities[target_index])
-		editor_authoring_select(state, world, target_index)
 	}
 	return true
 }

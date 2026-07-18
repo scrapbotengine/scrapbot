@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "wait", "frames": 5},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_root", "origin": "editor"}}
+  ]
+}

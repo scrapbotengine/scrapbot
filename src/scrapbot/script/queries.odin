@@ -62,10 +62,11 @@ run_query_callback :: proc "c" (
 	callback_index: c.int,
 ) -> c.int {
 	callback_ref := lua_ref(L, callback_index)
-	for i in 0 ..< ecs.query_count(runtime.world, query) {
-		entity_index, entity_ok := ecs.query_entity_at(runtime.world, query, i)
+	next_entity_index := 0
+	for {
+		entity_index, entity_ok := ecs.query_next(runtime.world, query, &next_entity_index)
 		if !entity_ok {
-			continue
+			break
 		}
 		lua_rawgeti(L, LUA_REGISTRYINDEX, callback_ref)
 		push_entity_table(L, runtime.world, entity_index)
@@ -103,12 +104,15 @@ scrapbot_view :: proc "c" (L: Lua_State) -> c.int {
 
 	count := ecs.query_count(runtime.world, query)
 	lua_createtable(L, c.int(count), 0)
-	for i in 0 ..< count {
-		entity_index, entity_ok := ecs.query_entity_at(runtime.world, query, i)
+	next_entity_index := 0
+	visible_index := 0
+	for {
+		entity_index, entity_ok := ecs.query_next(runtime.world, query, &next_entity_index)
 		if !entity_ok {
-			continue
+			break
 		}
-		lua_pushinteger(L, c.ptrdiff_t(i + 1))
+		visible_index += 1
+		lua_pushinteger(L, c.ptrdiff_t(visible_index))
 		push_query_item_table(L, runtime.world, entity_index, query)
 		lua_settable(L, -3)
 	}
@@ -540,7 +544,7 @@ push_ui_scroll_area_table :: proc "c" (L: Lua_State, value: shared.UI_Scroll_Are
 }
 
 push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component) {
-	lua_createtable(L, 0, 20)
+	lua_createtable(L, 0, 12)
 	push_string_field(L, "title", value.title)
 	push_string_field(L, "font", value.font)
 	push_vec4_field(L, "title_color", value.title_color)
@@ -551,16 +555,8 @@ push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component)
 	push_number_field(L, "disclosure_margin", value.disclosure_margin)
 	push_number_field(L, "disclosure_gap", value.disclosure_gap)
 	push_number_field(L, "disclosure_corner_radius", value.disclosure_corner_radius)
-	push_number_field(L, "action_size", value.action_size)
-	push_number_field(L, "action_margin", value.action_margin)
-	push_number_field(L, "action_icon_inset", value.action_icon_inset)
-	push_number_field(L, "action_corner_radius", value.action_corner_radius)
-	push_vec4_field(L, "action_color", value.action_color)
-	push_vec4_field(L, "action_hover_background", value.action_hover_background)
-	push_vec4_field(L, "action_active_background", value.action_active_background)
 	push_bool_field(L, "collapsible", value.collapsible)
 	push_bool_field(L, "collapsed", value.collapsed)
-	push_bool_field(L, "action_enabled", value.action_enabled)
 }
 
 push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component) {
@@ -630,7 +626,7 @@ push_ui_text_table :: proc "c" (L: Lua_State, value: shared.UI_Text_Component) {
 }
 
 push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Component) {
-	lua_createtable(L, 0, 9)
+	lua_createtable(L, 0, 13)
 	push_string_field(L, "text", value.text)
 	push_string_field(L, "font", value.font)
 	push_vec4_field(L, "color", value.color)
@@ -640,6 +636,10 @@ push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Componen
 	push_vec4_field(L, "active_background", value.active_background)
 	push_vec4_field(L, "hover_color", value.hover_color)
 	push_vec4_field(L, "active_color", value.active_color)
+	push_string_field(L, "icon", ui_icon_name(value.icon))
+	push_number_field(L, "icon_inset", value.icon_inset)
+	push_number_field(L, "icon_stroke", value.icon_stroke)
+	push_bool_field(L, "panel_action", value.panel_action)
 }
 
 push_ui_input_table :: proc "c" (L: Lua_State, value: shared.UI_Input_Component) {

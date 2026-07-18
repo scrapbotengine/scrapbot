@@ -190,9 +190,12 @@ set_ui_layout :: proc(world: ^World, entity_index: int, value: UI_Layout_Compone
 	if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
 		current := &world.ui_layouts[entity.ui_layout_index]
 		hierarchy_changed := current.parent != value.parent || current.hidden != value.hidden
+		layout_changed := current^ != value
 		current^ = value
 		if hierarchy_changed {
 			mark_ui_subtree_dirty(world, entity_index)
+		} else if layout_changed {
+			mark_ui_layout_changed(world, entity_index)
 		}
 		return true
 	}
@@ -213,6 +216,9 @@ set_ui_hstack :: proc(world: ^World, entity_index: int, value: UI_Stack_Componen
 	}
 	entity := &world.entities[entity_index]
 	if entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks) {
+		if world.ui_hstacks[entity.ui_hstack_index] != value {
+			mark_ui_layout_changed(world, entity_index)
+		}
 		world.ui_hstacks[entity.ui_hstack_index] = value
 		return true
 	}
@@ -233,6 +239,9 @@ set_ui_vstack :: proc(world: ^World, entity_index: int, value: UI_Stack_Componen
 	}
 	entity := &world.entities[entity_index]
 	if entity.ui_vstack_index >= 0 && entity.ui_vstack_index < len(world.ui_vstacks) {
+		if world.ui_vstacks[entity.ui_vstack_index] != value {
+			mark_ui_layout_changed(world, entity_index)
+		}
 		world.ui_vstacks[entity.ui_vstack_index] = value
 		return true
 	}
@@ -282,9 +291,22 @@ set_ui_panel :: proc(world: ^World, entity_index: int, value: UI_Panel_Component
 	entity := &world.entities[entity_index]
 	if entity.ui_panel_index >= 0 && entity.ui_panel_index < len(world.ui_panels) {
 		current := &world.ui_panels[entity.ui_panel_index]
+		layout_changed :=
+			current.title != value.title ||
+			current.font != value.font ||
+			current.title_size != value.title_size ||
+			current.title_height != value.title_height ||
+			current.disclosure_size != value.disclosure_size ||
+			current.disclosure_margin != value.disclosure_margin ||
+			current.disclosure_gap != value.disclosure_gap ||
+			current.collapsible != value.collapsible ||
+			current.collapsed != value.collapsed
 		delete_world_string(world, current.title)
 		delete_world_string(world, current.font)
 		current^ = panel
+		if layout_changed {
+			mark_ui_layout_changed(world, entity_index)
+		}
 		return true
 	}
 	if index, found := take_free_slot(&world.free_ui_panel_indices); found {
@@ -304,6 +326,9 @@ set_ui_table :: proc(world: ^World, entity_index: int, value: UI_Table_Component
 	}
 	entity := &world.entities[entity_index]
 	if entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables) {
+		if world.ui_tables[entity.ui_table_index] != value {
+			mark_ui_layout_changed(world, entity_index)
+		}
 		world.ui_tables[entity.ui_table_index] = value
 		return true
 	}
@@ -324,6 +349,9 @@ set_ui_list :: proc(world: ^World, entity_index: int, value: UI_List_Component) 
 	}
 	entity := &world.entities[entity_index]
 	if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
+		if world.ui_lists[entity.ui_list_index].gap != value.gap {
+			mark_ui_layout_changed(world, entity_index)
+		}
 		world.ui_lists[entity.ui_list_index] = value
 		return true
 	}
@@ -368,9 +396,17 @@ set_ui_text :: proc(world: ^World, entity_index: int, value: UI_Text_Component) 
 	entity := &world.entities[entity_index]
 	if entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts) {
 		current := &world.ui_texts[entity.ui_text_index]
+		intrinsic_changed :=
+			current.text != value.text ||
+			current.font != value.font ||
+			current.size != value.size ||
+			current.alignment != value.alignment
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		current^ = text
+		if intrinsic_changed {
+			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
 		return true
 	}
 	if index, found := take_free_slot(&world.free_ui_text_indices); found {
@@ -394,9 +430,19 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 	entity := &world.entities[entity_index]
 	if entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons) {
 		current := &world.ui_buttons[entity.ui_button_index]
+		intrinsic_changed :=
+			current.text != value.text ||
+			current.font != value.font ||
+			current.size != value.size ||
+			current.alignment != value.alignment ||
+			current.icon != value.icon ||
+			current.icon_inset != value.icon_inset
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		current^ = button
+		if intrinsic_changed {
+			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
 		return true
 	}
 	if index, found := take_free_slot(&world.free_ui_button_indices); found {
@@ -421,10 +467,20 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 	entity := &world.entities[entity_index]
 	if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
 		current := &world.ui_inputs[entity.ui_input_index]
+		intrinsic_changed :=
+			current.text != value.text ||
+			current.font != value.font ||
+			current.prefix != value.prefix ||
+			current.size != value.size ||
+			current.prefix_width != value.prefix_width ||
+			current.prefix_gap != value.prefix_gap
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		delete_world_string(world, current.prefix)
 		current^ = input
+		if intrinsic_changed {
+			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
 		return true
 	}
 	if index, found := take_free_slot(&world.free_ui_input_indices); found {
@@ -444,6 +500,9 @@ set_ui_checkbox :: proc(world: ^World, entity_index: int, value: UI_Checkbox_Com
 	}
 	entity := &world.entities[entity_index]
 	if entity.ui_checkbox_index >= 0 && entity.ui_checkbox_index < len(world.ui_checkboxes) {
+		if world.ui_checkboxes[entity.ui_checkbox_index].box_size != value.box_size {
+			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
 		world.ui_checkboxes[entity.ui_checkbox_index] = value
 		return true
 	}
@@ -504,6 +563,7 @@ set_ui_text_value :: proc(world: ^World, entity_index: int, value: string) -> bo
 	}
 	delete_world_string(world, text.text)
 	text.text = clone_world_string(world, value)
+	mark_ui_intrinsic_layout_changed(world, entity_index)
 	return true
 }
 
@@ -521,6 +581,7 @@ set_ui_input_value :: proc(world: ^World, entity_index: int, value: string) -> b
 	}
 	delete_world_string(world, input.text)
 	input.text = clone_world_string(world, value)
+	mark_ui_intrinsic_layout_changed(world, entity_index)
 	return true
 }
 
@@ -539,6 +600,7 @@ set_ui_input_prefix :: proc(world: ^World, entity_index: int, value: string) -> 
 	next := clone_world_string(world, value)
 	delete_world_string(world, input.prefix)
 	input.prefix = next
+	mark_ui_intrinsic_layout_changed(world, entity_index)
 	return true
 }
 
@@ -556,5 +618,6 @@ set_ui_panel_title :: proc(world: ^World, entity_index: int, value: string) -> b
 	}
 	delete_world_string(world, panel.title)
 	panel.title = clone_world_string(world, value)
+	mark_ui_layout_changed(world, entity_index)
 	return true
 }

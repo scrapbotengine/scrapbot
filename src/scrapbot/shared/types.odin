@@ -235,16 +235,8 @@ UI_Panel_Component :: struct {
 	disclosure_margin: f32,
 	disclosure_gap: f32,
 	disclosure_corner_radius: f32,
-	action_size: f32,
-	action_margin: f32,
-	action_icon_inset: f32,
-	action_corner_radius: f32,
-	action_color: Vec4,
-	action_hover_background: Vec4,
-	action_active_background: Vec4,
 	collapsible: bool,
 	collapsed: bool,
-	action_enabled: bool,
 }
 UI_Table_Component :: struct {
 	columns: int,
@@ -289,6 +281,11 @@ UI_Text_Alignment :: enum {
 	Center,
 	Right,
 }
+UI_Icon :: enum {
+	None,
+	Close,
+	Plus,
+}
 UI_Text_Component :: struct {
 	text: string,
 	font: string,
@@ -306,6 +303,10 @@ UI_Button_Component :: struct {
 	active_background: Vec4,
 	hover_color: Vec4,
 	active_color: Vec4,
+	icon: UI_Icon,
+	icon_inset: f32,
+	icon_stroke: f32,
+	panel_action: bool,
 }
 UI_Input_Component :: struct {
 	text: string,
@@ -389,13 +390,6 @@ ui_panel_default :: proc "contextless" () -> UI_Panel_Component {
 		disclosure_margin = 10,
 		disclosure_gap = 8,
 		disclosure_corner_radius = 1.35,
-		action_size = 22,
-		action_margin = 5,
-		action_icon_inset = 6,
-		action_corner_radius = 4,
-		action_color = {0.76, 0.78, 0.82, 1},
-		action_hover_background = {0.18, 0.20, 0.24, 1},
-		action_active_background = {0.26, 0.10, 0.12, 1},
 	}
 }
 
@@ -420,7 +414,13 @@ ui_text_default :: proc "contextless" () -> UI_Text_Component {
 }
 
 ui_button_default :: proc "contextless" () -> UI_Button_Component {
-	return {color = {1, 1, 1, 1}, size = 16, alignment = .Center}
+	return {
+		color = {1, 1, 1, 1},
+		size = 16,
+		alignment = .Center,
+		icon_inset = 6,
+		icon_stroke = 1.5,
+	}
 }
 
 ui_input_default :: proc "contextless" () -> UI_Input_Component {
@@ -495,18 +495,10 @@ ui_panel_is_valid :: proc "contextless" (value: UI_Panel_Component) -> bool {
 	if value.collapsible && value.title == "" {
 		return false
 	}
-	if value.action_enabled && value.title == "" {
-		return false
-	}
 	if value.disclosure_size < 0 ||
 	   value.disclosure_margin < 0 ||
 	   value.disclosure_gap < 0 ||
-	   value.disclosure_corner_radius < 0 ||
-	   value.action_size < 0 ||
-	   value.action_margin < 0 ||
-	   value.action_icon_inset < 0 ||
-	   value.action_corner_radius < 0 ||
-	   value.action_icon_inset * 2 > value.action_size {
+	   value.disclosure_corner_radius < 0 {
 		return false
 	}
 	return !value.collapsed || value.collapsible
@@ -536,7 +528,12 @@ ui_text_is_valid :: proc "contextless" (value: UI_Text_Component) -> bool {
 }
 
 ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
-	return value.text != "" && value.size > 0
+	return(
+		(value.text != "" || value.icon != .None) &&
+		value.size > 0 &&
+		value.icon_inset >= 0 &&
+		value.icon_stroke >= 0 \
+	)
 }
 
 ui_input_is_valid :: proc "contextless" (value: UI_Input_Component) -> bool {
@@ -705,6 +702,7 @@ Editor_UI_Role :: enum {
 	Inspector_Scroll,
 	Inspector_Content,
 	Inspector_Panel,
+	Inspector_Panel_Action,
 	Inspector_Table,
 	Inspector_Cell,
 	Inspector_Input,
@@ -766,9 +764,13 @@ Custom_Component :: struct {
 }
 
 Custom_Component_Storage :: struct {
+	storage_index: int,
 	component_id: Component_ID,
 	name: string,
 	components: [dynamic]Custom_Component,
+	entity_component_indices: [dynamic]int,
+	active_component_indices: [dynamic]int,
+	component_active_indices: [dynamic]int,
 }
 
 World_Entity :: struct {
@@ -794,6 +796,7 @@ World_Entity :: struct {
 	render_point_light_active_index: int,
 	render_dirty: bool,
 	ui_dirty: bool,
+	custom_component_storage_indices: [dynamic]int,
 	has_shadow_caster: bool,
 	has_shadow_receiver: bool,
 	ui_layout_index: int,
@@ -849,6 +852,8 @@ MAX_DIRECTIONAL_LIGHTS :: 4
 MAX_POINT_LIGHTS :: 16
 
 Render_List :: struct {
+	world_uuid: Entity_UUID,
+	topology_revision: u64,
 	instances: [dynamic]Render_Instance,
 	camera: Camera_Instance,
 	has_camera: bool,
@@ -864,6 +869,7 @@ World :: struct {
 	instance_uuid: Entity_UUID,
 	time: Time_Resource,
 	entities: [dynamic]World_Entity,
+	free_entity_indices: [dynamic]int,
 	entity_by_uuid: map[Entity_UUID]int,
 	transforms: #soa[dynamic]Transform_Component,
 	cameras: [dynamic]Camera_Component,
@@ -881,6 +887,7 @@ World :: struct {
 	render_active_directional_light_entities: [dynamic]int,
 	render_active_point_light_entities: [dynamic]int,
 	render_dirty_entities: [dynamic]int,
+	render_topology_revision: u64,
 	render_structure_sync_count: u64,
 	free_transform_indices: [dynamic]int,
 	free_mesh_indices: [dynamic]int,
@@ -918,7 +925,11 @@ World :: struct {
 	editor_uis: [dynamic]Editor_UI_Component,
 	custom_components: [dynamic]Custom_Component_Storage,
 	ui_structure_revision: u64,
+	ui_project_layout_revision: u64,
+	ui_editor_layout_revision: u64,
 	ui_dirty_entities: [dynamic]int,
+	query_candidate_visit_count: u64,
+	custom_teardown_storage_visit_count: u64,
 }
 
 Render_Frame :: struct {

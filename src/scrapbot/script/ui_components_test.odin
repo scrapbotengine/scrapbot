@@ -20,11 +20,7 @@ fixed_in_fill = true
 title = "FIELD"
 disclosure_size = 9
 disclosure_corner_radius = 0
-action_enabled = true
-action_size = 20
-action_icon_inset = 5
-action_corner_radius = 3
-action_color = [0.8, 0.7, 0.6, 1]
+collapsible = true
 [entities.ui_scroll_area]
 scrollbar_width = 5
 scrollbar_corner_radius = 0
@@ -116,16 +112,14 @@ scrapbot.system(function()
 		assert(layout.hidden == false)
 		assert(panel.title == "FIELD")
 		assert(panel.disclosure_size == 9 and panel.disclosure_corner_radius == 0)
-		assert(panel.action_enabled == true and panel.action_size == 20)
-		assert(panel.action_icon_inset == 5 and panel.action_corner_radius == 3)
-		assert(math.abs(panel.action_color.x - 0.8) < 0.0001)
+		assert(panel.collapsible == true)
 		assert(panel.collapsed == false)
 		assert(table.columns == 1)
 		assert(table.proportional_columns == true)
 		assert(table.resizable_columns == true)
 		assert(table.min_column_width == 44)
 		scrapbot.add_component(entity, scrapbot.ui_table, {min_column_width = 60})
-		scrapbot.add_component(entity, scrapbot.ui_panel, {action_size = 24})
+		scrapbot.add_component(entity, scrapbot.ui_panel, {collapsed = true})
 		count += 1
 	end)
 	assert(count == 1)
@@ -183,7 +177,7 @@ scrapbot.system(function()
 	end)
 	scrapbot.query(scrapbot.ui_checkbox):each(function(entity)
 		scrapbot.remove_component(entity, scrapbot.ui_checkbox)
-		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", size = 14, alignment = "right"})
+		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", size = 14, alignment = "right", icon = "close", icon_inset = 4, icon_stroke = 2, panel_action = true})
 	end)
 	local root_id = scrapbot.spawn({
 		name = "Runtime UI",
@@ -226,13 +220,14 @@ end)
 	testing.expect(t, table.proportional_columns && table.resizable_columns)
 	testing.expect(t, table.min_column_width == 60)
 	panel := world.ui_panels[world.entities[0].ui_panel_index]
-	testing.expect(t, panel.action_enabled && panel.action_size == 24)
-	testing.expect(t, panel.action_icon_inset == 5)
+	testing.expect(t, panel.collapsible && panel.collapsed)
 	button_index := world.entities[1].ui_button_index
 	testing.expect(t, button_index >= 0 && button_index < len(world.ui_buttons))
 	if button_index >= 0 && button_index < len(world.ui_buttons) {
 		testing.expect(t, world.ui_buttons[button_index].text == "Toggle")
 		testing.expect(t, world.ui_buttons[button_index].alignment == .Right)
+		testing.expect(t, world.ui_buttons[button_index].icon == .Close)
+		testing.expect(t, world.ui_buttons[button_index].panel_action)
 	}
 	spawned_index := len(world.entities) - 2
 	testing.expect(t, spawned_index >= 0 && world.entities[spawned_index].name == "Runtime UI")

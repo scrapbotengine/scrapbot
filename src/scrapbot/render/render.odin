@@ -208,6 +208,8 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 	}
 	switch run_config.backend {
 		case .Null:
+			render_list: shared.Render_List
+			defer ecs.destroy_render_list(&render_list)
 			frame_count := run_config.max_frames
 			if frame_count == 0 {
 				frame_count = 1
@@ -221,15 +223,15 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				render_prepare_start := time.tick_now()
 				if run_config.runtime_stats_collector != nil ||
 				   run_config.system_profile_record != nil {
-					list := ecs.build_resource_render_list(
+					ecs.populate_resource_render_list(
 						world,
 						run_config.resource_registry,
+						&render_list,
 						run_config.ui_state != nil && run_config.ui_state.editor_visible,
 					)
 					if run_config.stats != nil {
-						run_config.stats.draw_batches = ecs.render_batch_count(&list)
+						run_config.stats.draw_batches = ecs.render_batch_count(&render_list)
 					}
-					ecs.destroy_render_list(&list)
 				}
 				record_system_profile_phase(&run_config, .Render_Prepare, render_prepare_start)
 				finish_runtime_frame(&run_config, world, frame_start)
@@ -258,13 +260,13 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 			}
 			ecs.reconcile_render_instances(world, run_config.resource_registry)
 			if run_config.stats != nil {
-				list := ecs.build_resource_render_list(
+				ecs.populate_resource_render_list(
 					world,
 					run_config.resource_registry,
+					&render_list,
 					run_config.ui_state != nil && run_config.ui_state.editor_visible,
 				)
-				defer ecs.destroy_render_list(&list)
-				run_config.stats.draw_batches = ecs.render_batch_count(&list)
+				run_config.stats.draw_batches = ecs.render_batch_count(&render_list)
 			}
 
 			renderer: Null_Renderer

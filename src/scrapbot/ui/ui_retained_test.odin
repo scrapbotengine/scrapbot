@@ -83,6 +83,46 @@ test_retained_layout_and_paint_visit_only_nodes_and_hierarchy_edges :: proc(t: ^
 	testing.expect(t, state.paint_node_visit_count == u64(node_count))
 	testing.expect(t, state.paint_child_edge_visit_count == u64(edge_count))
 	expect_retained_hierarchy_consistent(t, state)
+
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, state.layout_node_visit_count == 0)
+	testing.expect(t, state.layout_child_edge_visit_count == 0)
+	testing.expect(t, state.paint_node_visit_count == u64(node_count))
+	testing.expect(t, state.paint_child_edge_visit_count == u64(edge_count))
+	expect_retained_hierarchy_consistent(t, state)
+}
+
+@(test)
+test_layout_changes_only_reflow_the_affected_ui_origin :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	project_index, project_created := ecs.create_world_entity(&world, "Project Root")
+	editor_index, editor_created := ecs.create_world_entity(&world, "Editor Root")
+	testing.expect(t, project_created && editor_created)
+	world.entities[project_index].origin = .Scene
+	world.entities[editor_index].origin = .Editor
+	testing.expect(t, ecs.set_ui_layout(&world, project_index, {size = {320, 200}}))
+	testing.expect(t, ecs.set_ui_layout(&world, editor_index, {size = {240, 180}}))
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	editor_node_count := 0
+	for node in state.nodes[:state.node_count] {
+		if node.origin == .Editor {
+			editor_node_count += 1
+		}
+	}
+	testing.expect(t, editor_node_count > 0)
+
+	editor_layout := world.ui_layouts[world.entities[editor_index].ui_layout_index]
+	editor_layout.size.x += 10
+	testing.expect(t, ecs.set_ui_layout(&world, editor_index, editor_layout))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, state.layout_node_visit_count == u64(editor_node_count))
+	testing.expect(t, state.paint_node_visit_count == u64(state.node_count))
 }
 
 @(test)

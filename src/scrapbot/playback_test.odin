@@ -285,6 +285,22 @@ test_seeded_editor_lifecycle_preserves_world_integrity :: proc(t: ^testing.T) {
 	testing.expect(t, ui.init(state) == "")
 	defer ui.destroy(state)
 	state.resource_registry = &registry
+	component_registry: component.Registry
+	component.init_registry(&component_registry)
+	state.component_registry = &component_registry
+	transform_definition, transform_found := component.find_definition(
+		&component_registry,
+		"scrapbot.transform",
+	)
+	point_light_definition, point_light_found := component.find_definition(
+		&component_registry,
+		"scrapbot.point_light",
+	)
+	ui_layout_definition, ui_layout_found := component.find_definition(
+		&component_registry,
+		"scrapbot.ui_layout",
+	)
+	testing.expect(t, transform_found && point_light_found && ui_layout_found)
 	state.editor_simulation_playing = false
 	state.editor_simulation_stopped = true
 	runtime: script.Runtime
@@ -325,22 +341,22 @@ test_seeded_editor_lifecycle_preserves_world_integrity :: proc(t: ^testing.T) {
 			case 4:
 				if target >= 0 {
 					present := world.entities[target].transform_index >= 0
-					_ = ui.editor_authoring_set_component(
+					_ = ui.editor_authoring_set_registered_component(
 						state,
 						&world,
 						target,
-						.Transform,
+						&transform_definition,
 						!present,
 					)
 				}
 			case 5:
 				if target >= 0 {
 					present := world.entities[target].point_light_index >= 0
-					_ = ui.editor_authoring_set_component(
+					_ = ui.editor_authoring_set_registered_component(
 						state,
 						&world,
 						target,
-						.Point_Light,
+						&point_light_definition,
 						!present,
 					)
 				}
@@ -402,11 +418,11 @@ test_seeded_editor_lifecycle_preserves_world_integrity :: proc(t: ^testing.T) {
 			case 11:
 				if target >= 0 {
 					present := world.entities[target].ui_layout_index >= 0
-					_ = ui.editor_authoring_set_component(
+					_ = ui.editor_authoring_set_registered_component(
 						state,
 						&world,
 						target,
-						.UI_Layout,
+						&ui_layout_definition,
 						!present,
 					)
 				}

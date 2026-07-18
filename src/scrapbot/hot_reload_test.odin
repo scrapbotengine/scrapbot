@@ -82,13 +82,14 @@ test_hot_reload_replaces_luau_script_systems :: proc(t: ^testing.T) {
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
 
-	state: Hot_Reload_State
-	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
 	project.destroy_project_load_result(&loaded)
 	testing.expect(t, init_err == "")
-	defer destroy_hot_reload_state(&state)
+	defer destroy_hot_reload_state(state)
 
-	step_err := hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
+	step_err := hot_reload_frame_system(state, &world, 1.0)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[1].rotation.y > 1.5)
 
@@ -98,7 +99,7 @@ test_hot_reload_replaces_luau_script_systems :: proc(t: ^testing.T) {
 	write_err := os.write_entire_file(script_path, HOT_RELOAD_SCRIPT_SOURCE)
 	testing.expect(t, write_err == nil)
 
-	step_err = hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
+	step_err = hot_reload_frame_system(state, &world, 1.0)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[1].rotation.x > 2.9)
 }
@@ -114,11 +115,12 @@ test_hot_reload_checks_files_periodically :: proc(t: ^testing.T) {
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
 
-	state: Hot_Reload_State
-	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
 	project.destroy_project_load_result(&loaded)
 	testing.expect(t, init_err == "")
-	defer destroy_hot_reload_state(&state)
+	defer destroy_hot_reload_state(state)
 
 	script_path := join_hot_reload_path(t, root, project.DEFAULT_SCRIPT)
 	defer delete(script_path)
@@ -126,19 +128,11 @@ test_hot_reload_checks_files_periodically :: proc(t: ^testing.T) {
 	write_err := os.write_entire_file(script_path, HOT_RELOAD_SCRIPT_SOURCE)
 	testing.expect(t, write_err == nil)
 
-	step_err := hot_reload_frame_system(
-		cast(rawptr)&state,
-		&world,
-		HOT_RELOAD_CHECK_INTERVAL_SECONDS / 2,
-	)
+	step_err := hot_reload_frame_system(state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS / 2)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[1].rotation.x == 0)
 
-	step_err = hot_reload_frame_system(
-		cast(rawptr)&state,
-		&world,
-		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
-	)
+	step_err = hot_reload_frame_system(state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[1].rotation.x > 0.7)
 }
@@ -153,11 +147,12 @@ test_hot_reload_replaces_scene_world :: proc(t: ^testing.T) {
 	testing.expect(t, loaded.err == "")
 	world := ecs.build_world(&loaded.scene)
 
-	state: Hot_Reload_State
-	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
 	project.destroy_project_load_result(&loaded)
 	testing.expect(t, init_err == "")
-	defer destroy_hot_reload_state(&state)
+	defer destroy_hot_reload_state(state)
 	defer ecs.destroy_world(&world)
 
 	scene_path := join_hot_reload_path(t, root, project.DEFAULT_SCENE)
@@ -166,11 +161,7 @@ test_hot_reload_replaces_scene_world :: proc(t: ^testing.T) {
 	write_err := os.write_entire_file(scene_path, HOT_RELOAD_TWO_CUBE_SCENE)
 	testing.expect(t, write_err == nil)
 
-	step_err := hot_reload_frame_system(
-		cast(rawptr)&state,
-		&world,
-		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
-	)
+	step_err := hot_reload_frame_system(state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
 	testing.expectf(t, step_err == "", "hot_reload_frame_system failed: %s", step_err)
 	testing.expect(t, len(world.entities) == 3)
 	testing.expect(t, len(world.renderables) == 2)
@@ -196,11 +187,12 @@ test_hot_reload_updates_project_material_without_changing_handle :: proc(t: ^tes
 	defer delete(material_path)
 	world := ecs.build_world(&loaded.scene)
 
-	state: Hot_Reload_State
-	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
 	project.destroy_project_load_result(&loaded)
 	testing.expect(t, init_err == "")
-	defer destroy_hot_reload_state(&state)
+	defer destroy_hot_reload_state(state)
 	defer ecs.destroy_world(&world)
 
 	before, before_found := resources.material_by_uuid(&state.resources, resource_id)
@@ -223,11 +215,7 @@ emissive = [2, 1, 0]
 	)
 	testing.expect(t, write_err == nil)
 
-	step_err := hot_reload_frame_system(
-		cast(rawptr)&state,
-		&world,
-		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
-	)
+	step_err := hot_reload_frame_system(state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
 	testing.expectf(t, step_err == "", "hot_reload_frame_system failed: %s", step_err)
 	after, after_found := resources.material_by_uuid(&state.resources, resource_id)
 	testing.expect(t, after_found)
@@ -251,20 +239,21 @@ test_hot_reload_keeps_last_good_script_on_reload_error :: proc(t: ^testing.T) {
 	testing.expect(t, loaded.err == "")
 	world := ecs.build_world(&loaded.scene)
 
-	state: Hot_Reload_State
-	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
 	project.destroy_project_load_result(&loaded)
 	testing.expect(t, init_err == "")
-	defer destroy_hot_reload_state(&state)
+	defer destroy_hot_reload_state(state)
 	defer ecs.destroy_world(&world)
 
-	step_err := hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
+	step_err := hot_reload_frame_system(state, &world, 1.0)
 	testing.expect(t, step_err == "")
 	before_reload_y := world.transforms[1].rotation.y
 	testing.expect(t, before_reload_y > 1.5)
 	testing.expect(t, state.runtime.system_count == 1)
 
-	step_err = hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
+	step_err = hot_reload_frame_system(state, &world, 1.0)
 	testing.expect(t, step_err == "")
 	second_frame_y := world.transforms[1].rotation.y
 	testing.expectf(
@@ -282,10 +271,10 @@ test_hot_reload_keeps_last_good_script_on_reload_error :: proc(t: ^testing.T) {
 	write_err := os.write_entire_file(script_path, `error("reload failed")`)
 	testing.expect(t, write_err == nil)
 
-	reload_err := load_script_runtime(&state, &world)
+	reload_err := load_script_runtime(state, &world)
 	testing.expect(t, reload_err != "")
 
-	step_err = hot_reload_frame_system(cast(rawptr)&state, &world, 1.0)
+	step_err = hot_reload_frame_system(state, &world, 1.0)
 	testing.expect(t, step_err == "")
 	testing.expectf(
 		t,
@@ -318,11 +307,12 @@ test_hot_reload_rebuilds_native_extension_sources :: proc(t: ^testing.T) {
 	testing.expect(t, loaded.err == "")
 	world := ecs.build_world(&loaded.scene)
 
-	state: Hot_Reload_State
-	init_err := init_hot_reload_state(&state, root, &loaded, &world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
 	project.destroy_project_load_result(&loaded)
 	testing.expect(t, init_err == "")
-	defer destroy_hot_reload_state(&state)
+	defer destroy_hot_reload_state(state)
 	defer ecs.destroy_world(&world)
 
 	body, body_ok := component.find_definition(&state.runtime.registry, "scrapbotnative.body")
@@ -333,11 +323,7 @@ test_hot_reload_rebuilds_native_extension_sources :: proc(t: ^testing.T) {
 	time.sleep(5 * time.Millisecond)
 	write_hot_reload_native_extension_source(t, root, true)
 
-	step_err := hot_reload_frame_system(
-		cast(rawptr)&state,
-		&world,
-		HOT_RELOAD_CHECK_INTERVAL_SECONDS,
-	)
+	step_err := hot_reload_frame_system(state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
 	testing.expectf(t, step_err == "", "hot_reload_frame_system failed: %s", step_err)
 
 	body, body_ok = component.find_definition(&state.runtime.registry, "scrapbotnative.body")

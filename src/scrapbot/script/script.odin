@@ -346,10 +346,15 @@ run_script_system :: proc(
 	}
 
 	if system.has_query {
-		for i in 0 ..< ecs.query_count(runtime.world, system.query) {
-			entity_index, entity_ok := ecs.query_entity_at(runtime.world, system.query, i)
+		next_entity_index := 0
+		for {
+			entity_index, entity_ok := ecs.query_next(
+				runtime.world,
+				system.query,
+				&next_entity_index,
+			)
 			if !entity_ok {
-				continue
+				break
 			}
 			lua_rawgeti(L, LUA_REGISTRYINDEX, system.callback_ref)
 			push_time_table(L, time)

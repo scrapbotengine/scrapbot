@@ -249,7 +249,6 @@ write_inspector_numeric :: proc(
 			}
 	}
 	if written && state != nil {
-		state.editor_snapshot_valid = false
 		editor_mark_scene_dirty(state, target)
 	}
 	return written
@@ -567,6 +566,7 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 	if transaction.change_count <= 0 &&
 	   transaction.resource_change_count <= 0 &&
 	   transaction.structural == nil &&
+	   transaction.component_structural == nil &&
 	   transaction.resource_structural == nil {
 		editor_recompute_scene_dirty(state)
 		return
@@ -689,6 +689,30 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 			editor_history_remove(state, index)
 			continue
 		}
+		if transaction.component_structural != nil {
+			change := transaction.component_structural
+			desired := change.before
+			if redo {
+				desired = change.after
+			}
+			entity_index, found := ecs.entity_index_by_uuid(world, change.target_uuid)
+			if found &&
+			   desired != nil &&
+			   ecs.apply_registered_component_snapshot(world, entity_index, desired) {
+				editor_mark_scene_uuid_dirty(state, change.target_uuid)
+				state.editor_selected_entity = world.entities[entity_index].id
+				state.editor_has_selection = true
+				if redo {
+					state.editor_history_cursor = index + 1
+				} else {
+					state.editor_history_cursor = index
+				}
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			editor_history_remove(state, index)
+			continue
+		}
 		if transaction.resource_change_count > 0 {
 			applied := true
 			for change in transaction.resource_changes[:transaction.resource_change_count] {
@@ -771,6 +795,18 @@ editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction
 		}
 		if change.after != nil {
 			ecs.destroy_entity_snapshot(change.after)
+			free(change.after)
+		}
+		free(change)
+	}
+	if transaction.component_structural != nil {
+		change := transaction.component_structural
+		if change.before != nil {
+			ecs.destroy_registered_component_snapshot(change.before)
+			free(change.before)
+		}
+		if change.after != nil {
+			ecs.destroy_registered_component_snapshot(change.after)
 			free(change.after)
 		}
 		free(change)

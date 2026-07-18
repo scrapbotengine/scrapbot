@@ -75,10 +75,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, ecs.set_ui_table(&world, entity_index, table))
 	panel := shared.ui_panel_default()
 	panel.title = "Native Panel"
-	panel.action_enabled = true
-	panel.action_size = 20
-	panel.action_icon_inset = 5
-	panel.action_color = {0.8, 0.7, 0.6, 1}
+	panel.collapsible = true
 	testing.expect(t, ecs.set_ui_panel(&world, entity_index, panel))
 
 	commands: ecs.Command_Buffer
@@ -179,11 +176,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 		system_get_ui_component(&ctx, entity, "scrapbot.ui_panel", &panel_payload) != 0,
 	)
 	testing.expect(t, api_payload_text(&panel_payload) == "Native Panel")
-	testing.expect(t, panel_payload.panel.action_enabled != 0)
-	testing.expect(t, panel_payload.panel.action_size == 20)
-	testing.expect(t, panel_payload.panel.action_icon_inset == 5)
-	testing.expect(t, panel_payload.panel.action_color.x == 0.8)
-	panel_payload.panel.action_size = 24
+	testing.expect(t, panel_payload.panel.collapsible != 0)
+	panel_payload.panel.collapsed = 1
 	testing.expect(t, system_set_ui_component(&ctx, entity, &panel_payload) == nil)
 	table_payload.table.min_column_width = 72
 	testing.expect(t, system_set_ui_component(&ctx, entity, &table_payload) == nil)
@@ -191,7 +185,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	stored_table := world.ui_tables[world.entities[entity_index].ui_table_index]
 	testing.expect(t, stored_table.min_column_width == 72)
 	stored_panel := world.ui_panels[world.entities[entity_index].ui_panel_index]
-	testing.expect(t, stored_panel.action_size == 24)
+	testing.expect(t, stored_panel.collapsed)
 
 	text_payload.text.size = 20
 	testing.expect(t, api_payload_set_strings(&text_payload, "After", "Project Font"))

@@ -1,9 +1,11 @@
 {
   "schema_version": 1,
-  "timeout_frames": 120,
+  "timeout_frames": 180,
   "actions": [
-    {"action": "click", "target": {"text": "Icosphere", "origin": "editor"}},
-    {"action": "wait", "frames": 80},
+    {"action": "click", "target": {"text": "Sun", "origin": "editor"}},
+    {"action": "wait", "frames": 20},
+    {"action": "drag", "target": {"name": "__scrapbot_editor_inspector_input_0", "origin": "editor"}, "delta_x": 40, "delta_y": 0, "frames": 30},
+    {"action": "wait", "frames": 5},
     {"action": "expect", "target": {"text": "scrapbot.ui", "origin": "editor"}, "expect": "visible"},
     {"action": "capture", "target": {"name": "__scrapbot_editor_systems", "origin": "editor"}, "padding": 4}
   ]

@@ -48,8 +48,23 @@ Frame_Runtime :: struct {
 	script_runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
 	executor: schedule.Executor,
+	frame_systems: Frame_System_Cache,
 	resources: resources.Registry,
 	system_profile: System_Profile_Accumulator,
+}
+
+destroy_frame_runtime :: proc(runtime: ^Frame_Runtime) {
+	if runtime == nil {
+		return
+	}
+	resources.destroy_registry(&runtime.resources)
+	destroy_frame_system_cache(&runtime.frame_systems)
+	schedule.destroy_executor(&runtime.executor)
+	native.destroy_extension_set(&runtime.native_extensions)
+	script.destroy_runtime(&runtime.script_runtime)
+	destroy_playback_baseline(&runtime.playback_baseline)
+	delete(runtime.scene_path)
+	runtime^ = {}
 }
 
 SYSTEM_PROFILE_PUBLISH_INTERVAL_FRAMES :: 5
@@ -89,12 +104,90 @@ engine_system_profile_name :: proc(phase: render.Engine_System_Profile_Phase) ->
 Native_Work_Context :: struct {
 	system: ^native.Native_System,
 	world: ^shared.World,
-	commands: ecs.Command_Buffer,
+	commands: ^ecs.Command_Buffer,
 	registry: ^component.Registry,
 	time: shared.Time_Resource,
 	err: string,
 	duration_ns: i64,
 	system_index: int,
+}
+
+Frame_System_Cache :: struct {
+	systems: [schedule.MAX_SYSTEMS]schedule.System,
+	system_count: int,
+	plan: schedule.Plan,
+	plan_valid: bool,
+	plan_build_count: u64,
+	native_commands: [schedule.MAX_SYSTEMS]ecs.Command_Buffer,
+	native_command_count: int,
+}
+
+destroy_frame_system_cache :: proc(cache: ^Frame_System_Cache) {
+	if cache == nil {
+		return
+	}
+	for index in 0 ..< cache.native_command_count {
+		ecs.destroy_command_buffer(&cache.native_commands[index])
+	}
+	cache^ = {}
+}
+
+invalidate_frame_system_plan :: proc(cache: ^Frame_System_Cache) {
+	if cache == nil {
+		return
+	}
+	cache.system_count = 0
+	cache.plan = {}
+	cache.plan_valid = false
+}
+
+schedule_system_matches :: proc(a, b: schedule.System) -> bool {
+	if a.access_count != b.access_count {
+		return false
+	}
+	for index in 0 ..< a.access_count {
+		if a.accesses[index] != b.accesses[index] {
+			return false
+		}
+	}
+	return true
+}
+
+prepare_frame_system_cache :: proc(
+	cache: ^Frame_System_Cache,
+	systems: []schedule.System,
+	native_system_count: int,
+) -> ^schedule.Plan {
+	if cache == nil {
+		return nil
+	}
+	for index in cache.native_command_count ..< native_system_count {
+		ecs.init_command_buffer_capacity(&cache.native_commands[index], 4)
+	}
+	for index in native_system_count ..< cache.native_command_count {
+		ecs.destroy_command_buffer(&cache.native_commands[index])
+	}
+	cache.native_command_count = native_system_count
+
+	topology_changed := !cache.plan_valid || cache.system_count != len(systems)
+	if !topology_changed {
+		for system, index in systems {
+			if !schedule_system_matches(cache.systems[index], system) {
+				topology_changed = true
+				break
+			}
+		}
+	}
+	if topology_changed {
+		cache.system_count = len(systems)
+		for system, index in systems {
+			cache.systems[index] = system
+		}
+		cache.plan = schedule.build_plan(cache.systems[:cache.system_count])
+		cache.plan_valid = true
+		cache.plan_build_count += 1
+	}
+	return &cache.plan
 }
 
 init_project :: project.init_project
@@ -410,9 +503,10 @@ run_project_internal_untracked :: proc(
 	run_config.ui_state = ui_state
 
 	if run_config.hot_reload {
-		hot_reload: Hot_Reload_State
-		defer destroy_hot_reload_state(&hot_reload)
-		if err := init_hot_reload_state(&hot_reload, root, &loaded, &world); err != "" {
+		hot_reload := new(Hot_Reload_State)
+		defer free(hot_reload)
+		defer destroy_hot_reload_state(hot_reload)
+		if err := init_hot_reload_state(hot_reload, root, &loaded, &world); err != "" {
 			result.err = err
 			return result
 		}
@@ -420,19 +514,19 @@ run_project_internal_untracked :: proc(
 		ui_state.component_registry = &hot_reload.runtime.registry
 
 		run_config.frame_system = hot_reload_frame_system
-		run_config.frame_system_data = &hot_reload
+		run_config.frame_system_data = hot_reload
 		run_config.system_profile_begin = hot_reload_system_profile_begin
 		run_config.system_profile_record = hot_reload_system_profile_record
 		run_config.system_profile_commit = hot_reload_system_profile_commit
-		run_config.system_profile_data = &hot_reload
+		run_config.system_profile_data = hot_reload
 		run_config.runtime_playback_begin = hot_reload_playback_begin
-		run_config.runtime_playback_begin_data = &hot_reload
+		run_config.runtime_playback_begin_data = hot_reload
 		run_config.runtime_playback_stop = hot_reload_playback_stop
-		run_config.runtime_playback_stop_data = &hot_reload
+		run_config.runtime_playback_stop_data = hot_reload
 		run_config.runtime_save = hot_reload_scene_save
-		run_config.runtime_save_data = &hot_reload
+		run_config.runtime_save_data = hot_reload
 		run_config.runtime_revert = hot_reload_scene_revert
-		run_config.runtime_revert_data = &hot_reload
+		run_config.runtime_revert_data = hot_reload
 		run_config.resource_registry = &hot_reload.resources
 		result.frame, result.err = render.run_renderer(run_config, &world)
 		result.scheduler_workers = hot_reload.executor.worker_count
@@ -444,7 +538,9 @@ run_project_internal_untracked :: proc(
 
 	registry: component.Registry
 	component.init_registry(&registry)
-	frame_runtime: Frame_Runtime
+	frame_runtime := new(Frame_Runtime)
+	defer free(frame_runtime)
+	defer destroy_frame_runtime(frame_runtime)
 	scene_path, scene_path_err := filepath.join({root, loaded.config.default_scene})
 	if scene_path_err != nil {
 		result.err = "failed to allocate scene path"
@@ -452,12 +548,6 @@ run_project_internal_untracked :: proc(
 	}
 	frame_runtime.scene_path = scene_path
 	frame_runtime.root = root
-	defer delete(frame_runtime.scene_path)
-	defer destroy_playback_baseline(&frame_runtime.playback_baseline)
-	defer script.destroy_runtime(&frame_runtime.script_runtime)
-	defer native.destroy_extension_set(&frame_runtime.native_extensions)
-	defer schedule.destroy_executor(&frame_runtime.executor)
-	defer resources.destroy_registry(&frame_runtime.resources)
 	if err := init_render_resources(
 		&frame_runtime.resources,
 		&world,
@@ -507,21 +597,21 @@ run_project_internal_untracked :: proc(
 	ui_state.component_registry = &frame_runtime.script_runtime.registry
 	if script_result.ran || frame_runtime.native_extensions.system_count > 0 {
 		run_config.frame_system = step_frame_runtime_system
-		run_config.frame_system_data = &frame_runtime
+		run_config.frame_system_data = frame_runtime
 	}
 	run_config.resource_registry = &frame_runtime.resources
 	run_config.system_profile_begin = frame_runtime_system_profile_begin
 	run_config.system_profile_record = frame_runtime_system_profile_record
 	run_config.system_profile_commit = frame_runtime_system_profile_commit
-	run_config.system_profile_data = &frame_runtime
+	run_config.system_profile_data = frame_runtime
 	run_config.runtime_playback_begin = frame_runtime_playback_begin
-	run_config.runtime_playback_begin_data = &frame_runtime
+	run_config.runtime_playback_begin_data = frame_runtime
 	run_config.runtime_playback_stop = frame_runtime_playback_stop
-	run_config.runtime_playback_stop_data = &frame_runtime
+	run_config.runtime_playback_stop_data = frame_runtime
 	run_config.runtime_save = frame_runtime_save
-	run_config.runtime_save_data = &frame_runtime
+	run_config.runtime_save_data = frame_runtime
 	run_config.runtime_revert = frame_runtime_revert
-	run_config.runtime_revert_data = &frame_runtime
+	run_config.runtime_revert_data = frame_runtime
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	result.scheduler_workers = frame_runtime.executor.worker_count
@@ -708,6 +798,7 @@ step_frame_runtime :: proc(
 		&runtime.script_runtime,
 		&runtime.native_extensions,
 		&runtime.executor,
+		&runtime.frame_systems,
 		&runtime.system_profile,
 		world,
 		world.time,
@@ -893,6 +984,7 @@ step_frame_runtime_parts :: proc(
 	script_runtime: ^script.Runtime,
 	native_extensions: ^native.Extension_Set,
 	executor: ^schedule.Executor,
+	frame_systems: ^Frame_System_Cache,
 	system_profile: ^System_Profile_Accumulator,
 	world: ^shared.World,
 	frame_time: shared.Time_Resource,
@@ -925,7 +1017,14 @@ step_frame_runtime_parts :: proc(
 		index += 1
 	}
 
-	plan := schedule.build_plan(scheduled_systems[:system_count])
+	plan := prepare_frame_system_cache(
+		frame_systems,
+		scheduled_systems[:system_count],
+		native_extensions.system_count,
+	)
+	if plan == nil {
+		return "frame-system cache is unavailable"
+	}
 	if !executor.initialized {
 		max_native_width := 0
 		for batch in plan.batches[:plan.batch_count] {
@@ -949,9 +1048,11 @@ step_frame_runtime_parts :: proc(
 			system_index := batch.system_indices[i]
 			if system_index < native_extensions.system_count {
 				work_context := &native_contexts[native_count]
-				ecs.init_command_buffer(&work_context.commands)
+				commands := &frame_systems.native_commands[native_count]
+				ecs.clear_commands(commands)
 				work_context.system = &native_extensions.systems[system_index]
 				work_context.world = world
+				work_context.commands = commands
 				work_context.registry = &script_runtime.registry
 				work_context.time = frame_time
 				work_context.system_index = system_index
@@ -969,25 +1070,21 @@ step_frame_runtime_parts :: proc(
 			work_context := &native_contexts[i]
 			if work_context.err != "" {
 				for j in 0 ..< native_count {
-					ecs.destroy_command_buffer(&native_contexts[j].commands)
+					ecs.clear_commands(native_contexts[j].commands)
 				}
 				ecs.clear_commands(&script_runtime.commands)
 				return work_context.err
 			}
 			frame_durations[work_context.system_index] = work_context.duration_ns
-			if err := ecs.append_commands(&script_runtime.commands, &work_context.commands);
+			if err := ecs.append_commands(&script_runtime.commands, work_context.commands);
 			   err != "" {
 				for j in 0 ..< native_count {
-					ecs.destroy_command_buffer(&native_contexts[j].commands)
+					ecs.clear_commands(native_contexts[j].commands)
 				}
 				ecs.clear_commands(&script_runtime.commands)
 				return err
 			}
 		}
-		for i in 0 ..< native_count {
-			ecs.destroy_command_buffer(&native_contexts[i].commands)
-		}
-
 		for i in 0 ..< batch.system_count {
 			system_index := batch.system_indices[i]
 			if system_index < native_extensions.system_count {
@@ -1021,13 +1118,7 @@ step_frame_runtime_parts :: proc(
 run_native_work :: proc(data: rawptr) {
 	work := cast(^Native_Work_Context)data
 	start := time.tick_now()
-	work.err = native.step_system(
-		work.system,
-		work.world,
-		&work.commands,
-		work.registry,
-		work.time,
-	)
+	work.err = native.step_system(work.system, work.world, work.commands, work.registry, work.time)
 	finish := time.tick_now()
 	work.duration_ns = time.duration_nanoseconds(time.tick_diff(start, finish))
 }

@@ -119,14 +119,11 @@ autorotate_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstri
 	components := [?]scrapbot.Component{scrapbot.Transform_Component, Spin_Component}
 	spin_query := scrapbot.query(components[:])
 
-	count := scrapbot.count(ctx, spin_query)
-	if count < 0 {
-		return "failed to query showcase spinners"
-	}
-	for i in 0 ..< count {
-		entity, entity_ok := scrapbot.entity_at(ctx, spin_query, i)
+	cursor: scrapbot.Query_Cursor
+	for {
+		entity, entity_ok := scrapbot.next(ctx, spin_query, &cursor)
 		if !entity_ok {
-			continue
+			break
 		}
 
 		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
@@ -159,14 +156,11 @@ orbit_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 	}
 	light_query := scrapbot.query(components[:])
 
-	count := scrapbot.count(ctx, light_query)
-	if count < 0 {
-		return "failed to query orbiting point lights"
-	}
-	for i in 0 ..< count {
-		entity, entity_ok := scrapbot.entity_at(ctx, light_query, i)
+	cursor: scrapbot.Query_Cursor
+	for {
+		entity, entity_ok := scrapbot.next(ctx, light_query, &cursor)
 		if !entity_ok {
-			continue
+			break
 		}
 
 		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
@@ -191,14 +185,11 @@ lifetime_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring
 	components := [?]scrapbot.Component{Lifetime_Component}
 	lifetime_query := scrapbot.query(components[:])
 
-	count := scrapbot.count(ctx, lifetime_query)
-	if count < 0 {
-		return "failed to query lifetimes"
-	}
-	for i in 0 ..< count {
-		entity, entity_ok := scrapbot.entity_at(ctx, lifetime_query, i)
+	cursor: scrapbot.Query_Cursor
+	for {
+		entity, entity_ok := scrapbot.next(ctx, lifetime_query, &cursor)
 		if !entity_ok {
-			continue
+			break
 		}
 
 		timer, timer_ok := scrapbot.get(ctx, entity, Lifetime_Timer)
@@ -230,14 +221,11 @@ rigidbody_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstrin
 	}
 	velocity_query := scrapbot.query(components[:])
 
-	count := scrapbot.count(ctx, velocity_query)
-	if count < 0 {
-		return "failed to query rigidbodies"
-	}
-	for i in 0 ..< count {
-		entity, entity_ok := scrapbot.entity_at(ctx, velocity_query, i)
+	cursor: scrapbot.Query_Cursor
+	for {
+		entity, entity_ok := scrapbot.next(ctx, velocity_query, &cursor)
 		if !entity_ok {
-			continue
+			break
 		}
 
 		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
@@ -280,14 +268,11 @@ emit_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 	components := [?]scrapbot.Component{scrapbot.Transform_Component, Emitter_Component}
 	emitter_query := scrapbot.query(components[:])
 
-	count := scrapbot.count(ctx, emitter_query)
-	if count < 0 {
-		return "failed to query fountain emitters"
-	}
-	for i in 0 ..< count {
-		entity, entity_ok := scrapbot.entity_at(ctx, emitter_query, i)
+	cursor: scrapbot.Query_Cursor
+	for {
+		entity, entity_ok := scrapbot.next(ctx, emitter_query, &cursor)
 		if !entity_ok {
-			continue
+			break
 		}
 
 		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)

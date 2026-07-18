@@ -205,6 +205,7 @@ step_system :: proc(
 		},
 		query_count = system_query_count,
 		query_entity_at = system_query_entity_at,
+		query_next = system_query_next,
 		get_transform = system_get_transform,
 		set_transform = system_set_transform,
 		get_vec3_field = system_get_vec3_field,
@@ -256,6 +257,32 @@ system_query_entity_at :: proc "c" (
 		return api.Entity{index = -1}
 	}
 	entity_index, entity_ok := ecs.query_entity_at(step.world, query, int(visible_index))
+	if !entity_ok {
+		return api.Entity{index = -1}
+	}
+	return api.Entity {
+		index = c.int(entity_index),
+		generation = step.world.entities[entity_index].id.generation,
+	}
+}
+
+system_query_next :: proc "c" (
+	ctx: ^api.System_Context,
+	terms: [^]api.Query_Term,
+	term_count: c.int,
+	next_entity_index: ^c.int,
+) -> api.Entity {
+	step, ok := system_step_context(ctx)
+	if !ok || next_entity_index == nil {
+		return api.Entity{index = -1}
+	}
+	query, query_ok := system_query_from_terms(step, terms, term_count)
+	if !query_ok {
+		return api.Entity{index = -1}
+	}
+	cursor := int(next_entity_index^)
+	entity_index, entity_ok := ecs.query_next(step.world, query, &cursor)
+	next_entity_index^ = c.int(cursor)
 	if !entity_ok {
 		return api.Entity{index = -1}
 	}

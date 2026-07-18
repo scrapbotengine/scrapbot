@@ -119,11 +119,26 @@ Node :: struct {
 	split_weight: f32,
 	split_parent: shared.Entity,
 	split_weight_valid: bool,
-	seen, laid_out, hovered, active, panel_action_hovered, panel_action_active, has_clip: bool,
+	seen, laid_out, hovered, active, has_clip: bool,
 	resolved_width_valid, resolved_height_valid: bool,
 	fill_width_valid, fill_height_valid: bool,
 }
 EDITOR_HISTORY_CAPACITY :: 128
+MAX_UI_EVENTS :: 256
+UI_Event_Kind :: enum {
+	Activated,
+	Changed,
+}
+UI_Event_Part :: enum {
+	Control,
+	Panel_Title,
+}
+UI_Event :: struct {
+	kind: UI_Event_Kind,
+	part: UI_Event_Part,
+	entity: shared.Entity,
+	position: shared.Vec2,
+}
 EDITOR_TRANSACTION_MAX_CHANGES :: 3
 Editor_Edit_Value_Kind :: enum {
 	Number,
@@ -154,6 +169,11 @@ Editor_Structural_Change :: struct {
 	before: ^ecs.Entity_Snapshot,
 	after: ^ecs.Entity_Snapshot,
 }
+Editor_Component_Structural_Change :: struct {
+	target_uuid: shared.Entity_UUID,
+	before: ^ecs.Registered_Component_Snapshot,
+	after: ^ecs.Registered_Component_Snapshot,
+}
 Editor_Resource_Structural_Change :: struct {
 	resource_id: shared.Resource_UUID,
 	before: ^resources.Project_Material_Snapshot,
@@ -165,9 +185,12 @@ Editor_Edit_Transaction :: struct {
 	resource_changes: [4]Editor_Resource_Change,
 	resource_change_count: int,
 	structural: ^Editor_Structural_Change,
+	component_structural: ^Editor_Component_Structural_Change,
 	resource_structural: ^Editor_Resource_Structural_Change,
 }
 State :: struct {
+	events: [MAX_UI_EVENTS]UI_Event,
+	event_count: int,
 	nodes: [MAX_NODES]Node,
 	node_count: int,
 	paint: [MAX_PAINT_COMMANDS]Paint_Command,
@@ -175,9 +198,18 @@ State :: struct {
 	font: Font_Atlas,
 	resource_registry: ^resources.Registry,
 	component_registry: ^component.Registry,
+	component_menu_cached_registry: ^component.Registry,
+	component_menu_registry_revision: u64,
+	component_menu_definition_indices: [component.MAX_COMPONENTS]int,
+	component_menu_definition_count: int,
 	ui_world_uuid: shared.Entity_UUID,
 	ui_structure_revision: u64,
 	ui_structure_synced: bool,
+	ui_project_layout_revision: u64,
+	ui_editor_layout_revision: u64,
+	ui_layout_valid: bool,
+	ui_project_viewport: Rect,
+	ui_editor_viewport: Rect,
 	ui_structure_sync_count: u64,
 	layout_node_visit_count: u64,
 	layout_child_edge_visit_count: u64,
@@ -280,6 +312,21 @@ State :: struct {
 	editor_gizmo_paint_start: int,
 	editor_gizmo_paint_end: int,
 	err: string,
+}
+
+append_ui_event :: proc(state: ^State, event: UI_Event) {
+	if state == nil || state.event_count >= MAX_UI_EVENTS {
+		return
+	}
+	state.events[state.event_count] = event
+	state.event_count += 1
+}
+
+ui_events :: proc(state: ^State) -> []UI_Event {
+	if state == nil {
+		return nil
+	}
+	return state.events[:state.event_count]
 }
 
 init :: proc(state: ^State) -> string {
@@ -415,7 +462,6 @@ editor_mark_scene_dirty :: proc(state: ^State, entity: ^shared.World_Entity) {
 	state.editor_scene_dirty = true
 	state.editor_scene_save_failed = false
 	state.editor_scene_revert_failed = false
-	state.editor_snapshot_valid = false
 }
 
 editor_mark_scene_uuid_dirty :: proc(state: ^State, id: shared.Entity_UUID) {
@@ -730,6 +776,7 @@ reconcile :: proc(
 	resource_registry: ^resources.Registry = nil,
 ) -> string {
 	if state == nil || world == nil { return "UI state or world is unavailable" }
+	state.event_count = 0
 	editor_ui_handle_shortcuts(state, keyboard)
 	when ODIN_TEST {
 		state.layout_node_visit_count = 0
@@ -756,6 +803,11 @@ reconcile :: proc(
 	editor_ui_anchor_resource_menu(state, world, editor_width, editor_height)
 	project_layout := Rect{0, 0, width, height}
 	editor_layout := Rect{0, 0, editor_width, editor_height}
+	fresh_pointer_press :=
+		pointer.available &&
+		pointer.primary_down &&
+		!state.previous_primary_down &&
+		!state.editor_previous_primary_down
 	if !state.editor_visible && state.has_focused_input && state.focused_input_editor {
 		if !finish_input_edit(state, world) { cancel_input_edit(state, world) }
 		clear_input_focus(state)
@@ -771,7 +823,28 @@ reconcile :: proc(
 	); if state.editor_gizmo_captures_pointer { project_pointer = {} }
 	editor_pointer := pointer
 	if editor_pointer.available { editor_pointer.position.x /= editor_scale; editor_pointer.position.y /= editor_scale }
-	if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err }
+	layout_project :=
+		!state.ui_layout_valid ||
+		state.ui_project_layout_revision != world.ui_project_layout_revision ||
+		state.ui_project_viewport != project_layout ||
+		fresh_pointer_press
+	layout_editor :=
+		!state.ui_layout_valid ||
+		state.ui_editor_layout_revision != world.ui_editor_layout_revision ||
+		state.ui_editor_viewport != editor_layout ||
+		fresh_pointer_press
+	if layout_project || layout_editor {
+		if err := layout_all(
+			state,
+			world,
+			project_layout,
+			editor_layout,
+			layout_project,
+			layout_editor,
+		); err != "" {
+			return err
+		}
+	}
 	if update_split_interaction(
 		state,
 		project_pointer,
@@ -807,49 +880,35 @@ reconcile :: proc(
 	component_menu_was_open := state.editor_component_menu_open
 	resource_menu_was_open := state.editor_resource_menu_open
 	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
-	update_panel_action_interactions(state, world, project_pointer, false)
-	update_panel_action_interactions(state, world, editor_pointer, true)
 	if state.pointer_cursor == .Default {
 		state.pointer_cursor = numeric_input_pointer_cursor(state, world)
 	}
 	sync_ui_interaction_states(state, world)
 	panel_changed := false
 	if pressed_ok {
-		panel_action_pressed := handle_panel_action_press(
+		_ = ecs.mark_ui_activated(world, int(pressed.index))
+		append_ui_event(
+			state,
+			{kind = .Activated, entity = pressed, position = editor_pointer.position},
+		)
+		_ = handle_list_press(world, pressed)
+		editor_ui_prepare_input_focus(state, world, int(pressed.index))
+		handle_input_press(state, world, pressed, editor_pointer.position)
+		checkbox_changed := handle_checkbox_press(state, world, pressed)
+		if checkbox_changed {
+			append_ui_event(state, {kind = .Changed, entity = pressed})
+		}
+		panel_changed = checkbox_changed || panel_changed
+		panel_title_changed := handle_panel_title_press(
 			state,
 			world,
 			pressed,
 			editor_pointer.position,
 		)
-		if panel_action_pressed {
-			_ = ecs.mark_ui_activated(world, int(pressed.index))
-			panel_changed = editor_ui_handle_panel_action(state, world, pressed) || panel_changed
-		} else {
-			if !node_has_panel_action(state, world, pressed) {
-				_ = ecs.mark_ui_activated(world, int(pressed.index))
-			}
-			_ = handle_list_press(world, pressed)
-			editor_ui_prepare_input_focus(state, world, int(pressed.index))
-			handle_input_press(state, world, pressed, editor_pointer.position)
-			checkbox_changed := handle_checkbox_press(state, world, pressed)
-			if checkbox_changed {
-				editor_ui_handle_checkbox_change(state, world, pressed)
-			}
-			panel_changed = checkbox_changed || panel_changed
-			editor_ui_handle_activation(state, world, pressed, editor_pointer.position)
-			panel_changed = state.editor_layout_invalidated || panel_changed
-			state.editor_layout_invalidated = false
-			panel_title_changed := handle_panel_title_press(
-				state,
-				world,
-				pressed,
-				editor_pointer.position,
-			)
-			if panel_title_changed {
-				editor_ui_handle_panel_change(state, world, pressed)
-			}
-			panel_changed = panel_title_changed || panel_changed
+		if panel_title_changed {
+			append_ui_event(state, {kind = .Changed, part = .Panel_Title, entity = pressed})
 		}
+		panel_changed = panel_title_changed || panel_changed
 	}
 	if component_menu_was_open &&
 	   editor_press_started &&
@@ -872,33 +931,33 @@ reconcile :: proc(
 		panel_changed = true
 	}
 	if project_pressed_ok {
-		panel_action_pressed := handle_panel_action_press(
+		_ = ecs.mark_ui_activated(world, int(project_pressed.index))
+		append_ui_event(
+			state,
+			{kind = .Activated, entity = project_pressed, position = project_pointer.position},
+		)
+		_ = handle_list_press(world, project_pressed)
+		handle_input_press(state, world, project_pressed, project_pointer.position)
+		checkbox_changed := handle_checkbox_press(state, world, project_pressed)
+		if checkbox_changed {
+			append_ui_event(state, {kind = .Changed, entity = project_pressed})
+		}
+		panel_changed = checkbox_changed || panel_changed
+		panel_title_changed := handle_panel_title_press(
 			state,
 			world,
 			project_pressed,
 			project_pointer.position,
 		)
-		if panel_action_pressed || !node_has_panel_action(state, world, project_pressed) {
-			_ = ecs.mark_ui_activated(world, int(project_pressed.index))
+		if panel_title_changed {
+			append_ui_event(
+				state,
+				{kind = .Changed, part = .Panel_Title, entity = project_pressed},
+			)
 		}
-		if !panel_action_pressed {
-			_ = handle_list_press(world, project_pressed)
-			handle_input_press(state, world, project_pressed, project_pointer.position)
-			panel_changed = handle_checkbox_press(state, world, project_pressed) || panel_changed
-		}
+		panel_changed = panel_title_changed || panel_changed
 	}
-	if project_pressed_ok {
-		if !handle_panel_action_press(state, world, project_pressed, project_pointer.position) {
-			panel_changed =
-				handle_panel_title_press(
-					state,
-					world,
-					project_pressed,
-					project_pointer.position,
-				) ||
-				panel_changed
-		}
-	}
+	panel_changed = editor_ui_consume_events(state, world) || panel_changed
 	sync_ui_interaction_states(state, world)
 	if panel_changed {
 		if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err }
@@ -963,14 +1022,17 @@ reconcile :: proc(
 		system_profile_changed :=
 			state.system_profile != nil &&
 			state.editor_system_profile_revision != state.system_profile.revision
+		if system_profile_changed && !state.input_scrubbing {
+			editor_ui_refresh_system_profile(state, world)
+		}
 		selection_changed :=
 			state.editor_snapshot_has_selection != state.editor_has_selection ||
 			(state.editor_has_selection &&
 					state.editor_snapshot_selected_entity != state.editor_selected_entity)
-		if !state.editor_snapshot_valid ||
-		   system_profile_changed ||
-		   selection_changed ||
-		   state.editor_snapshot_elapsed >= EDITOR_SNAPSHOT_INTERVAL {
+		snapshot_due :=
+			!state.editor_snapshot_valid ||
+			state.editor_snapshot_elapsed >= EDITOR_SNAPSHOT_INTERVAL
+		if selection_changed || (!state.input_scrubbing && snapshot_due) {
 			refresh_editor_ecs_snapshot(state, world)
 		}
 	}
@@ -1069,6 +1131,90 @@ project_pointer_input :: proc(
 		primary_down = pointer.primary_down,
 		available = true,
 	}
+}
+
+Popup_Placement :: struct {
+	minimum_width: f32,
+	maximum_width: f32,
+	maximum_height: f32,
+	viewport_margin: f32,
+	gap: f32,
+	viewport_top: f32,
+	viewport_bottom: f32,
+}
+
+popup_contains_entity :: proc(
+	world: ^shared.World,
+	entity: shared.Entity,
+	anchor_entity_index, popup_entity_index: int,
+) -> bool {
+	if world == nil || !ecs.entity_is_alive(world, int(entity.index)) {
+		return false
+	}
+	index := int(entity.index)
+	origin := world.entities[index].origin
+	for _ in 0 ..< MAX_NODES {
+		if index == anchor_entity_index || index == popup_entity_index {
+			return true
+		}
+		value := world.entities[index]
+		if value.ui_layout_index < 0 || value.ui_layout_index >= len(world.ui_layouts) {
+			break
+		}
+		parent := world.ui_layouts[value.ui_layout_index].parent
+		if parent == (shared.Entity_UUID{}) {
+			break
+		}
+		index = find_parent_entity(world, parent, origin)
+		if index < 0 {
+			break
+		}
+	}
+	return false
+}
+
+place_popup :: proc(
+	state: ^State,
+	world: ^shared.World,
+	popup_entity_index, anchor_entity_index: int,
+	content_height, viewport_width, viewport_height: f32,
+	placement: Popup_Placement,
+) -> bool {
+	if state == nil ||
+	   world == nil ||
+	   !ecs.entity_is_alive(world, popup_entity_index) ||
+	   !ecs.entity_is_alive(world, anchor_entity_index) {
+		return false
+	}
+	popup := world.entities[popup_entity_index]
+	if popup.ui_layout_index < 0 || popup.ui_layout_index >= len(world.ui_layouts) {
+		return false
+	}
+	anchor_node := find_node_by_entity_index(state, anchor_entity_index)
+	if anchor_node < 0 || !state.nodes[anchor_node].laid_out {
+		return false
+	}
+	anchor := state.nodes[anchor_node].rect
+	if anchor.width <= 0 {
+		return false
+	}
+	margin := max(placement.viewport_margin, 0)
+	gap := max(placement.gap, 0)
+	bottom := viewport_height - margin - max(placement.viewport_bottom, 0)
+	top := margin + max(placement.viewport_top, 0)
+	layout := &world.ui_layouts[popup.ui_layout_index]
+	layout.size.x = clamp(anchor.width, placement.minimum_width, placement.maximum_width)
+	layout.size.y = min(content_height, min(placement.maximum_height, max(bottom - top, 0)))
+	layout.position.x = clamp(
+		anchor.x,
+		margin,
+		max(viewport_width - layout.size.x - margin, margin),
+	)
+	layout.position.y = anchor.y + anchor.height + gap
+	if layout.position.y + layout.size.y > bottom {
+		layout.position.y = max(anchor.y - layout.size.y - gap, top)
+	}
+	return true
 }
 
 editor_clear_selection :: proc(state: ^State) {if state == nil { return }
@@ -1257,18 +1403,35 @@ layout_all :: proc(
 	state: ^State,
 	world: ^shared.World,
 	project_viewport, editor_viewport: Rect,
+	layout_project := true,
+	layout_editor := true,
 ) -> string {
 	for _ in 0 ..< 4 {
 		state.next_paint_order = 0
-		state.split_handle_count = 0
+		preserved_handle_count := 0
+		for handle in state.split_handles[:state.split_handle_count] {
+			if (handle.editor && !layout_editor) || (!handle.editor && !layout_project) {
+				state.split_handles[preserved_handle_count] = handle
+				preserved_handle_count += 1
+			}
+		}
+		state.split_handle_count = preserved_handle_count
 		state.layout_size_changed = false
 		for &node in state.nodes[:state.node_count] {
+			if (node.origin == .Editor && !layout_editor) ||
+			   (node.origin != .Editor && !layout_project) {
+				continue
+			}
 			node.laid_out = false
 			node.fill_width_valid = false
 			node.fill_height_valid = false
 		}
 		for i in 0 ..< state.node_count {
 			if state.nodes[i].parent_entity_index >= 0 {
+				continue
+			}
+			if (state.nodes[i].origin == .Editor && !layout_editor) ||
+			   (state.nodes[i].origin != .Editor && !layout_project) {
 				continue
 			}
 			viewport := project_viewport
@@ -1284,6 +1447,15 @@ layout_all :: proc(
 			break
 		}
 	}
+	if layout_project {
+		state.ui_project_layout_revision = world.ui_project_layout_revision
+		state.ui_project_viewport = project_viewport
+	}
+	if layout_editor {
+		state.ui_editor_layout_revision = world.ui_editor_layout_revision
+		state.ui_editor_viewport = editor_viewport
+	}
+	state.ui_layout_valid = true
 	return ""
 }
 
@@ -1314,6 +1486,16 @@ node_layout_size :: proc(
 		size.y = min(max(panel.title_height, 0), size.y)
 	}
 	return size
+}
+
+node_is_panel_action :: proc(world: ^shared.World, node: ^Node) -> bool {
+	return(
+		world != nil &&
+		node != nil &&
+		node.button_index >= 0 &&
+		node.button_index < len(world.ui_buttons) &&
+		world.ui_buttons[node.button_index].panel_action \
+	)
 }
 
 layout_node :: proc(
@@ -1405,6 +1587,44 @@ layout_node :: proc(
 		content.y += panel_title_height
 		content.height -= panel_title_height
 	}
+	if is_panel && panel_title_height > 0 {
+		action_right := node.rect.x + node.rect.width - 5
+		child_index := node.first_child_node
+		for child_index >= 0 {
+			child := &state.nodes[child_index]
+			next_child_index := child.next_sibling_node
+			child_layout := world.ui_layouts[child.layout_index]
+			if !child_layout.hidden && node_is_panel_action(world, child) {
+				child_size := node_layout_size(world, child^, child_layout)
+				child_size.x = min(child_size.x, max(panel_title_height, 0))
+				child_size.y = min(child_size.y, max(panel_title_height, 0))
+				position := shared.Vec2 {
+					action_right - child_layout.margin.y - child_size.x,
+					node.rect.y +
+					(panel_title_height - child_size.y) * 0.5 +
+					child_layout.margin.x -
+					child_layout.margin.z,
+				}
+				if err := layout_node(
+					state,
+					world,
+					child_index,
+					node.rect,
+					position,
+					true,
+					child_size,
+					true,
+					inherited_clip,
+					has_inherited_clip,
+					depth + 1,
+				); err != "" {
+					return err
+				}
+				action_right = position.x - child_layout.margin.w
+			}
+			child_index = next_child_index
+		}
+	}
 	if is_panel && panel.collapsible && panel.collapsed {
 		node.scroll_offset = 0
 		node.scroll_target = 0
@@ -1433,7 +1653,7 @@ layout_node :: proc(
 			child := &state.nodes[child_index]
 			next_child_index := child.next_sibling_node
 			child_layout := world.ui_layouts[child.layout_index]
-			if child_layout.hidden {
+			if child_layout.hidden || is_panel && node_is_panel_action(world, child) {
 				child_index = next_child_index
 				continue
 			}
@@ -1566,7 +1786,7 @@ layout_node :: proc(
 		child := &state.nodes[child_index]
 		next_child_index := child.next_sibling_node
 		child_layout := world.ui_layouts[child.layout_index]
-		if child_layout.hidden {
+		if child_layout.hidden || is_panel && node_is_panel_action(world, child) {
 			child_index = next_child_index
 			continue
 		}
@@ -2494,10 +2714,6 @@ handle_panel_title_press :: proc(
 	   node.panel_index >= len(world.ui_panels) { return false }
 	panel := world.ui_panels[node.panel_index]
 	if !panel.collapsible || panel.title == "" { return false }
-	if action_rect, action_ok := panel_title_action_rect(node^, panel);
-	   action_ok && rect_contains(action_rect, position) {
-		return false
-	}
 	title_height := min(max(panel.title_height, 0), node.rect.height)
 	title_rect := Rect{node.rect.x, node.rect.y, node.rect.width, title_height}
 	if !rect_contains(title_rect, position) ||
@@ -2506,94 +2722,6 @@ handle_panel_title_press :: proc(
 	_ = ecs.set_ui_panel(world, int(node.entity.index), panel)
 	_ = ecs.mark_ui_changed(world, int(node.entity.index))
 	return true
-}
-
-panel_title_action_rect :: proc(node: Node, panel: shared.UI_Panel_Component) -> (Rect, bool) {
-	if !panel.action_enabled || panel.title == "" || panel.action_size <= 0 {
-		return {}, false
-	}
-	title_height := min(max(panel.title_height, 0), node.rect.height)
-	size := min(panel.action_size, max(title_height - panel.action_margin * 2, 0))
-	if size <= 0 {
-		return {}, false
-	}
-	return Rect {
-			node.rect.x + node.rect.width - panel.action_margin - size,
-			node.rect.y + (title_height - size) * 0.5,
-			size,
-			size,
-		},
-		true
-}
-
-node_has_panel_action :: proc(state: ^State, world: ^shared.World, entity: shared.Entity) -> bool {
-	if state == nil || world == nil {
-		return false
-	}
-	node_index := find_node(state, entity)
-	if node_index < 0 {
-		return false
-	}
-	node := state.nodes[node_index]
-	if node.panel_index < 0 || node.panel_index >= len(world.ui_panels) {
-		return false
-	}
-	_, ok := panel_title_action_rect(node, world.ui_panels[node.panel_index])
-	return ok
-}
-
-handle_panel_action_press :: proc(
-	state: ^State,
-	world: ^shared.World,
-	pressed: shared.Entity,
-	position: shared.Vec2,
-) -> bool {
-	if state == nil || world == nil {
-		return false
-	}
-	node_index := find_node(state, pressed)
-	if node_index < 0 {
-		return false
-	}
-	node := state.nodes[node_index]
-	if !node.laid_out || node.panel_index < 0 || node.panel_index >= len(world.ui_panels) {
-		return false
-	}
-	action_rect, ok := panel_title_action_rect(node, world.ui_panels[node.panel_index])
-	return(
-		ok &&
-		rect_contains(action_rect, position) &&
-		(!node.has_clip || rect_contains(node.clip, position)) \
-	)
-}
-
-update_panel_action_interactions :: proc(
-	state: ^State,
-	world: ^shared.World,
-	pointer: Pointer_Input,
-	editor: bool,
-) {
-	for &node in state.nodes[:state.node_count] {
-		if (node.origin == .Editor) != editor {
-			continue
-		}
-		node.panel_action_hovered = false
-		node.panel_action_active = false
-		if !pointer.available ||
-		   !node.laid_out ||
-		   node.panel_index < 0 ||
-		   node.panel_index >= len(world.ui_panels) {
-			continue
-		}
-		action_rect, ok := panel_title_action_rect(node, world.ui_panels[node.panel_index])
-		if !ok ||
-		   !rect_contains(action_rect, pointer.position) ||
-		   node.has_clip && !rect_contains(node.clip, pointer.position) {
-			continue
-		}
-		node.panel_action_hovered = true
-		node.panel_action_active = node.active && pointer.primary_down
-	}
 }
 
 handle_checkbox_press :: proc(
@@ -2722,60 +2850,6 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				text_left = panel.disclosure_margin + disclosure_size + panel.disclosure_gap
 			}
 			text_right := f32(10)
-			if action_rect, action_ok := panel_title_action_rect(node^, panel); action_ok {
-				text_right = node.rect.x + node.rect.width - action_rect.x + panel.action_margin
-				action_background: shared.Vec4
-				if node.panel_action_active {
-					action_background = panel.action_active_background
-				} else if node.panel_action_hovered {
-					action_background = panel.action_hover_background
-				}
-				if action_background.w > 0 {
-					if err := append_paint(
-						state,
-						{
-							kind = .Panel,
-							rect = action_rect,
-							color = action_background,
-							corner_radius = panel.action_corner_radius,
-						},
-					); err != "" {
-						return err
-					}
-				}
-				icon_inset := min(panel.action_icon_inset, action_rect.width * 0.5)
-				icon_rect := Rect {
-					action_rect.x + icon_inset,
-					action_rect.y + icon_inset,
-					max(action_rect.width - icon_inset * 2, 0),
-					max(action_rect.height - icon_inset * 2, 0),
-				}
-				line_thickness := max(icon_rect.width * 0.16, 1)
-				lines := [2][2]shared.Vec2 {
-					{
-						{icon_rect.x, icon_rect.y},
-						{icon_rect.x + icon_rect.width, icon_rect.y + icon_rect.height},
-					},
-					{
-						{icon_rect.x + icon_rect.width, icon_rect.y},
-						{icon_rect.x, icon_rect.y + icon_rect.height},
-					},
-				}
-				for line in lines {
-					if err := append_paint(
-						state,
-						{
-							kind = .Line,
-							color = panel.action_color,
-							line_start = line[0],
-							line_end = line[1],
-							line_thickness = line_thickness,
-						},
-					); err != "" {
-						return err
-					}
-				}
-			}
 			text_rect := Rect {
 				title_rect.x + text_left,
 				title_rect.y + max((title_height - panel.title_size * 1.25) * 0.5, 0),
@@ -2904,11 +2978,69 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			); err != "" { return err }
 		}
 	}
-	if node.button_index >= 0 &&
-	   node.button_index <
-		   len(
-			   world.ui_buttons,
-		   ) { button := world.ui_buttons[node.button_index]; select_font(state, button.font); color := button.color; if node.active && button.active_color.w > 0 { color = button.active_color } else if node.hovered && button.hover_color.w > 0 { color = button.hover_color }; if err := append_centered_text(state, button.text, color, button.size, node.rect, layout.padding, button.alignment); err != "" { return err } }
+	if node.button_index >= 0 && node.button_index < len(world.ui_buttons) {
+		button := world.ui_buttons[node.button_index]
+		select_font(state, button.font)
+		color := button.color
+		if node.active && button.active_color.w > 0 {
+			color = button.active_color
+		} else if node.hovered && button.hover_color.w > 0 {
+			color = button.hover_color
+		}
+		if button.icon != .None {
+			inset := min(button.icon_inset, min(node.rect.width, node.rect.height) * 0.5)
+			icon := Rect {
+				node.rect.x + inset,
+				node.rect.y + inset,
+				max(node.rect.width - inset * 2, 0),
+				max(node.rect.height - inset * 2, 0),
+			}
+			lines: [2][2]shared.Vec2
+			switch button.icon {
+				case .Close:
+					lines = {
+						{{icon.x, icon.y}, {icon.x + icon.width, icon.y + icon.height}},
+						{{icon.x + icon.width, icon.y}, {icon.x, icon.y + icon.height}},
+					}
+				case .Plus:
+					lines = {
+						{
+							{icon.x, icon.y + icon.height * 0.5},
+							{icon.x + icon.width, icon.y + icon.height * 0.5},
+						},
+						{
+							{icon.x + icon.width * 0.5, icon.y},
+							{icon.x + icon.width * 0.5, icon.y + icon.height},
+						},
+					}
+				case .None:
+			}
+			for line in lines {
+				if err := append_paint(
+					state,
+					{
+						kind = .Line,
+						color = color,
+						line_start = line[0],
+						line_end = line[1],
+						line_thickness = button.icon_stroke,
+					},
+				); err != "" {
+					return err
+				}
+			}
+		} else if err := append_centered_text(
+			state,
+			button.text,
+			color,
+			button.size,
+			node.rect,
+			layout.padding,
+			button.alignment,
+		); err != "" {
+			return err
+		}
+	}
 	apply_paint_clip(state, paint_start, state.paint_count, node.clip, node.has_clip)
 	child_index := node.first_child_node
 	for child_index >= 0 {

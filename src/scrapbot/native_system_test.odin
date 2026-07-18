@@ -11,6 +11,43 @@ import "core:path/filepath"
 import "core:testing"
 
 @(test)
+test_frame_system_cache_reuses_buffers_and_rebuilds_only_for_topology_changes :: proc(
+	t: ^testing.T,
+) {
+	cache: Frame_System_Cache
+	defer destroy_frame_system_cache(&cache)
+	systems: [2]schedule.System
+	systems[0].accesses[0] = {
+		component = "position",
+		mode = .Read,
+	}
+	systems[0].access_count = 1
+	systems[1].accesses[0] = {
+		component = "velocity",
+		mode = .Write,
+	}
+	systems[1].access_count = 1
+
+	first := prepare_frame_system_cache(&cache, systems[:], 2)
+	testing.expect(t, first != nil && first.batch_count == 1)
+	testing.expect(t, cache.plan_build_count == 1)
+	testing.expect(t, cache.native_command_count == 2)
+	testing.expect(t, len(cache.native_commands[0].commands) == 4)
+	first_buffer := raw_data(cache.native_commands[0].commands)
+
+	second := prepare_frame_system_cache(&cache, systems[:], 2)
+	testing.expect(t, second == first)
+	testing.expect(t, cache.plan_build_count == 1)
+	testing.expect(t, raw_data(cache.native_commands[0].commands) == first_buffer)
+
+	systems[1].accesses[0].component = "position"
+	_ = prepare_frame_system_cache(&cache, systems[:], 1)
+	testing.expect(t, cache.plan_build_count == 2)
+	testing.expect(t, cache.plan.batch_count == 2)
+	testing.expect(t, cache.native_command_count == 1)
+}
+
+@(test)
 test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 	root, parent := make_native_system_test_project(t)
 	defer delete(root)
@@ -45,10 +82,9 @@ test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 	testing.expect(t, extensions.system_count == 2)
 	testing.expect(t, extensions.systems[0].declaration.access_count == 6)
 
-	frame_runtime: Frame_Runtime
-	defer script.destroy_runtime(&frame_runtime.script_runtime)
-	defer native.destroy_extension_set(&frame_runtime.native_extensions)
-	defer schedule.destroy_executor(&frame_runtime.executor)
+	frame_runtime := new(Frame_Runtime)
+	defer free(frame_runtime)
+	defer destroy_frame_runtime(frame_runtime)
 	frame_runtime.native_extensions = extensions
 	extensions = {}
 
@@ -61,7 +97,7 @@ test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 	)
 	testing.expectf(t, script_result.err == "", "script load failed: %s", script_result.err)
 
-	step_err := step_frame_runtime(&frame_runtime, &world, 1.0)
+	step_err := step_frame_runtime(frame_runtime, &world, 1.0)
 	testing.expectf(t, step_err == "", "step_frame_runtime failed: %s", step_err)
 	testing.expectf(
 		t,

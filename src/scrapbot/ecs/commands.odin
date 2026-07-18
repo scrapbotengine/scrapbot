@@ -2,6 +2,7 @@ package ecs
 
 import shared "../shared"
 import base_runtime "base:runtime"
+import "core:mem"
 
 MAX_COMMANDS :: 128
 MAX_COMMAND_NAME_BYTES :: 64
@@ -131,16 +132,42 @@ Command :: struct {
 Command_Buffer :: struct {
 	commands: []Command,
 	command_count: int,
+	allocator: mem.Allocator,
 }
 
 init_command_buffer :: proc(buffer: ^Command_Buffer) {
+	init_command_buffer_capacity(buffer, MAX_COMMANDS)
+}
+
+init_command_buffer_capacity :: proc(buffer: ^Command_Buffer, capacity: int) {
 	buffer^ = {}
-	buffer.commands = make([]Command, MAX_COMMANDS)
+	buffer.allocator = context.allocator
+	buffer.commands = make([]Command, clamp(capacity, 1, MAX_COMMANDS), buffer.allocator)
 }
 
 destroy_command_buffer :: proc(buffer: ^Command_Buffer) {
-	delete(buffer.commands)
+	delete(buffer.commands, buffer.allocator)
 	buffer^ = {}
+}
+
+ensure_command_capacity :: proc "c" (buffer: ^Command_Buffer, additional := 1) -> bool {
+	context = base_runtime.default_context()
+	if buffer == nil || buffer.commands == nil || additional < 0 {
+		return false
+	}
+	required := buffer.command_count + additional
+	if required > MAX_COMMANDS {
+		return false
+	}
+	if required <= len(buffer.commands) {
+		return true
+	}
+	capacity := min(max(len(buffer.commands) * 2, required), MAX_COMMANDS)
+	commands := make([]Command, capacity, buffer.allocator)
+	copy(commands[:buffer.command_count], buffer.commands[:buffer.command_count])
+	delete(buffer.commands, buffer.allocator)
+	buffer.commands = commands
+	return true
 }
 
 queue_spawn :: proc "c" (buffer: ^Command_Buffer, name: string) -> string {
@@ -395,7 +422,7 @@ queue_spawn_command :: proc "c" (buffer: ^Command_Buffer, spawn: Spawn_Command) 
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 
@@ -415,7 +442,7 @@ queue_despawn :: proc "c" (buffer: ^Command_Buffer, entity_index: int, generatio
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 
@@ -440,7 +467,7 @@ queue_add_transform :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 
@@ -463,9 +490,12 @@ queue_add_geometry :: proc "c" (
 	generation: u32,
 	handle: Geometry_Handle,
 ) -> string {
-	if buffer == nil ||
-	   buffer.commands ==
-		   nil { return "command buffer is not initialized" }; if buffer.command_count >= len(buffer.commands) { return "too many deferred world commands" }
+	if buffer == nil || buffer.commands == nil {
+		return "command buffer is not initialized"
+	}
+	if !ensure_command_capacity(buffer) {
+		return "too many deferred world commands"
+	}
 	buffer.commands[buffer.command_count] = {
 		kind = .Add_Component,
 		add_component = {
@@ -474,7 +504,9 @@ queue_add_geometry :: proc "c" (
 			has_geometry = true,
 			geometry = handle,
 		},
-	}; buffer.command_count += 1; return ""
+	}
+	buffer.command_count += 1
+	return ""
 }
 
 queue_add_material :: proc "c" (
@@ -483,9 +515,12 @@ queue_add_material :: proc "c" (
 	generation: u32,
 	handle: Material_Handle,
 ) -> string {
-	if buffer == nil ||
-	   buffer.commands ==
-		   nil { return "command buffer is not initialized" }; if buffer.command_count >= len(buffer.commands) { return "too many deferred world commands" }
+	if buffer == nil || buffer.commands == nil {
+		return "command buffer is not initialized"
+	}
+	if !ensure_command_capacity(buffer) {
+		return "too many deferred world commands"
+	}
 	buffer.commands[buffer.command_count] = {
 		kind = .Add_Component,
 		add_component = {
@@ -494,7 +529,9 @@ queue_add_material :: proc "c" (
 			has_material = true,
 			material = handle,
 		},
-	}; buffer.command_count += 1; return ""
+	}
+	buffer.command_count += 1
+	return ""
 }
 
 queue_add_marker :: proc "c" (
@@ -503,8 +540,12 @@ queue_add_marker :: proc "c" (
 	generation: u32,
 	name: string,
 ) -> string {
-	if buffer == nil || buffer.commands == nil { return "command buffer is not initialized" }
-	if buffer.command_count >= len(buffer.commands) { return "too many deferred world commands" }
+	if buffer == nil || buffer.commands == nil {
+		return "command buffer is not initialized"
+	}
+	if !ensure_command_capacity(buffer) {
+		return "too many deferred world commands"
+	}
 	add := Add_Component_Command {
 		entity_index = entity_index,
 		generation = generation,
@@ -537,7 +578,7 @@ queue_add_mesh :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 
@@ -574,7 +615,7 @@ queue_add_custom_component :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 
@@ -599,7 +640,7 @@ queue_add_ui_component :: proc "contextless" (
 	if buffer == nil || buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 	buffer.commands[buffer.command_count] = {
@@ -627,7 +668,7 @@ queue_remove_component :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if buffer.command_count >= len(buffer.commands) {
+	if !ensure_command_capacity(buffer) {
 		return "too many deferred world commands"
 	}
 
@@ -691,7 +732,7 @@ append_commands :: proc(destination, source: ^Command_Buffer) -> string {
 	if destination.commands == nil || source.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if destination.command_count + source.command_count > len(destination.commands) {
+	if !ensure_command_capacity(destination, source.command_count) {
 		return "too many deferred world commands"
 	}
 	for i in 0 ..< source.command_count {
@@ -800,22 +841,20 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.mesh_index = INVALID_COMPONENT_INDEX
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	entity.material_index = INVALID_COMPONENT_INDEX
-	for &storage in world.custom_components {
-		for &component in storage.components {
-			if component.entity_index != entity_index {
-				continue
-			}
-			delete_world_string(world, component.name)
-			component.name = ""
-			component.entity_index = INVALID_COMPONENT_INDEX
-			component.component_id = shared.INVALID_COMPONENT_ID
-			for field in component.vec3_fields {
-				delete_world_string(world, field.name)
-			}
-			delete(component.vec3_fields)
-			component.vec3_fields = nil
+	for storage_index in entity.custom_component_storage_indices {
+		when ODIN_TEST {
+			world.custom_teardown_storage_visit_count += 1
+		}
+		if storage_index < 0 || storage_index >= len(world.custom_components) {
+			continue
+		}
+		storage := &world.custom_components[storage_index]
+		component_index, found := custom_component_index_for_entity(storage, entity_index)
+		if found {
+			release_custom_component_slot(world, storage, component_index)
 		}
 	}
+	clear(&entity.custom_component_storage_indices)
 	if entity.editor_transform_gizmo_index >= 0 &&
 	   entity.editor_transform_gizmo_index <
 		   len(
@@ -830,6 +869,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.has_shadow_caster = false
 	entity.has_shadow_receiver = false
 	entity.render_dirty = false
+	append(&world.free_entity_indices, entity_index)
 }
 
 apply_add_component :: proc(world: ^World, command: ^Add_Component_Command) {

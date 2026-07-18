@@ -3,6 +3,7 @@ package ecs
 import project "../project"
 import resources "../resources"
 import shared "../shared"
+import "core:fmt"
 import "core:testing"
 
 MULTI_CUBE_SCENE :: `[[entities]]
@@ -88,8 +89,12 @@ test_render_reconciliation_tracks_geometry_and_material_eligibility :: proc(t: ^
 	testing.expect(t, world.render_structure_sync_count == 1)
 
 	add_material(&world, 0, material)
-	reconcile_render_instances(&world, &registry)
+	list: Render_List
+	defer destroy_render_list(&list)
+	populate_resource_render_list(&world, &registry, &list)
 	testing.expect(t, world.entities[0].render_instance_index >= 0)
+	testing.expect(t, len(list.instances) == 1)
+	testing.expect(t, list.topology_revision == world.render_topology_revision)
 	testing.expect(t, world.render_structure_sync_count == 2)
 	remove_material(&world, 0)
 	reconcile_render_instances(&world, &registry)
@@ -399,6 +404,14 @@ test_query_matches_entities_with_all_requested_components :: proc(t: ^testing.T)
 	query.term_count = 2
 
 	testing.expect(t, query_count(&world, query) == 2)
+	next_entity_index := 0
+	first_match, first_found := query_next(&world, query, &next_entity_index)
+	second_match, second_found := query_next(&world, query, &next_entity_index)
+	exhausted_cursor := next_entity_index
+	_, exhausted := query_next(&world, query, &next_entity_index)
+	testing.expect(t, first_found && first_match == 1)
+	testing.expect(t, second_found && second_match == 2)
+	testing.expect(t, !exhausted && next_entity_index == exhausted_cursor)
 
 	entity_index, ok := query_entity_at(&world, query, 0)
 	testing.expect(t, ok)
@@ -413,6 +426,85 @@ test_query_matches_entities_with_all_requested_components :: proc(t: ^testing.T)
 
 	world.entities[2].alive = false
 	testing.expect(t, query_count(&world, query) == 0)
+}
+
+@(test)
+test_query_cursor_uses_the_smallest_custom_component_storage :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	for index in 0 ..< 128 {
+		_, created := create_world_entity(&world, "Candidate")
+		testing.expect(t, created)
+	}
+	dense := ensure_custom_component_storage(&world, 1, "dense")
+	sparse := ensure_custom_component_storage(&world, 2, "sparse")
+	for entity_index in 0 ..< 128 {
+		value := shared.Custom_Component {
+			name = "dense",
+		}
+		add_scene_custom_component(&world, entity_index, value)
+	}
+	sparse_entities := [?]int{3, 97}
+	for entity_index in 0 ..< 128 {
+		value := shared.Custom_Component {
+			name = "sparse",
+		}
+		add_scene_custom_component(&world, entity_index, value)
+	}
+	bind_custom_component_storage(&world, "dense", 1)
+	bind_custom_component_storage(&world, "sparse", 2)
+	for entity_index in 0 ..< 128 {
+		if entity_index == sparse_entities[0] || entity_index == sparse_entities[1] {
+			continue
+		}
+		remove_custom_component(&world, entity_index, 2, "sparse")
+	}
+	testing.expect(t, dense.storage_index != sparse.storage_index)
+	testing.expect(t, len(dense.components) == len(sparse.components))
+	testing.expect(t, len(sparse.active_component_indices) == len(sparse_entities))
+	query: Query
+	query.terms[0] = {
+		component_id = 1,
+		name = "dense",
+	}
+	query.terms[1] = {
+		component_id = 2,
+		name = "sparse",
+	}
+	query.term_count = 2
+	cursor := 0
+	first, first_ok := query_next(&world, query, &cursor)
+	second, second_ok := query_next(&world, query, &cursor)
+	_, exhausted := query_next(&world, query, &cursor)
+	testing.expect(t, first_ok && second_ok)
+	testing.expect(
+		t,
+		(first == sparse_entities[0] && second == sparse_entities[1]) ||
+		(first == sparse_entities[1] && second == sparse_entities[0]),
+	)
+	testing.expect(t, !exhausted)
+	testing.expect(t, world.query_candidate_visit_count == 2)
+}
+
+@(test)
+test_despawn_releases_only_custom_storages_owned_by_the_entity :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	target, created := create_world_entity(&world, "Target")
+	testing.expect(t, created)
+	for storage_index in 0 ..< 64 {
+		name := fmt.tprintf("component_%d", storage_index)
+		_ = ensure_custom_component_storage(&world, shared.Component_ID(storage_index + 1), name)
+	}
+	owned_storages := [?]int{7, 41}
+	for storage_index in owned_storages {
+		storage := &world.custom_components[storage_index]
+		add_scene_custom_component(&world, target, shared.Custom_Component{name = storage.name})
+	}
+	despawn_entity(&world, target, world.entities[target].id.generation)
+	testing.expect(t, world.custom_teardown_storage_visit_count == 2)
+	failure, valid := validate_world_integrity(&world)
+	testing.expectf(t, valid, "%s", format_world_integrity_failure(failure))
 }
 
 @(test)
@@ -520,6 +612,24 @@ test_deferred_command_buffers_merge_in_source_order :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_deferred_command_buffers_grow_on_demand_up_to_the_hard_limit :: proc(t: ^testing.T) {
+	commands: Command_Buffer
+	init_command_buffer_capacity(&commands, 1)
+	defer destroy_command_buffer(&commands)
+
+	for index in 0 ..< MAX_COMMANDS {
+		testing.expectf(
+			t,
+			queue_spawn(&commands, "Deferred") == "",
+			"command %d should fit",
+			index,
+		)
+	}
+	testing.expect(t, len(commands.commands) == MAX_COMMANDS)
+	testing.expect(t, queue_spawn(&commands, "Overflow") != "")
+}
+
+@(test)
 test_deferred_commands_despawn_entities_without_shifting_indices :: proc(t: ^testing.T) {
 	scene, result := project.parse_scene(MULTI_CUBE_SCENE)
 	defer project.destroy_scene(&scene)
@@ -574,9 +684,11 @@ test_runtime_entity_churn_reuses_generation_safe_storage :: proc(t: ^testing.T) 
 		)
 		despawn_entity(&world, entity_index, world.entities[entity_index].id.generation)
 		testing.expect(t, !entity_is_alive(&world, entity_index))
+		testing.expect(t, len(world.free_entity_indices) == 1)
 	}
 
 	entity_index := spawn_entity(&world, &spawn)
+	testing.expect(t, len(world.free_entity_indices) == 0)
 	testing.expect(t, len(world.entities) == 1)
 	testing.expect(t, len(world.transforms) == 1)
 	testing.expect(t, len(world.geometries) == 1)

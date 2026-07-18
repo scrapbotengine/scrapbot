@@ -304,6 +304,46 @@ test_directional_shadow_matrix_is_finite_and_non_identity :: proc(t: ^testing.T)
 	}
 }
 
+@(test)
+test_wgpu_draw_batch_topology_is_retained_across_transform_only_frames :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	list: Render_List = {
+		world_uuid = shared.entity_uuid_from_engine_name("batch-cache-test"),
+		topology_revision = 1,
+	}
+	defer ecs.destroy_render_list(&list)
+	geometry_a := shared.Geometry_Handle {
+		index = 1,
+		generation = 1,
+	}
+	geometry_b := shared.Geometry_Handle {
+		index = 2,
+		generation = 1,
+	}
+	material := shared.Material_Handle {
+		index = 1,
+		generation = 1,
+	}
+	append(
+		&list.instances,
+		shared.Render_Instance{geometry = {handle = geometry_a}, material = {handle = material}},
+		shared.Render_Instance{geometry = {handle = geometry_b}, material = {handle = material}},
+		shared.Render_Instance{geometry = {handle = geometry_a}, material = {handle = material}},
+	)
+	cache := wgpu_ensure_draw_batch_cache(&renderer, &list)
+	testing.expect(t, cache != nil)
+	testing.expect(t, cache.batch_count == 2)
+	testing.expect(t, cache.batches[0].instance_count == 2)
+	testing.expect(t, cache.batches[1].instance_count == 1)
+	testing.expect(t, cache.rebuild_count == 1)
+	list.instances[0].transform.position.x = 42
+	cache = wgpu_ensure_draw_batch_cache(&renderer, &list)
+	testing.expect(t, cache.rebuild_count == 1)
+	list.topology_revision += 1
+	cache = wgpu_ensure_draw_batch_cache(&renderer, &list)
+	testing.expect(t, cache.rebuild_count == 2)
+}
+
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {
 	ecs.advance_time(&world.time, delta_seconds)
 	count := cast(^int)data

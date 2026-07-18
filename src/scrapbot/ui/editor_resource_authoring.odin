@@ -94,7 +94,6 @@ editor_resource_write_number :: proc(
 	if written {
 		material.version += 1
 		editor_mark_resource_dirty(state, binding.resource_id)
-		state.editor_snapshot_valid = false
 	}
 	return written
 }

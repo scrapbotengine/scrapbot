@@ -44,6 +44,17 @@ WGPU_Draw_Batch :: struct {
 	instance_count: u32,
 }
 
+WGPU_Draw_Batch_Cache :: struct {
+	world_uuid: shared.Entity_UUID,
+	topology_revision: u64,
+	valid: bool,
+	batches: [64]WGPU_Draw_Batch,
+	batch_count: int,
+	source_indices: [WGPU_MAX_INSTANCES]int,
+	instance_count: int,
+	rebuild_count: u64,
+}
+
 WGPU_Geometry_Cache :: struct {
 	handle: shared.Geometry_Handle,
 	version: u32,
@@ -114,6 +125,11 @@ WGPU_Renderer :: struct {
 	ui_font_view: wgpu.TextureView,
 	ui_font_sampler: wgpu.Sampler,
 	ui_font_versions: [shared.MAX_PROJECT_FONTS]u32,
+	ui_vertices: [dynamic]WGPU_UI_Vertex,
+	ui_vertex_buffer: wgpu.Buffer,
+	ui_vertex_capacity: int,
+	render_list: Render_List,
+	draw_batch_cache: WGPU_Draw_Batch_Cache,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
 	shadow_bind_group: wgpu.BindGroup,
 	shadow_pipeline_layout: wgpu.PipelineLayout,
@@ -171,6 +187,38 @@ WGPU_Live_Resize_State :: struct {
 	drawing: bool,
 	should_quit: bool,
 	err: string,
+}
+
+wgpu_upload_ui_vertices :: proc(renderer: ^WGPU_Renderer, vertices: []WGPU_UI_Vertex) -> bool {
+	if renderer == nil || len(vertices) == 0 {
+		return false
+	}
+	if renderer.ui_vertex_buffer == nil || renderer.ui_vertex_capacity < len(vertices) {
+		if renderer.ui_vertex_buffer != nil {
+			wgpu.BufferRelease(renderer.ui_vertex_buffer)
+		}
+		renderer.ui_vertex_capacity = max(len(vertices), max(renderer.ui_vertex_capacity * 2, 256))
+		renderer.ui_vertex_buffer = wgpu.DeviceCreateBuffer(
+			renderer.device,
+			&wgpu.BufferDescriptor {
+				label = "Scrapbot UI Vertex Buffer",
+				usage = {.Vertex, .CopyDst},
+				size = u64(renderer.ui_vertex_capacity * size_of(WGPU_UI_Vertex)),
+			},
+		)
+		if renderer.ui_vertex_buffer == nil {
+			renderer.ui_vertex_capacity = 0
+			return false
+		}
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.ui_vertex_buffer,
+		0,
+		raw_data(vertices),
+		uint(len(vertices) * size_of(WGPU_UI_Vertex)),
+	)
+	return true
 }
 
 wgpu_next_frame_delta :: proc(previous_tick: ^time.Tick, has_previous_frame: bool) -> f32 {
@@ -281,6 +329,70 @@ WGPU_OFFSCREEN_WIDTH :: u32(1280)
 WGPU_OFFSCREEN_HEIGHT :: u32(720)
 WGPU_SHADOW_MAP_SIZE :: u32(2048)
 
+wgpu_rebuild_draw_batch_cache :: proc(cache: ^WGPU_Draw_Batch_Cache, render_list: ^Render_List) {
+	if cache == nil || render_list == nil {
+		return
+	}
+	rebuild_count := cache.rebuild_count + 1
+	cache^ = {
+		world_uuid = render_list.world_uuid,
+		topology_revision = render_list.topology_revision,
+		valid = true,
+		rebuild_count = rebuild_count,
+	}
+	for candidate in render_list.instances {
+		found := false
+		for batch_index in 0 ..< cache.batch_count {
+			batch := cache.batches[batch_index]
+			if batch.geometry == candidate.geometry.handle &&
+			   batch.material == candidate.material.handle {
+				found = true
+				break
+			}
+		}
+		if found || cache.batch_count >= len(cache.batches) {
+			continue
+		}
+		cache.batches[cache.batch_count] = {
+			geometry = candidate.geometry.handle,
+			material = candidate.material.handle,
+		}
+		cache.batch_count += 1
+	}
+	for batch_index in 0 ..< cache.batch_count {
+		batch := &cache.batches[batch_index]
+		batch.first_instance = u32(cache.instance_count)
+		for candidate, source_index in render_list.instances {
+			if candidate.geometry.handle != batch.geometry ||
+			   candidate.material.handle != batch.material {
+				continue
+			}
+			if cache.instance_count >= len(cache.source_indices) {
+				break
+			}
+			cache.source_indices[cache.instance_count] = source_index
+			cache.instance_count += 1
+			batch.instance_count += 1
+		}
+	}
+}
+
+wgpu_ensure_draw_batch_cache :: proc(
+	renderer: ^WGPU_Renderer,
+	render_list: ^Render_List,
+) -> ^WGPU_Draw_Batch_Cache {
+	if renderer == nil || render_list == nil {
+		return nil
+	}
+	cache := &renderer.draw_batch_cache
+	if !cache.valid ||
+	   cache.world_uuid != render_list.world_uuid ||
+	   cache.topology_revision != render_list.topology_revision {
+		wgpu_rebuild_draw_batch_cache(cache, render_list)
+	}
+	return cache
+}
+
 wgpu_prepare_draw_batches :: proc(
 	renderer: ^WGPU_Renderer,
 	render_list: ^Render_List,
@@ -332,21 +444,22 @@ wgpu_prepare_draw_batches :: proc(
 			render_list.directional_lights[0].light.direction,
 		)
 	}
-	batches: [64]WGPU_Draw_Batch
-	batch_count, instance_count := 0, 0
-	for candidate in render_list.instances {
-		already_batched := false
-		for i in 0 ..< batch_count { if batches[i].geometry == candidate.geometry.handle && batches[i].material == candidate.material.handle { already_batched = true; break } }
-		if already_batched { continue }
-		batch := &batches[batch_count]
-		batch.geometry =
-			candidate.geometry.handle; batch.material = candidate.material.handle; batch.first_instance = u32(instance_count)
-		material, material_ok := resources.get_material(registry, candidate.material.handle)
-		if !material_ok { continue }
-		for instance in render_list.instances {
-			if instance.geometry.handle != batch.geometry ||
-			   instance.material.handle != batch.material { continue }
-			if instance_count >= WGPU_MAX_INSTANCES { break }
+	cache := wgpu_ensure_draw_batch_cache(renderer, render_list)
+	if cache == nil {
+		return {}, 0
+	}
+	batches := cache.batches
+	instance_count := 0
+	for batch_index in 0 ..< cache.batch_count {
+		batch := &batches[batch_index]
+		material, material_ok := resources.get_material(registry, batch.material)
+		if !material_ok {
+			return {}, 0
+		}
+		first := int(batch.first_instance)
+		last := min(first + int(batch.instance_count), cache.instance_count)
+		for ordered_index in first ..< last {
+			instance := render_list.instances[cache.source_indices[ordered_index]]
 			uniform.mvp[instance_count] = wgpu_build_mvp(
 				instance,
 				render_list.camera,
@@ -370,9 +483,8 @@ wgpu_prepare_draw_batches :: proc(
 			uniform.color[instance_count] = {color.x, color.y, color.z, color.w}
 			emissive := material.desc.emissive
 			uniform.emissive[instance_count] = {emissive.x, emissive.y, emissive.z, 0}
-			instance_count += 1; batch.instance_count += 1
+			instance_count += 1
 		}
-		if batch.instance_count > 0 { batch_count += 1 }
 	}
 	if instance_count == 0 {
 		return batches, 0
@@ -385,7 +497,7 @@ wgpu_prepare_draw_batches :: proc(
 		&uniform,
 		uint(size_of(WGPU_Render_Uniform)),
 	)
-	return batches, batch_count
+	return batches, cache.batch_count
 }
 
 wgpu_geometry_cache :: proc(
@@ -564,11 +676,8 @@ wgpu_encode_render_pass :: proc(
 		)
 		if ui_pass == nil { return "failed to begin UI overlay render pass" }
 		defer wgpu.RenderPassEncoderRelease(ui_pass)
-		vertices := make(
-			[dynamic]WGPU_UI_Vertex,
-			0,
-			ui_state.paint_count * 6,
-		); defer delete(vertices)
+		clear(&renderer.ui_vertices)
+		vertices := &renderer.ui_vertices
 		drawable_width := f32(target_width); drawable_height := f32(target_height)
 		viewport := ui.editor_viewport(ui_state, drawable_width, drawable_height)
 		for command, command_index in ui_state.paint[:ui_state.paint_count] {
@@ -661,7 +770,7 @@ wgpu_encode_render_pass :: proc(
 			   ui_state.editor_paint_start { border_width *= min(viewport.width / 1280, viewport.height / 720) }
 			params := [3]f32{shape_width, shape_height, radius}
 			append(
-				&vertices,
+				vertices,
 				WGPU_UI_Vertex {
 					position = positions[0],
 					uv = {u0, v0},
@@ -730,11 +839,9 @@ wgpu_encode_render_pass :: proc(
 				},
 			)
 		}
-		buffer := wgpu.DeviceCreateBufferWithData(
-			renderer.device,
-			&wgpu.BufferWithDataDescriptor{label = "Scrapbot UI Vertices", usage = {.Vertex}},
-			vertices[:],
-		); if buffer == nil { return "failed to upload UI vertices" }; defer wgpu.BufferRelease(buffer)
+		if !wgpu_upload_ui_vertices(renderer, vertices[:]) {
+			return "failed to upload UI vertices"
+		}
 		wgpu.RenderPassEncoderSetViewport(
 			ui_pass,
 			0,
@@ -747,14 +854,14 @@ wgpu_encode_render_pass :: proc(
 		wgpu.RenderPassEncoderSetPipeline(
 			ui_pass,
 			renderer.ui_pipeline,
-		); wgpu.RenderPassEncoderSetBindGroup(ui_pass, 0, renderer.ui_bind_group); wgpu.RenderPassEncoderSetVertexBuffer(ui_pass, 0, buffer, 0, wgpu.WHOLE_SIZE)
+		); wgpu.RenderPassEncoderSetBindGroup(ui_pass, 0, renderer.ui_bind_group); wgpu.RenderPassEncoderSetVertexBuffer(ui_pass, 0, renderer.ui_vertex_buffer, 0, wgpu.WHOLE_SIZE)
 		if ui_state.editor_visible {
 			project_vertex_count := u32(ui_state.editor_paint_start * 6)
 			if project_vertex_count >
 			   0 { wgpu.RenderPassEncoderSetScissorRect(ui_pass, u32(viewport.x), u32(viewport.y), u32(viewport.width), u32(viewport.height)); wgpu.RenderPassEncoderDraw(ui_pass, project_vertex_count, 1, 0, 0) }
 			gizmo_start := u32(
 				ui_state.editor_gizmo_paint_start * 6,
-			); gizmo_end := u32(ui_state.editor_gizmo_paint_end * 6); total := u32(len(vertices))
+			); gizmo_end := u32(ui_state.editor_gizmo_paint_end * 6); total := u32(len(vertices^))
 			wgpu.RenderPassEncoderSetScissorRect(ui_pass, 0, 0, target_width, target_height)
 			if gizmo_start >
 			   project_vertex_count { wgpu.RenderPassEncoderDraw(ui_pass, gizmo_start - project_vertex_count, 1, project_vertex_count, 0) }
@@ -770,7 +877,7 @@ wgpu_encode_render_pass :: proc(
 				u32(viewport.width),
 				u32(viewport.height),
 			)
-			wgpu.RenderPassEncoderDraw(ui_pass, u32(len(vertices)), 1, 0, 0)
+			wgpu.RenderPassEncoderDraw(ui_pass, u32(len(vertices^)), 1, 0, 0)
 		}
 		wgpu.RenderPassEncoderEnd(ui_pass)
 	}
@@ -932,21 +1039,21 @@ wgpu_draw_frame :: proc(
 		return false, false, err
 	}
 	render_prepare_start := time.tick_now()
-	render_list := ecs.build_resource_render_list(
+	ecs.populate_resource_render_list(
 		world,
 		config.resource_registry,
+		&renderer.render_list,
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
 	viewport := ui.editor_viewport(config.ui_state, f32(renderer.width), f32(renderer.height))
 	batches, batch_count := wgpu_prepare_draw_batches(
 		renderer,
-		&render_list,
+		&renderer.render_list,
 		config.resource_registry,
 		u32(viewport.width),
 		u32(viewport.height),
 	)
 	if config.stats != nil { config.stats.draw_batches = batch_count }
-	ecs.destroy_render_list(&render_list)
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
 
@@ -959,7 +1066,6 @@ wgpu_draw_frame :: proc(
 		return false, false, "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
-
 	if err = wgpu_encode_shadow_pass(
 		renderer,
 		encoder,
@@ -980,7 +1086,6 @@ wgpu_draw_frame :: proc(
 	); err != "" {
 		return false, false, err
 	}
-
 	command_buffer := wgpu.CommandEncoderFinish(
 		encoder,
 		&wgpu.CommandBufferDescriptor{label = "Scrapbot Render Commands"},
@@ -1020,21 +1125,21 @@ wgpu_render_offscreen_frame :: proc(
 		}
 	}
 	render_prepare_start := time.tick_now()
-	render_list := ecs.build_resource_render_list(
+	ecs.populate_resource_render_list(
 		world,
 		config.resource_registry,
+		&renderer.render_list,
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
 	viewport := ui.editor_viewport(config.ui_state, f32(width), f32(height))
 	batches, batch_count := wgpu_prepare_draw_batches(
 		renderer,
-		&render_list,
+		&renderer.render_list,
 		config.resource_registry,
 		u32(viewport.width),
 		u32(viewport.height),
 	)
 	if config != nil && config.stats != nil { config.stats.draw_batches = batch_count }
-	ecs.destroy_render_list(&render_list)
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
 
@@ -1047,7 +1152,6 @@ wgpu_render_offscreen_frame :: proc(
 		return "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
-
 	if err := wgpu_encode_shadow_pass(
 		renderer,
 		encoder,
@@ -1083,7 +1187,6 @@ wgpu_render_offscreen_frame :: proc(
 			&wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 		)
 	}
-
 	command_buffer := wgpu.CommandEncoderFinish(
 		encoder,
 		&wgpu.CommandBufferDescriptor{label = "Scrapbot Headless Render Commands"},
@@ -1318,8 +1421,6 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		if live_resize_state.err != "" { return live_resize_state.err }
 		if live_resize_state.should_quit { break }
 		if config.max_frames != 0 && frame_count >= config.max_frames { break }
-		wgpu.InstanceProcessEvents(renderer.instance)
-
 		delta_time := wgpu_next_frame_delta(&previous_tick, frame_count > 0)
 		_, should_quit, draw_err := wgpu_draw_frame(&renderer, world, config, delta_time)
 		if draw_err != "" {

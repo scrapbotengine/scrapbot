@@ -28,6 +28,7 @@ UI_List :: raw.UI_List_Payload
 UI_Progress :: raw.UI_Progress_Payload
 UI_Text :: raw.UI_Text_Payload
 UI_Button :: raw.UI_Button_Payload
+UI_Icon :: raw.UI_Icon
 UI_Input :: raw.UI_Input_Payload
 UI_Checkbox :: raw.UI_Checkbox_Payload
 UI_State :: raw.UI_State_Payload
@@ -104,13 +105,6 @@ ui_panel_default :: proc "contextless" () -> UI_Panel {
 		disclosure_margin = 10,
 		disclosure_gap = 8,
 		disclosure_corner_radius = 1.35,
-		action_size = 22,
-		action_margin = 5,
-		action_icon_inset = 6,
-		action_corner_radius = 4,
-		action_color = {0.76, 0.78, 0.82, 1},
-		action_hover_background = {0.18, 0.20, 0.24, 1},
-		action_active_background = {0.26, 0.10, 0.12, 1},
 	}
 }
 
@@ -135,7 +129,13 @@ ui_text_default :: proc "contextless" () -> UI_Text {
 }
 
 ui_button_default :: proc "contextless" () -> UI_Button {
-	return {color = {1, 1, 1, 1}, size = 16, alignment = .Center}
+	return {
+		color = {1, 1, 1, 1},
+		size = 16,
+		alignment = .Center,
+		icon_inset = 6,
+		icon_stroke = 1.5,
+	}
 }
 
 ui_input_default :: proc "contextless" () -> UI_Input {

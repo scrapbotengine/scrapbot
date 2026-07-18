@@ -688,26 +688,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_panel.disclosure_gap, found = parse_f32(value)
 					case "disclosure_corner_radius":
 						current.ui_panel.disclosure_corner_radius, found = parse_f32(value)
-					case "action_size":
-						current.ui_panel.action_size, found = parse_f32(value)
-					case "action_margin":
-						current.ui_panel.action_margin, found = parse_f32(value)
-					case "action_icon_inset":
-						current.ui_panel.action_icon_inset, found = parse_f32(value)
-					case "action_corner_radius":
-						current.ui_panel.action_corner_radius, found = parse_f32(value)
-					case "action_color":
-						current.ui_panel.action_color, found = parse_vec4(value)
-					case "action_hover_background":
-						current.ui_panel.action_hover_background, found = parse_vec4(value)
-					case "action_active_background":
-						current.ui_panel.action_active_background, found = parse_vec4(value)
 					case "collapsible":
 						current.ui_panel.collapsible, found = parse_bool(value)
 					case "collapsed":
 						current.ui_panel.collapsed, found = parse_bool(value)
-					case "action_enabled":
-						current.ui_panel.action_enabled, found = parse_bool(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -821,7 +805,13 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_button.hover_color, found = parse_vec4(
 							value,
 						); case "active_color":
-						current.ui_button.active_color, found = parse_vec4(value); case:
+						current.ui_button.active_color, found = parse_vec4(value); case "icon":
+						current.ui_button.icon, found = parse_ui_icon(value); case "icon_inset":
+						current.ui_button.icon_inset, found = parse_f32(value); case "icon_stroke":
+						current.ui_button.icon_stroke, found = parse_f32(
+							value,
+						); case "panel_action":
+						current.ui_button.panel_action, found = parse_bool(value); case:
 						return scene, fail(
 							.Invalid_Field,
 							fmt.tprintf("unknown ui_button field '%s'", key),
@@ -1037,10 +1027,6 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   entity.ui_panel.title ==
 			   "" { return scene, fail(.Invalid_Field, fmt.tprintf("collapsible UI panel '%s' requires a title", entity.name)) }
 		if entity.has_ui_panel &&
-		   entity.ui_panel.action_enabled &&
-		   entity.ui_panel.title ==
-			   "" { return scene, fail(.Invalid_Field, fmt.tprintf("action-enabled UI panel '%s' requires a title", entity.name)) }
-		if entity.has_ui_panel &&
 		   entity.ui_panel.collapsed &&
 		   !entity.ui_panel.collapsible { return scene, fail(.Invalid_Field, fmt.tprintf("collapsed UI panel '%s' must be collapsible", entity.name)) }
 		if entity.has_ui_panel && !shared.ui_panel_is_valid(entity.ui_panel) {
@@ -1084,10 +1070,15 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   (entity.ui_text.text == "" ||
 				   entity.ui_text.size <=
 					   0) { return scene, fail(.Invalid_Field, fmt.tprintf("UI text entity '%s' requires text and positive size", entity.name)) }
-		if entity.has_ui_button &&
-		   (entity.ui_button.text == "" ||
-				   entity.ui_button.size <=
-					   0) { return scene, fail(.Invalid_Field, fmt.tprintf("UI button entity '%s' requires text and positive size", entity.name)) }
+		if entity.has_ui_button && !shared.ui_button_is_valid(entity.ui_button) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"UI button entity '%s' requires text or an icon and valid sizing",
+					entity.name,
+				),
+			)
+		}
 		if entity.has_ui_input && entity.ui_input.size <= 0 {
 			return scene, fail(
 				.Invalid_Field,
@@ -1215,6 +1206,22 @@ parse_ui_text_alignment :: proc(value: string) -> (out: shared.UI_Text_Alignment
 		case:
 			return .Left, false
 	}
+}
+
+parse_ui_icon :: proc(value: string) -> (out: shared.UI_Icon, ok: bool) {
+	text, parsed := parse_basic_string(value)
+	if !parsed {
+		return .None, false
+	}
+	switch text {
+		case "", "none":
+			return .None, true
+		case "close":
+			return .Close, true
+		case "plus":
+			return .Plus, true
+	}
+	return .None, false
 }
 
 is_basic_string_body :: proc(body: string) -> bool {

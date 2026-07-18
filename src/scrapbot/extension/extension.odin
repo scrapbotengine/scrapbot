@@ -535,6 +535,58 @@ entity_at :: proc {
 	query_entity_at_descriptor,
 }
 
+Query_Cursor :: struct {
+	next_entity_index: c.int,
+}
+
+query_next :: proc "contextless" (
+	ctx: ^System_Context,
+	terms: []Query_Term,
+	cursor: ^Query_Cursor,
+) -> (
+	Entity,
+	bool,
+) {
+	if ctx == nil || ctx.query_next == nil || cursor == nil {
+		return {}, false
+	}
+	entity := ctx.query_next(ctx, raw_data(terms), c.int(len(terms)), &cursor.next_entity_index)
+	return entity, entity.index >= 0
+}
+
+query_next_components :: proc "contextless" (
+	ctx: ^System_Context,
+	components: []Component,
+	cursor: ^Query_Cursor,
+) -> (
+	Entity,
+	bool,
+) {
+	terms: [MAX_QUERY_TERMS]Query_Term
+	term_slice, ok := terms_from_components(components, terms[:])
+	if !ok {
+		return {}, false
+	}
+	return query_next(ctx, term_slice, cursor)
+}
+
+query_next_descriptor :: proc "contextless" (
+	ctx: ^System_Context,
+	descriptor: Query,
+	cursor: ^Query_Cursor,
+) -> (
+	Entity,
+	bool,
+) {
+	return query_next_components(ctx, descriptor.components, cursor)
+}
+
+next :: proc {
+	query_next,
+	query_next_components,
+	query_next_descriptor,
+}
+
 get_transform :: proc "contextless" (ctx: ^System_Context, entity: Entity) -> (Transform, bool) {
 	if ctx == nil || ctx.get_transform == nil {
 		return {}, false

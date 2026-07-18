@@ -708,6 +708,14 @@ validate_world_integrity :: proc(
 		}
 	}
 	for storage, storage_index in world.custom_components {
+		if storage.storage_index != storage_index {
+			return world_integrity_failure(
+				.Custom_Component,
+				-1,
+				storage_index,
+				"custom component storage index does not match its world slot",
+			)
+		}
 		seen_entities := make(map[int]bool)
 		defer delete(seen_entities)
 		for component, component_index in storage.components {
@@ -729,6 +737,87 @@ validate_world_integrity :: proc(
 				)
 			}
 			seen_entities[component.entity_index] = true
+			if component_index >= len(storage.component_active_indices) {
+				return world_integrity_failure(
+					.Custom_Component,
+					component.entity_index,
+					component_index,
+					"custom component slot omits its dense active index",
+				)
+			}
+			active_index := storage.component_active_indices[component_index]
+			if active_index < 0 ||
+			   active_index >= len(storage.active_component_indices) ||
+			   storage.active_component_indices[active_index] != component_index {
+				return world_integrity_failure(
+					.Custom_Component,
+					component.entity_index,
+					component_index,
+					"custom component dense active index does not match storage slot",
+				)
+			}
+			if component.entity_index >= len(storage.entity_component_indices) ||
+			   storage.entity_component_indices[component.entity_index] != component_index {
+				return world_integrity_failure(
+					.Custom_Component,
+					component.entity_index,
+					component_index,
+					"custom component reverse index does not match storage slot",
+				)
+			}
+			membership_found := false
+			for member_storage_index in world.entities[component.entity_index].custom_component_storage_indices {
+				if member_storage_index == storage_index {
+					membership_found = true
+					break
+				}
+			}
+			if !membership_found {
+				return world_integrity_failure(
+					.Custom_Component,
+					component.entity_index,
+					component_index,
+					"entity custom component membership omits its storage",
+				)
+			}
+		}
+		for component_index, active_index in storage.active_component_indices {
+			if component_index < 0 ||
+			   component_index >= len(storage.components) ||
+			   storage.components[component_index].entity_index == INVALID_COMPONENT_INDEX ||
+			   component_index >= len(storage.component_active_indices) ||
+			   storage.component_active_indices[component_index] != active_index {
+				return world_integrity_failure(
+					.Custom_Component,
+					-1,
+					component_index,
+					"custom component active set references an invalid storage slot",
+				)
+			}
+		}
+	}
+	for entity, entity_index in world.entities {
+		for storage_index in entity.custom_component_storage_indices {
+			if storage_index < 0 || storage_index >= len(world.custom_components) {
+				return world_integrity_failure(
+					.Custom_Component,
+					entity_index,
+					storage_index,
+					"entity custom component membership references an invalid storage",
+				)
+			}
+			_, found := custom_component_index_for_entity(
+				&world.custom_components[storage_index],
+				entity_index,
+			)
+			if !found {
+				return world_integrity_failure(
+					.Custom_Component,
+					entity_index,
+					storage_index,
+					"entity custom component membership has no matching component",
+				)
+			}
 		}
 	}
 	for entity, entity_index in world.entities {
