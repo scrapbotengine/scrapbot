@@ -1,7 +1,7 @@
 # FDR-005: System scheduling
 
 **Status:** Active
-**Last reviewed:** 2026-07-15
+**Last reviewed:** 2026-07-18
 
 ## Overview
 
@@ -24,6 +24,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Conflicting systems preserve registration order across scheduler stages.
 - Luau systems execute serially on the calling thread and act as barriers between native stages.
 - Each parallel native system receives a private deferred-command buffer; commands merge deterministically in system order after the stage completes.
+- The combined frame schedule and native deferred-command buffers persist across frames. The schedule rebuilds only when system topology changes; buffers start small and grow on demand.
 - Every system in a frame observes the same read-only world time resource snapshot.
 - `scrapbot run --scheduler-trace` reports worker count, parallel stage count, and maximum parallel width for the run.
 - The runtime measures each project-Odin and Luau callback at its execution boundary and tags profiler entries with explicit Engine, Project Odin, or Luau provenance rather than inferring origin from names. The editor publishes every five successful frames from a rolling window of the last 50 successful frames and uses project-facing Luau names when provided; failed frames do not enter the sample.
@@ -33,6 +34,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Every runtime-spawned entity lifetime receives a fresh UUID and is registered in the world's UUID lookup, even when its runtime storage slot is reused.
 - Removing and re-adding supported built-in components returns their storage to the same free pools; mesh replacement updates owned storage and renderable records in place.
 - Despawning invalidates the entity's custom-component and legacy-renderable records; later spawns reuse those records instead of growing per-frame query and render scans indefinitely.
+- Multi-component queries choose the smallest requested project-component storage as their candidate set and validate remaining components against those candidates. Entities index their owned custom storages, so despawn and replacement release only attached records rather than scanning every registered component type.
 
 ## Design Decisions
 
@@ -62,7 +64,7 @@ Declared systems now enforce their declared component access at the Luau API bou
 
 **Decision:** Queue Luau entity/component lifecycle requests during system execution, then apply them after the scheduled frame step completes.
 **Why:** Queries and future parallel system batches need stable entity/component storage while systems are running.
-**Tradeoff:** Script code observes structural changes on the next frame, and the first command buffer has a fixed capacity and only supports basic transform/project-component mutation.
+**Tradeoff:** Script code observes structural changes on the next frame, and the command buffer has a hard maximum capacity and only supports basic transform/project-component mutation.
 
 ### 5. Keep Luau on the calling thread
 
@@ -74,7 +76,7 @@ Declared systems now enforce their declared component access at the Luau API bou
 
 **Decision:** Give parallel native systems private deferred-command buffers and merge them in scheduler order after all native work in the stage completes.
 **Why:** A shared command buffer would race even when component accesses do not conflict, and completion-order merging would make lifecycle effects nondeterministic.
-**Tradeoff:** Parallel stages allocate fixed-capacity temporary command buffers and cannot expose one system's structural changes to another system in the same frame.
+**Tradeoff:** Persistent buffers retain their high-water capacity and cannot expose one system's structural changes to another system in the same frame.
 
 ### 7. Recycle runtime entity storage with generation checks
 
@@ -93,6 +95,18 @@ Declared systems now enforce their declared component access at the Luau API bou
 **Decision:** Time each project-native worker callback and serial Luau callback where the scheduler invokes it, tag each fixed-storage entry with explicit provenance, retain the latest 50 successful samples in a fixed ring, and publish their rolling averages every five successful frames.
 **Why:** The live editor needs useful per-system cost data without allocations, string formatting, or full-world work in the frame loop.
 **Tradeoff:** The measurement excludes scheduler planning, deferred-command merging and application, rendering, and GPU execution. Engine provenance is reserved for engine-provided scheduled callbacks, which are not part of the current project callback snapshot. Each measured callback also pays for two monotonic-clock reads.
+
+### 10. Retain stable frame scheduling work
+
+**Decision:** Cache the dependency plan and per-native-system command buffers in the frame runtime. Rebuild the plan only after script or native-system topology changes, and clear rather than recreate command buffers between frames.
+**Why:** A stable game loop should not repeatedly allocate command storage or recompute the same dependency graph. Small initial command buffers keep the persistent footprint proportional to actual structural mutation.
+**Tradeoff:** Every topology-changing reload path must invalidate the cache, and command buffers retain their largest observed capacity until the frame runtime is destroyed.
+
+### 11. Plan sparse queries from indexed membership
+
+**Decision:** Keep bidirectional entity-to-project-component membership indexes and let a query cursor iterate the smallest requested custom storage before testing its remaining requirements.
+**Why:** Sparse project components should make query and teardown work proportional to actual membership rather than world capacity or the number of registered component types.
+**Tradeoff:** Every add, remove, restore, replacement, and despawn path must maintain both indexes. Cursor order is deliberately unspecified and must not become project semantics.
 
 ## Related
 

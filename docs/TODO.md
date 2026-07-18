@@ -135,3 +135,14 @@
 - [x] Add a Linux AddressSanitizer test lane.
 - [x] Run bounded lifecycle growth thresholds in the default suite and Linux CI.
 - [ ] Add OS resident-memory sampling for foreign-library and GPU allocations.
+
+## Performance
+
+- [x] Add linear query cursors for Luau and native per-frame systems.
+- [x] Cache stable frame schedules and reuse grow-on-demand native command buffers.
+- [x] Reuse entity slots, render-list storage, UI CPU vertices, and the WGPU UI vertex buffer.
+- [x] Refresh profiler rows without rebuilding unrelated editor snapshots.
+- [x] Plan queries from the smallest matching component storage instead of scanning world slots.
+- [x] Release custom component records on despawn without scanning every registered storage.
+- [x] Add dirty-root UI layout and retained render batching.
+- [ ] Add GPU timing diagnostics without blocking or driver-sensitive per-frame readbacks.

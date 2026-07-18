@@ -13,6 +13,8 @@ Scrapbot is maintained as an agent-first codebase. Before opening a PR, read [`C
 
 The high-level roadmap is below. Active follow-up work lives in [`docs/TODO.md`](docs/TODO.md), with architecture and feature decisions tracked in [`docs/adr/`](docs/adr/) and [`docs/fdr/`](docs/fdr/). Project vocabulary lives in [`docs/GLOSSARY.md`](docs/GLOSSARY.md).
 
+The documentation website includes a conceptual [ECS overview](https://scrapbot.dev/guides/ecs/) plus exact references for engine components, Luau, native extensions, project files, and ECS UI.
+
 ## Current Runtime Slice
 
 Scrapbot currently has a small Odin CLI and runtime skeleton:
@@ -104,7 +106,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [ ] Static native packaging
 - Developer Experience
   - [ ] Script/native diagnostics
-  - [ ] Performance documentation
+  - [x] Performance documentation
 
 ### Rendering
 

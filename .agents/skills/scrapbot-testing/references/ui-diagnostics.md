@@ -4,7 +4,7 @@ Use this workflow for hover, click, focus, typing, scrolling, clipping, popup, a
 
 ## Tight debugging loop
 
-1. Create a small versioned script under `tests/fixtures/ui/` when it is a durable regression, or under `/tmp` for one-off exploration. Use `target.part = "panel_action"` to click or tightly capture a panel's built-in trailing title action instead of guessing an offset inside the panel title.
+1. Create a small versioned script under `tests/fixtures/ui/` when it is a durable regression, or under `/tmp` for one-off exploration. Use `target.part = "panel_action"` to click or tightly capture the first direct child button placed in a panel's trailing title band instead of guessing an offset inside the panel title.
 2. Select targets by stable UUID or name when available. Use visible text for user-facing controls. Add `origin` (`scene`, `runtime`, or `editor`) and zero-based `occurrence` to disambiguate.
 3. Reproduce the minimum interaction sequence. The driver automatically scrolls clipped targets into view.
 4. Assert the state that proves the behavior: `visible`, `hovered`, `active`, `focused`, `text`, or `inside_parent`.
@@ -44,7 +44,7 @@ Example script:
 ## Actions
 
 - `click`, `hover`: target a retained UI node.
-- `drag`: press the target center, move by `delta_x` and `delta_y`, then release on the following frame.
+- `drag`: press the target center, move by `delta_x` and `delta_y`, then release. Set optional positive `frames` to interpolate the movement across that many input frames for sustained gestures and performance diagnostics; omitted or zero preserves the one-frame move.
 - `scroll`: target a node and supply `wheel_y`.
 - `type`: target an input and supply `text`.
 - `key`: supply `key`: `left`, `right`, `up`, `down`, `home`, `end`, `backspace`, `delete`, `tab`, `enter`, `escape`, `select_all`, `save`, `undo`, `redo`, `editor_toggle`, `run_stop`, or `pause_step`.

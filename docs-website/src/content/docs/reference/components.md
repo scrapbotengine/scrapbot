@@ -48,7 +48,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_progress` | UI indicator | Track and clamped progress fill. |
 | `scrapbot.ui_state` | UI interaction | Renderer-owned interaction values and edge revisions. |
 | `scrapbot.ui_text` | UI content | Text label. |
-| `scrapbot.ui_button` | UI content | Activatable text button. |
+| `scrapbot.ui_button` | UI content | Activatable text and/or SDF-icon button. |
 | `scrapbot.ui_input` | UI content | Single-line text or numeric input. |
 | `scrapbot.ui_checkbox` | UI content | Boolean control. |
 
@@ -154,10 +154,9 @@ Speed and smoothness must be positive; scrollbar geometry is non-negative. Desce
 | `title_color: Vec4`, `title_background: Vec4` | White title text and transparent background by default. |
 | `title_size: number`, `title_height: number` | `12`, `32`; both must be positive when a title is present. |
 | `disclosure_size`, `disclosure_margin`, `disclosure_gap`, `disclosure_corner_radius` | `10`, `10`, `8`, `1.35`; all non-negative. |
-| `action_size`, `action_margin`, `action_icon_inset`, `action_corner_radius` | `22`, `5`, `6`, `4`; all non-negative, and twice the inset cannot exceed the action size. |
-| `action_color`, `action_hover_background`, `action_active_background` | Cross-icon and interaction colors. |
 | `collapsible: bool`, `collapsed: bool` | A collapsed panel must be collapsible. |
-| `action_enabled: bool` | Shows an independent trailing title action. Requires a title; activation advances the panel's `ui_state.activation_revision`. |
+
+Panels do not own a special close/remove control. Any direct child `ui_button` with `panel_action = true` is placed in the trailing title band and remains interactive while the panel is collapsed. Multiple actions lay out from right to left.
 
 ### `scrapbot.ui_table`
 
@@ -214,10 +213,13 @@ This component is renderer-owned and read-only. It is queryable from Luau and na
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `text`, `font` | Empty | Text is required and non-empty. Empty font selects Inter. |
+| `text`, `font` | Empty | Text is optional when an icon is present. Empty font selects Inter. |
 | `color`, `size`, `alignment` | White, `16`, `center` | Normal label style. |
 | `hover_background`, `active_background` | Transparent | State-specific layout background overrides. |
 | `hover_color`, `active_color` | Transparent | State-specific text colors; transparent falls back to normal color. |
+| `icon` | `none` | `none`, `close`, or `plus`; an icon-only button needs no text. |
+| `icon_inset`, `icon_stroke` | `6`, `1.5` | Non-negative SDF icon geometry. Twice the inset cannot exceed the button's layout width or height. |
+| `panel_action` | `false` | Place this direct child button in its parent's panel title band. |
 
 ### `scrapbot.ui_input`
 

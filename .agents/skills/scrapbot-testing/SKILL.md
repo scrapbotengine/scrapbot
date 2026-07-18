@@ -97,7 +97,7 @@ bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless \
   --framegrab /tmp/scrapbot-component-picker.png
 ```
 
-Use `tests/fixtures/ui/component-picker.json` when changing component authoring, live component mutation, registry-driven discovery, namespace grouping, panel title actions, or component-menu rendering. It proves running-mode attachment/removal, Stop-time disposal, stopped-mode membership changes, picker hover feedback, and the reusable panel-action hit target through `target.part = "panel_action"`.
+Use `tests/fixtures/ui/component-picker.json` when changing component authoring, live component mutation, registry-driven discovery, namespace grouping, panel title actions, or component-menu rendering. It proves running-mode attachment/removal, Stop-time disposal, stopped-mode membership changes, picker hover feedback, and reusable title-icon button targeting through `target.part = "panel_action"`.
 
 Use `tests/fixtures/ui/playback-authoring.json` when changing Play, Step, Stop, authoring baselines, dirty-state preservation, or world replacement. It creates an unsaved scene entity, runs a complete Play/Stop round trip, and asserts that the authored entity remains visible.
 
@@ -111,11 +111,13 @@ Use `tests/fixtures/ui/resource-to-entity-selection.json` when changing editor s
 
 Use `tests/fixtures/ui/resource-inputs.json` when changing inline resource input bindings or playback behavior. It edits one material channel through typing and another through whole-control scrubbing while simulation is running, waits through inspector refreshes, and asserts both live values.
 
-Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or Play/Stop and Pause/Step command shortcuts. It drives the same editor keyboard input used by the platform, verifies every transport transition, proves that reopening over a running game temporarily pauses it, resets the scene, and proves that close-time resume survives that world replacement. Pair it with the state-machine unit test for the hidden close-time transition.
+Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or transport command shortcuts. It drives the same editor keyboard input used by the platform, verifies Pause, resume, and the temporary pause caused by closing and reopening over a running game. Pair it with the state-machine and playback-restoration unit tests for Stop, Step, world replacement, and hidden close-time transitions.
+
+Use `tests/fixtures/ui/playback-warning.json` when changing playback-mode chrome or disposable-edit messaging. It captures the complete editor root during playback so the top-bar tint, viewport frame, and status treatment can be reviewed together. Pair it with the transport unit test, which crosses transport states and asserts the exact status copy plus both playback and stopped style tokens.
 
 Use `tests/fixtures/ui/system-profiler.json` when changing system registration, provenance, timing publication, or the editor profiler. It asserts the complete engine profiler topology in the ECS UI and captures the Systems panel.
 
-Use `tests/fixtures/ui/ui-performance.json` for repeatable editor-UI performance comparisons. It selects the component-heavy Icosphere inspector, waits 80 frames for the rolling profiler to settle, and captures the Systems panel. Pair it with `--ui-dump`, then read `__scrapbot_editor_system_time_2` from the dump for the `scrapbot.ui` average. Treat timings as same-machine before/after evidence; the deterministic hierarchy tests enforce the underlying retained traversal contract in CI.
+Use `tests/fixtures/ui/ui-performance.json` for repeatable editor-UI performance comparisons. It selects the Sun inspector, sustains a numeric scrub across 30 input frames, and captures the Systems panel after the rolling profiler publishes. Pair it with `--ui-dump`, then read `__scrapbot_editor_system_time_2` from the dump for the `scrapbot.ui` average. Treat timings as same-machine before/after evidence; the deterministic hierarchy and no-refresh-during-scrub tests enforce the underlying retained traversal contract in CI.
 
 The retained UI tests instrument layout and paint only under `ODIN_TEST`. Keep their large-tree node and edge visit assertions intact: they are the deterministic CI guard against quadratic child discovery, while the value-mutation matrix ensures already-attached component updates do not trigger structural synchronization. Do not replace either contract with a wall-clock threshold.
 

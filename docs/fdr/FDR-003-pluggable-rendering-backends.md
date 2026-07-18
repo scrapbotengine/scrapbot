@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-16
+**Last reviewed:** 2026-07-18
 
 ## Overview
 
@@ -62,9 +62,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ### 6. Use ECS renderable queries as the first backend boundary
 
-**Decision:** Change-driven engine synchronization derives internal render-instance components from valid transform, geometry, and material references and maintains dense active sets for renderables, cameras, and each light kind. ECS builds a short-lived render list from those sets.
+**Decision:** Change-driven engine synchronization derives internal render-instance components from valid transform, geometry, and material references and maintains dense active sets for renderables, cameras, and each light kind. ECS refreshes a reusable render list from those sets, while WGPU retains draw grouping until the world's render-topology revision changes.
 **Why:** Backends need coherent scene instances, not just global component counts, and this keeps GPU code out of ECS storage without rescanning unchanged membership across the complete world every frame. See ADR-024.
-**Tradeoff:** Every structural render mutation must mark its entity dirty, active sets must repair indices after swap removal, and the first uniform layout caps a frame at 64 instances.
+**Tradeoff:** Every structural render mutation must mark its entity dirty and invalidate retained grouping, active sets must repair indices after swap removal, and the first uniform layout caps a frame at 64 instances.
 
 ### 7. Share geometry and material resources by handle
 

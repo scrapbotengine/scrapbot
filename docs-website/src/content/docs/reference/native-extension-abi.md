@@ -99,7 +99,7 @@ The context includes:
 
 - a read-only `time` snapshot with delta time, smoothed delta time, elapsed time, and frame index;
 - extension `userdata`;
-- query helpers for component-name terms;
+- cursor-based linear query iteration plus count and indexed compatibility helpers for component-name terms;
 - `get_transform` and `set_transform`;
 - `get_vec3_field` and `set_vec3_field` for schema-backed custom components;
 - `get_ui_component` and `set_ui_component` for complete public ECS UI value and style payloads;
@@ -111,7 +111,7 @@ Return `nil` on success or a static error string on failure. The host enforces d
 
 ## ECS UI payloads
 
-`UI_Component_Payload` is the fixed-layout transport for every public `scrapbot.ui_*` component. It includes the complete box, responsive sizing policy, progress value, control value, and style structures used by scene TOML, Luau, and editor chrome. The component name selects the relevant typed member. `UI_Layout_Payload` carries minimum size, per-axis fill and fit-to-content flags, and fixed-child behavior inside fill stacks; `UI_Progress_Payload` carries value, maximum, track/fill styling, inset, corner radius, and direction. Scroll-area payloads include complete scrollbar geometry and colors; panel payloads include disclosure and trailing-action styling; input and checkbox payloads include their complete focus, validation, prefix, caret, border, checkmark, and corner styling.
+`UI_Component_Payload` is the fixed-layout transport for every public `scrapbot.ui_*` component. It includes the complete box, responsive sizing policy, progress value, control value, and style structures used by scene TOML, Luau, and editor chrome. The component name selects the relevant typed member. `UI_Layout_Payload` carries minimum size, per-axis fill and fit-to-content flags, and fixed-child behavior inside fill stacks; `UI_Progress_Payload` carries value, maximum, track/fill styling, inset, corner radius, and direction. Scroll-area payloads include complete scrollbar geometry and colors; panel payloads include disclosure styling; button payloads include reusable icon geometry and panel-title placement; input and checkbox payloads include their complete focus, validation, prefix, caret, border, checkmark, and corner styling.
 
 Text, font resource names, and input prefixes use bounded byte arrays inside the payload instead of allocator-owned Odin strings. The current limits are 1,023 text bytes, 255 font-name bytes, and 63 prefix bytes. Callers must copy values they want to retain; the payload itself remains caller-owned.
 

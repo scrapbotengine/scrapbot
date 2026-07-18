@@ -169,6 +169,12 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 **Why:** Native extensions and future engine libraries can register component schemas before Luau executes, and scripts still need typed handles for queries, systems, access declarations, and lifecycle commands.
 **Tradeoff:** The call is dynamic and errors at runtime when a name is not registered. Generated types can describe the payload shape after `scrapbot check`, but the name-to-type cast remains explicit in script code.
 
+### 17. Execute query iteration as one forward pass
+
+**Decision:** Drive query-system callbacks, `query:each`, and bulk views with a cursor that advances through world slots once. Keep count and indexed lookup as compatibility helpers, but do not compose them for frame-system iteration.
+**Why:** Counting and then resolving every visible index from entity zero made a dense query quadratic in world capacity. A monotonic cursor makes ordinary iteration linear in candidate slots while preserving stable entity order and deferred structural mutation.
+**Tradeoff:** Bulk views still perform a separate count pass to pre-size their Luau table, and component matching still scans query terms per candidate until storage-driven query planning exists.
+
 ## Related
 
 - **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008, ADR-010, ADR-012, ADR-029

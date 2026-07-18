@@ -77,15 +77,11 @@ motion_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 	}
 	rigidbody_query := scrapbot.query(components[:])
 
-	count := scrapbot.count(ctx, rigidbody_query)
-	if count < 0 {
-		return "failed to query rigidbodies"
-	}
-
-	for i in 0..<count {
-		entity, entity_ok := scrapbot.entity_at(ctx, rigidbody_query, i)
+	cursor: scrapbot.Query_Cursor
+	for {
+		entity, entity_ok := scrapbot.next(ctx, rigidbody_query, &cursor)
 		if !entity_ok {
-			continue
+			break
 		}
 
 		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
@@ -110,6 +106,8 @@ motion_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 	return nil
 }
 ```
+
+Use `scrapbot.next` for frame-system iteration. Its cursor advances once through the smallest requested project-component storage, or through world slots when no project component narrows the query. Candidate order and cursor representation are internal details. The indexed `scrapbot.count` and `scrapbot.entity_at` helpers remain available for tooling and explicit random access, but composing them in a loop repeatedly rescans candidates.
 
 Project system callbacks are ordinary contextless Odin procedures. The extension helper retains their bindings and routes the host's C-compatible callback through an internal trampoline; only the exported `scrapbot_extension_register` entry point needs `proc "c"` in project source.
 

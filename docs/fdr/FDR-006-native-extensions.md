@@ -80,6 +80,12 @@ Native extensions let project code add compiled engine/library behavior incremen
 **Why:** Platform dynamic loaders can keep returning the already loaded library for the same path. A source-stamped filename gives each changed build a fresh path while the previous runtime can remain alive until the new runtime is ready.
 **Tradeoff:** Source stamps are still detected by periodic polling, and the build directory needs future stale-output cleanup.
 
+### 8. Prefer cursor iteration for native frame systems
+
+**Decision:** Add an ABI-safe query cursor and `scrapbot.next` wrapper that advances through matching entities in one forward pass. Retain `count` and `entity_at` for compatibility and random-access tooling.
+**Why:** The former count-plus-index loop rescanned the complete world for every match and became quadratic for dense systems. Native gameplay examples now demonstrate the linear iterator.
+**Tradeoff:** The cursor currently scans world slots and checks every query term. A future storage-driven planner can choose the smallest component set without changing the public iteration shape.
+
 ## Related
 
 - **ADRs:** ADR-008, ADR-010, ADR-012, ADR-025, ADR-029

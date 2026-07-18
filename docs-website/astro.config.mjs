@@ -28,10 +28,12 @@ export default defineConfig({
 				{
 					label: 'Engine Guides',
 					items: [
+						{ label: 'ECS Overview', slug: 'guides/ecs' },
 						{ label: 'ECS UI', slug: 'guides/ecs-ui' },
 						{ label: 'Luau Scripting', slug: 'guides/luau-scripting' },
 						{ label: 'Native Extensions', slug: 'guides/native-extensions' },
 						{ label: 'Live Editor', slug: 'guides/live-editor' },
+						{ label: 'Performance', slug: 'guides/performance' },
 						{ label: 'Rendering And Testing', slug: 'guides/rendering-testing' },
 					],
 				},

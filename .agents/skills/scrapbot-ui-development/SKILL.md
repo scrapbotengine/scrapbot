@@ -29,6 +29,9 @@ For every public `scrapbot.ui_*` field or component, audit the applicable owners
 ## Reuse Rules
 
 - Build editor chrome from ordinary public components and typed ECS setters. Private helpers may apply a theme or compose a tree, but must not own duplicate widget storage, layout algorithms, interaction mechanics, or styles.
+- Compose panel title controls from ordinary direct-child `ui_button` entities with public icon and `panel_action` fields. Never add a singular close/remove payload, hit-test path, or paint path to `ui_panel`; multiple title actions must remain possible.
+- Keep reusable interaction mechanics semantic-free. Emit engine-internal generic activation/change events from the shared UI pass for editor orchestration, and expose project-observable edges through public `ui_state` revisions; do not dispatch editor commands from button, panel, list, input, or checkbox mechanics.
+- Share popup ancestry, placement, flip, and viewport-clamping helpers across consumers. Role-specific popup content may differ, but it must not duplicate geometry or containment algorithms.
 - Add a reusable component or field when editor behavior could benefit a project. Do not repair editor layout through role-specific post-layout geometry mutation.
 - Start constructors from the canonical public defaults. Keep every style overridable per entity; a zero corner radius must produce square geometry where the component supports corners.
 - Use UUIDs for parent relationships and durable selection. Never bind UI hierarchy to entity names or storage indices.
@@ -36,6 +39,7 @@ For every public `scrapbot.ui_*` field or component, audit the applicable owners
 - Reuse removed component slots and release owned strings on removal/despawn. Do not add per-frame scans over storage capacity or whole-world reconciliation.
 - Preserve the current editor look unless the user requests a visual change. Theme values belong in editor composition; control geometry and style fields remain public.
 - Drive generic inspector fields from `component.Registry` definitions and typed entity snapshots. Do not add editor-only convenience fields to public registry definitions unless parser, Luau, native-extension, serialization, and runtime-storage contracts all support the same representation. Keep engine-derived and opaque values read-only until that contract exists.
+- Treat `component.Registry` storage kind and lifecycle as the canonical membership contract. Editor pickers and structural history must not maintain parallel component enums or authorability switches; component add/remove should snapshot and mutate only the affected storage.
 
 ## Verification
 
