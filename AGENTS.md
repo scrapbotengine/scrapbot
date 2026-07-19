@@ -11,16 +11,6 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - This project is in super-early development.
 - Breaking changes are 100% acceptable and we don't need to make changes backward-compatible unless specifically requested by the user.
 
-## Worktrees And Multi-Agent Work
-
-- Inspect `git status`, the current branch, and the relevant diff before editing. Existing changes belong to the user or another agent unless your task explicitly owns them.
-- Preserve unrelated edits. Do not reset, overwrite, reformat, stage, or commit files outside your assigned scope.
-- When coordinating multiple agents, partition work by ownership boundary and file set. Avoid assigning the same source file to multiple writers; give shared registries, generated files, documentation indexes, and integration tests to one integration owner.
-- Give delegated tasks concrete acceptance criteria, allowed files, required records/skills, and verification commands. Ask each agent to report files changed, tests run, and unresolved risks.
-- Treat agent output as a proposed change, not proof of correctness. The integrating agent reviews the combined diff, resolves cross-surface gaps, runs the appropriate integration checks, and owns the final commits.
-- Use the orchestrator-provided worktree and branch. Do not create a nested worktree or switch branches unless the workflow explicitly assigns that responsibility.
-- Keep commits coherent and run the tracked hooks. Never bypass validation with `--no-verify`.
-
 ## Architectural Invariants
 
 - Built-in component changes are cross-surface changes. Audit shared types/defaults/validation, ECS storage and lifecycle, scene TOML, Luau queries and deferred mutation, generated Luau declarations, native ABI/wrappers, examples, tests, and public documentation.
