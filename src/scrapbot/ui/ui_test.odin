@@ -2690,6 +2690,17 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	)
 	delta, run := consume_simulation_delta(state, 0.2)
 	testing.expect(t, !run && delta == 0)
+	press(state, &world, pause)
+	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(
+		t,
+		world.ui_texts[status_entity.ui_text_index].text ==
+		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
+	)
+	delta, run = consume_simulation_delta(state, 0.2)
+	testing.expect(t, run && delta == 0.2)
+	press(state, &world, pause)
+	testing.expect(t, !state.editor_simulation_playing)
 
 	press(state, &world, step)
 	delta, run = consume_simulation_delta(state, 0.2)

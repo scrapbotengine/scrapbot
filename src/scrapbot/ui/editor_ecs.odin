@@ -125,7 +125,11 @@ editor_ui_handle_activation :: proc(
 					editor_play(state)
 					return
 				case .Transport_Pause:
-					editor_pause(state)
+					if state.editor_simulation_playing {
+						editor_pause(state)
+					} else if !state.editor_simulation_stopped {
+						editor_play(state)
+					}
 					return
 				case .Transport_Stop:
 					editor_stop(state)

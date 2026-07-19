@@ -26,7 +26,7 @@ The top bar contains the Scrapbot title and project simulation controls. The bot
 | Control | Behavior |
 | --- | --- |
 | Play | Run project systems with normal frame deltas. |
-| Pause | Freeze project systems and world time at their current state. Rendering, editor UI, scene-camera navigation, picking, and gizmos remain responsive. |
+| Pause | Toggle between running and paused playback. While paused, rendering, editor UI, scene-camera navigation, picking, and gizmos remain responsive. |
 | Stop | Restore the in-memory authoring state captured when playback began, discard playback mutations and runtime spawns, retain loaded Luau and Odin systems, and remain stopped. |
 | Step | While pausing normal playback, run one fixed 1/60-second project update. |
 | Undo / Redo | While stopped, traverse complete authoring transactions. The controls dim when no matching history step is available. |
