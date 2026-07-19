@@ -86,6 +86,8 @@ Use `--frames` for automated smoke checks so the command returns. Without `--fra
 
 Headless framegrab renders the same resource-backed ECS path into an offscreen texture, reads back the final frame, and writes a PNG:
 
+After changing instance storage, batching, culling, shadows, indirect drawing, or WGPU bind layouts, run `mise test-gpu`. It renders an 81-instance stress fixture through compute visibility and `--cpu-culling`, validates structured `render_stats` and steady-state upload reuse, rejects visually empty output, and requires byte-identical PNG output.
+
 ```sh
 bin/scrapbot run examples/minimal --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png
 bin/scrapbot run examples/ecs-showcase --backend wgpu --headless --frames 20 --framegrab /tmp/scrapbot-showcase.png

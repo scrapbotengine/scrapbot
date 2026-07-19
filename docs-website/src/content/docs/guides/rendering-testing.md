@@ -6,7 +6,13 @@ description: Run the null and WebGPU backends, smoke-test projects, and verify g
 Scrapbot has two rendering paths today:
 
 - `null`: headless renderer for fast smoke tests.
-- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared base-color, emissive HDR, and PNG-textured materials, ECS lighting, directional shadows, bloom, tone mapping, and instanced draw batching.
+- `wgpu`: SDL3 plus `wgpu-native` for indexed geometry, shared base-color, emissive HDR, and PNG-textured materials, ECS lighting, directional shadows, bloom, tone mapping, persistent GPU instances, compute frustum culling, visibility compaction, and indexed indirect drawing.
+
+WGPU retains geometry/material batches across transform-only frames. Stable ECS render slots address a backend-owned instance table, and only changed contiguous ranges are uploaded. One compute pass produces separate camera-visible and shadow-visible instance lists plus their indirect counts. The first implementation supports 131,072 instance slots and 64 retained batches; it uses conservative geometry-derived bounding spheres and one portable indirect call per batch.
+
+Pass `--cpu-culling` to run the same bounding-sphere tests and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default.
+
+Run `mise test-gpu` for the bounded GPU acceptance gate. It renders an 81-instance stress fixture through both visibility paths, requires byte-identical frames with meaningful color variance, and verifies that an unchanged second frame performs no additional instance upload.
 
 The WGPU path decodes material base colors to linear space and accumulates lighting plus material emission into an `RGBA16Float` scene target. Five successively smaller bright-pass levels produce broad bloom before one ACES-style tone-map pass presents through an sRGB target. Project UI, gizmos, and editor chrome render afterward, so world bloom never softens text or controls. A lit scene with no ambient, directional, point, or emissive contribution therefore renders its geometry black.
 

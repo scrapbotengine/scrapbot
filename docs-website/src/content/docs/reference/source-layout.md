@@ -33,6 +33,6 @@ Large integration packages are split by responsibility without introducing artif
 - `native.odin` owns loaded extensions and host ABI dispatch; `build.odin` and `files.odin` own compilation and source/output discovery.
 - `ecs/ui_components.odin` owns typed public UI storage/lifecycle; `script/ui_mutation.odin`, `native/ui.odin`, and `extension/ui.odin` expose the same component contract to project code.
 - `ui/ui.odin` owns generic retained behavior; `ui/editor_ecs.odin` composes editor chrome from public components, while `ui/editor_inspector_binding.odin` keeps editor-only field binding and history outside generic control mechanics.
-- `wgpu.odin` owns frame rendering and command encoding; `wgpu_setup.odin`, `wgpu_post.odin`, `wgpu_shader.odin`, and `wgpu_math.odin` isolate device setup, HDR/bloom resources, shaders, and transform concerns.
+- `wgpu.odin` owns frame rendering and command encoding; `wgpu_setup.odin`, `wgpu_post.odin`, `wgpu_shader.odin`, and `wgpu_math.odin` isolate device setup, HDR/bloom resources, shaders, and transform concerns. `wgpu_gpu_driven.odin` and `wgpu_gpu_driven_shader.odin` own persistent instance storage, compute visibility, compacted batch slices, and indirect drawing.
 
 When adding engine code, use the narrowest package and file that owns the behavior. Keep the root `scrapbot` package focused on orchestration and the public API used by tools.

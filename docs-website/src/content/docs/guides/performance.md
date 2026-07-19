@@ -47,7 +47,8 @@ The cursor chooses the smallest requested project-component storage as its candi
 - System dependency plans rebuild only when registered system topology changes.
 - Runtime entity slots use a free-index stack and generation increments, so spawn does not scan historical world capacity and stale handles remain invalid.
 - Project-component membership is indexed in both directions. Queries can start from sparse storage, and despawn releases only the custom storages owned by that entity.
-- Renderable, camera, and light membership follows structural dirty queues. Render-list CPU storage is reused each frame, while WGPU draw grouping rebuilds only when render topology changes; transform, light, and material values still refresh in place.
+- Renderable, camera, and light membership follows structural dirty queues. Render-list CPU storage is reused each frame, while WGPU draw grouping and aligned visibility slices rebuild only when render topology changes.
+- WGPU addresses persistent instance records by stable ECS render slot, uploads contiguous changed ranges, computes camera and shadow frustum visibility on the GPU, and obtains per-batch instance counts through indexed indirect arguments. The first backend limit is 131,072 slots and 64 geometry/material batches.
 - UI structural synchronization is dirty-entity driven. Stable project and editor roots skip layout independently when their topology, layout values, and viewport are unchanged; painting and interaction remain live.
 - WGPU geometry and materials are cached by resource handle and version. UI vertex CPU storage and the GPU vertex buffer grow to capacity and are reused.
 - Editor entity/resource/inspector snapshots refresh at tool cadence, while profiler revisions update only profiler rows and direct manipulation stays frame-responsive.
@@ -58,6 +59,7 @@ The cursor chooses the smallest requested project-component storage as its candi
 - Use `--scheduler-trace` to inspect worker count, parallel stages, and maximum native width.
 - Use the Systems panel and `tests/fixtures/ui/ui-performance.json` for editor interaction costs.
 - Use bounded headless WGPU plus a framegrab when renderer correctness or submission cost matters.
+- Inspect structured `render_stats` for GPU-driven mode, slot and visibility capacity, occupied slot span, and cumulative instance upload calls/bytes. These counters require no GPU readback.
 - Use external GPU tooling when you need whole-frame or per-pass GPU timings, shader costs, bandwidth, or occupancy detail. The Systems panel deliberately avoids synchronous GPU readback because it can distort runtime performance.
 
 Avoid absolute cross-machine budgets in tests. Scrapbot's regression suite instead checks bounded work, topology reuse, linear cursor behavior, stable storage, zero post-teardown allocator bytes, and same-machine before/after measurements.

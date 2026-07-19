@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-19
 
 ## Overview
 
@@ -19,6 +19,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Project UI, editor gizmos, and editor chrome render after world postprocessing and do not bloom.
 - Eligible entities receive internal render-instance components automatically.
 - Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
+- WGPU keeps a persistent slot-addressed GPU instance table, uploads changed ranges, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
+- `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
+- Structured run results include renderer counters for GPU-driven mode, instance and visibility capacity, occupied slot span, and cumulative instance upload calls and bytes. They deliberately avoid synchronous visibility or timing readback.
 - The `wgpu` backend can also render a losslessly compressed headless final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
 - WGPU sizes the live world and project UI to the complete available viewport, deriving camera aspect from its dimensions, then paints engine chrome in a separate overlay pass.
@@ -104,13 +107,19 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 **Why:** Bloom requires values above display white, broad halos need multiple spatial scales, and text must remain crisp. See ADR-029.
 **Tradeoff:** The current threshold, bloom weights, and exposure are fixed engine defaults, and the backend performs sixteen fullscreen passes per frame.
 
+### 13. Keep visibility and indirect state in the backend
+
+**Decision:** Preserve stable ECS render slots while WGPU owns persistent instance storage, compute frustum culling, per-batch visible-instance compaction, and indexed indirect arguments. Camera and shadow visibility use separate outputs. See ADR-034.
+**Why:** Unchanged instance data should stay resident, large scenes should not rebuild bounded uniform arrays, and project/ECS data should remain independent from WGPU objects.
+**Tradeoff:** The initial path has explicit 131,072-slot and 64-batch limits, uses conservative bounding spheres, and still encodes one indirect call per CPU-retained batch.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions
 
-- How should the render packet evolve for richer texture channels, cascaded shadows, and culling?
+- How should the render packet evolve for richer texture channels, cascaded shadows, occlusion, and LOD?
 - How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

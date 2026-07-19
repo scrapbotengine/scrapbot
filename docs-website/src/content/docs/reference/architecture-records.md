@@ -46,6 +46,7 @@ Current decisions:
 | ADR-031 | Commit project Save as one recoverable transaction |
 | ADR-032 | Separate project source, engine state, and products |
 | ADR-033 | Model spatial hierarchy with local transforms and UUID parents |
+| ADR-034 | Keep GPU visibility backend-owned |
 
 ## FDRs
 
