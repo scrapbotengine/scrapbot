@@ -5600,6 +5600,31 @@ test_editor_gizmo_appends_three_axis_lines_and_handles :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_camera_mesh_appends_editor_viewport_lines :: proc(t: ^testing.T) {
+	state := new(State)
+	defer free(state)
+	state.editor_camera_mesh_segment_count = 2
+	state.editor_camera_mesh_segments[0] = {
+		start = {10, 20},
+		end = {30, 40},
+		color = {0.4, 0.7, 1, 1},
+		thickness = 1.5,
+	}
+	state.editor_camera_mesh_segments[1] = {
+		start = {30, 40},
+		end = {50, 20},
+		color = {1, 0.7, 0.2, 1},
+		thickness = 2.25,
+	}
+
+	testing.expect(t, append_editor_camera_mesh(state) == "")
+	testing.expect(t, state.paint_count == 2)
+	testing.expect(t, state.paint[0].kind == .Line)
+	testing.expect(t, state.paint[0].line_start == shared.Vec2{10, 20})
+	testing.expect(t, state.paint[1].line_thickness == 2.25)
+}
+
+@(test)
 test_editor_gizmo_modes_render_rings_and_square_scale_handles :: proc(t: ^testing.T) {
 	state := new(
 		State,

@@ -539,6 +539,14 @@ run_frame_system_unmeasured :: proc(
 		if ui.editor_pointer_over_gizmo_toolbar(config.ui_state, pointer) {
 			gizmo_pointer = {}
 		}
+		editor_camera_mesh_system(
+			config.ui_state,
+			world,
+			viewport,
+			camera,
+			has_camera,
+			config.ui_state.editor_visible,
+		)
 		editor_transform_gizmo_system(
 			config.ui_state,
 			world,

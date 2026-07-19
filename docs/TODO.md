@@ -113,6 +113,7 @@
 - [x] Add XY/XZ/YZ plane handles, camera-plane free translation, and uniform XYZ scaling.
 - [x] Add an ECS-owned World/Local gizmo orientation with viewport controls and stable drag bases.
 - [x] Add an editor-origin ECS scene camera with RMB-captured WASD, Space, and Ctrl fly navigation.
+- [x] Render project camera entities as editor-only wireframe camera meshes from the scene viewpoint.
 - [x] Add live inspector editing for transform, camera, light, and custom Vec3 fields.
 - [x] Add numeric validation, keyboard stepping, full-control scrubbing, and bounded inspector undo/redo.
 - [x] Unify numeric, boolean, and transform-gizmo edits as UUID-addressed authoring transactions.

@@ -92,6 +92,14 @@ Editor_Gizmo_Handle :: enum {
 	Center,
 }
 EDITOR_GIZMO_RING_POINT_COUNT :: 64
+EDITOR_CAMERA_MESH_MAX_SEGMENTS :: 320
+
+Editor_Camera_Mesh_Segment :: struct {
+	start, end: shared.Vec2,
+	color: shared.Vec4,
+	thickness: f32,
+}
+
 Font_Atlas :: struct {
 	glyphs: ^[FONT_CHAR_COUNT]shared.Font_Glyph,
 	ascender: f32,
@@ -307,6 +315,8 @@ State :: struct {
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
 	editor_scene_camera_captures_input: bool,
+	editor_camera_mesh_segments: [EDITOR_CAMERA_MESH_MAX_SEGMENTS]Editor_Camera_Mesh_Segment,
+	editor_camera_mesh_segment_count: int,
 	editor_gizmo_visible: bool,
 	editor_gizmo_mode: shared.Editor_Gizmo_Mode,
 	editor_gizmo_space: shared.Editor_Gizmo_Space,
@@ -1263,6 +1273,7 @@ reconcile :: proc(
 		}
 		state.editor_gizmo_paint_start = state.paint_count
 		select_font(state, "")
+		if err := append_editor_camera_mesh(state); err != "" { return err }
 		if err := append_editor_gizmo(state); err != "" { return err }
 		state.editor_gizmo_paint_end = state.paint_count
 	} else {
@@ -4102,6 +4113,29 @@ scale_paint_command :: proc(command: ^Paint_Command, scale: f32) {
 	command.ring_center.x *=
 		scale; command.ring_center.y *= scale; command.ring_axis_x.x *= scale; command.ring_axis_x.y *= scale; command.ring_axis_y.x *= scale; command.ring_axis_y.y *= scale; command.ring_thickness *= scale
 	if command.has_clip { command.clip = {command.clip.x * scale, command.clip.y * scale, command.clip.width * scale, command.clip.height * scale} }
+}
+
+append_editor_camera_mesh :: proc(state: ^State) -> string {
+	if state == nil || state.editor_camera_mesh_segment_count <= 0 {
+		return ""
+	}
+	count := min(state.editor_camera_mesh_segment_count, len(state.editor_camera_mesh_segments))
+	for segment in state.editor_camera_mesh_segments[:count] {
+		if err := append_paint(
+			state,
+			{
+				kind = .Line,
+				color = segment.color,
+				line_start = segment.start,
+				line_end = segment.end,
+				line_thickness = segment.thickness,
+				corner_radius = segment.thickness * 0.5,
+			},
+		); err != "" {
+			return err
+		}
+	}
+	return ""
 }
 
 append_editor_gizmo :: proc(state: ^State) -> string {

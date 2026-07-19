@@ -16,7 +16,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The first directional light produces a fixed-resolution shadow map. Only entities with `ShadowCaster` contribute depth, and only entities with `ShadowReceiver` sample it.
 - Lights are ECS components extracted into a bounded backend-neutral frame packet: accumulated ambient light, four directional lights, and sixteen point lights.
 - Base colors are decoded to linear space before lighting. Emission and lighting accumulate in a floating-point HDR target, bright energy feeds a five-level bloom chain, and the combined world is tone mapped once into an sRGB target.
-- Project UI, editor gizmos, and editor chrome render after world postprocessing and do not bloom.
+- Project UI, transform gizmos, editor-only project-camera wireframes, and editor chrome render after world postprocessing and do not bloom.
 - Eligible entities receive internal render-instance components automatically.
 - Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, uploads changed ranges, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
