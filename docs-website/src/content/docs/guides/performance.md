@@ -21,7 +21,7 @@ bin/scrapbot run examples/ecs-showcase \
 
 The versioned JSON result reports early and late nanoseconds per frame, CPU growth ratio, allocator checkpoints, and ECS slot counts. Compare results on the same machine and build configuration. Use `mise test-soak` for the repository's 10,000-frame growth gate.
 
-Open the editor to compare individual engine, project-Odin, and Luau systems. The Systems panel publishes a rolling 50-frame average every five frames. Engine phases and project systems measure their CPU callback boundaries. `scrapbot.render` covers CPU render preparation and submission, not asynchronous GPU execution.
+Open the editor to compare individual engine, project-Odin, and Luau systems. The Systems panel publishes a rolling 50-frame average every five frames. Engine phases and project systems measure their CPU callback boundaries. Renderer work is split across `scrapbot.render.cull`, `.shadow`, `.world`, `.post`, `.ui`, `.finish`, `.submit`, and `.present`; these are CPU encoding and API timings, not asynchronous GPU execution.
 
 ## Iterate queries once
 
@@ -50,7 +50,8 @@ The cursor chooses the smallest requested project-component storage as its candi
 - Renderable, camera, and light membership follows structural dirty queues. Render-list CPU storage is reused each frame, while WGPU draw grouping and aligned visibility slices rebuild only when render topology changes.
 - WGPU addresses persistent instance records by stable ECS render slot, uploads contiguous changed ranges, computes camera and shadow frustum visibility on the GPU, and obtains per-batch instance counts through indexed indirect arguments. The first backend limit is 131,072 slots and 64 geometry/material batches.
 - UI structural synchronization is dirty-entity driven. Stable project and editor roots skip layout independently when their topology, layout values, and viewport are unchanged; painting and interaction remain live.
-- WGPU geometry and materials are cached by resource handle and version. UI vertex CPU storage and the GPU vertex buffer grow to capacity and are reused.
+- WGPU geometry and materials are cached by resource handle and version. Resolved UI paint commands are content-signatured, and unchanged command streams reuse retained CPU/GPU vertices without rebuilding or uploading them.
+- WGPU builds the five-level bloom pyramid with five dispatches in one compute pass before one fullscreen composite, avoiding a chain of short intermediate render passes.
 - Editor entity/resource/inspector snapshots refresh at tool cadence, while profiler revisions update only profiler rows and direct manipulation stays frame-responsive.
 
 ## Choose the right diagnostic
@@ -59,7 +60,7 @@ The cursor chooses the smallest requested project-component storage as its candi
 - Use `--scheduler-trace` to inspect worker count, parallel stages, and maximum native width.
 - Use the Systems panel and `tests/fixtures/ui/ui-performance.json` for editor interaction costs.
 - Use bounded headless WGPU plus a framegrab when renderer correctness or submission cost matters.
-- Inspect structured `render_stats` for GPU-driven mode, slot and visibility capacity, occupied slot span, and cumulative instance upload calls/bytes. These counters require no GPU readback.
+- Inspect structured `render_stats` for GPU-driven mode, slot and visibility capacity, occupied slot span, cumulative instance upload calls/bytes, and UI vertex rebuild/upload counts and bytes. These counters require no GPU readback.
 - Use external GPU tooling when you need whole-frame or per-pass GPU timings, shader costs, bandwidth, or occupancy detail. The Systems panel deliberately avoids synchronous GPU readback because it can distort runtime performance.
 
 Avoid absolute cross-machine budgets in tests. Scrapbot's regression suite instead checks bounded work, topology reuse, linear cursor behavior, stable storage, zero post-teardown allocator bytes, and same-machine before/after measurements.

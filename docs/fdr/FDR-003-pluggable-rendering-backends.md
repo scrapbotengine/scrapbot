@@ -103,9 +103,9 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 ### 12. Postprocess the HDR world before UI
 
-**Decision:** Render the world into a floating-point target, extract and blur five successively smaller bloom levels, composite them with the HDR scene, tone map once, and draw UI afterward.
+**Decision:** Render the world into a floating-point target, build five successively smaller bloom levels with one compute pass, composite them with the HDR scene, tone map once, and draw UI afterward.
 **Why:** Bloom requires values above display white, broad halos need multiple spatial scales, and text must remain crisp. See ADR-029.
-**Tradeoff:** The current threshold, bloom weights, and exposure are fixed engine defaults, and the backend performs sixteen fullscreen passes per frame.
+**Tradeoff:** The current threshold, bloom weights, and exposure are fixed engine defaults. The compute pyramid requires storage-texture support for the floating-point bloom format, while the final composite remains a fullscreen render pass.
 
 ### 13. Keep visibility and indirect state in the backend
 

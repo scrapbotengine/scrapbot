@@ -50,7 +50,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 **Decision:** An engine-owned synchronization step consumes structural dirty entities, updates retained membership in place, and rebuilds compact parent/first-child/next-sibling links. Independent project/editor layout revisions invalidate only the affected root domain. Responsive layout and paint then traverse those links directly and emit a bounded paint list.
 **Why:** Renderers need ordered, resolved rectangles and glyphs rather than repeated ECS queries or project-owned GPU handles.
-**Tradeoff:** The implementation has fixed node/paint limits and still repaints visible nodes each frame, while stable root domains skip layout entirely. Every structural or layout-affecting mutation path must invalidate the correct domain so retained geometry remains correct. The same reconciler maintains distinct project and transient editor UI coordinate and interaction domains. See ADR-024.
+**Tradeoff:** The implementation has fixed node/paint limits and still emits visible paint commands each frame, while stable root domains skip layout entirely. WGPU hashes the resolved command stream and viewport and retains the matching CPU/GPU vertex output, so unchanged frames neither rebuild nor upload UI geometry. Every structural or layout-affecting mutation path must invalidate the correct domain so retained geometry remains correct. The same reconciler maintains distinct project and transient editor UI coordinate and interaction domains. See ADR-024.
 
 ### 3. Use explicit pixels with opt-in proportional fill
 
