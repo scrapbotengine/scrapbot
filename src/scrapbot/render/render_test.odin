@@ -412,6 +412,29 @@ test_wgpu_visible_batch_slices_are_storage_aligned :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_ui_paint_signature_tracks_only_rendered_output :: proc(t: ^testing.T) {
+	state := new(ui.State)
+	defer free(state)
+	state.paint_count = 1
+	state.paint[0] = {
+		kind = .Panel,
+		rect = {x = 10, y = 20, width = 100, height = 40},
+		color = {0.2, 0.3, 0.4, 1},
+	}
+	first := wgpu_ui_paint_signature(state, 1280, 720)
+	testing.expect(t, first != 0)
+	testing.expect(t, wgpu_ui_paint_signature(state, 1280, 720) == first)
+
+	state.paint[0].color.x = 0.5
+	changed_paint := wgpu_ui_paint_signature(state, 1280, 720)
+	testing.expect(t, changed_paint != first)
+	testing.expect(t, wgpu_ui_paint_signature(state, 1920, 1080) != changed_paint)
+
+	state.paint_count = 0
+	testing.expect(t, wgpu_ui_paint_signature(state, 1280, 720) == 0)
+}
+
+@(test)
 test_wgpu_indirect_template_tracks_in_place_geometry_replacement :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)

@@ -3,13 +3,16 @@
   "timeout_frames": 120,
   "actions": [
     {"action": "wait", "frames": 10},
-    {"action": "expect", "target": {"text": "SYSTEMS / 12", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "SYSTEMS / 19", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "scrapbot.camera", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "scrapbot.gizmo", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "scrapbot.ui", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "scrapbot.pick", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "scrapbot.prepare", "origin": "editor"}, "expect": "visible"},
-    {"action": "expect", "target": {"text": "scrapbot.render", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "scrapbot.render.world", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "scrapbot.render.ui", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "scrapbot.render.finish", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "scrapbot.render.submit", "origin": "editor"}, "expect": "visible"},
     {"action": "capture", "target": {"name": "__scrapbot_editor_systems", "origin": "editor"}, "padding": 4}
   ]
 }

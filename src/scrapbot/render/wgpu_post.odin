@@ -15,74 +15,60 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		return "failed to create bloom shader"
 	}
 
-	post_layout_entries := [?]wgpu.BindGroupLayoutEntry {
+	bloom_layout_entries := [?]wgpu.BindGroupLayoutEntry {
 		{
 			binding = 0,
-			visibility = {.Fragment},
+			visibility = {.Compute},
 			texture = {sampleType = .Float, viewDimension = ._2D},
 		},
-		{binding = 1, visibility = {.Fragment}, sampler = {type = .Filtering}},
+		{binding = 1, visibility = {.Compute}, sampler = {type = .Filtering}},
+		{
+			binding = 2,
+			visibility = {.Compute},
+			storageTexture = {access = .WriteOnly, format = .RGBA16Float, viewDimension = ._2D},
+		},
 	}
-	renderer.post_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
+	renderer.bloom_compute_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
 		&wgpu.BindGroupLayoutDescriptor {
-			label = "Scrapbot Bloom Bind Group Layout",
-			entryCount = uint(len(post_layout_entries)),
-			entries = raw_data(post_layout_entries[:]),
+			label = "Scrapbot Bloom Compute Bind Group Layout",
+			entryCount = uint(len(bloom_layout_entries)),
+			entries = raw_data(bloom_layout_entries[:]),
 		},
 	)
-	if renderer.post_bind_group_layout == nil {
-		return "failed to create bloom bind group layout"
+	if renderer.bloom_compute_bind_group_layout == nil {
+		return "failed to create bloom compute bind group layout"
 	}
-	renderer.post_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+	renderer.bloom_compute_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
-			label = "Scrapbot Bloom Pipeline Layout",
+			label = "Scrapbot Bloom Compute Pipeline Layout",
 			bindGroupLayoutCount = 1,
-			bindGroupLayouts = &renderer.post_bind_group_layout,
+			bindGroupLayouts = &renderer.bloom_compute_bind_group_layout,
 		},
 	)
-	if renderer.post_pipeline_layout == nil {
-		return "failed to create bloom pipeline layout"
+	if renderer.bloom_compute_pipeline_layout == nil {
+		return "failed to create bloom compute pipeline layout"
 	}
 
-	renderer.bright_pipeline = wgpu_create_fullscreen_pipeline(
-		renderer,
-		renderer.post_shader,
-		renderer.post_pipeline_layout,
-		"bright_fs",
-		.RGBA16Float,
-		"Scrapbot Bloom Extract Pipeline",
+	renderer.bloom_bright_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot Bloom Extract Compute Pipeline",
+			layout = renderer.bloom_compute_pipeline_layout,
+			compute = {module = renderer.post_shader, entryPoint = "bright_cs"},
+		},
 	)
-	renderer.downsample_pipeline = wgpu_create_fullscreen_pipeline(
-		renderer,
-		renderer.post_shader,
-		renderer.post_pipeline_layout,
-		"downsample_fs",
-		.RGBA16Float,
-		"Scrapbot Bloom Downsample Pipeline",
+	renderer.bloom_downsample_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot Bloom Downsample Compute Pipeline",
+			layout = renderer.bloom_compute_pipeline_layout,
+			compute = {module = renderer.post_shader, entryPoint = "downsample_cs"},
+		},
 	)
-	renderer.blur_horizontal_pipeline = wgpu_create_fullscreen_pipeline(
-		renderer,
-		renderer.post_shader,
-		renderer.post_pipeline_layout,
-		"blur_horizontal_fs",
-		.RGBA16Float,
-		"Scrapbot Bloom Horizontal Pipeline",
-	)
-	renderer.blur_vertical_pipeline = wgpu_create_fullscreen_pipeline(
-		renderer,
-		renderer.post_shader,
-		renderer.post_pipeline_layout,
-		"blur_vertical_fs",
-		.RGBA16Float,
-		"Scrapbot Bloom Vertical Pipeline",
-	)
-	if renderer.bright_pipeline == nil ||
-	   renderer.downsample_pipeline == nil ||
-	   renderer.blur_horizontal_pipeline == nil ||
-	   renderer.blur_vertical_pipeline == nil {
-		return "failed to create bloom pipelines"
+	if renderer.bloom_bright_pipeline == nil || renderer.bloom_downsample_pipeline == nil {
+		return "failed to create bloom compute pipelines"
 	}
 
 	composite_chain := wgpu.ShaderSourceWGSL {
@@ -207,17 +193,9 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		renderer.composite_bind_group = nil
 	}
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		if renderer.downsample_bind_groups[index] != nil {
-			wgpu.BindGroupRelease(renderer.downsample_bind_groups[index])
-			renderer.downsample_bind_groups[index] = nil
-		}
-		if renderer.blur_horizontal_bind_groups[index] != nil {
-			wgpu.BindGroupRelease(renderer.blur_horizontal_bind_groups[index])
-			renderer.blur_horizontal_bind_groups[index] = nil
-		}
-		if renderer.blur_vertical_bind_groups[index] != nil {
-			wgpu.BindGroupRelease(renderer.blur_vertical_bind_groups[index])
-			renderer.blur_vertical_bind_groups[index] = nil
+		if renderer.bloom_compute_bind_groups[index] != nil {
+			wgpu.BindGroupRelease(renderer.bloom_compute_bind_groups[index])
+			renderer.bloom_compute_bind_groups[index] = nil
 		}
 		if renderer.bloom_views[index] != nil {
 			wgpu.TextureViewRelease(renderer.bloom_views[index])
@@ -226,14 +204,6 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		if renderer.bloom_textures[index] != nil {
 			wgpu.TextureRelease(renderer.bloom_textures[index])
 			renderer.bloom_textures[index] = nil
-		}
-		if renderer.bloom_scratch_views[index] != nil {
-			wgpu.TextureViewRelease(renderer.bloom_scratch_views[index])
-			renderer.bloom_scratch_views[index] = nil
-		}
-		if renderer.bloom_scratch_textures[index] != nil {
-			wgpu.TextureRelease(renderer.bloom_scratch_textures[index])
-			renderer.bloom_scratch_textures[index] = nil
 		}
 	}
 	if renderer.hdr_view != nil {
@@ -265,23 +235,17 @@ wgpu_release_post_process :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.composite_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.composite_shader)
 	}
-	if renderer.bright_pipeline != nil {
-		wgpu.RenderPipelineRelease(renderer.bright_pipeline)
+	if renderer.bloom_bright_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.bloom_bright_pipeline)
 	}
-	if renderer.downsample_pipeline != nil {
-		wgpu.RenderPipelineRelease(renderer.downsample_pipeline)
+	if renderer.bloom_downsample_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.bloom_downsample_pipeline)
 	}
-	if renderer.blur_horizontal_pipeline != nil {
-		wgpu.RenderPipelineRelease(renderer.blur_horizontal_pipeline)
+	if renderer.bloom_compute_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.bloom_compute_pipeline_layout)
 	}
-	if renderer.blur_vertical_pipeline != nil {
-		wgpu.RenderPipelineRelease(renderer.blur_vertical_pipeline)
-	}
-	if renderer.post_pipeline_layout != nil {
-		wgpu.PipelineLayoutRelease(renderer.post_pipeline_layout)
-	}
-	if renderer.post_bind_group_layout != nil {
-		wgpu.BindGroupLayoutRelease(renderer.post_bind_group_layout)
+	if renderer.bloom_compute_bind_group_layout != nil {
+		wgpu.BindGroupLayoutRelease(renderer.bloom_compute_bind_group_layout)
 	}
 	if renderer.post_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.post_shader)
@@ -316,57 +280,47 @@ wgpu_ensure_post_targets :: proc(renderer: ^WGPU_Renderer, width, height: u32) -
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
 		level_width := max(u32(1), width >> u32(index + 1))
 		level_height := max(u32(1), height >> u32(index + 1))
-		for scratch in 0 ..< 2 {
-			texture := wgpu.DeviceCreateTexture(
-				renderer.device,
-				&wgpu.TextureDescriptor {
-					label = "Scrapbot Bloom Texture",
-					usage = {.RenderAttachment, .TextureBinding},
-					dimension = ._2D,
-					size = {width = level_width, height = level_height, depthOrArrayLayers = 1},
-					format = .RGBA16Float,
-					mipLevelCount = 1,
-					sampleCount = 1,
-				},
-			)
-			if texture == nil {
-				return "failed to create bloom texture"
-			}
-			view := wgpu.TextureCreateView(texture)
-			if view == nil {
-				wgpu.TextureRelease(texture)
-				return "failed to create bloom texture view"
-			}
-			if scratch == 0 {
-				renderer.bloom_textures[index] = texture
-				renderer.bloom_views[index] = view
-			} else {
-				renderer.bloom_scratch_textures[index] = texture
-				renderer.bloom_scratch_views[index] = view
-			}
+		texture := wgpu.DeviceCreateTexture(
+			renderer.device,
+			&wgpu.TextureDescriptor {
+				label = "Scrapbot Bloom Texture",
+				usage = {.TextureBinding, .StorageBinding},
+				dimension = ._2D,
+				size = {width = level_width, height = level_height, depthOrArrayLayers = 1},
+				format = .RGBA16Float,
+				mipLevelCount = 1,
+				sampleCount = 1,
+			},
+		)
+		if texture == nil {
+			return "failed to create bloom texture"
 		}
+		view := wgpu.TextureCreateView(texture)
+		if view == nil {
+			wgpu.TextureRelease(texture)
+			return "failed to create bloom texture view"
+		}
+		renderer.bloom_textures[index] = texture
+		renderer.bloom_views[index] = view
 	}
 
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		source := renderer.hdr_view if index == 0 else renderer.bloom_scratch_views[index - 1]
-		renderer.downsample_bind_groups[index] = wgpu_create_post_bind_group(
-			renderer,
-			source,
-			"Scrapbot Bloom Downsample Bind Group",
+		source := renderer.hdr_view if index == 0 else renderer.bloom_views[index - 1]
+		entries := [?]wgpu.BindGroupEntry {
+			{binding = 0, textureView = source},
+			{binding = 1, sampler = renderer.post_sampler},
+			{binding = 2, textureView = renderer.bloom_views[index]},
+		}
+		renderer.bloom_compute_bind_groups[index] = wgpu.DeviceCreateBindGroup(
+			renderer.device,
+			&wgpu.BindGroupDescriptor {
+				label = "Scrapbot Bloom Compute Bind Group",
+				layout = renderer.bloom_compute_bind_group_layout,
+				entryCount = uint(len(entries)),
+				entries = raw_data(entries[:]),
+			},
 		)
-		renderer.blur_horizontal_bind_groups[index] = wgpu_create_post_bind_group(
-			renderer,
-			renderer.bloom_scratch_views[index],
-			"Scrapbot Bloom Horizontal Bind Group",
-		)
-		renderer.blur_vertical_bind_groups[index] = wgpu_create_post_bind_group(
-			renderer,
-			renderer.bloom_views[index],
-			"Scrapbot Bloom Vertical Bind Group",
-		)
-		if renderer.downsample_bind_groups[index] == nil ||
-		   renderer.blur_horizontal_bind_groups[index] == nil ||
-		   renderer.blur_vertical_bind_groups[index] == nil {
+		if renderer.bloom_compute_bind_groups[index] == nil {
 			return "failed to create bloom bind groups"
 		}
 	}
@@ -382,7 +336,7 @@ wgpu_ensure_post_targets :: proc(renderer: ^WGPU_Renderer, width, height: u32) -
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
 		composite_entries[index + 2] = {
 			binding = u32(index + 2),
-			textureView = renderer.bloom_scratch_views[index],
+			textureView = renderer.bloom_views[index],
 		}
 	}
 	renderer.composite_bind_group = wgpu.DeviceCreateBindGroup(
@@ -400,26 +354,6 @@ wgpu_ensure_post_targets :: proc(renderer: ^WGPU_Renderer, width, height: u32) -
 	renderer.post_width = width
 	renderer.post_height = height
 	return ""
-}
-
-wgpu_create_post_bind_group :: proc(
-	renderer: ^WGPU_Renderer,
-	view: wgpu.TextureView,
-	label: string,
-) -> wgpu.BindGroup {
-	entries := [?]wgpu.BindGroupEntry {
-		{binding = 0, textureView = view},
-		{binding = 1, sampler = renderer.post_sampler},
-	}
-	return wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = label,
-			layout = renderer.post_bind_group_layout,
-			entryCount = uint(len(entries)),
-			entries = raw_data(entries[:]),
-		},
-	)
 }
 
 wgpu_encode_fullscreen_pass :: proc(
@@ -464,39 +398,31 @@ wgpu_encode_bloom_and_composite :: proc(
 	if err := wgpu_ensure_post_targets(renderer, width, height); err != "" {
 		return err
 	}
-	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		downsample_pipeline := renderer.downsample_pipeline
-		if index == 0 {
-			downsample_pipeline = renderer.bright_pipeline
-		}
-		if err := wgpu_encode_fullscreen_pass(
-			encoder,
-			renderer.bloom_scratch_views[index],
-			downsample_pipeline,
-			renderer.downsample_bind_groups[index],
-			"Scrapbot Bloom Downsample Pass",
-		); err != "" {
-			return err
-		}
-		if err := wgpu_encode_fullscreen_pass(
-			encoder,
-			renderer.bloom_views[index],
-			renderer.blur_horizontal_pipeline,
-			renderer.blur_horizontal_bind_groups[index],
-			"Scrapbot Bloom Horizontal Pass",
-		); err != "" {
-			return err
-		}
-		if err := wgpu_encode_fullscreen_pass(
-			encoder,
-			renderer.bloom_scratch_views[index],
-			renderer.blur_vertical_pipeline,
-			renderer.blur_vertical_bind_groups[index],
-			"Scrapbot Bloom Vertical Pass",
-		); err != "" {
-			return err
-		}
+	pass := wgpu.CommandEncoderBeginComputePass(
+		encoder,
+		&wgpu.ComputePassDescriptor{label = "Scrapbot Bloom Compute Pass"},
+	)
+	if pass == nil {
+		return "failed to begin bloom compute pass"
 	}
+	for index in 0 ..< WGPU_BLOOM_LEVELS {
+		pipeline := renderer.bloom_downsample_pipeline
+		if index == 0 {
+			pipeline = renderer.bloom_bright_pipeline
+		}
+		level_width := max(u32(1), width >> u32(index + 1))
+		level_height := max(u32(1), height >> u32(index + 1))
+		wgpu.ComputePassEncoderSetPipeline(pass, pipeline)
+		wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.bloom_compute_bind_groups[index])
+		wgpu.ComputePassEncoderDispatchWorkgroups(
+			pass,
+			(level_width + 7) / 8,
+			(level_height + 7) / 8,
+			1,
+		)
+	}
+	wgpu.ComputePassEncoderEnd(pass)
+	wgpu.ComputePassEncoderRelease(pass)
 	return wgpu_encode_fullscreen_pass(
 		encoder,
 		output_view,

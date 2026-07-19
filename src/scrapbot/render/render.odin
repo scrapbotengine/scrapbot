@@ -19,7 +19,14 @@ Engine_System_Profile_Phase :: enum {
 	UI,
 	Picking,
 	Render_Prepare,
+	Render_Cull,
+	Render_Shadow,
+	Render_World,
+	Render_Post,
+	Render_UI,
+	Render_Finish,
 	Render_Submit,
+	Render_Present,
 	Count,
 }
 System_Profile_Begin_Proc :: #type proc(data: rawptr)
@@ -44,6 +51,9 @@ Render_Stats :: struct {
 	visible_capacity: int,
 	instance_uploads: u64,
 	instance_upload_bytes: u64,
+	ui_vertex_rebuilds: u64,
+	ui_vertex_uploads: u64,
+	ui_vertex_upload_bytes: u64,
 }
 Framegrab_Region :: struct {
 	x, y, width, height: u32,
@@ -243,8 +253,19 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				}
 				record_system_profile_phase(&run_config, .Render_Prepare, render_prepare_start)
 				finish_runtime_frame(&run_config, world, frame_start)
-				render_submit_start := time.tick_now()
-				record_system_profile_phase(&run_config, .Render_Submit, render_submit_start)
+				render_phases := [8]Engine_System_Profile_Phase {
+					Engine_System_Profile_Phase.Render_Cull,
+					Engine_System_Profile_Phase.Render_Shadow,
+					Engine_System_Profile_Phase.Render_World,
+					Engine_System_Profile_Phase.Render_Post,
+					Engine_System_Profile_Phase.Render_UI,
+					Engine_System_Profile_Phase.Render_Finish,
+					Engine_System_Profile_Phase.Render_Submit,
+					Engine_System_Profile_Phase.Render_Present,
+				}
+				for phase in render_phases {
+					record_system_profile_phase(&run_config, phase, time.tick_now())
+				}
 				commit_system_profile_frame(&run_config)
 				if run_config.ui_driver != nil &&
 				   ui.diagnostic_driver_is_complete(run_config.ui_driver) {

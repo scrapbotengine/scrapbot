@@ -96,8 +96,22 @@ engine_system_profile_name :: proc(phase: render.Engine_System_Profile_Phase) ->
 			return "scrapbot.pick"
 		case .Render_Prepare:
 			return "scrapbot.prepare"
+		case .Render_Cull:
+			return "scrapbot.render.cull"
+		case .Render_Shadow:
+			return "scrapbot.render.shadow"
+		case .Render_World:
+			return "scrapbot.render.world"
+		case .Render_Post:
+			return "scrapbot.render.post"
+		case .Render_UI:
+			return "scrapbot.render.ui"
+		case .Render_Finish:
+			return "scrapbot.render.finish"
 		case .Render_Submit:
-			return "scrapbot.render"
+			return "scrapbot.render.submit"
+		case .Render_Present:
+			return "scrapbot.render.present"
 		case .Count:
 	}
 	return ""

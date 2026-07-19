@@ -100,68 +100,55 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 WGPU_POST_PROCESS_SHADER :: `
 @group(0) @binding(0) var source_texture: texture_2d<f32>;
 @group(0) @binding(1) var linear_sampler: sampler;
-
-struct Fullscreen_Output {
-	@builtin(position) position: vec4<f32>,
-	@location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn fullscreen_vs(@builtin(vertex_index) index: u32) -> Fullscreen_Output {
-	var positions = array<vec2<f32>, 3>(
-		vec2<f32>(-1.0, -1.0),
-		vec2<f32>(3.0, -1.0),
-		vec2<f32>(-1.0, 3.0),
-	);
-	var output: Fullscreen_Output;
-	output.position = vec4<f32>(positions[index], 0.0, 1.0);
-	output.uv = output.position.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-	return output;
-}
+@group(0) @binding(2) var destination_texture: texture_storage_2d<rgba16float, write>;
 
 fn tent_sample(uv: vec2<f32>) -> vec3<f32> {
 	let texel = 1.0 / vec2<f32>(textureDimensions(source_texture));
-	var color = textureSample(source_texture, linear_sampler, uv).rgb * 4.0;
-	color += textureSample(source_texture, linear_sampler, uv + texel * vec2<f32>(-1.0, -1.0)).rgb;
-	color += textureSample(source_texture, linear_sampler, uv + texel * vec2<f32>( 1.0, -1.0)).rgb;
-	color += textureSample(source_texture, linear_sampler, uv + texel * vec2<f32>(-1.0,  1.0)).rgb;
-	color += textureSample(source_texture, linear_sampler, uv + texel * vec2<f32>( 1.0,  1.0)).rgb;
+	var color = textureSampleLevel(source_texture, linear_sampler, uv, 0.0).rgb * 4.0;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + texel * vec2<f32>(-1.0, -1.0), 0.0).rgb;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + texel * vec2<f32>( 1.0, -1.0), 0.0).rgb;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + texel * vec2<f32>(-1.0,  1.0), 0.0).rgb;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + texel * vec2<f32>( 1.0,  1.0), 0.0).rgb;
 	return color * 0.125;
 }
 
-@fragment
-fn bright_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
-	let color = tent_sample(input.uv);
+fn destination_uv(pixel: vec2<u32>) -> vec2<f32> {
+	return (vec2<f32>(pixel) + vec2<f32>(0.5)) / vec2<f32>(textureDimensions(destination_texture));
+}
+
+@compute @workgroup_size(8, 8)
+fn bright_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let dimensions = textureDimensions(destination_texture);
+	if (invocation.x >= dimensions.x || invocation.y >= dimensions.y) {
+		return;
+	}
+	let color = tent_sample(destination_uv(invocation.xy));
 	let brightness = max(color.r, max(color.g, color.b));
 	let knee = 0.5;
 	let soft = clamp(brightness - 1.0 + knee, 0.0, 2.0 * knee);
 	let contribution = max(brightness - 1.0, soft * soft / (4.0 * knee + 0.0001));
-	return vec4<f32>(color * contribution / max(brightness, 0.0001), 1.0);
+	let result = color * contribution / max(brightness, 0.0001);
+	textureStore(destination_texture, vec2<i32>(invocation.xy), vec4<f32>(result, 1.0));
 }
 
-@fragment
-fn downsample_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
-	return vec4<f32>(tent_sample(input.uv), 1.0);
-}
-
-fn gaussian(uv: vec2<f32>, direction: vec2<f32>) -> vec3<f32> {
-	let texel = direction / vec2<f32>(textureDimensions(source_texture));
-	var color = textureSample(source_texture, linear_sampler, uv).rgb * 0.227027;
-	color += textureSample(source_texture, linear_sampler, uv + texel * 1.384615).rgb * 0.316216;
-	color += textureSample(source_texture, linear_sampler, uv - texel * 1.384615).rgb * 0.316216;
-	color += textureSample(source_texture, linear_sampler, uv + texel * 3.230769).rgb * 0.070270;
-	color += textureSample(source_texture, linear_sampler, uv - texel * 3.230769).rgb * 0.070270;
-	return color;
-}
-
-@fragment
-fn blur_horizontal_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
-	return vec4<f32>(gaussian(input.uv, vec2<f32>(1.0, 0.0)), 1.0);
-}
-
-@fragment
-fn blur_vertical_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
-	return vec4<f32>(gaussian(input.uv, vec2<f32>(0.0, 1.0)), 1.0);
+@compute @workgroup_size(8, 8)
+fn downsample_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let dimensions = textureDimensions(destination_texture);
+	if (invocation.x >= dimensions.x || invocation.y >= dimensions.y) {
+		return;
+	}
+	let uv = destination_uv(invocation.xy);
+	let texel = 1.5 / vec2<f32>(textureDimensions(source_texture));
+	var color = textureSampleLevel(source_texture, linear_sampler, uv, 0.0).rgb * 0.20;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>( texel.x, 0.0), 0.0).rgb * 0.12;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>(-texel.x, 0.0), 0.0).rgb * 0.12;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>(0.0,  texel.y), 0.0).rgb * 0.12;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>(0.0, -texel.y), 0.0).rgb * 0.12;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>( texel.x,  texel.y), 0.0).rgb * 0.08;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>(-texel.x,  texel.y), 0.0).rgb * 0.08;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>( texel.x, -texel.y), 0.0).rgb * 0.08;
+	color += textureSampleLevel(source_texture, linear_sampler, uv + vec2<f32>(-texel.x, -texel.y), 0.0).rgb * 0.08;
+	textureStore(destination_texture, vec2<i32>(invocation.xy), vec4<f32>(color, 1.0));
 }
 `
 
