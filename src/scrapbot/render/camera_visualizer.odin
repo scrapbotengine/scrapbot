@@ -5,7 +5,7 @@ import shared "../shared"
 import ui "../ui"
 import "core:math"
 
-EDITOR_CAMERA_MESH_SCREEN_SIZE :: f32(54)
+EDITOR_CAMERA_MESH_WORLD_SIZE :: f32(0.6)
 EDITOR_CAMERA_MESH_POINT_COUNT :: 21
 EDITOR_CAMERA_MESH_BODY_SEGMENT_COUNT :: 20
 EDITOR_CAMERA_MESH_FRUSTUM_SEGMENT_COUNT :: 12
@@ -30,7 +30,6 @@ editor_camera_mesh_system :: proc(
 	}
 
 	ecs.begin_world_transform_resolution(world)
-	eye, view_fov := editor_camera_eye_fov(view_camera, has_view_camera)
 	for entity_index in world.render_active_camera_entities {
 		if entity_index < 0 || entity_index >= len(world.entities) {
 			continue
@@ -50,25 +49,15 @@ editor_camera_mesh_system :: proc(
 		}
 
 		transform, _ := ecs.resolve_world_transform(world, entity_index)
-		delta := vec3_sub(transform.position, eye)
-		distance := math.sqrt(vec3_dot(delta, delta))
-		world_size := max(
-			2 *
-			max(distance, 0.1) *
-			math.tan(math.to_radians(view_fov) * 0.5) /
-			max(viewport.height, 1) *
-			EDITOR_CAMERA_MESH_SCREEN_SIZE,
-			0.05,
-		)
 		camera_component := world.cameras[entity.camera_index]
 		points := editor_camera_mesh_world_points(
 			transform,
 			camera_component,
 			viewport.width / viewport.height,
-			world_size,
+			EDITOR_CAMERA_MESH_WORLD_SIZE,
 		)
 		projected: [EDITOR_CAMERA_MESH_POINT_COUNT]shared.Vec2
-		visible := true
+		projected_valid: [EDITOR_CAMERA_MESH_POINT_COUNT]bool
 		for point, point_index in points {
 			projected_point, ok := editor_project_world(
 				point,
@@ -76,14 +65,10 @@ editor_camera_mesh_system :: proc(
 				view_camera,
 				has_view_camera,
 			)
-			if !ok {
-				visible = false
-				break
+			if ok {
+				projected[point_index] = projected_point
+				projected_valid[point_index] = true
 			}
-			projected[point_index] = projected_point
-		}
-		if !visible {
-			continue
 		}
 
 		selected := state.editor_has_selection && state.editor_selected_entity == entity.id
@@ -98,6 +83,7 @@ editor_camera_mesh_system :: proc(
 		editor_camera_mesh_append_segments(
 			state,
 			projected,
+			projected_valid,
 			entity.id,
 			color,
 			frustum_color,
@@ -152,12 +138,14 @@ editor_camera_mesh_world_points :: proc(
 	if fov <= 0 {
 		fov = 60
 	}
-	near_distance := max(camera.near, 0.05)
-	far_limit := camera.far
-	if far_limit <= near_distance {
-		far_limit = near_distance * 2
+	near_distance := f32(0.1)
+	if camera.near > 0 {
+		near_distance = camera.near
 	}
-	far_distance := min(max(size * 2.2, near_distance * 2), far_limit)
+	far_distance := f32(100)
+	if camera.far > near_distance {
+		far_distance = camera.far
+	}
 	tangent := math.tan(math.to_radians(fov) * 0.5)
 	near_half_height := tangent * near_distance
 	near_half_width := near_half_height * max(aspect, 0.01)
@@ -202,6 +190,7 @@ editor_camera_mesh_point :: proc(
 editor_camera_mesh_append_segments :: proc(
 	state: ^ui.State,
 	points: [EDITOR_CAMERA_MESH_POINT_COUNT]shared.Vec2,
+	point_valid: [EDITOR_CAMERA_MESH_POINT_COUNT]bool,
 	entity: shared.Entity,
 	body_color, frustum_color: shared.Vec4,
 	thickness: f32,
@@ -241,6 +230,9 @@ editor_camera_mesh_append_segments :: proc(
 		{20, 17},
 	}
 	for edge, edge_index in edges {
+		if !point_valid[edge[0]] || !point_valid[edge[1]] {
+			continue
+		}
 		index := state.editor_camera_mesh_segment_count
 		if index >= len(state.editor_camera_mesh_segments) {
 			return
