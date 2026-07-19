@@ -157,6 +157,33 @@ description = "Run the lifecycle-heavy CPU/RAM growth soak"
 depends = ["build"]
 run = "node tools/runtime_soak.mjs"
 
+[tasks.test-gpu]
+description = "Compare compute and CPU-reference WGPU visibility paths"
+depends = ["build"]
+run = '''
+COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-compute.png"
+CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cpu.png"
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME"' EXIT
+COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 2 --framegrab "$COMPUTE_FRAME" --json)"
+CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 2 --framegrab "$CPU_FRAME" --json)"
+node -e '
+for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
+  const result = JSON.parse(raw);
+  const stats = result.result?.render_stats;
+  if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+      !stats?.gpu_driven || stats.compute_culling !== expectedCompute ||
+      result.result.renderables <= 64 || stats.instance_capacity < 100000 ||
+      stats.instance_slots <= 64 || stats.instance_uploads !== 1 ||
+      stats.instance_upload_bytes <= 0) {
+    console.error(`unexpected ${label} GPU renderer diagnostics`);
+    process.exit(1);
+  }
+}
+' "$COMPUTE_JSON" "$CPU_JSON"
+cmp "$COMPUTE_FRAME" "$CPU_FRAME"
+node tools/assert_png_variance.mjs "$COMPUTE_FRAME"
+'''
+
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"
 depends = ["luau"]

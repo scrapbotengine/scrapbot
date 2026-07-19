@@ -1,6 +1,7 @@
 package render
 
 import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import ui "../ui"
 import "core:testing"
@@ -307,6 +308,7 @@ test_directional_shadow_matrix_is_finite_and_non_identity :: proc(t: ^testing.T)
 @(test)
 test_wgpu_draw_batch_topology_is_retained_across_transform_only_frames :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
+	defer delete(renderer.draw_batch_cache.source_indices)
 	list: Render_List = {
 		world_uuid = shared.entity_uuid_from_engine_name("batch-cache-test"),
 		topology_revision = 1,
@@ -342,6 +344,102 @@ test_wgpu_draw_batch_topology_is_retained_across_transform_only_frames :: proc(t
 	list.topology_revision += 1
 	cache = wgpu_ensure_draw_batch_cache(&renderer, &list)
 	testing.expect(t, cache.rebuild_count == 2)
+}
+
+@(test)
+test_wgpu_draw_batches_scale_beyond_legacy_uniform_limit :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	defer delete(renderer.draw_batch_cache.source_indices)
+	list: Render_List = {
+		world_uuid = shared.entity_uuid_from_engine_name("large-batch-cache-test"),
+		topology_revision = 1,
+	}
+	defer ecs.destroy_render_list(&list)
+	geometry := shared.Geometry_Handle {
+		index = 1,
+		generation = 1,
+	}
+	material := shared.Material_Handle {
+		index = 1,
+		generation = 1,
+	}
+	for slot in 0 ..< 100_000 {
+		append(
+			&list.instances,
+			shared.Render_Instance {
+				slot = slot,
+				geometry = {handle = geometry},
+				material = {handle = material},
+			},
+		)
+	}
+	cache := wgpu_ensure_draw_batch_cache(&renderer, &list)
+	testing.expect(t, cache != nil)
+	testing.expect(t, cache.batch_count == 1)
+	testing.expect(t, cache.batches[0].instance_count == 100_000)
+	testing.expect(t, len(cache.source_indices) == 100_000)
+}
+
+@(test)
+test_wgpu_frustum_planes_and_cpu_culling_reference :: proc(t: ^testing.T) {
+	planes := wgpu_extract_frustum_planes(mat4_identity())
+	testing.expect(t, wgpu_sphere_visible({0, 0, 0.5, 0.1}, planes))
+	testing.expect(t, wgpu_sphere_visible({1.05, 0, 0.5, 0.1}, planes))
+	testing.expect(t, !wgpu_sphere_visible({2, 0, 0.5, 0.1}, planes))
+	testing.expect(t, !wgpu_sphere_visible({0, 0, -1, 0.1}, planes))
+
+	instances := []WGPU_GPU_Instance {
+		{bounds = {0, 0, 0.5, 0.1}, batch_index = 0, active = 1},
+		{bounds = {2, 0, 0.5, 0.1}, batch_index = 0, active = 1},
+		{bounds = {0, 0, 0.5, 0.1}, batch_index = 1, active = 1, shadow_flags = {1, 0, 0, 0}},
+		{bounds = {0, 0, 0.5, 0.1}, batch_index = 1, active = 0},
+	}
+	camera_counts := wgpu_cpu_cull_counts(instances, planes, 2)
+	shadow_counts := wgpu_cpu_cull_counts(instances, planes, 2, true)
+	testing.expect(t, camera_counts[0] == 1)
+	testing.expect(t, camera_counts[1] == 1)
+	testing.expect(t, shadow_counts[0] == 0)
+	testing.expect(t, shadow_counts[1] == 1)
+}
+
+@(test)
+test_wgpu_visible_batch_slices_are_storage_aligned :: proc(t: ^testing.T) {
+	testing.expect(t, wgpu_align_visible_capacity(0) == WGPU_VISIBLE_ALIGNMENT)
+	testing.expect(t, wgpu_align_visible_capacity(1) == WGPU_VISIBLE_ALIGNMENT)
+	testing.expect(t, wgpu_align_visible_capacity(64) == WGPU_VISIBLE_ALIGNMENT)
+	testing.expect(t, wgpu_align_visible_capacity(65) == WGPU_VISIBLE_ALIGNMENT * 2)
+	testing.expect(t, (wgpu_align_visible_capacity(65) * size_of(u32)) % 256 == 0)
+}
+
+@(test)
+test_wgpu_indirect_template_tracks_in_place_geometry_replacement :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	cube, cube_err := resources.cube()
+	defer delete(cube.vertices)
+	defer delete(cube.indices)
+	testing.expect(t, cube_err == "")
+	handle, register_err := resources.register_geometry(&registry, "mutable", cube)
+	testing.expect(t, register_err == "")
+	cache := WGPU_Draw_Batch_Cache {
+		batch_count = 1,
+	}
+	cache.batches[0].geometry = handle
+	before, before_err := wgpu_build_indirect_templates(&cache, &registry)
+	testing.expect(t, before_err == "")
+	testing.expect(t, before[0].index_count == u32(len(cube.indices)))
+
+	plane, plane_err := resources.plane()
+	defer delete(plane.vertices)
+	defer delete(plane.indices)
+	testing.expect(t, plane_err == "")
+	updated, update_err := resources.register_geometry(&registry, "mutable", plane)
+	testing.expect(t, update_err == "")
+	testing.expect(t, updated == handle)
+	after, after_err := wgpu_build_indirect_templates(&cache, &registry)
+	testing.expect(t, after_err == "")
+	testing.expect(t, after[0].index_count == u32(len(plane.indices)))
+	testing.expect(t, after[0].index_count != before[0].index_count)
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {

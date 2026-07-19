@@ -1,0 +1,21 @@
+[[entities]]
+id = "90000000-0000-4000-8000-000000000001"
+name = "Camera"
+
+[entities.transform]
+position = [0, 0, 9]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+
+[[entities]]
+id = "90000000-0000-4000-8000-000000000002"
+name = "Ambient"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
