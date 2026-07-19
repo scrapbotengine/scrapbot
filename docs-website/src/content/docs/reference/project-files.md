@@ -13,6 +13,10 @@ Scrapbot's file formats intentionally cover a narrow subset right now. Valid TOM
 name = "Minimal Example"
 default_scene = "scenes/main.scene.toml"
 
+[window]
+width = 1600
+height = 900
+
 [[native_extensions]]
 name = "scrappyphysics"
 source = "native/scrappyphysics"
@@ -28,12 +32,17 @@ Fields:
 | --- | --- | --- |
 | `name` | Yes | Display name for the project. |
 | `default_scene` | Yes | Safe relative path to the scene loaded by `check` and `run`. |
+| `[window]` | No | Initial logical window size. Omitted fields default to 1600×900. |
+| `window.width` | No | Positive logical width up to 16384. |
+| `window.height` | No | Positive logical height up to 16384. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
 | `native_extensions.source` | Yes | Safe relative path to an Odin package directory. |
 | `[[fonts]]` | No | Repeated table for project-local UI font resources; at most 15. |
 | `fonts.name` | Yes | Resource name used by UI components. Must be a unique identifier token. |
 | `fonts.source` | Yes | Safe path under `assets/` ending in `.ttf` or `.otf`. |
+
+Visible windows preserve the requested aspect ratio but scale down when necessary to fit within 90% of the primary display's usable area. High-pixel-density displays may provide a larger physical-pixel framebuffer than this logical size. Headless framegrabs remain fixed at 1280×720 unless cropped.
 
 Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
 

@@ -21,6 +21,8 @@ runtime_text_bytes: [512]u8
 runtime_text_length: int
 runtime_text_navigation: Runtime_Text_Input
 
+RUNTIME_WINDOW_USABLE_FRACTION :: f32(0.9)
+
 Pointer_State :: struct {
 	x, y: f32,
 	wheel_y: f32,
@@ -148,13 +150,27 @@ open_runtime_window_with_visibility :: proc(
 		return fmt.tprintf("failed to initialize SDL3 video: %s", sdl.GetError())
 	}
 
+	window_width, window_height := width, height
+	if !hidden {
+		usable: sdl.Rect
+		display := sdl.GetPrimaryDisplay()
+		if display != sdl.DisplayID(0) && sdl.GetDisplayUsableBounds(display, &usable) {
+			window_width, window_height = runtime_window_size_for_usable_bounds(
+				width,
+				height,
+				int(usable.w),
+				int(usable.h),
+			)
+		}
+	}
+
 	title_c := strings.clone_to_cstring(title)
 	defer delete(title_c)
 
 	runtime_window = sdl.CreateWindow(
 		title_c,
-		c.int(width),
-		c.int(height),
+		c.int(window_width),
+		c.int(window_height),
 		runtime_window_flags(hidden),
 	)
 	if runtime_window == nil {
@@ -168,6 +184,27 @@ open_runtime_window_with_visibility :: proc(
 	runtime_pointer_cursor = .Default
 	_ = sdl.StartTextInput(runtime_window)
 	return ""
+}
+
+runtime_window_size_for_usable_bounds :: proc(
+	requested_width, requested_height, usable_width, usable_height: int,
+) -> (
+	int,
+	int,
+) {
+	if requested_width <= 0 || requested_height <= 0 || usable_width <= 0 || usable_height <= 0 {
+		return requested_width, requested_height
+	}
+	maximum_width := max(int(f32(usable_width) * RUNTIME_WINDOW_USABLE_FRACTION), 1)
+	maximum_height := max(int(f32(usable_height) * RUNTIME_WINDOW_USABLE_FRACTION), 1)
+	scale := min(
+		f32(1),
+		min(
+			f32(maximum_width) / f32(requested_width),
+			f32(maximum_height) / f32(requested_height),
+		),
+	)
+	return max(int(f32(requested_width) * scale), 1), max(int(f32(requested_height) * scale), 1)
 }
 
 close_runtime_window :: proc() {

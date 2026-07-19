@@ -157,6 +157,10 @@ test_project_config_accepts_project_toml_shape :: proc(t: ^testing.T) {
 		`name = "Demo #1" # comments are allowed outside strings
 default_scene = "scenes/main.scene.toml"
 
+[window]
+width = 1920
+height = 1080
+
 [[native_extensions]]
 name = "scrappyphysics"
 source = "native/scrappyphysics"
@@ -166,9 +170,35 @@ source = "native/scrappyphysics"
 	testing.expect(t, result.err == .None)
 	testing.expect(t, config.name == "Demo #1")
 	testing.expect(t, config.default_scene == "scenes/main.scene.toml")
+	testing.expect(t, config.window.width == 1920)
+	testing.expect(t, config.window.height == 1080)
 	testing.expect(t, len(config.native_extensions) == 1)
 	testing.expect(t, config.native_extensions[0].name == "scrappyphysics")
 	testing.expect(t, config.native_extensions[0].source == "native/scrappyphysics")
+}
+
+@(test)
+test_project_config_defaults_and_validates_window_size :: proc(t: ^testing.T) {
+	defaults, defaults_result := parse_project_config(
+		`name = "Defaults"
+default_scene = "scenes/main.scene.toml"
+`,
+	)
+	defer destroy_project_config(&defaults)
+	testing.expect(t, defaults_result.err == .None)
+	testing.expect(t, defaults.window.width == shared.DEFAULT_WINDOW_WIDTH)
+	testing.expect(t, defaults.window.height == shared.DEFAULT_WINDOW_HEIGHT)
+
+	invalid, invalid_result := parse_project_config(
+		`name = "Invalid"
+default_scene = "scenes/main.scene.toml"
+[window]
+width = 0
+height = 900
+`,
+	)
+	defer destroy_project_config(&invalid)
+	testing.expect(t, invalid_result.err == .Invalid_Field)
 }
 
 @(test)
@@ -558,6 +588,8 @@ test_init_project_bootstraps_a_valid_clean_project :: proc(t: ^testing.T) {
 	defer destroy_project_load_result(&loaded)
 	testing.expectf(t, loaded.err == "", "generated project did not load: %s", loaded.err)
 	testing.expect(t, loaded.config.name == "little-orbit")
+	testing.expect(t, loaded.config.window.width == shared.DEFAULT_WINDOW_WIDTH)
+	testing.expect(t, loaded.config.window.height == shared.DEFAULT_WINDOW_HEIGHT)
 	testing.expect(t, len(loaded.scene.entities) == 2)
 	testing.expect(t, len(loaded.resources) == 1)
 }

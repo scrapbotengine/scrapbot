@@ -1,7 +1,7 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-17
+**Last reviewed:** 2026-07-19
 
 ## Overview
 
@@ -17,6 +17,7 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 - Users can name a build target, but non-host targets are rejected until Scrapbot has target-native Luau, SDL3, and WGPU dependencies.
 - Users can validate a project without opening a window.
 - Source-project runs default to a windowed WGPU renderer with hot reload enabled.
+- Visible runs request a 1600×900 logical window by default. Projects may override the startup width and height through `[window]` in `project.toml`; oversized requests preserve their aspect ratio while fitting within 90% of the primary display's usable area.
 - Users can select another renderer, force headless execution, disable hot reload, and limit runs with `--frames`.
 - Users can request a headless WGPU PNG framegrab with `--framegrab`.
 - Users can pass `--editor` to start with editor chrome visible, while `Cmd/Ctrl+E` toggles it during a windowed run.

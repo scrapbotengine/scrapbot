@@ -19,6 +19,8 @@ MAX_PROJECT_FONTS :: 15
 PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
 PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
 PROJECT_RESOURCES_DIR :: "resources"
+DEFAULT_WINDOW_WIDTH :: 1600
+DEFAULT_WINDOW_HEIGHT :: 900
 
 Vec3 :: struct {
 	x, y, z: f32,
@@ -38,8 +40,13 @@ Renderer_Backend :: enum {
 Project_Config :: struct {
 	name: string,
 	default_scene: string,
+	window: Project_Window_Config,
 	native_extensions: [dynamic]Native_Extension_Target,
 	fonts: [dynamic]Project_Font,
+}
+
+Project_Window_Config :: struct {
+	width, height: int,
 }
 
 Native_Extension_Target :: struct {

@@ -498,6 +498,8 @@ run_project_internal_untracked :: proc(
 		result.err = loaded.err
 		return result
 	}
+	run_config.window_width = loaded.config.window.width
+	run_config.window_height = loaded.config.window.height
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
 		result.err = err
 		return result

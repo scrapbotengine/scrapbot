@@ -21,6 +21,15 @@ test_renderer_backend_names_parse :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_renderer_window_size_uses_project_values_and_engine_defaults :: proc(t: ^testing.T) {
+	width, height := renderer_window_size({window_width = 1920, window_height = 1080})
+	testing.expect(t, width == 1920 && height == 1080)
+	width, height = renderer_window_size({})
+	testing.expect(t, width == shared.DEFAULT_WINDOW_WIDTH)
+	testing.expect(t, height == shared.DEFAULT_WINDOW_HEIGHT)
+}
+
+@(test)
 test_framegrab_region_parses_explicit_pixel_crop :: proc(t: ^testing.T) {
 	region, ok := parse_framegrab_region("240, 52, 600, 320")
 	testing.expect(t, ok)

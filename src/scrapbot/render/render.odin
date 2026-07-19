@@ -90,6 +90,7 @@ Run_Config :: struct {
 	backend: Renderer_Backend,
 	cpu_culling: bool,
 	window: bool,
+	window_width, window_height: int,
 	hot_reload: bool,
 	editor: bool,
 	max_frames: u32,
@@ -124,6 +125,19 @@ Run_Config :: struct {
 	last_drawable_width: f32,
 	last_drawable_height: f32,
 }
+
+renderer_window_size :: proc(config: Run_Config) -> (int, int) {
+	width := config.window_width
+	height := config.window_height
+	if width <= 0 {
+		width = shared.DEFAULT_WINDOW_WIDTH
+	}
+	if height <= 0 {
+		height = shared.DEFAULT_WINDOW_HEIGHT
+	}
+	return width, height
+}
+
 World :: shared.World
 Render_Frame :: shared.Render_Frame
 
@@ -280,7 +294,8 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				)
 			}
 			if run_config.window {
-				window_err := platform.open_runtime_window("Scrapbot", 1280, 720)
+				window_width, window_height := renderer_window_size(run_config)
+				window_err := platform.open_runtime_window("Scrapbot", window_width, window_height)
 				if window_err != "" {
 					return frame, window_err
 				}
@@ -303,7 +318,12 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 		case .WGPU:
 			frame = ecs.render_frame_from_world(world)
 			if run_config.window {
-				window_err := platform.open_runtime_window("Scrapbot WGPU", 1280, 720)
+				window_width, window_height := renderer_window_size(run_config)
+				window_err := platform.open_runtime_window(
+					"Scrapbot WGPU",
+					window_width,
+					window_height,
+				)
 				if window_err != "" {
 					return frame, window_err
 				}

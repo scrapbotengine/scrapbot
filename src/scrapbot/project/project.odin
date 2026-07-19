@@ -39,9 +39,19 @@ Scene_Load_Result :: struct {
 }
 
 project_toml_template :: proc(name: string) -> string {
-	return fmt.tprintf(`name = "%s"
+	return fmt.tprintf(
+		`name = "%s"
 default_scene = "%s"
-`, name, DEFAULT_SCENE)
+
+[window]
+width = %d
+height = %d
+`,
+		name,
+		DEFAULT_SCENE,
+		shared.DEFAULT_WINDOW_WIDTH,
+		shared.DEFAULT_WINDOW_HEIGHT,
+	)
 }
 
 default_scene_template :: proc() -> string {

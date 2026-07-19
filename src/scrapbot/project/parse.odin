@@ -135,6 +135,10 @@ fail :: proc(err: Parse_Error, message: string) -> Parse_Result {
 }
 
 parse_project_config :: proc(source: string) -> (config: Project_Config, result: Parse_Result) {
+	config.window = {
+		width = shared.DEFAULT_WINDOW_WIDTH,
+		height = shared.DEFAULT_WINDOW_HEIGHT,
+	}
 	section := ""
 	current_native_extension: ^shared.Native_Extension_Target
 	current_font: ^shared.Project_Font
@@ -156,6 +160,12 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			append(&config.fonts, shared.Project_Font{})
 			current_font = &config.fonts[len(config.fonts) - 1]
 			section = "font"
+			continue
+		}
+		if line == "[window]" {
+			section = "window"
+			current_native_extension = nil
+			current_font = nil
 			continue
 		}
 
@@ -225,6 +235,30 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 						.Invalid_Field,
 						fmt.tprintf("unknown font field '%s'", key),
 					)
+			}
+			continue
+		}
+		if section == "window" {
+			switch key {
+				case "width":
+					config.window.width, found = parse_int(value)
+				case "height":
+					config.window.height, found = parse_int(value)
+				case:
+					return config, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown window field '%s'", key),
+					)
+			}
+			if !found ||
+			   config.window.width <= 0 ||
+			   config.window.height <= 0 ||
+			   config.window.width > 16_384 ||
+			   config.window.height > 16_384 {
+				return config, fail(
+					.Invalid_Field,
+					"window width and height must be positive integers no greater than 16384",
+				)
 			}
 			continue
 		}

@@ -12,6 +12,21 @@ test_runtime_pointer_cursor_maps_resize_directions_to_sdl :: proc(t: ^testing.T)
 }
 
 @(test)
+test_runtime_window_size_preserves_requested_aspect_and_fits_usable_display :: proc(
+	t: ^testing.T,
+) {
+	width, height := runtime_window_size_for_usable_bounds(1600, 900, 1920, 1080)
+	testing.expect(t, width == 1600 && height == 900)
+
+	width, height = runtime_window_size_for_usable_bounds(1600, 900, 1440, 900)
+	testing.expect(t, width == 1296 && height == 729)
+	testing.expect(t, width * 900 == height * 1600)
+
+	width, height = runtime_window_size_for_usable_bounds(800, 600, 1440, 900)
+	testing.expect(t, width == 800 && height == 600)
+}
+
+@(test)
 test_editor_toggle_shortcut_requires_command_e_press :: proc(t: ^testing.T) {
 	testing.expect(t, editor_toggle_shortcut(.E, sdl.Keymod{.LCTRL}, false))
 	testing.expect(t, editor_toggle_shortcut(.E, sdl.Keymod{.RCTRL}, false))

@@ -34,11 +34,15 @@ The five ordinary content directories contain authored project inputs. `.scrapbo
 
 ## `project.toml`
 
-The manifest names the project, selects the default scene, and can declare native extension targets.
+The manifest names the project, selects the default scene and initial window size, and can declare native extension targets.
 
 ```toml
 name = "Minimal Example"
 default_scene = "scenes/main.scene.toml"
+
+[window]
+width = 1600
+height = 900
 
 [[native_extensions]]
 name = "scrappyphysics"
@@ -46,6 +50,7 @@ source = "native/scrappyphysics"
 ```
 
 The parser currently supports Scrapbot's narrow TOML subset, not all TOML syntax.
+The window values are logical pixels. Scrapbot scales an oversized request down proportionally to fit within 90% of the primary display's usable area.
 
 ## Scene files
 

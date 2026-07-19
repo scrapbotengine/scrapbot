@@ -26,6 +26,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
 - WGPU sizes the live world and project UI to the complete available viewport, deriving camera aspect from its dimensions, then paints engine chrome in a separate overlay pass.
 - Visible WGPU windows continue stepping and presenting frames during native live resize, reconfiguring the surface to each exposed pixel size instead of waiting for the drag to end.
+- Visible windows use the project's logical startup size and request a high-pixel-density drawable independently. Headless WGPU keeps its deterministic 1280×720 offscreen target.
 - The `wgpu` backend currently requires a visible window or a framegrab target. Source-project runs provide the window by default.
 - Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
