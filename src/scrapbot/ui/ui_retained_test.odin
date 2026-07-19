@@ -87,9 +87,17 @@ test_retained_layout_and_paint_visit_only_nodes_and_hierarchy_edges :: proc(t: ^
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	testing.expect(t, state.layout_node_visit_count == 0)
 	testing.expect(t, state.layout_child_edge_visit_count == 0)
+	testing.expect(t, state.paint_node_visit_count == 0)
+	testing.expect(t, state.paint_child_edge_visit_count == 0)
+	expect_retained_hierarchy_consistent(t, state)
+
+	// Paint-only changes invalidate retained commands without forcing layout.
+	world.ui_layouts[world.entities[root_index].ui_layout_index].background = {0.2, 0.3, 0.4, 1}
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, state.layout_node_visit_count == 0)
+	testing.expect(t, state.layout_child_edge_visit_count == 0)
 	testing.expect(t, state.paint_node_visit_count == u64(node_count))
 	testing.expect(t, state.paint_child_edge_visit_count == u64(edge_count))
-	expect_retained_hierarchy_consistent(t, state)
 }
 
 @(test)
@@ -122,7 +130,7 @@ test_layout_changes_only_reflow_the_affected_ui_origin :: proc(t: ^testing.T) {
 	testing.expect(t, ecs.set_ui_layout(&world, editor_index, editor_layout))
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	testing.expect(t, state.layout_node_visit_count == u64(editor_node_count))
-	testing.expect(t, state.paint_node_visit_count == u64(state.node_count))
+	testing.expect(t, state.paint_node_visit_count == u64(editor_node_count))
 }
 
 @(test)

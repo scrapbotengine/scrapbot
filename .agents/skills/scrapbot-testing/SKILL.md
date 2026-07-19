@@ -113,7 +113,7 @@ Use `tests/fixtures/ui/resource-to-entity-selection.json` when changing editor s
 
 Use `tests/fixtures/ui/resource-inputs.json` when changing inline resource input bindings or playback behavior. It edits one material channel through typing and another through whole-control scrubbing while simulation is running, waits through inspector refreshes, and asserts both live values.
 
-Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or transport command shortcuts. It drives the same editor keyboard input used by the platform, verifies Pause, resume, and the temporary pause caused by closing and reopening over a running game. Pair it with the state-machine and playback-restoration unit tests for Stop, Step, world replacement, and hidden close-time transitions.
+Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or transport command shortcuts. It drives the same editor keyboard input used by the platform, verifies Pause and resume, and proves that closing and reopening the shell preserves running playback. Pair it with the state-machine and playback-restoration unit tests for Stop, Step, and world replacement.
 
 Use `tests/fixtures/ui/playback-warning.json` when changing playback-mode chrome or disposable-edit messaging. It captures the complete editor root during playback so the top-bar tint, viewport frame, and status treatment can be reviewed together. Pair it with the transport unit test, which crosses transport states and asserts the exact status copy plus both playback and stopped style tokens.
 
@@ -123,7 +123,7 @@ Use `tests/fixtures/ui/scene-hierarchy.json` when changing Transform parenting, 
 
 Use `tests/fixtures/ui/ui-performance.json` for repeatable editor-UI performance comparisons. It selects the Sun inspector, sustains a numeric scrub across 30 input frames, and captures the Systems panel after the rolling profiler publishes. Pair it with `--ui-dump`, then read `__scrapbot_editor_system_time_2` from the dump for the `scrapbot.ui` average. Treat timings as same-machine before/after evidence; the deterministic hierarchy and no-refresh-during-scrub tests enforce the underlying retained traversal contract in CI.
 
-The retained UI tests instrument layout and paint only under `ODIN_TEST`. Keep their large-tree node and edge visit assertions intact: they are the deterministic CI guard against quadratic child discovery, while the value-mutation matrix ensures already-attached component updates do not trigger structural synchronization. Do not replace either contract with a wall-clock threshold.
+The retained UI tests instrument layout and paint only under `ODIN_TEST`. Keep their large-tree node and edge visit assertions intact: they are the deterministic CI guard against quadratic child discovery and redundant paint traversal, while the paint-only mutation check proves cached commands invalidate without forcing layout and the value-mutation matrix ensures already-attached component updates do not trigger structural synchronization. Do not replace these contracts with a wall-clock threshold.
 
 Framegrabs are losslessly compressed and preserve 1:1 pixels. The complete frame remains 1280×720. When a visual question concerns one control, label, gizmo, or panel, request a top-left-origin crop instead of passing the entire frame through image inspection:
 

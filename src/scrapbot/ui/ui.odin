@@ -5,6 +5,7 @@ import ecs "../ecs"
 import resources "../resources"
 import shared "../shared"
 import "core:fmt"
+import "core:hash"
 import "core:math"
 import "core:strconv"
 import "core:strings"
@@ -212,6 +213,8 @@ State :: struct {
 	node_count: int,
 	paint: [MAX_PAINT_COMMANDS]Paint_Command,
 	paint_count: int,
+	project_paint_signature, editor_paint_signature: u64,
+	project_paint_signature_valid, editor_paint_signature_valid: bool,
 	font: Font_Atlas,
 	resource_registry: ^resources.Registry,
 	component_registry: ^component.Registry,
@@ -254,7 +257,6 @@ State :: struct {
 	editor_simulation_step_requested: bool,
 	editor_playback_begin_requested: bool,
 	editor_playback_stop_requested: bool,
-	editor_resume_playback_on_close: bool,
 	editor_scene_save_requested: bool,
 	editor_scene_revert_requested: bool,
 	editor_scene_dirty: bool,
@@ -412,22 +414,7 @@ editor_toggle :: proc(state: ^State) {
 	if state == nil {
 		return
 	}
-	if !state.editor_visible {
-		was_playing := state.editor_simulation_playing
-		state.editor_visible = true
-		if was_playing {
-			editor_pause(state)
-		}
-		state.editor_resume_playback_on_close = was_playing
-	} else {
-		resume_playback :=
-			state.editor_resume_playback_on_close && !state.editor_simulation_playing
-		state.editor_visible = false
-		state.editor_resume_playback_on_close = false
-		if resume_playback {
-			editor_play(state)
-		}
-	}
+	state.editor_visible = !state.editor_visible
 	state.editor_snapshot_valid = false
 }
 
@@ -785,6 +772,164 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 	return ""
 }
 
+UI_Paint_Signature_Key :: struct {
+	world_uuid: shared.Entity_UUID,
+	editor: bool,
+	has_focused_input: bool,
+	focused_input: shared.Entity,
+	input_cursor, input_anchor: int,
+	input_scroll_x: f32,
+	input_blink_phase: int,
+	input_valid: bool,
+	editor_pixel_density: f32,
+}
+
+ui_paint_signature_add_memory :: proc(signature: u64, data: rawptr, size: int) -> u64 {
+	if data == nil || size <= 0 {
+		return signature
+	}
+	bytes := (cast([^]byte)data)[:size]
+	return hash.fnv64a(bytes, signature)
+}
+
+ui_paint_signature_add_string :: proc(signature: u64, value: string) -> u64 {
+	if len(value) == 0 {
+		return signature
+	}
+	return hash.fnv64a(transmute([]byte)value, signature)
+}
+
+ui_paint_input_signature :: proc(state: ^State, world: ^shared.World, editor: bool) -> u64 {
+	focused_in_domain := state.has_focused_input && state.focused_input_editor == editor
+	key := UI_Paint_Signature_Key {
+		world_uuid = state.ui_world_uuid,
+		editor = editor,
+		has_focused_input = focused_in_domain,
+	}
+	if focused_in_domain {
+		key.focused_input = state.focused_input
+		key.input_cursor = state.input_cursor
+		key.input_anchor = state.input_anchor
+		key.input_scroll_x = state.input_scroll_x
+		key.input_blink_phase = int(state.input_blink_elapsed * 2) % 2
+		key.input_valid = state.input_valid
+	}
+	if editor {
+		key.editor_pixel_density = state.editor_pixel_density
+	}
+	signature := hash.fnv64a((cast([^]byte)&key)[:size_of(key)])
+	for &node in state.nodes[:state.node_count] {
+		if (node.origin == .Editor) != editor {
+			continue
+		}
+		signature = ui_paint_signature_add_memory(signature, &node, size_of(node))
+		entity_index := int(node.entity.index)
+		if entity_index < 0 || entity_index >= len(world.entities) {
+			continue
+		}
+		entity := &world.entities[entity_index]
+		if node.layout_index >= 0 && node.layout_index < len(world.ui_layouts) {
+			signature = ui_paint_signature_add_memory(
+				signature,
+				&world.ui_layouts[node.layout_index],
+				size_of(shared.UI_Layout_Component),
+			)
+		}
+		if node.scroll_area_index >= 0 && node.scroll_area_index < len(world.ui_scroll_areas) {
+			signature = ui_paint_signature_add_memory(
+				signature,
+				&world.ui_scroll_areas[node.scroll_area_index],
+				size_of(shared.UI_Scroll_Area_Component),
+			)
+		}
+		if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
+			panel := &world.ui_panels[node.panel_index]
+			signature = ui_paint_signature_add_memory(
+				signature,
+				panel,
+				size_of(shared.UI_Panel_Component),
+			)
+			signature = ui_paint_signature_add_string(signature, panel.title)
+			signature = ui_paint_signature_add_string(signature, panel.font)
+		}
+		if node.list_index >= 0 && node.list_index < len(world.ui_lists) {
+			signature = ui_paint_signature_add_memory(
+				signature,
+				&world.ui_lists[node.list_index],
+				size_of(shared.UI_List_Component),
+			)
+		}
+		if node.progress_index >= 0 && node.progress_index < len(world.ui_progresses) {
+			signature = ui_paint_signature_add_memory(
+				signature,
+				&world.ui_progresses[node.progress_index],
+				size_of(shared.UI_Progress_Component),
+			)
+		}
+		if node.text_index >= 0 && node.text_index < len(world.ui_texts) {
+			text := &world.ui_texts[node.text_index]
+			signature = ui_paint_signature_add_memory(
+				signature,
+				text,
+				size_of(shared.UI_Text_Component),
+			)
+			signature = ui_paint_signature_add_string(signature, text.text)
+			signature = ui_paint_signature_add_string(signature, text.font)
+		}
+		if node.button_index >= 0 && node.button_index < len(world.ui_buttons) {
+			button := &world.ui_buttons[node.button_index]
+			signature = ui_paint_signature_add_memory(
+				signature,
+				button,
+				size_of(shared.UI_Button_Component),
+			)
+			signature = ui_paint_signature_add_string(signature, button.text)
+			signature = ui_paint_signature_add_string(signature, button.font)
+		}
+		if node.input_index >= 0 && node.input_index < len(world.ui_inputs) {
+			input := &world.ui_inputs[node.input_index]
+			signature = ui_paint_signature_add_memory(
+				signature,
+				input,
+				size_of(shared.UI_Input_Component),
+			)
+			signature = ui_paint_signature_add_string(signature, input.text)
+			signature = ui_paint_signature_add_string(signature, input.font)
+			signature = ui_paint_signature_add_string(signature, input.prefix)
+		}
+		if node.checkbox_index >= 0 && node.checkbox_index < len(world.ui_checkboxes) {
+			signature = ui_paint_signature_add_memory(
+				signature,
+				&world.ui_checkboxes[node.checkbox_index],
+				size_of(shared.UI_Checkbox_Component),
+			)
+		}
+		if entity.ui_state_index >= 0 && entity.ui_state_index < len(world.ui_states) {
+			signature = ui_paint_signature_add_memory(
+				signature,
+				&world.ui_states[entity.ui_state_index],
+				size_of(shared.UI_State_Component),
+			)
+		}
+	}
+	for &handle in state.split_handles[:state.split_handle_count] {
+		if handle.editor == editor {
+			signature = ui_paint_signature_add_memory(signature, &handle, size_of(handle))
+		}
+	}
+	if state.resource_registry != nil {
+		for &font in state.resource_registry.fonts {
+			alive := u32(0)
+			if font.alive {
+				alive = 1
+			}
+			font_key := [3]u32{font.generation, font.version, alive}
+			signature = ui_paint_signature_add_memory(signature, &font_key, size_of(font_key))
+		}
+	}
+	return signature
+}
+
 reconcile :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -1074,19 +1219,57 @@ reconcile :: proc(
 	validate_focused_editor_input(state, world)
 	state.editor_snapshot_was_visible = state.editor_visible
 	if state.editor_pick_requested { state.editor_pick_position.x *= editor_scale; state.editor_pick_position.y *= editor_scale }
-	state.paint_count = 0
-	for i in 0 ..< state.node_count { if state.nodes[i].origin != .Editor && state.nodes[i].parent_entity_index < 0 { if err := paint_node(state, world, i, 0); err != "" { return err } } }
-	if err := append_split_handles(state, false); err != "" { return err }
-	state.editor_paint_start = state.paint_count
+	project_paint_signature := ui_paint_input_signature(state, world, false)
+	editor_paint_signature := ui_paint_input_signature(state, world, true)
+	rebuild_project_paint :=
+		!state.project_paint_signature_valid ||
+		state.project_paint_signature != project_paint_signature
+	rebuild_editor_paint :=
+		rebuild_project_paint ||
+		!state.editor_paint_signature_valid ||
+		state.editor_paint_signature != editor_paint_signature
+	if rebuild_project_paint {
+		state.paint_count = 0
+		for i in 0 ..< state.node_count {
+			if state.nodes[i].origin != .Editor && state.nodes[i].parent_entity_index < 0 {
+				if err := paint_node(state, world, i, 0); err != "" { return err }
+			}
+		}
+		if err := append_split_handles(state, false); err != "" { return err }
+		state.editor_paint_start = state.paint_count
+		state.project_paint_signature = project_paint_signature
+		state.project_paint_signature_valid = true
+	} else {
+		state.paint_count = state.editor_paint_start
+	}
 	if state.editor_visible {
-		for i in 0 ..< state.node_count { if state.nodes[i].origin == .Editor && state.nodes[i].parent_entity_index < 0 { if err := paint_node(state, world, i, 0); err != "" { return err } } }
-		if err := append_split_handles(state, true); err != "" { return err }
-		if editor_scale !=
-		   1 { for i in state.editor_paint_start ..< state.paint_count { scale_paint_command(&state.paint[i], editor_scale) } }
+		if rebuild_editor_paint {
+			for i in 0 ..< state.node_count {
+				if state.nodes[i].origin == .Editor && state.nodes[i].parent_entity_index < 0 {
+					if err := paint_node(state, world, i, 0); err != "" { return err }
+				}
+			}
+			if err := append_split_handles(state, true); err != "" { return err }
+			if editor_scale != 1 {
+				for i in state.editor_paint_start ..< state.paint_count {
+					scale_paint_command(&state.paint[i], editor_scale)
+				}
+			}
+			state.editor_gizmo_paint_start = state.paint_count
+			state.editor_paint_signature = editor_paint_signature
+			state.editor_paint_signature_valid = true
+		} else {
+			state.paint_count = state.editor_gizmo_paint_start
+		}
 		state.editor_gizmo_paint_start = state.paint_count
 		select_font(state, "")
 		if err := append_editor_gizmo(state); err != "" { return err }
 		state.editor_gizmo_paint_end = state.paint_count
+	} else {
+		state.editor_gizmo_paint_start = state.paint_count
+		state.editor_gizmo_paint_end = state.paint_count
+		state.editor_paint_signature = editor_paint_signature
+		state.editor_paint_signature_valid = true
 	}
 	return ""
 }

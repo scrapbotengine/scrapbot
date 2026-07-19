@@ -32,6 +32,7 @@
 - [x] Add scene-defined UI layout and text components.
 - [x] Incrementally synchronize appearing and disappearing UI entities into retained state.
 - [x] Traverse retained UI hierarchy links in linear time during layout and painting.
+- [x] Retain unchanged project/editor paint-command domains and skip redundant glyph emission.
 - [x] Render panel and scalable MTSDF text paint commands after world geometry.
 - [x] Auto-atlas named project TTF/OTF resources and retain embedded Inter as fallback.
 - [x] Add row, column, and overlay hierarchy layout.

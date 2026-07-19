@@ -82,7 +82,7 @@ Windowed WebGPU opens an SDL3 window:
 bin/scrapbot run examples/minimal --frames 3
 ```
 
-Press `Cmd/Ctrl+E` during an unbounded windowed run to open Scrapbot's editor shell around the live project. A running game pauses while the shell is open and resumes when it closes; an already paused or stopped game keeps its state. To start open or capture the shell directly, pass `--editor`:
+Press `Cmd/Ctrl+E` during an unbounded windowed run to open Scrapbot's editor shell around the live project. Toggling the shell does not change whether the project is running, paused, or stopped. To start open or capture the shell directly, pass `--editor`:
 
 ```sh
 bin/scrapbot run examples/ecs-showcase --editor

@@ -2847,7 +2847,7 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 }
 
 @(test)
-test_editor_toggle_borrows_running_playback_until_shell_closes :: proc(t: ^testing.T) {
+test_editor_toggle_preserves_playback_state :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
 	world := ecs.build_world(&scene)
@@ -2857,50 +2857,45 @@ test_editor_toggle_borrows_running_playback_until_shell_closes :: proc(t: ^testi
 	testing.expect(t, init(state) == "")
 	defer destroy(state)
 
-	// Opening over a running game pauses it, and closing resumes it.
+	// Opening and closing the editor never changes a running game.
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(
 		t,
 		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
 	)
 	testing.expect(t, state.editor_visible)
-	testing.expect(t, !state.editor_simulation_playing)
+	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
-	testing.expect(t, state.editor_resume_playback_on_close)
 	testing.expect(
 		t,
 		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
 	)
 	testing.expect(t, !state.editor_visible)
 	testing.expect(t, state.editor_simulation_playing)
-	testing.expect(t, !state.editor_resume_playback_on_close)
 
-	// A pre-existing pause is not owned by the shell and survives a round trip.
+	// A pre-existing pause survives the same round trip.
 	editor_pause(state)
 	editor_toggle(state)
 	testing.expect(t, state.editor_visible)
-	testing.expect(t, !state.editor_resume_playback_on_close)
+	testing.expect(t, !state.editor_simulation_playing)
 	editor_toggle(state)
 	testing.expect(t, !state.editor_visible)
 	testing.expect(t, !state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
 
-	// Scene reset preserves the borrowed running state. Closing starts the reset
-	// scene instead of leaving the project stopped.
+	// Stopped authoring mode also remains stopped across visibility changes.
 	editor_play(state)
-	editor_toggle(state)
-	testing.expect(t, state.editor_resume_playback_on_close)
 	editor_stop(state)
 	testing.expect(t, state.editor_simulation_stopped)
-	testing.expect(t, state.editor_resume_playback_on_close)
 	testing.expect(t, consume_playback_stop_request(state))
 	editor_world_restored(state, &world, {}, false)
 	editor_toggle(state)
+	testing.expect(t, state.editor_visible)
+	testing.expect(t, !state.editor_simulation_playing)
+	testing.expect(t, state.editor_simulation_stopped)
+	editor_toggle(state)
 	testing.expect(t, !state.editor_visible)
-	testing.expect(t, state.editor_simulation_playing)
-	testing.expect(t, !state.editor_simulation_stopped)
-	testing.expect(t, !state.editor_resume_playback_on_close)
-	testing.expect(t, consume_playback_begin_request(state))
+	testing.expect(t, state.editor_simulation_stopped)
 }
 
 @(test)

@@ -10,7 +10,7 @@
     {"action": "wait", "frames": 1},
     {"action": "key", "key": "editor_toggle"},
     {"action": "wait", "frames": 1},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY"},
     {"action": "capture", "target": {"name": "__scrapbot_editor_transport", "origin": "editor"}, "padding": 10}
   ]
 }
