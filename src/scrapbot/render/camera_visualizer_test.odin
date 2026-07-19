@@ -73,7 +73,7 @@ test_editor_camera_mesh_tracks_picks_and_selection_scopes_project_cameras :: pro
 }
 
 @(test)
-test_editor_camera_mesh_frustum_reflects_fov_aspect_and_clip_limits :: proc(t: ^testing.T) {
+test_editor_camera_mesh_frustum_reflects_fov_aspect_and_bounded_preview :: proc(t: ^testing.T) {
 	transform := shared.Transform_Component {
 		scale = {1, 1, 1},
 	}
@@ -81,9 +81,24 @@ test_editor_camera_mesh_frustum_reflects_fov_aspect_and_clip_limits :: proc(t: ^
 	wide := editor_camera_mesh_world_points(transform, {fov = 90, near = 0.25, far = 10}, 2, 1)
 
 	testing.expect(t, narrow[13].z == -0.25)
-	testing.expect(t, narrow[17].z == -10)
+	testing.expect(t, narrow[17].z == -EDITOR_CAMERA_FRUSTUM_PREVIEW_SIZE)
 	testing.expect(t, math.abs(wide[17].x) > math.abs(narrow[17].x))
 	testing.expect(t, math.abs(wide[17].y) > math.abs(narrow[17].y))
+	long_range := editor_camera_mesh_world_points(
+		transform,
+		{fov = 90, near = 0.25, far = 1000},
+		2,
+		1,
+	)
+	testing.expect(t, long_range[17] == wide[17])
+
+	short_range := editor_camera_mesh_world_points(
+		transform,
+		{fov = 90, near = 0.25, far = 2},
+		2,
+		1,
+	)
+	testing.expect(t, short_range[17].z == -2)
 }
 
 @(test)
@@ -127,6 +142,49 @@ test_editor_camera_mesh_body_has_world_scale :: proc(t: ^testing.T) {
 	far_length := math.sqrt(far_delta.x * far_delta.x + far_delta.y * far_delta.y)
 
 	testing.expect(t, near_length > far_length)
+}
+
+@(test)
+test_editor_camera_frustum_preview_stays_bounded_from_distant_viewpoint :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Project Camera",
+			has_transform = true,
+			transform = {position = {-2, 1, 0}, rotation = {0, 0.4, 0}, scale = {1, 1, 1}},
+			has_camera = true,
+			camera = {fov = 60, near = 0.1, far = 100},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	state.editor_has_selection = true
+	state.editor_selected_entity = world.entities[0].id
+	view_camera := shared.Camera_Instance {
+		transform = {position = {0, 5, 30}, rotation = {-0.165149, 0, 0}, scale = {1, 1, 1}},
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+	viewport := ui.Rect{0, 0, 800, 600}
+
+	editor_camera_mesh_system(state, &world, viewport, view_camera, true, true)
+
+	testing.expect(t, state.editor_camera_mesh_segment_count == EDITOR_CAMERA_MESH_SEGMENT_COUNT)
+	min_x, max_x := viewport.width, f32(0)
+	min_y, max_y := viewport.height, f32(0)
+	frustum_segments := state.editor_camera_mesh_segments[EDITOR_CAMERA_MESH_BODY_SEGMENT_COUNT:EDITOR_CAMERA_MESH_SEGMENT_COUNT]
+	for segment in frustum_segments {
+		min_x = min(min_x, min(segment.start.x, segment.end.x))
+		max_x = max(max_x, max(segment.start.x, segment.end.x))
+		min_y = min(min_y, min(segment.start.y, segment.end.y))
+		max_y = max(max_y, max(segment.start.y, segment.end.y))
+	}
+	testing.expect(t, max_x - min_x < viewport.width * 0.35)
+	testing.expect(t, max_y - min_y < viewport.height * 0.35)
 }
 
 @(test)

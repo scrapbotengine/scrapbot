@@ -6,6 +6,7 @@ import ui "../ui"
 import "core:math"
 
 EDITOR_CAMERA_MESH_WORLD_SIZE :: f32(0.6)
+EDITOR_CAMERA_FRUSTUM_PREVIEW_SIZE :: f32(5)
 EDITOR_CAMERA_MESH_POINT_COUNT :: 21
 EDITOR_CAMERA_MESH_BODY_SEGMENT_COUNT :: 20
 EDITOR_CAMERA_MESH_FRUSTUM_SEGMENT_COUNT :: 12
@@ -160,10 +161,14 @@ editor_camera_mesh_world_points :: proc(
 	if camera.far > near_distance {
 		far_distance = camera.far
 	}
+	preview_distance := min(
+		far_distance,
+		max(EDITOR_CAMERA_FRUSTUM_PREVIEW_SIZE, near_distance + size),
+	)
 	tangent := math.tan(math.to_radians(fov) * 0.5)
 	near_half_height := tangent * near_distance
 	near_half_width := near_half_height * max(aspect, 0.01)
-	far_half_height := tangent * far_distance
+	far_half_height := tangent * preview_distance
 	far_half_width := far_half_height * max(aspect, 0.01)
 	for signs, corner in corner_signs {
 		points[corner + 13] = editor_camera_mesh_point(
@@ -180,7 +185,7 @@ editor_camera_mesh_world_points :: proc(
 			right,
 			up,
 			forward,
-			far_distance,
+			preview_distance,
 			signs[0] * far_half_width,
 			signs[1] * far_half_height,
 		)
