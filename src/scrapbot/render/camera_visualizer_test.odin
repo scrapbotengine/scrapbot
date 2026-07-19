@@ -7,7 +7,7 @@ import "core:math"
 import "core:testing"
 
 @(test)
-test_editor_camera_mesh_tracks_project_cameras_and_excludes_the_fly_camera :: proc(t: ^testing.T) {
+test_editor_camera_mesh_tracks_picks_and_selection_scopes_project_cameras :: proc(t: ^testing.T) {
 	scene: shared.Scene
 	defer delete(scene.entities)
 	append(
@@ -60,6 +60,13 @@ test_editor_camera_mesh_tracks_project_cameras_and_excludes_the_fly_camera :: pr
 	testing.expect(t, picked_ok && picked == world.entities[0].id)
 	_, picked_ok = editor_pick_camera_mesh(state, {-100, -100})
 	testing.expect(t, !picked_ok)
+
+	state.editor_has_selection = false
+	editor_camera_mesh_system(state, &world, {0, 0, 800, 600}, view_camera, true, true)
+	testing.expect(
+		t,
+		state.editor_camera_mesh_segment_count == EDITOR_CAMERA_MESH_BODY_SEGMENT_COUNT,
+	)
 
 	editor_camera_mesh_system(state, &world, {0, 0, 800, 600}, view_camera, true, false)
 	testing.expect(t, state.editor_camera_mesh_segment_count == 0)
@@ -120,4 +127,33 @@ test_editor_camera_mesh_body_has_world_scale :: proc(t: ^testing.T) {
 	far_length := math.sqrt(far_delta.x * far_delta.x + far_delta.y * far_delta.y)
 
 	testing.expect(t, near_length > far_length)
+}
+
+@(test)
+test_editor_camera_mesh_skips_camera_body_containing_the_viewpoint :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Project Camera",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+			has_camera = true,
+			camera = {fov = 60, near = 0.1, far = 100},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	view_camera := shared.Camera_Instance {
+		transform = {scale = {1, 1, 1}},
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+
+	editor_camera_mesh_system(state, &world, {0, 0, 800, 600}, view_camera, true, true)
+
+	testing.expect(t, state.editor_camera_mesh_segment_count == 0)
 }

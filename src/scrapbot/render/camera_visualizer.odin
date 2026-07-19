@@ -30,6 +30,15 @@ editor_camera_mesh_system :: proc(
 	}
 
 	ecs.begin_world_transform_resolution(world)
+	view_eye, _ := editor_camera_eye_fov(view_camera, has_view_camera)
+	view_forward := vec3_normalize(vec3_sub({}, view_eye))
+	view_near := f32(0.1)
+	if has_view_camera {
+		view_forward = shared.camera_forward(view_camera.transform.rotation)
+		if view_camera.camera.near > 0 {
+			view_near = view_camera.camera.near
+		}
+	}
 	for entity_index in world.render_active_camera_entities {
 		if entity_index < 0 || entity_index >= len(world.entities) {
 			continue
@@ -49,6 +58,10 @@ editor_camera_mesh_system :: proc(
 		}
 
 		transform, _ := ecs.resolve_world_transform(world, entity_index)
+		view_depth := vec3_dot(vec3_sub(transform.position, view_eye), view_forward)
+		if view_depth <= view_near + EDITOR_CAMERA_MESH_WORLD_SIZE {
+			continue
+		}
 		camera_component := world.cameras[entity.camera_index]
 		points := editor_camera_mesh_world_points(
 			transform,
@@ -88,6 +101,7 @@ editor_camera_mesh_system :: proc(
 			color,
 			frustum_color,
 			thickness,
+			selected,
 		)
 	}
 }
@@ -194,6 +208,7 @@ editor_camera_mesh_append_segments :: proc(
 	entity: shared.Entity,
 	body_color, frustum_color: shared.Vec4,
 	thickness: f32,
+	show_frustum: bool,
 ) {
 	edges := [EDITOR_CAMERA_MESH_SEGMENT_COUNT][2]int {
 		{0, 1},
@@ -230,6 +245,9 @@ editor_camera_mesh_append_segments :: proc(
 		{20, 17},
 	}
 	for edge, edge_index in edges {
+		if edge_index >= EDITOR_CAMERA_MESH_BODY_SEGMENT_COUNT && !show_frustum {
+			break
+		}
 		if !point_valid[edge[0]] || !point_valid[edge[1]] {
 			continue
 		}

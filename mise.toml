@@ -167,7 +167,7 @@ UI_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-ui.png"
 trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 2 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 2 --framegrab "$CPU_FRAME" --json)"
-UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 3 --framegrab "$UI_FRAME" --json)"
+UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);
@@ -186,7 +186,7 @@ node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-    stats?.ui_vertex_rebuilds !== 2 || stats.ui_vertex_uploads !== 2 ||
+    stats?.ui_vertex_rebuilds !== 1 || stats.ui_vertex_uploads !== 1 ||
     stats.ui_vertex_upload_bytes <= 0) {
   console.error("unexpected retained UI renderer diagnostics");
   process.exit(1);

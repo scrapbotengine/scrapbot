@@ -69,7 +69,7 @@ The editor creates an editor-owned scene-camera entity whose initial view matche
 
 Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 
-While the editor is open, project and runtime camera entities appear in the scene view as blue, world-scaled wireframe camera bodies with complete projection frusta derived from their FOV, near/far clip planes, and the current viewport aspect. The body naturally becomes smaller on screen as the scene viewpoint moves away. Selecting one highlights its visualizer in amber. Click any visible body or frustum stroke to select its owning camera entity; camera visualizers take priority over ordinary triangle picking. These visualizers follow each camera's resolved world transform and are editor-only: the separate fly camera is never shown as project content, and closing the editor removes them.
+While the editor is open, project and runtime camera entities appear in the scene view as blue, world-scaled wireframe camera bodies. The body naturally becomes smaller on screen as the scene viewpoint moves away. Selecting a camera highlights its visualizer in amber and reveals its complete projection frustum, derived from its FOV, near/far clip planes, and the current viewport aspect. Restricting full frusta to the selection keeps normal long far planes from flooding the scene view. Click any visible body or selected frustum stroke to select its owning camera entity; camera visualizers take priority over ordinary triangle picking. These visualizers follow each camera's resolved world transform and are editor-only: the separate fly camera is never shown as project content, and closing the editor removes them.
 
 ## Browse and inspect entities
 
