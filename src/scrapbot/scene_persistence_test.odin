@@ -88,6 +88,80 @@ scene_persistence_expect_world_matches_disk :: proc(
 }
 
 @(test)
+test_scene_persistence_saves_explicit_entity_order_without_reparenting :: proc(t: ^testing.T) {
+	directory, directory_err := os.make_directory_temp(
+		"",
+		"scrapbot-persistence-order-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, directory_err == nil)
+	if directory_err != nil {
+		return
+	}
+	defer os.remove_all(directory)
+	scene_path, path_err := filepath.join({directory, "scene.toml"})
+	testing.expect(t, path_err == nil)
+	if path_err != nil {
+		return
+	}
+	defer delete(scene_path)
+	a_id := shared.entity_uuid_from_engine_name("order-a")
+	b_id := shared.entity_uuid_from_engine_name("order-b")
+	c_id := shared.entity_uuid_from_engine_name("order-c")
+	source := fmt.tprintf(
+		`[[entities]]
+id = "%s"
+name = "A"
+
+[[entities]]
+id = "%s"
+name = "B"
+
+[[entities]]
+id = "%s"
+name = "C"
+`,
+		scene_uuid(a_id),
+		scene_uuid(b_id),
+		scene_uuid(c_id),
+	)
+	testing.expect(t, os.write_entire_file(scene_path, source) == nil)
+	loaded := project.load_scene_file(scene_path)
+	testing.expect_value(t, loaded.err, "")
+	if loaded.err != "" {
+		project.destroy_scene_load_result(&loaded)
+		return
+	}
+	world := ecs.build_world(&loaded.scene)
+	project.destroy_scene_load_result(&loaded)
+	defer ecs.destroy_world(&world)
+	a_index, a_found := ecs.entity_index_by_uuid(&world, a_id)
+	c_index, c_found := ecs.entity_index_by_uuid(&world, c_id)
+	testing.expect(t, a_found && c_found)
+	if !a_found || !c_found {
+		return
+	}
+	testing.expect(t, ecs.move_entity_scene_order(&world, c_index, a_index, false))
+	dirty := []shared.Entity_UUID{c_id}
+	testing.expect_value(t, save_scene_world(scene_path, &world, dirty), "")
+	saved := scene_persistence_read(t, scene_path)
+	defer delete(saved)
+	reloaded := project.load_scene_file(scene_path)
+	defer project.destroy_scene_load_result(&reloaded)
+	testing.expect_value(t, reloaded.err, "")
+	if reloaded.err == "" {
+		testing.expect_value(t, len(reloaded.scene.entities), 3)
+		testing.expect_value(t, reloaded.scene.entities[0].id, c_id)
+		testing.expect_value(t, reloaded.scene.entities[1].id, a_id)
+		testing.expect_value(t, reloaded.scene.entities[2].id, b_id)
+	}
+	testing.expect_value(t, save_scene_world(scene_path, &world, dirty), "")
+	second := scene_persistence_read(t, scene_path)
+	defer delete(second)
+	testing.expect_value(t, second, saved)
+}
+
+@(test)
 test_scene_persistence_scales_candidate_work_and_preserves_value_blocks :: proc(t: ^testing.T) {
 	directory, directory_err := os.make_directory_temp(
 		"",
@@ -371,6 +445,21 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	}
 	append(&root.custom_components, custom)
 	append(&loaded.scene.entities, root)
+	transform_child_id := shared.entity_uuid_from_engine_name("persistence-schema-transform-child")
+	append(
+		&loaded.scene.entities,
+		shared.Scene_Entity {
+			id = transform_child_id,
+			name = "Schema Transform Child",
+			has_transform = true,
+			transform = {
+				parent = root_id,
+				position = {4, 5, 6},
+				rotation = {0.4, 0.5, 0.6},
+				scale = {0.5, 0.5, 0.5},
+			},
+		},
+	)
 	controls_id := shared.entity_uuid_from_engine_name("persistence-schema-controls")
 	layout := shared.ui_layout_default()
 	layout.parent = root_id
@@ -506,8 +595,9 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	world := ecs.build_world(&loaded.scene)
 	project.destroy_scene_load_result(&loaded)
 	defer ecs.destroy_world(&world)
-	dirty := [9]shared.Entity_UUID {
+	dirty := [10]shared.Entity_UUID {
 		root_id,
+		transform_child_id,
 		controls_id,
 		button_id,
 		input_id,

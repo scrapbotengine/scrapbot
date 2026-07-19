@@ -117,6 +117,13 @@ ui_list_default :: proc "contextless" () -> UI_List {
 		selection_background = {0.045, 0.095, 0.105, 1},
 		hover_background = {0.028, 0.038, 0.050, 1},
 		active_background = {0.040, 0.055, 0.072, 1},
+		drag_threshold = 5,
+		drop_edge_fraction = 0.25,
+		drop_target_background = {0.055, 0.12, 0.13, 1},
+		drop_indicator_color = {0.42, 0.92, 0.84, 1},
+		drop_indicator_thickness = 2,
+		drop_indicator_inset = 8,
+		tree_indent = 14,
 	}
 }
 

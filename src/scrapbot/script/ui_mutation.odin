@@ -64,6 +64,20 @@ read_ui_component_command_from_luau :: proc "c" (
 			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "fixed_in_fill", &value.fixed_in_fill);
 			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "tree_item", &value.tree_item);
+			   err != "" { return err }
+			if err := read_ui_uuid_field(L, payload_index, "tree_parent", &value.tree_parent);
+			   err != "" { return err }
+			tree_order := f32(value.tree_order)
+			if err := read_ui_number_field(L, payload_index, "tree_order", &tree_order);
+			   err != "" { return err }
+			value.tree_order = int(tree_order)
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"tree_collapsed",
+				&value.tree_collapsed,
+			); err != "" { return err }
 			if err := read_ui_bool_field(
 				L,
 				payload_index,
@@ -255,7 +269,51 @@ read_ui_component_command_from_luau :: proc "c" (
 				"active_background",
 				&value.active_background,
 			); err != "" { return err }
-			if !shared.ui_list_is_valid(value) { return "ui_list requires a non-negative gap" }
+			if err := read_ui_bool_field(L, payload_index, "draggable", &value.draggable);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drag_threshold",
+				&value.drag_threshold,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drop_edge_fraction",
+				&value.drop_edge_fraction,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"drop_target_background",
+				&value.drop_target_background,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"drop_indicator_color",
+				&value.drop_indicator_color,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drop_indicator_thickness",
+				&value.drop_indicator_thickness,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drop_indicator_inset",
+				&value.drop_indicator_inset,
+			); err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "tree_enabled", &value.tree_enabled);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "tree_indent", &value.tree_indent);
+			   err != "" { return err }
+			if !shared.ui_list_is_valid(
+				value,
+			) { return "ui_list requires valid non-negative drag and layout values" }
 			command.list = value
 			return ecs.init_ui_component_command(command, .List)
 		case "scrapbot.ui_progress":
@@ -369,8 +427,14 @@ read_ui_component_command_from_luau :: proc "c" (
 					value.icon = .Close
 				case "plus":
 					value.icon = .Plus
+				case "chevron_right":
+					value.icon = .Chevron_Right
+				case "chevron_down":
+					value.icon = .Chevron_Down
 				case:
-					return "ui_button.icon must be none, close, or plus"
+					return(
+						"ui_button.icon must be none, close, plus, chevron_right, or chevron_down" \
+					)
 			}
 			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
 			   err != "" { return err }
@@ -738,6 +802,10 @@ ui_icon_name :: proc "contextless" (icon: shared.UI_Icon) -> string {
 			return "close"
 		case .Plus:
 			return "plus"
+		case .Chevron_Right:
+			return "chevron_right"
+		case .Chevron_Down:
+			return "chevron_down"
 		case .None:
 			return "none"
 	}

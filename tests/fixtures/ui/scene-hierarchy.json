@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 140,
+  "actions": [
+    {"action": "wait", "frames": 12},
+    {"action": "expect", "target": {"text": "Static Light Rig", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "Static Amber Light", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "Static Green Light", "origin": "editor"}, "expect": "visible"},
+    {"action": "drag", "target": {"text": "Cool Orbiting Light", "origin": "editor"}, "destination": {"text": "Warm Orbiting Light", "origin": "editor"}, "destination_anchor": "center", "frames": 4},
+    {"action": "wait", "frames": 5},
+    {"action": "drag", "target": {"text": "Cool Orbiting Light", "origin": "editor", "occurrence": 1}, "destination": {"text": "Ambient Light", "origin": "editor"}, "destination_anchor": "top", "frames": 4},
+    {"action": "wait", "frames": 5},
+    {"action": "drag", "target": {"text": "Ambient Light", "origin": "editor"}, "destination": {"text": "Static Light Rig", "origin": "editor"}, "frames": 4},
+    {"action": "wait", "frames": 15},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene", "origin": "editor"}, "padding": 4}
+  ]
+}

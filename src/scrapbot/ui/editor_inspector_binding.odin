@@ -672,6 +672,13 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 				applied = true
 				selected = world.entities[entity_index].id
 			}
+			if applied && len(change.before_order) > 0 {
+				order := change.before_order[:]
+				if redo {
+					order = change.after_order[:]
+				}
+				applied = apply_scene_order(world, order)
+			}
 			if applied {
 				editor_mark_scene_uuid_dirty(state, change.target_uuid)
 				if desired == nil {
@@ -797,6 +804,8 @@ editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction
 			ecs.destroy_entity_snapshot(change.after)
 			free(change.after)
 		}
+		delete(change.before_order)
+		delete(change.after_order)
 		free(change)
 	}
 	if transaction.component_structural != nil {

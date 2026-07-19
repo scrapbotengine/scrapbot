@@ -105,6 +105,7 @@ editor_authoring_create_entity :: proc(
 	snapshot.origin = .Scene
 	snapshot.entity.id = shared.entity_uuid_generate()
 	snapshot.entity.name = ecs.clone_snapshot_string("New Entity")
+	snapshot.entity.scene_order = ecs.next_scene_order_index(world)
 	snapshot.entity.has_transform = true
 	snapshot.entity.transform.scale = {1, 1, 1}
 	entity_index, ok := ecs.apply_entity_snapshot(world, snapshot)
@@ -134,6 +135,9 @@ editor_authoring_duplicate_entity :: proc(
 		return {}, false
 	}
 	after.entity.id = shared.entity_uuid_generate()
+	if source_order, found := ecs.entity_scene_order_index(world, entity_index); found {
+		after.entity.scene_order = source_order + 1
+	}
 	delete(after.entity.name)
 	after.entity.name = ecs.clone_snapshot_string(
 		fmt.tprintf("%s Copy", world.entities[entity_index].name),
@@ -156,6 +160,17 @@ editor_authoring_delete_entity :: proc(
 ) -> bool {
 	if !editor_authoring_available(state, world) || !ecs.entity_is_alive(world, entity_index) {
 		return false
+	}
+	entity_uuid := world.entities[entity_index].uuid
+	for candidate in world.entities {
+		if !candidate.alive ||
+		   candidate.transform_index < 0 ||
+		   candidate.transform_index >= len(world.transforms) {
+			continue
+		}
+		if world.transforms[candidate.transform_index].parent == entity_uuid {
+			return false
+		}
 	}
 	before := capture_snapshot_pointer(world, entity_index)
 	if before == nil || before.origin != .Scene {
@@ -200,6 +215,203 @@ editor_authoring_rename_entity :: proc(
 		return false
 	}
 	push_structural_change(state, before.entity.id, before, after)
+	editor_authoring_select(state, world, entity_index)
+	return true
+}
+
+editor_reparent_entity :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	parent: shared.Entity_UUID,
+) -> bool {
+	if state == nil || world == nil || !ecs.entity_is_alive(world, entity_index) {
+		return false
+	}
+	entity := world.entities[entity_index]
+	if entity.origin == .Editor {
+		return false
+	}
+	if !state.editor_simulation_stopped {
+		added_transform :=
+			entity.transform_index < 0 || entity.transform_index >= len(world.transforms)
+		if added_transform {
+			ecs.add_transform(world, entity_index, {scale = {1, 1, 1}})
+		}
+		if ecs.set_transform_parent(world, entity_index, parent, true) {
+			return true
+		}
+		if added_transform {
+			ecs.remove_transform(world, entity_index)
+		}
+		return false
+	}
+	if entity.origin != .Scene {
+		return false
+	}
+	if parent != (shared.Entity_UUID{}) {
+		parent_index, found := ecs.entity_index_by_uuid(world, parent)
+		if !found || world.entities[parent_index].origin != .Scene {
+			return false
+		}
+	}
+	before := capture_snapshot_pointer(world, entity_index)
+	if before == nil {
+		return false
+	}
+	if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {
+		ecs.add_transform(world, entity_index, {scale = {1, 1, 1}})
+	}
+	if !ecs.set_transform_parent(world, entity_index, parent, true) {
+		_, _ = ecs.apply_entity_snapshot(world, before)
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	after := capture_snapshot_pointer(world, entity_index)
+	if after == nil {
+		_, _ = ecs.apply_entity_snapshot(world, before)
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	push_structural_change(state, entity.uuid, before, after)
+	editor_authoring_select(state, world, entity_index)
+	return true
+}
+
+editor_entity_parent_uuid :: proc(world: ^shared.World, entity_index: int) -> shared.Entity_UUID {
+	if world == nil || !ecs.entity_is_alive(world, entity_index) {
+		return {}
+	}
+	entity := world.entities[entity_index]
+	if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {
+		return {}
+	}
+	return world.transforms[entity.transform_index].parent
+}
+
+capture_scene_order :: proc(world: ^shared.World) -> [dynamic]shared.Entity_UUID {
+	result: [dynamic]shared.Entity_UUID
+	if world == nil {
+		return result
+	}
+	indices := ecs.ordered_non_editor_entity_indices(world)
+	defer delete(indices)
+	for entity_index in indices {
+		append(&result, world.entities[entity_index].uuid)
+	}
+	return result
+}
+
+apply_scene_order :: proc(world: ^shared.World, order: []shared.Entity_UUID) -> bool {
+	if world == nil {
+		return false
+	}
+	for id, order_index in order {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found || world.entities[entity_index].origin == .Editor {
+			return false
+		}
+		world.entities[entity_index].scene_order = order_index
+	}
+	return true
+}
+
+editor_place_entity_adjacent :: proc(
+	world: ^shared.World,
+	entity_index, target_index: int,
+	after: bool,
+) -> bool {
+	if world == nil ||
+	   !ecs.entity_is_alive(world, entity_index) ||
+	   !ecs.entity_is_alive(world, target_index) ||
+	   entity_index == target_index {
+		return false
+	}
+	target_parent := editor_entity_parent_uuid(world, target_index)
+	current_parent := editor_entity_parent_uuid(world, entity_index)
+	parent_changed := current_parent != target_parent
+	if parent_changed {
+		entity := world.entities[entity_index]
+		added_transform :=
+			entity.transform_index < 0 || entity.transform_index >= len(world.transforms)
+		if added_transform {
+			ecs.add_transform(world, entity_index, {scale = {1, 1, 1}})
+		}
+		if !ecs.set_transform_parent(world, entity_index, target_parent, true) {
+			if added_transform {
+				ecs.remove_transform(world, entity_index)
+			}
+			return false
+		}
+	}
+	reordered := ecs.move_entity_scene_order_subtree(world, entity_index, target_index, after)
+	return parent_changed || reordered
+}
+
+editor_reorder_entity :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index, target_index: int,
+	after: bool,
+) -> bool {
+	if state == nil ||
+	   world == nil ||
+	   !ecs.entity_is_alive(world, entity_index) ||
+	   !ecs.entity_is_alive(world, target_index) ||
+	   entity_index == target_index {
+		return false
+	}
+	entity := world.entities[entity_index]
+	target := world.entities[target_index]
+	if entity.origin == .Editor || target.origin == .Editor {
+		return false
+	}
+	if !state.editor_simulation_stopped {
+		if !editor_place_entity_adjacent(world, entity_index, target_index, after) {
+			return false
+		}
+		editor_authoring_select(state, world, entity_index)
+		return true
+	}
+	if entity.origin != .Scene || target.origin != .Scene {
+		return false
+	}
+	target_parent := editor_entity_parent_uuid(world, target_index)
+	if target_parent != (shared.Entity_UUID{}) {
+		parent_index, found := ecs.entity_index_by_uuid(world, target_parent)
+		if !found || world.entities[parent_index].origin != .Scene {
+			return false
+		}
+	}
+	before_order := capture_scene_order(world)
+	before := capture_snapshot_pointer(world, entity_index)
+	if before == nil {
+		delete(before_order)
+		return false
+	}
+	if !editor_place_entity_adjacent(world, entity_index, target_index, after) {
+		delete(before_order)
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	after_order := capture_scene_order(world)
+	after_snapshot := capture_snapshot_pointer(world, entity_index)
+	if after_snapshot == nil {
+		_, _ = ecs.apply_entity_snapshot(world, before)
+		_ = apply_scene_order(world, before_order[:])
+		delete(before_order)
+		delete(after_order)
+		destroy_snapshot_pointer(before)
+		return false
+	}
+	change := new(Editor_Structural_Change)
+	change.target_uuid = entity.uuid
+	change.before = before
+	change.after = after_snapshot
+	change.before_order = before_order
+	change.after_order = after_order
+	editor_history_push_transaction(state, {structural = change})
+	editor_mark_scene_uuid_dirty(state, entity.uuid)
 	editor_authoring_select(state, world, entity_index)
 	return true
 }

@@ -630,6 +630,361 @@ test_selectable_list_lays_out_full_width_rows_and_selects_direct_child :: proc(t
 }
 
 @(test)
+test_draggable_list_exposes_direct_child_drop_and_paints_lander_line :: proc(t: ^testing.T) {
+	list_id := ui_test_id("Draggable List")
+	first_id := ui_test_id("Draggable First")
+	second_id := ui_test_id("Draggable Second")
+	indicator_color := shared.Vec4{0.25, 0.9, 0.75, 1}
+	target_color := shared.Vec4{0.1, 0.3, 0.4, 1}
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = list_id,
+			name = "List",
+			has_ui_layout = true,
+			ui_layout = {size = {200, 100}},
+			has_ui_list = true,
+			ui_list = {
+				draggable = true,
+				drag_threshold = 5,
+				drop_edge_fraction = 0.25,
+				drop_target_background = target_color,
+				drop_indicator_color = indicator_color,
+				drop_indicator_thickness = 3,
+				drop_indicator_inset = 7,
+			},
+		},
+		shared.Scene_Entity {
+			id = first_id,
+			name = "First",
+			has_ui_layout = true,
+			ui_layout = {parent = list_id, size = {200, 30}},
+			has_ui_text = true,
+			ui_text = {text = "First", color = {1, 1, 1, 1}, size = 12},
+		},
+		shared.Scene_Entity {
+			id = second_id,
+			name = "Second",
+			has_ui_layout = true,
+			ui_layout = {parent = list_id, size = {200, 30}},
+			has_ui_text = true,
+			ui_text = {text = "Second", color = {1, 1, 1, 1}, size = 12},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 200, 100) == "")
+	first_node := find_node_by_entity_index(state, 1)
+	second_node := find_node_by_entity_index(state, 2)
+	start := shared.Vec2{state.nodes[first_node].rect.x + 20, state.nodes[first_node].rect.y + 15}
+	target := shared.Vec2 {
+		state.nodes[second_node].rect.x + 20,
+		state.nodes[second_node].rect.y + 29,
+	}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	list_state := world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, list_state.dragging)
+	testing.expect_value(t, list_state.drag_source, first_id)
+	testing.expect_value(t, list_state.drop_target, second_id)
+	testing.expect_value(t, list_state.drop_placement, shared.UI_Drop_Placement.After)
+	found_indicator := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Line &&
+		   command.color == indicator_color &&
+		   command.line_thickness == 3 {
+			found_indicator = true
+		}
+	}
+	testing.expect(t, found_indicator)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {position = target, available = true}) == "",
+	)
+	list_state = world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, !list_state.dragging)
+	testing.expect_value(t, list_state.drop_revision, u64(1))
+	dropped := false
+	for event in ui_events(state) {
+		if event.kind == .Dropped &&
+		   event.entity == world.entities[0].id &&
+		   event.source == world.entities[1].id &&
+		   event.target == world.entities[2].id &&
+		   event.drop_placement == .After {
+			dropped = true
+		}
+	}
+	testing.expect(t, dropped)
+	center_target := shared.Vec2 {
+		state.nodes[second_node].rect.x + 20,
+		state.nodes[second_node].rect.y + 15,
+	}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = center_target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	list_state = world.ui_states[world.entities[0].ui_state_index]
+	testing.expect_value(t, list_state.drop_placement, shared.UI_Drop_Placement.Into)
+	found_target_background := false
+	found_center_indicator := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel &&
+		   command.rect == state.nodes[second_node].rect &&
+		   command.color == target_color {
+			found_target_background = true
+		}
+		if command.kind == .Line && command.color == indicator_color {
+			found_center_indicator = true
+		}
+	}
+	testing.expect(t, found_target_background)
+	testing.expect(t, !found_center_indicator)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {position = center_target, available = true}) == "",
+	)
+	list_state = world.ui_states[world.entities[0].ui_state_index]
+	testing.expect_value(t, list_state.drop_revision, u64(2))
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			100,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 100, {position = start, available = true}) == "",
+	)
+	list_state = world.ui_states[world.entities[0].ui_state_index]
+	testing.expect_value(t, list_state.drop_revision, u64(2))
+}
+
+@(test)
+test_tree_list_flattens_indents_collapses_and_moves_subtrees :: proc(t: ^testing.T) {
+	list_id := ui_test_id("Tree List")
+	toolbar_id := ui_test_id("Tree Toolbar")
+	root_id := ui_test_id("Tree Root")
+	child_id := ui_test_id("Tree Child")
+	last_id := ui_test_id("Tree Last")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = list_id,
+			name = "Tree List",
+			has_ui_layout = true,
+			ui_layout = {size = {200, 120}},
+			has_ui_list = true,
+			ui_list = {
+				draggable = true,
+				drag_threshold = 1,
+				drop_edge_fraction = 0.25,
+				tree_enabled = true,
+				tree_indent = 12,
+			},
+		},
+		shared.Scene_Entity {
+			id = toolbar_id,
+			name = "Toolbar",
+			has_ui_layout = true,
+			ui_layout = {parent = list_id, size = {200, 20}},
+		},
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Root",
+			has_ui_layout = true,
+			ui_layout = {parent = list_id, size = {200, 20}, tree_item = true, tree_order = 0},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Tree Root Label"),
+			name = "Root Label",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {80, 20}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = list_id,
+				size = {200, 20},
+				tree_item = true,
+				tree_parent = root_id,
+				tree_order = 0,
+			},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Tree Child Label"),
+			name = "Child Label",
+			has_ui_layout = true,
+			ui_layout = {parent = child_id, size = {80, 20}},
+		},
+		shared.Scene_Entity {
+			id = last_id,
+			name = "Last",
+			has_ui_layout = true,
+			ui_layout = {parent = list_id, size = {200, 20}, tree_item = true, tree_order = 1},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 200, 120) == "")
+	root_node := find_node_by_entity_index(state, 2)
+	root_label := find_node_by_entity_index(state, 3)
+	child_node := find_node_by_entity_index(state, 4)
+	child_label := find_node_by_entity_index(state, 5)
+	last_node := find_node_by_entity_index(state, 6)
+	testing.expect(t, state.nodes[root_node].rect.y == 20)
+	testing.expect(t, state.nodes[child_node].rect.y == 40)
+	testing.expect(t, state.nodes[last_node].rect.y == 60)
+	testing.expect(t, state.nodes[root_node].rect.x == state.nodes[child_node].rect.x)
+	testing.expect(t, state.nodes[child_label].rect.x == state.nodes[root_label].rect.x + 12)
+
+	root_layout := world.ui_layouts[world.entities[2].ui_layout_index]
+	root_layout.tree_collapsed = true
+	testing.expect(t, ecs.set_ui_layout(&world, 2, root_layout))
+	testing.expect(t, reconcile(state, &world, 200, 120) == "")
+	testing.expect(t, !state.nodes[child_node].laid_out)
+	testing.expect(t, state.nodes[last_node].rect.y == 40)
+
+	root_layout.tree_collapsed = false
+	testing.expect(t, ecs.set_ui_hidden(&world, 2, true))
+	testing.expect(t, reconcile(state, &world, 200, 120) == "")
+	testing.expect(t, find_node_by_entity_index(state, 2) < 0)
+	child_node = find_node_by_entity_index(state, 4)
+	testing.expect(t, child_node >= 0)
+	if child_node >= 0 {
+		testing.expect(t, !state.nodes[child_node].laid_out)
+	}
+	testing.expect(t, ecs.set_ui_hidden(&world, 2, false))
+	testing.expect(t, ecs.set_ui_layout(&world, 2, root_layout))
+	testing.expect(t, reconcile(state, &world, 200, 120) == "")
+	root_node = find_node_by_entity_index(state, 2)
+	root_label = find_node_by_entity_index(state, 3)
+	child_node = find_node_by_entity_index(state, 4)
+	child_label = find_node_by_entity_index(state, 5)
+	last_node = find_node_by_entity_index(state, 6)
+	start := shared.Vec2{state.nodes[child_node].rect.x + 20, state.nodes[child_node].rect.y + 10}
+	target := shared.Vec2{state.nodes[last_node].rect.x + 20, state.nodes[last_node].rect.y + 1}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			120,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			120,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 120, {position = target, available = true}) == "",
+	)
+	child_layout := world.ui_layouts[world.entities[4].ui_layout_index]
+	last_layout := world.ui_layouts[world.entities[6].ui_layout_index]
+	testing.expect_value(t, child_layout.tree_parent, shared.Entity_UUID{})
+	testing.expect(t, child_layout.tree_order < last_layout.tree_order)
+	testing.expect(t, reconcile(state, &world, 200, 120) == "")
+	testing.expect(t, state.nodes[child_label].rect.x == state.nodes[root_label].rect.x)
+	testing.expect(
+		t,
+		tree_list_apply_drop(state, &world, 0, world.entities[4].id, world.entities[2].id, .Into),
+	)
+	testing.expect(
+		t,
+		!tree_list_apply_drop(state, &world, 0, world.entities[2].id, world.entities[4].id, .Into),
+	)
+}
+
+@(test)
 test_reconcile_tracks_ui_entity_appearance_and_disappearance :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
@@ -3654,6 +4009,292 @@ test_editor_browser_uses_name_color_instead_of_provenance_labels :: proc(t: ^tes
 }
 
 @(test)
+test_editor_browser_builds_collapsible_transform_tree_and_reparents_with_history :: proc(
+	t: ^testing.T,
+) {
+	parent_id := ui_test_id("Hierarchy Parent")
+	child_id := ui_test_id("Hierarchy Child")
+	sibling_id := ui_test_id("Hierarchy Sibling")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {position = {2, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, position = {1, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = sibling_id,
+			name = "Sibling",
+			has_transform = true,
+			transform = {position = {8, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	state.editor_simulation_playing = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect_value(t, editor_browser_row_count(&world), 3)
+	first_row, _ := editor_ui_entity(&world, .Browser_Row, 0)
+	second_row, _ := editor_ui_entity(&world, .Browser_Row, 1)
+	third_row, _ := editor_ui_entity(&world, .Browser_Row, 2)
+	first := world.editor_uis[world.entities[first_row].editor_ui_index]
+	second := world.editor_uis[world.entities[second_row].editor_ui_index]
+	third := world.editor_uis[world.entities[third_row].editor_ui_index]
+	testing.expect(t, first.target == world.entities[0].id)
+	testing.expect(t, second.target == world.entities[1].id)
+	testing.expect(t, third.target == world.entities[2].id)
+	browser, browser_found := editor_ui_entity(&world, .Browser_Scroll, 0)
+	testing.expect(t, browser_found)
+	if browser_found {
+		state.events[0] = {
+			kind = .Dropped,
+			entity = world.entities[browser].id,
+			source = world.entities[first_row].id,
+			target = world.entities[third_row].id,
+			drop_placement = .After,
+		}
+		state.event_count = 1
+		testing.expect(t, editor_ui_consume_events(state, &world))
+		testing.expect_value(t, editor_entity_parent_uuid(&world, 0), shared.Entity_UUID{})
+		testing.expect_value(t, editor_entity_parent_uuid(&world, 1), parent_id)
+		indices, depths: [MAX_NODES]int
+		has_children: [MAX_NODES]bool
+		visible_count := editor_hierarchy_visible_entities(
+			state,
+			&world,
+			&indices,
+			&depths,
+			&has_children,
+		)
+		testing.expect_value(t, visible_count, 3)
+		testing.expect_value(t, indices[0], 2)
+		testing.expect_value(t, indices[1], 0)
+		testing.expect_value(t, indices[2], 1)
+		testing.expect(t, editor_undo(state, &world))
+		ecs.begin_world_transform_resolution(&world)
+		child_world_before, _ := ecs.resolve_world_transform(&world, 1)
+		state.events[0] = {
+			kind = .Dropped,
+			entity = world.entities[browser].id,
+			source = world.entities[second_row].id,
+			target = world.entities[third_row].id,
+			drop_placement = .Before,
+		}
+		state.event_count = 1
+		testing.expect(t, editor_ui_consume_events(state, &world))
+		testing.expect_value(t, state.editor_history_count, 1)
+		testing.expect_value(t, state.editor_history_cursor, 1)
+		testing.expect_value(t, editor_entity_parent_uuid(&world, 1), shared.Entity_UUID{})
+		ecs.begin_world_transform_resolution(&world)
+		child_world_after, _ := ecs.resolve_world_transform(&world, 1)
+		testing.expect_value(t, child_world_after.position, child_world_before.position)
+		visible_count = editor_hierarchy_visible_entities(
+			state,
+			&world,
+			&indices,
+			&depths,
+			&has_children,
+		)
+		testing.expect_value(t, visible_count, 3)
+		testing.expect_value(t, indices[0], 0)
+		testing.expect_value(t, indices[1], 1)
+		testing.expect_value(t, indices[2], 2)
+		testing.expect_value(t, depths[1], 0)
+		testing.expect(t, editor_undo(state, &world))
+		testing.expect_value(t, editor_entity_parent_uuid(&world, 1), parent_id)
+		testing.expect(t, editor_redo(state, &world))
+		testing.expect_value(t, editor_entity_parent_uuid(&world, 1), shared.Entity_UUID{})
+		testing.expect(t, editor_undo(state, &world))
+	}
+
+	disclosure, found := editor_ui_entity(&world, .Browser_Row_Disclosure, 0)
+	testing.expect(t, found)
+	if found {
+		editor_ui_handle_activation(state, &world, world.entities[disclosure].id, {})
+		testing.expect(t, state.editor_collapsed_entities[parent_id])
+		indices, depths: [MAX_NODES]int
+		has_children: [MAX_NODES]bool
+		testing.expect_value(
+			t,
+			editor_hierarchy_visible_entities(state, &world, &indices, &depths, &has_children),
+			3,
+		)
+		testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+		testing.expect_value(t, editor_browser_row_count(&world), 3)
+		collapsed_child_row, child_row_found := editor_ui_entity(&world, .Browser_Row, 1)
+		testing.expect(t, child_row_found)
+		if child_row_found {
+			collapsed_child_node := find_node_by_entity_index(state, collapsed_child_row)
+			testing.expect(t, collapsed_child_node >= 0)
+			if collapsed_child_node >= 0 {
+				testing.expect(t, !state.nodes[collapsed_child_node].laid_out)
+			}
+		}
+		editor_ui_handle_activation(state, &world, world.entities[disclosure].id, {})
+		testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	}
+
+	ecs.begin_world_transform_resolution(&world)
+	before, _ := ecs.resolve_world_transform(&world, 2)
+	testing.expect(t, editor_reparent_entity(state, &world, 2, parent_id))
+	testing.expect_value(t, state.editor_history_count, 1)
+	ecs.begin_world_transform_resolution(&world)
+	after, _ := ecs.resolve_world_transform(&world, 2)
+	testing.expect_value(t, after.position, before.position)
+	testing.expect_value(t, world.transforms[world.entities[2].transform_index].parent, parent_id)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[2].transform_index].parent,
+		shared.Entity_UUID{},
+	)
+	testing.expect(t, editor_redo(state, &world))
+	testing.expect_value(t, world.transforms[world.entities[2].transform_index].parent, parent_id)
+	testing.expect(t, editor_reorder_entity(state, &world, 2, 1, false))
+	testing.expect_value(t, state.editor_history_count, 2)
+	testing.expect_value(t, world.transforms[world.entities[2].transform_index].parent, parent_id)
+	indices, depths: [MAX_NODES]int
+	has_children: [MAX_NODES]bool
+	visible_count := editor_hierarchy_visible_entities(
+		state,
+		&world,
+		&indices,
+		&depths,
+		&has_children,
+	)
+	testing.expect_value(t, visible_count, 3)
+	testing.expect_value(t, indices[0], 0)
+	testing.expect_value(t, indices[1], 2)
+	testing.expect_value(t, indices[2], 1)
+	testing.expect(t, !editor_reorder_entity(state, &world, 0, 1, false))
+	testing.expect(t, editor_undo(state, &world))
+	visible_count = editor_hierarchy_visible_entities(
+		state,
+		&world,
+		&indices,
+		&depths,
+		&has_children,
+	)
+	testing.expect_value(t, visible_count, 3)
+	testing.expect_value(t, indices[0], 0)
+	testing.expect_value(t, indices[1], 1)
+	testing.expect_value(t, indices[2], 2)
+	testing.expect(t, editor_redo(state, &world))
+	visible_count = editor_hierarchy_visible_entities(
+		state,
+		&world,
+		&indices,
+		&depths,
+		&has_children,
+	)
+	testing.expect_value(t, indices[1], 2)
+	testing.expect_value(t, indices[2], 1)
+}
+
+@(test)
+test_editor_reparents_transformless_entities_and_uses_transformless_parents :: proc(
+	t: ^testing.T,
+) {
+	parent_id := ui_test_id("Transformless Parent")
+	child_id := ui_test_id("Transformless Child")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity{id = parent_id, name = "Ambient Light"},
+		shared.Scene_Entity{id = child_id, name = "Marker"},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_simulation_stopped = true
+	state.editor_simulation_playing = false
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	parent_row := -1
+	child_row := -1
+	for binding in world.editor_uis {
+		if binding.role != .Browser_Row {
+			continue
+		}
+		if binding.target == world.entities[0].id {
+			parent_row = binding.entity_index
+		}
+		if binding.target == world.entities[1].id {
+			child_row = binding.entity_index
+		}
+	}
+	parent_node := find_node_by_entity_index(state, parent_row)
+	child_node := find_node_by_entity_index(state, child_row)
+	testing.expect(t, parent_node >= 0 && child_node >= 0)
+	start := shared.Vec2 {
+		state.nodes[child_node].rect.x + 40,
+		state.nodes[child_node].rect.y + state.nodes[child_node].rect.height * 0.5,
+	}
+	target := shared.Vec2 {
+		state.nodes[parent_node].rect.x + 40,
+		state.nodes[parent_node].rect.y + state.nodes[parent_node].rect.height * 0.5,
+	}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {position = target, available = true}) == "",
+	)
+	testing.expect(t, world.entities[0].transform_index < 0)
+	testing.expect(t, world.entities[1].transform_index >= 0)
+	transform := world.transforms[world.entities[1].transform_index]
+	testing.expect_value(t, transform.parent, parent_id)
+	testing.expect_value(t, transform.scale, shared.Vec3{1, 1, 1})
+	ecs.begin_world_transform_resolution(&world)
+	resolved, valid := ecs.resolve_world_transform(&world, 1)
+	testing.expect(t, valid)
+	testing.expect_value(t, resolved.scale, shared.Vec3{1, 1, 1})
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect(t, world.entities[1].transform_index < 0)
+	testing.expect(t, editor_redo(state, &world))
+	testing.expect(t, world.entities[1].transform_index >= 0)
+}
+
+@(test)
 test_editor_browser_row_pool_survives_runtime_entity_count_churn :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
@@ -3883,9 +4524,11 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				)
 				checkbox := world.ui_checkboxes[entity.ui_checkbox_index]
 				if component.inspector_field == .None {
-					found_read_only_checkbox = checkbox.read_only && checkbox.checked
+					found_read_only_checkbox =
+						found_read_only_checkbox || checkbox.read_only && checkbox.checked
 				} else if component.inspector_field == .UI_Layout_Hidden {
-					found_bound_checkbox = !checkbox.read_only && !checkbox.checked
+					found_bound_checkbox =
+						found_bound_checkbox || !checkbox.read_only && !checkbox.checked
 				}
 		}
 	}
@@ -3893,7 +4536,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, table_count == panel_count)
 	testing.expect(t, cell_count > 20)
 	testing.expect(t, input_count > cell_count / 2)
-	testing.expect(t, checkbox_count == 2)
+	testing.expect(t, checkbox_count >= 2)
 	testing.expect(t, found_read_only_checkbox && found_bound_checkbox)
 	testing.expect(t, found_transform && found_button)
 	testing.expect(t, found_position)

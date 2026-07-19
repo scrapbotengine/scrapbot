@@ -89,7 +89,9 @@ scene_entity_structure_differs :: proc(
 	defer ecs.destroy_entity_snapshot(&snapshot)
 	current := &snapshot.entity
 	if baseline.name != current.name ||
+	   baseline.scene_order != current.scene_order ||
 	   baseline.has_transform != current.has_transform ||
+	   (baseline.has_transform && baseline.transform.parent != current.transform.parent) ||
 	   baseline.has_camera != current.has_camera ||
 	   baseline.has_ambient_light != current.has_ambient_light ||
 	   baseline.has_directional_light != current.has_directional_light ||
@@ -152,37 +154,33 @@ build_scene_world_structural_source :: proc(
 	preamble_end := len(source)
 	if len(headers) > 0 { preamble_end = headers[0] }
 	strings.write_string(&builder, source[:preamble_end])
-	baseline_lookup := make(map[shared.Entity_UUID]bool, len(baseline.entities))
+	baseline_lookup := make(map[shared.Entity_UUID]int, len(baseline.entities))
 	defer delete(baseline_lookup)
 	for entity, ordinal in baseline.entities {
-		baseline_lookup[entity.id] = true
-		start := headers[ordinal]
-		end := len(source)
-		if ordinal + 1 < len(headers) { end = headers[ordinal + 1] }
-		if !structural[entity.id] {
+		baseline_lookup[entity.id] = ordinal + 1
+	}
+	_ = dirty_order
+	ordered_indices := ecs.ordered_non_editor_entity_indices(world)
+	defer delete(ordered_indices)
+	for entity_index in ordered_indices {
+		entity := world.entities[entity_index]
+		if entity.origin != .Scene {
+			continue
+		}
+		ordinal_plus_one, in_baseline := baseline_lookup[entity.uuid]
+		if in_baseline && !structural[entity.uuid] {
+			ordinal := ordinal_plus_one - 1
+			start := headers[ordinal]
+			end := len(source)
+			if ordinal + 1 < len(headers) {
+				end = headers[ordinal + 1]
+			}
 			strings.write_string(&builder, source[start:end])
 			continue
 		}
-		entity_index, found := ecs.entity_index_by_uuid(world, entity.id)
-		if !found || world.entities[entity_index].origin != .Scene {
+		if !in_baseline && !structural[entity.uuid] {
 			continue
 		}
-		_ = write_scene_world_entity(&builder, world, entity_index)
-		strings.write_rune(&builder, '\n')
-	}
-	appending_started := false
-	for id in dirty_order {
-		if baseline_lookup[id] || !structural[id] {
-			continue
-		}
-		entity_index, found := ecs.entity_index_by_uuid(world, id)
-		if !found || world.entities[entity_index].origin != .Scene {
-			continue
-		}
-		if !appending_started && strings.builder_len(builder) > 0 {
-			strings.write_rune(&builder, '\n')
-		}
-		appending_started = true
 		_ = write_scene_world_entity(&builder, world, entity_index)
 		strings.write_rune(&builder, '\n')
 	}

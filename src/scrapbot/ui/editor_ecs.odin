@@ -80,6 +80,20 @@ editor_ui_handle_activation :: proc(
 		if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
 			binding := world.editor_uis[entity.editor_ui_index]
 			switch binding.role {
+				case .Browser_Row_Disclosure:
+					if binding.target != (shared.Entity{}) {
+						target_index := int(binding.target.index)
+						if ecs.entity_is_alive(world, target_index) &&
+						   world.entities[target_index].id == binding.target {
+							if state.editor_collapsed_entities == nil {
+								state.editor_collapsed_entities = make(map[shared.Entity_UUID]bool)
+							}
+							id := world.entities[target_index].uuid
+							state.editor_collapsed_entities[id] = !state.editor_collapsed_entities[id]
+							state.editor_snapshot_valid = false
+						}
+					}
+					return
 				case .Browser_Row, .Browser_Row_Label:
 					_ = editor_select_entity(state, world, binding.target, 0)
 					return
@@ -274,6 +288,38 @@ editor_ui_handle_activation :: proc(
 	}
 }
 
+editor_hierarchy_binding_target :: proc(
+	world: ^shared.World,
+	entity: shared.Entity,
+	allow_disclosure: bool = false,
+) -> (
+	shared.Entity,
+	bool,
+) {
+	index := int(entity.index)
+	for index >= 0 && index < len(world.entities) {
+		candidate := world.entities[index]
+		if candidate.editor_ui_index >= 0 && candidate.editor_ui_index < len(world.editor_uis) {
+			binding := world.editor_uis[candidate.editor_ui_index]
+			if binding.role == .Browser_Row_Disclosure {
+				if allow_disclosure {
+					return binding.target, binding.target != (shared.Entity{})
+				}
+				return {}, false
+			}
+			if binding.role == .Browser_Row || binding.role == .Browser_Row_Label {
+				return binding.target, binding.target != (shared.Entity{})
+			}
+		}
+		if candidate.ui_layout_index < 0 || candidate.ui_layout_index >= len(world.ui_layouts) {
+			break
+		}
+		parent := world.ui_layouts[candidate.ui_layout_index].parent
+		index, _ = ecs.entity_index_by_uuid(world, parent)
+	}
+	return {}, false
+}
+
 editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
 	if state == nil || world == nil {
 		return false
@@ -288,6 +334,68 @@ editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
 					editor_ui_handle_panel_change(state, world, event.entity)
 				} else {
 					editor_ui_handle_checkbox_change(state, world, event.entity)
+				}
+			case .Dropped:
+				list_index := int(event.entity.index)
+				if !ecs.entity_is_alive(world, list_index) ||
+				   world.entities[list_index].id != event.entity ||
+				   world.entities[list_index].editor_ui_index < 0 ||
+				   world.entities[list_index].editor_ui_index >= len(world.editor_uis) ||
+				   world.editor_uis[world.entities[list_index].editor_ui_index].role !=
+					   .Browser_Scroll {
+					continue
+				}
+				source, source_found := editor_hierarchy_binding_target(world, event.source)
+				if !source_found {
+					continue
+				}
+				source_index := int(source.index)
+				if event.drop_placement == .Before || event.drop_placement == .After {
+					if event.target == (shared.Entity{}) {
+						continue
+					}
+					target, target_found := editor_hierarchy_binding_target(
+						world,
+						event.target,
+						true,
+					)
+					if !target_found {
+						continue
+					}
+					target_index := int(target.index)
+					if editor_reorder_entity(
+						state,
+						world,
+						source_index,
+						target_index,
+						event.drop_placement == .After,
+					) {
+						layout_changed = true
+					}
+					continue
+				}
+				if event.drop_placement != .Into {
+					continue
+				}
+				parent: shared.Entity_UUID
+				if event.target != (shared.Entity{}) {
+					target, target_found := editor_hierarchy_binding_target(
+						world,
+						event.target,
+						true,
+					)
+					if !target_found {
+						continue
+					}
+					target_index := int(target.index)
+					if !ecs.entity_is_alive(world, target_index) ||
+					   world.entities[target_index].id != target {
+						continue
+					}
+					parent = world.entities[target_index].uuid
+				}
+				if editor_reparent_entity(state, world, source_index, parent) {
+					layout_changed = true
 				}
 		}
 	}
@@ -839,6 +947,15 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			selection_background = {0.040, 0.088, 0.098, 1},
 			hover_background = {0.028, 0.038, 0.050, 1},
 			active_background = {0.050, 0.067, 0.088, 1},
+			draggable = true,
+			drag_threshold = 5,
+			drop_edge_fraction = 0.25,
+			drop_target_background = {0.055, 0.12, 0.13, 1},
+			drop_indicator_color = {0.42, 0.92, 0.84, 1},
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+			tree_enabled = true,
+			tree_indent = 14,
 		},
 	)
 	editor_ui_add_scroll(world, scene)
@@ -1131,11 +1248,13 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	editor_ui_add_text(world, status_text, "RUNNING", mint, EDITOR_TEXT_SIZE)
 }
 
-editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
+editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int) {
 	row, row_found := editor_ui_entity(world, .Browser_Row, slot)
+	disclosure, disclosure_found := editor_ui_entity(world, .Browser_Row_Disclosure, slot)
 	label, label_found := editor_ui_entity(world, .Browser_Row_Label, slot)
-	if row_found && label_found { return row, label }
+	if row_found && disclosure_found && label_found { return row, disclosure, label }
 	row_name := fmt.tprintf("__scrapbot_editor_row_%d", slot)
+	disclosure_name := fmt.tprintf("__scrapbot_editor_row_disclosure_%d", slot)
 	label_name := fmt.tprintf("__scrapbot_editor_row_label_%d", slot)
 	row = editor_ui_create_box(
 		world,
@@ -1145,16 +1264,35 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
 		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
 		slot,
 	)
+	disclosure = editor_ui_create_box(
+		world,
+		disclosure_name,
+		row_name,
+		.Browser_Row_Disclosure,
+		{position = {6, 6}, size = {20, 20}, corner_radius = 3},
+		slot,
+	)
+	editor_ui_add_button(world, disclosure)
+	disclosure_button := shared.ui_button_default()
+	disclosure_button.text = " "
+	disclosure_button.size = 1
+	disclosure_button.icon = .Chevron_Down
+	disclosure_button.icon_inset = 6
+	disclosure_button.icon_stroke = 1.5
+	disclosure_button.color = {0.65, 0.68, 0.74, 1}
+	disclosure_button.hover_background = {0.09, 0.11, 0.14, 1}
+	disclosure_button.active_background = {0.13, 0.15, 0.19, 1}
+	_ = ecs.set_ui_button(world, disclosure, disclosure_button)
 	label = editor_ui_create_box(
 		world,
 		label_name,
 		row_name,
 		.Browser_Row_Label,
-		{position = {11, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
+		{position = {26, 0}, size = {1874, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
 		slot,
 	)
 	editor_ui_add_text(world, label, "", {0.82, 0.84, 0.88, 1}, EDITOR_TEXT_SIZE)
-	return row, label
+	return row, disclosure, label
 }
 
 editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
@@ -2625,6 +2763,16 @@ editor_component_title :: proc(name: string, buffer: []u8) -> string {
 	return string(buffer[:count])
 }
 
+editor_transform_parent_label :: proc(world: ^shared.World, parent: shared.Entity_UUID) -> string {
+	if parent == (shared.Entity_UUID{}) {
+		return "None"
+	}
+	if index, found := ecs.entity_index_by_uuid(world, parent); found {
+		return world.entities[index].name
+	}
+	return "Missing parent"
+}
+
 editor_ui_build_reflected_inspector_panels :: proc(
 	builder: ^Inspector_ECS_Builder,
 	entity_index: int,
@@ -2658,6 +2806,11 @@ editor_ui_build_reflected_inspector_panels :: proc(
 			editor_ui_inspector_vec3(builder, "position", value.position, .Transform_Position)
 			editor_ui_inspector_vec3(builder, "rotation", value.rotation, .Transform_Rotation)
 			editor_ui_inspector_vec3(builder, "scale", value.scale, .Transform_Scale)
+			editor_ui_inspector_field(
+				builder,
+				"parent",
+				editor_transform_parent_label(builder.world, value.parent),
+			)
 			continue
 		}
 		if definition.name == "scrapbot.ambient_light" &&
@@ -2914,6 +3067,11 @@ editor_ui_build_inspector_panels :: proc(
 		editor_ui_inspector_vec3(&builder, "position", value.position, .Transform_Position)
 		editor_ui_inspector_vec3(&builder, "rotation", value.rotation, .Transform_Rotation)
 		editor_ui_inspector_vec3(&builder, "scale", value.scale, .Transform_Scale)
+		editor_ui_inspector_field(
+			&builder,
+			"parent",
+			editor_transform_parent_label(world, value.parent),
+		)
 	}
 	if entity.camera_index >= 0 && entity.camera_index < len(world.cameras) {
 		value := world.cameras[entity.camera_index]
@@ -3045,6 +3203,15 @@ editor_ui_build_inspector_panels :: proc(
 		)
 		editor_ui_inspector_field(&builder, "radius", fmt.tprintf("%.2f", value.corner_radius))
 		editor_ui_inspector_bool(&builder, "hidden", value.hidden, .UI_Layout_Hidden)
+		editor_ui_inspector_bool(&builder, "tree item", value.tree_item)
+		tree_parent := "none"
+		tree_parent_buffer: [36]u8
+		if value.tree_parent != (shared.Entity_UUID{}) {
+			tree_parent = shared.entity_uuid_to_string(value.tree_parent, tree_parent_buffer[:])
+		}
+		editor_ui_inspector_field(&builder, "tree parent", tree_parent)
+		editor_ui_inspector_field(&builder, "tree order", fmt.tprintf("%d", value.tree_order))
+		editor_ui_inspector_bool(&builder, "tree collapsed", value.tree_collapsed)
 	}
 	if entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks) {
 		value := world.ui_hstacks[entity.ui_hstack_index]
@@ -3192,6 +3359,39 @@ editor_ui_build_inspector_panels :: proc(
 			"active background",
 			format_vec4(value.active_background),
 		)
+		editor_ui_inspector_field(&builder, "draggable", fmt.tprintf("%v", value.draggable))
+		editor_ui_inspector_field(
+			&builder,
+			"drag threshold",
+			fmt.tprintf("%.2f", value.drag_threshold),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"drop edge fraction",
+			fmt.tprintf("%.2f", value.drop_edge_fraction),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"drop target background",
+			format_vec4(value.drop_target_background),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"drop indicator color",
+			format_vec4(value.drop_indicator_color),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"drop indicator thickness",
+			fmt.tprintf("%.2f", value.drop_indicator_thickness),
+		)
+		editor_ui_inspector_field(
+			&builder,
+			"drop indicator inset",
+			fmt.tprintf("%.2f", value.drop_indicator_inset),
+		)
+		editor_ui_inspector_bool(&builder, "tree enabled", value.tree_enabled)
+		editor_ui_inspector_field(&builder, "tree indent", fmt.tprintf("%.2f", value.tree_indent))
 	}
 	if entity.ui_progress_index >= 0 && entity.ui_progress_index < len(world.ui_progresses) {
 		value := world.ui_progresses[entity.ui_progress_index]
@@ -3414,32 +3614,183 @@ editor_ui_build_resource_inspector_panels :: proc(
 	editor_ui_finish_inspector(&builder)
 }
 
+editor_hierarchy_append_visible :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index, depth: int,
+	first_child, next_sibling: ^[MAX_NODES]int,
+	visited: ^[MAX_NODES]bool,
+	indices, depths: ^[MAX_NODES]int,
+	has_children: ^[MAX_NODES]bool,
+	count: ^int,
+) {
+	if entity_index < 0 ||
+	   entity_index >= MAX_NODES ||
+	   visited[entity_index] ||
+	   count^ >= MAX_NODES {
+		return
+	}
+	visited[entity_index] = true
+	slot := count^
+	indices[slot] = entity_index
+	depths[slot] = depth
+	has_children[slot] = first_child[entity_index] >= 0
+	count^ += 1
+	child := first_child[entity_index]
+	for child >= 0 {
+		editor_hierarchy_append_visible(
+			state,
+			world,
+			child,
+			depth + 1,
+			first_child,
+			next_sibling,
+			visited,
+			indices,
+			depths,
+			has_children,
+			count,
+		)
+		child = next_sibling[child]
+	}
+}
+
+editor_hierarchy_visible_entities :: proc(
+	state: ^State,
+	world: ^shared.World,
+	indices, depths: ^[MAX_NODES]int,
+	has_children: ^[MAX_NODES]bool,
+) -> int {
+	limit := min(len(world.entities), MAX_NODES)
+	first_child, last_child, next_sibling: [MAX_NODES]int
+	root_first, root_last := -1, -1
+	eligible: [MAX_NODES]bool
+	for index in 0 ..< limit {
+		first_child[index] = -1
+		last_child[index] = -1
+		next_sibling[index] = -1
+		entity := world.entities[index]
+		eligible[index] = entity.alive && entity.origin != .Editor
+	}
+	ordered_indices := ecs.ordered_non_editor_entity_indices(world)
+	defer delete(ordered_indices)
+	for index in ordered_indices {
+		if index < 0 || index >= limit {
+			continue
+		}
+		if !eligible[index] {
+			continue
+		}
+		parent_index := -1
+		entity := world.entities[index]
+		if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
+			parent := world.transforms[entity.transform_index].parent
+			if parent != (shared.Entity_UUID{}) {
+				if candidate, found := ecs.entity_index_by_uuid(world, parent);
+				   found && candidate >= 0 && candidate < limit && eligible[candidate] {
+					parent_index = candidate
+				}
+			}
+		}
+		if parent_index >= 0 {
+			if first_child[parent_index] < 0 {
+				first_child[parent_index] = index
+			} else {
+				next_sibling[last_child[parent_index]] = index
+			}
+			last_child[parent_index] = index
+		} else {
+			if root_first < 0 {
+				root_first = index
+			} else {
+				next_sibling[root_last] = index
+			}
+			root_last = index
+		}
+	}
+	visited: [MAX_NODES]bool
+	count := 0
+	root := root_first
+	for root >= 0 {
+		editor_hierarchy_append_visible(
+			state,
+			world,
+			root,
+			0,
+			&first_child,
+			&next_sibling,
+			&visited,
+			indices,
+			depths,
+			has_children,
+			&count,
+		)
+		root = next_sibling[root]
+	}
+	return count
+}
+
 refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	editor_ui_refresh_system_profile(state, world)
-	visible_count := 0
+	hierarchy_indices, hierarchy_depths: [MAX_NODES]int
+	hierarchy_has_children: [MAX_NODES]bool
+	visible_count := editor_hierarchy_visible_entities(
+		state,
+		world,
+		&hierarchy_indices,
+		&hierarchy_depths,
+		&hierarchy_has_children,
+	)
 	selected_row: shared.Entity_UUID
-	entity_count := len(world.entities)
-	for entity_index in 0 ..< entity_count {
+	row_uuid_by_entity: [MAX_NODES]shared.Entity_UUID
+	for slot in 0 ..< visible_count {
+		entity_index := hierarchy_indices[slot]
 		entity := world.entities[entity_index]
-		if !entity.alive || entity.origin == .Editor { continue }
-		row, label := editor_ui_ensure_row(world, visible_count)
+		row, disclosure, label := editor_ui_ensure_row(world, slot)
 		world.entities[row].alive = true
+		world.entities[disclosure].alive = true
 		world.entities[label].alive = true
 		editor_ui_set_hidden(world, row, false)
+		editor_ui_set_hidden(world, disclosure, !hierarchy_has_children[slot])
 		editor_ui_set_hidden(world, label, false)
 		world.editor_uis[world.entities[row].editor_ui_index].target = entity.id
+		world.editor_uis[world.entities[disclosure].editor_ui_index].target = entity.id
 		world.editor_uis[world.entities[label].editor_ui_index].target = entity.id
+		row_uuid_by_entity[entity_index] = world.entities[row].uuid
+		row_layout := &world.ui_layouts[world.entities[row].ui_layout_index]
+		row_layout.tree_item = true
+		row_layout.tree_parent = {}
+		row_layout.tree_order = entity.scene_order
+		row_layout.tree_collapsed =
+			state.editor_collapsed_entities != nil && state.editor_collapsed_entities[entity.uuid]
+		if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
+			parent := world.transforms[entity.transform_index].parent
+			if parent_index, found := ecs.entity_index_by_uuid(world, parent);
+			   found && parent_index >= 0 && parent_index < len(row_uuid_by_entity) {
+				row_layout.tree_parent = row_uuid_by_entity[parent_index]
+			}
+		}
 		if state.editor_has_selection && state.editor_selected_entity == entity.id {
 			selected_row = world.entities[row].uuid
 		}
 		label_text := &world.ui_texts[world.entities[label].ui_text_index]
 		label_text.color = {0.82, 0.85, 0.90, 1}
 		if entity.origin == .Runtime { label_text.color = EDITOR_RUNTIME_ENTITY_COLOR }
+		disclosure_layout := &world.ui_layouts[world.entities[disclosure].ui_layout_index]
+		disclosure_layout.position.x = 6
+		label_layout := &world.ui_layouts[world.entities[label].ui_layout_index]
+		label_layout.position.x = 26
+		button := &world.ui_buttons[world.entities[disclosure].ui_button_index]
+		button.icon = .Chevron_Down
+		if state.editor_collapsed_entities != nil && state.editor_collapsed_entities[entity.uuid] {
+			button.icon = .Chevron_Right
+		}
 		editor_ui_set_text(world, label, entity.name)
-		visible_count += 1
 	}
 	for component in world.editor_uis {
-		if (component.role == .Browser_Row || component.role == .Browser_Row_Label) &&
+		if (component.role == .Browser_Row ||
+			   component.role == .Browser_Row_Disclosure ||
+			   component.role == .Browser_Row_Label) &&
 		   component.slot >= visible_count {
 			if component.entity_index < 0 ||
 			   component.entity_index >= len(world.entities) { continue }

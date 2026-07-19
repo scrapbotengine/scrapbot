@@ -76,9 +76,7 @@ test_transform_gizmo_rotation_round_trips_arbitrary_world_and_local_composition 
 @(test)
 test_transform_gizmo_local_x_translation_uses_and_freezes_the_rotated_axis :: proc(t: ^testing.T) {
 	world: shared.World
-	defer delete(world.entities)
-	defer delete(world.transforms)
-	defer delete(world.editor_transform_gizmos)
+	defer ecs.destroy_world(&world)
 	append(
 		&world.entities,
 		shared.World_Entity {
@@ -156,7 +154,7 @@ test_transform_gizmo_local_x_translation_uses_and_freezes_the_rotated_axis :: pr
 
 @(test)
 test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos); world.entity_by_uuid = make(map[shared.Entity_UUID]int); defer delete(world.entity_by_uuid)
+	world: shared.World; defer ecs.destroy_world(&world); world.entity_by_uuid = make(map[shared.Entity_UUID]int)
 	uuid := shared.entity_uuid_from_engine_name("gizmo-history-target")
 	append(
 		&world.entities,
@@ -258,7 +256,7 @@ test_transform_gizmo_projects_hits_and_drags_world_x :: proc(t: ^testing.T) {
 
 @(test)
 test_transform_gizmo_hides_for_entities_without_transform :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.editor_transform_gizmos); append(&world.entities, shared.World_Entity{id = {index = 0, generation = 1}, alive = true, transform_index = -1, editor_transform_gizmo_index = -1})
+	world: shared.World; defer ecs.destroy_world(&world); append(&world.entities, shared.World_Entity{id = {index = 0, generation = 1}, alive = true, transform_index = -1, editor_transform_gizmo_index = -1})
 	state := new(
 		ui.State,
 	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
@@ -272,7 +270,7 @@ test_transform_gizmo_hides_for_entities_without_transform :: proc(t: ^testing.T)
 
 @(test)
 test_rotation_gizmo_projects_rings_and_rotates_one_axis :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos)
+	world: shared.World; defer ecs.destroy_world(&world)
 	append(
 		&world.entities,
 		shared.World_Entity {
@@ -364,7 +362,7 @@ test_screen_rotation_delta_corrects_inverted_screen_y :: proc(t: ^testing.T) {
 
 @(test)
 test_scale_gizmo_drags_one_axis_without_moving_entity :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos)
+	world: shared.World; defer ecs.destroy_world(&world)
 	append(
 		&world.entities,
 		shared.World_Entity {
@@ -435,7 +433,7 @@ test_scale_gizmo_drags_one_axis_without_moving_entity :: proc(t: ^testing.T) {
 
 @(test)
 test_transform_gizmo_plane_handles_translate_and_scale_two_axes :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos)
+	world: shared.World; defer ecs.destroy_world(&world)
 	append(
 		&world.entities,
 		shared.World_Entity {
@@ -557,7 +555,7 @@ test_transform_gizmo_plane_handles_translate_and_scale_two_axes :: proc(t: ^test
 
 @(test)
 test_transform_gizmo_center_handle_free_translates_and_uniformly_scales :: proc(t: ^testing.T) {
-	world: shared.World; defer delete(world.entities); defer delete(world.transforms); defer delete(world.editor_transform_gizmos)
+	world: shared.World; defer ecs.destroy_world(&world)
 	append(
 		&world.entities,
 		shared.World_Entity {

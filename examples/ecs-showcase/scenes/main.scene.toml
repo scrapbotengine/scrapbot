@@ -76,10 +76,20 @@ range = 5.5
 settings = [2.7, -0.8, 0.2]
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000010"
+name = "Static Light Rig"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[[entities]]
 id = "20000000-0000-4000-8000-000000000006"
 name = "Static Amber Light"
 
 [entities.transform]
+parent = "20000000-0000-4000-8000-000000000010"
 position = [-3.8, 0.35, 1.8]
 rotation = [0, 0, 0]
 scale = [0.16, 0.16, 0.16]
@@ -100,6 +110,7 @@ id = "20000000-0000-4000-8000-000000000007"
 name = "Static Green Light"
 
 [entities.transform]
+parent = "20000000-0000-4000-8000-000000000010"
 position = [0, 2.8, -1.5]
 rotation = [0, 0, 0]
 scale = [0.16, 0.16, 0.16]
@@ -120,6 +131,7 @@ id = "20000000-0000-4000-8000-000000000008"
 name = "Static Violet Light"
 
 [entities.transform]
+parent = "20000000-0000-4000-8000-000000000010"
 position = [3.8, 0.35, 1.8]
 rotation = [0, 0, 0]
 scale = [0.16, 0.16, 0.16]

@@ -788,6 +788,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	if !entity_is_current(world, entity_index, generation) {
 		return
 	}
+	detach_transform_children(world, entity_index)
 
 	entity := &world.entities[entity_index]
 	if world.entity_by_uuid != nil {

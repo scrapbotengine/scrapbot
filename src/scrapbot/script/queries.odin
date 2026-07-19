@@ -431,7 +431,8 @@ push_query_component_table :: proc "c" (
 }
 
 push_transform_table :: proc "c" (L: Lua_State, transform: Transform_Component) {
-	lua_createtable(L, 0, 3)
+	lua_createtable(L, 0, 4)
+	push_uuid_field(L, "parent", transform.parent)
 	push_vec3_table(L, transform.position)
 	lua_setfield(L, -2, "position")
 	push_vec3_table(L, transform.rotation)
@@ -503,7 +504,7 @@ push_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared.Entity_U
 }
 
 push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Component) {
-	lua_createtable(L, 0, 16)
+	lua_createtable(L, 0, 20)
 	push_uuid_field(L, "parent", value.parent)
 	push_vec2_field(L, "position", value.position)
 	push_vec2_field(L, "size", value.size)
@@ -520,6 +521,10 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_bool_field(L, "fit_content_width", value.fit_content_width)
 	push_bool_field(L, "fit_content_height", value.fit_content_height)
 	push_bool_field(L, "fixed_in_fill", value.fixed_in_fill)
+	push_bool_field(L, "tree_item", value.tree_item)
+	push_uuid_field(L, "tree_parent", value.tree_parent)
+	push_number_field(L, "tree_order", f32(value.tree_order))
+	push_bool_field(L, "tree_collapsed", value.tree_collapsed)
 }
 
 push_ui_stack_table :: proc "c" (L: Lua_State, value: shared.UI_Stack_Component) {
@@ -544,7 +549,7 @@ push_ui_scroll_area_table :: proc "c" (L: Lua_State, value: shared.UI_Scroll_Are
 }
 
 push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component) {
-	lua_createtable(L, 0, 12)
+	lua_createtable(L, 0, 14)
 	push_string_field(L, "title", value.title)
 	push_string_field(L, "font", value.font)
 	push_vec4_field(L, "title_color", value.title_color)
@@ -571,12 +576,21 @@ push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component)
 }
 
 push_ui_list_table :: proc "c" (L: Lua_State, value: shared.UI_List_Component) {
-	lua_createtable(L, 0, 5)
+	lua_createtable(L, 0, 12)
 	push_uuid_field(L, "selected", value.selected)
 	push_number_field(L, "gap", value.gap)
 	push_vec4_field(L, "selection_background", value.selection_background)
 	push_vec4_field(L, "hover_background", value.hover_background)
 	push_vec4_field(L, "active_background", value.active_background)
+	push_bool_field(L, "draggable", value.draggable)
+	push_number_field(L, "drag_threshold", value.drag_threshold)
+	push_number_field(L, "drop_edge_fraction", value.drop_edge_fraction)
+	push_vec4_field(L, "drop_target_background", value.drop_target_background)
+	push_vec4_field(L, "drop_indicator_color", value.drop_indicator_color)
+	push_number_field(L, "drop_indicator_thickness", value.drop_indicator_thickness)
+	push_number_field(L, "drop_indicator_inset", value.drop_indicator_inset)
+	push_bool_field(L, "tree_enabled", value.tree_enabled)
+	push_number_field(L, "tree_indent", value.tree_indent)
 }
 
 push_ui_progress_table :: proc "c" (L: Lua_State, value: shared.UI_Progress_Component) {
@@ -591,7 +605,7 @@ push_ui_progress_table :: proc "c" (L: Lua_State, value: shared.UI_Progress_Comp
 }
 
 push_ui_state_table :: proc "c" (L: Lua_State, value: shared.UI_State_Component) {
-	lua_createtable(L, 0, 13)
+	lua_createtable(L, 0, 18)
 	push_bool_field(L, "hovered", value.hovered)
 	push_bool_field(L, "active", value.active)
 	push_bool_field(L, "focused", value.focused)
@@ -600,6 +614,20 @@ push_ui_state_table :: proc "c" (L: Lua_State, value: shared.UI_State_Component)
 	push_bool_field(L, "valid", value.valid)
 	push_bool_field(L, "submitted", value.submitted)
 	push_bool_field(L, "cancelled", value.cancelled)
+	push_bool_field(L, "dragging", value.dragging)
+	push_uuid_field(L, "drag_source", value.drag_source)
+	push_uuid_field(L, "drop_target", value.drop_target)
+	drop_placement := "none"
+	switch value.drop_placement {
+		case .Before:
+			drop_placement = "before"
+		case .Into:
+			drop_placement = "into"
+		case .After:
+			drop_placement = "after"
+		case .None:
+	}
+	push_string_field(L, "drop_placement", drop_placement)
 	lua_pushnumber(L, f64(value.activation_revision))
 	lua_setfield(L, -2, "activation_revision")
 	lua_pushnumber(L, f64(value.change_revision))
@@ -608,6 +636,8 @@ push_ui_state_table :: proc "c" (L: Lua_State, value: shared.UI_State_Component)
 	lua_setfield(L, -2, "submit_revision")
 	lua_pushnumber(L, f64(value.cancel_revision))
 	lua_setfield(L, -2, "cancel_revision")
+	lua_pushnumber(L, f64(value.drop_revision))
+	lua_setfield(L, -2, "drop_revision")
 }
 
 push_ui_text_table :: proc "c" (L: Lua_State, value: shared.UI_Text_Component) {

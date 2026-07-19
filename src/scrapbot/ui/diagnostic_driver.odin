@@ -21,6 +21,8 @@ Diagnostic_Target :: struct {
 Diagnostic_Action :: struct {
 	action: string,
 	target: Diagnostic_Target,
+	destination: Diagnostic_Target,
+	destination_anchor: string,
 	expect: string,
 	text: string,
 	key: string,
@@ -149,6 +151,12 @@ diagnostic_driver_destroy :: proc(driver: ^Diagnostic_Driver) {
 			delete(action.target.text)
 			delete(action.target.origin)
 			delete(action.target.part)
+			delete(action.destination.uuid)
+			delete(action.destination.name)
+			delete(action.destination.text)
+			delete(action.destination.origin)
+			delete(action.destination.part)
+			delete(action.destination_anchor)
 			delete(action.expect)
 			delete(action.text)
 			delete(action.key)
@@ -166,7 +174,16 @@ diagnostic_action_is_valid :: proc(action: Diagnostic_Action) -> bool {
 		case "click", "hover", "scroll", "type", "capture":
 			return diagnostic_target_is_valid(action.target)
 		case "drag":
-			return diagnostic_target_is_valid(action.target) && action.frames >= 0
+			return(
+				diagnostic_target_is_valid(action.target) &&
+				(action.destination == (Diagnostic_Target{}) ||
+						diagnostic_target_is_valid(action.destination)) &&
+				(action.destination_anchor == "" ||
+						action.destination_anchor == "top" ||
+						action.destination_anchor == "center" ||
+						action.destination_anchor == "bottom") &&
+				action.frames >= 0 \
+			)
 		case "expect":
 			return(
 				diagnostic_target_is_valid(action.target) &&
@@ -302,8 +319,53 @@ diagnostic_driver_input :: proc(
 	if action.action == "drag" {
 		if driver.phase == 1 {
 			steps := max(action.frames, 1)
-			pointer.position.x += action.delta_x / f32(steps)
-			pointer.position.y += action.delta_y / f32(steps)
+			if action.destination != (Diagnostic_Target{}) {
+				destination_index, destination_found := diagnostic_find_target(
+					state,
+					world,
+					action.destination,
+				)
+				if !destination_found {
+					return diagnostic_driver_missing_target(driver, action)
+				}
+				destination_rect, destination_rect_ok := diagnostic_target_rect(
+					state,
+					world,
+					destination_index,
+					action.destination,
+				)
+				if !destination_rect_ok {
+					return diagnostic_driver_missing_target(driver, action)
+				}
+				if destination_rect.width <= 0 || destination_rect.height <= 0 {
+					if diagnostic_reveal_target(state, world, destination_index) {
+						return pointer, keyboard, ""
+					}
+					return diagnostic_driver_missing_target(driver, action)
+				}
+				destination_screen := diagnostic_rect_to_screen(
+					state,
+					state.nodes[destination_index],
+					destination_rect,
+					drawable_width,
+					drawable_height,
+				)
+				destination := shared.Vec2 {
+					destination_screen.x + destination_screen.width * 0.5,
+					destination_screen.y + destination_screen.height * 0.5,
+				}
+				if action.destination_anchor == "top" {
+					destination.y = destination_screen.y + destination_screen.height * 0.08
+				} else if action.destination_anchor == "bottom" {
+					destination.y = destination_screen.y + destination_screen.height * 0.92
+				}
+				remaining := max(steps - driver.wait_remaining, 1)
+				pointer.position.x += (destination.x - pointer.position.x) / f32(remaining)
+				pointer.position.y += (destination.y - pointer.position.y) / f32(remaining)
+			} else {
+				pointer.position.x += action.delta_x / f32(steps)
+				pointer.position.y += action.delta_y / f32(steps)
+			}
 			pointer.primary_down = true
 			driver.last_pointer = pointer
 			driver.wait_remaining += 1

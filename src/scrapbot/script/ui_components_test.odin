@@ -16,6 +16,10 @@ min_size = [120, 24]
 fill_width = true
 fit_content_height = true
 fixed_in_fill = true
+tree_item = true
+tree_parent = "aa000000-0000-4000-8000-000000000002"
+tree_order = 4
+tree_collapsed = true
 [entities.ui_panel]
 title = "FIELD"
 disclosure_size = 9
@@ -59,6 +63,9 @@ id = "aa000000-0000-4000-8000-000000000002"
 name = "Checkbox"
 [entities.ui_layout]
 size = [32, 32]
+[entities.ui_list]
+tree_enabled = true
+tree_indent = 18
 [entities.ui_checkbox]
 checked = true
 corner_radius = 0
@@ -78,6 +85,7 @@ check_corner_radius = 0
 	state.valid = true
 	state.submitted = true
 	state.submit_revision = 4
+	state.drop_placement = .Before
 	progress_before_script := world.ui_progresses[world.entities[0].ui_progress_index]
 	testing.expect(t, progress_before_script.value == 2 && progress_before_script.maximum == 10)
 	testing.expect(
@@ -109,6 +117,10 @@ scrapbot.system(function()
 		assert(layout.fill_width == true)
 		assert(layout.fit_content_height == true)
 		assert(layout.fixed_in_fill == true)
+		assert(layout.tree_item == true)
+		assert(layout.tree_parent == "aa000000-0000-4000-8000-000000000002")
+		assert(layout.tree_order == 4)
+		assert(layout.tree_collapsed == true)
 		assert(layout.hidden == false)
 		assert(panel.title == "FIELD")
 		assert(panel.disclosure_size == 9 and panel.disclosure_corner_radius == 0)
@@ -123,6 +135,10 @@ scrapbot.system(function()
 		count += 1
 	end)
 	assert(count == 1)
+	scrapbot.query(scrapbot.ui_list):each(function(entity, list)
+		assert(list.tree_enabled == true and list.tree_indent == 18)
+		scrapbot.add_component(entity, scrapbot.ui_list, {tree_indent = 20})
+	end)
 	scrapbot.query(scrapbot.ui_scroll_area):each(function(entity, scroll)
 		assert(scroll.scrollbar_width == 5 and scroll.scrollbar_corner_radius == 0)
 		assert(math.abs(scroll.scrollbar_thumb_color.x - 0.7) < 0.0001)
@@ -158,6 +174,7 @@ scrapbot.system(function()
 		assert(state.activation_revision == 3)
 		assert(state.valid == true)
 		assert(state.submitted == true and state.submit_revision == 4)
+		assert(state.drop_placement == "before")
 		state_count += 1
 	end)
 	assert(state_count == 1)

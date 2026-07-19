@@ -88,6 +88,7 @@ init_registry :: proc(registry: ^Registry) {
 		registry,
 		"scrapbot.transform",
 		{
+			Field_Definition{name = "parent", field_type = .String},
 			Field_Definition{name = "position", field_type = .Vec3},
 			Field_Definition{name = "rotation", field_type = .Vec3},
 			Field_Definition{name = "scale", field_type = .Vec3},
@@ -145,6 +146,10 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "fit_content_width", field_type = .Bool},
 			Field_Definition{name = "fit_content_height", field_type = .Bool},
 			Field_Definition{name = "fixed_in_fill", field_type = .Bool},
+			Field_Definition{name = "tree_item", field_type = .Bool},
+			Field_Definition{name = "tree_parent", field_type = .String},
+			Field_Definition{name = "tree_order", field_type = .Number},
+			Field_Definition{name = "tree_collapsed", field_type = .Bool},
 		},
 	)
 	stack_fields := [?]Field_Definition {
@@ -209,6 +214,15 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "selection_background", field_type = .Vec4},
 			Field_Definition{name = "hover_background", field_type = .Vec4},
 			Field_Definition{name = "active_background", field_type = .Vec4},
+			Field_Definition{name = "draggable", field_type = .Bool},
+			Field_Definition{name = "drag_threshold", field_type = .Number},
+			Field_Definition{name = "drop_edge_fraction", field_type = .Number},
+			Field_Definition{name = "drop_target_background", field_type = .Vec4},
+			Field_Definition{name = "drop_indicator_color", field_type = .Vec4},
+			Field_Definition{name = "drop_indicator_thickness", field_type = .Number},
+			Field_Definition{name = "drop_indicator_inset", field_type = .Number},
+			Field_Definition{name = "tree_enabled", field_type = .Bool},
+			Field_Definition{name = "tree_indent", field_type = .Number},
 		},
 	)
 	register_engine_component(
@@ -247,10 +261,15 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "valid", field_type = .Bool},
 			Field_Definition{name = "submitted", field_type = .Bool},
 			Field_Definition{name = "cancelled", field_type = .Bool},
+			Field_Definition{name = "dragging", field_type = .Bool},
+			Field_Definition{name = "drag_source", field_type = .String},
+			Field_Definition{name = "drop_target", field_type = .String},
+			Field_Definition{name = "drop_placement", field_type = .String},
 			Field_Definition{name = "activation_revision", field_type = .Number},
 			Field_Definition{name = "change_revision", field_type = .Number},
 			Field_Definition{name = "submit_revision", field_type = .Number},
 			Field_Definition{name = "cancel_revision", field_type = .Number},
+			Field_Definition{name = "drop_revision", field_type = .Number},
 		},
 	)
 	register_engine_component(

@@ -6,6 +6,80 @@ import "core:path/filepath"
 import "core:testing"
 
 @(test)
+test_scene_transform_hierarchy_requires_existing_acyclic_transform_parents :: proc(t: ^testing.T) {
+	valid := `[[entities]]
+id = "91000000-0000-4000-8000-000000000001"
+name = "Parent"
+[entities.transform]
+position = [1, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[[entities]]
+id = "91000000-0000-4000-8000-000000000002"
+name = "Child"
+[entities.transform]
+parent = "91000000-0000-4000-8000-000000000001"
+position = [0, 2, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+`
+	scene, valid_result := parse_scene(valid)
+	defer destroy_scene(&scene)
+	testing.expect(t, valid_result.err == .None)
+	testing.expect_value(t, scene.entities[1].transform.parent, scene.entities[0].id)
+
+	transformless_parent := `[[entities]]
+id = "91500000-0000-4000-8000-000000000001"
+name = "Transformless Parent"
+[[entities]]
+id = "91500000-0000-4000-8000-000000000002"
+name = "Child"
+[entities.transform]
+parent = "91500000-0000-4000-8000-000000000001"
+position = [0, 2, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+`
+	transformless_scene, transformless_result := parse_scene(transformless_parent)
+	defer destroy_scene(&transformless_scene)
+	testing.expect(t, transformless_result.err == .None)
+
+	missing := `[[entities]]
+id = "92000000-0000-4000-8000-000000000001"
+name = "Child"
+[entities.transform]
+parent = "92000000-0000-4000-8000-000000000099"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+`
+	missing_scene, missing_result := parse_scene(missing)
+	defer destroy_scene(&missing_scene)
+	testing.expect(t, missing_result.err == .Invalid_Field)
+
+	cycle := `[[entities]]
+id = "93000000-0000-4000-8000-000000000001"
+name = "One"
+[entities.transform]
+parent = "93000000-0000-4000-8000-000000000002"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[[entities]]
+id = "93000000-0000-4000-8000-000000000002"
+name = "Two"
+[entities.transform]
+parent = "93000000-0000-4000-8000-000000000001"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+`
+	cycle_scene, cycle_result := parse_scene(cycle)
+	defer destroy_scene(&cycle_scene)
+	testing.expect(t, cycle_result.err == .Invalid_Field)
+}
+
+@(test)
 test_project_material_resource_parser :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000001"
@@ -656,12 +730,22 @@ gap = 3
 selection_background = [0.1, 0.5, 0.4, 1]
 hover_background = [0.2, 0.3, 0.4, 1]
 active_background = [0.3, 0.4, 0.5, 1]
+draggable = true
+drag_threshold = 7
+drop_edge_fraction = 0.2
+drop_target_background = [0.05, 0.1, 0.15, 1]
+tree_enabled = true
+tree_indent = 18
 [[entities]]
 id = "a6000000-0000-4000-8000-000000000031"
 name = "Item"
 [entities.ui_layout]
 parent = "a6000000-0000-4000-8000-000000000030"
 size = [240, 30]
+tree_item = true
+tree_parent = "a6000000-0000-4000-8000-000000000031"
+tree_order = 7
+tree_collapsed = true
 [entities.ui_text]
 text = "Item"
 size = 14
@@ -677,6 +761,16 @@ size = 14
 	testing.expect(t, list.selection_background == Vec4{0.1, 0.5, 0.4, 1})
 	testing.expect(t, list.hover_background == Vec4{0.2, 0.3, 0.4, 1})
 	testing.expect(t, list.active_background == Vec4{0.3, 0.4, 0.5, 1})
+	testing.expect(t, list.draggable)
+	testing.expect(t, list.drag_threshold == 7)
+	testing.expect(t, list.drop_edge_fraction == 0.2)
+	testing.expect(t, list.drop_target_background == Vec4{0.05, 0.1, 0.15, 1})
+	testing.expect(t, list.tree_enabled)
+	testing.expect(t, list.tree_indent == 18)
+	testing.expect(t, scene.entities[1].ui_layout.tree_item)
+	testing.expect(t, scene.entities[1].ui_layout.tree_parent == selected_id)
+	testing.expect(t, scene.entities[1].ui_layout.tree_order == 7)
+	testing.expect(t, scene.entities[1].ui_layout.tree_collapsed)
 }
 
 @(test)

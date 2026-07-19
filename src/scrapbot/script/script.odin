@@ -70,6 +70,7 @@ Query_Object :: struct {
 
 Transform_Writeback :: struct {
 	ref: c.int,
+	entity_index: int,
 	transform_index: int,
 	original: Transform_Component,
 	can_write: bool,
@@ -371,6 +372,7 @@ run_script_system :: proc(
 					if transform_index >= 0 && transform_index < len(runtime.world.transforms) {
 						writebacks[writeback_count] = Transform_Writeback {
 							ref = lua_ref(L, -1),
+							entity_index = entity_index,
 							transform_index = transform_index,
 							original = runtime.world.transforms[transform_index],
 							can_write = system_allows_component_access(
@@ -417,6 +419,7 @@ run_script_system :: proc(
 			prepared_transforms: Prepared_Transform_Writebacks
 			transform_err := prepare_transform_writebacks(
 				L,
+				runtime.world,
 				writebacks[:writeback_count],
 				&prepared_transforms,
 			)
@@ -464,8 +467,9 @@ push_time_table :: proc "c" (L: Lua_State, time: shared.Time_Resource) {
 	lua_pushinteger(L, c.ptrdiff_t(time.frame_index)); lua_setfield(L, -2, "frame_index")
 }
 
-prepare_transform_writebacks :: proc "c" (
+prepare_transform_writebacks :: proc(
 	L: Lua_State,
+	world: ^World,
 	writebacks: []Transform_Writeback,
 	prepared: ^Prepared_Transform_Writebacks,
 ) -> string {
@@ -487,6 +491,13 @@ prepare_transform_writebacks :: proc "c" (
 			continue
 		}
 		if transform == writeback.original {
+			continue
+		}
+		if transform.parent != writeback.original.parent &&
+		   !ecs.transform_parent_is_valid(world, writeback.entity_index, transform.parent) {
+			if first_err == "" {
+				first_err = "Luau system: scrapbot.transform.parent must reference an existing transform without creating a cycle"
+			}
 			continue
 		}
 		if !writeback.can_write {

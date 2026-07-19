@@ -335,6 +335,46 @@ test_render_list_includes_multiple_cube_renderables :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_world_transform_hierarchy_resolves_and_reparents_without_moving_world_pose :: proc(
+	t: ^testing.T,
+) {
+	parent_id, _ := shared.entity_uuid_parse("94000000-0000-4000-8000-000000000001")
+	child_id, _ := shared.entity_uuid_parse("94000000-0000-4000-8000-000000000002")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {position = {2, 0, 0}, rotation = {0, 0, 0}, scale = {2, 2, 2}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, position = {1, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := build_world(&scene)
+	defer destroy_world(&world)
+	begin_world_transform_resolution(&world)
+	child_world, valid := resolve_world_transform(&world, 1)
+	testing.expect(t, valid)
+	testing.expect_value(t, child_world.position, shared.Vec3{4, 0, 0})
+	testing.expect_value(t, child_world.scale, shared.Vec3{2, 2, 2})
+	testing.expect(t, !set_transform_parent(&world, 0, child_id, true))
+	testing.expect(t, set_transform_parent(&world, 1, {}, true))
+	begin_world_transform_resolution(&world)
+	unparented: shared.Transform_Component
+	unparented, valid = resolve_world_transform(&world, 1)
+	testing.expect(t, valid)
+	testing.expect_value(t, unparented.position, child_world.position)
+	testing.expect_value(t, unparented.scale, child_world.scale)
+}
+
+@(test)
 test_world_preserves_project_custom_components :: proc(t: ^testing.T) {
 	scene, result := project.parse_scene(MULTI_CUBE_SCENE)
 	defer project.destroy_scene(&scene)

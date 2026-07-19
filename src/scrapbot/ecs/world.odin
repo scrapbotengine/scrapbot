@@ -161,6 +161,7 @@ create_world_entity :: proc(
 		}
 	}
 	entity := init_world_entity(world, entity_index, generation, entity_uuid, origin, name)
+	entity.scene_order = next_scene_order_index(world)
 	if reusing_slot {
 		entity.custom_component_storage_indices =
 			world.entities[entity_index].custom_component_storage_indices
@@ -278,6 +279,10 @@ destroy_world :: proc(world: ^World) {
 	delete(world.render_active_point_light_entities)
 	delete(world.render_dirty_entities)
 	delete(world.free_transform_indices)
+	delete(world.resolved_world_transforms)
+	delete(world.resolved_world_transform_epochs)
+	delete(world.resolved_world_transform_valid)
+	delete(world.resolving_world_transform_epochs)
 	delete(world.free_mesh_indices)
 	delete(world.free_geometry_indices)
 	delete(world.free_material_indices)
@@ -321,7 +326,7 @@ build_world :: proc(scene: ^Scene) -> World {
 	world.string_allocator = runtime.heap_allocator()
 	world.instance_uuid = shared.entity_uuid_generate()
 	world.entity_by_uuid = make(map[shared.Entity_UUID]int)
-	for entity in scene.entities {
+	for entity, scene_order in scene.entities {
 		id := Entity {
 			index = u32(len(world.entities)),
 			generation = 1,
@@ -334,6 +339,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			.Scene,
 			entity.name,
 		)
+		world_entity.scene_order = scene_order
 		world_entity.geometry_resource = clone_world_string(&world, entity.geometry_resource)
 		world_entity.material_resource = clone_world_string(&world, entity.material_resource)
 		world_entity.has_shadow_caster = entity.has_shadow_caster
@@ -1010,6 +1016,7 @@ populate_resource_render_list :: proc(
 	list^ = {}
 	list.instances = instances
 	list.world_uuid = world.instance_uuid
+	begin_world_transform_resolution(world)
 	if len(world.render_dirty_entities) > 0 {
 		reconcile_render_instances(world, registry)
 	}
@@ -1027,11 +1034,12 @@ populate_resource_render_list :: proc(
 		if entity.transform_index < 0 ||
 		   entity.transform_index >= len(world.transforms) { continue }
 		internal := world.render_instances[entity.render_instance_index]
+		world_transform, _ := resolve_world_transform(world, entity_index)
 		append(
 			&list.instances,
 			Render_Instance {
 				entity = entity,
-				transform = world.transforms[entity.transform_index],
+				transform = world_transform,
 				geometry = Geometry_Component{handle = internal.geometry},
 				material = Material_Component{handle = internal.material},
 				shadow_caster = entity.has_shadow_caster,
@@ -1059,8 +1067,16 @@ extract_lights :: proc(world: ^World, list: ^Render_List) {
 		entity := world.entities[entity_index]
 		if entity.directional_light_index < 0 ||
 		   entity.directional_light_index >= len(world.directional_lights) { continue }
+		light := world.directional_lights[entity.directional_light_index]
+		if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
+			world_transform, _ := resolve_world_transform(world, entity_index)
+			light.direction = shared.transform_quaternion_rotate(
+				shared.transform_quaternion_from_euler(world_transform.rotation),
+				light.direction,
+			)
+		}
 		list.directional_lights[list.directional_light_count] = {
-			light = world.directional_lights[entity.directional_light_index],
+			light = light,
 		}
 		list.directional_light_count += 1
 	}
@@ -1072,8 +1088,9 @@ extract_lights :: proc(world: ^World, list: ^Render_List) {
 		   entity.point_light_index >= len(world.point_lights) ||
 		   entity.transform_index < 0 ||
 		   entity.transform_index >= len(world.transforms) { continue }
+		world_transform, _ := resolve_world_transform(world, entity_index)
 		list.point_lights[list.point_light_count] = {
-			position = world.transforms[entity.transform_index].position,
+			position = world_transform.position,
 			light = world.point_lights[entity.point_light_index],
 		}
 		list.point_light_count += 1
@@ -1307,6 +1324,7 @@ alive_mesh_count :: proc(world: ^World) -> int {
 
 build_render_list :: proc(world: ^World) -> Render_List {
 	list: Render_List
+	begin_world_transform_resolution(world)
 	list.camera, list.has_camera = first_camera_instance(world)
 
 	for renderable in world.renderables {
@@ -1317,6 +1335,7 @@ build_render_list :: proc(world: ^World) -> Render_List {
 		if !ok {
 			continue
 		}
+		instance.transform, _ = resolve_world_transform(world, renderable.entity_index)
 		append(&list.instances, instance)
 	}
 
@@ -1381,9 +1400,10 @@ first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: 
 	}
 	if selected_entity_index < 0 { return {}, false }
 	entity := world.entities[selected_entity_index]
+	world_transform, _ := resolve_world_transform(world, selected_entity_index)
 	return Camera_Instance {
 			entity = entity,
-			transform = world.transforms[entity.transform_index],
+			transform = world_transform,
 			camera = world.cameras[entity.camera_index],
 		},
 		true
@@ -1401,9 +1421,10 @@ editor_scene_camera_instance :: proc(world: ^World) -> (instance: Camera_Instanc
 	   entity.transform_index >= len(world.transforms) {
 		return {}, false
 	}
+	world_transform, _ := resolve_world_transform(world, entity_index)
 	return Camera_Instance {
 			entity = entity,
-			transform = world.transforms[entity.transform_index],
+			transform = world_transform,
 			camera = world.cameras[entity.camera_index],
 		},
 		true
@@ -1416,6 +1437,7 @@ active_camera_instance :: proc(
 	instance: Camera_Instance,
 	ok: bool,
 ) {
+	begin_world_transform_resolution(world)
 	if use_editor_camera {
 		if editor_camera, found := editor_scene_camera_instance(world); found {
 			return editor_camera, true
@@ -1426,6 +1448,10 @@ active_camera_instance :: proc(
 
 add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Component) {
 	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	if transform.parent != (shared.Entity_UUID{}) &&
+	   !transform_parent_is_valid(world, entity_index, transform.parent) {
 		return
 	}
 
@@ -1447,6 +1473,7 @@ remove_transform :: proc(world: ^World, entity_index: int) {
 	}
 	entity := &world.entities[entity_index]
 	if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) { return }
+	detach_transform_children(world, entity_index)
 	release_transform_slot(world, entity.transform_index)
 	entity.transform_index = INVALID_COMPONENT_INDEX
 	invalidate_entity_renderables(world, entity_index)

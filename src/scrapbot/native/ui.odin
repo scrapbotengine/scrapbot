@@ -49,6 +49,10 @@ system_get_ui_component :: proc "c" (
 				fit_content_width = bool_to_c_int(value.fit_content_width),
 				fit_content_height = bool_to_c_int(value.fit_content_height),
 				fixed_in_fill = bool_to_c_int(value.fixed_in_fill),
+				tree_item = bool_to_c_int(value.tree_item),
+				tree_parent = api_uuid_from_shared(value.tree_parent),
+				tree_order = c.int(value.tree_order),
+				tree_collapsed = bool_to_c_int(value.tree_collapsed),
 			}
 		case "scrapbot.ui_hstack":
 			if world_entity.ui_hstack_index < 0 ||
@@ -116,6 +120,15 @@ system_get_ui_component :: proc "c" (
 				selection_background = api_vec4_from_shared(value.selection_background),
 				hover_background = api_vec4_from_shared(value.hover_background),
 				active_background = api_vec4_from_shared(value.active_background),
+				draggable = bool_to_c_int(value.draggable),
+				drag_threshold = value.drag_threshold,
+				drop_edge_fraction = value.drop_edge_fraction,
+				drop_target_background = api_vec4_from_shared(value.drop_target_background),
+				drop_indicator_color = api_vec4_from_shared(value.drop_indicator_color),
+				drop_indicator_thickness = value.drop_indicator_thickness,
+				drop_indicator_inset = value.drop_indicator_inset,
+				tree_enabled = bool_to_c_int(value.tree_enabled),
+				tree_indent = value.tree_indent,
 			}
 		case "scrapbot.ui_progress":
 			if world_entity.ui_progress_index < 0 ||
@@ -143,10 +156,15 @@ system_get_ui_component :: proc "c" (
 				valid = bool_to_c_int(value.valid),
 				submitted = bool_to_c_int(value.submitted),
 				cancelled = bool_to_c_int(value.cancelled),
+				dragging = bool_to_c_int(value.dragging),
+				drag_source = api_uuid_from_shared(value.drag_source),
+				drop_target = api_uuid_from_shared(value.drop_target),
+				drop_placement = api.UI_Drop_Placement(value.drop_placement),
 				activation_revision = value.activation_revision,
 				change_revision = value.change_revision,
 				submit_revision = value.submit_revision,
 				cancel_revision = value.cancel_revision,
+				drop_revision = value.drop_revision,
 			}
 		case "scrapbot.ui_text":
 			if world_entity.ui_text_index < 0 ||
@@ -308,6 +326,10 @@ ui_command_from_api_payload :: proc "c" (
 				fit_content_width = payload.layout.fit_content_width != 0,
 				fit_content_height = payload.layout.fit_content_height != 0,
 				fixed_in_fill = payload.layout.fixed_in_fill != 0,
+				tree_item = payload.layout.tree_item != 0,
+				tree_parent = shared_uuid_from_api(payload.layout.tree_parent),
+				tree_order = int(payload.layout.tree_order),
+				tree_collapsed = payload.layout.tree_collapsed != 0,
 			}
 			if !shared.ui_layout_is_valid(value) {
 				return "native ui_layout payload is invalid"
@@ -392,6 +414,15 @@ ui_command_from_api_payload :: proc "c" (
 				selection_background = shared_vec4_from_api(payload.list.selection_background),
 				hover_background = shared_vec4_from_api(payload.list.hover_background),
 				active_background = shared_vec4_from_api(payload.list.active_background),
+				draggable = payload.list.draggable != 0,
+				drag_threshold = payload.list.drag_threshold,
+				drop_edge_fraction = payload.list.drop_edge_fraction,
+				drop_target_background = shared_vec4_from_api(payload.list.drop_target_background),
+				drop_indicator_color = shared_vec4_from_api(payload.list.drop_indicator_color),
+				drop_indicator_thickness = payload.list.drop_indicator_thickness,
+				drop_indicator_inset = payload.list.drop_indicator_inset,
+				tree_enabled = payload.list.tree_enabled != 0,
+				tree_indent = payload.list.tree_indent,
 			}
 			if !shared.ui_list_is_valid(value) {
 				return "native ui_list payload is invalid"
@@ -629,6 +660,10 @@ api_icon_from_shared :: proc "contextless" (value: shared.UI_Icon) -> api.UI_Ico
 			return .Close
 		case .Plus:
 			return .Plus
+		case .Chevron_Right:
+			return .Chevron_Right
+		case .Chevron_Down:
+			return .Chevron_Down
 		case .None:
 			return .None
 	}
@@ -641,6 +676,10 @@ shared_icon_from_api :: proc "contextless" (value: api.UI_Icon) -> shared.UI_Ico
 			return .Close
 		case .Plus:
 			return .Plus
+		case .Chevron_Right:
+			return .Chevron_Right
+		case .Chevron_Down:
+			return .Chevron_Down
 		case .None:
 			return .None
 	}

@@ -295,6 +295,7 @@ capture_entity_snapshot :: proc(world: ^World, entity_index: int) -> (Entity_Sna
 		entity = {
 			id = source.uuid,
 			name = clone_snapshot_string(source.name),
+			scene_order = source.scene_order,
 			has_shadow_caster = source.has_shadow_caster,
 			has_shadow_receiver = source.has_shadow_receiver,
 			geometry_resource = clone_snapshot_string(source.geometry_resource),
@@ -634,6 +635,7 @@ apply_entity_snapshot :: proc(world: ^World, snapshot: ^Entity_Snapshot) -> (int
 	value := &snapshot.entity
 	entity := &world.entities[entity_index]
 	entity.origin = snapshot.origin
+	set_entity_scene_order_index(world, entity_index, value.scene_order)
 	set_entity_name(world, entity_index, value.name)
 	set_optional_transform(world, entity_index, value.has_transform, value.transform)
 	set_optional_camera(world, entity_index, value.has_camera, value.camera)

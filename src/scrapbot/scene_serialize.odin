@@ -25,6 +25,9 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 	write_scene_string(builder, "name", entity.name)
 	if entity.has_transform {
 		write_scene_section(builder, "transform")
+		if entity.transform.parent != (shared.Entity_UUID{}) {
+			write_scene_string(builder, "parent", scene_uuid(entity.transform.parent))
+		}
 		write_scene_value(builder, "position", scene_vec3(entity.transform.position))
 		write_scene_value(builder, "rotation", scene_vec3(entity.transform.rotation))
 		write_scene_value(builder, "scale", scene_vec3(entity.transform.scale))
@@ -98,6 +101,12 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "fit_content_width", scene_bool(value.fit_content_width))
 		write_scene_value(builder, "fit_content_height", scene_bool(value.fit_content_height))
 		write_scene_value(builder, "fixed_in_fill", scene_bool(value.fixed_in_fill))
+		write_scene_value(builder, "tree_item", scene_bool(value.tree_item))
+		if value.tree_parent != (shared.Entity_UUID{}) {
+			write_scene_string(builder, "tree_parent", scene_uuid(value.tree_parent))
+		}
+		write_scene_value(builder, "tree_order", fmt.tprintf("%d", value.tree_order))
+		write_scene_value(builder, "tree_collapsed", scene_bool(value.tree_collapsed))
 	}
 	if entity.has_ui_hstack { write_scene_stack(builder, "ui_hstack", entity.ui_hstack) }
 	if entity.has_ui_vstack { write_scene_stack(builder, "ui_vstack", entity.ui_vstack) }
@@ -169,6 +178,23 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "selection_background", scene_vec4(value.selection_background))
 		write_scene_value(builder, "hover_background", scene_vec4(value.hover_background))
 		write_scene_value(builder, "active_background", scene_vec4(value.active_background))
+		write_scene_value(builder, "draggable", scene_bool(value.draggable))
+		write_scene_value(builder, "drag_threshold", scene_f32(value.drag_threshold))
+		write_scene_value(builder, "drop_edge_fraction", scene_f32(value.drop_edge_fraction))
+		write_scene_value(
+			builder,
+			"drop_target_background",
+			scene_vec4(value.drop_target_background),
+		)
+		write_scene_value(builder, "drop_indicator_color", scene_vec4(value.drop_indicator_color))
+		write_scene_value(
+			builder,
+			"drop_indicator_thickness",
+			scene_f32(value.drop_indicator_thickness),
+		)
+		write_scene_value(builder, "drop_indicator_inset", scene_f32(value.drop_indicator_inset))
+		write_scene_value(builder, "tree_enabled", scene_bool(value.tree_enabled))
+		write_scene_value(builder, "tree_indent", scene_f32(value.tree_indent))
 	}
 	if entity.has_ui_progress {
 		value := entity.ui_progress
@@ -332,6 +358,10 @@ scene_icon :: proc(value: shared.UI_Icon) -> string {
 			return "close"
 		case .Plus:
 			return "plus"
+		case .Chevron_Right:
+			return "chevron_right"
+		case .Chevron_Down:
+			return "chevron_down"
 		case .None:
 			return "none"
 	}

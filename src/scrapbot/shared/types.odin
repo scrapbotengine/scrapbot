@@ -77,6 +77,7 @@ Scene :: struct {
 Scene_Entity :: struct {
 	id: Entity_UUID,
 	name: string,
+	scene_order: int,
 	has_transform: bool,
 	transform: Transform_Component,
 	has_camera: bool,
@@ -157,6 +158,7 @@ Transform_Component :: struct {
 	position: Vec3,
 	rotation: Vec3,
 	scale: Vec3,
+	parent: Entity_UUID,
 }
 
 Camera_Component :: struct {
@@ -207,6 +209,10 @@ UI_Layout_Component :: struct {
 	fit_content_width: bool,
 	fit_content_height: bool,
 	fixed_in_fill: bool,
+	tree_item: bool,
+	tree_parent: Entity_UUID,
+	tree_order: int,
+	tree_collapsed: bool,
 }
 UI_Stack_Component :: struct {
 	gap: f32,
@@ -252,6 +258,21 @@ UI_List_Component :: struct {
 	selection_background: Vec4,
 	hover_background: Vec4,
 	active_background: Vec4,
+	draggable: bool,
+	drag_threshold: f32,
+	drop_edge_fraction: f32,
+	drop_target_background: Vec4,
+	drop_indicator_color: Vec4,
+	drop_indicator_thickness: f32,
+	drop_indicator_inset: f32,
+	tree_enabled: bool,
+	tree_indent: f32,
+}
+UI_Drop_Placement :: enum {
+	None,
+	Before,
+	Into,
+	After,
 }
 UI_Progress_Component :: struct {
 	value: f32,
@@ -271,10 +292,15 @@ UI_State_Component :: struct {
 	valid: bool,
 	submitted: bool,
 	cancelled: bool,
+	dragging: bool,
+	drag_source: Entity_UUID,
+	drop_target: Entity_UUID,
+	drop_placement: UI_Drop_Placement,
 	activation_revision: u64,
 	change_revision: u64,
 	submit_revision: u64,
 	cancel_revision: u64,
+	drop_revision: u64,
 }
 UI_Text_Alignment :: enum {
 	Left,
@@ -285,6 +311,8 @@ UI_Icon :: enum {
 	None,
 	Close,
 	Plus,
+	Chevron_Right,
+	Chevron_Down,
 }
 UI_Text_Component :: struct {
 	text: string,
@@ -402,6 +430,13 @@ ui_list_default :: proc "contextless" () -> UI_List_Component {
 		selection_background = {0.045, 0.095, 0.105, 1},
 		hover_background = {0.028, 0.038, 0.050, 1},
 		active_background = {0.040, 0.055, 0.072, 1},
+		drag_threshold = 5,
+		drop_edge_fraction = 0.25,
+		drop_target_background = {0.055, 0.12, 0.13, 1},
+		drop_indicator_color = {0.42, 0.92, 0.84, 1},
+		drop_indicator_thickness = 2,
+		drop_indicator_inset = 8,
+		tree_indent = 14,
 	}
 }
 
@@ -516,7 +551,15 @@ ui_table_is_valid :: proc "contextless" (value: UI_Table_Component) -> bool {
 }
 
 ui_list_is_valid :: proc "contextless" (value: UI_List_Component) -> bool {
-	return value.gap >= 0
+	return(
+		value.gap >= 0 &&
+		value.drag_threshold >= 0 &&
+		value.drop_edge_fraction >= 0 &&
+		value.drop_edge_fraction <= 0.5 &&
+		value.drop_indicator_thickness >= 0 &&
+		value.drop_indicator_inset >= 0 &&
+		value.tree_indent >= 0 \
+	)
 }
 
 ui_progress_is_valid :: proc "contextless" (value: UI_Progress_Component) -> bool {
@@ -687,6 +730,7 @@ Editor_UI_Role :: enum {
 	Systems_Origin,
 	Browser_Scroll,
 	Browser_Row,
+	Browser_Row_Disclosure,
 	Browser_Row_Label,
 	Project_Resources_Scroll,
 	Project_Resource_Row,
@@ -779,6 +823,7 @@ World_Entity :: struct {
 	alive: bool,
 	origin: Entity_Origin,
 	name: string,
+	scene_order: int,
 	component_revision: u64,
 	transform_index: int,
 	camera_index: int,
@@ -872,6 +917,11 @@ World :: struct {
 	free_entity_indices: [dynamic]int,
 	entity_by_uuid: map[Entity_UUID]int,
 	transforms: #soa[dynamic]Transform_Component,
+	resolved_world_transforms: [dynamic]Transform_Component,
+	resolved_world_transform_epochs: [dynamic]u64,
+	resolved_world_transform_valid: [dynamic]bool,
+	resolving_world_transform_epochs: [dynamic]u64,
+	world_transform_resolution_epoch: u64,
 	cameras: [dynamic]Camera_Component,
 	ambient_lights: [dynamic]Ambient_Light_Component,
 	directional_lights: [dynamic]Directional_Light_Component,

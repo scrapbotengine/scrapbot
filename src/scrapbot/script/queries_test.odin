@@ -193,6 +193,59 @@ end)
 }
 
 @(test)
+test_luau_query_system_rejects_cyclic_transform_parent_writeback :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000041"
+name = "Parent"
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[[entities]]
+id = "a9000000-0000-4000-8000-000000000042"
+name = "Child"
+[entities.transform]
+parent = "a9000000-0000-4000-8000-000000000041"
+position = [1, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`local Transforms = scrapbot.query(scrapbot.transform)
+scrapbot.system(Transforms, {
+	writes = { scrapbot.transform },
+}, function(time, entity, transform)
+	if entity.id == "a9000000-0000-4000-8000-000000000041" then
+		transform.parent = "a9000000-0000-4000-8000-000000000042"
+	end
+end)
+`,
+		"=test",
+		&world,
+	)
+	testing.expectf(t, result.err == "", "script registration failed: %s", result.err)
+	step_err := step_runtime(&runtime, &world, 0.5)
+	testing.expectf(
+		t,
+		step_err ==
+		"Luau system: scrapbot.transform.parent must reference an existing transform without creating a cycle",
+		"unexpected hierarchy writeback result: %s",
+		step_err,
+	)
+	testing.expect_value(t, world.transforms[0].parent, shared.Entity_UUID{})
+}
+
+@(test)
 test_luau_query_system_writes_project_component_payload :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(
 		`[[entities]]

@@ -14,7 +14,8 @@ DIAGNOSTIC_DRIVER_TEST_SCRIPT :: `{
     {"action": "click", "target": {"text": "OPEN"}},
     {"action": "hover", "target": {"text": "CHOICE"}},
     {"action": "expect", "target": {"text": "CHOICE"}, "expect": "hovered"},
-    {"action": "drag", "target": {"name": "Driver Number"}, "delta_x": 1.5, "frames": 4},
+		{"action": "drag", "target": {"name": "Driver Number"}, "delta_x": 1.5, "frames": 4},
+		{"action": "drag", "target": {"text": "OPEN"}, "destination": {"text": "CHOICE"}, "destination_anchor": "top", "frames": 2},
     {"action": "expect", "target": {"name": "Driver Number"}, "expect": "text", "text": "2"},
     {"action": "capture", "target": {"text": "CHOICE"}, "padding": 4}
   ]

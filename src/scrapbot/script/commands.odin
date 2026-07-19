@@ -372,6 +372,9 @@ read_transform_payload :: proc "c" (
 	err: string,
 ) {
 	transform.scale = Vec3{1, 1, 1}
+	if err = read_ui_uuid_field(L, payload_index, "parent", &transform.parent); err != "" {
+		return transform, "scrapbot.transform.parent must be an entity UUID string"
+	}
 
 	if value, found, ok := optional_vec3_field(L, payload_index, "position"); found {
 		if !ok {
@@ -402,6 +405,9 @@ read_full_transform_table :: proc "c" (
 	transform: Transform_Component,
 	err: string,
 ) {
+	if err = read_ui_uuid_field(L, payload_index, "parent", &transform.parent); err != "" {
+		return transform, "scrapbot.transform.parent must be an entity UUID string"
+	}
 	value, ok := required_vec3_field(L, payload_index, "position")
 	if !ok {
 		return transform, "scrapbot.transform.position must be a vec3"

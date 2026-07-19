@@ -30,10 +30,12 @@ editor_transform_gizmo_system :: proc(
 	if entity.transform_index < 0 ||
 	   entity.transform_index >= len(world.transforms) { editor_hide_gizmo(state); return }
 	transform := &world.transforms[entity.transform_index]
+	ecs.begin_world_transform_resolution(world)
+	world_transform, _ := ecs.resolve_world_transform(world, entity_index)
 	eye, fov := editor_camera_eye_fov(
 		camera,
 		has_camera,
-	); distance := math.sqrt(vec3_dot(vec3_sub(transform.position, eye), vec3_sub(transform.position, eye)))
+	); distance := math.sqrt(vec3_dot(vec3_sub(world_transform.position, eye), vec3_sub(world_transform.position, eye)))
 	world_size := max(
 		2 *
 		max(distance, 0.1) *
@@ -42,13 +44,13 @@ editor_transform_gizmo_system :: proc(
 		EDITOR_GIZMO_SCREEN_SIZE,
 		0.05,
 	)
-	world_axes := editor_gizmo_axes(transform.rotation, gizmo.space)
+	world_axes := editor_gizmo_axes(world_transform.rotation, gizmo.space)
 	if state.editor_gizmo_active_handle != .None {
 		world_axes = state.editor_gizmo_drag_world_axes
 	}
 	if !editor_project_gizmo(
 		state,
-		transform.position,
+		world_transform.position,
 		world_size,
 		world_axes,
 		gizmo.mode,
@@ -89,6 +91,7 @@ editor_transform_gizmo_system :: proc(
 				state.editor_gizmo_drag_position = transform.position
 				state.editor_gizmo_drag_rotation = transform.rotation
 				state.editor_gizmo_drag_scale = transform.scale
+				state.editor_gizmo_drag_world_transform = world_transform
 				state.editor_gizmo_drag_direction = {
 					delta.x / max(screen_length(delta), 0.001),
 					delta.y / max(screen_length(delta), 0.001),
@@ -141,7 +144,7 @@ editor_transform_gizmo_system :: proc(
 		switch gizmo.mode {
 			case .Translate:
 				delta := screen_sub(pointer.position, state.editor_gizmo_drag_pointer)
-				transform.position = state.editor_gizmo_drag_position
+				candidate := state.editor_gizmo_drag_world_transform
 				if first, second, ok := editor_gizmo_pair_axes(state.editor_gizmo_active_handle);
 				   ok {
 					first_amount, second_amount, solved := screen_solve_basis(
@@ -150,15 +153,15 @@ editor_transform_gizmo_system :: proc(
 						state.editor_gizmo_drag_screen_axes[second],
 					)
 					if solved {
-						transform.position = vec3_add(
-							transform.position,
+						candidate.position = vec3_add(
+							candidate.position,
 							vec3_mul(
 								state.editor_gizmo_drag_world_axes[first],
 								first_amount * state.editor_gizmo_drag_world_scale,
 							),
 						)
-						transform.position = vec3_add(
-							transform.position,
+						candidate.position = vec3_add(
+							candidate.position,
 							vec3_mul(
 								state.editor_gizmo_drag_world_axes[second],
 								second_amount * state.editor_gizmo_drag_world_scale,
@@ -168,12 +171,12 @@ editor_transform_gizmo_system :: proc(
 				} else if state.editor_gizmo_active_handle == .Center {
 					world_per_pixel :=
 						state.editor_gizmo_drag_world_scale / EDITOR_GIZMO_SCREEN_SIZE
-					transform.position = vec3_add(
-						transform.position,
+					candidate.position = vec3_add(
+						candidate.position,
 						vec3_mul(state.editor_gizmo_drag_camera_right, delta.x * world_per_pixel),
 					)
-					transform.position = vec3_add(
-						transform.position,
+					candidate.position = vec3_add(
+						candidate.position,
 						vec3_mul(state.editor_gizmo_drag_camera_up, -delta.y * world_per_pixel),
 					)
 				} else {
@@ -185,12 +188,13 @@ editor_transform_gizmo_system :: proc(
 						state.editor_gizmo_active_handle,
 					)
 					if axis_ok {
-						transform.position = vec3_add(
-							transform.position,
+						candidate.position = vec3_add(
+							candidate.position,
 							vec3_mul(state.editor_gizmo_drag_world_axes[axis_index], amount),
 						)
 					}
 				}
+				editor_gizmo_apply_world_transform(world, entity_index, candidate)
 			case .Rotate:
 				previous := screen_sub(
 					state.editor_gizmo_drag_last_pointer,
@@ -201,16 +205,18 @@ editor_transform_gizmo_system :: proc(
 				state.editor_gizmo_drag_last_pointer = pointer.position
 				axis_index, axis_ok := editor_gizmo_single_axis(state.editor_gizmo_active_handle)
 				if axis_ok {
-					transform.rotation = editor_gizmo_rotated_euler(
-						state.editor_gizmo_drag_rotation,
+					candidate := state.editor_gizmo_drag_world_transform
+					candidate.rotation = editor_gizmo_rotated_euler(
+						state.editor_gizmo_drag_world_transform.rotation,
 						axis_index,
 						state.editor_gizmo_drag_angle,
 						gizmo.space,
 					)
+					editor_gizmo_apply_world_transform(world, entity_index, candidate)
 				}
 			case .Scale:
 				delta := screen_sub(pointer.position, state.editor_gizmo_drag_pointer)
-				transform.scale = state.editor_gizmo_drag_scale
+				candidate := state.editor_gizmo_drag_world_transform
 				if first, second, ok := editor_gizmo_pair_axes(state.editor_gizmo_active_handle);
 				   ok {
 					first_amount, second_amount, solved := screen_solve_basis(
@@ -218,24 +224,27 @@ editor_transform_gizmo_system :: proc(
 						state.editor_gizmo_drag_screen_axes[first],
 						state.editor_gizmo_drag_screen_axes[second],
 					)
-					if solved { vec3_mul_axis(&transform.scale, first, max(1 + first_amount, 0.01)); vec3_mul_axis(&transform.scale, second, max(1 + second_amount, 0.01)) }
+					if solved { vec3_mul_axis(&candidate.scale, first, max(1 + first_amount, 0.01)); vec3_mul_axis(&candidate.scale, second, max(1 + second_amount, 0.01)) }
 				} else {
 					pixels :=
 						delta.x * state.editor_gizmo_drag_direction.x +
 						delta.y *
 							state.editor_gizmo_drag_direction.y; factor := max(1 + pixels / state.editor_gizmo_drag_pixels, 0.01)
 					switch state.editor_gizmo_active_handle {case .X:
-							transform.scale.x *= factor; case .Y:
-							transform.scale.y *= factor; case .Z:
-							transform.scale.z *= factor; case .Center:
-							transform.scale.x *= factor; transform.scale.y *= factor
-							transform.scale.z *= factor; case .None, .XY, .XZ, .YZ:}
+							candidate.scale.x *= factor; case .Y:
+							candidate.scale.y *= factor; case .Z:
+							candidate.scale.z *= factor; case .Center:
+							candidate.scale.x *= factor; candidate.scale.y *= factor
+							candidate.scale.z *= factor; case .None, .XY, .XZ, .YZ:}
 				}
+				editor_gizmo_apply_world_transform(world, entity_index, candidate)
 		}
 		ui.editor_mark_scene_dirty(state, entity)
+		ecs.begin_world_transform_resolution(world)
+		current_world, _ := ecs.resolve_world_transform(world, entity_index)
 		_ = editor_project_gizmo(
 			state,
-			transform.position,
+			current_world.position,
 			world_size,
 			state.editor_gizmo_drag_world_axes,
 			gizmo.mode,
@@ -244,6 +253,26 @@ editor_transform_gizmo_system :: proc(
 			has_camera,
 		)
 	}
+}
+
+editor_gizmo_apply_world_transform :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	value: shared.Transform_Component,
+) {
+	entity := &world.entities[entity_index]
+	current := world.transforms[entity.transform_index]
+	local := value
+	if current.parent != (shared.Entity_UUID{}) {
+		if parent_index, found := ecs.entity_index_by_uuid(world, current.parent); found {
+			ecs.begin_world_transform_resolution(world)
+			if parent, valid := ecs.resolve_world_transform(world, parent_index); valid {
+				local = shared.transform_relative_to(parent, value)
+			}
+		}
+	}
+	local.parent = current.parent
+	world.transforms[entity.transform_index] = local
 }
 
 editor_hide_gizmo :: proc(state: ^ui.State) {if state == nil { return }

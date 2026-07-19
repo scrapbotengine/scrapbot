@@ -118,6 +118,7 @@ Node :: struct {
 	scroll_offset, scroll_target, scroll_max, scroll_content_height: f32,
 	split_weight: f32,
 	split_parent: shared.Entity,
+	tree_depth: int,
 	split_weight_valid: bool,
 	seen, laid_out, hovered, active, has_clip: bool,
 	resolved_width_valid, resolved_height_valid: bool,
@@ -128,6 +129,7 @@ MAX_UI_EVENTS :: 256
 UI_Event_Kind :: enum {
 	Activated,
 	Changed,
+	Dropped,
 }
 UI_Event_Part :: enum {
 	Control,
@@ -137,7 +139,20 @@ UI_Event :: struct {
 	kind: UI_Event_Kind,
 	part: UI_Event_Part,
 	entity: shared.Entity,
+	source: shared.Entity,
+	target: shared.Entity,
+	drop_placement: shared.UI_Drop_Placement,
 	position: shared.Vec2,
+}
+List_Drag_Interaction :: struct {
+	list: shared.Entity,
+	source: shared.Entity,
+	target: shared.Entity,
+	start: shared.Vec2,
+	armed: bool,
+	dragging: bool,
+	drop_valid: bool,
+	placement: shared.UI_Drop_Placement,
 }
 EDITOR_TRANSACTION_MAX_CHANGES :: 3
 Editor_Edit_Value_Kind :: enum {
@@ -168,6 +183,8 @@ Editor_Structural_Change :: struct {
 	target_uuid: shared.Entity_UUID,
 	before: ^ecs.Entity_Snapshot,
 	after: ^ecs.Entity_Snapshot,
+	before_order: [dynamic]shared.Entity_UUID,
+	after_order: [dynamic]shared.Entity_UUID,
 }
 Editor_Component_Structural_Change :: struct {
 	target_uuid: shared.Entity_UUID,
@@ -221,6 +238,7 @@ State :: struct {
 	previous_primary_down: bool,
 	editor_ui_active_entity: shared.Entity,
 	editor_ui_has_active_entity: bool,
+	list_drags: [2]List_Drag_Interaction,
 	next_paint_order: int,
 	layout_size_changed: bool,
 	split_handles: [MAX_NODES]Split_Handle,
@@ -246,6 +264,7 @@ State :: struct {
 	editor_dirty_entity_lookup: map[shared.Entity_UUID]bool,
 	editor_dirty_resources: [dynamic]shared.Resource_UUID,
 	editor_dirty_resource_lookup: map[shared.Resource_UUID]bool,
+	editor_collapsed_entities: map[shared.Entity_UUID]bool,
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
@@ -302,6 +321,7 @@ State :: struct {
 	editor_gizmo_drag_position: shared.Vec3,
 	editor_gizmo_drag_rotation: shared.Vec3,
 	editor_gizmo_drag_scale: shared.Vec3,
+	editor_gizmo_drag_world_transform: shared.Transform_Component,
 	editor_gizmo_drag_direction: shared.Vec2,
 	editor_gizmo_drag_screen_axes: [3]shared.Vec2,
 	editor_gizmo_drag_world_axes: [3]shared.Vec3,
@@ -631,6 +651,7 @@ destroy :: proc(state: ^State) {
 	delete(state.editor_dirty_entity_lookup)
 	delete(state.editor_dirty_resources)
 	delete(state.editor_dirty_resource_lookup)
+	delete(state.editor_collapsed_entities)
 	state^ = {}
 }
 
@@ -872,14 +893,28 @@ reconcile :: proc(
 	) { if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err } }
 	project_press_started :=
 		project_pointer.available && project_pointer.primary_down && !state.previous_primary_down
+	project_press_released :=
+		project_pointer.available && !project_pointer.primary_down && state.previous_primary_down
 	editor_press_started :=
 		editor_pointer.available &&
 		editor_pointer.primary_down &&
 		!state.editor_previous_primary_down
+	editor_press_released :=
+		editor_pointer.available &&
+		!editor_pointer.primary_down &&
+		state.editor_previous_primary_down
 	project_pressed, project_pressed_ok := update_interaction(state, project_pointer, false)
 	component_menu_was_open := state.editor_component_menu_open
 	resource_menu_was_open := state.editor_resource_menu_open
 	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
+	if project_press_started && project_pressed_ok {
+		list_drag_begin(state, world, project_pressed, project_pointer.position, false)
+	}
+	if editor_press_started && pressed_ok {
+		list_drag_begin(state, world, pressed, editor_pointer.position, true)
+	}
+	list_drag_update(state, world, project_pointer, project_press_released, false)
+	list_drag_update(state, world, editor_pointer, editor_press_released, true)
 	if state.pointer_cursor == .Default {
 		state.pointer_cursor = numeric_input_pointer_cursor(state, world)
 	}
@@ -1498,6 +1533,224 @@ node_is_panel_action :: proc(world: ^shared.World, node: ^Node) -> bool {
 	)
 }
 
+tree_node_less :: proc(state: ^State, world: ^shared.World, left_index, right_index: int) -> bool {
+	left := state.nodes[left_index]
+	right := state.nodes[right_index]
+	left_layout := world.ui_layouts[left.layout_index]
+	right_layout := world.ui_layouts[right.layout_index]
+	if left_layout.tree_order != right_layout.tree_order {
+		return left_layout.tree_order < right_layout.tree_order
+	}
+	return left.entity.index < right.entity.index
+}
+
+sort_tree_nodes :: proc(state: ^State, world: ^shared.World, values: ^[MAX_NODES]int, count: int) {
+	if count < 2 {
+		return
+	}
+	buffer: [MAX_NODES]int
+	width := 1
+	for width < count {
+		start := 0
+		for start < count {
+			middle := min(start + width, count)
+			end := min(start + width * 2, count)
+			left := start
+			right := middle
+			output := start
+			for output < end {
+				if right >= end ||
+				   left < middle && tree_node_less(state, world, values[left], values[right]) {
+					buffer[output] = values[left]
+					left += 1
+				} else {
+					buffer[output] = values[right]
+					right += 1
+				}
+				output += 1
+			}
+			start = end
+		}
+		for index in 0 ..< count {
+			values[index] = buffer[index]
+		}
+		width *= 2
+	}
+}
+
+mark_tree_branch_hidden :: proc(
+	node_index: int,
+	first_child: ^[MAX_NODES]int,
+	next_sibling: ^[MAX_NODES]int,
+	visit: ^[MAX_NODES]u8,
+) {
+	if node_index < 0 || node_index >= MAX_NODES || visit[node_index] != 0 {
+		return
+	}
+	visit[node_index] = 2
+	child := first_child[node_index]
+	for child >= 0 {
+		mark_tree_branch_hidden(child, first_child, next_sibling, visit)
+		child = next_sibling[child]
+	}
+}
+
+append_tree_branch :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	depth: int,
+	first_child: ^[MAX_NODES]int,
+	next_sibling: ^[MAX_NODES]int,
+	visit: ^[MAX_NODES]u8,
+	output: ^[MAX_NODES]int,
+	output_count: ^int,
+) {
+	if node_index < 0 || node_index >= state.node_count || visit[node_index] != 0 {
+		return
+	}
+	visit[node_index] = 1
+	if output_count^ < MAX_NODES {
+		output[output_count^] = node_index
+		state.nodes[node_index].tree_depth = depth
+		output_count^ += 1
+	}
+	layout := world.ui_layouts[state.nodes[node_index].layout_index]
+	if !layout.tree_collapsed && !layout.hidden {
+		child := first_child[node_index]
+		for child >= 0 {
+			append_tree_branch(
+				state,
+				world,
+				child,
+				depth + 1,
+				first_child,
+				next_sibling,
+				visit,
+				output,
+				output_count,
+			)
+			child = next_sibling[child]
+		}
+	} else {
+		child := first_child[node_index]
+		for child >= 0 {
+			mark_tree_branch_hidden(child, first_child, next_sibling, visit)
+			child = next_sibling[child]
+		}
+	}
+	visit[node_index] = 2
+}
+
+tree_list_flow :: proc(
+	state: ^State,
+	world: ^shared.World,
+	list_node_index: int,
+	output: ^[MAX_NODES]int,
+) -> int {
+	candidates: [MAX_NODES]int
+	candidate_count := 0
+	output_count := 0
+	child := state.nodes[list_node_index].first_child_node
+	for child >= 0 {
+		next := state.nodes[child].next_sibling_node
+		layout := world.ui_layouts[state.nodes[child].layout_index]
+		state.nodes[child].tree_depth = 0
+		if layout.tree_item {
+			candidates[candidate_count] = child
+			candidate_count += 1
+		} else {
+			output[output_count] = child
+			output_count += 1
+		}
+		child = next
+	}
+	sort_tree_nodes(state, world, &candidates, candidate_count)
+	is_candidate: [MAX_NODES]bool
+	first_child: [MAX_NODES]int
+	last_child: [MAX_NODES]int
+	next_sibling: [MAX_NODES]int
+	for index in 0 ..< MAX_NODES {
+		first_child[index] = -1
+		last_child[index] = -1
+		next_sibling[index] = -1
+	}
+	for index in 0 ..< candidate_count {
+		is_candidate[candidates[index]] = true
+	}
+	roots: [MAX_NODES]int
+	suppressed: [MAX_NODES]bool
+	root_count := 0
+	list_entity_index := int(state.nodes[list_node_index].entity.index)
+	list_uuid := world.entities[list_entity_index].uuid
+	for index in 0 ..< candidate_count {
+		node_index := candidates[index]
+		layout := world.ui_layouts[state.nodes[node_index].layout_index]
+		parent_node := -1
+		if entity_index, found := world.entity_by_uuid[layout.tree_parent]; found {
+			parent_node = find_node_by_entity_index(state, entity_index)
+			parent_entity := world.entities[entity_index]
+			if parent_entity.ui_layout_index >= 0 &&
+			   parent_entity.ui_layout_index < len(world.ui_layouts) {
+				parent_layout := world.ui_layouts[parent_entity.ui_layout_index]
+				if parent_layout.tree_item &&
+				   parent_layout.parent == list_uuid &&
+				   parent_layout.hidden {
+					suppressed[node_index] = true
+					continue
+				}
+			}
+		}
+		if parent_node < 0 || parent_node >= MAX_NODES || !is_candidate[parent_node] {
+			roots[root_count] = node_index
+			root_count += 1
+			continue
+		}
+		if first_child[parent_node] < 0 {
+			first_child[parent_node] = node_index
+		} else {
+			next_sibling[last_child[parent_node]] = node_index
+		}
+		last_child[parent_node] = node_index
+	}
+	visit: [MAX_NODES]u8
+	for index in 0 ..< candidate_count {
+		if suppressed[candidates[index]] {
+			mark_tree_branch_hidden(candidates[index], &first_child, &next_sibling, &visit)
+		}
+	}
+	for index in 0 ..< root_count {
+		append_tree_branch(
+			state,
+			world,
+			roots[index],
+			0,
+			&first_child,
+			&next_sibling,
+			&visit,
+			output,
+			&output_count,
+		)
+	}
+	// Malformed cycles are still rendered deterministically as roots rather than hanging layout.
+	for index in 0 ..< candidate_count {
+		if visit[candidates[index]] == 0 {
+			append_tree_branch(
+				state,
+				world,
+				candidates[index],
+				0,
+				&first_child,
+				&next_sibling,
+				&visit,
+				output,
+				&output_count,
+			)
+		}
+	}
+	return output_count
+}
+
 layout_node :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -1580,6 +1833,20 @@ layout_node :: proc(
 		node.rect.y + layout.padding.x,
 		max(node.rect.width - layout.padding.w - layout.padding.y, 0),
 		max(node.rect.height - layout.padding.x - layout.padding.z, 0),
+	}
+	child_parent_rect := node.rect
+	if layout.tree_item && node.parent_node_index >= 0 {
+		parent_node := state.nodes[node.parent_node_index]
+		if parent_node.list_index >= 0 && parent_node.list_index < len(world.ui_lists) {
+			parent_list := world.ui_lists[parent_node.list_index]
+			if parent_list.tree_enabled {
+				indent := parent_list.tree_indent * f32(node.tree_depth)
+				content.x += indent
+				content.width = max(content.width - indent, 0)
+				child_parent_rect.x += indent
+				child_parent_rect.width = max(child_parent_rect.width - indent, 0)
+			}
+		}
 	}
 	panel_title_height := f32(0)
 	if is_panel && panel.title != "" {
@@ -1778,13 +2045,32 @@ layout_node :: proc(
 		table_column_offsets[column] = table_offset
 		table_offset += table_column_widths[column] + table.column_gap
 	}
+	list_flow_children: [MAX_NODES]int
+	list_flow_count := 0
+	if is_list && list.tree_enabled {
+		list_flow_count = tree_list_flow(state, world, node_index, &list_flow_children)
+	}
 	child_index := node.first_child_node
+	if is_list && list.tree_enabled {
+		child_index = -1
+		if list_flow_count > 0 {
+			child_index = list_flow_children[0]
+		}
+	}
+	list_flow_ordinal := 0
 	for child_index >= 0 {
 		when ODIN_TEST {
 			state.layout_child_edge_visit_count += 1
 		}
 		child := &state.nodes[child_index]
 		next_child_index := child.next_sibling_node
+		if is_list && list.tree_enabled {
+			next_child_index = -1
+			if list_flow_ordinal + 1 < list_flow_count {
+				next_child_index = list_flow_children[list_flow_ordinal + 1]
+			}
+			list_flow_ordinal += 1
+		}
 		child_layout := world.ui_layouts[child.layout_index]
 		if child_layout.hidden || is_panel && node_is_panel_action(world, child) {
 			child_index = next_child_index
@@ -1894,7 +2180,7 @@ layout_node :: proc(
 			state,
 			world,
 			child_index,
-			node.rect,
+			child_parent_rect,
 			position,
 			child_flowed,
 			child_size,
@@ -2619,6 +2905,440 @@ sync_ui_interaction_states :: proc(state: ^State, world: ^shared.World) {
 	}
 }
 
+list_item_for_node :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+) -> (
+	list: shared.Entity,
+	item: shared.Entity,
+	found: bool,
+) {
+	if state == nil || world == nil || node_index < 0 || node_index >= state.node_count {
+		return {}, {}, false
+	}
+	current := node_index
+	for current >= 0 {
+		parent_index := state.nodes[current].parent_node_index
+		if parent_index < 0 {
+			break
+		}
+		parent := state.nodes[parent_index]
+		parent_entity_index := int(parent.entity.index)
+		if ecs.entity_is_alive(world, parent_entity_index) &&
+		   world.entities[parent_entity_index].id == parent.entity {
+			parent_entity := world.entities[parent_entity_index]
+			if parent_entity.ui_list_index >= 0 &&
+			   parent_entity.ui_list_index < len(world.ui_lists) {
+				return parent.entity, state.nodes[current].entity, true
+			}
+		}
+		current = parent_index
+	}
+	return {}, {}, false
+}
+
+pointer_hit_node :: proc(state: ^State, position: shared.Vec2, editor: bool) -> int {
+	if state == nil {
+		return -1
+	}
+	hit := -1
+	highest_order := -1
+	for node, index in state.nodes[:state.node_count] {
+		if (node.origin == .Editor) != editor ||
+		   !node.laid_out ||
+		   !node_pointer_contains(node, position) {
+			continue
+		}
+		if node.paint_order >= highest_order {
+			hit = index
+			highest_order = node.paint_order
+		}
+	}
+	return hit
+}
+
+list_drag_begin :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pressed: shared.Entity,
+	position: shared.Vec2,
+	editor: bool,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	node_index := find_node(state, pressed)
+	list, item, found := list_item_for_node(state, world, node_index)
+	if !found {
+		return
+	}
+	list_index := int(list.index)
+	if !ecs.entity_is_alive(world, list_index) || world.entities[list_index].id != list {
+		return
+	}
+	component_index := world.entities[list_index].ui_list_index
+	if component_index < 0 ||
+	   component_index >= len(world.ui_lists) ||
+	   !world.ui_lists[component_index].draggable {
+		return
+	}
+	slot := 0
+	if editor {
+		slot = 1
+	}
+	state.list_drags[slot] = {
+		list = list,
+		source = item,
+		start = position,
+		armed = true,
+	}
+}
+
+list_drag_reset :: proc(state: ^State, world: ^shared.World, slot: int) {
+	if state == nil || slot < 0 || slot >= len(state.list_drags) {
+		return
+	}
+	drag := &state.list_drags[slot]
+	list_index := int(drag.list.index)
+	if world != nil &&
+	   ecs.entity_is_alive(world, list_index) &&
+	   world.entities[list_index].id == drag.list {
+		interaction := ecs.ensure_ui_state(world, list_index)
+		if interaction != nil {
+			interaction.dragging = false
+		}
+	}
+	drag^ = {}
+}
+
+tree_list_item_layout :: proc(
+	state: ^State,
+	world: ^shared.World,
+	list_node_index: int,
+	item: shared.Entity,
+) -> (
+	^shared.UI_Layout_Component,
+	int,
+	bool,
+) {
+	node_index := find_node(state, item)
+	if node_index < 0 || state.nodes[node_index].parent_node_index != list_node_index {
+		return nil, -1, false
+	}
+	entity_index := int(item.index)
+	if !ecs.entity_is_alive(world, entity_index) || world.entities[entity_index].id != item {
+		return nil, -1, false
+	}
+	layout_index := world.entities[entity_index].ui_layout_index
+	if layout_index < 0 || layout_index >= len(world.ui_layouts) {
+		return nil, -1, false
+	}
+	layout := &world.ui_layouts[layout_index]
+	return layout, entity_index, layout.tree_item
+}
+
+tree_list_would_cycle :: proc(
+	state: ^State,
+	world: ^shared.World,
+	list_node_index: int,
+	source_uuid, parent_uuid: shared.Entity_UUID,
+) -> bool {
+	cursor := parent_uuid
+	for _ in 0 ..< MAX_NODES {
+		if cursor == (shared.Entity_UUID{}) {
+			return false
+		}
+		if cursor == source_uuid {
+			return true
+		}
+		entity_index, found := world.entity_by_uuid[cursor]
+		if !found {
+			return false
+		}
+		node_index := find_node_by_entity_index(state, entity_index)
+		if node_index < 0 || state.nodes[node_index].parent_node_index != list_node_index {
+			return false
+		}
+		layout_index := world.entities[entity_index].ui_layout_index
+		if layout_index < 0 || layout_index >= len(world.ui_layouts) {
+			return false
+		}
+		cursor = world.ui_layouts[layout_index].tree_parent
+	}
+	return true
+}
+
+tree_list_apply_drop :: proc(
+	state: ^State,
+	world: ^shared.World,
+	list_node_index: int,
+	source, target: shared.Entity,
+	placement: shared.UI_Drop_Placement,
+) -> bool {
+	source_layout, source_index, source_ok := tree_list_item_layout(
+		state,
+		world,
+		list_node_index,
+		source,
+	)
+	if !source_ok {
+		return false
+	}
+	new_parent: shared.Entity_UUID
+	insert_index := -1
+	target_uuid: shared.Entity_UUID
+	if target != (shared.Entity{}) {
+		target_layout, target_index, target_ok := tree_list_item_layout(
+			state,
+			world,
+			list_node_index,
+			target,
+		)
+		if !target_ok {
+			return false
+		}
+		target_uuid = world.entities[target_index].uuid
+		switch placement {
+			case .Into:
+				new_parent = target_uuid
+			case .Before, .After:
+				new_parent = target_layout.tree_parent
+			case .None:
+				return false
+		}
+	} else if placement != .Into {
+		return false
+	}
+	source_uuid := world.entities[source_index].uuid
+	old_parent := source_layout.tree_parent
+	if tree_list_would_cycle(state, world, list_node_index, source_uuid, new_parent) {
+		return false
+	}
+	siblings: [MAX_NODES]int
+	sibling_count := 0
+	child := state.nodes[list_node_index].first_child_node
+	for child >= 0 {
+		next := state.nodes[child].next_sibling_node
+		entity_index := int(state.nodes[child].entity.index)
+		if entity_index != source_index &&
+		   ecs.entity_is_alive(world, entity_index) &&
+		   world.entities[entity_index].ui_layout_index >= 0 &&
+		   world.entities[entity_index].ui_layout_index < len(world.ui_layouts) {
+			layout := world.ui_layouts[world.entities[entity_index].ui_layout_index]
+			if layout.tree_item && layout.tree_parent == new_parent {
+				siblings[sibling_count] = child
+				sibling_count += 1
+			}
+		}
+		child = next
+	}
+	sort_tree_nodes(state, world, &siblings, sibling_count)
+	if target != (shared.Entity{}) && placement != .Into {
+		for index in 0 ..< sibling_count {
+			if state.nodes[siblings[index]].entity == target {
+				insert_index = index
+				if placement == .After {
+					insert_index += 1
+				}
+				break
+			}
+		}
+		if insert_index < 0 {
+			return false
+		}
+	}
+	if insert_index < 0 {
+		insert_index = sibling_count
+	}
+	ordered: [MAX_NODES]int
+	ordered_count := 0
+	for index in 0 ..< insert_index {
+		ordered[ordered_count] = siblings[index]
+		ordered_count += 1
+	}
+	ordered[ordered_count] = find_node(state, source)
+	ordered_count += 1
+	for index in insert_index ..< sibling_count {
+		ordered[ordered_count] = siblings[index]
+		ordered_count += 1
+	}
+	for order in 0 ..< ordered_count {
+		item_node := state.nodes[ordered[order]]
+		entity_index := int(item_node.entity.index)
+		layout_index := world.entities[entity_index].ui_layout_index
+		value := world.ui_layouts[layout_index]
+		value.tree_parent = new_parent
+		value.tree_order = order
+		if !ecs.set_ui_layout(world, entity_index, value) {
+			return false
+		}
+	}
+	if old_parent != new_parent {
+		old_siblings: [MAX_NODES]int
+		old_sibling_count := 0
+		child = state.nodes[list_node_index].first_child_node
+		for child >= 0 {
+			next := state.nodes[child].next_sibling_node
+			entity_index := int(state.nodes[child].entity.index)
+			if entity_index != source_index &&
+			   ecs.entity_is_alive(world, entity_index) &&
+			   world.entities[entity_index].ui_layout_index >= 0 &&
+			   world.entities[entity_index].ui_layout_index < len(world.ui_layouts) {
+				layout := world.ui_layouts[world.entities[entity_index].ui_layout_index]
+				if layout.tree_item && layout.tree_parent == old_parent {
+					old_siblings[old_sibling_count] = child
+					old_sibling_count += 1
+				}
+			}
+			child = next
+		}
+		sort_tree_nodes(state, world, &old_siblings, old_sibling_count)
+		for order in 0 ..< old_sibling_count {
+			item_node := state.nodes[old_siblings[order]]
+			entity_index := int(item_node.entity.index)
+			layout_index := world.entities[entity_index].ui_layout_index
+			value := world.ui_layouts[layout_index]
+			value.tree_order = order
+			if !ecs.set_ui_layout(world, entity_index, value) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+list_drag_update :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pointer: Pointer_Input,
+	released: bool,
+	editor: bool,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	slot := 0
+	if editor {
+		slot = 1
+	}
+	drag := &state.list_drags[slot]
+	if !drag.armed {
+		return
+	}
+	list_index := int(drag.list.index)
+	if !ecs.entity_is_alive(world, list_index) || world.entities[list_index].id != drag.list {
+		list_drag_reset(state, world, slot)
+		return
+	}
+	component_index := world.entities[list_index].ui_list_index
+	if component_index < 0 || component_index >= len(world.ui_lists) {
+		list_drag_reset(state, world, slot)
+		return
+	}
+	list := world.ui_lists[component_index]
+	if pointer.primary_down && !drag.dragging {
+		delta_x := pointer.position.x - drag.start.x
+		delta_y := pointer.position.y - drag.start.y
+		if delta_x * delta_x + delta_y * delta_y >= list.drag_threshold * list.drag_threshold {
+			drag.dragging = true
+		}
+	}
+	list_node_index := find_node(state, drag.list)
+	inside_list :=
+		pointer.available &&
+		list_node_index >= 0 &&
+		node_pointer_contains(state.nodes[list_node_index], pointer.position)
+	drag.target = {}
+	drag.drop_valid = false
+	drag.placement = .None
+	if drag.dragging && inside_list {
+		hit := pointer_hit_node(state, pointer.position, editor)
+		if target_list, target, found := list_item_for_node(state, world, hit);
+		   found && target_list == drag.list {
+			if target != drag.source {
+				drag.target = target
+				target_node_index := find_node(state, target)
+				if target_node_index >= 0 {
+					target_node := state.nodes[target_node_index]
+					edge_height := target_node.rect.height * list.drop_edge_fraction
+					if pointer.position.y < target_node.rect.y + edge_height {
+						drag.placement = .Before
+					} else if pointer.position.y >
+					   target_node.rect.y + target_node.rect.height - edge_height {
+						drag.placement = .After
+					} else {
+						drag.placement = .Into
+					}
+				}
+				drag.drop_valid = true
+			}
+		} else {
+			drag.placement = .Into
+			drag.drop_valid = true
+		}
+	}
+	interaction := ecs.ensure_ui_state(world, list_index)
+	if interaction != nil {
+		interaction.dragging = drag.dragging
+		interaction.drag_source = {}
+		source_index := int(drag.source.index)
+		if ecs.entity_is_alive(world, source_index) &&
+		   world.entities[source_index].id == drag.source {
+			interaction.drag_source = world.entities[source_index].uuid
+		} else {
+			list_drag_reset(state, world, slot)
+			return
+		}
+		interaction.drop_target = {}
+		interaction.drop_placement = drag.placement
+		if drag.target != (shared.Entity{}) {
+			target_index := int(drag.target.index)
+			if ecs.entity_is_alive(world, target_index) &&
+			   world.entities[target_index].id == drag.target {
+				interaction.drop_target = world.entities[target_index].uuid
+			}
+		}
+	}
+	if !released {
+		if !pointer.available {
+			list_drag_reset(state, world, slot)
+		}
+		return
+	}
+	if drag.dragging && inside_list && drag.drop_valid {
+		if list.tree_enabled &&
+		   !tree_list_apply_drop(
+				   state,
+				   world,
+				   list_node_index,
+				   drag.source,
+				   drag.target,
+				   drag.placement,
+			   ) {
+			list_drag_reset(state, world, slot)
+			return
+		}
+		if interaction != nil {
+			interaction.drop_revision += 1
+			interaction.changed = true
+			interaction.change_revision += 1
+		}
+		append_ui_event(
+			state,
+			{
+				kind = .Dropped,
+				entity = drag.list,
+				source = drag.source,
+				target = drag.target,
+				drop_placement = drag.placement,
+				position = pointer.position,
+			},
+		)
+	}
+	list_drag_reset(state, world, slot)
+}
+
 handle_list_press :: proc(world: ^shared.World, pressed: shared.Entity) -> bool {
 	if world == nil { return false }
 	item_index := int(pressed.index)
@@ -2773,6 +3493,15 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			}
 			if node.active && list.active_background.w > 0 {
 				background = list.active_background
+			}
+			if parent.ui_state_index >= 0 && parent.ui_state_index < len(world.ui_states) {
+				interaction := world.ui_states[parent.ui_state_index]
+				if interaction.dragging &&
+				   interaction.drop_placement == .Into &&
+				   interaction.drop_target == world.entities[int(node.entity.index)].uuid &&
+				   list.drop_target_background.w > 0 {
+					background = list.drop_target_background
+				}
 			}
 		}
 	}
@@ -2995,38 +3724,56 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				max(node.rect.width - inset * 2, 0),
 				max(node.rect.height - inset * 2, 0),
 			}
-			lines: [2][2]shared.Vec2
-			switch button.icon {
-				case .Close:
-					lines = {
-						{{icon.x, icon.y}, {icon.x + icon.width, icon.y + icon.height}},
-						{{icon.x + icon.width, icon.y}, {icon.x, icon.y + icon.height}},
-					}
-				case .Plus:
-					lines = {
-						{
-							{icon.x, icon.y + icon.height * 0.5},
-							{icon.x + icon.width, icon.y + icon.height * 0.5},
-						},
-						{
-							{icon.x + icon.width * 0.5, icon.y},
-							{icon.x + icon.width * 0.5, icon.y + icon.height},
-						},
-					}
-				case .None:
-			}
-			for line in lines {
+			painted_disclosure := false
+			if button.icon == .Chevron_Right || button.icon == .Chevron_Down {
 				if err := append_paint(
 					state,
 					{
-						kind = .Line,
+						kind = .Disclosure,
+						rect = icon,
 						color = color,
-						line_start = line[0],
-						line_end = line[1],
-						line_thickness = button.icon_stroke,
+						disclosure_expanded = button.icon == .Chevron_Down,
+						corner_radius = 0,
 					},
 				); err != "" {
 					return err
+				}
+				painted_disclosure = true
+			}
+			if !painted_disclosure {
+				lines: [2][2]shared.Vec2
+				switch button.icon {
+					case .Close:
+						lines = {
+							{{icon.x, icon.y}, {icon.x + icon.width, icon.y + icon.height}},
+							{{icon.x + icon.width, icon.y}, {icon.x, icon.y + icon.height}},
+						}
+					case .Plus:
+						lines = {
+							{
+								{icon.x, icon.y + icon.height * 0.5},
+								{icon.x + icon.width, icon.y + icon.height * 0.5},
+							},
+							{
+								{icon.x + icon.width * 0.5, icon.y},
+								{icon.x + icon.width * 0.5, icon.y + icon.height},
+							},
+						}
+					case .None, .Chevron_Right, .Chevron_Down:
+				}
+				for line in lines {
+					if err := append_paint(
+						state,
+						{
+							kind = .Line,
+							color = color,
+							line_start = line[0],
+							line_end = line[1],
+							line_thickness = button.icon_stroke,
+						},
+					); err != "" {
+						return err
+					}
 				}
 			}
 		} else if err := append_centered_text(
@@ -3052,6 +3799,48 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			return err
 		}
 		child_index = next_child_index
+	}
+	if node.parent_entity_index >= 0 && node.parent_entity_index < len(world.entities) {
+		parent := world.entities[node.parent_entity_index]
+		if parent.ui_list_index >= 0 &&
+		   parent.ui_list_index < len(world.ui_lists) &&
+		   parent.ui_state_index >= 0 &&
+		   parent.ui_state_index < len(world.ui_states) {
+			list := world.ui_lists[parent.ui_list_index]
+			interaction := world.ui_states[parent.ui_state_index]
+			entity_index := int(node.entity.index)
+			if interaction.dragging &&
+			   entity_index >= 0 &&
+			   entity_index < len(world.entities) &&
+			   interaction.drop_target == world.entities[entity_index].uuid &&
+			   (interaction.drop_placement == .Before || interaction.drop_placement == .After) &&
+			   list.drop_indicator_color.w > 0 &&
+			   list.drop_indicator_thickness > 0 {
+				start := state.paint_count
+				x0 := node.rect.x + min(list.drop_indicator_inset, node.rect.width * 0.5)
+				x1 :=
+					node.rect.x +
+					node.rect.width -
+					min(list.drop_indicator_inset, node.rect.width * 0.5)
+				y := node.rect.y
+				if interaction.drop_placement == .After {
+					y += node.rect.height
+				}
+				if err := append_paint(
+					state,
+					{
+						kind = .Line,
+						color = list.drop_indicator_color,
+						line_start = {x0, y},
+						line_end = {x1, y},
+						line_thickness = list.drop_indicator_thickness,
+					},
+				); err != "" {
+					return err
+				}
+				apply_paint_clip(state, start, state.paint_count, node.clip, node.has_clip)
+			}
+		}
 	}
 	if node.scroll_area_index >= 0 &&
 	   node.scroll_area_index < len(world.ui_scroll_areas) &&

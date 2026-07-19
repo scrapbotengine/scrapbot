@@ -414,6 +414,11 @@ scene_world_field_value :: proc(
 			}
 			value := world.transforms[entity.transform_index]
 			switch key {
+				case "parent":
+					if value.parent == (shared.Entity_UUID{}) {
+						return "", false
+					}
+					return fmt.tprintf("\"%s\"", scene_uuid(value.parent)), true
 				case "position":
 					return scene_vec3(value.position), true
 				case "rotation":

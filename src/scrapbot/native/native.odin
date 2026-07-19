@@ -196,6 +196,7 @@ load_extension :: proc(set: ^Extension_Set, path: string) -> string {
 
 api_transform_from_shared :: proc "c" (transform: shared.Transform_Component) -> api.Transform {
 	return api.Transform {
+		parent = {bytes = ([16]u8)(transform.parent)},
 		position = api_vec3_from_shared(transform.position),
 		rotation = api_vec3_from_shared(transform.rotation),
 		scale = api_vec3_from_shared(transform.scale),
@@ -204,6 +205,7 @@ api_transform_from_shared :: proc "c" (transform: shared.Transform_Component) ->
 
 shared_transform_from_api :: proc "c" (transform: api.Transform) -> shared.Transform_Component {
 	return shared.Transform_Component {
+		parent = shared.Entity_UUID(transform.parent.bytes),
 		position = shared_vec3_from_api(transform.position),
 		rotation = shared_vec3_from_api(transform.rotation),
 		scale = shared_vec3_from_api(transform.scale),

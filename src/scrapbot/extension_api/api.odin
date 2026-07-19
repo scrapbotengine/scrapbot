@@ -73,6 +73,7 @@ Transform :: struct {
 	position: Vec3,
 	rotation: Vec3,
 	scale: Vec3,
+	parent: UUID,
 }
 
 Time :: struct {
@@ -104,9 +105,11 @@ UI_Text_Alignment :: enum c.int {
 }
 
 UI_Icon :: enum c.int {
-	None  = 0,
-	Close = 1,
-	Plus  = 2,
+	None          = 0,
+	Close         = 1,
+	Plus          = 2,
+	Chevron_Right = 3,
+	Chevron_Down  = 4,
 }
 
 UI_Layout_Payload :: struct {
@@ -126,6 +129,10 @@ UI_Layout_Payload :: struct {
 	fit_content_width: c.int,
 	fit_content_height: c.int,
 	fixed_in_fill: c.int,
+	tree_item: c.int,
+	tree_parent: UUID,
+	tree_order: c.int,
+	tree_collapsed: c.int,
 }
 
 UI_Stack_Payload :: struct {
@@ -175,6 +182,22 @@ UI_List_Payload :: struct {
 	selection_background: Vec4,
 	hover_background: Vec4,
 	active_background: Vec4,
+	draggable: c.int,
+	drag_threshold: f32,
+	drop_edge_fraction: f32,
+	drop_target_background: Vec4,
+	drop_indicator_color: Vec4,
+	drop_indicator_thickness: f32,
+	drop_indicator_inset: f32,
+	tree_enabled: c.int,
+	tree_indent: f32,
+}
+
+UI_Drop_Placement :: enum c.int {
+	None,
+	Before,
+	Into,
+	After,
 }
 
 UI_Progress_Payload :: struct {
@@ -260,10 +283,15 @@ UI_State_Payload :: struct {
 	valid: c.int,
 	submitted: c.int,
 	cancelled: c.int,
+	dragging: c.int,
+	drag_source: UUID,
+	drop_target: UUID,
+	drop_placement: UI_Drop_Placement,
 	activation_revision: u64,
 	change_revision: u64,
 	submit_revision: u64,
 	cancel_revision: u64,
+	drop_revision: u64,
 }
 
 UI_Component_Payload :: struct {

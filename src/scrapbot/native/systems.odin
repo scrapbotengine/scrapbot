@@ -321,6 +321,7 @@ system_set_transform :: proc "c" (
 	entity: api.Entity,
 	transform: ^api.Transform,
 ) -> c.int {
+	context = base_runtime.default_context()
 	step, ok := system_step_context(ctx)
 	if !ok ||
 	   transform == nil ||
@@ -336,7 +337,13 @@ system_set_transform :: proc "c" (
 	   world_entity.transform_index >= len(step.world.transforms) {
 		return 0
 	}
-	step.world.transforms[world_entity.transform_index] = shared_transform_from_api(transform^)
+	next := shared_transform_from_api(transform^)
+	current := step.world.transforms[world_entity.transform_index]
+	if next.parent != current.parent &&
+	   !ecs.transform_parent_is_valid(step.world, entity_index, next.parent) {
+		return 0
+	}
+	step.world.transforms[world_entity.transform_index] = next
 	return 1
 }
 

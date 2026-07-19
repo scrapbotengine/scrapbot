@@ -316,6 +316,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if line == "[[entities]]" {
 			append(&scene.entities, Scene_Entity{})
 			current = &scene.entities[len(scene.entities) - 1]
+			current.scene_order = len(scene.entities) - 1
 			section = "entity"
 			continue
 		}
@@ -459,6 +460,13 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			case "transform":
 				current.has_transform = true
 				switch key {
+					case "parent":
+						raw_parent, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.transform.parent, found = shared.entity_uuid_parse(raw_parent)
+						} else {
+							found = false
+						}
 					case "position":
 						current.transform.position, found = parse_vec3(value)
 					case "rotation":
@@ -472,10 +480,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						)
 				}
 				if !found {
-					return scene, fail(
-						.Invalid_Field,
-						fmt.tprintf("transform.%s must be a vec3 array", key),
-					)
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid transform.%s", key))
 				}
 			case "camera":
 				current.has_camera = true
@@ -607,6 +612,21 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_layout.fit_content_height, found = parse_bool(value)
 					case "fixed_in_fill":
 						current.ui_layout.fixed_in_fill, found = parse_bool(value)
+					case "tree_item":
+						current.ui_layout.tree_item, found = parse_bool(value)
+					case "tree_parent":
+						raw_parent, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_layout.tree_parent, found = shared.entity_uuid_parse(
+								raw_parent,
+							)
+						} else {
+							found = false
+						}
+					case "tree_order":
+						current.ui_layout.tree_order, found = parse_int(value)
+					case "tree_collapsed":
+						current.ui_layout.tree_collapsed, found = parse_bool(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -740,6 +760,24 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_list.hover_background, found = parse_vec4(value)
 					case "active_background":
 						current.ui_list.active_background, found = parse_vec4(value)
+					case "draggable":
+						current.ui_list.draggable, found = parse_bool(value)
+					case "drag_threshold":
+						current.ui_list.drag_threshold, found = parse_f32(value)
+					case "drop_edge_fraction":
+						current.ui_list.drop_edge_fraction, found = parse_f32(value)
+					case "drop_target_background":
+						current.ui_list.drop_target_background, found = parse_vec4(value)
+					case "drop_indicator_color":
+						current.ui_list.drop_indicator_color, found = parse_vec4(value)
+					case "drop_indicator_thickness":
+						current.ui_list.drop_indicator_thickness, found = parse_f32(value)
+					case "drop_indicator_inset":
+						current.ui_list.drop_indicator_inset, found = parse_f32(value)
+					case "tree_enabled":
+						current.ui_list.tree_enabled, found = parse_bool(value)
+					case "tree_indent":
+						current.ui_list.tree_indent, found = parse_f32(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -952,6 +990,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 	if len(scene.entities) == 0 {
 		return scene, fail(.Missing_Field, "scene must contain at least one entity")
 	}
+	entity_indices := make(map[shared.Entity_UUID]int, len(scene.entities))
+	defer delete(entity_indices)
 	for entity, index in scene.entities {
 		if entity.id == (shared.Entity_UUID{}) {
 			return scene, fail(.Missing_Field, fmt.tprintf("entity %d is missing id", index))
@@ -959,14 +999,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if entity.name == "" {
 			return scene, fail(.Missing_Field, fmt.tprintf("entity %d is missing name", index))
 		}
-		for previous in scene.entities[:index] {
-			if previous.id == entity.id {
-				return scene, fail(
-					.Invalid_Field,
-					fmt.tprintf("entity %d has a duplicate id", index),
-				)
-			}
+		if _, duplicate := entity_indices[entity.id]; duplicate {
+			return scene, fail(.Invalid_Field, fmt.tprintf("entity %d has a duplicate id", index))
 		}
+		entity_indices[entity.id] = index
 		if entity.has_transform && entity.transform.scale == (Vec3{}) {
 			scene.entities[index].transform.scale = Vec3{1, 1, 1}
 		}
@@ -1044,10 +1080,13 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				),
 			)
 		}
-		if entity.has_ui_list && entity.ui_list.gap < 0 {
+		if entity.has_ui_list && !shared.ui_list_is_valid(entity.ui_list) {
 			return scene, fail(
 				.Invalid_Field,
-				fmt.tprintf("UI list '%s' requires a non-negative gap", entity.name),
+				fmt.tprintf(
+					"UI list '%s' requires non-negative gap and drag geometry",
+					entity.name,
+				),
 			)
 		}
 		if entity.has_ui_progress && !shared.ui_progress_is_valid(entity.ui_progress) {
@@ -1090,6 +1129,61 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				.Invalid_Field,
 				fmt.tprintf("UI checkbox entity '%s' requires positive box_size", entity.name),
 			)
+		}
+	}
+	for entity in scene.entities {
+		if entity.has_transform && entity.transform.parent != (shared.Entity_UUID{}) {
+			parent_index, found_parent := entity_indices[entity.transform.parent]
+			if !found_parent {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("transform parent for '%s' does not exist", entity.name),
+				)
+			}
+			if entity.transform.parent == entity.id {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("entity '%s' cannot parent itself", entity.name),
+				)
+			}
+		}
+	}
+	visit_state := make([]u8, len(scene.entities))
+	defer delete(visit_state)
+	visit_path := make([dynamic]int, 0, len(scene.entities))
+	defer delete(visit_path)
+	for _, start_index in scene.entities {
+		if !scene.entities[start_index].has_transform || visit_state[start_index] == 2 {
+			continue
+		}
+		clear(&visit_path)
+		cursor := start_index
+		for {
+			if visit_state[cursor] == 2 {
+				break
+			}
+			if visit_state[cursor] == 1 {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf(
+						"transform hierarchy containing '%s' has a cycle",
+						scene.entities[start_index].name,
+					),
+				)
+			}
+			visit_state[cursor] = 1
+			append(&visit_path, cursor)
+			parent := scene.entities[cursor].transform.parent
+			if parent == (shared.Entity_UUID{}) {
+				break
+			}
+			cursor, _ = entity_indices[parent]
+			if !scene.entities[cursor].has_transform {
+				break
+			}
+		}
+		for index in visit_path {
+			visit_state[index] = 2
 		}
 	}
 	for entity in scene.entities {
@@ -1220,6 +1314,10 @@ parse_ui_icon :: proc(value: string) -> (out: shared.UI_Icon, ok: bool) {
 			return .Close, true
 		case "plus":
 			return .Plus, true
+		case "chevron_right":
+			return .Chevron_Right, true
+		case "chevron_down":
+			return .Chevron_Down, true
 	}
 	return .None, false
 }

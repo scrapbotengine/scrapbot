@@ -22,6 +22,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	layout.fill_width = true
 	layout.fit_content_height = true
 	layout.fixed_in_fill = true
+	layout.tree_item = true
+	layout.tree_parent = shared.entity_uuid_from_engine_name("Native Tree Parent")
+	layout.tree_order = 6
+	layout.tree_collapsed = true
 	testing.expect(t, ecs.set_ui_layout(&world, entity_index, layout))
 	text := shared.ui_text_default()
 	text.text = "Before"
@@ -31,6 +35,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	state := ecs.ensure_ui_state(&world, entity_index)
 	state.hovered = true
 	state.activation_revision = 9
+	state.drop_placement = .After
 	progress := shared.ui_progress_default()
 	progress.value = 2.5
 	progress.maximum = 10
@@ -77,6 +82,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	panel.title = "Native Panel"
 	panel.collapsible = true
 	testing.expect(t, ecs.set_ui_panel(&world, entity_index, panel))
+	list := shared.ui_list_default()
+	list.tree_enabled = true
+	list.tree_indent = 19
+	testing.expect(t, ecs.set_ui_list(&world, entity_index, list))
 
 	commands: ecs.Command_Buffer
 	ecs.init_command_buffer(&commands)
@@ -112,6 +121,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, state_payload.state.hovered != 0)
 	testing.expect(t, state_payload.state.activation_revision == 9)
+	testing.expect(t, state_payload.state.drop_placement == .After)
 	testing.expect(t, system_set_ui_component(&ctx, entity, &state_payload) != nil)
 
 	input_payload: api.UI_Component_Payload
@@ -161,6 +171,20 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, layout_payload.layout.fill_width != 0)
 	testing.expect(t, layout_payload.layout.fit_content_height != 0)
 	testing.expect(t, layout_payload.layout.fixed_in_fill != 0)
+	testing.expect(t, layout_payload.layout.tree_item != 0)
+	testing.expect(
+		t,
+		layout_payload.layout.tree_parent == api_uuid_from_shared(layout.tree_parent),
+	)
+	testing.expect(t, layout_payload.layout.tree_order == 6)
+	testing.expect(t, layout_payload.layout.tree_collapsed != 0)
+	list_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_list", &list_payload) != 0,
+	)
+	testing.expect(t, list_payload.list.tree_enabled != 0)
+	testing.expect(t, list_payload.list.tree_indent == 19)
 	table_payload: api.UI_Component_Payload
 	testing.expect(
 		t,
