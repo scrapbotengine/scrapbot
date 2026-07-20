@@ -4050,10 +4050,17 @@ editor_hierarchy_visible_entities :: proc(
 		last_child[index] = -1
 		next_sibling[index] = -1
 		entity := world.entities[index]
-		eligible[index] = entity.alive && entity.origin != .Editor
+		selected_runtime := state.editor_has_selection && state.editor_selected_entity == entity.id
+		eligible[index] = entity.alive && (entity.origin == .Scene || selected_runtime)
 	}
-	ordered_indices := ecs.ordered_non_editor_entity_indices(world)
+	ordered_indices: [dynamic]int
 	defer delete(ordered_indices)
+	for eligible_entity, index in eligible[:limit] {
+		if eligible_entity {
+			append(&ordered_indices, index)
+		}
+	}
+	ecs.sort_entity_indices_by_scene_order(world, ordered_indices[:])
 	for index in ordered_indices {
 		if index < 0 || index >= limit {
 			continue
@@ -4113,81 +4120,94 @@ editor_hierarchy_visible_entities :: proc(
 refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	editor_ui_refresh_performance_diagnostics(state, world)
 	editor_ui_refresh_system_profile(state, world)
-	hierarchy_indices, hierarchy_depths: [MAX_NODES]int
-	hierarchy_has_children: [MAX_NODES]bool
-	visible_count := editor_hierarchy_visible_entities(
-		state,
-		world,
-		&hierarchy_indices,
-		&hierarchy_depths,
-		&hierarchy_has_children,
-	)
-	selected_row: shared.Entity_UUID
-	row_uuid_by_entity: [MAX_NODES]shared.Entity_UUID
-	for slot in 0 ..< visible_count {
-		entity_index := hierarchy_indices[slot]
-		entity := world.entities[entity_index]
-		row, disclosure, label := editor_ui_ensure_row(world, slot)
-		world.entities[row].alive = true
-		world.entities[disclosure].alive = true
-		world.entities[label].alive = true
-		editor_ui_set_hidden(world, row, false)
-		editor_ui_set_hidden(world, disclosure, !hierarchy_has_children[slot])
-		editor_ui_set_hidden(world, label, false)
-		world.editor_uis[world.entities[row].editor_ui_index].target = entity.id
-		world.editor_uis[world.entities[disclosure].editor_ui_index].target = entity.id
-		world.editor_uis[world.entities[label].editor_ui_index].target = entity.id
-		row_uuid_by_entity[entity_index] = world.entities[row].uuid
-		row_layout := &world.ui_layouts[world.entities[row].ui_layout_index]
-		row_layout.tree_item = true
-		row_layout.tree_parent = {}
-		row_layout.tree_order = entity.scene_order
-		row_layout.tree_collapsed =
-			state.editor_collapsed_entities != nil && state.editor_collapsed_entities[entity.uuid]
-		if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
-			parent := world.transforms[entity.transform_index].parent
-			if parent_index, found := ecs.entity_index_by_uuid(world, parent);
-			   found && parent_index >= 0 && parent_index < len(row_uuid_by_entity) {
-				row_layout.tree_parent = row_uuid_by_entity[parent_index]
+	refresh_browser :=
+		!state.editor_browser_snapshot_valid ||
+		!state.editor_snapshot_valid ||
+		state.editor_browser_snapshot_has_selection != state.editor_has_selection ||
+		(state.editor_has_selection &&
+				state.editor_browser_snapshot_selected_entity != state.editor_selected_entity)
+	if refresh_browser {
+		hierarchy_indices, hierarchy_depths: [MAX_NODES]int
+		hierarchy_has_children: [MAX_NODES]bool
+		visible_count := editor_hierarchy_visible_entities(
+			state,
+			world,
+			&hierarchy_indices,
+			&hierarchy_depths,
+			&hierarchy_has_children,
+		)
+		selected_row: shared.Entity_UUID
+		row_uuid_by_entity: [MAX_NODES]shared.Entity_UUID
+		for slot in 0 ..< visible_count {
+			entity_index := hierarchy_indices[slot]
+			entity := world.entities[entity_index]
+			row, disclosure, label := editor_ui_ensure_row(world, slot)
+			world.entities[row].alive = true
+			world.entities[disclosure].alive = true
+			world.entities[label].alive = true
+			editor_ui_set_hidden(world, row, false)
+			editor_ui_set_hidden(world, disclosure, !hierarchy_has_children[slot])
+			editor_ui_set_hidden(world, label, false)
+			world.editor_uis[world.entities[row].editor_ui_index].target = entity.id
+			world.editor_uis[world.entities[disclosure].editor_ui_index].target = entity.id
+			world.editor_uis[world.entities[label].editor_ui_index].target = entity.id
+			row_uuid_by_entity[entity_index] = world.entities[row].uuid
+			row_layout := &world.ui_layouts[world.entities[row].ui_layout_index]
+			row_layout.tree_item = true
+			row_layout.tree_parent = {}
+			row_layout.tree_order = entity.scene_order
+			row_layout.tree_collapsed =
+				state.editor_collapsed_entities != nil &&
+				state.editor_collapsed_entities[entity.uuid]
+			if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
+				parent := world.transforms[entity.transform_index].parent
+				if parent_index, found := ecs.entity_index_by_uuid(world, parent);
+				   found && parent_index >= 0 && parent_index < len(row_uuid_by_entity) {
+					row_layout.tree_parent = row_uuid_by_entity[parent_index]
+				}
+			}
+			if state.editor_has_selection && state.editor_selected_entity == entity.id {
+				selected_row = world.entities[row].uuid
+			}
+			label_text := &world.ui_texts[world.entities[label].ui_text_index]
+			label_text.color = {0.82, 0.85, 0.90, 1}
+			if entity.origin == .Runtime { label_text.color = EDITOR_RUNTIME_ENTITY_COLOR }
+			disclosure_layout := &world.ui_layouts[world.entities[disclosure].ui_layout_index]
+			disclosure_layout.position.x = 6
+			label_layout := &world.ui_layouts[world.entities[label].ui_layout_index]
+			label_layout.position.x = 26
+			button := &world.ui_buttons[world.entities[disclosure].ui_button_index]
+			button.icon = .Chevron_Down
+			if state.editor_collapsed_entities != nil &&
+			   state.editor_collapsed_entities[entity.uuid] {
+				button.icon = .Chevron_Right
+			}
+			editor_ui_set_text(world, label, entity.name)
+		}
+		for component in world.editor_uis {
+			if (component.role == .Browser_Row ||
+				   component.role == .Browser_Row_Disclosure ||
+				   component.role == .Browser_Row_Label) &&
+			   component.slot >= visible_count {
+				if component.entity_index < 0 ||
+				   component.entity_index >= len(world.entities) { continue }
+				entity := world.entities[component.entity_index]
+				if !entity.alive ||
+				   entity.origin != .Editor ||
+				   entity.ui_layout_index < 0 ||
+				   entity.ui_layout_index >= len(world.ui_layouts) { continue }
+				editor_ui_set_hidden(world, component.entity_index, true)
 			}
 		}
-		if state.editor_has_selection && state.editor_selected_entity == entity.id {
-			selected_row = world.entities[row].uuid
+		if scene, found := editor_ui_entity(world, .Browser_Scroll); found {
+			entity := world.entities[scene]
+			if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
+				world.ui_lists[entity.ui_list_index].selected = selected_row
+			}
 		}
-		label_text := &world.ui_texts[world.entities[label].ui_text_index]
-		label_text.color = {0.82, 0.85, 0.90, 1}
-		if entity.origin == .Runtime { label_text.color = EDITOR_RUNTIME_ENTITY_COLOR }
-		disclosure_layout := &world.ui_layouts[world.entities[disclosure].ui_layout_index]
-		disclosure_layout.position.x = 6
-		label_layout := &world.ui_layouts[world.entities[label].ui_layout_index]
-		label_layout.position.x = 26
-		button := &world.ui_buttons[world.entities[disclosure].ui_button_index]
-		button.icon = .Chevron_Down
-		if state.editor_collapsed_entities != nil && state.editor_collapsed_entities[entity.uuid] {
-			button.icon = .Chevron_Right
-		}
-		editor_ui_set_text(world, label, entity.name)
-	}
-	for component in world.editor_uis {
-		if (component.role == .Browser_Row ||
-			   component.role == .Browser_Row_Disclosure ||
-			   component.role == .Browser_Row_Label) &&
-		   component.slot >= visible_count {
-			if component.entity_index < 0 ||
-			   component.entity_index >= len(world.entities) { continue }
-			entity := world.entities[component.entity_index]
-			if !entity.alive ||
-			   entity.origin != .Editor ||
-			   entity.ui_layout_index < 0 ||
-			   entity.ui_layout_index >= len(world.ui_layouts) { continue }
-			editor_ui_set_hidden(world, component.entity_index, true)
-		}
-	}
-	if scene, found := editor_ui_entity(world, .Browser_Scroll); found {
-		entity := world.entities[scene]
-		if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
-			world.ui_lists[entity.ui_list_index].selected = selected_row
-		}
+		state.editor_browser_snapshot_valid = true
+		state.editor_browser_snapshot_has_selection = state.editor_has_selection
+		state.editor_browser_snapshot_selected_entity = state.editor_selected_entity
 	}
 	resource_count := 0
 	selected_resource_row: shared.Entity_UUID

@@ -167,6 +167,7 @@ create_world_entity :: proc(
 	}
 	entity := init_world_entity(world, entity_index, generation, entity_uuid, origin, name)
 	entity.scene_order = next_scene_order_index(world)
+	world.next_scene_order += 1
 	if reusing_slot {
 		entity.custom_component_storage_indices =
 			world.entities[entity_index].custom_component_storage_indices
@@ -383,6 +384,7 @@ build_world :: proc(scene: ^Scene) -> World {
 	world.entity_by_uuid = make(map[shared.Entity_UUID]int)
 	world.live_entity_count = len(scene.entities)
 	world.scene_entity_count = len(scene.entities)
+	world.next_scene_order = len(scene.entities)
 	for entity, scene_order in scene.entities {
 		id := Entity {
 			index = u32(len(world.entities)),
@@ -1256,6 +1258,7 @@ render_list_remove_instance :: proc(list: ^Render_List, world: ^World, entity_in
 		return
 	}
 	removed := list.instances[list_index]
+	render_list_adjust_batch_membership(list, removed, -1)
 	adjust_render_ancestor_counts(list, world, removed.local_parent, -1)
 	removed_slot := list.instances[list_index].slot
 	last_index := len(list.instances) - 1
@@ -1278,6 +1281,37 @@ render_list_remove_instance :: proc(list: ^Render_List, world: ^World, entity_in
 	}
 }
 
+render_list_batch_key :: proc(instance: Render_Instance) -> shared.Render_Batch_Key {
+	return {geometry = instance.geometry.handle, material = instance.material.handle}
+}
+
+render_list_adjust_batch_membership :: proc(
+	list: ^Render_List,
+	instance: Render_Instance,
+	delta: int,
+) {
+	if list == nil || delta == 0 {
+		return
+	}
+	if list.batch_memberships == nil {
+		list.batch_memberships = make(map[shared.Render_Batch_Key]int)
+	}
+	key := render_list_batch_key(instance)
+	previous := list.batch_memberships[key]
+	next := previous + delta
+	if next <= 0 {
+		if previous > 0 {
+			delete_key(&list.batch_memberships, key)
+			list.batch_count = max(list.batch_count - 1, 0)
+		}
+		return
+	}
+	list.batch_memberships[key] = next
+	if previous <= 0 {
+		list.batch_count += 1
+	}
+}
+
 render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index: int) {
 	list.instance_visit_count += 1
 	if entity_index < 0 || entity_index >= len(list.instance_index_by_entity) {
@@ -1290,9 +1324,14 @@ render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index:
 		return
 	}
 	if list_index >= 0 && list_index < len(list.instances) {
+		previous := list.instances[list_index]
 		previous_parent := list.instances[list_index].local_parent
 		previous_slot := list.instances[list_index].slot
 		list.instances[list_index] = instance
+		if render_list_batch_key(previous) != render_list_batch_key(instance) {
+			render_list_adjust_batch_membership(list, previous, -1)
+			render_list_adjust_batch_membership(list, instance, 1)
+		}
 		if previous_parent != instance.local_parent {
 			adjust_render_ancestor_counts(list, world, previous_parent, -1)
 			adjust_render_ancestor_counts(list, world, instance.local_parent, 1)
@@ -1306,6 +1345,7 @@ render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index:
 	} else {
 		list_index = len(list.instances)
 		append(&list.instances, instance)
+		render_list_adjust_batch_membership(list, instance, 1)
 		list.instance_index_by_entity[entity_index] = list_index
 		adjust_render_ancestor_counts(list, world, instance.local_parent, 1)
 	}
@@ -1330,6 +1370,12 @@ sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 	}
 	if full_sync {
 		clear(&list.instances)
+		list.batch_count = 0
+		if list.batch_memberships == nil {
+			list.batch_memberships = make(map[shared.Render_Batch_Key]int)
+		} else {
+			clear(&list.batch_memberships)
+		}
 		if list.ancestor_counts == nil {
 			list.ancestor_counts = make(map[Entity_UUID]int)
 		} else {
@@ -1413,16 +1459,12 @@ extract_lights :: proc(world: ^World, list: ^Render_List) {
 
 render_batch_count :: proc(list: ^Render_List) -> int {
 	if list == nil { return 0 }
-	count := 0
-	for instance, index in list.instances {
-		first := true
-		for previous in list.instances[:index] {
-			if previous.geometry.handle == instance.geometry.handle &&
-			   previous.material.handle == instance.material.handle { first = false; break }
+	if list.batch_memberships == nil && len(list.instances) > 0 {
+		for instance in list.instances {
+			render_list_adjust_batch_membership(list, instance, 1)
 		}
-		if first { count += 1 }
 	}
-	return count
+	return list.batch_count
 }
 
 clone_world_string :: proc(world: ^World, value: string) -> string {
@@ -1662,6 +1704,7 @@ destroy_render_list :: proc(list: ^Render_List) {
 	delete(list.instance_index_by_slot)
 	delete(list.dirty_instance_slots)
 	delete(list.ancestor_counts)
+	delete(list.batch_memberships)
 	list^ = {}
 }
 
@@ -1779,7 +1822,7 @@ add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Com
 			world.render_hierarchy_revision += 1
 		}
 		world.transforms[entity.transform_index] = transform
-		mark_render_entity_dirty(world, entity_index)
+		mark_render_extract_entity_dirty(world, entity_index)
 		return
 	}
 

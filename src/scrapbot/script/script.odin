@@ -542,7 +542,7 @@ apply_transform_writebacks :: proc "c" (
 		   writeback.transform_index < len(world.transforms) {
 			if prepared.changed[index] {
 				world.transforms[writeback.transform_index] = prepared.transforms[index]
-				ecs.mark_render_entity_dirty(world, writeback.entity_index)
+				ecs.mark_render_extract_entity_dirty(world, writeback.entity_index)
 			}
 		}
 	}

@@ -6,13 +6,7 @@ next_scene_order_index :: proc(world: ^World) -> int {
 	if world == nil {
 		return 0
 	}
-	next := 0
-	for entity in world.entities {
-		if entity.alive && entity.origin != .Editor {
-			next = max(next, entity.scene_order + 1)
-		}
-	}
-	return next
+	return world.next_scene_order
 }
 
 ordered_non_editor_entity_indices :: proc(world: ^World) -> [dynamic]int {
@@ -25,8 +19,16 @@ ordered_non_editor_entity_indices :: proc(world: ^World) -> [dynamic]int {
 			append(&indices, entity_index)
 		}
 	}
+	sort_entity_indices_by_scene_order(world, indices[:])
+	return indices
+}
+
+sort_entity_indices_by_scene_order :: proc(world: ^World, indices: []int) {
+	if world == nil {
+		return
+	}
 	if len(indices) < 2 {
-		return indices
+		return
 	}
 	scratch: [dynamic]int
 	defer delete(scratch)
@@ -57,7 +59,6 @@ ordered_non_editor_entity_indices :: proc(world: ^World) -> [dynamic]int {
 		}
 		copy(indices[:], scratch[:])
 	}
-	return indices
 }
 
 entity_scene_order_index :: proc(world: ^World, entity_index: int) -> (int, bool) {
@@ -412,7 +413,7 @@ set_transform_parent :: proc(
 	}
 	world.transforms[entity.transform_index] = local
 	world.render_hierarchy_revision += 1
-	mark_render_entity_dirty(world, entity_index)
+	mark_render_extract_entity_dirty(world, entity_index)
 	return true
 }
 

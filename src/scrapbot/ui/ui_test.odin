@@ -3962,6 +3962,7 @@ test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection 
 	state := new(
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state); state.editor_visible = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[24].id, 300))
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300) == "")
 	left_sidebar := find_editor_name_node(state, &world, EDITOR_UI_LEFT_NAME)
 	testing.expect(t, left_sidebar >= 0 && state.nodes[left_sidebar].scroll_max > 0)
@@ -4083,6 +4084,7 @@ test_editor_browser_uses_name_color_instead_of_provenance_labels :: proc(t: ^tes
 	state := new(
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state); state.editor_visible = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[1].id, 720))
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 
 	scene_color := shared.Vec4{0.82, 0.85, 0.90, 1}
@@ -4387,7 +4389,7 @@ test_editor_reparents_transformless_entities_and_uses_transformless_parents :: p
 }
 
 @(test)
-test_editor_browser_row_pool_survives_runtime_entity_count_churn :: proc(t: ^testing.T) {
+test_editor_browser_hides_runtime_churn_until_a_runtime_entity_is_selected :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
 	append(
@@ -4426,13 +4428,46 @@ test_editor_browser_row_pool_survives_runtime_entity_count_churn :: proc(t: ^tes
 	}
 	state.editor_snapshot_valid = false
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
-	testing.expect(t, editor_browser_row_count(&world) == 4)
+	testing.expect(t, editor_browser_row_count(&world) == 1)
+	runtime_entity := world.entities[1].id
+	testing.expect(t, editor_select_entity(state, &world, runtime_entity, 720))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, editor_browser_row_count(&world) == 2)
 	for component, component_index in world.editor_uis {
 		if component.role != .Browser_Row && component.role != .Browser_Row_Label { continue }
 		entity := world.entities[component.entity_index]
 		testing.expect(t, entity.alive && entity.origin == .Editor)
 		testing.expect(t, entity.editor_ui_index == component_index)
 	}
+}
+
+@(test)
+test_editor_browser_ui_storage_does_not_scale_with_hidden_runtime_entities :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(&scene.entities, shared.Scene_Entity{name = "Authored"})
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	for _ in 0 ..< 1024 {
+		_, created := ecs.create_world_entity(&world, "Runtime", {}, .Runtime)
+		testing.expect(t, created)
+	}
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect_value(t, editor_browser_row_count(&world), 1)
+	browser_bindings := 0
+	for component in world.editor_uis {
+		if component.role == .Browser_Row ||
+		   component.role == .Browser_Row_Disclosure ||
+		   component.role == .Browser_Row_Label {
+			browser_bindings += 1
+		}
+	}
+	testing.expect_value(t, browser_bindings, 3)
 }
 
 @(test)
@@ -5553,6 +5588,9 @@ test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^t
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0.11) == "")
 	testing.expect(t, state.editor_snapshot_refresh_count == 2)
 	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 2)
+	testing.expect(t, editor_browser_row_count(&world) == 1)
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
 	testing.expect(t, editor_browser_row_count(&world) == 2)
 
 	position_x_input := -1
@@ -5567,8 +5605,8 @@ test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^t
 	testing.expect(t, position_x_input >= 0)
 	world.transforms[world.entities[0].transform_index].position.x = 99
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0.21) == "")
-	testing.expect(t, state.editor_snapshot_refresh_count == 3)
-	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 3)
+	testing.expect(t, state.editor_snapshot_refresh_count == 4)
+	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 4)
 	if position_x_input >= 0 {
 		input_index := world.entities[position_x_input].ui_input_index
 		testing.expect(t, world.ui_inputs[input_index].text == "99.00")
@@ -5578,7 +5616,7 @@ test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^t
 		testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 99)
 		world.transforms[world.entities[0].transform_index].position.x = 42
 		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0.21) == "")
-		testing.expect(t, state.editor_inspector_snapshot_refresh_count == 4)
+		testing.expect(t, state.editor_inspector_snapshot_refresh_count == 5)
 		testing.expect(t, world.ui_inputs[input_index].text == "123")
 		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0, {escape = true}) == "")
 		testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 42)
@@ -5587,8 +5625,8 @@ test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^t
 	// Selection changes bypass the interval so the inspector never opens stale.
 	testing.expect(t, editor_select_entity(state, &world, world.entities[1].id, 720))
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
-	testing.expect(t, state.editor_snapshot_refresh_count == 5)
-	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 5)
+	testing.expect(t, state.editor_snapshot_refresh_count == 6)
+	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 6)
 }
 
 @(test)

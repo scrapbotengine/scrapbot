@@ -130,6 +130,7 @@ test_resource_render_list_updates_only_dirty_entities_and_removes_slots_incremen
 	testing.expect_value(t, len(list.instances), 2)
 	testing.expect(t, list.full_instance_sync)
 	initial_visits := list.instance_visit_count
+	initial_structure_syncs := world.render_structure_sync_count
 	populate_resource_render_list(&world, &registry, &list)
 	testing.expect(t, !list.full_instance_sync)
 	testing.expect_value(t, list.instance_visit_count, initial_visits)
@@ -138,8 +139,9 @@ test_resource_render_list_updates_only_dirty_entities_and_removes_slots_incremen
 	left_index := 1
 	left_transform := world.entities[left_index].transform_index
 	world.transforms[left_transform].position.x = -9
-	mark_render_entity_dirty(&world, left_index)
+	mark_render_extract_entity_dirty(&world, left_index)
 	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, world.render_structure_sync_count, initial_structure_syncs)
 	testing.expect_value(t, list.instance_visit_count, initial_visits + 1)
 	list_index := list.instance_index_by_entity[left_index]
 	testing.expect(t, list_index >= 0 && list_index < len(list.instances))
@@ -218,9 +220,11 @@ test_resource_render_list_updates_renderable_descendants_of_dirty_transforms :: 
 	populate_resource_render_list(&world, &registry, &list)
 	testing.expect_value(t, len(list.instances), 2)
 	initial_visits := list.instance_visit_count
+	initial_structure_syncs := world.render_structure_sync_count
 	world.transforms[world.entities[0].transform_index].position.x = 5
-	mark_render_entity_dirty(&world, 0)
+	mark_render_extract_entity_dirty(&world, 0)
 	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, world.render_structure_sync_count, initial_structure_syncs)
 	testing.expect_value(t, list.instance_visit_count, initial_visits + 2)
 	child_list_index := list.instance_index_by_entity[1]
 	testing.expect(t, child_list_index >= 0 && child_list_index < len(list.instances))
@@ -230,9 +234,11 @@ test_resource_render_list_updates_renderable_descendants_of_dirty_transforms :: 
 	testing.expect(t, set_transform_parent(&world, 1, second_parent_id, true))
 	populate_resource_render_list(&world, &registry, &list)
 	visits_after_reparent := list.instance_visit_count
+	structure_syncs_after_reparent := world.render_structure_sync_count
 	world.transforms[world.entities[3].transform_index].position.x = 12
-	mark_render_entity_dirty(&world, 3)
+	mark_render_extract_entity_dirty(&world, 3)
 	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, world.render_structure_sync_count, structure_syncs_after_reparent)
 	testing.expect_value(t, list.instance_visit_count, visits_after_reparent + 2)
 	child_list_index = list.instance_index_by_entity[1]
 	testing.expect_value(t, list.instances[child_list_index].transform.position.x, f32(8))
@@ -249,6 +255,25 @@ test_render_batches_group_shared_geometry_and_material :: proc(t: ^testing.T) {
 	append(&list.instances, Render_Instance{geometry = {handle = g}, material = {handle = a}})
 	append(&list.instances, Render_Instance{geometry = {handle = g}, material = {handle = b}})
 	testing.expect(t, render_batch_count(&list) == 2)
+}
+
+@(test)
+test_scene_order_allocation_is_monotonic_across_reused_entity_slots :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(&scene.entities, shared.Scene_Entity{name = "One"})
+	append(&scene.entities, shared.Scene_Entity{name = "Two"})
+	world := build_world(&scene)
+	defer destroy_world(&world)
+	first_runtime, created := create_world_entity(&world, "Runtime A", {}, .Runtime)
+	testing.expect(t, created)
+	testing.expect_value(t, world.entities[first_runtime].scene_order, 2)
+	despawn_entity(&world, first_runtime, world.entities[first_runtime].id.generation)
+	second_runtime, reused := create_world_entity(&world, "Runtime B", {}, .Runtime, true)
+	testing.expect(t, reused)
+	testing.expect_value(t, second_runtime, first_runtime)
+	testing.expect_value(t, world.entities[second_runtime].scene_order, 3)
+	testing.expect_value(t, next_scene_order_index(&world), 4)
 }
 
 @(test)

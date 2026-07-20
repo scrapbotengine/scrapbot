@@ -350,6 +350,10 @@ emit_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 			sequence += 1
 			spawn_count += 1
 		}
+		if spawn_count == int(burst_limit) && elapsed >= spawn_interval {
+			// The burst limit is backpressure, not a debt that must be repaid forever.
+			elapsed = 0
+		}
 
 		if !scrapbot.set(ctx, entity, Emitter_Elapsed, elapsed) ||
 		   !scrapbot.set(ctx, entity, Emitter_Sequence, sequence) {
@@ -399,7 +403,6 @@ spawn_fountain_cube :: proc "contextless" (
 	}
 
 	payloads := [?]scrapbot.Component_Payload {
-		scrapbot.payload(scrapbot.Shadow_Caster_Component, nil),
 		scrapbot.payload(Lifetime_Component, lifetime_fields[:]),
 		scrapbot.payload(Velocity_Component, velocity_fields[:]),
 		scrapbot.payload(Spin_Component, spin_fields[:]),

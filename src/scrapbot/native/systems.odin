@@ -367,7 +367,7 @@ system_set_transform :: proc "c" (
 		return 0
 	}
 	step.world.transforms[world_entity.transform_index] = next
-	ecs.mark_render_entity_dirty(step.world, entity_index)
+	ecs.mark_render_extract_entity_dirty(step.world, entity_index)
 	return 1
 }
 

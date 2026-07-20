@@ -273,7 +273,7 @@ editor_gizmo_apply_world_transform :: proc(
 	}
 	local.parent = current.parent
 	world.transforms[entity.transform_index] = local
-	ecs.mark_render_entity_dirty(world, entity_index)
+	ecs.mark_render_extract_entity_dirty(world, entity_index)
 }
 
 editor_hide_gizmo :: proc(state: ^ui.State) {if state == nil { return }

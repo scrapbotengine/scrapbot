@@ -72,11 +72,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** The game should adapt to the actual window or workspace aspect ratio rather than wasting space through letterboxing.
 **Tradeoff:** Until project UI gains responsive anchors and sizing policies, its 1280×720 logical coordinates scale to the live viewport dimensions.
 
-### 4. Show authored and ephemeral entities together
+### 4. Keep runtime churn out of the default entity browser
 
-**Decision:** Present one live entity list while distinguishing scene-authored and runtime-spawned entities by name color according to ADR-016.
-**Why:** Debugging the running world requires access to ephemeral entities, while provenance tells users which entities belong to source data and which exist only in the current run.
-**Tradeoff:** A busy runtime can produce a long, rapidly changing list, so search, grouping, and hierarchy remain important follow-up work.
+**Decision:** Present scene-authored entities by default. Do not materialize browser rows for every runtime spawn. When viewport picking or another tool selects a runtime entity, surface that selected entity in muted text so it remains inspectable according to ADR-016.
+**Why:** High-churn simulations can create tens of thousands of short-lived entities that are useful to ECS systems and rendering but actively harmful as continuously reconciled editor widgets. Authored hierarchy remains stable, while an explicitly selected runtime entity is still debuggable.
+**Tradeoff:** Runtime entities cannot currently be browsed exhaustively. Search, an opt-in runtime filter, and a public inspectability policy remain follow-up work; they must preserve bounded row materialization rather than restoring one UI entity per live runtime entity.
 
 ### 5. Edit reflected fields through typed snapshots
 

@@ -945,6 +945,11 @@ Render_Instance :: struct {
 	shadow_receiver: bool,
 }
 
+Render_Batch_Key :: struct {
+	geometry: Geometry_Handle,
+	material: Material_Handle,
+}
+
 Camera_Instance :: struct {
 	entity: World_Entity,
 	transform: Transform_Component,
@@ -970,6 +975,8 @@ Render_List :: struct {
 	instance_index_by_slot: [dynamic]int,
 	dirty_instance_slots: [dynamic]int,
 	ancestor_counts: map[Entity_UUID]int,
+	batch_memberships: map[Render_Batch_Key]int,
+	batch_count: int,
 	hierarchy_revision: u64,
 	instance_slot_count: int,
 	full_instance_sync: bool,
@@ -995,6 +1002,7 @@ World :: struct {
 	scene_entity_count: int,
 	runtime_entity_count: int,
 	editor_entity_count: int,
+	next_scene_order: int,
 	transforms: #soa[dynamic]Transform_Component,
 	resolved_world_transforms: [dynamic]Transform_Component,
 	resolved_world_transform_epochs: [dynamic]u64,
