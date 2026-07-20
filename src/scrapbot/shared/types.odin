@@ -16,6 +16,7 @@ FONT_FIRST_CHAR :: 32
 FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 512
 MAX_PROJECT_FONTS :: 15
+MAX_GEOMETRY_LODS :: 4
 PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
 PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
 PROJECT_RESOURCES_DIR :: "resources"
@@ -61,6 +62,7 @@ Project_Font :: struct {
 
 Project_Resource_Kind :: enum {
 	Material,
+	Geometry_LOD,
 }
 
 Project_Material_Resource :: struct {
@@ -69,12 +71,20 @@ Project_Material_Resource :: struct {
 	texture: string,
 }
 
+Project_Geometry_LOD_Resource :: struct {
+	radius: f32,
+	subdivisions: [MAX_GEOMETRY_LODS]int,
+	lod_count: int,
+	screen_radii: [MAX_GEOMETRY_LODS - 1]f32,
+}
+
 Project_Resource :: struct {
 	id: Resource_UUID,
 	kind: Project_Resource_Kind,
 	name: string,
 	source: string,
 	material: Project_Material_Resource,
+	geometry_lod: Project_Geometry_LOD_Resource,
 }
 
 Scene :: struct {

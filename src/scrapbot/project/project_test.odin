@@ -121,6 +121,42 @@ texture = "../outside.png"
 }
 
 @(test)
+test_project_geometry_lod_resource_parser :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000010"
+type = "scrapbot.geometry_lod"
+name = "Icosphere LOD"
+
+[geometry_lod]
+radius = 0.75
+subdivisions = [4, 2, 0]
+screen_radii = [0.15, 0.04]
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .Geometry_LOD)
+	testing.expect_value(t, resource.geometry_lod.radius, f32(0.75))
+	testing.expect_value(t, resource.geometry_lod.lod_count, 3)
+	testing.expect_value(t, resource.geometry_lod.subdivisions, [4]int{4, 2, 0, 0})
+	testing.expect_value(t, resource.geometry_lod.screen_radii, [3]f32{0.15, 0.04, 0})
+}
+
+@(test)
+test_project_geometry_lod_resource_parser_rejects_mismatched_thresholds :: proc(t: ^testing.T) {
+	_, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000011"
+type = "scrapbot.geometry_lod"
+name = "Broken LOD"
+
+[geometry_lod]
+subdivisions = [4, 2, 0]
+screen_radii = [0.15]
+`,
+	)
+	testing.expect(t, result.err == .Invalid_Field)
+}
+
+@(test)
 test_scene_material_references_require_known_resource_uuids :: proc(t: ^testing.T) {
 	scene := Scene{}
 	defer destroy_scene(&scene)

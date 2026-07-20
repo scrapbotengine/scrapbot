@@ -438,3 +438,51 @@ test_materials_reject_non_finite_emission :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, negative_err != "")
 }
+
+@(test)
+test_project_lod_geometry_registers_stable_base_and_alternatives :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000020")
+	testing.expect(t, valid)
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .Geometry_LOD,
+		name = "Authored Icosphere",
+		source = "icosphere.resource.toml",
+		geometry_lod = {
+			radius = 0.5,
+			subdivisions = {4, 2, 0, 0},
+			lod_count = 3,
+			screen_radii = {0.15, 0.04, 0},
+		},
+	}
+	handle, err := register_project_lod_geometry(&registry, declaration)
+	testing.expect(t, err == "")
+	geometry, alive := get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect(t, geometry.authored)
+		testing.expect_value(t, geometry.lod_count, 2)
+		testing.expect_value(t, geometry.lod_screen_radii[0], f32(0.15))
+		for lod_handle in geometry.lod_handles[:geometry.lod_count] {
+			_, lod_alive := get_geometry(&registry, lod_handle)
+			testing.expect(t, lod_alive)
+		}
+	}
+	by_id, found := geometry_by_uuid(&registry, id)
+	testing.expect(t, found)
+	testing.expect_value(t, by_id, handle)
+	before_revision := registry.geometry_topology_revision
+	declaration.geometry_lod.subdivisions = {3, 1, 0, 0}
+	declaration.geometry_lod.screen_radii = {0.2, 0.05, 0}
+	updated, update_err := register_project_lod_geometry(&registry, declaration)
+	testing.expect(t, update_err == "")
+	testing.expect_value(t, updated, handle)
+	testing.expect(t, registry.geometry_topology_revision > before_revision)
+	updated_geometry, updated_alive := get_geometry(&registry, updated)
+	testing.expect(t, updated_alive)
+	if updated_alive {
+		testing.expect_value(t, updated_geometry.lod_screen_radii[0], f32(0.2))
+	}
+}

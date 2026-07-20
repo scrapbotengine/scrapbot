@@ -318,6 +318,7 @@ test_directional_shadow_matrix_is_finite_and_non_identity :: proc(t: ^testing.T)
 test_wgpu_draw_batch_topology_is_retained_across_transform_only_frames :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	defer delete(renderer.draw_batch_cache.source_indices)
+	defer delete(renderer.draw_batch_cache.batches)
 	list: Render_List = {
 		world_uuid = shared.entity_uuid_from_engine_name("batch-cache-test"),
 		topology_revision = 1,
@@ -359,6 +360,7 @@ test_wgpu_draw_batch_topology_is_retained_across_transform_only_frames :: proc(t
 test_wgpu_draw_batches_scale_beyond_legacy_uniform_limit :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	defer delete(renderer.draw_batch_cache.source_indices)
+	defer delete(renderer.draw_batch_cache.batches)
 	list: Render_List = {
 		world_uuid = shared.entity_uuid_from_engine_name("large-batch-cache-test"),
 		topology_revision = 1,
@@ -390,6 +392,117 @@ test_wgpu_draw_batches_scale_beyond_legacy_uniform_limit :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_wgpu_draw_database_has_no_legacy_64_batch_ceiling :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	defer delete(renderer.draw_batch_cache.source_indices)
+	defer delete(renderer.draw_batch_cache.batches)
+	list: Render_List = {
+		world_uuid = shared.entity_uuid_from_engine_name("many-draw-batches-test"),
+		topology_revision = 1,
+	}
+	defer ecs.destroy_render_list(&list)
+	for slot in 0 ..< 257 {
+		append(
+			&list.instances,
+			shared.Render_Instance {
+				slot = slot,
+				geometry = {handle = {index = u32(slot), generation = 1}},
+				material = {handle = {index = u32(slot), generation = 1}},
+			},
+		)
+	}
+	cache := wgpu_ensure_draw_batch_cache(&renderer, &list)
+	testing.expect(t, cache != nil)
+	testing.expect_value(t, cache.batch_count, 257)
+	testing.expect_value(t, len(cache.batches), 257)
+	testing.expect_value(t, len(cache.source_indices), 257)
+}
+
+@(test)
+test_wgpu_draw_database_materializes_all_geometry_lod_batches :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.cube(1)
+	testing.expect(t, desc_err == "")
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	base, base_err := resources.register_geometry(&registry, "lod-base", desc)
+	lod1, lod1_err := resources.register_geometry(&registry, "lod-1", desc)
+	lod2, lod2_err := resources.register_geometry(&registry, "lod-2", desc)
+	testing.expect(t, base_err == "" && lod1_err == "" && lod2_err == "")
+	testing.expect(
+		t,
+		resources.set_geometry_lods(
+			&registry,
+			base,
+			[]shared.Geometry_Handle{lod1, lod2},
+			[]f32{0.15, 0.04},
+		) ==
+		"",
+	)
+	material := shared.Material_Handle {
+		index = 9,
+		generation = 1,
+	}
+	list := Render_List {
+		world_uuid = shared.entity_uuid_generate(),
+		topology_revision = 1,
+		instances = make([dynamic]Render_Instance),
+	}
+	defer delete(list.instances)
+	append(
+		&list.instances,
+		Render_Instance{geometry = {handle = base}, material = {handle = material}},
+	)
+	renderer: WGPU_Renderer
+	defer delete(renderer.draw_batch_cache.batches)
+	defer delete(renderer.draw_batch_cache.source_indices)
+	defer delete(renderer.gpu_batch_indices_by_slot)
+	cache := wgpu_ensure_draw_batch_cache(&renderer, &list, &registry)
+	testing.expect_value(t, cache.batch_count, 3)
+	for batch in cache.batches[:cache.batch_count] {
+		testing.expect_value(t, batch.instance_count, u32(1))
+	}
+	testing.expect(
+		t,
+		wgpu_rebuild_instance_batch_cache(&renderer, cache, &list, &registry, 1) == "",
+	)
+	testing.expect_value(t, renderer.gpu_batch_indices_by_slot[0], [4]u32{0, 1, 2, 0})
+}
+
+@(test)
+test_wgpu_cpu_lod_selection_uses_screen_radius_thresholds :: proc(t: ^testing.T) {
+	instance := WGPU_GPU_Instance {
+		lod_screen_radii = {0.15, 0.04, 0, 0},
+		lod_count = 2,
+	}
+	instance.bounds = {0, 0, 0, 0.4}
+	testing.expect_value(t, wgpu_cpu_instance_lod_level(instance, mat4_identity()), 0)
+	instance.bounds.w = 0.2
+	testing.expect_value(t, wgpu_cpu_instance_lod_level(instance, mat4_identity()), 1)
+	instance.bounds.w = 0.04
+	testing.expect_value(t, wgpu_cpu_instance_lod_level(instance, mat4_identity()), 2)
+}
+
+@(test)
+test_wgpu_hiz_reuse_requires_stable_camera_and_instance_data :: proc(t: ^testing.T) {
+	view_projection := mat4_identity()
+	testing.expect(t, wgpu_hiz_reuse_allowed(true, true, false, view_projection, view_projection))
+	testing.expect(
+		t,
+		!wgpu_hiz_reuse_allowed(false, true, false, view_projection, view_projection),
+	)
+	testing.expect(
+		t,
+		!wgpu_hiz_reuse_allowed(true, false, false, view_projection, view_projection),
+	)
+	testing.expect(t, !wgpu_hiz_reuse_allowed(true, true, true, view_projection, view_projection))
+	moved_camera := view_projection
+	moved_camera[12] = 1
+	testing.expect(t, !wgpu_hiz_reuse_allowed(true, true, false, view_projection, moved_camera))
+}
+
+@(test)
 test_wgpu_frustum_planes_and_cpu_culling_reference :: proc(t: ^testing.T) {
 	planes := wgpu_extract_frustum_planes(mat4_identity())
 	testing.expect(t, wgpu_sphere_visible({0, 0, 0.5, 0.1}, planes))
@@ -398,13 +511,20 @@ test_wgpu_frustum_planes_and_cpu_culling_reference :: proc(t: ^testing.T) {
 	testing.expect(t, !wgpu_sphere_visible({0, 0, -1, 0.1}, planes))
 
 	instances := []WGPU_GPU_Instance {
-		{bounds = {0, 0, 0.5, 0.1}, batch_index = 0, active = 1},
-		{bounds = {2, 0, 0.5, 0.1}, batch_index = 0, active = 1},
-		{bounds = {0, 0, 0.5, 0.1}, batch_index = 1, active = 1, shadow_flags = {1, 0, 0, 0}},
-		{bounds = {0, 0, 0.5, 0.1}, batch_index = 1, active = 0},
+		{bounds = {0, 0, 0.5, 0.1}, batch_indices = {0, 0, 0, 0}, active = 1},
+		{bounds = {2, 0, 0.5, 0.1}, batch_indices = {0, 0, 0, 0}, active = 1},
+		{
+			bounds = {0, 0, 0.5, 0.1},
+			batch_indices = {1, 0, 0, 0},
+			active = 1,
+			shadow_flags = {1, 0, 0, 0},
+		},
+		{bounds = {0, 0, 0.5, 0.1}, batch_indices = {1, 0, 0, 0}, active = 0},
 	}
 	camera_counts := wgpu_cpu_cull_counts(instances, planes, 2)
+	defer delete(camera_counts)
 	shadow_counts := wgpu_cpu_cull_counts(instances, planes, 2, true)
+	defer delete(shadow_counts)
 	testing.expect(t, camera_counts[0] == 1)
 	testing.expect(t, camera_counts[1] == 1)
 	testing.expect(t, shadow_counts[0] == 0)
@@ -452,6 +572,51 @@ test_wgpu_ui_paint_signature_tracks_only_rendered_output :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_wgpu_empty_ui_vertex_upload_is_a_successful_no_op :: proc(t: ^testing.T) {
+	testing.expect(t, wgpu_upload_ui_vertices(nil, nil, nil, nil, "empty UI"))
+}
+
+@(test)
+test_wgpu_instance_upload_ranges_coalesce_nearby_dirty_slots :: proc(t: ^testing.T) {
+	dirty := []int{2, 3, 7, 16, 30}
+	first, last, next := wgpu_next_instance_upload_range(dirty, 0)
+	testing.expect_value(t, first, 2)
+	testing.expect_value(t, last, 17)
+	testing.expect_value(t, next, 4)
+	first, last, next = wgpu_next_instance_upload_range(dirty, next)
+	testing.expect_value(t, first, 30)
+	testing.expect_value(t, last, 31)
+	testing.expect_value(t, next, len(dirty))
+}
+
+@(test)
+test_wgpu_gpu_uniforms_upload_only_after_value_changes :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	render_uniform: WGPU_GPU_Render_Uniform
+	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
+	testing.expect(t, !wgpu_retain_render_uniform(&renderer, render_uniform))
+	render_uniform.ambient.x = 0.25
+	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
+
+	cull_uniform: WGPU_GPU_Cull_Uniform
+	testing.expect(t, wgpu_retain_cull_uniform(&renderer, cull_uniform))
+	testing.expect(t, !wgpu_retain_cull_uniform(&renderer, cull_uniform))
+	cull_uniform.viewport.z = 1280
+	testing.expect(t, wgpu_retain_cull_uniform(&renderer, cull_uniform))
+}
+
+@(test)
+test_wgpu_gpu_timing_marks_only_encoded_passes_for_the_sample :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_active_slot = 2
+	_, enabled := wgpu_gpu_pass_timestamps(&renderer, .World)
+	testing.expect(t, enabled)
+	readback := renderer.gpu_timestamp_readbacks[2]
+	testing.expect(t, readback.phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.World)) != 0)
+	testing.expect(t, readback.phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.UI)) == 0)
+}
+
+@(test)
 test_wgpu_indirect_template_tracks_in_place_geometry_replacement :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)
@@ -464,10 +629,19 @@ test_wgpu_indirect_template_tracks_in_place_geometry_replacement :: proc(t: ^tes
 	cache := WGPU_Draw_Batch_Cache {
 		batch_count = 1,
 	}
-	cache.batches[0].geometry = handle
-	before, before_err := wgpu_build_indirect_templates(&cache, &registry)
+	defer delete(cache.batches)
+	append(&cache.batches, WGPU_Draw_Batch{geometry = handle})
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_indirect_templates)
+	changed, before_err := wgpu_update_indirect_template_cache(&renderer, &cache, &registry)
 	testing.expect(t, before_err == "")
-	testing.expect(t, before[0].index_count == u32(len(cube.indices)))
+	testing.expect(t, changed)
+	before_index_count := renderer.gpu_indirect_templates[0].index_count
+	testing.expect(t, before_index_count == u32(len(cube.indices)))
+	stable_err: string
+	changed, stable_err = wgpu_update_indirect_template_cache(&renderer, &cache, &registry)
+	testing.expect(t, stable_err == "")
+	testing.expect(t, !changed)
 
 	plane, plane_err := resources.plane()
 	defer delete(plane.vertices)
@@ -476,10 +650,12 @@ test_wgpu_indirect_template_tracks_in_place_geometry_replacement :: proc(t: ^tes
 	updated, update_err := resources.register_geometry(&registry, "mutable", plane)
 	testing.expect(t, update_err == "")
 	testing.expect(t, updated == handle)
-	after, after_err := wgpu_build_indirect_templates(&cache, &registry)
+	after_err: string
+	changed, after_err = wgpu_update_indirect_template_cache(&renderer, &cache, &registry)
 	testing.expect(t, after_err == "")
-	testing.expect(t, after[0].index_count == u32(len(plane.indices)))
-	testing.expect(t, after[0].index_count != before[0].index_count)
+	testing.expect(t, changed)
+	testing.expect(t, renderer.gpu_indirect_templates[0].index_count == u32(len(plane.indices)))
+	testing.expect(t, renderer.gpu_indirect_templates[0].index_count != before_index_count)
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {

@@ -56,10 +56,16 @@ Font_Desc :: struct {
 }
 
 Geometry :: struct {
+	id: shared.Resource_UUID,
 	name: string,
+	source: string,
+	authored: bool,
 	vertices: []Vertex,
 	indices: []u32,
 	bounds: Bounds,
+	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
+	lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32,
+	lod_count: int,
 	generation: u32,
 	version: u32,
 	alive: bool,
@@ -102,6 +108,7 @@ Registry :: struct {
 	geometries: [dynamic]Geometry,
 	materials: [dynamic]Material,
 	fonts: [dynamic]Font,
+	geometry_topology_revision: u64,
 	allocator: mem.Allocator,
 }
 
@@ -123,6 +130,7 @@ destroy_registry :: proc(registry: ^Registry) {
 		registry.allocator; if allocator.procedure == nil { allocator = context.allocator }
 	for &geometry in registry.geometries {
 		delete(geometry.name, allocator)
+		delete(geometry.source, allocator)
 		delete(geometry.vertices, allocator)
 		delete(geometry.indices, allocator)
 	}
@@ -313,12 +321,22 @@ register_geometry :: proc(
 	if err := validate_geometry(desc); err != "" { return {}, err }
 	if index, found := geometry_index_by_name(registry, name); found {
 		geometry := &registry.geometries[index]
+		if geometry.authored {
+			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
+		}
+		had_lods := geometry.lod_count > 0
 		delete(geometry.vertices, registry.allocator)
 		delete(geometry.indices, registry.allocator)
 		geometry.vertices = clone_slice(desc.vertices, registry.allocator)
 		geometry.indices = clone_slice(desc.indices, registry.allocator)
 		geometry.bounds = calculate_bounds(desc.vertices)
+		geometry.lod_handles = {}
+		geometry.lod_screen_radii = {}
+		geometry.lod_count = 0
 		geometry.version += 1
+		if had_lods {
+			registry.geometry_topology_revision += 1
+		}
 		return {u32(index), geometry.generation}, ""
 	}
 	cloned_name, clone_err := strings.clone(name, registry.allocator)
@@ -335,7 +353,189 @@ register_geometry :: proc(
 			alive = true,
 		},
 	)
+	registry.geometry_topology_revision += 1
 	return {u32(len(registry.geometries) - 1), 1}, ""
+}
+
+set_geometry_lods :: proc(
+	registry: ^Registry,
+	base: Geometry_Handle,
+	lod_handles: []Geometry_Handle,
+	screen_radii: []f32,
+) -> string {
+	geometry, alive := get_geometry(registry, base)
+	if !alive {
+		return "base geometry handle is stale"
+	}
+	if len(lod_handles) != len(screen_radii) || len(lod_handles) >= shared.MAX_GEOMETRY_LODS {
+		return fmt.tprintf(
+			"geometry LODs require matching handles and screen radii with at most %d alternatives",
+			shared.MAX_GEOMETRY_LODS - 1,
+		)
+	}
+	previous_radius := f32(3.402823e38)
+	for handle, index in lod_handles {
+		if _, lod_alive := get_geometry(registry, handle); !lod_alive {
+			return fmt.tprintf("geometry LOD %d handle is stale", index + 1)
+		}
+		radius := screen_radii[index]
+		if !finite(radius) || radius <= 0 || radius >= previous_radius {
+			return "geometry LOD screen radii must be positive, finite, and strictly descending"
+		}
+		previous_radius = radius
+	}
+	geometry.lod_handles = {}
+	geometry.lod_screen_radii = {}
+	geometry.lod_count = len(lod_handles)
+	copy(geometry.lod_handles[:], lod_handles)
+	copy(geometry.lod_screen_radii[:], screen_radii)
+	geometry.version += 1
+	registry.geometry_topology_revision += 1
+	return ""
+}
+
+register_project_lod_geometry :: proc(
+	registry: ^Registry,
+	declaration: shared.Project_Resource,
+) -> (
+	Geometry_Handle,
+	string,
+) {
+	if registry == nil {
+		return {}, "geometry registry is not available"
+	}
+	if declaration.kind != .Geometry_LOD || declaration.id == (shared.Resource_UUID{}) {
+		return {}, "project LOD geometry declaration is invalid"
+	}
+	if declaration.name == "" || declaration.source == "" {
+		return {}, "project LOD geometry requires a name and source"
+	}
+	definition := declaration.geometry_lod
+	if definition.lod_count < 1 || definition.lod_count > shared.MAX_GEOMETRY_LODS {
+		return {}, fmt.tprintf("project LOD geometry requires between 1 and %d levels", shared.MAX_GEOMETRY_LODS)
+	}
+	descriptions: [shared.MAX_GEOMETRY_LODS]Geometry_Desc
+	defer {
+		for index in 0 ..< definition.lod_count {
+			delete(descriptions[index].vertices)
+			delete(descriptions[index].indices)
+		}
+	}
+	for index in 0 ..< definition.lod_count {
+		desc, desc_err := icosphere(definition.radius, definition.subdivisions[index])
+		if desc_err != "" {
+			return {}, fmt.tprintf("LOD %d: %s", index, desc_err)
+		}
+		descriptions[index] = desc
+	}
+	ensure_allocator(registry)
+	base_index, existing := geometry_index_by_uuid_any(registry, declaration.id)
+	if !existing {
+		if collision, found := geometry_index_by_name(registry, declaration.name);
+		   found && registry.geometries[collision].id != declaration.id {
+			return {}, fmt.tprintf("geometry name '%s' is already registered", declaration.name)
+		}
+		cloned_name, name_err := strings.clone(declaration.name, registry.allocator)
+		if name_err != nil {
+			return {}, "failed to allocate project geometry name"
+		}
+		cloned_source, source_err := strings.clone(declaration.source, registry.allocator)
+		if source_err != nil {
+			delete(cloned_name, registry.allocator)
+			return {}, "failed to allocate project geometry source"
+		}
+		append(
+			&registry.geometries,
+			Geometry {
+				id = declaration.id,
+				name = cloned_name,
+				source = cloned_source,
+				authored = true,
+				vertices = clone_slice(descriptions[0].vertices, registry.allocator),
+				indices = clone_slice(descriptions[0].indices, registry.allocator),
+				bounds = calculate_bounds(descriptions[0].vertices),
+				generation = 1,
+				version = 1,
+				alive = true,
+			},
+		)
+		registry.geometry_topology_revision += 1
+		base_index = len(registry.geometries) - 1
+	} else {
+		geometry := &registry.geometries[base_index]
+		if collision, found := geometry_index_by_name(registry, declaration.name);
+		   found && collision != base_index {
+			return {}, fmt.tprintf("geometry name '%s' is already registered", declaration.name)
+		}
+		cloned_name, name_err := strings.clone(declaration.name, registry.allocator)
+		if name_err != nil {
+			return {}, "failed to allocate project geometry name"
+		}
+		cloned_source, source_err := strings.clone(declaration.source, registry.allocator)
+		if source_err != nil {
+			delete(cloned_name, registry.allocator)
+			return {}, "failed to allocate project geometry source"
+		}
+		delete(geometry.name, registry.allocator)
+		delete(geometry.source, registry.allocator)
+		delete(geometry.vertices, registry.allocator)
+		delete(geometry.indices, registry.allocator)
+		geometry.name = cloned_name
+		geometry.source = cloned_source
+		geometry.vertices = clone_slice(descriptions[0].vertices, registry.allocator)
+		geometry.indices = clone_slice(descriptions[0].indices, registry.allocator)
+		geometry.bounds = calculate_bounds(descriptions[0].vertices)
+		geometry.authored = true
+		geometry.alive = true
+		geometry.version += 1
+	}
+	base := Geometry_Handle{u32(base_index), registry.geometries[base_index].generation}
+	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle
+	id_buffer: [36]u8
+	id_text := shared.resource_uuid_to_string(declaration.id, id_buffer[:])
+	for index in 1 ..< definition.lod_count {
+		internal_name := fmt.tprintf("__project_lod_%s_%d", id_text, index)
+		handle, register_err := register_geometry(registry, internal_name, descriptions[index])
+		if register_err != "" {
+			return {}, register_err
+		}
+		lod_handles[index - 1] = handle
+	}
+	if lod_err := set_geometry_lods(
+		registry,
+		base,
+		lod_handles[:definition.lod_count - 1],
+		definition.screen_radii[:definition.lod_count - 1],
+	); lod_err != "" {
+		return {}, lod_err
+	}
+	return base, ""
+}
+
+register_project_lod_geometries :: proc(
+	registry: ^Registry,
+	declarations: []shared.Project_Resource,
+) -> string {
+	seen := make(map[shared.Resource_UUID]bool)
+	defer delete(seen)
+	for declaration in declarations {
+		if declaration.kind != .Geometry_LOD {
+			continue
+		}
+		if _, err := register_project_lod_geometry(registry, declaration); err != "" {
+			return fmt.tprintf("resources/%s: %s", declaration.source, err)
+		}
+		seen[declaration.id] = true
+	}
+	for &geometry in registry.geometries {
+		if geometry.authored && !seen[geometry.id] {
+			geometry.alive = false
+			geometry.generation += 1
+			geometry.version += 1
+			registry.geometry_topology_revision += 1
+		}
+	}
+	return ""
 }
 
 register_material :: proc(
@@ -968,6 +1168,20 @@ geometry_by_name :: proc(registry: ^Registry, name: string) -> (Geometry_Handle,
 	return {u32(index), registry.geometries[index].generation}, true
 }
 
+geometry_by_uuid :: proc(
+	registry: ^Registry,
+	id: shared.Resource_UUID,
+) -> (
+	Geometry_Handle,
+	bool,
+) {
+	index, found := geometry_index_by_uuid(registry, id)
+	if !found {
+		return {}, false
+	}
+	return {u32(index), registry.geometries[index].generation}, true
+}
+
 material_by_name :: proc(registry: ^Registry, name: string) -> (Material_Handle, bool) {
 	index, found := material_index_by_name(registry, name)
 	if !found { return {}, false }
@@ -996,6 +1210,30 @@ font_by_name :: proc(registry: ^Registry, name: string) -> (Font_Handle, bool) {
 
 geometry_index_by_name :: proc(registry: ^Registry, name: string) -> (int, bool) {
 	for geometry, index in registry.geometries { if geometry.alive && geometry.name == name { return index, true } }
+	return -1, false
+}
+
+geometry_index_by_uuid :: proc(registry: ^Registry, id: shared.Resource_UUID) -> (int, bool) {
+	if registry == nil || id == (shared.Resource_UUID{}) {
+		return -1, false
+	}
+	for geometry, index in registry.geometries {
+		if geometry.alive && geometry.authored && geometry.id == id {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
+geometry_index_by_uuid_any :: proc(registry: ^Registry, id: shared.Resource_UUID) -> (int, bool) {
+	if registry == nil || id == (shared.Resource_UUID{}) {
+		return -1, false
+	}
+	for geometry, index in registry.geometries {
+		if geometry.authored && geometry.id == id {
+			return index, true
+		}
+	}
 	return -1, false
 }
 

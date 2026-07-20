@@ -357,11 +357,13 @@ wgpu_ensure_post_targets :: proc(renderer: ^WGPU_Renderer, width, height: u32) -
 }
 
 wgpu_encode_fullscreen_pass :: proc(
+	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
 	view: wgpu.TextureView,
 	pipeline: wgpu.RenderPipeline,
 	bind_group: wgpu.BindGroup,
 	label: string,
+	timestamp_phase: WGPU_GPU_Timestamp_Phase,
 ) -> string {
 	attachment := wgpu.RenderPassColorAttachment {
 		view = view,
@@ -370,12 +372,18 @@ wgpu_encode_fullscreen_pass :: proc(
 		storeOp = .Store,
 		clearValue = {},
 	}
+	timestamps, timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, timestamp_phase)
+	timestamps_ptr: ^wgpu.PassTimestampWrites
+	if timestamps_enabled {
+		timestamps_ptr = &timestamps
+	}
 	pass := wgpu.CommandEncoderBeginRenderPass(
 		encoder,
 		&wgpu.RenderPassDescriptor {
 			label = label,
 			colorAttachmentCount = 1,
 			colorAttachments = &attachment,
+			timestampWrites = timestamps_ptr,
 		},
 	)
 	if pass == nil {
@@ -398,9 +406,17 @@ wgpu_encode_bloom_and_composite :: proc(
 	if err := wgpu_ensure_post_targets(renderer, width, height); err != "" {
 		return err
 	}
+	bloom_timestamps, bloom_timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Bloom)
+	bloom_timestamps_ptr: ^wgpu.PassTimestampWrites
+	if bloom_timestamps_enabled {
+		bloom_timestamps_ptr = &bloom_timestamps
+	}
 	pass := wgpu.CommandEncoderBeginComputePass(
 		encoder,
-		&wgpu.ComputePassDescriptor{label = "Scrapbot Bloom Compute Pass"},
+		&wgpu.ComputePassDescriptor {
+			label = "Scrapbot Bloom Compute Pass",
+			timestampWrites = bloom_timestamps_ptr,
+		},
 	)
 	if pass == nil {
 		return "failed to begin bloom compute pass"
@@ -424,10 +440,12 @@ wgpu_encode_bloom_and_composite :: proc(
 	wgpu.ComputePassEncoderEnd(pass)
 	wgpu.ComputePassEncoderRelease(pass)
 	return wgpu_encode_fullscreen_pass(
+		renderer,
 		encoder,
 		output_view,
 		renderer.composite_pipeline,
 		renderer.composite_bind_group,
 		"Scrapbot HDR Composite Pass",
+		.Composite,
 	)
 }

@@ -2,13 +2,8 @@ package render
 
 WGPU_GPU_DRIVEN_SHADER :: `
 struct Render_Uniform {
-	mvp: array<mat4x4<f32>, 64>,
-	model: array<mat4x4<f32>, 64>,
-	normal_model: array<mat4x4<f32>, 64>,
-	shadow_mvp: array<mat4x4<f32>, 64>,
-	color: array<vec4<f32>, 64>,
-	emissive: array<vec4<f32>, 64>,
-	shadow_flags: array<vec4<f32>, 64>,
+	view_projection: mat4x4<f32>,
+	shadow_view_projection: mat4x4<f32>,
 	ambient: vec4<f32>,
 	directional_direction_intensity: array<vec4<f32>, 4>,
 	directional_color: array<vec4<f32>, 4>,
@@ -24,7 +19,9 @@ struct GPU_Instance {
 	emissive: vec4<f32>,
 	shadow_flags: vec4<f32>,
 	bounds: vec4<f32>,
-	batch_index: u32,
+	batch_indices: array<u32, 4>,
+	lod_screen_radii: array<f32, 4>,
+	lod_count: u32,
 	enabled: u32,
 	padding: vec2<u32>,
 };
@@ -59,12 +56,12 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	let instance = instances[visible_instances[visible_index]];
 	var output: Vertex_Output;
 	let local_position = vec4<f32>(input.position, 1.0);
-	output.position = render.mvp[0] * instance.model * local_position;
+	output.position = render.view_projection * instance.model * local_position;
 	output.world_position = (instance.model * local_position).xyz;
 	output.world_normal = normalize((instance.normal_model * vec4<f32>(input.normal, 0.0)).xyz);
 	output.color = instance.color.rgb;
 	output.emissive = instance.emissive.rgb;
-	output.shadow_position = render.shadow_mvp[0] * instance.model * local_position;
+	output.shadow_position = render.shadow_view_projection * instance.model * local_position;
 	output.shadow_receiver = instance.shadow_flags.y;
 	output.uv = input.uv;
 	return output;
@@ -106,7 +103,13 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 @vertex
 fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> @builtin(position) vec4<f32> {
 	let instance = instances[visible_instances[visible_index]];
-	return render.shadow_mvp[0] * instance.model * vec4<f32>(input.position, 1.0);
+	return render.shadow_view_projection * instance.model * vec4<f32>(input.position, 1.0);
+}
+
+@vertex
+fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> @builtin(position) vec4<f32> {
+	let instance = instances[visible_instances[visible_index]];
+	return render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
 }
 `
 
@@ -118,7 +121,9 @@ struct GPU_Instance {
 	emissive: vec4<f32>,
 	shadow_flags: vec4<f32>,
 	bounds: vec4<f32>,
-	batch_index: u32,
+	batch_indices: array<u32, 4>,
+	lod_screen_radii: array<f32, 4>,
+	lod_count: u32,
 	enabled: u32,
 	padding: vec2<u32>,
 };
@@ -140,9 +145,21 @@ struct Draw_Indexed_Indirect {
 struct Cull_Uniform {
 	camera_planes: array<vec4<f32>, 6>,
 	shadow_planes: array<vec4<f32>, 6>,
+	view_projection: mat4x4<f32>,
+	viewport: vec4<f32>,
+	camera_position: vec4<f32>,
 	slot_count: u32,
 	batch_count: u32,
-	padding: vec2<u32>,
+	hiz_mip_count: u32,
+	hiz_enabled: u32,
+};
+
+struct Visibility_Counters {
+	visible_instances: atomic<u32>,
+	shadow_visible_instances: atomic<u32>,
+	frustum_candidates: atomic<u32>,
+	occlusion_culled_instances: atomic<u32>,
+	lod_visible_instances: array<atomic<u32>, 4>,
 };
 
 @group(0) @binding(0) var<storage, read> instances: array<GPU_Instance>;
@@ -152,6 +169,8 @@ struct Cull_Uniform {
 @group(0) @binding(4) var<storage, read_write> indirect: array<Draw_Indexed_Indirect>;
 @group(0) @binding(5) var<storage, read_write> shadow_indirect: array<Draw_Indexed_Indirect>;
 @group(0) @binding(6) var<uniform> cull: Cull_Uniform;
+@group(0) @binding(7) var hiz_depth: texture_2d<f32>;
+@group(0) @binding(8) var<storage, read_write> counters: Visibility_Counters;
 
 fn camera_sphere_visible(bounds: vec4<f32>) -> bool {
 	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
@@ -173,6 +192,61 @@ fn shadow_sphere_visible(bounds: vec4<f32>) -> bool {
 	return true;
 }
 
+fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
+	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u) {
+		return false;
+	}
+	let clip = cull.view_projection * vec4<f32>(bounds.xyz, 1.0);
+	if (clip.w <= 0.0001) {
+		return false;
+	}
+	let ndc = clip.xyz / clip.w;
+	let radius_ndc = vec2<f32>(
+		abs(bounds.w * cull.view_projection[0][0] / clip.w),
+		abs(bounds.w * cull.view_projection[1][1] / clip.w)
+	);
+	let center_px = cull.viewport.xy + vec2<f32>(
+		(ndc.x * 0.5 + 0.5) * cull.viewport.z,
+		(0.5 - ndc.y * 0.5) * cull.viewport.w
+	);
+	let radius_px = radius_ndc * cull.viewport.zw * 0.5;
+	let extent = max(max(radius_px.x * 2.0, radius_px.y * 2.0), 1.0);
+	let mip = min(u32(max(floor(log2(extent)) - 1.0, 0.0)), cull.hiz_mip_count - 1u);
+	let mip_size = vec2<i32>(textureDimensions(hiz_depth, i32(mip)));
+	let scale = exp2(f32(mip));
+	let center = vec2<i32>(center_px / scale);
+	let corner_radius = vec2<i32>(ceil(radius_px / scale));
+	let low = clamp(center - corner_radius, vec2<i32>(0), mip_size - vec2<i32>(1));
+	let high = clamp(center + corner_radius, vec2<i32>(0), mip_size - vec2<i32>(1));
+	var farthest_occluder = textureLoad(hiz_depth, center, i32(mip)).x;
+	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, low, i32(mip)).x);
+	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(high.x, low.y), i32(mip)).x);
+	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(low.x, high.y), i32(mip)).x);
+	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, high, i32(mip)).x);
+	let toward_camera = normalize(cull.camera_position.xyz - bounds.xyz);
+	let nearest_clip = cull.view_projection * vec4<f32>(bounds.xyz + toward_camera * bounds.w, 1.0);
+	let nearest_depth = nearest_clip.z / nearest_clip.w;
+	return nearest_depth > farthest_occluder + 0.0015;
+}
+
+fn select_lod(instance: GPU_Instance) -> u32 {
+	if (instance.lod_count == 0u) {
+		return 0u;
+	}
+	let clip = cull.view_projection * vec4<f32>(instance.bounds.xyz, 1.0);
+	if (clip.w <= 0.0001) {
+		return 0u;
+	}
+	let screen_radius = abs(instance.bounds.w * cull.view_projection[1][1] / clip.w) * 0.5;
+	var level = 0u;
+	for (var threshold_index = 0u; threshold_index < instance.lod_count; threshold_index = threshold_index + 1u) {
+		if (screen_radius < instance.lod_screen_radii[threshold_index]) {
+			level = threshold_index + 1u;
+		}
+	}
+	return level;
+}
+
 @compute @workgroup_size(64)
 fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let slot = invocation.x;
@@ -180,21 +254,66 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		return;
 	}
 	let instance = instances[slot];
-	if (instance.enabled == 0u || instance.batch_index >= cull.batch_count) {
+	let lod_level = select_lod(instance);
+	let batch_index = instance.batch_indices[lod_level];
+	if (instance.enabled == 0u || batch_index >= cull.batch_count) {
 		return;
 	}
-	let batch = batches[instance.batch_index];
+	let batch = batches[batch_index];
 	if (camera_sphere_visible(instance.bounds)) {
-		let local_index = atomicAdd(&indirect[instance.batch_index].instance_count, 1u);
-		if (local_index < batch.visible_capacity) {
-			visible_instances[batch.visible_offset + local_index] = slot;
+		atomicAdd(&counters.frustum_candidates, 1u);
+		if (camera_sphere_occluded(instance.bounds)) {
+			atomicAdd(&counters.occlusion_culled_instances, 1u);
+		} else {
+			let local_index = atomicAdd(&indirect[batch_index].instance_count, 1u);
+			if (local_index < batch.visible_capacity) {
+				visible_instances[batch.visible_offset + local_index] = slot;
+				atomicAdd(&counters.visible_instances, 1u);
+				atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
+			}
 		}
 	}
 	if (instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds)) {
-		let local_index = atomicAdd(&shadow_indirect[instance.batch_index].instance_count, 1u);
+		let local_index = atomicAdd(&shadow_indirect[batch_index].instance_count, 1u);
 		if (local_index < batch.visible_capacity) {
 			shadow_visible_instances[batch.visible_offset + local_index] = slot;
+			atomicAdd(&counters.shadow_visible_instances, 1u);
 		}
 	}
+}
+`
+
+WGPU_HIZ_COPY_SHADER :: `
+@group(0) @binding(0) var source_depth: texture_depth_2d;
+@group(0) @binding(1) var destination_depth: texture_storage_2d<r32float, write>;
+
+@compute @workgroup_size(8, 8)
+fn copy_depth(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let size = textureDimensions(destination_depth);
+	if (any(invocation.xy >= size)) {
+		return;
+	}
+	textureStore(destination_depth, invocation.xy, vec4<f32>(textureLoad(source_depth, vec2<i32>(invocation.xy), 0)));
+}
+`
+
+WGPU_HIZ_DOWNSAMPLE_SHADER :: `
+@group(0) @binding(0) var source_hiz: texture_2d<f32>;
+@group(0) @binding(1) var destination_hiz: texture_storage_2d<r32float, write>;
+
+@compute @workgroup_size(8, 8)
+fn downsample_depth(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let size = textureDimensions(destination_hiz);
+	if (any(invocation.xy >= size)) {
+		return;
+	}
+	let source_size = vec2<i32>(textureDimensions(source_hiz));
+	let base = vec2<i32>(invocation.xy * 2u);
+	let limit = source_size - vec2<i32>(1);
+	let a = textureLoad(source_hiz, min(base, limit), 0).x;
+	let b = textureLoad(source_hiz, min(base + vec2<i32>(1, 0), limit), 0).x;
+	let c = textureLoad(source_hiz, min(base + vec2<i32>(0, 1), limit), 0).x;
+	let d = textureLoad(source_hiz, min(base + vec2<i32>(1, 1), limit), 0).x;
+	textureStore(destination_hiz, invocation.xy, vec4<f32>(max(max(a, b), max(c, d))));
 }
 `

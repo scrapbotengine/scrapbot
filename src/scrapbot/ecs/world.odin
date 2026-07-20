@@ -946,17 +946,20 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 		entity := &world.entities[entity_index]
 		entity.render_dirty = false
 		sync_render_watch_memberships(world, entity_index)
-		if entity.geometry_index < 0 && entity.mesh_index >= 0 {
+		if entity.geometry_index < 0 && entity.mesh_index >= 0 && entity.geometry_resource == "" {
 			if handle, found := resources.geometry_by_name(registry, "cube");
 			   found { add_geometry(world, entity_index, handle) }
 		}
-		if entity.material_index < 0 && entity.mesh_index >= 0 {
+		if entity.material_index < 0 && entity.mesh_index >= 0 && entity.material_resource == "" {
 			if handle, found := resources.material_by_name(registry, "default");
 			   found { add_material(world, entity_index, handle) }
 		}
 		if entity.geometry_index < 0 && entity.geometry_resource != "" {
-			if handle, found := resources.geometry_by_name(registry, entity.geometry_resource);
-			   found {
+			handle, found := resources.geometry_by_name(registry, entity.geometry_resource)
+			if resource_id, valid := shared.resource_uuid_parse(entity.geometry_resource); valid {
+				handle, found = resources.geometry_by_uuid(registry, resource_id)
+			}
+			if found {
 				resolve_geometry_reference(world, entity_index, handle)
 			}
 		}

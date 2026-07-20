@@ -268,6 +268,10 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	); err != "" {
 		return err
 	}
+	if err := resources.register_project_lod_geometries(&state.resources, loaded.resources[:]);
+	   err != "" {
+		return err
+	}
 	if err := reset_scene_world(state.scene_path, &state.runtime, world); err != "" {
 		return err
 	}
@@ -355,6 +359,10 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		state.root,
 		loaded.resources[:],
 	); err != "" {
+		return err
+	}
+	if err := resources.register_project_lod_geometries(&state.resources, loaded.resources[:]);
+	   err != "" {
 		return err
 	}
 

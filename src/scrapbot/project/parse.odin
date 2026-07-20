@@ -25,10 +25,11 @@ parse_project_resource :: proc(
 	resource: shared.Project_Resource,
 	result: Parse_Result,
 ) {
-	resource.kind = .Material
 	resource.material.base_color = {1, 1, 1, 1}
+	resource.geometry_lod.radius = 0.5
 	section := ""
 	type_name := ""
+	geometry_screen_radius_count := 0
 	text := source
 	for raw_line in strings.split_lines_iterator(&text) {
 		line := strip_comment(strings.trim_space(raw_line))
@@ -37,6 +38,10 @@ parse_project_resource :: proc(
 		}
 		if line == "[material]" {
 			section = "material"
+			continue
+		}
+		if line == "[geometry_lod]" {
+			section = "geometry_lod"
 			continue
 		}
 		if len(line) > 0 && line[0] == '[' {
@@ -77,6 +82,31 @@ parse_project_resource :: proc(
 			}
 			continue
 		}
+		if section == "geometry_lod" {
+			switch key {
+				case "radius":
+					resource.geometry_lod.radius, found = parse_f32(value)
+				case "subdivisions":
+					resource.geometry_lod.lod_count, found = parse_fixed_int_list(
+						value,
+						&resource.geometry_lod.subdivisions,
+					)
+				case "screen_radii":
+					geometry_screen_radius_count, found = parse_fixed_f32_list(
+						value,
+						&resource.geometry_lod.screen_radii,
+					)
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown geometry_lod field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid geometry_lod.%s", key))
+			}
+			continue
+		}
 		switch key {
 			case "id":
 				raw_id, string_ok := parse_basic_string(value)
@@ -105,23 +135,71 @@ parse_project_resource :: proc(
 	if type_name == "" {
 		return resource, fail(.Missing_Field, "resource is missing type")
 	}
-	if type_name != "scrapbot.material" {
-		return resource, fail(
-			.Invalid_Field,
-			fmt.tprintf("unsupported resource type '%s'", type_name),
-		)
+	switch type_name {
+		case "scrapbot.material":
+			resource.kind = .Material
+		case "scrapbot.geometry_lod":
+			resource.kind = .Geometry_LOD
+		case:
+			return resource, fail(
+				.Invalid_Field,
+				fmt.tprintf("unsupported resource type '%s'", type_name),
+			)
 	}
 	if resource.name == "" {
 		return resource, fail(.Missing_Field, "resource is missing name")
 	}
-	if !finite_vec4(resource.material.base_color) {
-		return resource, fail(.Invalid_Field, "material.base_color must be finite")
-	}
-	if !finite_vec3(resource.material.emissive) ||
-	   resource.material.emissive.x < 0 ||
-	   resource.material.emissive.y < 0 ||
-	   resource.material.emissive.z < 0 {
-		return resource, fail(.Invalid_Field, "material.emissive must be finite and non-negative")
+	if resource.kind == .Material {
+		if !finite_vec4(resource.material.base_color) {
+			return resource, fail(.Invalid_Field, "material.base_color must be finite")
+		}
+		if !finite_vec3(resource.material.emissive) ||
+		   resource.material.emissive.x < 0 ||
+		   resource.material.emissive.y < 0 ||
+		   resource.material.emissive.z < 0 {
+			return resource, fail(
+				.Invalid_Field,
+				"material.emissive must be finite and non-negative",
+			)
+		}
+	} else {
+		geometry := resource.geometry_lod
+		if math.is_nan(geometry.radius) || math.is_inf(geometry.radius) || geometry.radius <= 0 {
+			return resource, fail(
+				.Invalid_Field,
+				"geometry_lod.radius must be positive and finite",
+			)
+		}
+		if geometry.lod_count < 1 {
+			return resource, fail(
+				.Missing_Field,
+				"geometry_lod.subdivisions must contain at least one level",
+			)
+		}
+		if geometry_screen_radius_count != geometry.lod_count - 1 {
+			return resource, fail(
+				.Invalid_Field,
+				"geometry_lod.screen_radii must contain one threshold between each pair of levels",
+			)
+		}
+		for subdivision in geometry.subdivisions[:geometry.lod_count] {
+			if subdivision < 0 || subdivision > 4 {
+				return resource, fail(
+					.Invalid_Field,
+					"geometry_lod.subdivisions must be between 0 and 4",
+				)
+			}
+		}
+		previous := f32(3.402823e38)
+		for radius in geometry.screen_radii[:geometry.lod_count - 1] {
+			if math.is_nan(radius) || math.is_inf(radius) || radius <= 0 || radius >= previous {
+				return resource, fail(
+					.Invalid_Field,
+					"geometry_lod.screen_radii must be positive and strictly descending",
+				)
+			}
+			previous = radius
+		}
 	}
 	return resource, ok()
 }
@@ -1402,6 +1480,70 @@ parse_vec4 :: proc(value: string) -> (out: Vec4, ok: bool) {
 	out.x, ok = parse_f32(
 		parts[0],
 	); if !ok { return out, false }; out.y, ok = parse_f32(parts[1]); if !ok { return out, false }; out.z, ok = parse_f32(parts[2]); if !ok { return out, false }; out.w, ok = parse_f32(parts[3]); return out, ok
+}
+
+parse_fixed_int_list :: proc(
+	value: string,
+	out: ^[shared.MAX_GEOMETRY_LODS]int,
+) -> (
+	count: int,
+	ok: bool,
+) {
+	if out == nil {
+		return 0, false
+	}
+	text := strings.trim_space(value)
+	if len(text) < 2 || text[0] != '[' || text[len(text) - 1] != ']' {
+		return 0, false
+	}
+	body := strings.trim_space(text[1:len(text) - 1])
+	if body == "" {
+		return 0, true
+	}
+	parts := strings.split(body, ",")
+	defer delete(parts)
+	if len(parts) > len(out^) {
+		return 0, false
+	}
+	for part, index in parts {
+		out[index], ok = parse_int(part)
+		if !ok {
+			return 0, false
+		}
+	}
+	return len(parts), true
+}
+
+parse_fixed_f32_list :: proc(
+	value: string,
+	out: ^[shared.MAX_GEOMETRY_LODS - 1]f32,
+) -> (
+	count: int,
+	ok: bool,
+) {
+	if out == nil {
+		return 0, false
+	}
+	text := strings.trim_space(value)
+	if len(text) < 2 || text[0] != '[' || text[len(text) - 1] != ']' {
+		return 0, false
+	}
+	body := strings.trim_space(text[1:len(text) - 1])
+	if body == "" {
+		return 0, true
+	}
+	parts := strings.split(body, ",")
+	defer delete(parts)
+	if len(parts) > len(out^) {
+		return 0, false
+	}
+	for part, index in parts {
+		out[index], ok = parse_f32(part)
+		if !ok {
+			return 0, false
+		}
+	}
+	return len(parts), true
 }
 
 parse_number_array :: proc(value: string, count: int) -> ([]string, bool) {text :=

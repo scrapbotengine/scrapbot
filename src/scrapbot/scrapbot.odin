@@ -666,6 +666,9 @@ init_render_resources :: proc(
 			return font_err
 		}
 	}
+	if err := resources.register_project_lod_geometries(registry, project_resources); err != "" {
+		return err
+	}
 	if err := resources.register_project_materials(registry, root, project_resources); err != "" {
 		return err
 	}
@@ -780,6 +783,10 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 		runtime.root,
 		loaded.resources[:],
 	); err != "" {
+		return err
+	}
+	if err := resources.register_project_lod_geometries(&runtime.resources, loaded.resources[:]);
+	   err != "" {
 		return err
 	}
 	return reset_scene_world(runtime.scene_path, &runtime.script_runtime, world)

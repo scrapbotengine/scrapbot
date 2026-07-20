@@ -145,12 +145,26 @@ validate_scene_resource_references :: proc(
 	}
 	known_materials := make(map[shared.Resource_UUID]bool)
 	defer delete(known_materials)
+	known_geometries := make(map[shared.Resource_UUID]bool)
+	defer delete(known_geometries)
 	for resource in resources {
 		if resource.kind == .Material {
 			known_materials[resource.id] = true
+		} else if resource.kind == .Geometry_LOD {
+			known_geometries[resource.id] = true
 		}
 	}
 	for entity in scene.entities {
+		if entity.has_geometry {
+			if resource_id, valid := shared.resource_uuid_parse(entity.geometry_resource);
+			   valid && !known_geometries[resource_id] {
+				return fmt.tprintf(
+					"scene entity '%s' references unknown geometry resource '%s'",
+					entity.name,
+					entity.geometry_resource,
+				)
+			}
+		}
 		if !entity.has_material {
 			continue
 		}

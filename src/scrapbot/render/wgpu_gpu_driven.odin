@@ -2,9 +2,12 @@ package render
 
 import resources "../resources"
 import shared "../shared"
+import ui "../ui"
 import "core:math"
 import "core:slice"
 import "vendor:wgpu"
+
+WGPU_INSTANCE_UPLOAD_MERGE_GAP :: 8
 
 wgpu_align_visible_capacity :: proc(count: u32) -> u32 {
 	return(
@@ -45,7 +48,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{
 			binding = 0,
 			visibility = {.Vertex, .Fragment},
-			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Render_Uniform))},
+			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_GPU_Render_Uniform))},
 		},
 		{
 			binding = 1,
@@ -79,7 +82,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{
 			binding = 0,
 			visibility = {.Vertex},
-			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Render_Uniform))},
+			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_GPU_Render_Uniform))},
 		},
 		{
 			binding = 3,
@@ -166,8 +169,8 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = .None},
 			depthStencil = &wgpu.DepthStencilState {
 				format = .Depth24Plus,
-				depthWriteEnabled = .True,
-				depthCompare = .Less,
+				depthWriteEnabled = .False,
+				depthCompare = .LessEqual,
 			},
 			multisample = {count = 1, mask = 0xFFFF_FFFF},
 			fragment = &fragment_state,
@@ -175,6 +178,40 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	)
 	if renderer.gpu_driven_pipeline == nil {
 		return "failed to create GPU-driven render pipeline"
+	}
+	renderer.gpu_driven_depth_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot GPU-Driven Depth Prepass Pipeline Layout",
+			bindGroupLayoutCount = 1,
+			bindGroupLayouts = &renderer.gpu_driven_world_bind_group_layout,
+		},
+	)
+	if renderer.gpu_driven_depth_pipeline_layout == nil {
+		return "failed to create GPU-driven depth prepass pipeline layout"
+	}
+	renderer.gpu_driven_depth_pipeline = wgpu.DeviceCreateRenderPipeline(
+		renderer.device,
+		&wgpu.RenderPipelineDescriptor {
+			label = "Scrapbot GPU-Driven Depth Prepass Pipeline",
+			layout = renderer.gpu_driven_depth_pipeline_layout,
+			vertex = {
+				module = renderer.gpu_driven_shader,
+				entryPoint = "depth_vs",
+				bufferCount = 1,
+				buffers = &vertex_buffer_layout,
+			},
+			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = .None},
+			depthStencil = &wgpu.DepthStencilState {
+				format = .Depth24Plus,
+				depthWriteEnabled = .True,
+				depthCompare = .Less,
+			},
+			multisample = {count = 1, mask = 0xFFFF_FFFF},
+		},
+	)
+	if renderer.gpu_driven_depth_pipeline == nil {
+		return "failed to create GPU-driven depth prepass pipeline"
 	}
 	renderer.gpu_driven_shadow_pipeline = wgpu.DeviceCreateRenderPipeline(
 		renderer.device,
@@ -226,6 +263,12 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Compute},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_GPU_Cull_Uniform))},
 		},
+		{
+			binding = 7,
+			visibility = {.Compute},
+			texture = {sampleType = .UnfilterableFloat, viewDimension = ._2D},
+		},
+		{binding = 8, visibility = {.Compute}, buffer = {type = .Storage}},
 	}
 	renderer.gpu_cull_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -260,12 +303,18 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_cull_pipeline == nil {
 		return "failed to create GPU culling pipeline"
 	}
+	if hiz_err := wgpu_create_hiz_pipelines(renderer); hiz_err != "" {
+		return hiz_err
+	}
+	if hiz_err := wgpu_ensure_hiz_targets(renderer, 1, 1); hiz_err != "" {
+		return hiz_err
+	}
 
 	instance_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_GPU_Instance))
-	visible_entries := WGPU_MAX_GPU_INSTANCES + WGPU_MAX_DRAW_BATCHES * WGPU_VISIBLE_ALIGNMENT
+	visible_entries := WGPU_MAX_GPU_INSTANCES + WGPU_INITIAL_DRAW_CAPACITY * WGPU_VISIBLE_ALIGNMENT
 	visible_bytes := u64(visible_entries) * u64(size_of(u32))
-	batch_bytes := u64(WGPU_MAX_DRAW_BATCHES) * u64(size_of(WGPU_GPU_Batch_Info))
-	indirect_bytes := u64(WGPU_MAX_DRAW_BATCHES) * u64(size_of(WGPU_Draw_Indexed_Indirect))
+	batch_bytes := u64(WGPU_INITIAL_DRAW_CAPACITY) * u64(size_of(WGPU_GPU_Batch_Info))
+	indirect_bytes := u64(WGPU_INITIAL_DRAW_CAPACITY) * u64(size_of(WGPU_Draw_Indexed_Indirect))
 	renderer.gpu_instance_buffer = wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Instance Table",
@@ -314,6 +363,18 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{.Uniform, .CopyDst},
 		u64(size_of(WGPU_GPU_Cull_Uniform)),
 	)
+	renderer.gpu_render_uniform_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Render Uniform",
+		{.Uniform, .CopyDst},
+		u64(size_of(WGPU_GPU_Render_Uniform)),
+	)
+	renderer.gpu_visibility_counter_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Visibility Counters",
+		{.Storage, .CopySrc, .CopyDst},
+		u64(size_of(WGPU_GPU_Visibility_Counters)),
+	)
 	if renderer.gpu_instance_buffer == nil ||
 	   renderer.gpu_batch_info_buffer == nil ||
 	   renderer.gpu_visible_buffer == nil ||
@@ -321,7 +382,9 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_indirect_template_buffer == nil ||
 	   renderer.gpu_indirect_buffer == nil ||
 	   renderer.gpu_shadow_indirect_buffer == nil ||
-	   renderer.gpu_cull_uniform_buffer == nil {
+	   renderer.gpu_cull_uniform_buffer == nil ||
+	   renderer.gpu_render_uniform_buffer == nil ||
+	   renderer.gpu_visibility_counter_buffer == nil {
 		return "failed to allocate GPU-driven renderer buffers"
 	}
 
@@ -337,6 +400,12 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			buffer = renderer.gpu_cull_uniform_buffer,
 			size = u64(size_of(WGPU_GPU_Cull_Uniform)),
 		},
+		{binding = 7, textureView = renderer.gpu_hiz_view},
+		{
+			binding = 8,
+			buffer = renderer.gpu_visibility_counter_buffer,
+			size = u64(size_of(WGPU_GPU_Visibility_Counters)),
+		},
 	}
 	renderer.gpu_cull_bind_group = wgpu.DeviceCreateBindGroup(
 		renderer.device,
@@ -350,6 +419,200 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_cull_bind_group == nil {
 		return "failed to create GPU culling bind group"
 	}
+	renderer.gpu_draw_capacity = WGPU_INITIAL_DRAW_CAPACITY
+	renderer.gpu_visible_buffer_capacity = visible_entries
+	if visibility_err := wgpu_create_visibility_readbacks(renderer); visibility_err != "" {
+		return visibility_err
+	}
+	return ""
+}
+
+wgpu_grow_capacity :: proc(current, required: int) -> int {
+	capacity := max(current, 1)
+	for capacity < required {
+		capacity *= 2
+	}
+	return capacity
+}
+
+wgpu_rebuild_cull_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil ||
+	   renderer.gpu_instance_buffer == nil ||
+	   renderer.gpu_batch_info_buffer == nil ||
+	   renderer.gpu_hiz_view == nil {
+		return ""
+	}
+	instance_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_GPU_Instance))
+	batch_bytes := u64(renderer.gpu_draw_capacity) * u64(size_of(WGPU_GPU_Batch_Info))
+	visible_bytes := u64(renderer.gpu_visible_buffer_capacity) * u64(size_of(u32))
+	indirect_bytes := u64(renderer.gpu_draw_capacity) * u64(size_of(WGPU_Draw_Indexed_Indirect))
+	entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, buffer = renderer.gpu_instance_buffer, size = instance_bytes},
+		{binding = 1, buffer = renderer.gpu_batch_info_buffer, size = batch_bytes},
+		{binding = 2, buffer = renderer.gpu_visible_buffer, size = visible_bytes},
+		{binding = 3, buffer = renderer.gpu_shadow_visible_buffer, size = visible_bytes},
+		{binding = 4, buffer = renderer.gpu_indirect_buffer, size = indirect_bytes},
+		{binding = 5, buffer = renderer.gpu_shadow_indirect_buffer, size = indirect_bytes},
+		{
+			binding = 6,
+			buffer = renderer.gpu_cull_uniform_buffer,
+			size = u64(size_of(WGPU_GPU_Cull_Uniform)),
+		},
+		{binding = 7, textureView = renderer.gpu_hiz_view},
+		{
+			binding = 8,
+			buffer = renderer.gpu_visibility_counter_buffer,
+			size = u64(size_of(WGPU_GPU_Visibility_Counters)),
+		},
+	}
+	bind_group := wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot GPU Culling Bind Group",
+			layout = renderer.gpu_cull_bind_group_layout,
+			entryCount = uint(len(entries)),
+			entries = raw_data(entries[:]),
+		},
+	)
+	if bind_group == nil {
+		return "failed to rebuild GPU culling bind group"
+	}
+	if renderer.gpu_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_cull_bind_group)
+	}
+	renderer.gpu_cull_bind_group = bind_group
+	return ""
+}
+
+wgpu_ensure_gpu_draw_buffers :: proc(
+	renderer: ^WGPU_Renderer,
+	required_batches, required_visible: int,
+) -> string {
+	if required_batches <= renderer.gpu_draw_capacity &&
+	   required_visible <= renderer.gpu_visible_buffer_capacity {
+		return ""
+	}
+	draw_capacity := wgpu_grow_capacity(renderer.gpu_draw_capacity, required_batches)
+	visible_capacity := wgpu_grow_capacity(renderer.gpu_visible_buffer_capacity, required_visible)
+	batch_bytes := u64(draw_capacity) * u64(size_of(WGPU_GPU_Batch_Info))
+	visible_bytes := u64(visible_capacity) * u64(size_of(u32))
+	indirect_bytes := u64(draw_capacity) * u64(size_of(WGPU_Draw_Indexed_Indirect))
+	batch_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Batch Table",
+		{.Storage, .CopyDst},
+		batch_bytes,
+	)
+	visible_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Visible Instances",
+		{.Storage, .CopyDst},
+		visible_bytes,
+	)
+	shadow_visible_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Shadow Visible Instances",
+		{.Storage, .CopyDst},
+		visible_bytes,
+	)
+	indirect_template_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Indirect Template",
+		{.CopySrc, .CopyDst},
+		indirect_bytes,
+	)
+	indirect_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Indirect Draws",
+		{.Storage, .Indirect, .CopyDst},
+		indirect_bytes,
+	)
+	shadow_indirect_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Shadow Indirect Draws",
+		{.Storage, .Indirect, .CopyDst},
+		indirect_bytes,
+	)
+	new_buffers := [?]wgpu.Buffer {
+		batch_buffer,
+		visible_buffer,
+		shadow_visible_buffer,
+		indirect_template_buffer,
+		indirect_buffer,
+		shadow_indirect_buffer,
+	}
+	for buffer in new_buffers {
+		if buffer == nil {
+			for cleanup in new_buffers {
+				if cleanup != nil {
+					wgpu.BufferRelease(cleanup)
+				}
+			}
+			return "failed to grow GPU draw database buffers"
+		}
+	}
+	instance_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_GPU_Instance))
+	cull_bind_entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, buffer = renderer.gpu_instance_buffer, size = instance_bytes},
+		{binding = 1, buffer = batch_buffer, size = batch_bytes},
+		{binding = 2, buffer = visible_buffer, size = visible_bytes},
+		{binding = 3, buffer = shadow_visible_buffer, size = visible_bytes},
+		{binding = 4, buffer = indirect_buffer, size = indirect_bytes},
+		{binding = 5, buffer = shadow_indirect_buffer, size = indirect_bytes},
+		{
+			binding = 6,
+			buffer = renderer.gpu_cull_uniform_buffer,
+			size = u64(size_of(WGPU_GPU_Cull_Uniform)),
+		},
+		{binding = 7, textureView = renderer.gpu_hiz_view},
+		{
+			binding = 8,
+			buffer = renderer.gpu_visibility_counter_buffer,
+			size = u64(size_of(WGPU_GPU_Visibility_Counters)),
+		},
+	}
+	cull_bind_group := wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot GPU Culling Bind Group",
+			layout = renderer.gpu_cull_bind_group_layout,
+			entryCount = uint(len(cull_bind_entries)),
+			entries = raw_data(cull_bind_entries[:]),
+		},
+	)
+	if cull_bind_group == nil {
+		for buffer in new_buffers {
+			wgpu.BufferRelease(buffer)
+		}
+		return "failed to grow GPU culling bind group"
+	}
+	if renderer.gpu_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_cull_bind_group)
+	}
+	old_buffers := [?]wgpu.Buffer {
+		renderer.gpu_batch_info_buffer,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_shadow_visible_buffer,
+		renderer.gpu_indirect_template_buffer,
+		renderer.gpu_indirect_buffer,
+		renderer.gpu_shadow_indirect_buffer,
+	}
+	for buffer in old_buffers {
+		if buffer != nil {
+			wgpu.BufferRelease(buffer)
+		}
+	}
+	renderer.gpu_batch_info_buffer = batch_buffer
+	renderer.gpu_visible_buffer = visible_buffer
+	renderer.gpu_shadow_visible_buffer = shadow_visible_buffer
+	renderer.gpu_indirect_template_buffer = indirect_template_buffer
+	renderer.gpu_indirect_buffer = indirect_buffer
+	renderer.gpu_shadow_indirect_buffer = shadow_indirect_buffer
+	renderer.gpu_cull_bind_group = cull_bind_group
+	renderer.gpu_draw_capacity = draw_capacity
+	renderer.gpu_visible_buffer_capacity = visible_capacity
+	renderer.gpu_draw_database_rebuild_count += 1
+	clear(&renderer.gpu_indirect_templates)
 	return ""
 }
 
@@ -381,8 +644,8 @@ wgpu_make_batch_bind_group :: proc(
 		entries := [?]wgpu.BindGroupEntry {
 			{
 				binding = 0,
-				buffer = renderer.uniform_buffer,
-				size = u64(size_of(WGPU_Render_Uniform)),
+				buffer = renderer.gpu_render_uniform_buffer,
+				size = u64(size_of(WGPU_GPU_Render_Uniform)),
 			},
 			{
 				binding = 3,
@@ -407,7 +670,11 @@ wgpu_make_batch_bind_group :: proc(
 		)
 	}
 	entries := [?]wgpu.BindGroupEntry {
-		{binding = 0, buffer = renderer.uniform_buffer, size = u64(size_of(WGPU_Render_Uniform))},
+		{
+			binding = 0,
+			buffer = renderer.gpu_render_uniform_buffer,
+			size = u64(size_of(WGPU_GPU_Render_Uniform)),
+		},
 		{binding = 1, textureView = renderer.shadow_view},
 		{binding = 2, sampler = renderer.shadow_sampler},
 		{
@@ -444,31 +711,36 @@ wgpu_sync_gpu_topology :: proc(
 	topology_changed :=
 		!renderer.gpu_topology_valid ||
 		renderer.gpu_world_uuid != render_list.world_uuid ||
-		renderer.gpu_topology_revision != render_list.topology_revision
+		renderer.gpu_topology_revision != render_list.topology_revision ||
+		renderer.draw_batch_cache.geometry_topology_revision != registry.geometry_topology_revision
 	if topology_changed {
 		wgpu_release_batch_bind_groups(&renderer.draw_batch_cache)
 	}
-	cache := wgpu_ensure_draw_batch_cache(renderer, render_list)
+	cache := wgpu_ensure_draw_batch_cache(renderer, render_list, registry)
 	if cache == nil {
 		return nil, "failed to build GPU draw batches"
 	}
 	if !topology_changed {
 		return cache, ""
 	}
-	if cache.overflowed {
-		return nil, "GPU-driven renderer exceeded its draw-batch limit"
-	}
-	batch_info: [WGPU_MAX_DRAW_BATCHES]WGPU_GPU_Batch_Info
 	visible_offset: u32
 	for batch_index in 0 ..< cache.batch_count {
 		batch := &cache.batches[batch_index]
 		batch.visible_offset = visible_offset
 		batch.visible_capacity = wgpu_align_visible_capacity(batch.instance_count)
 		visible_offset += batch.visible_capacity
-		if visible_offset >
-		   u32(WGPU_MAX_GPU_INSTANCES + WGPU_MAX_DRAW_BATCHES * WGPU_VISIBLE_ALIGNMENT) {
-			return nil, "GPU-driven renderer exceeded its visible-instance capacity"
-		}
+	}
+	if buffer_err := wgpu_ensure_gpu_draw_buffers(
+		renderer,
+		cache.batch_count,
+		int(visible_offset),
+	); buffer_err != "" {
+		return nil, buffer_err
+	}
+	batch_info := make([]WGPU_GPU_Batch_Info, cache.batch_count)
+	defer delete(batch_info)
+	for batch_index in 0 ..< cache.batch_count {
+		batch := &cache.batches[batch_index]
 		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
 		if geometry_err != "" {
 			return nil, geometry_err
@@ -501,8 +773,8 @@ wgpu_sync_gpu_topology :: proc(
 		renderer.queue,
 		renderer.gpu_batch_info_buffer,
 		0,
-		&batch_info,
-		uint(size_of(batch_info)),
+		raw_data(batch_info),
+		uint(len(batch_info) * size_of(WGPU_GPU_Batch_Info)),
 	)
 	renderer.gpu_topology_revision = render_list.topology_revision
 	renderer.gpu_world_uuid = render_list.world_uuid
@@ -510,28 +782,36 @@ wgpu_sync_gpu_topology :: proc(
 	return cache, ""
 }
 
-wgpu_build_indirect_templates :: proc(
+wgpu_update_indirect_template_cache :: proc(
+	renderer: ^WGPU_Renderer,
 	cache: ^WGPU_Draw_Batch_Cache,
 	registry: ^resources.Registry,
 ) -> (
-	[WGPU_MAX_DRAW_BATCHES]WGPU_Draw_Indexed_Indirect,
-	string,
+	changed: bool,
+	err: string,
 ) {
-	templates: [WGPU_MAX_DRAW_BATCHES]WGPU_Draw_Indexed_Indirect
-	if cache == nil {
-		return templates, "GPU draw-batch cache is not available"
+	if renderer == nil || cache == nil {
+		return false, "GPU draw-batch cache is not available"
+	}
+	if len(renderer.gpu_indirect_templates) != cache.batch_count {
+		resize(&renderer.gpu_indirect_templates, cache.batch_count)
+		changed = true
 	}
 	for batch, batch_index in cache.batches[:cache.batch_count] {
 		geometry, ok := resources.get_geometry(registry, batch.geometry)
 		if !ok {
-			return templates, "GPU draw batch references unavailable geometry"
+			return false, "GPU draw batch references unavailable geometry"
 		}
-		templates[batch_index] = {
+		template := WGPU_Draw_Indexed_Indirect {
 			index_count = u32(len(geometry.indices)),
 			first_instance = 0,
 		}
+		if renderer.gpu_indirect_templates[batch_index] != template {
+			renderer.gpu_indirect_templates[batch_index] = template
+			changed = true
+		}
 	}
-	return templates, ""
+	return
 }
 
 wgpu_refresh_indirect_templates :: proc(
@@ -539,21 +819,20 @@ wgpu_refresh_indirect_templates :: proc(
 	cache: ^WGPU_Draw_Batch_Cache,
 	registry: ^resources.Registry,
 ) -> string {
-	templates, err := wgpu_build_indirect_templates(cache, registry)
+	changed, err := wgpu_update_indirect_template_cache(renderer, cache, registry)
 	if err != "" {
 		return err
 	}
-	if templates == renderer.gpu_indirect_templates {
+	if !changed {
 		return ""
 	}
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
 		renderer.gpu_indirect_template_buffer,
 		0,
-		&templates,
-		uint(size_of(templates)),
+		raw_data(renderer.gpu_indirect_templates[:]),
+		uint(len(renderer.gpu_indirect_templates) * size_of(WGPU_Draw_Indexed_Indirect)),
 	)
-	renderer.gpu_indirect_templates = templates
 	return ""
 }
 
@@ -591,7 +870,7 @@ wgpu_build_gpu_instance :: proc(
 	instance: Render_Instance,
 	geometry: ^resources.Geometry,
 	material: ^resources.Material,
-	batch_index: int,
+	batch_indices: [shared.MAX_GEOMETRY_LODS]u32,
 ) -> WGPU_GPU_Instance {
 	color := material.desc.base_color
 	emissive := material.desc.emissive
@@ -607,9 +886,94 @@ wgpu_build_gpu_instance :: proc(
 			0,
 		},
 		bounds = wgpu_instance_bounds(instance, geometry),
-		batch_index = u32(batch_index),
+		batch_indices = batch_indices,
+		lod_screen_radii = {
+			geometry.lod_screen_radii[0],
+			geometry.lod_screen_radii[1],
+			geometry.lod_screen_radii[2],
+			0,
+		},
+		lod_count = u32(geometry.lod_count),
 		active = 1,
 	}
+}
+
+wgpu_find_draw_batch :: proc(
+	cache: ^WGPU_Draw_Batch_Cache,
+	geometry: shared.Geometry_Handle,
+	material: shared.Material_Handle,
+) -> int {
+	if cache == nil {
+		return -1
+	}
+	for batch, batch_index in cache.batches[:cache.batch_count] {
+		if batch.geometry == geometry && batch.material == material {
+			return batch_index
+		}
+	}
+	return -1
+}
+
+wgpu_rebuild_instance_batch_cache :: proc(
+	renderer: ^WGPU_Renderer,
+	cache: ^WGPU_Draw_Batch_Cache,
+	render_list: ^Render_List,
+	registry: ^resources.Registry,
+	slot_count: int,
+) -> string {
+	resize(&renderer.gpu_batch_indices_by_slot, slot_count)
+	for instance in render_list.instances {
+		if instance.slot < 0 || instance.slot >= slot_count {
+			continue
+		}
+		geometry, ok := resources.get_geometry(registry, instance.geometry.handle)
+		if !ok {
+			return "GPU instance references unavailable geometry"
+		}
+		batch_indices: [shared.MAX_GEOMETRY_LODS]u32
+		base_batch := wgpu_find_draw_batch(
+			cache,
+			instance.geometry.handle,
+			instance.material.handle,
+		)
+		if base_batch < 0 {
+			return "GPU instance is missing its draw batch"
+		}
+		batch_indices[0] = u32(base_batch)
+		for handle, lod_index in geometry.lod_handles[:geometry.lod_count] {
+			lod_batch := wgpu_find_draw_batch(cache, handle, instance.material.handle)
+			if lod_batch < 0 {
+				return "GPU LOD geometry is missing its draw batch"
+			}
+			batch_indices[lod_index + 1] = u32(lod_batch)
+		}
+		renderer.gpu_batch_indices_by_slot[instance.slot] = batch_indices
+	}
+	return ""
+}
+
+wgpu_next_instance_upload_range :: proc(
+	dirty_indices: []int,
+	start: int,
+) -> (
+	first, last, next: int,
+) {
+	first = dirty_indices[start]
+	last = first + 1
+	next = start + 1
+	for next < len(dirty_indices) {
+		slot := dirty_indices[next]
+		if slot < last {
+			next += 1
+			continue
+		}
+		if slot - last > WGPU_INSTANCE_UPLOAD_MERGE_GAP {
+			break
+		}
+		last = slot + 1
+		next += 1
+	}
+	return
 }
 
 wgpu_upload_dirty_instance_ranges :: proc(renderer: ^WGPU_Renderer, dirty_indices: []int) {
@@ -619,21 +983,8 @@ wgpu_upload_dirty_instance_ranges :: proc(renderer: ^WGPU_Renderer, dirty_indice
 	slice.sort(dirty_indices)
 	index := 0
 	for index < len(dirty_indices) {
-		first := dirty_indices[index]
-		last := first + 1
-		index += 1
-		for index < len(dirty_indices) {
-			slot := dirty_indices[index]
-			if slot < last {
-				index += 1
-				continue
-			}
-			if slot != last {
-				break
-			}
-			last += 1
-			index += 1
-		}
+		first, last, next := wgpu_next_instance_upload_range(dirty_indices, index)
+		index = next
 		count := last - first
 		byte_count := uint(count * size_of(WGPU_GPU_Instance))
 		wgpu.QueueWriteBuffer(
@@ -653,59 +1004,145 @@ wgpu_cpu_cull_counts :: proc(
 	planes: [6][4]f32,
 	batch_count: int,
 	shadow: bool = false,
-) -> [WGPU_MAX_DRAW_BATCHES]u32 {
-	counts: [WGPU_MAX_DRAW_BATCHES]u32
+	view_projection: Mat4 = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+) -> [dynamic]u32 {
+	counts := make([dynamic]u32, batch_count)
 	for instance in instances {
-		if instance.active == 0 || int(instance.batch_index) >= batch_count {
+		lod_level := wgpu_cpu_instance_lod_level(instance, view_projection)
+		batch_index := instance.batch_indices[lod_level]
+		if instance.active == 0 || int(batch_index) >= batch_count {
 			continue
 		}
 		if shadow && instance.shadow_flags[0] < 0.5 {
 			continue
 		}
 		if wgpu_sphere_visible(instance.bounds, planes) {
-			counts[instance.batch_index] += 1
+			counts[batch_index] += 1
 		}
 	}
 	return counts
+}
+
+wgpu_cpu_instance_lod_level :: proc(instance: WGPU_GPU_Instance, view_projection: Mat4) -> int {
+	if instance.lod_count == 0 {
+		return 0
+	}
+	clip_w :=
+		view_projection[3] * instance.bounds[0] +
+		view_projection[7] * instance.bounds[1] +
+		view_projection[11] * instance.bounds[2] +
+		view_projection[15]
+	if clip_w <= 0.0001 {
+		return 0
+	}
+	screen_radius := math.abs(instance.bounds[3] * view_projection[5] / clip_w) * 0.5
+	level := 0
+	radii := instance.lod_screen_radii
+	for threshold, index in radii[:int(instance.lod_count)] {
+		if screen_radius < threshold {
+			level = index + 1
+		}
+	}
+	return level
+}
+
+wgpu_hiz_reuse_allowed :: proc(
+	requested, valid, instance_data_changed: bool,
+	previous_view_projection, current_view_projection: Mat4,
+) -> bool {
+	return(
+		requested &&
+		valid &&
+		!instance_data_changed &&
+		previous_view_projection == current_view_projection \
+	)
+}
+
+wgpu_retain_render_uniform :: proc(
+	renderer: ^WGPU_Renderer,
+	uniform: WGPU_GPU_Render_Uniform,
+) -> bool {
+	if renderer.gpu_render_uniform_valid && renderer.gpu_render_uniform == uniform {
+		return false
+	}
+	renderer.gpu_render_uniform = uniform
+	renderer.gpu_render_uniform_valid = true
+	return true
+}
+
+wgpu_retain_cull_uniform :: proc(
+	renderer: ^WGPU_Renderer,
+	uniform: WGPU_GPU_Cull_Uniform,
+) -> bool {
+	if renderer.gpu_cull_uniform_valid && renderer.gpu_cull_uniform == uniform {
+		return false
+	}
+	renderer.gpu_cull_uniform = uniform
+	renderer.gpu_cull_uniform_valid = true
+	return true
 }
 
 wgpu_prepare_gpu_draw_batches :: proc(
 	renderer: ^WGPU_Renderer,
 	render_list: ^Render_List,
 	registry: ^resources.Registry,
-	width, height: u32,
+	viewport: ui.Rect,
+	target_width, target_height: u32,
 ) -> (
-	[WGPU_MAX_DRAW_BATCHES]WGPU_Draw_Batch,
+	[]WGPU_Draw_Batch,
 	int,
 	string,
 ) {
+	max_slot := -1
+	for instance in render_list.instances {
+		max_slot = max(max_slot, instance.slot)
+	}
+	if max_slot >= WGPU_MAX_GPU_INSTANCES {
+		return nil, 0, "GPU-driven renderer exceeded its instance-slot capacity"
+	}
+	slot_count := max_slot + 1
 	topology_changed :=
 		!renderer.gpu_topology_valid ||
 		renderer.gpu_world_uuid != render_list.world_uuid ||
-		renderer.gpu_topology_revision != render_list.topology_revision
+		renderer.gpu_topology_revision != render_list.topology_revision ||
+		renderer.draw_batch_cache.geometry_topology_revision != registry.geometry_topology_revision
 	cache, topology_err := wgpu_sync_gpu_topology(renderer, render_list, registry)
 	if topology_err != "" {
-		return {}, 0, topology_err
+		return nil, 0, topology_err
+	}
+	if topology_changed {
+		if batch_cache_err := wgpu_rebuild_instance_batch_cache(
+			renderer,
+			cache,
+			render_list,
+			registry,
+			slot_count,
+		); batch_cache_err != "" {
+			return nil, 0, batch_cache_err
+		}
 	}
 	if indirect_err := wgpu_refresh_indirect_templates(renderer, cache, registry);
 	   indirect_err != "" {
-		return {}, 0, indirect_err
+		return nil, 0, indirect_err
 	}
-	uniform: WGPU_Render_Uniform
+	uniform: WGPU_GPU_Render_Uniform
 	view_projection := wgpu_build_view_projection(
 		render_list.camera,
 		render_list.has_camera,
-		width,
-		height,
+		u32(viewport.width),
+		u32(viewport.height),
 	)
+	if hiz_err := wgpu_ensure_hiz_targets(renderer, target_width, target_height); hiz_err != "" {
+		return nil, 0, hiz_err
+	}
 	light_view_projection := mat4_identity()
 	if render_list.directional_light_count > 0 {
 		light_view_projection = wgpu_build_directional_light_view_projection(
 			render_list.directional_lights[0].light.direction,
 		)
 	}
-	uniform.mvp[0] = view_projection
-	uniform.shadow_mvp[0] = light_view_projection
+	uniform.view_projection = view_projection
+	uniform.shadow_view_projection = light_view_projection
 	uniform.ambient = {render_list.ambient.x, render_list.ambient.y, render_list.ambient.z, 1}
 	uniform.light_counts = {
 		u32(render_list.directional_light_count),
@@ -741,22 +1178,16 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			light.light.intensity,
 		}
 	}
-	wgpu.QueueWriteBuffer(
-		renderer.queue,
-		renderer.uniform_buffer,
-		0,
-		&uniform,
-		uint(size_of(uniform)),
-	)
+	if wgpu_retain_render_uniform(renderer, uniform) {
+		wgpu.QueueWriteBuffer(
+			renderer.queue,
+			renderer.gpu_render_uniform_buffer,
+			0,
+			&uniform,
+			uint(size_of(uniform)),
+		)
+	}
 
-	max_slot := -1
-	for instance in render_list.instances {
-		max_slot = max(max_slot, instance.slot)
-	}
-	if max_slot >= WGPU_MAX_GPU_INSTANCES {
-		return {}, 0, "GPU-driven renderer exceeded its instance-slot capacity"
-	}
-	slot_count := max_slot + 1
 	previous_slot_count := len(renderer.gpu_instance_records)
 	if slot_count > previous_slot_count {
 		resize(&renderer.gpu_instance_records, slot_count)
@@ -774,19 +1205,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		}
 		clear(&renderer.gpu_live_slots)
 	}
-	if len(renderer.gpu_batch_by_source) < len(render_list.instances) {
-		resize(&renderer.gpu_batch_by_source, len(render_list.instances))
-	}
-	batch_by_source := renderer.gpu_batch_by_source[:len(render_list.instances)]
-	for batch_index in 0 ..< cache.batch_count {
-		batch := cache.batches[batch_index]
-		first := int(batch.first_instance)
-		last := min(first + int(batch.instance_count), cache.instance_count)
-		for ordered_index in first ..< last {
-			batch_by_source[cache.source_indices[ordered_index]] = batch_index
-		}
-	}
-	for instance, source_index in render_list.instances {
+	for instance in render_list.instances {
 		if instance.slot < 0 || instance.slot >= slot_count {
 			continue
 		}
@@ -796,6 +1215,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			continue
 		}
 		slot := instance.slot
+		batch_indices := renderer.gpu_batch_indices_by_slot[slot]
 		source := WGPU_Instance_Source_State {
 			transform = instance.transform,
 			geometry = instance.geometry.handle,
@@ -804,15 +1224,17 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			material_version = material.version,
 			shadow_caster = instance.shadow_caster,
 			shadow_receiver = instance.shadow_receiver,
-			batch_index = u32(batch_by_source[source_index]),
+			batch_indices = batch_indices,
+			lod_screen_radii = {
+				geometry.lod_screen_radii[0],
+				geometry.lod_screen_radii[1],
+				geometry.lod_screen_radii[2],
+				0,
+			},
+			lod_count = u32(geometry.lod_count),
 		}
 		if !renderer.gpu_active_slots[slot] || renderer.gpu_instance_sources[slot] != source {
-			record := wgpu_build_gpu_instance(
-				instance,
-				geometry,
-				material,
-				batch_by_source[source_index],
-			)
+			record := wgpu_build_gpu_instance(instance, geometry, material, batch_indices)
 			renderer.gpu_instance_records[slot] = record
 			renderer.gpu_instance_sources[slot] = source
 			renderer.gpu_active_slots[slot] = true
@@ -822,22 +1244,44 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			append(&renderer.gpu_live_slots, slot)
 		}
 	}
+	instance_data_changed := len(renderer.gpu_dirty_indices) > 0
 	wgpu_upload_dirty_instance_ranges(renderer, renderer.gpu_dirty_indices[:])
 	renderer.gpu_slot_count = slot_count
+	renderer.gpu_hiz_requested = slot_count >= WGPU_HIZ_MIN_INSTANCES
+	hiz_reusable := wgpu_hiz_reuse_allowed(
+		renderer.gpu_hiz_requested,
+		renderer.gpu_hiz_valid,
+		instance_data_changed,
+		renderer.gpu_previous_view_projection,
+		view_projection,
+	)
+	renderer.gpu_current_view_projection = view_projection
+	renderer.gpu_hiz_occlusion_enabled = hiz_reusable
+	camera_position := Vec3{0, 2, 6}
+	if render_list.has_camera {
+		camera_position = render_list.camera.transform.position
+	}
 	cull_uniform := WGPU_GPU_Cull_Uniform {
 		camera_planes = wgpu_extract_frustum_planes(view_projection),
 		shadow_planes = wgpu_extract_frustum_planes(light_view_projection),
+		view_projection = view_projection,
+		viewport = {viewport.x, viewport.y, viewport.width, viewport.height},
+		camera_position = {camera_position.x, camera_position.y, camera_position.z, 1},
 		slot_count = u32(slot_count),
 		batch_count = u32(cache.batch_count),
+		hiz_mip_count = u32(renderer.gpu_hiz_mip_count),
+		hiz_enabled = 1 if hiz_reusable else 0,
 	}
-	wgpu.QueueWriteBuffer(
-		renderer.queue,
-		renderer.gpu_cull_uniform_buffer,
-		0,
-		&cull_uniform,
-		uint(size_of(cull_uniform)),
-	)
-	return cache.batches, cache.batch_count, ""
+	if wgpu_retain_cull_uniform(renderer, cull_uniform) {
+		wgpu.QueueWriteBuffer(
+			renderer.queue,
+			renderer.gpu_cull_uniform_buffer,
+			0,
+			&cull_uniform,
+			uint(size_of(cull_uniform)),
+		)
+	}
+	return cache.batches[:cache.batch_count], cache.batch_count, ""
 }
 
 wgpu_encode_gpu_culling :: proc(
@@ -846,8 +1290,10 @@ wgpu_encode_gpu_culling :: proc(
 	batch_count: int,
 ) -> string {
 	if batch_count <= 0 || renderer.gpu_slot_count <= 0 {
+		renderer.gpu_visibility_counters = {}
 		return ""
 	}
+	wgpu_visibility_reset(renderer)
 	copy_size := u64(batch_count) * u64(size_of(WGPU_Draw_Indexed_Indirect))
 	wgpu.CommandEncoderCopyBufferToBuffer(
 		encoder,
@@ -865,9 +1311,17 @@ wgpu_encode_gpu_culling :: proc(
 		0,
 		copy_size,
 	)
+	cull_timestamps, cull_timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Cull)
+	cull_timestamps_ptr: ^wgpu.PassTimestampWrites
+	if cull_timestamps_enabled {
+		cull_timestamps_ptr = &cull_timestamps
+	}
 	pass := wgpu.CommandEncoderBeginComputePass(
 		encoder,
-		&wgpu.ComputePassDescriptor{label = "Scrapbot GPU Visibility Pass"},
+		&wgpu.ComputePassDescriptor {
+			label = "Scrapbot GPU Visibility Pass",
+			timestampWrites = cull_timestamps_ptr,
+		},
 	)
 	if pass == nil {
 		return "failed to begin GPU visibility pass"
@@ -913,32 +1367,53 @@ wgpu_prepare_cpu_culling :: proc(
 		renderer.gpu_instance_records[:renderer.gpu_slot_count],
 		camera_planes,
 		renderer.draw_batch_cache.batch_count,
+		false,
+		view_projection,
 	)
+	defer delete(camera_counts)
 	shadow_counts := wgpu_cpu_cull_counts(
 		renderer.gpu_instance_records[:renderer.gpu_slot_count],
 		shadow_planes,
 		renderer.draw_batch_cache.batch_count,
 		true,
+		view_projection,
 	)
-	camera_cursors: [WGPU_MAX_DRAW_BATCHES]u32
-	shadow_cursors: [WGPU_MAX_DRAW_BATCHES]u32
+	defer delete(shadow_counts)
+	renderer.gpu_visibility_counters = {}
+	for count in camera_counts {
+		renderer.gpu_visibility_counters.visible_instances += count
+		renderer.gpu_visibility_counters.frustum_candidates += count
+	}
+	for count in shadow_counts {
+		renderer.gpu_visibility_counters.shadow_visible_instances += count
+	}
+	camera_cursors := make([]u32, renderer.draw_batch_cache.batch_count)
+	defer delete(camera_cursors)
+	shadow_cursors := make([]u32, renderer.draw_batch_cache.batch_count)
+	defer delete(shadow_cursors)
 	for instance, slot in renderer.gpu_instance_records[:renderer.gpu_slot_count] {
-		if instance.active == 0 ||
-		   int(instance.batch_index) >= renderer.draw_batch_cache.batch_count {
+		lod_level := wgpu_cpu_instance_lod_level(instance, view_projection)
+		batch_index := instance.batch_indices[lod_level]
+		if instance.active == 0 || int(batch_index) >= renderer.draw_batch_cache.batch_count {
 			continue
 		}
-		batch := renderer.draw_batch_cache.batches[instance.batch_index]
+		batch := renderer.draw_batch_cache.batches[batch_index]
 		if wgpu_sphere_visible(instance.bounds, camera_planes) {
-			visible[batch.visible_offset + camera_cursors[instance.batch_index]] = u32(slot)
-			camera_cursors[instance.batch_index] += 1
+			visible[batch.visible_offset + camera_cursors[batch_index]] = u32(slot)
+			camera_cursors[batch_index] += 1
+			renderer.gpu_visibility_counters.lod_visible_instances[lod_level] += 1
 		}
 		if instance.shadow_flags[0] > 0.5 && wgpu_sphere_visible(instance.bounds, shadow_planes) {
-			shadow_visible[batch.visible_offset + shadow_cursors[instance.batch_index]] = u32(slot)
-			shadow_cursors[instance.batch_index] += 1
+			shadow_visible[batch.visible_offset + shadow_cursors[batch_index]] = u32(slot)
+			shadow_cursors[batch_index] += 1
 		}
 	}
-	indirect := renderer.gpu_indirect_templates
-	shadow_indirect := renderer.gpu_indirect_templates
+	indirect := make([]WGPU_Draw_Indexed_Indirect, len(renderer.gpu_indirect_templates))
+	defer delete(indirect)
+	copy(indirect, renderer.gpu_indirect_templates[:])
+	shadow_indirect := make([]WGPU_Draw_Indexed_Indirect, len(renderer.gpu_indirect_templates))
+	defer delete(shadow_indirect)
+	copy(shadow_indirect, renderer.gpu_indirect_templates[:])
 	for batch_index in 0 ..< renderer.draw_batch_cache.batch_count {
 		indirect[batch_index].instance_count = camera_counts[batch_index]
 		shadow_indirect[batch_index].instance_count = shadow_counts[batch_index]
@@ -961,14 +1436,14 @@ wgpu_prepare_cpu_culling :: proc(
 		renderer.queue,
 		renderer.gpu_indirect_buffer,
 		0,
-		&indirect,
-		uint(size_of(indirect)),
+		raw_data(indirect),
+		uint(len(indirect) * size_of(WGPU_Draw_Indexed_Indirect)),
 	)
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
 		renderer.gpu_shadow_indirect_buffer,
 		0,
-		&shadow_indirect,
-		uint(size_of(shadow_indirect)),
+		raw_data(shadow_indirect),
+		uint(len(shadow_indirect) * size_of(WGPU_Draw_Indexed_Indirect)),
 	)
 }

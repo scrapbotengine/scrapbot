@@ -1,0 +1,66 @@
+[[entities]]
+id = "92000000-0000-4000-8000-000000000010"
+name = "Camera"
+
+[entities.transform]
+position = [0, 0, 9]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+
+[[entities]]
+id = "92000000-0000-4000-8000-000000000011"
+name = "Ambient"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
+
+[[entities]]
+id = "92000000-0000-4000-8000-000000000012"
+name = "LOD 0"
+
+[entities.transform]
+position = [-3, 0, 0]
+rotation = [0, 0, 0]
+scale = [4, 4, 4]
+
+[entities.mesh]
+primitive = "cube"
+
+[entities.geometry]
+resource = "92000000-0000-4000-8000-000000000001"
+
+[[entities]]
+id = "92000000-0000-4000-8000-000000000013"
+name = "LOD 1"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.mesh]
+primitive = "cube"
+
+[entities.geometry]
+resource = "92000000-0000-4000-8000-000000000001"
+
+[[entities]]
+id = "92000000-0000-4000-8000-000000000014"
+name = "LOD 2"
+
+[entities.transform]
+position = [3, 0, 0]
+rotation = [0, 0, 0]
+scale = [0.2, 0.2, 0.2]
+
+[entities.mesh]
+primitive = "cube"
+
+[entities.geometry]
+resource = "92000000-0000-4000-8000-000000000001"

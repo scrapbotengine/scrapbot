@@ -1,0 +1,1 @@
+-- Authored geometry LOD selection is entirely renderer-driven.

@@ -397,6 +397,9 @@ validate_world_resource_references :: proc(
 		}
 		if entity.geometry_resource != "" {
 			expected, found := resources.geometry_by_name(registry, entity.geometry_resource)
+			if resource_id, valid := shared.resource_uuid_parse(entity.geometry_resource); valid {
+				expected, found = resources.geometry_by_uuid(registry, resource_id)
+			}
 			if !found {
 				return world_integrity_failure(
 					.Resource_Reference,

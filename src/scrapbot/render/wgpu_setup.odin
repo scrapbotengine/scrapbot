@@ -143,8 +143,14 @@ wgpu_init_renderer :: proc(
 	}
 	renderer.adapter = adapter_state.adapter
 
+	timestamp_features := [?]wgpu.FeatureName{.TimestampQuery}
+	timestamp_supported := bool(wgpu.AdapterHasFeature(renderer.adapter, .TimestampQuery))
 	device_descriptor := wgpu.DeviceDescriptor {
 		label = "Scrapbot Device",
+	}
+	if timestamp_supported {
+		device_descriptor.requiredFeatureCount = uint(len(timestamp_features))
+		device_descriptor.requiredFeatures = raw_data(timestamp_features[:])
 	}
 	device_state: WGPU_Request_Device_State
 	wgpu.AdapterRequestDevice(
@@ -169,6 +175,7 @@ wgpu_init_renderer :: proc(
 	if renderer.queue == nil {
 		return renderer, "failed to get wgpu queue"
 	}
+	wgpu_create_gpu_timing(&renderer)
 	if use_surface {
 		capabilities, caps_status := wgpu.SurfaceGetCapabilities(
 			renderer.surface,
@@ -212,6 +219,10 @@ wgpu_init_renderer :: proc(
 }
 
 wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
+	if renderer.device != nil {
+		wgpu.DevicePoll(renderer.device, true)
+	}
+	wgpu_release_gpu_timing(renderer)
 	if renderer.configured {
 		wgpu.SurfaceUnconfigure(renderer.surface)
 	}
@@ -232,14 +243,17 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.ui_vertices)
 	delete(renderer.ui_overlay_vertices)
 	delete(renderer.draw_batch_cache.source_indices)
+	delete(renderer.draw_batch_cache.batches)
 	delete(renderer.gpu_instance_records)
 	delete(renderer.gpu_instance_sources)
 	delete(renderer.gpu_active_slots)
 	delete(renderer.gpu_dirty_indices)
 	delete(renderer.gpu_live_slots)
-	delete(renderer.gpu_batch_by_source)
+	delete(renderer.gpu_batch_indices_by_slot)
 	delete(renderer.gpu_cpu_visible)
 	delete(renderer.gpu_cpu_shadow_visible)
+	delete(renderer.gpu_indirect_templates)
+	wgpu_release_visibility_readbacks(renderer)
 	ecs.destroy_render_list(&renderer.render_list)
 	wgpu_release_batch_bind_groups(&renderer.draw_batch_cache)
 	if renderer.gpu_cull_bind_group != nil {
@@ -260,6 +274,12 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_driven_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_pipeline)
 	}
+	if renderer.gpu_driven_depth_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_pipeline)
+	}
+	if renderer.gpu_driven_depth_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.gpu_driven_depth_pipeline_layout)
+	}
 	if renderer.gpu_driven_shadow_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_shadow_pipeline)
 	}
@@ -278,6 +298,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_driven_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.gpu_driven_shader)
 	}
+	wgpu_release_hiz(renderer)
 	gpu_buffers := [?]wgpu.Buffer {
 		renderer.gpu_instance_buffer,
 		renderer.gpu_batch_info_buffer,
@@ -287,6 +308,8 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_indirect_buffer,
 		renderer.gpu_shadow_indirect_buffer,
 		renderer.gpu_cull_uniform_buffer,
+		renderer.gpu_render_uniform_buffer,
+		renderer.gpu_visibility_counter_buffer,
 	}
 	for buffer in gpu_buffers {
 		if buffer != nil {
@@ -306,15 +329,17 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.uniform_buffer != nil {
 		wgpu.BufferRelease(renderer.uniform_buffer)
 	}
-	for &cached in renderer.geometry_cache[:renderer.geometry_cache_count] {
+	for &cached in renderer.geometry_cache {
 		if cached.vertex_buffer != nil { wgpu.BufferRelease(cached.vertex_buffer) }
 		if cached.index_buffer != nil { wgpu.BufferRelease(cached.index_buffer) }
 	}
-	for &cached in renderer.material_cache[:renderer.material_cache_count] {
+	delete(renderer.geometry_cache)
+	for &cached in renderer.material_cache {
 		if cached.bind_group != nil { wgpu.BindGroupRelease(cached.bind_group) }
 		if cached.view != nil { wgpu.TextureViewRelease(cached.view) }
 		if cached.texture != nil { wgpu.TextureRelease(cached.texture) }
 	}
+	delete(renderer.material_cache)
 	if renderer.bind_group != nil {
 		wgpu.BindGroupRelease(renderer.bind_group)
 	}
@@ -814,7 +839,7 @@ wgpu_create_depth_texture :: proc(
 		renderer.device,
 		&wgpu.TextureDescriptor {
 			label = "Scrapbot Depth Texture",
-			usage = {.RenderAttachment},
+			usage = {.RenderAttachment, .TextureBinding},
 			dimension = ._2D,
 			size = wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 			format = .Depth24Plus,
