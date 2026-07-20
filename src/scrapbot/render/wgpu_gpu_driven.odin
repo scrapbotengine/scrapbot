@@ -237,6 +237,70 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		return "failed to create GPU-driven shadow pipeline"
 	}
 
+	transform_source := wgpu.ShaderSourceWGSL {
+		chain = {sType = .ShaderSourceWGSL},
+		code = WGPU_GPU_TRANSFORM_SHADER,
+	}
+	renderer.gpu_transform_shader = wgpu.DeviceCreateShaderModule(
+		renderer.device,
+		&wgpu.ShaderModuleDescriptor {
+			nextInChain = &transform_source,
+			label = "Scrapbot GPU Transform Shader",
+		},
+	)
+	if renderer.gpu_transform_shader == nil {
+		return "failed to create GPU transform shader"
+	}
+	transform_entries := [?]wgpu.BindGroupLayoutEntry {
+		{
+			binding = 0,
+			visibility = {.Compute},
+			buffer = {
+				type = .ReadOnlyStorage,
+				minBindingSize = u64(size_of(WGPU_GPU_Instance_Transform)),
+			},
+		},
+		{binding = 1, visibility = {.Compute}, buffer = {type = .ReadOnlyStorage}},
+		{
+			binding = 2,
+			visibility = {.Compute},
+			buffer = {type = .Storage, minBindingSize = u64(size_of(WGPU_GPU_Instance))},
+		},
+	}
+	renderer.gpu_transform_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
+		renderer.device,
+		&wgpu.BindGroupLayoutDescriptor {
+			label = "Scrapbot GPU Transform Bind Group Layout",
+			entryCount = uint(len(transform_entries)),
+			entries = raw_data(transform_entries[:]),
+		},
+	)
+	if renderer.gpu_transform_bind_group_layout == nil {
+		return "failed to create GPU transform bind group layout"
+	}
+	renderer.gpu_transform_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot GPU Transform Pipeline Layout",
+			bindGroupLayoutCount = 1,
+			bindGroupLayouts = &renderer.gpu_transform_bind_group_layout,
+		},
+	)
+	if renderer.gpu_transform_pipeline_layout == nil {
+		return "failed to create GPU transform pipeline layout"
+	}
+	renderer.gpu_transform_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot GPU Transform Pipeline",
+			layout = renderer.gpu_transform_pipeline_layout,
+			compute = {module = renderer.gpu_transform_shader, entryPoint = "expand_transforms"},
+		},
+	)
+	if renderer.gpu_transform_pipeline == nil {
+		return "failed to create GPU transform pipeline"
+	}
+
 	cull_source := wgpu.ShaderSourceWGSL {
 		chain = {sType = .ShaderSourceWGSL},
 		code = WGPU_GPU_CULL_SHADER,
@@ -311,6 +375,8 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	}
 
 	instance_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_GPU_Instance))
+	transform_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_GPU_Instance_Transform))
+	expand_slots_bytes := u64(WGPU_MAX_GPU_INSTANCES + 1) * u64(size_of(u32))
 	visible_entries := WGPU_MAX_GPU_INSTANCES + WGPU_INITIAL_DRAW_CAPACITY * WGPU_VISIBLE_ALIGNMENT
 	visible_bytes := u64(visible_entries) * u64(size_of(u32))
 	batch_bytes := u64(WGPU_INITIAL_DRAW_CAPACITY) * u64(size_of(WGPU_GPU_Batch_Info))
@@ -320,6 +386,18 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		"Scrapbot GPU Instance Table",
 		{.Storage, .CopyDst},
 		instance_bytes,
+	)
+	renderer.gpu_instance_transform_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Instance Transforms",
+		{.Storage, .CopyDst},
+		transform_bytes,
+	)
+	renderer.gpu_instance_expand_slots_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Dirty Transform Slots",
+		{.Storage, .CopyDst},
+		expand_slots_bytes,
 	)
 	renderer.gpu_batch_info_buffer = wgpu_create_gpu_buffer(
 		renderer,
@@ -376,6 +454,8 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		u64(size_of(WGPU_GPU_Visibility_Counters)),
 	)
 	if renderer.gpu_instance_buffer == nil ||
+	   renderer.gpu_instance_transform_buffer == nil ||
+	   renderer.gpu_instance_expand_slots_buffer == nil ||
 	   renderer.gpu_batch_info_buffer == nil ||
 	   renderer.gpu_visible_buffer == nil ||
 	   renderer.gpu_shadow_visible_buffer == nil ||
@@ -386,6 +466,27 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_render_uniform_buffer == nil ||
 	   renderer.gpu_visibility_counter_buffer == nil {
 		return "failed to allocate GPU-driven renderer buffers"
+	}
+	transform_bind_entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, buffer = renderer.gpu_instance_transform_buffer, size = transform_bytes},
+		{
+			binding = 1,
+			buffer = renderer.gpu_instance_expand_slots_buffer,
+			size = expand_slots_bytes,
+		},
+		{binding = 2, buffer = renderer.gpu_instance_buffer, size = instance_bytes},
+	}
+	renderer.gpu_transform_bind_group = wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot GPU Transform Bind Group",
+			layout = renderer.gpu_transform_bind_group_layout,
+			entryCount = uint(len(transform_bind_entries)),
+			entries = raw_data(transform_bind_entries[:]),
+		},
+	)
+	if renderer.gpu_transform_bind_group == nil {
+		return "failed to create GPU transform bind group"
 	}
 
 	cull_bind_entries := [?]wgpu.BindGroupEntry {
@@ -846,7 +947,7 @@ wgpu_refresh_indirect_templates :: proc(
 	return ""
 }
 
-wgpu_instance_bounds :: proc(instance: Render_Instance, geometry: ^resources.Geometry) -> [4]f32 {
+wgpu_instance_local_bounds :: proc(geometry: ^resources.Geometry) -> [4]f32 {
 	center := Vec3 {
 		(geometry.bounds.min.x + geometry.bounds.max.x) * 0.5,
 		(geometry.bounds.min.y + geometry.bounds.max.y) * 0.5,
@@ -857,23 +958,45 @@ wgpu_instance_bounds :: proc(instance: Render_Instance, geometry: ^resources.Geo
 		(geometry.bounds.max.y - geometry.bounds.min.y) * 0.5,
 		(geometry.bounds.max.z - geometry.bounds.min.z) * 0.5,
 	}
-	model := wgpu_build_model(instance.transform)
-	world_center := Vec3 {
-		model[0] * center.x + model[4] * center.y + model[8] * center.z + model[12],
-		model[1] * center.x + model[5] * center.y + model[9] * center.z + model[13],
-		model[2] * center.x + model[6] * center.y + model[10] * center.z + model[14],
-	}
 	local_radius := math.sqrt(
 		half_extent.x * half_extent.x +
 		half_extent.y * half_extent.y +
 		half_extent.z * half_extent.z,
 	)
+	return {center.x, center.y, center.z, local_radius}
+}
+
+wgpu_instance_bounds :: proc(
+	instance: Render_Instance,
+	geometry: ^resources.Geometry,
+	model: Mat4,
+) -> [4]f32 {
+	local_bounds := wgpu_instance_local_bounds(geometry)
+	center := Vec3{local_bounds[0], local_bounds[1], local_bounds[2]}
+	world_center := Vec3 {
+		model[0] * center.x + model[4] * center.y + model[8] * center.z + model[12],
+		model[1] * center.x + model[5] * center.y + model[9] * center.z + model[13],
+		model[2] * center.x + model[6] * center.y + model[10] * center.z + model[14],
+	}
 	max_scale := max(
 		math.abs(instance.transform.scale.x),
 		math.abs(instance.transform.scale.y),
 		math.abs(instance.transform.scale.z),
 	)
-	return {world_center.x, world_center.y, world_center.z, local_radius * max_scale}
+	return {world_center.x, world_center.y, world_center.z, local_bounds[3] * max_scale}
+}
+
+wgpu_build_gpu_instance_transform :: proc(
+	instance: Render_Instance,
+	geometry: ^resources.Geometry,
+) -> WGPU_GPU_Instance_Transform {
+	transform := instance.transform
+	return {
+		position = {transform.position.x, transform.position.y, transform.position.z, 0},
+		rotation = {transform.rotation.x, transform.rotation.y, transform.rotation.z, 0},
+		scale = {transform.scale.x, transform.scale.y, transform.scale.z, 0},
+		local_bounds = wgpu_instance_local_bounds(geometry),
+	}
 }
 
 wgpu_build_gpu_instance :: proc(
@@ -884,9 +1007,10 @@ wgpu_build_gpu_instance :: proc(
 ) -> WGPU_GPU_Instance {
 	color := material.desc.base_color
 	emissive := material.desc.emissive
+	model := wgpu_build_model(instance.transform)
 	return WGPU_GPU_Instance {
-		model = wgpu_build_model(instance.transform),
-		normal_model = wgpu_build_normal_model(instance.transform),
+		model = model,
+		normal_model = wgpu_build_normal_model_from_model(model, instance.transform.scale),
 		color = {color.x, color.y, color.z, color.w},
 		emissive = {emissive.x, emissive.y, emissive.z, 0},
 		shadow_flags = {
@@ -895,7 +1019,7 @@ wgpu_build_gpu_instance :: proc(
 			0,
 			0,
 		},
-		bounds = wgpu_instance_bounds(instance, geometry),
+		bounds = wgpu_instance_bounds(instance, geometry, model),
 		batch_indices = batch_indices,
 		lod_screen_radii = {
 			geometry.lod_screen_radii[0],
@@ -1012,6 +1136,41 @@ wgpu_instance_membership_matches :: proc(
 	return previous.lod_count == lod_count && previous.batch_indices == indices
 }
 
+wgpu_instance_batch_key_matches :: proc(
+	previous: WGPU_Instance_Source_State,
+	instance: Render_Instance,
+) -> bool {
+	return(
+		previous.geometry == instance.geometry.handle &&
+		previous.material == instance.material.handle \
+	)
+}
+
+wgpu_instance_static_source_matches :: proc(
+	previous, current: WGPU_Instance_Source_State,
+) -> bool {
+	comparable := previous
+	comparable.transform = current.transform
+	return comparable == current
+}
+
+wgpu_instance_update_work :: proc(
+	previous_active: bool,
+	previous, current: WGPU_Instance_Source_State,
+) -> (
+	static_changed, transform_input_changed, expand_transform: bool,
+) {
+	static_changed = !previous_active || !wgpu_instance_static_source_matches(previous, current)
+	transform_changed := !previous_active || previous.transform != current.transform
+	bounds_source_changed :=
+		!previous_active ||
+		previous.geometry != current.geometry ||
+		previous.geometry_version != current.geometry_version
+	transform_input_changed = transform_changed || bounds_source_changed
+	expand_transform = transform_changed && !static_changed
+	return
+}
+
 wgpu_rebuild_instance_batch_cache :: proc(
 	renderer: ^WGPU_Renderer,
 	cache: ^WGPU_Draw_Batch_Cache,
@@ -1097,6 +1256,52 @@ wgpu_upload_dirty_instance_ranges :: proc(renderer: ^WGPU_Renderer, dirty_indice
 	}
 }
 
+wgpu_upload_dirty_transform_ranges :: proc(renderer: ^WGPU_Renderer, dirty_indices: []int) {
+	if len(dirty_indices) == 0 {
+		return
+	}
+	slice.sort(dirty_indices)
+	index := 0
+	for index < len(dirty_indices) {
+		first, last, next := wgpu_next_instance_upload_range(dirty_indices, index)
+		index = next
+		count := last - first
+		byte_count := uint(count * size_of(WGPU_GPU_Instance_Transform))
+		wgpu.QueueWriteBuffer(
+			renderer.queue,
+			renderer.gpu_instance_transform_buffer,
+			u64(first * size_of(WGPU_GPU_Instance_Transform)),
+			raw_data(renderer.gpu_instance_transform_records[first:last]),
+			byte_count,
+		)
+		renderer.gpu_instance_upload_count += 1
+		renderer.gpu_instance_upload_bytes += u64(byte_count)
+		renderer.gpu_instance_transform_upload_count += 1
+		renderer.gpu_instance_transform_upload_bytes += u64(byte_count)
+	}
+}
+
+wgpu_upload_instance_expand_slots :: proc(renderer: ^WGPU_Renderer) {
+	if renderer == nil || len(renderer.gpu_expand_slots) == 0 {
+		return
+	}
+	clear(&renderer.gpu_expand_upload)
+	append(&renderer.gpu_expand_upload, u32(len(renderer.gpu_expand_slots)))
+	append(&renderer.gpu_expand_upload, ..renderer.gpu_expand_slots[:])
+	byte_count := uint(len(renderer.gpu_expand_upload) * size_of(u32))
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.gpu_instance_expand_slots_buffer,
+		0,
+		raw_data(renderer.gpu_expand_upload[:]),
+		byte_count,
+	)
+	renderer.gpu_instance_upload_count += 1
+	renderer.gpu_instance_upload_bytes += u64(byte_count)
+	renderer.gpu_instance_transform_upload_count += 1
+	renderer.gpu_instance_transform_upload_bytes += u64(byte_count)
+}
+
 wgpu_cpu_cull_counts :: proc(
 	instances: []WGPU_GPU_Instance,
 	planes: [6][4]f32,
@@ -1156,6 +1361,10 @@ wgpu_hiz_reuse_allowed :: proc(
 	)
 }
 
+wgpu_hiz_build_requested :: proc(slot_count: int, instance_data_changed: bool) -> bool {
+	return slot_count >= WGPU_HIZ_MIN_INSTANCES && !instance_data_changed
+}
+
 wgpu_retain_render_uniform :: proc(
 	renderer: ^WGPU_Renderer,
 	uniform: WGPU_GPU_Render_Uniform,
@@ -1186,6 +1395,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	registry: ^resources.Registry,
 	viewport: ui.Rect,
 	target_width, target_height: u32,
+	cpu_culling: bool,
 ) -> (
 	[]WGPU_Draw_Batch,
 	int,
@@ -1201,6 +1411,12 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		   registry.geometry_topology_revision {
 		for slot in render_list.dirty_instance_slots {
 			if instance, active := wgpu_render_instance_by_slot(render_list, slot); active {
+				if slot >= 0 &&
+				   slot < len(renderer.gpu_active_slots) &&
+				   renderer.gpu_active_slots[slot] &&
+				   wgpu_instance_batch_key_matches(renderer.gpu_instance_sources[slot], instance) {
+					continue
+				}
 				if _, found := wgpu_batch_indices_for_instance(
 					&renderer.draw_batch_cache,
 					instance,
@@ -1303,17 +1519,18 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	previous_slot_count := len(renderer.gpu_instance_records)
 	if slot_count > previous_slot_count {
 		resize(&renderer.gpu_instance_records, slot_count)
+		resize(&renderer.gpu_instance_transform_records, slot_count)
 		resize(&renderer.gpu_instance_sources, slot_count)
 		resize(&renderer.gpu_active_slots, slot_count)
 	}
 	clear(&renderer.gpu_dirty_indices)
+	clear(&renderer.gpu_transform_dirty_indices)
+	clear(&renderer.gpu_expand_slots)
 	reset_instances := render_list.full_instance_sync || topology_changed
 	if reset_instances {
-		for slot in 0 ..< len(renderer.gpu_active_slots) {
-			if !renderer.gpu_active_slots[slot] {
-				continue
-			}
+		for slot in 0 ..< slot_count {
 			renderer.gpu_instance_records[slot] = {}
+			renderer.gpu_instance_transform_records[slot] = {}
 			renderer.gpu_instance_sources[slot] = {}
 			renderer.gpu_active_slots[slot] = false
 			append(&renderer.gpu_dirty_indices, slot)
@@ -1356,9 +1573,14 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		if !renderer.gpu_active_slots[slot] || renderer.gpu_instance_sources[slot] != source {
 			record := wgpu_build_gpu_instance(instance, geometry, material, batch_indices)
 			renderer.gpu_instance_records[slot] = record
+			renderer.gpu_instance_transform_records[slot] = wgpu_build_gpu_instance_transform(
+				instance,
+				geometry,
+			)
 			renderer.gpu_instance_sources[slot] = source
 			renderer.gpu_active_slots[slot] = true
 			append(&renderer.gpu_dirty_indices, slot)
+			append(&renderer.gpu_transform_dirty_indices, slot)
 		}
 		if reset_instances {
 			append(&renderer.gpu_live_slots, slot)
@@ -1381,6 +1603,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 						-1,
 					)
 					renderer.gpu_instance_records[slot] = {}
+					renderer.gpu_instance_transform_records[slot] = {}
 					renderer.gpu_instance_sources[slot] = {}
 					renderer.gpu_active_slots[slot] = false
 					append(&renderer.gpu_dirty_indices, slot)
@@ -1392,9 +1615,17 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			if !geometry_ok || !material_ok {
 				continue
 			}
-			batch_indices, batches_ok := wgpu_batch_indices_for_instance(cache, instance, registry)
-			if !batches_ok {
-				return nil, 0, "GPU instance is missing its draw batch"
+			batch_indices := previous_source.batch_indices
+			if !previous_active || !wgpu_instance_batch_key_matches(previous_source, instance) {
+				batches_ok: bool
+				batch_indices, batches_ok = wgpu_batch_indices_for_instance(
+					cache,
+					instance,
+					registry,
+				)
+				if !batches_ok {
+					return nil, 0, "GPU instance is missing its draw batch"
+				}
 			}
 			source := WGPU_Instance_Source_State {
 				transform = instance.transform,
@@ -1439,15 +1670,29 @@ wgpu_prepare_gpu_draw_batches :: proc(
 					capacity_grew
 			}
 			if !previous_active || previous_source != source {
-				renderer.gpu_instance_records[slot] = wgpu_build_gpu_instance(
-					instance,
-					geometry,
-					material,
-					batch_indices,
-				)
+				static_changed, transform_input_changed, expand_transform :=
+					wgpu_instance_update_work(previous_active, previous_source, source)
+				if static_changed || cpu_culling {
+					renderer.gpu_instance_records[slot] = wgpu_build_gpu_instance(
+						instance,
+						geometry,
+						material,
+						batch_indices,
+					)
+				}
+				if static_changed {
+					append(&renderer.gpu_dirty_indices, slot)
+				}
+				if transform_input_changed {
+					renderer.gpu_instance_transform_records[slot] =
+						wgpu_build_gpu_instance_transform(instance, geometry)
+					append(&renderer.gpu_transform_dirty_indices, slot)
+				}
+				if expand_transform {
+					append(&renderer.gpu_expand_slots, u32(slot))
+				}
 				renderer.gpu_instance_sources[slot] = source
 				renderer.gpu_active_slots[slot] = true
-				append(&renderer.gpu_dirty_indices, slot)
 			}
 		}
 	}
@@ -1457,10 +1702,13 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			return nil, 0, layout_err
 		}
 	}
-	instance_data_changed := len(renderer.gpu_dirty_indices) > 0
+	instance_data_changed :=
+		len(renderer.gpu_dirty_indices) > 0 || len(renderer.gpu_transform_dirty_indices) > 0
 	wgpu_upload_dirty_instance_ranges(renderer, renderer.gpu_dirty_indices[:])
+	wgpu_upload_dirty_transform_ranges(renderer, renderer.gpu_transform_dirty_indices[:])
+	wgpu_upload_instance_expand_slots(renderer)
 	renderer.gpu_slot_count = slot_count
-	renderer.gpu_hiz_requested = slot_count >= WGPU_HIZ_MIN_INSTANCES
+	renderer.gpu_hiz_requested = wgpu_hiz_build_requested(slot_count, instance_data_changed)
 	hiz_reusable := wgpu_hiz_reuse_allowed(
 		renderer.gpu_hiz_requested,
 		renderer.gpu_hiz_valid,
@@ -1495,6 +1743,31 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		)
 	}
 	return cache.batches[:cache.batch_count], cache.batch_count, ""
+}
+
+wgpu_encode_gpu_instance_expansion :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+) -> string {
+	if renderer == nil || len(renderer.gpu_expand_slots) == 0 {
+		return ""
+	}
+	pass := wgpu.CommandEncoderBeginComputePass(
+		encoder,
+		&wgpu.ComputePassDescriptor{label = "Scrapbot GPU Transform Expansion Pass"},
+	)
+	if pass == nil {
+		return "failed to begin GPU transform expansion pass"
+	}
+	defer wgpu.ComputePassEncoderRelease(pass)
+	wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_transform_pipeline)
+	wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.gpu_transform_bind_group)
+	workgroups := u32((len(renderer.gpu_expand_slots) + 63) / 64)
+	wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, 1, 1)
+	wgpu.ComputePassEncoderEnd(pass)
+	renderer.gpu_instance_expand_dispatch_count += 1
+	renderer.gpu_instance_expanded_slot_count += u64(len(renderer.gpu_expand_slots))
+	return ""
 }
 
 wgpu_encode_gpu_culling :: proc(

@@ -9,6 +9,86 @@ import "core:math"
 import "core:testing"
 
 @(test)
+test_gpu_normal_model_can_reuse_the_model_matrix :: proc(t: ^testing.T) {
+	transform := shared.Transform_Component {
+		position = {3, -2, 7},
+		rotation = {0.31, -0.72, 1.08},
+		scale = {-2, 0.5, 3},
+	}
+	model := wgpu_build_model(transform)
+	actual := wgpu_build_normal_model_from_model(model, transform.scale)
+	expected := mat4_mul(
+		mat4_rotate_z(transform.rotation.z),
+		mat4_mul(
+			mat4_rotate_y(transform.rotation.y),
+			mat4_mul(mat4_rotate_x(transform.rotation.x), mat4_scale({-0.5, 2, 1.0 / 3.0})),
+		),
+	)
+	for value, index in actual {
+		testing.expect(t, math.abs(value - expected[index]) < 0.00001)
+	}
+}
+
+@(test)
+test_gpu_instance_transform_stream_is_compact_and_preserves_source :: proc(t: ^testing.T) {
+	transform := shared.Transform_Component {
+		position = {-4, 8, 11},
+		rotation = {0.2, -0.4, 0.7},
+		scale = {2, 0.5, 3},
+	}
+	geometry := resources.Geometry {
+		bounds = {min = {-2, -1, -3}, max = {4, 5, 7}},
+	}
+	record := wgpu_build_gpu_instance_transform(
+		shared.Render_Instance{transform = transform},
+		&geometry,
+	)
+	testing.expect_value(t, size_of(WGPU_GPU_Instance_Transform), 64)
+	testing.expect(t, size_of(WGPU_GPU_Instance_Transform) < size_of(WGPU_GPU_Instance))
+	testing.expect_value(t, record.position, [4]f32{-4, 8, 11, 0})
+	testing.expect_value(t, record.rotation, [4]f32{0.2, -0.4, 0.7, 0})
+	testing.expect_value(t, record.scale, [4]f32{2, 0.5, 3, 0})
+	testing.expect_value(t, record.local_bounds, [4]f32{1, 2, 2, math.sqrt(f32(43))})
+
+	previous_source := WGPU_Instance_Source_State {
+		transform = transform,
+	}
+	current_source := previous_source
+	current_source.transform.position.x += 5
+	testing.expect(t, wgpu_instance_static_source_matches(previous_source, current_source))
+	current_source.material_version = 2
+	testing.expect(t, !wgpu_instance_static_source_matches(previous_source, current_source))
+}
+
+@(test)
+test_gpu_instance_update_work_separates_static_and_transform_uploads :: proc(t: ^testing.T) {
+	previous := WGPU_Instance_Source_State {
+		transform = {position = {1, 2, 3}, scale = {1, 1, 1}},
+		geometry = {1, 1},
+		material = {2, 1},
+		geometry_version = 4,
+		material_version = 5,
+	}
+	static_changed, transform_changed, expand := wgpu_instance_update_work(false, {}, previous)
+	testing.expect(t, static_changed && transform_changed && !expand)
+
+	current := previous
+	current.transform.rotation.y = 0.5
+	static_changed, transform_changed, expand = wgpu_instance_update_work(true, previous, current)
+	testing.expect(t, !static_changed && transform_changed && expand)
+
+	current = previous
+	current.material_version += 1
+	static_changed, transform_changed, expand = wgpu_instance_update_work(true, previous, current)
+	testing.expect(t, static_changed && !transform_changed && !expand)
+
+	current = previous
+	current.geometry_version += 1
+	static_changed, transform_changed, expand = wgpu_instance_update_work(true, previous, current)
+	testing.expect(t, static_changed && transform_changed && !expand)
+}
+
+@(test)
 test_renderer_backend_names_parse :: proc(t: ^testing.T) {
 	backend, ok := parse_renderer_backend("null")
 	testing.expect(t, ok)
@@ -553,6 +633,13 @@ test_wgpu_hiz_reuse_requires_stable_camera_and_instance_data :: proc(t: ^testing
 	moved_camera := view_projection
 	moved_camera[12] = 1
 	testing.expect(t, !wgpu_hiz_reuse_allowed(true, true, false, view_projection, moved_camera))
+}
+
+@(test)
+test_wgpu_hiz_build_waits_for_stable_instance_data :: proc(t: ^testing.T) {
+	testing.expect(t, !wgpu_hiz_build_requested(WGPU_HIZ_MIN_INSTANCES - 1, false))
+	testing.expect(t, wgpu_hiz_build_requested(WGPU_HIZ_MIN_INSTANCES, false))
+	testing.expect(t, !wgpu_hiz_build_requested(WGPU_HIZ_MIN_INSTANCES, true))
 }
 
 @(test)

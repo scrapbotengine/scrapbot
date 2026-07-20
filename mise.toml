@@ -168,13 +168,17 @@ OVERLAY_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-editor-overlay.png"
 OVERLAY_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-editor-overlay.json"
 LOD_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-compute.png"
 LOD_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-cpu.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME"' EXIT
+TRANSFORM_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-compute.png"
+TRANSFORM_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-cpu.png"
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
 OVERLAY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/editor-overlay-lifecycle.json --ui-dump "$OVERLAY_DUMP" --framegrab "$OVERLAY_FRAME" --json)"
 LOD_COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --frames 5 --framegrab "$LOD_COMPUTE_FRAME" --json)"
 LOD_CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --cpu-culling --frames 5 --framegrab "$LOD_CPU_FRAME" --json)"
+TRANSFORM_COMPUTE_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --frames 20 --framegrab "$TRANSFORM_COMPUTE_FRAME" --json)"
+TRANSFORM_CPU_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$TRANSFORM_CPU_FRAME" --json)"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);
@@ -184,8 +188,10 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
       result.result.renderables <= 64 || stats.instance_capacity < 100000 ||
       result.result.draw_batches <= 64 || stats.draw_capacity < result.result.draw_batches ||
       stats.draw_database_rebuilds < 1 || stats.instance_slots <= 64 ||
-      stats.instance_uploads < 1 || stats.instance_uploads >= 10 ||
-      stats.instance_upload_bytes <= 0) {
+      stats.instance_uploads < 1 ||
+      stats.instance_uploads - stats.instance_transform_uploads >= 10 ||
+      stats.instance_upload_bytes <= 0 || stats.instance_transform_uploads < 1 ||
+      stats.instance_transform_upload_bytes <= 0) {
     console.error(`unexpected ${label} GPU renderer diagnostics`);
     process.exit(1);
   }
@@ -244,10 +250,25 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
   }
 }
 ' "$LOD_COMPUTE_JSON" "$LOD_CPU_JSON"
+node -e '
+for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
+  const result = JSON.parse(raw);
+  const stats = result.result?.render_stats;
+  if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+      stats?.compute_culling !== expectedCompute || stats.instance_expand_dispatches < 1 ||
+      stats.instance_expanded_slots < result.result.renderables ||
+      stats.instance_transform_upload_bytes <= 0) {
+    console.error(`unexpected ${label} GPU transform diagnostics`);
+    process.exit(1);
+  }
+}
+' "$TRANSFORM_COMPUTE_JSON" "$TRANSFORM_CPU_JSON"
 cmp "$COMPUTE_FRAME" "$CPU_FRAME"
 cmp "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME"
+cmp "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME"
 node tools/assert_png_variance.mjs "$COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$LOD_COMPUTE_FRAME"
+node tools/assert_png_variance.mjs "$TRANSFORM_COMPUTE_FRAME"
 '''
 
 [tasks.test-sanitize]

@@ -252,9 +252,13 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.draw_batch_cache.source_indices)
 	delete(renderer.draw_batch_cache.batches)
 	delete(renderer.gpu_instance_records)
+	delete(renderer.gpu_instance_transform_records)
 	delete(renderer.gpu_instance_sources)
 	delete(renderer.gpu_active_slots)
 	delete(renderer.gpu_dirty_indices)
+	delete(renderer.gpu_transform_dirty_indices)
+	delete(renderer.gpu_expand_slots)
+	delete(renderer.gpu_expand_upload)
 	delete(renderer.gpu_live_slots)
 	delete(renderer.gpu_batch_indices_by_slot)
 	delete(renderer.gpu_cpu_visible)
@@ -277,6 +281,21 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.gpu_cull_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.gpu_cull_shader)
+	}
+	if renderer.gpu_transform_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_transform_bind_group)
+	}
+	if renderer.gpu_transform_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.gpu_transform_pipeline)
+	}
+	if renderer.gpu_transform_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.gpu_transform_pipeline_layout)
+	}
+	if renderer.gpu_transform_bind_group_layout != nil {
+		wgpu.BindGroupLayoutRelease(renderer.gpu_transform_bind_group_layout)
+	}
+	if renderer.gpu_transform_shader != nil {
+		wgpu.ShaderModuleRelease(renderer.gpu_transform_shader)
 	}
 	if renderer.gpu_driven_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_pipeline)
@@ -308,6 +327,8 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	wgpu_release_hiz(renderer)
 	gpu_buffers := [?]wgpu.Buffer {
 		renderer.gpu_instance_buffer,
+		renderer.gpu_instance_transform_buffer,
+		renderer.gpu_instance_expand_slots_buffer,
 		renderer.gpu_batch_info_buffer,
 		renderer.gpu_visible_buffer,
 		renderer.gpu_shadow_visible_buffer,

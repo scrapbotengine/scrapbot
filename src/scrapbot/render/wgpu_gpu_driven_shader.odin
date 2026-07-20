@@ -1,5 +1,113 @@
 package render
 
+WGPU_GPU_TRANSFORM_SHADER :: `
+struct GPU_Instance_Transform {
+	position: vec4<f32>,
+	rotation: vec4<f32>,
+	scale: vec4<f32>,
+	local_bounds: vec4<f32>,
+};
+
+struct GPU_Instance {
+	model: mat4x4<f32>,
+	normal_model: mat4x4<f32>,
+	color: vec4<f32>,
+	emissive: vec4<f32>,
+	shadow_flags: vec4<f32>,
+	bounds: vec4<f32>,
+	batch_indices: array<u32, 4>,
+	lod_screen_radii: array<f32, 4>,
+	lod_count: u32,
+	enabled: u32,
+	padding: vec2<u32>,
+};
+
+@group(0) @binding(0) var<storage, read> transforms: array<GPU_Instance_Transform>;
+@group(0) @binding(1) var<storage, read> dirty_slots: array<u32>;
+@group(0) @binding(2) var<storage, read_write> instances: array<GPU_Instance>;
+
+fn rotation_x(angle: f32) -> mat4x4<f32> {
+	let c = cos(angle);
+	let s = sin(angle);
+	return mat4x4<f32>(
+		vec4<f32>(1.0, 0.0, 0.0, 0.0),
+		vec4<f32>(0.0, c, s, 0.0),
+		vec4<f32>(0.0, -s, c, 0.0),
+		vec4<f32>(0.0, 0.0, 0.0, 1.0)
+	);
+}
+
+fn rotation_y(angle: f32) -> mat4x4<f32> {
+	let c = cos(angle);
+	let s = sin(angle);
+	return mat4x4<f32>(
+		vec4<f32>(c, 0.0, -s, 0.0),
+		vec4<f32>(0.0, 1.0, 0.0, 0.0),
+		vec4<f32>(s, 0.0, c, 0.0),
+		vec4<f32>(0.0, 0.0, 0.0, 1.0)
+	);
+}
+
+fn rotation_z(angle: f32) -> mat4x4<f32> {
+	let c = cos(angle);
+	let s = sin(angle);
+	return mat4x4<f32>(
+		vec4<f32>(c, s, 0.0, 0.0),
+		vec4<f32>(-s, c, 0.0, 0.0),
+		vec4<f32>(0.0, 0.0, 1.0, 0.0),
+		vec4<f32>(0.0, 0.0, 0.0, 1.0)
+	);
+}
+
+fn scale_matrix(value: vec3<f32>) -> mat4x4<f32> {
+	return mat4x4<f32>(
+		vec4<f32>(value.x, 0.0, 0.0, 0.0),
+		vec4<f32>(0.0, value.y, 0.0, 0.0),
+		vec4<f32>(0.0, 0.0, value.z, 0.0),
+		vec4<f32>(0.0, 0.0, 0.0, 1.0)
+	);
+}
+
+@compute @workgroup_size(64)
+fn expand_transforms(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let dirty_count = dirty_slots[0];
+	if (invocation.x >= dirty_count) {
+		return;
+	}
+	let slot = dirty_slots[invocation.x + 1u];
+	let transform = transforms[slot];
+	let rotation = rotation_z(transform.rotation.z) *
+		rotation_y(transform.rotation.y) *
+		rotation_x(transform.rotation.x);
+	let translation = mat4x4<f32>(
+		vec4<f32>(1.0, 0.0, 0.0, 0.0),
+		vec4<f32>(0.0, 1.0, 0.0, 0.0),
+		vec4<f32>(0.0, 0.0, 1.0, 0.0),
+		vec4<f32>(transform.position.xyz, 1.0)
+	);
+	let model = translation * rotation * scale_matrix(transform.scale.xyz);
+	var inverse_scale = vec3<f32>(0.0);
+	if (abs(transform.scale.x) > 0.000001) {
+		inverse_scale.x = 1.0 / transform.scale.x;
+	}
+	if (abs(transform.scale.y) > 0.000001) {
+		inverse_scale.y = 1.0 / transform.scale.y;
+	}
+	if (abs(transform.scale.z) > 0.000001) {
+		inverse_scale.z = 1.0 / transform.scale.z;
+	}
+	let local_center = vec4<f32>(transform.local_bounds.xyz, 1.0);
+	let world_center = model * local_center;
+	let world_radius = transform.local_bounds.w * max(
+		max(abs(transform.scale.x), abs(transform.scale.y)),
+		abs(transform.scale.z)
+	);
+	instances[slot].model = model;
+	instances[slot].normal_model = rotation * scale_matrix(inverse_scale);
+	instances[slot].bounds = vec4<f32>(world_center.xyz, world_radius);
+}
+`
+
 WGPU_GPU_DRIVEN_SHADER :: `
 struct Render_Uniform {
 	view_projection: mat4x4<f32>,

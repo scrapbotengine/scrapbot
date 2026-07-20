@@ -111,17 +111,32 @@ wgpu_build_model :: proc(transform: shared.Transform_Component) -> Mat4 {
 }
 
 wgpu_build_normal_model :: proc(transform: shared.Transform_Component) -> Mat4 {
+	return wgpu_build_normal_model_from_model(wgpu_build_model(transform), transform.scale)
+}
+
+wgpu_build_normal_model_from_model :: proc(model: Mat4, scale: Vec3) -> Mat4 {
 	inverse_scale := Vec3{}
-	if math.abs(transform.scale.x) > 0.000001 { inverse_scale.x = 1 / transform.scale.x }
-	if math.abs(transform.scale.y) > 0.000001 { inverse_scale.y = 1 / transform.scale.y }
-	if math.abs(transform.scale.z) > 0.000001 { inverse_scale.z = 1 / transform.scale.z }
-	return mat4_mul(
-		mat4_rotate_z(transform.rotation.z),
-		mat4_mul(
-			mat4_rotate_y(transform.rotation.y),
-			mat4_mul(mat4_rotate_x(transform.rotation.x), mat4_scale(inverse_scale)),
-		),
-	)
+	if math.abs(scale.x) > 0.000001 { inverse_scale.x = 1 / (scale.x * scale.x) }
+	if math.abs(scale.y) > 0.000001 { inverse_scale.y = 1 / (scale.y * scale.y) }
+	if math.abs(scale.z) > 0.000001 { inverse_scale.z = 1 / (scale.z * scale.z) }
+	return Mat4 {
+		model[0] * inverse_scale.x,
+		model[1] * inverse_scale.x,
+		model[2] * inverse_scale.x,
+		0,
+		model[4] * inverse_scale.y,
+		model[5] * inverse_scale.y,
+		model[6] * inverse_scale.y,
+		0,
+		model[8] * inverse_scale.z,
+		model[9] * inverse_scale.z,
+		model[10] * inverse_scale.z,
+		0,
+		0,
+		0,
+		0,
+		1,
+	}
 }
 
 wgpu_build_directional_light_view_projection :: proc(direction: Vec3) -> Mat4 {

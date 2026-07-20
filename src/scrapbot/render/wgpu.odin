@@ -130,6 +130,14 @@ WGPU_GPU_Instance :: struct {
 }
 #assert(size_of(WGPU_GPU_Instance) == 240)
 
+WGPU_GPU_Instance_Transform :: struct {
+	position: [4]f32,
+	rotation: [4]f32,
+	scale: [4]f32,
+	local_bounds: [4]f32,
+}
+#assert(size_of(WGPU_GPU_Instance_Transform) == 64)
+
 WGPU_GPU_Cull_Uniform :: struct {
 	camera_planes: [6][4]f32,
 	shadow_planes: [6][4]f32,
@@ -277,6 +285,11 @@ WGPU_Renderer :: struct {
 	gpu_cull_pipeline_layout: wgpu.PipelineLayout,
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
+	gpu_transform_shader: wgpu.ShaderModule,
+	gpu_transform_pipeline: wgpu.ComputePipeline,
+	gpu_transform_pipeline_layout: wgpu.PipelineLayout,
+	gpu_transform_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_transform_bind_group: wgpu.BindGroup,
 	gpu_hiz_shader: wgpu.ShaderModule,
 	gpu_hiz_downsample_shader: wgpu.ShaderModule,
 	gpu_hiz_first_pipeline: wgpu.ComputePipeline,
@@ -299,6 +312,8 @@ WGPU_Renderer :: struct {
 	gpu_previous_view_projection: Mat4,
 	gpu_current_view_projection: Mat4,
 	gpu_instance_buffer: wgpu.Buffer,
+	gpu_instance_transform_buffer: wgpu.Buffer,
+	gpu_instance_expand_slots_buffer: wgpu.Buffer,
 	gpu_batch_info_buffer: wgpu.Buffer,
 	gpu_visible_buffer: wgpu.Buffer,
 	gpu_shadow_visible_buffer: wgpu.Buffer,
@@ -313,9 +328,13 @@ WGPU_Renderer :: struct {
 	gpu_visibility_active_slot: int,
 	gpu_visibility_counters: WGPU_GPU_Visibility_Counters,
 	gpu_instance_records: [dynamic]WGPU_GPU_Instance,
+	gpu_instance_transform_records: [dynamic]WGPU_GPU_Instance_Transform,
 	gpu_instance_sources: [dynamic]WGPU_Instance_Source_State,
 	gpu_active_slots: [dynamic]bool,
 	gpu_dirty_indices: [dynamic]int,
+	gpu_transform_dirty_indices: [dynamic]int,
+	gpu_expand_slots: [dynamic]u32,
+	gpu_expand_upload: [dynamic]u32,
 	gpu_live_slots: [dynamic]int,
 	gpu_batch_indices_by_slot: [dynamic][shared.MAX_GEOMETRY_LODS]u32,
 	gpu_cpu_visible: [dynamic]u32,
@@ -331,6 +350,10 @@ WGPU_Renderer :: struct {
 	gpu_topology_valid: bool,
 	gpu_instance_upload_count: u64,
 	gpu_instance_upload_bytes: u64,
+	gpu_instance_transform_upload_count: u64,
+	gpu_instance_transform_upload_bytes: u64,
+	gpu_instance_expand_dispatch_count: u64,
+	gpu_instance_expanded_slot_count: u64,
 	gpu_render_uniform: WGPU_GPU_Render_Uniform,
 	gpu_render_uniform_valid: bool,
 	gpu_cull_uniform: WGPU_GPU_Cull_Uniform,
@@ -1526,12 +1549,14 @@ wgpu_draw_frame :: proc(
 		viewport,
 		renderer.width,
 		renderer.height,
+		config.cpu_culling,
 	)
 	if prepare_err != "" {
 		return false, false, prepare_err
 	}
 	if config.cpu_culling {
 		renderer.gpu_hiz_occlusion_enabled = false
+		renderer.gpu_hiz_requested = false
 		wgpu_prepare_cpu_culling(
 			renderer,
 			&renderer.render_list,
@@ -1551,6 +1576,10 @@ wgpu_draw_frame :: proc(
 		config.stats.visible_buffer_capacity = renderer.gpu_visible_buffer_capacity
 		config.stats.instance_uploads = renderer.gpu_instance_upload_count
 		config.stats.instance_upload_bytes = renderer.gpu_instance_upload_bytes
+		config.stats.instance_transform_uploads = renderer.gpu_instance_transform_upload_count
+		config.stats.instance_transform_upload_bytes = renderer.gpu_instance_transform_upload_bytes
+		config.stats.instance_expand_dispatches = renderer.gpu_instance_expand_dispatch_count
+		config.stats.instance_expanded_slots = renderer.gpu_instance_expanded_slot_count
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
@@ -1567,6 +1596,9 @@ wgpu_draw_frame :: proc(
 	wgpu_gpu_timing_begin_frame(renderer)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
+	}
+	if err = wgpu_encode_gpu_instance_expansion(renderer, encoder); err != "" {
+		return false, false, err
 	}
 	if !config.cpu_culling {
 		if err = wgpu_encode_gpu_culling(renderer, encoder, batch_count); err != "" {
@@ -1693,12 +1725,14 @@ wgpu_render_offscreen_frame :: proc(
 		viewport,
 		width,
 		height,
+		config.cpu_culling,
 	)
 	if prepare_err != "" {
 		return prepare_err
 	}
 	if config.cpu_culling {
 		renderer.gpu_hiz_occlusion_enabled = false
+		renderer.gpu_hiz_requested = false
 		wgpu_prepare_cpu_culling(
 			renderer,
 			&renderer.render_list,
@@ -1718,6 +1752,10 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.visible_buffer_capacity = renderer.gpu_visible_buffer_capacity
 		config.stats.instance_uploads = renderer.gpu_instance_upload_count
 		config.stats.instance_upload_bytes = renderer.gpu_instance_upload_bytes
+		config.stats.instance_transform_uploads = renderer.gpu_instance_transform_upload_count
+		config.stats.instance_transform_upload_bytes = renderer.gpu_instance_transform_upload_bytes
+		config.stats.instance_expand_dispatches = renderer.gpu_instance_expand_dispatch_count
+		config.stats.instance_expanded_slots = renderer.gpu_instance_expanded_slot_count
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
@@ -1734,6 +1772,9 @@ wgpu_render_offscreen_frame :: proc(
 	wgpu_gpu_timing_begin_frame(renderer)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
+	}
+	if err := wgpu_encode_gpu_instance_expansion(renderer, encoder); err != "" {
+		return err
 	}
 	if !config.cpu_culling {
 		if err := wgpu_encode_gpu_culling(renderer, encoder, batch_count); err != "" {

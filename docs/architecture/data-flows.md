@@ -44,9 +44,16 @@ Queries start from the smallest applicable custom-component active set. Systems 
 ```text
 typed ECS/resource mutation
         │
-exact render dirty queue ──> retained backend-neutral render list
+        ├─ membership/resource eligibility ─> structural render queue
+        └─ Transform/value mutation ─────────> exact extraction queue
+                                                │
+                                  retained backend-neutral render list
                                       │
                            dirty stable render slots
+                                      │
+              static instance writes or compact transform writes
+                                      │
+                  dirty-only GPU transform expansion
                                       │
                       persistent WGPU instance/draw database
                                       │
@@ -55,7 +62,7 @@ exact render dirty queue ──> retained backend-neutral render list
                        retained UI streams + presentation
 ```
 
-Cameras and bounded lights are compact frame inputs. Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal.
+Cameras and bounded lights are compact frame inputs. Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. WGPU reuses retained batch membership for Transform-only changes, uploads a compact position/rotation/scale/local-bounds record for each dirty slot, and expands only those slots into model matrices, normal matrices, and world bounds on the GPU before culling. Static instance fields remain resident unless their own sources change.
 
 ## Performance diagnostics
 

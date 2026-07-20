@@ -16,12 +16,12 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Retained UI hierarchy, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components | Structural dirty queue plus independent project/editor layout and paint revisions. |
 | `scrapbot.ui_state` components | UI reconciler | Derived, renderer-owned | Targeted interaction-dirty queue and retained node state; project code reads only. |
 | Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership and resource resolution | Structural dirty queue, exact render-mutation queue, and resource revisions. |
-| GPU instance table, draw database, visibility, indirect args, pipelines, resource caches | WGPU backend | Derived backend state | Dirty render slots, batch-key/topology revisions, geometric capacity growth, and backend lifetime. |
+| GPU compact transform stream, expanded instance table, draw database, visibility, indirect args, pipelines, resource caches | WGPU backend | Derived backend state | Exact dirty render slots update compact transform inputs or static fields; a dirty-only compute pass expands matrices and bounds before culling. Batch-key/topology revisions, geometric capacity growth, and backend lifetime govern full rebuilds. |
 | Project/editor/overlay UI vertex buffers | WGPU backend | Derived from UI output streams | Independent monotonic stream revisions; stable streams retain CPU/GPU buffers. |
 | System profiler snapshot | Root runtime | Derived diagnostic state | Samples every frame, rolls over 50 frames, publishes every five frames. |
 | Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames; renderer and mutation-maintained world counters publish every five frames under one revision. |
 | Live entity origin counters | ECS world | Derived from entity lifecycle | Incremented on spawn and decremented on despawn; diagnostics read them without scanning entity capacity. |
-| Editor browsers and inspector snapshots | Editor UI composition | Derived tooling view | Selection/revision changes plus 5 Hz browser and running-value cadence; stopped values remain change-driven, focused inputs retain staged text, and active scrubs defer unrelated refresh. |
+| Editor browsers and inspector snapshots | Editor UI composition | Derived tooling view | The entity browser contains authored entities plus an explicitly selected runtime entity. Selection or explicit structural invalidation rebuilds it; the 5 Hz running-value cadence refreshes inspector values without rematerializing browser rows. Stopped values remain change-driven, focused inputs retain staged text, and active scrubs defer unrelated refresh. |
 | Generated Luau declarations and native build products | `.scrapbot/` and build directories | Derived products | Regenerated from schemas/source and never hand-edited as authority. |
 
 ## Stable-frame invariant
@@ -33,6 +33,8 @@ An ordinary unchanged frame must not:
 - hash complete output merely to learn that it did not change;
 - regenerate unchanged CPU/GPU vertices or instance records;
 - upload unchanged buffers.
+
+Ordinary Transform value writes enqueue exact render extraction only. Component membership, resource binding, and render eligibility changes additionally enqueue structural reconciliation. Runtime slot and scene-order allocation are monotonic or free-list based and must not scan historical entity capacity per spawn.
 
 Accept full bootstrap/rebuild work at explicit boundaries such as initial world construction, world replacement, resource topology changes, or geometrically growing backend storage. Document any new stable-frame exception in the relevant ADR/FDR and protect it with deterministic work counters rather than wall-clock thresholds.
 
