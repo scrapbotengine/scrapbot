@@ -197,7 +197,8 @@ wgpu_init_renderer :: proc(
 				break
 			}
 		}
-		renderer.present_mode = capabilities.presentModes[0]
+		// FIFO is guaranteed by WebGPU and provides the window loop's frame pacing.
+		renderer.present_mode = .Fifo
 		renderer.alpha_mode = capabilities.alphaModes[0]
 	} else {
 		renderer.format = offscreen_format

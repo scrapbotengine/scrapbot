@@ -2070,7 +2070,6 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		if config.ui_driver != nil && ui.diagnostic_driver_is_complete(config.ui_driver) {
 			break
 		}
-		time.sleep(16 * time.Millisecond)
 	}
 	if config.ui_driver != nil && !ui.diagnostic_driver_is_complete(config.ui_driver) {
 		return fmt.tprintf(

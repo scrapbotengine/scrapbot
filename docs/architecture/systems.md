@@ -149,6 +149,8 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 ## Frame order
 
+The windowed WGPU core loop configures and acquires its FIFO-paced presentation surface before the profiled system frame. Display waiting therefore contributes to whole-frame diagnostics without appearing as an engine system.
+
 1. Begin the profiling sample and process editor transport/save/revert requests.
 2. Advance project time and execute the cached schedule plan when playback permits it.
 3. Run editor camera, gizmo/overlay, ECS UI, and requested picking.
