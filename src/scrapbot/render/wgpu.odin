@@ -1490,6 +1490,7 @@ wgpu_draw_frame :: proc(
 	if texture == nil {
 		return false, false, "wgpu surface returned no texture"
 	}
+	active_frame_start := time.tick_now()
 
 	view := wgpu.TextureCreateView(texture)
 	if view == nil {
@@ -1650,6 +1651,7 @@ wgpu_draw_frame :: proc(
 		config.stats,
 		world,
 		delta_time,
+		frame_active_seconds(active_frame_start),
 	)
 	commit_system_profile_frame(config)
 
@@ -1668,6 +1670,7 @@ wgpu_render_offscreen_frame :: proc(
 	height: u32 = 0,
 	config: ^Run_Config = nil,
 ) -> string {
+	active_frame_start := time.tick_now()
 	begin_system_profile_frame(config)
 	frame_start := begin_runtime_frame(config)
 	if config != nil {
@@ -1825,6 +1828,7 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats,
 		world,
 		1.0 / 60.0,
+		frame_active_seconds(active_frame_start),
 	)
 	commit_system_profile_frame(config)
 	return ""

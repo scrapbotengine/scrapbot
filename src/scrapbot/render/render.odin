@@ -90,8 +90,10 @@ PERFORMANCE_DIAGNOSTICS_ROLLING_WINDOW_FRAMES :: 50
 
 Performance_Diagnostics_Accumulator :: struct {
 	snapshot: shared.Performance_Diagnostics,
-	frame_ms_samples: [PERFORMANCE_DIAGNOSTICS_ROLLING_WINDOW_FRAMES]f64,
-	frame_ms_total: f64,
+	active_frame_ms_samples: [PERFORMANCE_DIAGNOSTICS_ROLLING_WINDOW_FRAMES]f64,
+	active_frame_ms_total: f64,
+	frame_interval_ms_samples: [PERFORMANCE_DIAGNOSTICS_ROLLING_WINDOW_FRAMES]f64,
+	frame_interval_ms_total: f64,
 	sample_cursor: int,
 	sample_count: int,
 	frames_since_publish: int,
@@ -172,18 +174,25 @@ performance_diagnostics_commit_frame :: proc(
 	accumulator: ^Performance_Diagnostics_Accumulator,
 	stats: ^Render_Stats,
 	world: ^World,
-	delta_seconds: f32,
+	frame_interval_seconds: f32,
+	active_frame_seconds: f32,
 ) {
 	if accumulator == nil || stats == nil || world == nil {
 		return
 	}
-	frame_ms := f64(max(delta_seconds, 0)) * 1000
-	previous := f64(0)
+	active_frame_ms := f64(max(active_frame_seconds, 0)) * 1000
+	frame_interval_ms := f64(max(frame_interval_seconds, 0)) * 1000
+	previous_active_frame_ms := f64(0)
+	previous_frame_interval_ms := f64(0)
 	if accumulator.sample_count == PERFORMANCE_DIAGNOSTICS_ROLLING_WINDOW_FRAMES {
-		previous = accumulator.frame_ms_samples[accumulator.sample_cursor]
+		previous_active_frame_ms = accumulator.active_frame_ms_samples[accumulator.sample_cursor]
+		previous_frame_interval_ms =
+			accumulator.frame_interval_ms_samples[accumulator.sample_cursor]
 	}
-	accumulator.frame_ms_samples[accumulator.sample_cursor] = frame_ms
-	accumulator.frame_ms_total += frame_ms - previous
+	accumulator.active_frame_ms_samples[accumulator.sample_cursor] = active_frame_ms
+	accumulator.active_frame_ms_total += active_frame_ms - previous_active_frame_ms
+	accumulator.frame_interval_ms_samples[accumulator.sample_cursor] = frame_interval_ms
+	accumulator.frame_interval_ms_total += frame_interval_ms - previous_frame_interval_ms
 	accumulator.sample_cursor =
 		(accumulator.sample_cursor + 1) % PERFORMANCE_DIAGNOSTICS_ROLLING_WINDOW_FRAMES
 	accumulator.sample_count = min(
@@ -194,11 +203,13 @@ performance_diagnostics_commit_frame :: proc(
 	if accumulator.frames_since_publish < PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES {
 		return
 	}
-	average_frame_ms := accumulator.frame_ms_total / f64(accumulator.sample_count)
+	average_active_frame_ms := accumulator.active_frame_ms_total / f64(accumulator.sample_count)
+	average_frame_interval_ms :=
+		accumulator.frame_interval_ms_total / f64(accumulator.sample_count)
 	snapshot := &accumulator.snapshot
-	snapshot.frame_ms = average_frame_ms
-	if average_frame_ms > 0 {
-		snapshot.fps = 1000 / average_frame_ms
+	snapshot.frame_ms = average_active_frame_ms
+	if average_frame_interval_ms > 0 {
+		snapshot.fps = 1000 / average_frame_interval_ms
 	}
 	snapshot.gpu_frame_ms = stats.gpu_frame_ms
 	snapshot.gpu_timestamps_valid = stats.gpu_timestamps_valid
@@ -334,6 +345,7 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				frame_count = 1
 			}
 			for i in 0 ..< frame_count {
+				active_frame_start := time.tick_now()
 				begin_system_profile_frame(&run_config)
 				frame_start := begin_runtime_frame(&run_config)
 				if err = run_frame_system(&run_config, world, 1.0 / 60.0); err != "" {
@@ -359,6 +371,7 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 					run_config.stats,
 					world,
 					1.0 / 60.0,
+					frame_active_seconds(active_frame_start),
 				)
 				render_phases := [8]Engine_System_Profile_Phase {
 					Engine_System_Profile_Phase.Render_Cull,
@@ -507,6 +520,11 @@ finish_runtime_frame :: proc(config: ^Run_Config, world: ^World, start: time.Tic
 		world,
 		time.duration_nanoseconds(time.tick_diff(start, finish)),
 	)
+}
+
+frame_active_seconds :: proc(start: time.Tick) -> f32 {
+	finish := time.tick_now()
+	return f32(f64(time.tick_diff(start, finish)) / 1_000_000_000.0)
 }
 
 run_frame_system_unmeasured :: proc(

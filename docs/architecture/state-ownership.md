@@ -19,7 +19,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | GPU instance table, draw database, visibility, indirect args, pipelines, resource caches | WGPU backend | Derived backend state | Dirty render slots, batch-key/topology revisions, geometric capacity growth, and backend lifetime. |
 | Project/editor/overlay UI vertex buffers | WGPU backend | Derived from UI output streams | Independent monotonic stream revisions; stable streams retain CPU/GPU buffers. |
 | System profiler snapshot | Root runtime | Derived diagnostic state | Samples every frame, rolls over 50 frames, publishes every five frames. |
-| Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Frame-duration samples roll over 50 frames; renderer and mutation-maintained world counters publish every five frames under one revision. |
+| Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames; renderer and mutation-maintained world counters publish every five frames under one revision. |
 | Live entity origin counters | ECS world | Derived from entity lifecycle | Incremented on spawn and decremented on despawn; diagnostics read them without scanning entity capacity. |
 | Editor browsers and inspector snapshots | Editor UI composition | Derived tooling view | Selection/revision changes or 5 Hz browser cadence; active scrubs defer unrelated refresh. |
 | Generated Luau declarations and native build products | `.scrapbot/` and build directories | Derived products | Regenerated from schemas/source and never hand-edited as authority. |

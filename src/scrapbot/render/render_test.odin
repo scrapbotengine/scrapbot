@@ -56,7 +56,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	}
 	accumulator: Performance_Diagnostics_Accumulator
 	for index in 0 ..< PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES {
-		performance_diagnostics_commit_frame(&accumulator, &stats, &world, 0.02)
+		performance_diagnostics_commit_frame(&accumulator, &stats, &world, 0.02, 0.006)
 		if index < PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES - 1 {
 			testing.expect(t, accumulator.snapshot.revision == 0)
 		}
@@ -65,7 +65,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, snapshot.revision == 1)
 	testing.expect(t, snapshot.sample_frames == PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES)
 	testing.expect(t, math.abs(snapshot.fps - 50) < 0.001)
-	testing.expect(t, math.abs(snapshot.frame_ms - 20) < 0.001)
+	testing.expect(t, math.abs(snapshot.frame_ms - 6) < 0.001)
 	testing.expect(t, snapshot.gpu_frame_ms == 2.25)
 	testing.expect(t, snapshot.gpu_timestamps_valid)
 	testing.expect(t, snapshot.entity_count == 2)
@@ -76,7 +76,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, snapshot.occlusion_culled_instances == 3)
 	ecs.despawn_entity(&world, runtime_index, world.entities[runtime_index].id.generation)
 	for _ in 0 ..< PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES {
-		performance_diagnostics_commit_frame(&accumulator, &stats, &world, 0.02)
+		performance_diagnostics_commit_frame(&accumulator, &stats, &world, 0.02, 0.006)
 	}
 	testing.expect(t, accumulator.snapshot.entity_count == 1)
 	testing.expect(t, accumulator.snapshot.revision == 2)
