@@ -74,8 +74,17 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		strings.write_string(builder, "\n[entities.components.")
 		strings.write_string(builder, component.name)
 		strings.write_string(builder, "]\n")
+		for field in component.number_fields {
+			write_scene_value(builder, field.name, scene_f32(field.value))
+		}
+		for field in component.vec2_fields {
+			write_scene_value(builder, field.name, scene_vec2(field.value))
+		}
 		for field in component.vec3_fields {
 			write_scene_value(builder, field.name, scene_vec3(field.value))
+		}
+		for field in component.vec4_fields {
+			write_scene_value(builder, field.name, scene_vec4(field.value))
 		}
 	}
 }
@@ -283,6 +292,7 @@ write_scene_input :: proc(builder: ^strings.Builder, value: shared.UI_Input_Comp
 	write_scene_value(builder, "caret_inset", scene_f32(value.caret_inset))
 	write_scene_value(builder, "read_only", scene_bool(value.read_only))
 	write_scene_value(builder, "numeric", scene_bool(value.numeric))
+	write_scene_value(builder, "draggable", scene_bool(value.draggable))
 	write_scene_value(builder, "has_minimum", scene_bool(value.has_minimum))
 	write_scene_value(builder, "has_maximum", scene_bool(value.has_maximum))
 }

@@ -19,7 +19,10 @@ Vec3 :: shared.Vec3
 Vec2 :: shared.Vec2
 Vec4 :: shared.Vec4
 Custom_Component :: shared.Custom_Component
+Named_Number :: shared.Named_Number
+Named_Vec2 :: shared.Named_Vec2
 Named_Vec3 :: shared.Named_Vec3
+Named_Vec4 :: shared.Named_Vec4
 
 Project_Load_Result :: struct {
 	config: Project_Config,
@@ -478,7 +481,10 @@ destroy_project_config :: proc(config: ^Project_Config) {
 destroy_scene :: proc(scene: ^Scene) {
 	for &entity in scene.entities {
 		for &component in entity.custom_components {
+			delete(component.number_fields)
+			delete(component.vec2_fields)
 			delete(component.vec3_fields)
+			delete(component.vec4_fields)
 		}
 		delete(entity.custom_components)
 	}

@@ -59,10 +59,37 @@ capture_registered_component_snapshot :: proc(
 				component_id = custom.component_id,
 				name = clone_snapshot_string(custom.name),
 			}
+			for field in custom.number_fields {
+				append(
+					&copy.number_fields,
+					shared.Named_Number {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
+			for field in custom.vec2_fields {
+				append(
+					&copy.vec2_fields,
+					shared.Named_Vec2 {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
 			for field in custom.vec3_fields {
 				append(
 					&copy.vec3_fields,
 					shared.Named_Vec3 {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
+			for field in custom.vec4_fields {
+				append(
+					&copy.vec4_fields,
+					shared.Named_Vec4 {
 						name = clone_snapshot_string(field.name),
 						value = field.value,
 					},
@@ -201,10 +228,31 @@ apply_registered_component_snapshot :: proc(
 				component_id = snapshot.component_id,
 				name = clone_world_string(world, custom.name),
 			}
+			for field in custom.number_fields {
+				append(
+					&copy.number_fields,
+					Named_Number {
+						name = clone_world_string(world, field.name),
+						value = field.value,
+					},
+				)
+			}
+			for field in custom.vec2_fields {
+				append(
+					&copy.vec2_fields,
+					Named_Vec2{name = clone_world_string(world, field.name), value = field.value},
+				)
+			}
 			for field in custom.vec3_fields {
 				append(
 					&copy.vec3_fields,
 					Named_Vec3{name = clone_world_string(world, field.name), value = field.value},
+				)
+			}
+			for field in custom.vec4_fields {
+				append(
+					&copy.vec4_fields,
+					Named_Vec4{name = clone_world_string(world, field.name), value = field.value},
 				)
 			}
 			ensure_custom_component_entity_capacity(storage, entity_index + 1)
@@ -342,10 +390,37 @@ capture_entity_snapshot :: proc(world: ^World, entity_index: int) -> (Entity_Sna
 			copy: shared.Custom_Component
 			copy.component_id = component.component_id
 			copy.name = clone_snapshot_string(component.name)
+			for field in component.number_fields {
+				append(
+					&copy.number_fields,
+					shared.Named_Number {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
+			for field in component.vec2_fields {
+				append(
+					&copy.vec2_fields,
+					shared.Named_Vec2 {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
 			for field in component.vec3_fields {
 				append(
 					&copy.vec3_fields,
 					shared.Named_Vec3 {
+						name = clone_snapshot_string(field.name),
+						value = field.value,
+					},
+				)
+			}
+			for field in component.vec4_fields {
+				append(
+					&copy.vec4_fields,
+					shared.Named_Vec4 {
 						name = clone_snapshot_string(field.name),
 						value = field.value,
 					},
@@ -377,10 +452,22 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.ui_input.prefix)
 	for &component in entity.custom_components {
 		delete(component.name)
+		for field in component.number_fields {
+			delete(field.name)
+		}
+		delete(component.number_fields)
+		for field in component.vec2_fields {
+			delete(field.name)
+		}
+		delete(component.vec2_fields)
 		for field in component.vec3_fields {
 			delete(field.name)
 		}
 		delete(component.vec3_fields)
+		for field in component.vec4_fields {
+			delete(field.name)
+		}
+		delete(component.vec4_fields)
 	}
 	delete(entity.custom_components)
 	snapshot^ = {}
@@ -426,13 +513,29 @@ set_registered_component_membership :: proc(
 					name = clone_world_string(world, definition.name),
 				}
 				for field in definition.fields[:definition.field_count] {
-					if field.field_type != .Vec3 {
-						continue
+					switch field.field_type {
+						case .Number:
+							append(
+								&value.number_fields,
+								Named_Number{name = clone_world_string(world, field.name)},
+							)
+						case .Vec2:
+							append(
+								&value.vec2_fields,
+								Named_Vec2{name = clone_world_string(world, field.name)},
+							)
+						case .Vec3:
+							append(
+								&value.vec3_fields,
+								Named_Vec3{name = clone_world_string(world, field.name)},
+							)
+						case .Vec4, .Color:
+							append(
+								&value.vec4_fields,
+								Named_Vec4{name = clone_world_string(world, field.name)},
+							)
+						case .Bool, .String:
 					}
-					append(
-						&value.vec3_fields,
-						Named_Vec3{name = clone_world_string(world, field.name)},
-					)
 				}
 				storage := ensure_custom_component_storage(world, definition.id, definition.name)
 				ensure_custom_component_entity_capacity(storage, entity_index + 1)

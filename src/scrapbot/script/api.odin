@@ -27,9 +27,19 @@ register_scrapbot_api :: proc(L: Lua_State) {
 
 	lua_pushcclosurek(L, scrapbot_component_handle, "scrapbot.component_handle", 0, nil)
 	lua_setfield(L, -2, "component_handle")
+	lua_pushcclosurek(L, scrapbot_field, "scrapbot.field", 0, nil)
+	lua_setfield(L, -2, "field")
 
+	push_schema_field_marker(L, "number")
+	lua_setfield(L, -2, "number")
+	push_schema_field_marker(L, "vec2")
+	lua_setfield(L, -2, "vec2")
 	push_schema_field_marker(L, "vec3")
 	lua_setfield(L, -2, "vec3")
+	push_schema_field_marker(L, "vec4")
+	lua_setfield(L, -2, "vec4")
+	push_schema_field_marker(L, "color")
+	lua_setfield(L, -2, "color")
 
 	push_registered_component_handle_by_name(L, "scrapbot.transform")
 	lua_setfield(L, -2, "transform")

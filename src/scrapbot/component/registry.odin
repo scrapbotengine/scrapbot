@@ -23,6 +23,16 @@ Field_Type :: enum {
 	Vec3,
 	Vec4,
 	Number,
+	Color,
+}
+
+Field_Editor_Options :: struct {
+	draggable: bool,
+	step: f32,
+	has_minimum: bool,
+	minimum: f32,
+	has_maximum: bool,
+	maximum: f32,
 }
 
 Storage_Kind :: enum {
@@ -61,6 +71,7 @@ Lifecycle :: enum {
 Field_Definition :: struct {
 	name: string,
 	field_type: Field_Type,
+	editor: Field_Editor_Options,
 }
 
 Definition :: struct {
@@ -321,6 +332,7 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "caret_inset", field_type = .Number},
 			Field_Definition{name = "read_only", field_type = .Bool},
 			Field_Definition{name = "numeric", field_type = .Bool},
+			Field_Definition{name = "draggable", field_type = .Bool},
 			Field_Definition{name = "has_minimum", field_type = .Bool},
 			Field_Definition{name = "has_maximum", field_type = .Bool},
 		},
@@ -567,31 +579,57 @@ validate_custom_component :: proc(
 		return fmt.tprintf(`scene component "%s" is not registered`, scene_component.name)
 	}
 
+	for field in scene_component.number_fields {
+		if err := validate_custom_field(definition, scene_component.name, field.name, {.Number});
+		   err != "" { return err }
+	}
+	for field in scene_component.vec2_fields {
+		if err := validate_custom_field(definition, scene_component.name, field.name, {.Vec2});
+		   err != "" { return err }
+	}
 	for field in scene_component.vec3_fields {
-		field_definition, field_ok := lookup_field_definition(definition, field.name)
-		if !field_ok {
-			if definition.owner == .Project {
-				return fmt.tprintf(
-					`scene component "%s" has field "%s" that is not defined by scripts/main.luau`,
-					scene_component.name,
-					field.name,
-				)
-			}
-			return fmt.tprintf(
-				`scene component "%s" has field "%s" that is not defined by its registered schema`,
-				scene_component.name,
-				field.name,
-			)
-		}
-		if field_definition.field_type != .Vec3 {
-			return fmt.tprintf(
-				`scene component "%s" field "%s" does not accept vec3 values`,
-				scene_component.name,
-				field.name,
-			)
-		}
+		if err := validate_custom_field(definition, scene_component.name, field.name, {.Vec3});
+		   err != "" { return err }
+	}
+	for field in scene_component.vec4_fields {
+		if err := validate_custom_field(
+			definition,
+			scene_component.name,
+			field.name,
+			{.Vec4, .Color},
+		); err != "" { return err }
 	}
 
+	return ""
+}
+
+validate_custom_field :: proc(
+	definition: Definition,
+	component_name, field_name: string,
+	accepted_types: bit_set[Field_Type],
+) -> string {
+	field_definition, field_ok := lookup_field_definition(definition, field_name)
+	if !field_ok {
+		if definition.owner == .Library {
+			return fmt.tprintf(
+				`scene component "%s" has field "%s" that is not defined by its registered schema`,
+				component_name,
+				field_name,
+			)
+		}
+		return fmt.tprintf(
+			`scene component "%s" has field "%s" that is not defined by scripts/main.luau`,
+			component_name,
+			field_name,
+		)
+	}
+	if field_definition.field_type not_in accepted_types {
+		return fmt.tprintf(
+			`scene component "%s" field "%s" has the wrong value type`,
+			component_name,
+			field_name,
+		)
+	}
 	return ""
 }
 

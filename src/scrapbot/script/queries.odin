@@ -307,10 +307,30 @@ push_entity_table :: proc "c" (L: Lua_State, world: ^World, entity_index: int) {
 }
 
 push_component_table :: proc "c" (L: Lua_State, component: Custom_Component) {
-	lua_createtable(L, 0, c.int(len(component.vec3_fields)))
+	field_count :=
+		len(component.number_fields) +
+		len(component.vec2_fields) +
+		len(component.vec3_fields) +
+		len(component.vec4_fields)
+	lua_createtable(L, 0, c.int(field_count))
+	for field in component.number_fields {
+		lua_pushlstring(L, cstring(raw_data(field.name)), c.size_t(len(field.name)))
+		lua_pushnumber(L, f64(field.value))
+		lua_settable(L, -3)
+	}
+	for field in component.vec2_fields {
+		lua_pushlstring(L, cstring(raw_data(field.name)), c.size_t(len(field.name)))
+		push_vec2_table(L, field.value)
+		lua_settable(L, -3)
+	}
 	for field in component.vec3_fields {
 		lua_pushlstring(L, cstring(raw_data(field.name)), c.size_t(len(field.name)))
 		push_vec3_table(L, field.value)
+		lua_settable(L, -3)
+	}
+	for field in component.vec4_fields {
+		lua_pushlstring(L, cstring(raw_data(field.name)), c.size_t(len(field.name)))
+		push_vec4_table(L, field.value)
 		lua_settable(L, -3)
 	}
 }
@@ -676,7 +696,7 @@ push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Componen
 }
 
 push_ui_input_table :: proc "c" (L: Lua_State, value: shared.UI_Input_Component) {
-	lua_createtable(L, 0, 29)
+	lua_createtable(L, 0, 30)
 	push_string_field(L, "text", value.text)
 	push_string_field(L, "font", value.font)
 	push_string_field(L, "prefix", value.prefix)
@@ -703,6 +723,7 @@ push_ui_input_table :: proc "c" (L: Lua_State, value: shared.UI_Input_Component)
 	push_number_field(L, "caret_inset", value.caret_inset)
 	push_bool_field(L, "read_only", value.read_only)
 	push_bool_field(L, "numeric", value.numeric)
+	push_bool_field(L, "draggable", value.draggable)
 	push_bool_field(L, "has_minimum", value.has_minimum)
 	push_bool_field(L, "has_maximum", value.has_maximum)
 }
@@ -826,6 +847,38 @@ vec3_argument :: proc "c" (L: Lua_State, index: c.int) -> (value: Vec3, ok: bool
 		return {}, false
 	}
 	return value, true
+}
+
+vec2_argument :: proc "c" (L: Lua_State, index: c.int) -> (value: Vec2, ok: bool) {
+	if lua_type(L, index) != LUA_TTABLE {
+		return {}, false
+	}
+	value.x, ok = number_field(L, index, "x")
+	if !ok {
+		return {}, false
+	}
+	value.y, ok = number_field(L, index, "y")
+	return value, ok
+}
+
+vec4_argument :: proc "c" (L: Lua_State, index: c.int) -> (value: Vec4, ok: bool) {
+	if lua_type(L, index) != LUA_TTABLE {
+		return {}, false
+	}
+	value.x, ok = number_field(L, index, "x")
+	if !ok {
+		return {}, false
+	}
+	value.y, ok = number_field(L, index, "y")
+	if !ok {
+		return {}, false
+	}
+	value.z, ok = number_field(L, index, "z")
+	if !ok {
+		return {}, false
+	}
+	value.w, ok = number_field(L, index, "w")
+	return value, ok
 }
 
 number_field :: proc "c" (L: Lua_State, index: c.int, name: cstring) -> (value: f32, ok: bool) {

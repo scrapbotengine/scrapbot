@@ -8,6 +8,66 @@ import shared "../shared"
 import "core:testing"
 
 @(test)
+test_luau_custom_component_writeback_supports_all_numeric_field_shapes :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a7000000-0000-4000-8000-000000000010"
+name = "Typed"
+[entities.components.typed]
+amount = 1
+uv = [2, 3]
+direction = [4, 5, 6]
+tint = [0.1, 0.2, 0.3, 0.4]
+`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`
+local Typed = scrapbot.component("typed", {
+	amount = scrapbot.field(scrapbot.number, { draggable = true, step = 0.25, minimum = 0 }),
+	uv = scrapbot.vec2,
+	direction = scrapbot.vec3,
+	tint = scrapbot.color,
+})
+scrapbot.system(scrapbot.query(Typed), { writes = { Typed } }, function(_, _, value)
+	value.amount = 7
+	value.uv = { x = 8, y = 9 }
+	value.direction = { x = 10, y = 11, z = 12 }
+	value.tint = { x = 0.5, y = 0.6, z = 0.7, w = 0.8 }
+end)
+`,
+		"=test",
+		&world,
+	)
+	testing.expectf(t, result.err == "", "script failed: %s", result.err)
+	testing.expect(t, result.ran)
+	testing.expect(t, step_runtime(&runtime, &world, 1.0) == "")
+	definition, registered := component.find_definition(&runtime.registry, "typed")
+	testing.expect(t, registered)
+	custom, found := ecs.custom_component_for_entity_ref(&world, 0, definition.id, "typed")
+	testing.expect(t, found)
+	if found {
+		testing.expect(t, custom.number_fields[0].value == 7)
+		testing.expect(t, custom.vec2_fields[0].value == shared.Vec2{8, 9})
+		testing.expect(t, custom.vec3_fields[0].value == shared.Vec3{10, 11, 12})
+		testing.expect(t, custom.vec4_fields[0].value == shared.Vec4{0.5, 0.6, 0.7, 0.8})
+	}
+	if registered {
+		amount, found := component.lookup_field_definition(definition, "amount")
+		testing.expect(t, found)
+		testing.expect(t, amount.editor.draggable)
+		testing.expect(t, amount.editor.step == 0.25)
+		testing.expect(t, amount.editor.has_minimum)
+	}
+}
+
+@(test)
 test_luau_spawn_is_deferred_until_after_system_step :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(
 		`[[entities]]

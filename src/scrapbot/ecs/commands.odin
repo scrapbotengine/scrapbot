@@ -23,14 +23,38 @@ Command_Component :: struct {
 	component_id: Component_ID,
 	name: [MAX_COMMAND_NAME_BYTES]u8,
 	name_len: int,
+	number_fields: [MAX_COMMAND_FIELDS]Command_Number_Field,
+	number_field_count: int,
+	vec2_fields: [MAX_COMMAND_FIELDS]Command_Vec2_Field,
+	vec2_field_count: int,
 	vec3_fields: [MAX_COMMAND_FIELDS]Command_Vec3_Field,
 	vec3_field_count: int,
+	vec4_fields: [MAX_COMMAND_FIELDS]Command_Vec4_Field,
+	vec4_field_count: int,
+}
+
+Command_Number_Field :: struct {
+	name: [MAX_COMMAND_NAME_BYTES]u8,
+	name_len: int,
+	value: f32,
+}
+
+Command_Vec2_Field :: struct {
+	name: [MAX_COMMAND_NAME_BYTES]u8,
+	name_len: int,
+	value: Vec2,
 }
 
 Command_Vec3_Field :: struct {
 	name: [MAX_COMMAND_NAME_BYTES]u8,
 	name_len: int,
 	value: Vec3,
+}
+
+Command_Vec4_Field :: struct {
+	name: [MAX_COMMAND_NAME_BYTES]u8,
+	name_len: int,
+	value: Vec4,
 }
 
 UI_Component_Command_Kind :: enum {
@@ -412,6 +436,54 @@ command_component_add_vec3 :: proc "c" (
 	}
 	field.value = value
 	command_component.vec3_field_count += 1
+	return ""
+}
+
+command_component_add_number :: proc "c" (
+	command_component: ^Command_Component,
+	name: string,
+	value: f32,
+) -> string {
+	if command_component == nil || command_component.number_field_count >= MAX_COMMAND_FIELDS {
+		return "too many component fields"
+	}
+	field := &command_component.number_fields[command_component.number_field_count]
+	if err := copy_command_string(field.name[:], &field.name_len, name, "component field name");
+	   err != "" { return err }
+	field.value = value
+	command_component.number_field_count += 1
+	return ""
+}
+
+command_component_add_vec2 :: proc "c" (
+	command_component: ^Command_Component,
+	name: string,
+	value: Vec2,
+) -> string {
+	if command_component == nil || command_component.vec2_field_count >= MAX_COMMAND_FIELDS {
+		return "too many component fields"
+	}
+	field := &command_component.vec2_fields[command_component.vec2_field_count]
+	if err := copy_command_string(field.name[:], &field.name_len, name, "component field name");
+	   err != "" { return err }
+	field.value = value
+	command_component.vec2_field_count += 1
+	return ""
+}
+
+command_component_add_vec4 :: proc "c" (
+	command_component: ^Command_Component,
+	name: string,
+	value: Vec4,
+) -> string {
+	if command_component == nil || command_component.vec4_field_count >= MAX_COMMAND_FIELDS {
+		return "too many component fields"
+	}
+	field := &command_component.vec4_fields[command_component.vec4_field_count]
+	if err := copy_command_string(field.name[:], &field.name_len, name, "component field name");
+	   err != "" { return err }
+	field.value = value
+	command_component.vec4_field_count += 1
 	return ""
 }
 
@@ -1013,6 +1085,21 @@ command_component_name :: proc(command_component: ^Command_Component) -> string 
 }
 
 command_field_name :: proc(field: ^Command_Vec3_Field) -> string {
+	return string(field.name[:field.name_len])
+}
+
+command_number_field_name :: proc(field: ^Command_Number_Field) -> string {
+	if field == nil { return "" }
+	return string(field.name[:field.name_len])
+}
+
+command_vec2_field_name :: proc(field: ^Command_Vec2_Field) -> string {
+	if field == nil { return "" }
+	return string(field.name[:field.name_len])
+}
+
+command_vec4_field_name :: proc(field: ^Command_Vec4_Field) -> string {
+	if field == nil { return "" }
 	return string(field.name[:field.name_len])
 }
 

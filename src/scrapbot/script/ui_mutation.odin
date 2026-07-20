@@ -539,6 +539,8 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "numeric", &value.numeric);
 			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "draggable", &value.draggable);
+			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "has_minimum", &value.has_minimum);
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "has_maximum", &value.has_maximum);

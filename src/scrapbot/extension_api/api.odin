@@ -11,6 +11,10 @@ MAX_UI_PREFIX_BYTES :: 64
 
 Field_Type :: enum c.int {
 	Vec3 = 1,
+	Number,
+	Vec2,
+	Vec4,
+	Color,
 }
 
 Access_Mode :: enum c.int {
@@ -21,6 +25,12 @@ Access_Mode :: enum c.int {
 Field_Definition :: struct {
 	name: cstring,
 	field_type: Field_Type,
+	draggable: c.int,
+	step: f32,
+	has_minimum: c.int,
+	minimum: f32,
+	has_maximum: c.int,
+	maximum: f32,
 }
 
 Component_Definition :: struct {
@@ -92,10 +102,31 @@ Component_Vec3_Field :: struct {
 	value: Vec3,
 }
 
+Component_Number_Field :: struct {
+	name: cstring,
+	value: f32,
+}
+
+Component_Vec2_Field :: struct {
+	name: cstring,
+	value: Vec2,
+}
+
+Component_Vec4_Field :: struct {
+	name: cstring,
+	value: Vec4,
+}
+
 Component_Payload :: struct {
 	component: cstring,
+	number_fields: [^]Component_Number_Field,
+	number_field_count: c.int,
+	vec2_fields: [^]Component_Vec2_Field,
+	vec2_field_count: c.int,
 	vec3_fields: [^]Component_Vec3_Field,
 	vec3_field_count: c.int,
+	vec4_fields: [^]Component_Vec4_Field,
+	vec4_field_count: c.int,
 }
 
 UI_Text_Alignment :: enum c.int {
@@ -254,6 +285,7 @@ UI_Input_Payload :: struct {
 	caret_inset: f32,
 	read_only: c.int,
 	numeric: c.int,
+	draggable: c.int,
 	has_minimum: c.int,
 	has_maximum: c.int,
 }
@@ -342,8 +374,14 @@ System_Context :: struct {
 	query_next: Query_Next_Proc,
 	get_transform: Get_Transform_Proc,
 	set_transform: Set_Transform_Proc,
+	get_number_field: Get_Number_Field_Proc,
+	set_number_field: Set_Number_Field_Proc,
+	get_vec2_field: Get_Vec2_Field_Proc,
+	set_vec2_field: Set_Vec2_Field_Proc,
 	get_vec3_field: Get_Vec3_Field_Proc,
 	set_vec3_field: Set_Vec3_Field_Proc,
+	get_vec4_field: Get_Vec4_Field_Proc,
+	set_vec4_field: Set_Vec4_Field_Proc,
 	get_ui_component: Get_UI_Component_Proc,
 	set_ui_component: Set_UI_Component_Proc,
 	spawn: Spawn_Proc,
@@ -423,6 +461,26 @@ Get_Vec3_Field_Proc :: #type proc "c" (
 	value: ^Vec3,
 ) -> c.int
 
+Get_Number_Field_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+	component: cstring,
+	field: cstring,
+	value: ^f32,
+) -> c.int
+
+Set_Number_Field_Proc :: #type Get_Number_Field_Proc
+
+Get_Vec2_Field_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+	component: cstring,
+	field: cstring,
+	value: ^Vec2,
+) -> c.int
+
+Set_Vec2_Field_Proc :: #type Get_Vec2_Field_Proc
+
 Set_Vec3_Field_Proc :: #type proc "c" (
 	ctx: ^System_Context,
 	entity: Entity,
@@ -430,6 +488,16 @@ Set_Vec3_Field_Proc :: #type proc "c" (
 	field: cstring,
 	value: ^Vec3,
 ) -> c.int
+
+Get_Vec4_Field_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	entity: Entity,
+	component: cstring,
+	field: cstring,
+	value: ^Vec4,
+) -> c.int
+
+Set_Vec4_Field_Proc :: #type Get_Vec4_Field_Proc
 
 Get_UI_Component_Proc :: #type proc "c" (
 	ctx: ^System_Context,

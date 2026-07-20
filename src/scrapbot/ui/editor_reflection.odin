@@ -164,9 +164,24 @@ editor_reflected_field_value :: proc(
 			if custom.name != definition.name {
 				continue
 			}
+			for &custom_field in custom.number_fields {
+				if custom_field.name == field.name {
+					return any{rawptr(&custom_field.value), typeid_of(f32)}, true
+				}
+			}
+			for &custom_field in custom.vec2_fields {
+				if custom_field.name == field.name {
+					return any{rawptr(&custom_field.value), typeid_of(shared.Vec2)}, true
+				}
+			}
 			for &custom_field in custom.vec3_fields {
 				if custom_field.name == field.name {
 					return any{rawptr(&custom_field.value), typeid_of(shared.Vec3)}, true
+				}
+			}
+			for &custom_field in custom.vec4_fields {
+				if custom_field.name == field.name {
+					return any{rawptr(&custom_field.value), typeid_of(shared.Vec4)}, true
 				}
 			}
 		}
@@ -293,12 +308,12 @@ editor_reflected_field_texts :: proc(
 				}
 				return 1, true
 			}
-		case .Vec2, .Vec3, .Vec4:
+		case .Vec2, .Vec3, .Vec4, .Color:
 			axes := [4]shared.Editor_Inspector_Axis{.X, .Y, .Z, .W}
 			count := 2
 			if field.field_type == .Vec3 {
 				count = 3
-			} else if field.field_type == .Vec4 {
+			} else if field.field_type == .Vec4 || field.field_type == .Color {
 				count = 4
 			}
 			for axis, index in axes[:count] {
@@ -598,7 +613,7 @@ editor_reflected_set_field_text :: proc(
 	field := definition.fields[field_index]
 	changed, parsed := false, false
 	switch field.field_type {
-		case .Number, .Vec2, .Vec3, .Vec4:
+		case .Number, .Vec2, .Vec3, .Vec4, .Color:
 			number, ok := strconv.parse_f32(strings.trim_space(text))
 			if !ok {
 				return false, false

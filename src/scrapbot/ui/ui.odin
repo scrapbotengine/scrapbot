@@ -2500,7 +2500,7 @@ numeric_input_pointer_cursor :: proc(state: ^State, world: ^shared.World) -> Poi
 			continue
 		}
 		input := world.ui_inputs[entity.ui_input_index]
-		if input.numeric && !input.read_only {
+		if input.numeric && input.draggable && !input.read_only {
 			return .Horizontal_Resize
 		}
 	}
@@ -2729,7 +2729,7 @@ handle_input_press :: proc(
 	focus_input(state, world, index)
 	input := world.ui_inputs[entity.ui_input_index]
 	node_index := find_node(state, entity.id)
-	if input.numeric && !input.read_only && node_index >= 0 {
+	if input.numeric && input.draggable && !input.read_only && node_index >= 0 {
 		state.input_scrub_armed = state.input_has_original_number
 		state.input_scrub_start_x = position.x
 		state.input_scrub_start_number = state.input_original_number

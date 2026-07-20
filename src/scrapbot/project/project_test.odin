@@ -972,6 +972,7 @@ invalid_border_width = 3
 caret_width = 2
 caret_inset = 3
 numeric = true
+draggable = true
 has_minimum = true
 has_maximum = true
 read_only = false
@@ -992,9 +993,31 @@ read_only = false
 	testing.expect(t, input.selection_corner_radius == 0)
 	testing.expect(t, input.focus_border_width == 2 && input.invalid_border_width == 3)
 	testing.expect(t, input.caret_width == 2 && input.caret_inset == 3)
-	testing.expect(t, input.numeric && input.has_minimum && input.has_maximum)
+	testing.expect(t, input.numeric && input.draggable && input.has_minimum && input.has_maximum)
 	testing.expect(t, input.selection_background == Vec4{0.1, 0.5, 0.4, 0.5})
 	testing.expect(t, input.focus_border_color == Vec4{0.1, 0.8, 0.7, 1})
+}
+
+@(test)
+test_scene_parses_all_custom_numeric_field_shapes :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000022"
+name = "Typed"
+[entities.components.typed]
+amount = 1.5
+uv = [2, 3]
+direction = [4, 5, 6]
+tint = [0.1, 0.2, 0.3, 0.4]
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	component := scene.entities[0].custom_components[0]
+	testing.expect(t, component.number_fields[0].value == 1.5)
+	testing.expect(t, component.vec2_fields[0].value == Vec2{2, 3})
+	testing.expect(t, component.vec3_fields[0].value == Vec3{4, 5, 6})
+	testing.expect(t, component.vec4_fields[0].value == Vec4{0.1, 0.2, 0.3, 0.4})
 }
 
 @(test)

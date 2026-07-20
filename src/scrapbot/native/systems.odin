@@ -96,6 +96,14 @@ extension_register_library_component :: proc "c" (
 		component_definition.fields[i] = component.Field_Definition {
 			name = string(field.name),
 			field_type = field_type,
+			editor = {
+				draggable = field.draggable != 0,
+				step = field.step,
+				has_minimum = field.has_minimum != 0,
+				minimum = field.minimum,
+				has_maximum = field.has_maximum != 0,
+				maximum = field.maximum,
+			},
 		}
 	}
 
@@ -161,8 +169,16 @@ extension_register_system :: proc "c" (
 
 extension_field_type :: proc "c" (field_type: api.Field_Type) -> (component.Field_Type, bool) {
 	#partial switch field_type {
+		case .Number:
+			return .Number, true
+		case .Vec2:
+			return .Vec2, true
 		case .Vec3:
 			return .Vec3, true
+		case .Vec4:
+			return .Vec4, true
+		case .Color:
+			return .Color, true
 	}
 	return {}, false
 }
@@ -208,8 +224,14 @@ step_system :: proc(
 		query_next = system_query_next,
 		get_transform = system_get_transform,
 		set_transform = system_set_transform,
+		get_number_field = system_get_number_field,
+		set_number_field = system_set_number_field,
+		get_vec2_field = system_get_vec2_field,
+		set_vec2_field = system_set_vec2_field,
 		get_vec3_field = system_get_vec3_field,
 		set_vec3_field = system_set_vec3_field,
+		get_vec4_field = system_get_vec4_field,
+		set_vec4_field = system_set_vec4_field,
 		get_ui_component = system_get_ui_component,
 		set_ui_component = system_set_ui_component,
 		spawn = system_spawn,
@@ -348,6 +370,118 @@ system_set_transform :: proc "c" (
 	return 1
 }
 
+system_get_number_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^f32,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Read) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for field in world_component.number_fields {
+		if field.name == string(field_name) {
+			value^ = field.value
+			return 1
+		}
+	}
+	return 0
+}
+
+system_set_number_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^f32,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Write) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for &field in world_component.number_fields {
+		if field.name == string(field_name) {
+			field.value = value^
+			return 1
+		}
+	}
+	return 0
+}
+
+system_get_vec2_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^api.Vec2,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Read) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for field in world_component.vec2_fields {
+		if field.name == string(field_name) {
+			value^ = api_vec2_from_shared(field.value)
+			return 1
+		}
+	}
+	return 0
+}
+
+system_set_vec2_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^api.Vec2,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Write) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for &field in world_component.vec2_fields {
+		if field.name == string(field_name) {
+			field.value = shared_vec2_from_api(value^)
+			return 1
+		}
+	}
+	return 0
+}
+
 system_get_vec3_field :: proc "c" (
 	ctx: ^api.System_Context,
 	entity: api.Entity,
@@ -398,6 +532,62 @@ system_set_vec3_field :: proc "c" (
 	for &field in world_component.vec3_fields {
 		if field.name == string(field_name) {
 			field.value = shared_vec3_from_api(value^)
+			return 1
+		}
+	}
+	return 0
+}
+
+system_get_vec4_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^api.Vec4,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Read) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for field in world_component.vec4_fields {
+		if field.name == string(field_name) {
+			value^ = api_vec4_from_shared(field.value)
+			return 1
+		}
+	}
+	return 0
+}
+
+system_set_vec4_field :: proc "c" (
+	ctx: ^api.System_Context,
+	entity: api.Entity,
+	component_name: cstring,
+	field_name: cstring,
+	value: ^api.Vec4,
+) -> c.int {
+	step, ok := system_step_context(ctx)
+	if !ok || component_name == nil || field_name == nil || value == nil {
+		return 0
+	}
+	name := string(component_name)
+	if !system_allows_component_access(step.system.declaration, name, .Write) {
+		return 0
+	}
+	world_component, component_ok := system_custom_component(step.world, entity, name)
+	if !component_ok {
+		return 0
+	}
+	for &field in world_component.vec4_fields {
+		if field.name == string(field_name) {
+			field.value = shared_vec4_from_api(value^)
 			return 1
 		}
 	}
@@ -703,10 +893,20 @@ command_component_from_payload :: proc "c" (
 	if definition.field_count < 0 || definition.field_count > ecs.MAX_COMMAND_FIELDS {
 		return "native component payload has too many fields"
 	}
-	if payload.vec3_field_count < 0 || payload.vec3_field_count > ecs.MAX_COMMAND_FIELDS {
+	if payload.number_field_count < 0 ||
+	   payload.number_field_count > ecs.MAX_COMMAND_FIELDS ||
+	   payload.vec2_field_count < 0 ||
+	   payload.vec2_field_count > ecs.MAX_COMMAND_FIELDS ||
+	   payload.vec3_field_count < 0 ||
+	   payload.vec3_field_count > ecs.MAX_COMMAND_FIELDS ||
+	   payload.vec4_field_count < 0 ||
+	   payload.vec4_field_count > ecs.MAX_COMMAND_FIELDS {
 		return "native component payload has invalid field count"
 	}
-	if payload.vec3_field_count > 0 && payload.vec3_fields == nil {
+	if (payload.number_field_count > 0 && payload.number_fields == nil) ||
+	   (payload.vec2_field_count > 0 && payload.vec2_fields == nil) ||
+	   (payload.vec3_field_count > 0 && payload.vec3_fields == nil) ||
+	   (payload.vec4_field_count > 0 && payload.vec4_fields == nil) {
 		return "native component payload fields are not available"
 	}
 
@@ -717,23 +917,96 @@ command_component_from_payload :: proc "c" (
 
 	for i in 0 ..< definition.field_count {
 		field := definition.fields[i]
-		if field.field_type != component.Field_Type.Vec3 {
-			return "unsupported component field type"
-		}
-		value, found := payload_vec3_field(payload, field.name)
-		if !found {
-			return "component payload is missing a required field"
-		}
-		if err := ecs.command_component_add_vec3(
-			command_component,
-			field.name,
-			shared_vec3_from_api(value),
-		); err != "" {
-			return err
+		switch field.field_type {
+			case .Number:
+				value, found := payload_number_field(payload, field.name)
+				if !found {
+					return "component payload is missing a required field"
+				}
+				if err := ecs.command_component_add_number(command_component, field.name, value);
+				   err != "" {
+					return err
+				}
+			case .Vec2:
+				value, found := payload_vec2_field(payload, field.name)
+				if !found {
+					return "component payload is missing a required field"
+				}
+				if err := ecs.command_component_add_vec2(
+					command_component,
+					field.name,
+					shared_vec2_from_api(value),
+				); err != "" {
+					return err
+				}
+			case .Vec3:
+				value, found := payload_vec3_field(payload, field.name)
+				if !found {
+					return "component payload is missing a required field"
+				}
+				if err := ecs.command_component_add_vec3(
+					command_component,
+					field.name,
+					shared_vec3_from_api(value),
+				); err != "" {
+					return err
+				}
+			case .Vec4, .Color:
+				value, found := payload_vec4_field(payload, field.name)
+				if !found {
+					return "component payload is missing a required field"
+				}
+				if err := ecs.command_component_add_vec4(
+					command_component,
+					field.name,
+					shared_vec4_from_api(value),
+				); err != "" {
+					return err
+				}
+			case .Bool, .String:
+				return "unsupported component field type"
 		}
 	}
 
 	return ""
+}
+
+payload_number_field :: proc "c" (
+	payload: ^api.Component_Payload,
+	field_name: string,
+) -> (
+	f32,
+	bool,
+) {
+	if payload == nil || payload.number_fields == nil {
+		return 0, false
+	}
+	for i in 0 ..< int(payload.number_field_count) {
+		field := payload.number_fields[i]
+		if field.name != nil && string(field.name) == field_name {
+			return field.value, true
+		}
+	}
+	return 0, false
+}
+
+payload_vec2_field :: proc "c" (
+	payload: ^api.Component_Payload,
+	field_name: string,
+) -> (
+	api.Vec2,
+	bool,
+) {
+	if payload == nil || payload.vec2_fields == nil {
+		return {}, false
+	}
+	for i in 0 ..< int(payload.vec2_field_count) {
+		field := payload.vec2_fields[i]
+		if field.name != nil && string(field.name) == field_name {
+			return field.value, true
+		}
+	}
+	return {}, false
 }
 
 payload_vec3_field :: proc "c" (
@@ -748,6 +1021,25 @@ payload_vec3_field :: proc "c" (
 	}
 	for i in 0 ..< int(payload.vec3_field_count) {
 		field := payload.vec3_fields[i]
+		if field.name != nil && string(field.name) == field_name {
+			return field.value, true
+		}
+	}
+	return {}, false
+}
+
+payload_vec4_field :: proc "c" (
+	payload: ^api.Component_Payload,
+	field_name: string,
+) -> (
+	api.Vec4,
+	bool,
+) {
+	if payload == nil || payload.vec4_fields == nil {
+		return {}, false
+	}
+	for i in 0 ..< int(payload.vec4_field_count) {
+		field := payload.vec4_fields[i]
 		if field.name != nil && string(field.name) == field_name {
 			return field.value, true
 		}

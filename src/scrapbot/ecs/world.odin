@@ -19,8 +19,13 @@ Render_List :: shared.Render_List
 Custom_Component :: shared.Custom_Component
 Custom_Component_Storage :: shared.Custom_Component_Storage
 Component_ID :: shared.Component_ID
+Vec2 :: shared.Vec2
 Vec3 :: shared.Vec3
+Vec4 :: shared.Vec4
+Named_Number :: shared.Named_Number
+Named_Vec2 :: shared.Named_Vec2
 Named_Vec3 :: shared.Named_Vec3
+Named_Vec4 :: shared.Named_Vec4
 Transform_Component :: shared.Transform_Component
 Mesh_Component :: shared.Mesh_Component
 Geometry_Component :: shared.Geometry_Component
@@ -253,10 +258,16 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, storage.name)
 		for &component in storage.components {
 			delete_world_string(world, component.name)
+			for field in component.number_fields { delete_world_string(world, field.name) }
+			for field in component.vec2_fields { delete_world_string(world, field.name) }
 			for field in component.vec3_fields {
 				delete_world_string(world, field.name)
 			}
+			for field in component.vec4_fields { delete_world_string(world, field.name) }
+			delete(component.number_fields)
+			delete(component.vec2_fields)
 			delete(component.vec3_fields)
+			delete(component.vec4_fields)
 		}
 		delete(storage.components)
 		delete(storage.entity_component_indices)
@@ -1805,6 +1816,26 @@ add_custom_component :: proc(
 		component_id = component_id,
 		name = clone_world_string(world, name),
 	}
+	for i in 0 ..< command_component.number_field_count {
+		field := &command_component.number_fields[i]
+		append(
+			&world_component.number_fields,
+			Named_Number {
+				name = clone_world_string(world, command_number_field_name(field)),
+				value = field.value,
+			},
+		)
+	}
+	for i in 0 ..< command_component.vec2_field_count {
+		field := &command_component.vec2_fields[i]
+		append(
+			&world_component.vec2_fields,
+			Named_Vec2 {
+				name = clone_world_string(world, command_vec2_field_name(field)),
+				value = field.value,
+			},
+		)
+	}
 	for i in 0 ..< command_component.vec3_field_count {
 		command_field := &command_component.vec3_fields[i]
 		append(
@@ -1812,6 +1843,16 @@ add_custom_component :: proc(
 			Named_Vec3 {
 				name = clone_world_string(world, command_field_name(command_field)),
 				value = command_field.value,
+			},
+		)
+	}
+	for i in 0 ..< command_component.vec4_field_count {
+		field := &command_component.vec4_fields[i]
+		append(
+			&world_component.vec4_fields,
+			Named_Vec4 {
+				name = clone_world_string(world, command_vec4_field_name(field)),
+				value = field.value,
 			},
 		)
 	}
@@ -1869,10 +1910,25 @@ add_scene_custom_component :: proc(
 		component_id = shared.INVALID_COMPONENT_ID,
 		name = clone_world_string(world, scene_component.name),
 	}
+	for field in scene_component.number_fields {
+		world_field := field
+		world_field.name = clone_world_string(world, field.name)
+		append(&world_component.number_fields, world_field)
+	}
+	for field in scene_component.vec2_fields {
+		world_field := field
+		world_field.name = clone_world_string(world, field.name)
+		append(&world_component.vec2_fields, world_field)
+	}
 	for field in scene_component.vec3_fields {
 		world_field := field
 		world_field.name = clone_world_string(world, field.name)
 		append(&world_component.vec3_fields, world_field)
+	}
+	for field in scene_component.vec4_fields {
+		world_field := field
+		world_field.name = clone_world_string(world, field.name)
+		append(&world_component.vec4_fields, world_field)
 	}
 	component_index := -1
 	for component, index in storage.components {
@@ -1994,10 +2050,16 @@ release_custom_component_slot :: proc(
 		}
 	}
 	delete_world_string(world, component.name)
+	for field in component.number_fields { delete_world_string(world, field.name) }
+	for field in component.vec2_fields { delete_world_string(world, field.name) }
 	for field in component.vec3_fields {
 		delete_world_string(world, field.name)
 	}
+	for field in component.vec4_fields { delete_world_string(world, field.name) }
+	delete(component.number_fields)
+	delete(component.vec2_fields)
 	delete(component.vec3_fields)
+	delete(component.vec4_fields)
 	component^ = {
 		entity_index = INVALID_COMPONENT_INDEX,
 		component_id = shared.INVALID_COMPONENT_ID,

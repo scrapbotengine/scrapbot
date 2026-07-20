@@ -26,6 +26,84 @@ set_inspector_vec3_axis :: proc(
 	return true
 }
 
+inspector_vec2_axis :: proc(
+	value: shared.Vec2,
+	axis: shared.Editor_Inspector_Axis,
+) -> (
+	f32,
+	bool,
+) {
+	switch axis {
+		case .X:
+			return value.x, true
+		case .Y:
+			return value.y, true
+		case .None, .Z, .W:
+			return 0, false
+	}
+	return 0, false
+}
+
+inspector_vec4_axis :: proc(
+	value: shared.Vec4,
+	axis: shared.Editor_Inspector_Axis,
+) -> (
+	f32,
+	bool,
+) {
+	switch axis {
+		case .X:
+			return value.x, true
+		case .Y:
+			return value.y, true
+		case .Z:
+			return value.z, true
+		case .W:
+			return value.w, true
+		case .None:
+			return 0, false
+	}
+	return 0, false
+}
+
+set_inspector_vec2_axis :: proc(
+	value: ^shared.Vec2,
+	axis: shared.Editor_Inspector_Axis,
+	number: f32,
+) -> bool {
+	if value == nil { return false }
+	switch axis {
+		case .X:
+			value.x = number
+		case .Y:
+			value.y = number
+		case .None, .Z, .W:
+			return false
+	}
+	return true
+}
+
+set_inspector_vec4_axis :: proc(
+	value: ^shared.Vec4,
+	axis: shared.Editor_Inspector_Axis,
+	number: f32,
+) -> bool {
+	if value == nil { return false }
+	switch axis {
+		case .X:
+			value.x = number
+		case .Y:
+			value.y = number
+		case .Z:
+			value.z = number
+		case .W:
+			value.w = number
+		case .None:
+			return false
+	}
+	return true
+}
+
 
 inspector_target :: proc(
 	world: ^shared.World,
@@ -120,18 +198,41 @@ read_inspector_numeric :: proc(
 				case .Point_Range:
 					return value.range, true
 			}
-		case .Custom_Vec3:
+		case .Custom_Number, .Custom_Vec2, .Custom_Vec3, .Custom_Vec4, .Custom_Color:
 			if binding.custom_storage_index < 0 ||
 			   binding.custom_storage_index >= len(world.custom_components) { return 0, false }
 			storage := &world.custom_components[binding.custom_storage_index]
-			for &component in storage.components {
-				if component.entity_index != target_index ||
-				   binding.custom_field_index < 0 ||
-				   binding.custom_field_index >= len(component.vec3_fields) { continue }
-				return axis_value(
-					component.vec3_fields[binding.custom_field_index].value,
-					binding.inspector_axis,
-				)
+			for &custom in storage.components {
+				if custom.entity_index != target_index ||
+				   binding.custom_field_index < 0 { continue }
+				#partial switch binding.inspector_field {
+					case .Custom_Number:
+						if binding.custom_field_index < len(custom.number_fields) {
+							return custom.number_fields[binding.custom_field_index].value, true
+						}
+					case .Custom_Vec2:
+						if binding.custom_field_index < len(custom.vec2_fields) {
+							return inspector_vec2_axis(
+								custom.vec2_fields[binding.custom_field_index].value,
+								binding.inspector_axis,
+							)
+						}
+					case .Custom_Vec3:
+						if binding.custom_field_index < len(custom.vec3_fields) {
+							return axis_value(
+								custom.vec3_fields[binding.custom_field_index].value,
+								binding.inspector_axis,
+							)
+						}
+					case .Custom_Vec4, .Custom_Color:
+						if binding.custom_field_index < len(custom.vec4_fields) {
+							return inspector_vec4_axis(
+								custom.vec4_fields[binding.custom_field_index].value,
+								binding.inspector_axis,
+							)
+						}
+					case:
+				}
 			}
 	}
 	return 0, false
@@ -232,19 +333,45 @@ write_inspector_numeric :: proc(
 				case .Point_Range:
 					world.point_lights[target.point_light_index].range = number; written = true
 			}
-		case .Custom_Vec3:
+		case .Custom_Number, .Custom_Vec2, .Custom_Vec3, .Custom_Vec4, .Custom_Color:
 			if binding.custom_storage_index < 0 ||
 			   binding.custom_storage_index >= len(world.custom_components) { return false }
 			storage := &world.custom_components[binding.custom_storage_index]
-			for &component in storage.components {
-				if component.entity_index != target_index ||
-				   binding.custom_field_index < 0 ||
-				   binding.custom_field_index >= len(component.vec3_fields) { continue }
-				written = set_inspector_vec3_axis(
-					&component.vec3_fields[binding.custom_field_index].value,
-					binding.inspector_axis,
-					number,
-				)
+			for &custom in storage.components {
+				if custom.entity_index != target_index ||
+				   binding.custom_field_index < 0 { continue }
+				#partial switch binding.inspector_field {
+					case .Custom_Number:
+						if binding.custom_field_index < len(custom.number_fields) {
+							custom.number_fields[binding.custom_field_index].value = number
+							written = true
+						}
+					case .Custom_Vec2:
+						if binding.custom_field_index < len(custom.vec2_fields) {
+							written = set_inspector_vec2_axis(
+								&custom.vec2_fields[binding.custom_field_index].value,
+								binding.inspector_axis,
+								number,
+							)
+						}
+					case .Custom_Vec3:
+						if binding.custom_field_index < len(custom.vec3_fields) {
+							written = set_inspector_vec3_axis(
+								&custom.vec3_fields[binding.custom_field_index].value,
+								binding.inspector_axis,
+								number,
+							)
+						}
+					case .Custom_Vec4, .Custom_Color:
+						if binding.custom_field_index < len(custom.vec4_fields) {
+							written = set_inspector_vec4_axis(
+								&custom.vec4_fields[binding.custom_field_index].value,
+								binding.inspector_axis,
+								number,
+							)
+						}
+					case:
+				}
 				break
 			}
 	}

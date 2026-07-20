@@ -1022,6 +1022,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_input.read_only, found = parse_bool(value)
 					case "numeric":
 						current.ui_input.numeric, found = parse_bool(value)
+					case "draggable":
+						current.ui_input.draggable, found = parse_bool(value)
 					case "has_minimum":
 						current.ui_input.has_minimum, found = parse_bool(value)
 					case "has_maximum":
@@ -1082,15 +1084,35 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						fmt.tprintf("invalid component field '%s'", key),
 					)
 				}
-				vec: Vec3
-				vec, found = parse_vec3(value)
-				if !found {
+				if number, number_found := parse_f32(value); number_found {
+					append(
+						&current_component.number_fields,
+						Named_Number{name = key, value = number},
+					)
+					continue
+				}
+				if vec2, vec2_found := parse_vec2(value); vec2_found {
+					append(&current_component.vec2_fields, Named_Vec2{name = key, value = vec2})
+					continue
+				}
+				if vec3, vec3_found := parse_vec3(value); vec3_found {
+					append(&current_component.vec3_fields, Named_Vec3{name = key, value = vec3})
+					continue
+				}
+				if vec4, vec4_found := parse_vec4(value); vec4_found {
+					append(&current_component.vec4_fields, Named_Vec4{name = key, value = vec4})
+					continue
+				}
+				{
 					return scene, fail(
 						.Invalid_Field,
-						fmt.tprintf("%s.%s must be a vec3 array", current_component.name, key),
+						fmt.tprintf(
+							"%s.%s must be a number, vec2, vec3, or vec4 value",
+							current_component.name,
+							key,
+						),
 					)
 				}
-				append(&current_component.vec3_fields, Named_Vec3{name = key, value = vec})
 			case:
 				return scene, fail(
 					.Invalid_Syntax,

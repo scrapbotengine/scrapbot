@@ -380,6 +380,7 @@ UI_Input_Component :: struct {
 	caret_inset: f32,
 	read_only: bool,
 	numeric: bool,
+	draggable: bool,
 	has_minimum: bool,
 	has_maximum: bool,
 }
@@ -662,7 +663,11 @@ Editor_Inspector_Field :: enum {
 	Point_Range,
 	Material_Base_Color,
 	Material_Emissive,
+	Custom_Number,
+	Custom_Vec2,
 	Custom_Vec3,
+	Custom_Vec4,
+	Custom_Color,
 	UI_Layout_Hidden,
 	UI_HStack_Fill,
 	UI_HStack_Draggable,
@@ -822,11 +827,29 @@ Named_Vec3 :: struct {
 	value: Vec3,
 }
 
+Named_Number :: struct {
+	name: string,
+	value: f32,
+}
+
+Named_Vec2 :: struct {
+	name: string,
+	value: Vec2,
+}
+
+Named_Vec4 :: struct {
+	name: string,
+	value: Vec4,
+}
+
 Custom_Component :: struct {
 	entity_index: int,
 	component_id: Component_ID,
 	name: string,
+	number_fields: [dynamic]Named_Number,
+	vec2_fields: [dynamic]Named_Vec2,
 	vec3_fields: [dynamic]Named_Vec3,
+	vec4_fields: [dynamic]Named_Vec4,
 }
 
 Custom_Component_Storage :: struct {

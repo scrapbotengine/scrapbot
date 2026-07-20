@@ -29,6 +29,23 @@ Vec3_Field :: struct {
 	name: cstring,
 }
 
+Number_Field :: struct {
+	component: Component,
+	name: cstring,
+}
+
+Vec2_Field :: struct {
+	component: Component,
+	name: cstring,
+}
+
+Vec4_Field :: struct {
+	component: Component,
+	name: cstring,
+}
+
+Color_Field :: distinct Vec4_Field
+
 Query :: struct {
 	components: []Component,
 }
@@ -54,6 +71,9 @@ Vec2 :: raw.Vec2
 Vec4 :: raw.Vec4
 Vec3 :: raw.Vec3
 Component_Vec3_Field :: raw.Component_Vec3_Field
+Component_Number_Field :: raw.Component_Number_Field
+Component_Vec2_Field :: raw.Component_Vec2_Field
+Component_Vec4_Field :: raw.Component_Vec4_Field
 Component_Payload :: raw.Component_Payload
 Spawn_Options :: raw.Spawn_Options
 
@@ -194,6 +214,93 @@ vec3_by_name :: proc "contextless" (name: cstring) -> Field {
 	return Field{name = name, field_type = .Vec3}
 }
 
+number_by_name :: proc "contextless" (name: cstring) -> Field {
+	return Field{name = name, field_type = .Number}
+}
+
+number_by_field :: proc "contextless" (field: Number_Field) -> Field {
+	return number_by_name(field.name)
+}
+
+number :: proc {
+	number_by_name,
+	number_by_field,
+}
+
+number_draggable_by_name :: proc "contextless" (
+	name: cstring,
+	step: f32 = 0.1,
+	minimum: Maybe(f32) = nil,
+	maximum: Maybe(f32) = nil,
+) -> Field {
+	field := number(name)
+	field.draggable = 1
+	field.step = step
+	if value, ok := minimum.?; ok {
+		field.has_minimum = 1
+		field.minimum = value
+	}
+	if value, ok := maximum.?; ok {
+		field.has_maximum = 1
+		field.maximum = value
+	}
+	return field
+}
+
+number_draggable_by_field :: proc "contextless" (
+	field: Number_Field,
+	step: f32 = 0.1,
+	minimum: Maybe(f32) = nil,
+	maximum: Maybe(f32) = nil,
+) -> Field {
+	return number_draggable_by_name(field.name, step, minimum, maximum)
+}
+
+number_draggable :: proc {
+	number_draggable_by_name,
+	number_draggable_by_field,
+}
+
+vec2_by_name :: proc "contextless" (name: cstring) -> Field {
+	return Field{name = name, field_type = .Vec2}
+}
+
+vec2_by_field :: proc "contextless" (field: Vec2_Field) -> Field {
+	return vec2_by_name(field.name)
+}
+
+vec2 :: proc {
+	vec2_by_name,
+	vec2_by_field,
+}
+
+vec4_by_name :: proc "contextless" (name: cstring) -> Field {
+	return Field{name = name, field_type = .Vec4}
+}
+
+vec4_by_field :: proc "contextless" (field: Vec4_Field) -> Field {
+	return vec4_by_name(field.name)
+}
+
+vec4 :: proc {
+	vec4_by_name,
+	vec4_by_field,
+}
+
+color_by_name :: proc "contextless" (name: cstring) -> Field {
+	return Field{name = name, field_type = .Color}
+}
+
+color_by_field :: proc "contextless" (field: Color_Field) -> Field {
+	descriptor := Vec4_Field(field)
+	return color_by_name(descriptor.name)
+}
+
+color :: proc {
+	color_by_name,
+	color_by_field,
+}
+
 vec3_by_field :: proc "contextless" (field: Vec3_Field) -> Field {
 	return vec3_by_name(field.name)
 }
@@ -207,22 +314,51 @@ vec3_value :: proc "contextless" (field: Vec3_Field, value: Vec3) -> Component_V
 	return Component_Vec3_Field{name = field.name, value = value}
 }
 
+number_value :: proc "contextless" (field: Number_Field, value: f32) -> Component_Number_Field {
+	return Component_Number_Field{name = field.name, value = value}
+}
+
+vec2_value :: proc "contextless" (field: Vec2_Field, value: Vec2) -> Component_Vec2_Field {
+	return Component_Vec2_Field{name = field.name, value = value}
+}
+
+vec4_value :: proc "contextless" (field: Vec4_Field, value: Vec4) -> Component_Vec4_Field {
+	return Component_Vec4_Field{name = field.name, value = value}
+}
+
+color_value :: proc "contextless" (field: Color_Field, value: Vec4) -> Component_Vec4_Field {
+	descriptor := Vec4_Field(field)
+	return Component_Vec4_Field{name = descriptor.name, value = value}
+}
+
 payload_by_name :: proc "contextless" (
 	component: cstring,
-	fields: []Component_Vec3_Field,
+	vec3_fields: []Component_Vec3_Field = nil,
+	number_fields: []Component_Number_Field = nil,
+	vec2_fields: []Component_Vec2_Field = nil,
+	vec4_fields: []Component_Vec4_Field = nil,
 ) -> Component_Payload {
 	return Component_Payload {
 		component = component,
-		vec3_fields = raw_data(fields),
-		vec3_field_count = c.int(len(fields)),
+		number_fields = raw_data(number_fields),
+		number_field_count = c.int(len(number_fields)),
+		vec2_fields = raw_data(vec2_fields),
+		vec2_field_count = c.int(len(vec2_fields)),
+		vec3_fields = raw_data(vec3_fields),
+		vec3_field_count = c.int(len(vec3_fields)),
+		vec4_fields = raw_data(vec4_fields),
+		vec4_field_count = c.int(len(vec4_fields)),
 	}
 }
 
 payload_by_descriptor :: proc "contextless" (
 	component: Component,
-	fields: []Component_Vec3_Field,
+	vec3_fields: []Component_Vec3_Field = nil,
+	number_fields: []Component_Number_Field = nil,
+	vec2_fields: []Component_Vec2_Field = nil,
+	vec4_fields: []Component_Vec4_Field = nil,
 ) -> Component_Payload {
-	return payload_by_name(component.name, fields)
+	return payload_by_name(component.name, vec3_fields, number_fields, vec2_fields, vec4_fields)
 }
 
 payload :: proc {
@@ -651,6 +787,65 @@ get_vec3 :: proc "contextless" (
 	return value, ok
 }
 
+get_number_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Number_Field,
+) -> (
+	f32,
+	bool,
+) {
+	if ctx == nil || ctx.get_number_field == nil {
+		return 0, false
+	}
+	value: f32
+	ok := ctx.get_number_field(ctx, entity, field.component.name, field.name, &value) != 0
+	return value, ok
+}
+
+get_vec2_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Vec2_Field,
+) -> (
+	Vec2,
+	bool,
+) {
+	if ctx == nil || ctx.get_vec2_field == nil {
+		return {}, false
+	}
+	value: Vec2
+	ok := ctx.get_vec2_field(ctx, entity, field.component.name, field.name, &value) != 0
+	return value, ok
+}
+
+get_vec4_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Vec4_Field,
+) -> (
+	Vec4,
+	bool,
+) {
+	if ctx == nil || ctx.get_vec4_field == nil {
+		return {}, false
+	}
+	value: Vec4
+	ok := ctx.get_vec4_field(ctx, entity, field.component.name, field.name, &value) != 0
+	return value, ok
+}
+
+get_color_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Color_Field,
+) -> (
+	Vec4,
+	bool,
+) {
+	return get_vec4_field(ctx, entity, Vec4_Field(field))
+}
+
 get_vec3_field :: proc "contextless" (
 	ctx: ^System_Context,
 	entity: Entity,
@@ -664,7 +859,11 @@ get_vec3_field :: proc "contextless" (
 
 get :: proc {
 	get_transform_component,
+	get_number_field,
+	get_vec2_field,
 	get_vec3_field,
+	get_vec4_field,
+	get_color_field,
 }
 
 set_vec3 :: proc "contextless" (
@@ -681,6 +880,54 @@ set_vec3 :: proc "contextless" (
 	return ctx.set_vec3_field(ctx, entity, component, field, &next) != 0
 }
 
+set_number_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Number_Field,
+	value: f32,
+) -> bool {
+	if ctx == nil || ctx.set_number_field == nil {
+		return false
+	}
+	next := value
+	return ctx.set_number_field(ctx, entity, field.component.name, field.name, &next) != 0
+}
+
+set_vec2_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Vec2_Field,
+	value: Vec2,
+) -> bool {
+	if ctx == nil || ctx.set_vec2_field == nil {
+		return false
+	}
+	next := value
+	return ctx.set_vec2_field(ctx, entity, field.component.name, field.name, &next) != 0
+}
+
+set_vec4_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Vec4_Field,
+	value: Vec4,
+) -> bool {
+	if ctx == nil || ctx.set_vec4_field == nil {
+		return false
+	}
+	next := value
+	return ctx.set_vec4_field(ctx, entity, field.component.name, field.name, &next) != 0
+}
+
+set_color_field :: proc "contextless" (
+	ctx: ^System_Context,
+	entity: Entity,
+	field: Color_Field,
+	value: Vec4,
+) -> bool {
+	return set_vec4_field(ctx, entity, Vec4_Field(field), value)
+}
+
 set_vec3_field :: proc "contextless" (
 	ctx: ^System_Context,
 	entity: Entity,
@@ -693,7 +940,11 @@ set_vec3_field :: proc "contextless" (
 set :: proc {
 	set_transform,
 	set_transform_component,
+	set_number_field,
+	set_vec2_field,
 	set_vec3_field,
+	set_vec4_field,
+	set_color_field,
 }
 
 spawn_options_basic :: proc "contextless" (

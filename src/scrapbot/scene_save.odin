@@ -541,10 +541,19 @@ scene_world_field_value :: proc(
 					if component.entity_index != entity_index {
 						continue
 					}
+					for field in component.number_fields {
+						if field.name == key { return scene_f32(field.value), true }
+					}
+					for field in component.vec2_fields {
+						if field.name == key { return scene_vec2(field.value), true }
+					}
 					for field in component.vec3_fields {
 						if field.name == key {
 							return scene_vec3(field.value), true
 						}
+					}
+					for field in component.vec4_fields {
+						if field.name == key { return scene_vec4(field.value), true }
 					}
 				}
 			}

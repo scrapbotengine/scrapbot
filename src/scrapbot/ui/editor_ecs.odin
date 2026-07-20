@@ -2252,6 +2252,7 @@ editor_ui_set_numeric_metadata :: proc(
 ) {
 	if input == nil { return }
 	input.numeric = field != .None
+	input.draggable = input.numeric
 	input.step = 0.1
 	input.minimum = 0
 	input.maximum = 0
@@ -2294,14 +2295,44 @@ editor_ui_set_reflected_numeric_metadata :: proc(
 		return
 	}
 	input.numeric =
-		field_type == .Number || field_type == .Vec2 || field_type == .Vec3 || field_type == .Vec4
+		field_type == .Number ||
+		field_type == .Vec2 ||
+		field_type == .Vec3 ||
+		field_type == .Vec4 ||
+		field_type == .Color
+	input.draggable = input.numeric
 	input.step = 0.1
 	input.minimum = 0
 	input.maximum = 0
 	input.has_minimum = false
 	input.has_maximum = false
-	if field_type == .Vec2 || field_type == .Vec3 || field_type == .Vec4 {
+	if field_type == .Vec2 || field_type == .Vec3 || field_type == .Vec4 || field_type == .Color {
 		input.step = 0.01
+	}
+}
+
+editor_ui_set_custom_numeric_metadata :: proc(
+	input: ^shared.UI_Input_Component,
+	field_type: component.Field_Type,
+	options: component.Field_Editor_Options,
+) {
+	editor_ui_set_reflected_numeric_metadata(input, field_type)
+	if input == nil || !input.numeric {
+		return
+	}
+	input.draggable = options.draggable
+	if options.step > 0 {
+		input.step = options.step
+	}
+	input.has_minimum = options.has_minimum
+	input.minimum = options.minimum
+	input.has_maximum = options.has_maximum
+	input.maximum = options.maximum
+	if field_type == .Color && !options.has_minimum && !options.has_maximum {
+		input.has_minimum = true
+		input.minimum = 0
+		input.has_maximum = true
+		input.maximum = 1
 	}
 }
 
@@ -2371,6 +2402,7 @@ editor_ui_inspector_field_values :: proc(
 	reflected_field_index: int = -1,
 	reflected_field_type: component.Field_Type = .String,
 	resource_id: shared.Resource_UUID = {},
+	custom_editor: component.Field_Editor_Options = {},
 ) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
@@ -2420,6 +2452,13 @@ editor_ui_inspector_field_values :: proc(
 		editor_ui_set_numeric_metadata(value_input, field)
 		if reflected_component_id != shared.INVALID_COMPONENT_ID {
 			editor_ui_set_reflected_numeric_metadata(value_input, reflected_field_type)
+		}
+		if field == .Custom_Number ||
+		   field == .Custom_Vec2 ||
+		   field == .Custom_Vec3 ||
+		   field == .Custom_Vec4 ||
+		   field == .Custom_Color {
+			editor_ui_set_custom_numeric_metadata(value_input, reflected_field_type, custom_editor)
 		}
 		_ = ecs.set_ui_input_prefix(builder.world, input_entity, "")
 		value_input.prefix_width = 0
@@ -2594,6 +2633,59 @@ editor_ui_inspector_vec3 :: proc(
 		field,
 		custom_storage_index,
 		custom_field_index,
+	)
+}
+
+editor_ui_inspector_custom_number :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	value: f32,
+	storage_index, field_index: int,
+	definition: component.Field_Definition,
+) {
+	values := [1]string{fmt.tprintf("%.3f", value)}
+	editor_ui_inspector_field_values(
+		builder,
+		label,
+		values[:],
+		.Custom_Number,
+		storage_index,
+		field_index,
+		shared.INVALID_COMPONENT_ID,
+		-1,
+		.Number,
+		{},
+		definition.editor,
+	)
+}
+
+editor_ui_inspector_custom_vector :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	value: shared.Vec4,
+	count: int,
+	field: shared.Editor_Inspector_Field,
+	storage_index, field_index: int,
+	definition: component.Field_Definition,
+) {
+	values := [4]string {
+		fmt.tprintf("%.3f", value.x),
+		fmt.tprintf("%.3f", value.y),
+		fmt.tprintf("%.3f", value.z),
+		fmt.tprintf("%.3f", value.w),
+	}
+	editor_ui_inspector_field_values(
+		builder,
+		label,
+		values[:count],
+		field,
+		storage_index,
+		field_index,
+		shared.INVALID_COMPONENT_ID,
+		-1,
+		definition.field_type,
+		{},
+		definition.editor,
 	)
 }
 
@@ -2990,15 +3082,77 @@ editor_ui_build_reflected_inspector_panels :: proc(
 					if custom.entity_index != entity_index {
 						continue
 					}
-					for field, field_index in custom.vec3_fields {
-						editor_ui_inspector_vec3(
-							builder,
-							field.name,
-							field.value,
-							.Custom_Vec3,
-							storage_index,
-							field_index,
-						)
+					for field in definition.fields[:definition.field_count] {
+						switch field.field_type {
+							case .Number:
+								for value, field_index in custom.number_fields {
+									if value.name != field.name {
+										continue
+									}
+									editor_ui_inspector_custom_number(
+										builder,
+										field.name,
+										value.value,
+										storage_index,
+										field_index,
+										field,
+									)
+									break
+								}
+							case .Vec2:
+								for value, field_index in custom.vec2_fields {
+									if value.name != field.name {
+										continue
+									}
+									editor_ui_inspector_custom_vector(
+										builder,
+										field.name,
+										{value.value.x, value.value.y, 0, 0},
+										2,
+										.Custom_Vec2,
+										storage_index,
+										field_index,
+										field,
+									)
+									break
+								}
+							case .Vec3:
+								for value, field_index in custom.vec3_fields {
+									if value.name != field.name {
+										continue
+									}
+									editor_ui_inspector_custom_vector(
+										builder,
+										field.name,
+										{value.value.x, value.value.y, value.value.z, 0},
+										3,
+										.Custom_Vec3,
+										storage_index,
+										field_index,
+										field,
+									)
+									break
+								}
+							case .Vec4, .Color:
+								for value, field_index in custom.vec4_fields {
+									if value.name == field.name {
+										kind: shared.Editor_Inspector_Field = .Custom_Vec4
+										if field.field_type == .Color { kind = .Custom_Color }
+										editor_ui_inspector_custom_vector(
+											builder,
+											field.name,
+											value.value,
+											4,
+											kind,
+											storage_index,
+											field_index,
+											field,
+										)
+										break
+									}
+								}
+							case .Bool, .String:
+						}
 					}
 					break
 				}
@@ -3602,17 +3756,69 @@ editor_ui_build_inspector_panels :: proc(
 		editor_ui_inspector_bool(&builder, "read only", value.read_only, .UI_Checkbox_Read_Only)
 	}
 	for storage, storage_index in world.custom_components {
-		for component in storage.components {
-			if component.entity_index != entity_index { continue }
+		for custom in storage.components {
+			if custom.entity_index != entity_index {
+				continue
+			}
 			editor_ui_begin_inspector_component(&builder, storage.name)
-			for field, field_index in component.vec3_fields {
-				editor_ui_inspector_vec3(
+			default_number := component.Field_Definition {
+				field_type = .Number,
+				editor = {draggable = true, step = 0.1},
+			}
+			for field, field_index in custom.number_fields {
+				default_number.name = field.name
+				editor_ui_inspector_custom_number(
 					&builder,
 					field.name,
 					field.value,
+					storage_index,
+					field_index,
+					default_number,
+				)
+			}
+			default_vector := component.Field_Definition {
+				editor = {draggable = true, step = 0.01},
+			}
+			for field, field_index in custom.vec2_fields {
+				default_vector.name = field.name
+				default_vector.field_type = .Vec2
+				editor_ui_inspector_custom_vector(
+					&builder,
+					field.name,
+					{field.value.x, field.value.y, 0, 0},
+					2,
+					.Custom_Vec2,
+					storage_index,
+					field_index,
+					default_vector,
+				)
+			}
+			for field, field_index in custom.vec3_fields {
+				default_vector.name = field.name
+				default_vector.field_type = .Vec3
+				editor_ui_inspector_custom_vector(
+					&builder,
+					field.name,
+					{field.value.x, field.value.y, field.value.z, 0},
+					3,
 					.Custom_Vec3,
 					storage_index,
 					field_index,
+					default_vector,
+				)
+			}
+			for field, field_index in custom.vec4_fields {
+				default_vector.name = field.name
+				default_vector.field_type = .Vec4
+				editor_ui_inspector_custom_vector(
+					&builder,
+					field.name,
+					field.value,
+					4,
+					.Custom_Vec4,
+					storage_index,
+					field_index,
+					default_vector,
 				)
 			}
 			break

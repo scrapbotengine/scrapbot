@@ -216,6 +216,7 @@ api_vec3_from_shared :: proc "c" (value: shared.Vec3) -> api.Vec3 {
 	return api.Vec3{x = value.x, y = value.y, z = value.z}
 }
 
+
 shared_vec3_from_api :: proc "c" (value: api.Vec3) -> shared.Vec3 {
 	return shared.Vec3{x = value.x, y = value.y, z = value.z}
 }

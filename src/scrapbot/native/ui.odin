@@ -222,6 +222,7 @@ system_get_ui_component :: proc "c" (
 				caret_inset = value.caret_inset,
 				read_only = bool_to_c_int(value.read_only),
 				numeric = bool_to_c_int(value.numeric),
+				draggable = bool_to_c_int(value.draggable),
 				has_minimum = bool_to_c_int(value.has_minimum),
 				has_maximum = bool_to_c_int(value.has_maximum),
 			}
@@ -510,6 +511,7 @@ ui_command_from_api_payload :: proc "c" (
 				caret_inset = payload.input.caret_inset,
 				read_only = payload.input.read_only != 0,
 				numeric = payload.input.numeric != 0,
+				draggable = payload.input.draggable != 0,
 				has_minimum = payload.input.has_minimum != 0,
 				has_maximum = payload.input.has_maximum != 0,
 			}

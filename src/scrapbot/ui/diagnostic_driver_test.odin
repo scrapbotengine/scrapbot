@@ -87,7 +87,7 @@ test_diagnostic_driver_replays_semantic_actions_and_dumps_the_ui_tree :: proc(t:
 			has_ui_layout = true,
 			ui_layout = {position = {260, 10}, size = {120, 32}},
 			has_ui_input = true,
-			ui_input = {text = "1", number = 1, step = 0.5, numeric = true},
+			ui_input = {text = "1", number = 1, step = 0.5, numeric = true, draggable = true},
 		},
 	)
 	world := ecs.build_world(&scene)

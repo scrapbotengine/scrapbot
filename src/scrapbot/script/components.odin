@@ -89,15 +89,13 @@ register_luau_component :: proc "c" (
 			return luau_push_error(L, "component schema field names must be strings")
 		}
 
-		field_type, field_type_ok := component_schema_field_type(L, -1)
-		if !field_type_ok {
+		field_definition, field_ok := component_schema_field_definition(L, -1)
+		if !field_ok {
 			return luau_push_error(L, "unsupported component field type")
 		}
 
-		definition.fields[definition.field_count] = component.Field_Definition {
-			name = luau_string(field_name_data, field_name_length),
-			field_type = field_type,
-		}
+		field_definition.name = luau_string(field_name_data, field_name_length)
+		definition.fields[definition.field_count] = field_definition
 		definition.field_count += 1
 		lua_settop(L, -2)
 	}
@@ -128,6 +126,125 @@ register_luau_component :: proc "c" (
 	return 1
 }
 
+component_schema_field_definition :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+) -> (
+	component.Field_Definition,
+	bool,
+) {
+	field_type, ok := component_schema_field_type(L, index)
+	if !ok {
+		return {}, false
+	}
+	definition := component.Field_Definition {
+		field_type = field_type,
+	}
+	if lua_type(L, index) != LUA_TTABLE {
+		return definition, true
+	}
+	definition.editor.draggable = luau_optional_boolean_field(L, index, "draggable", false)
+	definition.editor.step, _ = luau_optional_number_field(L, index, "step", 0.1)
+	definition.editor.minimum, definition.editor.has_minimum = luau_optional_number_field(
+		L,
+		index,
+		"minimum",
+		0,
+	)
+	definition.editor.maximum, definition.editor.has_maximum = luau_optional_number_field(
+		L,
+		index,
+		"maximum",
+		0,
+	)
+	if definition.editor.step <= 0 ||
+	   (definition.editor.has_minimum &&
+			   definition.editor.has_maximum &&
+			   definition.editor.minimum > definition.editor.maximum) {
+		return {}, false
+	}
+	return definition, true
+}
+
+scrapbot_field :: proc "c" (L: Lua_State) -> c.int {
+	field_type, ok := component_schema_field_type(L, 1)
+	if !ok ||
+	   (lua_type(L, 2) != LUA_TTABLE &&
+			   lua_type(L, 2) != LUA_TNIL &&
+			   lua_type(L, 2) != LUA_TNONE) {
+		return luau_push_error(L, "scrapbot.field expects a field type and optional options table")
+	}
+	name := component_field_type_name(field_type)
+	push_schema_field_marker(L, name)
+	if lua_type(L, 2) == LUA_TTABLE {
+		lua_getfield(L, 2, "draggable")
+		lua_setfield(L, -2, "draggable")
+		lua_getfield(L, 2, "step")
+		lua_setfield(L, -2, "step")
+		lua_getfield(L, 2, "minimum")
+		lua_setfield(L, -2, "minimum")
+		lua_getfield(L, 2, "maximum")
+		lua_setfield(L, -2, "maximum")
+	}
+	return 1
+}
+
+luau_optional_boolean_field :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	name: cstring,
+	fallback: bool,
+) -> bool {
+	lua_getfield(L, index, name)
+	defer lua_settop(L, -2)
+	if lua_type(L, -1) == LUA_TNIL {
+		return fallback
+	}
+	return lua_toboolean(L, -1) != 0
+}
+
+luau_optional_number_field :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	name: cstring,
+	fallback: f32,
+) -> (
+	f32,
+	bool,
+) {
+	lua_getfield(L, index, name)
+	defer lua_settop(L, -2)
+	if lua_type(L, -1) == LUA_TNIL {
+		return fallback, false
+	}
+	is_number: c.int
+	value := lua_tonumberx(L, -1, &is_number)
+	if is_number == 0 {
+		return fallback, false
+	}
+	return f32(value), true
+}
+
+component_field_type_name :: proc "c" (field_type: component.Field_Type) -> string {
+	switch field_type {
+		case .Number:
+			return "number"
+		case .Vec2:
+			return "vec2"
+		case .Vec3:
+			return "vec3"
+		case .Vec4:
+			return "vec4"
+		case .Color:
+			return "color"
+		case .Bool:
+			return "bool"
+		case .String:
+			return "string"
+	}
+	return ""
+}
+
 component_schema_field_type :: proc "c" (
 	L: Lua_State,
 	index: c.int,
@@ -142,8 +259,17 @@ component_schema_field_type :: proc "c" (
 			return {}, false
 		}
 		field_type_name := luau_string(field_type_data, field_type_length)
-		if field_type_name == "vec3" {
-			return .Vec3, true
+		switch field_type_name {
+			case "number":
+				return .Number, true
+			case "vec2":
+				return .Vec2, true
+			case "vec3":
+				return .Vec3, true
+			case "vec4":
+				return .Vec4, true
+			case "color":
+				return .Color, true
 		}
 		return {}, false
 	}
@@ -167,8 +293,17 @@ component_schema_field_type :: proc "c" (
 		return {}, false
 	}
 	name := luau_string(name_data, length)
-	if name == "vec3" {
-		return .Vec3, true
+	switch name {
+		case "number":
+			return .Number, true
+		case "vec2":
+			return .Vec2, true
+		case "vec3":
+			return .Vec3, true
+		case "vec4":
+			return .Vec4, true
+		case "color":
+			return .Color, true
 	}
 	return {}, false
 }

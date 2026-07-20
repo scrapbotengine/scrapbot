@@ -1735,6 +1735,7 @@ test_numeric_input_exposes_reusable_validation_submit_cancel_and_scrub_state :: 
 				minimum = 0,
 				maximum = 2,
 				numeric = true,
+				draggable = true,
 				has_minimum = true,
 				has_maximum = true,
 			},
@@ -1789,7 +1790,7 @@ test_numeric_input_exposes_reusable_validation_submit_cancel_and_scrub_state :: 
 	testing.expect(t, interaction.cancelled && interaction.cancel_revision == 1)
 	testing.expect(t, interaction.valid)
 
-	// Every writable numeric input scrubs from its complete surface, without a prefix opt-in.
+	// Draggable numeric inputs scrub from their complete surface.
 	drag_start := Pointer_Input {
 		position = {120, 20},
 		primary_down = true,
@@ -1804,6 +1805,41 @@ test_numeric_input_exposes_reusable_validation_submit_cancel_and_scrub_state :: 
 	drag.primary_down = false
 	testing.expect(t, reconcile(state, &world, 200, 80, drag) == "")
 	testing.expect(t, interaction.submitted && interaction.submit_revision == 2)
+}
+
+@(test)
+test_numeric_input_only_scrubs_when_draggable_is_enabled :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Numeric Input",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 10}, size = {160, 28}},
+			has_ui_input = true,
+			ui_input = {text = "1", number = 1, step = 0.5, numeric = true},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+
+	press := Pointer_Input {
+		position = {80, 20},
+		primary_down = true,
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &world, 200, 80, press) == "")
+	testing.expect(t, current_pointer_cursor(state) != .Horizontal_Resize)
+	drag := press
+	drag.position.x += 20
+	testing.expect(t, reconcile(state, &world, 200, 80, drag) == "")
+	testing.expect(t, world.ui_inputs[0].number == 1)
+	testing.expect(t, !state.input_scrubbing)
 }
 
 @(test)

@@ -457,18 +457,61 @@ read_custom_component_payload :: proc "c" (
 
 	for i in 0 ..< definition.field_count {
 		field := definition.fields[i]
-		if field.field_type != component.Field_Type.Vec3 {
-			return "unsupported component field type"
-		}
-		value, found, ok := optional_vec3_field(L, payload_index, cstring(raw_data(field.name)))
-		if !found {
-			return "component payload is missing a required field"
-		}
-		if !ok {
-			return "component payload field must be a vec3"
-		}
-		if err := ecs.command_component_add_vec3(command_component, field.name, value); err != "" {
-			return err
+		switch field.field_type {
+			case .Number:
+				value, found, ok := optional_number_field(
+					L,
+					payload_index,
+					cstring(raw_data(field.name)),
+				)
+				if !found || !ok {
+					return "component payload field must be a number"
+				}
+				if err := ecs.command_component_add_number(command_component, field.name, value);
+				   err != "" {
+					return err
+				}
+			case .Vec2:
+				value, found, ok := optional_vec2_field(
+					L,
+					payload_index,
+					cstring(raw_data(field.name)),
+				)
+				if !found || !ok {
+					return "component payload field must be a vec2"
+				}
+				if err := ecs.command_component_add_vec2(command_component, field.name, value);
+				   err != "" {
+					return err
+				}
+			case .Vec3:
+				value, found, ok := optional_vec3_field(
+					L,
+					payload_index,
+					cstring(raw_data(field.name)),
+				)
+				if !found || !ok {
+					return "component payload field must be a vec3"
+				}
+				if err := ecs.command_component_add_vec3(command_component, field.name, value);
+				   err != "" {
+					return err
+				}
+			case .Vec4, .Color:
+				value, found, ok := optional_vec4_field(
+					L,
+					payload_index,
+					cstring(raw_data(field.name)),
+				)
+				if !found || !ok {
+					return "component payload field must be a vec4"
+				}
+				if err := ecs.command_component_add_vec4(command_component, field.name, value);
+				   err != "" {
+					return err
+				}
+			case .Bool, .String:
+				return "unsupported component field type"
 		}
 	}
 
@@ -481,8 +524,34 @@ custom_component_matches_command :: proc(
 ) -> bool {
 	if world_component.component_id != command_component.component_id ||
 	   world_component.name != ecs.command_component_name(command_component) ||
+	   len(world_component.number_fields) != command_component.number_field_count ||
+	   len(world_component.vec2_fields) != command_component.vec2_field_count ||
 	   len(world_component.vec3_fields) != command_component.vec3_field_count {
 		return false
+	}
+	if len(world_component.vec4_fields) != command_component.vec4_field_count {
+		return false
+	}
+
+	for i in 0 ..< command_component.number_field_count {
+		command_field := &command_component.number_fields[i]
+		value, ok := custom_component_number_field(
+			world_component,
+			ecs.command_number_field_name(command_field),
+		)
+		if !ok || value != command_field.value {
+			return false
+		}
+	}
+	for i in 0 ..< command_component.vec2_field_count {
+		command_field := &command_component.vec2_fields[i]
+		value, ok := custom_component_vec2_field(
+			world_component,
+			ecs.command_vec2_field_name(command_field),
+		)
+		if !ok || value != command_field.value {
+			return false
+		}
 	}
 
 	for i in 0 ..< command_component.vec3_field_count {
@@ -495,8 +564,48 @@ custom_component_matches_command :: proc(
 			return false
 		}
 	}
+	for i in 0 ..< command_component.vec4_field_count {
+		command_field := &command_component.vec4_fields[i]
+		value, ok := custom_component_vec4_field(
+			world_component,
+			ecs.command_vec4_field_name(command_field),
+		)
+		if !ok || value != command_field.value {
+			return false
+		}
+	}
 
 	return true
+}
+
+custom_component_number_field :: proc(
+	world_component: Custom_Component,
+	name: string,
+) -> (
+	f32,
+	bool,
+) {
+	for field in world_component.number_fields {
+		if field.name == name {
+			return field.value, true
+		}
+	}
+	return 0, false
+}
+
+custom_component_vec2_field :: proc(
+	world_component: Custom_Component,
+	name: string,
+) -> (
+	Vec2,
+	bool,
+) {
+	for field in world_component.vec2_fields {
+		if field.name == name {
+			return field.value, true
+		}
+	}
+	return {}, false
 }
 
 custom_component_vec3_field :: proc(
@@ -514,12 +623,47 @@ custom_component_vec3_field :: proc(
 	return {}, false
 }
 
+custom_component_vec4_field :: proc(
+	world_component: Custom_Component,
+	name: string,
+) -> (
+	Vec4,
+	bool,
+) {
+	for field in world_component.vec4_fields {
+		if field.name == name {
+			return field.value, true
+		}
+	}
+	return {}, false
+}
+
 apply_custom_component_command :: proc(
 	world_component: ^Custom_Component,
 	command_component: ^ecs.Command_Component,
 ) {
 	if world_component == nil {
 		return
+	}
+	for i in 0 ..< command_component.number_field_count {
+		command_field := &command_component.number_fields[i]
+		field_name := ecs.command_number_field_name(command_field)
+		for &world_field in world_component.number_fields {
+			if world_field.name == field_name {
+				world_field.value = command_field.value
+				break
+			}
+		}
+	}
+	for i in 0 ..< command_component.vec2_field_count {
+		command_field := &command_component.vec2_fields[i]
+		field_name := ecs.command_vec2_field_name(command_field)
+		for &world_field in world_component.vec2_fields {
+			if world_field.name == field_name {
+				world_field.value = command_field.value
+				break
+			}
+		}
 	}
 	for i in 0 ..< command_component.vec3_field_count {
 		command_field := &command_component.vec3_fields[i]
@@ -531,6 +675,53 @@ apply_custom_component_command :: proc(
 			}
 		}
 	}
+	for i in 0 ..< command_component.vec4_field_count {
+		command_field := &command_component.vec4_fields[i]
+		field_name := ecs.command_vec4_field_name(command_field)
+		for &world_field in world_component.vec4_fields {
+			if world_field.name == field_name {
+				world_field.value = command_field.value
+				break
+			}
+		}
+	}
+}
+
+optional_number_field :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	name: cstring,
+) -> (
+	value: f32,
+	found, ok: bool,
+) {
+	lua_getfield(L, index, name)
+	if lua_type(L, -1) == LUA_TNIL {
+		lua_settop(L, -2)
+		return 0, false, true
+	}
+	is_number: c.int
+	value = f32(lua_tonumberx(L, -1, &is_number))
+	lua_settop(L, -2)
+	return value, true, is_number != 0
+}
+
+optional_vec2_field :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	name: cstring,
+) -> (
+	value: Vec2,
+	found, ok: bool,
+) {
+	lua_getfield(L, index, name)
+	if lua_type(L, -1) == LUA_TNIL {
+		lua_settop(L, -2)
+		return {}, false, true
+	}
+	value, ok = vec2_argument(L, -1)
+	lua_settop(L, -2)
+	return value, true, ok
 }
 
 optional_vec3_field :: proc "c" (
@@ -547,6 +738,24 @@ optional_vec3_field :: proc "c" (
 		return {}, false, true
 	}
 	value, ok = vec3_argument(L, -1)
+	lua_settop(L, -2)
+	return value, true, ok
+}
+
+optional_vec4_field :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	name: cstring,
+) -> (
+	value: Vec4,
+	found, ok: bool,
+) {
+	lua_getfield(L, index, name)
+	if lua_type(L, -1) == LUA_TNIL {
+		lua_settop(L, -2)
+		return {}, false, true
+	}
+	value, ok = vec4_argument(L, -1)
 	lua_settop(L, -2)
 	return value, true, ok
 }

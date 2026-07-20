@@ -17,7 +17,9 @@ DEFAULT_SCRIPT_CHUNK :: "=" + DEFAULT_SCRIPT
 MAX_SCRIPT_SYSTEMS :: schedule.MAX_SYSTEMS
 MAX_QUERY_OBJECTS :: 128
 World :: shared.World
+Vec2 :: shared.Vec2
 Vec3 :: shared.Vec3
+Vec4 :: shared.Vec4
 Transform_Component :: shared.Transform_Component
 Custom_Component :: shared.Custom_Component
 Named_Vec3 :: shared.Named_Vec3

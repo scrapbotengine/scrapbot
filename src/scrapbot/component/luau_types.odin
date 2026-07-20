@@ -13,7 +13,12 @@ export type Scrapbot = {
 	component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,
 	library_component: <T>(name: string, schema: ScrapbotComponentSchema) -> ScrapbotComponent<T, T>,
 	component_handle: <T, R>(name: string) -> ScrapbotComponent<T, R>,
+	field: <T, R>(field: ScrapbotComponentField<T, R>, options: ScrapbotFieldOptions?) -> ScrapbotComponentField<T, R>,
+	number: ScrapbotComponentField<number, number>,
+	vec2: ScrapbotComponentField<Vec2, ReadonlyVec2>,
 	vec3: ScrapbotComponentField<Vec3, ReadonlyVec3>,
+	vec4: ScrapbotComponentField<Vec4, ReadonlyVec4>,
+	color: ScrapbotComponentField<Vec4, ReadonlyVec4>,
 	transform: ScrapbotTransformComponent,
 	camera: ScrapbotCameraComponent,
 	ambient_light: ScrapbotAmbientLightComponent,
@@ -187,7 +192,14 @@ export type ScrapbotComponentField<T, R> = {
 	_read_type: R?,
 }
 
-export type ScrapbotComponentFieldType = ScrapbotComponentField<any, any> | "vec3"
+export type ScrapbotFieldOptions = {
+	draggable: boolean?,
+	step: number?,
+	minimum: number?,
+	maximum: number?,
+}
+
+export type ScrapbotComponentFieldType = ScrapbotComponentField<any, any> | "number" | "vec2" | "vec3" | "vec4" | "color"
 
 export type ScrapbotComponentAccess = {
 	id: number,
@@ -290,7 +302,7 @@ luau_field_type_name :: proc(field_type: Field_Type) -> string {
 			return "Vec2"
 		case .Vec3:
 			return "Vec3"
-		case .Vec4:
+		case .Vec4, .Color:
 			return "Vec4"
 		case .Number:
 			return "number"
@@ -308,7 +320,7 @@ luau_readonly_field_type_name :: proc(field_type: Field_Type) -> string {
 			return "ReadonlyVec2"
 		case .Vec3:
 			return "ReadonlyVec3"
-		case .Vec4:
+		case .Vec4, .Color:
 			return "ReadonlyVec4"
 		case .Number:
 			return "number"

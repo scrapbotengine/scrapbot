@@ -251,9 +251,10 @@ resource = "20000000-0000-4000-8000-000000000002"
 [entities.components.showcase.emitter]
 state = [0, 0, 0]
 
-# rate_burst_speed = [spawns per second, maximum burst per frame, launch speed]
 [entities.components.showcase.fountain]
-rate_burst_speed = [18, 4, 3.2]
+spawn_rate = 18
+burst_limit = 4
+launch_speed = 3.2
 
 [entities.components.showcase.spin]
 angular_velocity = [0, 0.9, 0]

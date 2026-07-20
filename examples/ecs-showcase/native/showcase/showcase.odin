@@ -38,9 +38,17 @@ Emitter_State :: scrapbot.Vec3_Field {
 Fountain_Component :: scrapbot.Component {
 	name = "showcase.fountain",
 }
-Fountain_Emission :: scrapbot.Vec3_Field {
+Fountain_Spawn_Rate :: scrapbot.Number_Field {
 	component = Fountain_Component,
-	name = "rate_burst_speed",
+	name = "spawn_rate",
+}
+Fountain_Burst_Limit :: scrapbot.Number_Field {
+	component = Fountain_Component,
+	name = "burst_limit",
+}
+Fountain_Launch_Speed :: scrapbot.Number_Field {
+	component = Fountain_Component,
+	name = "launch_speed",
 }
 
 Light_Orbit_Component :: scrapbot.Component {
@@ -77,7 +85,11 @@ register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
 	emitter_fields := [?]scrapbot.Field{scrapbot.vec3(Emitter_State)}
 	scrapbot.component(&reg, Emitter_Component, emitter_fields[:])
 
-	fountain_fields := [?]scrapbot.Field{scrapbot.vec3(Fountain_Emission)}
+	fountain_fields := [?]scrapbot.Field {
+		scrapbot.number_draggable(Fountain_Spawn_Rate, 0.25, 0),
+		scrapbot.number_draggable(Fountain_Burst_Limit, 1, 1, 64),
+		scrapbot.number_draggable(Fountain_Launch_Speed, 0.1, 0),
+	}
 	scrapbot.component(&reg, Fountain_Component, fountain_fields[:])
 
 	light_orbit_fields := [?]scrapbot.Field{scrapbot.vec3(Light_Orbit_Settings)}
@@ -300,13 +312,15 @@ emit_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 		if !state_ok {
 			return "failed to read emitter state"
 		}
-		emission, emission_ok := scrapbot.get(ctx, entity, Fountain_Emission)
-		if !emission_ok {
+		spawn_rate_value, spawn_rate_ok := scrapbot.get(ctx, entity, Fountain_Spawn_Rate)
+		burst_limit_value, burst_limit_ok := scrapbot.get(ctx, entity, Fountain_Burst_Limit)
+		launch_speed_value, launch_speed_ok := scrapbot.get(ctx, entity, Fountain_Launch_Speed)
+		if !spawn_rate_ok || !burst_limit_ok || !launch_speed_ok {
 			return "failed to read fountain emission settings"
 		}
 
 		state.x += ctx.time.delta_time
-		spawn_rate := max(emission.x, 0)
+		spawn_rate := max(spawn_rate_value, 0)
 		if spawn_rate <= 0 {
 			state.x = 0
 			if !scrapbot.set(ctx, entity, Emitter_State, state) {
@@ -315,8 +329,8 @@ emit_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 			continue
 		}
 		spawn_interval := 1 / spawn_rate
-		burst_limit := clamp(i32(emission.y), i32(1), i32(64))
-		launch_speed := max(emission.z, 0)
+		burst_limit := clamp(i32(burst_limit_value), i32(1), i32(64))
+		launch_speed := max(launch_speed_value, 0)
 		spawn_count := 0
 		for state.x >= spawn_interval && spawn_count < int(burst_limit) {
 			state.x -= spawn_interval

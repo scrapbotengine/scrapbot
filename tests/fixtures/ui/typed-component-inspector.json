@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "scroll", "target": {"text": "SCENE", "origin": "editor"}, "wheel_y": -8},
+    {"action": "wait", "frames": 12},
+    {"action": "click", "target": {"text": "Native Fountain Emitter", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"text": "spawn_rate", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "burst_limit", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "launch_speed", "origin": "editor"}, "expect": "visible"},
+    {"action": "scroll", "target": {"name": "__scrapbot_editor_right", "origin": "editor"}, "wheel_y": -8},
+    {"action": "wait", "frames": 12},
+    {"action": "drag", "target": {"text": "18.000", "origin": "editor"}, "delta_x": 4, "delta_y": 0},
+    {"action": "expect", "target": {"text": "18.25", "origin": "editor"}, "expect": "text", "text": "18.25"},
+    {"action": "capture", "target": {"text": "SHOWCASE / FOUNTAIN", "origin": "editor"}, "padding": 8}
+  ]
+}
