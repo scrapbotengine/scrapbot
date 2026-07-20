@@ -5521,7 +5521,7 @@ test_reflected_inspector_edits_every_registry_field_shape_with_structural_undo :
 }
 
 @(test)
-test_editor_entity_and_component_snapshots_refresh_at_five_hz :: proc(t: ^testing.T) {
+test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
 	append(
 		&scene.entities,
@@ -5538,6 +5538,8 @@ test_editor_entity_and_component_snapshots_refresh_at_five_hz :: proc(t: ^testin
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state)
 	state.editor_visible = true
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
 	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 720))
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
 	testing.expect(t, state.editor_snapshot_refresh_count == 1)
@@ -5550,20 +5552,43 @@ test_editor_entity_and_component_snapshots_refresh_at_five_hz :: proc(t: ^testin
 	testing.expect(t, editor_browser_row_count(&world) == 1)
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0.11) == "")
 	testing.expect(t, state.editor_snapshot_refresh_count == 2)
-	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 1)
+	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 2)
 	testing.expect(t, editor_browser_row_count(&world) == 2)
 
+	position_x_input := -1
+	for binding in world.editor_uis {
+		if binding.role == .Inspector_Input &&
+		   binding.inspector_field == .Transform_Position &&
+		   binding.inspector_axis == .X {
+			position_x_input = binding.entity_index
+			break
+		}
+	}
+	testing.expect(t, position_x_input >= 0)
 	world.transforms[world.entities[0].transform_index].position.x = 99
-	ecs.bump_component_revision(&world, 0)
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0.21) == "")
 	testing.expect(t, state.editor_snapshot_refresh_count == 3)
-	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 2)
+	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 3)
+	if position_x_input >= 0 {
+		input_index := world.entities[position_x_input].ui_input_index
+		testing.expect(t, world.ui_inputs[input_index].text == "99.00")
+		focus_input(state, &world, position_x_input)
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0, {text = "123"}) == "")
+		testing.expect(t, world.ui_inputs[input_index].text == "123")
+		testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 99)
+		world.transforms[world.entities[0].transform_index].position.x = 42
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0.21) == "")
+		testing.expect(t, state.editor_inspector_snapshot_refresh_count == 4)
+		testing.expect(t, world.ui_inputs[input_index].text == "123")
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0, {escape = true}) == "")
+		testing.expect(t, world.transforms[world.entities[0].transform_index].position.x == 42)
+	}
 
 	// Selection changes bypass the interval so the inspector never opens stale.
 	testing.expect(t, editor_select_entity(state, &world, world.entities[1].id, 720))
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
-	testing.expect(t, state.editor_snapshot_refresh_count == 4)
-	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 3)
+	testing.expect(t, state.editor_snapshot_refresh_count == 5)
+	testing.expect(t, state.editor_inspector_snapshot_refresh_count == 5)
 }
 
 @(test)

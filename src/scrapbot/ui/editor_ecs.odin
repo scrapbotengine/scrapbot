@@ -4273,6 +4273,8 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	refresh_inspector :=
 		!state.editor_snapshot_valid ||
 		!state.editor_inspector_snapshot_valid ||
+		(state.editor_simulation_playing &&
+				state.editor_snapshot_elapsed >= EDITOR_SNAPSHOT_INTERVAL) ||
 		state.editor_inspector_snapshot_entity != state.editor_selected_entity ||
 		state.editor_inspector_snapshot_component_revision != selected_component_revision ||
 		state.editor_inspector_snapshot_has_resource != state.editor_has_resource_selection ||
@@ -4610,11 +4612,17 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 		}
 		if interaction.changed && interaction.valid {
 			_ = editor_resource_write_number(state, binding^, input.number)
+			if state.input_scrubbing {
+				binding.input_was_scrubbed = true
+			}
+		}
+		if interaction.cancelled && binding.input_was_scrubbed {
+			_ = editor_resource_write_number(state, binding^, input.number)
+			editor_recompute_scene_dirty(state)
 		}
 		if interaction.cancelled {
-			_ = editor_resource_write_number(state, binding^, input.number)
 			binding.input_has_original_number = false
-			editor_recompute_scene_dirty(state)
+			binding.input_was_scrubbed = false
 		}
 		if interaction.submitted {
 			_ = editor_resource_write_number(state, binding^, input.number)
@@ -4627,6 +4635,7 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 				)
 			}
 			binding.input_has_original_number = false
+			binding.input_was_scrubbed = false
 		}
 		return
 	}
@@ -4678,11 +4687,17 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 	}
 	if interaction.changed && interaction.valid {
 		_ = write_inspector_numeric(state, world, binding^, input.number)
+		if state.input_scrubbing {
+			binding.input_was_scrubbed = true
+		}
+	}
+	if interaction.cancelled && binding.input_was_scrubbed {
+		_ = write_inspector_numeric(state, world, binding^, input.number)
+		editor_recompute_scene_dirty(state)
 	}
 	if interaction.cancelled {
-		_ = write_inspector_numeric(state, world, binding^, input.number)
 		binding.input_has_original_number = false
-		editor_recompute_scene_dirty(state)
+		binding.input_was_scrubbed = false
 	}
 	if interaction.submitted {
 		_ = write_inspector_numeric(state, world, binding^, input.number)
@@ -4696,6 +4711,7 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 			)
 		}
 		binding.input_has_original_number = false
+		binding.input_was_scrubbed = false
 	}
 }
 
