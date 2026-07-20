@@ -14,6 +14,7 @@ runtime_editor_gizmo_mode_requested: bool
 runtime_editor_gizmo_mode: shared.Editor_Gizmo_Mode
 runtime_wheel_y: f32
 runtime_scene_camera_look_active: bool
+runtime_scene_camera_capture_warmup: int
 runtime_pointer_cursor: Runtime_Pointer_Cursor
 runtime_horizontal_resize_cursor: ^sdl.Cursor
 runtime_vertical_resize_cursor: ^sdl.Cursor
@@ -234,6 +235,7 @@ close_runtime_window :: proc() {
 	runtime_window_hidden = false
 	runtime_editor_gizmo_mode_requested = false
 	runtime_scene_camera_look_active = false
+	runtime_scene_camera_capture_warmup = 0
 	runtime_pointer_cursor = .Default
 	runtime_text_length = 0
 	runtime_text_navigation = {}
@@ -372,8 +374,11 @@ scene_camera_input_from_state :: proc(
 	return {movement = movement, look_delta = look_delta, look_active = true}
 }
 
-scene_camera_capture_delta :: proc(delta: shared.Vec2, capture_started: bool) -> shared.Vec2 {
-	if capture_started {
+SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES :: 2
+
+scene_camera_capture_delta :: proc(delta: shared.Vec2, warmup_samples: ^int) -> shared.Vec2 {
+	if warmup_samples != nil && warmup_samples^ > 0 {
+		warmup_samples^ -= 1
 		return {}
 	}
 	return delta
@@ -393,6 +398,7 @@ runtime_scene_camera_input :: proc(
 			_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 		}
 		runtime_scene_camera_look_active = false
+		runtime_scene_camera_capture_warmup = 0
 		return {}
 	}
 
@@ -403,7 +409,6 @@ runtime_scene_camera_input :: proc(
 		pointer.y >= viewport_y &&
 		pointer.x < viewport_x + viewport_width &&
 		pointer.y < viewport_y + viewport_height
-	capture_started := false
 	if !runtime_scene_camera_look_active {
 		if !pointer.secondary_down || !inside_viewport {
 			return {}
@@ -412,7 +417,7 @@ runtime_scene_camera_input :: proc(
 			return {}
 		}
 		runtime_scene_camera_look_active = true
-		capture_started = true
+		runtime_scene_camera_capture_warmup = SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES
 	}
 
 	delta_x, delta_y: f32
@@ -420,6 +425,7 @@ runtime_scene_camera_input :: proc(
 	if .RIGHT not_in buttons {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 		runtime_scene_camera_look_active = false
+		runtime_scene_camera_capture_warmup = 0
 		return {}
 	}
 
@@ -437,7 +443,10 @@ runtime_scene_camera_input :: proc(
 			.LCTRL,
 		) || keyboard_state_has(keyboard, int(key_count), .RCTRL),
 	}
-	look_delta := scene_camera_capture_delta({delta_x, delta_y}, capture_started)
+	look_delta := scene_camera_capture_delta(
+		{delta_x, delta_y},
+		&runtime_scene_camera_capture_warmup,
+	)
 	return scene_camera_input_from_state(keys, look_delta, true)
 }
 

@@ -71,10 +71,19 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 }
 
 @(test)
-test_scene_camera_capture_discards_initial_relative_mouse_delta :: proc(t: ^testing.T) {
-	delta := shared.Vec2{380, -240}
-	testing.expect(t, scene_camera_capture_delta(delta, true) == shared.Vec2{})
-	testing.expect(t, scene_camera_capture_delta(delta, false) == delta)
+test_scene_camera_capture_discards_relative_mode_warmup_deltas :: proc(t: ^testing.T) {
+	warmup_samples := SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES
+	activation_warp := shared.Vec2{380, -240}
+	followup_warp := shared.Vec2{-380, 240}
+	user_delta := shared.Vec2{4, -2}
+
+	testing.expect(
+		t,
+		scene_camera_capture_delta(activation_warp, &warmup_samples) == shared.Vec2{},
+	)
+	testing.expect(t, scene_camera_capture_delta(followup_warp, &warmup_samples) == shared.Vec2{})
+	testing.expect(t, warmup_samples == 0)
+	testing.expect(t, scene_camera_capture_delta(user_delta, &warmup_samples) == user_delta)
 }
 
 @(test)
