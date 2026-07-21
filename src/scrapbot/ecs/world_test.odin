@@ -170,6 +170,74 @@ test_resource_render_list_updates_only_dirty_entities_and_removes_slots_incremen
 }
 
 @(test)
+test_resource_render_list_preserves_reused_slots_across_transform_and_structure_churn :: proc(
+	t: ^testing.T,
+) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.icosphere(1, 0)
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	testing.expect(t, desc_err == "")
+	geometry, geometry_err := resources.register_geometry(&registry, "asteroid", desc)
+	material, material_err := resources.register_material(
+		&registry,
+		"rock",
+		{base_color = {0.4, 0.3, 0.2, 1}},
+	)
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	world: World
+	defer destroy_world(&world)
+	renderable: Spawn_Command
+	testing.expect(t, init_spawn_command(&renderable, "Asteroid") == "")
+	testing.expect(t, spawn_set_transform(&renderable, {scale = {1, 1, 1}}) == "")
+	testing.expect(t, spawn_set_geometry(&renderable, geometry) == "")
+	testing.expect(t, spawn_set_material(&renderable, material) == "")
+	first := spawn_entity(&world, &renderable)
+	second := spawn_entity(&world, &renderable)
+
+	list: Render_List
+	defer destroy_render_list(&list)
+	populate_resource_render_list(&world, &registry, &list)
+	first_slot := world.entities[first].render_instance_index
+	second_slot := world.entities[second].render_instance_index
+
+	world.transforms[world.entities[first].transform_index].rotation.x = 0.25
+	world.transforms[world.entities[second].transform_index].rotation.y = 0.5
+	mark_render_transform_dirty(&world, first)
+	mark_render_transform_dirty(&world, second)
+	despawn_entity(&world, first, world.entities[first].id.generation)
+	despawn_entity(&world, second, world.entities[second].id.generation)
+	first_fragment := spawn_entity(&world, &renderable)
+	second_fragment := spawn_entity(&world, &renderable)
+	empty: Spawn_Command
+	testing.expect(t, init_spawn_command(&empty, "Shake Impulse") == "")
+	shake := spawn_entity(&world, &empty)
+	populate_resource_render_list(&world, &registry, &list)
+
+	reused_slots := [?]int{first_slot, second_slot}
+	for slot in reused_slots {
+		list_index := list.instance_index_by_slot[slot]
+		testing.expect(t, list_index >= 0 && list_index < len(list.instances))
+		if list_index >= 0 && list_index < len(list.instances) {
+			testing.expect_value(t, list.instances[list_index].slot, slot)
+		}
+	}
+
+	world.transforms[world.entities[first_fragment].transform_index].scale = {0.2, 0.2, 0.2}
+	world.transforms[world.entities[second_fragment].transform_index].scale = {0.3, 0.3, 0.3}
+	mark_render_transform_dirty(&world, first_fragment)
+	mark_render_transform_dirty(&world, second_fragment)
+	despawn_entity(&world, shake, world.entities[shake].id.generation)
+	populate_resource_render_list(&world, &registry, &list)
+	for slot in list.dirty_transform_slots {
+		list_index := list.instance_index_by_slot[slot]
+		testing.expect(t, list_index >= 0 && list_index < len(list.instances))
+	}
+}
+
+@(test)
 test_resource_render_list_updates_renderable_descendants_of_dirty_transforms :: proc(
 	t: ^testing.T,
 ) {

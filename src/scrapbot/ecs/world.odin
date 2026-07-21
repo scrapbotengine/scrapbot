@@ -1369,7 +1369,9 @@ render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index:
 		if previous_slot != instance.slot &&
 		   previous_slot >= 0 &&
 		   previous_slot < len(list.instance_index_by_slot) {
-			list.instance_index_by_slot[previous_slot] = INVALID_COMPONENT_INDEX
+			if list.instance_index_by_slot[previous_slot] == list_index {
+				list.instance_index_by_slot[previous_slot] = INVALID_COMPONENT_INDEX
+			}
 			append(&list.dirty_instance_slots, previous_slot)
 		}
 	} else {
