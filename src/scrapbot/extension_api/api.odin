@@ -388,6 +388,10 @@ Query_Chunk_Binding :: struct {
 Query_Chunk :: struct {
 	terms: [^]Query_Term,
 	term_count: c.int,
+	// Opaque host-owned compiled-plan handle. Extensions must initialize these
+	// fields to zero and otherwise leave them untouched.
+	plan_slot: c.int,
+	plan_generation: u32,
 	next_entity_index: c.int,
 	entities: [^]Entity,
 	capacity: c.int,

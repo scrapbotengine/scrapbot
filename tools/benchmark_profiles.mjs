@@ -53,7 +53,10 @@ function run(binary) {
 		!stats?.enabled || stats.frames !== frames) {
 		fail(`${binary} returned incomplete runtime statistics`);
 	}
-	return stats.late_update_ns_per_frame;
+	return {
+		frameNs: stats.late_update_ns_per_frame,
+		queries: stats.native_queries,
+	};
 }
 
 function median(values) {
@@ -70,7 +73,8 @@ const measurements = profiles.map((profile) => {
 	for (let trial = 0; trial < trials; trial += 1) {
 		samples.push(run(profile.binary));
 	}
-	return { ...profile, samples, median: median(samples) };
+	const frameSamples = samples.map((sample) => sample.frameNs);
+	return { ...profile, samples, median: median(frameSamples) };
 });
 
 const baseline = measurements[0].median;
@@ -78,5 +82,13 @@ for (const measurement of measurements) {
 	const milliseconds = measurement.median / 1_000_000;
 	const relative = baseline / measurement.median;
 	console.log(`${measurement.name.padEnd(27)} ${milliseconds.toFixed(3)} ms/frame  ${relative.toFixed(2)}x`);
+	const query = measurement.samples.at(-1)?.queries;
+	if (query?.chunks > 0) {
+		const fill = query.entities / query.chunks;
+		console.log(
+			`  native chunks: ${query.entities} entities / ${query.chunks} chunks ` +
+			`(${fill.toFixed(1)} avg), ${query.scalar_tail_lanes} tail lanes, ` +
+			`${query.plan_builds} plan builds / ${query.plan_hits} hits`,
+		);
+	}
 }
-

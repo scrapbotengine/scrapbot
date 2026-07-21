@@ -240,6 +240,20 @@ Query :: struct {
 	term_count: int,
 }
 
+Compiled_Query_Term :: struct {
+	term: Query_Term,
+	custom_storage_index: int,
+}
+
+// Compiled_Query retains the structural resolution needed to traverse a query.
+// Storage membership may change freely: storage indices remain stable for the
+// lifetime of a World, and matching always consults the live storage maps.
+Compiled_Query :: struct {
+	terms: [MAX_QUERY_TERMS]Compiled_Query_Term,
+	term_count: int,
+	anchor_storage_index: int,
+}
+
 World_Storage_Stats :: struct {
 	live_entities: int,
 	entity_slots: int,
@@ -2333,6 +2347,102 @@ query_next :: proc "c" (
 		}
 		next_entity_index^ = entity_index + 1
 		if query_matches_entity(world, query, entity_index) {
+			return entity_index, true
+		}
+	}
+	return -1, false
+}
+
+compile_query :: proc "c" (world: ^World, query: Query) -> Compiled_Query {
+	compiled := Compiled_Query {
+		anchor_storage_index = INVALID_COMPONENT_INDEX,
+	}
+	if world == nil || query.term_count <= 0 || query.term_count > MAX_QUERY_TERMS {
+		return compiled
+	}
+	compiled.term_count = query.term_count
+	best_count := len(world.entities) + 1
+	for term_index in 0 ..< query.term_count {
+		term := query.terms[term_index]
+		storage := find_custom_component_storage(world, term.component_id, term.name)
+		storage_index := INVALID_COMPONENT_INDEX
+		if storage != nil {
+			storage_index = storage.storage_index
+			if len(storage.active_component_indices) < best_count {
+				best_count = len(storage.active_component_indices)
+				compiled.anchor_storage_index = storage_index
+			}
+		}
+		compiled.terms[term_index] = {
+			term = term,
+			custom_storage_index = storage_index,
+		}
+	}
+	return compiled
+}
+
+compiled_query_matches_entity :: proc "c" (
+	world: ^World,
+	query: Compiled_Query,
+	entity_index: int,
+) -> bool {
+	if !entity_is_alive(world, entity_index) || world.entities[entity_index].origin == .Editor {
+		return false
+	}
+	for term_index in 0 ..< query.term_count {
+		term := query.terms[term_index]
+		if term.custom_storage_index >= 0 &&
+		   term.custom_storage_index < len(world.custom_components) {
+			storage := &world.custom_components[term.custom_storage_index]
+			if _, found := custom_component_index_for_entity(storage, entity_index); !found {
+				return false
+			}
+			continue
+		}
+		if !entity_has_component(world, entity_index, term.term.component_id, term.term.name) {
+			return false
+		}
+	}
+	return true
+}
+
+compiled_query_next :: proc "c" (
+	world: ^World,
+	query: Compiled_Query,
+	next_entity_index: ^int,
+) -> (
+	entity_index: int,
+	ok: bool,
+) {
+	if world == nil || query.term_count == 0 || next_entity_index == nil {
+		return -1, false
+	}
+	if query.anchor_storage_index >= 0 &&
+	   query.anchor_storage_index < len(world.custom_components) {
+		anchor := &world.custom_components[query.anchor_storage_index]
+		for candidate_index := max(next_entity_index^, 0);
+		    candidate_index < len(anchor.active_component_indices);
+		    candidate_index += 1 {
+			when ODIN_TEST {
+				world.query_candidate_visit_count += 1
+			}
+			next_entity_index^ = candidate_index + 1
+			component_index := anchor.active_component_indices[candidate_index]
+			entity_index := anchor.components[component_index].entity_index
+			if compiled_query_matches_entity(world, query, entity_index) {
+				return entity_index, true
+			}
+		}
+		return -1, false
+	}
+	for entity_index := max(next_entity_index^, 0);
+	    entity_index < len(world.entities);
+	    entity_index += 1 {
+		when ODIN_TEST {
+			world.query_candidate_visit_count += 1
+		}
+		next_entity_index^ = entity_index + 1
+		if compiled_query_matches_entity(world, query, entity_index) {
 			return entity_index, true
 		}
 	}

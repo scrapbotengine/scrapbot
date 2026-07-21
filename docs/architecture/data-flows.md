@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-07-20
+**Last verified:** 2026-07-21
 
 ## Project load and world bootstrap
 
@@ -28,7 +28,7 @@ playback transport → simulation delta → cached schedule plan
                                          │
                       non-conflicting native batches (parallel)
                                          │
-                  scalar cursors or caller-owned 64-entity chunks
+            retained query plans + caller-owned 64-entity chunks
                                          │
                          explicit writable-lane masks
                                          │
@@ -41,7 +41,7 @@ playback transport → simulation delta → cached schedule plan
                 typed storage + structural/render/UI dirty signals
 ```
 
-Queries start from the smallest applicable custom-component active set. Native chunks copy supported fields into extension-owned scratch arrays and commit only explicitly marked writable lanes, so ABI amortization and SIMD do not expose ECS storage or broaden dirty propagation. Systems declare reads/writes; structural changes are deferred until iteration finishes.
+Native chunk descriptors compile into retained per-system plans that resolve the candidate storage and typed field-array indices once. Ordinary chunks then traverse the retained active set and address fields directly; a world replacement, schema revision, or newly appearing storage family invalidates the plan. Chunks still copy supported fields into extension-owned scratch arrays and commit only explicitly marked writable lanes, so ABI amortization and SIMD do not expose ECS storage or broaden dirty propagation. Systems declare reads/writes; structural changes are deferred until iteration finishes.
 
 ## Rendering
 

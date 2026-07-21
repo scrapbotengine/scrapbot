@@ -551,6 +551,11 @@ run_project_internal_untracked :: proc(
 		run_config.runtime_revert_data = hot_reload
 		run_config.resource_registry = &hot_reload.resources
 		result.frame, result.err = render.run_renderer(run_config, &world)
+		if run_config.runtime_stats != nil {
+			run_config.runtime_stats.native_queries = native.query_stats(
+				&hot_reload.native_extensions,
+			)
+		}
 		result.scheduler_workers = hot_reload.executor.worker_count
 		result.parallel_stages = hot_reload.executor.parallel_stages
 		result.max_parallel_width = hot_reload.executor.max_parallel_width
@@ -637,6 +642,11 @@ run_project_internal_untracked :: proc(
 	run_config.runtime_revert_data = frame_runtime
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
+	if run_config.runtime_stats != nil {
+		run_config.runtime_stats.native_queries = native.query_stats(
+			&frame_runtime.native_extensions,
+		)
+	}
 	result.scheduler_workers = frame_runtime.executor.worker_count
 	result.parallel_stages = frame_runtime.executor.parallel_stages
 	result.max_parallel_width = frame_runtime.executor.max_parallel_width

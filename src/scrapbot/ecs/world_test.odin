@@ -689,6 +689,53 @@ test_query_cursor_uses_the_smallest_custom_component_storage :: proc(t: ^testing
 }
 
 @(test)
+test_compiled_query_retains_storage_plan_across_membership_changes :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	for index in 0 ..< 96 {
+		_, created := create_world_entity(&world, "Candidate")
+		testing.expect(t, created)
+		add_scene_custom_component(&world, index, shared.Custom_Component{name = "dense"})
+	}
+	sparse_entities := [?]int{7, 63}
+	for entity_index in sparse_entities {
+		add_scene_custom_component(&world, entity_index, shared.Custom_Component{name = "sparse"})
+	}
+	bind_custom_component_storage(&world, "dense", 1)
+	bind_custom_component_storage(&world, "sparse", 2)
+	query: Query
+	query.terms[0] = {
+		component_id = 1,
+		name = "dense",
+	}
+	query.terms[1] = {
+		component_id = 2,
+		name = "sparse",
+	}
+	query.term_count = 2
+	compiled := compile_query(&world, query)
+	testing.expect(t, compiled.anchor_storage_index >= 0)
+
+	cursor := 0
+	first, first_ok := compiled_query_next(&world, compiled, &cursor)
+	second, second_ok := compiled_query_next(&world, compiled, &cursor)
+	_, exhausted := compiled_query_next(&world, compiled, &cursor)
+	testing.expect(t, first_ok && second_ok && !exhausted)
+	testing.expect(t, first == 7 && second == 63)
+	testing.expect(t, world.query_candidate_visit_count == 2)
+
+	remove_custom_component(&world, 7, 2, "sparse")
+	add_scene_custom_component(&world, 91, shared.Custom_Component{name = "sparse"})
+	bind_custom_component_storage(&world, "sparse", 2)
+	cursor = 0
+	first, first_ok = compiled_query_next(&world, compiled, &cursor)
+	second, second_ok = compiled_query_next(&world, compiled, &cursor)
+	_, exhausted = compiled_query_next(&world, compiled, &cursor)
+	testing.expect(t, first_ok && second_ok && !exhausted)
+	testing.expect(t, first == 63 && second == 91)
+}
+
+@(test)
 test_despawn_releases_only_custom_storages_owned_by_the_entity :: proc(t: ^testing.T) {
 	world: World
 	defer destroy_world(&world)

@@ -95,6 +95,11 @@ description = "Compare development and performance optimization profiles"
 depends = ["build-dev", "build"]
 run = "node tools/benchmark_profiles.mjs \"$@\""
 
+[tasks.benchmark-native-queries]
+description = "Stress retained native query chunks with a high-churn emitter"
+depends = ["build"]
+run = "node tools/benchmark_native_queries.mjs \"$@\""
+
 [tasks.luau]
 description = "Build embedded Luau"
 run = '''

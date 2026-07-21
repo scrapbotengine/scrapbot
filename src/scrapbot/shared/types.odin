@@ -880,6 +880,14 @@ Custom_Component_Storage :: struct {
 	component_active_indices: [dynamic]int,
 }
 
+Native_Query_Stats :: struct {
+	plan_builds: u64,
+	plan_hits: u64,
+	chunks: u64,
+	entities: u64,
+	scalar_tail_lanes: u64,
+}
+
 World_Entity :: struct {
 	id: Entity,
 	uuid: Entity_UUID,

@@ -68,6 +68,13 @@ if (!stats?.enabled || stats.frames !== frames) {
 if (stats.early_update_ns_per_frame <= 0 || stats.late_update_ns_per_frame <= 0) {
 	fail("update timing windows did not collect samples");
 }
+if (project.includes("ecs-showcase")) {
+	const query = stats.native_queries;
+	if (!query || query.plan_builds < 1 || query.plan_hits <= query.plan_builds ||
+		query.chunks < 1 || query.entities < query.chunks) {
+		fail("native query plans did not retain and pack chunk work");
+	}
+}
 
 const storageGrowth = [];
 const earlyStorage = stats.early_storage ?? {};

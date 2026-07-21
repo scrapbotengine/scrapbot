@@ -14,6 +14,8 @@ Odin extension authors should use the `scrapbot:extension` helper package over t
 
 High-volume native systems may bind caller-owned arrays to a query chunk. The host copies up to 64 matching entities into those fixed-capacity scratch arrays, never exposes pointers into ECS storage, and validates every binding against the system's declared component access. Writable bindings carry an explicit 64-bit lane mask; only those lanes are committed and publish the corresponding exact dirty signals. This preserves allocator, storage, and scheduler boundaries while amortizing ABI calls and allowing extension code to process four or more entities at once with Odin SIMD.
 
+The host compiles each distinct chunk descriptor into a bounded per-system plan. Plans retain stable custom-storage indices and typed field-array offsets, survive ordinary component membership churn, and invalidate when the World, component registry, or available storage families change. The opaque plan fields in the C ABI are host-owned implementation details.
+
 Native extensions can register dotted, non-`scrapbot` library component names into the same component registry used by Luau scripts, scene validation, queries, and generated Luau types. They can also register scheduled systems with declared component reads and writes. Project runs and checks build and load native extensions before executing `scripts/main.luau`, so scripts can retrieve native-registered component handles with `scrapbot.component_handle(name)`, and runtime frames can batch native and Luau systems with the same scheduler rules.
 
 ## Consequences

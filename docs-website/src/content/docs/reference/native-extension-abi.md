@@ -124,7 +124,7 @@ Return `nil` on success or a static error string on failure. The host enforces d
 
 ## Query chunks
 
-`Query_Chunk` amortizes host calls for dense native systems without exposing pointers into Scrapbot's ECS. A chunk owns fixed query-term, entity, and binding descriptors; the extension supplies arrays for each bound Transform or Number/Vec2/Vec3/Vec4 field. `query_chunk_next` fills at most 64 lanes. Writable bindings are inert until the caller supplies a 64-bit `write_mask` and invokes `query_chunk_commit`; only marked lanes are written and invalidated.
+`Query_Chunk` amortizes host calls for dense native systems without exposing pointers into Scrapbot's ECS. A chunk owns fixed query-term, entity, and binding descriptors; the extension supplies arrays for each bound Transform or Number/Vec2/Vec3/Vec4 field. The descriptor's `plan_slot` and `plan_generation` fields are opaque host-owned cache state: initialize them to zero and never modify them. The host uses them to retain candidate-storage and typed-field resolution. `query_chunk_next` fills at most 64 lanes. Writable bindings are inert until the caller supplies a 64-bit `write_mask` and invokes `query_chunk_commit`; only marked lanes are written and invalidated.
 
 The Odin wrapper provides `init_query_chunk`, `bind_transform`, `bind_number`, `bind_vec2`, `bind_vec3`, `bind_vec4`, `next_chunk`, `chunk_write_mask`, `chunk_write_all`, and `commit_chunk`. It also exposes portable `F32x4`, `Vec3x4`, load/store helpers, and `simd_mask_bits`. These are convenience shapes, not a promise about host CPU architecture or internal ECS layout.
 

@@ -1,7 +1,7 @@
 # FDR-006: Native extensions
 
 **Status:** Active
-**Last reviewed:** 2026-07-20
+**Last reviewed:** 2026-07-21
 
 ## Overview
 
@@ -26,7 +26,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 - The API supports registering native systems with declared component reads and writes.
 - Project-owned native systems use single-token names; dotted multi-token names identify engine or library ownership. The convention is shared with Luau systems but is not yet runtime-enforced.
 - Native systems can query by component names, read/write `scrapbot.transform`, read/write Number/Vec2/Vec3/Vec4/Color fields on schema-backed custom components, and read/write the complete value and style payloads of public `scrapbot.ui_*` components through the callback context.
-- High-volume Odin systems can bind caller-owned fixed arrays to 64-entity query chunks. Chunk iteration amortizes host calls, supports portable four-lane SIMD helpers, and commits writable fields through explicit per-lane masks.
+- High-volume Odin systems can bind caller-owned fixed arrays to 64-entity query chunks. The host retains compiled per-system query plans, resolves custom storage and typed field indices once, amortizes host calls, supports portable four-lane SIMD helpers, and commits writable fields through explicit per-lane masks.
 - Native systems can read renderer-owned `scrapbot.ui_state` payloads, including stable activation and change revisions, but cannot write that derived state.
 - Native callback contexts expose the frame's read-only time resource snapshot.
 - Native systems can spawn entities referencing shared geometry and material resources alongside transform, schema-backed components, and public UI components. The spawn helper returns the new entity's stable UUID so one deferred batch can establish UI parent relationships.
@@ -85,15 +85,21 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 **Decision:** Add an ABI-safe query cursor and `scrapbot.next` wrapper that advances through matching entities in one forward pass. Retain `count` and `entity_at` for compatibility and random-access tooling.
 **Why:** The former count-plus-index loop rescanned the complete world for every match and became quadratic for dense systems. Native gameplay examples now demonstrate the linear iterator.
-**Tradeoff:** The cursor currently scans world slots and checks every query term. A future storage-driven planner can choose the smallest component set without changing the public iteration shape.
+**Tradeoff:** Scalar cursors resolve their candidate storage per call. Dense systems should use retained chunks; sparse and branch-heavy systems keep the simpler cursor shape.
 
-### 9. Add scratch-buffer chunks without exposing ECS storage
+### 9. Compile and retain native chunk query plans
+
+**Decision:** Cache a bounded set of query plans on each native system. A plan retains the smallest custom-component candidate storage plus each binding's storage and typed field-array index, and is invalidated by world replacement, registry changes, or a newly appearing custom storage family.
+**Why:** Chunked arithmetic must not repeat component-storage lookup and field-name scans for every entity. Stable storage slots let membership change without rebuilding the plan or exposing ECS memory through the extension ABI.
+**Tradeoff:** Chunks still pack values into caller-owned arrays and validate explicit write masks. This preserves ABI and dirty-propagation boundaries at the cost of a copy in each direction.
+
+### 10. Add scratch-buffer chunks without exposing ECS storage
 
 **Decision:** Let native systems bind caller-owned arrays for Transform and schema-backed Number/Vec2/Vec3/Vec4 values, fill at most 64 matching lanes per call, and explicitly mark writable lanes before committing them.
 **Why:** A scalar getter/setter pair per entity dominates simple compiled systems and prevents extensions from expressing portable lane-wise work. Caller-owned buffers amortize the ABI boundary and let Odin code use `#simd` while keeping internal ECS layouts, allocator ownership, and pointers private.
 **Tradeoff:** Chunks copy values into scratch arrays and writable bindings require an extra commit. The API does not promise direct storage, alignment beyond the caller's arrays, stable candidate order, or automatic vectorization. Systems with branchy or low-volume behavior should keep using `scrapbot.next`.
 
-### 10. Select optimization profiles by workflow
+### 11. Select optimization profiles by workflow
 
 **Decision:** Compile extension checks with `-o:minimal`, source-project runs and hot reload with `-o:speed`, and packaged builds with `-o:speed`. Include the profile in cache artifact names.
 **Why:** Fast checks and optimized play loops are different workflows, and sharing one output path can silently reuse code compiled for the wrong goal.

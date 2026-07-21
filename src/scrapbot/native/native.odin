@@ -15,6 +15,29 @@ EXTENSIONS_MANIFEST :: ".scrapbot-extensions"
 REGISTER_SYMBOL :: "scrapbot_extension_register"
 MAX_EXTENSIONS :: 32
 MAX_NATIVE_SYSTEMS :: schedule.MAX_SYSTEMS
+MAX_NATIVE_QUERY_PLANS :: 16
+
+Native_Query_Binding_Plan :: struct {
+	component: cstring,
+	field: cstring,
+	value_type: api.Query_Chunk_Value_Type,
+	access: api.Access_Mode,
+	custom_storage_index: int,
+	typed_field_index: int,
+}
+
+Native_Query_Plan :: struct {
+	occupied: bool,
+	generation: u32,
+	world_uuid: shared.Entity_UUID,
+	registry_revision: u64,
+	custom_storage_count: int,
+	query: ecs.Compiled_Query,
+	terms: [api.MAX_QUERY_TERMS]cstring,
+	term_count: int,
+	bindings: [api.MAX_QUERY_CHUNK_BINDINGS]Native_Query_Binding_Plan,
+	binding_count: int,
+}
 
 Extension_Stamp :: struct {
 	exists: bool,
@@ -40,6 +63,9 @@ Native_System :: struct {
 	declaration: schedule.System,
 	callback: api.System_Proc,
 	userdata: rawptr,
+	query_plans: [MAX_NATIVE_QUERY_PLANS]Native_Query_Plan,
+	next_query_plan_slot: int,
+	query_stats: shared.Native_Query_Stats,
 }
 
 Step_Context :: struct {
@@ -133,6 +159,21 @@ destroy_extension_set :: proc(set: ^Extension_Set) {
 	}
 	delete(set.systems)
 	set^ = {}
+}
+
+query_stats :: proc(set: ^Extension_Set) -> shared.Native_Query_Stats {
+	result: shared.Native_Query_Stats
+	if set == nil {
+		return result
+	}
+	for system in set.systems[:set.system_count] {
+		result.plan_builds += system.query_stats.plan_builds
+		result.plan_hits += system.query_stats.plan_hits
+		result.chunks += system.query_stats.chunks
+		result.entities += system.query_stats.entities
+		result.scalar_tail_lanes += system.query_stats.scalar_tail_lanes
+	}
+	return result
 }
 
 project_extensions_changed :: proc(set: ^Extension_Set, root: string) -> bool {

@@ -121,6 +121,7 @@ Runtime_Stats :: struct {
 	late_storage: ecs.World_Storage_Stats,
 	peak_storage: ecs.World_Storage_Stats,
 	final_storage: ecs.World_Storage_Stats,
+	native_queries: shared.Native_Query_Stats,
 }
 Runtime_Stats_Collector :: struct {
 	report: ^Runtime_Stats,

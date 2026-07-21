@@ -176,7 +176,7 @@ motion_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 }
 ```
 
-Chunk buffers belong to the extension and never alias ECS storage. A chunk contains at most 64 entities. Bindings must be query terms and match the system's declared access. Writes require `chunk_write_all` or an exact `chunk_write_mask`; use masks from SIMD comparisons to avoid writing or invalidating lanes that were removed, rejected, or unchanged. Keep a scalar tail for counts not divisible by four. Cursor iteration remains preferable for sparse, branch-heavy, or lifecycle-dominated systems.
+Chunk buffers belong to the extension and never alias ECS storage. A chunk contains at most 64 entities. The host compiles a distinct chunk shape once per native system, retaining its candidate storage and typed field indices across frames and ordinary membership changes. Bindings must be query terms and match the system's declared access. Writes require `chunk_write_all` or an exact `chunk_write_mask`; use masks from SIMD comparisons to avoid writing or invalidating lanes that were removed, rejected, or unchanged. Keep a scalar tail for counts not divisible by four. Cursor iteration remains preferable for sparse, branch-heavy, or lifecycle-dominated systems.
 
 Project system callbacks are ordinary contextless Odin procedures. The extension helper retains their bindings and routes the host's C-compatible callback through an internal trampoline; only the exported `scrapbot_extension_register` entry point needs `proc "c"` in project source.
 
