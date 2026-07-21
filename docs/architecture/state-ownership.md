@@ -16,8 +16,8 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Authoring history and dirty UUID candidates | Editor UI state | In-memory authoring authority until Save/Revert | One transaction per completed gesture or structural operation; playback mutations remain disposable. |
 | Retained UI hierarchy, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components | Structural dirty queue plus independent project/editor layout and paint revisions. |
 | `scrapbot.ui_state` components | UI reconciler | Derived, renderer-owned | Targeted interaction-dirty queue and retained node state; project code reads only. |
-| Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership and resource resolution | Structural dirty queue, exact render-mutation queue, and resource revisions. |
-| GPU compact transform stream, expanded instance table, draw database, visibility, indirect args, pipelines, resource caches | WGPU backend | Derived backend state | Exact dirty render slots update compact transform inputs or static fields; a dirty-only compute pass expands matrices and bounds before culling. Batch-key/topology revisions, geometric capacity growth, and backend lifetime govern full rebuilds. |
+| Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership and resource resolution | Structural/static dirty queue, separate exact Transform queue, and resource revisions. Static extraction supersedes a same-frame Transform entry. |
+| GPU dense transform updates, expanded instance table, draw database, visibility, indirect args, pipelines, resource caches | WGPU backend | Derived backend state | Transform-only slots bypass resource/batch work and pack one dense 64-byte update carrying its destination slot. One upload feeds a dirty-only compute pass that expands matrices and bounds before culling. Static fields remain in separate retained storage; batch-key/topology revisions, geometric capacity growth, and backend lifetime govern full rebuilds. |
 | Project/editor/overlay UI vertex buffers | WGPU backend | Derived from UI output streams | Independent monotonic stream revisions; stable streams retain CPU/GPU buffers. |
 | System profiler snapshot | Root runtime | Derived diagnostic state | Samples every frame, rolls over 50 frames, publishes every five frames. |
 | Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames; renderer and mutation-maintained world counters publish every five frames under one revision. |
@@ -35,7 +35,7 @@ An ordinary unchanged frame must not:
 - regenerate unchanged CPU/GPU vertices or instance records;
 - upload unchanged buffers.
 
-Ordinary Transform value writes enqueue exact render extraction only. Component membership, resource binding, and render eligibility changes additionally enqueue structural reconciliation. Runtime slot and scene-order allocation are monotonic or free-list based and must not scan historical entity capacity per spawn.
+Ordinary Transform value writes enqueue only the exact Transform queue. Component membership, resource binding, shadows, and render eligibility use the structural/static queue; that queue supersedes redundant same-frame Transform work. Runtime slot and scene-order allocation are monotonic or free-list based and must not scan historical entity capacity per spawn.
 
 Accept full bootstrap/rebuild work at explicit boundaries such as initial world construction, world replacement, resource topology changes, or geometrically growing backend storage. Document any new stable-frame exception in the relevant ADR/FDR and protect it with deterministic work counters rather than wall-clock thresholds.
 

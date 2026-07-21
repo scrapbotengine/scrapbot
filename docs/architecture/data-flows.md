@@ -48,14 +48,14 @@ Native chunk descriptors compile into retained per-system plans that resolve the
 ```text
 typed ECS/resource mutation
         │
-        ├─ membership/resource eligibility ─> structural render queue
-        └─ Transform/value mutation ─────────> exact extraction queue
+        ├─ membership/resource eligibility ─> structural/static render queue
+        └─ Transform mutation ───────────────> exact Transform queue
                                                 │
                                   retained backend-neutral render list
                                       │
-                           dirty stable render slots
+                  static slots + Transform-only slots
                                       │
-              static instance writes or compact transform writes
+       retained static writes or one dense transform-update upload
                                       │
                   dirty-only GPU transform expansion
                                       │

@@ -22,9 +22,8 @@ struct GPU_Instance {
 	padding: vec2<u32>,
 };
 
-@group(0) @binding(0) var<storage, read> transforms: array<GPU_Instance_Transform>;
-@group(0) @binding(1) var<storage, read> dirty_slots: array<u32>;
-@group(0) @binding(2) var<storage, read_write> instances: array<GPU_Instance>;
+@group(0) @binding(0) var<storage, read> transform_updates: array<GPU_Instance_Transform>;
+@group(0) @binding(1) var<storage, read_write> instances: array<GPU_Instance>;
 
 fn rotation_x(angle: f32) -> mat4x4<f32> {
 	let c = cos(angle);
@@ -70,12 +69,12 @@ fn scale_matrix(value: vec3<f32>) -> mat4x4<f32> {
 
 @compute @workgroup_size(64)
 fn expand_transforms(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	let dirty_count = dirty_slots[0];
-	if (invocation.x >= dirty_count) {
+	let update_count = u32(transform_updates[0].position.w);
+	if (invocation.x >= update_count) {
 		return;
 	}
-	let slot = dirty_slots[invocation.x + 1u];
-	let transform = transforms[slot];
+	let transform = transform_updates[invocation.x + 1u];
+	let slot = u32(transform.position.w);
 	let rotation = rotation_z(transform.rotation.z) *
 		rotation_y(transform.rotation.y) *
 		rotation_x(transform.rotation.x);

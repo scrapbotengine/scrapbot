@@ -1,6 +1,6 @@
 # Engine Systems
 
-**Last verified:** 2026-07-20  
+**Last verified:** 2026-07-21
 **Canonical names:** `engine_system_profile_name` in `src/scrapbot/scrapbot.odin`  
 **Execution boundaries:** `run_frame_system` in `src/scrapbot/render/render.odin` and WGPU frame encoding in `src/scrapbot/render/wgpu.odin`
 
@@ -68,9 +68,9 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.prepare`
 
 - **Phase/order:** Bridge between CPU simulation/editor phases and backend render encoding.
-- **Inputs:** Exact ECS render dirtiness, retained render list, resource versions, active camera/lights, viewport/backend state.
-- **Outputs:** Updated stable render slots, GPU instance/batch database changes, compact uniforms and frame draw state.
-- **Stable-frame behavior:** Stable renderables retain slots and GPU records; only dirty slots/resource revisions are extracted or uploaded, while compact frame-valued inputs remain bounded.
+- **Inputs:** Separate structural/static and Transform-only ECS dirtiness, retained render list, resource versions, active camera/lights, viewport/backend state.
+- **Outputs:** Updated stable render slots, GPU instance/batch database changes, one dense transform-update stream, compact uniforms and frame draw state.
+- **Stable-frame behavior:** Stable renderables retain slots and GPU records; Transform-only writes bypass resource and batch lookup, pack one dense 64-byte update per changed slot, and use one upload before dirty-only GPU expansion. Static/resource changes use the heavier retained-record path, while compact frame-valued inputs remain bounded.
 - **Boundary:** Main-thread CPU and WGPU preparation boundary; backend-neutral ECS extraction stays separate from backend-owned caches.
 - **Source/tests:** `ecs/world.odin`, `render/render.odin`, `render/wgpu_gpu_driven.odin`; `ecs/world_test.odin`, `render/render_test.odin`.
 

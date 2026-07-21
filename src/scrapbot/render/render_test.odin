@@ -50,42 +50,100 @@ test_gpu_instance_transform_stream_is_compact_and_preserves_source :: proc(t: ^t
 	testing.expect_value(t, record.scale, [4]f32{2, 0.5, 3, 0})
 	testing.expect_value(t, record.local_bounds, [4]f32{1, 2, 2, math.sqrt(f32(43))})
 
-	previous_source := WGPU_Instance_Source_State {
-		transform = transform,
+	updated := record
+	next_transform := transform
+	next_transform.position.x += 5
+	wgpu_update_gpu_instance_transform(&updated, next_transform)
+	testing.expect_value(t, updated.position, [4]f32{1, 8, 11, 0})
+	testing.expect_value(t, updated.local_bounds, record.local_bounds)
+}
+
+@(test)
+test_gpu_transform_updates_are_dense_and_encode_the_destination_slot :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_instance_transform_records)
+	defer delete(renderer.gpu_transform_updates)
+	resize(&renderer.gpu_instance_transform_records, 8)
+	append(&renderer.gpu_transform_updates, WGPU_GPU_Instance_Transform{})
+	renderer.gpu_instance_transform_records[5] = {
+		position = {1, 2, 3, 0},
+		rotation = {0.1, 0.2, 0.3, 0},
+		scale = {2, 3, 4, 0},
+		local_bounds = {0, 1, 2, 7},
 	}
-	current_source := previous_source
-	current_source.transform.position.x += 5
-	testing.expect(t, wgpu_instance_static_source_matches(previous_source, current_source))
-	current_source.material_version = 2
-	testing.expect(t, !wgpu_instance_static_source_matches(previous_source, current_source))
+
+	wgpu_append_transform_update(&renderer, 5)
+	testing.expect_value(t, len(renderer.gpu_transform_updates), 2)
+	update := renderer.gpu_transform_updates[1]
+	testing.expect_value(t, update.position, [4]f32{1, 2, 3, 5})
+	testing.expect_value(t, update.rotation, [4]f32{0.1, 0.2, 0.3, 0})
+	testing.expect_value(t, update.scale, [4]f32{2, 3, 4, 0})
+	testing.expect_value(t, update.local_bounds, [4]f32{0, 1, 2, 7})
 }
 
 @(test)
 test_gpu_instance_update_work_separates_static_and_transform_uploads :: proc(t: ^testing.T) {
 	previous := WGPU_Instance_Source_State {
-		transform = {position = {1, 2, 3}, scale = {1, 1, 1}},
 		geometry = {1, 1},
 		material = {2, 1},
 		geometry_version = 4,
 		material_version = 5,
 	}
-	static_changed, transform_changed, expand := wgpu_instance_update_work(false, {}, previous)
+	transform := shared.Transform_Component {
+		position = {1, 2, 3},
+		scale = {1, 1, 1},
+	}
+	static_changed, transform_changed, expand := wgpu_instance_update_work(
+		false,
+		{},
+		previous,
+		{},
+		transform,
+	)
 	testing.expect(t, static_changed && transform_changed && !expand)
 
 	current := previous
-	current.transform.rotation.y = 0.5
-	static_changed, transform_changed, expand = wgpu_instance_update_work(true, previous, current)
+	next_transform := transform
+	next_transform.rotation.y = 0.5
+	testing.expect(
+		t,
+		wgpu_instance_source_changed(true, previous, current, transform, next_transform),
+	)
+	static_changed, transform_changed, expand = wgpu_instance_update_work(
+		true,
+		previous,
+		current,
+		transform,
+		next_transform,
+	)
 	testing.expect(t, !static_changed && transform_changed && expand)
 
 	current = previous
 	current.material_version += 1
-	static_changed, transform_changed, expand = wgpu_instance_update_work(true, previous, current)
+	testing.expect(t, wgpu_instance_source_changed(true, previous, current, transform, transform))
+	static_changed, transform_changed, expand = wgpu_instance_update_work(
+		true,
+		previous,
+		current,
+		transform,
+		transform,
+	)
 	testing.expect(t, static_changed && !transform_changed && !expand)
 
 	current = previous
 	current.geometry_version += 1
-	static_changed, transform_changed, expand = wgpu_instance_update_work(true, previous, current)
+	static_changed, transform_changed, expand = wgpu_instance_update_work(
+		true,
+		previous,
+		current,
+		transform,
+		transform,
+	)
 	testing.expect(t, static_changed && transform_changed && !expand)
+	testing.expect(
+		t,
+		!wgpu_instance_source_changed(true, previous, previous, transform, transform),
+	)
 }
 
 @(test)

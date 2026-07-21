@@ -240,8 +240,7 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
       stats.draw_database_rebuilds < 1 || stats.instance_slots <= 64 ||
       stats.instance_uploads < 1 ||
       stats.instance_uploads - stats.instance_transform_uploads >= 10 ||
-      stats.instance_upload_bytes <= 0 || stats.instance_transform_uploads < 1 ||
-      stats.instance_transform_upload_bytes <= 0) {
+      stats.instance_upload_bytes <= 0) {
     console.error(`unexpected ${label} GPU renderer diagnostics`);
     process.exit(1);
   }
@@ -305,9 +304,12 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
   const result = JSON.parse(raw);
   const stats = result.result?.render_stats;
   if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-      stats?.compute_culling !== expectedCompute || stats.instance_expand_dispatches < 1 ||
-      stats.instance_expanded_slots < result.result.renderables ||
-      stats.instance_transform_upload_bytes <= 0) {
+      stats?.compute_culling !== expectedCompute ||
+      (expectedCompute && (stats.instance_expand_dispatches < 1 ||
+        stats.instance_expanded_slots < result.result.renderables ||
+        stats.instance_transform_uploads < 1 || stats.instance_transform_upload_bytes <= 0)) ||
+      (!expectedCompute && (stats.instance_expand_dispatches !== 0 ||
+        stats.instance_transform_uploads !== 0 || stats.instance_upload_bytes <= 0))) {
     console.error(`unexpected ${label} GPU transform diagnostics`);
     process.exit(1);
   }

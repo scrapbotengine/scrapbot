@@ -285,7 +285,7 @@ scrapbot_set_rotation :: proc "c" (L: Lua_State) -> c.int {
 	transform := runtime.world.transforms[transform_index]
 	transform.rotation = rotation
 	runtime.world.transforms[transform_index] = transform
-	ecs.mark_render_extract_entity_dirty(runtime.world, int(entity.index))
+	ecs.mark_render_transform_dirty(runtime.world, int(entity.index))
 	return 0
 }
 

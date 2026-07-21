@@ -135,18 +135,28 @@ test_resource_render_list_updates_only_dirty_entities_and_removes_slots_incremen
 	testing.expect(t, !list.full_instance_sync)
 	testing.expect_value(t, list.instance_visit_count, initial_visits)
 	testing.expect_value(t, len(list.dirty_instance_slots), 0)
+	testing.expect_value(t, len(list.dirty_transform_slots), 0)
 
 	left_index := 1
 	left_transform := world.entities[left_index].transform_index
 	world.transforms[left_transform].position.x = -9
-	mark_render_extract_entity_dirty(&world, left_index)
+	mark_render_transform_dirty(&world, left_index)
 	populate_resource_render_list(&world, &registry, &list)
 	testing.expect_value(t, world.render_structure_sync_count, initial_structure_syncs)
 	testing.expect_value(t, list.instance_visit_count, initial_visits + 1)
 	list_index := list.instance_index_by_entity[left_index]
 	testing.expect(t, list_index >= 0 && list_index < len(list.instances))
 	testing.expect_value(t, list.instances[list_index].transform.position.x, f32(-9))
+	testing.expect_value(t, len(list.dirty_instance_slots), 0)
+	testing.expect_value(t, len(list.dirty_transform_slots), 1)
+
+	world.transforms[left_transform].position.x = -10
+	mark_render_transform_dirty(&world, left_index)
+	mark_render_entity_dirty(&world, left_index)
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, list.instances[list_index].transform.position.x, f32(-10))
 	testing.expect_value(t, len(list.dirty_instance_slots), 1)
+	testing.expect_value(t, len(list.dirty_transform_slots), 0)
 
 	topology_revision := world.render_topology_revision
 	right_index := 2
@@ -222,21 +232,22 @@ test_resource_render_list_updates_renderable_descendants_of_dirty_transforms :: 
 	initial_visits := list.instance_visit_count
 	initial_structure_syncs := world.render_structure_sync_count
 	world.transforms[world.entities[0].transform_index].position.x = 5
-	mark_render_extract_entity_dirty(&world, 0)
+	mark_render_transform_dirty(&world, 0)
 	populate_resource_render_list(&world, &registry, &list)
 	testing.expect_value(t, world.render_structure_sync_count, initial_structure_syncs)
 	testing.expect_value(t, list.instance_visit_count, initial_visits + 2)
 	child_list_index := list.instance_index_by_entity[1]
 	testing.expect(t, child_list_index >= 0 && child_list_index < len(list.instances))
 	testing.expect_value(t, list.instances[child_list_index].transform.position.x, f32(6))
-	testing.expect_value(t, len(list.dirty_instance_slots), 1)
+	testing.expect_value(t, len(list.dirty_instance_slots), 0)
+	testing.expect_value(t, len(list.dirty_transform_slots), 1)
 
 	testing.expect(t, set_transform_parent(&world, 1, second_parent_id, true))
 	populate_resource_render_list(&world, &registry, &list)
 	visits_after_reparent := list.instance_visit_count
 	structure_syncs_after_reparent := world.render_structure_sync_count
 	world.transforms[world.entities[3].transform_index].position.x = 12
-	mark_render_extract_entity_dirty(&world, 3)
+	mark_render_transform_dirty(&world, 3)
 	populate_resource_render_list(&world, &registry, &list)
 	testing.expect_value(t, world.render_structure_sync_count, structure_syncs_after_reparent)
 	testing.expect_value(t, list.instance_visit_count, visits_after_reparent + 2)

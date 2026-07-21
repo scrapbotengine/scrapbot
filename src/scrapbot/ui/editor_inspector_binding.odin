@@ -376,7 +376,12 @@ write_inspector_numeric :: proc(
 			}
 	}
 	if written {
-		ecs.mark_render_entity_dirty(world, target_index)
+		#partial switch binding.inspector_field {
+			case .Transform_Position, .Transform_Rotation, .Transform_Scale:
+				ecs.mark_render_transform_dirty(world, target_index)
+			case:
+				ecs.mark_render_entity_dirty(world, target_index)
+		}
 	}
 	if written && state != nil {
 		editor_mark_scene_dirty(state, target)

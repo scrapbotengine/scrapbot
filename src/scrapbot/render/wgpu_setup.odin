@@ -254,11 +254,10 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.gpu_instance_records)
 	delete(renderer.gpu_instance_transform_records)
 	delete(renderer.gpu_instance_sources)
+	delete(renderer.gpu_instance_source_transforms)
 	delete(renderer.gpu_active_slots)
 	delete(renderer.gpu_dirty_indices)
-	delete(renderer.gpu_transform_dirty_indices)
-	delete(renderer.gpu_expand_slots)
-	delete(renderer.gpu_expand_upload)
+	delete(renderer.gpu_transform_updates)
 	delete(renderer.gpu_live_slots)
 	delete(renderer.gpu_batch_indices_by_slot)
 	delete(renderer.gpu_cpu_visible)
@@ -327,8 +326,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	wgpu_release_hiz(renderer)
 	gpu_buffers := [?]wgpu.Buffer {
 		renderer.gpu_instance_buffer,
-		renderer.gpu_instance_transform_buffer,
-		renderer.gpu_instance_expand_slots_buffer,
+		renderer.gpu_transform_update_buffer,
 		renderer.gpu_batch_info_buffer,
 		renderer.gpu_visible_buffer,
 		renderer.gpu_shadow_visible_buffer,

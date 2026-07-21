@@ -278,6 +278,7 @@ validate_world_dirty_queue :: proc(
 	entities: []int,
 	render: bool,
 	extract: bool = false,
+	transform: bool = false,
 ) -> (
 	World_Integrity_Failure,
 	bool,
@@ -305,7 +306,9 @@ validate_world_dirty_queue :: proc(
 	}
 	for entity, entity_index in world.entities {
 		dirty := entity.ui_dirty
-		if extract {
+		if transform {
+			dirty = entity.render_transform_dirty
+		} else if extract {
 			dirty = entity.render_extract_dirty
 		} else if render {
 			dirty = entity.render_dirty
@@ -640,6 +643,15 @@ validate_world_integrity :: proc(
 		world,
 		world.render_extract_dirty_entities[:],
 		true,
+		true,
+	); !ok {
+		return failure, false
+	}
+	if failure, ok := validate_world_dirty_queue(
+		world,
+		world.render_transform_dirty_entities[:],
+		true,
+		false,
 		true,
 	); !ok {
 		return failure, false

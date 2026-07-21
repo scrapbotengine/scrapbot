@@ -166,7 +166,6 @@ WGPU_GPU_Batch_Info :: struct {
 }
 
 WGPU_Instance_Source_State :: struct {
-	transform: shared.Transform_Component,
 	geometry: shared.Geometry_Handle,
 	material: shared.Material_Handle,
 	geometry_version: u32,
@@ -312,8 +311,7 @@ WGPU_Renderer :: struct {
 	gpu_previous_view_projection: Mat4,
 	gpu_current_view_projection: Mat4,
 	gpu_instance_buffer: wgpu.Buffer,
-	gpu_instance_transform_buffer: wgpu.Buffer,
-	gpu_instance_expand_slots_buffer: wgpu.Buffer,
+	gpu_transform_update_buffer: wgpu.Buffer,
 	gpu_batch_info_buffer: wgpu.Buffer,
 	gpu_visible_buffer: wgpu.Buffer,
 	gpu_shadow_visible_buffer: wgpu.Buffer,
@@ -330,11 +328,10 @@ WGPU_Renderer :: struct {
 	gpu_instance_records: [dynamic]WGPU_GPU_Instance,
 	gpu_instance_transform_records: [dynamic]WGPU_GPU_Instance_Transform,
 	gpu_instance_sources: [dynamic]WGPU_Instance_Source_State,
+	gpu_instance_source_transforms: [dynamic]shared.Transform_Component,
 	gpu_active_slots: [dynamic]bool,
 	gpu_dirty_indices: [dynamic]int,
-	gpu_transform_dirty_indices: [dynamic]int,
-	gpu_expand_slots: [dynamic]u32,
-	gpu_expand_upload: [dynamic]u32,
+	gpu_transform_updates: [dynamic]WGPU_GPU_Instance_Transform,
 	gpu_live_slots: [dynamic]int,
 	gpu_batch_indices_by_slot: [dynamic][shared.MAX_GEOMETRY_LODS]u32,
 	gpu_cpu_visible: [dynamic]u32,

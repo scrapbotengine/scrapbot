@@ -180,6 +180,10 @@ create_world_entity :: proc(
 			&world.render_extract_dirty_entities,
 			entity_index,
 		)
+		entity.render_transform_dirty = coalesce_dirty_entity_entries(
+			&world.render_transform_dirty_entities,
+			entity_index,
+		)
 		entity.ui_dirty = coalesce_dirty_entity_entries(&world.ui_dirty_entities, entity_index)
 		world.entities[entity_index] = entity
 	} else {
@@ -346,6 +350,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.render_active_point_light_entities)
 	delete(world.render_dirty_entities)
 	delete(world.render_extract_dirty_entities)
+	delete(world.render_transform_dirty_entities)
 	delete(world.free_transform_indices)
 	delete(world.resolved_world_transforms)
 	delete(world.resolved_world_transform_epochs)
@@ -623,6 +628,17 @@ mark_render_extract_entity_dirty :: proc(world: ^World, entity_index: int) {
 	if !entity.render_extract_dirty {
 		entity.render_extract_dirty = true
 		append(&world.render_extract_dirty_entities, entity_index)
+	}
+}
+
+mark_render_transform_dirty :: proc(world: ^World, entity_index: int) {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if !entity.render_transform_dirty {
+		entity.render_transform_dirty = true
+		append(&world.render_transform_dirty_entities, entity_index)
 	}
 }
 
@@ -1243,7 +1259,7 @@ render_instance_descends_from :: proc(
 	return false
 }
 
-mark_render_descendants_for_extraction :: proc(
+mark_render_descendants_transform_dirty :: proc(
 	list: ^Render_List,
 	world: ^World,
 	entity_index: int,
@@ -1257,7 +1273,7 @@ mark_render_descendants_for_extraction :: proc(
 	}
 	for instance in list.instances {
 		if render_instance_descends_from(world, instance, ancestor) {
-			mark_render_extract_entity_dirty(world, int(instance.entity.id.index))
+			mark_render_transform_dirty(world, int(instance.entity.id.index))
 		}
 	}
 }
@@ -1369,8 +1385,56 @@ render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index:
 	}
 }
 
+render_list_sync_entity_transform :: proc(list: ^Render_List, world: ^World, entity_index: int) {
+	list.instance_visit_count += 1
+	if !entity_is_alive(world, entity_index) ||
+	   entity_index >= len(list.instance_index_by_entity) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	list_index := list.instance_index_by_entity[entity_index]
+	if list_index < 0 ||
+	   list_index >= len(list.instances) ||
+	   entity.transform_index < 0 ||
+	   entity.transform_index >= len(world.transforms) ||
+	   entity.render_instance_index < 0 ||
+	   entity.render_instance_index >= len(world.render_instances) {
+		list.instance_visit_count -= 1
+		render_list_sync_entity(list, world, entity_index)
+		return
+	}
+	instance := &list.instances[list_index]
+	if instance.slot != entity.render_instance_index {
+		list.instance_visit_count -= 1
+		render_list_sync_entity(list, world, entity_index)
+		return
+	}
+	local := world.transforms[entity.transform_index]
+	transform := local
+	local_parent := local.parent
+	if local_parent == (Entity_UUID{}) {
+		transform.parent = {}
+	} else {
+		resolved: bool
+		transform, resolved = resolve_world_transform(world, entity_index)
+		if !resolved {
+			return
+		}
+	}
+	if instance.local_parent != local_parent {
+		adjust_render_ancestor_counts(list, world, instance.local_parent, -1)
+		adjust_render_ancestor_counts(list, world, local_parent, 1)
+		instance.local_parent = local_parent
+	}
+	if instance.transform != transform {
+		instance.transform = transform
+		append(&list.dirty_transform_slots, instance.slot)
+	}
+}
+
 sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 	clear(&list.dirty_instance_slots)
+	clear(&list.dirty_transform_slots)
 	full_sync := list.world_uuid != world.instance_uuid || len(list.instance_index_by_entity) == 0
 	previous_entity_count := len(list.instance_index_by_entity)
 	previous_slot_count := len(list.instance_index_by_slot)
@@ -1406,8 +1470,26 @@ sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 		}
 		for cursor := 0; cursor < len(world.render_extract_dirty_entities); cursor += 1 {
 			entity_index := world.render_extract_dirty_entities[cursor]
-			mark_render_descendants_for_extraction(list, world, entity_index)
+			if entity_index < 0 ||
+			   entity_index >= len(world.entities) ||
+			   !world.entities[entity_index].render_extract_dirty {
+				continue
+			}
+			mark_render_descendants_transform_dirty(list, world, entity_index)
 			render_list_sync_entity(list, world, entity_index)
+			world.entities[entity_index].render_extract_dirty = false
+			world.entities[entity_index].render_transform_dirty = false
+		}
+		for cursor := 0; cursor < len(world.render_transform_dirty_entities); cursor += 1 {
+			entity_index := world.render_transform_dirty_entities[cursor]
+			if entity_index < 0 ||
+			   entity_index >= len(world.entities) ||
+			   !world.entities[entity_index].render_transform_dirty {
+				continue
+			}
+			mark_render_descendants_transform_dirty(list, world, entity_index)
+			render_list_sync_entity_transform(list, world, entity_index)
+			world.entities[entity_index].render_transform_dirty = false
 		}
 	}
 	for entity_index in world.render_extract_dirty_entities {
@@ -1416,6 +1498,12 @@ sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 		}
 	}
 	clear(&world.render_extract_dirty_entities)
+	for entity_index in world.render_transform_dirty_entities {
+		if entity_index >= 0 && entity_index < len(world.entities) {
+			world.entities[entity_index].render_transform_dirty = false
+		}
+	}
+	clear(&world.render_transform_dirty_entities)
 	list.world_uuid = world.instance_uuid
 	list.hierarchy_revision = world.render_hierarchy_revision
 	list.instance_slot_count = len(world.render_instances)
@@ -1717,6 +1805,7 @@ destroy_render_list :: proc(list: ^Render_List) {
 	delete(list.instance_index_by_entity)
 	delete(list.instance_index_by_slot)
 	delete(list.dirty_instance_slots)
+	delete(list.dirty_transform_slots)
 	delete(list.ancestor_counts)
 	delete(list.batch_memberships)
 	list^ = {}
@@ -1836,7 +1925,7 @@ add_transform :: proc(world: ^World, entity_index: int, transform: Transform_Com
 			world.render_hierarchy_revision += 1
 		}
 		world.transforms[entity.transform_index] = transform
-		mark_render_extract_entity_dirty(world, entity_index)
+		mark_render_transform_dirty(world, entity_index)
 		return
 	}
 

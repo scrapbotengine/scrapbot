@@ -413,7 +413,7 @@ set_transform_parent :: proc(
 	}
 	world.transforms[entity.transform_index] = local
 	world.render_hierarchy_revision += 1
-	mark_render_extract_entity_dirty(world, entity_index)
+	mark_render_transform_dirty(world, entity_index)
 	return true
 }
 
