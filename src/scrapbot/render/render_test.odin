@@ -1107,3 +1107,27 @@ test_system_profile_commit :: proc(data: rawptr) {
 	events := cast(^Test_System_Profile_Events)data
 	events.commit_count += 1
 }
+
+@(test)
+test_embedded_viewport_target_dimensions_are_bounded_and_quantized :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_viewport_target_dimension(1), u32(64))
+	testing.expect_value(t, wgpu_viewport_target_dimension(64), u32(64))
+	testing.expect_value(t, wgpu_viewport_target_dimension(65), u32(96))
+	testing.expect_value(t, wgpu_viewport_target_dimension(511.2), u32(512))
+	testing.expect_value(t, wgpu_viewport_target_dimension(2048), u32(1024))
+	width, height := wgpu_viewport_target_size(ui.Rect{width = 351, height = 219})
+	testing.expect_value(t, width, u32(352))
+	testing.expect_value(t, height, u32(224))
+}
+
+@(test)
+test_embedded_viewport_cache_tracks_all_resource_families :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	component := shared.ui_viewport_default()
+	component.resource, _ = shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000001")
+	wgpu_store_viewport_cache(&renderer, 0, component, 1.5, 7, 11, 13, 17)
+	testing.expect(t, wgpu_viewport_cache_matches(&renderer, 0, component, 1.5, 7, 11, 13, 17))
+	testing.expect(t, !wgpu_viewport_cache_matches(&renderer, 0, component, 1.5, 7, 11, 14, 17))
+	wgpu_invalidate_viewport_cache(&renderer, 0)
+	testing.expect(t, !renderer.ui_viewport_cache_valid[0])
+}

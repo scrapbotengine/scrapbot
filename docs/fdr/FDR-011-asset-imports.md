@@ -17,7 +17,7 @@ Asset imports turn artist-authored texture and model files under `assets/` into 
 - Import validity includes source and dependency contents, settings, and importer version. Unchanged resources reuse their prior products without decoding or rebuilding them.
 - A failed reimport reports an actionable error and preserves the last valid product. A project cannot silently start with a stale product when no valid product exists.
 - Explicit editor reimport targets one Texture or Model UUID without restarting Luau/native code; **Reimport All** forces every declared imported product. Automatic hot reload still uses the project asset stamp and importer cache until the platform watcher replaces polling. Ordinary simulation and render frames never scan the asset tree.
-- The editor's resource browser lists textures and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Texture resources receive a sampled thumbnail. Models render through the public interactive ECS viewport component with real imported geometry, materials, depth, lighting, perspective, orbit, and zoom.
+- The editor's resource browser lists textures and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Textures render directly on the GPU with aspect-preserving fit. Models render their imported hierarchy, while Materials render on an isolated lit icosphere preview scene. All three use the public ECS viewport component and independently sized pooled targets; interactive 3D previews support orbit, zoom, and reset.
 - Reimport updates a live resource slot in place and reconciles affected model roots. Generated Geometry and Material products that disappear from a replaced or removed Model are retired with generation bumps, so stale handles cannot remain usable.
 - Imported models initially exclude animation, skins, morph targets, compressed geometry, and advanced material extensions; unsupported required glTF features fail clearly.
 
@@ -52,6 +52,12 @@ Asset imports turn artist-authored texture and model files under `assets/` into 
 **Decision:** Route Reimport through an explicit runtime callback keyed by resource UUID, and keep the resource browser UI as a consumer of ordinary ECS UI buttons, panels, stacks, and fields.
 **Why:** An artist should be able to recover or refresh one asset without rebuilding scripts, native extensions, the scene world, or unrelated resources. The editor must not become a second widget or rendering system.
 **Tradeoff:** The current polled automatic hot-reload path remains coarser than the explicit action until dependency-aware platform file watching lands.
+
+### 6. Preview resources through the public viewport path
+
+**Decision:** Resolve viewport resource UUIDs across Texture, Model, and Material registries. Render Models and Materials through isolated renderer-owned preview scenes, render Textures through a direct GPU pass, and cache each stable target by its exact resource and presentation revisions.
+**Why:** Asset inspection should show the real renderer product without creating editor-private drawing code or spawning preview-only entities into the project's active ECS world.
+**Tradeoff:** Preview scenes are derived renderer state rather than independently simulated ECS worlds. The initial pool is bounded to eight targets and 1024 pixels per axis.
 
 ## Related
 

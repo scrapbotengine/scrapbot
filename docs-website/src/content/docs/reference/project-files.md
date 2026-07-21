@@ -363,7 +363,7 @@ corner_radius = 2
 right_to_left = true
 ```
 
-A `ui_viewport` embeds a renderer-backed Model resource or the retained World inside its ordinary layout box. A Model target frames itself automatically; drag to orbit and use the wheel to zoom. Omit `resource` to render the World, optionally through a `camera` entity UUID and restricted to a `root` entity plus descendants:
+A `ui_viewport` embeds a renderer-backed Texture, Model, or Material resource—or the retained active World—inside its ordinary layout box. Model and Material targets frame themselves automatically; drag to orbit and use the wheel to zoom. Omit `resource` to render the World, optionally through a `camera` entity UUID and restricted to a `root` entity plus descendants:
 
 ```toml
 [[entities]]
@@ -382,7 +382,7 @@ clear_color = [0.012, 0.017, 0.024, 1]
 interactive = true
 ```
 
-Viewport surfaces obey normal ancestor clipping, scrolling, and paint order. The initial WGPU implementation supports eight simultaneous 512-pixel layers. Static Model previews remain cached until their component, aspect, or referenced resources change.
+Viewport surfaces obey normal ancestor clipping, scrolling, and paint order. WGPU pools eight independently sized 64–1024-pixel targets. Static Texture, Model, and Material previews remain cached until their component, quantized target size/aspect, or referenced resources change.
 
 The renderer automatically attaches a read-only `ui_state` component to every laid-out element. Project systems can query it for hover, active, focus, activation, change, validation, submission, cancellation, and draggable-list drop state. Transient booleans describe the most recent UI pass; the matching revision counters are monotonic counters for reliable edge detection. Projects do not author or mutate `ui_state`.
 

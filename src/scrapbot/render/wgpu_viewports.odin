@@ -21,62 +21,170 @@ wgpu_encode_embedded_viewports :: proc(
 	world: ^shared.World,
 	render_list: ^shared.Render_List,
 ) -> string {
+	if renderer != nil {
+		renderer.ui_viewport_active_targets = 0
+		renderer.ui_viewport_target_pixels = 0
+	}
 	if renderer == nil || encoder == nil || state == nil || registry == nil {
 		return ""
 	}
 	count := min(state.viewport_surface_count, ui.MAX_EMBEDDED_VIEWPORTS)
+	renderer.ui_viewport_active_targets = count
 	for layer in 0 ..< count {
 		surface := state.viewport_surfaces[layer]
-		aspect := max(surface.rect.width / max(surface.rect.height, f32(1)), f32(0.01))
+		target_width, target_height := wgpu_viewport_target_size(surface.rect)
+		if err := wgpu_resize_viewport_target(renderer, layer, target_width, target_height);
+		   err != "" {
+			return err
+		}
+		renderer.ui_viewport_target_pixels += u64(target_width) * u64(target_height)
+		aspect := f32(target_width) / f32(target_height)
 		if surface.component.resource != (shared.Resource_UUID{}) {
 			handle, found := resources.model_handle_by_uuid(registry, surface.component.resource)
-			if !found {
-				continue
-			}
-			model, alive := resources.get_model(registry, handle)
-			if !alive {
-				renderer.ui_viewport_cache_valid[layer] = false
-				renderer.ui_viewport_cache_warmup_frames[layer] = 0
-				continue
-			}
-			cache_key_matches :=
-				renderer.ui_viewport_cache_valid[layer] &&
-				renderer.ui_viewport_cached_components[layer] == surface.component &&
-				renderer.ui_viewport_cached_aspects[layer] == aspect &&
-				renderer.ui_viewport_cached_model_versions[layer] == model.version &&
-				renderer.ui_viewport_cached_geometry_revisions[layer] ==
-					registry.geometry_topology_revision &&
-				renderer.ui_viewport_cached_material_revisions[layer] == registry.material_revision
-			if cache_key_matches && renderer.ui_viewport_cache_warmup_frames[layer] == 0 {
-				if err := wgpu_encode_cached_viewport_layer(renderer, encoder, layer); err != "" {
+			if found {
+				model, alive := resources.get_model(registry, handle)
+				if !alive {
+					wgpu_invalidate_viewport_cache(renderer, layer)
+					continue
+				}
+				if wgpu_viewport_cache_matches(
+					   renderer,
+					   layer,
+					   surface.component,
+					   aspect,
+					   model.version,
+					   registry.geometry_topology_revision,
+					   registry.texture_revision,
+					   registry.material_revision,
+				   ) &&
+				   renderer.ui_viewport_cache_warmup_frames[layer] == 0 {
+					if err := wgpu_encode_cached_viewport_layer(renderer, encoder, layer);
+					   err != "" {
+						return err
+					}
+					continue
+				}
+				if err := wgpu_encode_model_viewport(
+					renderer,
+					encoder,
+					registry,
+					model,
+					surface.component,
+					aspect,
+					layer,
+				); err != "" {
 					return err
 				}
+				wgpu_store_viewport_cache(
+					renderer,
+					layer,
+					surface.component,
+					aspect,
+					model.version,
+					registry.geometry_topology_revision,
+					registry.texture_revision,
+					registry.material_revision,
+				)
 				continue
 			}
-			if !cache_key_matches {
-				renderer.ui_viewport_cache_warmup_frames[layer] = 2
-			}
-			if err := wgpu_encode_model_viewport(
-				renderer,
-				encoder,
+			if material_handle, material_found := resources.material_by_uuid(
 				registry,
-				model,
-				surface.component,
-				aspect,
-				layer,
-			); err != "" {
-				return err
+				surface.component.resource,
+			); material_found {
+				material, alive := resources.get_material(registry, material_handle)
+				if !alive {
+					wgpu_invalidate_viewport_cache(renderer, layer)
+					continue
+				}
+				if wgpu_viewport_cache_matches(
+					   renderer,
+					   layer,
+					   surface.component,
+					   aspect,
+					   material.version,
+					   0,
+					   registry.texture_revision,
+					   registry.material_revision,
+				   ) &&
+				   renderer.ui_viewport_cache_warmup_frames[layer] == 0 {
+					if err := wgpu_encode_cached_viewport_layer(renderer, encoder, layer);
+					   err != "" {
+						return err
+					}
+					continue
+				}
+				if err := wgpu_encode_material_viewport(
+					renderer,
+					encoder,
+					registry,
+					material_handle,
+					surface.component,
+					aspect,
+					layer,
+				); err != "" {
+					return err
+				}
+				wgpu_store_viewport_cache(
+					renderer,
+					layer,
+					surface.component,
+					aspect,
+					material.version,
+					0,
+					registry.texture_revision,
+					registry.material_revision,
+				)
+				continue
 			}
-			renderer.ui_viewport_cached_components[layer] = surface.component
-			renderer.ui_viewport_cached_model_versions[layer] = model.version
-			renderer.ui_viewport_cached_aspects[layer] = aspect
-			renderer.ui_viewport_cached_geometry_revisions[layer] =
-				registry.geometry_topology_revision
-			renderer.ui_viewport_cached_material_revisions[layer] = registry.material_revision
-			renderer.ui_viewport_cache_valid[layer] = true
-			if renderer.ui_viewport_cache_warmup_frames[layer] > 0 {
-				renderer.ui_viewport_cache_warmup_frames[layer] -= 1
+			if texture_handle, texture_found := resources.texture_handle_by_uuid(
+				registry,
+				surface.component.resource,
+			); texture_found {
+				texture, alive := resources.get_texture(registry, texture_handle)
+				if !alive {
+					wgpu_invalidate_viewport_cache(renderer, layer)
+					continue
+				}
+				if wgpu_viewport_cache_matches(
+					   renderer,
+					   layer,
+					   surface.component,
+					   aspect,
+					   texture.version,
+					   0,
+					   registry.texture_revision,
+					   0,
+				   ) &&
+				   renderer.ui_viewport_cache_warmup_frames[layer] == 0 {
+					if err := wgpu_encode_cached_viewport_layer(renderer, encoder, layer);
+					   err != "" {
+						return err
+					}
+					continue
+				}
+				if err := wgpu_encode_texture_viewport(
+					renderer,
+					encoder,
+					registry,
+					texture_handle,
+					surface.component,
+					layer,
+				); err != "" {
+					return err
+				}
+				wgpu_store_viewport_cache(
+					renderer,
+					layer,
+					surface.component,
+					aspect,
+					texture.version,
+					0,
+					registry.texture_revision,
+					0,
+				)
+				continue
 			}
+			wgpu_invalidate_viewport_cache(renderer, layer)
 		} else if err := wgpu_encode_world_viewport(
 			renderer,
 			encoder,
@@ -84,20 +192,95 @@ wgpu_encode_embedded_viewports :: proc(
 			world,
 			render_list,
 			surface.component,
-			aspect,
 			layer,
 		); err != "" {
 			return err
 		} else {
-			renderer.ui_viewport_cache_valid[layer] = false
-			renderer.ui_viewport_cache_warmup_frames[layer] = 0
+			wgpu_invalidate_viewport_cache(renderer, layer)
 		}
 	}
 	for layer in count ..< ui.MAX_EMBEDDED_VIEWPORTS {
-		renderer.ui_viewport_cache_valid[layer] = false
-		renderer.ui_viewport_cache_warmup_frames[layer] = 0
+		wgpu_invalidate_viewport_cache(renderer, layer)
 	}
 	return ""
+}
+
+wgpu_viewport_target_dimension :: proc(value: f32) -> u32 {
+	rounded := u32(max(math.ceil(value), f32(WGPU_VIEWPORT_TARGET_MIN_SIZE)))
+	rounded =
+		((rounded + WGPU_VIEWPORT_TARGET_GRANULARITY - 1) / WGPU_VIEWPORT_TARGET_GRANULARITY) *
+		WGPU_VIEWPORT_TARGET_GRANULARITY
+	return min(rounded, WGPU_VIEWPORT_TARGET_MAX_SIZE)
+}
+
+wgpu_viewport_target_size :: proc(rect: ui.Rect) -> (u32, u32) {
+	return wgpu_viewport_target_dimension(rect.width), wgpu_viewport_target_dimension(rect.height)
+}
+
+wgpu_invalidate_viewport_cache :: proc(renderer: ^WGPU_Renderer, layer: int) {
+	if renderer == nil || layer < 0 || layer >= ui.MAX_EMBEDDED_VIEWPORTS {
+		return
+	}
+	renderer.ui_viewport_cache_valid[layer] = false
+	renderer.ui_viewport_cache_warmup_frames[layer] = 0
+}
+
+wgpu_viewport_cache_matches :: proc(
+	renderer: ^WGPU_Renderer,
+	layer: int,
+	component: shared.UI_Viewport_Component,
+	aspect: f32,
+	resource_version: u32,
+	geometry_revision, texture_revision, material_revision: u64,
+) -> bool {
+	return(
+		renderer != nil &&
+		layer >= 0 &&
+		layer < ui.MAX_EMBEDDED_VIEWPORTS &&
+		renderer.ui_viewport_cache_valid[layer] &&
+		renderer.ui_viewport_cached_components[layer] == component &&
+		renderer.ui_viewport_cached_aspects[layer] == aspect &&
+		renderer.ui_viewport_cached_resource_versions[layer] == resource_version &&
+		renderer.ui_viewport_cached_geometry_revisions[layer] == geometry_revision &&
+		renderer.ui_viewport_cached_texture_revisions[layer] == texture_revision &&
+		renderer.ui_viewport_cached_material_revisions[layer] == material_revision \
+	)
+}
+
+wgpu_store_viewport_cache :: proc(
+	renderer: ^WGPU_Renderer,
+	layer: int,
+	component: shared.UI_Viewport_Component,
+	aspect: f32,
+	resource_version: u32,
+	geometry_revision, texture_revision, material_revision: u64,
+) {
+	if renderer == nil || layer < 0 || layer >= ui.MAX_EMBEDDED_VIEWPORTS {
+		return
+	}
+	cache_key_matches := wgpu_viewport_cache_matches(
+		renderer,
+		layer,
+		component,
+		aspect,
+		resource_version,
+		geometry_revision,
+		texture_revision,
+		material_revision,
+	)
+	if !cache_key_matches {
+		renderer.ui_viewport_cache_warmup_frames[layer] = 2
+	}
+	renderer.ui_viewport_cached_components[layer] = component
+	renderer.ui_viewport_cached_resource_versions[layer] = resource_version
+	renderer.ui_viewport_cached_aspects[layer] = aspect
+	renderer.ui_viewport_cached_geometry_revisions[layer] = geometry_revision
+	renderer.ui_viewport_cached_texture_revisions[layer] = texture_revision
+	renderer.ui_viewport_cached_material_revisions[layer] = material_revision
+	renderer.ui_viewport_cache_valid[layer] = true
+	if renderer.ui_viewport_cache_warmup_frames[layer] > 0 {
+		renderer.ui_viewport_cache_warmup_frames[layer] -= 1
+	}
 }
 
 wgpu_encode_cached_viewport_layer :: proc(
@@ -124,6 +307,7 @@ wgpu_encode_cached_viewport_layer :: proc(
 	}
 	defer wgpu.RenderPassEncoderRelease(pass)
 	wgpu.RenderPassEncoderEnd(pass)
+	renderer.ui_viewport_cache_hit_count += 1
 	return ""
 }
 
@@ -275,6 +459,236 @@ wgpu_encode_model_viewport :: proc(
 	)
 }
 
+wgpu_preview_view_projection :: proc(
+	component: shared.UI_Viewport_Component,
+	aspect, radius: f32,
+) -> Mat4 {
+	pitch := clamp(component.orbit.x, f32(-1.45), f32(1.45))
+	yaw := component.orbit.y
+	direction := shared.Vec3 {
+		math.cos(pitch) * math.sin(yaw),
+		math.sin(pitch),
+		math.cos(pitch) * math.cos(yaw),
+	}
+	distance := radius * max(component.distance, f32(1.1))
+	eye := shared.Vec3{direction.x * distance, direction.y * distance, direction.z * distance}
+	view := mat4_look_at(eye, {}, {0, 1, 0})
+	projection := mat4_perspective(
+		math.to_radians(f32(38)),
+		aspect,
+		max(radius * 0.01, f32(0.001)),
+		distance + radius * 4,
+	)
+	return mat4_mul(projection, view)
+}
+
+wgpu_apply_preview_lighting :: proc(uniform: ^WGPU_Render_Uniform) {
+	uniform.ambient = {0.28, 0.30, 0.34, 1}
+	uniform.directional_direction_intensity[0] = {-0.45, -0.80, -0.35, 1.4}
+	uniform.directional_color[0] = {1.0, 0.96, 0.90, 1}
+	uniform.light_counts[0] = 1
+}
+
+wgpu_encode_material_viewport :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+	registry: ^resources.Registry,
+	handle: shared.Material_Handle,
+	component: shared.UI_Viewport_Component,
+	aspect: f32,
+	layer: int,
+) -> string {
+	material, alive := resources.get_material(registry, handle)
+	if !alive {
+		return "material preview handle is stale"
+	}
+	material_cache, material_err := wgpu_material_cache(renderer, registry, handle)
+	if material_err != "" {
+		return material_err
+	}
+	model := mat4_identity()
+	uniform: WGPU_Render_Uniform
+	wgpu_apply_preview_lighting(&uniform)
+	uniform.model[0] = model
+	uniform.normal_model[0] = model
+	uniform.mvp[0] = mat4_mul(wgpu_preview_view_projection(component, aspect, 0.75), model)
+	uniform.color[0] = {
+		material.desc.base_color.x,
+		material.desc.base_color.y,
+		material.desc.base_color.z,
+		material.desc.base_color.w,
+	}
+	uniform.emissive[0] = {
+		material.desc.emissive.x,
+		material.desc.emissive.y,
+		material.desc.emissive.z,
+		0,
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.ui_viewport_uniform_buffers[layer],
+		0,
+		&uniform,
+		uint(size_of(WGPU_Render_Uniform)),
+	)
+	color_attachment := wgpu.RenderPassColorAttachment {
+		view = renderer.ui_viewport_layer_views[layer],
+		depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+		loadOp = .Clear,
+		storeOp = .Store,
+		clearValue = {
+			f64(component.clear_color.x),
+			f64(component.clear_color.y),
+			f64(component.clear_color.z),
+			f64(component.clear_color.w),
+		},
+	}
+	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
+		view = renderer.ui_viewport_depth_views[layer],
+		depthLoadOp = .Clear,
+		depthStoreOp = .Store,
+		depthClearValue = 1,
+		stencilLoadOp = .Undefined,
+		stencilStoreOp = .Undefined,
+	}
+	pass := wgpu.CommandEncoderBeginRenderPass(
+		encoder,
+		&wgpu.RenderPassDescriptor {
+			label = "Scrapbot Material Preview Pass",
+			colorAttachmentCount = 1,
+			colorAttachments = &color_attachment,
+			depthStencilAttachment = &depth_attachment,
+		},
+	)
+	if pass == nil {
+		return "failed to begin material preview pass"
+	}
+	defer wgpu.RenderPassEncoderRelease(pass)
+	wgpu.RenderPassEncoderSetViewport(
+		pass,
+		0,
+		0,
+		f32(renderer.ui_viewport_widths[layer]),
+		f32(renderer.ui_viewport_heights[layer]),
+		0,
+		1,
+	)
+	wgpu.RenderPassEncoderSetScissorRect(
+		pass,
+		0,
+		0,
+		renderer.ui_viewport_widths[layer],
+		renderer.ui_viewport_heights[layer],
+	)
+	wgpu.RenderPassEncoderSetPipeline(pass, renderer.ui_viewport_pipeline)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.ui_viewport_bind_groups[layer])
+	wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cache.bind_group)
+	wgpu.RenderPassEncoderSetVertexBuffer(
+		pass,
+		0,
+		renderer.ui_viewport_preview_vertex_buffer,
+		0,
+		wgpu.WHOLE_SIZE,
+	)
+	wgpu.RenderPassEncoderSetIndexBuffer(
+		pass,
+		renderer.ui_viewport_preview_index_buffer,
+		.Uint32,
+		0,
+		wgpu.WHOLE_SIZE,
+	)
+	wgpu.RenderPassEncoderDrawIndexed(pass, renderer.ui_viewport_preview_index_count, 1, 0, 0, 0)
+	wgpu.RenderPassEncoderEnd(pass)
+	renderer.ui_viewport_redraw_count += 1
+	return ""
+}
+
+wgpu_encode_texture_viewport :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+	registry: ^resources.Registry,
+	handle: shared.Texture_Handle,
+	component: shared.UI_Viewport_Component,
+	layer: int,
+) -> string {
+	texture, alive := resources.get_texture(registry, handle)
+	if !alive {
+		return "texture preview handle is stale"
+	}
+	texture_cache, texture_err := wgpu_texture_cache(renderer, registry, handle)
+	if texture_err != "" {
+		return texture_err
+	}
+	entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, textureView = texture_cache.view},
+		{binding = 1, sampler = renderer.material_sampler},
+	}
+	bind_group := wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot Texture Preview Bind Group",
+			layout = renderer.material_bind_group_layout,
+			entryCount = uint(len(entries)),
+			entries = raw_data(entries[:]),
+		},
+	)
+	if bind_group == nil {
+		return "failed to create texture preview bind group"
+	}
+	defer wgpu.BindGroupRelease(bind_group)
+	color_attachment := wgpu.RenderPassColorAttachment {
+		view = renderer.ui_viewport_layer_views[layer],
+		depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+		loadOp = .Clear,
+		storeOp = .Store,
+		clearValue = {
+			f64(component.clear_color.x),
+			f64(component.clear_color.y),
+			f64(component.clear_color.z),
+			f64(component.clear_color.w),
+		},
+	}
+	pass := wgpu.CommandEncoderBeginRenderPass(
+		encoder,
+		&wgpu.RenderPassDescriptor {
+			label = "Scrapbot Texture Preview Pass",
+			colorAttachmentCount = 1,
+			colorAttachments = &color_attachment,
+		},
+	)
+	if pass == nil {
+		return "failed to begin texture preview pass"
+	}
+	defer wgpu.RenderPassEncoderRelease(pass)
+	target_width := f32(renderer.ui_viewport_widths[layer])
+	target_height := f32(renderer.ui_viewport_heights[layer])
+	target_aspect := target_width / max(target_height, f32(1))
+	texture_aspect := f32(texture.desc.width) / f32(max(texture.desc.height, u32(1)))
+	draw_width, draw_height := target_width, target_height
+	draw_x, draw_y := f32(0), f32(0)
+	if texture_aspect > target_aspect {
+		draw_height = target_width / texture_aspect
+		draw_y = (target_height - draw_height) * 0.5
+	} else {
+		draw_width = target_height * texture_aspect
+		draw_x = (target_width - draw_width) * 0.5
+	}
+	wgpu.RenderPassEncoderSetViewport(pass, draw_x, draw_y, draw_width, draw_height, 0, 1)
+	wgpu.RenderPassEncoderSetScissorRect(
+		pass,
+		0,
+		0,
+		renderer.ui_viewport_widths[layer],
+		renderer.ui_viewport_heights[layer],
+	)
+	wgpu.RenderPassEncoderSetPipeline(pass, renderer.ui_viewport_texture_pipeline)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 0, bind_group)
+	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
+	wgpu.RenderPassEncoderEnd(pass)
+	renderer.ui_viewport_redraw_count += 1
+	return ""
+}
+
 wgpu_encode_world_viewport :: proc(
 	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
@@ -282,7 +696,6 @@ wgpu_encode_world_viewport :: proc(
 	world: ^shared.World,
 	render_list: ^shared.Render_List,
 	component: shared.UI_Viewport_Component,
-	aspect: f32,
 	layer: int,
 ) -> string {
 	if world == nil || render_list == nil {
@@ -330,13 +743,8 @@ wgpu_encode_world_viewport :: proc(
 			}
 		}
 	}
-	virtual_width := u32(WGPU_VIEWPORT_TEXTURE_SIZE)
-	virtual_height := u32(WGPU_VIEWPORT_TEXTURE_SIZE)
-	if aspect >= 1 {
-		virtual_width = u32(f32(WGPU_VIEWPORT_TEXTURE_SIZE) * aspect)
-	} else {
-		virtual_height = u32(f32(WGPU_VIEWPORT_TEXTURE_SIZE) / max(aspect, f32(0.01)))
-	}
+	virtual_width := renderer.ui_viewport_widths[layer]
+	virtual_height := renderer.ui_viewport_heights[layer]
 	view_projection := wgpu_build_view_projection(
 		camera,
 		has_camera,
@@ -464,8 +872,8 @@ wgpu_encode_viewport_draws :: proc(
 		pass,
 		0,
 		0,
-		WGPU_VIEWPORT_TEXTURE_SIZE,
-		WGPU_VIEWPORT_TEXTURE_SIZE,
+		f32(renderer.ui_viewport_widths[layer]),
+		f32(renderer.ui_viewport_heights[layer]),
 		0,
 		1,
 	)
@@ -473,8 +881,8 @@ wgpu_encode_viewport_draws :: proc(
 		pass,
 		0,
 		0,
-		WGPU_VIEWPORT_TEXTURE_SIZE,
-		WGPU_VIEWPORT_TEXTURE_SIZE,
+		renderer.ui_viewport_widths[layer],
+		renderer.ui_viewport_heights[layer],
 	)
 	wgpu.RenderPassEncoderSetPipeline(pass, renderer.ui_viewport_pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.ui_viewport_bind_groups[layer])
@@ -503,6 +911,7 @@ wgpu_encode_viewport_draws :: proc(
 		wgpu.RenderPassEncoderDrawIndexed(pass, u32(len(resource.indices)), 1, 0, 0, u32(index))
 	}
 	wgpu.RenderPassEncoderEnd(pass)
+	renderer.ui_viewport_redraw_count += 1
 	return ""
 }
 

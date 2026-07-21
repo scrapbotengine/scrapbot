@@ -50,7 +50,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_table` | UI flow | Row-major multi-column layout. |
 | `scrapbot.ui_list` | UI flow | Selectable direct-child rows. |
 | `scrapbot.ui_progress` | UI indicator | Track and clamped progress fill. |
-| `scrapbot.ui_viewport` | UI content | Interactive renderer-backed Model or World view. |
+| `scrapbot.ui_viewport` | UI content | Interactive renderer-backed Texture, Model, Material, or World view. |
 | `scrapbot.ui_state` | UI interaction | Renderer-owned interaction values and edge revisions. |
 | `scrapbot.ui_text` | UI content | Text label. |
 | `scrapbot.ui_button` | UI content | Activatable text and/or SDF-icon button. |
@@ -232,15 +232,17 @@ With `tree_enabled = true`, direct children whose layout has `tree_item = true` 
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `resource` | Empty UUID | Render this Model resource. When empty, render the current retained World. |
+| `resource` | Empty UUID | Render this Texture, Model, or Material resource. When empty, render the current retained World. |
 | `camera` | Empty UUID | Optional camera entity for a World target. The active project camera is used when empty. |
 | `root` | Empty UUID | Optional World subtree root; only that entity and its descendants render. |
 | `orbit` | `[-0.35, 0.55]` | Preview pitch and yaw in radians. |
-| `distance` | `3` | Model-radius camera multiplier; must be finite and at least `1.1`. |
+| `distance` | `3` | 3D preview-radius camera multiplier; must be finite and at least `1.1`. |
 | `clear_color` | `[0.012, 0.017, 0.024, 1]` | Offscreen surface clear color. |
 | `interactive` | `true` | Drag to orbit and use the wheel to zoom. |
 
-The viewport is an ordinary UI element: `ui_layout` controls its size, padding ancestors can frame it, scroll areas clip it, and its render surface participates in normal paint order. Model targets use imported Geometry and Material resources and retain a cached layer until the component, aspect ratio, model, geometry, or material changes. World targets consume the retained render list and may select a camera or subtree by stable entity UUID. The initial WGPU implementation provides eight simultaneous 512-pixel layers.
+The viewport is an ordinary UI element: `ui_layout` controls its size, padding ancestors can frame it, scroll areas clip it, and its render surface participates in normal paint order. Texture targets use an aspect-preserving GPU pass. Model targets render imported Geometry and Materials, while Material targets use an isolated lit icosphere preview scene. Stable resource targets remain cached until presentation state, target size/aspect, exact resource content, or a relevant registry revision changes. World targets consume the retained active World's render list and may select a camera or subtree by stable entity UUID.
+
+WGPU pools eight independently sized targets. Each visible viewport is quantized to 32-pixel increments between 64 and 1024 pixels per axis, so small inspectors and large preview panes do not pay the same fixed allocation or rendering cost. Renderer diagnostics report active targets, target pixels, resizes, redraws, and cache hits. Resource preview scenes are renderer-owned derived presentation; they are not separately simulated ECS worlds.
 
 ### `scrapbot.ui_state`
 

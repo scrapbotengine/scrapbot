@@ -18,7 +18,7 @@
 | `src/scrapbot/extension/` | Idiomatic Odin wrapper for extension authors. | Typed descriptors/payloads over the raw ABI. |
 | `src/scrapbot/native/` | Native extension building, loading, registration, callbacks, UI bridging. | Host validation, dynamic-library lifetime, and per-system command buffers. |
 | `src/scrapbot/ui/` | Retained ECS UI, interaction, editor ECS composition, reflection/bindings, diagnostics, fonts. | Generic mechanics stay public; editor meaning stays in bindings/orchestration. |
-| `src/scrapbot/render/` | Backend interface, null backend, WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess. | Backend-neutral inputs; WGPU owns GPU state, offscreen viewport layers, and caches. |
+| `src/scrapbot/render/` | Backend interface, null backend, WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess. | Backend-neutral inputs; WGPU owns GPU state, pooled adaptive viewport targets, isolated resource-preview scenes, and caches. |
 | `src/scrapbot/platform/` | SDL window/input/cursor integration. | OS events are translated into engine-owned input snapshots. |
 | `src/scrapbot/hot_reload.odin` | Project source/product change detection and safe runtime replacement. | Failed reload retains last-good runtime/world. |
 | `src/scrapbot/playback.odin` | Play/Stop baseline capture and restoration. | Restores ECS/resource authoring state without reloading code. |

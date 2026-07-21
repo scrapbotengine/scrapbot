@@ -220,6 +220,22 @@ editor_ui_handle_activation :: proc(
 						editor_ui_set_hidden(world, menu, !state.editor_component_menu_open)
 					}
 					return
+				case .Inspector_Preview_Reset:
+					if viewport, found := editor_ui_entity(
+						world,
+						.Inspector_Preview_Surface,
+						binding.slot,
+					); found {
+						entity := world.entities[viewport]
+						if entity.ui_viewport_index >= 0 &&
+						   entity.ui_viewport_index < len(world.ui_viewports) {
+							resource := world.ui_viewports[entity.ui_viewport_index].resource
+							value := shared.ui_viewport_default()
+							value.resource = resource
+							_ = ecs.set_ui_viewport(world, viewport, value)
+						}
+					}
+					return
 				case .Inspector_Panel_Action:
 					if state.component_registry == nil ||
 					   binding.reflected_component_id == shared.INVALID_COMPONENT_ID {
@@ -321,9 +337,9 @@ editor_ui_handle_activation :: proc(
 				     .Inspector_Panel,
 				     .Inspector_Table,
 				     .Inspector_Cell,
-				     .Inspector_Preview_Grid,
-				     .Inspector_Preview_Row,
-				     .Inspector_Preview_Cell,
+				     .Inspector_Preview_Surface,
+				     .Inspector_Preview_Toolbar,
+				     .Inspector_Preview_Hint,
 				     .Inspector_Input,
 				     .Inspector_Checkbox,
 				     .Inspector_Component_Menu,
@@ -4077,6 +4093,7 @@ editor_ui_build_resource_inspector_panels :: proc(
 		editor_ui_finish_inspector(&builder)
 		return
 	}
+	editor_ui_inspector_preview_surface(&builder, material.id)
 	editor_ui_begin_inspector_component(&builder, "MATERIAL")
 	base_values := [4]string {
 		fmt.tprintf("%.2f", material.desc.base_color.x),
@@ -4127,15 +4144,14 @@ editor_ui_hide_asset_preview :: proc(world: ^shared.World) {
 		return
 	}
 	for binding in world.editor_uis {
-		if binding.role == .Inspector_Preview_Grid ||
-		   binding.role == .Inspector_Preview_Row ||
-		   binding.role == .Inspector_Preview_Cell {
+		if binding.role == .Inspector_Preview_Surface ||
+		   binding.role == .Inspector_Preview_Toolbar ||
+		   binding.role == .Inspector_Preview_Reset ||
+		   binding.role == .Inspector_Preview_Hint {
 			editor_ui_set_hidden(world, binding.entity_index, true)
 		}
 	}
 }
-
-EDITOR_ASSET_PREVIEW_GRID_SIZE :: 12
 
 editor_ui_inspector_texture_preview :: proc(
 	builder: ^Inspector_ECS_Builder,
@@ -4144,17 +4160,7 @@ editor_ui_inspector_texture_preview :: proc(
 	if builder == nil || texture == nil {
 		return
 	}
-	colors: [EDITOR_ASSET_PREVIEW_GRID_SIZE * EDITOR_ASSET_PREVIEW_GRID_SIZE]shared.Vec4
-	for row in 0 ..< EDITOR_ASSET_PREVIEW_GRID_SIZE {
-		for column in 0 ..< EDITOR_ASSET_PREVIEW_GRID_SIZE {
-			colors[row * EDITOR_ASSET_PREVIEW_GRID_SIZE + column] = editor_texture_preview_color(
-				texture,
-				column,
-				row,
-			)
-		}
-	}
-	editor_ui_inspector_preview_grid(builder, colors[:])
+	editor_ui_inspector_preview_surface(builder, texture.id, false)
 }
 
 editor_ui_inspector_model_preview :: proc(
@@ -4171,21 +4177,22 @@ editor_ui_inspector_model_preview :: proc(
 editor_ui_inspector_preview_surface :: proc(
 	builder: ^Inspector_ECS_Builder,
 	resource: shared.Resource_UUID,
+	interactive := true,
 ) {
 	editor_ui_begin_inspector_component(builder, "PREVIEW")
 	editor_ui_set_hidden(builder.world, builder.table_entity, true)
 	panel_slot := builder.panel_count - 1
 	panel_name := builder.world.entities[builder.panel_entity].name
-	viewport, found := editor_ui_entity(builder.world, .Inspector_Preview_Grid, panel_slot)
+	viewport, found := editor_ui_entity(builder.world, .Inspector_Preview_Surface, panel_slot)
 	if !found {
 		viewport = editor_ui_create_box(
 			builder.world,
 			fmt.tprintf("__scrapbot_editor_asset_preview_%d", panel_slot),
 			panel_name,
-			.Inspector_Preview_Grid,
+			.Inspector_Preview_Surface,
 			{
 				size = {2000, 220},
-				margin = {8, 12, 12, 12},
+				margin = {8, 12, 4, 12},
 				border_color = EDITOR_SECTION_BORDER,
 				border_width = 1,
 				corner_radius = 4,
@@ -4198,105 +4205,84 @@ editor_ui_inspector_preview_surface :: proc(
 		editor_ui_set_hidden(builder.world, viewport, false)
 	}
 	value := shared.ui_viewport_default()
-	value.resource = resource
+	entity := builder.world.entities[viewport]
+	if entity.ui_viewport_index >= 0 &&
+	   entity.ui_viewport_index < len(builder.world.ui_viewports) &&
+	   builder.world.ui_viewports[entity.ui_viewport_index].resource == resource {
+		value = builder.world.ui_viewports[entity.ui_viewport_index]
+	} else {
+		value.resource = resource
+	}
+	value.interactive = interactive
 	_ = ecs.set_ui_viewport(builder.world, viewport, value)
-}
-
-editor_ui_inspector_preview_grid :: proc(builder: ^Inspector_ECS_Builder, colors: []shared.Vec4) {
-	editor_ui_begin_inspector_component(builder, "PREVIEW")
-	editor_ui_set_hidden(builder.world, builder.table_entity, true)
-	panel_slot := builder.panel_count - 1
-	panel_name := builder.world.entities[builder.panel_entity].name
-	grid, found := editor_ui_entity(builder.world, .Inspector_Preview_Grid, panel_slot)
-	if !found {
-		grid = editor_ui_create_box(
+	toolbar, toolbar_found := editor_ui_entity(
+		builder.world,
+		.Inspector_Preview_Toolbar,
+		panel_slot,
+	)
+	if !toolbar_found {
+		toolbar = editor_ui_create_box(
 			builder.world,
-			fmt.tprintf("__scrapbot_editor_asset_preview_%d", panel_slot),
+			fmt.tprintf("__scrapbot_editor_asset_preview_toolbar_%d", panel_slot),
 			panel_name,
-			.Inspector_Preview_Grid,
-			{size = {2000, 176}, margin = {8, 12, 12, 12}, fill_width = true, corner_radius = 4},
+			.Inspector_Preview_Toolbar,
+			{size = {2000, 28}, margin = {4, 12, 12, 12}, fill_width = true},
 			panel_slot,
 		)
-		editor_ui_add_vstack(builder.world, grid, {fill = true})
+		editor_ui_add_hstack(builder.world, toolbar, {gap = 8, fill = true})
 	} else {
-		editor_ui_set_parent(builder.world, grid, panel_name)
-		editor_ui_set_hidden(builder.world, grid, false)
+		editor_ui_set_parent(builder.world, toolbar, panel_name)
+		editor_ui_set_hidden(builder.world, toolbar, !interactive)
 	}
-	_ = ecs.remove_ui_component(builder.world, grid, "scrapbot.ui_viewport")
-	for row_index in 0 ..< EDITOR_ASSET_PREVIEW_GRID_SIZE {
-		row_slot := panel_slot * EDITOR_ASSET_PREVIEW_GRID_SIZE + row_index
-		row, row_found := editor_ui_entity(builder.world, .Inspector_Preview_Row, row_slot)
-		if !row_found {
-			row = editor_ui_create_box(
-				builder.world,
-				fmt.tprintf("__scrapbot_editor_asset_preview_%d_row_%d", panel_slot, row_index),
-				builder.world.entities[grid].name,
-				.Inspector_Preview_Row,
-				{size = {2000, 1}, fill_width = true, fill_height = true},
-				row_slot,
-			)
-			editor_ui_add_hstack(builder.world, row, {fill = true})
-		} else {
-			editor_ui_set_parent(builder.world, row, builder.world.entities[grid].name)
-			editor_ui_set_hidden(builder.world, row, false)
-		}
-		for column_index in 0 ..< EDITOR_ASSET_PREVIEW_GRID_SIZE {
-			cell_slot := row_slot * EDITOR_ASSET_PREVIEW_GRID_SIZE + column_index
-			cell, cell_found := editor_ui_entity(builder.world, .Inspector_Preview_Cell, cell_slot)
-			if !cell_found {
-				cell = editor_ui_create_box(
-					builder.world,
-					fmt.tprintf(
-						"__scrapbot_editor_asset_preview_%d_cell_%d_%d",
-						panel_slot,
-						row_index,
-						column_index,
-					),
-					builder.world.entities[row].name,
-					.Inspector_Preview_Cell,
-					{size = {1, 1}, fill_width = true, fill_height = true},
-					cell_slot,
-				)
-			} else {
-				editor_ui_set_parent(builder.world, cell, builder.world.entities[row].name)
-				editor_ui_set_hidden(builder.world, cell, false)
-			}
-			layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
-			color_index := row_index * EDITOR_ASSET_PREVIEW_GRID_SIZE + column_index
-			layout.background = {0.018, 0.024, 0.032, 1}
-			if color_index >= 0 && color_index < len(colors) {
-				layout.background = colors[color_index]
-			}
-		}
+	editor_ui_set_hidden(builder.world, toolbar, !interactive)
+	toolbar_name := builder.world.entities[toolbar].name
+	reset, reset_found := editor_ui_entity(builder.world, .Inspector_Preview_Reset, panel_slot)
+	if !reset_found {
+		reset = editor_ui_create_box(
+			builder.world,
+			fmt.tprintf("__scrapbot_editor_asset_preview_reset_%d", panel_slot),
+			toolbar_name,
+			.Inspector_Preview_Reset,
+			{
+				size = {64, 28},
+				background = {0.017, 0.022, 0.030, 1},
+				border_color = {0.055, 0.067, 0.088, 1},
+				border_width = 1,
+				corner_radius = 4,
+				fixed_in_fill = true,
+			},
+			panel_slot,
+		)
+		editor_ui_add_button(builder.world, reset)
+		button := builder.world.ui_buttons[builder.world.entities[reset].ui_button_index]
+		button.text = "RESET"
+		button.color = {0.46, 0.49, 0.55, 1}
+		button.size = EDITOR_TEXT_SIZE
+		_ = ecs.set_ui_button(builder.world, reset, button)
+	} else {
+		editor_ui_set_parent(builder.world, reset, toolbar_name)
+		editor_ui_set_hidden(builder.world, reset, false)
 	}
-}
-
-editor_texture_preview_color :: proc(
-	texture: ^resources.Texture,
-	column, row: int,
-) -> shared.Vec4 {
-	if texture == nil || texture.desc.width == 0 || texture.desc.height == 0 {
-		return {0.08, 0.09, 0.11, 1}
-	}
-	x := min(
-		int(texture.desc.width) - 1,
-		(column * int(texture.desc.width) + int(texture.desc.width) / 2) /
-		EDITOR_ASSET_PREVIEW_GRID_SIZE,
-	)
-	y := min(
-		int(texture.desc.height) - 1,
-		(row * int(texture.desc.height) + int(texture.desc.height) / 2) /
-		EDITOR_ASSET_PREVIEW_GRID_SIZE,
-	)
-	offset := (y * int(texture.desc.width) + x) * 4
-	if offset < 0 || offset + 3 >= len(texture.desc.pixels) {
-		return {0.08, 0.09, 0.11, 1}
-	}
-	return {
-		f32(texture.desc.pixels[offset]) / 255.0,
-		f32(texture.desc.pixels[offset + 1]) / 255.0,
-		f32(texture.desc.pixels[offset + 2]) / 255.0,
-		f32(texture.desc.pixels[offset + 3]) / 255.0,
+	hint, hint_found := editor_ui_entity(builder.world, .Inspector_Preview_Hint, panel_slot)
+	if !hint_found {
+		hint = editor_ui_create_box(
+			builder.world,
+			fmt.tprintf("__scrapbot_editor_asset_preview_hint_%d", panel_slot),
+			toolbar_name,
+			.Inspector_Preview_Hint,
+			{size = {1, 28}, fill_width = true},
+			panel_slot,
+		)
+		editor_ui_add_text(
+			builder.world,
+			hint,
+			"DRAG TO ORBIT  /  SCROLL TO ZOOM",
+			{0.46, 0.49, 0.55, 1},
+			EDITOR_TEXT_SIZE,
+		)
+	} else {
+		editor_ui_set_parent(builder.world, hint, toolbar_name)
+		editor_ui_set_hidden(builder.world, hint, false)
 	}
 }
 

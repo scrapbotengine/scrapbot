@@ -7,7 +7,8 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add glTF image/material texture import, richer PBR fields, animation, skins, morph targets, and compressed geometry.
 - [ ] Replace index-derived imported model subresource keys with durable semantic keys across glTF reordering.
 - [ ] Import only nodes and resources reachable from the selected glTF scene.
-- [ ] Extend embedded ECS viewports with texture targets, per-target post-processing, and adaptive render-target sizing beyond the initial bounded WGPU texture array.
+- [ ] Add optional per-target post-processing, grids, axes, wireframe, and transparent presentation to embedded ECS viewports.
+- [ ] Generalize retained-World viewport targets into explicitly addressable concurrent ECS worlds when multi-world runtime ownership exists.
 - [ ] Replace aggregate asset polling with dependency-aware platform file watching that enqueues exact resource UUID reimports.
 - [ ] Add imported mesh LODs and evaluate meshlets and richer submission against representative scenes.
 - [ ] Expose camera exposure and bloom threshold, intensity, and scatter as project settings.

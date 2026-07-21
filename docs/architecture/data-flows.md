@@ -102,7 +102,7 @@ scene TOML / Luau / native Odin / editor composition
  read-only ui_state + independent GPU vertex streams
 ```
 
-Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU renders Model targets or retained World targets into bounded texture-array layers and samples those layers as ordinary clipped UI paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resource layers redraw only when their target state, aspect, or resource revisions change.
+Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 
 The editor adds transient editor-origin entities but uses the same components and mechanics as project UI. Editor-only code binds selection, history, project meaning, and commands to generic UI interaction. The project canvas keeps a uniform window-density scale inside the free-aspect game viewport; rendering, pointer inversion, and semantic diagnostic rectangles share that transform so embedded UI cannot be distorted or become spatially detached from interaction.
 

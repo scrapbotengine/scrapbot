@@ -235,6 +235,12 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.ui_viewport_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.ui_viewport_pipeline)
 	}
+	if renderer.ui_viewport_texture_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.ui_viewport_texture_pipeline)
+	}
+	if renderer.ui_viewport_texture_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.ui_viewport_texture_pipeline_layout)
+	}
 	if renderer.ui_shader != nil { wgpu.ShaderModuleRelease(renderer.ui_shader) }
 	if renderer.ui_bind_group != nil { wgpu.BindGroupRelease(renderer.ui_bind_group) }
 	if renderer.ui_font_sampler != nil { wgpu.SamplerRelease(renderer.ui_font_sampler) }
@@ -256,12 +262,15 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		if renderer.ui_viewport_layer_views[layer] != nil {
 			wgpu.TextureViewRelease(renderer.ui_viewport_layer_views[layer])
 		}
+		if renderer.ui_viewport_textures[layer] != nil {
+			wgpu.TextureRelease(renderer.ui_viewport_textures[layer])
+		}
 	}
-	if renderer.ui_viewport_view != nil {
-		wgpu.TextureViewRelease(renderer.ui_viewport_view)
+	if renderer.ui_viewport_preview_vertex_buffer != nil {
+		wgpu.BufferRelease(renderer.ui_viewport_preview_vertex_buffer)
 	}
-	if renderer.ui_viewport_texture != nil {
-		wgpu.TextureRelease(renderer.ui_viewport_texture)
+	if renderer.ui_viewport_preview_index_buffer != nil {
+		wgpu.BufferRelease(renderer.ui_viewport_preview_index_buffer)
 	}
 	if renderer.ui_project_vertex_buffer != nil {
 		wgpu.BufferRelease(renderer.ui_project_vertex_buffer)
@@ -726,18 +735,23 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 		renderer.device,
 		&wgpu.ShaderModuleDescriptor{nextInChain = &chain, label = "Scrapbot UI Shader"},
 	); if renderer.ui_shader == nil { return "failed to create UI shader" }
-	layout_entries := [?]wgpu.BindGroupLayoutEntry {
-		{
-			binding = 0,
+	layout_entries: [2 + ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroupLayoutEntry
+	layout_entries[0] = {
+		binding = 0,
+		visibility = {.Fragment},
+		texture = {sampleType = .Float, viewDimension = ._2DArray},
+	}
+	layout_entries[1] = {
+		binding = 1,
+		visibility = {.Fragment},
+		sampler = {type = .Filtering},
+	}
+	for layer in 0 ..< ui.MAX_EMBEDDED_VIEWPORTS {
+		layout_entries[2 + layer] = {
+			binding = u32(2 + layer),
 			visibility = {.Fragment},
-			texture = {sampleType = .Float, viewDimension = ._2DArray},
-		},
-		{binding = 1, visibility = {.Fragment}, sampler = {type = .Filtering}},
-		{
-			binding = 2,
-			visibility = {.Fragment},
-			texture = {sampleType = .Float, viewDimension = ._2DArray},
-		},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		}
 	}
 	renderer.ui_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -812,55 +826,19 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 			maxAnisotropy = 1,
 		},
 	); if renderer.ui_font_sampler == nil { return "failed to create UI font sampler" }
-	renderer.ui_viewport_texture = wgpu.DeviceCreateTexture(
-		renderer.device,
-		&wgpu.TextureDescriptor {
-			label = "Scrapbot Embedded Viewport Texture",
-			usage = {.RenderAttachment, .TextureBinding},
-			dimension = ._2D,
-			size = {
-				width = WGPU_VIEWPORT_TEXTURE_SIZE,
-				height = WGPU_VIEWPORT_TEXTURE_SIZE,
-				depthOrArrayLayers = ui.MAX_EMBEDDED_VIEWPORTS,
-			},
-			format = .RGBA8UnormSrgb,
-			mipLevelCount = 1,
-			sampleCount = 1,
-		},
-	)
-	if renderer.ui_viewport_texture == nil {
-		return "failed to create embedded viewport texture"
+	for layer in 0 ..< ui.MAX_EMBEDDED_VIEWPORTS {
+		if err := wgpu_create_viewport_color_target(
+			renderer,
+			layer,
+			WGPU_VIEWPORT_TARGET_MIN_SIZE,
+			WGPU_VIEWPORT_TARGET_MIN_SIZE,
+		); err != "" {
+			return err
+		}
 	}
-	renderer.ui_viewport_view = wgpu.TextureCreateView(
-		renderer.ui_viewport_texture,
-		&wgpu.TextureViewDescriptor {
-			format = .RGBA8UnormSrgb,
-			dimension = ._2DArray,
-			baseMipLevel = 0,
-			mipLevelCount = 1,
-			baseArrayLayer = 0,
-			arrayLayerCount = ui.MAX_EMBEDDED_VIEWPORTS,
-			aspect = .All,
-			usage = {.TextureBinding},
-		},
-	)
-	if renderer.ui_viewport_view == nil {
-		return "failed to create embedded viewport texture view"
+	if err := wgpu_rebuild_ui_bind_group(renderer); err != "" {
+		return err
 	}
-	bind_entries := [?]wgpu.BindGroupEntry {
-		{binding = 0, textureView = renderer.ui_font_view},
-		{binding = 1, sampler = renderer.ui_font_sampler},
-		{binding = 2, textureView = renderer.ui_viewport_view},
-	}
-	renderer.ui_bind_group = wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = "Scrapbot UI Bind Group",
-			layout = renderer.ui_bind_group_layout,
-			entryCount = uint(len(bind_entries)),
-			entries = raw_data(bind_entries[:]),
-		},
-	); if renderer.ui_bind_group == nil { return "failed to create UI bind group" }
 	attributes := [?]wgpu.VertexAttribute {
 		{format = .Float32x2, offset = 0, shaderLocation = 0},
 		{format = .Float32x2, offset = 8, shaderLocation = 1},
@@ -917,31 +895,161 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 	return wgpu_create_embedded_viewport_resources(renderer)
 }
 
-wgpu_create_embedded_viewport_resources :: proc(renderer: ^WGPU_Renderer) -> string {
-	if renderer == nil || renderer.ui_viewport_texture == nil {
-		return "embedded viewport texture is unavailable"
+wgpu_create_viewport_color_target :: proc(
+	renderer: ^WGPU_Renderer,
+	layer: int,
+	width, height: u32,
+) -> string {
+	if renderer == nil || layer < 0 || layer >= ui.MAX_EMBEDDED_VIEWPORTS {
+		return "embedded viewport target is out of range"
+	}
+	texture := wgpu.DeviceCreateTexture(
+		renderer.device,
+		&wgpu.TextureDescriptor {
+			label = "Scrapbot Embedded Viewport Target",
+			usage = {.RenderAttachment, .TextureBinding},
+			dimension = ._2D,
+			size = {width = width, height = height, depthOrArrayLayers = 1},
+			format = .RGBA8UnormSrgb,
+			mipLevelCount = 1,
+			sampleCount = 1,
+		},
+	)
+	if texture == nil {
+		return "failed to create embedded viewport target"
+	}
+	view := wgpu.TextureCreateView(texture)
+	if view == nil {
+		wgpu.TextureRelease(texture)
+		return "failed to create embedded viewport target view"
+	}
+	renderer.ui_viewport_textures[layer] = texture
+	renderer.ui_viewport_layer_views[layer] = view
+	renderer.ui_viewport_widths[layer] = width
+	renderer.ui_viewport_heights[layer] = height
+	return ""
+}
+
+wgpu_rebuild_ui_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil || renderer.ui_bind_group_layout == nil {
+		return "UI bind group layout is unavailable"
+	}
+	entries: [2 + ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroupEntry
+	entries[0] = {
+		binding = 0,
+		textureView = renderer.ui_font_view,
+	}
+	entries[1] = {
+		binding = 1,
+		sampler = renderer.ui_font_sampler,
 	}
 	for layer in 0 ..< ui.MAX_EMBEDDED_VIEWPORTS {
-		renderer.ui_viewport_layer_views[layer] = wgpu.TextureCreateView(
-			renderer.ui_viewport_texture,
-			&wgpu.TextureViewDescriptor {
-				format = .RGBA8UnormSrgb,
-				dimension = ._2D,
-				baseMipLevel = 0,
-				mipLevelCount = 1,
-				baseArrayLayer = u32(layer),
-				arrayLayerCount = 1,
-				aspect = .All,
-				usage = {.RenderAttachment},
-			},
-		)
 		if renderer.ui_viewport_layer_views[layer] == nil {
-			return "failed to create embedded viewport layer view"
+			return "embedded viewport target view is unavailable"
 		}
+		entries[2 + layer] = {
+			binding = u32(2 + layer),
+			textureView = renderer.ui_viewport_layer_views[layer],
+		}
+	}
+	bind_group := wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot UI Bind Group",
+			layout = renderer.ui_bind_group_layout,
+			entryCount = uint(len(entries)),
+			entries = raw_data(entries[:]),
+		},
+	)
+	if bind_group == nil {
+		return "failed to create UI bind group"
+	}
+	if renderer.ui_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.ui_bind_group)
+	}
+	renderer.ui_bind_group = bind_group
+	return ""
+}
+
+wgpu_resize_viewport_target :: proc(
+	renderer: ^WGPU_Renderer,
+	layer: int,
+	width, height: u32,
+) -> string {
+	if renderer == nil || layer < 0 || layer >= ui.MAX_EMBEDDED_VIEWPORTS {
+		return "embedded viewport target is out of range"
+	}
+	if renderer.ui_viewport_widths[layer] == width &&
+	   renderer.ui_viewport_heights[layer] == height {
+		return ""
+	}
+	old_texture := renderer.ui_viewport_textures[layer]
+	old_view := renderer.ui_viewport_layer_views[layer]
+	old_depth_texture := renderer.ui_viewport_depth_textures[layer]
+	old_depth_view := renderer.ui_viewport_depth_views[layer]
+	old_width := renderer.ui_viewport_widths[layer]
+	old_height := renderer.ui_viewport_heights[layer]
+	renderer.ui_viewport_textures[layer] = nil
+	renderer.ui_viewport_layer_views[layer] = nil
+	if err := wgpu_create_viewport_color_target(renderer, layer, width, height); err != "" {
+		renderer.ui_viewport_textures[layer] = old_texture
+		renderer.ui_viewport_layer_views[layer] = old_view
+		renderer.ui_viewport_widths[layer] = old_width
+		renderer.ui_viewport_heights[layer] = old_height
+		return err
+	}
+	depth_texture, depth_view, depth_err := wgpu_create_depth_texture(renderer, width, height)
+	if depth_err != "" {
+		wgpu.TextureViewRelease(renderer.ui_viewport_layer_views[layer])
+		wgpu.TextureRelease(renderer.ui_viewport_textures[layer])
+		renderer.ui_viewport_textures[layer] = old_texture
+		renderer.ui_viewport_layer_views[layer] = old_view
+		renderer.ui_viewport_widths[layer] = old_width
+		renderer.ui_viewport_heights[layer] = old_height
+		return depth_err
+	}
+	renderer.ui_viewport_depth_textures[layer] = depth_texture
+	renderer.ui_viewport_depth_views[layer] = depth_view
+	if err := wgpu_rebuild_ui_bind_group(renderer); err != "" {
+		wgpu.TextureViewRelease(depth_view)
+		wgpu.TextureRelease(depth_texture)
+		wgpu.TextureViewRelease(renderer.ui_viewport_layer_views[layer])
+		wgpu.TextureRelease(renderer.ui_viewport_textures[layer])
+		renderer.ui_viewport_textures[layer] = old_texture
+		renderer.ui_viewport_layer_views[layer] = old_view
+		renderer.ui_viewport_depth_textures[layer] = old_depth_texture
+		renderer.ui_viewport_depth_views[layer] = old_depth_view
+		renderer.ui_viewport_widths[layer] = old_width
+		renderer.ui_viewport_heights[layer] = old_height
+		return err
+	}
+	if old_view != nil {
+		wgpu.TextureViewRelease(old_view)
+	}
+	if old_texture != nil {
+		wgpu.TextureRelease(old_texture)
+	}
+	if old_depth_view != nil {
+		wgpu.TextureViewRelease(old_depth_view)
+	}
+	if old_depth_texture != nil {
+		wgpu.TextureRelease(old_depth_texture)
+	}
+	renderer.ui_viewport_cache_valid[layer] = false
+	renderer.ui_viewport_cache_warmup_frames[layer] = 0
+	renderer.ui_viewport_target_resize_count += 1
+	return ""
+}
+
+wgpu_create_embedded_viewport_resources :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil {
+		return "embedded viewport renderer is unavailable"
+	}
+	for layer in 0 ..< ui.MAX_EMBEDDED_VIEWPORTS {
 		depth_texture, depth_view, depth_err := wgpu_create_depth_texture(
 			renderer,
-			WGPU_VIEWPORT_TEXTURE_SIZE,
-			WGPU_VIEWPORT_TEXTURE_SIZE,
+			renderer.ui_viewport_widths[layer],
+			renderer.ui_viewport_heights[layer],
 		)
 		if depth_err != "" {
 			return depth_err
@@ -1027,6 +1135,93 @@ wgpu_create_embedded_viewport_resources :: proc(renderer: ^WGPU_Renderer) -> str
 	if renderer.ui_viewport_pipeline == nil {
 		return "failed to create embedded viewport pipeline"
 	}
+	texture_chain := wgpu.ShaderSourceWGSL {
+		chain = {sType = .ShaderSourceWGSL},
+		code = WGPU_VIEWPORT_TEXTURE_SHADER,
+	}
+	texture_shader := wgpu.DeviceCreateShaderModule(
+		renderer.device,
+		&wgpu.ShaderModuleDescriptor {
+			nextInChain = &texture_chain,
+			label = "Scrapbot Embedded Texture Preview Shader",
+		},
+	)
+	if texture_shader == nil {
+		return "failed to create embedded texture preview shader"
+	}
+	defer wgpu.ShaderModuleRelease(texture_shader)
+	renderer.ui_viewport_texture_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot Embedded Texture Preview Pipeline Layout",
+			bindGroupLayoutCount = 1,
+			bindGroupLayouts = &renderer.material_bind_group_layout,
+		},
+	)
+	if renderer.ui_viewport_texture_pipeline_layout == nil {
+		return "failed to create embedded texture preview pipeline layout"
+	}
+	texture_fragment := wgpu.FragmentState {
+		module = texture_shader,
+		entryPoint = "fs_main",
+		targetCount = 1,
+		targets = &color_target,
+	}
+	renderer.ui_viewport_texture_pipeline = wgpu.DeviceCreateRenderPipeline(
+		renderer.device,
+		&wgpu.RenderPipelineDescriptor {
+			label = "Scrapbot Embedded Texture Preview Pipeline",
+			layout = renderer.ui_viewport_texture_pipeline_layout,
+			vertex = {module = texture_shader, entryPoint = "vs_main"},
+			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = .None},
+			multisample = {count = 1, mask = 0xFFFF_FFFF},
+			fragment = &texture_fragment,
+		},
+	)
+	if renderer.ui_viewport_texture_pipeline == nil {
+		return "failed to create embedded texture preview pipeline"
+	}
+	preview_desc, preview_err := resources.icosphere(0.75, 2)
+	if preview_err != "" {
+		return preview_err
+	}
+	defer delete(preview_desc.vertices)
+	defer delete(preview_desc.indices)
+	renderer.ui_viewport_preview_vertex_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Material Preview Vertices",
+			usage = {.Vertex, .CopyDst},
+			size = u64(len(preview_desc.vertices) * size_of(resources.Vertex)),
+		},
+	)
+	renderer.ui_viewport_preview_index_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Material Preview Indices",
+			usage = {.Index, .CopyDst},
+			size = u64(len(preview_desc.indices) * size_of(u32)),
+		},
+	)
+	if renderer.ui_viewport_preview_vertex_buffer == nil ||
+	   renderer.ui_viewport_preview_index_buffer == nil {
+		return "failed to create material preview geometry"
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.ui_viewport_preview_vertex_buffer,
+		0,
+		raw_data(preview_desc.vertices),
+		uint(len(preview_desc.vertices) * size_of(resources.Vertex)),
+	)
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.ui_viewport_preview_index_buffer,
+		0,
+		raw_data(preview_desc.indices),
+		uint(len(preview_desc.indices) * size_of(u32)),
+	)
+	renderer.ui_viewport_preview_index_count = u32(len(preview_desc.indices))
 	return ""
 }
 

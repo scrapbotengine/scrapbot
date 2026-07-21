@@ -48,7 +48,7 @@ Region coordinates are `x,y,width,height` from the top-left of the complete fram
 
 ## Semantic UI diagnostics
 
-Use `--ui-script` to reproduce interactions against public project UI or transient editor UI by UUID, entity name, or visible text. The driver resolves the target from the retained tree, reveals it through clipped ancestor scroll areas, and feeds ordinary pointer and keyboard state back through the normal reconciler. `--ui-dump` writes the final tree even when the run fails, including hierarchy, text, control kinds, clipping, raw and visible screen rectangles, paint order, hover/active/focus state, embedded-viewport orbit/distance state, and the pending script action.
+Use `--ui-script` to reproduce interactions against public project UI or transient editor UI by UUID, entity name, or visible text. The driver resolves the target from the retained tree, reveals it through clipped ancestor scroll areas, and feeds ordinary pointer and keyboard state back through the normal reconciler. `--ui-dump` writes the final tree even when the run fails, including hierarchy, text, control kinds, clipping, raw and visible screen rectangles, paint order, hover/active/focus state, embedded-viewport orbit/distance state, and the pending script action. Structured WGPU results additionally expose `ui_viewport_active_targets`, `ui_viewport_target_pixels`, `ui_viewport_target_resizes`, `ui_viewport_redraws`, and `ui_viewport_cache_hits` for target-pool and cache diagnostics.
 
 The checked-in component-picker scenario exercises live and stopped component addition, removes components through a reusable icon button placed in the panel title, verifies Stop-time disposal, and requests a tight action crop:
 

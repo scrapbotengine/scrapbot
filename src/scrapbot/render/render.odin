@@ -94,6 +94,11 @@ Render_Stats :: struct {
 	ui_overlay_vertex_rebuilds: u64,
 	ui_vertex_uploads: u64,
 	ui_vertex_upload_bytes: u64,
+	ui_viewport_active_targets: int,
+	ui_viewport_target_pixels: u64,
+	ui_viewport_target_resizes: u64,
+	ui_viewport_redraws: u64,
+	ui_viewport_cache_hits: u64,
 }
 
 PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES :: 5

@@ -19,7 +19,9 @@ Render_List :: shared.Render_List
 Mat4 :: [16]f32
 
 WGPU_MAX_INSTANCES :: 64
-WGPU_VIEWPORT_TEXTURE_SIZE :: 512
+WGPU_VIEWPORT_TARGET_MIN_SIZE :: u32(64)
+WGPU_VIEWPORT_TARGET_MAX_SIZE :: u32(1024)
+WGPU_VIEWPORT_TARGET_GRANULARITY :: u32(32)
 WGPU_MAX_GPU_INSTANCES :: 131_072
 WGPU_INITIAL_DRAW_CAPACITY :: 64
 WGPU_VISIBLE_ALIGNMENT :: 64
@@ -293,23 +295,35 @@ WGPU_Renderer :: struct {
 	ui_shader: wgpu.ShaderModule,
 	ui_pipeline: wgpu.RenderPipeline,
 	ui_viewport_pipeline: wgpu.RenderPipeline,
+	ui_viewport_texture_pipeline: wgpu.RenderPipeline,
+	ui_viewport_texture_pipeline_layout: wgpu.PipelineLayout,
 	ui_font_texture: wgpu.Texture,
 	ui_font_view: wgpu.TextureView,
 	ui_font_sampler: wgpu.Sampler,
-	ui_viewport_texture: wgpu.Texture,
-	ui_viewport_view: wgpu.TextureView,
+	ui_viewport_textures: [ui.MAX_EMBEDDED_VIEWPORTS]wgpu.Texture,
 	ui_viewport_layer_views: [ui.MAX_EMBEDDED_VIEWPORTS]wgpu.TextureView,
 	ui_viewport_depth_textures: [ui.MAX_EMBEDDED_VIEWPORTS]wgpu.Texture,
 	ui_viewport_depth_views: [ui.MAX_EMBEDDED_VIEWPORTS]wgpu.TextureView,
+	ui_viewport_widths: [ui.MAX_EMBEDDED_VIEWPORTS]u32,
+	ui_viewport_heights: [ui.MAX_EMBEDDED_VIEWPORTS]u32,
 	ui_viewport_uniform_buffers: [ui.MAX_EMBEDDED_VIEWPORTS]wgpu.Buffer,
 	ui_viewport_bind_groups: [ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroup,
 	ui_viewport_cached_components: [ui.MAX_EMBEDDED_VIEWPORTS]shared.UI_Viewport_Component,
-	ui_viewport_cached_model_versions: [ui.MAX_EMBEDDED_VIEWPORTS]u32,
+	ui_viewport_cached_resource_versions: [ui.MAX_EMBEDDED_VIEWPORTS]u32,
 	ui_viewport_cached_aspects: [ui.MAX_EMBEDDED_VIEWPORTS]f32,
 	ui_viewport_cached_geometry_revisions: [ui.MAX_EMBEDDED_VIEWPORTS]u64,
+	ui_viewport_cached_texture_revisions: [ui.MAX_EMBEDDED_VIEWPORTS]u64,
 	ui_viewport_cached_material_revisions: [ui.MAX_EMBEDDED_VIEWPORTS]u64,
 	ui_viewport_cache_valid: [ui.MAX_EMBEDDED_VIEWPORTS]bool,
 	ui_viewport_cache_warmup_frames: [ui.MAX_EMBEDDED_VIEWPORTS]u8,
+	ui_viewport_preview_vertex_buffer: wgpu.Buffer,
+	ui_viewport_preview_index_buffer: wgpu.Buffer,
+	ui_viewport_preview_index_count: u32,
+	ui_viewport_active_targets: int,
+	ui_viewport_target_pixels: u64,
+	ui_viewport_target_resize_count: u64,
+	ui_viewport_redraw_count: u64,
+	ui_viewport_cache_hit_count: u64,
 	ui_font_versions: [shared.MAX_PROJECT_FONTS]u32,
 	ui_project_vertices: [dynamic]WGPU_UI_Vertex,
 	ui_project_vertex_buffer: wgpu.Buffer,
@@ -1869,6 +1883,11 @@ wgpu_draw_frame :: proc(
 		config.stats.ui_overlay_vertex_rebuilds = renderer.ui_overlay_vertex_rebuild_count
 		config.stats.ui_vertex_uploads = renderer.ui_vertex_upload_count
 		config.stats.ui_vertex_upload_bytes = renderer.ui_vertex_upload_bytes
+		config.stats.ui_viewport_active_targets = renderer.ui_viewport_active_targets
+		config.stats.ui_viewport_target_pixels = renderer.ui_viewport_target_pixels
+		config.stats.ui_viewport_target_resizes = renderer.ui_viewport_target_resize_count
+		config.stats.ui_viewport_redraws = renderer.ui_viewport_redraw_count
+		config.stats.ui_viewport_cache_hits = renderer.ui_viewport_cache_hit_count
 	}
 	performance_diagnostics_commit_frame(
 		config.performance_diagnostics,
@@ -2056,6 +2075,11 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.ui_overlay_vertex_rebuilds = renderer.ui_overlay_vertex_rebuild_count
 		config.stats.ui_vertex_uploads = renderer.ui_vertex_upload_count
 		config.stats.ui_vertex_upload_bytes = renderer.ui_vertex_upload_bytes
+		config.stats.ui_viewport_active_targets = renderer.ui_viewport_active_targets
+		config.stats.ui_viewport_target_pixels = renderer.ui_viewport_target_pixels
+		config.stats.ui_viewport_target_resizes = renderer.ui_viewport_target_resize_count
+		config.stats.ui_viewport_redraws = renderer.ui_viewport_redraw_count
+		config.stats.ui_viewport_cache_hits = renderer.ui_viewport_cache_hit_count
 	}
 	performance_diagnostics_commit_frame(
 		config.performance_diagnostics,

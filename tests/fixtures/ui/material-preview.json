@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "Checker Material", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"text": "MATERIAL", "origin": "editor"}, "expect": "visible"},
+    {"action": "drag", "target": {"name": "__scrapbot_editor_asset_preview_0", "origin": "editor"}, "delta_x": 28, "delta_y": -10, "frames": 4},
+    {"action": "click", "target": {"text": "RESET", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_right", "origin": "editor"}, "padding": 8}
+  ]
+}

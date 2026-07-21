@@ -6010,3 +6010,40 @@ test_editor_ui_role_lookup_is_indexed_and_repairs_a_missing_entry :: proc(t: ^te
 	testing.expect(t, repaired && repaired_root == root)
 	testing.expect(t, world.editor_ui_by_role_slot[key] == root)
 }
+
+@(test)
+test_editor_preview_reset_restores_camera_without_losing_target :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	resource, parsed := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000001")
+	testing.expect(t, parsed)
+	viewport := editor_ui_create_box(
+		&world,
+		"Preview Surface",
+		"",
+		.Inspector_Preview_Surface,
+		{size = {320, 180}},
+		3,
+	)
+	value := shared.ui_viewport_default()
+	value.resource = resource
+	value.orbit = {0.7, -2.1}
+	value.distance = 9
+	testing.expect(t, ecs.set_ui_viewport(&world, viewport, value))
+	reset := editor_ui_create_box(
+		&world,
+		"Preview Reset",
+		"",
+		.Inspector_Preview_Reset,
+		{size = {64, 28}},
+		3,
+	)
+	editor_ui_handle_activation(state, &world, world.entities[reset].id, {})
+	updated := world.ui_viewports[world.entities[viewport].ui_viewport_index]
+	defaults := shared.ui_viewport_default()
+	testing.expect(t, updated.resource == resource)
+	testing.expect(t, updated.orbit == defaults.orbit)
+	testing.expect(t, updated.distance == defaults.distance)
+}

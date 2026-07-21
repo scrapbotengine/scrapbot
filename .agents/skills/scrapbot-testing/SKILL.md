@@ -113,6 +113,8 @@ Use `tests/fixtures/ui/resource-to-entity-selection.json` when changing editor s
 
 Use `tests/fixtures/ui/resource-inputs.json` when changing inline resource input bindings or playback behavior. It edits one material channel through typing and another through whole-control scrubbing while simulation is running, waits through inspector refreshes, and asserts both live values.
 
+Use `tests/fixtures/ui/asset-imports.json`, `asset-import-inspector.json`, and `material-preview.json` when changing embedded ECS viewports, pooled render targets, resource-preview resolution/caching, imported Texture/Model presentation, or Material preview scenes. Pair the semantic dumps with target-cropped framegrabs and inspect the structured WGPU `ui_viewport_*` counters. The Model fixture proves drag-orbit, the Texture fixture crosses explicit reimport, and the Material fixture proves isolated preview geometry plus Reset.
+
 Use `tests/fixtures/ui/editor-shortcuts.json` when changing editor visibility or transport command shortcuts. It drives the same editor keyboard input used by the platform, verifies Pause and resume, and proves that closing a paused shell resumes playback before it is reopened. Pair it with the state-machine and playback-restoration unit tests for Stop, Step, and world replacement.
 
 Use `tests/fixtures/ui/editor-overlay-lifecycle.json` when changing editor visibility, scene-camera overlays, retained UI vertex buffers, or UI render-pass encoding. It selects the project camera so dynamic editor-world overlay vertices exist, closes the editor, and waits through the zero-overlay transition. The WGPU run must finish without encoding a draw that lacks a bound vertex buffer.
