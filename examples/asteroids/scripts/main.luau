@@ -1,19 +1,90 @@
+type LocalVec3 = { x: number, y: number, z: number }
+
+local function normalized(v: LocalVec3): LocalVec3
+	local length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+	return { x = v.x / length, y = v.y / length, z = v.z / length }
+end
+
+local function midpoint(a: LocalVec3, b: LocalVec3): LocalVec3
+	return normalized({ x = (a.x + b.x) * 0.5, y = (a.y + b.y) * 0.5, z = (a.z + b.z) * 0.5 })
+end
+
+local function flat_icosahedron(name: string, subdivisions: number)
+	local golden = (1 + math.sqrt(5)) * 0.5
+	local positions: { LocalVec3 } = {
+		{ x = -1, y = golden, z = 0 }, { x = 1, y = golden, z = 0 },
+		{ x = -1, y = -golden, z = 0 }, { x = 1, y = -golden, z = 0 },
+		{ x = 0, y = -1, z = golden }, { x = 0, y = 1, z = golden },
+		{ x = 0, y = -1, z = -golden }, { x = 0, y = 1, z = -golden },
+		{ x = golden, y = 0, z = -1 }, { x = golden, y = 0, z = 1 },
+		{ x = -golden, y = 0, z = -1 }, { x = -golden, y = 0, z = 1 },
+	}
+	for index, position in positions do
+		positions[index] = normalized(position)
+	end
+	local faces: { { number } } = {
+		{ 1, 12, 6 }, { 1, 6, 2 }, { 1, 2, 8 }, { 1, 8, 11 }, { 1, 11, 12 },
+		{ 2, 6, 10 }, { 6, 12, 5 }, { 12, 11, 3 }, { 11, 8, 7 }, { 8, 2, 9 },
+		{ 4, 10, 5 }, { 4, 5, 3 }, { 4, 3, 7 }, { 4, 7, 9 }, { 4, 9, 10 },
+		{ 5, 10, 6 }, { 3, 5, 12 }, { 7, 3, 11 }, { 9, 7, 8 }, { 10, 9, 2 },
+	}
+	for _ = 1, subdivisions do
+		local next_faces: { { number } } = {}
+		for _, face in faces do
+			local a, b, c = positions[face[1]], positions[face[2]], positions[face[3]]
+			table.insert(positions, midpoint(a, b))
+			local ab = #positions
+			table.insert(positions, midpoint(b, c))
+			local bc = #positions
+			table.insert(positions, midpoint(c, a))
+			local ca = #positions
+			table.insert(next_faces, { face[1], ab, ca })
+			table.insert(next_faces, { face[2], bc, ab })
+			table.insert(next_faces, { face[3], ca, bc })
+			table.insert(next_faces, { ab, bc, ca })
+		end
+		faces = next_faces
+	end
+
+	local vertices, indices = {}, {}
+	for _, face in faces do
+		local a, b, c = positions[face[1]], positions[face[2]], positions[face[3]]
+		local ab = { x = b.x - a.x, y = b.y - a.y, z = b.z - a.z }
+		local ac = { x = c.x - a.x, y = c.y - a.y, z = c.z - a.z }
+		local normal = normalized({
+			x = ab.y * ac.z - ab.z * ac.y,
+			y = ab.z * ac.x - ab.x * ac.z,
+			z = ab.x * ac.y - ab.y * ac.x,
+		})
+		for _, position in { a, b, c } do
+			table.insert(vertices, { position = position, normal = normal, uv = { x = 0, y = 0 } })
+			table.insert(indices, #vertices - 1)
+		end
+	end
+	return scrapbot.geometry.create(name, { vertices = vertices, indices = indices })
+end
+
 scrapbot.geometry.pyramid("scraproids.ship", 1.2, 1.8, 0.8)
-local AsteroidGeometrySmooth = scrapbot.geometry.icosphere("scraproids.asteroid", 1.0, 1)
-local AsteroidGeometryChunky = scrapbot.geometry.icosphere("scraproids.asteroid.chunky", 1.0, 0)
+local AsteroidGeometryFine = flat_icosahedron("scraproids.asteroid", 1)
+local AsteroidGeometryChunky = flat_icosahedron("scraproids.asteroid.chunky", 0)
 local AsteroidFragmentMaterial = scrapbot.material.lit("scraproids.asteroid.fragments", 0.42, 0.34, 0.28, 1.0)
 local BulletGeometry = scrapbot.geometry.cylinder("scraproids.bullet", 0.11, 0.55, 10)
 local BulletMaterial = scrapbot.material.emissive("scraproids.bullet", 0.1, 0.85, 1.6, 5.0)
 
 local Ship = scrapbot.component("ship", {
 	speed = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 20, step = 0.1 }),
-	response = scrapbot.field(scrapbot.number, { draggable = true, minimum = 1, maximum = 30, step = 0.5 }),
-	lean = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 1, step = 0.05 }),
+	acceleration = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 30, step = 0.5 }),
+	turn_speed = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 10, step = 0.1 }),
+	drag = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 5, step = 0.05 }),
 	fire_interval = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0.04, maximum = 1, step = 0.01 }),
 	cooldown = scrapbot.number,
 })
 local Asteroid = scrapbot.component("asteroid", { radius = scrapbot.number })
 local Velocity = scrapbot.component("velocity", { value = scrapbot.vec3 })
+local Body = scrapbot.component("body", {
+	radius = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 5, step = 0.05 }),
+	restitution = scrapbot.field(scrapbot.number, { draggable = true, minimum = 0, maximum = 1.2, step = 0.05 }),
+})
 local Bullet = scrapbot.component("bullet", { age = scrapbot.number, radius = scrapbot.number }, { advanced = true })
 local Spin = scrapbot.component("spin", { value = scrapbot.vec3 })
 local SpawnPop = scrapbot.component("spawn_pop", {
@@ -36,14 +107,6 @@ local function random01(): number
 	return random_state / 2147483647
 end
 
-local function lerp(a: number, b: number, t: number): number
-	return a + (b - a) * t
-end
-
-local function damp(a: number, b: number, sharpness: number, delta_time: number): number
-	return lerp(a, b, 1 - math.exp(-sharpness * delta_time))
-end
-
 local function ease_out_back(t: number): number
 	local c1 = 1.70158
 	local c3 = c1 + 1
@@ -61,22 +124,39 @@ scrapbot.system(Player, {
 		scrapbot.material_component,
 		Ship,
 		Velocity,
+		Body,
 		Bullet,
 	},
 }, function(time: ScrapbotTime, _entity: ScrapbotEntity, transform: ScrapbotTransform, ship: Ship, velocity: Velocity)
-	local x = 0
-	local y = 0
-	if scrapbot.input.key_down("a") or scrapbot.input.key_down("left") then x -= 1 end
-	if scrapbot.input.key_down("d") or scrapbot.input.key_down("right") then x += 1 end
-	if scrapbot.input.key_down("s") or scrapbot.input.key_down("down") then y -= 1 end
-	if scrapbot.input.key_down("w") or scrapbot.input.key_down("up") then y += 1 end
-	if x ~= 0 and y ~= 0 then
-		x *= 0.70710678
-		y *= 0.70710678
+	local turn = 0
+	if scrapbot.input.key_down("a") or scrapbot.input.key_down("left") then
+		turn += 1
 	end
-	velocity.value.x = damp(velocity.value.x, x * ship.speed, ship.response, time.delta_time)
-	velocity.value.y = damp(velocity.value.y, y * ship.speed, ship.response, time.delta_time)
-	transform.rotation.z = damp(transform.rotation.z, -x * ship.lean, ship.response * 0.7, time.delta_time)
+	if scrapbot.input.key_down("d") or scrapbot.input.key_down("right") then
+		turn -= 1
+	end
+	transform.rotation.z += turn * ship.turn_speed * time.delta_time
+
+	local thrust = 0
+	if scrapbot.input.key_down("w") or scrapbot.input.key_down("up") then
+		thrust += 1
+	end
+	if scrapbot.input.key_down("s") or scrapbot.input.key_down("down") then
+		thrust -= 0.55
+	end
+	local forward_x = -math.sin(transform.rotation.z)
+	local forward_y = math.cos(transform.rotation.z)
+	velocity.value.x += forward_x * ship.acceleration * thrust * time.delta_time
+	velocity.value.y += forward_y * ship.acceleration * thrust * time.delta_time
+	local drag = math.exp(-ship.drag * time.delta_time)
+	velocity.value.x *= drag
+	velocity.value.y *= drag
+	local speed = math.sqrt(velocity.value.x * velocity.value.x + velocity.value.y * velocity.value.y)
+	if speed > ship.speed then
+		local scale = ship.speed / speed
+		velocity.value.x *= scale
+		velocity.value.y *= scale
+	end
 	ship.cooldown = math.max(ship.cooldown - time.delta_time, 0)
 	if scrapbot.input.key_down("space") and ship.cooldown <= 0 then
 		ship.cooldown = ship.fire_interval
@@ -84,31 +164,56 @@ scrapbot.system(Player, {
 			name = "Photon Bolt",
 			components = {
 				["scrapbot.transform"] = {
-					position = { x = transform.position.x, y = transform.position.y + 0.62, z = 0 },
-					rotation = { x = 1.5707963, y = 0, z = 0 },
+					position = {
+						x = transform.position.x + forward_x * 0.62,
+						y = transform.position.y + forward_y * 0.62,
+						z = 0,
+					},
+					rotation = { x = 1.5707963, y = 0, z = transform.rotation.z },
 					scale = { x = 1, y = 1, z = 1 },
 				},
 				["scrapbot.geometry"] = BulletGeometry,
 				["scrapbot.material"] = BulletMaterial,
-				velocity = { value = { x = 0, y = 10.5, z = 0 } },
+				velocity = {
+					value = {
+						x = velocity.value.x + forward_x * 10.5,
+						y = velocity.value.y + forward_y * 10.5,
+						z = 0,
+					},
+				},
+				body = { radius = 0.12, restitution = 0.92 },
 				bullet = { age = 0, radius = 0.18 },
 			},
 		})
 	end
 end)
 
-local Moving = scrapbot.query(scrapbot.transform, Velocity)
+local Moving = scrapbot.query(scrapbot.transform, Velocity, Body)
 scrapbot.system(Moving, {
 	name = "move",
-	writes = { scrapbot.transform },
-	reads = { Velocity },
-}, function(time: ScrapbotTime, _entity: ScrapbotEntity, transform: ScrapbotTransform, velocity: Velocity)
+	writes = { scrapbot.transform, Velocity },
+	reads = { Body },
+}, function(time: ScrapbotTime, _entity: ScrapbotEntity, transform: ScrapbotTransform, velocity: Velocity, body: Body)
 	transform.position.x += velocity.value.x * time.delta_time
 	transform.position.y += velocity.value.y * time.delta_time
-	if transform.position.x < -6.4 then transform.position.x = 6.4 end
-	if transform.position.x > 6.4 then transform.position.x = -6.4 end
-	if transform.position.y < -4.2 then transform.position.y = 4.2 end
-	if transform.position.y > 5.2 then transform.position.y = -4.2 end
+	local minimum_x = -6.4 + body.radius
+	local maximum_x = 6.4 - body.radius
+	local minimum_y = -4.2 + body.radius
+	local maximum_y = 5.2 - body.radius
+	if transform.position.x < minimum_x then
+		transform.position.x = minimum_x
+		velocity.value.x = math.abs(velocity.value.x) * body.restitution
+	elseif transform.position.x > maximum_x then
+		transform.position.x = maximum_x
+		velocity.value.x = -math.abs(velocity.value.x) * body.restitution
+	end
+	if transform.position.y < minimum_y then
+		transform.position.y = minimum_y
+		velocity.value.y = math.abs(velocity.value.y) * body.restitution
+	elseif transform.position.y > maximum_y then
+		transform.position.y = maximum_y
+		velocity.value.y = -math.abs(velocity.value.y) * body.restitution
+	end
 end)
 
 local Spinning = scrapbot.query(scrapbot.transform, Spin)
@@ -152,6 +257,7 @@ scrapbot.system(Bullets, {
 		Asteroid,
 		Bullet,
 		Velocity,
+		Body,
 		Spin,
 		SpawnPop,
 		ShakeImpulse,
@@ -206,10 +312,11 @@ scrapbot.system(Bullets, {
 									z = child_radius * 0.18,
 								},
 							},
-							["scrapbot.geometry"] = if child_radius > 0.25 then AsteroidGeometrySmooth else AsteroidGeometryChunky,
+							["scrapbot.geometry"] = if child_radius > 0.25 then AsteroidGeometryFine else AsteroidGeometryChunky,
 							["scrapbot.material"] = AsteroidFragmentMaterial,
 							["scrapbot.shadow_caster"] = {},
 							asteroid = { radius = child_radius },
+							body = { radius = child_radius, restitution = 0.96 },
 							velocity = {
 								value = {
 									x = asteroid_velocity.value.x + math.cos(angle) * burst_speed,

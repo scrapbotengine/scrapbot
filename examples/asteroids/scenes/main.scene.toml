@@ -43,12 +43,16 @@ resource = "a5700000-0000-4000-8000-000000000001"
 [entities.shadow_caster]
 [entities.components.ship]
 speed = 6.5
-response = 12.0
-lean = 0.32
+acceleration = 9.0
+turn_speed = 3.4
+drag = 0.65
 fire_interval = 0.16
 cooldown = 0.0
 [entities.components.velocity]
 value = [0, 0, 0]
+[entities.components.body]
+radius = 0.34
+restitution = 0.72
 
 [[entities]]
 id = "a5700000-0000-4000-8000-000000000030"
@@ -66,6 +70,9 @@ resource = "a5700000-0000-4000-8000-000000000002"
 radius = 0.56
 [entities.components.velocity]
 value = [0.45, -0.32, 0]
+[entities.components.body]
+radius = 0.56
+restitution = 0.96
 [entities.components.spin]
 value = [0.35, 0.52, 0.25]
 
@@ -85,6 +92,9 @@ resource = "a5700000-0000-4000-8000-000000000002"
 radius = 0.42
 [entities.components.velocity]
 value = [-0.25, -0.42, 0]
+[entities.components.body]
+radius = 0.42
+restitution = 0.96
 [entities.components.spin]
 value = [0.7, 0.25, 0.4]
 
@@ -104,6 +114,9 @@ resource = "a5700000-0000-4000-8000-000000000002"
 radius = 0.65
 [entities.components.velocity]
 value = [0.2, -0.26, 0]
+[entities.components.body]
+radius = 0.65
+restitution = 0.96
 [entities.components.spin]
 value = [0.22, 0.38, 0.18]
 
@@ -123,6 +136,9 @@ resource = "a5700000-0000-4000-8000-000000000002"
 radius = 0.48
 [entities.components.velocity]
 value = [-0.4, -0.35, 0]
+[entities.components.body]
+radius = 0.48
+restitution = 0.96
 [entities.components.spin]
 value = [0.48, 0.3, 0.58]
 
@@ -159,6 +175,6 @@ name = "Controls"
 parent = "a5700000-0000-4000-8000-000000000040"
 size = [390, 22]
 [entities.ui_text]
-text = "WASD / ARROWS MOVE     SPACE FIRES"
+text = "A/D TURN   W/S THRUST   SPACE FIRES"
 color = [0.68, 0.72, 0.82, 1.0]
 size = 16
