@@ -53,7 +53,7 @@ Scrapbot's portable SIMD layer currently uses four `f32` lanes for matrix multip
 
 ## Understand retained work
 
-- Native deferred-command buffers persist across frames, start small, and grow only when a system actually emits more commands.
+- Native deferred-command buffers persist across frames, start small, and grow geometrically when a system emits more commands. They impose no fixed per-frame command-count ceiling and retain their high-water capacity; fixed ABI limits apply only to each command's payload.
 - System dependency plans rebuild only when registered system topology changes.
 - Runtime entity slots use a free-index stack and generation increments, while scene ordering uses a monotonic cursor, so spawn does not scan historical world capacity and stale handles remain invalid.
 - Project-component membership is indexed in both directions. Queries can start from sparse storage, and despawn releases only the custom storages owned by that entity.

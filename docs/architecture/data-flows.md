@@ -43,6 +43,8 @@ playback transport → simulation delta → cached schedule plan
 
 Native chunk descriptors compile into retained per-system plans that resolve the candidate storage and typed field-array indices once. Ordinary chunks then traverse the retained active set and address fields directly; a world replacement, schema revision, or newly appearing storage family invalidates the plan. Chunks still copy supported fields into extension-owned scratch arrays and commit only explicitly marked writable lanes, so ABI amortization and SIMD do not expose ECS storage or broaden dirty propagation. Systems declare reads/writes; structural changes are deferred until iteration finishes.
 
+Each native worker and the Luau runtime retain a private deferred-command buffer. Buffers start small, grow geometrically without an arbitrary command-count ceiling, merge in deterministic schedule order, and retain their high-water capacity for reuse. Fixed limits apply to the contents of one ABI-safe command payload, not to how many lifecycle commands a frame may produce.
+
 ## Rendering
 
 ```text

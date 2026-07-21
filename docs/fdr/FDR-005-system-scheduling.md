@@ -64,7 +64,7 @@ Declared systems now enforce their declared component access at the Luau API bou
 
 **Decision:** Queue Luau entity/component lifecycle requests during system execution, then apply them after the scheduled frame step completes.
 **Why:** Queries and future parallel system batches need stable entity/component storage while systems are running.
-**Tradeoff:** Script code observes structural changes on the next frame, and the command buffer has a hard maximum capacity and only supports basic transform/project-component mutation.
+**Tradeoff:** Script code observes structural changes on the next frame. Command buffers grow geometrically to accept the frame's structural workload and retain that high-water allocation; individual command payloads still have fixed ABI-safe limits.
 
 ### 5. Keep Luau on the calling thread
 

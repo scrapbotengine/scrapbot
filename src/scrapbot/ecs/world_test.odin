@@ -872,12 +872,13 @@ test_deferred_command_buffers_merge_in_source_order :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_deferred_command_buffers_grow_on_demand_up_to_the_hard_limit :: proc(t: ^testing.T) {
+test_deferred_command_buffers_grow_beyond_the_initial_capacity :: proc(t: ^testing.T) {
 	commands: Command_Buffer
 	init_command_buffer_capacity(&commands, 1)
 	defer destroy_command_buffer(&commands)
 
-	for index in 0 ..< MAX_COMMANDS {
+	command_count := DEFAULT_COMMAND_CAPACITY * 4
+	for index in 0 ..< command_count {
 		testing.expectf(
 			t,
 			queue_spawn(&commands, "Deferred") == "",
@@ -885,8 +886,32 @@ test_deferred_command_buffers_grow_on_demand_up_to_the_hard_limit :: proc(t: ^te
 			index,
 		)
 	}
-	testing.expect(t, len(commands.commands) == MAX_COMMANDS)
-	testing.expect(t, queue_spawn(&commands, "Overflow") != "")
+	testing.expect(t, commands.command_count == command_count)
+	testing.expect(t, len(commands.commands) >= command_count)
+}
+
+@(test)
+test_deferred_command_buffers_merge_beyond_the_initial_capacity :: proc(t: ^testing.T) {
+	destination, source: Command_Buffer
+	init_command_buffer_capacity(&destination, 1)
+	defer destroy_command_buffer(&destination)
+	init_command_buffer_capacity(&source, 1)
+	defer destroy_command_buffer(&source)
+
+	commands_per_buffer := DEFAULT_COMMAND_CAPACITY
+	for index in 0 ..< commands_per_buffer {
+		testing.expect(t, queue_spawn(&destination, "Destination") == "")
+		testing.expect(t, queue_spawn(&source, "Source") == "")
+	}
+
+	testing.expect(t, append_commands(&destination, &source) == "")
+	testing.expect(t, destination.command_count == commands_per_buffer * 2)
+	testing.expect(t, source.command_count == 0)
+	testing.expect(t, len(destination.commands) >= commands_per_buffer * 2)
+	testing.expect(
+		t,
+		spawn_command_name(&destination.commands[commands_per_buffer].spawn) == "Source",
+	)
 }
 
 @(test)

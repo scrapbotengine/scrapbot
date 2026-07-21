@@ -4,7 +4,7 @@ import shared "../shared"
 import base_runtime "base:runtime"
 import "core:mem"
 
-MAX_COMMANDS :: 128
+DEFAULT_COMMAND_CAPACITY :: 128
 MAX_COMMAND_NAME_BYTES :: 64
 MAX_COMMAND_COMPONENTS :: 8
 MAX_COMMAND_FIELDS :: 16
@@ -160,13 +160,13 @@ Command_Buffer :: struct {
 }
 
 init_command_buffer :: proc(buffer: ^Command_Buffer) {
-	init_command_buffer_capacity(buffer, MAX_COMMANDS)
+	init_command_buffer_capacity(buffer, DEFAULT_COMMAND_CAPACITY)
 }
 
 init_command_buffer_capacity :: proc(buffer: ^Command_Buffer, capacity: int) {
 	buffer^ = {}
 	buffer.allocator = context.allocator
-	buffer.commands = make([]Command, clamp(capacity, 1, MAX_COMMANDS), buffer.allocator)
+	buffer.commands = make([]Command, max(capacity, 1), buffer.allocator)
 }
 
 destroy_command_buffer :: proc(buffer: ^Command_Buffer) {
@@ -180,13 +180,16 @@ ensure_command_capacity :: proc "c" (buffer: ^Command_Buffer, additional := 1) -
 		return false
 	}
 	required := buffer.command_count + additional
-	if required > MAX_COMMANDS {
+	if required < buffer.command_count {
 		return false
 	}
 	if required <= len(buffer.commands) {
 		return true
 	}
-	capacity := min(max(len(buffer.commands) * 2, required), MAX_COMMANDS)
+	capacity := max(len(buffer.commands) * 2, required)
+	if capacity < required {
+		capacity = required
+	}
 	commands := make([]Command, capacity, buffer.allocator)
 	copy(commands[:buffer.command_count], buffer.commands[:buffer.command_count])
 	delete(buffer.commands, buffer.allocator)
