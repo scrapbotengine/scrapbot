@@ -16,6 +16,11 @@ Init_Options :: struct {
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
 
+Import_Options :: struct {
+	path: string `args:"pos=0" usage:"Project directory whose declared assets should be imported."`,
+	json: bool `usage:"Emit one machine-readable JSON result."`,
+}
+
 Check_Options :: struct {
 	path: string `args:"pos=0" usage:"Project directory to validate."`,
 	json: bool `usage:"Emit one machine-readable JSON result."`,
@@ -77,6 +82,9 @@ Build_Result :: struct {
 Check_Result :: struct {
 	project_file, path: string,
 }
+Import_Result :: struct {
+	imported, cached, products: int,
+}
 Run_Result :: struct {
 	backend: string,
 	entities, cameras, geometries, renderables, draw_batches: int,
@@ -119,6 +127,8 @@ run :: proc() -> int {
 			return 0
 		case "init":
 			return run_init(args[1:])
+		case "import":
+			return run_import(args[1:])
 		case "check":
 			return run_check(args[1:])
 		case "build":
@@ -130,6 +140,41 @@ run :: proc() -> int {
 			print_help()
 			return 1
 	}
+}
+
+run_import :: proc(args: []string) -> int {
+	opt := Import_Options {
+		path = ".",
+	}
+	code, should_run := parse_command_args(&opt, args, "scrapbot import")
+	if !should_run {
+		return code
+	}
+	report := scrapbot.import_project_assets(opt.path)
+	defer scrapbot.destroy_asset_import_report(&report)
+	if report.err != "" {
+		if opt.json {
+			emit_json_error("import", "SCRAPBOT_IMPORT_FAILED", report.err, opt.path)
+			return 1
+		}
+		fmt.eprintln(report.err)
+		return 1
+	}
+	result := Import_Result {
+		imported = report.imported_count,
+		cached = report.cached_count,
+		products = len(report.products),
+	}
+	if opt.json {
+		emit_json_success("import", result)
+		return 0
+	}
+	fmt.printf(
+		"imported %d asset(s), reused %d cached product(s)\n",
+		result.imported,
+		result.cached,
+	)
+	return 0
 }
 
 run_init :: proc(args: []string) -> int {
@@ -462,6 +507,8 @@ print_command_help :: proc(command: string) -> int {
 	switch command {
 		case "init":
 			flags.write_usage(stdout, Init_Options, "scrapbot init", PARSING_STYLE)
+		case "import":
+			flags.write_usage(stdout, Import_Options, "scrapbot import", PARSING_STYLE)
 		case "check":
 			flags.write_usage(stdout, Check_Options, "scrapbot check", PARSING_STYLE)
 		case "build":
@@ -480,6 +527,7 @@ print_help :: proc() {
 	fmt.println(
 		`scrapbot commands:
   scrapbot init [path] [name]    Create project.toml and scenes/main.scene.toml
+  scrapbot import [path]         Import declared source assets into the local product cache
   scrapbot check [path]          Validate project.toml and the default scene
   scrapbot build [path]          Build a host-native runnable game package
   scrapbot run [path] [--backend null|wgpu] [--cpu-culling] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json]

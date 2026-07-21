@@ -25,6 +25,8 @@ parse_project_resource :: proc(
 	resource: shared.Project_Resource,
 	result: Parse_Result,
 ) {
+	resource.texture.color_space = .SRGB
+	resource.texture.generate_mipmaps = true
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.geometry_lod.radius = 0.5
 	section := ""
@@ -38,6 +40,10 @@ parse_project_resource :: proc(
 		}
 		if line == "[material]" {
 			section = "material"
+			continue
+		}
+		if line == "[texture]" {
+			section = "texture"
 			continue
 		}
 		if line == "[geometry_lod]" {
@@ -56,6 +62,42 @@ parse_project_resource :: proc(
 				.Invalid_Syntax,
 				fmt.tprintf("expected key/value assignment, got '%s'", line),
 			)
+		}
+		if section == "texture" {
+			switch key {
+				case "source":
+					resource.texture.source, found = parse_basic_string(value)
+					if found && !valid_resource_texture_path(resource.texture.source) {
+						return resource, fail(
+							.Invalid_Path,
+							"texture.source must be a safe .png path under assets/",
+						)
+					}
+				case "color_space":
+					color_space: string
+					color_space, found = parse_basic_string(value)
+					if found {
+						switch color_space {
+							case "srgb":
+								resource.texture.color_space = .SRGB
+							case "linear":
+								resource.texture.color_space = .Linear
+							case:
+								found = false
+						}
+					}
+				case "generate_mipmaps":
+					resource.texture.generate_mipmaps, found = parse_bool(value)
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown texture field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid texture.%s", key))
+			}
+			continue
 		}
 		if section == "material" {
 			switch key {
@@ -136,6 +178,8 @@ parse_project_resource :: proc(
 		return resource, fail(.Missing_Field, "resource is missing type")
 	}
 	switch type_name {
+		case "scrapbot.texture":
+			resource.kind = .Texture
 		case "scrapbot.material":
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
@@ -149,7 +193,11 @@ parse_project_resource :: proc(
 	if resource.name == "" {
 		return resource, fail(.Missing_Field, "resource is missing name")
 	}
-	if resource.kind == .Material {
+	if resource.kind == .Texture {
+		if resource.texture.source == "" {
+			return resource, fail(.Missing_Field, "texture.source is required")
+		}
+	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
 			return resource, fail(.Invalid_Field, "material.base_color must be finite")
 		}

@@ -111,14 +111,26 @@ clone_project_resource_strings :: proc(
 		}
 		texture = texture_value
 	}
+	texture_source := ""
+	if resource.texture.source != "" {
+		texture_source_value, texture_source_err := strings.clone(resource.texture.source)
+		if texture_source_err != nil {
+			delete(name)
+			delete(texture)
+			return "failed to allocate project texture source path"
+		}
+		texture_source = texture_source_value
+	}
 	source_value, source_err := strings.clone(source)
 	if source_err != nil {
 		delete(name)
 		delete(texture)
+		delete(texture_source)
 		return "failed to allocate project resource source path"
 	}
 	resource.name = name
 	resource.material.texture = texture
+	resource.texture.source = texture_source
 	resource.source = source_value
 	return ""
 }
@@ -131,6 +143,7 @@ destroy_project_resources :: proc(resources: ^[dynamic]shared.Project_Resource) 
 		delete(resource.name)
 		delete(resource.source)
 		delete(resource.material.texture)
+		delete(resource.texture.source)
 	}
 	delete(resources^)
 	resources^ = nil

@@ -1,5 +1,6 @@
 package scrapbot
 
+import asset_import "./asset_import"
 import component "./component"
 import ecs "./ecs"
 import native "./native"
@@ -32,6 +33,7 @@ Render_Stats :: render.Render_Stats
 World_Storage_Stats :: ecs.World_Storage_Stats
 parse_framegrab_region :: render.parse_framegrab_region
 Project_Load_Result :: project.Project_Load_Result
+Asset_Import_Report :: asset_import.Report
 Runtime_Result :: struct {
 	frame: shared.Render_Frame,
 	err: string,
@@ -209,6 +211,17 @@ prepare_frame_system_cache :: proc(
 init_project :: project.init_project
 load_project :: project.load_project
 destroy_project_load_result :: project.destroy_project_load_result
+destroy_asset_import_report :: asset_import.destroy_report
+
+import_project_assets :: proc(root: string) -> Asset_Import_Report {
+	loaded := project.load_project(root)
+	defer project.destroy_project_load_result(&loaded)
+	if loaded.err != "" {
+		cloned, _ := strings.clone(loaded.err)
+		return Asset_Import_Report{err = cloned}
+	}
+	return asset_import.ensure_project_imports(root, loaded.resources[:])
+}
 
 parse_renderer_backend :: render.parse_renderer_backend
 renderer_backend_name :: render.renderer_backend_name
@@ -229,6 +242,11 @@ check_project :: proc(root: string) -> string {
 	defer project.destroy_project_load_result(&loaded)
 	if loaded.err != "" {
 		return loaded.err
+	}
+	imports := asset_import.ensure_project_imports(root, loaded.resources[:])
+	defer asset_import.destroy_report(&imports)
+	if imports.err != "" {
+		return imports.err
 	}
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" { return err }
 	if err := build_native_extensions(root, &loaded.config, .Development); err != "" {
@@ -498,6 +516,12 @@ run_project_internal_untracked :: proc(
 	defer project.destroy_project_load_result(&loaded)
 	if loaded.err != "" {
 		result.err = loaded.err
+		return result
+	}
+	imports := asset_import.ensure_project_imports(root, loaded.resources[:])
+	defer asset_import.destroy_report(&imports)
+	if imports.err != "" {
+		result.err, _ = strings.clone(imports.err)
 		return result
 	}
 	run_config.window_width = loaded.config.window.width

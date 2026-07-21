@@ -37,3 +37,4 @@
 | [ADR-033](ADR-033-model-spatial-hierarchy-with-local-transforms-and-uuid-parents.md) | Model spatial hierarchy with local transforms and UUID parents | 2026-07-18 |
 | [ADR-034](ADR-034-keep-gpu-visibility-backend-owned.md) | Keep GPU visibility backend-owned | 2026-07-19 |
 | [ADR-035](ADR-035-model-runtime-input-as-ecs-singletons.md) | Model runtime input as ECS singletons | 2026-07-21 |
+| [ADR-036](ADR-036-compile-source-assets-into-versioned-resource-products.md) | Compile source assets into versioned resource products | 2026-07-21 |

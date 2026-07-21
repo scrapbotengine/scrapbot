@@ -20,6 +20,7 @@ MAX_GEOMETRY_LODS :: 4
 PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
 PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
 PROJECT_RESOURCES_DIR :: "resources"
+PROJECT_IMPORTED_ASSETS_DIR :: ".scrapbot/imported"
 DEFAULT_WINDOW_WIDTH :: 1600
 DEFAULT_WINDOW_HEIGHT :: 900
 
@@ -61,8 +62,20 @@ Project_Font :: struct {
 }
 
 Project_Resource_Kind :: enum {
+	Texture,
 	Material,
 	Geometry_LOD,
+}
+
+Texture_Color_Space :: enum {
+	SRGB,
+	Linear,
+}
+
+Project_Texture_Resource :: struct {
+	source: string,
+	color_space: Texture_Color_Space,
+	generate_mipmaps: bool,
 }
 
 Project_Material_Resource :: struct {
@@ -83,6 +96,7 @@ Project_Resource :: struct {
 	kind: Project_Resource_Kind,
 	name: string,
 	source: string,
+	texture: Project_Texture_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
 }

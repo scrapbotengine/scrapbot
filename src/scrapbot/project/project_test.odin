@@ -80,6 +80,47 @@ scale = [1, 1, 1]
 }
 
 @(test)
+test_project_texture_resource_parser :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000000"
+type = "scrapbot.texture"
+name = "Checker"
+
+[texture]
+source = "assets/checker.png"
+color_space = "linear"
+generate_mipmaps = false
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .Texture)
+	testing.expect_value(t, resource.texture.source, "assets/checker.png")
+	testing.expect(t, resource.texture.color_space == .Linear)
+	testing.expect(t, !resource.texture.generate_mipmaps)
+}
+
+@(test)
+test_project_texture_resource_parser_rejects_missing_and_unsafe_sources :: proc(t: ^testing.T) {
+	_, missing := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000000"
+type = "scrapbot.texture"
+name = "Missing"
+[texture]
+`,
+	)
+	testing.expect(t, missing.err == .Missing_Field)
+	_, unsafe := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000000"
+type = "scrapbot.texture"
+name = "Unsafe"
+[texture]
+source = "../outside.png"
+`,
+	)
+	testing.expect(t, unsafe.err == .Invalid_Path)
+}
+
+@(test)
 test_project_material_resource_parser :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000001"
