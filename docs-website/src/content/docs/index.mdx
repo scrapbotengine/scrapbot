@@ -45,6 +45,9 @@ Scrapbot is a research engine. It is not trying to be stable yet. It is trying t
 	<Card title="Hot reload" icon="refresh">
 		Runtime hot reload covers `project.toml`, the default scene, `scripts/main.luau`, native extension libraries, and declared native source.
 	</Card>
+	<Card title="Asset imports" icon="download">
+		UUID-backed Texture and Model resources incrementally compile PNG and static glTF/GLB sources into versioned products shared by checking, running, packaging, and the editor.
+	</Card>
 </CardGrid>
 
 ## The loop
@@ -68,6 +71,13 @@ For a denser ECS exercise with a native object fountain:
 ```sh
 mise scrapbot -- check examples/ecs-showcase
 mise scrapbot -- run examples/ecs-showcase --backend null --frames 540
+```
+
+For the asset pipeline showcase:
+
+```sh
+mise scrapbot -- import examples/assets
+mise scrapbot -- run examples/assets --editor
 ```
 
 ## Read next

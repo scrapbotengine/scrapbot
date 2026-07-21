@@ -1,6 +1,6 @@
 # FDR-011: Asset imports
 
-**Status:** Planned
+**Status:** In Progress
 **Last reviewed:** 2026-07-21
 
 ## Overview
@@ -9,15 +9,15 @@ Asset imports turn artist-authored texture and model files under `assets/` into 
 
 ## Behavior
 
-- Texture resources import PNG and JPEG sources with explicit color-space and mip-generation settings.
+- Texture resources import PNG sources with explicit color-space and mip-generation settings.
 - Material resources reference reusable Texture resources by UUID rather than embedding source paths.
-- Model resources import static glTF 2.0 `.gltf` and `.glb` files, including triangle geometry, node transforms, base-color and emissive materials, and embedded or external PNG/JPEG images.
+- Model resources import static glTF 2.0 `.gltf` and `.glb` files, including triangle geometry, TRS node transforms, and base-color and emissive material factors. glTF image textures are rejected until they can become proper Texture resources.
 - Project checking, building, and running automatically import products that are absent or stale. `scrapbot import` performs the same work explicitly and reports structured per-resource results.
 - Imported products and manifests are generated under ignored project state. They are never hand-authored or committed as source authority.
 - Import validity includes source and dependency contents, settings, and importer version. Unchanged resources reuse their prior products without decoding or rebuilding them.
 - A failed reimport reports an actionable error and preserves the last valid product. A project cannot silently start with a stale product when no valid product exists.
 - Source and dependency changes trigger only affected resource reimports and version changes. Ordinary simulation and render frames never scan the asset tree.
-- The editor's resource browser lists textures and models alongside materials, exposes source and import status, previews textures, reports model contents, and offers explicit reimport.
+- The editor's resource browser lists textures and models alongside materials, exposes source and import status, and reports texture/model contents. Texture previews and explicit reimport controls remain follow-up work.
 - Imported models initially exclude animation, skins, morph targets, compressed geometry, and advanced material extensions; unsupported required glTF features fail clearly.
 
 ## Design Decisions
@@ -36,9 +36,9 @@ Asset imports turn artist-authored texture and model files under `assets/` into 
 
 ### 3. Import glTF as a related resource bundle
 
-**Decision:** Preserve one authored Model UUID while publishing stable imported geometry, material, texture, and node subresources beneath it.
+**Decision:** Preserve one authored Model UUID while publishing imported geometry, material, and node subresources beneath it. Model scene components reconcile these into derived ECS node/primitive entities.
 **Why:** A glTF file is a graph with multiple reusable products, not one mesh blob.
-**Tradeoff:** Reimport must retain semantic subresource identity across source edits and report removed outputs.
+**Tradeoff:** Reimport must eventually retain semantic subresource identity across source edits and report removed outputs. The first implementation derives child identity from model/root identity plus node and primitive indexes.
 
 ### 4. Keep importing change-driven and recoverable
 

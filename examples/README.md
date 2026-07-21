@@ -14,6 +14,12 @@ Run the minimal example with:
 mise scrapbot run examples/minimal
 ```
 
+Exercise incremental PNG and static glTF imports with:
+
+```sh
+mise scrapbot run examples/assets --editor
+```
+
 Validate it without running a frame with:
 
 ```sh

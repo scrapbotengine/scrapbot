@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-20  
+**Last verified:** 2026-07-21
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -11,6 +11,7 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | Layer | Identity | Authority | Lifetime |
 | --- | --- | --- | --- |
 | Project declaration | `Resource_UUID` plus a relative `resources/**/*.resource.toml` source | Project files on disk; in-memory authoring is authoritative until Save/Revert | Survives runs and editor sessions |
+| Imported product | Parent resource UUID plus versioned artifact schema | Asset source/dependencies and importer settings under `.scrapbot/imported/` | Regenerated before runtime bootstrap; packaged with host builds |
 | Runtime registry entry | `{index, generation}` handle plus per-entry `version` | `resources.Registry` | One engine runtime; slots may survive reload while generations invalidate dead handles |
 | ECS reference | Geometry or Material handle | Active ECS world | Entity/component lifetime; resolved again when a world is rebuilt |
 | Backend cache | Handle/generation/version keyed records | Renderer backend | Renderer lifetime; refreshed from exact resource versions/topology changes |
@@ -21,11 +22,13 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 <!-- inventory:project-resource-kinds:start -->
 | Source kind | TOML `type` | Runtime family | ECS reference | Editor persistence |
 | --- | --- | --- | --- | --- |
+| `Texture` | `scrapbot.texture` | Texture | Material Texture handle | Incrementally imported and inspectable; source/settings remain text-authored |
+| `Model` | `scrapbot.model` | Model bundle plus generated Geometry/Material entries | `scrapbot.model` root reconciles derived ECS children | Incrementally imported and inspectable; source remains text-authored |
 | `Material` | `scrapbot.material` | Material | `scrapbot.material` | Create, duplicate, rename/move, edit, delete, Undo/Redo, Save/Revert |
 | `Geometry_LOD` | `scrapbot.geometry_lod` | Geometry plus internal LOD Geometry entries | `scrapbot.geometry` | Loaded/hot-reloaded and referenceable; full inline authoring is not yet symmetric with materials |
 <!-- inventory:project-resource-kinds:end -->
 
-The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material UUIDs and accepts Geometry resource UUIDs for authored LOD geometry. Resource file paths are relative to `resources/`; material textures are safe PNG paths under `assets/`.
+The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, and authored Geometry UUID references; materials validate Texture UUIDs. Resource file paths are relative to `resources/`; Texture and Model import sources are safe paths under `assets/`.
 
 ## Runtime registry families
 
@@ -33,6 +36,8 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 | Family | Persistent identity | Runtime identity/versioning | Primary consumers |
 | --- | --- | --- | --- |
 | `Geometry` | Optional UUID/source when authored; name for transient/built-in registration | `Geometry_Handle`, generation, entry version, registry-wide geometry topology revision | Render-instance extraction, bounds/picking, LOD selection, GPU geometry and draw caches |
+| `Texture` | UUID/source when authored | `Texture_Handle`, generation, entry version | Material registry and shared WGPU texture cache |
+| `Model` | UUID/source when authored | `Model_Handle`, generation, entry version | Model-root reconciliation into derived node/primitive ECS entities |
 | `Material` | Optional UUID/source when authored; name for transient/built-in registration | `Material_Handle`, generation, entry version | Render-instance extraction, material/texture GPU cache, world shading and bloom |
 | `Font` | Project-config font name/source; generated atlas is derived | `Font_Handle`, generation, entry version | UI measurement, glyph lookup, MTSDF atlas upload and UI rendering |
 <!-- inventory:runtime-resource-families:end -->
@@ -56,6 +61,16 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Editor history stores deep `Project_Material_Snapshot` values. Save derives create/write/delete files from the disk baseline and dirty UUID candidates.
 - Base color, HDR emissive value, or texture changes increment version; backend material/texture caches update only affected entries.
 - Source/tests: `resources/resources.odin`, `ui/editor_resource_authoring.odin`, `project_save.odin`; `resources/resources_test.odin`, `project_save_test.odin`.
+
+### Font
+
+### Texture and Model imports
+
+- `asset_import.ensure_project_imports` fingerprints source/dependency bytes plus an importer schema and writes products atomically under `.scrapbot/imported/`.
+- Texture products contain validated RGBA8 mip chains. Model products contain static triangle vertices/indices, TRS nodes, and material factors decoded through pinned `cgltf`.
+- Texture and Model declarations retain UUID-backed registry handles and entry versions. Imported model registration publishes ordinary Geometry and Material handles for every primitive.
+- `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material entities without model scans.
+- Source/tests: `asset_import/imports.odin`, `asset_import/models.odin`, `resources/textures.odin`, `resources/models.odin`, `scrapbot.odin`; importer, registry, and model-instance tests.
 
 ### Font
 
@@ -94,6 +109,6 @@ resources.Registry slot ── {index, generation} ──> ECS component
 - **Revert** reloads project resource declarations from disk, updates/deactivates runtime entries, then rebuilds the scene world and rebinds the existing script runtime.
 - **Play** captures authored Material base color and emissive values in the in-memory playback baseline alongside authored scene entities.
 - **Stop** restores those captured base color/emissive values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
-- **Hot reload** re-registers fonts, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path.
+- **Hot reload** ensures imports and re-registers fonts, textures, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path.
 
 See [Lifecycle matrix](lifecycle.md), [State ownership](state-ownership.md), [FDR-009](../fdr/FDR-009-project-resources.md), and [ADR-030](../adr/ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md).

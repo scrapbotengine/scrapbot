@@ -52,7 +52,22 @@ Embedded Inter is always available as the default and runtime fallback. The curr
 
 Scrapbot recursively discovers standalone files under `resources/` whose names end in `.resource.toml`. Resources are typed project data outside the ECS and are not owned by a scene. Every resource has a unique, non-zero UUID; names and file paths remain editable labels and storage locations.
 
-Material resources store shared surface data:
+Texture import resources identify source images independently of materials:
+
+```toml
+id = "b1000000-0000-4000-8000-000000000002"
+type = "scrapbot.texture"
+name = "Coral Texture"
+
+[texture]
+source = "assets/coral.png"
+color_space = "srgb"
+generate_mipmaps = true
+```
+
+`source` must be a safe project-relative PNG path under `assets/`. `color_space` is `srgb` or `linear`; mip generation defaults to true. Scrapbot imports RGBA8 mip products into ignored `.scrapbot/imported/` state.
+
+Material resources store shared surface data and reference Texture UUIDs:
 
 ```toml
 id = "b1000000-0000-4000-8000-000000000001"
@@ -62,10 +77,23 @@ name = "Coral"
 [material]
 base_color = [1.0, 0.25, 0.08, 1.0]
 emissive = [0.0, 0.0, 0.0]
-texture = "assets/coral.png"
+texture = "b1000000-0000-4000-8000-000000000002"
 ```
 
-`base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, and `texture` is optional. Texture paths must be safe relative `.png` paths under `assets/`. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
+`base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, and `texture` is optional. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
+
+Static glTF model resources point at `.gltf` or `.glb` sources:
+
+```toml
+id = "b1000000-0000-4000-8000-000000000003"
+type = "scrapbot.model"
+name = "Crate"
+
+[model]
+source = "assets/models/crate.glb"
+```
+
+The initial importer supports triangle primitives, positions, optional normals and UV0, optional indices, TRS node hierarchies, and base-color/emissive material factors. Missing normals are generated. Animation, skins, morph targets, matrix-authored nodes, Draco/required extensions, and glTF image textures fail with an explicit diagnostic.
 
 Generated icosphere LOD resources store one stable geometry identity plus up to four tessellation levels:
 
@@ -98,7 +126,7 @@ Every entity must have a unique, non-zero RFC UUID in `id` and a `name`. The ID 
 
 ## Built-in component sections
 
-For a complete inventory of all 23 public engine components, reflected fields, defaults, constraints, and cross-surface names, see the [Engine Component Reference](/reference/components/).
+For a complete inventory of all 24 public engine components, reflected fields, defaults, constraints, and cross-surface names, see the [Engine Component Reference](/reference/components/).
 
 Transform:
 
@@ -131,6 +159,15 @@ primitive = "cube"
 ```
 
 The mesh component currently resolves `cube` into the built-in cube geometry and default material needed by the entity. It is the compact path used by generated projects.
+
+Imported model instance:
+
+```toml
+[entities.model]
+resource = "b1000000-0000-4000-8000-000000000003"
+```
+
+The UUID must name an authored `scrapbot.model` resource. Scrapbot retains the authored entity as the model root and reconciles imported nodes/primitives into stable derived ECS children. Their local transforms preserve the imported hierarchy; renderable children receive the generated Geometry and Material handles. Reimport/reload replaces only this derived hierarchy, never the authored root.
 
 Explicit render resources:
 

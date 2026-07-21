@@ -7,7 +7,7 @@ All commands run against a project directory. When omitted, the project path def
 
 ## Machine-readable output
 
-`init`, `check`, `build`, and `run` accept `--json`. JSON mode emits exactly one document to stdout and suppresses project log lines:
+`init`, `import`, `check`, `build`, and `run` accept `--json`. JSON mode emits exactly one document to stdout and suppresses project log lines:
 
 ```json
 {
@@ -54,7 +54,7 @@ When `name` is omitted, Scrapbot uses the destination directory name. The comman
 scrapbot build [path] [--target host] [--json]
 ```
 
-Builds native extension targets and creates a runnable package under `build/<target>`. The package contains a renamed Scrapbot executable, project runtime data, and only the active compiled native extension artifacts. Native extension source and generated editor metadata are omitted.
+Ensures source asset imports, builds native extension targets, and creates a runnable package under `build/<target>`. The package contains a renamed Scrapbot executable, project runtime data, imported asset products, and only the active compiled native extension artifacts. Native extension source and generated editor metadata are omitted.
 
 The default target is the current host, such as `darwin_arm64` or `linux_amd64`. `--target host` is an explicit alias for it. Other Odin targets are modeled but currently rejected because Scrapbot does not yet provide target-built Luau, SDL3, and WGPU dependencies.
 
@@ -67,6 +67,14 @@ build/darwin_arm64/my-game --backend null --frames 1 --json
 
 Successful JSON results include `target`, `output_directory`, and `executable` fields. Unsupported targets report `SCRAPBOT_UNSUPPORTED_TARGET`.
 
+## `scrapbot import`
+
+```sh
+scrapbot import [path] [--json]
+```
+
+Compiles declared `scrapbot.texture` and `scrapbot.model` source assets into versioned products under `.scrapbot/imported/`. Unchanged fingerprints reuse cached products. Human output reports imported and cached counts; JSON results contain `imported`, `cached`, and `products`. Import failures report `SCRAPBOT_IMPORT_FAILED` and leave a prior valid product untouched.
+
 ## `scrapbot check`
 
 ```sh
@@ -76,6 +84,7 @@ scrapbot check [path] [--json]
 Performs project validation:
 
 - reads `project.toml`;
+- ensures declared source asset imports;
 - builds declared native extensions;
 - loads native extension schemas and system declarations;
 - builds the ECS world from the default scene;

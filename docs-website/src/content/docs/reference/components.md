@@ -37,6 +37,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.mesh` | Resource reference | Built-in primitive convenience component. |
 | `scrapbot.geometry` | Resource reference | Named shared geometry reference. |
 | `scrapbot.material` | Resource reference | UUID-backed shared project material reference. |
+| `scrapbot.model` | Resource reference | UUID-backed static imported model root. |
 | `scrapbot.shadow_caster` | Marker | Opts renderable geometry into directional shadow casting. |
 | `scrapbot.shadow_receiver` | Marker | Opts renderable geometry into directional shadow sampling. |
 | `scrapbot.keyboard_input` | Derived singleton | Read-only keyboard held/pressed/released frame snapshot. |
@@ -108,6 +109,14 @@ This is the legacy convenience path used by generated projects. It currently res
 | `scrapbot.material` | `resource` | UUID of an authored `scrapbot.material` project resource. |
 
 An entity using this resource-backed path becomes renderable when it has a Transform plus valid geometry and material handles. Materials may contribute a lit base color, a PNG texture, and unbounded linear HDR emission that feeds world bloom. The ECS stores generational resource handles; scene files store geometry names and stable material resource UUIDs. Luau and native material creation remains a transient runtime facility rather than authored project-resource persistence. See [Project File Reference](/reference/project-files/#project-resources) and [Luau API: Render resources](/reference/luau-api/#render-resources).
+
+### `scrapbot.model`
+
+| Scene field | Type | Meaning |
+| --- | --- | --- |
+| `resource` | UUID string | Authored `scrapbot.model` project resource to instantiate. |
+
+The authored entity is the model root. Resource initialization and reload reconcile the imported glTF node hierarchy into derived runtime ECS entities with Transform, Geometry, and Material state. Models may contain multiple meshes and primitives; the renderer continues to consume ordinary renderable ECS entities rather than a model-specific draw path. Luau and native systems can query membership, but model resource replacement is currently a scene/editor authoring operation rather than a runtime payload write.
 
 ## Lights and shadows
 

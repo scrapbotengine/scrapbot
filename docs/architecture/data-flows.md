@@ -5,8 +5,9 @@
 ## Project load and world bootstrap
 
 ```text
-project.toml + scene/resource files
+project.toml + scene/resource files + source assets
         │
+        ├─ fingerprint/import ──> versioned Texture/Model products ─┐
         ├─ build/load native extensions ─┐
         └─ execute Luau registration ────┴─> component registry
                                                 │
@@ -19,7 +20,7 @@ scene parse + schema validation + resource UUID resolution
                        retained UI + render list + backend caches
 ```
 
-Native components register before Luau executes, allowing scripts to retrieve native handles. Scene validation occurs against the combined engine/native/Luau registry. Resource descriptions remain outside ECS; components store resolved runtime handles. Hot reload stages the replacement resource registry, world, script/native runtime, source set, and playback baseline independently; failure destroys the staged bundle, while success swaps the complete bundle atomically.
+Native components register before Luau executes, allowing scripts to retrieve native handles. Asset import completes before runtime resource registration. Model roots then reconcile imported nodes and primitives into derived Transform/Geometry/Material ECS entities at bootstrap/reload; later root duplication, undo/redo, or resource replacement increments a model-instance revision and reconciles only after that structural signal. Scene validation occurs against the combined engine/native/Luau registry. Resource descriptions remain outside ECS; components store resolved runtime handles. Hot reload stages the replacement resource registry, world, script/native runtime, source set, and playback baseline independently; failure destroys the staged bundle, while success swaps the complete bundle atomically.
 
 ## Simulation and scheduled mutation
 

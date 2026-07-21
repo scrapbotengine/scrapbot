@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-20  
+**Last verified:** 2026-07-21
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -26,6 +26,7 @@ Lifecycle meanings:
 | `scrapbot.mesh` | Legacy render membership | Authored | Yes | Primitive-name mesh shortcut retained alongside resource-backed geometry/material components. |
 | `scrapbot.geometry` | Render membership | Authored | Yes | Holds a resolved generational geometry resource handle. |
 | `scrapbot.material` | Render membership | Authored | Yes | Holds a resolved generational material resource handle. |
+| `scrapbot.model` | Render membership | Authored | Yes | UUID-backed imported model root; reconciles derived node/primitive render entities. |
 | `scrapbot.shadow_caster` | Rendering | Authored | Yes | Marker enabling participation in shadow rendering. |
 | `scrapbot.shadow_receiver` | Rendering | Authored | Yes | Marker enabling shadow reception. |
 | `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent, responsive sizing, visibility, and tree-row metadata. |
@@ -148,6 +149,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Membership/handle changes are structural; resource content/topology versions invalidate affected retained/GPU state.
 - **Surfaces:** Public; persistent scenes store a stable resource UUID while ECS stores a resolved handle; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotgeometry-and-scrapbotmaterial).
 - **Source/tests:** `ecs/world.odin`, `resources/`, `project/resources.odin`, `render/wgpu_gpu_driven.odin`; `ecs/world_test.odin`, `project/project_test.odin`.
+
+### `scrapbot.model`
+
+- **Contract:** References one authored Model UUID from a scene root entity.
+- **Storage/lifecycle:** Authored UUID reference on the root; imported nodes and primitives are derived Runtime-origin ECS entities owned by that root.
+- **Producers:** Scene TOML, editor reflected authoring, resource/bootstrap reconciliation.
+- **Consumers:** Model-instance reconciliation, then ordinary transform hierarchy and render extraction through derived Geometry/Material entities.
+- **Invalidation:** Model import/version or world replacement removes and recreates only the root's derived hierarchy with deterministic child UUIDs; ordinary frames do not scan model resources.
+- **Surfaces:** Public scene TOML, component membership queries, and editor inspection; generated children are not persistent source.
+- **Source/tests:** `asset_import/models.odin`, `resources/models.odin`, `scrapbot.odin`; `asset_import/models_test.odin`, `model_instance_test.odin`.
 
 ### `scrapbot.shadow_caster`
 
