@@ -36,7 +36,9 @@ test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^
 		inspector_field = .Material_Base_Color,
 		inspector_axis = .X,
 	}
+	before_material_revision := registry.material_revision
 	testing.expect(t, editor_resource_write_number(state, binding, 0.25))
+	testing.expect(t, registry.material_revision > before_material_revision)
 	editor_history_push_resource(state, binding, 1, 0.25)
 	testing.expect(t, state.editor_scene_dirty)
 	testing.expect_value(t, len(state.editor_dirty_resources), 1)

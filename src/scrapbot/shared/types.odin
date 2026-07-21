@@ -990,6 +990,7 @@ Render_List :: struct {
 	batch_count: int,
 	hierarchy_revision: u64,
 	instance_slot_count: int,
+	structure_initialized: bool,
 	full_instance_sync: bool,
 	instance_sync_count: u64,
 	instance_visit_count: u64,

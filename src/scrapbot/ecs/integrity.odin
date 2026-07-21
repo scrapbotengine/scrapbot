@@ -19,6 +19,7 @@ World_Integrity_Code :: enum {
 	Editor_Back_Reference,
 	UI_Hierarchy,
 	Resource_Reference,
+	Render_List,
 }
 
 World_Integrity_Failure :: struct {
@@ -303,6 +304,23 @@ validate_world_dirty_queue :: proc(
 			)
 		}
 		seen[entity_index] = true
+		entity := world.entities[entity_index]
+		dirty := entity.ui_dirty
+		if transform {
+			dirty = entity.render_transform_dirty
+		} else if extract {
+			dirty = entity.render_extract_dirty
+		} else if render {
+			dirty = entity.render_dirty
+		}
+		if !dirty {
+			return world_integrity_failure(
+				.Dirty_Queue,
+				entity_index,
+				queue_index,
+				"dirty queue contains an entity that is no longer marked dirty",
+			)
+		}
 	}
 	for entity, entity_index in world.entities {
 		dirty := entity.ui_dirty
@@ -319,6 +337,100 @@ validate_world_dirty_queue :: proc(
 				entity_index,
 				INVALID_COMPONENT_INDEX,
 				"entity is marked dirty but is absent from its queue",
+			)
+		}
+	}
+	return world_integrity_ok()
+}
+
+validate_render_list_integrity :: proc(
+	world: ^World,
+	list: ^Render_List,
+) -> (
+	World_Integrity_Failure,
+	bool,
+) {
+	if world == nil || list == nil {
+		return world_integrity_failure(
+			.Render_List,
+			INVALID_COMPONENT_INDEX,
+			INVALID_COMPONENT_INDEX,
+			"render-list state is unavailable",
+		)
+	}
+	if !list.structure_initialized || list.world_uuid != world.instance_uuid {
+		return world_integrity_failure(
+			.Render_List,
+			INVALID_COMPONENT_INDEX,
+			INVALID_COMPONENT_INDEX,
+			"render list is not initialized for the current world",
+		)
+	}
+	if list.instance_slot_count != len(world.render_instances) {
+		return world_integrity_failure(
+			.Render_List,
+			INVALID_COMPONENT_INDEX,
+			list.instance_slot_count,
+			"render-list slot count disagrees with world storage",
+		)
+	}
+	for instance, list_index in list.instances {
+		entity_index := int(instance.entity.id.index)
+		if !entity_is_current(world, entity_index, instance.entity.id.generation) {
+			return world_integrity_failure(
+				.Render_List,
+				entity_index,
+				list_index,
+				"render list retains a dead or stale entity generation",
+			)
+		}
+		if instance.slot < 0 || instance.slot >= len(list.instance_index_by_slot) {
+			return world_integrity_failure(
+				.Render_List,
+				entity_index,
+				instance.slot,
+				"render-list instance slot is out of range",
+			)
+		}
+		if entity_index >= len(list.instance_index_by_entity) ||
+		   list.instance_index_by_entity[entity_index] != list_index ||
+		   list.instance_index_by_slot[instance.slot] != list_index ||
+		   world.entities[entity_index].render_instance_index != instance.slot {
+			return world_integrity_failure(
+				.Render_List,
+				entity_index,
+				instance.slot,
+				"render-list owner and reverse indices disagree",
+			)
+		}
+	}
+	for list_index, entity_index in list.instance_index_by_entity {
+		if list_index == INVALID_COMPONENT_INDEX {
+			continue
+		}
+		if list_index < 0 ||
+		   list_index >= len(list.instances) ||
+		   int(list.instances[list_index].entity.id.index) != entity_index {
+			return world_integrity_failure(
+				.Render_List,
+				entity_index,
+				list_index,
+				"render-list entity reverse index is stale",
+			)
+		}
+	}
+	for list_index, slot in list.instance_index_by_slot {
+		if list_index == INVALID_COMPONENT_INDEX {
+			continue
+		}
+		if list_index < 0 ||
+		   list_index >= len(list.instances) ||
+		   list.instances[list_index].slot != slot {
+			return world_integrity_failure(
+				.Render_List,
+				INVALID_COMPONENT_INDEX,
+				slot,
+				"render-list slot reverse index is stale",
 			)
 		}
 	}

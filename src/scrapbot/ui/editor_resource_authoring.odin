@@ -92,7 +92,7 @@ editor_resource_write_number :: proc(
 			}
 	}
 	if written {
-		material.version += 1
+		_ = resources.touch_material(state.resource_registry, handle)
 		editor_mark_resource_dirty(state, binding.resource_id)
 	}
 	return written

@@ -135,7 +135,7 @@ restore_playback_baseline :: proc(
 			   material.desc.emissive != baseline_material.emissive {
 				material.desc.base_color = baseline_material.base_color
 				material.desc.emissive = baseline_material.emissive
-				material.version += 1
+				_ = resources.touch_material(registry, handle)
 			}
 		}
 	}

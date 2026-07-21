@@ -117,6 +117,17 @@ test_reused_entity_slot_coalesces_pending_dirty_notifications :: proc(t: ^testin
 }
 
 @(test)
+test_world_integrity_rejects_a_stale_dirty_queue_entry :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	entity_index, created := create_world_entity(&world, "Dirty")
+	testing.expect(t, created)
+	mark_render_entity_dirty(&world, entity_index)
+	world.entities[entity_index].render_dirty = false
+	expect_world_integrity_failure(t, &world, nil, .Dirty_Queue)
+}
+
+@(test)
 test_world_integrity_reports_entity_and_component_corruption :: proc(t: ^testing.T) {
 	world, registry, _ := integrity_test_world()
 	defer destroy_world(&world)

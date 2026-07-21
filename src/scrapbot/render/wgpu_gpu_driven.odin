@@ -1145,6 +1145,9 @@ wgpu_adjust_batch_membership :: proc(
 		} else if batch.instance_count > 0 {
 			batch.instance_count -= u32(-delta)
 			cache.instance_count = max(cache.instance_count + delta, 0)
+			if batch.instance_count == 0 {
+				cache.valid = false
+			}
 		}
 	}
 	return
@@ -1528,6 +1531,40 @@ wgpu_retain_cull_uniform :: proc(
 	return true
 }
 
+wgpu_reset_gpu_instance_slots :: proc(renderer: ^WGPU_Renderer) {
+	if renderer == nil {
+		return
+	}
+	for slot in 0 ..< len(renderer.gpu_instance_records) {
+		renderer.gpu_instance_records[slot] = {}
+		renderer.gpu_instance_transform_records[slot] = {}
+		renderer.gpu_instance_sources[slot] = {}
+		renderer.gpu_instance_source_transforms[slot] = {}
+		renderer.gpu_active_slots[slot] = false
+		append(&renderer.gpu_dirty_indices, slot)
+	}
+	clear(&renderer.gpu_live_slots)
+}
+
+wgpu_material_instance_needs_sync :: proc(
+	renderer: ^WGPU_Renderer,
+	registry: ^resources.Registry,
+	instance: Render_Instance,
+) -> bool {
+	if renderer == nil || registry == nil {
+		return false
+	}
+	slot := instance.slot
+	if slot < 0 ||
+	   slot >= len(renderer.gpu_active_slots) ||
+	   slot >= len(renderer.gpu_instance_sources) ||
+	   !renderer.gpu_active_slots[slot] {
+		return false
+	}
+	material, alive := resources.get_material(registry, instance.material.handle)
+	return alive && renderer.gpu_instance_sources[slot].material_version != material.version
+}
+
 wgpu_prepare_gpu_draw_batches :: proc(
 	renderer: ^WGPU_Renderer,
 	render_list: ^Render_List,
@@ -1668,15 +1705,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	append(&renderer.gpu_transform_updates, WGPU_GPU_Instance_Transform{})
 	reset_instances := render_list.full_instance_sync || topology_changed
 	if reset_instances {
-		for slot in 0 ..< slot_count {
-			renderer.gpu_instance_records[slot] = {}
-			renderer.gpu_instance_transform_records[slot] = {}
-			renderer.gpu_instance_sources[slot] = {}
-			renderer.gpu_instance_source_transforms[slot] = {}
-			renderer.gpu_active_slots[slot] = false
-			append(&renderer.gpu_dirty_indices, slot)
-		}
-		clear(&renderer.gpu_live_slots)
+		wgpu_reset_gpu_instance_slots(renderer)
 	}
 	capacity_grew := false
 	instances := render_list.instances[:]
@@ -1726,6 +1755,29 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			append(&renderer.gpu_live_slots, slot)
 		}
 	}
+	if !reset_instances && renderer.gpu_material_revision != registry.material_revision {
+		for instance in render_list.instances {
+			slot := instance.slot
+			if slot < 0 ||
+			   slot >= slot_count ||
+			   !wgpu_material_instance_needs_sync(renderer, registry, instance) {
+				continue
+			}
+			grew, sync_err := wgpu_sync_dirty_instance_slot(
+				renderer,
+				cache,
+				render_list,
+				registry,
+				slot,
+				cpu_culling,
+			)
+			if sync_err != "" {
+				return nil, 0, sync_err
+			}
+			capacity_grew = capacity_grew || grew
+		}
+	}
+	renderer.gpu_material_revision = registry.material_revision
 	if !reset_instances {
 		for slot in render_list.dirty_instance_slots {
 			grew, sync_err := wgpu_sync_dirty_instance_slot(

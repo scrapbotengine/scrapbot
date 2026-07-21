@@ -1288,7 +1288,9 @@ render_list_remove_instance :: proc(list: ^Render_List, world: ^World, entity_in
 		return
 	}
 	removed := list.instances[list_index]
-	render_list_adjust_batch_membership(list, removed, -1)
+	if render_list_adjust_batch_membership(list, removed, -1) {
+		mark_render_topology_changed(world)
+	}
 	adjust_render_ancestor_counts(list, world, removed.local_parent, -1)
 	removed_slot := list.instances[list_index].slot
 	last_index := len(list.instances) - 1
@@ -1306,7 +1308,14 @@ render_list_remove_instance :: proc(list: ^Render_List, world: ^World, entity_in
 	pop(&list.instances)
 	list.instance_index_by_entity[entity_index] = INVALID_COMPONENT_INDEX
 	if removed_slot >= 0 && removed_slot < len(list.instance_index_by_slot) {
-		list.instance_index_by_slot[removed_slot] = INVALID_COMPONENT_INDEX
+		mapped_list_index := list.instance_index_by_slot[removed_slot]
+		mapped_to_live_owner :=
+			mapped_list_index >= 0 &&
+			mapped_list_index < len(list.instances) &&
+			list.instances[mapped_list_index].slot == removed_slot
+		if !mapped_to_live_owner {
+			list.instance_index_by_slot[removed_slot] = INVALID_COMPONENT_INDEX
+		}
 		append(&list.dirty_instance_slots, removed_slot)
 	}
 }
@@ -1319,9 +1328,11 @@ render_list_adjust_batch_membership :: proc(
 	list: ^Render_List,
 	instance: Render_Instance,
 	delta: int,
+) -> (
+	topology_changed: bool,
 ) {
 	if list == nil || delta == 0 {
-		return
+		return false
 	}
 	if list.batch_memberships == nil {
 		list.batch_memberships = make(map[shared.Render_Batch_Key]int)
@@ -1333,13 +1344,16 @@ render_list_adjust_batch_membership :: proc(
 		if previous > 0 {
 			delete_key(&list.batch_memberships, key)
 			list.batch_count = max(list.batch_count - 1, 0)
+			topology_changed = true
 		}
 		return
 	}
 	list.batch_memberships[key] = next
 	if previous <= 0 {
 		list.batch_count += 1
+		topology_changed = true
 	}
+	return
 }
 
 render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index: int) {
@@ -1359,8 +1373,11 @@ render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index:
 		previous_slot := list.instances[list_index].slot
 		list.instances[list_index] = instance
 		if render_list_batch_key(previous) != render_list_batch_key(instance) {
-			render_list_adjust_batch_membership(list, previous, -1)
-			render_list_adjust_batch_membership(list, instance, 1)
+			removed_batch := render_list_adjust_batch_membership(list, previous, -1)
+			added_batch := render_list_adjust_batch_membership(list, instance, 1)
+			if removed_batch || added_batch {
+				mark_render_topology_changed(world)
+			}
 		}
 		if previous_parent != instance.local_parent {
 			adjust_render_ancestor_counts(list, world, previous_parent, -1)
@@ -1377,7 +1394,9 @@ render_list_sync_entity :: proc(list: ^Render_List, world: ^World, entity_index:
 	} else {
 		list_index = len(list.instances)
 		append(&list.instances, instance)
-		render_list_adjust_batch_membership(list, instance, 1)
+		if render_list_adjust_batch_membership(list, instance, 1) {
+			mark_render_topology_changed(world)
+		}
 		list.instance_index_by_entity[entity_index] = list_index
 		adjust_render_ancestor_counts(list, world, instance.local_parent, 1)
 	}
@@ -1437,7 +1456,7 @@ render_list_sync_entity_transform :: proc(list: ^Render_List, world: ^World, ent
 sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 	clear(&list.dirty_instance_slots)
 	clear(&list.dirty_transform_slots)
-	full_sync := list.world_uuid != world.instance_uuid || len(list.instance_index_by_entity) == 0
+	full_sync := !list.structure_initialized || list.world_uuid != world.instance_uuid
 	previous_entity_count := len(list.instance_index_by_entity)
 	previous_slot_count := len(list.instance_index_by_slot)
 	if len(list.instance_index_by_entity) < len(world.entities) {
@@ -1507,10 +1526,16 @@ sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 	}
 	clear(&world.render_transform_dirty_entities)
 	list.world_uuid = world.instance_uuid
+	list.structure_initialized = true
 	list.hierarchy_revision = world.render_hierarchy_revision
 	list.instance_slot_count = len(world.render_instances)
 	list.full_instance_sync = full_sync
 	list.instance_sync_count += 1
+	when ODIN_TEST || WORLD_INTEGRITY_CHECKS {
+		if failure, ok := validate_render_list_integrity(world, list); !ok {
+			panic(format_world_integrity_failure(failure))
+		}
+	}
 }
 
 extract_lights :: proc(world: ^World, list: ^Render_List) {

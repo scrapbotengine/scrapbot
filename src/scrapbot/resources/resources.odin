@@ -109,7 +109,29 @@ Registry :: struct {
 	materials: [dynamic]Material,
 	fonts: [dynamic]Font,
 	geometry_topology_revision: u64,
+	material_revision: u64,
 	allocator: mem.Allocator,
+}
+
+@(private)
+bump_material_revision :: proc(registry: ^Registry) {
+	if registry == nil {
+		return
+	}
+	registry.material_revision += 1
+	if registry.material_revision == 0 {
+		registry.material_revision = 1
+	}
+}
+
+touch_material :: proc(registry: ^Registry, handle: Material_Handle) -> bool {
+	material, alive := get_material(registry, handle)
+	if !alive {
+		return false
+	}
+	material.version += 1
+	bump_material_revision(registry)
+	return true
 }
 
 ensure_allocator :: proc(registry: ^Registry) {
@@ -145,6 +167,76 @@ destroy_registry :: proc(registry: ^Registry) {
 	delete(registry.materials)
 	delete(registry.fonts)
 	registry^ = {}
+}
+
+clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
+	if source == nil || destination == nil {
+		return "resource registry is unavailable"
+	}
+	allocator := source.allocator
+	if allocator.procedure == nil {
+		allocator = context.allocator
+	}
+	init_registry(destination, allocator)
+	destination.geometry_topology_revision = source.geometry_topology_revision
+	destination.material_revision = source.material_revision
+	for geometry in source.geometries {
+		cloned := geometry
+		name, name_err := strings.clone(geometry.name, allocator)
+		if name_err != nil {
+			destroy_registry(destination)
+			return "failed to clone geometry name"
+		}
+		source_path, source_err := strings.clone(geometry.source, allocator)
+		if source_err != nil {
+			delete(name, allocator)
+			destroy_registry(destination)
+			return "failed to clone geometry source"
+		}
+		cloned.name = name
+		cloned.source = source_path
+		cloned.vertices = clone_slice(geometry.vertices, allocator)
+		cloned.indices = clone_slice(geometry.indices, allocator)
+		append(&destination.geometries, cloned)
+	}
+	for material in source.materials {
+		cloned := material
+		name, name_err := strings.clone(material.name, allocator)
+		if name_err != nil {
+			destroy_registry(destination)
+			return "failed to clone material name"
+		}
+		source_path, source_err := strings.clone(material.source, allocator)
+		if source_err != nil {
+			delete(name, allocator)
+			destroy_registry(destination)
+			return "failed to clone material source"
+		}
+		texture_asset, texture_err := strings.clone(material.texture_asset, allocator)
+		if texture_err != nil {
+			delete(name, allocator)
+			delete(source_path, allocator)
+			destroy_registry(destination)
+			return "failed to clone material texture path"
+		}
+		cloned.name = name
+		cloned.source = source_path
+		cloned.texture_asset = texture_asset
+		cloned.desc = clone_material_desc(material.desc, allocator)
+		append(&destination.materials, cloned)
+	}
+	for font in source.fonts {
+		cloned := font
+		name, name_err := strings.clone(font.name, allocator)
+		if name_err != nil {
+			destroy_registry(destination)
+			return "failed to clone font name"
+		}
+		cloned.name = name
+		cloned.desc = clone_font_desc(font.desc, allocator)
+		append(&destination.fonts, cloned)
+	}
+	return ""
 }
 
 register_font :: proc(
@@ -559,7 +651,7 @@ register_material :: proc(
 		}
 		delete(material.desc.texture_pixels, registry.allocator)
 		material.desc = clone_material_desc(desc, registry.allocator)
-		material.version += 1
+		_ = touch_material(registry, {u32(index), material.generation})
 		return {u32(index), material.generation}, ""
 	}
 	cloned_name, clone_err := strings.clone(name, registry.allocator)
@@ -574,6 +666,7 @@ register_material :: proc(
 			alive = true,
 		},
 	)
+	bump_material_revision(registry)
 	return {u32(len(registry.materials) - 1), 1}, ""
 }
 
@@ -627,7 +720,7 @@ register_project_material :: proc(
 		material.authored = true
 		material.desc = clone_material_desc(desc, registry.allocator)
 		material.alive = true
-		material.version += 1
+		_ = touch_material(registry, {u32(index), material.generation})
 		return {u32(index), material.generation}, ""
 	}
 	if _, found := material_index_by_name(registry, name); found {
@@ -662,6 +755,7 @@ register_project_material :: proc(
 			alive = true,
 		},
 	)
+	bump_material_revision(registry)
 	return {u32(len(registry.materials) - 1), 1}, ""
 }
 
@@ -784,6 +878,7 @@ apply_project_material_snapshot :: proc(
 		material.alive = false
 		material.generation += 1
 		material.version += 1
+		bump_material_revision(registry)
 		return ""
 	}
 	if snapshot.id != id {
@@ -914,6 +1009,7 @@ register_project_materials :: proc(
 			material.alive = false
 			material.generation += 1
 			material.version += 1
+			bump_material_revision(registry)
 		}
 	}
 	return ""

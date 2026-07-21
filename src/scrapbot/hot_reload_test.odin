@@ -292,6 +292,152 @@ test_hot_reload_keeps_last_good_script_on_reload_error :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_failed_project_reload_keeps_live_resources_and_world_atomic :: proc(t: ^testing.T) {
+	root, parent := make_hot_reload_test_project(t)
+	defer delete(root)
+	defer os.remove_all(parent)
+
+	loaded := project.load_project(root)
+	testing.expect(t, loaded.err == "")
+	testing.expect_value(t, len(loaded.resources), 1)
+	resource_id := loaded.resources[0].id
+	material_path := join_hot_reload_path(
+		t,
+		root,
+		fmt.tprintf("%s/%s", shared.PROJECT_RESOURCES_DIR, loaded.resources[0].source),
+	)
+	defer delete(material_path)
+	world := ecs.build_world(&loaded.scene)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
+	project.destroy_project_load_result(&loaded)
+	testing.expect(t, init_err == "")
+	defer destroy_hot_reload_state(state)
+	defer ecs.destroy_world(&world)
+
+	handle, found := resources.material_by_uuid(&state.resources, resource_id)
+	testing.expect(t, found)
+	material, alive := resources.get_material(&state.resources, handle)
+	testing.expect(t, alive)
+	before_desc := material.desc
+	before_version := material.version
+	before_world_uuid := world.instance_uuid
+
+	id_buffer: [36]u8
+	testing.expect(
+		t,
+		os.write_entire_file(
+			material_path,
+			fmt.tprintf(
+				`id = "%s"
+type = "scrapbot.material"
+name = "Must Not Commit"
+
+[material]
+base_color = [0.9, 0.1, 0.2, 1]
+emissive = [4, 0, 0]
+`,
+				shared.resource_uuid_to_string(resource_id, id_buffer[:]),
+			),
+		) ==
+		nil,
+	)
+	script_path := join_hot_reload_path(t, root, project.DEFAULT_SCRIPT)
+	defer delete(script_path)
+	testing.expect(t, os.write_entire_file(script_path, `error("transaction failed")`) == nil)
+
+	reload_err := reload_project_world_and_script(state, &world)
+	testing.expect(t, reload_err != "")
+	testing.expect_value(t, world.instance_uuid, before_world_uuid)
+	after_handle, after_found := resources.material_by_uuid(&state.resources, resource_id)
+	testing.expect(t, after_found)
+	testing.expect_value(t, after_handle, handle)
+	after, after_alive := resources.get_material(&state.resources, after_handle)
+	testing.expect(t, after_alive)
+	if after_alive {
+		testing.expect_value(t, after.version, before_version)
+		testing.expect_value(t, after.desc.base_color, before_desc.base_color)
+		testing.expect_value(t, after.desc.emissive, before_desc.emissive)
+	}
+	failure, valid := ecs.validate_world_integrity(&world, &state.resources)
+	testing.expectf(t, valid, "%s", ecs.format_world_integrity_failure(failure))
+}
+
+@(test)
+test_failed_scene_revert_keeps_live_resources_and_world_atomic :: proc(t: ^testing.T) {
+	root, parent := make_hot_reload_test_project(t)
+	defer delete(root)
+	defer os.remove_all(parent)
+
+	loaded := project.load_project(root)
+	testing.expect(t, loaded.err == "")
+	resource_id := loaded.resources[0].id
+	material_path := join_hot_reload_path(
+		t,
+		root,
+		fmt.tprintf("%s/%s", shared.PROJECT_RESOURCES_DIR, loaded.resources[0].source),
+	)
+	defer delete(material_path)
+	world := ecs.build_world(&loaded.scene)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
+	project.destroy_project_load_result(&loaded)
+	testing.expect(t, init_err == "")
+	defer destroy_hot_reload_state(state)
+	defer ecs.destroy_world(&world)
+
+	handle, found := resources.material_by_uuid(&state.resources, resource_id)
+	testing.expect(t, found)
+	material, alive := resources.get_material(&state.resources, handle)
+	testing.expect(t, alive)
+	before_desc := material.desc
+	before_version := material.version
+	before_world_uuid := world.instance_uuid
+	id_buffer: [36]u8
+	testing.expect(
+		t,
+		os.write_entire_file(
+			material_path,
+			fmt.tprintf(
+				`id = "%s"
+type = "scrapbot.material"
+name = "Must Not Revert"
+
+[material]
+base_color = [0.8, 0.2, 0.1, 1]
+emissive = [3, 0, 0]
+`,
+				shared.resource_uuid_to_string(resource_id, id_buffer[:]),
+			),
+		) ==
+		nil,
+	)
+	scene_path := join_hot_reload_path(t, root, project.DEFAULT_SCENE)
+	defer delete(scene_path)
+	invalid_scene := fmt.tprintf(
+		"%s\n[entities.components.missing_component]\nvalue = 1\n",
+		HOT_RELOAD_TWO_CUBE_SCENE,
+	)
+	testing.expect(t, os.write_entire_file(scene_path, invalid_scene) == nil)
+
+	revert_err := hot_reload_scene_revert(state, &world)
+	testing.expect(t, revert_err != "")
+	testing.expect_value(t, world.instance_uuid, before_world_uuid)
+	after_handle, after_found := resources.material_by_uuid(&state.resources, resource_id)
+	testing.expect(t, after_found)
+	testing.expect_value(t, after_handle, handle)
+	after, after_alive := resources.get_material(&state.resources, after_handle)
+	testing.expect(t, after_alive)
+	if after_alive {
+		testing.expect_value(t, after.version, before_version)
+		testing.expect_value(t, after.desc.base_color, before_desc.base_color)
+		testing.expect_value(t, after.desc.emissive, before_desc.emissive)
+	}
+}
+
+@(test)
 test_hot_reload_rebuilds_native_extension_sources :: proc(t: ^testing.T) {
 	root, parent := make_hot_reload_test_project(t)
 	defer delete(root)

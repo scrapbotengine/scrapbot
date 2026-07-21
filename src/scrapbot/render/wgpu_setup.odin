@@ -249,6 +249,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.ui_project_vertices)
 	delete(renderer.ui_editor_vertices)
 	delete(renderer.ui_overlay_vertices)
+	wgpu_release_batch_bind_groups(&renderer.draw_batch_cache)
 	delete(renderer.draw_batch_cache.source_indices)
 	delete(renderer.draw_batch_cache.batches)
 	delete(renderer.gpu_instance_records)
@@ -265,7 +266,6 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.gpu_indirect_templates)
 	wgpu_release_visibility_readbacks(renderer)
 	ecs.destroy_render_list(&renderer.render_list)
-	wgpu_release_batch_bind_groups(&renderer.draw_batch_cache)
 	if renderer.gpu_cull_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_cull_bind_group)
 	}

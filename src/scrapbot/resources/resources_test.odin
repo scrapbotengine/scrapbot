@@ -8,6 +8,38 @@ import "core:strings"
 import "core:testing"
 
 @(test)
+test_clone_registry_preserves_owned_resource_state_independently :: proc(t: ^testing.T) {
+	source: Registry
+	defer destroy_registry(&source)
+	description, description_err := cube()
+	defer delete(description.vertices)
+	defer delete(description.indices)
+	testing.expect(t, description_err == "")
+	geometry, geometry_err := register_geometry(&source, "cube", description)
+	material, material_err := register_material(
+		&source,
+		"material",
+		{base_color = {0.2, 0.3, 0.4, 1}},
+	)
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	cloned: Registry
+	defer destroy_registry(&cloned)
+	testing.expect(t, clone_registry(&source, &cloned) == "")
+	cloned_geometry, geometry_alive := get_geometry(&cloned, geometry)
+	cloned_material, material_alive := get_material(&cloned, material)
+	testing.expect(t, geometry_alive && material_alive)
+	if geometry_alive && material_alive {
+		cloned_geometry.vertices[0].position.x = 42
+		cloned_material.desc.base_color.x = 0.9
+	}
+	source_geometry, _ := get_geometry(&source, geometry)
+	source_material, _ := get_material(&source, material)
+	testing.expect(t, source_geometry.vertices[0].position.x != 42)
+	testing.expect_value(t, source_material.desc.base_color.x, f32(0.2))
+}
+
+@(test)
 test_project_material_save_writes_only_its_standalone_resource :: proc(t: ^testing.T) {
 	root, temp_err := os.make_directory_temp(
 		"",

@@ -218,6 +218,91 @@ test_gpu_dirty_instance_sync_reactivates_an_authoritative_render_slot :: proc(t:
 }
 
 @(test)
+test_gpu_instance_reset_clears_retained_slots_beyond_a_smaller_world :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_instance_records)
+	defer delete(renderer.gpu_instance_transform_records)
+	defer delete(renderer.gpu_instance_sources)
+	defer delete(renderer.gpu_instance_source_transforms)
+	defer delete(renderer.gpu_active_slots)
+	defer delete(renderer.gpu_dirty_indices)
+	defer delete(renderer.gpu_live_slots)
+	resize(&renderer.gpu_instance_records, 4)
+	resize(&renderer.gpu_instance_transform_records, 4)
+	resize(&renderer.gpu_instance_sources, 4)
+	resize(&renderer.gpu_instance_source_transforms, 4)
+	resize(&renderer.gpu_active_slots, 4)
+	for slot in 0 ..< 4 {
+		renderer.gpu_active_slots[slot] = true
+		renderer.gpu_instance_sources[slot].material = {u32(slot), 7}
+		append(&renderer.gpu_live_slots, slot)
+	}
+
+	wgpu_reset_gpu_instance_slots(&renderer)
+	testing.expect_value(t, len(renderer.gpu_dirty_indices), 4)
+	testing.expect_value(t, len(renderer.gpu_live_slots), 0)
+	for slot in 0 ..< 4 {
+		testing.expect(t, !renderer.gpu_active_slots[slot])
+		testing.expect_value(t, renderer.gpu_instance_sources[slot], WGPU_Instance_Source_State{})
+	}
+}
+
+@(test)
+test_material_revision_marks_only_dependent_active_gpu_slots_for_sync :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	material, material_err := resources.register_material(
+		&registry,
+		"editable",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, material_err == "")
+	material_data, alive := resources.get_material(&registry, material)
+	testing.expect(t, alive)
+
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_active_slots)
+	defer delete(renderer.gpu_instance_sources)
+	resize(&renderer.gpu_active_slots, 2)
+	resize(&renderer.gpu_instance_sources, 2)
+	renderer.gpu_active_slots[0] = true
+	renderer.gpu_instance_sources[0].material = material
+	renderer.gpu_instance_sources[0].material_version = material_data.version
+	instance := Render_Instance {
+		slot = 0,
+		material = {handle = material},
+	}
+	testing.expect(t, !wgpu_material_instance_needs_sync(&renderer, &registry, instance))
+
+	testing.expect(t, resources.touch_material(&registry, material))
+	testing.expect(t, wgpu_material_instance_needs_sync(&renderer, &registry, instance))
+	instance.slot = 1
+	testing.expect(t, !wgpu_material_instance_needs_sync(&renderer, &registry, instance))
+}
+
+@(test)
+test_gpu_resource_cache_reuses_slots_across_handle_generations :: proc(t: ^testing.T) {
+	materials := [?]WGPU_Material_Cache {
+		{handle = {index = 2, generation = 1}},
+		{handle = {index = 7, generation = 4}},
+	}
+	geometries := [?]WGPU_Geometry_Cache {
+		{handle = {index = 3, generation = 2}},
+		{handle = {index = 9, generation = 5}},
+	}
+	testing.expect_value(
+		t,
+		wgpu_material_cache_slot(materials[:], {index = 7, generation = 99}),
+		1,
+	)
+	testing.expect_value(
+		t,
+		wgpu_geometry_cache_slot(geometries[:], {index = 3, generation = 88}),
+		0,
+	)
+}
+
+@(test)
 test_renderer_backend_names_parse :: proc(t: ^testing.T) {
 	backend, ok := parse_renderer_backend("null")
 	testing.expect(t, ok)

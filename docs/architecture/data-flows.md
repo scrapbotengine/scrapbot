@@ -19,7 +19,7 @@ scene parse + schema validation + resource UUID resolution
                        retained UI + render list + backend caches
 ```
 
-Native components register before Luau executes, allowing scripts to retrieve native handles. Scene validation occurs against the combined engine/native/Luau registry. Resource descriptions remain outside ECS; components store resolved runtime handles.
+Native components register before Luau executes, allowing scripts to retrieve native handles. Scene validation occurs against the combined engine/native/Luau registry. Resource descriptions remain outside ECS; components store resolved runtime handles. Hot reload stages the replacement resource registry, world, script/native runtime, source set, and playback baseline independently; failure destroys the staged bundle, while success swaps the complete bundle atomically.
 
 ## Simulation and scheduled mutation
 
@@ -72,7 +72,7 @@ typed ECS/resource mutation
                        retained UI streams + presentation
 ```
 
-Cameras and bounded lights are compact frame inputs. Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. WGPU reuses retained batch membership for Transform-only changes, uploads a compact position/rotation/scale/local-bounds record for each dirty slot, and expands only those slots into model matrices, normal matrices, and world bounds on the GPU before culling. When legal despawn/reuse churn leaves an authoritative retained slot inactive in the backend, the Transform path reconciles only that slot's static state before continuing. Static instance fields remain resident unless their own sources change.
+Cameras and bounded lights are compact frame inputs. Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. WGPU reuses retained batch membership for Transform-only changes, uploads a compact position/rotation/scale/local-bounds record for each dirty slot, and expands only those slots into model matrices, normal matrices, and world bounds on the GPU before culling. When legal despawn/reuse churn leaves an authoritative retained slot inactive in the backend, the Transform path reconciles only that slot's static state before continuing. Render-list integrity checks enforce current entity generations and both entity-to-instance and slot-to-instance ownership. Material content revisions trigger a one-time dependent-instance pass only when material state changes. Static instance fields remain resident unless their own sources change.
 
 ## Performance diagnostics
 
@@ -117,6 +117,6 @@ prepare scene/resource create-write-delete operations
 recoverable project transaction → atomic source replacement
 ```
 
-Play/Step capture an in-memory authoring baseline. Running/paused mutations are disposable. Stop restores the in-memory baseline without reloading code; Revert rebuilds authoring state from disk.
+Play/Step capture an in-memory authoring baseline. Running/paused mutations are disposable. Stop restores the in-memory baseline without reloading code; Revert stages disk resources and a validated replacement world, then commits both together without reloading Luau or native code. A failed Revert preserves the complete live resource/world pair.
 
 See [FDR-001](../fdr/FDR-001-runtime-cli.md), [FDR-005](../fdr/FDR-005-system-scheduling.md), [FDR-007](../fdr/FDR-007-ecs-ui.md), [FDR-008](../fdr/FDR-008-editor-shell.md), and [FDR-009](../fdr/FDR-009-project-resources.md).

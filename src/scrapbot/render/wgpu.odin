@@ -215,6 +215,30 @@ WGPU_Request_Adapter_State :: struct {
 	message: string,
 }
 
+wgpu_material_cache_slot :: proc(
+	cache: []WGPU_Material_Cache,
+	handle: shared.Material_Handle,
+) -> int {
+	for cached, index in cache {
+		if cached.handle.index == handle.index {
+			return index
+		}
+	}
+	return -1
+}
+
+wgpu_geometry_cache_slot :: proc(
+	cache: []WGPU_Geometry_Cache,
+	handle: shared.Geometry_Handle,
+) -> int {
+	for cached, index in cache {
+		if cached.handle.index == handle.index {
+			return index
+		}
+	}
+	return -1
+}
+
 WGPU_Request_Device_State :: struct {
 	completed: bool,
 	status: wgpu.RequestDeviceStatus,
@@ -344,6 +368,7 @@ WGPU_Renderer :: struct {
 	gpu_slot_count: int,
 	gpu_visible_capacity: int,
 	gpu_topology_revision: u64,
+	gpu_material_revision: u64,
 	gpu_world_uuid: shared.Entity_UUID,
 	gpu_topology_valid: bool,
 	gpu_instance_upload_count: u64,
@@ -766,19 +791,15 @@ wgpu_material_cache :: proc(
 ) {
 	material, ok := resources.get_material(registry, handle)
 	if !ok { return nil, "render material handle is stale" }
-	cache_index := -1
-	for cached, index in renderer.material_cache {
-		if cached.handle == handle {
-			cache_index = index
-			break
-		}
-	}
+	cache_index := wgpu_material_cache_slot(renderer.material_cache[:], handle)
 	if cache_index < 0 {
 		cache_index = len(renderer.material_cache)
 		append(&renderer.material_cache, WGPU_Material_Cache{})
 	}
 	cached := &renderer.material_cache[cache_index]
-	if cached.valid && cached.version == material.version { return cached, "" }
+	if cached.valid && cached.handle == handle && cached.version == material.version {
+		return cached, ""
+	}
 	if cached.bind_group != nil { wgpu.BindGroupRelease(cached.bind_group) }
 	if cached.view != nil { wgpu.TextureViewRelease(cached.view) }
 	if cached.texture != nil { wgpu.TextureRelease(cached.texture) }
@@ -843,6 +864,7 @@ wgpu_rebuild_draw_batch_cache :: proc(
 	if cache == nil || render_list == nil {
 		return
 	}
+	wgpu_release_batch_bind_groups(cache)
 	rebuild_count := cache.rebuild_count + 1
 	source_indices := cache.source_indices
 	batches := cache.batches
@@ -944,19 +966,15 @@ wgpu_geometry_cache :: proc(
 ) {
 	geometry, ok := resources.get_geometry(registry, handle)
 	if !ok { return nil, "render geometry handle is stale" }
-	cache_index := -1
-	for cached, index in renderer.geometry_cache {
-		if cached.handle == handle {
-			cache_index = index
-			break
-		}
-	}
+	cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
 	if cache_index < 0 {
 		cache_index = len(renderer.geometry_cache)
 		append(&renderer.geometry_cache, WGPU_Geometry_Cache{})
 	}
 	cached := &renderer.geometry_cache[cache_index]
-	if cached.valid && cached.version == geometry.version { return cached, "" }
+	if cached.valid && cached.handle == handle && cached.version == geometry.version {
+		return cached, ""
+	}
 	if cached.vertex_buffer != nil { wgpu.BufferRelease(cached.vertex_buffer) }
 	if cached.index_buffer != nil { wgpu.BufferRelease(cached.index_buffer) }
 	cached^ = {

@@ -53,6 +53,22 @@ velocity = [0, -1.5707963, 0]
 `
 
 @(test)
+test_empty_render_list_only_full_syncs_once :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	list: Render_List
+	defer destroy_render_list(&list)
+
+	populate_resource_render_list(&world, nil, &list)
+	testing.expect(t, list.full_instance_sync)
+	testing.expect_value(t, list.instance_sync_count, u64(1))
+
+	populate_resource_render_list(&world, nil, &list)
+	testing.expect(t, !list.full_instance_sync)
+	testing.expect_value(t, list.instance_sync_count, u64(2))
+}
+
+@(test)
 test_render_reconciliation_tracks_geometry_and_material_eligibility :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)
@@ -170,6 +186,48 @@ test_resource_render_list_updates_only_dirty_entities_and_removes_slots_incremen
 }
 
 @(test)
+test_resource_render_list_changes_topology_only_when_a_batch_appears_or_disappears :: proc(
+	t: ^testing.T,
+) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	description, description_err := resources.cube()
+	defer delete(description.vertices)
+	defer delete(description.indices)
+	testing.expect(t, description_err == "")
+	geometry, geometry_err := resources.register_geometry(&registry, "cube", description)
+	material, material_err := resources.register_material(
+		&registry,
+		"white",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	world: World
+	defer destroy_world(&world)
+	command: Spawn_Command
+	testing.expect(t, init_spawn_command(&command, "Cube") == "")
+	testing.expect(t, spawn_set_transform(&command, {scale = {1, 1, 1}}) == "")
+	testing.expect(t, spawn_set_geometry(&command, geometry) == "")
+	testing.expect(t, spawn_set_material(&command, material) == "")
+	first := spawn_entity(&world, &command)
+	second := spawn_entity(&world, &command)
+	list: Render_List
+	defer destroy_render_list(&list)
+	populate_resource_render_list(&world, &registry, &list)
+	initial_topology := world.render_topology_revision
+
+	despawn_entity(&world, first, world.entities[first].id.generation)
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, world.render_topology_revision, initial_topology)
+
+	despawn_entity(&world, second, world.entities[second].id.generation)
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect(t, world.render_topology_revision > initial_topology)
+	testing.expect_value(t, list.batch_count, 0)
+}
+
+@(test)
 test_resource_render_list_preserves_reused_slots_across_transform_and_structure_churn :: proc(
 	t: ^testing.T,
 ) {
@@ -234,6 +292,59 @@ test_resource_render_list_preserves_reused_slots_across_transform_and_structure_
 	for slot in list.dirty_transform_slots {
 		list_index := list.instance_index_by_slot[slot]
 		testing.expect(t, list_index >= 0 && list_index < len(list.instances))
+	}
+}
+
+@(test)
+test_resource_render_list_preserves_new_slot_owner_when_stale_owner_is_removed_later :: proc(
+	t: ^testing.T,
+) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	description, description_err := resources.cube()
+	defer delete(description.vertices)
+	defer delete(description.indices)
+	testing.expect(t, description_err == "")
+	geometry, geometry_err := resources.register_geometry(&registry, "projectile", description)
+	material, material_err := resources.register_material(
+		&registry,
+		"projectile",
+		{base_color = {0.2, 0.8, 1, 1}},
+	)
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	world: World
+	defer destroy_world(&world)
+	renderable: Spawn_Command
+	testing.expect(t, init_spawn_command(&renderable, "Projectile") == "")
+	testing.expect(t, spawn_set_transform(&renderable, {scale = {1, 1, 1}}) == "")
+	testing.expect(t, spawn_set_geometry(&renderable, geometry) == "")
+	testing.expect(t, spawn_set_material(&renderable, material) == "")
+	stale_owner := spawn_entity(&world, &renderable)
+	empty: Spawn_Command
+	testing.expect(t, init_spawn_command(&empty, "Transient") == "")
+	transient := spawn_entity(&world, &empty)
+
+	list: Render_List
+	defer destroy_render_list(&list)
+	populate_resource_render_list(&world, &registry, &list)
+	stale_slot := world.entities[stale_owner].render_instance_index
+
+	despawn_entity(&world, transient, world.entities[transient].id.generation)
+	despawn_entity(&world, stale_owner, world.entities[stale_owner].id.generation)
+	non_render_owner := spawn_entity(&world, &empty)
+	new_owner := spawn_entity(&world, &renderable)
+	testing.expect_value(t, non_render_owner, stale_owner)
+	testing.expect_value(t, new_owner, transient)
+
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, world.entities[new_owner].render_instance_index, stale_slot)
+	testing.expect_value(t, len(list.instances), 1)
+	list_index := list.instance_index_by_slot[stale_slot]
+	testing.expect(t, list_index >= 0 && list_index < len(list.instances))
+	if list_index >= 0 && list_index < len(list.instances) {
+		testing.expect_value(t, list.instances[list_index].slot, stale_slot)
+		testing.expect_value(t, int(list.instances[list_index].entity.id.index), new_owner)
 	}
 }
 

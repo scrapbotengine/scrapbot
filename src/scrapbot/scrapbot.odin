@@ -791,18 +791,57 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if loaded.err != "" {
 		return loaded.err
 	}
+	next_resources: resources.Registry
+	if clone_err := resources.clone_registry(&runtime.resources, &next_resources);
+	   clone_err != "" {
+		return clone_err
+	}
+	defer resources.destroy_registry(&next_resources)
 	if err := resources.register_project_materials(
-		&runtime.resources,
+		&next_resources,
 		runtime.root,
 		loaded.resources[:],
 	); err != "" {
 		return err
 	}
-	if err := resources.register_project_lod_geometries(&runtime.resources, loaded.resources[:]);
+	if err := resources.register_project_lod_geometries(&next_resources, loaded.resources[:]);
 	   err != "" {
 		return err
 	}
-	return reset_scene_world(runtime.scene_path, &runtime.script_runtime, world)
+	next_world, world_err := load_validated_scene_world(
+		runtime.scene_path,
+		&runtime.script_runtime,
+	)
+	if world_err != "" {
+		return world_err
+	}
+	resources.destroy_registry(&runtime.resources)
+	runtime.resources = next_resources
+	next_resources = {}
+	ecs.destroy_world(world)
+	world^ = next_world
+	script.bind_runtime_world(&runtime.script_runtime, world)
+	return ""
+}
+
+load_validated_scene_world :: proc(
+	scene_path: string,
+	script_runtime: ^script.Runtime,
+) -> (
+	shared.World,
+	string,
+) {
+	loaded := project.load_scene_file(scene_path)
+	defer project.destroy_scene_load_result(&loaded)
+	if loaded.err != "" {
+		return {}, loaded.err
+	}
+	next_world := ecs.build_world(&loaded.scene)
+	if err := script.validate_runtime_world(script_runtime, &next_world); err != "" {
+		ecs.destroy_world(&next_world)
+		return {}, err
+	}
+	return next_world, ""
 }
 
 reset_scene_world :: proc(
@@ -810,14 +849,8 @@ reset_scene_world :: proc(
 	script_runtime: ^script.Runtime,
 	world: ^shared.World,
 ) -> string {
-	loaded := project.load_scene_file(scene_path)
-	defer project.destroy_scene_load_result(&loaded)
-	if loaded.err != "" {
-		return loaded.err
-	}
-	next_world := ecs.build_world(&loaded.scene)
-	if err := script.validate_runtime_world(script_runtime, &next_world); err != "" {
-		ecs.destroy_world(&next_world)
+	next_world, err := load_validated_scene_world(scene_path, script_runtime)
+	if err != "" {
 		return err
 	}
 	ecs.destroy_world(world)

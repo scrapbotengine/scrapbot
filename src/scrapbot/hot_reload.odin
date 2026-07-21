@@ -261,20 +261,32 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if loaded.err != "" {
 		return loaded.err
 	}
+	next_resources: resources.Registry
+	if clone_err := resources.clone_registry(&state.resources, &next_resources); clone_err != "" {
+		return clone_err
+	}
+	defer resources.destroy_registry(&next_resources)
 	if err := resources.register_project_materials(
-		&state.resources,
+		&next_resources,
 		state.root,
 		loaded.resources[:],
 	); err != "" {
 		return err
 	}
-	if err := resources.register_project_lod_geometries(&state.resources, loaded.resources[:]);
+	if err := resources.register_project_lod_geometries(&next_resources, loaded.resources[:]);
 	   err != "" {
 		return err
 	}
-	if err := reset_scene_world(state.scene_path, &state.runtime, world); err != "" {
-		return err
+	next_world, world_err := load_validated_scene_world(state.scene_path, &state.runtime)
+	if world_err != "" {
+		return world_err
 	}
+	resources.destroy_registry(&state.resources)
+	state.resources = next_resources
+	next_resources = {}
+	ecs.destroy_world(world)
+	world^ = next_world
+	script.bind_runtime_world(&state.runtime, world)
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.resources_stamp = asset_stamp(state.resources_path)
 	return ""
@@ -349,34 +361,34 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		return err
 	}
 	if err := project.prepare_project_fonts(state.root, &loaded.config); err != "" { return err }
-	if err := resources.register_project_fonts(
-		&state.resources,
-		state.root,
-		loaded.config.fonts[:],
-	); err != "" { return err }
-	if err := resources.register_project_materials(
-		&state.resources,
-		state.root,
-		loaded.resources[:],
-	); err != "" {
-		return err
-	}
-	if err := resources.register_project_lod_geometries(&state.resources, loaded.resources[:]);
-	   err != "" {
-		return err
-	}
-
 	next_world := ecs.build_world(&loaded.scene)
+	next_resources: resources.Registry
+	if clone_err := resources.clone_registry(&state.resources, &next_resources); clone_err != "" {
+		ecs.destroy_world(&next_world)
+		return clone_err
+	}
+	if resource_err := init_render_resources(
+		&next_resources,
+		&next_world,
+		state.root,
+		&loaded.config,
+		loaded.resources[:],
+	); resource_err != "" {
+		ecs.destroy_world(&next_world)
+		resources.destroy_registry(&next_resources)
+		return resource_err
+	}
 	script_load := load_script_from_path(
 		state.root,
 		state.script_path,
 		&next_world,
-		&state.resources,
+		&next_resources,
 		state.log_enabled,
 	)
 	if script_load.err != "" {
 		reload_err := script_load.err
 		ecs.destroy_world(&next_world)
+		resources.destroy_registry(&next_resources)
 		destroy_script_load(&script_load)
 		if restore_err := restore_last_good_script_runtime(state, world); restore_err != "" {
 			return fmt.tprintf(
@@ -395,13 +407,15 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		loaded.config.native_extensions[:],
 	); source_err != "" {
 		ecs.destroy_world(&next_world)
+		resources.destroy_registry(&next_resources)
 		destroy_script_load(&script_load)
 		return source_err
 	}
 	next_baseline: Playback_Baseline
-	if baseline_err := capture_playback_baseline(&next_baseline, &next_world, &state.resources);
+	if baseline_err := capture_playback_baseline(&next_baseline, &next_world, &next_resources);
 	   baseline_err != "" {
 		ecs.destroy_world(&next_world)
+		resources.destroy_registry(&next_resources)
 		destroy_script_load(&script_load)
 		native.destroy_source_set(&next_sources)
 		return baseline_err
@@ -409,6 +423,9 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 
 	ecs.destroy_world(world)
 	world^ = next_world
+	resources.destroy_registry(&state.resources)
+	state.resources = next_resources
+	next_resources = {}
 
 	invalidate_frame_system_plan(&state.frame_systems)
 	script.destroy_runtime(&state.runtime)
@@ -418,6 +435,9 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	delete(state.last_good_script_source)
 	state.runtime = script_load.runtime
 	state.native_extensions = script_load.native_extensions
+	state.runtime.world = world
+	state.runtime.resource_registry = &state.resources
+	state.native_extensions.resources = &state.resources
 	state.system_profile = {}
 	state.native_sources = next_sources
 	state.playback_baseline = next_baseline
