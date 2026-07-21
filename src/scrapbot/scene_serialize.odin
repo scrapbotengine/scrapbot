@@ -67,6 +67,10 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		write_scene_section(builder, "material")
 		write_scene_string(builder, "resource", entity.material_resource)
 	}
+	if entity.has_model {
+		write_scene_section(builder, "model")
+		write_scene_string(builder, "resource", entity.model_resource)
+	}
 	if entity.has_shadow_caster { write_scene_section(builder, "shadow_caster") }
 	if entity.has_shadow_receiver { write_scene_section(builder, "shadow_receiver") }
 	write_scene_ui_components(builder, entity)

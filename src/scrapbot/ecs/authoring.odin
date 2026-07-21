@@ -121,6 +121,9 @@ capture_registered_component_snapshot :: proc(
 		case .Material:
 			value.has_material = true
 			value.material_resource = clone_snapshot_string(entity.material_resource)
+		case .Model:
+			value.has_model = true
+			value.model_resource = clone_snapshot_string(entity.model_resource)
 		case .Shadow_Caster:
 			value.has_shadow_caster = true
 		case .Shadow_Receiver:
@@ -296,6 +299,8 @@ apply_registered_component_snapshot :: proc(
 		case .Material:
 			set_entity_resource(world, entity_index, false, value.material_resource)
 			mark_render_entity_dirty(world, entity_index)
+		case .Model:
+			set_entity_model_resource(world, entity_index, value.model_resource)
 		case .Shadow_Caster:
 			world.entities[entity_index].has_shadow_caster = true
 			mark_render_entity_dirty(world, entity_index)
@@ -348,9 +353,11 @@ capture_entity_snapshot :: proc(world: ^World, entity_index: int) -> (Entity_Sna
 			has_shadow_receiver = source.has_shadow_receiver,
 			geometry_resource = clone_snapshot_string(source.geometry_resource),
 			material_resource = clone_snapshot_string(source.material_resource),
+			model_resource = clone_snapshot_string(source.model_resource),
 		},
 	}
 	entity := &snapshot.entity
+	entity.has_model = source.model_resource != ""
 
 	if source.transform_index >= 0 && source.transform_index < len(world.transforms) {
 		entity.has_transform = true
@@ -380,6 +387,7 @@ capture_entity_snapshot :: proc(world: ^World, entity_index: int) -> (Entity_Sna
 	}
 	entity.has_geometry = source.geometry_resource != ""
 	entity.has_material = source.material_resource != ""
+	entity.has_model = source.model_resource != ""
 
 	capture_ui_components(world, source, entity)
 	for storage in world.custom_components {
@@ -440,6 +448,7 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.name)
 	delete(entity.geometry_resource)
 	delete(entity.material_resource)
+	delete(entity.model_resource)
 	delete(entity.mesh.primitive)
 	delete(entity.ui_panel.title)
 	delete(entity.ui_panel.font)
@@ -486,6 +495,9 @@ registered_component_is_present :: proc(
 		return true
 	}
 	if definition.storage_kind == .Material && entity.material_resource != "" {
+		return true
+	}
+	if definition.storage_kind == .Model && entity.model_resource != "" {
 		return true
 	}
 	return entity_has_component(world, entity_index, definition.id, definition.name)
@@ -619,6 +631,9 @@ set_registered_component_membership :: proc(
 			set_entity_resource(world, entity_index, false, value)
 			bump_component_revision(world, entity_index)
 			mark_render_entity_dirty(world, entity_index)
+		case .Model:
+			value := ""
+			set_entity_model_resource(world, entity_index, value)
 		case .Shadow_Caster:
 			world.entities[entity_index].has_shadow_caster = present
 			bump_component_revision(world, entity_index)
@@ -757,6 +772,7 @@ apply_entity_snapshot :: proc(world: ^World, snapshot: ^Entity_Snapshot) -> (int
 	}
 	set_entity_resource(world, entity_index, true, value.geometry_resource)
 	set_entity_resource(world, entity_index, false, value.material_resource)
+	set_entity_model_resource(world, entity_index, value.model_resource)
 	entity.has_shadow_caster = value.has_shadow_caster
 	entity.has_shadow_receiver = value.has_shadow_receiver
 	apply_ui_snapshot(world, entity_index, value)
@@ -1024,6 +1040,24 @@ set_entity_resource :: proc(world: ^World, entity_index: int, geometry: bool, va
 		entity.material_resource = clone_world_string(world, value)
 		remove_material(world, entity_index)
 	}
+}
+
+set_entity_model_resource :: proc(world: ^World, entity_index: int, value: string) {
+	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if entity.model_resource == value {
+		return
+	}
+	despawn_model_instance_entities(world, entity.uuid)
+	delete_world_string(world, entity.model_resource)
+	entity.model_resource = clone_world_string(world, value)
+	world.model_instance_revision += 1
+	if world.model_instance_revision == 0 {
+		world.model_instance_revision = 1
+	}
+	bump_component_revision(world, entity_index)
 }
 
 apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene_Entity) {

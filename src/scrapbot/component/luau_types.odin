@@ -51,6 +51,7 @@ export type Scrapbot = {
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
+	model: ScrapbotModelComponent,
 	geometry: {
 		create: (name: string, descriptor: ScrapbotGeometryDescriptor) -> ScrapbotGeometryResource,
 		cube: (name: string, size: number?) -> ScrapbotGeometryResource,

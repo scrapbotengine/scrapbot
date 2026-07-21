@@ -573,6 +573,8 @@ run_project_internal_untracked :: proc(
 		run_config.runtime_save_data = hot_reload
 		run_config.runtime_revert = hot_reload_scene_revert
 		run_config.runtime_revert_data = hot_reload
+		run_config.runtime_reconcile = hot_reload_reconcile_models
+		run_config.runtime_reconcile_data = hot_reload
 		run_config.resource_registry = &hot_reload.resources
 		result.frame, result.err = render.run_renderer(run_config, &world)
 		if run_config.runtime_stats != nil {
@@ -664,6 +666,8 @@ run_project_internal_untracked :: proc(
 	run_config.runtime_save_data = frame_runtime
 	run_config.runtime_revert = frame_runtime_revert
 	run_config.runtime_revert_data = frame_runtime
+	run_config.runtime_reconcile = frame_runtime_reconcile_models
+	run_config.runtime_reconcile_data = frame_runtime
 
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	if run_config.runtime_stats != nil {
@@ -718,7 +722,14 @@ init_render_resources :: proc(
 	); err != "" {
 		return err
 	}
+	if err := resources.register_project_models(registry, project_resources, imports.products[:]);
+	   err != "" {
+		return err
+	}
 	if err := resources.register_project_materials(registry, root, project_resources); err != "" {
+		return err
+	}
+	if err := reconcile_model_instances(world, registry); err != "" {
 		return err
 	}
 	for entity, index in world.entities {
@@ -730,6 +741,130 @@ init_render_resources :: proc(
 		}
 	}
 	return ""
+}
+
+reconcile_model_instances :: proc(world: ^shared.World, registry: ^resources.Registry) -> string {
+	if world == nil || registry == nil {
+		return ""
+	}
+	if world.model_instance_revision == world.model_instance_reconciled_revision {
+		return ""
+	}
+	for entity, entity_index in world.entities {
+		if !entity.alive || entity.model_owner == (shared.Entity_UUID{}) {
+			continue
+		}
+		ecs.despawn_entity(world, entity_index, entity.id.generation)
+	}
+	root_count := len(world.entities)
+	for root_index in 0 ..< root_count {
+		root := world.entities[root_index]
+		if !root.alive || root.model_resource == "" || root.model_owner != (shared.Entity_UUID{}) {
+			continue
+		}
+		resource_id, valid := shared.resource_uuid_parse(root.model_resource)
+		if !valid {
+			return fmt.tprintf("entity '%s' has invalid model resource UUID", root.name)
+		}
+		handle, found := resources.model_handle_by_uuid(registry, resource_id)
+		if !found {
+			return fmt.tprintf("entity '%s' references an unavailable model resource", root.name)
+		}
+		model, alive := resources.get_model(registry, handle)
+		if !alive {
+			return fmt.tprintf("entity '%s' references a stale model resource", root.name)
+		}
+		node_entities := make([]int, len(model.nodes), context.temp_allocator)
+		for &index in node_entities {
+			index = -1
+		}
+		for node, node_index in model.nodes {
+			uuid := model_instance_uuid(root.uuid, resource_id, node_index, -1)
+			name := fmt.tprintf("%s / %s", root.name, node.name)
+			entity_index, created := ecs.create_world_entity(world, name, uuid, .Runtime, true)
+			if !created {
+				return fmt.tprintf("failed to instantiate model node '%s'", node.name)
+			}
+			world.entities[entity_index].model_owner = root.uuid
+			node_entities[node_index] = entity_index
+		}
+		for node, node_index in model.nodes {
+			entity_index := node_entities[node_index]
+			transform := node.transform
+			transform.parent = {}
+			if root.transform_index >= 0 {
+				transform.parent = root.uuid
+			}
+			if node.parent_index >= 0 && int(node.parent_index) < len(node_entities) {
+				parent_index := node_entities[node.parent_index]
+				if parent_index >= 0 {
+					transform.parent = world.entities[parent_index].uuid
+				}
+			}
+			ecs.add_transform(world, entity_index, transform)
+			if node.mesh_index < 0 || int(node.mesh_index) >= len(model.meshes) {
+				continue
+			}
+			mesh := model.meshes[node.mesh_index]
+			for primitive, primitive_index in mesh.primitives {
+				primitive_entity := entity_index
+				if primitive_index > 0 {
+					uuid := model_instance_uuid(
+						root.uuid,
+						resource_id,
+						node_index,
+						primitive_index,
+					)
+					name := fmt.tprintf("%s / %s / %s", root.name, node.name, primitive.key)
+					created_index, created := ecs.create_world_entity(
+						world,
+						name,
+						uuid,
+						.Runtime,
+						true,
+					)
+					if !created {
+						return fmt.tprintf(
+							"failed to instantiate model primitive '%s'",
+							primitive.key,
+						)
+					}
+					primitive_entity = created_index
+					world.entities[primitive_entity].model_owner = root.uuid
+					ecs.add_transform(
+						world,
+						primitive_entity,
+						{scale = {1, 1, 1}, parent = world.entities[entity_index].uuid},
+					)
+				}
+				ecs.add_geometry(world, primitive_entity, primitive.geometry)
+				material := primitive.material
+				if material == (shared.Material_Handle{}) {
+					material, _ = resources.material_by_name(registry, "default")
+				}
+				ecs.add_material(world, primitive_entity, material)
+			}
+		}
+	}
+	world.model_instance_reconciled_revision = world.model_instance_revision
+	return ""
+}
+
+model_instance_uuid :: proc(
+	root: shared.Entity_UUID,
+	model: shared.Resource_UUID,
+	node_index, primitive_index: int,
+) -> shared.Entity_UUID {
+	root_buffer: [36]u8
+	model_buffer: [36]u8
+	key := fmt.tprintf(
+		"scrapbot:model-instance:%s:%s:%d:%d",
+		shared.entity_uuid_to_string(root, root_buffer[:]),
+		shared.resource_uuid_to_string(model, model_buffer[:]),
+		node_index,
+		primitive_index,
+	)
+	return shared.entity_uuid_from_engine_name(key)
 }
 
 step_frame_runtime_system :: proc(
@@ -789,12 +924,15 @@ frame_runtime_playback_stop :: proc(data: rawptr, world: ^shared.World) -> strin
 	if runtime == nil || world == nil {
 		return "cannot restore an unavailable project runtime"
 	}
-	return restore_playback_baseline(
+	if err := restore_playback_baseline(
 		&runtime.playback_baseline,
 		&runtime.script_runtime,
 		world,
 		&runtime.resources,
-	)
+	); err != "" {
+		return err
+	}
+	return reconcile_model_instances(world, &runtime.resources)
 }
 
 frame_runtime_save :: proc(
@@ -833,23 +971,22 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 		return clone_err
 	}
 	defer resources.destroy_registry(&next_resources)
-	if err := resources.register_project_materials(
-		&next_resources,
-		runtime.root,
-		loaded.resources[:],
-	); err != "" {
-		return err
-	}
-	if err := resources.register_project_lod_geometries(&next_resources, loaded.resources[:]);
-	   err != "" {
-		return err
-	}
 	next_world, world_err := load_validated_scene_world(
 		runtime.scene_path,
 		&runtime.script_runtime,
 	)
 	if world_err != "" {
 		return world_err
+	}
+	if err := init_render_resources(
+		&next_resources,
+		&next_world,
+		runtime.root,
+		&loaded.config,
+		loaded.resources[:],
+	); err != "" {
+		ecs.destroy_world(&next_world)
+		return err
 	}
 	resources.destroy_registry(&runtime.resources)
 	runtime.resources = next_resources
@@ -858,6 +995,14 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	world^ = next_world
 	script.bind_runtime_world(&runtime.script_runtime, world)
 	return ""
+}
+
+frame_runtime_reconcile_models :: proc(data: rawptr, world: ^shared.World) -> string {
+	runtime := cast(^Frame_Runtime)data
+	if runtime == nil {
+		return ""
+	}
+	return reconcile_model_instances(world, &runtime.resources)
 }
 
 load_validated_scene_world :: proc(

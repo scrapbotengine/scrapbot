@@ -2885,6 +2885,12 @@ editor_ui_refresh_component_menu_cache :: proc(state: ^State) {
 		if !editor_authoring_definition_is_supported(definition) {
 			continue
 		}
+		// Model instances need a resource choice, so they are authored from the
+		// resource browser/scene data until the component menu has a resource picker.
+		// Existing model components remain inspectable and removable.
+		if definition.storage_kind == .Model {
+			continue
+		}
 		state.component_menu_definition_indices[state.component_menu_definition_count] = index
 		state.component_menu_definition_count += 1
 	}
@@ -3974,6 +3980,31 @@ editor_ui_build_resource_inspector_panels :: proc(
 			return
 		}
 	}
+	if model_handle, model_found := resources.model_handle_by_uuid(state.resource_registry, id);
+	   model_found {
+		model, alive := resources.get_model(state.resource_registry, model_handle)
+		if alive && model.authored {
+			primitive_count := 0
+			for mesh in model.meshes {
+				primitive_count += len(mesh.primitives)
+			}
+			editor_ui_begin_inspector_component(&builder, "MODEL")
+			editor_ui_inspector_field(&builder, "source asset", model.asset_source)
+			editor_ui_inspector_field(&builder, "nodes", fmt.tprintf("%d", len(model.nodes)))
+			editor_ui_inspector_field(&builder, "meshes", fmt.tprintf("%d", len(model.meshes)))
+			editor_ui_inspector_field(&builder, "primitives", fmt.tprintf("%d", primitive_count))
+			editor_ui_inspector_field(
+				&builder,
+				"materials",
+				fmt.tprintf("%d", len(model.material_handles)),
+			)
+			editor_ui_begin_inspector_component(&builder, "IMPORT")
+			editor_ui_inspector_field(&builder, "status", "Up to date")
+			editor_ui_inspector_field(&builder, "product", "Static glTF mesh data")
+			editor_ui_finish_inspector(&builder)
+			return
+		}
+	}
 	handle, found := resources.material_by_uuid(state.resource_registry, id)
 	if !found {
 		editor_ui_finish_inspector(&builder)
@@ -4283,6 +4314,23 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_text(world, label, texture.name)
 			resource_count += 1
 		}
+		for model in state.resource_registry.models {
+			if !model.alive || !model.authored {
+				continue
+			}
+			row, label := editor_ui_ensure_resource_row(world, resource_count)
+			world.entities[row].alive = true
+			world.entities[label].alive = true
+			editor_ui_set_hidden(world, row, false)
+			editor_ui_set_hidden(world, label, false)
+			world.editor_uis[world.entities[row].editor_ui_index].resource_id = model.id
+			world.editor_uis[world.entities[label].editor_ui_index].resource_id = model.id
+			if state.editor_has_resource_selection && state.editor_selected_resource == model.id {
+				selected_resource_row = world.entities[row].uuid
+			}
+			editor_ui_set_text(world, label, model.name)
+			resource_count += 1
+		}
 	}
 	for component in world.editor_uis {
 		if (component.role == .Project_Resource_Row ||
@@ -4348,6 +4396,14 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		); found {
 			if texture, alive := resources.get_texture(state.resource_registry, handle); alive {
 				selected_resource_version = texture.version
+			}
+		}
+		if handle, found := resources.model_handle_by_uuid(
+			state.resource_registry,
+			state.editor_selected_resource,
+		); found {
+			if model, alive := resources.get_model(state.resource_registry, handle); alive {
+				selected_resource_version = model.version
 			}
 		}
 	}
@@ -4463,6 +4519,25 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 				if alive {
 					inputs := [2]int{resource_name, resource_source}
 					values := [2]string{texture.name, texture.source}
+					for input_entity, input_index in inputs {
+						input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
+						input.read_only = true
+						if !state.has_focused_input ||
+						   state.focused_input != world.entities[input_entity].id {
+							_ = ecs.set_ui_input_value(world, input_entity, values[input_index])
+						}
+					}
+				} else {
+					state.editor_has_resource_selection = false
+				}
+			} else if model_handle, model_found := resources.model_handle_by_uuid(
+				state.resource_registry,
+				state.editor_selected_resource,
+			); model_found {
+				model, alive := resources.get_model(state.resource_registry, model_handle)
+				if alive {
+					inputs := [2]int{resource_name, resource_source}
+					values := [2]string{model.name, model.source}
 					for input_entity, input_index in inputs {
 						input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
 						input.read_only = true

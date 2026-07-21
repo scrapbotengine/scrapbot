@@ -14,6 +14,7 @@ TEXTURE_IMPORTER_SCHEMA :: "scrapbot.texture.v1.rgba8-mips"
 
 Product_Kind :: enum {
 	Texture,
+	Model,
 }
 
 Product :: struct {
@@ -25,6 +26,8 @@ Product :: struct {
 	mip_count: u32,
 	byte_count: int,
 	color_space: shared.Texture_Color_Space,
+	node_count, mesh_count, primitive_count: int,
+	vertex_count, index_count, material_count: int,
 }
 
 Report :: struct {
@@ -70,7 +73,7 @@ ensure_project_imports :: proc(root: string, declarations: []shared.Project_Reso
 	report: Report
 	has_imports := false
 	for declaration in declarations {
-		if declaration.kind == .Texture {
+		if declaration.kind == .Texture || declaration.kind == .Model {
 			has_imports = true
 			break
 		}
@@ -91,10 +94,17 @@ ensure_project_imports :: proc(root: string, declarations: []shared.Project_Reso
 		}
 	}
 	for declaration in declarations {
-		if declaration.kind != .Texture {
-			continue
+		product: Product
+		imported: bool
+		import_err: string
+		#partial switch declaration.kind {
+			case .Texture:
+				product, imported, import_err = ensure_texture_import(root, build_dir, declaration)
+			case .Model:
+				product, imported, import_err = ensure_model_import(root, build_dir, declaration)
+			case:
+				continue
 		}
-		product, imported, import_err := ensure_texture_import(root, build_dir, declaration)
 		if import_err != "" {
 			report.err = clone_error(import_err)
 			return report

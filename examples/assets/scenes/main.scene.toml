@@ -1,0 +1,53 @@
+[[entities]]
+id = "a7100000-0000-4000-8000-000000000001"
+name = "Main Camera"
+
+[entities.transform]
+position = [0, 2, 8]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+
+[[entities]]
+id = "a7100000-0000-4000-8000-000000000002"
+name = "Ambient Light"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
+
+[[entities]]
+id = "a7100000-0000-4000-8000-000000000003"
+name = "Imported Triangle"
+
+[entities.transform]
+position = [-1, -1, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.model]
+resource = "a7000000-0000-4000-8000-000000000001"
+
+[[entities]]
+id = "a7100000-0000-4000-8000-000000000004"
+name = "Textured Cube"
+
+[entities.transform]
+position = [-2, 0, 1]
+rotation = [0.25, 0.5, 0]
+scale = [0.7, 0.7, 0.7]
+
+[entities.mesh]
+primitive = "cube"
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "a7000000-0000-4000-8000-000000000003"
+
+[entities.shadow_caster]

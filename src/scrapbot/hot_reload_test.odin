@@ -72,6 +72,43 @@ velocity = [0, -1, 0]
 `
 
 @(test)
+test_scene_revert_reconciles_imported_model_instances :: proc(t: ^testing.T) {
+	root := "examples/assets"
+	loaded := project.load_project(root)
+	defer project.destroy_project_load_result(&loaded)
+	testing.expectf(t, loaded.err == "", "asset example load failed: %s", loaded.err)
+	if loaded.err != "" {
+		return
+	}
+	world := ecs.build_world(&loaded.scene)
+	defer ecs.destroy_world(&world)
+	state := new(Hot_Reload_State)
+	defer free(state)
+	init_err := init_hot_reload_state(state, root, &loaded, &world)
+	testing.expectf(t, init_err == "", "hot reload initialization failed: %s", init_err)
+	if init_err != "" {
+		return
+	}
+	defer destroy_hot_reload_state(state)
+	root_id, _ := shared.entity_uuid_parse("a7100000-0000-4000-8000-000000000003")
+	model_id, _ := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000001")
+	derived_id := model_instance_uuid(root_id, model_id, 0, -1)
+	_, initially_found := ecs.entity_index_by_uuid(&world, derived_id)
+	testing.expect(t, initially_found)
+	ecs.despawn_model_instance_entities(&world, root_id)
+	_, removed := ecs.entity_index_by_uuid(&world, derived_id)
+	testing.expect(t, !removed)
+	revert_err := hot_reload_scene_revert(state, &world)
+	testing.expectf(t, revert_err == "", "scene revert failed: %s", revert_err)
+	restored_index, restored := ecs.entity_index_by_uuid(&world, derived_id)
+	testing.expect(t, restored)
+	if restored {
+		testing.expect(t, world.entities[restored_index].geometry_index >= 0)
+		testing.expect(t, world.entities[restored_index].material_index >= 0)
+	}
+}
+
+@(test)
 test_hot_reload_replaces_luau_script_systems :: proc(t: ^testing.T) {
 	root, parent := make_hot_reload_test_project(t)
 	defer delete(root)

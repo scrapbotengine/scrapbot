@@ -45,7 +45,7 @@ git config --local core.hooksPath .githooks
 
 [tasks.build]
 description = "Build the Scrapbot CLI"
-depends = ["luau"]
+depends = ["luau", "cgltf"]
 run = '''
 mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
@@ -66,7 +66,7 @@ odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUA
 
 [tasks.build-dev]
 description = "Build the Scrapbot CLI for fast development iteration"
-depends = ["luau"]
+depends = ["luau", "cgltf"]
 run = '''
 mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
@@ -105,6 +105,20 @@ description = "Build embedded Luau"
 run = '''
 test -d third_party/luau/VM || { echo "third_party/luau missing; run git submodule update --init --recursive"; exit 1; }
 make -C third_party/luau config=release CXXFLAGS="-g -Wall -O2 -DNDEBUG -fno-math-errno -std=c++17 -ICommon/include -IVM/include -IAst/include -IBytecode/include -ICompiler/include -DLUA_USE_LONGJMP=1 -DLUA_API='extern \"C\"' -DLUACODE_API='extern \"C\"'" build/release/libluauvm.a build/release/libluaucompiler.a build/release/libluauast.a build/release/libluaubytecode.a build/release/libluaucommon.a
+'''
+
+[tasks.cgltf]
+description = "Build Odin's pinned cgltf vendor library when absent"
+run = '''
+CGLTF_ROOT="$(odin root)/vendor/cgltf"
+case "$(uname -s)" in
+  Darwin) CGLTF_LIB="$CGLTF_ROOT/lib/darwin/cgltf.a" ;;
+  Linux) CGLTF_LIB="$CGLTF_ROOT/lib/cgltf.a" ;;
+  *) echo "unsupported cgltf build platform: $(uname -s)" >&2; exit 1 ;;
+esac
+if [ ! -f "$CGLTF_LIB" ]; then
+  make -C "$CGLTF_ROOT/src"
+fi
 '''
 
 [tasks.scrapbot]
@@ -327,7 +341,7 @@ node tools/assert_png_variance.mjs "$TRANSFORM_COMPUTE_FRAME"
 
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"
-depends = ["luau"]
+depends = ["luau", "cgltf"]
 run = '''
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in

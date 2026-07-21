@@ -1,5 +1,6 @@
 package scrapbot
 
+import shared "./shared"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
@@ -42,7 +43,31 @@ test_package_project_writes_runnable_layout :: proc(t: ^testing.T) {
 	if asset_path_err != nil {
 		return
 	}
-	testing.expect(t, os.write_entire_file(asset_path, "fixture") == nil)
+	testing.expect(t, os.copy_file(asset_path, "examples/minimal/assets/checker.png") == nil)
+	texture_resource, texture_resource_err := filepath.join(
+		{root, "resources", "package-texture.resource.toml"},
+		context.temp_allocator,
+	)
+	testing.expect(t, texture_resource_err == nil)
+	if texture_resource_err != nil {
+		return
+	}
+	testing.expect(
+		t,
+		os.write_entire_file(
+			texture_resource,
+			`id = "a9000000-0000-4000-8000-000000000001"
+type = "scrapbot.texture"
+name = "Package Texture"
+
+[texture]
+source = "assets/texture.png"
+color_space = "srgb"
+generate_mipmaps = true
+`,
+		) ==
+		nil,
+	)
 
 	result := package_project(root, {})
 	defer destroy_package_result(&result)
@@ -75,6 +100,18 @@ test_package_project_writes_runnable_layout :: proc(t: ^testing.T) {
 	testing.expect(t, packaged_asset_err == nil)
 	if packaged_asset_err == nil {
 		testing.expect(t, os.exists(packaged_asset))
+	}
+	packaged_import, packaged_import_err := filepath.join(
+		{
+			result.output_directory,
+			shared.PROJECT_IMPORTED_ASSETS_DIR,
+			"a9000000-0000-4000-8000-000000000001.texture.rgba",
+		},
+		context.temp_allocator,
+	)
+	testing.expect(t, packaged_import_err == nil)
+	if packaged_import_err == nil {
+		testing.expect(t, os.exists(packaged_import))
 	}
 	packaged_types, packaged_types_err := filepath.join(
 		{result.output_directory, DEFAULT_LUAU_TYPES},

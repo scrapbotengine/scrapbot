@@ -63,6 +63,7 @@ Project_Font :: struct {
 
 Project_Resource_Kind :: enum {
 	Texture,
+	Model,
 	Material,
 	Geometry_LOD,
 }
@@ -76,6 +77,10 @@ Project_Texture_Resource :: struct {
 	source: string,
 	color_space: Texture_Color_Space,
 	generate_mipmaps: bool,
+}
+
+Project_Model_Resource :: struct {
+	source: string,
 }
 
 Project_Material_Resource :: struct {
@@ -97,6 +102,7 @@ Project_Resource :: struct {
 	name: string,
 	source: string,
 	texture: Project_Texture_Resource,
+	model: Project_Model_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
 }
@@ -125,6 +131,8 @@ Scene_Entity :: struct {
 	geometry_resource: string,
 	has_material: bool,
 	material_resource: string,
+	has_model: bool,
+	model_resource: string,
 	has_shadow_caster: bool,
 	has_shadow_receiver: bool,
 	has_ui_layout: bool,
@@ -172,6 +180,9 @@ Geometry_Handle :: struct {
 	index, generation: u32,
 }
 Texture_Handle :: struct {
+	index, generation: u32,
+}
+Model_Handle :: struct {
 	index, generation: u32,
 }
 Material_Handle :: struct {
@@ -922,6 +933,8 @@ World_Entity :: struct {
 	mesh_index: int,
 	geometry_index: int,
 	material_index: int,
+	model_resource: string,
+	model_owner: Entity_UUID,
 	render_instance_index: int,
 	render_active_index: int,
 	render_camera_active_index: int,
@@ -1061,6 +1074,8 @@ World :: struct {
 	render_topology_revision: u64,
 	render_structure_sync_count: u64,
 	render_hierarchy_revision: u64,
+	model_instance_revision: u64,
+	model_instance_reconciled_revision: u64,
 	free_transform_indices: [dynamic]int,
 	free_mesh_indices: [dynamic]int,
 	free_geometry_indices: [dynamic]int,

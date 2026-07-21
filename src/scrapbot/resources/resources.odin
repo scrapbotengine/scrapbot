@@ -23,6 +23,7 @@ Vec4 :: struct {
 
 Geometry_Handle :: shared.Geometry_Handle
 Texture_Handle :: shared.Texture_Handle
+Model_Handle :: shared.Model_Handle
 Material_Handle :: shared.Material_Handle
 Font_Handle :: shared.Font_Handle
 
@@ -130,10 +131,12 @@ Font :: struct {
 Registry :: struct {
 	geometries: [dynamic]Geometry,
 	textures: [dynamic]Texture,
+	models: [dynamic]Model,
 	materials: [dynamic]Material,
 	fonts: [dynamic]Font,
 	geometry_topology_revision: u64,
 	texture_revision: u64,
+	model_revision: u64,
 	material_revision: u64,
 	allocator: mem.Allocator,
 }
@@ -168,6 +171,9 @@ ensure_allocator :: proc(registry: ^Registry) {
 	if registry.textures == nil {
 		registry.textures = make([dynamic]Texture, registry.allocator)
 	}
+	if registry.models == nil {
+		registry.models = make([dynamic]Model, registry.allocator)
+	}
 	if registry.fonts == nil { registry.fonts = make([dynamic]Font, registry.allocator) }
 }
 init_registry :: proc(registry: ^Registry, allocator := context.allocator) {registry^ = {}
@@ -196,10 +202,14 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(texture.asset_source, allocator)
 		delete(texture.desc.pixels, allocator)
 	}
+	for &model in registry.models {
+		destroy_model(&model, allocator)
+	}
 	for &font in registry.fonts { delete(font.name, allocator); delete(font.desc.pixels, allocator) }
 	delete(registry.geometries)
 	delete(registry.materials)
 	delete(registry.textures)
+	delete(registry.models)
 	delete(registry.fonts)
 	registry^ = {}
 }
@@ -216,6 +226,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.geometry_topology_revision = source.geometry_topology_revision
 	destination.material_revision = source.material_revision
 	destination.texture_revision = source.texture_revision
+	destination.model_revision = source.model_revision
 	for geometry in source.geometries {
 		cloned := geometry
 		name, name_err := strings.clone(geometry.name, allocator)
@@ -272,6 +283,14 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 			return "failed to clone texture metadata"
 		}
 		append(&destination.textures, cloned)
+	}
+	for model in source.models {
+		cloned, clone_err := clone_model(model, allocator)
+		if clone_err != "" {
+			destroy_registry(destination)
+			return clone_err
+		}
+		append(&destination.models, cloned)
 	}
 	for font in source.fonts {
 		cloned := font

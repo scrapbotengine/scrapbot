@@ -1,5 +1,6 @@
 package scrapbot
 
+import asset_import "./asset_import"
 import project "./project"
 import shared "./shared"
 import "core:fmt"
@@ -56,14 +57,20 @@ package_project :: proc(root: string, config: Package_Config) -> Package_Result 
 		return result
 	}
 
-	loaded := project.load_project_config(root)
-	defer project.destroy_project_config_load_result(&loaded)
+	loaded := project.load_project(root)
+	defer project.destroy_project_load_result(&loaded)
 	if loaded.err != "" {
 		result.err = clone_package_string(loaded.err)
 		return result
 	}
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
 		result.err = clone_package_string(err)
+		return result
+	}
+	imports := asset_import.ensure_project_imports(root, loaded.resources[:])
+	defer asset_import.destroy_report(&imports)
+	if imports.err != "" {
+		result.err = clone_package_string(imports.err)
 		return result
 	}
 	if err := build_native_extensions(root, &loaded.config, .Release); err != "" {
@@ -168,6 +175,18 @@ copy_project_payload :: proc(root, output_dir: string) -> string {
 		if fonts_dst_err != nil { return "failed to allocate packaged font artifact path" }
 		defer delete(fonts_dst)
 		if err := copy_package_entry(fonts_src, fonts_dst, .Directory); err != "" { return err }
+	}
+	imports_src, imports_src_err := filepath.join({root, shared.PROJECT_IMPORTED_ASSETS_DIR})
+	if imports_src_err != nil { return "failed to allocate imported asset source path" }
+	defer delete(imports_src)
+	if os.exists(imports_src) {
+		imports_dst, imports_dst_err := filepath.join(
+			{output_dir, shared.PROJECT_IMPORTED_ASSETS_DIR},
+		)
+		if imports_dst_err != nil { return "failed to allocate packaged imported asset path" }
+		defer delete(imports_dst)
+		if err := copy_package_entry(imports_src, imports_dst, .Directory);
+		   err != "" { return err }
 	}
 	return ""
 }

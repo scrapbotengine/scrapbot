@@ -45,6 +45,7 @@ Storage_Kind :: enum {
 	Mesh,
 	Geometry,
 	Material,
+	Model,
 	Shadow_Caster,
 	Shadow_Receiver,
 	UI_Layout,
@@ -157,6 +158,7 @@ init_registry :: proc(registry: ^Registry) {
 	register_engine_component(registry, "scrapbot.mesh", {})
 	register_engine_component(registry, "scrapbot.geometry", {})
 	register_engine_component(registry, "scrapbot.material", {})
+	register_engine_component(registry, "scrapbot.model", {})
 	register_engine_component(registry, "scrapbot.shadow_caster", {})
 	register_engine_component(registry, "scrapbot.shadow_receiver", {})
 	register_engine_component(
@@ -458,6 +460,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .Geometry, .Authored
 		case "scrapbot.material":
 			return .Material, .Authored
+		case "scrapbot.model":
+			return .Model, .Authored
 		case "scrapbot.shadow_caster":
 			return .Shadow_Caster, .Authored
 		case "scrapbot.shadow_receiver":

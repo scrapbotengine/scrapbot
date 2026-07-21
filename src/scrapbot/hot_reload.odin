@@ -218,12 +218,15 @@ hot_reload_playback_stop :: proc(data: rawptr, world: ^shared.World) -> string {
 	if state == nil || world == nil {
 		return "cannot restore an unavailable hot-reload runtime"
 	}
-	return restore_playback_baseline(
+	if err := restore_playback_baseline(
 		&state.playback_baseline,
 		&state.runtime,
 		world,
 		&state.resources,
-	)
+	); err != "" {
+		return err
+	}
+	return reconcile_model_instances(world, &state.resources)
 }
 
 hot_reload_scene_save :: proc(
@@ -266,20 +269,19 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 		return clone_err
 	}
 	defer resources.destroy_registry(&next_resources)
-	if err := resources.register_project_materials(
-		&next_resources,
-		state.root,
-		loaded.resources[:],
-	); err != "" {
-		return err
-	}
-	if err := resources.register_project_lod_geometries(&next_resources, loaded.resources[:]);
-	   err != "" {
-		return err
-	}
 	next_world, world_err := load_validated_scene_world(state.scene_path, &state.runtime)
 	if world_err != "" {
 		return world_err
+	}
+	if err := init_render_resources(
+		&next_resources,
+		&next_world,
+		state.root,
+		&loaded.config,
+		loaded.resources[:],
+	); err != "" {
+		ecs.destroy_world(&next_world)
+		return err
 	}
 	resources.destroy_registry(&state.resources)
 	state.resources = next_resources
@@ -290,6 +292,14 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	state.scene_stamp = file_stamp(state.scene_path)
 	state.resources_stamp = asset_stamp(state.resources_path)
 	return ""
+}
+
+hot_reload_reconcile_models :: proc(data: rawptr, world: ^shared.World) -> string {
+	state := cast(^Hot_Reload_State)data
+	if state == nil {
+		return ""
+	}
+	return reconcile_model_instances(world, &state.resources)
 }
 
 maybe_poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World, delta_seconds: f32) {

@@ -159,6 +159,9 @@ editor_reflected_field_value :: proc(
 	if definition.name == "scrapbot.material" && entity.has_material && field.name == "resource" {
 		return any{rawptr(&entity.material_resource), typeid_of(string)}, true
 	}
+	if definition.name == "scrapbot.model" && entity.has_model && field.name == "resource" {
+		return any{rawptr(&entity.model_resource), typeid_of(string)}, true
+	}
 	if definition.owner != .Engine {
 		for &custom in entity.custom_components {
 			if custom.name != definition.name {
@@ -565,6 +568,8 @@ editor_reflected_component_valid :: proc(
 			return entity.geometry_resource != ""
 		case "scrapbot.material":
 			return entity.material_resource != ""
+		case "scrapbot.model":
+			return entity.model_resource != ""
 		case "scrapbot.ui_layout":
 			return(
 				entity.ui_layout.parent != entity.id &&

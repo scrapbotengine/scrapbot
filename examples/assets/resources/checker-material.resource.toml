@@ -1,0 +1,8 @@
+id = "a7000000-0000-4000-8000-000000000003"
+type = "scrapbot.material"
+name = "Checker Material"
+
+[material]
+base_color = [1, 1, 1, 1]
+emissive = [0, 0, 0]
+texture = "a7000000-0000-4000-8000-000000000002"

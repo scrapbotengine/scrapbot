@@ -161,6 +161,8 @@ Run_Config :: struct {
 	runtime_save_data: rawptr,
 	runtime_revert: Runtime_World_Proc,
 	runtime_revert_data: rawptr,
+	runtime_reconcile: Runtime_World_Proc,
+	runtime_reconcile_data: rawptr,
 	resource_registry: ^resources.Registry,
 	stats: ^Render_Stats,
 	performance_diagnostics: ^Performance_Diagnostics_Accumulator,
@@ -718,6 +720,11 @@ run_frame_system_unmeasured :: proc(
 			keyboard,
 			config.resource_registry,
 		); err != "" { return err }
+		if config.runtime_reconcile != nil {
+			if err := config.runtime_reconcile(config.runtime_reconcile_data, world); err != "" {
+				return err
+			}
+		}
 		record_system_profile_phase(config, .UI, ui_system_start)
 		cursor: platform.Runtime_Pointer_Cursor
 		switch ui.current_pointer_cursor(config.ui_state) {

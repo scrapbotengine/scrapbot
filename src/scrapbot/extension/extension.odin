@@ -6,6 +6,7 @@ import raw "scrapbot:extension_api"
 
 TRANSFORM :: "scrapbot.transform"
 MESH :: "scrapbot.mesh"
+MODEL :: "scrapbot.model"
 AMBIENT_LIGHT :: "scrapbot.ambient_light"
 DIRECTIONAL_LIGHT :: "scrapbot.directional_light"
 POINT_LIGHT :: "scrapbot.point_light"

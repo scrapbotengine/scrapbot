@@ -46,6 +46,10 @@ parse_project_resource :: proc(
 			section = "texture"
 			continue
 		}
+		if line == "[model]" {
+			section = "model"
+			continue
+		}
 		if line == "[geometry_lod]" {
 			section = "geometry_lod"
 			continue
@@ -96,6 +100,27 @@ parse_project_resource :: proc(
 			}
 			if !found {
 				return resource, fail(.Invalid_Field, fmt.tprintf("invalid texture.%s", key))
+			}
+			continue
+		}
+		if section == "model" {
+			switch key {
+				case "source":
+					resource.model.source, found = parse_basic_string(value)
+					if found && !valid_resource_model_path(resource.model.source) {
+						return resource, fail(
+							.Invalid_Path,
+							"model.source must be a safe .gltf or .glb path under assets/",
+						)
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown model field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid model.%s", key))
 			}
 			continue
 		}
@@ -178,6 +203,8 @@ parse_project_resource :: proc(
 	switch type_name {
 		case "scrapbot.texture":
 			resource.kind = .Texture
+		case "scrapbot.model":
+			resource.kind = .Model
 		case "scrapbot.material":
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
@@ -194,6 +221,10 @@ parse_project_resource :: proc(
 	if resource.kind == .Texture {
 		if resource.texture.source == "" {
 			return resource, fail(.Missing_Field, "texture.source is required")
+		}
+	} else if resource.kind == .Model {
+		if resource.model.source == "" {
+			return resource, fail(.Missing_Field, "model.source is required")
 		}
 	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
@@ -484,6 +515,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.mesh]" ||
 		   line == "[entities.geometry]" ||
 		   line == "[entities.material]" ||
+		   line == "[entities.model]" ||
 		   line == "[entities.ambient_light]" ||
 		   line == "[entities.directional_light]" ||
 		   line == "[entities.point_light]" ||
@@ -725,6 +757,17 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				if !found ||
 				   current.material_resource ==
 					   "" { return scene, fail(.Invalid_Field, "material.resource must be a non-empty basic string") }
+			case "model":
+				current.has_model = true
+				if key !=
+				   "resource" { return scene, fail(.Invalid_Field, "model only supports resource") }
+				current.model_resource, found = parse_basic_string(value)
+				if !found || current.model_resource == "" {
+					return scene, fail(
+						.Invalid_Field,
+						"model.resource must be a non-empty resource UUID",
+					)
+				}
 			case "shadow_caster", "shadow_receiver":
 				return scene, fail(
 					.Invalid_Field,
@@ -1666,6 +1709,22 @@ valid_resource_texture_path :: proc(path: string) -> bool {
 		strings.has_suffix(path, ".png") &&
 		is_safe_relative_path(path) \
 	)
+}
+
+valid_resource_model_path :: proc(path: string) -> bool {
+	if !strings.has_prefix(path, "assets/") || !is_safe_relative_path(path) {
+		return false
+	}
+	if !strings.has_suffix(path, ".gltf") && !strings.has_suffix(path, ".glb") {
+		return false
+	}
+	remaining := path
+	for part in strings.split_iterator(&remaining, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 finite_vec3 :: proc(value: Vec3) -> bool {

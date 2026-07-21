@@ -115,6 +115,14 @@ jobs:
             Pop-Location
           }
 
+          Push-Location "$odinRoot\vendor\cgltf\src"
+          try {
+            & .\build.bat
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+
           $wgpuArchive = "wgpu-windows-x86_64-msvc-release.zip"
           $wgpuVersion = "v29.0.1.1"
           $wgpuPackage = [System.IO.Path]::GetFileNameWithoutExtension($wgpuArchive)

@@ -80,6 +80,31 @@ scale = [1, 1, 1]
 }
 
 @(test)
+test_project_model_resource_parser :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000020"
+type = "scrapbot.model"
+name = "Ship"
+
+[model]
+source = "assets/ship.glb"
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .Model)
+	testing.expect_value(t, resource.model.source, "assets/ship.glb")
+	_, unsafe := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000020"
+type = "scrapbot.model"
+name = "Unsafe"
+[model]
+source = "assets/../ship.gltf"
+`,
+	)
+	testing.expect(t, unsafe.err == .Invalid_Path)
+}
+
+@(test)
 test_project_texture_resource_parser :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000000"
@@ -1113,4 +1138,31 @@ size = [10, 10]
 	)
 	defer destroy_scene(&scene)
 	testing.expect(t, result.err == .Invalid_Field)
+}
+
+@(test)
+test_scene_parses_model_resource_component :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000020"
+name = "Imported Model"
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[entities.model]
+resource = "a7000000-0000-4000-8000-000000000001"
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	testing.expect_value(t, len(scene.entities), 1)
+	if len(scene.entities) == 1 {
+		testing.expect(t, scene.entities[0].has_model)
+		testing.expect_value(
+			t,
+			scene.entities[0].model_resource,
+			"a7000000-0000-4000-8000-000000000001",
+		)
+	}
 }

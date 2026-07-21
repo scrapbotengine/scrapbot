@@ -1057,9 +1057,24 @@ spawn_queued_entity :: proc(
 	return entity_index
 }
 
+despawn_model_instance_entities :: proc(world: ^World, owner: shared.Entity_UUID) {
+	if world == nil || owner == (shared.Entity_UUID{}) {
+		return
+	}
+	for candidate, candidate_index in world.entities {
+		if !candidate.alive || candidate.model_owner != owner {
+			continue
+		}
+		despawn_entity(world, candidate_index, candidate.id.generation)
+	}
+}
+
 despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	if !entity_is_current(world, entity_index, generation) {
 		return
+	}
+	if world.entities[entity_index].model_resource != "" {
+		despawn_model_instance_entities(world, world.entities[entity_index].uuid)
 	}
 	mark_render_entity_dirty(world, entity_index)
 	detach_transform_children(world, entity_index)
@@ -1083,9 +1098,11 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	delete_world_string(world, entity.name)
 	delete_world_string(world, entity.geometry_resource)
 	delete_world_string(world, entity.material_resource)
+	delete_world_string(world, entity.model_resource)
 	entity.name = ""
 	entity.geometry_resource = ""
 	entity.material_resource = ""
+	entity.model_resource = ""
 	ui_component_names := [?]string {
 		"scrapbot.ui_layout",
 		"scrapbot.ui_hstack",

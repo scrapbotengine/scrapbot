@@ -297,6 +297,7 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, entity.name)
 		delete_world_string(world, entity.geometry_resource)
 		delete_world_string(world, entity.material_resource)
+		delete_world_string(world, entity.model_resource)
 		delete(entity.custom_component_storage_indices)
 	}
 	for mesh in world.meshes {
@@ -420,6 +421,10 @@ build_world :: proc(scene: ^Scene) -> World {
 		world_entity.scene_order = scene_order
 		world_entity.geometry_resource = clone_world_string(&world, entity.geometry_resource)
 		world_entity.material_resource = clone_world_string(&world, entity.material_resource)
+		world_entity.model_resource = clone_world_string(&world, entity.model_resource)
+		if entity.model_resource != "" {
+			world.model_instance_revision += 1
+		}
 		world_entity.has_shadow_caster = entity.has_shadow_caster
 		world_entity.has_shadow_receiver = entity.has_shadow_receiver
 
@@ -2751,6 +2756,8 @@ entity_has_component :: proc "c" (
 			return entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries)
 		case "scrapbot.material":
 			return entity.material_index >= 0 && entity.material_index < len(world.materials)
+		case "scrapbot.model":
+			return entity.model_resource != ""
 		case "scrapbot.internal.render_instance":
 			return(
 				entity.render_instance_index >= 0 &&

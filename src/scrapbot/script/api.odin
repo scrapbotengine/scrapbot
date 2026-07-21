@@ -135,6 +135,8 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_setfield(L, -2, "geometry_component")
 	push_registered_component_handle_by_name(L, "scrapbot.material")
 	lua_setfield(L, -2, "material_component")
+	push_registered_component_handle_by_name(L, "scrapbot.model")
+	lua_setfield(L, -2, "model")
 
 	lua_createtable(L, 0, 4)
 	lua_pushcclosurek(

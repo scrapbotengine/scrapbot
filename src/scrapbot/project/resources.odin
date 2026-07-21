@@ -111,14 +111,26 @@ clone_project_resource_strings :: proc(
 		}
 		texture_source = texture_source_value
 	}
+	model_source := ""
+	if resource.model.source != "" {
+		model_source_value, model_source_err := strings.clone(resource.model.source)
+		if model_source_err != nil {
+			delete(name)
+			delete(texture_source)
+			return "failed to allocate project model source path"
+		}
+		model_source = model_source_value
+	}
 	source_value, source_err := strings.clone(source)
 	if source_err != nil {
 		delete(name)
 		delete(texture_source)
+		delete(model_source)
 		return "failed to allocate project resource source path"
 	}
 	resource.name = name
 	resource.texture.source = texture_source
+	resource.model.source = model_source
 	resource.source = source_value
 	return ""
 }
@@ -131,6 +143,7 @@ destroy_project_resources :: proc(resources: ^[dynamic]shared.Project_Resource) 
 		delete(resource.name)
 		delete(resource.source)
 		delete(resource.texture.source)
+		delete(resource.model.source)
 	}
 	delete(resources^)
 	resources^ = nil
@@ -149,6 +162,8 @@ validate_scene_resource_references :: proc(
 	defer delete(known_geometries)
 	known_textures := make(map[shared.Resource_UUID]bool)
 	defer delete(known_textures)
+	known_models := make(map[shared.Resource_UUID]bool)
+	defer delete(known_models)
 	for resource in resources {
 		if resource.kind == .Material {
 			known_materials[resource.id] = true
@@ -156,6 +171,8 @@ validate_scene_resource_references :: proc(
 			known_geometries[resource.id] = true
 		} else if resource.kind == .Texture {
 			known_textures[resource.id] = true
+		} else if resource.kind == .Model {
+			known_models[resource.id] = true
 		}
 	}
 	for resource in resources {
@@ -171,6 +188,16 @@ validate_scene_resource_references :: proc(
 		}
 	}
 	for entity in scene.entities {
+		if entity.has_model {
+			resource_id, valid := shared.resource_uuid_parse(entity.model_resource)
+			if !valid || !known_models[resource_id] {
+				return fmt.tprintf(
+					"scene entity '%s' references unknown model resource '%s'",
+					entity.name,
+					entity.model_resource,
+				)
+			}
+		}
 		if entity.has_geometry {
 			if resource_id, valid := shared.resource_uuid_parse(entity.geometry_resource);
 			   valid && !known_geometries[resource_id] {
