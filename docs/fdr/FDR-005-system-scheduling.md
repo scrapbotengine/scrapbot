@@ -24,7 +24,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Conflicting systems preserve registration order across scheduler stages.
 - Luau systems execute serially on the calling thread and act as barriers between native stages.
 - Each parallel native system receives a private deferred-command buffer; commands merge deterministically in system order after the stage completes.
-- The combined frame schedule and native deferred-command buffers persist across frames. The schedule rebuilds only when system topology changes; buffers start small and grow on demand.
+- The combined frame schedule and native deferred-command buffers persist across frames. The schedule rebuilds only when system topology changes; buffers use compact ordered headers plus typed payload arrays, start small, and grow on demand.
 - Every system in a frame observes the same read-only world time resource snapshot.
 - `scrapbot run --scheduler-trace` reports worker count, parallel stage count, and maximum parallel width for the run.
 - The runtime measures each project-Odin and Luau callback at its execution boundary and tags profiler entries with explicit Engine, Project Odin, or Luau provenance rather than inferring origin from names. The editor publishes every five successful frames from a rolling window of the last 50 successful frames and uses project-facing Luau names when provided; failed frames do not enter the sample.
@@ -64,7 +64,7 @@ Declared systems now enforce their declared component access at the Luau API bou
 
 **Decision:** Queue Luau entity/component lifecycle requests during system execution, then apply them after the scheduled frame step completes.
 **Why:** Queries and future parallel system batches need stable entity/component storage while systems are running.
-**Tradeoff:** Script code observes structural changes on the next frame. Command buffers grow geometrically to accept the frame's structural workload and retain that high-water allocation; individual command payloads still have fixed ABI-safe limits.
+**Tradeoff:** Script code observes structural changes on the next frame. Command-buffer payload arrays grow geometrically to accept the frame's structural workload and retain their separate high-water allocations; caller-owned ABI staging payloads still have fixed limits.
 
 ### 5. Keep Luau on the calling thread
 
@@ -107,6 +107,12 @@ Declared systems now enforce their declared component access at the Luau API bou
 **Decision:** Keep bidirectional entity-to-project-component membership indexes and let a query cursor iterate the smallest requested custom storage before testing its remaining requirements.
 **Why:** Sparse project components should make query and teardown work proportional to actual membership rather than world capacity or the number of registered component types.
 **Tradeoff:** Every add, remove, restore, replacement, and despawn path must maintain both indexes. Cursor order is deliberately unspecified and must not become project semantics.
+
+### 12. Store deferred commands by payload kind
+
+**Decision:** Preserve command issue order in a compact header stream whose indices address separate spawn, despawn, add-component, and remove-component arrays. Copy only components actually present on a queued spawn into side arrays and remap those ranges when worker buffers merge.
+**Why:** A single worst-case command record made every despawn reserve storage for a complete spawn, custom component arrays, and all UI payload variants. High-churn projects therefore paid the largest payload's memory and copy cost for their smallest lifecycle operation.
+**Tradeoff:** Queue application and deterministic merging must resolve and remap payload indices correctly. Public Luau/native operations and their fixed-layout ABI staging values remain unchanged.
 
 ## Related
 

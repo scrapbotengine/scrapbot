@@ -32,7 +32,7 @@ test_frame_system_cache_reuses_buffers_and_rebuilds_only_for_topology_changes ::
 	testing.expect(t, first != nil && first.batch_count == 1)
 	testing.expect(t, cache.plan_build_count == 1)
 	testing.expect(t, cache.native_command_count == 2)
-	testing.expect(t, len(cache.native_commands[0].commands) == 4)
+	testing.expect(t, cap(cache.native_commands[0].commands) == 4)
 	first_buffer := raw_data(cache.native_commands[0].commands)
 
 	second := prepare_frame_system_cache(&cache, systems[:], 2)

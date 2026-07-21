@@ -61,7 +61,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 **Decision:** Carry every public UI value and style in fixed-layout native payloads. Text and font names use bounded inline byte arrays, UI interaction state is read-only, and writes remain deferred through the ordinary command buffer.
 **Why:** Native extensions need the same widgets as scenes, Luau, and editor chrome without sharing Odin strings, allocators, or pointers into engine storage across a dynamic-library boundary. See ADR-025.
-**Tradeoff:** Native UI writes replace a complete typed payload after a read/modify/write cycle, strings have fixed maximum lengths, and a spawn contains at most the command buffer's fixed component capacity.
+**Tradeoff:** Native UI writes replace a complete typed payload after a read/modify/write cycle, strings have fixed maximum lengths, and a caller-owned spawn request contains at most the ABI's fixed component capacity. Once accepted, the engine queues only the component payloads actually present.
 
 ### 5. Provide an Odin authoring wrapper over the raw ABI
 

@@ -867,8 +867,10 @@ test_deferred_command_buffers_merge_in_source_order :: proc(t: ^testing.T) {
 	testing.expect(t, append_commands(&destination, &source) == "")
 	testing.expect(t, destination.command_count == 2)
 	testing.expect(t, source.command_count == 0)
-	testing.expect(t, spawn_command_name(&destination.commands[0].spawn) == "First")
-	testing.expect(t, spawn_command_name(&destination.commands[1].spawn) == "Second")
+	first := &destination.spawns[destination.commands[0].payload_index]
+	second := &destination.spawns[destination.commands[1].payload_index]
+	testing.expect(t, queued_spawn_command_name(first) == "First")
+	testing.expect(t, queued_spawn_command_name(second) == "Second")
 }
 
 @(test)
@@ -887,7 +889,56 @@ test_deferred_command_buffers_grow_beyond_the_initial_capacity :: proc(t: ^testi
 		)
 	}
 	testing.expect(t, commands.command_count == command_count)
-	testing.expect(t, len(commands.commands) >= command_count)
+	testing.expect(t, len(commands.commands) == command_count)
+	testing.expect(t, len(commands.spawns) == command_count)
+	testing.expect(t, len(commands.despawns) == 0)
+}
+
+@(test)
+test_deferred_command_buffers_store_only_the_queued_payload_kind :: proc(t: ^testing.T) {
+	commands: Command_Buffer
+	init_command_buffer_capacity(&commands, 1)
+	defer destroy_command_buffer(&commands)
+
+	command_count := DEFAULT_COMMAND_CAPACITY * 4
+	for index in 0 ..< command_count {
+		testing.expect(t, queue_despawn(&commands, index, 1) == "")
+	}
+
+	testing.expect(t, len(commands.commands) == command_count)
+	testing.expect(t, len(commands.despawns) == command_count)
+	testing.expect(t, len(commands.spawns) == 0)
+	testing.expect(t, len(commands.spawn_components) == 0)
+	testing.expect(t, len(commands.spawn_ui_components) == 0)
+	testing.expect(t, len(commands.add_components) == 0)
+	testing.expect(t, len(commands.remove_components) == 0)
+	testing.expect(t, size_of(Command_Header) <= 16)
+	testing.expect(t, size_of(Despawn_Command) <= 16)
+	testing.expect(t, size_of(Queued_Spawn_Command) < size_of(Spawn_Command))
+}
+
+@(test)
+test_deferred_spawn_storage_pools_only_present_components :: proc(t: ^testing.T) {
+	commands: Command_Buffer
+	init_command_buffer_capacity(&commands, 1)
+	defer destroy_command_buffer(&commands)
+
+	first_component, second_component: Command_Component
+	testing.expect(t, init_command_component(&first_component, 1, "first") == "")
+	testing.expect(t, init_command_component(&second_component, 2, "second") == "")
+	spawn: Spawn_Command
+	testing.expect(t, init_spawn_command(&spawn, "Pooled") == "")
+	testing.expect(t, spawn_add_custom_component(&spawn, first_component) == "")
+	testing.expect(t, spawn_add_custom_component(&spawn, second_component) == "")
+	testing.expect(t, queue_spawn_command(&commands, spawn) == "")
+
+	testing.expect(t, len(commands.spawns) == 1)
+	testing.expect(t, len(commands.spawn_components) == 2)
+	testing.expect(t, len(commands.spawn_ui_components) == 0)
+	testing.expect(t, commands.spawns[0].custom_component_start == 0)
+	testing.expect(t, commands.spawns[0].custom_component_count == 2)
+	testing.expect(t, command_component_name(&commands.spawn_components[0]) == "first")
+	testing.expect(t, command_component_name(&commands.spawn_components[1]) == "second")
 }
 
 @(test)
@@ -907,11 +958,41 @@ test_deferred_command_buffers_merge_beyond_the_initial_capacity :: proc(t: ^test
 	testing.expect(t, append_commands(&destination, &source) == "")
 	testing.expect(t, destination.command_count == commands_per_buffer * 2)
 	testing.expect(t, source.command_count == 0)
-	testing.expect(t, len(destination.commands) >= commands_per_buffer * 2)
-	testing.expect(
-		t,
-		spawn_command_name(&destination.commands[commands_per_buffer].spawn) == "Source",
-	)
+	testing.expect(t, len(destination.commands) == commands_per_buffer * 2)
+	testing.expect(t, len(destination.spawns) == commands_per_buffer * 2)
+	first_source_index := destination.commands[commands_per_buffer].payload_index
+	first_source := &destination.spawns[first_source_index]
+	testing.expect(t, queued_spawn_command_name(first_source) == "Source")
+}
+
+@(test)
+test_deferred_command_merge_remaps_spawn_component_ranges :: proc(t: ^testing.T) {
+	destination, source: Command_Buffer
+	init_command_buffer_capacity(&destination, 1)
+	defer destroy_command_buffer(&destination)
+	init_command_buffer_capacity(&source, 1)
+	defer destroy_command_buffer(&source)
+
+	first, second, third: Command_Component
+	testing.expect(t, init_command_component(&first, 1, "first") == "")
+	testing.expect(t, init_command_component(&second, 2, "second") == "")
+	testing.expect(t, init_command_component(&third, 3, "third") == "")
+	destination_spawn, source_spawn: Spawn_Command
+	testing.expect(t, init_spawn_command(&destination_spawn, "Destination") == "")
+	testing.expect(t, spawn_add_custom_component(&destination_spawn, first) == "")
+	testing.expect(t, queue_spawn_command(&destination, destination_spawn) == "")
+	testing.expect(t, init_spawn_command(&source_spawn, "Source") == "")
+	testing.expect(t, spawn_add_custom_component(&source_spawn, second) == "")
+	testing.expect(t, spawn_add_custom_component(&source_spawn, third) == "")
+	testing.expect(t, queue_spawn_command(&source, source_spawn) == "")
+
+	testing.expect(t, append_commands(&destination, &source) == "")
+	testing.expect(t, len(destination.spawn_components) == 3)
+	merged_spawn := &destination.spawns[1]
+	testing.expect(t, merged_spawn.custom_component_start == 1)
+	testing.expect(t, merged_spawn.custom_component_count == 2)
+	testing.expect(t, command_component_name(&destination.spawn_components[1]) == "second")
+	testing.expect(t, command_component_name(&destination.spawn_components[2]) == "third")
 }
 
 @(test)

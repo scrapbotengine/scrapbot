@@ -2,7 +2,6 @@ package ecs
 
 import shared "../shared"
 import base_runtime "base:runtime"
-import "core:mem"
 
 DEFAULT_COMMAND_CAPACITY :: 128
 MAX_COMMAND_NAME_BYTES :: 64
@@ -144,19 +143,45 @@ Remove_Component_Command :: struct {
 	name_len: int,
 }
 
-Command :: struct {
+Command_Header :: struct {
 	kind: Command_Kind,
-	spawn: Spawn_Command,
+	payload_index: int,
+}
+
+Despawn_Command :: struct {
 	entity_index: int,
 	generation: u32,
-	add_component: Add_Component_Command,
-	remove_component: Remove_Component_Command,
+}
+
+Queued_Spawn_Command :: struct {
+	uuid: shared.Entity_UUID,
+	name: [MAX_COMMAND_NAME_BYTES]u8,
+	name_len: int,
+	has_transform: bool,
+	transform: Transform_Component,
+	has_mesh: bool,
+	mesh: Command_Mesh,
+	has_geometry: bool,
+	geometry: Geometry_Handle,
+	has_material: bool,
+	material: Material_Handle,
+	has_shadow_caster: bool,
+	has_shadow_receiver: bool,
+	custom_component_start: int,
+	custom_component_count: int,
+	ui_component_start: int,
+	ui_component_count: int,
 }
 
 Command_Buffer :: struct {
-	commands: []Command,
+	commands: [dynamic]Command_Header,
+	spawns: [dynamic]Queued_Spawn_Command,
+	spawn_components: [dynamic]Command_Component,
+	spawn_ui_components: [dynamic]UI_Component_Command,
+	despawns: [dynamic]Despawn_Command,
+	add_components: [dynamic]Add_Component_Command,
+	remove_components: [dynamic]Remove_Component_Command,
 	command_count: int,
-	allocator: mem.Allocator,
 }
 
 init_command_buffer :: proc(buffer: ^Command_Buffer) {
@@ -165,36 +190,35 @@ init_command_buffer :: proc(buffer: ^Command_Buffer) {
 
 init_command_buffer_capacity :: proc(buffer: ^Command_Buffer, capacity: int) {
 	buffer^ = {}
-	buffer.allocator = context.allocator
-	buffer.commands = make([]Command, max(capacity, 1), buffer.allocator)
+	allocator := context.allocator
+	buffer.commands = make([dynamic]Command_Header, 0, max(capacity, 1), allocator)
+	buffer.spawns = make([dynamic]Queued_Spawn_Command, allocator)
+	buffer.spawn_components = make([dynamic]Command_Component, allocator)
+	buffer.spawn_ui_components = make([dynamic]UI_Component_Command, allocator)
+	buffer.despawns = make([dynamic]Despawn_Command, allocator)
+	buffer.add_components = make([dynamic]Add_Component_Command, allocator)
+	buffer.remove_components = make([dynamic]Remove_Component_Command, allocator)
 }
 
 destroy_command_buffer :: proc(buffer: ^Command_Buffer) {
-	delete(buffer.commands, buffer.allocator)
+	delete(buffer.commands)
+	delete(buffer.spawns)
+	delete(buffer.spawn_components)
+	delete(buffer.spawn_ui_components)
+	delete(buffer.despawns)
+	delete(buffer.add_components)
+	delete(buffer.remove_components)
 	buffer^ = {}
 }
 
-ensure_command_capacity :: proc "c" (buffer: ^Command_Buffer, additional := 1) -> bool {
+append_command_header :: proc "contextless" (
+	buffer: ^Command_Buffer,
+	kind: Command_Kind,
+	payload_index: int,
+) {
 	context = base_runtime.default_context()
-	if buffer == nil || buffer.commands == nil || additional < 0 {
-		return false
-	}
-	required := buffer.command_count + additional
-	if required < buffer.command_count {
-		return false
-	}
-	if required <= len(buffer.commands) {
-		return true
-	}
-	capacity := max(len(buffer.commands) * 2, required)
-	if capacity < required {
-		capacity = required
-	}
-	commands := make([]Command, capacity, buffer.allocator)
-	copy(commands[:buffer.command_count], buffer.commands[:buffer.command_count])
-	delete(buffer.commands, buffer.allocator)
-	buffer.commands = commands
-	return true
+	append(&buffer.commands, Command_Header{kind = kind, payload_index = payload_index})
+	buffer.command_count = len(buffer.commands)
 }
 
 queue_spawn :: proc "c" (buffer: ^Command_Buffer, name: string) -> string {
@@ -351,20 +375,25 @@ queued_ui_component :: proc(
 		return nil
 	}
 	for command_index := buffer.command_count - 1; command_index >= 0; command_index -= 1 {
-		command := &buffer.commands[command_index]
-		if command.kind == .Remove_Component &&
-		   command.remove_component.entity_index == entity_index &&
-		   command.remove_component.generation == generation &&
-		   ui_component_command_kind(remove_component_name(&command.remove_component)) == kind {
-			return nil
+		header := &buffer.commands[command_index]
+		if header.kind == .Remove_Component {
+			command := &buffer.remove_components[header.payload_index]
+			if command.entity_index == entity_index &&
+			   command.generation == generation &&
+			   ui_component_command_kind(remove_component_name(command)) == kind {
+				return nil
+			}
 		}
-		if command.kind != .Add_Component ||
-		   command.add_component.entity_index != entity_index ||
-		   command.add_component.generation != generation ||
-		   command.add_component.ui_component.kind != kind {
+		if header.kind != .Add_Component {
 			continue
 		}
-		return &command.add_component.ui_component
+		command := &buffer.add_components[header.payload_index]
+		if command.entity_index != entity_index ||
+		   command.generation != generation ||
+		   command.ui_component.kind != kind {
+			continue
+		}
+		return &command.ui_component
 	}
 	return nil
 }
@@ -491,42 +520,69 @@ command_component_add_vec4 :: proc "c" (
 }
 
 queue_spawn_command :: proc "c" (buffer: ^Command_Buffer, spawn: Spawn_Command) -> string {
+	context = base_runtime.default_context()
 	if buffer == nil {
 		return "command buffer is not available"
 	}
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
+	queued := Queued_Spawn_Command {
+		uuid = spawn.uuid,
+		name = spawn.name,
+		name_len = spawn.name_len,
+		has_transform = spawn.has_transform,
+		transform = spawn.transform,
+		has_mesh = spawn.has_mesh,
+		mesh = spawn.mesh,
+		has_geometry = spawn.has_geometry,
+		geometry = spawn.geometry,
+		has_material = spawn.has_material,
+		material = spawn.material,
+		has_shadow_caster = spawn.has_shadow_caster,
+		has_shadow_receiver = spawn.has_shadow_receiver,
+		custom_component_start = len(buffer.spawn_components),
+		custom_component_count = spawn.custom_component_count,
+		ui_component_start = len(buffer.spawn_ui_components),
+		ui_component_count = spawn.ui_component_count,
 	}
-
-	command := &buffer.commands[buffer.command_count]
-	command^ = Command {
-		kind = .Spawn,
-		spawn = spawn,
+	for index in 0 ..< spawn.custom_component_count {
+		append(&buffer.spawn_components, spawn.custom_components[index])
 	}
-	buffer.command_count += 1
+	for index in 0 ..< spawn.ui_component_count {
+		append(&buffer.spawn_ui_components, spawn.ui_components[index])
+	}
+	payload_index := len(buffer.spawns)
+	append(&buffer.spawns, queued)
+	append_command_header(buffer, .Spawn, payload_index)
 	return ""
 }
 
 queue_despawn :: proc "c" (buffer: ^Command_Buffer, entity_index: int, generation: u32) -> string {
+	context = base_runtime.default_context()
 	if buffer == nil {
 		return "command buffer is not available"
 	}
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
+	payload_index := len(buffer.despawns)
+	append(&buffer.despawns, Despawn_Command{entity_index = entity_index, generation = generation})
+	append_command_header(buffer, .Despawn, payload_index)
+	return ""
+}
 
-	buffer.commands[buffer.command_count] = Command {
-		kind = .Despawn,
-		entity_index = entity_index,
-		generation = generation,
+queue_add_component_command :: proc "contextless" (
+	buffer: ^Command_Buffer,
+	command: Add_Component_Command,
+) -> string {
+	context = base_runtime.default_context()
+	if buffer == nil || buffer.commands == nil {
+		return "command buffer is not initialized"
 	}
-	buffer.command_count += 1
+	payload_index := len(buffer.add_components)
+	append(&buffer.add_components, command)
+	append_command_header(buffer, .Add_Component, payload_index)
 	return ""
 }
 
@@ -542,21 +598,15 @@ queue_add_transform :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-
-	buffer.commands[buffer.command_count] = Command {
-		kind = .Add_Component,
-		add_component = Add_Component_Command {
+	return queue_add_component_command(
+		buffer,
+		Add_Component_Command {
 			entity_index = entity_index,
 			generation = generation,
 			has_transform = true,
 			transform = transform,
 		},
-	}
-	buffer.command_count += 1
-	return ""
+	)
 }
 
 queue_add_geometry :: proc "c" (
@@ -568,20 +618,15 @@ queue_add_geometry :: proc "c" (
 	if buffer == nil || buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-	buffer.commands[buffer.command_count] = {
-		kind = .Add_Component,
-		add_component = {
+	return queue_add_component_command(
+		buffer,
+		Add_Component_Command {
 			entity_index = entity_index,
 			generation = generation,
 			has_geometry = true,
 			geometry = handle,
 		},
-	}
-	buffer.command_count += 1
-	return ""
+	)
 }
 
 queue_add_material :: proc "c" (
@@ -593,20 +638,15 @@ queue_add_material :: proc "c" (
 	if buffer == nil || buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-	buffer.commands[buffer.command_count] = {
-		kind = .Add_Component,
-		add_component = {
+	return queue_add_component_command(
+		buffer,
+		Add_Component_Command {
 			entity_index = entity_index,
 			generation = generation,
 			has_material = true,
 			material = handle,
 		},
-	}
-	buffer.command_count += 1
-	return ""
+	)
 }
 
 queue_add_marker :: proc "c" (
@@ -617,9 +657,6 @@ queue_add_marker :: proc "c" (
 ) -> string {
 	if buffer == nil || buffer.commands == nil {
 		return "command buffer is not initialized"
-	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
 	}
 	add := Add_Component_Command {
 		entity_index = entity_index,
@@ -633,12 +670,7 @@ queue_add_marker :: proc "c" (
 		case:
 			return "unsupported marker component"
 	}
-	buffer.commands[buffer.command_count] = {
-		kind = .Add_Component,
-		add_component = add,
-	}
-	buffer.command_count += 1
-	return ""
+	return queue_add_component_command(buffer, add)
 }
 
 queue_add_mesh :: proc "c" (
@@ -653,10 +685,6 @@ queue_add_mesh :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-
 	add: Add_Component_Command
 	add.entity_index = entity_index
 	add.generation = generation
@@ -670,12 +698,7 @@ queue_add_mesh :: proc "c" (
 		return err
 	}
 
-	buffer.commands[buffer.command_count] = Command {
-		kind = .Add_Component,
-		add_component = add,
-	}
-	buffer.command_count += 1
-	return ""
+	return queue_add_component_command(buffer, add)
 }
 
 queue_add_custom_component :: proc "c" (
@@ -690,20 +713,14 @@ queue_add_custom_component :: proc "c" (
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-
-	buffer.commands[buffer.command_count] = Command {
-		kind = .Add_Component,
-		add_component = Add_Component_Command {
+	return queue_add_component_command(
+		buffer,
+		Add_Component_Command {
 			entity_index = entity_index,
 			generation = generation,
 			component = command_component,
 		},
-	}
-	buffer.command_count += 1
-	return ""
+	)
 }
 
 queue_add_ui_component :: proc "contextless" (
@@ -715,19 +732,14 @@ queue_add_ui_component :: proc "contextless" (
 	if buffer == nil || buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-	buffer.commands[buffer.command_count] = {
-		kind = .Add_Component,
-		add_component = {
+	return queue_add_component_command(
+		buffer,
+		Add_Component_Command {
 			entity_index = entity_index,
 			generation = generation,
 			ui_component = component,
 		},
-	}
-	buffer.command_count += 1
-	return ""
+	)
 }
 
 queue_remove_component :: proc "c" (
@@ -737,16 +749,13 @@ queue_remove_component :: proc "c" (
 	component_id: Component_ID,
 	name: string,
 ) -> string {
+	context = base_runtime.default_context()
 	if buffer == nil {
 		return "command buffer is not available"
 	}
 	if buffer.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(buffer) {
-		return "too many deferred world commands"
-	}
-
 	remove: Remove_Component_Command
 	remove.entity_index = entity_index
 	remove.generation = generation
@@ -756,11 +765,9 @@ queue_remove_component :: proc "c" (
 		return err
 	}
 
-	buffer.commands[buffer.command_count] = Command {
-		kind = .Remove_Component,
-		remove_component = remove,
-	}
-	buffer.command_count += 1
+	payload_index := len(buffer.remove_components)
+	append(&buffer.remove_components, remove)
+	append_command_header(buffer, .Remove_Component, payload_index)
 	return ""
 }
 
@@ -773,19 +780,20 @@ apply_commands :: proc(world: ^World, buffer: ^Command_Buffer) -> string {
 	}
 
 	for command_index in 0 ..< buffer.command_count {
-		command := &buffer.commands[command_index]
-		switch command.kind {
+		header := &buffer.commands[command_index]
+		switch header.kind {
 			case .Spawn:
-				spawn_entity(world, &command.spawn)
+				spawn_queued_entity(world, buffer, &buffer.spawns[header.payload_index])
 			case .Despawn:
+				command := &buffer.despawns[header.payload_index]
 				despawn_entity(world, command.entity_index, command.generation)
 			case .Add_Component:
-				apply_add_component(world, &command.add_component)
+				apply_add_component(world, &buffer.add_components[header.payload_index])
 			case .Remove_Component:
-				apply_remove_component(world, &command.remove_component)
+				apply_remove_component(world, &buffer.remove_components[header.payload_index])
 		}
 	}
-	buffer.command_count = 0
+	clear_commands(buffer)
 	when ODIN_TEST || WORLD_INTEGRITY_CHECKS {
 		if failure, ok := validate_world_integrity(world); !ok {
 			return format_world_integrity_failure(failure)
@@ -796,33 +804,92 @@ apply_commands :: proc(world: ^World, buffer: ^Command_Buffer) -> string {
 
 clear_commands :: proc "c" (buffer: ^Command_Buffer) {
 	if buffer != nil {
+		clear(&buffer.commands)
+		clear(&buffer.spawns)
+		clear(&buffer.spawn_components)
+		clear(&buffer.spawn_ui_components)
+		clear(&buffer.despawns)
+		clear(&buffer.add_components)
+		clear(&buffer.remove_components)
 		buffer.command_count = 0
 	}
 }
 
 append_commands :: proc(destination, source: ^Command_Buffer) -> string {
+	context = base_runtime.default_context()
 	if destination == nil || source == nil || source.command_count == 0 {
 		return ""
 	}
 	if destination.commands == nil || source.commands == nil {
 		return "command buffer is not initialized"
 	}
-	if !ensure_command_capacity(destination, source.command_count) {
-		return "too many deferred world commands"
+	if destination == source {
+		return "cannot append a command buffer to itself"
 	}
-	for i in 0 ..< source.command_count {
-		destination.commands[destination.command_count] = source.commands[i]
-		destination.command_count += 1
+	for header in source.commands {
+		switch header.kind {
+			case .Spawn:
+				spawn := source.spawns[header.payload_index]
+				component_start := len(destination.spawn_components)
+				ui_component_start := len(destination.spawn_ui_components)
+				component_end := spawn.custom_component_start + spawn.custom_component_count
+				ui_component_end := spawn.ui_component_start + spawn.ui_component_count
+				for index in spawn.custom_component_start ..< component_end {
+					append(&destination.spawn_components, source.spawn_components[index])
+				}
+				for index in spawn.ui_component_start ..< ui_component_end {
+					append(&destination.spawn_ui_components, source.spawn_ui_components[index])
+				}
+				spawn.custom_component_start = component_start
+				spawn.ui_component_start = ui_component_start
+				payload_index := len(destination.spawns)
+				append(&destination.spawns, spawn)
+				append_command_header(destination, .Spawn, payload_index)
+			case .Despawn:
+				payload_index := len(destination.despawns)
+				append(&destination.despawns, source.despawns[header.payload_index])
+				append_command_header(destination, .Despawn, payload_index)
+			case .Add_Component:
+				payload_index := len(destination.add_components)
+				append(&destination.add_components, source.add_components[header.payload_index])
+				append_command_header(destination, .Add_Component, payload_index)
+			case .Remove_Component:
+				payload_index := len(destination.remove_components)
+				append(
+					&destination.remove_components,
+					source.remove_components[header.payload_index],
+				)
+				append_command_header(destination, .Remove_Component, payload_index)
+		}
 	}
-	source.command_count = 0
+	clear_commands(source)
 	return ""
 }
 
 spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
+	if world == nil || spawn == nil {
+		return INVALID_COMPONENT_INDEX
+	}
+	buffer: Command_Buffer
+	init_command_buffer_capacity(&buffer, 1)
+	defer destroy_command_buffer(&buffer)
+	if queue_spawn_command(&buffer, spawn^) != "" {
+		return INVALID_COMPONENT_INDEX
+	}
+	entity_index := spawn_queued_entity(world, &buffer, &buffer.spawns[0])
+	spawn.uuid = buffer.spawns[0].uuid
+	return entity_index
+}
+
+spawn_queued_entity :: proc(
+	world: ^World,
+	buffer: ^Command_Buffer,
+	spawn: ^Queued_Spawn_Command,
+) -> int {
 	context = base_runtime.default_context()
 	entity_index, created := create_world_entity(
 		world,
-		spawn_command_name(spawn),
+		queued_spawn_command_name(spawn),
 		spawn.uuid,
 		.Runtime,
 		true,
@@ -850,10 +917,12 @@ spawn_entity :: proc(world: ^World, spawn: ^Spawn_Command) -> int {
 	if spawn.has_material { add_material(world, entity_index, spawn.material) }
 
 	for i in 0 ..< spawn.custom_component_count {
-		add_custom_component(world, entity_index, &spawn.custom_components[i])
+		component := &buffer.spawn_components[spawn.custom_component_start + i]
+		add_custom_component(world, entity_index, component)
 	}
 	for i in 0 ..< spawn.ui_component_count {
-		apply_ui_component(world, entity_index, &spawn.ui_components[i])
+		component := &buffer.spawn_ui_components[spawn.ui_component_start + i]
+		apply_ui_component(world, entity_index, component)
 	}
 	mark_render_entity_dirty(world, entity_index)
 	return entity_index
@@ -1089,6 +1158,10 @@ apply_remove_component :: proc(world: ^World, command: ^Remove_Component_Command
 }
 
 spawn_command_name :: proc(spawn: ^Spawn_Command) -> string {
+	return string(spawn.name[:spawn.name_len])
+}
+
+queued_spawn_command_name :: proc(spawn: ^Queued_Spawn_Command) -> string {
 	return string(spawn.name[:spawn.name_len])
 }
 
