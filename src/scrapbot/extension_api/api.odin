@@ -5,6 +5,8 @@ import c "core:c"
 MAX_COMPONENT_FIELDS :: 16
 MAX_SYSTEM_ACCESSES :: 16
 MAX_QUERY_TERMS :: 8
+MAX_QUERY_CHUNK_ENTITIES :: 64
+MAX_QUERY_CHUNK_BINDINGS :: 16
 MAX_UI_TEXT_BYTES :: 1024
 MAX_UI_FONT_BYTES :: 256
 MAX_UI_PREFIX_BYTES :: 64
@@ -20,6 +22,14 @@ Field_Type :: enum c.int {
 Access_Mode :: enum c.int {
 	Read  = 1,
 	Write = 2,
+}
+
+Query_Chunk_Value_Type :: enum c.int {
+	Transform = 1,
+	Number,
+	Vec2,
+	Vec3,
+	Vec4,
 }
 
 Field_Definition :: struct {
@@ -366,6 +376,26 @@ Query_Term :: struct {
 	component: cstring,
 }
 
+Query_Chunk_Binding :: struct {
+	component: cstring,
+	field: cstring,
+	value_type: Query_Chunk_Value_Type,
+	access: Access_Mode,
+	values: rawptr,
+	write_mask: u64,
+}
+
+Query_Chunk :: struct {
+	terms: [^]Query_Term,
+	term_count: c.int,
+	next_entity_index: c.int,
+	entities: [^]Entity,
+	capacity: c.int,
+	count: c.int,
+	bindings: [^]Query_Chunk_Binding,
+	binding_count: c.int,
+}
+
 System_Context :: struct {
 	userdata: rawptr,
 	host: rawptr,
@@ -373,6 +403,8 @@ System_Context :: struct {
 	query_count: Query_Count_Proc,
 	query_entity_at: Query_Entity_At_Proc,
 	query_next: Query_Next_Proc,
+	query_chunk_next: Query_Chunk_Next_Proc,
+	query_chunk_commit: Query_Chunk_Commit_Proc,
 	get_transform: Get_Transform_Proc,
 	set_transform: Set_Transform_Proc,
 	get_number_field: Get_Number_Field_Proc,
@@ -441,6 +473,10 @@ Query_Next_Proc :: #type proc "c" (
 	term_count: c.int,
 	next_entity_index: ^c.int,
 ) -> Entity
+
+Query_Chunk_Next_Proc :: #type proc "c" (ctx: ^System_Context, chunk: ^Query_Chunk) -> cstring
+
+Query_Chunk_Commit_Proc :: #type Query_Chunk_Next_Proc
 
 Get_Transform_Proc :: #type proc "c" (
 	ctx: ^System_Context,

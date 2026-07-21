@@ -66,7 +66,7 @@ package_project :: proc(root: string, config: Package_Config) -> Package_Result 
 		result.err = clone_package_string(err)
 		return result
 	}
-	if err := build_native_extensions(root, &loaded.config); err != "" {
+	if err := build_native_extensions(root, &loaded.config, .Release); err != "" {
 		result.err = clone_package_string(err)
 		return result
 	}

@@ -28,6 +28,10 @@ playback transport → simulation delta → cached schedule plan
                                          │
                       non-conflicting native batches (parallel)
                                          │
+                  scalar cursors or caller-owned 64-entity chunks
+                                         │
+                         explicit writable-lane masks
+                                         │
                               Luau systems (serial barriers)
                                          │
                              per-system command buffers
@@ -37,7 +41,7 @@ playback transport → simulation delta → cached schedule plan
                 typed storage + structural/render/UI dirty signals
 ```
 
-Queries start from the smallest applicable custom-component active set. Systems declare reads/writes; structural changes are deferred until iteration finishes.
+Queries start from the smallest applicable custom-component active set. Native chunks copy supported fields into extension-owned scratch arrays and commit only explicitly marked writable lanes, so ABI amortization and SIMD do not expose ECS storage or broaden dirty propagation. Systems declare reads/writes; structural changes are deferred until iteration finishes.
 
 ## Rendering
 

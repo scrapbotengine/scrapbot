@@ -1,5 +1,6 @@
 package showcase
 
+import "base:intrinsics"
 import "core:math"
 import scrapbot "scrapbot:extension"
 
@@ -150,30 +151,45 @@ register :: proc "contextless" (ctx: ^scrapbot.Context) -> cstring {
 autorotate_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 	components := [?]scrapbot.Component{scrapbot.Transform_Component, Spin_Component}
 	spin_query := scrapbot.query(components[:])
-
-	cursor: scrapbot.Query_Cursor
+	chunk: scrapbot.Query_Chunk
+	if !scrapbot.init_query_chunk(&chunk, spin_query) {
+		return "failed to initialize autorotate chunk"
+	}
+	transforms: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Transform
+	angular_velocities: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Vec3
+	transform_binding, transform_ok := scrapbot.bind_transform(&chunk, transforms[:], .Write)
+	_, velocity_ok := scrapbot.bind_vec3(&chunk, Spin_Angular_Velocity, angular_velocities[:])
+	if !transform_ok || !velocity_ok {
+		return "failed to bind autorotate chunk"
+	}
+	delta_time := scrapbot.F32x4(ctx.time.delta_time)
 	for {
-		entity, entity_ok := scrapbot.next(ctx, spin_query, &cursor)
-		if !entity_ok {
+		count, err := scrapbot.next_chunk(ctx, &chunk)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
 			break
 		}
-
-		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
-		if !transform_ok {
-			return "failed to read transform"
+		lane := 0
+		for lane + 4 <= count {
+			rotation := scrapbot.load_transform_rotations_x4(transforms[:], lane)
+			velocity := scrapbot.load_vec3x4(angular_velocities[:], lane)
+			rotation.x = intrinsics.fused_mul_add(velocity.x, delta_time, rotation.x)
+			rotation.y = intrinsics.fused_mul_add(velocity.y, delta_time, rotation.y)
+			rotation.z = intrinsics.fused_mul_add(velocity.z, delta_time, rotation.z)
+			scrapbot.store_transform_rotations_x4(transforms[:], rotation, lane)
+			lane += 4
 		}
-
-		angular_velocity, velocity_ok := scrapbot.get(ctx, entity, Spin_Angular_Velocity)
-		if !velocity_ok {
-			return "failed to read angular velocity"
+		for lane < count {
+			transforms[lane].rotation.x += angular_velocities[lane].x * ctx.time.delta_time
+			transforms[lane].rotation.y += angular_velocities[lane].y * ctx.time.delta_time
+			transforms[lane].rotation.z += angular_velocities[lane].z * ctx.time.delta_time
+			lane += 1
 		}
-
-		transform.rotation.x += angular_velocity.x * ctx.time.delta_time
-		transform.rotation.y += angular_velocity.y * ctx.time.delta_time
-		transform.rotation.z += angular_velocity.z * ctx.time.delta_time
-
-		if !scrapbot.set(ctx, entity, transform) {
-			return "failed to write transform"
+		scrapbot.chunk_write_all(&chunk, transform_binding)
+		if err := scrapbot.commit_chunk(ctx, &chunk); err != nil {
+			return err
 		}
 	}
 
@@ -216,29 +232,52 @@ orbit_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 lifetime_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 	components := [?]scrapbot.Component{Lifetime_Component}
 	lifetime_query := scrapbot.query(components[:])
-
-	cursor: scrapbot.Query_Cursor
+	chunk: scrapbot.Query_Chunk
+	if !scrapbot.init_query_chunk(&chunk, lifetime_query) {
+		return "failed to initialize lifetime chunk"
+	}
+	timers: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Vec3
+	timer_binding, timer_ok := scrapbot.bind_vec3(&chunk, Lifetime_Timer, timers[:], .Write)
+	if !timer_ok {
+		return "failed to bind lifetime chunk"
+	}
+	delta_time := scrapbot.F32x4(ctx.time.delta_time)
 	for {
-		entity, entity_ok := scrapbot.next(ctx, lifetime_query, &cursor)
-		if !entity_ok {
+		count, err := scrapbot.next_chunk(ctx, &chunk)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
 			break
 		}
-
-		timer, timer_ok := scrapbot.get(ctx, entity, Lifetime_Timer)
-		if !timer_ok {
-			return "failed to read lifetime"
+		expired_mask: u64
+		lane := 0
+		for lane + 4 <= count {
+			timer := scrapbot.load_vec3x4(timers[:], lane)
+			timer.x = intrinsics.simd_add(timer.x, delta_time)
+			expired := intrinsics.simd_lanes_ge(timer.x, timer.y)
+			expired_mask |= scrapbot.simd_mask_bits(expired) << u64(lane)
+			scrapbot.store_vec3x4(timers[:], timer, lane)
+			lane += 4
 		}
-
-		timer.x += ctx.time.delta_time
-		if timer.x >= timer.y {
-			if err := scrapbot.despawn(ctx, entity); err != nil {
+		for lane < count {
+			timers[lane].x += ctx.time.delta_time
+			if timers[lane].x >= timers[lane].y {
+				expired_mask |= u64(1) << u64(lane)
+			}
+			lane += 1
+		}
+		scrapbot.chunk_write_mask(&chunk, timer_binding, ~expired_mask)
+		if err := scrapbot.commit_chunk(ctx, &chunk); err != nil {
+			return err
+		}
+		for lane in 0 ..< count {
+			if expired_mask & (u64(1) << u64(lane)) == 0 {
+				continue
+			}
+			if err := scrapbot.despawn(ctx, chunk.entities[lane]); err != nil {
 				return err
 			}
-			continue
-		}
-
-		if !scrapbot.set(ctx, entity, Lifetime_Timer, timer) {
-			return "failed to write lifetime"
 		}
 	}
 
@@ -252,44 +291,76 @@ rigidbody_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstrin
 		Lifetime_Component,
 	}
 	velocity_query := scrapbot.query(components[:])
-
-	cursor: scrapbot.Query_Cursor
+	chunk: scrapbot.Query_Chunk
+	if !scrapbot.init_query_chunk(&chunk, velocity_query) {
+		return "failed to initialize rigidbody chunk"
+	}
+	transforms: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Transform
+	velocities: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Vec3
+	transform_binding, transform_ok := scrapbot.bind_transform(&chunk, transforms[:], .Write)
+	velocity_binding, velocity_ok := scrapbot.bind_vec3(
+		&chunk,
+		Velocity_Value,
+		velocities[:],
+		.Write,
+	)
+	if !transform_ok || !velocity_ok {
+		return "failed to bind rigidbody chunk"
+	}
+	delta_time := scrapbot.F32x4(ctx.time.delta_time)
+	gravity := scrapbot.F32x4(4.8 * ctx.time.delta_time)
+	damping := scrapbot.F32x4(0.996)
+	minimum_y := scrapbot.F32x4(-1.6)
 	for {
-		entity, entity_ok := scrapbot.next(ctx, velocity_query, &cursor)
-		if !entity_ok {
+		count, err := scrapbot.next_chunk(ctx, &chunk)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
 			break
 		}
-
-		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
-		if !transform_ok {
-			return "failed to read transform"
+		removed_mask: u64
+		lane := 0
+		for lane + 4 <= count {
+			position := scrapbot.load_transform_positions_x4(transforms[:], lane)
+			velocity := scrapbot.load_vec3x4(velocities[:], lane)
+			position.x = intrinsics.fused_mul_add(velocity.x, delta_time, position.x)
+			position.y = intrinsics.fused_mul_add(velocity.y, delta_time, position.y)
+			position.z = intrinsics.fused_mul_add(velocity.z, delta_time, position.z)
+			velocity.y = intrinsics.simd_sub(velocity.y, gravity)
+			velocity.x = intrinsics.simd_mul(velocity.x, damping)
+			velocity.z = intrinsics.simd_mul(velocity.z, damping)
+			removed := intrinsics.simd_lanes_lt(position.y, minimum_y)
+			removed_mask |= scrapbot.simd_mask_bits(removed) << u64(lane)
+			scrapbot.store_transform_positions_x4(transforms[:], position, lane)
+			scrapbot.store_vec3x4(velocities[:], velocity, lane)
+			lane += 4
 		}
-
-		velocity, velocity_ok := scrapbot.get(ctx, entity, Velocity_Value)
-		if !velocity_ok {
-			return "failed to read velocity"
+		for lane < count {
+			transforms[lane].position.x += velocities[lane].x * ctx.time.delta_time
+			transforms[lane].position.y += velocities[lane].y * ctx.time.delta_time
+			transforms[lane].position.z += velocities[lane].z * ctx.time.delta_time
+			velocities[lane].y -= 4.8 * ctx.time.delta_time
+			velocities[lane].x *= 0.996
+			velocities[lane].z *= 0.996
+			if transforms[lane].position.y < -1.6 {
+				removed_mask |= u64(1) << u64(lane)
+			}
+			lane += 1
 		}
-
-		transform.position.x += velocity.x * ctx.time.delta_time
-		transform.position.y += velocity.y * ctx.time.delta_time
-		transform.position.z += velocity.z * ctx.time.delta_time
-
-		velocity.y -= 4.8 * ctx.time.delta_time
-		velocity.x *= 0.996
-		velocity.z *= 0.996
-
-		if transform.position.y < -1.6 {
-			if err := scrapbot.despawn(ctx, entity); err != nil {
+		active_mask := ~removed_mask
+		scrapbot.chunk_write_mask(&chunk, transform_binding, active_mask)
+		scrapbot.chunk_write_mask(&chunk, velocity_binding, active_mask)
+		if err := scrapbot.commit_chunk(ctx, &chunk); err != nil {
+			return err
+		}
+		for lane in 0 ..< count {
+			if removed_mask & (u64(1) << u64(lane)) == 0 {
+				continue
+			}
+			if err := scrapbot.despawn(ctx, chunk.entities[lane]); err != nil {
 				return err
 			}
-			continue
-		}
-
-		if !scrapbot.set(ctx, entity, transform) {
-			return "failed to write transform"
-		}
-		if !scrapbot.set(ctx, entity, Velocity_Value, velocity) {
-			return "failed to write velocity"
 		}
 	}
 

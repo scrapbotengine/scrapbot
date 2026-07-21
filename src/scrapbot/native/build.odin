@@ -1,13 +1,45 @@
 package native
 
+import shared "../shared"
 import "core:dynlib"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import shared "../shared"
 
-build_project_extensions :: proc(root: string, targets: []shared.Native_Extension_Target) -> Build_Result {
+Build_Profile :: enum {
+	Development,
+	Performance,
+	Release,
+}
+
+build_profile_name :: proc "contextless" (profile: Build_Profile) -> string {
+	switch profile {
+		case .Development:
+			return "development"
+		case .Performance:
+			return "performance"
+		case .Release:
+			return "release"
+	}
+	return "development"
+}
+
+build_profile_optimization_flag :: proc "contextless" (profile: Build_Profile) -> string {
+	switch profile {
+		case .Development:
+			return "-o:minimal"
+		case .Performance, .Release:
+			return "-o:speed"
+	}
+	return "-o:minimal"
+}
+
+build_project_extensions :: proc(
+	root: string,
+	targets: []shared.Native_Extension_Target,
+	profile: Build_Profile = .Development,
+) -> Build_Result {
 	result: Build_Result
 	extensions_dir, dir_err := project_extensions_dir(root)
 	if dir_err != "" {
@@ -41,7 +73,7 @@ build_project_extensions :: proc(root: string, targets: []shared.Native_Extensio
 	}
 
 	for target in targets {
-		output_name, err := build_extension(root, extensions_dir, target)
+		output_name, err := build_extension(root, extensions_dir, target, profile)
 		if err != "" {
 			result.err = err
 			return result
@@ -116,22 +148,37 @@ project_extension_sources_changed :: proc(set: ^Source_Set, root: string) -> boo
 	return false
 }
 
-build_extension :: proc(root, extensions_dir: string, target: shared.Native_Extension_Target) -> (output_name: string, err: string) {
+build_extension :: proc(
+	root, extensions_dir: string,
+	target: shared.Native_Extension_Target,
+	profile: Build_Profile,
+) -> (
+	output_name: string,
+	err: string,
+) {
 	source_dir, source_err := filepath.join({root, target.source})
 	if source_err != nil {
-		return "", fmt.tprintf("failed to allocate native extension source path for %s", target.name)
+		return "", fmt.tprintf(
+			"failed to allocate native extension source path for %s",
+			target.name,
+		)
 	}
 	defer delete(source_dir)
 
 	if !os.exists(source_dir) {
-		return "", fmt.tprintf("native extension %s source does not exist: %s", target.name, target.source)
+		return "", fmt.tprintf(
+			"native extension %s source does not exist: %s",
+			target.name,
+			target.source,
+		)
 	}
 
 	source_stamp := extension_source_stamp(root, target.source)
 	host_stamp := extension_host_source_stamp()
 	temp_output_name := fmt.tprintf(
-		"%s-%d-%d-%d-%d-%d-%d.%s",
+		"%s-%s-%d-%d-%d-%d-%d-%d.%s",
 		target.name,
+		build_profile_name(profile),
 		source_stamp.modified_ns,
 		source_stamp.size,
 		source_stamp.entry_count,
@@ -148,7 +195,10 @@ build_extension :: proc(root, extensions_dir: string, target: shared.Native_Exte
 	output_path, output_err := filepath.join({extensions_dir, output_name})
 	if output_err != nil {
 		delete(output_name)
-		return "", fmt.tprintf("failed to allocate native extension output path for %s", target.name)
+		return "", fmt.tprintf(
+			"failed to allocate native extension output path for %s",
+			target.name,
+		)
 	}
 	defer delete(output_path)
 
@@ -158,10 +208,14 @@ build_extension :: proc(root, extensions_dir: string, target: shared.Native_Exte
 		"build",
 		source_dir,
 		"-build-mode:shared",
+		build_profile_optimization_flag(profile),
 		out_arg,
 		"-collection:scrapbot=src/scrapbot",
 	}
-	state, stdout, stderr, exec_err := os.process_exec(os.Process_Desc{command = command}, context.allocator)
+	state, stdout, stderr, exec_err := os.process_exec(
+		os.Process_Desc{command = command},
+		context.allocator,
+	)
 	if len(stdout) > 0 {
 		defer delete(stdout)
 	}
@@ -179,7 +233,11 @@ build_extension :: proc(root, extensions_dir: string, target: shared.Native_Exte
 		}
 		if output == "" {
 			delete(output_name)
-			return "", fmt.tprintf("failed to build native extension %s: odin exited with code %d", target.name, state.exit_code)
+			return "", fmt.tprintf(
+				"failed to build native extension %s: odin exited with code %d",
+				target.name,
+				state.exit_code,
+			)
 		}
 		delete(output_name)
 		return "", fmt.tprintf("failed to build native extension %s:\n%s", target.name, output)

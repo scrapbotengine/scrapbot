@@ -5,6 +5,16 @@ import "core:path/filepath"
 import "core:testing"
 
 @(test)
+test_native_build_profiles_choose_explicit_optimization_modes :: proc(t: ^testing.T) {
+	testing.expect_value(t, build_profile_name(.Development), "development")
+	testing.expect_value(t, build_profile_name(.Performance), "performance")
+	testing.expect_value(t, build_profile_name(.Release), "release")
+	testing.expect_value(t, build_profile_optimization_flag(.Development), "-o:minimal")
+	testing.expect_value(t, build_profile_optimization_flag(.Performance), "-o:speed")
+	testing.expect_value(t, build_profile_optimization_flag(.Release), "-o:speed")
+}
+
+@(test)
 test_build_project_extensions_clears_manifest_when_targets_are_removed :: proc(t: ^testing.T) {
 	root, temp_err := os.make_directory_temp("", "scrapbot-native-*", context.allocator)
 	if !testing.expect(t, temp_err == nil) {

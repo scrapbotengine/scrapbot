@@ -221,7 +221,7 @@ build_project :: proc(root: string) -> string {
 	}
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" { return err }
 
-	return build_native_extensions(root, &loaded.config)
+	return build_native_extensions(root, &loaded.config, .Release)
 }
 
 check_project :: proc(root: string) -> string {
@@ -231,7 +231,7 @@ check_project :: proc(root: string) -> string {
 		return loaded.err
 	}
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" { return err }
-	if err := build_native_extensions(root, &loaded.config); err != "" {
+	if err := build_native_extensions(root, &loaded.config, .Development); err != "" {
 		return err
 	}
 
@@ -507,7 +507,7 @@ run_project_internal_untracked :: proc(
 		return result
 	}
 	if !extensions_prebuilt {
-		if err := build_native_extensions(root, &loaded.config); err != "" {
+		if err := build_native_extensions(root, &loaded.config, .Performance); err != "" {
 			result.err = err
 			return result
 		}
@@ -1154,10 +1154,14 @@ run_native_work :: proc(data: rawptr) {
 	work.duration_ns = time.duration_nanoseconds(time.tick_diff(start, finish))
 }
 
-build_native_extensions :: proc(root: string, config: ^shared.Project_Config) -> string {
+build_native_extensions :: proc(
+	root: string,
+	config: ^shared.Project_Config,
+	profile: native.Build_Profile = .Development,
+) -> string {
 	if config == nil {
 		return ""
 	}
-	build_result := native.build_project_extensions(root, config.native_extensions[:])
+	build_result := native.build_project_extensions(root, config.native_extensions[:], profile)
 	return build_result.err
 }

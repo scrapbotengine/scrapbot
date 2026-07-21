@@ -1,5 +1,6 @@
 package extension
 
+import "base:intrinsics"
 import c "core:c"
 import raw "scrapbot:extension_api"
 
@@ -51,6 +52,22 @@ Query :: struct {
 	components: []Component,
 }
 
+Query_Chunk_Binding_Handle :: distinct int
+
+Query_Chunk :: struct {
+	desc: raw.Query_Chunk,
+	terms: [MAX_QUERY_TERMS]Query_Term,
+	entities: [raw.MAX_QUERY_CHUNK_ENTITIES]Entity,
+	bindings: [raw.MAX_QUERY_CHUNK_BINDINGS]raw.Query_Chunk_Binding,
+}
+
+F32x4 :: #simd[4]f32
+U32x4 :: #simd[4]u32
+
+Vec3x4 :: struct {
+	x, y, z: F32x4,
+}
+
 API :: raw.API
 Register_Proc :: #type proc "contextless" (ctx: ^Context) -> cstring
 
@@ -99,7 +116,9 @@ Shadow_Caster_Component :: Component {
 Shadow_Receiver_Component :: Component {
 	name = SHADOW_RECEIVER,
 }
-MAX_QUERY_TERMS :: 16
+MAX_QUERY_TERMS :: raw.MAX_QUERY_TERMS
+MAX_QUERY_CHUNK_ENTITIES :: raw.MAX_QUERY_CHUNK_ENTITIES
+MAX_QUERY_CHUNK_BINDINGS :: raw.MAX_QUERY_CHUNK_BINDINGS
 MAX_SYSTEM_BINDINGS :: 64
 
 System_Binding :: struct {
@@ -724,6 +743,325 @@ next :: proc {
 	query_next,
 	query_next_components,
 	query_next_descriptor,
+}
+
+init_query_chunk :: proc "contextless" (chunk: ^Query_Chunk, descriptor: Query) -> bool {
+	if chunk == nil || len(descriptor.components) > len(chunk.terms) {
+		return false
+	}
+	chunk^ = {}
+	terms, ok := terms_from_components(descriptor.components, chunk.terms[:])
+	if !ok {
+		return false
+	}
+	chunk.desc.terms = raw_data(terms)
+	chunk.desc.term_count = c.int(len(terms))
+	chunk.desc.entities = raw_data(chunk.entities[:])
+	chunk.desc.capacity = raw.MAX_QUERY_CHUNK_ENTITIES
+	chunk.desc.bindings = raw_data(chunk.bindings[:])
+	return true
+}
+
+query_chunk_bind :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	component, field: cstring,
+	value_type: raw.Query_Chunk_Value_Type,
+	access: Access_Mode,
+	values: rawptr,
+	value_count: int,
+) -> (
+	Query_Chunk_Binding_Handle,
+	bool,
+) {
+	if chunk == nil || values == nil || value_count <= 0 {
+		return {}, false
+	}
+	binding_index := int(chunk.desc.binding_count)
+	if binding_index < 0 || binding_index >= len(chunk.bindings) {
+		return {}, false
+	}
+	chunk.bindings[binding_index] = {
+		component = component,
+		field = field,
+		value_type = value_type,
+		access = access,
+		values = values,
+	}
+	chunk.desc.binding_count += 1
+	chunk.desc.capacity = c.int(min(int(chunk.desc.capacity), value_count))
+	return Query_Chunk_Binding_Handle(binding_index), true
+}
+
+bind_transform :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	values: []Transform,
+	access: Access_Mode = .Read,
+) -> (
+	Query_Chunk_Binding_Handle,
+	bool,
+) {
+	return query_chunk_bind(
+		chunk,
+		TRANSFORM,
+		nil,
+		.Transform,
+		access,
+		raw_data(values),
+		len(values),
+	)
+}
+
+bind_number :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	field: Number_Field,
+	values: []f32,
+	access: Access_Mode = .Read,
+) -> (
+	Query_Chunk_Binding_Handle,
+	bool,
+) {
+	return query_chunk_bind(
+		chunk,
+		field.component.name,
+		field.name,
+		.Number,
+		access,
+		raw_data(values),
+		len(values),
+	)
+}
+
+bind_vec2 :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	field: Vec2_Field,
+	values: []Vec2,
+	access: Access_Mode = .Read,
+) -> (
+	Query_Chunk_Binding_Handle,
+	bool,
+) {
+	return query_chunk_bind(
+		chunk,
+		field.component.name,
+		field.name,
+		.Vec2,
+		access,
+		raw_data(values),
+		len(values),
+	)
+}
+
+bind_vec3 :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	field: Vec3_Field,
+	values: []Vec3,
+	access: Access_Mode = .Read,
+) -> (
+	Query_Chunk_Binding_Handle,
+	bool,
+) {
+	return query_chunk_bind(
+		chunk,
+		field.component.name,
+		field.name,
+		.Vec3,
+		access,
+		raw_data(values),
+		len(values),
+	)
+}
+
+bind_vec4 :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	field: Vec4_Field,
+	values: []Vec4,
+	access: Access_Mode = .Read,
+) -> (
+	Query_Chunk_Binding_Handle,
+	bool,
+) {
+	return query_chunk_bind(
+		chunk,
+		field.component.name,
+		field.name,
+		.Vec4,
+		access,
+		raw_data(values),
+		len(values),
+	)
+}
+
+next_chunk :: proc "contextless" (ctx: ^System_Context, chunk: ^Query_Chunk) -> (int, cstring) {
+	if ctx == nil || ctx.query_chunk_next == nil || chunk == nil {
+		return 0, "Scrapbot query chunk API is not available"
+	}
+	chunk.desc.terms = raw_data(chunk.terms[:])
+	chunk.desc.entities = raw_data(chunk.entities[:])
+	chunk.desc.bindings = raw_data(chunk.bindings[:])
+	if err := ctx.query_chunk_next(ctx, &chunk.desc); err != nil {
+		return 0, err
+	}
+	return int(chunk.desc.count), nil
+}
+
+commit_chunk :: proc "contextless" (ctx: ^System_Context, chunk: ^Query_Chunk) -> cstring {
+	if ctx == nil || ctx.query_chunk_commit == nil || chunk == nil {
+		return "Scrapbot query chunk commit API is not available"
+	}
+	chunk.desc.entities = raw_data(chunk.entities[:])
+	chunk.desc.bindings = raw_data(chunk.bindings[:])
+	return ctx.query_chunk_commit(ctx, &chunk.desc)
+}
+
+chunk_entities :: proc "contextless" (chunk: ^Query_Chunk) -> []Entity {
+	if chunk == nil || chunk.desc.count <= 0 {
+		return nil
+	}
+	return chunk.entities[:int(chunk.desc.count)]
+}
+
+chunk_write_mask :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	binding: Query_Chunk_Binding_Handle,
+	mask: u64,
+) -> bool {
+	if chunk == nil {
+		return false
+	}
+	index := int(binding)
+	if index < 0 || index >= int(chunk.desc.binding_count) {
+		return false
+	}
+	valid_mask := ~u64(0)
+	if chunk.desc.count < 64 {
+		valid_mask = (u64(1) << u64(max(chunk.desc.count, 0))) - 1
+	}
+	chunk.bindings[index].write_mask = mask & valid_mask
+	return true
+}
+
+chunk_write_all :: proc "contextless" (
+	chunk: ^Query_Chunk,
+	binding: Query_Chunk_Binding_Handle,
+) -> bool {
+	return chunk_write_mask(chunk, binding, ~u64(0))
+}
+
+load_vec3x4 :: proc "contextless" (values: []Vec3, offset: int = 0) -> Vec3x4 {
+	if offset < 0 || offset + 4 > len(values) {
+		return {}
+	}
+	return {
+		x = {values[offset].x, values[offset + 1].x, values[offset + 2].x, values[offset + 3].x},
+		y = {values[offset].y, values[offset + 1].y, values[offset + 2].y, values[offset + 3].y},
+		z = {values[offset].z, values[offset + 1].z, values[offset + 2].z, values[offset + 3].z},
+	}
+}
+
+store_vec3x4 :: proc "contextless" (values: []Vec3, packed: Vec3x4, offset: int = 0) {
+	if offset < 0 || offset + 4 > len(values) {
+		return
+	}
+	x := transmute([4]f32)packed.x
+	y := transmute([4]f32)packed.y
+	z := transmute([4]f32)packed.z
+	for lane in 0 ..< 4 {
+		values[offset + lane] = {x[lane], y[lane], z[lane]}
+	}
+}
+
+load_transform_positions_x4 :: proc "contextless" (
+	values: []Transform,
+	offset: int = 0,
+) -> Vec3x4 {
+	if offset < 0 || offset + 4 > len(values) {
+		return {}
+	}
+	return {
+		x = {
+			values[offset].position.x,
+			values[offset + 1].position.x,
+			values[offset + 2].position.x,
+			values[offset + 3].position.x,
+		},
+		y = {
+			values[offset].position.y,
+			values[offset + 1].position.y,
+			values[offset + 2].position.y,
+			values[offset + 3].position.y,
+		},
+		z = {
+			values[offset].position.z,
+			values[offset + 1].position.z,
+			values[offset + 2].position.z,
+			values[offset + 3].position.z,
+		},
+	}
+}
+
+store_transform_positions_x4 :: proc "contextless" (
+	values: []Transform,
+	packed: Vec3x4,
+	offset: int = 0,
+) {
+	if offset < 0 || offset + 4 > len(values) {
+		return
+	}
+	x := transmute([4]f32)packed.x
+	y := transmute([4]f32)packed.y
+	z := transmute([4]f32)packed.z
+	for lane in 0 ..< 4 {
+		values[offset + lane].position = {x[lane], y[lane], z[lane]}
+	}
+}
+
+load_transform_rotations_x4 :: proc "contextless" (
+	values: []Transform,
+	offset: int = 0,
+) -> Vec3x4 {
+	if offset < 0 || offset + 4 > len(values) {
+		return {}
+	}
+	return {
+		x = {
+			values[offset].rotation.x,
+			values[offset + 1].rotation.x,
+			values[offset + 2].rotation.x,
+			values[offset + 3].rotation.x,
+		},
+		y = {
+			values[offset].rotation.y,
+			values[offset + 1].rotation.y,
+			values[offset + 2].rotation.y,
+			values[offset + 3].rotation.y,
+		},
+		z = {
+			values[offset].rotation.z,
+			values[offset + 1].rotation.z,
+			values[offset + 2].rotation.z,
+			values[offset + 3].rotation.z,
+		},
+	}
+}
+
+store_transform_rotations_x4 :: proc "contextless" (
+	values: []Transform,
+	packed: Vec3x4,
+	offset: int = 0,
+) {
+	if offset < 0 || offset + 4 > len(values) {
+		return
+	}
+	x := transmute([4]f32)packed.x
+	y := transmute([4]f32)packed.y
+	z := transmute([4]f32)packed.z
+	for lane in 0 ..< 4 {
+		values[offset + lane].rotation = {x[lane], y[lane], z[lane]}
+	}
+}
+
+simd_mask_bits :: proc "contextless" (mask: U32x4) -> u64 {
+	return u64(transmute(u8)intrinsics.simd_extract_msbs(mask))
 }
 
 get_transform :: proc "contextless" (ctx: ^System_Context, entity: Entity) -> (Transform, bool) {

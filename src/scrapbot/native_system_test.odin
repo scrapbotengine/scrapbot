@@ -108,20 +108,27 @@ test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 		"rotation.y=%v",
 		world.transforms[1].rotation.y,
 	)
+	testing.expectf(
+		t,
+		world.transforms[3].rotation.y == 0,
+		"masked rotation.y=%v",
+		world.transforms[3].rotation.y,
+	)
 	testing.expect(t, !ecs.entity_has_component(&world, 1, ecs.Component_ID(0), "nativespin.spin"))
 	testing.expect(
 		t,
 		ecs.entity_has_component(&world, 1, ecs.Component_ID(0), "nativespin.marker"),
 	)
-	testing.expect(t, len(world.entities) == 4)
+	testing.expect(t, len(world.entities) == 6)
 	testing.expect(t, !world.entities[2].alive)
 	testing.expect(t, world.entities[3].alive)
 	testing.expect(
 		t,
-		ecs.entity_has_component(&world, 3, ecs.Component_ID(0), "nativespin.marker"),
+		ecs.entity_has_component(&world, 4, ecs.Component_ID(0), "nativespin.marker"),
 	)
-	testing.expect(t, ecs.entity_has_component(&world, 3, ecs.Component_ID(0), "scrapbot.mesh"))
-	testing.expect(t, ecs.alive_renderable_count(&world) == 2)
+	testing.expect(t, ecs.entity_has_component(&world, 4, ecs.Component_ID(0), "scrapbot.mesh"))
+	testing.expect(t, ecs.entity_has_component(&world, 5, ecs.Component_ID(0), "scrapbot.mesh"))
+	testing.expect(t, ecs.alive_renderable_count(&world) == 4)
 }
 
 make_native_system_test_project :: proc(t: ^testing.T) -> (string, string) {
@@ -196,6 +203,21 @@ name = "Temporary"
 
 [entities.components.nativespin.despawn]
 value = [0, 0, 0]
+
+[[entities]]
+id = "a4000000-0000-4000-8000-000000000004"
+name = "Masked Cube"
+
+[entities.transform]
+position = [1, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.mesh]
+primitive = "cube"
+
+[entities.components.nativespin.spin]
+angular_velocity = [0, 1.5707963, 0]
 `,
 	)
 	testing.expect(t, write_scene_err == nil)
@@ -302,55 +324,60 @@ spin_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 		Spin_Component,
 	}
 	spin_query := scrapbot.query(components[:])
-
-	count := scrapbot.count(ctx, spin_query)
-	if count < 0 {
-		return "query failed"
+	chunk: scrapbot.Query_Chunk
+	if !scrapbot.init_query_chunk(&chunk, spin_query) {
+		return "chunk initialization failed"
 	}
-	for i in 0..<count {
-		entity, entity_ok := scrapbot.entity_at(ctx, spin_query, i)
-		if !entity_ok {
-			continue
+	transforms: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Transform
+	velocities: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Vec3
+	transform_binding, transform_ok := scrapbot.bind_transform(&chunk, transforms[:], .Write)
+	_, velocity_ok := scrapbot.bind_vec3(&chunk, Spin_Angular_Velocity, velocities[:])
+	if !transform_ok || !velocity_ok {
+		return "chunk binding failed"
+	}
+
+	for {
+		count, next_err := scrapbot.next_chunk(ctx, &chunk)
+		if next_err != nil {
+			return next_err
+		}
+		if count == 0 {
+			break
+		}
+		for lane in 0 ..< count {
+			transforms[lane].rotation.y += velocities[lane].y * ctx.time.delta_time
+		}
+		// Commit only the first lane; the integration test verifies that the second stays unchanged.
+		scrapbot.chunk_write_mask(&chunk, transform_binding, 1)
+		if commit_err := scrapbot.commit_chunk(ctx, &chunk); commit_err != nil {
+			return commit_err
 		}
 
-		transform, transform_ok := scrapbot.get(ctx, entity, scrapbot.Transform_Component)
-		if !transform_ok {
-			return "get_transform failed"
-		}
+		for entity in scrapbot.chunk_entities(&chunk) {
+			marker_fields := [?]scrapbot.Component_Vec3_Field {
+				scrapbot.vec3_value(Marker_Value, {1, 2, 3}),
+			}
+			marker_payload := scrapbot.payload(Marker_Component, marker_fields[:])
+			if err := scrapbot.add(ctx, entity, &marker_payload); err != nil {
+				return err
+			}
+			if err := scrapbot.remove(ctx, entity, Spin_Component); err != nil {
+				return err
+			}
 
-		angular_velocity, velocity_ok := scrapbot.get(ctx, entity, Spin_Angular_Velocity)
-		if !velocity_ok {
-			return "get_vec3_field failed"
-		}
-
-		transform.rotation.y += angular_velocity.y * ctx.time.delta_time
-		if !scrapbot.set(ctx, entity, transform) {
-			return "set_transform failed"
-		}
-
-		marker_fields := [?]scrapbot.Component_Vec3_Field {
-			scrapbot.vec3_value(Marker_Value, {1, 2, 3}),
-		}
-		marker_payload := scrapbot.payload(Marker_Component, marker_fields[:])
-		if err := scrapbot.add(ctx, entity, &marker_payload); err != nil {
-			return err
-		}
-		if err := scrapbot.remove(ctx, entity, Spin_Component); err != nil {
-			return err
-		}
-
-		spawn_transform := scrapbot.Transform {
-			position = {2, 0, 0},
-			rotation = {},
-			scale = {1, 1, 1},
-		}
-		spawn_payloads := [?]scrapbot.Component_Payload {
-			marker_payload,
-		}
-		spawn_mesh := scrapbot.mesh("cube")
-		spawn := scrapbot.spawn_options("Native Spawned", &spawn_transform, &spawn_mesh, spawn_payloads[:])
-		if err := scrapbot.spawn(ctx, &spawn); err != nil {
-			return err
+			spawn_transform := scrapbot.Transform {
+				position = {2, 0, 0},
+				rotation = {},
+				scale = {1, 1, 1},
+			}
+			spawn_payloads := [?]scrapbot.Component_Payload {
+				marker_payload,
+			}
+			spawn_mesh := scrapbot.mesh("cube")
+			spawn := scrapbot.spawn_options("Native Spawned", &spawn_transform, &spawn_mesh, spawn_payloads[:])
+			if err := scrapbot.spawn(ctx, &spawn); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

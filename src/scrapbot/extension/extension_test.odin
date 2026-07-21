@@ -80,3 +80,37 @@ test_typed_custom_field_helpers_preserve_schema_metadata_and_payload_shapes :: p
 	testing.expect(t, payload.vec3_fields[0].value == Vec3{3, 4, 5})
 	testing.expect(t, payload.vec4_fields[1].value == Vec4{0.1, 0.2, 0.3, 1})
 }
+
+@(test)
+test_query_chunk_helpers_preserve_lanes_and_bound_write_masks :: proc(t: ^testing.T) {
+	component := Component {
+		name = "test.motion",
+	}
+	velocity := Vec3_Field {
+		component = component,
+		name = "velocity",
+	}
+	descriptor := query([]Component{Transform_Component, component})
+	chunk: Query_Chunk
+	testing.expect(t, init_query_chunk(&chunk, descriptor))
+
+	transforms: [5]Transform
+	values := [5]Vec3{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}, {13, 14, 15}}
+	transform_binding, transform_ok := bind_transform(&chunk, transforms[:], .Write)
+	_, velocity_ok := bind_vec3(&chunk, velocity, values[:])
+	testing.expect(t, transform_ok && velocity_ok)
+	testing.expect(t, chunk.desc.capacity == 5)
+
+	packed := load_vec3x4(values[:])
+	x := transmute([4]f32)packed.x
+	y := transmute([4]f32)packed.y
+	z := transmute([4]f32)packed.z
+	testing.expect(t, x == [4]f32{1, 4, 7, 10})
+	testing.expect(t, y == [4]f32{2, 5, 8, 11})
+	testing.expect(t, z == [4]f32{3, 6, 9, 12})
+
+	chunk.desc.count = 5
+	testing.expect(t, chunk_write_mask(&chunk, transform_binding, 0xff))
+	testing.expect(t, chunk.bindings[int(transform_binding)].write_mask == 0x1f)
+	testing.expect(t, !chunk_write_mask(&chunk, Query_Chunk_Binding_Handle(99), 1))
+}

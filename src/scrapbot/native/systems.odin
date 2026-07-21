@@ -223,6 +223,8 @@ step_system :: proc(
 		query_count = system_query_count,
 		query_entity_at = system_query_entity_at,
 		query_next = system_query_next,
+		query_chunk_next = system_query_chunk_next,
+		query_chunk_commit = system_query_chunk_commit,
 		get_transform = system_get_transform,
 		set_transform = system_set_transform,
 		get_number_field = system_get_number_field,
@@ -313,6 +315,311 @@ system_query_next :: proc "c" (
 		index = c.int(entity_index),
 		generation = step.world.entities[entity_index].id.generation,
 	}
+}
+
+system_query_chunk_shape_valid :: proc "contextless" (chunk: ^api.Query_Chunk) -> bool {
+	return(
+		chunk != nil &&
+		chunk.terms != nil &&
+		chunk.term_count > 0 &&
+		chunk.term_count <= api.MAX_QUERY_TERMS &&
+		chunk.entities != nil &&
+		chunk.capacity > 0 &&
+		chunk.capacity <= api.MAX_QUERY_CHUNK_ENTITIES &&
+		chunk.bindings != nil &&
+		chunk.binding_count >= 0 &&
+		chunk.binding_count <= api.MAX_QUERY_CHUNK_BINDINGS \
+	)
+}
+
+system_query_chunk_binding_is_term :: proc "contextless" (
+	chunk: ^api.Query_Chunk,
+	binding: api.Query_Chunk_Binding,
+) -> bool {
+	if binding.component == nil {
+		return false
+	}
+	name := string(binding.component)
+	for term_index in 0 ..< int(chunk.term_count) {
+		term := chunk.terms[term_index]
+		if term.component != nil && string(term.component) == name {
+			return true
+		}
+	}
+	return false
+}
+
+system_query_chunk_binding_access_valid :: proc "contextless" (
+	step: ^Step_Context,
+	chunk: ^api.Query_Chunk,
+	binding: api.Query_Chunk_Binding,
+) -> bool {
+	if step == nil ||
+	   binding.values == nil ||
+	   (binding.access != .Read && binding.access != .Write) ||
+	   !system_query_chunk_binding_is_term(chunk, binding) {
+		return false
+	}
+	mode: schedule.Access_Mode
+	switch binding.access {
+		case .Read:
+			mode = .Read
+		case .Write:
+			mode = .Write
+	}
+	return system_allows_component_access(step.system.declaration, string(binding.component), mode)
+}
+
+system_query_chunk_read_binding :: proc "contextless" (
+	step: ^Step_Context,
+	binding: api.Query_Chunk_Binding,
+	entity: api.Entity,
+	lane: int,
+) -> bool {
+	if step == nil || lane < 0 {
+		return false
+	}
+	name := string(binding.component)
+	if binding.value_type == .Transform {
+		if name != "scrapbot.transform" {
+			return false
+		}
+		entity_index := int(entity.index)
+		if !ecs.entity_is_current(step.world, entity_index, entity.generation) {
+			return false
+		}
+		world_entity := step.world.entities[entity_index]
+		if world_entity.transform_index < 0 ||
+		   world_entity.transform_index >= len(step.world.transforms) {
+			return false
+		}
+		values := cast([^]api.Transform)binding.values
+		values[lane] = api_transform_from_shared(
+			step.world.transforms[world_entity.transform_index],
+		)
+		return true
+	}
+	if binding.field == nil {
+		return false
+	}
+	component, found := system_custom_component(step.world, entity, name)
+	if !found {
+		return false
+	}
+	field_name := string(binding.field)
+	switch binding.value_type {
+		case .Number:
+			for field in component.number_fields {
+				if field.name == field_name {
+					values := cast([^]f32)binding.values
+					values[lane] = field.value
+					return true
+				}
+			}
+		case .Vec2:
+			for field in component.vec2_fields {
+				if field.name == field_name {
+					values := cast([^]api.Vec2)binding.values
+					values[lane] = api_vec2_from_shared(field.value)
+					return true
+				}
+			}
+		case .Vec3:
+			for field in component.vec3_fields {
+				if field.name == field_name {
+					values := cast([^]api.Vec3)binding.values
+					values[lane] = api_vec3_from_shared(field.value)
+					return true
+				}
+			}
+		case .Vec4:
+			for field in component.vec4_fields {
+				if field.name == field_name {
+					values := cast([^]api.Vec4)binding.values
+					values[lane] = api_vec4_from_shared(field.value)
+					return true
+				}
+			}
+		case .Transform:
+	}
+	return false
+}
+
+system_query_chunk_write_binding :: proc "contextless" (
+	step: ^Step_Context,
+	binding: api.Query_Chunk_Binding,
+	entity: api.Entity,
+	lane: int,
+) -> bool {
+	context = base_runtime.default_context()
+	if step == nil || lane < 0 {
+		return false
+	}
+	name := string(binding.component)
+	entity_index := int(entity.index)
+	if !ecs.entity_is_current(step.world, entity_index, entity.generation) {
+		return false
+	}
+	if binding.value_type == .Transform {
+		if name != "scrapbot.transform" {
+			return false
+		}
+		world_entity := step.world.entities[entity_index]
+		if world_entity.transform_index < 0 ||
+		   world_entity.transform_index >= len(step.world.transforms) {
+			return false
+		}
+		values := cast([^]api.Transform)binding.values
+		next := shared_transform_from_api(values[lane])
+		current := step.world.transforms[world_entity.transform_index]
+		if next.parent != current.parent &&
+		   !ecs.transform_parent_is_valid(step.world, entity_index, next.parent) {
+			return false
+		}
+		if next != current {
+			step.world.transforms[world_entity.transform_index] = next
+			ecs.mark_render_extract_entity_dirty(step.world, entity_index)
+		}
+		return true
+	}
+	if binding.field == nil {
+		return false
+	}
+	component, found := system_custom_component(step.world, entity, name)
+	if !found {
+		return false
+	}
+	field_name := string(binding.field)
+	switch binding.value_type {
+		case .Number:
+			values := cast([^]f32)binding.values
+			for &field in component.number_fields {
+				if field.name == field_name {
+					field.value = values[lane]
+					return true
+				}
+			}
+		case .Vec2:
+			values := cast([^]api.Vec2)binding.values
+			for &field in component.vec2_fields {
+				if field.name == field_name {
+					field.value = shared_vec2_from_api(values[lane])
+					return true
+				}
+			}
+		case .Vec3:
+			values := cast([^]api.Vec3)binding.values
+			for &field in component.vec3_fields {
+				if field.name == field_name {
+					field.value = shared_vec3_from_api(values[lane])
+					return true
+				}
+			}
+		case .Vec4:
+			values := cast([^]api.Vec4)binding.values
+			for &field in component.vec4_fields {
+				if field.name == field_name {
+					field.value = shared_vec4_from_api(values[lane])
+					return true
+				}
+			}
+		case .Transform:
+	}
+	return false
+}
+
+system_query_chunk_next :: proc "c" (
+	ctx: ^api.System_Context,
+	chunk: ^api.Query_Chunk,
+) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok || !system_query_chunk_shape_valid(chunk) {
+		return "invalid native query chunk"
+	}
+	query, query_ok := system_query_from_terms(step, chunk.terms, chunk.term_count)
+	if !query_ok {
+		return "invalid native query chunk terms"
+	}
+	for binding_index in 0 ..< int(chunk.binding_count) {
+		binding := &chunk.bindings[binding_index]
+		binding.write_mask = 0
+		if !system_query_chunk_binding_access_valid(step, chunk, binding^) {
+			return "native query chunk binding violates declared component access"
+		}
+	}
+	chunk.count = 0
+	cursor := int(chunk.next_entity_index)
+	for int(chunk.count) < int(chunk.capacity) {
+		entity_index, found := ecs.query_next(step.world, query, &cursor)
+		if !found {
+			break
+		}
+		lane := int(chunk.count)
+		entity := api.Entity {
+			index = c.int(entity_index),
+			generation = step.world.entities[entity_index].id.generation,
+		}
+		chunk.entities[lane] = entity
+		for binding_index in 0 ..< int(chunk.binding_count) {
+			if !system_query_chunk_read_binding(
+				step,
+				chunk.bindings[binding_index],
+				entity,
+				lane,
+			) {
+				chunk.count = 0
+				return "native query chunk could not read a bound field"
+			}
+		}
+		chunk.count += 1
+	}
+	chunk.next_entity_index = c.int(cursor)
+	return nil
+}
+
+system_query_chunk_commit :: proc "c" (
+	ctx: ^api.System_Context,
+	chunk: ^api.Query_Chunk,
+) -> cstring {
+	context = base_runtime.default_context()
+	step, ok := system_step_context(ctx)
+	if !ok ||
+	   !system_query_chunk_shape_valid(chunk) ||
+	   chunk.count < 0 ||
+	   chunk.count > chunk.capacity {
+		return "invalid native query chunk commit"
+	}
+	query, query_ok := system_query_from_terms(step, chunk.terms, chunk.term_count)
+	if !query_ok {
+		return "invalid native query chunk commit terms"
+	}
+	valid_mask := ~u64(0)
+	if chunk.count < 64 {
+		valid_mask = (u64(1) << u64(chunk.count)) - 1
+	}
+	for binding_index in 0 ..< int(chunk.binding_count) {
+		binding := chunk.bindings[binding_index]
+		if binding.write_mask == 0 {
+			continue
+		}
+		if binding.access != .Write ||
+		   !system_query_chunk_binding_access_valid(step, chunk, binding) ||
+		   binding.write_mask & ~valid_mask != 0 {
+			return "invalid native query chunk write mask"
+		}
+		for lane in 0 ..< int(chunk.count) {
+			if binding.write_mask & (u64(1) << u64(lane)) == 0 {
+				continue
+			}
+			entity := chunk.entities[lane]
+			if !ecs.entity_is_current(step.world, int(entity.index), entity.generation) ||
+			   !ecs.query_matches_entity(step.world, query, int(entity.index)) ||
+			   !system_query_chunk_write_binding(step, binding, entity, lane) {
+				return "native query chunk could not commit a bound field"
+			}
+		}
+	}
+	return nil
 }
 
 system_get_transform :: proc "c" (

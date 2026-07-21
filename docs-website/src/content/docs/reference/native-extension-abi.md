@@ -112,15 +112,23 @@ The context includes:
 
 - a read-only `time` snapshot with delta time, smoothed delta time, elapsed time, and frame index;
 - extension `userdata`;
-- cursor-based linear query iteration plus count and indexed compatibility helpers for component-name terms;
+- cursor-based linear query iteration, caller-owned 64-entity query chunks, plus count and indexed compatibility helpers for component-name terms;
 - `get_transform` and `set_transform`;
-- `get_vec3_field` and `set_vec3_field` for schema-backed custom components;
+- scalar Number/Vec2/Vec3/Vec4 field reads and writes for schema-backed custom components;
 - `get_ui_component` and `set_ui_component` for complete public ECS UI value and style payloads;
 - full indexed geometry and shared material registration;
 - linear HDR emission through the material descriptor's `emissive` vector;
 - deferred lifecycle helpers for resource-backed renderable spawns, public UI spawns, despawn, transform, schema-backed payloads, UI payloads, and removal.
 
 Return `nil` on success or a static error string on failure. The host enforces declared access through the callback context.
+
+## Query chunks
+
+`Query_Chunk` amortizes host calls for dense native systems without exposing pointers into Scrapbot's ECS. A chunk owns fixed query-term, entity, and binding descriptors; the extension supplies arrays for each bound Transform or Number/Vec2/Vec3/Vec4 field. `query_chunk_next` fills at most 64 lanes. Writable bindings are inert until the caller supplies a 64-bit `write_mask` and invokes `query_chunk_commit`; only marked lanes are written and invalidated.
+
+The Odin wrapper provides `init_query_chunk`, `bind_transform`, `bind_number`, `bind_vec2`, `bind_vec3`, `bind_vec4`, `next_chunk`, `chunk_write_mask`, `chunk_write_all`, and `commit_chunk`. It also exposes portable `F32x4`, `Vec3x4`, load/store helpers, and `simd_mask_bits`. These are convenience shapes, not a promise about host CPU architecture or internal ECS layout.
+
+Bindings must name query terms and obey the scheduled system's declared read/write access. Scratch arrays must remain alive until iteration and commit finish. Candidate order is internal, structural mutation remains deferred, and branchy or sparse systems can continue using the scalar cursor.
 
 ## ECS UI payloads
 
@@ -137,5 +145,5 @@ UI mutation and removal are deferred through the callback's command buffer. A `S
 Native extensions cannot yet:
 
 - access ECS storage directly;
-- access non-vec3 custom fields;
+- chunk booleans, resource handles, or arbitrary nested fields;
 - allocate through a host allocator.

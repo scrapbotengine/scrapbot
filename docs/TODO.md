@@ -35,4 +35,4 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 - [ ] Apply a baseline `odinfmt` pass and promote formatting audit into the default test gate.
 - [ ] Add OS resident-memory sampling for foreign-library and GPU allocations.
-- [ ] Add a benchmark runner and trend reporting for representative simulation, editor, and rendering workloads.
+- [ ] Add persisted benchmark trend reporting for representative simulation, editor, and rendering workloads (the local optimization-profile runner now covers bounded simulation comparisons).

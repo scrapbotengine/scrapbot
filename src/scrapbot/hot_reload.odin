@@ -345,7 +345,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	if loaded.err != "" {
 		return loaded.err
 	}
-	if err := build_native_extensions(state.root, &loaded.config); err != "" {
+	if err := build_native_extensions(state.root, &loaded.config, .Performance); err != "" {
 		return err
 	}
 	if err := project.prepare_project_fonts(state.root, &loaded.config); err != "" { return err }

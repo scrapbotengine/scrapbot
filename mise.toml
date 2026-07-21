@@ -61,8 +61,39 @@ case "$(uname -s)" in
     exit 1
     ;;
 esac
-odin build src/scrapbot_cli -out:bin/scrapbot -extra-linker-flags:"$LUAU_LINK_FLAGS"
+odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUAU_LINK_FLAGS"
 '''
+
+[tasks.build-dev]
+description = "Build the Scrapbot CLI for fast development iteration"
+depends = ["luau"]
+run = '''
+mkdir -p bin
+LUAU_LIBS="third_party/luau/build/release"
+case "$(uname -s)" in
+  Darwin)
+    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -lc++"
+    ;;
+  Linux)
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    ;;
+  *)
+    echo "unsupported Luau link platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+odin build src/scrapbot_cli -out:bin/scrapbot-dev -o:minimal -extra-linker-flags:"$LUAU_LINK_FLAGS"
+'''
+
+[tasks.build-release]
+description = "Build the Scrapbot CLI for distribution"
+depends = ["build"]
+run = "cp bin/scrapbot bin/scrapbot-release"
+
+[tasks.benchmark-profiles]
+description = "Compare development and performance optimization profiles"
+depends = ["build-dev", "build"]
+run = "node tools/benchmark_profiles.mjs \"$@\""
 
 [tasks.luau]
 description = "Build embedded Luau"

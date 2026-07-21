@@ -1,7 +1,22 @@
 package render
 
 import shared "../shared"
+import "base:intrinsics"
 import "core:math"
+
+F32x4 :: #simd[4]f32
+
+f32x4_from_array :: proc "contextless" (value: [4]f32) -> F32x4 {
+	return transmute(F32x4)value
+}
+
+f32x4_to_array :: proc "contextless" (value: F32x4) -> [4]f32 {
+	return transmute([4]f32)value
+}
+
+f32x4_dot :: proc "contextless" (a, b: F32x4) -> f32 {
+	return intrinsics.simd_reduce_add_pairs(intrinsics.simd_mul(a, b))
+}
 
 wgpu_build_mvp :: proc(
 	instance: Render_Instance,
@@ -69,19 +84,20 @@ wgpu_extract_frustum_planes :: proc(value: Mat4) -> [6][4]f32 {
 		vec4_sub(rows[3], rows[2]),
 	}
 	for &plane in planes {
-		length := math.sqrt(plane[0] * plane[0] + plane[1] * plane[1] + plane[2] * plane[2])
+		packed := f32x4_from_array(plane)
+		normal := intrinsics.simd_mul(packed, F32x4{1, 1, 1, 0})
+		length := math.sqrt(f32x4_dot(normal, normal))
 		if length > 0.000001 {
-			for index in 0 ..< 4 {
-				plane[index] /= length
-			}
+			plane = f32x4_to_array(intrinsics.simd_mul(packed, F32x4(1 / length)))
 		}
 	}
 	return planes
 }
 
 wgpu_sphere_visible :: proc(bounds: [4]f32, planes: [6][4]f32) -> bool {
+	center := F32x4{bounds[0], bounds[1], bounds[2], 1}
 	for plane in planes {
-		distance := plane[0] * bounds[0] + plane[1] * bounds[1] + plane[2] * bounds[2] + plane[3]
+		distance := f32x4_dot(f32x4_from_array(plane), center)
 		if distance < -bounds[3] {
 			return false
 		}
@@ -90,11 +106,11 @@ wgpu_sphere_visible :: proc(bounds: [4]f32, planes: [6][4]f32) -> bool {
 }
 
 vec4_add :: proc(a, b: [4]f32) -> [4]f32 {
-	return {a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]}
+	return f32x4_to_array(intrinsics.simd_add(f32x4_from_array(a), f32x4_from_array(b)))
 }
 
 vec4_sub :: proc(a, b: [4]f32) -> [4]f32 {
-	return {a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]}
+	return f32x4_to_array(intrinsics.simd_sub(f32x4_from_array(a), f32x4_from_array(b)))
 }
 
 wgpu_build_model :: proc(transform: shared.Transform_Component) -> Mat4 {
@@ -153,6 +169,24 @@ mat4_identity :: proc() -> Mat4 {
 }
 
 mat4_mul :: proc(a, b: Mat4) -> Mat4 {
+	a0 := F32x4{a[0], a[1], a[2], a[3]}
+	a1 := F32x4{a[4], a[5], a[6], a[7]}
+	a2 := F32x4{a[8], a[9], a[10], a[11]}
+	a3 := F32x4{a[12], a[13], a[14], a[15]}
+	result: Mat4
+	for column in 0 ..< 4 {
+		base := column * 4
+		value := intrinsics.simd_mul(a0, F32x4(b[base]))
+		value = intrinsics.fused_mul_add(a1, F32x4(b[base + 1]), value)
+		value = intrinsics.fused_mul_add(a2, F32x4(b[base + 2]), value)
+		value = intrinsics.fused_mul_add(a3, F32x4(b[base + 3]), value)
+		packed := f32x4_to_array(value)
+		copy(result[base:base + 4], packed[:])
+	}
+	return result
+}
+
+mat4_mul_scalar :: proc "contextless" (a, b: Mat4) -> Mat4 {
 	result: Mat4
 	for column in 0 ..< 4 {
 		for row in 0 ..< 4 {

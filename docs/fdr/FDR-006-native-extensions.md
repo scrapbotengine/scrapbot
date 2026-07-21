@@ -14,7 +14,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 - `scrapbot build` compiles declared native extensions and includes the active outputs in a host-native game package without running the project.
 - `scrapbot check` and `scrapbot run` compile declared native extensions before loading them.
 - Scrapbot writes native extension libraries to `.scrapbot/cache/extensions` under the project root.
-- Built extension files include the target name, a source stamp, and the platform dynamic-library suffix, such as `.dylib` on macOS and `.so` on Linux.
+- Built extension files include the target name, build profile, a source stamp, and the platform dynamic-library suffix, such as `.dylib` on macOS and `.so` on Linux.
 - `.scrapbot/cache/extensions/.scrapbot-extensions` records the active output files for the latest build.
 - Each extension must export `scrapbot_extension_register`.
 - The register function receives a lockstep C-compatible `extension_api.API`.
@@ -25,7 +25,8 @@ Native extensions let project code add compiled engine/library behavior incremen
 - The API supports registering library component schemas with dotted, non-`scrapbot` names.
 - The API supports registering native systems with declared component reads and writes.
 - Project-owned native systems use single-token names; dotted multi-token names identify engine or library ownership. The convention is shared with Luau systems but is not yet runtime-enforced.
-- Native systems can query by component names, read/write `scrapbot.transform`, read/write vec3 fields on schema-backed custom components, and read/write the complete value and style payloads of public `scrapbot.ui_*` components through the callback context.
+- Native systems can query by component names, read/write `scrapbot.transform`, read/write Number/Vec2/Vec3/Vec4/Color fields on schema-backed custom components, and read/write the complete value and style payloads of public `scrapbot.ui_*` components through the callback context.
+- High-volume Odin systems can bind caller-owned fixed arrays to 64-entity query chunks. Chunk iteration amortizes host calls, supports portable four-lane SIMD helpers, and commits writable fields through explicit per-lane masks.
 - Native systems can read renderer-owned `scrapbot.ui_state` payloads, including stable activation and change revisions, but cannot write that derived state.
 - Native callback contexts expose the frame's read-only time resource snapshot.
 - Native systems can spawn entities referencing shared geometry and material resources alongside transform, schema-backed components, and public UI components. The spawn helper returns the new entity's stable UUID so one deferred batch can establish UI parent relationships.
@@ -86,6 +87,18 @@ Native extensions let project code add compiled engine/library behavior incremen
 **Why:** The former count-plus-index loop rescanned the complete world for every match and became quadratic for dense systems. Native gameplay examples now demonstrate the linear iterator.
 **Tradeoff:** The cursor currently scans world slots and checks every query term. A future storage-driven planner can choose the smallest component set without changing the public iteration shape.
 
+### 9. Add scratch-buffer chunks without exposing ECS storage
+
+**Decision:** Let native systems bind caller-owned arrays for Transform and schema-backed Number/Vec2/Vec3/Vec4 values, fill at most 64 matching lanes per call, and explicitly mark writable lanes before committing them.
+**Why:** A scalar getter/setter pair per entity dominates simple compiled systems and prevents extensions from expressing portable lane-wise work. Caller-owned buffers amortize the ABI boundary and let Odin code use `#simd` while keeping internal ECS layouts, allocator ownership, and pointers private.
+**Tradeoff:** Chunks copy values into scratch arrays and writable bindings require an extra commit. The API does not promise direct storage, alignment beyond the caller's arrays, stable candidate order, or automatic vectorization. Systems with branchy or low-volume behavior should keep using `scrapbot.next`.
+
+### 10. Select optimization profiles by workflow
+
+**Decision:** Compile extension checks with `-o:minimal`, source-project runs and hot reload with `-o:speed`, and packaged builds with `-o:speed`. Include the profile in cache artifact names.
+**Why:** Fast checks and optimized play loops are different workflows, and sharing one output path can silently reuse code compiled for the wrong goal.
+**Tradeoff:** A profile change creates another cached dynamic library. Release and performance currently share Odin's speed optimizer; release remains a distinct artifact/lifecycle profile for future stripping and distribution policy.
+
 ## Related
 
 - **ADRs:** ADR-008, ADR-010, ADR-012, ADR-025, ADR-029
@@ -94,4 +107,4 @@ Native extensions let project code add compiled engine/library behavior incremen
 ## Open Questions
 
 - Should extension metadata include declared namespace ownership?
-- What should the native ECS ABI expose next: richer field types, host allocator hooks, or richer renderable construction?
+- Should chunk bindings eventually support booleans, resource handles, or optional fields?

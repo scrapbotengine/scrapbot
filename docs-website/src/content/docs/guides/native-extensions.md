@@ -118,6 +118,66 @@ motion_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
 
 Use `scrapbot.next` for frame-system iteration. Its cursor advances once through the smallest requested project-component storage, or through world slots when no project component narrows the query. Candidate order and cursor representation are internal details. The indexed `scrapbot.count` and `scrapbot.entity_at` helpers remain available for tooling and explicit random access, but composing them in a loop repeatedly rescans candidates.
 
+For dense arithmetic systems, use a caller-owned query chunk to amortize the extension boundary and make lane-wise work explicit:
+
+```odin
+import "base:intrinsics"
+
+motion_system :: proc "contextless" (ctx: ^scrapbot.System_Context) -> cstring {
+	components := [?]scrapbot.Component {
+		scrapbot.Transform_Component,
+		Rigidbody_Component,
+	}
+	chunk: scrapbot.Query_Chunk
+	if !scrapbot.init_query_chunk(&chunk, scrapbot.query(components[:])) {
+		return "failed to initialize motion chunk"
+	}
+	transforms: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Transform
+	velocities: [scrapbot.MAX_QUERY_CHUNK_ENTITIES]scrapbot.Vec3
+	transform_binding, transform_ok := scrapbot.bind_transform(&chunk, transforms[:], .Write)
+	_, velocity_ok := scrapbot.bind_vec3(&chunk, Rigidbody_Velocity, velocities[:])
+	if !transform_ok || !velocity_ok {
+		return "failed to bind motion chunk"
+	}
+
+	delta := scrapbot.F32x4(ctx.time.delta_time)
+	for {
+		count, err := scrapbot.next_chunk(ctx, &chunk)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			break
+		}
+
+		lane := 0
+		for lane + 4 <= count {
+			position := scrapbot.load_transform_positions_x4(transforms[:], lane)
+			velocity := scrapbot.load_vec3x4(velocities[:], lane)
+			position.x = intrinsics.fused_mul_add(velocity.x, delta, position.x)
+			position.y = intrinsics.fused_mul_add(velocity.y, delta, position.y)
+			position.z = intrinsics.fused_mul_add(velocity.z, delta, position.z)
+			scrapbot.store_transform_positions_x4(transforms[:], position, lane)
+			lane += 4
+		}
+		for lane < count {
+			transforms[lane].position.x += velocities[lane].x * ctx.time.delta_time
+			transforms[lane].position.y += velocities[lane].y * ctx.time.delta_time
+			transforms[lane].position.z += velocities[lane].z * ctx.time.delta_time
+			lane += 1
+		}
+
+		scrapbot.chunk_write_all(&chunk, transform_binding)
+		if err := scrapbot.commit_chunk(ctx, &chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+```
+
+Chunk buffers belong to the extension and never alias ECS storage. A chunk contains at most 64 entities. Bindings must be query terms and match the system's declared access. Writes require `chunk_write_all` or an exact `chunk_write_mask`; use masks from SIMD comparisons to avoid writing or invalidating lanes that were removed, rejected, or unchanged. Keep a scalar tail for counts not divisible by four. Cursor iteration remains preferable for sparse, branch-heavy, or lifecycle-dominated systems.
+
 Project system callbacks are ordinary contextless Odin procedures. The extension helper retains their bindings and routes the host's C-compatible callback through an internal trampoline; only the exported `scrapbot_extension_register` entry point needs `proc "c"` in project source.
 
 The raw C-compatible package remains available as `scrapbot:extension_api` for non-Odin bindings and ABI reference work.
@@ -216,17 +276,19 @@ mise scrapbot -- build examples/minimal
 
 `scrapbot check` and `scrapbot run` also build declared extensions automatically.
 
+Scrapbot chooses an Odin optimization profile for each workflow: `check` uses `-o:minimal` for short iteration, `run` and hot reload use `-o:speed`, and packaged `build` uses `-o:speed`. The profile is part of the cached library name, so a fast check cannot overwrite or masquerade as the optimized play artifact.
+
 Development cache output goes to:
 
 ```text
-.scrapbot/cache/extensions/<name>-<source-stamp>.<platform-library-extension>
+.scrapbot/cache/extensions/<name>-<profile>-<source-stamp>.<platform-library-extension>
 .scrapbot/cache/extensions/.scrapbot-extensions
 ```
 
 Examples:
 
-- macOS: `scrappyphysics-<source-stamp>.dylib`
-- Linux: `scrappyphysics-<source-stamp>.so`
+- macOS: `scrappyphysics-performance-<source-stamp>.dylib`
+- Linux: `scrappyphysics-performance-<source-stamp>.so`
 
 `.scrapbot-extensions` records the active output files for the latest build. Older versioned libraries may remain in `.scrapbot/cache/extensions`.
 
