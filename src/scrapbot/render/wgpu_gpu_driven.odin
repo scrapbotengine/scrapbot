@@ -1194,6 +1194,130 @@ wgpu_instance_source_changed :: proc(
 	return !previous_active || previous != current || previous_transform != current_transform
 }
 
+wgpu_sync_dirty_instance_slot :: proc(
+	renderer: ^WGPU_Renderer,
+	cache: ^WGPU_Draw_Batch_Cache,
+	render_list: ^Render_List,
+	registry: ^resources.Registry,
+	slot: int,
+	cpu_culling: bool,
+) -> (
+	capacity_grew: bool,
+	err: string,
+) {
+	if slot < 0 || slot >= render_list.instance_slot_count {
+		return
+	}
+	instance, active := wgpu_render_instance_by_slot(render_list, slot)
+	previous_active := renderer.gpu_active_slots[slot]
+	previous_source := renderer.gpu_instance_sources[slot]
+	previous_transform := renderer.gpu_instance_source_transforms[slot]
+	if !active {
+		if previous_active {
+			_ = wgpu_adjust_batch_membership(
+				cache,
+				previous_source.batch_indices,
+				previous_source.lod_count,
+				-1,
+			)
+			renderer.gpu_instance_records[slot] = {}
+			renderer.gpu_instance_transform_records[slot] = {}
+			renderer.gpu_instance_sources[slot] = {}
+			renderer.gpu_instance_source_transforms[slot] = {}
+			renderer.gpu_active_slots[slot] = false
+			append(&renderer.gpu_dirty_indices, slot)
+		}
+		return
+	}
+	geometry, geometry_ok := resources.get_geometry(registry, instance.geometry.handle)
+	material, material_ok := resources.get_material(registry, instance.material.handle)
+	if !geometry_ok || !material_ok {
+		return
+	}
+	batch_indices := previous_source.batch_indices
+	if !previous_active || !wgpu_instance_batch_key_matches(previous_source, instance) {
+		batches_ok: bool
+		batch_indices, batches_ok = wgpu_batch_indices_for_instance(cache, instance, registry)
+		if !batches_ok {
+			return false, "GPU instance is missing its draw batch"
+		}
+	}
+	source := WGPU_Instance_Source_State {
+		geometry = instance.geometry.handle,
+		material = instance.material.handle,
+		geometry_version = geometry.version,
+		material_version = material.version,
+		shadow_caster = instance.shadow_caster,
+		shadow_receiver = instance.shadow_receiver,
+		batch_indices = batch_indices,
+		lod_screen_radii = {
+			geometry.lod_screen_radii[0],
+			geometry.lod_screen_radii[1],
+			geometry.lod_screen_radii[2],
+			0,
+		},
+		lod_count = u32(geometry.lod_count),
+	}
+	membership_changed :=
+		!previous_active ||
+		!wgpu_instance_membership_matches(previous_source, batch_indices, u32(geometry.lod_count))
+	if membership_changed && previous_active {
+		_ = wgpu_adjust_batch_membership(
+			cache,
+			previous_source.batch_indices,
+			previous_source.lod_count,
+			-1,
+		)
+	}
+	if membership_changed {
+		capacity_grew = wgpu_adjust_batch_membership(
+			cache,
+			batch_indices,
+			u32(geometry.lod_count),
+			1,
+		)
+	}
+	if wgpu_instance_source_changed(
+		previous_active,
+		previous_source,
+		source,
+		previous_transform,
+		instance.transform,
+	) {
+		static_changed, transform_input_changed, expand_transform := wgpu_instance_update_work(
+			previous_active,
+			previous_source,
+			source,
+			previous_transform,
+			instance.transform,
+		)
+		if static_changed || cpu_culling {
+			renderer.gpu_instance_records[slot] = wgpu_build_gpu_instance(
+				instance,
+				geometry,
+				material,
+				batch_indices,
+			)
+		}
+		if static_changed {
+			append(&renderer.gpu_dirty_indices, slot)
+		}
+		if transform_input_changed {
+			renderer.gpu_instance_transform_records[slot] = wgpu_build_gpu_instance_transform(
+				instance,
+				geometry,
+			)
+		}
+		if expand_transform {
+			wgpu_append_transform_update(renderer, slot)
+		}
+		renderer.gpu_instance_sources[slot] = source
+		renderer.gpu_instance_source_transforms[slot] = instance.transform
+		renderer.gpu_active_slots[slot] = true
+	}
+	return
+}
+
 wgpu_rebuild_instance_batch_cache :: proc(
 	renderer: ^WGPU_Renderer,
 	cache: ^WGPU_Draw_Batch_Cache,
@@ -1604,125 +1728,18 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	}
 	if !reset_instances {
 		for slot in render_list.dirty_instance_slots {
-			if slot < 0 || slot >= slot_count {
-				continue
+			grew, sync_err := wgpu_sync_dirty_instance_slot(
+				renderer,
+				cache,
+				render_list,
+				registry,
+				slot,
+				cpu_culling,
+			)
+			if sync_err != "" {
+				return nil, 0, sync_err
 			}
-			instance, active := wgpu_render_instance_by_slot(render_list, slot)
-			previous_active := renderer.gpu_active_slots[slot]
-			previous_source := renderer.gpu_instance_sources[slot]
-			previous_transform := renderer.gpu_instance_source_transforms[slot]
-			if !active {
-				if previous_active {
-					_ = wgpu_adjust_batch_membership(
-						cache,
-						previous_source.batch_indices,
-						previous_source.lod_count,
-						-1,
-					)
-					renderer.gpu_instance_records[slot] = {}
-					renderer.gpu_instance_transform_records[slot] = {}
-					renderer.gpu_instance_sources[slot] = {}
-					renderer.gpu_instance_source_transforms[slot] = {}
-					renderer.gpu_active_slots[slot] = false
-					append(&renderer.gpu_dirty_indices, slot)
-				}
-				continue
-			}
-			geometry, geometry_ok := resources.get_geometry(registry, instance.geometry.handle)
-			material, material_ok := resources.get_material(registry, instance.material.handle)
-			if !geometry_ok || !material_ok {
-				continue
-			}
-			batch_indices := previous_source.batch_indices
-			if !previous_active || !wgpu_instance_batch_key_matches(previous_source, instance) {
-				batches_ok: bool
-				batch_indices, batches_ok = wgpu_batch_indices_for_instance(
-					cache,
-					instance,
-					registry,
-				)
-				if !batches_ok {
-					return nil, 0, "GPU instance is missing its draw batch"
-				}
-			}
-			source := WGPU_Instance_Source_State {
-				geometry = instance.geometry.handle,
-				material = instance.material.handle,
-				geometry_version = geometry.version,
-				material_version = material.version,
-				shadow_caster = instance.shadow_caster,
-				shadow_receiver = instance.shadow_receiver,
-				batch_indices = batch_indices,
-				lod_screen_radii = {
-					geometry.lod_screen_radii[0],
-					geometry.lod_screen_radii[1],
-					geometry.lod_screen_radii[2],
-					0,
-				},
-				lod_count = u32(geometry.lod_count),
-			}
-			membership_changed :=
-				!previous_active ||
-				!wgpu_instance_membership_matches(
-						previous_source,
-						batch_indices,
-						u32(geometry.lod_count),
-					)
-			if membership_changed && previous_active {
-				_ = wgpu_adjust_batch_membership(
-					cache,
-					previous_source.batch_indices,
-					previous_source.lod_count,
-					-1,
-				)
-			}
-			if membership_changed {
-				capacity_grew =
-					wgpu_adjust_batch_membership(
-						cache,
-						batch_indices,
-						u32(geometry.lod_count),
-						1,
-					) ||
-					capacity_grew
-			}
-			if wgpu_instance_source_changed(
-				previous_active,
-				previous_source,
-				source,
-				previous_transform,
-				instance.transform,
-			) {
-				static_changed, transform_input_changed, expand_transform :=
-					wgpu_instance_update_work(
-						previous_active,
-						previous_source,
-						source,
-						previous_transform,
-						instance.transform,
-					)
-				if static_changed || cpu_culling {
-					renderer.gpu_instance_records[slot] = wgpu_build_gpu_instance(
-						instance,
-						geometry,
-						material,
-						batch_indices,
-					)
-				}
-				if static_changed {
-					append(&renderer.gpu_dirty_indices, slot)
-				}
-				if transform_input_changed {
-					renderer.gpu_instance_transform_records[slot] =
-						wgpu_build_gpu_instance_transform(instance, geometry)
-				}
-				if expand_transform {
-					wgpu_append_transform_update(renderer, slot)
-				}
-				renderer.gpu_instance_sources[slot] = source
-				renderer.gpu_instance_source_transforms[slot] = instance.transform
-				renderer.gpu_active_slots[slot] = true
-			}
+			capacity_grew = capacity_grew || grew
 		}
 		for slot in render_list.dirty_transform_slots {
 			if slot < 0 || slot >= slot_count {
@@ -1732,9 +1749,23 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			if instance == nil && !renderer.gpu_active_slots[slot] {
 				continue
 			}
+			if instance != nil && !renderer.gpu_active_slots[slot] {
+				grew, sync_err := wgpu_sync_dirty_instance_slot(
+					renderer,
+					cache,
+					render_list,
+					registry,
+					slot,
+					cpu_culling,
+				)
+				if sync_err != "" {
+					return nil, 0, sync_err
+				}
+				capacity_grew = capacity_grew || grew
+			}
 			if instance == nil || !renderer.gpu_active_slots[slot] {
 				return nil, 0, fmt.tprintf(
-					"transform-dirty GPU slot %d is not active (render list: %v, GPU: %v, static dirty: %v)",
+					"transform-dirty GPU slot %d could not be reconciled (render list: %v, GPU: %v, static dirty: %v)",
 					slot,
 					instance != nil,
 					renderer.gpu_active_slots[slot],

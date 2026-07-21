@@ -147,6 +147,77 @@ test_gpu_instance_update_work_separates_static_and_transform_uploads :: proc(t: 
 }
 
 @(test)
+test_gpu_dirty_instance_sync_reactivates_an_authoritative_render_slot :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	description, description_err := resources.cube()
+	defer delete(description.vertices)
+	defer delete(description.indices)
+	testing.expect(t, description_err == "")
+	geometry, geometry_err := resources.register_geometry(&registry, "projectile", description)
+	material, material_err := resources.register_material(
+		&registry,
+		"projectile",
+		{base_color = {0.2, 0.8, 1, 1}},
+	)
+	testing.expect(t, geometry_err == "" && material_err == "")
+
+	render_list: Render_List
+	defer ecs.destroy_render_list(&render_list)
+	append(
+		&render_list.instances,
+		Render_Instance {
+			slot = 0,
+			transform = {position = {2, 3, 0}, scale = {1, 1, 1}},
+			geometry = {handle = geometry},
+			material = {handle = material},
+		},
+	)
+	append(&render_list.instance_index_by_slot, 0)
+	render_list.instance_slot_count = 1
+
+	cache: WGPU_Draw_Batch_Cache
+	defer delete(cache.batches)
+	append(
+		&cache.batches,
+		WGPU_Draw_Batch{geometry = geometry, material = material, visible_capacity = 64},
+	)
+	cache.batch_count = 1
+
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_instance_records)
+	defer delete(renderer.gpu_instance_transform_records)
+	defer delete(renderer.gpu_instance_sources)
+	defer delete(renderer.gpu_instance_source_transforms)
+	defer delete(renderer.gpu_active_slots)
+	defer delete(renderer.gpu_dirty_indices)
+	defer delete(renderer.gpu_transform_updates)
+	resize(&renderer.gpu_instance_records, 1)
+	resize(&renderer.gpu_instance_transform_records, 1)
+	resize(&renderer.gpu_instance_sources, 1)
+	resize(&renderer.gpu_instance_source_transforms, 1)
+	resize(&renderer.gpu_active_slots, 1)
+
+	capacity_grew, err := wgpu_sync_dirty_instance_slot(
+		&renderer,
+		&cache,
+		&render_list,
+		&registry,
+		0,
+		false,
+	)
+	testing.expect(t, err == "")
+	testing.expect(t, !capacity_grew)
+	testing.expect(t, renderer.gpu_active_slots[0])
+	testing.expect(t, renderer.gpu_instance_records[0].active == 1)
+	testing.expect_value(t, renderer.gpu_instance_source_transforms[0].position, Vec3{2, 3, 0})
+	testing.expect_value(t, cache.instance_count, 1)
+	testing.expect_value(t, cache.batches[0].instance_count, u32(1))
+	testing.expect_value(t, len(renderer.gpu_dirty_indices), 1)
+	testing.expect_value(t, renderer.gpu_dirty_indices[0], 0)
+}
+
+@(test)
 test_renderer_backend_names_parse :: proc(t: ^testing.T) {
 	backend, ok := parse_renderer_backend("null")
 	testing.expect(t, ok)
