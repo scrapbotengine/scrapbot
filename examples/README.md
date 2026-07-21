@@ -2,6 +2,12 @@
 
 This directory contains complete Scrapbot project directories.
 
+For a playable Luau game demonstrating runtime input and the wider ECS/render/UI stack:
+
+```sh
+mise scrapbot run examples/asteroids
+```
+
 Run the minimal example with:
 
 ```sh

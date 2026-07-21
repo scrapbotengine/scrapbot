@@ -136,8 +136,10 @@ bin/scrapbot --version
 bin/scrapbot check examples/minimal
 bin/scrapbot check examples/ui-showcase
 bin/scrapbot check examples/ecs-stress
+bin/scrapbot check examples/asteroids
 bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload --frames 1
+bin/scrapbot run examples/asteroids --backend null --headless --no-hot-reload --frames 5
 STRESS_JSON="$(bin/scrapbot run examples/ecs-stress --backend null --headless --no-hot-reload --frames 180 --runtime-stats --json)"
 node -e '
 const result = JSON.parse(process.argv[1]);

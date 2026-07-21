@@ -1,0 +1,158 @@
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000010"
+name = "Main Camera"
+[entities.transform]
+position = [0, 0, 14]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+[entities.camera]
+fov = 52
+near = 0.1
+far = 100
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000011"
+name = "Space Light"
+[entities.ambient_light]
+color = [0.12, 0.18, 0.3]
+intensity = 0.42
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000012"
+name = "Key Light"
+[entities.directional_light]
+direction = [-0.4, -0.7, -1.0]
+color = [0.55, 0.75, 1.0]
+intensity = 1.4
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000020"
+name = "Player Ship"
+[entities.transform]
+position = [0, -3.6, 0]
+rotation = [0, 0, 0]
+scale = [0.65, 0.9, 0.65]
+[entities.geometry]
+resource = "scraproids.ship"
+[entities.material]
+resource = "a5700000-0000-4000-8000-000000000001"
+[entities.shadow_caster]
+[entities.components.ship]
+speed = 6.5
+fire_interval = 0.16
+cooldown = 0.0
+[entities.components.velocity]
+value = [0, 0, 0]
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000030"
+name = "Asteroid Alpha"
+[entities.transform]
+position = [-4.2, 2.7, 0]
+rotation = [0.2, 0.3, 0.1]
+scale = [0.8, 0.8, 0.8]
+[entities.geometry]
+resource = "scraproids.asteroid"
+[entities.material]
+resource = "a5700000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+[entities.components.asteroid]
+radius = 0.8
+[entities.components.velocity]
+value = [0.45, -0.32, 0]
+[entities.components.spin]
+value = [0.35, 0.52, 0.25]
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000031"
+name = "Asteroid Beta"
+[entities.transform]
+position = [-1.6, 0.9, 0]
+rotation = [0.4, 0.1, 0.6]
+scale = [0.55, 0.55, 0.55]
+[entities.geometry]
+resource = "scraproids.asteroid"
+[entities.material]
+resource = "a5700000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+[entities.components.asteroid]
+radius = 0.55
+[entities.components.velocity]
+value = [-0.25, -0.42, 0]
+[entities.components.spin]
+value = [0.7, 0.25, 0.4]
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000032"
+name = "Asteroid Gamma"
+[entities.transform]
+position = [1.4, 3.4, 0]
+rotation = [0.1, 0.7, 0.2]
+scale = [1.0, 1.0, 1.0]
+[entities.geometry]
+resource = "scraproids.asteroid"
+[entities.material]
+resource = "a5700000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+[entities.components.asteroid]
+radius = 1.0
+[entities.components.velocity]
+value = [0.2, -0.26, 0]
+[entities.components.spin]
+value = [0.22, 0.38, 0.18]
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000033"
+name = "Asteroid Delta"
+[entities.transform]
+position = [4.5, 1.4, 0]
+rotation = [0.5, 0.2, 0.8]
+scale = [0.7, 0.7, 0.7]
+[entities.geometry]
+resource = "scraproids.asteroid"
+[entities.material]
+resource = "a5700000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+[entities.components.asteroid]
+radius = 0.7
+[entities.components.velocity]
+value = [-0.4, -0.35, 0]
+[entities.components.spin]
+value = [0.48, 0.3, 0.58]
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000040"
+name = "HUD"
+[entities.ui_layout]
+position = [20, 20]
+size = [430, 92]
+padding = [14, 18, 14, 18]
+background = [0.015, 0.025, 0.055, 0.88]
+border_color = [0.15, 0.65, 0.9, 0.8]
+border_width = 1
+corner_radius = 12
+[entities.ui_vstack]
+gap = 8
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000041"
+name = "Score"
+[entities.ui_layout]
+parent = "a5700000-0000-4000-8000-000000000040"
+size = [390, 28]
+[entities.ui_text]
+text = "SCRAPROIDS  /  SCORE 0000"
+color = [0.55, 0.95, 1.0, 1.0]
+size = 22
+[entities.components.hud]
+
+[[entities]]
+id = "a5700000-0000-4000-8000-000000000042"
+name = "Controls"
+[entities.ui_layout]
+parent = "a5700000-0000-4000-8000-000000000040"
+size = [390, 22]
+[entities.ui_text]
+text = "WASD / ARROWS MOVE     SPACE FIRES"
+color = [0.68, 0.72, 0.82, 1.0]
+size = 16

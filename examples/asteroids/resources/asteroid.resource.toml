@@ -1,0 +1,7 @@
+id = "a5700000-0000-4000-8000-000000000002"
+type = "scrapbot.material"
+name = "Asteroid"
+
+[material]
+base_color = [0.42, 0.34, 0.28, 1.0]
+emissive = [0.0, 0.0, 0.0]
