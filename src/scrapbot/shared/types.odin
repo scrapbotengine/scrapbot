@@ -299,6 +299,9 @@ World_Environment_Component :: struct {
 	turbidity: f32,
 	atmosphere_thickness: f32,
 	horizon_softness: f32,
+	sun_direction: Vec3,
+	sun_color: Vec3,
+	sun_intensity: f32,
 	sun_size: f32,
 	sun_glow: f32,
 }
@@ -315,6 +318,9 @@ world_environment_default :: proc "contextless" () -> World_Environment_Componen
 		turbidity = 2,
 		atmosphere_thickness = 1,
 		horizon_softness = 1,
+		sun_direction = {-0.5, 0.25, -0.83},
+		sun_color = {1, 0.92, 0.72},
+		sun_intensity = 1,
 		sun_size = 1,
 		sun_glow = 1,
 	}
@@ -362,6 +368,19 @@ world_environment_is_valid :: proc "contextless" (value: World_Environment_Compo
 		!math.is_inf(value.horizon_softness) &&
 		value.horizon_softness >= 0.1 &&
 		value.horizon_softness <= 5 &&
+		world_environment_vec3_is_finite(value.sun_direction) &&
+		value.sun_direction.x * value.sun_direction.x +
+				value.sun_direction.y * value.sun_direction.y +
+				value.sun_direction.z * value.sun_direction.z >
+			0.000001 &&
+		world_environment_vec3_is_finite(value.sun_color) &&
+		value.sun_color.x >= 0 &&
+		value.sun_color.y >= 0 &&
+		value.sun_color.z >= 0 &&
+		!math.is_nan(value.sun_intensity) &&
+		!math.is_inf(value.sun_intensity) &&
+		value.sun_intensity >= 0 &&
+		value.sun_intensity <= 50 &&
 		!math.is_nan(value.sun_size) &&
 		!math.is_inf(value.sun_size) &&
 		value.sun_size >= 0 &&

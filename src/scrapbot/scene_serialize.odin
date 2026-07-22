@@ -57,6 +57,9 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		write_scene_value(builder, "turbidity", scene_f32(value.turbidity))
 		write_scene_value(builder, "atmosphere_thickness", scene_f32(value.atmosphere_thickness))
 		write_scene_value(builder, "horizon_softness", scene_f32(value.horizon_softness))
+		write_scene_value(builder, "sun_direction", scene_vec3(value.sun_direction))
+		write_scene_value(builder, "sun_color", scene_vec3(value.sun_color))
+		write_scene_value(builder, "sun_intensity", scene_f32(value.sun_intensity))
 		write_scene_value(builder, "sun_size", scene_f32(value.sun_size))
 		write_scene_value(builder, "sun_glow", scene_f32(value.sun_glow))
 	}

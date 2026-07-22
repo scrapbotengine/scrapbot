@@ -380,7 +380,7 @@ push_query_component_table :: proc "c" (
 			if entity.world_environment_index >= 0 &&
 			   entity.world_environment_index < len(world.world_environments) {
 				value := world.world_environments[entity.world_environment_index]
-				lua_createtable(L, 0, 17)
+				lua_createtable(L, 0, 20)
 				lua_pushlstring(
 					L,
 					cstring(raw_data(value.lighting)),
@@ -419,6 +419,12 @@ push_query_component_table :: proc "c" (
 				lua_setfield(L, -2, "atmosphere_thickness")
 				lua_pushnumber(L, f64(value.horizon_softness))
 				lua_setfield(L, -2, "horizon_softness")
+				push_vec3_table(L, value.sun_direction)
+				lua_setfield(L, -2, "sun_direction")
+				push_vec3_table(L, value.sun_color)
+				lua_setfield(L, -2, "sun_color")
+				lua_pushnumber(L, f64(value.sun_intensity))
+				lua_setfield(L, -2, "sun_intensity")
 				lua_pushnumber(L, f64(value.sun_size))
 				lua_setfield(L, -2, "sun_size")
 				lua_pushnumber(L, f64(value.sun_glow))

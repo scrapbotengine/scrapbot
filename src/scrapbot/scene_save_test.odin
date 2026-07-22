@@ -75,6 +75,9 @@ test_scene_world_environment_serialization_persists_procedural_controls :: proc(
 	environment.turbidity = 4.5
 	environment.atmosphere_thickness = 1.4
 	environment.horizon_softness = 1.6
+	environment.sun_direction = {0.3, 0.4, -0.8}
+	environment.sun_color = {1, 0.8, 0.6}
+	environment.sun_intensity = 2.5
 	environment.sun_size = 1.25
 	environment.sun_glow = 1.75
 	entity := shared.Scene_Entity {
@@ -90,6 +93,9 @@ test_scene_world_environment_serialization_persists_procedural_controls :: proc(
 	testing.expect(t, strings.contains(serialized, "turbidity = 4.5"))
 	testing.expect(t, strings.contains(serialized, "atmosphere_thickness = 1.4"))
 	testing.expect(t, strings.contains(serialized, "horizon_softness = 1.6"))
+	testing.expect(t, strings.contains(serialized, "sun_direction = [0.3, 0.4, -0.8]"))
+	testing.expect(t, strings.contains(serialized, "sun_color = [1, 0.8, 0.6]"))
+	testing.expect(t, strings.contains(serialized, "sun_intensity = 2.5"))
 	testing.expect(t, strings.contains(serialized, "sun_size = 1.25"))
 	testing.expect(t, strings.contains(serialized, "sun_glow = 1.75"))
 }

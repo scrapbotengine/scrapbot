@@ -118,12 +118,15 @@ A scene may contain at most one World Environment component. It belongs on an or
 | `turbidity` | number | `2` | Atmospheric haze and warmth from `0` (clear) to `10` (hazy). |
 | `atmosphere_thickness` | number | `1` | Haze reach from `0.1` to `5`. Larger values carry haze farther from the horizon. |
 | `horizon_softness` | number | `1` | Horizon transition and glow width from `0.1` to `5`. |
+| `sun_direction` | vec3 | `[-0.5, 0.25, -0.83]` | Non-zero world-space direction from the observer toward the procedural sun. The renderer normalizes it. |
+| `sun_color` | vec3 | `[1, 0.92, 0.72]` | Non-negative linear HDR color of the procedural sun disc and halo. |
+| `sun_intensity` | number | `1` | Procedural sun radiance multiplier from `0` to `50`; `0` hides the disc and glow. |
 | `sun_size` | number | `1` | Procedural sun-disc size multiplier from `0` to `10`; `0` hides the disc and glow. |
 | `sun_glow` | number | `1` | Sun halo multiplier from `0` to `10` without changing direct-light intensity. |
 
 The fixed `scrapbot.environment` engine phase retains the selected entity and component revision. Stable frames do not scan all entities or resources. Structural membership changes rediscover the singleton, and value changes resolve only the referenced UUIDs before advancing the renderer environment revision.
 
-The final seven fields art-direct only the built-in procedural atmosphere; imported backgrounds ignore them. Their reflected numeric controls support drag editing in the generated inspector. The procedural sky uses the scene's first directional light as its visible sun, so the sky disc, glow, direct lighting, and shadows share one direction and color. Its observer-above-spherical-ground approximation gives the horizon subtle perspective curvature. Without a directional light it still renders atmospheric sky and ground gradients, but no sun disc.
+The final ten fields art-direct only the built-in procedural atmosphere; imported backgrounds ignore them. Their reflected controls are generated automatically from the component's runtime field shape and numeric editor metadata. The visual sun is independent from directional lights, so it exists even in an unlit scene and can be placed without changing direct lighting or shadows. Align `sun_direction` with the negated direction of a directional light when both should agree. Its observer-above-spherical-ground approximation gives the horizon subtle perspective curvature.
 
 ### `scrapbot.mesh`
 

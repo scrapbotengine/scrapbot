@@ -336,6 +336,9 @@ configure_world_environment :: proc(
 	   registry.atmosphere_turbidity != value.turbidity ||
 	   registry.atmosphere_thickness != value.atmosphere_thickness ||
 	   registry.atmosphere_horizon_softness != value.horizon_softness ||
+	   registry.atmosphere_sun_direction != value.sun_direction ||
+	   registry.atmosphere_sun_color != value.sun_color ||
+	   registry.atmosphere_sun_intensity != value.sun_intensity ||
 	   registry.atmosphere_sun_size != value.sun_size ||
 	   registry.atmosphere_sun_glow != value.sun_glow {
 		registry.atmosphere_sky_tint = value.sky_tint
@@ -343,6 +346,9 @@ configure_world_environment :: proc(
 		registry.atmosphere_turbidity = value.turbidity
 		registry.atmosphere_thickness = value.atmosphere_thickness
 		registry.atmosphere_horizon_softness = value.horizon_softness
+		registry.atmosphere_sun_direction = value.sun_direction
+		registry.atmosphere_sun_color = value.sun_color
+		registry.atmosphere_sun_intensity = value.sun_intensity
 		registry.atmosphere_sun_size = value.sun_size
 		registry.atmosphere_sun_glow = value.sun_glow
 		bump_environment_revision(registry)

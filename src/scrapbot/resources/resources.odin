@@ -201,6 +201,9 @@ Registry :: struct {
 	atmosphere_turbidity: f32,
 	atmosphere_thickness: f32,
 	atmosphere_horizon_softness: f32,
+	atmosphere_sun_direction: shared.Vec3,
+	atmosphere_sun_color: shared.Vec3,
+	atmosphere_sun_intensity: f32,
 	atmosphere_sun_size: f32,
 	atmosphere_sun_glow: f32,
 	allocator: mem.Allocator,
@@ -253,6 +256,9 @@ init_registry :: proc(registry: ^Registry, allocator := context.allocator) {
 	registry.atmosphere_turbidity = defaults.turbidity
 	registry.atmosphere_thickness = defaults.atmosphere_thickness
 	registry.atmosphere_horizon_softness = defaults.horizon_softness
+	registry.atmosphere_sun_direction = defaults.sun_direction
+	registry.atmosphere_sun_color = defaults.sun_color
+	registry.atmosphere_sun_intensity = defaults.sun_intensity
 	registry.atmosphere_sun_size = defaults.sun_size
 	registry.atmosphere_sun_glow = defaults.sun_glow
 	ensure_allocator(registry)
@@ -330,6 +336,9 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.atmosphere_turbidity = source.atmosphere_turbidity
 	destination.atmosphere_thickness = source.atmosphere_thickness
 	destination.atmosphere_horizon_softness = source.atmosphere_horizon_softness
+	destination.atmosphere_sun_direction = source.atmosphere_sun_direction
+	destination.atmosphere_sun_color = source.atmosphere_sun_color
+	destination.atmosphere_sun_intensity = source.atmosphere_sun_intensity
 	destination.atmosphere_sun_size = source.atmosphere_sun_size
 	destination.atmosphere_sun_glow = source.atmosphere_sun_glow
 	for geometry in source.geometries {

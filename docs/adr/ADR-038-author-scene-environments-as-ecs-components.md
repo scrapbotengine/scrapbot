@@ -8,11 +8,11 @@ Environment resources are project-owned imported data, but selecting the lightin
 
 ## Decision
 
-Represent scene environment selection with one authored `scrapbot.world_environment` ECS component. A scene may contain at most one. It references Environment resources by stable UUID and owns lighting intensity/rotation, base exposure, visible-background selection and presentation controls. When the visible background is procedural, the same component owns bounded art-direction inputs for sky tint, ground color, turbidity, atmosphere thickness, horizon softness, sun-disc size, and sun glow.
+Represent scene environment selection with one authored `scrapbot.world_environment` ECS component. A scene may contain at most one. It references Environment resources by stable UUID and owns lighting intensity/rotation, base exposure, visible-background selection and presentation controls. When the visible background is procedural, the same component owns bounded art-direction inputs for sky tint, ground color, turbidity, atmosphere thickness, horizon softness, and an independent world-space sun direction, color, HDR intensity, disc size, and glow.
 
 The fixed `scrapbot.environment` engine phase retains the selected entity and its component revision. Structural changes rediscover the singleton; value changes resolve only its resource UUIDs and mutate a renderer-facing resource-registry cache. Stable frames perform no complete-world or resource scan. Environment resources remain outside the ECS and the renderer continues to consume generational handles and a monotonic environment revision.
 
-With no assigned background Environment, an enabled background uses the renderer-native procedural haze sky. Assigning a background UUID selects the imported panorama instead. Procedural controls remain authored data in that case but intentionally have no effect on the imported image.
+With no assigned background Environment, an enabled background uses the renderer-native procedural haze sky. Assigning a background UUID selects the imported panorama instead. Procedural controls remain authored data in that case but intentionally have no effect on the imported image. The visual atmosphere sun is presentation state rather than a directional-light alias: projects may align both explicitly when sky and direct lighting should agree, or art-direct them independently.
 
 ## Consequences
 

@@ -727,6 +727,9 @@ ground_color = [0.2, 0.18, 0.16]
 turbidity = 4.5
 atmosphere_thickness = 1.4
 horizon_softness = 1.6
+sun_direction = [0.3, 0.4, -0.8]
+sun_color = [1.0, 0.8, 0.6]
+sun_intensity = 2.5
 sun_size = 1.25
 sun_glow = 1.75
 `,
@@ -748,6 +751,17 @@ sun_glow = 1.75
 	testing.expect_value(t, scene.entities[0].world_environment.turbidity, f32(4.5))
 	testing.expect_value(t, scene.entities[0].world_environment.atmosphere_thickness, f32(1.4))
 	testing.expect_value(t, scene.entities[0].world_environment.horizon_softness, f32(1.6))
+	testing.expect_value(
+		t,
+		scene.entities[0].world_environment.sun_direction,
+		shared.Vec3{0.3, 0.4, -0.8},
+	)
+	testing.expect_value(
+		t,
+		scene.entities[0].world_environment.sun_color,
+		shared.Vec3{1, 0.8, 0.6},
+	)
+	testing.expect_value(t, scene.entities[0].world_environment.sun_intensity, f32(2.5))
 	testing.expect_value(t, scene.entities[0].world_environment.sun_size, f32(1.25))
 	testing.expect_value(t, scene.entities[0].world_environment.sun_glow, f32(1.75))
 }
@@ -761,6 +775,22 @@ name = "Invalid World Environment"
 
 [entities.world_environment]
 atmosphere_thickness = 0
+`,
+	)
+	defer destroy_scene(&scene)
+
+	testing.expect_value(t, result.err, Parse_Error.Invalid_Field)
+}
+
+@(test)
+test_scene_rejects_zero_procedural_sun_direction :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000032"
+name = "Invalid Sun"
+
+[entities.world_environment]
+sun_direction = [0, 0, 0]
 `,
 	)
 	defer destroy_scene(&scene)

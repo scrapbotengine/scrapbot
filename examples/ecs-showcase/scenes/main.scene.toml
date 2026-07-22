@@ -32,8 +32,11 @@ ground_color = [0.22, 0.23, 0.24]
 turbidity = 2.6
 atmosphere_thickness = 1.15
 horizon_softness = 1.2
-sun_size = 1
-sun_glow = 1.15
+sun_direction = [-0.5, 0.25, -0.83]
+sun_color = [1, 0.84, 0.58]
+sun_intensity = 0.85
+sun_size = 1.35
+sun_glow = 0.8
 
 [[entities]]
 id = "20000000-0000-4000-8000-000000000002"

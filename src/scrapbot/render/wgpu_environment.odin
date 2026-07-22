@@ -142,15 +142,15 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 		) {
 			let sun_direction = environment.sun_direction_intensity.xyz / sun_direction_length;
 			let sun_alignment = max(dot(direction, sun_direction), 0.0);
-			let sun_radius = 0.03 * sun_size;
+			let sun_radius = 0.012 * sun_size;
 			let sun_disc = smoothstep(cos(sun_radius), cos(sun_radius * 0.56), sun_alignment);
 			let inner_glow = pow(sun_alignment, 192.0 / max(sun_size, 0.1));
 			let outer_glow = pow(sun_alignment, 18.0 / max(sun_size, 0.1));
-			let sun_strength = min(environment.sun_direction_intensity.w, 8.0);
+			let sun_strength = min(environment.sun_direction_intensity.w, 50.0);
 			color += environment.sun_color.rgb * (
-				sun_disc * (3.5 + sun_strength) +
-				inner_glow * (0.35 + sun_strength * 0.12) * sun_glow_strength +
-				outer_glow * 0.035 * sun_glow_strength
+				sun_disc * 8.0 * sun_strength +
+				inner_glow * 0.6 * sun_strength * sun_glow_strength +
+				outer_glow * 0.08 * sun_strength * sun_glow_strength
 			);
 		}
 		return vec4<f32>(
@@ -488,17 +488,27 @@ wgpu_sync_environment :: proc(
 	if math.is_nan(camera_exposure) || math.is_inf(camera_exposure) || camera_exposure <= 0 {
 		camera_exposure = 1
 	}
-	sun_direction_intensity := [4]f32{}
-	sun_color := [4]f32{1, 0.94, 0.82, 1}
-	if render_list != nil && render_list.directional_light_count > 0 {
-		light := render_list.directional_lights[0].light
+	defaults := shared.world_environment_default()
+	sun_direction_intensity := [4]f32 {
+		defaults.sun_direction.x,
+		defaults.sun_direction.y,
+		defaults.sun_direction.z,
+		defaults.sun_intensity,
+	}
+	sun_color := [4]f32{defaults.sun_color.x, defaults.sun_color.y, defaults.sun_color.z, 1}
+	if registry != nil {
 		sun_direction_intensity = {
-			-light.direction.x,
-			-light.direction.y,
-			-light.direction.z,
-			light.intensity,
+			registry.atmosphere_sun_direction.x,
+			registry.atmosphere_sun_direction.y,
+			registry.atmosphere_sun_direction.z,
+			registry.atmosphere_sun_intensity,
 		}
-		sun_color = {light.color.x, light.color.y, light.color.z, 1}
+		sun_color = {
+			registry.atmosphere_sun_color.x,
+			registry.atmosphere_sun_color.y,
+			registry.atmosphere_sun_color.z,
+			1,
+		}
 	}
 	if renderer.environment_cache_valid &&
 	   renderer.environment_cached_handle == handle &&
@@ -506,9 +516,7 @@ wgpu_sync_environment :: proc(
 	   renderer.environment_cached_background_handle == background_handle &&
 	   renderer.environment_cached_background_version == background_version &&
 	   renderer.environment_cached_revision == revision &&
-	   renderer.environment_cached_camera_exposure == camera_exposure &&
-	   renderer.environment_cached_sun_direction_intensity == sun_direction_intensity &&
-	   renderer.environment_cached_sun_color == sun_color {
+	   renderer.environment_cached_camera_exposure == camera_exposure {
 		return ""
 	}
 	textures_changed :=
@@ -586,8 +594,6 @@ wgpu_sync_environment :: proc(
 	renderer.environment_cached_background_version = background_version
 	renderer.environment_cached_revision = revision
 	renderer.environment_cached_camera_exposure = camera_exposure
-	renderer.environment_cached_sun_direction_intensity = sun_direction_intensity
-	renderer.environment_cached_sun_color = sun_color
 	renderer.environment_cache_valid = true
 	return ""
 }

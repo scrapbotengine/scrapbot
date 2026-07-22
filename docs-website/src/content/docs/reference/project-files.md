@@ -192,6 +192,9 @@ ground_color = [0.24, 0.235, 0.225]
 turbidity = 2
 atmosphere_thickness = 1
 horizon_softness = 1
+sun_direction = [-0.5, 0.25, -0.83]
+sun_color = [1, 0.92, 0.72]
+sun_intensity = 1
 sun_size = 1
 sun_glow = 1
 ```

@@ -185,6 +185,20 @@ init_registry :: proc(registry: ^Registry) {
 					maximum = 5,
 				},
 			},
+			Field_Definition{name = "sun_direction", field_type = .Vec3},
+			Field_Definition{name = "sun_color", field_type = .Vec3},
+			Field_Definition {
+				name = "sun_intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.1,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 50,
+				},
+			},
 			Field_Definition {
 				name = "sun_size",
 				field_type = .Number,

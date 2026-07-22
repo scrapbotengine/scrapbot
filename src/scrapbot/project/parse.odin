@@ -837,6 +837,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.world_environment.atmosphere_thickness, found = parse_f32(value)
 					case "horizon_softness":
 						current.world_environment.horizon_softness, found = parse_f32(value)
+					case "sun_direction":
+						current.world_environment.sun_direction, found = parse_vec3(value)
+					case "sun_color":
+						current.world_environment.sun_color, found = parse_vec3(value)
+					case "sun_intensity":
+						current.world_environment.sun_intensity, found = parse_f32(value)
 					case "sun_size":
 						current.world_environment.sun_size, found = parse_f32(value)
 					case "sun_glow":

@@ -313,6 +313,9 @@ export type ScrapbotWorldEnvironment = {
 	turbidity: number,
 	atmosphere_thickness: number,
 	horizon_softness: number,
+	sun_direction: Vec3,
+	sun_color: Vec3,
+	sun_intensity: number,
 	sun_size: number,
 	sun_glow: number,
 }
@@ -333,6 +336,9 @@ export type ReadonlyScrapbotWorldEnvironment = {
 	read turbidity: number,
 	read atmosphere_thickness: number,
 	read horizon_softness: number,
+	read sun_direction: ReadonlyVec3,
+	read sun_color: ReadonlyVec3,
+	read sun_intensity: number,
 	read sun_size: number,
 	read sun_glow: number,
 }
