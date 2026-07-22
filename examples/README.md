@@ -20,6 +20,13 @@ Exercise incremental PNG and static glTF imports with:
 mise scrapbot run examples/assets --editor
 ```
 
+Render the pinned Khronos Damaged Helmet with imported base-color imagery and a Luau turntable system:
+
+```sh
+mise setup-assets
+mise scrapbot run examples/gltf-showcase --editor
+```
+
 Validate it without running a frame with:
 
 ```sh

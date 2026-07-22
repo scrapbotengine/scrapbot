@@ -1,0 +1,6 @@
+name = "glTF Showcase"
+default_scene = "scenes/main.scene.toml"
+
+[window]
+width = 1280
+height = 720

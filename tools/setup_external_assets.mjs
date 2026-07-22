@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   createReadStream,
   createWriteStream,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -46,6 +47,20 @@ function destinationPath(asset) {
   return destination;
 }
 
+function placementPath(asset, placement) {
+  const destination = resolve(repositoryRoot, placement);
+  const pathWithinRepository = relative(repositoryRoot, destination);
+  if (
+    pathWithinRepository === "" ||
+    pathWithinRepository === ".." ||
+    pathWithinRepository.startsWith(`..${sep}`) ||
+    pathWithinRepository.startsWith(sep)
+  ) {
+    throw new Error(`${asset.id}: placement escapes the repository`);
+  }
+  return destination;
+}
+
 async function assetIsCurrent(asset, destination) {
   if (!existsSync(destination)) {
     return false;
@@ -76,6 +91,33 @@ async function downloadAsset(asset, destination) {
   }
 }
 
+async function ensurePlacement(asset, source, placement) {
+  const destination = placementPath(asset, placement);
+  if (destination === source) {
+    throw new Error(`${asset.id}: placement duplicates its download path`);
+  }
+  if (await assetIsCurrent(asset, destination)) {
+    console.log(`[external-assets] ready ${asset.id} at ${placement}`);
+    return true;
+  }
+  if (checkOnly) {
+    console.error(`[external-assets] missing or invalid ${asset.id} at ${placement}`);
+    return false;
+  }
+  mkdirSync(dirname(destination), { recursive: true });
+  const temporary = `${destination}.install`;
+  rmSync(temporary, { force: true });
+  copyFileSync(source, temporary);
+  if (!(await assetIsCurrent(asset, temporary))) {
+    rmSync(temporary, { force: true });
+    throw new Error(`${asset.id}: placed bytes failed verification`);
+  }
+  rmSync(destination, { force: true });
+  renameSync(temporary, destination);
+  console.log(`[external-assets] installed ${asset.id} at ${placement}`);
+  return true;
+}
+
 async function main() {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (manifest.schema_version !== 1 || !Array.isArray(manifest.assets)) {
@@ -84,20 +126,32 @@ async function main() {
 
   let missing = false;
   for (const asset of manifest.assets) {
-    const destination = destinationPath(asset);
-    if (await assetIsCurrent(asset, destination)) {
-      console.log(`[external-assets] ready ${asset.id}`);
-      continue;
+    const placements = asset.placements ?? [];
+    if (
+      !Array.isArray(placements) ||
+      placements.some((placement) => typeof placement !== "string" || placement === "")
+    ) {
+      throw new Error(`${asset.id}: placements must be non-empty repository-relative paths`);
     }
-    if (checkOnly) {
+    const destination = destinationPath(asset);
+    const current = await assetIsCurrent(asset, destination);
+    if (current) {
+      console.log(`[external-assets] ready ${asset.id}`);
+    } else if (checkOnly) {
       console.error(`[external-assets] missing or invalid ${asset.id}`);
       missing = true;
       continue;
+    } else {
+      console.log(`[external-assets] downloading ${asset.id}`);
+      await downloadAsset(asset, destination);
+      console.log(`[external-assets] verified ${asset.id}`);
     }
 
-    console.log(`[external-assets] downloading ${asset.id}`);
-    await downloadAsset(asset, destination);
-    console.log(`[external-assets] verified ${asset.id}`);
+    for (const placement of placements) {
+      if (!(await ensurePlacement(asset, destination, placement))) {
+        missing = true;
+      }
+    }
   }
 
   if (missing) {

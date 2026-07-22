@@ -1,0 +1,59 @@
+[[entities]]
+id = "d5100000-0000-4000-8000-000000000001"
+name = "Main Camera"
+
+[entities.transform]
+position = [0, 0, 4]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 45
+near = 0.1
+far = 100
+
+[[entities]]
+id = "d5100000-0000-4000-8000-000000000002"
+name = "Studio Ambient"
+
+[entities.ambient_light]
+color = [0.35, 0.45, 0.62]
+intensity = 0.42
+
+[[entities]]
+id = "d5100000-0000-4000-8000-000000000003"
+name = "Warm Key Light"
+
+[entities.directional_light]
+direction = [-0.55, -0.8, -0.65]
+color = [1.0, 0.78, 0.58]
+intensity = 1.55
+
+[[entities]]
+id = "d5100000-0000-4000-8000-000000000004"
+name = "Cool Fill Light"
+
+[entities.transform]
+position = [-2.4, 1.2, 2.2]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [0.25, 0.55, 1.0]
+intensity = 8
+range = 7
+
+[[entities]]
+id = "d5100000-0000-4000-8000-000000000005"
+name = "Damaged Helmet"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.model]
+resource = "d5000000-0000-4000-8000-000000000001"
+
+[entities.components.turntable]
+speed = [0.08, 0.32, 0.03]

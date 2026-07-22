@@ -16,3 +16,5 @@ Downloaded files live under ignored `downloads/` state. They must not be added t
 The ordinary test suite must remain independent of external downloads. Tests that require these fixtures should be explicit integration tasks and produce a direct `mise setup-assets` instruction when a fixture is absent.
 
 Run `mise test-gltf` to validate the real-world import product, or `mise test-gltf-gpu` to import it and produce a bounded headless WGPU framegrab in the platform temporary directory.
+
+`mise setup-assets` also copies the verified helmet into the ignored `examples/gltf-showcase/assets/` directory. Run `mise scrapbot run examples/gltf-showcase --editor` for the persistent interactive showcase.

@@ -48,6 +48,8 @@ mise test-gltf-gpu
 
 `test-gltf` imports and checks the model plus its product metadata. `test-gltf-gpu` additionally produces a bounded headless WGPU framegrab in the platform temporary directory. Run `mise setup-assets` first if the fixture check tells you it is absent.
 
+Use `examples/gltf-showcase` for persistent interactive or editor testing of a representative imported model. Its ignored `assets/DamagedHelmet.glb` placement is maintained by `mise setup-assets`; do not commit or redistribute it.
+
 ## Structured Diagnostics
 
 Prefer `--json` for agent-driven CLI checks:
