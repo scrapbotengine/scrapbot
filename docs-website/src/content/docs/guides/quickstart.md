@@ -5,6 +5,16 @@ description: Build Scrapbot, create or run a project, and verify the current eng
 
 Scrapbot is developed from the repository root. The current workflow uses `mise` tasks to build the Odin CLI and vendored Luau libraries.
 
+## Set up a checkout
+
+```sh
+mise setup
+```
+
+This installs the pinned tools, initializes Git submodules, downloads checksum-verified external development fixtures, and configures the tracked pre-commit hook. The operation is idempotent.
+
+Heavyweight or license-constrained fixtures are stored in ignored `tests/fixtures/external/downloads/` state instead of Git. `mise setup-assets` installs only those fixtures, while `mise check-assets` verifies an existing installation without accessing the network. These downloads are development inputs and are never included in Scrapbot project packages or releases. See the tracked `tests/fixtures/external/README.md` for their sources and licenses.
+
 ## Build the CLI
 
 ```sh

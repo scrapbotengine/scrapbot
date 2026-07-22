@@ -33,6 +33,12 @@ bin/scrapbot help run
 
 Use `mise test` for `src/scrapbot/script` or the full package tree because Luau tests require the native linker flags from `mise.toml`.
 
+## External Development Fixtures
+
+Run `mise setup` for a complete contributor checkout. It installs pinned tools, initializes Git submodules, downloads external development fixtures, and configures the tracked hooks. `mise setup-assets` installs only the external fixtures; `mise check-assets` verifies their byte lengths and SHA-256 hashes without network access.
+
+The manifest and license notes live under `tests/fixtures/external/`; downloaded bytes live under its ignored `downloads/` directory. Keep the ordinary `mise test` suite independent of these heavyweight or license-constrained files. An explicit integration task may require them, but it must fail with a direct `mise setup-assets` instruction when they are absent. Never commit downloaded fixtures or copy them into distributable examples, project packages, or releases.
+
 ## Structured Diagnostics
 
 Prefer `--json` for agent-driven CLI checks:

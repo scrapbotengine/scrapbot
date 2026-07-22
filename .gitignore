@@ -2,3 +2,4 @@
 .scrapbot/
 bin/
 examples/*/build/
+/tests/fixtures/external/downloads/

@@ -37,11 +37,21 @@ description = "Check staged Odin files with odinfmt"
 run = "node tools/check_staged_odin_format.mjs"
 
 [tasks.setup]
-description = "Install project tools and tracked Git hooks"
+description = "Install project tools, source dependencies, external fixtures, and Git hooks"
 run = '''
 mise install
+git submodule update --init --recursive
+node tools/setup_external_assets.mjs
 git config --local core.hooksPath .githooks
 '''
+
+[tasks.setup-assets]
+description = "Download and verify pinned external development fixtures"
+run = "node tools/setup_external_assets.mjs"
+
+[tasks.check-assets]
+description = "Verify that pinned external development fixtures are installed"
+run = "node tools/setup_external_assets.mjs --check"
 
 [tasks.build]
 description = "Build the Scrapbot CLI"
