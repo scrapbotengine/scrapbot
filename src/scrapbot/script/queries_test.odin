@@ -347,6 +347,82 @@ end)
 }
 
 @(test)
+test_luau_query_system_writes_world_environment_and_invalidates_consumers :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000051"
+name = "World Environment"
+
+[entities.world_environment]
+sun_direction = [-0.5, 0.25, -0.83]
+`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`local Environments = scrapbot.query(scrapbot.world_environment)
+scrapbot.system(Environments, {
+	writes = { scrapbot.world_environment },
+}, function(time, entity, environment)
+	environment.sun_direction.x = 0
+	environment.sun_direction.y = -1
+	environment.sun_direction.z = 0
+end)
+`,
+		"=test",
+		&world,
+	)
+	testing.expectf(t, result.err == "", "script registration failed: %s", result.err)
+	revision_before := world.entities[0].component_revision
+	step_err := step_runtime(&runtime, &world, 0.5)
+	testing.expectf(t, step_err == "", "world environment writeback failed: %s", step_err)
+	testing.expect_value(t, world.world_environments[0].sun_direction, shared.Vec3{0, -1, 0})
+	testing.expect(t, world.entities[0].component_revision > revision_before)
+}
+
+@(test)
+test_luau_query_system_rejects_world_environment_write_without_access :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "a9000000-0000-4000-8000-000000000052"
+name = "World Environment"
+
+[entities.world_environment]
+sun_direction = [-0.5, 0.25, -0.83]
+`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`local Environments = scrapbot.query(scrapbot.world_environment)
+scrapbot.system(Environments, function(time, entity, environment)
+	environment.sun_direction.y = -1
+end)
+`,
+		"=test",
+		&world,
+	)
+	testing.expectf(t, result.err == "", "script registration failed: %s", result.err)
+	original := world.world_environments[0].sun_direction
+	step_err := step_runtime(&runtime, &world, 0.5)
+	testing.expect(
+		t,
+		step_err == "Luau system: system access declaration does not permit component write",
+	)
+	testing.expect_value(t, world.world_environments[0].sun_direction, original)
+}
+
+@(test)
 test_luau_query_reuses_cached_object_for_same_component_set :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(
 		`[[entities]]

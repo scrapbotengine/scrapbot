@@ -1,7 +1,7 @@
 # FDR-005: System scheduling
 
 **Status:** Active
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-22
 
 ## Overview
 
@@ -20,6 +20,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Component handles carry runtime component IDs, giving scheduler-facing declarations and runtime query paths a shared component-type identity.
 - Unknown component names in system access declarations fail script loading.
 - Systems with explicit access declarations may only read or write components covered by those declarations. Multi-component queries check every requested component against the active system declaration. Callback-only systems remain permissive.
+- Luau query writeback validates mutable payloads before committing them. Transform, schema-backed custom components, and World Environment currently support typed writeback; an accepted World Environment change bumps the selected entity's component revision for retained renderer reconciliation.
 - Conflict-free native systems execute concurrently on a persistent worker pool.
 - Conflicting systems preserve registration order across scheduler stages.
 - Luau systems execute serially on the calling thread and act as barriers between native stages.

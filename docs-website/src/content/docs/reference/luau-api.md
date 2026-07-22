@@ -62,6 +62,8 @@ See the [Engine Component Reference](/reference/components/) for the complete fi
 
 Light query payloads expose `color` and `intensity`; directional lights also expose `direction`, and point lights expose `range`. Systems can animate a point light by writing the same entity's transform.
 
+World Environment queries expose the complete scene-authored payload. Declare `scrapbot.world_environment` in a system's `writes` before changing atmosphere or sun fields; accepted writeback advances the component revision consumed by the retained environment phase. `examples/ecs-showcase` combines it with a project-local `day_cycle` component to animate a complete day/night orbit.
+
 Transform query payloads expose `parent`, `position`, `rotation`, and `scale`. `parent` is an entity UUID string or empty for a root, and TRS values are local to that parent. A parent without a Transform contributes an identity spatial basis. Writeback rejects a missing parent, self-parenting, and cycles. Rendering and spatial editor tools derive world transforms automatically.
 
 Shadow caster and receiver handles have empty marker payloads. They can be queried and used with deferred `spawn`, `add_component`, and `remove_component` calls.

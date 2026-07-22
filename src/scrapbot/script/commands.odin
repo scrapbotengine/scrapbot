@@ -7,6 +7,7 @@ import resources "../resources"
 import shared "../shared"
 import base_runtime "base:runtime"
 import c "core:c"
+import "core:strings"
 
 scrapbot_spawn :: proc "c" (L: Lua_State) -> c.int {
 	runtime := cast(^Runtime)lua_getthreaddata(L)
@@ -426,6 +427,101 @@ read_full_transform_table :: proc "c" (
 	}
 	transform.scale = value
 	return transform, ""
+}
+
+read_full_world_environment_table :: proc "c" (
+	L: Lua_State,
+	payload_index: c.int,
+	original: shared.World_Environment_Component,
+) -> (
+	value: shared.World_Environment_Component,
+	err: string,
+) {
+	context = base_runtime.default_context()
+	value = original
+	lighting := ""
+	if err = read_ui_string_field(L, payload_index, "lighting", &lighting); err != "" {
+		return value, err
+	}
+	value.lighting = strings.clone(lighting)
+	background := ""
+	if err = read_ui_string_field(L, payload_index, "background", &background); err != "" {
+		delete(value.lighting)
+		return value, err
+	}
+	value.background = strings.clone(background)
+	defer if err != "" {
+		delete(value.lighting)
+		delete(value.background)
+	}
+
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"lighting_intensity",
+		&value.lighting_intensity,
+	); err != "" { return }
+	if err = read_ui_number_field(L, payload_index, "lighting_rotation", &value.lighting_rotation);
+	   err != "" { return }
+	if err = read_ui_number_field(L, payload_index, "exposure", &value.exposure);
+	   err != "" { return }
+	if err = read_ui_bool_field(L, payload_index, "background_visible", &value.background_visible);
+	   err != "" { return }
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"background_intensity",
+		&value.background_intensity,
+	); err != "" { return }
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"background_rotation",
+		&value.background_rotation,
+	); err != "" { return }
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"background_exposure",
+		&value.background_exposure,
+	); err != "" { return }
+	if err = read_ui_number_field(L, payload_index, "background_blur", &value.background_blur);
+	   err != "" { return }
+	vec3_ok := false
+	if value.sky_tint, vec3_ok = required_vec3_field(L, payload_index, "sky_tint"); !vec3_ok {
+		return value, "scrapbot.world_environment.sky_tint must be a vec3"
+	}
+	if value.ground_color, vec3_ok = required_vec3_field(L, payload_index, "ground_color");
+	   !vec3_ok {
+		return value, "scrapbot.world_environment.ground_color must be a vec3"
+	}
+	if err = read_ui_number_field(L, payload_index, "turbidity", &value.turbidity);
+	   err != "" { return }
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"atmosphere_thickness",
+		&value.atmosphere_thickness,
+	); err != "" { return }
+	if err = read_ui_number_field(L, payload_index, "horizon_softness", &value.horizon_softness);
+	   err != "" { return }
+	if value.sun_direction, vec3_ok = required_vec3_field(L, payload_index, "sun_direction");
+	   !vec3_ok {
+		return value, "scrapbot.world_environment.sun_direction must be a non-zero vec3"
+	}
+	if value.sun_color, vec3_ok = required_vec3_field(L, payload_index, "sun_color"); !vec3_ok {
+		return value, "scrapbot.world_environment.sun_color must be a vec3"
+	}
+	if err = read_ui_number_field(L, payload_index, "sun_intensity", &value.sun_intensity);
+	   err != "" { return }
+	if err = read_ui_number_field(L, payload_index, "sun_size", &value.sun_size);
+	   err != "" { return }
+	if err = read_ui_number_field(L, payload_index, "sun_glow", &value.sun_glow);
+	   err != "" { return }
+	if !shared.world_environment_is_valid(value) {
+		return value, "scrapbot.world_environment payload is invalid"
+	}
+	return value, ""
 }
 
 read_custom_component_payload :: proc "c" (

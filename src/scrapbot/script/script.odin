@@ -87,6 +87,14 @@ Custom_Component_Writeback :: struct {
 	can_write: bool,
 }
 
+World_Environment_Writeback :: struct {
+	ref: c.int,
+	entity_index: int,
+	component_id: Component_ID,
+	original: shared.World_Environment_Component,
+	can_write: bool,
+}
+
 Prepared_Transform_Writebacks :: struct {
 	transforms: [ecs.MAX_QUERY_TERMS]Transform_Component,
 	changed: [ecs.MAX_QUERY_TERMS]bool,
@@ -94,6 +102,11 @@ Prepared_Transform_Writebacks :: struct {
 
 Prepared_Custom_Component_Writebacks :: struct {
 	components: [ecs.MAX_QUERY_TERMS]ecs.Command_Component,
+	changed: [ecs.MAX_QUERY_TERMS]bool,
+}
+
+Prepared_World_Environment_Writebacks :: struct {
+	environments: [ecs.MAX_QUERY_TERMS]shared.World_Environment_Component,
 	changed: [ecs.MAX_QUERY_TERMS]bool,
 }
 
@@ -392,6 +405,8 @@ run_script_system :: proc(
 			writeback_count := 0
 			component_writebacks: [ecs.MAX_QUERY_TERMS]Custom_Component_Writeback
 			component_writeback_count := 0
+			world_environment_writebacks: [ecs.MAX_QUERY_TERMS]World_Environment_Writeback
+			world_environment_writeback_count := 0
 			for term_index in 0 ..< system.query.term_count {
 				term := system.query.terms[term_index]
 				push_query_component_table(L, runtime.world, entity_index, term)
@@ -410,6 +425,25 @@ run_script_system :: proc(
 							),
 						}
 						writeback_count += 1
+					}
+				} else if term.name == "scrapbot.world_environment" {
+					world_environment_index :=
+						runtime.world.entities[entity_index].world_environment_index
+					if world_environment_index >= 0 &&
+					   world_environment_index < len(runtime.world.world_environments) {
+						world_environment_writebacks[world_environment_writeback_count] =
+							World_Environment_Writeback {
+								ref = lua_ref(L, -1),
+								entity_index = entity_index,
+								component_id = term.component_id,
+								original = runtime.world.world_environments[world_environment_index],
+								can_write = system_allows_component_access(
+									system.declaration,
+									term.name,
+									.Write,
+								),
+							}
+						world_environment_writeback_count += 1
 					}
 				} else if query_term_is_custom_schema_component(&runtime.registry, term) {
 					if _, ok := ecs.custom_component_for_entity_ref(
@@ -442,6 +476,9 @@ run_script_system :: proc(
 				for writeback in component_writebacks[:component_writeback_count] {
 					lua_unref(L, writeback.ref)
 				}
+				for writeback in world_environment_writebacks[:world_environment_writeback_count] {
+					lua_unref(L, writeback.ref)
+				}
 				return luau_stack_error(L, "Luau system")
 			}
 			prepared_transforms: Prepared_Transform_Writebacks
@@ -458,11 +495,24 @@ run_script_system :: proc(
 				component_writebacks[:component_writeback_count],
 				&prepared_components,
 			)
+			prepared_world_environments: Prepared_World_Environment_Writebacks
+			defer destroy_prepared_world_environment_writebacks(
+				&prepared_world_environments,
+				world_environment_writeback_count,
+			)
+			world_environment_err := prepare_world_environment_writebacks(
+				L,
+				world_environment_writebacks[:world_environment_writeback_count],
+				&prepared_world_environments,
+			)
 			if transform_err != "" {
 				return transform_err
 			}
 			if component_err != "" {
 				return component_err
+			}
+			if world_environment_err != "" {
+				return world_environment_err
 			}
 			apply_transform_writebacks(
 				runtime.world,
@@ -473,6 +523,11 @@ run_script_system :: proc(
 				runtime.world,
 				component_writebacks[:component_writeback_count],
 				&prepared_components,
+			)
+			apply_world_environment_writebacks(
+				runtime.world,
+				world_environment_writebacks[:world_environment_writeback_count],
+				&prepared_world_environments,
 			)
 		}
 		return ""
@@ -633,6 +688,86 @@ apply_custom_component_writebacks :: proc(
 			continue
 		}
 		apply_custom_component_command(world_component, &prepared.components[index])
+	}
+}
+
+prepare_world_environment_writebacks :: proc(
+	L: Lua_State,
+	writebacks: []World_Environment_Writeback,
+	prepared: ^Prepared_World_Environment_Writebacks,
+) -> string {
+	first_err := ""
+	for writeback, index in writebacks {
+		lua_rawgeti(L, LUA_REGISTRYINDEX, writeback.ref)
+		value, err := read_full_world_environment_table(L, -1, writeback.original)
+		lua_settop(L, -2)
+		lua_unref(L, writeback.ref)
+		if err != "" {
+			if first_err == "" {
+				if !writeback.can_write {
+					first_err = "Luau system: system access declaration does not permit component write"
+				} else {
+					first_err = "Luau system: invalid scrapbot.world_environment payload"
+				}
+			}
+			continue
+		}
+		if value == writeback.original {
+			delete(value.lighting)
+			delete(value.background)
+			continue
+		}
+		if !writeback.can_write {
+			delete(value.lighting)
+			delete(value.background)
+			if first_err == "" {
+				first_err = "Luau system: system access declaration does not permit component write"
+			}
+			continue
+		}
+		prepared.environments[index] = value
+		prepared.changed[index] = true
+	}
+	return first_err
+}
+
+destroy_prepared_world_environment_writebacks :: proc(
+	prepared: ^Prepared_World_Environment_Writebacks,
+	count: int,
+) {
+	if prepared == nil {
+		return
+	}
+	for index in 0 ..< count {
+		if !prepared.changed[index] {
+			continue
+		}
+		delete(prepared.environments[index].lighting)
+		delete(prepared.environments[index].background)
+	}
+	prepared^ = {}
+}
+
+apply_world_environment_writebacks :: proc(
+	world: ^World,
+	writebacks: []World_Environment_Writeback,
+	prepared: ^Prepared_World_Environment_Writebacks,
+) {
+	for writeback, index in writebacks {
+		if !prepared.changed[index] {
+			continue
+		}
+		snapshot := ecs.Registered_Component_Snapshot {
+			component_id = writeback.component_id,
+			name = "scrapbot.world_environment",
+			storage_kind = .World_Environment,
+			present = true,
+			value = {
+				has_world_environment = true,
+				world_environment = prepared.environments[index],
+			},
+		}
+		_ = ecs.apply_registered_component_snapshot(world, writeback.entity_index, &snapshot)
 	}
 }
 
