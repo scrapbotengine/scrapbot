@@ -380,8 +380,34 @@ load_project :: proc(root: string) -> Project_Load_Result {
 	if resource_err := validate_scene_resource_references(&result.scene, result.resources[:]);
 	   resource_err != "" {
 		result.err = resource_err
+		return result
+	}
+	if environment_err := validate_project_environment_reference(
+		&result.config,
+		result.resources[:],
+	); environment_err != "" {
+		result.err = environment_err
 	}
 	return result
+}
+
+validate_project_environment_reference :: proc(
+	config: ^Project_Config,
+	resources: []shared.Project_Resource,
+) -> string {
+	if config == nil || config.render.environment == (shared.Resource_UUID{}) {
+		return ""
+	}
+	for resource in resources {
+		if resource.kind == .Environment && resource.id == config.render.environment {
+			return ""
+		}
+	}
+	id_buffer: [36]u8
+	return fmt.tprintf(
+		"project render environment references unknown resource %s",
+		shared.resource_uuid_to_string(config.render.environment, id_buffer[:]),
+	)
 }
 
 load_scene_file :: proc(path: string) -> Scene_Load_Result {

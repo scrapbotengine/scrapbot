@@ -12,6 +12,18 @@
       "placements": [
         "examples/gltf-showcase/assets/DamagedHelmet.glb"
       ]
+    },
+    {
+      "id": "poly-haven-studio-small-09",
+      "path": "hdr/studio_small_09_1k.hdr",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+      "bytes": 1615248,
+      "sha256": "e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45",
+      "source": "https://polyhaven.com/a/studio_small_09",
+      "license": "CC0",
+      "placements": [
+        "examples/gltf-showcase/assets/studio_small_09_1k.hdr"
+      ]
     }
   ]
 }

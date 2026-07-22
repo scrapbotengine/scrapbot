@@ -43,12 +43,20 @@ Project_Config :: struct {
 	name: string,
 	default_scene: string,
 	window: Project_Window_Config,
+	render: Project_Render_Config,
 	native_extensions: [dynamic]Native_Extension_Target,
 	fonts: [dynamic]Project_Font,
 }
 
 Project_Window_Config :: struct {
 	width, height: int,
+}
+
+Project_Render_Config :: struct {
+	environment: Resource_UUID,
+	environment_intensity: f32,
+	environment_rotation: f32,
+	exposure: f32,
 }
 
 Native_Extension_Target :: struct {
@@ -64,6 +72,7 @@ Project_Font :: struct {
 Project_Resource_Kind :: enum {
 	Texture,
 	Model,
+	Environment,
 	Material,
 	Geometry_LOD,
 }
@@ -80,6 +89,10 @@ Project_Texture_Resource :: struct {
 }
 
 Project_Model_Resource :: struct {
+	source: string,
+}
+
+Project_Environment_Resource :: struct {
 	source: string,
 }
 
@@ -103,6 +116,7 @@ Project_Resource :: struct {
 	source: string,
 	texture: Project_Texture_Resource,
 	model: Project_Model_Resource,
+	environment: Project_Environment_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
 }
@@ -182,6 +196,9 @@ Geometry_Handle :: struct {
 	index, generation: u32,
 }
 Texture_Handle :: struct {
+	index, generation: u32,
+}
+Environment_Handle :: struct {
 	index, generation: u32,
 }
 Model_Handle :: struct {

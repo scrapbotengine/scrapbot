@@ -4,7 +4,7 @@ This directory describes heavyweight or license-constrained development fixtures
 
 Run `mise setup` for a complete contributor checkout, or `mise setup-assets` to install only these fixtures. Downloads are pinned by immutable source URL, byte length, and SHA-256 in `manifest.json`. `mise check-assets` verifies the local files without accessing the network.
 
-Downloaded files live under ignored `downloads/` state. They must not be added to Git, copied into examples, or included in Scrapbot packages and releases.
+Downloaded files live under ignored `downloads/` state. The setup tool may copy verified files to ignored example `assets/` placements declared by the manifest, but neither downloads nor placements may be added to Git or included in Scrapbot's own packages and releases.
 
 ## Khronos Damaged Helmet
 
@@ -15,6 +15,14 @@ Downloaded files live under ignored `downloads/` state. They must not be added t
 
 The ordinary test suite must remain independent of external downloads. Tests that require these fixtures should be explicit integration tasks and produce a direct `mise setup-assets` instruction when a fixture is absent.
 
+## Poly Haven Studio Small 09
+
+- Local path: `downloads/hdr/studio_small_09_1k.hdr`
+- Upstream: [Poly Haven](https://polyhaven.com/a/studio_small_09)
+- Author: Sergej Majboroda
+- Purpose: deterministic HDR environment import and image-based-lighting development
+- Licensing: CC0
+
 Run `mise test-gltf` to validate the real-world import product, or `mise test-gltf-gpu` to import it and produce a bounded headless WGPU framegrab in the platform temporary directory.
 
-`mise setup-assets` also copies the verified helmet into the ignored `examples/gltf-showcase/assets/` directory. Run `mise scrapbot run examples/gltf-showcase --editor` for the persistent interactive showcase.
+`mise setup-assets` also copies the verified helmet and studio HDRI into the ignored `examples/gltf-showcase/assets/` directory. Run `mise scrapbot run examples/gltf-showcase --editor` for the persistent interactive showcase.

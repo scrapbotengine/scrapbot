@@ -104,6 +104,16 @@ WGPU_Material_Uniform :: struct {
 }
 #assert(size_of(WGPU_Material_Uniform) == 32)
 
+WGPU_Environment_Uniform :: struct {
+	intensity: f32,
+	rotation: f32,
+	exposure: f32,
+	enabled: f32,
+	max_specular_lod: f32,
+	_padding: [3]f32,
+}
+#assert(size_of(WGPU_Environment_Uniform) == 32)
+
 WGPU_Draw_Batch :: struct {
 	geometry: shared.Geometry_Handle,
 	material: shared.Material_Handle,
@@ -300,6 +310,18 @@ WGPU_Renderer :: struct {
 	material_sampler: wgpu.Sampler,
 	material_fallback_textures: [5]wgpu.Texture,
 	material_fallback_views: [5]wgpu.TextureView,
+	environment_bind_group_layout: wgpu.BindGroupLayout,
+	environment_bind_group: wgpu.BindGroup,
+	environment_sampler: wgpu.Sampler,
+	environment_uniform_buffer: wgpu.Buffer,
+	environment_irradiance_texture: wgpu.Texture,
+	environment_irradiance_view: wgpu.TextureView,
+	environment_specular_texture: wgpu.Texture,
+	environment_specular_view: wgpu.TextureView,
+	environment_cached_handle: shared.Environment_Handle,
+	environment_cached_version: u32,
+	environment_cached_revision: u64,
+	environment_cache_valid: bool,
 	ui_bind_group_layout: wgpu.BindGroupLayout,
 	ui_bind_group: wgpu.BindGroup,
 	ui_pipeline_layout: wgpu.PipelineLayout,
@@ -1362,6 +1384,7 @@ wgpu_encode_render_pass :: proc(
 ) -> string {
 	world_start := time.tick_now()
 	if err := wgpu_sync_ui_fonts(renderer, registry); err != "" { return err }
+	if err := wgpu_sync_environment(renderer, registry); err != "" { return err }
 	if err := wgpu_ensure_post_targets(renderer, target_width, target_height); err != "" {
 		return err
 	}
@@ -1420,6 +1443,7 @@ wgpu_encode_render_pass :: proc(
 			u32(viewport.height),
 		)
 		wgpu.RenderPassEncoderSetPipeline(render_pass, renderer.gpu_driven_pipeline)
+		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, renderer.environment_bind_group)
 		for batch, batch_index in batches {
 			cached, cache_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
 			if cache_err != "" { return cache_err }

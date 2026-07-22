@@ -1,0 +1,6 @@
+id = "a7000000-0000-4000-8000-000000000002"
+type = "scrapbot.environment"
+name = "Studio Small 09"
+
+[environment]
+source = "assets/studio_small_09_1k.hdr"

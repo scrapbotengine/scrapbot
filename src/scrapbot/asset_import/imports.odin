@@ -15,6 +15,7 @@ TEXTURE_IMPORTER_SCHEMA :: "scrapbot.texture.v1.rgba8-mips"
 Product_Kind :: enum {
 	Texture,
 	Model,
+	Environment,
 }
 
 Product :: struct {
@@ -82,7 +83,9 @@ ensure_project_imports :: proc(
 		if only != (shared.Resource_UUID{}) && declaration.id != only {
 			continue
 		}
-		if declaration.kind == .Texture || declaration.kind == .Model {
+		if declaration.kind == .Texture ||
+		   declaration.kind == .Model ||
+		   declaration.kind == .Environment {
 			has_imports = true
 			break
 		}
@@ -119,6 +122,13 @@ ensure_project_imports :: proc(
 				)
 			case .Model:
 				product, imported, import_err = ensure_model_import(
+					root,
+					build_dir,
+					declaration,
+					force,
+				)
+			case .Environment:
+				product, imported, import_err = ensure_environment_import(
 					root,
 					build_dir,
 					declaration,

@@ -4,3 +4,9 @@ default_scene = "scenes/main.scene.toml"
 [window]
 width = 1280
 height = 720
+
+[render]
+environment = "a7000000-0000-4000-8000-000000000002"
+environment_intensity = 0.9
+environment_rotation = 20
+exposure = 1

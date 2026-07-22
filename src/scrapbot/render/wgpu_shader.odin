@@ -23,6 +23,17 @@ struct Material_Uniform {
 	flags: vec4<f32>,
 };
 
+struct Environment_Uniform {
+	intensity: f32,
+	rotation: f32,
+	exposure: f32,
+	enabled: f32,
+	max_specular_lod: f32,
+	_padding_0: f32,
+	_padding_1: f32,
+	_padding_2: f32,
+};
+
 @group(0) @binding(0)
 var<uniform> render: Render_Uniform;
 @group(0) @binding(1) var shadow_map: texture_depth_2d;
@@ -34,6 +45,10 @@ var<uniform> render: Render_Uniform;
 @group(1) @binding(4) var occlusion_texture: texture_2d<f32>;
 @group(1) @binding(5) var emissive_texture: texture_2d<f32>;
 @group(1) @binding(6) var<uniform> material: Material_Uniform;
+@group(2) @binding(0) var irradiance_cube: texture_cube<f32>;
+@group(2) @binding(1) var specular_cube: texture_cube<f32>;
+@group(2) @binding(2) var environment_sampler: sampler;
+@group(2) @binding(3) var<uniform> environment: Environment_Uniform;
 
 struct Vertex_Input {
 	@location(0) position: vec3<f32>,
@@ -83,6 +98,20 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
 fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
 	return f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) *
 		pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+fn rotate_environment(direction: vec3<f32>) -> vec3<f32> {
+	let c = cos(environment.rotation);
+	let s = sin(environment.rotation);
+	return vec3<f32>(c * direction.x - s * direction.z, direction.y, s * direction.x + c * direction.z);
+}
+
+fn environment_brdf(n_dot_v: f32, roughness: f32) -> vec2<f32> {
+	let c0 = vec4<f32>(-1.0, -0.0275, -0.572, 0.022);
+	let c1 = vec4<f32>(1.0, 0.0425, 1.04, -0.04);
+	let r = roughness * c0 + c1;
+	let a004 = min(r.x * r.x, exp2(-9.28 * n_dot_v)) * r.x + r.y;
+	return vec2<f32>(-1.04, 1.04) * a004 + r.zw;
 }
 
 fn distribution_ggx(normal: vec3<f32>, halfway: vec3<f32>, roughness: f32) -> f32 {
@@ -188,10 +217,25 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 	let ambient_fresnel = fresnel_schlick_roughness(n_dot_v, f0, roughness);
 	let ambient_diffuse = (vec3<f32>(1.0) - ambient_fresnel) * (1.0 - metallic) * base_color;
 	let ambient_specular = ambient_fresnel * mix(0.9, 0.2, roughness);
-	color += render.ambient.rgb * (ambient_diffuse + ambient_specular) * occlusion;
+	if (environment.enabled > 0.5) {
+		let irradiance = textureSampleLevel(irradiance_cube, environment_sampler, rotate_environment(normal), 0.0).rgb;
+		let reflection = reflect(-view, normal);
+		let prefiltered = textureSampleLevel(
+			specular_cube,
+			environment_sampler,
+			rotate_environment(reflection),
+			roughness * environment.max_specular_lod,
+		).rgb;
+		let brdf = environment_brdf(n_dot_v, roughness);
+		let diffuse_ibl = ambient_diffuse * irradiance;
+		let specular_ibl = prefiltered * (ambient_fresnel * brdf.x + brdf.y);
+		color += (diffuse_ibl + specular_ibl) * occlusion * environment.intensity;
+	} else {
+		color += render.ambient.rgb * (ambient_diffuse + ambient_specular) * occlusion;
+	}
 	let emissive_map = textureSample(emissive_texture, base_color_sampler, input.uv).rgb;
 	let emissive = mix(input.emissive, input.emissive * emissive_map, material.flags.x);
-	return vec4<f32>(color + emissive, 1.0);
+	return vec4<f32>((color + emissive) * environment.exposure, 1.0);
 }
 `
 

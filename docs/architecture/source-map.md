@@ -10,8 +10,8 @@
 | `src/scrapbot/component/` | Component registry and generated Luau declarations. | Canonical component names, ownership, storage kind, lifecycle, and field schemas. |
 | `src/scrapbot/ecs/` | World storage, typed mutation, commands, authoring snapshots, hierarchy, integrity, UI storage. | All mutation must preserve indexes and publish structural/render/UI invalidation. |
 | `src/scrapbot/project/` | Project/scene parsing, resource discovery, fonts, configuration, recoverable save transaction. | Persistent source identity and validation. |
-| `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, texture mips, static glTF decoding. | Source/dependency fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
-| `src/scrapbot/resources/` | Runtime geometry/texture/model/material/font registries and generational handles. | Shared descriptions outside ECS; backend caches consume versions. |
+| `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, texture mips, static glTF decoding, and HDR-to-IBL preprocessing. | Source/dependency fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
+| `src/scrapbot/resources/` | Runtime geometry/texture/environment/model/material/font registries and generational handles. | Shared descriptions outside ECS; backend caches consume versions. |
 | `src/scrapbot/schedule/` | Access-derived plan and native worker executor. | Native parallel batches, conflicts, and serial barriers. |
 | `src/scrapbot/script/` | Luau VM, public APIs, schemas, queries, write-back, UI mutation, generated-type integration. | Deferred lifecycle and declared-write enforcement. |
 | `src/scrapbot/extension_api/` | Raw C-compatible native extension ABI. | Fixed layouts and callbacks only. |

@@ -3996,6 +3996,61 @@ editor_ui_build_resource_inspector_panels :: proc(
 		editor_ui_finish_inspector(&builder)
 		return
 	}
+	if environment_handle, environment_found := resources.environment_handle_by_uuid(
+		state.resource_registry,
+		id,
+	); environment_found {
+		environment, alive := resources.get_environment(
+			state.resource_registry,
+			environment_handle,
+		)
+		if alive && environment.authored {
+			editor_ui_begin_inspector_component(&builder, "ENVIRONMENT")
+			editor_ui_inspector_field(&builder, "source asset", environment.asset_source)
+			editor_ui_inspector_field(
+				&builder,
+				"irradiance cube",
+				fmt.tprintf(
+					"%d x %d",
+					environment.desc.irradiance_size,
+					environment.desc.irradiance_size,
+				),
+			)
+			editor_ui_inspector_field(
+				&builder,
+				"specular cube",
+				fmt.tprintf(
+					"%d x %d",
+					environment.desc.specular_size,
+					environment.desc.specular_size,
+				),
+			)
+			editor_ui_inspector_field(
+				&builder,
+				"mip levels",
+				fmt.tprintf("%d", environment.desc.specular_mip_count),
+			)
+			editor_ui_begin_inspector_component(&builder, "IMPORT")
+			editor_ui_inspector_field(&builder, "status", editor_resource_import_status(state, id))
+			editor_ui_inspector_field(&builder, "dependency", environment.asset_source)
+			editor_ui_inspector_field(&builder, "product", "RGBA16F IBL cube maps")
+			editor_ui_inspector_field(
+				&builder,
+				"product size",
+				editor_format_byte_count(environment.import_byte_count),
+			)
+			editor_ui_inspector_field(&builder, "warnings", "None")
+			if editor_resource_import_failed(state, id) {
+				editor_ui_inspector_field(
+					&builder,
+					"error",
+					state.editor_resource_reimport_message,
+				)
+			}
+			editor_ui_finish_inspector(&builder)
+			return
+		}
+	}
 	if texture_handle, texture_found := resources.texture_handle_by_uuid(
 		state.resource_registry,
 		id,
@@ -4605,6 +4660,24 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_text(world, label, texture.name)
 			resource_count += 1
 		}
+		for environment in state.resource_registry.environments {
+			if !environment.alive || !environment.authored {
+				continue
+			}
+			row, label := editor_ui_ensure_resource_row(world, resource_count)
+			world.entities[row].alive = true
+			world.entities[label].alive = true
+			editor_ui_set_hidden(world, row, false)
+			editor_ui_set_hidden(world, label, false)
+			world.editor_uis[world.entities[row].editor_ui_index].resource_id = environment.id
+			world.editor_uis[world.entities[label].editor_ui_index].resource_id = environment.id
+			if state.editor_has_resource_selection &&
+			   state.editor_selected_resource == environment.id {
+				selected_resource_row = world.entities[row].uuid
+			}
+			editor_ui_set_text(world, label, environment.name)
+			resource_count += 1
+		}
 		for model in state.resource_registry.models {
 			if !model.alive || !model.authored {
 				continue
@@ -4695,6 +4768,15 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		); found {
 			if model, alive := resources.get_model(state.resource_registry, handle); alive {
 				selected_resource_version = model.version
+			}
+		}
+		if handle, found := resources.environment_handle_by_uuid(
+			state.resource_registry,
+			state.editor_selected_resource,
+		); found {
+			if environment, alive := resources.get_environment(state.resource_registry, handle);
+			   alive {
+				selected_resource_version = environment.version
 			}
 		}
 	}
@@ -4793,7 +4875,11 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 					state.resource_registry,
 					state.editor_selected_resource,
 				)
-				importable = texture_found || model_found
+				_, environment_found := resources.environment_handle_by_uuid(
+					state.resource_registry,
+					state.editor_selected_resource,
+				)
+				importable = texture_found || model_found || environment_found
 			}
 			editor_ui_set_hidden(world, reimport, !importable)
 		}
@@ -4845,6 +4931,29 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 				if alive {
 					inputs := [2]int{resource_name, resource_source}
 					values := [2]string{model.name, model.source}
+					for input_entity, input_index in inputs {
+						input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
+						input.read_only = true
+						if !state.has_focused_input ||
+						   state.focused_input != world.entities[input_entity].id {
+							_ = ecs.set_ui_input_value(world, input_entity, values[input_index])
+						}
+					}
+				} else {
+					state.editor_has_resource_selection = false
+				}
+			} else if environment_handle, environment_found :=
+				resources.environment_handle_by_uuid(
+					state.resource_registry,
+					state.editor_selected_resource,
+				); environment_found {
+				environment, alive := resources.get_environment(
+					state.resource_registry,
+					environment_handle,
+				)
+				if alive {
+					inputs := [2]int{resource_name, resource_source}
+					values := [2]string{environment.name, environment.source}
 					for input_entity, input_index in inputs {
 						input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
 						input.read_only = true

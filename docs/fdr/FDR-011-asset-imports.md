@@ -5,11 +5,12 @@
 
 ## Overview
 
-Asset imports turn artist-authored texture and model files under `assets/` into validated, renderer-ready project resources. Imports are incremental, reproducible, inspectable in the editor, and shared by project checking, development runs, and packaged builds.
+Asset imports turn artist-authored texture, model, and HDR environment files under `assets/` into validated, renderer-ready project resources. Imports are incremental, reproducible, inspectable in the editor, and shared by project checking, development runs, and packaged builds.
 
 ## Behavior
 
 - Texture resources import PNG sources with explicit color-space and mip-generation settings.
+- Environment resources import 2:1 Radiance `.hdr` sources. The importer builds a diffuse irradiance cube and a roughness-prefiltered specular cube as linear RGBA16F products; ordinary frames never reconvolve the source panorama.
 - Material resources reference reusable Texture resources by UUID rather than embedding source paths.
 - Model resources import static glTF 2.0 `.gltf` and `.glb` files, including triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. The WGPU material path renders them with GGX direct lighting, tangent-free derivative normal mapping, ambient diffuse/specular response, HDR emission, anisotropic trilinear sampling, bloom, and tone mapping.
@@ -17,10 +18,10 @@ Asset imports turn artist-authored texture and model files under `assets/` into 
 - Imported products and manifests are generated under ignored project state. They are never hand-authored or committed as source authority.
 - Import validity includes source and dependency contents, settings, and importer version. Unchanged resources reuse their prior products without decoding or rebuilding them.
 - A failed reimport reports an actionable error and preserves the last valid product. A project cannot silently start with a stale product when no valid product exists.
-- Explicit editor reimport targets one Texture or Model UUID without restarting Luau/native code; **Reimport All** forces every declared imported product. Automatic hot reload still uses the project asset stamp and importer cache until the platform watcher replaces polling. Ordinary simulation and render frames never scan the asset tree.
-- The editor's resource browser lists textures and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Textures render directly on the GPU with aspect-preserving fit. Models render their imported hierarchy, while Materials render on an isolated lit icosphere preview scene. All three use the public ECS viewport component and independently sized pooled targets; interactive 3D previews support orbit, zoom, and reset.
+- Explicit editor reimport targets one Texture, Model, or Environment UUID without restarting Luau/native code; **Reimport All** forces every declared imported product. Automatic hot reload still uses the project asset stamp and importer cache until the platform watcher replaces polling. Ordinary simulation and render frames never scan the asset tree.
+- The editor's resource browser lists textures, environments, and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Environment inspection reports the derived cube-map shape, and the selected project environment lights ordinary world and model/material preview rendering. Textures render directly on the GPU with aspect-preserving fit. Models render their imported hierarchy, while Materials render on an isolated lit icosphere preview scene. All previews use the public ECS viewport component and independently sized pooled targets; interactive 3D previews support orbit, zoom, and reset.
 - Reimport updates a live resource slot in place and reconciles affected model roots. Generated Geometry and Material products that disappear from a replaced or removed Model are retired with generation bumps, so stale handles cannot remain usable.
-- Imported models initially exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, texture transforms, sampler preservation, alpha modes, double-sided materials, true image-based environment lighting, and advanced material extensions; unsupported required glTF features fail clearly.
+- Imported models initially exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, texture transforms, sampler preservation, alpha modes, double-sided materials, and advanced material extensions; unsupported required glTF features fail clearly.
 
 ## Design Decisions
 
@@ -71,6 +72,12 @@ Asset imports turn artist-authored texture and model files under `assets/` into 
 **Decision:** Reconstruct tangent and bitangent directions from world-position and UV derivatives instead of adding imported tangents to the retained vertex format.
 **Why:** Core glTF normal maps work for existing and imported geometry without widening every vertex and GPU geometry cache entry. This keeps the feature inside the shared Material shader contract.
 **Tradeoff:** Derivative reconstruction costs fragment work and cannot exactly reproduce authored tangent bases at mirrored or discontinuous UV seams. Imported tangent attributes and MikkTSpace parity remain a future quality/performance option.
+
+### 9. Precompute image-based lighting during import
+
+**Decision:** Convert HDR equirectangular sources into fixed renderer-ready diffuse and specular cube-map products in the importer. Select one Environment UUID and its intensity, Y rotation, and exposure through project render configuration.
+**Why:** Source decoding and convolution are asset work, not frame work. A standalone UUID resource can be reimported and cached independently of scenes while the renderer updates only when its handle, version, or global environment revision changes.
+**Tradeoff:** The first product uses fixed cube sizes and CPU preprocessing, supports only Radiance HDR input, and provides global environment lighting without a visible sky or local reflection probes.
 
 ## Related
 

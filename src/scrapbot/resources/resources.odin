@@ -23,6 +23,7 @@ Vec4 :: struct {
 
 Geometry_Handle :: shared.Geometry_Handle
 Texture_Handle :: shared.Texture_Handle
+Environment_Handle :: shared.Environment_Handle
 Model_Handle :: shared.Model_Handle
 Material_Handle :: shared.Material_Handle
 Font_Handle :: shared.Font_Handle
@@ -74,6 +75,14 @@ Texture_Desc :: struct {
 	color_space: shared.Texture_Color_Space,
 }
 
+Environment_Desc :: struct {
+	irradiance_pixels: []u16,
+	specular_pixels: []u16,
+	irradiance_size: u32,
+	specular_size: u32,
+	specular_mip_count: u32,
+}
+
 Font_Desc :: struct {
 	pixels: []u8,
 	width, height: u32,
@@ -123,6 +132,19 @@ Texture :: struct {
 	alive: bool,
 }
 
+Environment :: struct {
+	id: shared.Resource_UUID,
+	name: string,
+	source: string,
+	asset_source: string,
+	import_byte_count: int,
+	authored: bool,
+	desc: Environment_Desc,
+	generation: u32,
+	version: u32,
+	alive: bool,
+}
+
 Project_Material_Snapshot :: struct {
 	id: shared.Resource_UUID,
 	name: string,
@@ -148,13 +170,19 @@ Font :: struct {
 Registry :: struct {
 	geometries: [dynamic]Geometry,
 	textures: [dynamic]Texture,
+	environments: [dynamic]Environment,
 	models: [dynamic]Model,
 	materials: [dynamic]Material,
 	fonts: [dynamic]Font,
 	geometry_topology_revision: u64,
 	texture_revision: u64,
+	environment_revision: u64,
 	model_revision: u64,
 	material_revision: u64,
+	active_environment: Environment_Handle,
+	environment_intensity: f32,
+	environment_rotation: f32,
+	exposure: f32,
 	allocator: mem.Allocator,
 }
 
@@ -188,6 +216,9 @@ ensure_allocator :: proc(registry: ^Registry) {
 	if registry.textures == nil {
 		registry.textures = make([dynamic]Texture, registry.allocator)
 	}
+	if registry.environments == nil {
+		registry.environments = make([dynamic]Environment, registry.allocator)
+	}
 	if registry.models == nil {
 		registry.models = make([dynamic]Model, registry.allocator)
 	}
@@ -219,6 +250,13 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(texture.asset_source, allocator)
 		delete(texture.desc.pixels, allocator)
 	}
+	for &environment in registry.environments {
+		delete(environment.name, allocator)
+		delete(environment.source, allocator)
+		delete(environment.asset_source, allocator)
+		delete(environment.desc.irradiance_pixels, allocator)
+		delete(environment.desc.specular_pixels, allocator)
+	}
 	for &model in registry.models {
 		destroy_model(&model, allocator)
 	}
@@ -226,6 +264,7 @@ destroy_registry :: proc(registry: ^Registry) {
 	delete(registry.geometries)
 	delete(registry.materials)
 	delete(registry.textures)
+	delete(registry.environments)
 	delete(registry.models)
 	delete(registry.fonts)
 	registry^ = {}
@@ -243,7 +282,12 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.geometry_topology_revision = source.geometry_topology_revision
 	destination.material_revision = source.material_revision
 	destination.texture_revision = source.texture_revision
+	destination.environment_revision = source.environment_revision
 	destination.model_revision = source.model_revision
+	destination.active_environment = source.active_environment
+	destination.environment_intensity = source.environment_intensity
+	destination.environment_rotation = source.environment_rotation
+	destination.exposure = source.exposure
 	for geometry in source.geometries {
 		cloned := geometry
 		name, name_err := strings.clone(geometry.name, allocator)
@@ -300,6 +344,19 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 			return "failed to clone texture metadata"
 		}
 		append(&destination.textures, cloned)
+	}
+	for environment in source.environments {
+		cloned := environment
+		cloned.name, _ = strings.clone(environment.name, allocator)
+		cloned.source, _ = strings.clone(environment.source, allocator)
+		cloned.asset_source, _ = strings.clone(environment.asset_source, allocator)
+		cloned.desc.irradiance_pixels = clone_slice(environment.desc.irradiance_pixels, allocator)
+		cloned.desc.specular_pixels = clone_slice(environment.desc.specular_pixels, allocator)
+		if cloned.name == "" || cloned.source == "" || cloned.asset_source == "" {
+			destroy_registry(destination)
+			return "failed to clone environment metadata"
+		}
+		append(&destination.environments, cloned)
 	}
 	for model in source.models {
 		cloned, clone_err := clone_model(model, allocator)

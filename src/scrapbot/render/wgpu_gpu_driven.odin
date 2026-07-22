@@ -111,6 +111,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	world_layouts := [?]wgpu.BindGroupLayout {
 		renderer.gpu_driven_world_bind_group_layout,
 		renderer.material_bind_group_layout,
+		renderer.environment_bind_group_layout,
 	}
 	renderer.gpu_driven_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,

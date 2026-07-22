@@ -589,6 +589,7 @@ wgpu_encode_material_viewport :: proc(
 	wgpu.RenderPassEncoderSetPipeline(pass, renderer.ui_viewport_pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.ui_viewport_bind_groups[layer])
 	wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cache.bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 2, renderer.environment_bind_group)
 	wgpu.RenderPassEncoderSetVertexBuffer(
 		pass,
 		0,
@@ -897,6 +898,7 @@ wgpu_encode_viewport_draws :: proc(
 	)
 	wgpu.RenderPassEncoderSetPipeline(pass, renderer.ui_viewport_pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.ui_viewport_bind_groups[layer])
+	wgpu.RenderPassEncoderSetBindGroup(pass, 2, renderer.environment_bind_group)
 	for draw, index in draws {
 		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
 		if geometry_err != "" {

@@ -726,12 +726,24 @@ init_render_resources :: proc(
 	); err != "" {
 		return err
 	}
+	if err := resources.register_project_environments(
+		registry,
+		project_resources,
+		imports.products[:],
+	); err != "" {
+		return err
+	}
 	if err := resources.register_project_models(registry, project_resources, imports.products[:]);
 	   err != "" {
 		return err
 	}
 	if err := resources.register_project_materials(registry, root, project_resources); err != "" {
 		return err
+	}
+	if config != nil {
+		if err := resources.configure_project_environment(registry, config.render); err != "" {
+			return err
+		}
 	}
 	if err := reconcile_model_instances(world, registry); err != "" {
 		return err
@@ -1064,11 +1076,21 @@ reimport_project_resources :: proc(
 		); err != "" {
 			return err
 		}
-		return resources.register_project_models(
+		if err := resources.register_project_environments(
 			registry,
 			loaded.resources[:],
 			imports.products[:],
-		)
+		); err != "" {
+			return err
+		}
+		if err := resources.register_project_models(
+			registry,
+			loaded.resources[:],
+			imports.products[:],
+		); err != "" {
+			return err
+		}
+		return resources.configure_project_environment(registry, loaded.config.render)
 	}
 	declaration: shared.Project_Resource
 	found := false
@@ -1098,6 +1120,16 @@ reimport_project_resources :: proc(
 				imports.products[:],
 				false,
 			)
+		case .Environment:
+			if err := resources.register_project_environments(
+				registry,
+				declarations,
+				imports.products[:],
+				false,
+			); err != "" {
+				return err
+			}
+			return resources.configure_project_environment(registry, loaded.config.render)
 		case:
 			return "selected resource is not importable"
 	}

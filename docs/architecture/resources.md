@@ -24,11 +24,12 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | --- | --- | --- | --- | --- |
 | `Texture` | `scrapbot.texture` | Texture | Material Texture handle | Incrementally imported and inspectable; source/settings remain text-authored |
 | `Model` | `scrapbot.model` | Model bundle plus generated Geometry/Material entries | `scrapbot.model` root reconciles derived ECS children | Incrementally imported and inspectable; source remains text-authored |
+| `Environment` | `scrapbot.environment` | Environment | Project `[render]` selects one UUID outside ECS | Incrementally imported and inspectable; source/settings remain text-authored |
 | `Material` | `scrapbot.material` | Material | `scrapbot.material` | Create, duplicate, rename/move, edit, delete, Undo/Redo, Save/Revert |
 | `Geometry_LOD` | `scrapbot.geometry_lod` | Geometry plus internal LOD Geometry entries | `scrapbot.geometry` | Loaded/hot-reloaded and referenceable; full inline authoring is not yet symmetric with materials |
 <!-- inventory:project-resource-kinds:end -->
 
-The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, and authored Geometry UUID references; materials validate Texture UUIDs. Resource file paths are relative to `resources/`; Texture and Model import sources are safe paths under `assets/`.
+The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, and authored Geometry UUID references; materials validate Texture UUIDs; project render configuration validates its optional Environment UUID. Resource file paths are relative to `resources/`; Texture, Model, and Environment import sources are safe paths under `assets/`.
 
 ## Runtime registry families
 
@@ -37,6 +38,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 | --- | --- | --- | --- |
 | `Geometry` | Optional UUID/source when authored; name for transient/built-in registration | `Geometry_Handle`, generation, entry version, registry-wide geometry topology revision | Render-instance extraction, bounds/picking, LOD selection, GPU geometry and draw caches |
 | `Texture` | UUID/source when authored | `Texture_Handle`, generation, entry version | Material registry and shared WGPU texture cache |
+| `Environment` | UUID/source when authored | `Environment_Handle`, generation, entry version, registry-wide environment revision | Global WGPU IBL binding and isolated material/model previews |
 | `Model` | UUID/source when authored | `Model_Handle`, generation, entry version | Model-root reconciliation into derived node/primitive ECS entities |
 | `Material` | Optional UUID/source when authored; name for transient/built-in registration | `Material_Handle`, generation, entry version | Render-instance extraction, material/texture GPU cache, world shading and bloom |
 | `Font` | Project-config font name/source; generated atlas is derived | `Font_Handle`, generation, entry version | UI measurement, glyph lookup, MTSDF atlas upload and UI rendering |
@@ -64,13 +66,13 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 
 ### Font
 
-### Texture and Model imports
+### Texture, Model, and Environment imports
 
 - `asset_import.ensure_project_imports` fingerprints source/dependency bytes plus an importer schema and writes products atomically under `.scrapbot/imported/`.
-- Texture products contain validated RGBA8 mip chains. Model products contain static triangle vertices/indices, TRS nodes, metallic-roughness material factors, and decoded RGBA8 mip chains for base-color, metallic-roughness, normal, occlusion, and emissive images sourced from GLB buffer views, data URIs, or safe external relative files through pinned `cgltf`.
+- Texture products contain validated RGBA8 mip chains. Environment products contain a linear RGBA16F diffuse irradiance cube plus a roughness-prefiltered specular cube derived from a 2:1 Radiance HDR source. Model products contain static triangle vertices/indices, TRS nodes, metallic-roughness material factors, and decoded RGBA8 mip chains for base-color, metallic-roughness, normal, occlusion, and emissive images sourced from GLB buffer views, data URIs, or safe external relative files through pinned `cgltf`.
 - Every glTF image contributes to the model source fingerprint. Generated Material entries own cloned image payloads with explicit sRGB or linear color-space meaning. The WGPU material cache uploads only a changed Material version, owns its generated texture/view set and factor uniform, and releases that complete set together.
-- Texture and Model declarations retain UUID-backed registry handles and entry versions. Imported model registration publishes ordinary Geometry and Material handles for every primitive.
-- Editor Reimport addresses one authored UUID, forces only that importer, updates the existing registry slot, and then reconciles model instances. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
+- Texture, Model, and Environment declarations retain UUID-backed registry handles and entry versions. The active environment selection and intensity/rotation/exposure live in project render configuration; changing the selected handle, its version, or those settings bumps one environment revision consumed by WGPU. Imported model registration publishes ordinary Geometry and Material handles for every primitive.
+- Editor Reimport addresses one authored UUID, forces only that Texture, Model, or Environment importer, updates the existing registry slot, and then reconciles model instances when relevant. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
 - A replaced or removed Model retires generated Geometry and Material outputs absent from the replacement by marking their slots dead and incrementing generation/version. Stable/reused products retain their handles.
 - Texture, Model, and Material inspection target the public `scrapbot.ui_viewport` component at the resource UUID. WGPU resolves the UUID by registry family, assigns an independently sized pooled target, and renders either an aspect-preserving Texture pass or an isolated Model/Material preview scene with its own camera, lighting, environment, and renderer-owned presentation geometry. Stable targets cache by component, target size/aspect, exact resource version, and relevant registry revisions. Import state, dependency path, product type/size, and the last explicit failure remain editor presentation over registry/import state rather than new resource authority.
 - `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material entities without model scans.
@@ -114,6 +116,6 @@ resources.Registry slot ── {index, generation} ──> ECS component
 - **Play** captures authored Material base color and emissive values in the in-memory playback baseline alongside authored scene entities.
 - **Stop** restores those captured base color/emissive values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
 - **Explicit Reimport** forces one UUID (or all imported resources), mutates live registry entries, retires stale generated model outputs, and reconciles Model roots without reloading the world, Luau, or native extensions.
-- **Hot reload** ensures imports and re-registers fonts, textures, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
+- **Hot reload** ensures imports and re-registers fonts, textures, environments, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
 
 See [Lifecycle matrix](lifecycle.md), [State ownership](state-ownership.md), [FDR-009](../fdr/FDR-009-project-resources.md), and [ADR-030](../adr/ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md).

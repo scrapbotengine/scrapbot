@@ -539,6 +539,57 @@ test_pbr_materials_reject_incomplete_mip_chains :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_project_environment_registration_is_stable_and_revision_driven :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000019")
+	testing.expect(t, valid)
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .Environment,
+		name = "Studio",
+		source = "studio.resource.toml",
+		environment = {source = "assets/studio.hdr"},
+	}
+	irradiance: [24]u16
+	specular: [24]u16
+	desc := Environment_Desc {
+		irradiance_pixels = irradiance[:],
+		specular_pixels = specular[:],
+		irradiance_size = 1,
+		specular_size = 1,
+		specular_mip_count = 1,
+	}
+	handle, err := register_project_environment(&registry, declaration, desc, 96)
+	testing.expect_value(t, err, "")
+	testing.expect(t, handle != (Environment_Handle{}))
+	before := registry.environment_revision
+	config := shared.Project_Render_Config {
+		environment = id,
+		environment_intensity = 1.5,
+		environment_rotation = 45,
+		exposure = 0.8,
+	}
+	testing.expect_value(t, configure_project_environment(&registry, config), "")
+	testing.expect_value(t, registry.active_environment, handle)
+	testing.expect(t, registry.environment_revision > before)
+	stable_revision := registry.environment_revision
+	testing.expect_value(t, configure_project_environment(&registry, config), "")
+	testing.expect_value(t, registry.environment_revision, stable_revision)
+
+	specular[0] = 1
+	updated, update_err := register_project_environment(&registry, declaration, desc, 96)
+	testing.expect_value(t, update_err, "")
+	testing.expect_value(t, updated, handle)
+	testing.expect(t, registry.environment_revision > stable_revision)
+	environment, alive := get_environment(&registry, updated)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, environment.desc.specular_pixels[0], u16(1))
+	}
+}
+
+@(test)
 test_project_lod_geometry_registers_stable_base_and_alternatives :: proc(t: ^testing.T) {
 	registry: Registry
 	defer destroy_registry(&registry)

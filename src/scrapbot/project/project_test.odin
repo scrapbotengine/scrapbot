@@ -105,6 +105,74 @@ source = "assets/../ship.gltf"
 }
 
 @(test)
+test_project_environment_resource_and_render_config :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000021"
+type = "scrapbot.environment"
+name = "Studio"
+
+[environment]
+source = "assets/studio.hdr"
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .Environment)
+	testing.expect_value(t, resource.environment.source, "assets/studio.hdr")
+
+	config, config_result := parse_project_config(
+		`name = "Environment Demo"
+default_scene = "scenes/main.scene.toml"
+
+[render]
+environment = "a1000000-0000-4000-8000-000000000021"
+environment_intensity = 1.25
+environment_rotation = 90
+exposure = 0.8
+`,
+	)
+	defer destroy_project_config(&config)
+	testing.expect(t, config_result.err == .None)
+	testing.expect_value(t, config.render.environment, resource.id)
+	testing.expect_value(t, config.render.environment_intensity, f32(1.25))
+	testing.expect_value(t, config.render.environment_rotation, f32(90))
+	testing.expect_value(t, config.render.exposure, f32(0.8))
+	testing.expect(
+		t,
+		validate_project_environment_reference(&config, []shared.Project_Resource{resource}) == "",
+	)
+
+	wrong := resource
+	wrong.kind = .Texture
+	testing.expect(
+		t,
+		validate_project_environment_reference(&config, []shared.Project_Resource{wrong}) != "",
+	)
+}
+
+@(test)
+test_project_environment_rejects_non_hdr_and_invalid_render_values :: proc(t: ^testing.T) {
+	_, resource_result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000021"
+type = "scrapbot.environment"
+name = "Wrong"
+[environment]
+source = "assets/studio.png"
+`,
+	)
+	testing.expect(t, resource_result.err == .Invalid_Path)
+	config, config_result := parse_project_config(
+		`name = "Invalid"
+default_scene = "scenes/main.scene.toml"
+[render]
+environment_intensity = -1
+exposure = 0
+`,
+	)
+	defer destroy_project_config(&config)
+	testing.expect(t, config_result.err == .Invalid_Field)
+}
+
+@(test)
 test_project_texture_resource_parser :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000000"

@@ -4,7 +4,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
-- [ ] Add image-based environment lighting, reflection probes, and exposure controls to the metallic-roughness PBR path.
+- [ ] Add visible environment backgrounds, local reflection probes, and camera-specific exposure on top of project-wide imported IBL and exposure.
 - [ ] Preserve glTF sampler settings and add GPU-native compressed texture products.
 - [ ] Add richer glTF PBR extensions, alpha modes, double-sided materials, animation, skins, morph targets, and compressed geometry.
 - [ ] Replace index-derived imported model subresource keys with durable semantic keys across glTF reordering.

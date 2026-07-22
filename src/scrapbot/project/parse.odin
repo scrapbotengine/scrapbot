@@ -50,6 +50,10 @@ parse_project_resource :: proc(
 			section = "model"
 			continue
 		}
+		if line == "[environment]" {
+			section = "environment"
+			continue
+		}
 		if line == "[geometry_lod]" {
 			section = "geometry_lod"
 			continue
@@ -121,6 +125,27 @@ parse_project_resource :: proc(
 			}
 			if !found {
 				return resource, fail(.Invalid_Field, fmt.tprintf("invalid model.%s", key))
+			}
+			continue
+		}
+		if section == "environment" {
+			switch key {
+				case "source":
+					resource.environment.source, found = parse_basic_string(value)
+					if found && !valid_resource_environment_path(resource.environment.source) {
+						return resource, fail(
+							.Invalid_Path,
+							"environment.source must be a safe .hdr path under assets/",
+						)
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown environment field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid environment.%s", key))
 			}
 			continue
 		}
@@ -205,6 +230,8 @@ parse_project_resource :: proc(
 			resource.kind = .Texture
 		case "scrapbot.model":
 			resource.kind = .Model
+		case "scrapbot.environment":
+			resource.kind = .Environment
 		case "scrapbot.material":
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
@@ -225,6 +252,10 @@ parse_project_resource :: proc(
 	} else if resource.kind == .Model {
 		if resource.model.source == "" {
 			return resource, fail(.Missing_Field, "model.source is required")
+		}
+	} else if resource.kind == .Environment {
+		if resource.environment.source == "" {
+			return resource, fail(.Missing_Field, "environment.source is required")
 		}
 	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
@@ -294,6 +325,8 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		width = shared.DEFAULT_WINDOW_WIDTH,
 		height = shared.DEFAULT_WINDOW_HEIGHT,
 	}
+	config.render.environment_intensity = 1
+	config.render.exposure = 1
 	section := ""
 	current_native_extension: ^shared.Native_Extension_Target
 	current_font: ^shared.Project_Font
@@ -319,6 +352,12 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		}
 		if line == "[window]" {
 			section = "window"
+			current_native_extension = nil
+			current_font = nil
+			continue
+		}
+		if line == "[render]" {
+			section = "render"
 			current_native_extension = nil
 			current_font = nil
 			continue
@@ -413,6 +452,39 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 				return config, fail(
 					.Invalid_Field,
 					"window width and height must be positive integers no greater than 16384",
+				)
+			}
+			continue
+		}
+		if section == "render" {
+			switch key {
+				case "environment":
+					raw_environment: string
+					raw_environment, found = parse_basic_string(value)
+					if found {
+						config.render.environment, found = shared.resource_uuid_parse(
+							raw_environment,
+						)
+					}
+				case "environment_intensity":
+					config.render.environment_intensity, found = parse_f32(value)
+				case "environment_rotation":
+					config.render.environment_rotation, found = parse_f32(value)
+				case "exposure":
+					config.render.exposure, found = parse_f32(value)
+				case:
+					return config, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown render field '%s'", key),
+					)
+			}
+			if !found ||
+			   !finite_render_config(config.render) ||
+			   config.render.environment_intensity < 0 ||
+			   config.render.exposure <= 0 {
+				return config, fail(
+					.Invalid_Field,
+					"render values must be finite; intensity must be non-negative and exposure positive",
 				)
 			}
 			continue
@@ -1775,6 +1847,25 @@ valid_resource_model_path :: proc(path: string) -> bool {
 		}
 	}
 	return true
+}
+
+valid_resource_environment_path :: proc(path: string) -> bool {
+	return(
+		strings.has_prefix(path, "assets/") &&
+		strings.has_suffix(path, ".hdr") &&
+		is_safe_relative_path(path) \
+	)
+}
+
+finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {
+	return(
+		!math.is_nan(value.environment_intensity) &&
+		!math.is_inf(value.environment_intensity) &&
+		!math.is_nan(value.environment_rotation) &&
+		!math.is_inf(value.environment_rotation) &&
+		!math.is_nan(value.exposure) &&
+		!math.is_inf(value.exposure) \
+	)
 }
 
 finite_vec3 :: proc(value: Vec3) -> bool {

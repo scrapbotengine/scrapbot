@@ -17,6 +17,12 @@ default_scene = "scenes/main.scene.toml"
 width = 1600
 height = 900
 
+[render]
+environment = "b1000000-0000-4000-8000-000000000004"
+environment_intensity = 1.0
+environment_rotation = 0
+exposure = 1.0
+
 [[native_extensions]]
 name = "scrappyphysics"
 source = "native/scrappyphysics"
@@ -35,6 +41,11 @@ Fields:
 | `[window]` | No | Initial logical window size. Omitted fields default to 1600×900. |
 | `window.width` | No | Positive logical width up to 16384. |
 | `window.height` | No | Positive logical height up to 16384. |
+| `[render]` | No | Project-wide world rendering configuration. |
+| `render.environment` | No | UUID of a `scrapbot.environment` resource used for image-based lighting. |
+| `render.environment_intensity` | No | Finite non-negative multiplier for environment lighting; defaults to `1`. |
+| `render.environment_rotation` | No | Finite Y-axis rotation in degrees; defaults to `0`. |
+| `render.exposure` | No | Positive linear exposure multiplier applied before bloom and tone mapping; defaults to `1`. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
 | `native_extensions.source` | Yes | Safe relative path to an Odin package directory. |
@@ -67,6 +78,19 @@ generate_mipmaps = true
 
 `source` must be a safe project-relative PNG path under `assets/`. `color_space` is `srgb` or `linear`; mip generation defaults to true. Scrapbot imports RGBA8 mip products into ignored `.scrapbot/imported/` state.
 
+HDR environment resources identify reusable lighting sources:
+
+```toml
+id = "b1000000-0000-4000-8000-000000000004"
+type = "scrapbot.environment"
+name = "Studio"
+
+[environment]
+source = "assets/studio.hdr"
+```
+
+`source` must be a safe 2:1 Radiance `.hdr` path under `assets/`. Importing validates the panorama and derives a 32×32 diffuse irradiance cube plus an eight-level 128×128 roughness-prefiltered specular cube in linear RGBA16F. The project `[render]` table selects one Environment UUID; the runtime uploads its derived cubes only when that resource or the render settings change. The first slice lights surfaces but does not draw the environment as a visible sky and does not provide local reflection probes.
+
 Material resources store shared surface data and reference Texture UUIDs:
 
 ```toml
@@ -95,7 +119,7 @@ source = "assets/models/crate.glb"
 
 The importer supports triangle primitives, positions, optional normals and UV0, optional indices, TRS node hierarchies, metallic-roughness material factors, normal and occlusion strengths, emissive factors, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may come from GLB buffer views, base64 data URIs, or safe relative files beside the `.gltf`; every image dependency participates in cache invalidation. Missing normals are generated.
 
-Imported images use complete RGBA8 mip chains. Base color and emissive use sRGB sampling; packed metallic-roughness, normal, and occlusion maps use linear sampling. WGPU renders these through its shared GGX material path with derivative-reconstructed normal mapping, ambient response, direct ECS lights, HDR emission, bloom, and tone mapping. Animation, skins, morph targets, matrix-authored nodes, Draco/required extensions, non-UV0 texture mappings, texture transforms, KTX2/Basis images, alpha modes, double-sided materials, and advanced material extensions are not supported yet. The importer does not yet preserve glTF sampler settings or provide true image-based environment lighting.
+Imported images use complete RGBA8 mip chains. Base color and emissive use sRGB sampling; packed metallic-roughness, normal, and occlusion maps use linear sampling. WGPU renders these through its shared GGX material path with derivative-reconstructed normal mapping, direct ECS lights, optional imported image-based environment lighting, HDR emission, bloom, exposure, and tone mapping. Animation, skins, morph targets, matrix-authored nodes, Draco/required extensions, non-UV0 texture mappings, texture transforms, KTX2/Basis images, alpha modes, double-sided materials, and advanced material extensions are not supported yet. The importer does not yet preserve glTF sampler settings.
 
 Generated icosphere LOD resources store one stable geometry identity plus up to four tessellation levels:
 

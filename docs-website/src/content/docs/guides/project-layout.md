@@ -89,7 +89,7 @@ Custom components use `[entities.components.<name>]`. Single-token names such as
 
 Scene entities can also compose the complete public `scrapbot.ui_*` component set. UI parents reference stable entity UUIDs, and the same component values can be queried, spawned, or updated from Luau and native Odin. See [ECS UI](/guides/ecs-ui/) for the component model and [Project File Reference](/reference/project-files/#built-in-component-sections) for every TOML field.
 
-Standalone resources use stable project UUIDs. Textures and static glTF models compile source files under `assets/` into ignored products; materials reference Texture UUIDs; `scrapbot.geometry_lod` resources generate an icosphere level chain and screen-radius thresholds for GPU selection. See [Project resources](/reference/project-files/#project-resources) for the schemas.
+Standalone resources use stable project UUIDs. Textures, HDR environments, and static glTF models compile source files under `assets/` into ignored products; materials reference Texture UUIDs; project render configuration selects an Environment UUID; `scrapbot.geometry_lod` resources generate an icosphere level chain and screen-radius thresholds for GPU selection. See [Project resources](/reference/project-files/#project-resources) for the schemas.
 
 ## Scripts
 
@@ -103,7 +103,7 @@ Scripts usually do three things:
 
 ## Assets
 
-Project-owned source assets live under `assets/`. UUID-backed `scrapbot.texture` and `scrapbot.model` resource files declare PNG and static glTF/GLB imports. Static models may carry base-color, metallic-roughness, normal, occlusion, and emissive images in GLB buffer views or data URIs, or reference safe relative image files beside the source model. `scrapbot import`, `check`, `run`, and `build` share the incremental importer and write versioned products under `.scrapbot/imported/`. Source/dependency content and importer schema participate in the cache key; ordinary frames never scan or decode the asset tree. See the [Project File Reference](/reference/project-files/#project-resources) and `examples/gltf-showcase`.
+Project-owned source assets live under `assets/`. UUID-backed `scrapbot.texture`, `scrapbot.environment`, and `scrapbot.model` resource files declare PNG, Radiance HDR, and static glTF/GLB imports. Static models may carry base-color, metallic-roughness, normal, occlusion, and emissive images in GLB buffer views or data URIs, or reference safe relative image files beside the source model. `scrapbot import`, `check`, `run`, and `build` share the incremental importer and write versioned products under `.scrapbot/imported/`. Source/dependency content and importer schema participate in the cache key; ordinary frames never scan or decode the asset tree. See the [Project File Reference](/reference/project-files/#project-resources) and `examples/gltf-showcase`.
 
 ## Generated Luau types
 

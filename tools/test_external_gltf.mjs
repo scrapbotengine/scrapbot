@@ -14,9 +14,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = join(
+const modelSource = join(
   repositoryRoot,
   "tests/fixtures/external/downloads/gltf/DamagedHelmet.glb",
+);
+const environmentSource = join(
+  repositoryRoot,
+  "tests/fixtures/external/downloads/hdr/studio_small_09_1k.hdr",
 );
 const framegrabArgument = process.argv.indexOf("--framegrab");
 const framegrab =
@@ -52,8 +56,8 @@ function runScrapbot(args) {
 }
 
 function main() {
-  if (!existsSync(source)) {
-    throw new Error("Damaged Helmet is not installed; run `mise setup-assets`");
+  if (!existsSync(modelSource) || !existsSync(environmentSource)) {
+    throw new Error("Damaged Helmet or Studio Small 09 is not installed; run `mise setup-assets`");
   }
 
   const project = mkdtempSync(join(tmpdir(), "scrapbot-gltf-integration-"));
@@ -61,10 +65,29 @@ function main() {
     mkdirSync(join(project, "assets"));
     mkdirSync(join(project, "resources"));
     mkdirSync(join(project, "scenes"));
-    copyFileSync(source, join(project, "assets/DamagedHelmet.glb"));
+    copyFileSync(modelSource, join(project, "assets/DamagedHelmet.glb"));
+    copyFileSync(environmentSource, join(project, "assets/studio.hdr"));
     writeFileSync(
       join(project, "project.toml"),
-      'name = "External glTF Integration"\ndefault_scene = "scenes/main.scene.toml"\n',
+      `name = "External glTF Integration"
+default_scene = "scenes/main.scene.toml"
+
+[render]
+environment = "d4000000-0000-4000-8000-000000000002"
+environment_intensity = 1
+environment_rotation = 0
+exposure = 1
+`,
+    );
+    writeFileSync(
+      join(project, "resources/environment.resource.toml"),
+      `id = "d4000000-0000-4000-8000-000000000002"
+type = "scrapbot.environment"
+name = "Studio Small 09"
+
+[environment]
+source = "assets/studio.hdr"
+`,
     );
     writeFileSync(
       join(project, "resources/helmet.resource.toml"),
@@ -124,8 +147,8 @@ resource = "d4000000-0000-4000-8000-000000000001"
     );
 
     const imported = runScrapbot(["import", project, "--json"]);
-    if (imported.result?.products !== 1) {
-      throw new Error("expected exactly one imported model product");
+    if (imported.result?.products !== 2) {
+      throw new Error("expected one model and one environment import product");
     }
     runScrapbot(["check", project, "--json"]);
     if (framegrab) {
@@ -153,6 +176,25 @@ resource = "d4000000-0000-4000-8000-000000000001"
     );
     if (!metadataName) {
       throw new Error("model import metadata was not produced");
+    }
+    const environmentMetadataName = readdirSync(importedDirectory).find((name) =>
+      name.endsWith(".environment.json"),
+    );
+    if (!environmentMetadataName) {
+      throw new Error("environment import metadata was not produced");
+    }
+    const environmentMetadata = JSON.parse(
+      readFileSync(join(importedDirectory, environmentMetadataName), "utf8"),
+    );
+    if (
+      environmentMetadata.schema !== "scrapbot.environment.v2.rgba16f-ibl" ||
+      environmentMetadata.width !== 1024 ||
+      environmentMetadata.height !== 512 ||
+      environmentMetadata.irradiance_size !== 32 ||
+      environmentMetadata.specular_size !== 128 ||
+      environmentMetadata.specular_mip_count !== 8
+    ) {
+      throw new Error("Studio HDRI metadata does not match the expected IBL product shape");
     }
     const metadata = JSON.parse(
       readFileSync(join(importedDirectory, metadataName), "utf8"),

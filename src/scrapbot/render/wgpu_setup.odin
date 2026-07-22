@@ -204,6 +204,9 @@ wgpu_init_renderer :: proc(
 		renderer.format = offscreen_format
 	}
 
+	if err = wgpu_create_environment_resources(&renderer); err != "" {
+		return renderer, err
+	}
 	if err = wgpu_create_render_pipeline(&renderer); err != "" {
 		return renderer, err
 	}
@@ -224,6 +227,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.DevicePoll(renderer.device, true)
 	}
 	wgpu_release_gpu_timing(renderer)
+	wgpu_release_environment_resources(renderer)
 	if renderer.configured {
 		wgpu.SurfaceUnconfigure(renderer.surface)
 	}
@@ -596,6 +600,7 @@ wgpu_create_render_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	pipeline_layouts := [?]wgpu.BindGroupLayout {
 		renderer.bind_group_layout,
 		renderer.material_bind_group_layout,
+		renderer.environment_bind_group_layout,
 	}
 	renderer.pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
