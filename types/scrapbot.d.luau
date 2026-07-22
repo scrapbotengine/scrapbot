@@ -1079,6 +1079,18 @@ export type ReadonlyFloat = {
 
 export type FloatComponent = ScrapbotComponent<Float, ReadonlyFloat>
 
+export type DayCycle = {
+	duration_seconds: number,
+	time_of_day: number,
+}
+
+export type ReadonlyDayCycle = {
+	read duration_seconds: number,
+	read time_of_day: number,
+}
+
+export type DayCycleComponent = ScrapbotComponent<DayCycle, ReadonlyDayCycle>
+
 export type StressMotion = {
 	velocity: Vec3,
 }
