@@ -722,6 +722,13 @@ background_intensity = 0.7
 background_rotation = -15
 background_exposure = 1.1
 background_blur = 0.25
+sky_tint = [0.9, 1.0, 1.1]
+ground_color = [0.2, 0.18, 0.16]
+turbidity = 4.5
+atmosphere_thickness = 1.4
+horizon_softness = 1.6
+sun_size = 1.25
+sun_glow = 1.75
 `,
 	)
 	defer destroy_scene(&scene)
@@ -732,6 +739,33 @@ background_blur = 0.25
 	testing.expect_value(t, scene.entities[0].world_environment.lighting_intensity, f32(0.8))
 	testing.expect(t, scene.entities[0].world_environment.background_visible)
 	testing.expect_value(t, scene.entities[0].world_environment.background_blur, f32(0.25))
+	testing.expect_value(t, scene.entities[0].world_environment.sky_tint, shared.Vec3{0.9, 1, 1.1})
+	testing.expect_value(
+		t,
+		scene.entities[0].world_environment.ground_color,
+		shared.Vec3{0.2, 0.18, 0.16},
+	)
+	testing.expect_value(t, scene.entities[0].world_environment.turbidity, f32(4.5))
+	testing.expect_value(t, scene.entities[0].world_environment.atmosphere_thickness, f32(1.4))
+	testing.expect_value(t, scene.entities[0].world_environment.horizon_softness, f32(1.6))
+	testing.expect_value(t, scene.entities[0].world_environment.sun_size, f32(1.25))
+	testing.expect_value(t, scene.entities[0].world_environment.sun_glow, f32(1.75))
+}
+
+@(test)
+test_scene_rejects_invalid_procedural_atmosphere_controls :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000031"
+name = "Invalid World Environment"
+
+[entities.world_environment]
+atmosphere_thickness = 0
+`,
+	)
+	defer destroy_scene(&scene)
+
+	testing.expect_value(t, result.err, Parse_Error.Invalid_Field)
 }
 
 @(test)

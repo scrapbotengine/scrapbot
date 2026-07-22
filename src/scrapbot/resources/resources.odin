@@ -196,6 +196,13 @@ Registry :: struct {
 	background_rotation: f32,
 	background_exposure: f32,
 	background_blur: f32,
+	atmosphere_sky_tint: shared.Vec3,
+	atmosphere_ground_color: shared.Vec3,
+	atmosphere_turbidity: f32,
+	atmosphere_thickness: f32,
+	atmosphere_horizon_softness: f32,
+	atmosphere_sun_size: f32,
+	atmosphere_sun_glow: f32,
 	allocator: mem.Allocator,
 }
 
@@ -237,9 +244,19 @@ ensure_allocator :: proc(registry: ^Registry) {
 	}
 	if registry.fonts == nil { registry.fonts = make([dynamic]Font, registry.allocator) }
 }
-init_registry :: proc(registry: ^Registry, allocator := context.allocator) {registry^ = {}
+init_registry :: proc(registry: ^Registry, allocator := context.allocator) {
+	registry^ = {}
 	registry.allocator = allocator
-	ensure_allocator(registry)}
+	defaults := shared.world_environment_default()
+	registry.atmosphere_sky_tint = defaults.sky_tint
+	registry.atmosphere_ground_color = defaults.ground_color
+	registry.atmosphere_turbidity = defaults.turbidity
+	registry.atmosphere_thickness = defaults.atmosphere_thickness
+	registry.atmosphere_horizon_softness = defaults.horizon_softness
+	registry.atmosphere_sun_size = defaults.sun_size
+	registry.atmosphere_sun_glow = defaults.sun_glow
+	ensure_allocator(registry)
+}
 
 destroy_registry :: proc(registry: ^Registry) {
 	if registry == nil { return }
@@ -308,6 +325,13 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.background_rotation = source.background_rotation
 	destination.background_exposure = source.background_exposure
 	destination.background_blur = source.background_blur
+	destination.atmosphere_sky_tint = source.atmosphere_sky_tint
+	destination.atmosphere_ground_color = source.atmosphere_ground_color
+	destination.atmosphere_turbidity = source.atmosphere_turbidity
+	destination.atmosphere_thickness = source.atmosphere_thickness
+	destination.atmosphere_horizon_softness = source.atmosphere_horizon_softness
+	destination.atmosphere_sun_size = source.atmosphere_sun_size
+	destination.atmosphere_sun_glow = source.atmosphere_sun_glow
 	for geometry in source.geometries {
 		cloned := geometry
 		name, name_err := strings.clone(geometry.name, allocator)

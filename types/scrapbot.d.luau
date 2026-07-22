@@ -308,6 +308,13 @@ export type ScrapbotWorldEnvironment = {
 	background_rotation: number,
 	background_exposure: number,
 	background_blur: number,
+	sky_tint: Vec3,
+	ground_color: Vec3,
+	turbidity: number,
+	atmosphere_thickness: number,
+	horizon_softness: number,
+	sun_size: number,
+	sun_glow: number,
 }
 
 export type ReadonlyScrapbotWorldEnvironment = {
@@ -321,6 +328,13 @@ export type ReadonlyScrapbotWorldEnvironment = {
 	read background_rotation: number,
 	read background_exposure: number,
 	read background_blur: number,
+	read sky_tint: ReadonlyVec3,
+	read ground_color: ReadonlyVec3,
+	read turbidity: number,
+	read atmosphere_thickness: number,
+	read horizon_softness: number,
+	read sun_size: number,
+	read sun_glow: number,
 }
 
 export type ScrapbotWorldEnvironmentComponent = ScrapbotComponent<ScrapbotWorldEnvironment, ReadonlyScrapbotWorldEnvironment>

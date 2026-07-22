@@ -271,6 +271,18 @@ Camera_Component :: struct {
 	exposure: f32,
 }
 
+@(private = "file")
+world_environment_vec3_is_finite :: proc "contextless" (value: Vec3) -> bool {
+	return(
+		!math.is_nan(value.x) &&
+		!math.is_inf(value.x) &&
+		!math.is_nan(value.y) &&
+		!math.is_inf(value.y) &&
+		!math.is_nan(value.z) &&
+		!math.is_inf(value.z) \
+	)
+}
+
 World_Environment_Component :: struct {
 	lighting: string,
 	lighting_intensity: f32,
@@ -282,6 +294,13 @@ World_Environment_Component :: struct {
 	background_rotation: f32,
 	background_exposure: f32,
 	background_blur: f32,
+	sky_tint: Vec3,
+	ground_color: Vec3,
+	turbidity: f32,
+	atmosphere_thickness: f32,
+	horizon_softness: f32,
+	sun_size: f32,
+	sun_glow: f32,
 }
 
 world_environment_default :: proc "contextless" () -> World_Environment_Component {
@@ -291,6 +310,13 @@ world_environment_default :: proc "contextless" () -> World_Environment_Componen
 		background_visible = true,
 		background_intensity = 1,
 		background_exposure = 1,
+		sky_tint = {1, 1, 1},
+		ground_color = {0.24, 0.235, 0.225},
+		turbidity = 2,
+		atmosphere_thickness = 1,
+		horizon_softness = 1,
+		sun_size = 1,
+		sun_glow = 1,
 	}
 }
 
@@ -315,7 +341,35 @@ world_environment_is_valid :: proc "contextless" (value: World_Environment_Compo
 		!math.is_nan(value.background_blur) &&
 		!math.is_inf(value.background_blur) &&
 		value.background_blur >= 0 &&
-		value.background_blur <= 1 \
+		value.background_blur <= 1 &&
+		world_environment_vec3_is_finite(value.sky_tint) &&
+		value.sky_tint.x >= 0 &&
+		value.sky_tint.y >= 0 &&
+		value.sky_tint.z >= 0 &&
+		world_environment_vec3_is_finite(value.ground_color) &&
+		value.ground_color.x >= 0 &&
+		value.ground_color.y >= 0 &&
+		value.ground_color.z >= 0 &&
+		!math.is_nan(value.turbidity) &&
+		!math.is_inf(value.turbidity) &&
+		value.turbidity >= 0 &&
+		value.turbidity <= 10 &&
+		!math.is_nan(value.atmosphere_thickness) &&
+		!math.is_inf(value.atmosphere_thickness) &&
+		value.atmosphere_thickness >= 0.1 &&
+		value.atmosphere_thickness <= 5 &&
+		!math.is_nan(value.horizon_softness) &&
+		!math.is_inf(value.horizon_softness) &&
+		value.horizon_softness >= 0.1 &&
+		value.horizon_softness <= 5 &&
+		!math.is_nan(value.sun_size) &&
+		!math.is_inf(value.sun_size) &&
+		value.sun_size >= 0 &&
+		value.sun_size <= 10 &&
+		!math.is_nan(value.sun_glow) &&
+		!math.is_inf(value.sun_glow) &&
+		value.sun_glow >= 0 &&
+		value.sun_glow <= 10 \
 	)
 }
 

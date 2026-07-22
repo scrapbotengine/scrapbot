@@ -380,7 +380,7 @@ push_query_component_table :: proc "c" (
 			if entity.world_environment_index >= 0 &&
 			   entity.world_environment_index < len(world.world_environments) {
 				value := world.world_environments[entity.world_environment_index]
-				lua_createtable(L, 0, 10)
+				lua_createtable(L, 0, 17)
 				lua_pushlstring(
 					L,
 					cstring(raw_data(value.lighting)),
@@ -409,6 +409,20 @@ push_query_component_table :: proc "c" (
 				lua_setfield(L, -2, "background_exposure")
 				lua_pushnumber(L, f64(value.background_blur))
 				lua_setfield(L, -2, "background_blur")
+				push_vec3_table(L, value.sky_tint)
+				lua_setfield(L, -2, "sky_tint")
+				push_vec3_table(L, value.ground_color)
+				lua_setfield(L, -2, "ground_color")
+				lua_pushnumber(L, f64(value.turbidity))
+				lua_setfield(L, -2, "turbidity")
+				lua_pushnumber(L, f64(value.atmosphere_thickness))
+				lua_setfield(L, -2, "atmosphere_thickness")
+				lua_pushnumber(L, f64(value.horizon_softness))
+				lua_setfield(L, -2, "horizon_softness")
+				lua_pushnumber(L, f64(value.sun_size))
+				lua_setfield(L, -2, "sun_size")
+				lua_pushnumber(L, f64(value.sun_glow))
+				lua_setfield(L, -2, "sun_glow")
 				return
 			}
 		case "scrapbot.ambient_light":

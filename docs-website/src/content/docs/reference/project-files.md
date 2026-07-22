@@ -187,9 +187,16 @@ background_intensity = 1
 background_rotation = 0
 background_exposure = 1
 background_blur = 0
+sky_tint = [1, 1, 1]
+ground_color = [0.24, 0.235, 0.225]
+turbidity = 2
+atmosphere_thickness = 1
+horizon_softness = 1
+sun_size = 1
+sun_glow = 1
 ```
 
-A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
+A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune that procedural sky live and do not alter imported HDR backgrounds. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
 
 Built-in primitive convenience:
 

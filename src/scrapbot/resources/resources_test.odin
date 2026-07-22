@@ -670,16 +670,12 @@ test_world_environment_reconciliation_is_change_driven :: proc(t: ^testing.T) {
 		delete(world.entities)
 		delete(world.world_environments)
 	}
-	append(
-		&world.world_environments,
-		shared.World_Environment_Component {
-			lighting_intensity = 0.75,
-			exposure = 1.1,
-			background_visible = true,
-			background_intensity = 0.8,
-			background_exposure = 1,
-		},
-	)
+	environment := shared.world_environment_default()
+	environment.lighting_intensity = 0.75
+	environment.exposure = 1.1
+	environment.background_intensity = 0.8
+	environment.turbidity = 3.5
+	append(&world.world_environments, environment)
 	append(
 		&world.entities,
 		shared.World_Entity{alive = true, component_revision = 1, world_environment_index = 0},
@@ -690,14 +686,17 @@ test_world_environment_reconciliation_is_change_driven :: proc(t: ^testing.T) {
 	testing.expect_value(t, reconcile_world_environment(&registry, &world), "")
 	testing.expect_value(t, registry.environment_intensity, f32(0.75))
 	testing.expect(t, registry.background_visible)
+	testing.expect_value(t, registry.atmosphere_turbidity, f32(3.5))
 	first_revision := registry.environment_revision
 	testing.expect_value(t, reconcile_world_environment(&registry, &world), "")
 	testing.expect_value(t, registry.environment_revision, first_revision)
 
 	world.world_environments[0].background_intensity = 0.4
+	world.world_environments[0].sun_glow = 2.25
 	world.entities[0].component_revision += 1
 	testing.expect_value(t, reconcile_world_environment(&registry, &world), "")
 	testing.expect_value(t, registry.background_intensity, f32(0.4))
+	testing.expect_value(t, registry.atmosphere_sun_glow, f32(2.25))
 	testing.expect(t, registry.environment_revision > first_revision)
 }
 

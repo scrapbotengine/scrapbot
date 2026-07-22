@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"text": "World Environment", "origin": "editor"}},
+    {"action": "wait", "frames": 3},
+    {"action": "scroll", "target": {"name": "__scrapbot_editor_right", "origin": "editor"}, "wheel_y": -12},
+    {"action": "wait", "frames": 8},
+    {"action": "expect", "target": {"text": "turbidity", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "sun_glow", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_right", "origin": "editor"}, "padding": 4}
+  ]
+}

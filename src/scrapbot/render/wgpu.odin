@@ -120,8 +120,12 @@ WGPU_Environment_Uniform :: struct {
 	_padding: f32,
 	sun_direction_intensity: [4]f32,
 	sun_color: [4]f32,
+	atmosphere_sky_tint: [4]f32,
+	atmosphere_ground_color: [4]f32,
+	atmosphere_parameters: [4]f32,
+	atmosphere_sun: [4]f32,
 }
-#assert(size_of(WGPU_Environment_Uniform) == 80)
+#assert(size_of(WGPU_Environment_Uniform) == 144)
 
 WGPU_Sky_Uniform :: struct {
 	right: [4]f32,

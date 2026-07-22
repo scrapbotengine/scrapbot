@@ -147,6 +147,68 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "background_rotation", field_type = .Number},
 			Field_Definition{name = "background_exposure", field_type = .Number},
 			Field_Definition{name = "background_blur", field_type = .Number},
+			Field_Definition{name = "sky_tint", field_type = .Vec3},
+			Field_Definition{name = "ground_color", field_type = .Vec3},
+			Field_Definition {
+				name = "turbidity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.1,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
+			Field_Definition {
+				name = "atmosphere_thickness",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0.1,
+					has_maximum = true,
+					maximum = 5,
+				},
+			},
+			Field_Definition {
+				name = "horizon_softness",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0.1,
+					has_maximum = true,
+					maximum = 5,
+				},
+			},
+			Field_Definition {
+				name = "sun_size",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
+			Field_Definition {
+				name = "sun_glow",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
 		},
 	)
 	register_engine_component(

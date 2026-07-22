@@ -827,6 +827,20 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.world_environment.background_exposure, found = parse_f32(value)
 					case "background_blur":
 						current.world_environment.background_blur, found = parse_f32(value)
+					case "sky_tint":
+						current.world_environment.sky_tint, found = parse_vec3(value)
+					case "ground_color":
+						current.world_environment.ground_color, found = parse_vec3(value)
+					case "turbidity":
+						current.world_environment.turbidity, found = parse_f32(value)
+					case "atmosphere_thickness":
+						current.world_environment.atmosphere_thickness, found = parse_f32(value)
+					case "horizon_softness":
+						current.world_environment.horizon_softness, found = parse_f32(value)
+					case "sun_size":
+						current.world_environment.sun_size, found = parse_f32(value)
+					case "sun_glow":
+						current.world_environment.sun_glow, found = parse_f32(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,

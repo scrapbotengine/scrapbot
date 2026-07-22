@@ -265,16 +265,19 @@ CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cpu.png"
 UI_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-ui.png"
 OVERLAY_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-editor-overlay.png"
 OVERLAY_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-editor-overlay.json"
+ATMOSPHERE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment.png"
+ATMOSPHERE_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment.json"
 LOD_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-compute.png"
 LOD_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-cpu.png"
 TRANSFORM_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-compute.png"
 TRANSFORM_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-cpu.png"
 MASK_FRAME="${TMPDIR:-/tmp}/scrapbot-gltf-mask.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME"' EXIT
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
 OVERLAY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/editor-overlay-lifecycle.json --ui-dump "$OVERLAY_DUMP" --framegrab "$OVERLAY_FRAME" --json)"
+ATMOSPHERE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 80 --ui-script tests/fixtures/ui/world-environment.json --ui-dump "$ATMOSPHERE_DUMP" --framegrab "$ATMOSPHERE_FRAME" --json)"
 LOD_COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --frames 5 --framegrab "$LOD_COMPUTE_FRAME" --json)"
 LOD_CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --cpu-culling --frames 5 --framegrab "$LOD_CPU_FRAME" --json)"
 TRANSFORM_COMPUTE_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --frames 20 --framegrab "$TRANSFORM_COMPUTE_FRAME" --json)"
@@ -336,6 +339,14 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
   process.exit(1);
 }
 ' "$OVERLAY_JSON"
+node -e '
+const result = JSON.parse(process.argv[1]);
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    result.result?.render_stats?.ui_editor_vertex_rebuilds < 1) {
+  console.error("world environment inspector did not complete cleanly");
+  process.exit(1);
+}
+' "$ATMOSPHERE_JSON"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);

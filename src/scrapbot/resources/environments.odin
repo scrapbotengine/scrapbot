@@ -301,6 +301,9 @@ configure_world_environment :: proc(
 	registry: ^Registry,
 	value: shared.World_Environment_Component,
 ) -> string {
+	if !shared.world_environment_is_valid(value) {
+		return "world environment configuration is invalid"
+	}
 	config := shared.Project_Render_Config {
 		environment_intensity = value.lighting_intensity,
 		environment_rotation = value.lighting_rotation,
@@ -325,7 +328,26 @@ configure_world_environment :: proc(
 		}
 		config.background_environment = id
 	}
-	return configure_project_environment(registry, config)
+	if err := configure_project_environment(registry, config); err != "" {
+		return err
+	}
+	if registry.atmosphere_sky_tint != value.sky_tint ||
+	   registry.atmosphere_ground_color != value.ground_color ||
+	   registry.atmosphere_turbidity != value.turbidity ||
+	   registry.atmosphere_thickness != value.atmosphere_thickness ||
+	   registry.atmosphere_horizon_softness != value.horizon_softness ||
+	   registry.atmosphere_sun_size != value.sun_size ||
+	   registry.atmosphere_sun_glow != value.sun_glow {
+		registry.atmosphere_sky_tint = value.sky_tint
+		registry.atmosphere_ground_color = value.ground_color
+		registry.atmosphere_turbidity = value.turbidity
+		registry.atmosphere_thickness = value.atmosphere_thickness
+		registry.atmosphere_horizon_softness = value.horizon_softness
+		registry.atmosphere_sun_size = value.sun_size
+		registry.atmosphere_sun_glow = value.sun_glow
+		bump_environment_revision(registry)
+	}
+	return ""
 }
 
 get_environment :: proc(registry: ^Registry, handle: Environment_Handle) -> (^Environment, bool) {

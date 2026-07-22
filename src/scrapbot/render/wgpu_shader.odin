@@ -37,6 +37,12 @@ struct Environment_Uniform {
 	background_enabled: f32,
 	background_max_specular_lod: f32,
 	_padding: f32,
+	sun_direction_intensity: vec4<f32>,
+	sun_color: vec4<f32>,
+	atmosphere_sky_tint: vec4<f32>,
+	atmosphere_ground_color: vec4<f32>,
+	atmosphere_parameters: vec4<f32>,
+	atmosphere_sun: vec4<f32>,
 };
 
 @group(0) @binding(0)

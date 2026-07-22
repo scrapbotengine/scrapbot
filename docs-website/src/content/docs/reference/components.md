@@ -113,10 +113,17 @@ A scene may contain at most one World Environment component. It belongs on an or
 | `background_rotation` | number | `0` | Background Y rotation in degrees. |
 | `background_exposure` | number | `1` | Positive background-only exposure compensation. |
 | `background_blur` | number | `0` | Imported-background blur from `0` to `1`. |
+| `sky_tint` | vec3 | `[1, 1, 1]` | Non-negative linear RGB multiplier for the procedural sky and atmospheric haze. |
+| `ground_color` | vec3 | `[0.24, 0.235, 0.225]` | Non-negative linear RGB color at the procedural ground horizon. |
+| `turbidity` | number | `2` | Atmospheric haze and warmth from `0` (clear) to `10` (hazy). |
+| `atmosphere_thickness` | number | `1` | Haze reach from `0.1` to `5`. Larger values carry haze farther from the horizon. |
+| `horizon_softness` | number | `1` | Horizon transition and glow width from `0.1` to `5`. |
+| `sun_size` | number | `1` | Procedural sun-disc size multiplier from `0` to `10`; `0` hides the disc and glow. |
+| `sun_glow` | number | `1` | Sun halo multiplier from `0` to `10` without changing direct-light intensity. |
 
 The fixed `scrapbot.environment` engine phase retains the selected entity and component revision. Stable frames do not scan all entities or resources. Structural membership changes rediscover the singleton, and value changes resolve only the referenced UUIDs before advancing the renderer environment revision.
 
-The procedural sky uses the scene's first directional light as its visible sun, so the sky disc, glow, direct lighting, and shadows share one direction and color. Its observer-above-spherical-ground approximation gives the horizon subtle perspective curvature. Without a directional light it still renders atmospheric sky and ground gradients, but no sun disc.
+The final seven fields art-direct only the built-in procedural atmosphere; imported backgrounds ignore them. Their reflected numeric controls support drag editing in the generated inspector. The procedural sky uses the scene's first directional light as its visible sun, so the sky disc, glow, direct lighting, and shadows share one direction and color. Its observer-above-spherical-ground approximation gives the horizon subtle perspective curvature. Without a directional light it still renders atmospheric sky and ground gradients, but no sun disc.
 
 ### `scrapbot.mesh`
 

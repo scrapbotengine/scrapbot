@@ -29,6 +29,10 @@ struct Environment_Uniform {
 	_padding: f32,
 	sun_direction_intensity: vec4<f32>,
 	sun_color: vec4<f32>,
+	atmosphere_sky_tint: vec4<f32>,
+	atmosphere_ground_color: vec4<f32>,
+	atmosphere_parameters: vec4<f32>,
+	atmosphere_sun: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> sky: Sky_Uniform;
@@ -75,6 +79,13 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 		s * direction.x + c * direction.z,
 	);
 	if (environment.background_max_specular_lod < 0.0) {
+		let sky_tint = environment.atmosphere_sky_tint.rgb;
+		let ground_tint = environment.atmosphere_ground_color.rgb;
+		let turbidity = clamp(environment.atmosphere_parameters.x, 0.0, 10.0);
+		let atmosphere_thickness = clamp(environment.atmosphere_parameters.y, 0.1, 5.0);
+		let horizon_softness = clamp(environment.atmosphere_parameters.z, 0.1, 5.0);
+		let sun_size = clamp(environment.atmosphere_parameters.w, 0.0, 10.0);
+		let sun_glow_strength = clamp(environment.atmosphere_sun.x, 0.0, 10.0);
 		let elevation = clamp(direction.y, -1.0, 1.0);
 		let planet_radius = 1.0;
 		let observer_radius = 1.00012;
@@ -90,30 +101,56 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 			clamp(-atmosphere_elevation / (1.0 + horizon_elevation), 0.0, 1.0),
 			0.45,
 		);
-		let sky_horizon = vec3<f32>(0.30, 0.58, 0.88);
-		let sky_zenith = vec3<f32>(0.018, 0.095, 0.34);
+		let sky_horizon = vec3<f32>(0.30, 0.58, 0.88) * sky_tint;
+		let sky_zenith = vec3<f32>(0.018, 0.095, 0.34) * sky_tint;
 		var sky_color = mix(sky_horizon, sky_zenith, sky_height);
-		let aerial_haze = exp(-abs(atmosphere_elevation) * 13.0);
-		sky_color = mix(sky_color, vec3<f32>(0.68, 0.82, 0.94), aerial_haze * 0.58);
-		let ground_horizon = vec3<f32>(0.24, 0.235, 0.225);
-		let ground_nadir = vec3<f32>(0.055, 0.050, 0.046);
+		let haze_warmth = clamp((turbidity - 2.0) / 8.0, 0.0, 1.0);
+		let haze_color = mix(
+			vec3<f32>(0.68, 0.82, 0.94),
+			vec3<f32>(0.94, 0.70, 0.46),
+			haze_warmth,
+		) * sky_tint;
+		let aerial_haze = exp(
+			-abs(atmosphere_elevation) * 13.0 / atmosphere_thickness,
+		);
+		let haze_strength = clamp(0.38 + turbidity * 0.10, 0.0, 0.9);
+		sky_color = mix(sky_color, haze_color, aerial_haze * haze_strength);
+		let ground_horizon = ground_tint;
+		let ground_nadir = ground_tint * vec3<f32>(0.23, 0.21, 0.20);
 		let ground_color = mix(ground_horizon, ground_nadir, ground_depth);
-		let sky_mask = smoothstep(-0.004, 0.006, atmosphere_elevation);
+		let sky_mask = smoothstep(
+			-0.004 * horizon_softness,
+			0.006 * horizon_softness,
+			atmosphere_elevation,
+		);
 		var color = mix(ground_color, sky_color, sky_mask);
-		let horizon_glow = exp(-abs(atmosphere_elevation) * 48.0);
-		color += vec3<f32>(0.18, 0.33, 0.42) * horizon_glow;
+		let horizon_glow = exp(
+			-abs(atmosphere_elevation) * 48.0 / horizon_softness,
+		);
+		let horizon_glow_color = mix(
+			vec3<f32>(0.18, 0.33, 0.42),
+			vec3<f32>(0.48, 0.25, 0.10),
+			haze_warmth,
+		) * sky_tint;
+		let horizon_glow_strength = clamp(0.75 + turbidity * 0.125, 0.0, 2.0);
+		color += horizon_glow_color * horizon_glow * horizon_glow_strength;
 		let sun_direction_length = length(environment.sun_direction_intensity.xyz);
-		if (environment.sun_direction_intensity.w > 0.0 && sun_direction_length > 0.0001) {
+		if (
+			environment.sun_direction_intensity.w > 0.0 &&
+			sun_direction_length > 0.0001 &&
+			sun_size > 0.0
+		) {
 			let sun_direction = environment.sun_direction_intensity.xyz / sun_direction_length;
 			let sun_alignment = max(dot(direction, sun_direction), 0.0);
-			let sun_disc = smoothstep(0.99955, 0.99986, sun_alignment);
-			let inner_glow = pow(sun_alignment, 192.0);
-			let outer_glow = pow(sun_alignment, 18.0);
+			let sun_radius = 0.03 * sun_size;
+			let sun_disc = smoothstep(cos(sun_radius), cos(sun_radius * 0.56), sun_alignment);
+			let inner_glow = pow(sun_alignment, 192.0 / max(sun_size, 0.1));
+			let outer_glow = pow(sun_alignment, 18.0 / max(sun_size, 0.1));
 			let sun_strength = min(environment.sun_direction_intensity.w, 8.0);
 			color += environment.sun_color.rgb * (
 				sun_disc * (3.5 + sun_strength) +
-				inner_glow * (0.35 + sun_strength * 0.12) +
-				outer_glow * 0.035
+				inner_glow * (0.35 + sun_strength * 0.12) * sun_glow_strength +
+				outer_glow * 0.035 * sun_glow_strength
 			);
 		}
 		return vec4<f32>(
@@ -491,6 +528,10 @@ wgpu_sync_environment :: proc(
 		background_max_specular_lod = -1,
 		sun_direction_intensity = sun_direction_intensity,
 		sun_color = sun_color,
+		atmosphere_sky_tint = {1, 1, 1, 0},
+		atmosphere_ground_color = {0.24, 0.235, 0.225, 0},
+		atmosphere_parameters = {2, 1, 1, 1},
+		atmosphere_sun = {1, 0, 0, 0},
 	}
 	if registry != nil {
 		uniform.intensity = registry.environment_intensity
@@ -500,6 +541,25 @@ wgpu_sync_environment :: proc(
 		uniform.background_rotation = registry.background_rotation * f32(math.PI) / 180
 		uniform.background_exposure = registry.background_exposure
 		uniform.background_blur = registry.background_blur
+		uniform.atmosphere_sky_tint = {
+			registry.atmosphere_sky_tint.x,
+			registry.atmosphere_sky_tint.y,
+			registry.atmosphere_sky_tint.z,
+			0,
+		}
+		uniform.atmosphere_ground_color = {
+			registry.atmosphere_ground_color.x,
+			registry.atmosphere_ground_color.y,
+			registry.atmosphere_ground_color.z,
+			0,
+		}
+		uniform.atmosphere_parameters = {
+			registry.atmosphere_turbidity,
+			registry.atmosphere_thickness,
+			registry.atmosphere_horizon_softness,
+			registry.atmosphere_sun_size,
+		}
+		uniform.atmosphere_sun = {registry.atmosphere_sun_glow, 0, 0, 0}
 	}
 	if environment != nil {
 		uniform.enabled = 1

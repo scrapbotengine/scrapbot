@@ -13,6 +13,29 @@ near = 0.1
 far = 100
 
 [[entities]]
+id = "20000000-0000-4000-8000-000000000011"
+name = "World Environment"
+
+[entities.world_environment]
+lighting = ""
+lighting_intensity = 1
+lighting_rotation = 0
+exposure = 1
+background_visible = true
+background = ""
+background_intensity = 1
+background_rotation = 0
+background_exposure = 1
+background_blur = 0
+sky_tint = [0.95, 1, 1.08]
+ground_color = [0.22, 0.23, 0.24]
+turbidity = 2.6
+atmosphere_thickness = 1.15
+horizon_softness = 1.2
+sun_size = 1
+sun_glow = 1.15
+
+[[entities]]
 id = "20000000-0000-4000-8000-000000000002"
 name = "Ambient Light"
 

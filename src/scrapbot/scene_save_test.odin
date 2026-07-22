@@ -66,6 +66,35 @@ test_scene_camera_serialization_persists_effective_exposure :: proc(t: ^testing.
 }
 
 @(test)
+test_scene_world_environment_serialization_persists_procedural_controls :: proc(t: ^testing.T) {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	environment := shared.world_environment_default()
+	environment.sky_tint = {0.9, 1, 1.1}
+	environment.ground_color = {0.2, 0.18, 0.16}
+	environment.turbidity = 4.5
+	environment.atmosphere_thickness = 1.4
+	environment.horizon_softness = 1.6
+	environment.sun_size = 1.25
+	environment.sun_glow = 1.75
+	entity := shared.Scene_Entity {
+		id = shared.entity_uuid_from_engine_name("scene-save-world-environment"),
+		name = "World Environment",
+		has_world_environment = true,
+		world_environment = environment,
+	}
+	write_scene_entity(&builder, &entity)
+	serialized := strings.to_string(builder)
+	testing.expect(t, strings.contains(serialized, "sky_tint = [0.9, 1, 1.1]"))
+	testing.expect(t, strings.contains(serialized, "ground_color = [0.2, 0.18, 0.16]"))
+	testing.expect(t, strings.contains(serialized, "turbidity = 4.5"))
+	testing.expect(t, strings.contains(serialized, "atmosphere_thickness = 1.4"))
+	testing.expect(t, strings.contains(serialized, "horizon_softness = 1.6"))
+	testing.expect(t, strings.contains(serialized, "sun_size = 1.25"))
+	testing.expect(t, strings.contains(serialized, "sun_glow = 1.75"))
+}
+
+@(test)
 test_scene_save_patches_scene_entities_by_uuid_and_preserves_source_structure :: proc(
 	t: ^testing.T,
 ) {
