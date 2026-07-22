@@ -199,7 +199,7 @@ sun_size = 1
 sun_glow = 1
 ```
 
-A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune that procedural sky live and do not alter imported HDR backgrounds. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
+A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune that procedural sky live and do not alter imported HDR backgrounds. Procedural sun elevation drives horizon occlusion and day/twilight/night presentation; above the horizon it also contributes the primary derived directional light and shadow direction. Explicit ECS lights remain additive. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
 
 Built-in primitive convenience:
 

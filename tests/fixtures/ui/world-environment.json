@@ -13,10 +13,10 @@
     {"action": "expect", "target": {"text": "sun_color", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "sun_intensity", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "sun_glow", "origin": "editor"}, "expect": "visible"},
-    {"action": "type", "target": {"text": "0.85", "origin": "editor"}, "text": "0"},
+    {"action": "type", "target": {"text": "0.25", "origin": "editor"}, "text": "-0.80"},
     {"action": "key", "key": "enter"},
     {"action": "wait", "frames": 3},
-    {"action": "expect", "target": {"text": "0.00", "origin": "editor"}, "expect": "text", "text": "0.00"},
+    {"action": "expect", "target": {"text": "-0.80", "origin": "editor"}, "expect": "text", "text": "-0.80"},
     {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}}
   ]
 }

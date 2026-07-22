@@ -86,6 +86,11 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 		let horizon_softness = clamp(environment.atmosphere_parameters.z, 0.1, 5.0);
 		let sun_size = clamp(environment.atmosphere_parameters.w, 0.0, 10.0);
 		let sun_glow_strength = clamp(environment.atmosphere_sun.x, 0.0, 10.0);
+		let sun_direction_length = length(environment.sun_direction_intensity.xyz);
+		var sun_direction = vec3<f32>(0.0, 1.0, 0.0);
+		if (sun_direction_length > 0.0001) {
+			sun_direction = environment.sun_direction_intensity.xyz / sun_direction_length;
+		}
 		let elevation = clamp(direction.y, -1.0, 1.0);
 		let planet_radius = 1.0;
 		let observer_radius = 1.00012;
@@ -93,6 +98,9 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 			1.0 - (planet_radius * planet_radius) / (observer_radius * observer_radius)
 		);
 		let atmosphere_elevation = elevation - horizon_elevation;
+		let solar_elevation = sun_direction.y - horizon_elevation;
+		let daylight = smoothstep(-0.12, 0.05, solar_elevation);
+		let twilight = exp(-abs(solar_elevation) * 16.0) * (1.0 - daylight * 0.65);
 		let sky_height = pow(
 			clamp(atmosphere_elevation / (1.0 - horizon_elevation), 0.0, 1.0),
 			0.35,
@@ -101,22 +109,32 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 			clamp(-atmosphere_elevation / (1.0 + horizon_elevation), 0.0, 1.0),
 			0.45,
 		);
-		let sky_horizon = vec3<f32>(0.30, 0.58, 0.88) * sky_tint;
-		let sky_zenith = vec3<f32>(0.018, 0.095, 0.34) * sky_tint;
+		let sky_horizon = mix(
+			vec3<f32>(0.004, 0.008, 0.025),
+			vec3<f32>(0.30, 0.58, 0.88),
+			daylight,
+		) * sky_tint;
+		let sky_zenith = mix(
+			vec3<f32>(0.0004, 0.0012, 0.008),
+			vec3<f32>(0.018, 0.095, 0.34),
+			daylight,
+		) * sky_tint;
 		var sky_color = mix(sky_horizon, sky_zenith, sky_height);
 		let haze_warmth = clamp((turbidity - 2.0) / 8.0, 0.0, 1.0);
-		let haze_color = mix(
+		let day_haze_color = mix(
 			vec3<f32>(0.68, 0.82, 0.94),
 			vec3<f32>(0.94, 0.70, 0.46),
 			haze_warmth,
-		) * sky_tint;
+		);
+		let haze_color = mix(vec3<f32>(0.006, 0.010, 0.026), day_haze_color, daylight) * sky_tint;
 		let aerial_haze = exp(
 			-abs(atmosphere_elevation) * 13.0 / atmosphere_thickness,
 		);
 		let haze_strength = clamp(0.38 + turbidity * 0.10, 0.0, 0.9);
 		sky_color = mix(sky_color, haze_color, aerial_haze * haze_strength);
-		let ground_horizon = ground_tint;
-		let ground_nadir = ground_tint * vec3<f32>(0.23, 0.21, 0.20);
+		let ground_daylight = mix(0.018, 1.0, daylight);
+		let ground_horizon = ground_tint * ground_daylight;
+		let ground_nadir = ground_tint * vec3<f32>(0.23, 0.21, 0.20) * ground_daylight;
 		let ground_color = mix(ground_horizon, ground_nadir, ground_depth);
 		let sky_mask = smoothstep(
 			-0.004 * horizon_softness,
@@ -133,24 +151,24 @@ fn fs_main(input: Output) -> @location(0) vec4<f32> {
 			haze_warmth,
 		) * sky_tint;
 		let horizon_glow_strength = clamp(0.75 + turbidity * 0.125, 0.0, 2.0);
-		color += horizon_glow_color * horizon_glow * horizon_glow_strength;
-		let sun_direction_length = length(environment.sun_direction_intensity.xyz);
+		color += horizon_glow_color * horizon_glow * horizon_glow_strength * daylight;
+		color += environment.sun_color.rgb * horizon_glow * twilight * 0.08;
 		if (
 			environment.sun_direction_intensity.w > 0.0 &&
 			sun_direction_length > 0.0001 &&
 			sun_size > 0.0
 		) {
-			let sun_direction = environment.sun_direction_intensity.xyz / sun_direction_length;
 			let sun_alignment = max(dot(direction, sun_direction), 0.0);
 			let sun_radius = 0.012 * sun_size;
 			let sun_disc = smoothstep(cos(sun_radius), cos(sun_radius * 0.56), sun_alignment);
 			let inner_glow = pow(sun_alignment, 192.0 / max(sun_size, 0.1));
 			let outer_glow = pow(sun_alignment, 18.0 / max(sun_size, 0.1));
 			let sun_strength = min(environment.sun_direction_intensity.w, 50.0);
+			let planet_visibility = smoothstep(-0.0005, 0.0005, atmosphere_elevation);
 			color += environment.sun_color.rgb * (
-				sun_disc * 8.0 * sun_strength +
-				inner_glow * 0.6 * sun_strength * sun_glow_strength +
-				outer_glow * 0.08 * sun_strength * sun_glow_strength
+				sun_disc * planet_visibility * 8.0 * sun_strength +
+				inner_glow * sky_mask * 0.6 * sun_strength * sun_glow_strength +
+				outer_glow * sky_mask * 0.08 * sun_strength * sun_glow_strength
 			);
 		}
 		return vec4<f32>(

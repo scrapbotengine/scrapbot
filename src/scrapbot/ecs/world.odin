@@ -1166,7 +1166,7 @@ populate_resource_render_list :: proc(
 	list.ambient = {}
 	list.directional_light_count = 0
 	list.point_light_count = 0
-	extract_lights(world, list)
+	extract_lights(world, list, registry)
 }
 
 fill_invalid_render_indices :: proc(indices: ^[dynamic]int, previous_count: int = 0) {
@@ -1567,7 +1567,42 @@ sync_resource_render_instances :: proc(world: ^World, list: ^Render_List) {
 	}
 }
 
-extract_lights :: proc(world: ^World, list: ^Render_List) {
+procedural_sun_directional_light :: proc(
+	registry: ^resources.Registry,
+) -> (
+	Directional_Light_Component,
+	bool,
+) {
+	if registry == nil ||
+	   registry.active_environment != (shared.Environment_Handle{}) ||
+	   registry.background_environment != (shared.Environment_Handle{}) ||
+	   registry.atmosphere_sun_intensity <= 0 {
+		return {}, false
+	}
+	direction_to_sun := shared.camera_vec3_normalize(registry.atmosphere_sun_direction)
+	if direction_to_sun == (Vec3{}) {
+		return {}, false
+	}
+	// Match the observer-above-spherical-ground horizon used by the procedural sky.
+	PROCEDURAL_HORIZON_ELEVATION :: -0.01549054
+	solar_elevation := direction_to_sun.y - PROCEDURAL_HORIZON_ELEVATION
+	visibility := (solar_elevation + 0.01) / 0.025
+	if visibility <= 0 {
+		return {}, false
+	}
+	if visibility > 1 {
+		visibility = 1
+	}
+	visibility = visibility * visibility * (3 - 2 * visibility)
+	return {
+			direction = {-direction_to_sun.x, -direction_to_sun.y, -direction_to_sun.z},
+			color = registry.atmosphere_sun_color,
+			intensity = registry.atmosphere_sun_intensity * visibility,
+		},
+		true
+}
+
+extract_lights :: proc(world: ^World, list: ^Render_List, registry: ^resources.Registry = nil) {
 	if world == nil || list == nil { return }
 	for entity_index in world.render_active_ambient_light_entities {
 		if !entity_is_alive(world, entity_index) { continue }
@@ -1578,6 +1613,12 @@ extract_lights :: proc(world: ^World, list: ^Render_List) {
 		list.ambient.x += light.color.x * light.intensity
 		list.ambient.y += light.color.y * light.intensity
 		list.ambient.z += light.color.z * light.intensity
+	}
+	if light, active := procedural_sun_directional_light(registry); active {
+		list.directional_lights[list.directional_light_count] = {
+			light = light,
+		}
+		list.directional_light_count += 1
 	}
 	for entity_index in world.render_active_directional_light_entities {
 		if list.directional_light_count >= len(list.directional_lights) { break }

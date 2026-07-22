@@ -299,6 +299,16 @@ fn evaluate_light(
 	return (diffuse_weight * base_color / PI + specular) * radiance * n_dot_l;
 }
 
+fn procedural_daylight() -> f32 {
+	let direction_length = length(environment.sun_direction_intensity.xyz);
+	if (environment.background_max_specular_lod >= 0.0 || direction_length <= 0.0001) {
+		return 0.0;
+	}
+	let direction = environment.sun_direction_intensity.xyz / direction_length;
+	let horizon_elevation = -sqrt(1.0 - 1.0 / (1.00012 * 1.00012));
+	return smoothstep(-0.12, 0.05, direction.y - horizon_elevation);
+}
+
 @fragment
 fn fs_main(input: Vertex_Output, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
 	let base_color_sample = textureSample(base_color_texture, base_color_sampler, input.uv);
@@ -364,6 +374,21 @@ fn fs_main(input: Vertex_Output, @builtin(front_facing) front_facing: bool) -> @
 		color += (diffuse_ibl + specular_ibl) * occlusion * environment.intensity;
 	} else {
 		color += render.ambient.rgb * (ambient_diffuse + ambient_specular) * occlusion;
+		if (environment.background_max_specular_lod < 0.0) {
+			let daylight = procedural_daylight();
+			let hemisphere = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
+			let sky_fill = mix(
+				vec3<f32>(0.0005, 0.0012, 0.006),
+				vec3<f32>(0.10, 0.18, 0.30) * environment.atmosphere_sky_tint.rgb,
+				daylight,
+			);
+			let ground_fill = mix(
+				vec3<f32>(0.0003, 0.0004, 0.0007),
+				environment.atmosphere_ground_color.rgb * 0.08,
+				daylight,
+			);
+			color += ambient_diffuse * mix(ground_fill, sky_fill, hemisphere) * occlusion;
+		}
 	}
 	let emissive_map = textureSample(emissive_texture, emissive_sampler, input.uv).rgb;
 	let emissive = mix(input.emissive, input.emissive * emissive_map, material.flags.x);

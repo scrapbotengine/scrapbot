@@ -98,10 +98,10 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Contract:** At most one authored component per scene selects Environment-resource UUIDs for image-based lighting and the visible background, plus their independent presentation values. An enabled empty background selects the art-directable procedural atmosphere with its own world-space HDR sun.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored singleton-by-validation, attached to an ordinary selectable scene entity.
 - **Producers:** Scene loading, automatic editor reflection/history, component membership commands, and playback restore.
-- **Consumers:** The fixed `scrapbot.environment` phase resolves UUIDs to generational Environment handles and updates the renderer-facing resource-registry cache, including procedural color/haze/sun controls; WGPU copies that retained state into the environment uniform without consulting scene lights.
+- **Consumers:** The fixed `scrapbot.environment` phase resolves UUIDs to generational Environment handles and updates the renderer-facing resource-registry cache, including procedural color/haze/sun controls. Backend-neutral light extraction inserts an above-horizon procedural sun as the first derived directional-light input without mutating World entities; WGPU consumes that light through ordinary GGX/shadow paths and derives horizon-clipped sky presentation plus procedural fill from the same retained state.
 - **Invalidation:** Structural membership changes rediscover the singleton. Value changes compare the retained entity component revision. Stable frames do not scan World entities or resources.
 - **Surfaces:** Public in scene TOML, Luau membership/query data, native membership, editor authoring, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotworld_environment).
-- **Source/tests:** `resources/environments.odin`, `ecs/world.odin`, `render/wgpu_environment.odin`; `project/project_test.odin`, `resources/resources_test.odin`, WGPU framegrab smoke tests.
+- **Source/tests:** `resources/environments.odin`, `ecs/world.odin`, `render/wgpu_environment.odin`; `project/project_test.odin`, `resources/resources_test.odin`, `ecs/world_test.odin`, WGPU day/night framegrab smoke tests.
 
 ### `scrapbot.ambient_light`
 

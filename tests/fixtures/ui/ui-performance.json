@@ -2,7 +2,7 @@
   "schema_version": 1,
   "timeout_frames": 180,
   "actions": [
-    {"action": "click", "target": {"text": "Sun", "origin": "editor"}},
+    {"action": "click", "target": {"text": "Main Camera", "origin": "editor"}},
     {"action": "wait", "frames": 20},
     {"action": "drag", "target": {"name": "__scrapbot_editor_inspector_input_0", "origin": "editor"}, "delta_x": 40, "delta_y": 0, "frames": 30},
     {"action": "wait", "frames": 5},

@@ -518,6 +518,40 @@ range = 7
 }
 
 @(test)
+test_procedural_sun_is_a_horizon_gated_directional_render_light :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
+	world: World
+	defer destroy_world(&world)
+	list: Render_List
+	defer destroy_render_list(&list)
+
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, list.directional_light_count, 1)
+	direction_to_sun := shared.camera_vec3_normalize(registry.atmosphere_sun_direction)
+	testing.expect_value(
+		t,
+		list.directional_lights[0].light.direction,
+		Vec3{-direction_to_sun.x, -direction_to_sun.y, -direction_to_sun.z},
+	)
+	testing.expect_value(t, list.directional_lights[0].light.color, registry.atmosphere_sun_color)
+	testing.expect(t, list.directional_lights[0].light.intensity > 0)
+
+	registry.atmosphere_sun_direction = {0, -1, 0}
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, list.directional_light_count, 0)
+
+	registry.atmosphere_sun_direction = {0, 1, 0}
+	registry.active_environment = {
+		index = 0,
+		generation = 1,
+	}
+	populate_resource_render_list(&world, &registry, &list)
+	testing.expect_value(t, list.directional_light_count, 0)
+}
+
+@(test)
 test_render_watch_membership_tracks_transform_changes_and_despawns :: proc(t: ^testing.T) {
 	scene, result := project.parse_scene(
 		`[[entities]]
