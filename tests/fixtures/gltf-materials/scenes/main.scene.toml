@@ -1,0 +1,33 @@
+[[entities]]
+id = "a3100000-0000-4000-8000-000000000001"
+name = "Main Camera"
+
+[entities.transform]
+position = [0, 0, 3]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+
+[[entities]]
+id = "a3100000-0000-4000-8000-000000000002"
+name = "Ambient Light"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
+
+[[entities]]
+id = "a3100000-0000-4000-8000-000000000003"
+name = "Masked Triangle"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 3.1415927, 0]
+scale = [1, 1, 1]
+
+[entities.model]
+resource = "a3000000-0000-4000-8000-000000000001"

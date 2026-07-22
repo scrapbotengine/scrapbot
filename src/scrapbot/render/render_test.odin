@@ -9,6 +9,39 @@ import "core:math"
 import "core:testing"
 
 @(test)
+test_sky_uniform_uses_active_camera_basis_projection_and_aspect :: proc(t: ^testing.T) {
+	list := shared.Render_List {
+		has_camera = true,
+		camera = {transform = {rotation = {0, math.PI / 2, 0}}, camera = {fov = 90}},
+	}
+	uniform := wgpu_build_sky_uniform(&list, 1920, 1080)
+	testing.expect(t, math.abs(uniform.right[0]) < 0.00001)
+	testing.expect(t, math.abs(uniform.right[2] - 1) < 0.00001)
+	testing.expect(t, math.abs(uniform.up[1] - 1) < 0.00001)
+	testing.expect(t, math.abs(uniform.forward[0] - 1) < 0.00001)
+	testing.expect(t, math.abs(uniform.forward[2]) < 0.00001)
+	testing.expect(t, math.abs(uniform.projection[0] - f32(16.0 / 9.0)) < 0.00001)
+	testing.expect(t, math.abs(uniform.projection[1] - 1) < 0.00001)
+}
+
+@(test)
+test_sky_uniform_upload_state_changes_only_with_camera_or_viewport :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	first := wgpu_build_sky_uniform(nil, 1280, 720)
+	testing.expect(t, wgpu_retain_sky_uniform(&renderer, first))
+	testing.expect(t, !wgpu_retain_sky_uniform(&renderer, first))
+	resized := wgpu_build_sky_uniform(nil, 720, 720)
+	testing.expect(t, wgpu_retain_sky_uniform(&renderer, resized))
+	list := shared.Render_List {
+		has_camera = true,
+		camera = {transform = {rotation = {0.1, 0.2, 0}}, camera = {fov = 60}},
+	}
+	rotated := wgpu_build_sky_uniform(&list, 720, 720)
+	testing.expect(t, wgpu_retain_sky_uniform(&renderer, rotated))
+	testing.expect(t, !wgpu_retain_sky_uniform(&renderer, rotated))
+}
+
+@(test)
 test_gpu_normal_model_can_reuse_the_model_matrix :: proc(t: ^testing.T) {
 	transform := shared.Transform_Component {
 		position = {3, -2, 7},

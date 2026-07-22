@@ -10,9 +10,9 @@ Asset imports turn artist-authored texture, model, and HDR environment files und
 ## Behavior
 
 - Texture resources import PNG sources with explicit color-space and mip-generation settings.
-- Environment resources import 2:1 Radiance `.hdr` sources. The importer builds a diffuse irradiance cube and a roughness-prefiltered specular cube as linear RGBA16F products; ordinary frames never reconvolve the source panorama.
+- Environment resources import 2:1 Radiance `.hdr` sources. The importer preserves a source-resolution linear RGBA16F panorama for an opt-in background and builds separate diffuse irradiance and roughness-prefiltered specular cubes; ordinary frames never decode or reconvolve the source panorama.
 - Material resources reference reusable Texture resources by UUID rather than embedding source paths.
-- Model resources import static glTF 2.0 `.gltf` and `.glb` files, including triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
+- Model resources import static glTF 2.0 `.gltf` and `.glb` files, including triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, opaque and alpha-cutout materials, double-sided surfaces, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. The WGPU material path renders them with GGX direct lighting, tangent-free derivative normal mapping, ambient diffuse/specular response, HDR emission, anisotropic trilinear sampling, bloom, and tone mapping.
 - Project checking, building, and running automatically import products that are absent or stale. `scrapbot import` performs the same work explicitly and reports structured per-resource results.
 - Imported products and manifests are generated under ignored project state. They are never hand-authored or committed as source authority.
@@ -21,7 +21,7 @@ Asset imports turn artist-authored texture, model, and HDR environment files und
 - Explicit editor reimport targets one Texture, Model, or Environment UUID without restarting Luau/native code; **Reimport All** forces every declared imported product. Automatic hot reload still uses the project asset stamp and importer cache until the platform watcher replaces polling. Ordinary simulation and render frames never scan the asset tree.
 - The editor's resource browser lists textures, environments, and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Environment inspection reports the derived cube-map shape, and the selected project environment lights ordinary world and model/material preview rendering. Textures render directly on the GPU with aspect-preserving fit. Models render their imported hierarchy, while Materials render on an isolated lit icosphere preview scene. All previews use the public ECS viewport component and independently sized pooled targets; interactive 3D previews support orbit, zoom, and reset.
 - Reimport updates a live resource slot in place and reconciles affected model roots. Generated Geometry and Material products that disappear from a replaced or removed Model are retired with generation bumps, so stale handles cannot remain usable.
-- Imported models initially exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, texture transforms, sampler preservation, alpha modes, double-sided materials, and advanced material extensions; unsupported required glTF features fail clearly.
+- Imported models initially exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, texture transforms, sampler preservation, blended transparency, and advanced material extensions; unsupported required glTF features fail clearly.
 
 ## Design Decisions
 
@@ -75,9 +75,15 @@ Asset imports turn artist-authored texture, model, and HDR environment files und
 
 ### 9. Precompute image-based lighting during import
 
-**Decision:** Convert HDR equirectangular sources into fixed renderer-ready diffuse and specular cube-map products in the importer. Select one Environment UUID and its intensity, Y rotation, and exposure through project render configuration.
+**Decision:** Convert HDR equirectangular sources into a source-resolution linear panorama plus fixed renderer-ready diffuse and specular cube-map products in the importer. Configure image-based lighting separately from the optional visible background and allow the background to use another Environment.
 **Why:** Source decoding and convolution are asset work, not frame work. A standalone UUID resource can be reimported and cached independently of scenes while the renderer updates only when its handle, version, or global environment revision changes.
-**Tradeoff:** The first product uses fixed cube sizes and CPU preprocessing, supports only Radiance HDR input, and provides global environment lighting without a visible sky or local reflection probes.
+**Tradeoff:** The first product uses fixed cube sizes and CPU preprocessing, supports only Radiance HDR input, and retains the source-resolution panorama alongside both cubes. Background blur reuses the prefiltered cube rather than a panorama mip chain. Local reflection probes remain future work.
+
+### 10. Treat cutouts and transparency as different render classes
+
+**Decision:** Import glTF `OPAQUE` and `MASK` materials, apply alpha cutoffs in color, depth, and shadow rendering, and preserve `doubleSided`. Reject `BLEND` materials until sorted transparent submission exists.
+**Why:** Binary cutouts remain compatible with retained GPU-driven opaque batching and indirect draws, while blended surfaces require ordering and depth-write rules that cannot be approximated honestly by the opaque path.
+**Tradeoff:** Foliage, fences, cards, and other cutout assets work correctly, but glass and translucent effects remain unsupported.
 
 ## Related
 

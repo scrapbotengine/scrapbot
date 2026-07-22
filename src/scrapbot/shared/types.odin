@@ -57,6 +57,12 @@ Project_Render_Config :: struct {
 	environment_intensity: f32,
 	environment_rotation: f32,
 	exposure: f32,
+	background_visible: bool,
+	background_environment: Resource_UUID,
+	background_intensity: f32,
+	background_rotation: f32,
+	background_exposure: f32,
+	background_blur: f32,
 }
 
 Native_Extension_Target :: struct {
@@ -80,6 +86,11 @@ Project_Resource_Kind :: enum {
 Texture_Color_Space :: enum {
 	SRGB,
 	Linear,
+}
+
+Material_Alpha_Mode :: enum {
+	Opaque,
+	Mask,
 }
 
 Project_Texture_Resource :: struct {
@@ -229,6 +240,7 @@ Camera_Component :: struct {
 	fov: f32,
 	near: f32,
 	far: f32,
+	exposure: f32,
 }
 
 Editor_Scene_Camera_Component :: struct {
@@ -738,6 +750,7 @@ Editor_Inspector_Field :: enum {
 	Camera_Fov,
 	Camera_Near,
 	Camera_Far,
+	Camera_Exposure,
 	Ambient_Color,
 	Ambient_Intensity,
 	Directional_Direction,

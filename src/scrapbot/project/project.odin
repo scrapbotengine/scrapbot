@@ -90,6 +90,7 @@ scale = [1, 1, 1]
 fov = 60
 near = 0.1
 far = 100
+exposure = 1
 
 [[entities]]
 id = "%s"
@@ -395,18 +396,44 @@ validate_project_environment_reference :: proc(
 	config: ^Project_Config,
 	resources: []shared.Project_Resource,
 ) -> string {
-	if config == nil || config.render.environment == (shared.Resource_UUID{}) {
+	if config == nil {
 		return ""
 	}
+	if config.render.environment != (shared.Resource_UUID{}) {
+		found := false
+		for resource in resources {
+			if resource.kind == .Environment && resource.id == config.render.environment {
+				found = true
+				break
+			}
+		}
+		if !found {
+			id_buffer: [36]u8
+			return fmt.tprintf(
+				"project render environment references unknown resource %s",
+				shared.resource_uuid_to_string(config.render.environment, id_buffer[:]),
+			)
+		}
+	}
+	background_id := config.render.background_environment
+	if config.render.background_visible && background_id == (shared.Resource_UUID{}) {
+		background_id = config.render.environment
+	}
+	if !config.render.background_visible {
+		return ""
+	}
+	if background_id == (shared.Resource_UUID{}) {
+		return "visible project render background requires an environment resource"
+	}
 	for resource in resources {
-		if resource.kind == .Environment && resource.id == config.render.environment {
+		if resource.kind == .Environment && resource.id == background_id {
 			return ""
 		}
 	}
 	id_buffer: [36]u8
 	return fmt.tprintf(
-		"project render environment references unknown resource %s",
-		shared.resource_uuid_to_string(config.render.environment, id_buffer[:]),
+		"project render background references unknown environment resource %s",
+		shared.resource_uuid_to_string(background_id, id_buffer[:]),
 	)
 }
 

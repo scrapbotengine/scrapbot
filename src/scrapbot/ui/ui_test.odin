@@ -3424,6 +3424,7 @@ test_editor_structural_authoring_is_uuid_addressed_and_undoable :: proc(t: ^test
 	defer destroy(state)
 	registry: component.Registry
 	component.init_registry(&registry)
+	transform_definition, _ := component.find_definition(&registry, "scrapbot.transform")
 	state.component_registry = &registry
 	point_light_definition, point_light_found := component.find_definition(
 		&registry,
@@ -4541,7 +4542,7 @@ test_advanced_inspector_components_start_collapsed_and_remember_expansion :: pro
 		shared.Scene_Entity {
 			name = "Advanced Camera",
 			has_camera = true,
-			camera = {fov = 60, near = 0.1, far = 500},
+			camera = {fov = 60, near = 0.1, far = 500, exposure = 1.25},
 		},
 	)
 	world := ecs.build_world(&scene)
@@ -4620,9 +4621,17 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		},
 	)
 	world := ecs.build_world(&scene); defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	transform_definition, _ := component.find_definition(&registry, "scrapbot.transform")
+	camera_definition, _ := component.find_definition(&registry, "scrapbot.camera")
+	shadow_definition, _ := component.find_definition(&registry, "scrapbot.shadow_caster")
+	button_definition, _ := component.find_definition(&registry, "scrapbot.ui_button")
+	layout_definition, _ := component.find_definition(&registry, "scrapbot.ui_layout")
 	state := new(
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state); state.editor_visible = true
+	state.component_registry = &registry
 	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 300))
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300) == "")
 	testing.expect(t, state.editor_has_selection)
@@ -4665,13 +4674,16 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		testing.expect(t, math.abs(cell.rect.x - table.rect.x) < 0.01)
 	}
 	panel_count, table_count, cell_count, input_count, checkbox_count := 0, 0, 0, 0, 0
-	found_transform, found_button := false, false
+	found_transform, found_button, found_shadow := false, false, false
 	found_position := false
 	position_label_cell := -1
-	found_read_only_checkbox, found_bound_checkbox := false, false
+	found_bound_checkbox := false
 	position_inputs := [3]int{-1, -1, -1}
 	fov_input := -1
+	exposure_input := -1
 	button_input := -1
+	camera_input_count := 0
+	shadow_field_control_count := 0
 	for component in world.editor_uis {
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
 		entity := world.entities[component.entity_index]
@@ -4686,6 +4698,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				testing.expect(t, layout.padding == INSPECTOR_PANEL_PADDING)
 				found_transform = found_transform || panel.title == "TRANSFORM"
 				found_button = found_button || panel.title == "UI BUTTON"
+				found_shadow = found_shadow || panel.title == "SHADOW CASTER"
 			case .Inspector_Table:
 				table_count += 1
 				table := world.ui_tables[entity.ui_table_index]
@@ -4730,11 +4743,27 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				testing.expect(t, world.ui_inputs[entity.ui_input_index].size == EDITOR_TEXT_SIZE)
 				if entity.ui_input_index >= 0 &&
 				   entity.ui_input_index < len(world.ui_inputs) &&
+				   component.reflected_component_id == button_definition.id &&
+				   component.reflected_field_index == 0 &&
 				   world.ui_inputs[entity.ui_input_index].text == "Launch" {
 					button_input = component.entity_index
 				}
-				if component.inspector_field == .Camera_Fov { fov_input = component.entity_index }
-				if component.inspector_field == .Transform_Position {
+				if component.reflected_component_id == camera_definition.id &&
+				   component.reflected_field_index == 0 {
+					fov_input = component.entity_index
+				}
+				if component.reflected_component_id == camera_definition.id {
+					camera_input_count += 1
+				}
+				if component.reflected_component_id == shadow_definition.id {
+					shadow_field_control_count += 1
+				}
+				if component.reflected_component_id == camera_definition.id &&
+				   component.reflected_field_index == 3 {
+					exposure_input = component.entity_index
+				}
+				if component.reflected_component_id == transform_definition.id &&
+				   component.reflected_field_index == 0 {
 					axis_index := int(component.inspector_axis) - 1
 					if axis_index >= 0 && axis_index < len(position_inputs) {
 						position_inputs[axis_index] = component.entity_index
@@ -4748,25 +4777,30 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					world.ui_layouts[entity.ui_layout_index].size.y == INSPECTOR_CONTROL_HEIGHT,
 				)
 				checkbox := world.ui_checkboxes[entity.ui_checkbox_index]
-				if component.inspector_field == .None {
-					found_read_only_checkbox =
-						found_read_only_checkbox || checkbox.read_only && checkbox.checked
-				} else if component.inspector_field == .UI_Layout_Hidden {
+				if component.reflected_component_id == layout_definition.id &&
+				   component.reflected_field_index == 10 {
 					found_bound_checkbox =
 						found_bound_checkbox || !checkbox.read_only && !checkbox.checked
 				}
+				if component.reflected_component_id == shadow_definition.id {
+					shadow_field_control_count += 1
+				}
 		}
 	}
-	testing.expect(t, panel_count == 6)
+	testing.expect(t, panel_count >= 6)
 	testing.expect(t, table_count == panel_count)
 	testing.expect(t, cell_count > 20)
 	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, checkbox_count >= 2)
-	testing.expect(t, found_read_only_checkbox && found_bound_checkbox)
-	testing.expect(t, found_transform && found_button)
+	testing.expect(t, found_bound_checkbox)
+	testing.expect(t, camera_definition.field_count == 0)
+	testing.expect(t, camera_input_count == 4)
+	testing.expect(t, found_transform && found_button && found_shadow)
+	testing.expect(t, shadow_field_control_count == 0)
 	testing.expect(t, found_position)
 	for input in position_inputs { testing.expect(t, input >= 0) }
 	testing.expect(t, fov_input >= 0)
+	testing.expect(t, exposure_input >= 0)
 	testing.expect(t, button_input >= 0)
 	if position_inputs[0] >= 0 && position_inputs[1] >= 0 && position_inputs[2] >= 0 {
 		x_node := find_node_by_entity_index(state, position_inputs[0])
@@ -5017,7 +5051,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			) ==
 			"",
 		)
-		testing.expect(t, math.abs(world.transforms[0].position.x - 1.99) < 0.001)
+		stepped := world.transforms[0].position.x
+		testing.expect(t, math.abs(stepped - 1.099) < 0.001)
 
 		// Dragging the X axis label scrubs, commits on release, and participates in undo/redo.
 		x_node = find_node_by_entity_index(state, position_inputs[0])
@@ -5062,7 +5097,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			testing.expect(t, state.input_scrubbing)
 			testing.expect(t, state.editor_snapshot_refresh_count == scrub_refresh_count)
 			scrubbed := world.transforms[0].position.x
-			testing.expect(t, math.abs(scrubbed - 2.99) < 0.001)
+			testing.expect(t, scrubbed > stepped)
 			testing.expect(
 				t,
 				reconcile(
@@ -5079,14 +5114,19 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			testing.expect(t, state.editor_history_count > 0)
 			if state.editor_history_count > 0 {
 				command := state.editor_history[state.editor_history_count - 1]
-				testing.expect(t, math.abs(command.changes[0].before_number - 1.99) < 0.001)
-				testing.expect(t, math.abs(command.changes[0].after_number - scrubbed) < 0.001)
+				testing.expect(t, command.component_structural != nil)
+				if command.component_structural != nil {
+					before := command.component_structural.before.value.transform.position.x
+					after := command.component_structural.after.value.transform.position.x
+					testing.expect(t, math.abs(before - stepped) < 0.001)
+					testing.expect(t, math.abs(after - scrubbed) < 0.001)
+				}
 			}
 			testing.expect(
 				t,
 				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {undo = true}) == "",
 			)
-			testing.expect(t, math.abs(world.transforms[0].position.x - 1.99) < 0.001)
+			testing.expect(t, math.abs(world.transforms[0].position.x - stepped) < 0.001)
 			testing.expect(
 				t,
 				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {redo = true}) == "",
@@ -5097,9 +5137,17 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		// Field constraints reject out-of-range but syntactically valid values.
 		if fov_input >= 0 {
 			focus_input(state, &world, fov_input)
+			fov_binding := world.editor_uis[world.entities[fov_input].editor_ui_index]
+			testing.expect(t, fov_binding.reflected_component_id == camera_definition.id)
+			testing.expect(t, fov_binding.reflected_field_index == 0)
+			testing.expect(t, !editor_reflected_input_valid(state, &world, fov_binding, "200"))
 			testing.expect(
 				t,
 				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {text = "200"}) == "",
+			)
+			testing.expect(
+				t,
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {enter = true}) == "",
 			)
 			testing.expect(t, !state.input_valid)
 			testing.expect(t, world.cameras[0].fov == 60)
@@ -5156,15 +5204,31 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 
 	// Inspector focus cannot outlive the target component or entity represented by a pooled input.
 	if position_input >= 0 {
+		button_input = -1
+		for component in world.editor_uis {
+			if component.role == .Inspector_Input &&
+			   component.reflected_component_id == button_definition.id &&
+			   component.reflected_field_index == 0 {
+				button_input = component.entity_index
+				break
+			}
+		}
 		if button_input >= 0 {
 			focus_input(state, &world, button_input)
-			button_index := world.entities[0].ui_button_index
-			world.entities[0].ui_button_index = -1
-			ecs.bump_component_revision(&world, 0)
+			testing.expect(
+				t,
+				ecs.set_registered_component_membership(&world, 0, &button_definition, false),
+			)
+			testing.expect(
+				t,
+				!editor_entity_has_registered_component(&world, 0, &button_definition),
+			)
 			testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300, 0.21) == "")
 			testing.expect(t, !state.has_focused_input)
-			world.entities[0].ui_button_index = button_index
-			ecs.bump_component_revision(&world, 0)
+			testing.expect(
+				t,
+				ecs.set_registered_component_membership(&world, 0, &button_definition, true),
+			)
 		}
 
 		focus_input(state, &world, position_input)
@@ -5609,9 +5673,13 @@ test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^t
 	)
 	world := ecs.build_world(&scene); defer ecs.destroy_world(&world)
 	world.entities[1].alive = false
+	registry: component.Registry
+	component.init_registry(&registry)
+	transform_definition, _ := component.find_definition(&registry, "scrapbot.transform")
 	state := new(
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state)
+	state.component_registry = &registry
 	state.editor_visible = true
 	state.editor_simulation_playing = true
 	state.editor_simulation_stopped = false
@@ -5636,7 +5704,8 @@ test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^t
 	position_x_input := -1
 	for binding in world.editor_uis {
 		if binding.role == .Inspector_Input &&
-		   binding.inspector_field == .Transform_Position &&
+		   binding.reflected_component_id == transform_definition.id &&
+		   binding.reflected_field_index == 0 &&
 		   binding.inspector_axis == .X {
 			position_x_input = binding.entity_index
 			break

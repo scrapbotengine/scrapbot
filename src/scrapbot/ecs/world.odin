@@ -2771,6 +2771,11 @@ entity_has_component :: proc "c" (
 				entity.render_instance_index >= 0 &&
 				entity.render_instance_index < len(world.render_instances) \
 			)
+		case "scrapbot.internal.editor_transform_gizmo":
+			return(
+				entity.editor_transform_gizmo_index >= 0 &&
+				entity.editor_transform_gizmo_index < len(world.editor_transform_gizmos) \
+			)
 	}
 
 	_, ok := custom_component_for_entity(world, entity_index, component_id, name)

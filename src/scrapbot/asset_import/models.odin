@@ -12,8 +12,8 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v4.metallic-roughness-pbr"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'E', 'L', '4'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v5.alpha-materials"
+MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'E', 'L', '5'}
 
 Model_Vertex :: struct {
 	position, normal: shared.Vec3,
@@ -31,6 +31,9 @@ Model_Material :: struct {
 	emissive: shared.Vec3,
 	metallic_factor, roughness_factor: f32,
 	normal_scale, occlusion_strength: f32,
+	alpha_mode: shared.Material_Alpha_Mode,
+	alpha_cutoff: f32,
+	double_sided: bool,
 	base_color_image: Model_Image,
 	metallic_roughness_image: Model_Image,
 	normal_image: Model_Image,
@@ -301,6 +304,11 @@ validate_supported_static_gltf :: proc(data: ^cgltf.data) -> string {
 		}
 	}
 	for material in data.materials {
+		if material.alpha_mode == .blend {
+			return(
+				"BLEND alpha materials require sorted transparent rendering and are not supported yet" \
+			)
+		}
 		if material.has_pbr_metallic_roughness {
 			if err := validate_model_texture_view(
 				material.pbr_metallic_roughness.base_color_texture,
@@ -390,6 +398,11 @@ build_model_product :: proc(
 			roughness_factor = 1,
 			normal_scale = 1,
 			occlusion_strength = 1,
+			alpha_cutoff = material.alpha_cutoff,
+			double_sided = bool(material.double_sided),
+		}
+		if material.alpha_mode == .mask {
+			imported_material.alpha_mode = .Mask
 		}
 		if material.has_pbr_metallic_roughness {
 			pbr := material.pbr_metallic_roughness
@@ -893,6 +906,9 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 		model_write_f32(&bytes, material.roughness_factor)
 		model_write_f32(&bytes, material.normal_scale)
 		model_write_f32(&bytes, material.occlusion_strength)
+		model_write_u32(&bytes, u32(material.alpha_mode))
+		model_write_f32(&bytes, material.alpha_cutoff)
+		model_write_u32(&bytes, 1 if material.double_sided else 0)
 		model_write_image(&bytes, material.base_color_image)
 		model_write_image(&bytes, material.metallic_roughness_image)
 		model_write_image(&bytes, material.normal_image)
@@ -989,6 +1005,24 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		}
 		if ok {
 			material.occlusion_strength, ok = model_read_f32(&reader)
+		}
+		alpha_mode: u32
+		if ok {
+			alpha_mode, ok = model_read_u32(&reader)
+		}
+		if ok && alpha_mode <= u32(shared.Material_Alpha_Mode.Mask) {
+			material.alpha_mode = shared.Material_Alpha_Mode(alpha_mode)
+		} else {
+			ok = false
+		}
+		if ok {
+			material.alpha_cutoff, ok = model_read_f32(&reader)
+		}
+		double_sided: u32
+		if ok {
+			double_sided, ok = model_read_u32(&reader)
+			ok = ok && double_sided <= 1
+			material.double_sided = double_sided == 1
 		}
 		images := [?]^Model_Image {
 			&material.base_color_image,
@@ -1141,6 +1175,14 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 }
 
 validate_decoded_model :: proc(model: ^Model_Product) -> string {
+	for material in model.materials {
+		if math.is_nan(material.alpha_cutoff) ||
+		   math.is_inf(material.alpha_cutoff) ||
+		   material.alpha_cutoff < 0 ||
+		   material.alpha_cutoff > 1 {
+			return "imported model material alpha cutoff is invalid"
+		}
+	}
 	for node, node_index in model.nodes {
 		if node.parent_index < -1 ||
 		   node.parent_index >= i32(len(model.nodes)) ||

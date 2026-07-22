@@ -64,6 +64,8 @@ Storage_Kind :: enum {
 	UI_State,
 	Keyboard_Input,
 	Pointer_Input,
+	Render_Instance,
+	Editor_Transform_Gizmo,
 	Derived,
 }
 
@@ -395,6 +397,7 @@ init_registry :: proc(registry: ^Registry) {
 		},
 	)
 	register_engine_component(registry, "scrapbot.internal.render_instance", {})
+	register_engine_component(registry, "scrapbot.internal.editor_transform_gizmo", {})
 }
 
 register_engine_component :: proc(
@@ -508,6 +511,10 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .UI_Checkbox, .Authored
 		case "scrapbot.ui_state":
 			return .UI_State, .Derived
+		case "scrapbot.internal.render_instance":
+			return .Render_Instance, .Derived
+		case "scrapbot.internal.editor_transform_gizmo":
+			return .Editor_Transform_Gizmo, .Derived
 	}
 	return .Derived, .Derived
 }

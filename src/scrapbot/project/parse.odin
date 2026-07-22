@@ -327,6 +327,8 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 	}
 	config.render.environment_intensity = 1
 	config.render.exposure = 1
+	config.render.background_intensity = 1
+	config.render.background_exposure = 1
 	section := ""
 	current_native_extension: ^shared.Native_Extension_Target
 	current_font: ^shared.Project_Font
@@ -472,6 +474,24 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					config.render.environment_rotation, found = parse_f32(value)
 				case "exposure":
 					config.render.exposure, found = parse_f32(value)
+				case "background_visible":
+					config.render.background_visible, found = parse_bool(value)
+				case "background_environment":
+					raw_background_environment: string
+					raw_background_environment, found = parse_basic_string(value)
+					if found {
+						config.render.background_environment, found = shared.resource_uuid_parse(
+							raw_background_environment,
+						)
+					}
+				case "background_intensity":
+					config.render.background_intensity, found = parse_f32(value)
+				case "background_rotation":
+					config.render.background_rotation, found = parse_f32(value)
+				case "background_exposure":
+					config.render.background_exposure, found = parse_f32(value)
+				case "background_blur":
+					config.render.background_blur, found = parse_f32(value)
 				case:
 					return config, fail(
 						.Invalid_Field,
@@ -481,10 +501,14 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			if !found ||
 			   !finite_render_config(config.render) ||
 			   config.render.environment_intensity < 0 ||
-			   config.render.exposure <= 0 {
+			   config.render.exposure <= 0 ||
+			   config.render.background_intensity < 0 ||
+			   config.render.background_exposure <= 0 ||
+			   config.render.background_blur < 0 ||
+			   config.render.background_blur > 1 {
 				return config, fail(
 					.Invalid_Field,
-					"render values must be finite; intensity must be non-negative and exposure positive",
+					"render values must be finite; intensities must be non-negative, exposures positive, and background blur between 0 and 1",
 				)
 			}
 			continue
@@ -750,6 +774,9 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 					return scene, fail(.Invalid_Field, fmt.tprintf("invalid transform.%s", key))
 				}
 			case "camera":
+				if !current.has_camera {
+					current.camera.exposure = 1
+				}
 				current.has_camera = true
 				switch key {
 					case "fov":
@@ -758,6 +785,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.camera.near, found = parse_f32(value)
 					case "far":
 						current.camera.far, found = parse_f32(value)
+					case "exposure":
+						current.camera.exposure, found = parse_f32(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -1344,6 +1373,18 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if entity.has_transform && entity.transform.scale == (Vec3{}) {
 			scene.entities[index].transform.scale = Vec3{1, 1, 1}
 		}
+		if entity.has_camera {
+			exposure := entity.camera.exposure
+			if math.is_nan(exposure) || math.is_inf(exposure) || exposure <= 0 {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf(
+						"camera exposure on '%s' must be finite and positive",
+						entity.name,
+					),
+				)
+			}
+		}
 		if (entity.has_ui_text ||
 			   entity.has_ui_button ||
 			   entity.has_ui_hstack ||
@@ -1864,7 +1905,15 @@ finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {
 		!math.is_nan(value.environment_rotation) &&
 		!math.is_inf(value.environment_rotation) &&
 		!math.is_nan(value.exposure) &&
-		!math.is_inf(value.exposure) \
+		!math.is_inf(value.exposure) &&
+		!math.is_nan(value.background_intensity) &&
+		!math.is_inf(value.background_intensity) &&
+		!math.is_nan(value.background_rotation) &&
+		!math.is_inf(value.background_rotation) &&
+		!math.is_nan(value.background_exposure) &&
+		!math.is_inf(value.background_exposure) &&
+		!math.is_nan(value.background_blur) &&
+		!math.is_inf(value.background_blur) \
 	)
 }
 

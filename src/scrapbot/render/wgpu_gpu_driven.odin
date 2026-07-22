@@ -17,6 +17,117 @@ wgpu_align_visible_capacity :: proc(count: u32) -> u32 {
 	)
 }
 
+wgpu_create_gpu_world_pipeline :: proc(
+	renderer: ^WGPU_Renderer,
+	vertex_layout: ^wgpu.VertexBufferLayout,
+	cull_mode: wgpu.CullMode,
+	label: string,
+) -> wgpu.RenderPipeline {
+	target := wgpu.ColorTargetState {
+		format = .RGBA16Float,
+		writeMask = wgpu.ColorWriteMaskFlags_All,
+	}
+	fragment := wgpu.FragmentState {
+		module = renderer.gpu_driven_shader,
+		entryPoint = "fs_main",
+		targetCount = 1,
+		targets = &target,
+	}
+	return wgpu.DeviceCreateRenderPipeline(
+		renderer.device,
+		&wgpu.RenderPipelineDescriptor {
+			label = label,
+			layout = renderer.gpu_driven_pipeline_layout,
+			vertex = {
+				module = renderer.gpu_driven_shader,
+				entryPoint = "vs_main",
+				bufferCount = 1,
+				buffers = vertex_layout,
+			},
+			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = cull_mode},
+			depthStencil = &wgpu.DepthStencilState {
+				format = .Depth24Plus,
+				depthWriteEnabled = .False,
+				depthCompare = .LessEqual,
+			},
+			multisample = {count = 1, mask = 0xFFFF_FFFF},
+			fragment = &fragment,
+		},
+	)
+}
+
+wgpu_create_gpu_depth_pipeline :: proc(
+	renderer: ^WGPU_Renderer,
+	vertex_layout: ^wgpu.VertexBufferLayout,
+	cull_mode: wgpu.CullMode,
+	masked: bool,
+	label: string,
+) -> wgpu.RenderPipeline {
+	desc := wgpu.RenderPipelineDescriptor {
+		label = label,
+		layout = renderer.gpu_driven_depth_pipeline_layout,
+		vertex = {
+			module = renderer.gpu_driven_shader,
+			entryPoint = "depth_vs",
+			bufferCount = 1,
+			buffers = vertex_layout,
+		},
+		primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = cull_mode},
+		depthStencil = &wgpu.DepthStencilState {
+			format = .Depth24Plus,
+			depthWriteEnabled = .True,
+			depthCompare = .Less,
+		},
+		multisample = {count = 1, mask = 0xFFFF_FFFF},
+	}
+	fragment: wgpu.FragmentState
+	if masked {
+		desc.layout = renderer.gpu_driven_depth_mask_pipeline_layout
+		fragment = {
+			module = renderer.gpu_driven_shader,
+			entryPoint = "mask_fs",
+		}
+		desc.fragment = &fragment
+	}
+	return wgpu.DeviceCreateRenderPipeline(renderer.device, &desc)
+}
+
+wgpu_create_gpu_shadow_pipeline :: proc(
+	renderer: ^WGPU_Renderer,
+	vertex_layout: ^wgpu.VertexBufferLayout,
+	cull_mode: wgpu.CullMode,
+	masked: bool,
+	label: string,
+) -> wgpu.RenderPipeline {
+	desc := wgpu.RenderPipelineDescriptor {
+		label = label,
+		layout = renderer.gpu_driven_shadow_pipeline_layout,
+		vertex = {
+			module = renderer.gpu_driven_shader,
+			entryPoint = "shadow_vs",
+			bufferCount = 1,
+			buffers = vertex_layout,
+		},
+		primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = cull_mode},
+		depthStencil = &wgpu.DepthStencilState {
+			format = .Depth32Float,
+			depthWriteEnabled = .True,
+			depthCompare = .Less,
+		},
+		multisample = {count = 1, mask = 0xFFFF_FFFF},
+	}
+	fragment: wgpu.FragmentState
+	if masked {
+		desc.layout = renderer.gpu_driven_shadow_mask_pipeline_layout
+		fragment = {
+			module = renderer.gpu_driven_shader,
+			entryPoint = "mask_fs",
+		}
+		desc.fragment = &fragment
+	}
+	return wgpu.DeviceCreateRenderPipeline(renderer.device, &desc)
+}
+
 wgpu_create_gpu_buffer :: proc(
 	renderer: ^WGPU_Renderer,
 	label: string,
@@ -135,6 +246,34 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_driven_shadow_pipeline_layout == nil {
 		return "failed to create GPU-driven shadow pipeline layout"
 	}
+	depth_mask_layouts := [?]wgpu.BindGroupLayout {
+		renderer.gpu_driven_world_bind_group_layout,
+		renderer.material_bind_group_layout,
+	}
+	renderer.gpu_driven_depth_mask_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot GPU-Driven Masked Depth Pipeline Layout",
+			bindGroupLayoutCount = uint(len(depth_mask_layouts)),
+			bindGroupLayouts = raw_data(depth_mask_layouts[:]),
+		},
+	)
+	shadow_mask_layouts := [?]wgpu.BindGroupLayout {
+		renderer.gpu_driven_shadow_bind_group_layout,
+		renderer.material_bind_group_layout,
+	}
+	renderer.gpu_driven_shadow_mask_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot GPU-Driven Masked Shadow Pipeline Layout",
+			bindGroupLayoutCount = uint(len(shadow_mask_layouts)),
+			bindGroupLayouts = raw_data(shadow_mask_layouts[:]),
+		},
+	)
+	if renderer.gpu_driven_depth_mask_pipeline_layout == nil ||
+	   renderer.gpu_driven_shadow_mask_pipeline_layout == nil {
+		return "failed to create GPU-driven masked material pipeline layouts"
+	}
 
 	vertex_attributes := [?]wgpu.VertexAttribute {
 		{format = .Float32x3, offset = 0, shaderLocation = 0},
@@ -147,40 +286,18 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		attributeCount = uint(len(vertex_attributes)),
 		attributes = raw_data(vertex_attributes[:]),
 	}
-	color_target := wgpu.ColorTargetState {
-		format = .RGBA16Float,
-		writeMask = wgpu.ColorWriteMaskFlags_All,
-	}
-	fragment_state := wgpu.FragmentState {
-		module = renderer.gpu_driven_shader,
-		entryPoint = "fs_main",
-		targetCount = 1,
-		targets = &color_target,
-	}
-	renderer.gpu_driven_pipeline = wgpu.DeviceCreateRenderPipeline(
-		renderer.device,
-		&wgpu.RenderPipelineDescriptor {
-			label = "Scrapbot GPU-Driven Render Pipeline",
-			layout = renderer.gpu_driven_pipeline_layout,
-			vertex = {
-				module = renderer.gpu_driven_shader,
-				entryPoint = "vs_main",
-				bufferCount = 1,
-				buffers = &vertex_buffer_layout,
-			},
-			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = .None},
-			depthStencil = &wgpu.DepthStencilState {
-				format = .Depth24Plus,
-				depthWriteEnabled = .False,
-				depthCompare = .LessEqual,
-			},
-			multisample = {count = 1, mask = 0xFFFF_FFFF},
-			fragment = &fragment_state,
-		},
+	renderer.gpu_driven_pipeline = wgpu_create_gpu_world_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.Back,
+		"Scrapbot GPU-Driven Render Pipeline",
 	)
-	if renderer.gpu_driven_pipeline == nil {
-		return "failed to create GPU-driven render pipeline"
-	}
+	renderer.gpu_driven_double_sided_pipeline = wgpu_create_gpu_world_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.None,
+		"Scrapbot GPU-Driven Double-Sided Render Pipeline",
+	)
 	renderer.gpu_driven_depth_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
@@ -192,51 +309,73 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_driven_depth_pipeline_layout == nil {
 		return "failed to create GPU-driven depth prepass pipeline layout"
 	}
-	renderer.gpu_driven_depth_pipeline = wgpu.DeviceCreateRenderPipeline(
-		renderer.device,
-		&wgpu.RenderPipelineDescriptor {
-			label = "Scrapbot GPU-Driven Depth Prepass Pipeline",
-			layout = renderer.gpu_driven_depth_pipeline_layout,
-			vertex = {
-				module = renderer.gpu_driven_shader,
-				entryPoint = "depth_vs",
-				bufferCount = 1,
-				buffers = &vertex_buffer_layout,
-			},
-			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = .None},
-			depthStencil = &wgpu.DepthStencilState {
-				format = .Depth24Plus,
-				depthWriteEnabled = .True,
-				depthCompare = .Less,
-			},
-			multisample = {count = 1, mask = 0xFFFF_FFFF},
-		},
+	renderer.gpu_driven_depth_pipeline = wgpu_create_gpu_depth_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.Back,
+		false,
+		"Scrapbot GPU-Driven Depth Prepass Pipeline",
 	)
-	if renderer.gpu_driven_depth_pipeline == nil {
-		return "failed to create GPU-driven depth prepass pipeline"
-	}
-	renderer.gpu_driven_shadow_pipeline = wgpu.DeviceCreateRenderPipeline(
-		renderer.device,
-		&wgpu.RenderPipelineDescriptor {
-			label = "Scrapbot GPU-Driven Shadow Pipeline",
-			layout = renderer.gpu_driven_shadow_pipeline_layout,
-			vertex = {
-				module = renderer.gpu_driven_shader,
-				entryPoint = "shadow_vs",
-				bufferCount = 1,
-				buffers = &vertex_buffer_layout,
-			},
-			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = .Back},
-			depthStencil = &wgpu.DepthStencilState {
-				format = .Depth32Float,
-				depthWriteEnabled = .True,
-				depthCompare = .Less,
-			},
-			multisample = {count = 1, mask = 0xFFFF_FFFF},
-		},
+	renderer.gpu_driven_depth_double_sided_pipeline = wgpu_create_gpu_depth_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.None,
+		false,
+		"Scrapbot GPU-Driven Double-Sided Depth Pipeline",
 	)
-	if renderer.gpu_driven_shadow_pipeline == nil {
-		return "failed to create GPU-driven shadow pipeline"
+	renderer.gpu_driven_depth_mask_pipeline = wgpu_create_gpu_depth_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.Back,
+		true,
+		"Scrapbot GPU-Driven Masked Depth Pipeline",
+	)
+	renderer.gpu_driven_depth_mask_double_sided_pipeline = wgpu_create_gpu_depth_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.None,
+		true,
+		"Scrapbot GPU-Driven Masked Double-Sided Depth Pipeline",
+	)
+	renderer.gpu_driven_shadow_pipeline = wgpu_create_gpu_shadow_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.Back,
+		false,
+		"Scrapbot GPU-Driven Shadow Pipeline",
+	)
+	renderer.gpu_driven_shadow_double_sided_pipeline = wgpu_create_gpu_shadow_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.None,
+		false,
+		"Scrapbot GPU-Driven Double-Sided Shadow Pipeline",
+	)
+	renderer.gpu_driven_shadow_mask_pipeline = wgpu_create_gpu_shadow_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.Back,
+		true,
+		"Scrapbot GPU-Driven Masked Shadow Pipeline",
+	)
+	renderer.gpu_driven_shadow_mask_double_sided_pipeline = wgpu_create_gpu_shadow_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.None,
+		true,
+		"Scrapbot GPU-Driven Masked Double-Sided Shadow Pipeline",
+	)
+	if renderer.gpu_driven_pipeline == nil ||
+	   renderer.gpu_driven_double_sided_pipeline == nil ||
+	   renderer.gpu_driven_depth_pipeline == nil ||
+	   renderer.gpu_driven_depth_double_sided_pipeline == nil ||
+	   renderer.gpu_driven_depth_mask_pipeline == nil ||
+	   renderer.gpu_driven_depth_mask_double_sided_pipeline == nil ||
+	   renderer.gpu_driven_shadow_pipeline == nil ||
+	   renderer.gpu_driven_shadow_double_sided_pipeline == nil ||
+	   renderer.gpu_driven_shadow_mask_pipeline == nil ||
+	   renderer.gpu_driven_shadow_mask_double_sided_pipeline == nil {
+		return "failed to create GPU-driven material render pipelines"
 	}
 
 	transform_source := wgpu.ShaderSourceWGSL {

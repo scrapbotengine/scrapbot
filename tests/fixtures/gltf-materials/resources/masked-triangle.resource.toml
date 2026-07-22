@@ -1,0 +1,6 @@
+id = "a3000000-0000-4000-8000-000000000001"
+type = "scrapbot.model"
+name = "Masked Double-Sided Triangle"
+
+[model]
+source = "assets/masked-triangle.gltf"

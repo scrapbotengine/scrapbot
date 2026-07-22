@@ -2401,7 +2401,7 @@ editor_ui_set_numeric_metadata :: proc(
 			input.maximum = 179
 			input.has_minimum = true
 			input.has_maximum = true
-		case .Camera_Near, .Camera_Far:
+		case .Camera_Near, .Camera_Far, .Camera_Exposure:
 			input.step = 0.1
 			input.minimum = 0.001
 			input.has_minimum = true
@@ -2504,7 +2504,8 @@ editor_ui_begin_inspector_component :: proc(
 		definition_id = definition.id
 	}
 	if binding.target != builder.target || binding.reflected_component_id != definition_id {
-		panel_value.collapsed = definition != nil && definition.advanced
+		panel_value.collapsed =
+			definition != nil && (definition.advanced || definition.lifecycle == .Derived)
 	}
 	can_remove :=
 		definition != nil &&
@@ -2544,6 +2545,7 @@ editor_ui_inspector_field_values :: proc(
 	reflected_field_type: component.Field_Type = .String,
 	resource_id: shared.Resource_UUID = {},
 	custom_editor: component.Field_Editor_Options = {},
+	read_only: bool = false,
 ) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
@@ -2572,19 +2574,33 @@ editor_ui_inspector_field_values :: proc(
 		editor_ui_set_hidden(builder.world, input_entity, false)
 		layout.size = {1, INSPECTOR_CONTROL_HEIGHT}
 		value_input := &builder.world.ui_inputs[builder.world.entities[input_entity].ui_input_index]
+		role := &builder.world.editor_uis[builder.world.entities[input_entity].editor_ui_index]
+		next_axis: shared.Editor_Inspector_Axis = .None
+		if len(values) > 1 {
+			next_axis = shared.Editor_Inspector_Axis(value_index + 1)
+		}
+		if builder.state != nil &&
+		   builder.state.has_focused_input &&
+		   builder.state.focused_input == builder.world.entities[input_entity].id &&
+		   (role.target != builder.target ||
+				   role.reflected_component_id != reflected_component_id ||
+				   role.reflected_field_index != reflected_field_index ||
+				   role.inspector_axis != next_axis) {
+			clear_input_focus(builder.state)
+		}
 		value_input.read_only =
+			read_only ||
 			(field == .None &&
-				reflected_component_id == shared.INVALID_COMPONENT_ID &&
-				resource_id == (shared.Resource_UUID{}))
+					reflected_component_id == shared.INVALID_COMPONENT_ID &&
+					resource_id == (shared.Resource_UUID{}))
 		if builder.state == nil ||
 		   !builder.state.has_focused_input ||
 		   builder.state.focused_input != builder.world.entities[input_entity].id {
 			_ = ecs.set_ui_input_value(builder.world, input_entity, value)
 		}
-		role := &builder.world.editor_uis[builder.world.entities[input_entity].editor_ui_index]
 		role.target = builder.target
 		role.inspector_field = field
-		role.inspector_axis = .None
+		role.inspector_axis = next_axis
 		role.custom_storage_index = custom_storage_index
 		role.custom_field_index = custom_field_index
 		role.reflected_component_id = reflected_component_id
@@ -2603,9 +2619,6 @@ editor_ui_inspector_field_values :: proc(
 		}
 		_ = ecs.set_ui_input_prefix(builder.world, input_entity, "")
 		value_input.prefix_width = 0
-		if len(values) > 1 {
-			role.inspector_axis = shared.Editor_Inspector_Axis(value_index + 1)
-		}
 		if role.inspector_axis != .None {
 			value_input.prefix_width = UI_INPUT_PREFIX_WIDTH
 			prefix := "X"
@@ -2677,6 +2690,7 @@ editor_ui_inspector_bool :: proc(
 	field: shared.Editor_Inspector_Field = .None,
 	reflected_component_id: shared.Component_ID = shared.INVALID_COMPONENT_ID,
 	reflected_field_index: int = -1,
+	read_only: bool = false,
 ) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
@@ -2702,7 +2716,8 @@ editor_ui_inspector_bool :: proc(
 	editor_ui_set_hidden(builder.world, checkbox_entity, false)
 	checkbox := &builder.world.ui_checkboxes[builder.world.entities[checkbox_entity].ui_checkbox_index]
 	checkbox.checked = value
-	checkbox.read_only = field == .None && reflected_component_id == shared.INVALID_COMPONENT_ID
+	checkbox.read_only =
+		read_only || (field == .None && reflected_component_id == shared.INVALID_COMPONENT_ID)
 	role := &builder.world.editor_uis[builder.world.entities[checkbox_entity].editor_ui_index]
 	role.target = builder.target
 	role.inspector_field = field
@@ -2714,25 +2729,43 @@ editor_ui_inspector_bool :: proc(
 
 editor_ui_inspector_reflected_field :: proc(
 	builder: ^Inspector_ECS_Builder,
-	entity: ^shared.Scene_Entity,
+	component_value: any,
 	definition: ^component.Definition,
 	field_index: int,
 ) {
-	if builder == nil || entity == nil || definition == nil {
+	if builder == nil || definition == nil {
 		return
 	}
-	field := definition.fields[field_index]
+	field, described := editor_reflected_field_definition(component_value, definition, field_index)
+	if !described {
+		return
+	}
+	field_value, found := editor_reflected_field_value(component_value, definition, field_index)
+	if !found {
+		return
+	}
+	read_only :=
+		definition.lifecycle != .Authored || !editor_reflected_value_is_writable(field_value)
 	if field.field_type == .Bool {
-		value, found := editor_reflected_field_bool(entity, definition, field_index)
+		value, found := editor_reflected_field_bool(component_value, definition, field_index)
 		if found {
-			editor_ui_inspector_bool(builder, field.name, value, .None, definition.id, field_index)
+			editor_ui_inspector_bool(
+				builder,
+				field.name,
+				value,
+				.None,
+				definition.id,
+				field_index,
+				read_only,
+			)
 		}
 		return
 	}
 	values: [4]string
 	uuid_buffer: [36]u8
-	count, found := editor_reflected_field_texts(
-		entity,
+	count: int
+	count, found = editor_reflected_field_texts(
+		component_value,
 		definition,
 		field_index,
 		uuid_buffer[:],
@@ -2751,6 +2784,9 @@ editor_ui_inspector_reflected_field :: proc(
 		definition.id,
 		field_index,
 		field.field_type,
+		{},
+		field.editor,
+		read_only,
 	)
 }
 
@@ -2848,8 +2884,14 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 				if component.slot >=
 				   builder.cell_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case .Inspector_Input:
-				if component.slot >=
-				   builder.input_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
+				if component.slot >= builder.input_count {
+					if builder.state != nil &&
+					   builder.state.has_focused_input &&
+					   builder.state.focused_input == entity.id {
+						clear_input_focus(builder.state)
+					}
+					editor_ui_set_hidden(builder.world, component.entity_index, true)
+				}
 			case .Inspector_Checkbox:
 				if component.slot >=
 				   builder.checkbox_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
@@ -3091,7 +3133,7 @@ editor_transform_parent_label :: proc(world: ^shared.World, parent: shared.Entit
 	return "Missing parent"
 }
 
-editor_ui_build_reflected_inspector_panels :: proc(
+editor_ui_build_type_inspected_component_panels :: proc(
 	builder: ^Inspector_ECS_Builder,
 	entity_index: int,
 ) -> bool {
@@ -3107,299 +3149,44 @@ editor_ui_build_reflected_inspector_panels :: proc(
 	}
 	defer ecs.destroy_entity_snapshot(&snapshot)
 	registry := builder.state.component_registry
-	entity := builder.world.entities[entity_index]
-	for definition_index in 0 ..< registry.definition_count {
-		definition := &registry.definitions[definition_index]
-		if !editor_authoring_definition_is_supported(definition) ||
-		   !editor_entity_has_registered_component(builder.world, entity_index, definition) {
-			continue
+	for lifecycle_pass in 0 ..< 2 {
+		lifecycle: component.Lifecycle = .Authored
+		if lifecycle_pass == 1 {
+			lifecycle = .Derived
 		}
-		title_buffer: [128]u8
-		title := editor_component_title(definition.name, title_buffer[:])
-		editor_ui_begin_inspector_component(builder, title, definition)
-		if definition.name == "scrapbot.transform" &&
-		   entity.transform_index >= 0 &&
-		   entity.transform_index < len(builder.world.transforms) {
-			value := builder.world.transforms[entity.transform_index]
-			editor_ui_inspector_vec3(builder, "position", value.position, .Transform_Position)
-			editor_ui_inspector_vec3(builder, "rotation", value.rotation, .Transform_Rotation)
-			editor_ui_inspector_vec3(builder, "scale", value.scale, .Transform_Scale)
-			editor_ui_inspector_field(
-				builder,
-				"parent",
-				editor_transform_parent_label(builder.world, value.parent),
-			)
-			continue
-		}
-		if definition.name == "scrapbot.ambient_light" &&
-		   entity.ambient_light_index >= 0 &&
-		   entity.ambient_light_index < len(builder.world.ambient_lights) {
-			value := builder.world.ambient_lights[entity.ambient_light_index]
-			editor_ui_inspector_vec3(builder, "color", value.color, .Ambient_Color)
-			editor_ui_inspector_field(
-				builder,
-				"intensity",
-				fmt.tprintf("%.2f", value.intensity),
-				.Ambient_Intensity,
-			)
-			continue
-		}
-		if definition.name == "scrapbot.directional_light" &&
-		   entity.directional_light_index >= 0 &&
-		   entity.directional_light_index < len(builder.world.directional_lights) {
-			value := builder.world.directional_lights[entity.directional_light_index]
-			editor_ui_inspector_vec3(builder, "direction", value.direction, .Directional_Direction)
-			editor_ui_inspector_vec3(builder, "color", value.color, .Directional_Color)
-			editor_ui_inspector_field(
-				builder,
-				"intensity",
-				fmt.tprintf("%.2f", value.intensity),
-				.Directional_Intensity,
-			)
-			continue
-		}
-		if definition.name == "scrapbot.point_light" &&
-		   entity.point_light_index >= 0 &&
-		   entity.point_light_index < len(builder.world.point_lights) {
-			value := builder.world.point_lights[entity.point_light_index]
-			editor_ui_inspector_vec3(builder, "color", value.color, .Point_Color)
-			editor_ui_inspector_field(
-				builder,
-				"intensity",
-				fmt.tprintf("%.2f", value.intensity),
-				.Point_Intensity,
-			)
-			editor_ui_inspector_field(
-				builder,
-				"range",
-				fmt.tprintf("%.2f", value.range),
-				.Point_Range,
-			)
-			continue
-		}
-		if definition.name == "scrapbot.material" &&
-		   entity.material_index >= 0 &&
-		   entity.material_index < len(builder.world.materials) &&
-		   builder.state.resource_registry != nil {
-			handle := builder.world.materials[entity.material_index].handle
-			material, alive := resources.get_material(builder.state.resource_registry, handle)
-			if alive && material.authored {
-				id_buffer: [36]u8
-				editor_ui_inspector_resource_reference(builder, "resource", material.name)
-				editor_ui_inspector_field(
-					builder,
-					"uuid",
-					shared.resource_uuid_to_string(material.id, id_buffer[:]),
-				)
-				base_values := [4]string {
-					fmt.tprintf("%.2f", material.desc.base_color.x),
-					fmt.tprintf("%.2f", material.desc.base_color.y),
-					fmt.tprintf("%.2f", material.desc.base_color.z),
-					fmt.tprintf("%.2f", material.desc.base_color.w),
-				}
-				editor_ui_inspector_resource_values(
-					builder,
-					"base color",
-					base_values[:],
-					.Material_Base_Color,
-					material.id,
-				)
-				emissive_values := [3]string {
-					fmt.tprintf("%.2f", material.desc.emissive.x),
-					fmt.tprintf("%.2f", material.desc.emissive.y),
-					fmt.tprintf("%.2f", material.desc.emissive.z),
-				}
-				editor_ui_inspector_resource_values(
-					builder,
-					"emissive",
-					emissive_values[:],
-					.Material_Emissive,
-					material.id,
-				)
-				editor_ui_build_resource_menu(builder.state, builder.world)
+		for definition_index in 0 ..< registry.definition_count {
+			definition := &registry.definitions[definition_index]
+			if definition.lifecycle != lifecycle ||
+			   !editor_entity_has_registered_component(builder.world, entity_index, definition) {
 				continue
 			}
-		}
-		if definition.owner != .Engine {
-			for storage, storage_index in builder.world.custom_components {
-				if storage.name != definition.name {
-					continue
-				}
-				for custom in storage.components {
-					if custom.entity_index != entity_index {
-						continue
-					}
-					for field in definition.fields[:definition.field_count] {
-						switch field.field_type {
-							case .Number:
-								for value, field_index in custom.number_fields {
-									if value.name != field.name {
-										continue
-									}
-									editor_ui_inspector_custom_number(
-										builder,
-										field.name,
-										value.value,
-										storage_index,
-										field_index,
-										field,
-									)
-									break
-								}
-							case .Vec2:
-								for value, field_index in custom.vec2_fields {
-									if value.name != field.name {
-										continue
-									}
-									editor_ui_inspector_custom_vector(
-										builder,
-										field.name,
-										{value.value.x, value.value.y, 0, 0},
-										2,
-										.Custom_Vec2,
-										storage_index,
-										field_index,
-										field,
-									)
-									break
-								}
-							case .Vec3:
-								for value, field_index in custom.vec3_fields {
-									if value.name != field.name {
-										continue
-									}
-									editor_ui_inspector_custom_vector(
-										builder,
-										field.name,
-										{value.value.x, value.value.y, value.value.z, 0},
-										3,
-										.Custom_Vec3,
-										storage_index,
-										field_index,
-										field,
-									)
-									break
-								}
-							case .Vec4, .Color:
-								for value, field_index in custom.vec4_fields {
-									if value.name == field.name {
-										kind: shared.Editor_Inspector_Field = .Custom_Vec4
-										if field.field_type == .Color { kind = .Custom_Color }
-										editor_ui_inspector_custom_vector(
-											builder,
-											field.name,
-											value.value,
-											4,
-											kind,
-											storage_index,
-											field_index,
-											field,
-										)
-										break
-									}
-								}
-							case .Bool, .String:
-						}
-					}
-					break
-				}
-				break
+			component_value, found := editor_reflected_snapshot_component_value(
+				&snapshot.entity,
+				definition,
+			)
+			if definition.lifecycle == .Derived {
+				component_value, found = editor_reflected_live_component_value(
+					builder.world,
+					entity_index,
+					definition,
+				)
 			}
-			continue
-		}
-		if definition.field_count == 0 {
-			switch definition.name {
-				case "scrapbot.camera":
-					if entity.camera_index >= 0 &&
-					   entity.camera_index < len(builder.world.cameras) {
-						value := builder.world.cameras[entity.camera_index]
-						editor_ui_inspector_field(
-							builder,
-							"fov",
-							fmt.tprintf("%.2f", value.fov),
-							.Camera_Fov,
-						)
-						editor_ui_inspector_field(
-							builder,
-							"near",
-							fmt.tprintf("%.3f", value.near),
-							.Camera_Near,
-						)
-						editor_ui_inspector_field(
-							builder,
-							"far",
-							fmt.tprintf("%.2f", value.far),
-							.Camera_Far,
-						)
-					}
-				case "scrapbot.mesh":
-					if entity.mesh_index >= 0 && entity.mesh_index < len(builder.world.meshes) {
-						editor_ui_inspector_field(
-							builder,
-							"primitive",
-							builder.world.meshes[entity.mesh_index].primitive,
-						)
-					}
-				case "scrapbot.geometry":
-					if entity.geometry_index >= 0 &&
-					   entity.geometry_index < len(builder.world.geometries) {
-						value := builder.world.geometries[entity.geometry_index]
-						editor_ui_inspector_field(
-							builder,
-							"handle",
-							format_handle(value.handle.index, value.handle.generation),
-						)
-					}
-				case "scrapbot.material":
-					if entity.material_index >= 0 &&
-					   entity.material_index < len(builder.world.materials) {
-						value := builder.world.materials[entity.material_index]
-						editor_ui_inspector_field(
-							builder,
-							"handle",
-							format_handle(value.handle.index, value.handle.generation),
-						)
-					}
-				case "scrapbot.shadow_caster", "scrapbot.shadow_receiver":
-					editor_ui_inspector_bool(builder, "enabled", true)
-				case:
+			if !found {
+				continue
+			}
+			title_buffer: [128]u8
+			title := editor_component_title(definition.name, title_buffer[:])
+			editor_ui_begin_inspector_component(builder, title, definition)
+			field_count := editor_reflected_field_count(component_value, definition)
+			for field_index in 0 ..< field_count {
+				editor_ui_inspector_reflected_field(
+					builder,
+					component_value,
+					definition,
+					field_index,
+				)
 			}
 		}
-		for field_index in 0 ..< definition.field_count {
-			editor_ui_inspector_reflected_field(builder, &snapshot.entity, definition, field_index)
-		}
-	}
-	if entity.render_instance_index >= 0 &&
-	   entity.render_instance_index < len(builder.world.render_instances) {
-		value := builder.world.render_instances[entity.render_instance_index]
-		editor_ui_begin_inspector_component(builder, "RENDER INSTANCE")
-		editor_ui_inspector_field(
-			builder,
-			"geometry",
-			format_handle(value.geometry.index, value.geometry.generation),
-		)
-		editor_ui_inspector_field(
-			builder,
-			"material",
-			format_handle(value.material.index, value.material.generation),
-		)
-	}
-	if entity.editor_transform_gizmo_index >= 0 &&
-	   entity.editor_transform_gizmo_index < len(builder.world.editor_transform_gizmos) {
-		value := builder.world.editor_transform_gizmos[entity.editor_transform_gizmo_index]
-		mode := "translate"
-		if value.mode == .Rotate {
-			mode = "rotate"
-		} else if value.mode == .Scale {
-			mode = "scale"
-		}
-		space := "world"
-		if value.space == .Local {
-			space = "local"
-		}
-		editor_ui_begin_inspector_component(builder, "EDITOR TRANSFORM GIZMO")
-		editor_ui_inspector_field(builder, "mode", mode)
-		editor_ui_inspector_field(builder, "space", space)
 	}
 	if editor_component_membership_available(builder.state, builder.world, entity_index) {
 		editor_ui_build_component_controls(builder, entity_index)
@@ -3437,547 +3224,11 @@ editor_ui_build_inspector_panels :: proc(
 		editor_ui_finish_inspector(&builder)
 		return
 	}
-	entity := world.entities[entity_index]
-	builder.target = entity.id
-	if editor_ui_build_reflected_inspector_panels(&builder, entity_index) {
-		return
+	builder.target = world.entities[entity_index].id
+	if !editor_ui_build_type_inspected_component_panels(&builder, entity_index) {
+		editor_ui_finish_inspector(&builder)
 	}
-	if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
-		value := world.transforms[entity.transform_index]
-		editor_ui_begin_inspector_component(&builder, "TRANSFORM")
-		editor_ui_inspector_vec3(&builder, "position", value.position, .Transform_Position)
-		editor_ui_inspector_vec3(&builder, "rotation", value.rotation, .Transform_Rotation)
-		editor_ui_inspector_vec3(&builder, "scale", value.scale, .Transform_Scale)
-		editor_ui_inspector_field(
-			&builder,
-			"parent",
-			editor_transform_parent_label(world, value.parent),
-		)
-	}
-	if entity.camera_index >= 0 && entity.camera_index < len(world.cameras) {
-		value := world.cameras[entity.camera_index]
-		editor_ui_begin_inspector_component(&builder, "CAMERA")
-		editor_ui_inspector_field(&builder, "fov", fmt.tprintf("%.2f", value.fov), .Camera_Fov)
-		editor_ui_inspector_field(&builder, "near", fmt.tprintf("%.3f", value.near), .Camera_Near)
-		editor_ui_inspector_field(&builder, "far", fmt.tprintf("%.2f", value.far), .Camera_Far)
-	}
-	if entity.ambient_light_index >= 0 && entity.ambient_light_index < len(world.ambient_lights) {
-		value := world.ambient_lights[entity.ambient_light_index]
-		editor_ui_begin_inspector_component(&builder, "AMBIENT LIGHT")
-		editor_ui_inspector_vec3(&builder, "color", value.color, .Ambient_Color)
-		editor_ui_inspector_field(
-			&builder,
-			"intensity",
-			fmt.tprintf("%.2f", value.intensity),
-			.Ambient_Intensity,
-		)
-	}
-	if entity.directional_light_index >= 0 &&
-	   entity.directional_light_index < len(world.directional_lights) {
-		value := world.directional_lights[entity.directional_light_index]
-		editor_ui_begin_inspector_component(&builder, "DIRECTIONAL LIGHT")
-		editor_ui_inspector_vec3(&builder, "direction", value.direction, .Directional_Direction)
-		editor_ui_inspector_vec3(&builder, "color", value.color, .Directional_Color)
-		editor_ui_inspector_field(
-			&builder,
-			"intensity",
-			fmt.tprintf("%.2f", value.intensity),
-			.Directional_Intensity,
-		)
-	}
-	if entity.point_light_index >= 0 && entity.point_light_index < len(world.point_lights) {
-		value := world.point_lights[entity.point_light_index]
-		editor_ui_begin_inspector_component(&builder, "POINT LIGHT")
-		editor_ui_inspector_vec3(&builder, "color", value.color, .Point_Color)
-		editor_ui_inspector_field(
-			&builder,
-			"intensity",
-			fmt.tprintf("%.2f", value.intensity),
-			.Point_Intensity,
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"range",
-			fmt.tprintf("%.2f", value.range),
-			.Point_Range,
-		)
-	}
-	if entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes) {
-		editor_ui_begin_inspector_component(&builder, "MESH")
-		editor_ui_inspector_field(&builder, "primitive", world.meshes[entity.mesh_index].primitive)
-	}
-	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
-		value := world.geometries[entity.geometry_index]
-		editor_ui_begin_inspector_component(&builder, "GEOMETRY")
-		editor_ui_inspector_field(
-			&builder,
-			"handle",
-			format_handle(value.handle.index, value.handle.generation),
-		)
-	}
-	if entity.material_index >= 0 && entity.material_index < len(world.materials) {
-		value := world.materials[entity.material_index]
-		editor_ui_begin_inspector_component(&builder, "MATERIAL")
-		editor_ui_inspector_field(
-			&builder,
-			"handle",
-			format_handle(value.handle.index, value.handle.generation),
-		)
-	}
-	if entity.render_instance_index >= 0 &&
-	   entity.render_instance_index < len(world.render_instances) {
-		value := world.render_instances[entity.render_instance_index]
-		editor_ui_begin_inspector_component(&builder, "RENDER INSTANCE")
-		editor_ui_inspector_field(
-			&builder,
-			"geometry",
-			format_handle(value.geometry.index, value.geometry.generation),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"material",
-			format_handle(value.material.index, value.material.generation),
-		)
-	}
-	if entity.editor_transform_gizmo_index >= 0 &&
-	   entity.editor_transform_gizmo_index < len(world.editor_transform_gizmos) {
-		value := world.editor_transform_gizmos[entity.editor_transform_gizmo_index]
-		mode := "translate"
-		switch value.mode {case .Translate:; case .Rotate:
-				mode = "rotate"; case .Scale:
-				mode = "scale"}
-		space := "world"
-		if value.space == .Local {
-			space = "local"
-		}
-		editor_ui_begin_inspector_component(&builder, "EDITOR TRANSFORM GIZMO")
-		editor_ui_inspector_field(&builder, "mode", mode)
-		editor_ui_inspector_field(&builder, "space", space)
-	}
-	if entity.has_shadow_caster {
-		editor_ui_begin_inspector_component(&builder, "SHADOW CASTER")
-		editor_ui_inspector_bool(&builder, "enabled", true)
-	}
-	if entity.has_shadow_receiver {
-		editor_ui_begin_inspector_component(&builder, "SHADOW RECEIVER")
-		editor_ui_inspector_bool(&builder, "enabled", true)
-	}
-	if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
-		value := world.ui_layouts[entity.ui_layout_index]
-		editor_ui_begin_inspector_component(&builder, "UI LAYOUT")
-		parent_text := "none"
-		parent_buffer: [36]u8
-		if value.parent != (shared.Entity_UUID{}) {
-			parent_text = shared.entity_uuid_to_string(value.parent, parent_buffer[:])
-		}
-		editor_ui_inspector_field(&builder, "parent", parent_text)
-		editor_ui_inspector_field(&builder, "position", format_vec2(value.position))
-		editor_ui_inspector_field(&builder, "size", format_vec2(value.size))
-		editor_ui_inspector_field(&builder, "margin", format_vec4(value.margin))
-		editor_ui_inspector_field(&builder, "padding", format_vec4(value.padding))
-		editor_ui_inspector_field(&builder, "background", format_vec4(value.background))
-		editor_ui_inspector_field(&builder, "border", format_vec4(value.border_color))
-		editor_ui_inspector_field(
-			&builder,
-			"border width",
-			fmt.tprintf("%.2f", value.border_width),
-		)
-		editor_ui_inspector_field(&builder, "radius", fmt.tprintf("%.2f", value.corner_radius))
-		editor_ui_inspector_bool(&builder, "hidden", value.hidden, .UI_Layout_Hidden)
-		editor_ui_inspector_bool(&builder, "tree item", value.tree_item)
-		tree_parent := "none"
-		tree_parent_buffer: [36]u8
-		if value.tree_parent != (shared.Entity_UUID{}) {
-			tree_parent = shared.entity_uuid_to_string(value.tree_parent, tree_parent_buffer[:])
-		}
-		editor_ui_inspector_field(&builder, "tree parent", tree_parent)
-		editor_ui_inspector_field(&builder, "tree order", fmt.tprintf("%d", value.tree_order))
-		editor_ui_inspector_bool(&builder, "tree collapsed", value.tree_collapsed)
-	}
-	if entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks) {
-		value := world.ui_hstacks[entity.ui_hstack_index]
-		editor_ui_begin_inspector_component(&builder, "UI HSTACK")
-		editor_ui_inspector_field(&builder, "gap", fmt.tprintf("%.2f", value.gap))
-		editor_ui_inspector_bool(&builder, "fill", value.fill, .UI_HStack_Fill)
-		editor_ui_inspector_bool(&builder, "draggable", value.draggable, .UI_HStack_Draggable)
-		editor_ui_inspector_field(&builder, "min size", fmt.tprintf("%.2f", value.min_size))
-	}
-	if entity.ui_vstack_index >= 0 && entity.ui_vstack_index < len(world.ui_vstacks) {
-		value := world.ui_vstacks[entity.ui_vstack_index]
-		editor_ui_begin_inspector_component(&builder, "UI VSTACK")
-		editor_ui_inspector_field(&builder, "gap", fmt.tprintf("%.2f", value.gap))
-		editor_ui_inspector_bool(&builder, "fill", value.fill, .UI_VStack_Fill)
-		editor_ui_inspector_bool(&builder, "draggable", value.draggable, .UI_VStack_Draggable)
-		editor_ui_inspector_field(&builder, "min size", fmt.tprintf("%.2f", value.min_size))
-	}
-	if entity.ui_scroll_area_index >= 0 &&
-	   entity.ui_scroll_area_index < len(world.ui_scroll_areas) {
-		value := world.ui_scroll_areas[entity.ui_scroll_area_index]
-		editor_ui_begin_inspector_component(&builder, "UI SCROLL AREA")
-		editor_ui_inspector_field(
-			&builder,
-			"scroll speed",
-			fmt.tprintf("%.2f", value.scroll_speed),
-		)
-		editor_ui_inspector_field(&builder, "smoothness", fmt.tprintf("%.2f", value.smoothness))
-		editor_ui_inspector_field(
-			&builder,
-			"bar width",
-			fmt.tprintf("%.2f", value.scrollbar_width),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"bar right",
-			fmt.tprintf("%.2f", value.scrollbar_right),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"bar inset",
-			fmt.tprintf("%.2f", value.scrollbar_vertical_inset),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"thumb min",
-			fmt.tprintf("%.2f", value.minimum_thumb_size),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"bar radius",
-			fmt.tprintf("%.2f", value.scrollbar_corner_radius),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"track color",
-			format_vec4(value.scrollbar_track_color),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"thumb color",
-			format_vec4(value.scrollbar_thumb_color),
-		)
-	}
-	if entity.ui_panel_index >= 0 && entity.ui_panel_index < len(world.ui_panels) {
-		value := world.ui_panels[entity.ui_panel_index]
-		editor_ui_begin_inspector_component(&builder, "UI PANEL")
-		editor_ui_inspector_field(&builder, "title", value.title)
-		font := value.font; if font == "" { font = "Inter (default)" }
-		editor_ui_inspector_field(&builder, "font", font)
-		editor_ui_inspector_field(&builder, "title color", format_vec4(value.title_color))
-		editor_ui_inspector_field(
-			&builder,
-			"title background",
-			format_vec4(value.title_background),
-		)
-		editor_ui_inspector_field(&builder, "title size", fmt.tprintf("%.2f", value.title_size))
-		editor_ui_inspector_field(
-			&builder,
-			"title height",
-			fmt.tprintf("%.2f", value.title_height),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"arrow size",
-			fmt.tprintf("%.2f", value.disclosure_size),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"arrow margin",
-			fmt.tprintf("%.2f", value.disclosure_margin),
-		)
-		editor_ui_inspector_field(&builder, "arrow gap", fmt.tprintf("%.2f", value.disclosure_gap))
-		editor_ui_inspector_field(
-			&builder,
-			"arrow radius",
-			fmt.tprintf("%.2f", value.disclosure_corner_radius),
-		)
-		editor_ui_inspector_bool(&builder, "collapsible", value.collapsible, .UI_Panel_Collapsible)
-		editor_ui_inspector_bool(&builder, "collapsed", value.collapsed, .UI_Panel_Collapsed)
-	}
-	if entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables) {
-		value := world.ui_tables[entity.ui_table_index]
-		editor_ui_begin_inspector_component(&builder, "UI TABLE")
-		editor_ui_inspector_field(&builder, "columns", fmt.tprintf("%d", value.columns))
-		editor_ui_inspector_field(&builder, "column gap", fmt.tprintf("%.2f", value.column_gap))
-		editor_ui_inspector_field(&builder, "row gap", fmt.tprintf("%.2f", value.row_gap))
-		editor_ui_inspector_field(
-			&builder,
-			"proportional columns",
-			fmt.tprintf("%v", value.proportional_columns),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"resizable columns",
-			fmt.tprintf("%v", value.resizable_columns),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"minimum width",
-			fmt.tprintf("%.2f", value.min_column_width),
-		)
-	}
-	if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
-		value := world.ui_lists[entity.ui_list_index]
-		editor_ui_begin_inspector_component(&builder, "UI LIST")
-		selected := "none"
-		selected_buffer: [36]u8
-		if value.selected != (shared.Entity_UUID{}) {
-			selected = shared.entity_uuid_to_string(value.selected, selected_buffer[:])
-		}
-		editor_ui_inspector_field(&builder, "selected", selected)
-		editor_ui_inspector_field(&builder, "gap", fmt.tprintf("%.2f", value.gap))
-		editor_ui_inspector_field(
-			&builder,
-			"selection background",
-			format_vec4(value.selection_background),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"hover background",
-			format_vec4(value.hover_background),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"active background",
-			format_vec4(value.active_background),
-		)
-		editor_ui_inspector_field(&builder, "draggable", fmt.tprintf("%v", value.draggable))
-		editor_ui_inspector_field(
-			&builder,
-			"drag threshold",
-			fmt.tprintf("%.2f", value.drag_threshold),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"drop edge fraction",
-			fmt.tprintf("%.2f", value.drop_edge_fraction),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"drop target background",
-			format_vec4(value.drop_target_background),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"drop indicator color",
-			format_vec4(value.drop_indicator_color),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"drop indicator thickness",
-			fmt.tprintf("%.2f", value.drop_indicator_thickness),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"drop indicator inset",
-			fmt.tprintf("%.2f", value.drop_indicator_inset),
-		)
-		editor_ui_inspector_bool(&builder, "tree enabled", value.tree_enabled)
-		editor_ui_inspector_field(&builder, "tree indent", fmt.tprintf("%.2f", value.tree_indent))
-	}
-	if entity.ui_progress_index >= 0 && entity.ui_progress_index < len(world.ui_progresses) {
-		value := world.ui_progresses[entity.ui_progress_index]
-		editor_ui_begin_inspector_component(&builder, "UI PROGRESS")
-		editor_ui_inspector_field(&builder, "value", fmt.tprintf("%.3f", value.value))
-		editor_ui_inspector_field(&builder, "maximum", fmt.tprintf("%.3f", value.maximum))
-		editor_ui_inspector_field(&builder, "fill color", format_vec4(value.fill_color))
-		editor_ui_inspector_field(
-			&builder,
-			"background color",
-			format_vec4(value.background_color),
-		)
-		editor_ui_inspector_field(&builder, "inset", format_vec4(value.inset))
-		editor_ui_inspector_field(&builder, "radius", fmt.tprintf("%.2f", value.corner_radius))
-		editor_ui_inspector_bool(&builder, "right to left", value.right_to_left)
-	}
-	if entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts) {
-		value := world.ui_texts[entity.ui_text_index]
-		editor_ui_begin_inspector_component(&builder, "UI TEXT")
-		editor_ui_inspector_field(&builder, "text", value.text)
-		font := value.font; if font == "" { font = "Inter (default)" }
-		editor_ui_inspector_field(&builder, "font", font)
-		editor_ui_inspector_field(&builder, "color", format_vec4(value.color))
-		editor_ui_inspector_field(&builder, "size", fmt.tprintf("%.2f", value.size))
-		alignment := "left"
-		switch value.alignment {
-			case .Left:
-			case .Center:
-				alignment = "center"
-			case .Right:
-				alignment = "right"
-		}
-		editor_ui_inspector_field(&builder, "alignment", alignment)
-	}
-	if entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons) {
-		value := world.ui_buttons[entity.ui_button_index]
-		editor_ui_begin_inspector_component(&builder, "UI BUTTON")
-		editor_ui_inspector_field(&builder, "text", value.text)
-		font := value.font; if font == "" { font = "Inter (default)" }
-		editor_ui_inspector_field(&builder, "font", font)
-		editor_ui_inspector_field(&builder, "color", format_vec4(value.color))
-		editor_ui_inspector_field(&builder, "size", fmt.tprintf("%.2f", value.size))
-		alignment := "left"
-		if value.alignment == .Center {
-			alignment = "center"
-		} else if value.alignment == .Right {
-			alignment = "right"
-		}
-		editor_ui_inspector_field(&builder, "alignment", alignment)
-		editor_ui_inspector_field(
-			&builder,
-			"hover background",
-			format_vec4(value.hover_background),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"active background",
-			format_vec4(value.active_background),
-		)
-	}
-	if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
-		value := world.ui_inputs[entity.ui_input_index]
-		editor_ui_begin_inspector_component(&builder, "UI INPUT")
-		editor_ui_inspector_field(&builder, "text", value.text)
-		font := value.font; if font == "" { font = "Inter (default)" }
-		editor_ui_inspector_field(&builder, "font", font)
-		editor_ui_inspector_field(&builder, "color", format_vec4(value.color))
-		editor_ui_inspector_field(&builder, "size", fmt.tprintf("%.2f", value.size))
-		editor_ui_inspector_field(&builder, "prefix", value.prefix)
-		editor_ui_inspector_field(&builder, "prefix color", format_vec4(value.prefix_color))
-		editor_ui_inspector_field(
-			&builder,
-			"prefix background",
-			format_vec4(value.prefix_background),
-		)
-		editor_ui_inspector_field(
-			&builder,
-			"prefix width",
-			fmt.tprintf("%.2f", value.prefix_width),
-		)
-		editor_ui_inspector_field(&builder, "prefix gap", fmt.tprintf("%.2f", value.prefix_gap))
-		editor_ui_inspector_field(
-			&builder,
-			"prefix radius",
-			fmt.tprintf("%.2f", value.prefix_corner_radius),
-		)
-		editor_ui_inspector_field(&builder, "selection", format_vec4(value.selection_background))
-		editor_ui_inspector_field(
-			&builder,
-			"selection radius",
-			fmt.tprintf("%.2f", value.selection_corner_radius),
-		)
-		editor_ui_inspector_field(&builder, "focus border", format_vec4(value.focus_border_color))
-		editor_ui_inspector_field(
-			&builder,
-			"invalid border",
-			format_vec4(value.invalid_border_color),
-		)
-		editor_ui_inspector_field(&builder, "caret color", format_vec4(value.caret_color))
-		editor_ui_inspector_field(&builder, "caret width", fmt.tprintf("%.2f", value.caret_width))
-		editor_ui_inspector_bool(&builder, "numeric", value.numeric)
-		editor_ui_inspector_bool(&builder, "read only", value.read_only, .UI_Input_Read_Only)
-	}
-	if entity.ui_checkbox_index >= 0 && entity.ui_checkbox_index < len(world.ui_checkboxes) {
-		value := world.ui_checkboxes[entity.ui_checkbox_index]
-		editor_ui_begin_inspector_component(&builder, "UI CHECKBOX")
-		editor_ui_inspector_bool(&builder, "checked", value.checked, .UI_Checkbox_Checked)
-		editor_ui_inspector_field(&builder, "box size", fmt.tprintf("%.2f", value.box_size))
-		editor_ui_inspector_field(&builder, "background", format_vec4(value.background))
-		editor_ui_inspector_field(
-			&builder,
-			"checked background",
-			format_vec4(value.checked_background),
-		)
-		editor_ui_inspector_field(&builder, "border", format_vec4(value.border_color))
-		editor_ui_inspector_field(&builder, "check", format_vec4(value.check_color))
-		editor_ui_inspector_field(&builder, "radius", fmt.tprintf("%.2f", value.corner_radius))
-		editor_ui_inspector_field(
-			&builder,
-			"border width",
-			fmt.tprintf("%.2f", value.border_width),
-		)
-		editor_ui_inspector_field(&builder, "check inset", fmt.tprintf("%.2f", value.check_inset))
-		editor_ui_inspector_field(
-			&builder,
-			"check radius",
-			fmt.tprintf("%.2f", value.check_corner_radius),
-		)
-		editor_ui_inspector_bool(&builder, "read only", value.read_only, .UI_Checkbox_Read_Only)
-	}
-	for storage, storage_index in world.custom_components {
-		for custom in storage.components {
-			if custom.entity_index != entity_index {
-				continue
-			}
-			editor_ui_begin_inspector_component(&builder, storage.name)
-			default_number := component.Field_Definition {
-				field_type = .Number,
-				editor = {draggable = true, step = 0.1},
-			}
-			for field, field_index in custom.number_fields {
-				default_number.name = field.name
-				editor_ui_inspector_custom_number(
-					&builder,
-					field.name,
-					field.value,
-					storage_index,
-					field_index,
-					default_number,
-				)
-			}
-			default_vector := component.Field_Definition {
-				editor = {draggable = true, step = 0.01},
-			}
-			for field, field_index in custom.vec2_fields {
-				default_vector.name = field.name
-				default_vector.field_type = .Vec2
-				editor_ui_inspector_custom_vector(
-					&builder,
-					field.name,
-					{field.value.x, field.value.y, 0, 0},
-					2,
-					.Custom_Vec2,
-					storage_index,
-					field_index,
-					default_vector,
-				)
-			}
-			for field, field_index in custom.vec3_fields {
-				default_vector.name = field.name
-				default_vector.field_type = .Vec3
-				editor_ui_inspector_custom_vector(
-					&builder,
-					field.name,
-					{field.value.x, field.value.y, field.value.z, 0},
-					3,
-					.Custom_Vec3,
-					storage_index,
-					field_index,
-					default_vector,
-				)
-			}
-			for field, field_index in custom.vec4_fields {
-				default_vector.name = field.name
-				default_vector.field_type = .Vec4
-				editor_ui_inspector_custom_vector(
-					&builder,
-					field.name,
-					field.value,
-					4,
-					.Custom_Vec4,
-					storage_index,
-					field_index,
-					default_vector,
-				)
-			}
-			break
-		}
-	}
-	if editor_component_membership_available(state, world, entity_index) {
-		editor_ui_build_component_controls(&builder, entity_index)
-	}
-	editor_ui_finish_inspector(&builder)
 }
-
 editor_ui_build_resource_inspector_panels :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -4009,6 +3260,11 @@ editor_ui_build_resource_inspector_panels :: proc(
 			editor_ui_inspector_field(&builder, "source asset", environment.asset_source)
 			editor_ui_inspector_field(
 				&builder,
+				"sky panorama",
+				fmt.tprintf("%d x %d", environment.desc.sky_width, environment.desc.sky_height),
+			)
+			editor_ui_inspector_field(
+				&builder,
 				"irradiance cube",
 				fmt.tprintf(
 					"%d x %d",
@@ -4033,7 +3289,7 @@ editor_ui_build_resource_inspector_panels :: proc(
 			editor_ui_begin_inspector_component(&builder, "IMPORT")
 			editor_ui_inspector_field(&builder, "status", editor_resource_import_status(state, id))
 			editor_ui_inspector_field(&builder, "dependency", environment.asset_source)
-			editor_ui_inspector_field(&builder, "product", "RGBA16F IBL cube maps")
+			editor_ui_inspector_field(&builder, "product", "RGBA16F sky + IBL cubes")
 			editor_ui_inspector_field(
 				&builder,
 				"product size",
@@ -5138,9 +4394,12 @@ editor_ui_prepare_input_focus :: proc(state: ^State, world: ^shared.World, entit
 		return
 	}
 	if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
-		binding.input_original_number = input.number
-		binding.input_has_original_number = true
-		binding.input_was_scrubbed = false
+		if number, ok := editor_reflected_read_number(state, world, binding^); ok {
+			set_numeric_input_text(state, world, entity_index, input, number)
+			binding.input_original_number = number
+			binding.input_has_original_number = true
+			binding.input_was_scrubbed = false
+		}
 		return
 	}
 	if number, ok := read_inspector_numeric(world, binding^); ok {

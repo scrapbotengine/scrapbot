@@ -21,6 +21,7 @@ struct Render_Uniform {
 struct Material_Uniform {
 	pbr_factors: vec4<f32>,
 	flags: vec4<f32>,
+	alpha: vec4<f32>,
 };
 
 struct Environment_Uniform {
@@ -29,9 +30,13 @@ struct Environment_Uniform {
 	exposure: f32,
 	enabled: f32,
 	max_specular_lod: f32,
-	_padding_0: f32,
-	_padding_1: f32,
-	_padding_2: f32,
+	background_intensity: f32,
+	background_rotation: f32,
+	background_exposure: f32,
+	background_blur: f32,
+	background_enabled: f32,
+	background_max_specular_lod: f32,
+	_padding: f32,
 };
 
 @group(0) @binding(0)

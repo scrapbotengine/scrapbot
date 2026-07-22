@@ -29,13 +29,13 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 Run `mise setup` once after cloning to install pinned tools, initialize source dependencies, download checksum-verified external development fixtures, and configure the tracked Git hooks. Heavy or license-constrained fixtures remain ignored local state and are never committed or included in Scrapbot's own releases. Use `mise setup-assets` to refresh only those fixtures or `mise check-assets` to verify them offline.
 
-After setup, `mise scrapbot run examples/gltf-showcase --editor` renders the pinned Khronos Damaged Helmet through the real glTF importer and WGPU material path, lit by a pinned CC0 Poly Haven HDR environment.
+After setup, `mise scrapbot run examples/gltf-showcase --editor` renders the pinned Khronos Damaged Helmet through the real glTF importer and WGPU material path, lit by a pinned CC0 Poly Haven HDR environment against the default neutral background.
 
 This first slice intentionally uses a narrow schema-driven TOML reader instead of a complete TOML implementation. Every scene entity has a required project-wide UUID distinct from its editable name, and runtime spawns receive fresh UUIDs. Rendering is pluggable at the runtime boundary. The `null` backend supports headless smoke tests, while the `wgpu` backend renders full indexed geometry with shared metallic-roughness GGX materials, mipmapped base-color/normal/occlusion/emissive maps, ECS ambient/directional/point lights, backend-owned GPU caches, persistent slot-addressed instance storage, compact dirty-transform uploads with GPU matrix/bounds expansion, a geometrically growing draw database, compute camera/shadow frustum culling, a depth prepass and adaptive Hi-Z occlusion, GPU screen-radius LOD selection, compacted visibility, indexed indirect draws, asynchronous GPU timing/counter readback, a compute bloom pyramid, live window resizing, and a retained ECS UI overlay with independent revision-driven project, editor, and world-overlay GPU streams, a responsive box model, fixed or proportional horizontal and vertical stacks, draggable separators, per-axis fill and fit-to-content sizing, hidden subtrees, smooth clipped scroll areas, selectable lists, reusable progress indicators, renderer-backed interactive Model/Material/Texture/World viewports with pooled adaptive render targets, collapsible titled panels with SDF disclosure icons, horizontally aligned MTSDF text, pointer-aware buttons, keyboard-focused single-line inputs, reusable SDF checkboxes, and SDF-rounded backgrounds and borders. Scene TOML, Luau systems, native Odin extensions, and transient editor chrome construct and mutate the same typed UI component values and per-entity styles; the renderer publishes shared read-only interaction state. UI, render-instance, camera, and light membership update from structural dirty queues and compact active sets instead of being discovered by rescanning the complete world every frame; retained UI parent/child/sibling links make changed layout and paint work linear in the affected visible hierarchy, while unchanged project and editor domains skip hierarchy reconciliation, layout, paint traversal, hashing, vertex generation, and uploads. A transient ECS-built editor shell can frame the live project viewport with top, status, resizable scene and inspector chrome, independently smoothed scroll panes, an ECS-owned fly camera, and a system profiler that publishes engine, project-Odin, Luau, and granular CPU render-phase timings every five frames from a rolling 50-frame window. Headless WGPU can write a final-frame PNG with `--framegrab`. Luau scripting is embedded from a pinned source dependency and exposes the ECS, full geometry/material resource creation, scheduled systems, deferred lifecycle commands, generated types, native extension integration, and hot reload.
 
 Authored project resources live outside ECS and scenes as UUID-identified `resources/**/*.resource.toml` files. Materials, imported textures/models/HDR environments, and generated icosphere LOD chains are supported. Scenes serialize stable resource UUID references, while the runtime resolves them to generational registry handles.
 
-World geometry now renders into a floating-point HDR target. Shared emissive materials feed a five-level compute bloom pyramid before one ACES-style composite pass, while project UI, gizmos, and editor chrome stay crisp in the later overlay pass.
+World geometry and an optional independently configured environment background render into a floating-point HDR target. Image-based lighting does not implicitly replace the neutral background. Project base exposure and active-camera exposure combine before shared emissive materials feed a five-level compute bloom pyramid and one ACES-style composite pass, while project UI, gizmos, and editor chrome stay crisp in the later overlay pass.
 
 Example projects live in [`examples/`](examples/). The minimal example demonstrates Luau-defined and Odin-defined components and systems, and can be verified with `mise scrapbot run examples/minimal`. The ECS showcase runs a native object fountain with visible spawned cube renderables, velocity, lifetime, spin, despawn, animated point lights, editor-movable static point lights, emissive bloom, and Luau typed queries. The ECS stress test sustains roughly 3,000 glowing renderables through retained native query plans, 64-entity chunks, SIMD integration, and bounded runtime lifecycle churn.
 
@@ -135,6 +135,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Geometry/material render batching
   - [x] Directional shadow maps with explicit caster/receiver components
   - [x] HDR rendering
+  - [x] Imported image-based lighting with opt-in independently configured HDR backgrounds and per-camera exposure
   - [x] Multi-scale bloom and tone-mapping postprocessing
   - [x] Compute camera and shadow frustum culling
   - [x] Persistent GPU instances, visibility compaction, and indexed indirect drawing
@@ -147,8 +148,10 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] Ambient, directional, and point-light rendering
 - Assets
   - [x] Incremental static glTF 2.0/GLB model imports with embedded, data-URI, and external metallic-roughness PBR images
+  - [x] glTF opaque/cutout alpha materials and double-sided rendering across color, depth, and shadows
   - [x] PNG texture assets
   - [x] UUID-backed texture and model resources
+  - [x] UUID-backed Radiance HDR environments with source-resolution skies and importer-built diffuse/specular cubes
   - [x] Targeted live Reimport, import diagnostics, texture thumbnails, and stale model-product retirement
   - [x] UUID-backed material resources
   - [x] UUID-backed generated geometry LOD resources
@@ -202,7 +205,7 @@ Run the full local test suite with `mise test`; it includes a 2,000-frame lifecy
   - [x] System profiler
   - [x] Entity browser
   - [x] Entity selection
-  - [x] Registry-driven component inspector with generic Bool, String, Number, Vec2, Vec3, and Vec4 editing
+  - [x] Runtime type-inspected component panels with generic Bool, String, Number, Vec2, Vec3, Vec4, and Color controls
   - [x] Material resource-reference picker and inline resource fields
   - [x] ECS-built material resource browser with selection and inline inspection
   - [ ] Specialized enum, color, entity-reference, array, and nested-value editors

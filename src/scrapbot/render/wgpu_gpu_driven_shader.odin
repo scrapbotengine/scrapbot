@@ -123,6 +123,7 @@ struct Render_Uniform {
 struct Material_Uniform {
 	pbr_factors: vec4<f32>,
 	flags: vec4<f32>,
+	alpha: vec4<f32>,
 };
 
 struct Environment_Uniform {
@@ -131,9 +132,13 @@ struct Environment_Uniform {
 	exposure: f32,
 	enabled: f32,
 	max_specular_lod: f32,
-	_padding_0: f32,
-	_padding_1: f32,
-	_padding_2: f32,
+	background_intensity: f32,
+	background_rotation: f32,
+	background_exposure: f32,
+	background_blur: f32,
+	background_enabled: f32,
+	background_max_specular_lod: f32,
+	_padding: f32,
 };
 
 struct GPU_Instance {
@@ -175,7 +180,7 @@ struct Vertex_Input {
 
 struct Vertex_Output {
 	@builtin(position) position: vec4<f32>,
-	@location(0) color: vec3<f32>,
+	@location(0) color: vec4<f32>,
 	@location(1) world_position: vec3<f32>,
 	@location(2) world_normal: vec3<f32>,
 	@location(3) shadow_position: vec4<f32>,
@@ -192,7 +197,7 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	output.position = render.view_projection * instance.model * local_position;
 	output.world_position = (instance.model * local_position).xyz;
 	output.world_normal = normalize((instance.normal_model * vec4<f32>(input.normal, 0.0)).xyz);
-	output.color = instance.color.rgb;
+	output.color = instance.color;
 	output.emissive = instance.emissive.rgb;
 	output.shadow_position = render.shadow_view_projection * instance.model * local_position;
 	output.shadow_receiver = instance.shadow_flags.y;
@@ -244,8 +249,9 @@ fn geometry_smith(normal: vec3<f32>, view: vec3<f32>, light: vec3<f32>, roughnes
 		geometry_schlick_ggx(max(dot(normal, light), 0.0), roughness);
 }
 
-fn mapped_normal(input: Vertex_Output) -> vec3<f32> {
+fn mapped_normal(input: Vertex_Output, front_facing: bool) -> vec3<f32> {
 	let geometric = normalize(input.world_normal);
+	let flip = material.flags.w > 0.5 && !front_facing;
 	var sampled = textureSample(normal_texture, base_color_sampler, input.uv).xyz * 2.0 - 1.0;
 	sampled = normalize(vec3<f32>(sampled.xy * material.pbr_factors.z, sampled.z));
 	let position_dx = dpdx(input.world_position);
@@ -254,11 +260,12 @@ fn mapped_normal(input: Vertex_Output) -> vec3<f32> {
 	let uv_dy = dpdy(input.uv);
 	let determinant = uv_dx.x * uv_dy.y - uv_dx.y * uv_dy.x;
 	if (abs(determinant) < 0.000001) {
-		return geometric;
+		return select(geometric, -geometric, flip);
 	}
 	let tangent = normalize((position_dx * uv_dy.y - position_dy * uv_dx.y) / determinant);
 	let bitangent = normalize((-position_dx * uv_dy.x + position_dy * uv_dx.x) / determinant);
-	return normalize(mat3x3<f32>(tangent, bitangent, geometric) * sampled);
+	let mapped = normalize(mat3x3<f32>(tangent, bitangent, geometric) * sampled);
+	return select(mapped, -mapped, flip);
 }
 
 fn evaluate_light(
@@ -283,12 +290,16 @@ fn evaluate_light(
 }
 
 @fragment
-fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
-	let normal = mapped_normal(input);
+fn fs_main(input: Vertex_Output, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+	let base_color_sample = textureSample(base_color_texture, base_color_sampler, input.uv);
+	if (material.flags.z > 0.5 && base_color_sample.a * input.color.a < material.alpha.x) {
+		discard;
+	}
+	let normal = mapped_normal(input, front_facing);
 	let view = normalize(render.camera_position.xyz - input.world_position);
-	let texture_color = textureSample(base_color_texture, base_color_sampler, input.uv).rgb;
-	let legacy_factor = pow(max(input.color, vec3<f32>(0.0)), vec3<f32>(2.2));
-	let color_factor = mix(legacy_factor, input.color, material.flags.y);
+	let texture_color = base_color_sample.rgb;
+	let legacy_factor = pow(max(input.color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2));
+	let color_factor = mix(legacy_factor, input.color.rgb, material.flags.y);
 	let base_color = texture_color * color_factor;
 	let packed = textureSample(metallic_roughness_texture, base_color_sampler, input.uv);
 	let metallic = clamp(packed.b * material.pbr_factors.x, 0.0, 1.0);
@@ -349,16 +360,38 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 	return vec4<f32>((color + emissive) * environment.exposure, 1.0);
 }
 
+struct Mask_Output {
+	@builtin(position) position: vec4<f32>,
+	@location(0) uv: vec2<f32>,
+	@location(1) alpha: f32,
+};
+
 @vertex
-fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> @builtin(position) vec4<f32> {
+fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Mask_Output {
 	let instance = instances[visible_instances[visible_index]];
-	return render.shadow_view_projection * instance.model * vec4<f32>(input.position, 1.0);
+	var output: Mask_Output;
+	output.position = render.shadow_view_projection * instance.model * vec4<f32>(input.position, 1.0);
+	output.uv = input.uv;
+	output.alpha = instance.color.a;
+	return output;
 }
 
 @vertex
-fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> @builtin(position) vec4<f32> {
+fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Mask_Output {
 	let instance = instances[visible_instances[visible_index]];
-	return render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
+	var output: Mask_Output;
+	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
+	output.uv = input.uv;
+	output.alpha = instance.color.a;
+	return output;
+}
+
+@fragment
+fn mask_fs(input: Mask_Output) {
+	let alpha = textureSample(base_color_texture, base_color_sampler, input.uv).a * input.alpha;
+	if (alpha < material.alpha.x) {
+		discard;
+	}
 }
 `
 

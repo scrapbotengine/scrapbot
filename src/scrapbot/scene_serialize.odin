@@ -37,6 +37,7 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		write_scene_value(builder, "fov", scene_f32(entity.camera.fov))
 		write_scene_value(builder, "near", scene_f32(entity.camera.near))
 		write_scene_value(builder, "far", scene_f32(entity.camera.far))
+		write_scene_value(builder, "exposure", scene_f32(shared.camera_exposure(entity.camera)))
 	}
 	if entity.has_ambient_light {
 		write_scene_section(builder, "ambient_light")

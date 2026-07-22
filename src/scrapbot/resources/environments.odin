@@ -27,24 +27,31 @@ register_project_environments :: proc(
 			return "imported environment product is missing"
 		}
 		bytes, read_err := os.read_entire_file(product.artifact_path, context.temp_allocator)
+		sky_texels := int(product.width * product.height)
 		irradiance_texels :=
 			asset_import.ENVIRONMENT_IRRADIANCE_SIZE * asset_import.ENVIRONMENT_IRRADIANCE_SIZE * 6
 		if read_err != nil ||
 		   len(bytes) != product.byte_count ||
-		   product.width != asset_import.ENVIRONMENT_SPECULAR_SIZE ||
-		   product.height != asset_import.ENVIRONMENT_IRRADIANCE_SIZE ||
+		   product.width == 0 ||
+		   product.height == 0 ||
+		   product.width != product.height * 2 ||
 		   product.mip_count != asset_import.ENVIRONMENT_SPECULAR_MIP_COUNT ||
-		   len(bytes) != asset_import.environment_product_texel_count() * 8 {
+		   len(bytes) !=
+			   asset_import.environment_product_texel_count(product.width, product.height) * 8 {
 			return "imported environment product is invalid"
 		}
 		pixels := (cast([^]u16)raw_data(bytes))[:len(bytes) / size_of(u16)]
+		sky_values := sky_texels * 4
 		irradiance_values := irradiance_texels * 4
 		if _, register_err := register_project_environment(
 			registry,
 			declaration,
 			{
-				irradiance_pixels = pixels[:irradiance_values],
-				specular_pixels = pixels[irradiance_values:],
+				sky_pixels = pixels[:sky_values],
+				irradiance_pixels = pixels[sky_values:sky_values + irradiance_values],
+				specular_pixels = pixels[sky_values + irradiance_values:],
+				sky_width = product.width,
+				sky_height = product.height,
 				irradiance_size = asset_import.ENVIRONMENT_IRRADIANCE_SIZE,
 				specular_size = asset_import.ENVIRONMENT_SPECULAR_SIZE,
 				specular_mip_count = asset_import.ENVIRONMENT_SPECULAR_MIP_COUNT,
@@ -83,12 +90,16 @@ register_project_environment :: proc(
 	   declaration.environment.source == "" {
 		return {}, "project environment metadata must not be empty"
 	}
-	if desc.irradiance_size == 0 ||
+	if desc.sky_width == 0 ||
+	   desc.sky_height == 0 ||
+	   desc.sky_width != desc.sky_height * 2 ||
+	   len(desc.sky_pixels) != int(desc.sky_width * desc.sky_height * 4) ||
+	   desc.irradiance_size == 0 ||
 	   desc.specular_size == 0 ||
 	   desc.specular_mip_count == 0 ||
 	   len(desc.irradiance_pixels) != int(desc.irradiance_size * desc.irradiance_size * 6 * 4) ||
 	   len(desc.specular_pixels) == 0 {
-		return {}, "environment must contain complete RGBA16F IBL cube maps"
+		return {}, "environment must contain a complete RGBA16F sky panorama and IBL cube maps"
 	}
 	ensure_allocator(registry)
 	if index, found := environment_index_by_uuid_any(registry, declaration.id); found {
@@ -114,6 +125,7 @@ register_project_environment :: proc(
 		delete(environment.name, registry.allocator)
 		delete(environment.source, registry.allocator)
 		delete(environment.asset_source, registry.allocator)
+		delete(environment.desc.sky_pixels, registry.allocator)
 		delete(environment.desc.irradiance_pixels, registry.allocator)
 		delete(environment.desc.specular_pixels, registry.allocator)
 		environment.name = name
@@ -121,6 +133,7 @@ register_project_environment :: proc(
 		environment.asset_source = asset_source
 		environment.import_byte_count = import_byte_count
 		environment.desc = desc
+		environment.desc.sky_pixels = clone_slice(desc.sky_pixels, registry.allocator)
 		environment.desc.irradiance_pixels = clone_slice(
 			desc.irradiance_pixels,
 			registry.allocator,
@@ -144,12 +157,14 @@ register_project_environment :: proc(
 	environment.name, _ = strings.clone(declaration.name, registry.allocator)
 	environment.source, _ = strings.clone(declaration.source, registry.allocator)
 	environment.asset_source, _ = strings.clone(declaration.environment.source, registry.allocator)
+	environment.desc.sky_pixels = clone_slice(desc.sky_pixels, registry.allocator)
 	environment.desc.irradiance_pixels = clone_slice(desc.irradiance_pixels, registry.allocator)
 	environment.desc.specular_pixels = clone_slice(desc.specular_pixels, registry.allocator)
 	if environment.name == "" || environment.source == "" || environment.asset_source == "" {
 		delete(environment.name, registry.allocator)
 		delete(environment.source, registry.allocator)
 		delete(environment.asset_source, registry.allocator)
+		delete(environment.desc.sky_pixels, registry.allocator)
 		delete(environment.desc.irradiance_pixels, registry.allocator)
 		delete(environment.desc.specular_pixels, registry.allocator)
 		return {}, "failed to allocate environment metadata"
@@ -174,6 +189,18 @@ configure_project_environment :: proc(
 		}
 		handle = resolved
 	}
+	background_handle: Environment_Handle
+	if config.background_visible {
+		background_id := config.background_environment
+		if background_id == (shared.Resource_UUID{}) {
+			background_id = config.environment
+		}
+		resolved, found := environment_handle_by_uuid(registry, background_id)
+		if !found {
+			return "configured background environment resource is unavailable"
+		}
+		background_handle = resolved
+	}
 	if math.is_nan(config.environment_intensity) ||
 	   math.is_inf(config.environment_intensity) ||
 	   config.environment_intensity < 0 ||
@@ -181,17 +208,42 @@ configure_project_environment :: proc(
 	   math.is_inf(config.environment_rotation) ||
 	   math.is_nan(config.exposure) ||
 	   math.is_inf(config.exposure) ||
-	   config.exposure <= 0 {
+	   config.exposure <= 0 ||
+	   (config.background_visible &&
+			   (math.is_nan(config.background_intensity) ||
+					   math.is_inf(config.background_intensity) ||
+					   config.background_intensity < 0 ||
+					   math.is_nan(config.background_rotation) ||
+					   math.is_inf(config.background_rotation) ||
+					   math.is_nan(config.background_exposure) ||
+					   math.is_inf(config.background_exposure) ||
+					   config.background_exposure <= 0 ||
+					   math.is_nan(config.background_blur) ||
+					   math.is_inf(config.background_blur) ||
+					   config.background_blur < 0 ||
+					   config.background_blur > 1)) {
 		return "environment render configuration is invalid"
 	}
 	if registry.active_environment != handle ||
 	   registry.environment_intensity != config.environment_intensity ||
 	   registry.environment_rotation != config.environment_rotation ||
-	   registry.exposure != config.exposure {
+	   registry.exposure != config.exposure ||
+	   registry.background_visible != config.background_visible ||
+	   registry.background_environment != background_handle ||
+	   registry.background_intensity != config.background_intensity ||
+	   registry.background_rotation != config.background_rotation ||
+	   registry.background_exposure != config.background_exposure ||
+	   registry.background_blur != config.background_blur {
 		registry.active_environment = handle
 		registry.environment_intensity = config.environment_intensity
 		registry.environment_rotation = config.environment_rotation
 		registry.exposure = config.exposure
+		registry.background_visible = config.background_visible
+		registry.background_environment = background_handle
+		registry.background_intensity = config.background_intensity
+		registry.background_rotation = config.background_rotation
+		registry.background_exposure = config.background_exposure
+		registry.background_blur = config.background_blur
 		bump_environment_revision(registry)
 	}
 	return ""

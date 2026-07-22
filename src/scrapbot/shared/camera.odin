@@ -2,6 +2,13 @@ package shared
 
 import "core:math"
 
+camera_exposure :: proc "contextless" (camera: Camera_Component) -> f32 {
+	if camera.exposure == 0 {
+		return 1
+	}
+	return camera.exposure
+}
+
 camera_forward :: proc(rotation: Vec3) -> Vec3 {
 	cos_pitch := math.cos(rotation.x)
 	return {
@@ -16,10 +23,9 @@ camera_right :: proc(rotation: Vec3) -> Vec3 {
 	base_right := camera_vec3_normalize(camera_vec3_cross(forward, {0, 1, 0}))
 	base_up := camera_vec3_cross(base_right, forward)
 	cos_roll, sin_roll := math.cos(rotation.z), math.sin(rotation.z)
-	return camera_vec3_normalize(camera_vec3_add(
-		camera_vec3_mul(base_right, cos_roll),
-		camera_vec3_mul(base_up, sin_roll),
-	))
+	return camera_vec3_normalize(
+		camera_vec3_add(camera_vec3_mul(base_right, cos_roll), camera_vec3_mul(base_up, sin_roll)),
+	)
 }
 
 camera_up :: proc(rotation: Vec3) -> Vec3 {
@@ -35,11 +41,7 @@ camera_vec3_mul :: proc(value: Vec3, scalar: f32) -> Vec3 {
 }
 
 camera_vec3_cross :: proc(a, b: Vec3) -> Vec3 {
-	return {
-		a.y * b.z - a.z * b.y,
-		a.z * b.x - a.x * b.z,
-		a.x * b.y - a.y * b.x,
-	}
+	return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}
 }
 
 camera_vec3_dot :: proc(a, b: Vec3) -> f32 {

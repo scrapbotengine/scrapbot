@@ -11,7 +11,7 @@ import "core:path/filepath"
 import "core:strings"
 import stb "vendor:stb/image"
 
-ENVIRONMENT_IMPORTER_SCHEMA :: "scrapbot.environment.v2.rgba16f-ibl"
+ENVIRONMENT_IMPORTER_SCHEMA :: "scrapbot.environment.v3.rgba16f-sky-ibl"
 ENVIRONMENT_IRRADIANCE_SIZE :: 32
 ENVIRONMENT_SPECULAR_SIZE :: 128
 ENVIRONMENT_SPECULAR_MIP_COUNT :: 8
@@ -112,8 +112,8 @@ ensure_environment_import :: proc(
 			kind = .Environment,
 			source = product_source,
 			artifact_path = product_path,
-			width = metadata.specular_size,
-			height = metadata.irradiance_size,
+			width = metadata.width,
+			height = metadata.height,
 			mip_count = metadata.specular_mip_count,
 			byte_count = metadata.byte_count,
 			color_space = .Linear,
@@ -142,9 +142,20 @@ decode_environment_product :: proc(source: []u8) -> ([]u16, u32, u32, string) {
 			"environment must be a 2:1 equirectangular image no larger than 8192x4096"
 	}
 	source_pixels := decoded[:int(x * y * 4)]
-	pixel_count := environment_product_texel_count() * 4
+	pixel_count := environment_product_texel_count(u32(x), u32(y)) * 4
 	pixels := make([]u16, pixel_count)
 	cursor := 0
+	for source_index in 0 ..< int(x * y) {
+		for channel in 0 ..< 3 {
+			value := source_pixels[source_index * 4 + channel]
+			if math.is_nan(value) || math.is_inf(value) {
+				value = 0
+			}
+			pixels[cursor + channel] = environment_f16(value)
+		}
+		pixels[cursor + 3] = environment_f16(1)
+		cursor += 4
+	}
 	cursor = append_environment_cube(
 		pixels,
 		cursor,
@@ -172,8 +183,9 @@ decode_environment_product :: proc(source: []u8) -> ([]u16, u32, u32, string) {
 	return pixels, u32(x), u32(y), ""
 }
 
-environment_product_texel_count :: proc() -> int {
-	count := ENVIRONMENT_IRRADIANCE_SIZE * ENVIRONMENT_IRRADIANCE_SIZE * 6
+environment_product_texel_count :: proc(width, height: u32) -> int {
+	count := int(width * height)
+	count += ENVIRONMENT_IRRADIANCE_SIZE * ENVIRONMENT_IRRADIANCE_SIZE * 6
 	for mip in 0 ..< ENVIRONMENT_SPECULAR_MIP_COUNT {
 		size := max(ENVIRONMENT_SPECULAR_SIZE >> uint(mip), 1)
 		count += size * size * 6
@@ -410,7 +422,8 @@ read_environment_cache :: proc(
 	   metadata.irradiance_size != ENVIRONMENT_IRRADIANCE_SIZE ||
 	   metadata.specular_size != ENVIRONMENT_SPECULAR_SIZE ||
 	   metadata.specular_mip_count != ENVIRONMENT_SPECULAR_MIP_COUNT ||
-	   metadata.byte_count != environment_product_texel_count() * 8 {
+	   metadata.byte_count !=
+		   environment_product_texel_count(metadata.width, metadata.height) * 8 {
 		return {}, false
 	}
 	artifact_info, stat_err := os.stat(artifact_path, context.temp_allocator)

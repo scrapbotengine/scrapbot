@@ -31,6 +31,8 @@ odin test src/scrapbot/render
 bin/scrapbot help run
 ```
 
+`mise build` writes the optimized executable to `bin/scrapbot`. `mise build-dev` writes the fast-compiling executable to `bin/scrapbot-dev`; after a development build, run `bin/scrapbot-dev`, not a potentially stale `bin/scrapbot`. `mise scrapbot -- [args...]` builds and runs the optimized executable in one task. Before a framegrab, confirm that the executable you launch is the one produced by the preceding build.
+
 Use `mise test` for `src/scrapbot/script` or the full package tree because Luau tests require the native linker flags from `mise.toml`.
 
 ## External Development Fixtures
@@ -105,6 +107,8 @@ Headless framegrab renders the same resource-backed ECS path into an offscreen t
 
 After changing instance storage, batching, culling, shadows, depth/Hi-Z, geometry LODs, indirect drawing, GPU timestamps/counters, postprocessing, UI geometry retention, or WGPU bind layouts, run `mise test-gpu`. It exercises a greater-than-64-batch scene with more than 256 instances, proves real Hi-Z rejection, validates asynchronous timing/visibility diagnostics and retained UI uploads, and requires byte-identical compute/CPU-reference PNG output. It also loads a UUID-backed `scrapbot.geometry_lod` fixture, requires one visible instance in each of LOD 0, 1, and 2, and compares its compute and CPU-reference frames byte for byte.
 
+The same task imports and renders `tests/fixtures/gltf-materials`, whose back-facing triangle uses a partially transparent base-color texture, glTF `MASK`, an explicit cutoff, and `doubleSided`. Preserve this fixture when changing imported material products, material uniforms/bind groups, raster culling, depth prepasses, or shadow pipelines.
+
 ```sh
 bin/scrapbot run examples/minimal --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png
 bin/scrapbot run examples/ecs-showcase --backend wgpu --headless --frames 20 --framegrab /tmp/scrapbot-showcase.png
@@ -175,7 +179,7 @@ Use `view_image` only when the conclusion depends on visual inspection. Start wi
 
 For interactive UI bugs, prefer a semantic script plus `--ui-dump`. A script is a versioned JSON object with an `actions` array. Actions may `click`, `hover`, `scroll`, `type`, `drag` by `delta_x`/`delta_y` or toward a semantic `destination`, send a `key`, `wait`, `expect`, or select a `capture` target. Targets match UUID, entity name, or visible text and may choose a zero-based `occurrence`; the driver automatically reveals targets through clipped ancestor scroll areas. Use destination drags for reusable lists, trees, and other target-oriented gestures so layout changes do not invalidate pixel offsets. A target `capture` overrides full-frame output unless an explicit `--framegrab-region` was supplied. Inspect `driver_action_index`, `driver_action`, and `driver_target` in a failure dump before changing code.
 
-Use `tests/fixtures/ui/reflected-inspector.json` to verify that a registry-driven field edit reaches project ECS state, marks stopped authoring dirty, and restores exactly through Undo. Extend its unit companion in `src/scrapbot/ui/ui_test.odin` when adding a new reflected field shape or specialized picker.
+Run `tests/fixtures/ui/reflected-inspector.json` against `examples/ecs-showcase` to verify that a runtime type-inspected Camera field absent from the public registry field list still appears, reaches project ECS state, marks stopped authoring dirty, and restores exactly through Undo. Extend its unit companion in `src/scrapbot/ui/ui_test.odin` when adding a new reflected field shape or specialized picker.
 
 Use `tests/fixtures/ui/typed-component-inspector.json` when changing custom field types, registry editor metadata, native component schemas, or generic numeric inspector bindings. It scrolls both nested sidebars semantically, selects the native fountain emitter, asserts separate scalar settings, scrubs an opt-in Number field, and captures the exact custom-component panel. Pair it with scene parsing, Luau typed write-back, native extension compilation, and the non-draggable numeric-input unit test.
 

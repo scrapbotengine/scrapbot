@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-21
+**Last verified:** 2026-07-22
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -19,7 +19,7 @@ Lifecycle meanings:
 | `scrapbot.keyboard_input` | Runtime input | Derived | Read-only | Singleton per-frame keyboard held/pressed/released snapshot; scheduler-visible and not entity-attached. |
 | `scrapbot.pointer_input` | Runtime input | Derived | Read-only | Singleton per-frame pointer position/delta/wheel/button snapshot; scheduler-visible and not entity-attached. |
 | `scrapbot.transform` | Spatial | Authored | Yes | UUID-parented local position, rotation, and scale; source for resolved world transforms. |
-| `scrapbot.camera` | Spatial/render | Authored | Yes | Selects camera projection data; project camera is distinct from the editor fly camera. |
+| `scrapbot.camera` | Spatial/render | Authored | Yes | Selects camera projection and linear exposure data; project camera is distinct from the editor fly camera. |
 | `scrapbot.ambient_light` | Lighting | Authored | Yes | Compact scene-wide ambient light input. |
 | `scrapbot.directional_light` | Lighting | Authored | Yes | Directional light and current shadow-map source. |
 | `scrapbot.point_light` | Lighting | Authored | Yes | Bounded local light using the entity's resolved world position. |
@@ -44,6 +44,7 @@ Lifecycle meanings:
 | `scrapbot.ui_input` | UI control | Authored | Yes | Single-line text/numeric input with focus, selection, validation, stepping, and opt-in scrubbing. |
 | `scrapbot.ui_checkbox` | UI control | Authored | Yes | Reusable SDF boolean control with read-only mode. |
 | `scrapbot.internal.render_instance` | Rendering | Derived | No | Engine-owned stable render slot derived from renderable component membership. |
+| `scrapbot.internal.editor_transform_gizmo` | Editor tooling | Derived | No | Transient selected-entity gizmo ownership and active manipulation mode. |
 <!-- inventory:engine-components:end -->
 
 ## Per-component contracts
@@ -83,11 +84,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.camera`
 
-- **Contract:** Perspective projection attached to an entity whose Transform supplies the project-camera pose.
+- **Contract:** Perspective projection and positive linear exposure attached to an entity whose Transform supplies the project-camera pose. Zero-valued legacy/programmatic components use an effective exposure of `1`; authored TOML persists an explicit positive value.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored.
 - **Producers:** Scene loading and editor/component authoring; membership is available to Luau/native commands.
-- **Consumers:** Active-camera selection, render-view construction, editor camera mesh/frustum visualization, scene picking.
-- **Invalidation:** Membership is structural; projection or Transform changes update compact camera input and selected-camera visualization.
+- **Consumers:** Active-camera selection, render-view construction, global environment/exposure uniform, visible-sky ray construction, editor camera mesh/frustum visualization, scene picking.
+- **Invalidation:** Membership is structural; projection, exposure, or Transform changes update compact camera input. Exposure changes rewrite only the environment uniform, never rebuild its panorama or cube textures.
 - **Surfaces:** Public; scene/editor expose projection fields while current Luau/native handles primarily expose membership; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotcamera).
 - **Source/tests:** `ecs/world.odin`, `render/render.odin`, `render/camera_visualizer.odin`; `render/camera_visualizer_test.odin`, `render/render_test.odin`.
 
@@ -330,6 +331,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Structural/render dirty queues mutate the affected slot; free-slot reuse and generational resources prevent complete-world stable-frame rebuilds.
 - **Surfaces:** Internal only; rejected from scene, Luau, native extension, and editor authoring surfaces.
 - **Source/tests:** `ecs/world.odin`, `render/render.odin`, `render/wgpu_gpu_driven.odin`; `ecs/world_test.odin`, `ecs/registered_components_test.odin`.
+
+### `scrapbot.internal.editor_transform_gizmo`
+
+- **Contract:** Transient editor ownership, mode, space, drag axis, and interaction state attached to the currently manipulable selected entity.
+- **Storage/lifecycle:** Dedicated editor-gizmo storage; internal derived component.
+- **Producers:** Editor selection and transform-gizmo reconciliation while the shell is visible.
+- **Consumers:** Gizmo rendering, picking, drag manipulation, and the generic read-only component inspector.
+- **Invalidation:** Selection, editor visibility, and Transform membership add or remove the exact component; interaction changes mutate only its retained slot.
+- **Surfaces:** Internal only; rejected from scene, Luau, native extension, and editor authoring surfaces, but runtime type inspection may show its read-only advanced card.
+- **Source/tests:** `ecs/editor.odin`, `render/gizmo.odin`, `ui/editor_reflection.odin`; `ecs/editor_test.odin`, `render/gizmo_test.odin`, `ui/ui_test.odin`.
 <!-- inventory:engine-component-details:end -->
 
 ## User-defined components
@@ -345,6 +356,6 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - Component attach/remove, spawn/despawn, world replacement, and relevant resource changes enqueue structural dirtiness.
 - Render-affecting value changes enqueue exact retained-extraction updates.
 - UI mutations use typed setters to advance the correct project/editor layout or paint revision.
-- `scrapbot.ui_state` and `scrapbot.internal.render_instance` must only be produced by their owning engine systems.
+- `scrapbot.ui_state`, `scrapbot.internal.render_instance`, and `scrapbot.internal.editor_transform_gizmo` must only be produced by their owning engine systems.
 
 See [ADR-007](../adr/ADR-007-use-id-keyed-component-storage.md), [ADR-024](../adr/ADR-024-update-derived-ecs-state-from-structural-changes.md), and [ADR-025](../adr/ADR-025-use-one-public-ecs-ui-contract.md).

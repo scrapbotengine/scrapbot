@@ -101,8 +101,9 @@ WGPU_GPU_Render_Uniform :: struct {
 WGPU_Material_Uniform :: struct {
 	pbr_factors: [4]f32,
 	flags: [4]f32,
+	alpha: [4]f32,
 }
-#assert(size_of(WGPU_Material_Uniform) == 32)
+#assert(size_of(WGPU_Material_Uniform) == 48)
 
 WGPU_Environment_Uniform :: struct {
 	intensity: f32,
@@ -110,9 +111,23 @@ WGPU_Environment_Uniform :: struct {
 	exposure: f32,
 	enabled: f32,
 	max_specular_lod: f32,
-	_padding: [3]f32,
+	background_intensity: f32,
+	background_rotation: f32,
+	background_exposure: f32,
+	background_blur: f32,
+	background_enabled: f32,
+	background_max_specular_lod: f32,
+	_padding: f32,
 }
-#assert(size_of(WGPU_Environment_Uniform) == 32)
+#assert(size_of(WGPU_Environment_Uniform) == 48)
+
+WGPU_Sky_Uniform :: struct {
+	right: [4]f32,
+	up: [4]f32,
+	forward: [4]f32,
+	projection: [4]f32,
+}
+#assert(size_of(WGPU_Sky_Uniform) == 64)
 
 WGPU_Draw_Batch :: struct {
 	geometry: shared.Geometry_Handle,
@@ -218,6 +233,7 @@ WGPU_Material_Cache :: struct {
 	bind_group: wgpu.BindGroup,
 	uniform_buffer: wgpu.Buffer,
 	owns_texture: [5]bool,
+	double_sided: bool,
 	valid: bool,
 }
 
@@ -314,14 +330,29 @@ WGPU_Renderer :: struct {
 	environment_bind_group: wgpu.BindGroup,
 	environment_sampler: wgpu.Sampler,
 	environment_uniform_buffer: wgpu.Buffer,
+	environment_sky_texture: wgpu.Texture,
+	environment_sky_view: wgpu.TextureView,
 	environment_irradiance_texture: wgpu.Texture,
 	environment_irradiance_view: wgpu.TextureView,
 	environment_specular_texture: wgpu.Texture,
 	environment_specular_view: wgpu.TextureView,
+	environment_background_specular_texture: wgpu.Texture,
+	environment_background_specular_view: wgpu.TextureView,
 	environment_cached_handle: shared.Environment_Handle,
 	environment_cached_version: u32,
+	environment_cached_background_handle: shared.Environment_Handle,
+	environment_cached_background_version: u32,
 	environment_cached_revision: u64,
+	environment_cached_camera_exposure: f32,
 	environment_cache_valid: bool,
+	sky_bind_group_layout: wgpu.BindGroupLayout,
+	sky_bind_group: wgpu.BindGroup,
+	sky_pipeline_layout: wgpu.PipelineLayout,
+	sky_shader: wgpu.ShaderModule,
+	sky_pipeline: wgpu.RenderPipeline,
+	sky_uniform_buffer: wgpu.Buffer,
+	sky_cached_uniform: WGPU_Sky_Uniform,
+	sky_uniform_cache_valid: bool,
 	ui_bind_group_layout: wgpu.BindGroupLayout,
 	ui_bind_group: wgpu.BindGroup,
 	ui_pipeline_layout: wgpu.PipelineLayout,
@@ -384,11 +415,20 @@ WGPU_Renderer :: struct {
 	draw_batch_cache: WGPU_Draw_Batch_Cache,
 	gpu_driven_shader: wgpu.ShaderModule,
 	gpu_driven_pipeline: wgpu.RenderPipeline,
+	gpu_driven_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_pipeline: wgpu.RenderPipeline,
+	gpu_driven_depth_double_sided_pipeline: wgpu.RenderPipeline,
+	gpu_driven_depth_mask_pipeline: wgpu.RenderPipeline,
+	gpu_driven_depth_mask_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_pipeline_layout: wgpu.PipelineLayout,
+	gpu_driven_depth_mask_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_shadow_pipeline: wgpu.RenderPipeline,
+	gpu_driven_shadow_double_sided_pipeline: wgpu.RenderPipeline,
+	gpu_driven_shadow_mask_pipeline: wgpu.RenderPipeline,
+	gpu_driven_shadow_mask_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_shadow_pipeline_layout: wgpu.PipelineLayout,
+	gpu_driven_shadow_mask_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_world_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_driven_shadow_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_shader: wgpu.ShaderModule,
@@ -921,6 +961,7 @@ wgpu_material_cache :: proc(
 		version = material.version,
 		texture_handle = material.desc.texture,
 		texture_version = texture_version,
+		double_sided = material.desc.double_sided,
 	}
 	if material.desc.texture != (shared.Texture_Handle{}) {
 		texture_cached, texture_err := wgpu_texture_cache(
@@ -1006,9 +1047,10 @@ wgpu_material_cache :: proc(
 		flags = {
 			1 if len(material.desc.emissive_image.pixels) > 0 else 0,
 			1 if material.desc.pbr else 0,
-			0,
-			0,
+			1 if material.desc.alpha_mode == .Mask else 0,
+			1 if material.desc.double_sided else 0,
 		},
+		alpha = {material.desc.alpha_cutoff, 0, 0, 0},
 	}
 	cached.uniform_buffer = wgpu.DeviceCreateBuffer(
 		renderer.device,
@@ -1384,16 +1426,21 @@ wgpu_encode_render_pass :: proc(
 ) -> string {
 	world_start := time.tick_now()
 	if err := wgpu_sync_ui_fonts(renderer, registry); err != "" { return err }
-	if err := wgpu_sync_environment(renderer, registry); err != "" { return err }
+	if err := wgpu_sync_environment(renderer, registry, &renderer.render_list); err != "" {
+		return err
+	}
 	if err := wgpu_ensure_post_targets(renderer, target_width, target_height); err != "" {
+		return err
+	}
+	if err := wgpu_encode_sky_pass(renderer, encoder, ui_state, target_width, target_height);
+	   err != "" {
 		return err
 	}
 	color_attachment := wgpu.RenderPassColorAttachment {
 		view = renderer.hdr_view,
 		depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
-		loadOp = .Clear,
+		loadOp = .Load,
 		storeOp = .Store,
-		clearValue = wgpu.Color{0.08, 0.10, 0.12, 1.0},
 	}
 	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
 		view = depth_view,
@@ -1423,26 +1470,26 @@ wgpu_encode_render_pass :: proc(
 	}
 	defer wgpu.RenderPassEncoderRelease(render_pass)
 
+	drawable_width := f32(target_width)
+	drawable_height := f32(target_height)
+	viewport := ui.editor_viewport(ui_state, drawable_width, drawable_height)
+	wgpu.RenderPassEncoderSetViewport(
+		render_pass,
+		viewport.x,
+		viewport.y,
+		viewport.width,
+		viewport.height,
+		0,
+		1,
+	)
+	wgpu.RenderPassEncoderSetScissorRect(
+		render_pass,
+		u32(viewport.x),
+		u32(viewport.y),
+		u32(viewport.width),
+		u32(viewport.height),
+	)
 	if len(batches) > 0 {
-		drawable_width := f32(target_width); drawable_height := f32(target_height)
-		viewport := ui.editor_viewport(ui_state, drawable_width, drawable_height)
-		wgpu.RenderPassEncoderSetViewport(
-			render_pass,
-			viewport.x,
-			viewport.y,
-			viewport.width,
-			viewport.height,
-			0,
-			1,
-		)
-		wgpu.RenderPassEncoderSetScissorRect(
-			render_pass,
-			u32(viewport.x),
-			u32(viewport.y),
-			u32(viewport.width),
-			u32(viewport.height),
-		)
-		wgpu.RenderPassEncoderSetPipeline(render_pass, renderer.gpu_driven_pipeline)
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, renderer.environment_bind_group)
 		for batch, batch_index in batches {
 			cached, cache_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
@@ -1453,6 +1500,11 @@ wgpu_encode_render_pass :: proc(
 				batch.material,
 			)
 			if material_err != "" { return material_err }
+			pipeline := renderer.gpu_driven_pipeline
+			if material_cached.double_sided {
+				pipeline = renderer.gpu_driven_double_sided_pipeline
+			}
+			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, batch.world_bind_group)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, material_cached.bind_group)
 			wgpu.RenderPassEncoderSetVertexBuffer(
@@ -1751,13 +1803,39 @@ wgpu_encode_depth_prepass :: proc(
 		u32(viewport.width),
 		u32(viewport.height),
 	)
-	wgpu.RenderPassEncoderSetPipeline(pass, renderer.gpu_driven_depth_pipeline)
 	for batch, batch_index in batches {
 		cached, err := wgpu_geometry_cache(renderer, registry, batch.geometry)
 		if err != "" {
 			return err
 		}
+		material, material_alive := resources.get_material(registry, batch.material)
+		if !material_alive {
+			return "render material handle is stale during depth prepass"
+		}
+		masked := material.desc.alpha_mode == .Mask
+		pipeline := renderer.gpu_driven_depth_pipeline
+		if masked {
+			pipeline = renderer.gpu_driven_depth_mask_pipeline
+		}
+		if material.desc.double_sided {
+			pipeline = renderer.gpu_driven_depth_double_sided_pipeline
+			if masked {
+				pipeline = renderer.gpu_driven_depth_mask_double_sided_pipeline
+			}
+		}
+		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 		wgpu.RenderPassEncoderSetBindGroup(pass, 0, batch.world_bind_group)
+		if masked {
+			material_cached, material_err := wgpu_material_cache(
+				renderer,
+				registry,
+				batch.material,
+			)
+			if material_err != "" {
+				return material_err
+			}
+			wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
+		}
 		wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, cached.vertex_buffer, 0, wgpu.WHOLE_SIZE)
 		wgpu.RenderPassEncoderSetIndexBuffer(
 			pass,
@@ -1841,11 +1919,37 @@ wgpu_encode_shadow_pass :: proc(
 	if pass == nil { return "failed to begin wgpu shadow pass" }
 	defer wgpu.RenderPassEncoderRelease(pass)
 	if len(batches) > 0 {
-		wgpu.RenderPassEncoderSetPipeline(pass, renderer.gpu_driven_shadow_pipeline)
 		for batch, batch_index in batches {
 			cached, err := wgpu_geometry_cache(renderer, registry, batch.geometry)
 			if err != "" { return err }
+			material, material_alive := resources.get_material(registry, batch.material)
+			if !material_alive {
+				return "render material handle is stale during shadow pass"
+			}
+			masked := material.desc.alpha_mode == .Mask
+			pipeline := renderer.gpu_driven_shadow_pipeline
+			if masked {
+				pipeline = renderer.gpu_driven_shadow_mask_pipeline
+			}
+			if material.desc.double_sided {
+				pipeline = renderer.gpu_driven_shadow_double_sided_pipeline
+				if masked {
+					pipeline = renderer.gpu_driven_shadow_mask_double_sided_pipeline
+				}
+			}
+			wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 			wgpu.RenderPassEncoderSetBindGroup(pass, 0, batch.shadow_bind_group)
+			if masked {
+				material_cached, material_err := wgpu_material_cache(
+					renderer,
+					registry,
+					batch.material,
+				)
+				if material_err != "" {
+					return material_err
+				}
+				wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
+			}
 			wgpu.RenderPassEncoderSetVertexBuffer(
 				pass,
 				0,

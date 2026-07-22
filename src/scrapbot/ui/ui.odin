@@ -371,6 +371,8 @@ State :: struct {
 	focused_input: shared.Entity,
 	has_focused_input: bool,
 	focused_input_editor: bool,
+	focused_editor_input_binding: shared.Editor_UI_Component,
+	has_focused_editor_input_binding: bool,
 	input_cursor, input_anchor: int,
 	input_scroll_x: f32,
 	input_blink_elapsed: f32,
@@ -2984,6 +2986,9 @@ clear_input_focus :: proc(state: ^State) {
 	state.input_original_text = ""
 	state.has_focused_input = false
 	state.focused_input = {}
+	state.focused_input_editor = false
+	state.focused_editor_input_binding = {}
+	state.has_focused_editor_input_binding = false
 	state.input_cursor = 0
 	state.input_anchor = 0
 	state.input_scroll_x = 0
@@ -3028,6 +3033,14 @@ focus_input :: proc(state: ^State, world: ^shared.World, entity_index: int) {
 	state.focused_input = entity.id
 	state.has_focused_input = true
 	state.focused_input_editor = entity.origin == .Editor
+	state.focused_editor_input_binding = {}
+	state.has_focused_editor_input_binding = false
+	if state.focused_input_editor &&
+	   entity.editor_ui_index >= 0 &&
+	   entity.editor_ui_index < len(world.editor_uis) {
+		state.focused_editor_input_binding = world.editor_uis[entity.editor_ui_index]
+		state.has_focused_editor_input_binding = true
+	}
 	state.input_anchor = 0
 	state.input_cursor = len(world.ui_inputs[entity.ui_input_index].text)
 	state.input_scroll_x = 0

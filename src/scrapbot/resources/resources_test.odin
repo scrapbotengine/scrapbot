@@ -472,6 +472,18 @@ test_materials_reject_non_finite_emission :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_masked_materials_validate_alpha_cutoff :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	_, err := register_material(
+		&registry,
+		"invalid-mask",
+		{base_color = {1, 1, 1, 1}, alpha_mode = .Mask, alpha_cutoff = 1.5},
+	)
+	testing.expect(t, err != "")
+}
+
+@(test)
 test_pbr_materials_clone_complete_mipmapped_image_payloads :: proc(t: ^testing.T) {
 	pixels: [20]u8
 	for &value in pixels {
@@ -553,9 +565,13 @@ test_project_environment_registration_is_stable_and_revision_driven :: proc(t: ^
 	}
 	irradiance: [24]u16
 	specular: [24]u16
+	sky: [8]u16
 	desc := Environment_Desc {
+		sky_pixels = sky[:],
 		irradiance_pixels = irradiance[:],
 		specular_pixels = specular[:],
+		sky_width = 2,
+		sky_height = 1,
 		irradiance_size = 1,
 		specular_size = 1,
 		specular_mip_count = 1,
@@ -563,21 +579,51 @@ test_project_environment_registration_is_stable_and_revision_driven :: proc(t: ^
 	handle, err := register_project_environment(&registry, declaration, desc, 96)
 	testing.expect_value(t, err, "")
 	testing.expect(t, handle != (Environment_Handle{}))
+	background_id, background_valid := shared.resource_uuid_parse(
+		"a2000000-0000-4000-8000-000000000020",
+	)
+	testing.expect(t, background_valid)
+	background_declaration := declaration
+	background_declaration.id = background_id
+	background_declaration.name = "Backdrop"
+	background_declaration.source = "backdrop.resource.toml"
+	background_declaration.environment.source = "assets/backdrop.hdr"
+	background_handle, background_err := register_project_environment(
+		&registry,
+		background_declaration,
+		desc,
+		96,
+	)
+	testing.expect_value(t, background_err, "")
+	testing.expect(t, background_handle != (Environment_Handle{}))
 	before := registry.environment_revision
 	config := shared.Project_Render_Config {
 		environment = id,
 		environment_intensity = 1.5,
 		environment_rotation = 45,
 		exposure = 0.8,
+		background_visible = true,
+		background_environment = background_id,
+		background_intensity = 0.75,
+		background_rotation = 20,
+		background_exposure = 1.1,
+		background_blur = 0.4,
 	}
 	testing.expect_value(t, configure_project_environment(&registry, config), "")
 	testing.expect_value(t, registry.active_environment, handle)
+	testing.expect_value(t, registry.background_environment, background_handle)
+	testing.expect(t, registry.background_visible)
+	testing.expect_value(t, registry.background_intensity, f32(0.75))
+	testing.expect_value(t, registry.background_rotation, f32(20))
+	testing.expect_value(t, registry.background_exposure, f32(1.1))
+	testing.expect_value(t, registry.background_blur, f32(0.4))
 	testing.expect(t, registry.environment_revision > before)
 	stable_revision := registry.environment_revision
 	testing.expect_value(t, configure_project_environment(&registry, config), "")
 	testing.expect_value(t, registry.environment_revision, stable_revision)
 
 	specular[0] = 1
+	sky[0] = 2
 	updated, update_err := register_project_environment(&registry, declaration, desc, 96)
 	testing.expect_value(t, update_err, "")
 	testing.expect_value(t, updated, handle)
@@ -585,6 +631,7 @@ test_project_environment_registration_is_stable_and_revision_driven :: proc(t: ^
 	environment, alive := get_environment(&registry, updated)
 	testing.expect(t, alive)
 	if alive {
+		testing.expect_value(t, environment.desc.sky_pixels[0], u16(2))
 		testing.expect_value(t, environment.desc.specular_pixels[0], u16(1))
 	}
 }

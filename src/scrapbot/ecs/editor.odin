@@ -31,6 +31,7 @@ reconcile_editor_scene_camera :: proc(
 		fov = 60,
 		near = 0.1,
 		far = 100,
+		exposure = 1,
 	}
 	if source, ok := first_camera_instance(world); ok {
 		transform = source.transform

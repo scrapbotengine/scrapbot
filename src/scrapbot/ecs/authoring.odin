@@ -176,7 +176,12 @@ capture_registered_component_snapshot :: proc(
 		case .UI_Checkbox:
 			value.has_ui_checkbox = true
 			value.ui_checkbox = world.ui_checkboxes[entity.ui_checkbox_index]
-		case .UI_State, .Keyboard_Input, .Pointer_Input, .Derived:
+		case .UI_State,
+		     .Keyboard_Input,
+		     .Pointer_Input,
+		     .Render_Instance,
+		     .Editor_Transform_Gizmo,
+		     .Derived:
 			destroy_registered_component_snapshot(&snapshot)
 			return {}, false
 	}
@@ -336,7 +341,12 @@ apply_registered_component_snapshot :: proc(
 			_ = set_ui_input(world, entity_index, value.ui_input)
 		case .UI_Checkbox:
 			_ = set_ui_checkbox(world, entity_index, value.ui_checkbox)
-		case .UI_State, .Keyboard_Input, .Pointer_Input, .Derived:
+		case .UI_State,
+		     .Keyboard_Input,
+		     .Pointer_Input,
+		     .Render_Instance,
+		     .Editor_Transform_Gizmo,
+		     .Derived:
 			return false
 	}
 	return registered_component_is_present(world, entity_index, &definition)
@@ -584,7 +594,12 @@ set_registered_component_membership :: proc(
 				remove_transform(world, entity_index)
 			}
 		case .Camera:
-			set_optional_camera(world, entity_index, present, {fov = 60, near = 0.1, far = 1000})
+			set_optional_camera(
+				world,
+				entity_index,
+				present,
+				{fov = 60, near = 0.1, far = 1000, exposure = 1},
+			)
 			bump_component_revision(world, entity_index)
 			mark_render_entity_dirty(world, entity_index)
 		case .Ambient_Light:
@@ -738,7 +753,12 @@ set_registered_component_membership :: proc(
 			} else {
 				_ = remove_ui_component(world, entity_index, definition.name)
 			}
-		case .UI_State, .Keyboard_Input, .Pointer_Input, .Derived:
+		case .UI_State,
+		     .Keyboard_Input,
+		     .Pointer_Input,
+		     .Render_Instance,
+		     .Editor_Transform_Gizmo,
+		     .Derived:
 			return false
 	}
 	return registered_component_is_present(world, entity_index, definition) == present

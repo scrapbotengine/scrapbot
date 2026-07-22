@@ -11,6 +11,7 @@ scale = [1, 1, 1]
 fov = 45
 near = 0.1
 far = 100
+exposure = 1
 
 [[entities]]
 id = "d5100000-0000-4000-8000-000000000002"

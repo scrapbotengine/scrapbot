@@ -77,6 +77,11 @@ environment = "d4000000-0000-4000-8000-000000000002"
 environment_intensity = 1
 environment_rotation = 0
 exposure = 1
+background_visible = true
+background_intensity = 1
+background_rotation = 0
+background_exposure = 1
+background_blur = 0
 `,
     );
     writeFileSync(
@@ -186,13 +191,21 @@ resource = "d4000000-0000-4000-8000-000000000001"
     const environmentMetadata = JSON.parse(
       readFileSync(join(importedDirectory, environmentMetadataName), "utf8"),
     );
+    let specularTexels = 0;
+    for (let mip = 0; mip < 8; mip += 1) {
+      const size = Math.max(128 >> mip, 1);
+      specularTexels += size * size * 6;
+    }
+    const expectedEnvironmentBytes =
+      (1024 * 512 + 32 * 32 * 6 + specularTexels) * 4 * 2;
     if (
-      environmentMetadata.schema !== "scrapbot.environment.v2.rgba16f-ibl" ||
+      environmentMetadata.schema !== "scrapbot.environment.v3.rgba16f-sky-ibl" ||
       environmentMetadata.width !== 1024 ||
       environmentMetadata.height !== 512 ||
       environmentMetadata.irradiance_size !== 32 ||
       environmentMetadata.specular_size !== 128 ||
-      environmentMetadata.specular_mip_count !== 8
+      environmentMetadata.specular_mip_count !== 8 ||
+      environmentMetadata.byte_count !== expectedEnvironmentBytes
     ) {
       throw new Error("Studio HDRI metadata does not match the expected IBL product shape");
     }
@@ -200,7 +213,7 @@ resource = "d4000000-0000-4000-8000-000000000001"
       readFileSync(join(importedDirectory, metadataName), "utf8"),
     );
     if (
-      metadata.schema !== "scrapbot.model.v4.metallic-roughness-pbr" ||
+      metadata.schema !== "scrapbot.model.v5.alpha-materials" ||
       metadata.node_count !== 1 ||
       metadata.mesh_count !== 1 ||
       metadata.primitive_count !== 1 ||

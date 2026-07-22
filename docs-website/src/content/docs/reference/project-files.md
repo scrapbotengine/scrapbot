@@ -22,6 +22,11 @@ environment = "b1000000-0000-4000-8000-000000000004"
 environment_intensity = 1.0
 environment_rotation = 0
 exposure = 1.0
+background_visible = false
+background_intensity = 1.0
+background_rotation = 0
+background_exposure = 1.0
+background_blur = 0.0
 
 [[native_extensions]]
 name = "scrappyphysics"
@@ -45,7 +50,13 @@ Fields:
 | `render.environment` | No | UUID of a `scrapbot.environment` resource used for image-based lighting. |
 | `render.environment_intensity` | No | Finite non-negative multiplier for environment lighting; defaults to `1`. |
 | `render.environment_rotation` | No | Finite Y-axis rotation in degrees; defaults to `0`. |
-| `render.exposure` | No | Positive linear exposure multiplier applied before bloom and tone mapping; defaults to `1`. |
+| `render.exposure` | No | Positive base linear exposure multiplier applied before bloom and tone mapping; defaults to `1` and is multiplied by the active camera's exposure. |
+| `render.background_visible` | No | Enables a photographic environment background; defaults to `false`, leaving the neutral clear color. |
+| `render.background_environment` | No | Optional Environment UUID used only for the background. When omitted, a visible background uses `render.environment`. |
+| `render.background_intensity` | No | Finite non-negative background-only multiplier; defaults to `1`. |
+| `render.background_rotation` | No | Independent finite background Y rotation in degrees; defaults to `0`. |
+| `render.background_exposure` | No | Positive background-only exposure compensation multiplied by project and active-camera exposure; defaults to `1`. |
+| `render.background_blur` | No | Background blur from `0` (source-resolution panorama) to `1` (maximally prefiltered); defaults to `0`. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
 | `native_extensions.source` | Yes | Safe relative path to an Odin package directory. |
@@ -89,7 +100,7 @@ name = "Studio"
 source = "assets/studio.hdr"
 ```
 
-`source` must be a safe 2:1 Radiance `.hdr` path under `assets/`. Importing validates the panorama and derives a 32×32 diffuse irradiance cube plus an eight-level 128×128 roughness-prefiltered specular cube in linear RGBA16F. The project `[render]` table selects one Environment UUID; the runtime uploads its derived cubes only when that resource or the render settings change. The first slice lights surfaces but does not draw the environment as a visible sky and does not provide local reflection probes.
+`source` must be a safe 2:1 Radiance `.hdr` path under `assets/`. Importing preserves the source-resolution panorama and derives a 32×32 diffuse irradiance cube plus an eight-level 128×128 roughness-prefiltered specular cube in linear RGBA16F. `render.environment` selects image-based lighting independently from presentation. Backgrounds are hidden by default; `background_visible = true` opts in, and `background_environment` may select another Environment without changing the lighting source. Background intensity, rotation, exposure compensation, and blur are independent. The runtime uploads changed panoramas and cubes only when their resource versions or render settings change. Local reflection probes are not implemented yet.
 
 Material resources store shared surface data and reference Texture UUIDs:
 
@@ -117,9 +128,9 @@ name = "Crate"
 source = "assets/models/crate.glb"
 ```
 
-The importer supports triangle primitives, positions, optional normals and UV0, optional indices, TRS node hierarchies, metallic-roughness material factors, normal and occlusion strengths, emissive factors, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may come from GLB buffer views, base64 data URIs, or safe relative files beside the `.gltf`; every image dependency participates in cache invalidation. Missing normals are generated.
+The importer supports triangle primitives, positions, optional normals and UV0, optional indices, TRS node hierarchies, metallic-roughness material factors, normal and occlusion strengths, emissive factors, `OPAQUE` and alpha-cutout `MASK` materials, `alphaCutoff`, `doubleSided`, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may come from GLB buffer views, base64 data URIs, or safe relative files beside the `.gltf`; every image dependency participates in cache invalidation. Missing normals are generated.
 
-Imported images use complete RGBA8 mip chains. Base color and emissive use sRGB sampling; packed metallic-roughness, normal, and occlusion maps use linear sampling. WGPU renders these through its shared GGX material path with derivative-reconstructed normal mapping, direct ECS lights, optional imported image-based environment lighting, HDR emission, bloom, exposure, and tone mapping. Animation, skins, morph targets, matrix-authored nodes, Draco/required extensions, non-UV0 texture mappings, texture transforms, KTX2/Basis images, alpha modes, double-sided materials, and advanced material extensions are not supported yet. The importer does not yet preserve glTF sampler settings.
+Imported images use complete RGBA8 mip chains. Base color and emissive use sRGB sampling; packed metallic-roughness, normal, and occlusion maps use linear sampling. WGPU renders these through its shared GGX material path with derivative-reconstructed normal mapping, direct ECS lights, optional imported image-based environment lighting, HDR emission, bloom, exposure, and tone mapping. Masked alpha is applied consistently to the color pass, depth prepass, and directional shadow pass; double-sided materials disable back-face culling and shade back faces with an inverted surface normal. `BLEND` materials fail import until Scrapbot has sorted transparent rendering. Animation, skins, morph targets, matrix-authored nodes, Draco/required extensions, non-UV0 texture mappings, texture transforms, KTX2/Basis images, and advanced material extensions are not supported yet. The importer does not yet preserve glTF sampler settings.
 
 Generated icosphere LOD resources store one stable geometry identity plus up to four tessellation levels:
 
@@ -173,9 +184,10 @@ Camera:
 fov = 60
 near = 0.1
 far = 100
+exposure = 1
 ```
 
-A camera reads its world position and Euler orientation from the entity's resolved transform chain. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll.
+A camera reads its world position and Euler orientation from the entity's resolved transform chain. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll. `exposure` is a positive linear multiplier, defaults to `1`, and combines with `render.exposure` for the active camera.
 
 Built-in primitive convenience:
 

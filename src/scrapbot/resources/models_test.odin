@@ -148,6 +148,9 @@ test_project_model_registers_embedded_base_color_image_on_generated_material :: 
 	material, material_alive := get_material(&registry, model.material_handles[0])
 	testing.expect(t, material_alive)
 	if material_alive {
+		testing.expect_value(t, material.desc.alpha_mode, shared.Material_Alpha_Mode.Mask)
+		testing.expect_value(t, material.desc.alpha_cutoff, f32(0.4))
+		testing.expect(t, material.desc.double_sided)
 		testing.expect_value(t, material.desc.texture_width, u32(8))
 		testing.expect_value(t, material.desc.texture_height, u32(8))
 		testing.expect_value(t, material.desc.texture_mip_count, u32(4))

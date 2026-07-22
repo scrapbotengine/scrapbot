@@ -59,11 +59,42 @@ test_gltf_import_decodes_embedded_base_color_image :: proc(t: ^testing.T) {
 		return
 	}
 	material := model.materials[0]
+	testing.expect_value(t, material.alpha_mode, shared.Material_Alpha_Mode.Mask)
+	testing.expect_value(t, material.alpha_cutoff, f32(0.4))
+	testing.expect(t, material.double_sided)
 	testing.expect_value(t, material.base_color_image.width, u32(8))
 	testing.expect_value(t, material.base_color_image.height, u32(8))
 	testing.expect_value(t, material.base_color_image.mip_count, u32(4))
 	testing.expect_value(t, len(material.base_color_image.pixels), (8 * 8 + 4 * 4 + 2 * 2 + 1) * 4)
 	testing.expect_value(t, material.base_color.x, f32(0.5))
+}
+
+@(test)
+test_gltf_import_rejects_blended_materials_until_transparent_draws_are_sorted :: proc(
+	t: ^testing.T,
+) {
+	declaration := model_test_declaration()
+	root := make_named_model_test_project(
+		t,
+		"tests/fixtures/gltf/assets/triangle.gltf",
+		"triangle.gltf",
+	)
+	defer os.remove_all(root)
+	defer delete(root)
+	path, join_err := filepath.join({root, "assets/triangle.gltf"})
+	testing.expect(t, join_err == nil)
+	defer delete(path)
+	testing.expect(
+		t,
+		os.write_entire_file(
+			path,
+			`{"asset":{"version":"2.0"},"materials":[{"alphaMode":"BLEND"}]}`,
+		) ==
+		nil,
+	)
+	report := ensure_project_imports(root, []shared.Project_Resource{declaration})
+	defer destroy_report(&report)
+	testing.expect(t, report.err != "")
 }
 
 @(test)

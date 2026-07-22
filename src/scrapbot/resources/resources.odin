@@ -50,6 +50,9 @@ Material_Desc :: struct {
 	roughness_factor: f32,
 	normal_scale: f32,
 	occlusion_strength: f32,
+	alpha_mode: shared.Material_Alpha_Mode,
+	alpha_cutoff: f32,
+	double_sided: bool,
 	pbr: bool,
 	texture: Texture_Handle,
 	texture_pixels: []u8,
@@ -76,8 +79,10 @@ Texture_Desc :: struct {
 }
 
 Environment_Desc :: struct {
+	sky_pixels: []u16,
 	irradiance_pixels: []u16,
 	specular_pixels: []u16,
+	sky_width, sky_height: u32,
 	irradiance_size: u32,
 	specular_size: u32,
 	specular_mip_count: u32,
@@ -183,6 +188,12 @@ Registry :: struct {
 	environment_intensity: f32,
 	environment_rotation: f32,
 	exposure: f32,
+	background_visible: bool,
+	background_environment: Environment_Handle,
+	background_intensity: f32,
+	background_rotation: f32,
+	background_exposure: f32,
+	background_blur: f32,
 	allocator: mem.Allocator,
 }
 
@@ -254,6 +265,7 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(environment.name, allocator)
 		delete(environment.source, allocator)
 		delete(environment.asset_source, allocator)
+		delete(environment.desc.sky_pixels, allocator)
 		delete(environment.desc.irradiance_pixels, allocator)
 		delete(environment.desc.specular_pixels, allocator)
 	}
@@ -288,6 +300,12 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.environment_intensity = source.environment_intensity
 	destination.environment_rotation = source.environment_rotation
 	destination.exposure = source.exposure
+	destination.background_visible = source.background_visible
+	destination.background_environment = source.background_environment
+	destination.background_intensity = source.background_intensity
+	destination.background_rotation = source.background_rotation
+	destination.background_exposure = source.background_exposure
+	destination.background_blur = source.background_blur
 	for geometry in source.geometries {
 		cloned := geometry
 		name, name_err := strings.clone(geometry.name, allocator)
@@ -350,6 +368,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.name, _ = strings.clone(environment.name, allocator)
 		cloned.source, _ = strings.clone(environment.source, allocator)
 		cloned.asset_source, _ = strings.clone(environment.asset_source, allocator)
+		cloned.desc.sky_pixels = clone_slice(environment.desc.sky_pixels, allocator)
 		cloned.desc.irradiance_pixels = clone_slice(environment.desc.irradiance_pixels, allocator)
 		cloned.desc.specular_pixels = clone_slice(environment.desc.specular_pixels, allocator)
 		if cloned.name == "" || cloned.source == "" || cloned.asset_source == "" {
@@ -1560,6 +1579,13 @@ validate_material_desc :: proc(desc: Material_Desc) -> string {
 	   desc.occlusion_strength < 0 ||
 	   desc.occlusion_strength > 1 {
 		return "material occlusion strength must be finite and between zero and one"
+	}
+	if desc.alpha_mode == .Mask &&
+	   (math.is_nan(desc.alpha_cutoff) ||
+			   math.is_inf(desc.alpha_cutoff) ||
+			   desc.alpha_cutoff < 0 ||
+			   desc.alpha_cutoff > 1) {
+		return "material alpha cutoff must be finite and between zero and one"
 	}
 	if len(desc.texture_pixels) > 0 {
 		if err := validate_material_image(

@@ -58,7 +58,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_checkbox` | UI content | Boolean control. |
 <!-- inventory:public-engine-components:end -->
 
-`scrapbot.internal.render_instance` is the only engine-registered internal component. Render reconciliation adds or removes it when an entity's Transform, geometry, and material references become renderable. It is intentionally unavailable to scene files, project Luau, native extensions, and editor authoring.
+The engine also registers two internal derived components. Render reconciliation adds or removes `scrapbot.internal.render_instance` when an entity's Transform, geometry, and material references become renderable. Editor selection reconciliation adds or removes `scrapbot.internal.editor_transform_gizmo` when the selected entity can be manipulated. Both may appear as collapsed, read-only cards in the runtime type-inspected editor, but are intentionally unavailable to scene files, project Luau, native extensions, component membership actions, and persistence.
 
 ## Runtime input singletons
 
@@ -91,8 +91,9 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `fov` | number | Vertical field of view in degrees. The editor constrains authored values to 1–179. |
 | `near` | number | Positive near clipping plane. |
 | `far` | number | Far clipping plane, greater than `near`. |
+| `exposure` | number | Positive linear camera-exposure multiplier. Defaults to `1` and multiplies project render exposure. |
 
-The camera reads position and orientation from a Transform on the same entity. Its Luau component handle currently exposes membership only; camera field mutation is an editor/scene-authoring surface in this slice.
+The camera reads position and orientation from a Transform on the same entity. The active camera's exposure affects direct lighting, image-based lighting, the visible environment, emission, and bloom together before tone mapping. Its Luau component handle currently exposes membership only; camera field mutation is an editor/scene-authoring surface in this slice.
 
 ### `scrapbot.mesh`
 

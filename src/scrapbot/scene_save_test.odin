@@ -52,6 +52,20 @@ test_scene_float_format_is_short_human_readable_and_roundtrips_f32 :: proc(t: ^t
 }
 
 @(test)
+test_scene_camera_serialization_persists_effective_exposure :: proc(t: ^testing.T) {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	entity := shared.Scene_Entity {
+		id = shared.entity_uuid_from_engine_name("scene-save-camera"),
+		name = "Camera",
+		has_camera = true,
+		camera = {fov = 60, near = 0.1, far = 100, exposure = 1.5},
+	}
+	write_scene_entity(&builder, &entity)
+	testing.expect(t, strings.contains(strings.to_string(builder), "exposure = 1.5"))
+}
+
+@(test)
 test_scene_save_patches_scene_entities_by_uuid_and_preserves_source_structure :: proc(
 	t: ^testing.T,
 ) {

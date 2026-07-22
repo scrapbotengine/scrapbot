@@ -128,6 +128,12 @@ environment = "a1000000-0000-4000-8000-000000000021"
 environment_intensity = 1.25
 environment_rotation = 90
 exposure = 0.8
+background_visible = true
+background_environment = "a1000000-0000-4000-8000-000000000021"
+background_intensity = 0.7
+background_rotation = 45
+background_exposure = 1.1
+background_blur = 0.25
 `,
 	)
 	defer destroy_project_config(&config)
@@ -136,6 +142,12 @@ exposure = 0.8
 	testing.expect_value(t, config.render.environment_intensity, f32(1.25))
 	testing.expect_value(t, config.render.environment_rotation, f32(90))
 	testing.expect_value(t, config.render.exposure, f32(0.8))
+	testing.expect(t, config.render.background_visible)
+	testing.expect_value(t, config.render.background_environment, resource.id)
+	testing.expect_value(t, config.render.background_intensity, f32(0.7))
+	testing.expect_value(t, config.render.background_rotation, f32(45))
+	testing.expect_value(t, config.render.background_exposure, f32(1.1))
+	testing.expect_value(t, config.render.background_blur, f32(0.25))
 	testing.expect(
 		t,
 		validate_project_environment_reference(&config, []shared.Project_Resource{resource}) == "",
@@ -146,6 +158,27 @@ exposure = 0.8
 	testing.expect(
 		t,
 		validate_project_environment_reference(&config, []shared.Project_Resource{wrong}) != "",
+	)
+	background := resource
+	background.id, _ = shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000022")
+	separate_background := config
+	separate_background.render.background_environment = background.id
+	testing.expect(
+		t,
+		validate_project_environment_reference(
+			&separate_background,
+			[]shared.Project_Resource{resource, background},
+		) ==
+		"",
+	)
+	background.kind = .Texture
+	testing.expect(
+		t,
+		validate_project_environment_reference(
+			&separate_background,
+			[]shared.Project_Resource{resource, background},
+		) !=
+		"",
 	)
 }
 
@@ -170,6 +203,28 @@ exposure = 0
 	)
 	defer destroy_project_config(&config)
 	testing.expect(t, config_result.err == .Invalid_Field)
+
+	invalid_background, invalid_background_result := parse_project_config(
+		`name = "Invalid Background"
+default_scene = "scenes/main.scene.toml"
+[render]
+background_visible = true
+background_blur = 1.5
+`,
+	)
+	defer destroy_project_config(&invalid_background)
+	testing.expect(t, invalid_background_result.err == .Invalid_Field)
+
+	missing_background, missing_background_result := parse_project_config(
+		`name = "Missing Background"
+default_scene = "scenes/main.scene.toml"
+[render]
+background_visible = true
+`,
+	)
+	defer destroy_project_config(&missing_background)
+	testing.expect(t, missing_background_result.err == .None)
+	testing.expect(t, validate_project_environment_reference(&missing_background, nil) != "")
 }
 
 @(test)
@@ -479,6 +534,52 @@ test_default_scene_template_mints_fresh_entity_ids :: proc(t: ^testing.T) {
 		testing.expect(t, first.entities[0].id != second.entities[0].id)
 		testing.expect(t, first.entities[1].id != second.entities[1].id)
 	}
+}
+
+@(test)
+test_scene_camera_exposure_is_positive_and_defaults_to_one :: proc(t: ^testing.T) {
+	with_exposure, with_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000090"
+name = "Camera"
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+exposure = 1.5
+`,
+	)
+	defer destroy_scene(&with_exposure)
+	testing.expect(t, with_result.err == .None)
+	testing.expect_value(t, with_exposure.entities[0].camera.exposure, f32(1.5))
+
+	default_exposure, default_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000091"
+name = "Camera"
+
+[entities.camera]
+fov = 60
+near = 0.1
+far = 100
+`,
+	)
+	defer destroy_scene(&default_exposure)
+	testing.expect(t, default_result.err == .None)
+	testing.expect_value(t, default_exposure.entities[0].camera.exposure, f32(1))
+
+	invalid, invalid_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000092"
+name = "Camera"
+
+[entities.camera]
+exposure = 0
+`,
+	)
+	defer destroy_scene(&invalid)
+	testing.expect(t, invalid_result.err == .Invalid_Field)
 }
 
 @(test)

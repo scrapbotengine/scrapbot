@@ -15,7 +15,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The `wgpu` backend renders full indexed geometry with shared metallic-roughness GGX materials, mipmapped base-color/normal/occlusion/emissive images, a perspective camera, ambient/directional/point lighting, and optional project-wide image-based environment lighting.
 - The first directional light produces a fixed-resolution shadow map. Only entities with `ShadowCaster` contribute depth, and only entities with `ShadowReceiver` sample it.
 - Lights are ECS components extracted into a bounded backend-neutral frame packet: accumulated ambient light, four directional lights, and sixteen point lights.
-- Base-color and emissive images use sRGB sampling while metallic-roughness, normal, occlusion, and imported environment cubes remain linear. Diffuse irradiance and roughness-prefiltered specular reflection join direct GGX lighting and emission in a floating-point HDR target; project exposure scales that result before bright energy feeds a five-level bloom chain and the world is tone mapped once into an sRGB target.
+- Base-color and emissive images use sRGB sampling while metallic-roughness, normal, occlusion, and imported environment products remain linear. Diffuse irradiance and roughness-prefiltered specular reflection join direct GGX lighting and emission in a floating-point HDR target. Environment lighting leaves the neutral background intact unless a project opts into an independently selected and presented panorama. Project base exposure multiplied by active-camera exposure scales the complete HDR world before bright energy feeds a five-level bloom chain and the world is tone mapped once into an sRGB target.
 - Project UI, transform gizmos, editor-only project-camera bodies and projection frusta, and editor chrome render after world postprocessing and do not bloom.
 - Eligible entities receive internal render-instance components automatically.
 - Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
@@ -91,7 +91,7 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 **Decision:** Treat authored material colors as sRGB, decode them before lighting, apply an ACES-style curve to the HDR result, and prefer sRGB render targets for presentation and framegrabs.
 **Why:** Directly adding strong light contributions to display-space colors clips channels independently, washes out saturated lights, and produces inconsistent output across UNORM and sRGB targets.
-**Tradeoff:** The first shader uses fixed exposure and a compact approximation rather than a configurable camera exposure and complete color-management pipeline.
+**Tradeoff:** Exposure is a linear authored multiplier rather than a photographic EV model, automatic exposure, or a complete color-management pipeline.
 
 ### 10. Make shadow participation explicit
 
@@ -109,13 +109,19 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 **Decision:** Render the world into a floating-point target, build five successively smaller bloom levels with one compute pass, composite them with the HDR scene, tone map once, and draw UI afterward.
 **Why:** Bloom requires values above display white, broad halos need multiple spatial scales, and text must remain crisp. See ADR-029.
-**Tradeoff:** The current threshold, bloom weights, and exposure are fixed engine defaults. The compute pyramid requires storage-texture support for the floating-point bloom format, while the final composite remains a fullscreen render pass.
+**Tradeoff:** Bloom threshold and weights remain fixed engine defaults. The compute pyramid requires storage-texture support for the floating-point bloom format, while the final composite remains a fullscreen render pass.
 
 ### 13. Keep visibility and indirect state in the backend
 
 **Decision:** Preserve stable ECS render slots and a dirty-updated retained render list while WGPU owns persistent instance storage, retained grow-only batch membership, compute frustum culling, per-batch visible-instance compaction, and indexed indirect arguments. Camera and shadow visibility use separate outputs. See ADR-034.
 **Why:** Unchanged instance data should stay resident, active renderables should not be rescanned, membership churn in an existing batch should not rebuild the draw database, and project/ECS data should remain independent from WGPU objects.
 **Tradeoff:** The path has an explicit 131,072-slot limit, uses conservative bounding spheres, requires one previous frame with stable camera and instance data before Hi-Z rejection, and still encodes one indirect call per CPU-retained geometry/material/LOD batch. The draw database itself grows instead of imposing a fixed batch ceiling.
+
+### 14. Compose the imported environment as the HDR sky and support camera exposure
+
+**Decision:** Keep image-based lighting and visible backgrounds independent. Preserve every imported Environment's source-resolution linear panorama for an optional infinite camera-oriented background, while using importer-built irradiance and prefiltered specular cubes for lighting. Backgrounds are hidden by default and may select another Environment plus independent intensity, rotation, exposure compensation, and blur. Project and active-camera exposure still apply to the complete HDR world.
+**Why:** Lighting probes are useful even when their photographic capture is unsuitable as scenery. A compact reflection cube is not an acceptable sharp background, while an intentionally blurred backdrop can reuse its prefiltered levels. Independent presentation avoids coupling art direction to physically useful reflections.
+**Tradeoff:** Environment products retain both the full panorama and compact lighting cubes, and an enabled background keeps another prefiltered cube resident. There is no photographic EV calibration, automatic exposure, panorama mip chain, or local reflection-probe blending yet.
 
 ## Related
 

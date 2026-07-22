@@ -46,6 +46,26 @@ playback transport → simulation delta → cached schedule plan
 
 Native chunk descriptors compile into retained per-system plans that resolve the candidate storage and typed field-array indices once. Ordinary chunks then traverse the retained active set and address fields directly; a world replacement, schema revision, or newly appearing storage family invalidates the plan. Chunks still copy supported fields into extension-owned scratch arrays and commit only explicitly marked writable lanes, so ABI amortization and SIMD do not expose ECS storage or broaden dirty propagation. Systems declare reads/writes; structural changes are deferred until iteration finishes.
 
+## Component inspection and authoring
+
+```text
+selected entity + component-registry membership
+                    │
+          storage-kind payload locator
+                    │
+        ┌───────────┴────────────┐
+Odin runtime struct fields   dynamic registry schema
+        └───────────┬────────────┘
+                    │
+       generic panel/table/control pool
+                    │
+      validated component-scoped snapshot
+                    │
+       exact ECS mutation + undo/history
+```
+
+The editor has no component-specific panel catalog. Every attached registry definition produces a card from its runtime name and canonical payload shape; marker payloads produce title-only cards, while derived or unsupported fields remain read-only and start collapsed. Storage adapters locate canonical values but cannot choose rows. Reusable controls specialize only by reflected type or semantic metadata. Staged input remains local until commit; completed authored edits capture and apply only the affected registered-component snapshot rather than replacing the complete entity.
+
 Input singletons are committed once before the schedule runs. Luau and native systems read the same immutable held/pressed/released snapshot and declare `scrapbot.keyboard_input` or `scrapbot.pointer_input` access without allocating synthetic entities or scanning entity storage.
 
 Each native worker and the Luau runtime retain a private deferred-command buffer. A compact header stream preserves issue order while spawn, despawn, add-component, and remove-component payloads grow in separate typed arrays. Queued spawns and component additions pool only the custom/UI components actually present; schema-backed custom-component headers then reference separate Number, Vec2, Vec3, and Vec4 arrays containing only fields that were supplied. This keeps the fixed-capacity ABI staging structs at the extension boundary without retaining their unused capacity in the engine queue. Buffers start small, grow geometrically without an arbitrary command-count ceiling, merge with payload-index and field-range remapping in deterministic schedule order, and retain their per-array high-water capacities for reuse. Fixed limits apply to caller-owned ABI staging payloads, not to how many lifecycle commands a frame may produce or how much unused payload capacity each queued command reserves.
@@ -68,12 +88,12 @@ typed ECS/resource mutation
                                       │
                       persistent WGPU instance/draw database
                                       │
-           compute cull + shadow + depth/world + bloom/composite
+           compute cull + shadow + depth/sky/world + bloom/composite
                                       │
                        retained UI streams + presentation
 ```
 
-Cameras and bounded lights are compact frame inputs. Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. WGPU reuses retained batch membership for Transform-only changes, uploads a compact position/rotation/scale/local-bounds record for each dirty slot, and expands only those slots into model matrices, normal matrices, and world bounds on the GPU before culling. When legal despawn/reuse churn leaves an authoritative retained slot inactive in the backend, the Transform path reconciles only that slot's static state before continuing. Render-list integrity checks enforce current entity generations and both entity-to-instance and slot-to-instance ownership. Material content revisions trigger a one-time dependent-instance pass only when material state changes. WGPU then replaces only that Material handle/version's PBR factor uniform, bind group, and owned image textures; stable materials reuse their complete GPU cache entry. Static instance fields remain resident unless their own sources change.
+Cameras and bounded lights are compact frame inputs. Project render configuration resolves one optional lighting Environment and a separately optional visible-background Environment. Active-camera pose/FOV construct the background ray basis, while its exposure multiplies project exposure in the shared environment uniform; changing only exposure, background intensity/rotation/exposure/blur, or visibility rewrites that uniform without rebuilding imported textures. Exact lighting/background handle or content-version changes rebuild the combined environment binding. Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. WGPU reuses retained batch membership for Transform-only changes, uploads a compact position/rotation/scale/local-bounds record for each dirty slot, and expands only those slots into model matrices, normal matrices, and world bounds on the GPU before culling. When legal despawn/reuse churn leaves an authoritative retained slot inactive in the backend, the Transform path reconciles only that slot's static state before continuing. Render-list integrity checks enforce current entity generations and both entity-to-instance and slot-to-instance ownership. Material content revisions trigger a one-time dependent-instance pass only when material state changes. WGPU then replaces only that Material handle/version's PBR factor uniform, bind group, and owned image textures; stable materials reuse their complete GPU cache entry. Static instance fields remain resident unless their own sources change.
 
 ## Performance diagnostics
 

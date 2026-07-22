@@ -1,10 +1,10 @@
 {
-  "asset": {"version": "2.0", "generator": "Scrapbot textured model fixture"},
+  "asset": {"version": "2.0", "generator": "Scrapbot masked material fixture"},
   "scene": 0,
   "scenes": [{"nodes": [0]}],
-  "nodes": [{"name": "Textured Node", "mesh": 0}],
+  "nodes": [{"name": "Masked Node", "mesh": 0}],
   "meshes": [{
-    "name": "Textured Mesh",
+    "name": "Masked Mesh",
     "primitives": [{
       "attributes": {"POSITION": 0, "TEXCOORD_0": 1},
       "indices": 2,
@@ -12,19 +12,21 @@
     }]
   }],
   "materials": [{
-    "name": "Embedded Checker",
+    "name": "Masked Double-Sided",
     "alphaMode": "MASK",
     "alphaCutoff": 0.4,
     "doubleSided": true,
     "pbrMetallicRoughness": {
-      "baseColorFactor": [0.5, 0.75, 1.0, 1.0],
-      "baseColorTexture": {"index": 0}
+      "baseColorFactor": [0.2, 0.8, 1.0, 1.0],
+      "baseColorTexture": {"index": 0},
+      "metallicFactor": 0.0,
+      "roughnessFactor": 0.8
     }
   }],
   "textures": [{"source": 0}],
   "images": [{
     "name": "Checker",
-    "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAAAAAAAAQCEeRdzAAAAP0lEQVR4nGNUf3GRgYHhRvAGIKmxNgDOZmHAAVgw1ULYCB03/s1hWM3AECoC1YFQu5oBohzDjlARiCKi7UADAHKZHpjMc+anAAAAAElFTkSuQmCC"
+    "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4DwEMDCACxAIAgJEN837B/94AAAAASUVORK5CYII="
   }],
   "buffers": [{
     "byteLength": 66,

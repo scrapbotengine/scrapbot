@@ -155,7 +155,7 @@ read_inspector_numeric :: proc(
 				case .Transform_Scale:
 					return axis_value(value.scale, binding.inspector_axis)
 			}
-		case .Camera_Fov, .Camera_Near, .Camera_Far:
+		case .Camera_Fov, .Camera_Near, .Camera_Far, .Camera_Exposure:
 			if target.camera_index < 0 ||
 			   target.camera_index >= len(world.cameras) { return 0, false }
 			value := world.cameras[target.camera_index]
@@ -166,6 +166,8 @@ read_inspector_numeric :: proc(
 					return value.near, true
 				case .Camera_Far:
 					return value.far, true
+				case .Camera_Exposure:
+					return shared.camera_exposure(value), true
 			}
 		case .Ambient_Color, .Ambient_Intensity:
 			if target.ambient_light_index < 0 ||
@@ -272,7 +274,7 @@ write_inspector_numeric :: proc(
 						number,
 					)
 			}
-		case .Camera_Fov, .Camera_Near, .Camera_Far:
+		case .Camera_Fov, .Camera_Near, .Camera_Far, .Camera_Exposure:
 			if target.camera_index < 0 ||
 			   target.camera_index >= len(world.cameras) { return false }
 			camera := &world.cameras[target.camera_index]
@@ -285,6 +287,8 @@ write_inspector_numeric :: proc(
 					camera.near = number
 				case .Camera_Far:
 					camera.far = number
+				case .Camera_Exposure:
+					camera.exposure = number
 			}
 			written = true
 		case .Ambient_Color, .Ambient_Intensity:
@@ -838,7 +842,26 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 				desired = change.after
 			}
 			entity_index, found := ecs.entity_index_by_uuid(world, change.target_uuid)
-			if found &&
+			expected := change.after
+			if redo {
+				expected = change.before
+			}
+			definition := editor_component_definition_by_id(state, change.before, change.after)
+			current, captured := ecs.Registered_Component_Snapshot{}, false
+			if found && definition != nil {
+				current, captured = ecs.capture_registered_component_snapshot(
+					world,
+					entity_index,
+					definition,
+				)
+			}
+			matches :=
+				captured &&
+				editor_registered_component_snapshots_equal(&current, expected, definition)
+			if captured {
+				ecs.destroy_registered_component_snapshot(&current)
+			}
+			if matches &&
 			   desired != nil &&
 			   ecs.apply_registered_component_snapshot(world, entity_index, desired) {
 				editor_mark_scene_uuid_dirty(state, change.target_uuid)
@@ -1008,13 +1031,30 @@ validate_focused_editor_input :: proc(state: ^State, world: ^shared.World) {
 	}
 	binding, input_entity, found := focused_input_binding(state, world)
 	available := found && !ui_entity_or_ancestor_hidden(world, input_entity)
+	if available && state.has_focused_editor_input_binding {
+		focused := state.focused_editor_input_binding
+		available =
+			binding.role == focused.role &&
+			binding.target == focused.target &&
+			binding.resource_id == focused.resource_id &&
+			binding.inspector_field == focused.inspector_field &&
+			binding.inspector_axis == focused.inspector_axis &&
+			binding.custom_storage_index == focused.custom_storage_index &&
+			binding.custom_field_index == focused.custom_field_index &&
+			binding.reflected_component_id == focused.reflected_component_id &&
+			binding.reflected_field_index == focused.reflected_field_index
+	}
 	if available && binding.role == .Inspector_Input {
 		if binding.resource_id != (shared.Resource_UUID{}) {
 			_, available = editor_resource_number(state, binding)
 		} else {
-			_, _, available = inspector_target(world, binding)
+			_, target_index, target_available := inspector_target(world, binding)
+			available = target_available
 			if available && binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
-				_, available = editor_reflected_definition(state, binding)
+				definition, definition_found := editor_reflected_definition(state, binding)
+				available =
+					definition_found &&
+					editor_entity_has_registered_component(world, target_index, definition)
 			} else if available {
 				entity := world.entities[input_entity]
 				if entity.ui_input_index >= 0 &&

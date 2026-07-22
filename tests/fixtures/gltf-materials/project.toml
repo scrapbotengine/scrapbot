@@ -1,0 +1,6 @@
+name = "glTF Material Fixture"
+default_scene = "scenes/main.scene.toml"
+
+[window]
+width = 640
+height = 360

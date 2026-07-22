@@ -28,7 +28,7 @@ The world also records how an entity entered it: scene-authored, runtime-spawned
 
 ## Components and the registry
 
-The component registry is the shared contract between scene loading, Luau, native extensions, inspectors, UI, and engine reconciliation. Register a component schema before loading values that use it.
+The component registry is the shared contract between scene loading, Luau, native extensions, inspectors, UI, and engine reconciliation. Register a component schema before loading values that use it. The editor never carries a parallel catalog of component panels: it enumerates registry membership and derives each card and row at runtime from the canonical typed payload, using the registry schema as runtime type metadata for dynamic project/native components.
 
 Naming communicates ownership:
 

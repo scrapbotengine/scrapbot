@@ -341,20 +341,47 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_driven_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_pipeline)
 	}
+	if renderer.gpu_driven_double_sided_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_double_sided_pipeline)
+	}
 	if renderer.gpu_driven_depth_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_pipeline)
+	}
+	if renderer.gpu_driven_depth_double_sided_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_double_sided_pipeline)
+	}
+	if renderer.gpu_driven_depth_mask_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_mask_pipeline)
+	}
+	if renderer.gpu_driven_depth_mask_double_sided_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_mask_double_sided_pipeline)
 	}
 	if renderer.gpu_driven_depth_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_driven_depth_pipeline_layout)
 	}
+	if renderer.gpu_driven_depth_mask_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.gpu_driven_depth_mask_pipeline_layout)
+	}
 	if renderer.gpu_driven_shadow_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_shadow_pipeline)
+	}
+	if renderer.gpu_driven_shadow_double_sided_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_shadow_double_sided_pipeline)
+	}
+	if renderer.gpu_driven_shadow_mask_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_shadow_mask_pipeline)
+	}
+	if renderer.gpu_driven_shadow_mask_double_sided_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_driven_shadow_mask_double_sided_pipeline)
 	}
 	if renderer.gpu_driven_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_driven_pipeline_layout)
 	}
 	if renderer.gpu_driven_shadow_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_driven_shadow_pipeline_layout)
+	}
+	if renderer.gpu_driven_shadow_mask_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.gpu_driven_shadow_mask_pipeline_layout)
 	}
 	if renderer.gpu_driven_world_bind_group_layout != nil {
 		wgpu.BindGroupLayoutRelease(renderer.gpu_driven_world_bind_group_layout)
