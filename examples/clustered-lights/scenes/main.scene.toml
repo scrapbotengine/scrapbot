@@ -1,0 +1,51 @@
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000001"
+name = "Main Camera"
+
+[entities.transform]
+position = [0, 3.9, 14]
+rotation = [-0.02, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 62
+near = 0.1
+far = 120
+exposure = 0.95
+
+[entities.components.camera_drift]
+origin = [0, 3.9, 14]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000002"
+name = "Night Environment"
+
+[entities.world_environment]
+lighting = ""
+lighting_intensity = 1
+lighting_rotation = 0
+exposure = 1
+background_visible = true
+background = ""
+background_intensity = 1
+background_rotation = 0
+background_exposure = 0.35
+background_blur = 0
+sky_tint = [0.035, 0.045, 0.09]
+ground_color = [0.006, 0.008, 0.018]
+turbidity = 1.8
+atmosphere_thickness = 0.45
+horizon_softness = 0.8
+sun_direction = [-0.35, -0.8, -0.48]
+sun_color = [0.25, 0.35, 0.65]
+sun_intensity = 0.04
+sun_size = 0.35
+sun_glow = 0.15
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000003"
+name = "Deep Ambient"
+
+[entities.ambient_light]
+color = [0.08, 0.11, 0.2]
+intensity = 0.11

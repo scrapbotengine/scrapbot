@@ -40,3 +40,9 @@ For a visual high-churn workload driven by retained native query chunks and SIMD
 ```sh
 mise scrapbot run examples/ecs-stress --editor
 ```
+
+Fill a neon architectural tunnel with 240 animated GPU-clustered point lights:
+
+```sh
+mise scrapbot run examples/clustered-lights --editor
+```

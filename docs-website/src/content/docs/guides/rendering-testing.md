@@ -32,6 +32,12 @@ With `--editor`, WGPU fills the complete central project viewport with world ren
 bin/scrapbot run examples/ecs-showcase --backend wgpu --editor --headless --frames 20 --framegrab /tmp/scrapbot-editor.png
 ```
 
+Use `examples/clustered-lights` as the interactive clustered-lighting showcase. It distributes 240 animated HDR point lights through a long architectural tunnel, with shared emissive marker batches and locally illuminated surfaces that make cluster boundaries and light range visually meaningful:
+
+```sh
+mise scrapbot -- run examples/clustered-lights --editor
+```
+
 ```sh
 scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png
 ```
