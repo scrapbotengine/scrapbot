@@ -4,9 +4,9 @@ name = "World Environment"
 
 [entities.world_environment]
 lighting = "5a000000-0000-4000-8000-000000000002"
-lighting_intensity = 0.55
+lighting_intensity = 0.2
 lighting_rotation = 25
-exposure = 1
+exposure = 0.9
 background_visible = true
 background = ""
 background_intensity = 1
@@ -29,23 +29,23 @@ id = "5a100000-0000-4000-8000-000000000002"
 name = "Main Camera"
 
 [entities.transform]
-position = [-12, 1.8, 0]
+position = [-10, 1.8, 0]
 rotation = [-0.02, 1.5708, 0]
 scale = [1, 1, 1]
 
 [entities.camera]
-fov = 58
+fov = 55
 near = 0.1
 far = 100
-exposure = 1
+exposure = 0.9
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000003"
 name = "Soft Ambient"
 
 [entities.ambient_light]
-color = [0.42, 0.5, 0.68]
-intensity = 0.16
+color = [0.3, 0.4, 0.62]
+intensity = 0.04
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000004"
@@ -53,8 +53,8 @@ name = "Sun"
 
 [entities.directional_light]
 direction = [-0.45, -0.72, -0.53]
-color = [1, 0.82, 0.62]
-intensity = 2.2
+color = [1, 0.8, 0.58]
+intensity = 0.65
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000005"
@@ -74,126 +74,154 @@ resource = "5a000000-0000-4000-8000-000000000001"
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000010"
-name = "Warm Hall Light 1"
+name = "Warm Arcade Light 1"
 
 [entities.transform]
-position = [-9, 4.2, -5]
+position = [-8, 2.8, -3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [1, 0.42, 0.16]
-intensity = 34
-range = 8
+color = [1, 0.28, 0.08]
+intensity = 28
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000011"
-name = "Warm Hall Light 2"
+name = "Warm Arcade Light 2"
 
 [entities.transform]
-position = [0, 4.2, -5]
+position = [-2, 2.8, -3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [1, 0.52, 0.22]
-intensity = 34
-range = 8
+color = [1, 0.38, 0.1]
+intensity = 28
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000012"
-name = "Warm Hall Light 3"
+name = "Warm Arcade Light 3"
 
 [entities.transform]
-position = [9, 4.2, -5]
+position = [4, 2.8, -3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [1, 0.42, 0.16]
-intensity = 34
-range = 8
+color = [1, 0.28, 0.08]
+intensity = 28
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000013"
-name = "Cool Hall Light 1"
+name = "Cool Arcade Light 1"
 
 [entities.transform]
-position = [-9, 4.2, 0]
+position = [-8, 2.8, 3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [0.18, 0.48, 1]
-intensity = 30
-range = 8
+color = [0.08, 0.32, 1]
+intensity = 24
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000014"
-name = "Cool Hall Light 2"
+name = "Cool Arcade Light 2"
 
 [entities.transform]
-position = [0, 4.2, 0]
+position = [-2, 2.8, 3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [0.28, 0.62, 1]
-intensity = 30
-range = 8
+color = [0.08, 0.48, 1]
+intensity = 24
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000015"
-name = "Cool Hall Light 3"
+name = "Cool Arcade Light 3"
 
 [entities.transform]
-position = [9, 4.2, 0]
+position = [4, 2.8, 3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [0.18, 0.48, 1]
-intensity = 30
-range = 8
+color = [0.08, 0.32, 1]
+intensity = 24
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000016"
-name = "Warm Hall Light 4"
+name = "Warm Arcade Light 4"
 
 [entities.transform]
-position = [-9, 4.2, 5]
+position = [10, 2.8, -3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [1, 0.42, 0.16]
-intensity = 34
-range = 8
+color = [1, 0.38, 0.1]
+intensity = 28
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000017"
-name = "Warm Hall Light 5"
+name = "Cool Arcade Light 4"
 
 [entities.transform]
-position = [0, 4.2, 5]
+position = [10, 2.8, 3.6]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [1, 0.52, 0.22]
-intensity = 34
-range = 8
+color = [0.08, 0.48, 1]
+intensity = 24
+range = 5.5
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000018"
-name = "Warm Hall Light 6"
+name = "Central Lantern 1"
 
 [entities.transform]
-position = [9, 4.2, 5]
+position = [-6, 5.8, 0]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
 [entities.point_light]
-color = [1, 0.42, 0.16]
-intensity = 34
-range = 8
+color = [1, 0.72, 0.32]
+intensity = 42
+range = 7
+
+[[entities]]
+id = "5a100000-0000-4000-8000-000000000019"
+name = "Central Lantern 2"
+
+[entities.transform]
+position = [0, 5.8, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [1, 0.62, 0.24]
+intensity = 42
+range = 7
+
+[[entities]]
+id = "5a100000-0000-4000-8000-000000000020"
+name = "Central Lantern 3"
+
+[entities.transform]
+position = [6, 5.8, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [1, 0.72, 0.32]
+intensity = 42
+range = 7

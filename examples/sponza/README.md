@@ -1,6 +1,6 @@
 # Sponza
 
-This example loads Khronos's glTF 2.0 Sponza scene through Scrapbot's real incremental model importer. It exercises 103 textured primitives, 25 metallic-roughness materials, alpha-cutout surfaces, imported image-based lighting, cascaded shadows, and an initial set of clustered point lights.
+This example loads Khronos's glTF 2.0 Sponza scene through Scrapbot's real incremental model importer. It exercises 103 textured primitives, 25 metallic-roughness materials, alpha-cutout surfaces, imported image-based lighting, cascaded shadows, and eleven clustered point lights arranged as warm and cool architectural pools.
 
 Install the pinned, checksum-verified external model and HDRI, then run it:
 

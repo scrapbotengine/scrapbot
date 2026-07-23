@@ -109,7 +109,7 @@ function main() {
     if (
       rendered.result?.renderables !== 103 ||
       rendered.result?.draw_batches !== 103 ||
-      rendered.result?.render_stats?.clustered_point_lights !== 9 ||
+      rendered.result?.render_stats?.clustered_point_lights !== 11 ||
       rendered.result?.render_stats?.shadow_visible_instances <= 0
     ) {
       throw new Error(
