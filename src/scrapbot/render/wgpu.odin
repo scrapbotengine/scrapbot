@@ -1314,6 +1314,7 @@ wgpu_create_material_sampler :: proc(
 	if desc.mipmap_filter == .Base_Only {
 		max_lod = 0
 	}
+	max_anisotropy := wgpu_material_sampler_anisotropy(desc)
 	return wgpu.DeviceCreateSampler(
 		renderer.device,
 		&wgpu.SamplerDescriptor {
@@ -1325,9 +1326,19 @@ wgpu_create_material_sampler :: proc(
 			minFilter = min_filter,
 			mipmapFilter = mipmap_filter,
 			lodMaxClamp = max_lod,
-			maxAnisotropy = 1,
+			maxAnisotropy = max_anisotropy,
 		},
 	)
+}
+
+wgpu_material_sampler_anisotropy :: proc(desc: shared.Texture_Sampler) -> u16 {
+	if desc.mag_filter == .Nearest ||
+	   desc.min_filter == .Nearest ||
+	   desc.mipmap_filter == .Nearest ||
+	   desc.mipmap_filter == .Base_Only {
+		return 1
+	}
+	return 8
 }
 
 wgpu_create_material_image :: proc(

@@ -51,6 +51,14 @@ test_wgpu_temporal_jitter_stays_inside_one_pixel_and_cycles :: proc(t: ^testing.
 }
 
 @(test)
+test_material_sampler_uses_anisotropy_only_with_linear_filters :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_material_sampler_anisotropy({}), u16(8))
+	testing.expect_value(t, wgpu_material_sampler_anisotropy({min_filter = .Nearest}), u16(1))
+	testing.expect_value(t, wgpu_material_sampler_anisotropy({mipmap_filter = .Nearest}), u16(1))
+	testing.expect_value(t, wgpu_material_sampler_anisotropy({mipmap_filter = .Base_Only}), u16(1))
+}
+
+@(test)
 test_wgpu_device_depth_reconstructs_view_distance :: proc(t: ^testing.T) {
 	projection := mat4_perspective(math.to_radians(f32(60)), 16.0 / 9.0, 0.1, 1000)
 	view_z: f32 = -10

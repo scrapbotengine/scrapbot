@@ -284,6 +284,16 @@ fn geometry_smith(normal: vec3<f32>, view: vec3<f32>, light: vec3<f32>, roughnes
 		geometry_schlick_ggx(max(dot(normal, light), 0.0), roughness);
 }
 
+fn filtered_roughness(normal: vec3<f32>, roughness: f32) -> f32 {
+	let normal_dx = dpdx(normal);
+	let normal_dy = dpdy(normal);
+	let variance = min(
+		0.25 * (dot(normal_dx, normal_dx) + dot(normal_dy, normal_dy)),
+		0.25,
+	);
+	return clamp(sqrt(roughness * roughness + variance), 0.045, 1.0);
+}
+
 fn mapped_normal(input: Vertex_Output, front_facing: bool) -> vec3<f32> {
 	let geometric = normalize(input.world_normal);
 	let flip = material.flags.w > 0.5 && !front_facing;
@@ -413,7 +423,10 @@ fn fs_main(
 	let base_color = texture_color * color_factor;
 	let packed = textureSample(metallic_roughness_texture, metallic_roughness_sampler, input.uv);
 	let metallic = clamp(packed.b * material.pbr_factors.x, 0.0, 1.0);
-	let roughness = clamp(packed.g * material.pbr_factors.y, 0.045, 1.0);
+	let roughness = filtered_roughness(
+		normal,
+		clamp(packed.g * material.pbr_factors.y, 0.045, 1.0),
+	);
 	let occlusion_sample = textureSample(occlusion_texture, occlusion_sampler, input.uv).r;
 	let occlusion = mix(1.0, occlusion_sample, material.pbr_factors.w);
 	let f0 = mix(vec3<f32>(0.04), base_color, metallic);
