@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 80,
+  "actions": [
+    {
+      "action": "click",
+      "target": {
+        "text": "STOP",
+        "origin": "editor"
+      }
+    },
+    {
+      "action": "expect",
+      "target": {
+        "name": "__scrapbot_editor_status_text",
+        "origin": "editor"
+      },
+      "expect": "text",
+      "text": "STOPPED"
+    },
+    {
+      "action": "wait",
+      "frames": 2
+    },
+    {
+      "action": "capture",
+      "target": {
+        "name": "__scrapbot_editor_viewport",
+        "origin": "editor"
+      }
+    }
+  ]
+}

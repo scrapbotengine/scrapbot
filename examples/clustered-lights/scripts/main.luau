@@ -22,11 +22,7 @@ local SculptureSpin = scrapbot.component("sculpture_spin", {
 }) :: SculptureSpinComponent
 
 local LightMarkerGeometry = scrapbot.geometry.sphere("cluster.marker", 0.11, 10, 6)
-local ArchitectureGeometry = scrapbot.geometry.cube("cluster.architecture", 1)
-local SculptureGeometry = scrapbot.geometry.icosphere("cluster.sculpture", 0.8, 1)
-local DarkMaterial = scrapbot.material.lit("cluster.dark", 0.18, 0.2, 0.27, 1)
-local MidMaterial = scrapbot.material.lit("cluster.mid", 0.32, 0.35, 0.45, 1)
-local SculptureMaterial = scrapbot.material.lit("cluster.sculpture", 0.45, 0.48, 0.58, 1)
+scrapbot.geometry.icosphere("cluster.sculpture", 0.8, 1)
 
 local function hsv_to_rgb(hue: number, saturation: number, value: number)
 	local sector = math.floor(hue * 6)
@@ -57,94 +53,22 @@ for index = 1, 12 do
 	)
 end
 
-local function spawn_block(
-	name: string,
-	x: number,
-	y: number,
-	z: number,
-	scale_x: number,
-	scale_y: number,
-	scale_z: number,
-	material: any
-)
-	scrapbot.spawn({
-		name = name,
-		components = {
-			["scrapbot.transform"] = {
-				position = { x = x, y = y, z = z },
-				scale = { x = scale_x, y = scale_y, z = scale_z },
-			},
-			["scrapbot.geometry"] = ArchitectureGeometry,
-			["scrapbot.material"] = material,
-			["scrapbot.shadow_caster"] = {},
-			["scrapbot.shadow_receiver"] = {},
-		},
-	})
-end
-
 scrapbot.system({
-	name = "build_cathedral",
+	name = "spawn_lights",
 	writes = {
 		scrapbot.transform,
 		scrapbot.geometry_component,
 		scrapbot.material_component,
 		scrapbot.point_light,
-		scrapbot.shadow_caster,
-		scrapbot.shadow_receiver,
 		LightMotion,
-		SculptureSpin,
 	},
 }, function(time: ScrapbotTime)
 	-- Stop replaces the ECS world without reloading this Luau environment.
-	-- Build from world-relative state so every fresh playback world gets the demo.
+	-- Spawn from world-relative state so every fresh playback world gets its lights.
 	if time.frame_index ~= 1 then return end
-
-	spawn_block("Cathedral Floor", 0, -0.35, -19, 10, 0.25, 27, DarkMaterial)
-	spawn_block("Cathedral Ceiling", 0, 8.35, -19, 10, 0.2, 27, DarkMaterial)
-	spawn_block("Cathedral Left Wall", -10.15, 4, -19, 0.2, 4.2, 27, DarkMaterial)
-	spawn_block("Cathedral Right Wall", 10.15, 4, -19, 0.2, 4.2, 27, DarkMaterial)
-	spawn_block("Cathedral End Wall", 0, 4, -46, 10, 4.2, 0.25, DarkMaterial)
 
 	for ring = 0, RING_COUNT - 1 do
 		local z = 3 - ring * 3.25
-		local rib_material = if ring % 2 == 0 then MidMaterial else DarkMaterial
-		spawn_block("Left Rib", -8.7, 3.45, z, 0.3, 3.45, 0.3, rib_material)
-		spawn_block("Right Rib", 8.7, 3.45, z, 0.3, 3.45, 0.3, rib_material)
-		spawn_block("Ceiling Rib", 0, 7.15, z, 8.7, 0.28, 0.3, rib_material)
-
-		for pedestal = -1, 1 do
-			local x = pedestal * 4.8
-			local height = 0.3 + ((ring + pedestal + 3) % 4) * 0.18
-			spawn_block("Floor Prism", x, height * 0.5 - 0.08, z, 0.62, height, 0.62, MidMaterial)
-		end
-
-		if ring % 2 == 0 then
-			scrapbot.spawn({
-				name = "Suspended Sculpture",
-				components = {
-					["scrapbot.transform"] = {
-						position = {
-							x = math.sin(ring * 1.7) * 2.4,
-							y = 3.1 + math.cos(ring * 0.9) * 0.7,
-							z = z - 1.45,
-						},
-						rotation = { x = ring * 0.17, y = ring * 0.29, z = 0 },
-						scale = { x = 0.72, y = 0.72, z = 0.72 },
-					},
-					["scrapbot.geometry"] = SculptureGeometry,
-					["scrapbot.material"] = SculptureMaterial,
-					["scrapbot.shadow_caster"] = {},
-					["scrapbot.shadow_receiver"] = {},
-					sculpture_spin = {
-						speed = {
-							x = 0.09 + ring * 0.004,
-							y = 0.18 + ring * 0.007,
-							z = 0.055,
-						},
-					},
-				},
-			})
-		end
 
 		for light_index = 0, LIGHTS_PER_RING - 1 do
 			local inner_orbit = light_index >= 12

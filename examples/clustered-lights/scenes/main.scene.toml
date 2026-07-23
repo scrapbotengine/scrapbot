@@ -49,3 +49,2598 @@ name = "Deep Ambient"
 [entities.ambient_light]
 color = [0.35, 0.42, 0.6]
 intensity = 0.55
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000100"
+name = "Cathedral Floor"
+
+[entities.transform]
+position = [0, -0.35, -19]
+rotation = [0, 0, 0]
+scale = [10, 0.25, 27]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000101"
+name = "Cathedral Ceiling"
+
+[entities.transform]
+position = [0, 8.35, -19]
+rotation = [0, 0, 0]
+scale = [10, 0.2, 27]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000102"
+name = "Cathedral Left Wall"
+
+[entities.transform]
+position = [-10.15, 4, -19]
+rotation = [0, 0, 0]
+scale = [0.2, 4.2, 27]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000103"
+name = "Cathedral Right Wall"
+
+[entities.transform]
+position = [10.15, 4, -19]
+rotation = [0, 0, 0]
+scale = [0.2, 4.2, 27]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000104"
+name = "Cathedral End Wall"
+
+[entities.transform]
+position = [0, 4, -46]
+rotation = [0, 0, 0]
+scale = [10, 4.2, 0.25]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000105"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, 3]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000106"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, 3]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000107"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, 3]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000108"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.25, 3]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000109"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.34, 3]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000010a"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.07, 3]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000010b"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [0, 3.8, 1.55]
+rotation = [0, 0, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.09, 0.18, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000010c"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -0.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000010d"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -0.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000010e"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -0.25]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000010f"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.34, -0.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000110"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.07, -0.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000111"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.16, -0.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000112"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -3.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000113"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -3.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000114"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -3.5]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000115"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.07, -3.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000116"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.16, -3.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000117"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.25, -3.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000118"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [-0.613299, 2.940959, -4.95]
+rotation = [0.34, 0.58, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.098, 0.194, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000119"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -6.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000011a"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -6.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000011b"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -6.75]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000011c"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.16, -6.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000011d"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.25, -6.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000011e"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.34, -6.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000011f"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -10]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000120"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -10]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000121"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -10]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000122"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.25, -10]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000123"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.34, -10]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000124"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.07, -10]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000125"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [1.185872, 2.472269, -11.45]
+rotation = [0.68, 1.16, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.106, 0.208, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000126"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -13.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000127"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -13.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000128"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -13.25]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000129"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.34, -13.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000012a"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.07, -13.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000012b"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.16, -13.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000012c"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -16.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000012d"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -16.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000012e"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -16.5]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000012f"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.07, -16.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000130"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.16, -16.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000131"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.25, -16.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000132"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [-1.679699, 3.544285, -17.95]
+rotation = [1.02, 1.74, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.114, 0.222, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000133"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -19.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000134"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -19.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000135"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -19.75]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000136"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.16, -19.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000137"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.25, -19.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000138"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.34, -19.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000139"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -23]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000013a"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -23]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000013b"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -23]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000013c"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.25, -23]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000013d"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.34, -23]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000013e"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.07, -23]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000013f"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [2.061988, 3.525846, -24.45]
+rotation = [1.36, 2.32, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.122, 0.236, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000140"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -26.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000141"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -26.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000142"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -26.25]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000143"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.34, -26.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000144"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.07, -26.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000145"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.16, -26.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000146"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -29.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000147"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -29.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000148"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -29.5]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000149"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.07, -29.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000014a"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.16, -29.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000014b"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.25, -29.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000014c"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [-2.307354, 2.462209, -30.95]
+rotation = [1.7, 2.9, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.13, 0.25, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000014d"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -32.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000014e"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -32.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000014f"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -32.75]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000150"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.16, -32.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000151"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.25, -32.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000152"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.34, -32.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000153"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -36]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000154"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -36]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000155"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -36]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000156"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.25, -36]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000157"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.34, -36]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000158"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.07, -36]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000159"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [2.399503, 2.963969, -37.45]
+rotation = [2.04, 3.48, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.138, 0.264, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000015a"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -39.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000015b"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -39.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000015c"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -39.25]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000015d"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.34, -39.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000015e"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.07, -39.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000015f"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.16, -39.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000160"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -42.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000161"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -42.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000162"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -42.5]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000163"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.07, -42.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000164"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.16, -42.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000165"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.25, -42.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000166"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [-2.332316, 3.799604, -43.95]
+rotation = [2.38, 4.06, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.146, 0.278, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000167"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -45.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000168"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -45.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000169"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -45.75]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000016a"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.16, -45.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000016b"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.25, -45.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000016c"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.34, -45.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000016d"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -49]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000016e"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -49]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000016f"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -49]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000170"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.25, -49]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000171"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.34, -49]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000172"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.07, -49]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000173"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [2.110255, 2.918128, -50.45]
+rotation = [2.72, 4.64, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.154, 0.292, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000174"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -52.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000175"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -52.25]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000176"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -52.25]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000177"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.34, -52.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000178"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.07, -52.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000179"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.16, -52.25]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000017a"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -55.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000017b"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -55.5]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000017c"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -55.5]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000017d"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.07, -55.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.3, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000017e"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.16, -55.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-00000000017f"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.25, -55.5]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000180"
+name = "Suspended Sculpture"
+
+[entities.transform]
+position = [-1.748066, 2.483039, -56.95]
+rotation = [3.06, 5.22, 0]
+scale = [0.72, 0.72, 0.72]
+
+[entities.geometry]
+resource = "cluster.sculpture"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000003"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[entities.components.sculpture_spin]
+speed = [0.162, 0.306, 0.055]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000181"
+name = "Left Rib"
+
+[entities.transform]
+position = [-8.7, 3.45, -58.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000182"
+name = "Right Rib"
+
+[entities.transform]
+position = [8.7, 3.45, -58.75]
+rotation = [0, 0, 0]
+scale = [0.3, 3.45, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000183"
+name = "Ceiling Rib"
+
+[entities.transform]
+position = [0, 7.15, -58.75]
+rotation = [0, 0, 0]
+scale = [8.7, 0.28, 0.3]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000184"
+name = "Floor Prism"
+
+[entities.transform]
+position = [-4.8, 0.16, -58.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.48, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000185"
+name = "Floor Prism"
+
+[entities.transform]
+position = [0, 0.25, -58.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.66, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "c1a57000-0000-4000-8000-000000000186"
+name = "Floor Prism"
+
+[entities.transform]
+position = [4.8, 0.34, -58.75]
+rotation = [0, 0, 0]
+scale = [0.62, 0.84, 0.62]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "c1a57000-1000-4000-8000-000000000002"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]

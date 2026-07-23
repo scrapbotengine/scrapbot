@@ -1,0 +1,6 @@
+id = "c1a57000-1000-4000-8000-000000000002"
+type = "scrapbot.material"
+name = "Cathedral Mid"
+
+[material]
+base_color = [0.32, 0.35, 0.45, 1]
