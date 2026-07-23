@@ -68,6 +68,7 @@ Render_Stats :: struct {
 	gpu_shadow_ms: f64,
 	gpu_world_ms: f64,
 	gpu_post_ms: f64,
+	gpu_temporal_aa_ms: f64,
 	gpu_ambient_occlusion_ms: f64,
 	gpu_bloom_ms: f64,
 	gpu_composite_ms: f64,

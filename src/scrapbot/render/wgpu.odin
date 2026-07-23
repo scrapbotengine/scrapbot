@@ -11,6 +11,7 @@ import "core:math"
 import "core:time"
 import "vendor:wgpu"
 
+Vec2 :: shared.Vec2
 Vec3 :: shared.Vec3
 Render_Instance :: shared.Render_Instance
 Camera_Instance :: shared.Camera_Instance
@@ -45,6 +46,7 @@ WGPU_GPU_Timestamp_Phase :: enum u32 {
 	Depth,
 	World,
 	HiZ,
+	Temporal_AA,
 	Ambient_Occlusion,
 	Bloom,
 	Composite,
@@ -176,6 +178,23 @@ WGPU_Ambient_Occlusion_Uniform :: struct {
 }
 #assert(size_of(WGPU_Ambient_Occlusion_Uniform) == 64)
 
+WGPU_Temporal_AA_Uniform :: struct {
+	previous_view_projection: Mat4,
+	inverse_view: Mat4,
+	projection: [4]f32,
+	previous_projection: [4]f32,
+	viewport: [4]f32,
+	parameters: [4]f32,
+}
+#assert(size_of(WGPU_Temporal_AA_Uniform) == 192)
+
+WGPU_Temporal_Camera :: struct {
+	position: Vec3,
+	forward: Vec3,
+	fov: f32,
+	has_camera: bool,
+}
+
 WGPU_Draw_Batch :: struct {
 	geometry: shared.Geometry_Handle,
 	material: shared.Material_Handle,
@@ -226,6 +245,7 @@ WGPU_GPU_Cull_Uniform :: struct {
 	camera_planes: [6][4]f32,
 	shadow_planes: [WGPU_SHADOW_CASCADE_COUNT][6][4]f32,
 	view_projection: Mat4,
+	hiz_view_projection: Mat4,
 	viewport: [4]f32,
 	camera_position: [4]f32,
 	slot_count: u32,
@@ -235,6 +255,7 @@ WGPU_GPU_Cull_Uniform :: struct {
 	shadow_visible_stride: u32,
 	_padding: [3]u32,
 }
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 672)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -512,6 +533,7 @@ WGPU_Renderer :: struct {
 	gpu_hiz_requested: bool,
 	gpu_previous_view_projection: Mat4,
 	gpu_current_view_projection: Mat4,
+	gpu_previous_depth_view_projection: Mat4,
 	gpu_instance_buffer: wgpu.Buffer,
 	gpu_transform_update_buffer: wgpu.Buffer,
 	gpu_batch_info_buffer: wgpu.Buffer,
@@ -594,8 +616,31 @@ WGPU_Renderer :: struct {
 	pipeline: wgpu.RenderPipeline,
 	shadow_pipeline: wgpu.RenderPipeline,
 	post_shader: wgpu.ShaderModule,
+	temporal_aa_shader: wgpu.ShaderModule,
 	ambient_occlusion_shader: wgpu.ShaderModule,
 	composite_shader: wgpu.ShaderModule,
+	temporal_aa_bind_group_layout: wgpu.BindGroupLayout,
+	temporal_aa_pipeline_layout: wgpu.PipelineLayout,
+	temporal_aa_pipeline: wgpu.ComputePipeline,
+	temporal_aa_uniform_buffer: wgpu.Buffer,
+	temporal_aa_bind_group: wgpu.BindGroup,
+	temporal_resolved_texture: wgpu.Texture,
+	temporal_resolved_view: wgpu.TextureView,
+	temporal_history_texture: wgpu.Texture,
+	temporal_history_view: wgpu.TextureView,
+	temporal_resolved_depth_texture: wgpu.Texture,
+	temporal_resolved_depth_view: wgpu.TextureView,
+	temporal_history_depth_texture: wgpu.Texture,
+	temporal_history_depth_view: wgpu.TextureView,
+	temporal_previous_view_projection: Mat4,
+	temporal_current_view_projection: Mat4,
+	temporal_previous_projection: [4]f32,
+	temporal_current_projection: [4]f32,
+	temporal_inverse_view: Mat4,
+	temporal_camera: WGPU_Temporal_Camera,
+	temporal_sample_index: u64,
+	temporal_history_valid: bool,
+	temporal_camera_valid: bool,
 	ambient_occlusion_bind_group_layout: wgpu.BindGroupLayout,
 	ambient_occlusion_pipeline_layout: wgpu.PipelineLayout,
 	ambient_occlusion_pipeline: wgpu.ComputePipeline,

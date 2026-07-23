@@ -354,6 +354,7 @@ wgpu_encode_hiz_pyramid :: proc(
 		wgpu.ComputePassEncoderRelease(pass)
 	}
 	renderer.gpu_previous_view_projection = renderer.gpu_current_view_projection
+	renderer.gpu_previous_depth_view_projection = renderer.temporal_current_view_projection
 	renderer.gpu_hiz_valid = true
 	return ""
 }

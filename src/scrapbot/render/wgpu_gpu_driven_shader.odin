@@ -554,6 +554,7 @@ struct Cull_Uniform {
 	camera_planes: array<vec4<f32>, 6>,
 	shadow_planes: array<array<vec4<f32>, 6>, 4>,
 	view_projection: mat4x4<f32>,
+	hiz_view_projection: mat4x4<f32>,
 	viewport: vec4<f32>,
 	camera_position: vec4<f32>,
 	slot_count: u32,
@@ -614,20 +615,22 @@ fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
 	if (dot(camera_offset, camera_offset) <= conservative_distance * conservative_distance) {
 		return false;
 	}
-	let clip = cull.view_projection * vec4<f32>(bounds.xyz, 1.0);
+	let clip = cull.hiz_view_projection * vec4<f32>(bounds.xyz, 1.0);
 	if (clip.w <= 0.0001) {
 		return false;
 	}
 	let ndc = clip.xyz / clip.w;
 	let radius_ndc = vec2<f32>(
-		abs(bounds.w * cull.view_projection[0][0] / clip.w),
-		abs(bounds.w * cull.view_projection[1][1] / clip.w)
+		abs(bounds.w * cull.hiz_view_projection[0][0] / clip.w),
+		abs(bounds.w * cull.hiz_view_projection[1][1] / clip.w)
 	) * 1.05;
 	let center_px = cull.viewport.xy + vec2<f32>(
 		(ndc.x * 0.5 + 0.5) * cull.viewport.z,
 		(0.5 - ndc.y * 0.5) * cull.viewport.w
 	);
-	let radius_px = radius_ndc * cull.viewport.zw * 0.5;
+	let radius_px =
+		radius_ndc * cull.viewport.zw * 0.5 +
+		vec2<f32>(1.0);
 	let extent = max(max(radius_px.x * 2.0, radius_px.y * 2.0), 1.0);
 	let mip = min(u32(max(ceil(log2(extent)), 0.0)), cull.hiz_mip_count - 1u);
 	let mip_size = vec2<i32>(textureDimensions(hiz_depth, i32(mip)));
@@ -639,7 +642,9 @@ fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(low.x, high.y), i32(mip)).x);
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, high, i32(mip)).x);
 	let toward_camera = normalize(cull.camera_position.xyz - bounds.xyz);
-	let nearest_clip = cull.view_projection * vec4<f32>(bounds.xyz + toward_camera * bounds.w, 1.0);
+	let nearest_clip =
+		cull.hiz_view_projection *
+		vec4<f32>(bounds.xyz + toward_camera * bounds.w, 1.0);
 	if (nearest_clip.w <= 0.0001) {
 		return false;
 	}

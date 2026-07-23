@@ -15,6 +15,103 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		return "failed to create bloom shader"
 	}
 
+	temporal_aa_chain := wgpu.ShaderSourceWGSL {
+		chain = {sType = .ShaderSourceWGSL},
+		code = WGPU_TEMPORAL_AA_SHADER,
+	}
+	renderer.temporal_aa_shader = wgpu.DeviceCreateShaderModule(
+		renderer.device,
+		&wgpu.ShaderModuleDescriptor {
+			nextInChain = &temporal_aa_chain,
+			label = "Scrapbot Temporal AA Shader",
+		},
+	)
+	if renderer.temporal_aa_shader == nil {
+		return "failed to create temporal AA shader"
+	}
+	temporal_aa_layout_entries := [?]wgpu.BindGroupLayoutEntry {
+		{
+			binding = 0,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{binding = 1, visibility = {.Compute}, sampler = {type = .Filtering}},
+		{
+			binding = 2,
+			visibility = {.Compute},
+			texture = {sampleType = .Depth, viewDimension = ._2D},
+		},
+		{
+			binding = 3,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{
+			binding = 4,
+			visibility = {.Compute},
+			texture = {sampleType = .UnfilterableFloat, viewDimension = ._2D},
+		},
+		{
+			binding = 5,
+			visibility = {.Compute},
+			storageTexture = {access = .WriteOnly, format = .RGBA16Float, viewDimension = ._2D},
+		},
+		{
+			binding = 6,
+			visibility = {.Compute},
+			storageTexture = {access = .WriteOnly, format = .R32Float, viewDimension = ._2D},
+		},
+		{
+			binding = 7,
+			visibility = {.Compute},
+			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Temporal_AA_Uniform))},
+		},
+	}
+	renderer.temporal_aa_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
+		renderer.device,
+		&wgpu.BindGroupLayoutDescriptor {
+			label = "Scrapbot Temporal AA Bind Group Layout",
+			entryCount = uint(len(temporal_aa_layout_entries)),
+			entries = raw_data(temporal_aa_layout_entries[:]),
+		},
+	)
+	if renderer.temporal_aa_bind_group_layout == nil {
+		return "failed to create temporal AA bind group layout"
+	}
+	renderer.temporal_aa_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot Temporal AA Pipeline Layout",
+			bindGroupLayoutCount = 1,
+			bindGroupLayouts = &renderer.temporal_aa_bind_group_layout,
+		},
+	)
+	if renderer.temporal_aa_pipeline_layout == nil {
+		return "failed to create temporal AA pipeline layout"
+	}
+	renderer.temporal_aa_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot Temporal AA Pipeline",
+			layout = renderer.temporal_aa_pipeline_layout,
+			compute = {module = renderer.temporal_aa_shader, entryPoint = "temporal_aa_cs"},
+		},
+	)
+	if renderer.temporal_aa_pipeline == nil {
+		return "failed to create temporal AA compute pipeline"
+	}
+	renderer.temporal_aa_uniform_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Temporal AA Uniform Buffer",
+			usage = {.Uniform, .CopyDst},
+			size = u64(size_of(WGPU_Temporal_AA_Uniform)),
+		},
+	)
+	if renderer.temporal_aa_uniform_buffer == nil {
+		return "failed to create temporal AA uniform buffer"
+	}
+
 	ambient_occlusion_chain := wgpu.ShaderSourceWGSL {
 		chain = {sType = .ShaderSourceWGSL},
 		code = WGPU_AMBIENT_OCCLUSION_SHADER,
@@ -303,10 +400,82 @@ wgpu_create_fullscreen_pipeline :: proc(
 	)
 }
 
+wgpu_create_post_texture :: proc(
+	renderer: ^WGPU_Renderer,
+	label: string,
+	width, height: u32,
+	format: wgpu.TextureFormat,
+	usage: wgpu.TextureUsageFlags,
+) -> (
+	texture: wgpu.Texture,
+	view: wgpu.TextureView,
+	err: string,
+) {
+	texture = wgpu.DeviceCreateTexture(
+		renderer.device,
+		&wgpu.TextureDescriptor {
+			label = label,
+			usage = usage,
+			dimension = ._2D,
+			size = {width = width, height = height, depthOrArrayLayers = 1},
+			format = format,
+			mipLevelCount = 1,
+			sampleCount = 1,
+		},
+	)
+	if texture == nil {
+		err = "failed to create retained post-process texture"
+		return
+	}
+	view = wgpu.TextureCreateView(texture)
+	if view == nil {
+		wgpu.TextureRelease(texture)
+		texture = nil
+		err = "failed to create retained post-process texture view"
+	}
+	return
+}
+
 wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.composite_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.composite_bind_group)
 		renderer.composite_bind_group = nil
+	}
+	if renderer.temporal_aa_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.temporal_aa_bind_group)
+		renderer.temporal_aa_bind_group = nil
+	}
+	if renderer.temporal_resolved_view != nil {
+		wgpu.TextureViewRelease(renderer.temporal_resolved_view)
+		renderer.temporal_resolved_view = nil
+	}
+	if renderer.temporal_resolved_texture != nil {
+		wgpu.TextureRelease(renderer.temporal_resolved_texture)
+		renderer.temporal_resolved_texture = nil
+	}
+	if renderer.temporal_history_view != nil {
+		wgpu.TextureViewRelease(renderer.temporal_history_view)
+		renderer.temporal_history_view = nil
+	}
+	if renderer.temporal_history_texture != nil {
+		wgpu.TextureRelease(renderer.temporal_history_texture)
+		renderer.temporal_history_texture = nil
+	}
+	if renderer.temporal_resolved_depth_view != nil {
+		wgpu.TextureViewRelease(renderer.temporal_resolved_depth_view)
+		renderer.temporal_resolved_depth_view = nil
+	}
+	if renderer.temporal_resolved_depth_texture != nil {
+		wgpu.TextureRelease(renderer.temporal_resolved_depth_texture)
+		renderer.temporal_resolved_depth_texture = nil
+	}
+	if renderer.temporal_history_depth_view != nil {
+		wgpu.TextureViewRelease(renderer.temporal_history_depth_view)
+		renderer.temporal_history_depth_view = nil
+	}
+	if renderer.temporal_history_depth_texture != nil {
+		wgpu.TextureRelease(renderer.temporal_history_depth_texture)
+		renderer.temporal_history_depth_texture = nil
 	}
 	for index in 0 ..< len(renderer.ambient_occlusion_bind_groups) {
 		if renderer.ambient_occlusion_bind_groups[index] != nil {
@@ -347,12 +516,28 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 	renderer.post_width = 0
 	renderer.post_height = 0
 	renderer.post_depth_view = nil
+	renderer.temporal_history_valid = false
 }
 
 wgpu_release_post_process :: proc(renderer: ^WGPU_Renderer) {
 	wgpu_release_post_targets(renderer)
 	if renderer.post_sampler != nil {
 		wgpu.SamplerRelease(renderer.post_sampler)
+	}
+	if renderer.temporal_aa_uniform_buffer != nil {
+		wgpu.BufferRelease(renderer.temporal_aa_uniform_buffer)
+	}
+	if renderer.temporal_aa_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.temporal_aa_pipeline)
+	}
+	if renderer.temporal_aa_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.temporal_aa_pipeline_layout)
+	}
+	if renderer.temporal_aa_bind_group_layout != nil {
+		wgpu.BindGroupLayoutRelease(renderer.temporal_aa_bind_group_layout)
+	}
+	if renderer.temporal_aa_shader != nil {
+		wgpu.ShaderModuleRelease(renderer.temporal_aa_shader)
 	}
 	if renderer.ambient_occlusion_uniform_buffer != nil {
 		wgpu.BufferRelease(renderer.ambient_occlusion_uniform_buffer)
@@ -434,6 +619,83 @@ wgpu_ensure_post_targets :: proc(
 	renderer.hdr_view = wgpu.TextureCreateView(renderer.hdr_texture)
 	if renderer.hdr_view == nil {
 		return "failed to create HDR scene texture view"
+	}
+
+	err: string
+	renderer.temporal_resolved_texture, renderer.temporal_resolved_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Temporal Resolved Color",
+			width,
+			height,
+			.RGBA16Float,
+			{.TextureBinding, .StorageBinding, .CopySrc},
+		)
+	if err != "" {
+		return err
+	}
+	renderer.temporal_history_texture, renderer.temporal_history_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Temporal History Color",
+			width,
+			height,
+			.RGBA16Float,
+			{.TextureBinding, .CopyDst},
+		)
+	if err != "" {
+		return err
+	}
+	renderer.temporal_resolved_depth_texture, renderer.temporal_resolved_depth_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Temporal Resolved Depth",
+			width,
+			height,
+			.R32Float,
+			{.StorageBinding, .CopySrc},
+		)
+	if err != "" {
+		return err
+	}
+	renderer.temporal_history_depth_texture, renderer.temporal_history_depth_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Temporal History Depth",
+			width,
+			height,
+			.R32Float,
+			{.TextureBinding, .CopyDst},
+		)
+	if err != "" {
+		return err
+	}
+	temporal_entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, textureView = renderer.hdr_view},
+		{binding = 1, sampler = renderer.post_sampler},
+		{binding = 2, textureView = depth_view},
+		{binding = 3, textureView = renderer.temporal_history_view},
+		{binding = 4, textureView = renderer.temporal_history_depth_view},
+		{binding = 5, textureView = renderer.temporal_resolved_view},
+		{binding = 6, textureView = renderer.temporal_resolved_depth_view},
+		{
+			binding = 7,
+			buffer = renderer.temporal_aa_uniform_buffer,
+			offset = 0,
+			size = u64(size_of(WGPU_Temporal_AA_Uniform)),
+		},
+	}
+	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot Temporal AA Bind Group",
+			layout = renderer.temporal_aa_bind_group_layout,
+			entryCount = uint(len(temporal_entries)),
+			entries = raw_data(temporal_entries[:]),
+		},
+	)
+	if renderer.temporal_aa_bind_group == nil {
+		return "failed to create temporal AA bind group"
 	}
 
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
@@ -530,7 +792,8 @@ wgpu_ensure_post_targets :: proc(
 	}
 
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		source := renderer.hdr_view if index == 0 else renderer.bloom_views[index - 1]
+		source :=
+			renderer.temporal_resolved_view if index == 0 else renderer.bloom_views[index - 1]
 		entries := [?]wgpu.BindGroupEntry {
 			{binding = 0, textureView = source},
 			{binding = 1, sampler = renderer.post_sampler},
@@ -552,7 +815,7 @@ wgpu_ensure_post_targets :: proc(
 	composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
 	composite_entries[0] = {
 		binding = 0,
-		textureView = renderer.hdr_view,
+		textureView = renderer.temporal_resolved_view,
 	}
 	composite_entries[1] = {
 		binding = 1,
@@ -641,15 +904,75 @@ wgpu_encode_bloom_and_composite :: proc(
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
 	projection := renderer.gpu_cluster_uniform.projection
 	viewport := renderer.gpu_cluster_uniform.viewport
+	history_valid := f32(0)
+	if renderer.temporal_history_valid {
+		history_valid = 1
+	}
+	temporal_uniform := WGPU_Temporal_AA_Uniform {
+		previous_view_projection = renderer.temporal_previous_view_projection,
+		inverse_view = renderer.temporal_inverse_view,
+		projection = renderer.temporal_current_projection,
+		previous_projection = renderer.temporal_previous_projection,
+		viewport = viewport,
+		parameters = {projection[8], projection[9], history_valid, 0.9},
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.temporal_aa_uniform_buffer,
+		0,
+		&temporal_uniform,
+		size_of(temporal_uniform),
+	)
+	temporal_timestamps, temporal_timestamps_enabled := wgpu_gpu_pass_timestamps(
+		renderer,
+		.Temporal_AA,
+	)
+	temporal_timestamps_ptr: ^wgpu.PassTimestampWrites
+	if temporal_timestamps_enabled {
+		temporal_timestamps_ptr = &temporal_timestamps
+	}
+	temporal_pass := wgpu.CommandEncoderBeginComputePass(
+		encoder,
+		&wgpu.ComputePassDescriptor {
+			label = "Scrapbot Temporal AA Compute Pass",
+			timestampWrites = temporal_timestamps_ptr,
+		},
+	)
+	if temporal_pass == nil {
+		return "failed to begin temporal AA compute pass"
+	}
+	wgpu.ComputePassEncoderSetPipeline(temporal_pass, renderer.temporal_aa_pipeline)
+	wgpu.ComputePassEncoderSetBindGroup(temporal_pass, 0, renderer.temporal_aa_bind_group)
+	wgpu.ComputePassEncoderDispatchWorkgroups(temporal_pass, (width + 7) / 8, (height + 7) / 8, 1)
+	wgpu.ComputePassEncoderEnd(temporal_pass)
+	wgpu.ComputePassEncoderRelease(temporal_pass)
+	copy_size := wgpu.Extent3D {
+		width = width,
+		height = height,
+		depthOrArrayLayers = 1,
+	}
+	wgpu.CommandEncoderCopyTextureToTexture(
+		encoder,
+		&wgpu.TexelCopyTextureInfo{texture = renderer.temporal_resolved_texture, aspect = .All},
+		&wgpu.TexelCopyTextureInfo{texture = renderer.temporal_history_texture, aspect = .All},
+		&copy_size,
+	)
+	wgpu.CommandEncoderCopyTextureToTexture(
+		encoder,
+		&wgpu.TexelCopyTextureInfo {
+			texture = renderer.temporal_resolved_depth_texture,
+			aspect = .All,
+		},
+		&wgpu.TexelCopyTextureInfo {
+			texture = renderer.temporal_history_depth_texture,
+			aspect = .All,
+		},
+		&copy_size,
+	)
 	ambient_occlusion_uniform := WGPU_Ambient_Occlusion_Uniform {
 		projection = {projection[0], projection[5], projection[10], projection[14]},
 		viewport = viewport,
-		dimensions = {
-			f32(width),
-			f32(height),
-			f32(ambient_occlusion_width),
-			f32(ambient_occlusion_height),
-		},
+		dimensions = {f32(width), f32(height), projection[8], projection[9]},
 		parameters = {1.25, 0.035, 1.35, 1.15},
 	}
 	wgpu.QueueWriteBuffer(
@@ -732,7 +1055,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	}
 	wgpu.ComputePassEncoderEnd(pass)
 	wgpu.ComputePassEncoderRelease(pass)
-	return wgpu_encode_fullscreen_pass(
+	err := wgpu_encode_fullscreen_pass(
 		renderer,
 		encoder,
 		output_view,
@@ -741,4 +1064,12 @@ wgpu_encode_bloom_and_composite :: proc(
 		"Scrapbot HDR Composite Pass",
 		.Composite,
 	)
+	if err != "" {
+		return err
+	}
+	renderer.temporal_previous_view_projection = renderer.temporal_current_view_projection
+	renderer.temporal_previous_projection = renderer.temporal_current_projection
+	renderer.temporal_history_valid = true
+	renderer.temporal_sample_index += 1
+	return ""
 }

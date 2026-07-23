@@ -42,6 +42,55 @@ test_sky_uniform_uses_active_camera_basis_projection_and_aspect :: proc(t: ^test
 }
 
 @(test)
+test_wgpu_temporal_jitter_stays_inside_one_pixel_and_cycles :: proc(t: ^testing.T) {
+	first := wgpu_temporal_jitter(0, 1280, 720)
+	repeated := wgpu_temporal_jitter(8, 1280, 720)
+	testing.expect_value(t, first, repeated)
+	testing.expect(t, math.abs(first.x) <= 1.0 / 1280.0)
+	testing.expect(t, math.abs(first.y) <= 1.0 / 720.0)
+}
+
+@(test)
+test_wgpu_device_depth_reconstructs_view_distance :: proc(t: ^testing.T) {
+	projection := mat4_perspective(math.to_radians(f32(60)), 16.0 / 9.0, 0.1, 1000)
+	view_z: f32 = -10
+	clip_z := projection[10] * view_z + projection[14]
+	clip_w := -view_z
+	depth := clip_z / clip_w
+	distance := wgpu_device_depth_to_view_distance(depth, projection)
+	testing.expect(t, math.abs(distance - 10) < 0.0001)
+}
+
+@(test)
+test_wgpu_inverse_rigid_view_roundtrips_camera_matrix :: proc(t: ^testing.T) {
+	view := mat4_look_at({3, 2, 5}, {-1, 0.5, 0}, {0, 1, 0})
+	product := mat4_mul(view, wgpu_inverse_rigid_view(view))
+	identity := mat4_identity()
+	for value, index in product {
+		testing.expect(t, math.abs(value - identity[index]) < 0.00001)
+	}
+}
+
+@(test)
+test_wgpu_temporal_camera_continuity_rejects_cuts :: proc(t: ^testing.T) {
+	camera := WGPU_Temporal_Camera {
+		position = {0, 1, 2},
+		forward = {0, 0, -1},
+		fov = 60,
+		has_camera = true,
+	}
+	moved := camera
+	moved.position.x = 0.25
+	testing.expect(t, wgpu_temporal_camera_continuous(camera, moved))
+	cut := camera
+	cut.position.x = 3
+	testing.expect(t, !wgpu_temporal_camera_continuous(camera, cut))
+	turned := camera
+	turned.forward = {1, 0, 0}
+	testing.expect(t, !wgpu_temporal_camera_continuous(camera, turned))
+}
+
+@(test)
 test_sky_uniform_upload_state_changes_only_with_camera_or_viewport :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	first := wgpu_build_sky_uniform(nil, 1280, 720)
@@ -1091,6 +1140,8 @@ test_wgpu_gpu_uniforms_upload_only_after_value_changes :: proc(t: ^testing.T) {
 	testing.expect(t, !wgpu_retain_cull_uniform(&renderer, cull_uniform))
 	cull_uniform.viewport.z = 1280
 	testing.expect(t, wgpu_retain_cull_uniform(&renderer, cull_uniform))
+	cull_uniform.hiz_view_projection[12] = 0.25
+	testing.expect(t, wgpu_retain_cull_uniform(&renderer, cull_uniform))
 }
 
 @(test)
@@ -1105,18 +1156,20 @@ test_wgpu_gpu_timing_marks_only_encoded_passes_for_the_sample :: proc(t: ^testin
 }
 
 @(test)
-test_wgpu_post_timing_includes_ambient_occlusion :: proc(t: ^testing.T) {
+test_wgpu_post_timing_includes_temporal_aa_and_ambient_occlusion :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_valid = true
+	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Temporal_AA)] = 0.125
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Ambient_Occlusion)] = 0.25
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Bloom)] = 0.50
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Composite)] = 0.75
 	stats: Render_Stats
 	wgpu_publish_gpu_timing(&renderer, &stats)
+	testing.expect_value(t, stats.gpu_temporal_aa_ms, 0.125)
 	testing.expect_value(t, stats.gpu_ambient_occlusion_ms, 0.25)
 	testing.expect_value(t, stats.gpu_bloom_ms, 0.50)
 	testing.expect_value(t, stats.gpu_composite_ms, 0.75)
-	testing.expect_value(t, stats.gpu_post_ms, 1.50)
+	testing.expect_value(t, stats.gpu_post_ms, 1.625)
 }
 
 @(test)

@@ -1819,6 +1819,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	string,
 ) {
 	slot_count := render_list.instance_slot_count
+	temporal_world_changed :=
+		renderer.gpu_topology_valid && renderer.gpu_world_uuid != render_list.world_uuid
 	if slot_count > WGPU_MAX_GPU_INSTANCES {
 		return nil, 0, "GPU-driven renderer exceeded its instance-slot capacity"
 	}
@@ -1891,6 +1893,30 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		u32(viewport.height),
 	)
 	view_projection := mat4_mul(projection, view)
+	temporal_camera := wgpu_temporal_camera_state(render_list.camera, render_list.has_camera)
+	if temporal_world_changed ||
+	   (renderer.temporal_camera_valid &&
+			   !wgpu_temporal_camera_continuous(renderer.temporal_camera, temporal_camera)) {
+		renderer.temporal_history_valid = false
+		renderer.temporal_sample_index = 0
+	}
+	renderer.temporal_camera = temporal_camera
+	renderer.temporal_camera_valid = true
+	jitter := wgpu_temporal_jitter(
+		renderer.temporal_sample_index,
+		u32(viewport.width),
+		u32(viewport.height),
+	)
+	jittered_projection := wgpu_jitter_projection(projection, jitter)
+	jittered_view_projection := mat4_mul(jittered_projection, view)
+	renderer.temporal_current_view_projection = jittered_view_projection
+	renderer.temporal_current_projection = {
+		jittered_projection[0],
+		jittered_projection[5],
+		jittered_projection[10],
+		jittered_projection[14],
+	}
+	renderer.temporal_inverse_view = wgpu_inverse_rigid_view(view)
 	if hiz_err := wgpu_ensure_hiz_targets(renderer, target_width, target_height); hiz_err != "" {
 		return nil, 0, hiz_err
 	}
@@ -1907,7 +1933,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			render_list.directional_lights[0].light.direction,
 		)
 	}
-	uniform.view_projection = view_projection
+	uniform.view_projection = jittered_view_projection
 	uniform.view = view
 	uniform.shadow_view_projections = shadow_cascades.matrices
 	uniform.shadow_cascade_splits = shadow_cascades.splits
@@ -1937,7 +1963,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			1,
 		}
 	}
-	wgpu_prepare_clustered_lighting(renderer, render_list, view, projection, viewport)
+	wgpu_prepare_clustered_lighting(renderer, render_list, view, jittered_projection, viewport)
 	if wgpu_retain_render_uniform(renderer, uniform) {
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
@@ -2137,6 +2163,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	cull_uniform := WGPU_GPU_Cull_Uniform {
 		camera_planes = wgpu_extract_frustum_planes(view_projection),
 		view_projection = view_projection,
+		hiz_view_projection = renderer.gpu_previous_depth_view_projection,
 		viewport = {viewport.x, viewport.y, viewport.width, viewport.height},
 		camera_position = {camera_position.x, camera_position.y, camera_position.z, 1},
 		slot_count = u32(slot_count),

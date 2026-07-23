@@ -296,13 +296,18 @@ wgpu_publish_gpu_timing :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.gpu_depth_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)]
 	stats.gpu_world_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.World)]
 	stats.gpu_hiz_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)]
+	stats.gpu_temporal_aa_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Temporal_AA)]
 	stats.gpu_ambient_occlusion_ms =
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Ambient_Occlusion)]
 	stats.gpu_bloom_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Bloom)]
 	stats.gpu_composite_ms =
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Composite)]
 	stats.gpu_post_ms =
-		stats.gpu_ambient_occlusion_ms + stats.gpu_bloom_ms + stats.gpu_composite_ms
+		stats.gpu_temporal_aa_ms +
+		stats.gpu_ambient_occlusion_ms +
+		stats.gpu_bloom_ms +
+		stats.gpu_composite_ms
 	stats.gpu_ui_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.UI)]
 	stats.hiz_occlusion = renderer.gpu_hiz_occlusion_enabled
 	stats.hiz_valid = renderer.gpu_hiz_valid

@@ -334,6 +334,138 @@ fn downsample_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 }
 `
 
+WGPU_TEMPORAL_AA_SHADER :: `
+struct Temporal_AA_Uniform {
+	previous_view_projection: mat4x4<f32>,
+	inverse_view: mat4x4<f32>,
+	projection: vec4<f32>,
+	previous_projection: vec4<f32>,
+	viewport: vec4<f32>,
+	parameters: vec4<f32>,
+};
+
+@group(0) @binding(0) var current_color: texture_2d<f32>;
+@group(0) @binding(1) var linear_sampler: sampler;
+@group(0) @binding(2) var current_depth: texture_depth_2d;
+@group(0) @binding(3) var history_color: texture_2d<f32>;
+@group(0) @binding(4) var history_depth: texture_2d<f32>;
+@group(0) @binding(5) var resolved_color: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var resolved_depth: texture_storage_2d<r32float, write>;
+@group(0) @binding(7) var<uniform> temporal: Temporal_AA_Uniform;
+
+fn viewport_minimum() -> vec2<i32> {
+	return vec2<i32>(floor(temporal.viewport.xy));
+}
+
+fn viewport_maximum() -> vec2<i32> {
+	return vec2<i32>(ceil(temporal.viewport.xy + temporal.viewport.zw)) - vec2<i32>(1);
+}
+
+fn inside_viewport(pixel: vec2<i32>) -> bool {
+	return all(pixel >= viewport_minimum()) && all(pixel <= viewport_maximum());
+}
+
+fn reconstruct_view_position(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
+	let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
+	let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
+	let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
+	let view_z = -temporal.projection.w / (depth + temporal.projection.z);
+	return vec3<f32>(
+		(ndc.x + temporal.parameters.x) * -view_z / temporal.projection.x,
+		(ndc.y + temporal.parameters.y) * -view_z / temporal.projection.y,
+		view_z,
+	);
+}
+
+fn current_neighborhood(pixel: vec2<i32>) -> array<vec3<f32>, 2> {
+	var minimum = vec3<f32>(1e20);
+	var maximum = vec3<f32>(-1e20);
+	for (var y = -1; y <= 1; y += 1) {
+		for (var x = -1; x <= 1; x += 1) {
+			let sample_pixel = clamp(
+				pixel + vec2<i32>(x, y),
+				viewport_minimum(),
+				viewport_maximum(),
+			);
+			let color = textureLoad(current_color, sample_pixel, 0).rgb;
+			minimum = min(minimum, color);
+			maximum = max(maximum, color);
+		}
+	}
+	return array<vec3<f32>, 2>(minimum, maximum);
+}
+
+@compute @workgroup_size(8, 8)
+fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let dimensions = textureDimensions(resolved_color);
+	if (invocation.x >= dimensions.x || invocation.y >= dimensions.y) {
+		return;
+	}
+	let pixel = vec2<i32>(invocation.xy);
+	let color = textureLoad(current_color, pixel, 0).rgb;
+	let depth = textureLoad(current_depth, pixel, 0);
+	var result = color;
+	if (
+		inside_viewport(pixel) &&
+		depth < 0.999999 &&
+		temporal.parameters.z > 0.5
+	) {
+		let view_position = reconstruct_view_position(pixel, depth);
+		let world_position = temporal.inverse_view * vec4<f32>(view_position, 1.0);
+		let previous_clip = temporal.previous_view_projection * world_position;
+		if (previous_clip.w > 0.0001) {
+			let previous_ndc = previous_clip.xy / previous_clip.w;
+			let previous_viewport_uv =
+				previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+			let previous_pixel =
+				temporal.viewport.xy + previous_viewport_uv * temporal.viewport.zw;
+			let previous_full_uv =
+				previous_pixel / vec2<f32>(dimensions);
+			let previous_pixel_i = vec2<i32>(floor(previous_pixel));
+			if (
+				all(previous_viewport_uv >= vec2<f32>(0.0)) &&
+				all(previous_viewport_uv <= vec2<f32>(1.0)) &&
+				inside_viewport(previous_pixel_i)
+			) {
+				let stored_depth = textureLoad(history_depth, previous_pixel_i, 0).r;
+				let stored_linear_depth =
+					temporal.previous_projection.w /
+					(stored_depth + temporal.previous_projection.z);
+				let expected_linear_depth = previous_clip.w;
+				let depth_tolerance = max(0.002, expected_linear_depth * 0.0005);
+				if (
+					stored_depth < 0.999999 &&
+					abs(stored_linear_depth - expected_linear_depth) <= depth_tolerance
+				) {
+					let bounds = current_neighborhood(pixel);
+					let history = clamp(
+						textureSampleLevel(
+							history_color,
+							linear_sampler,
+							previous_full_uv,
+							0.0,
+						).rgb,
+						bounds[0],
+						bounds[1],
+					);
+					let motion_pixels = length(
+						(previous_pixel - (vec2<f32>(pixel) + vec2<f32>(0.5))),
+					);
+					let history_weight = mix(
+						temporal.parameters.w,
+						0.72,
+						clamp(motion_pixels / 8.0, 0.0, 1.0),
+					);
+					result = mix(color, history, history_weight);
+				}
+			}
+		}
+	}
+	textureStore(resolved_color, pixel, vec4<f32>(result, 1.0));
+	textureStore(resolved_depth, pixel, vec4<f32>(depth, 0.0, 0.0, 0.0));
+}
+`
+
 WGPU_AMBIENT_OCCLUSION_SHADER :: `
 struct Ambient_Occlusion_Uniform {
 	projection: vec4<f32>,
@@ -373,8 +505,8 @@ fn view_position(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
 	let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
 	let view_z = -settings.projection.w / (depth + settings.projection.z);
 	return vec3<f32>(
-		ndc.x * -view_z / settings.projection.x,
-		ndc.y * -view_z / settings.projection.y,
+		(ndc.x + settings.dimensions.z) * -view_z / settings.projection.x,
+		(ndc.y + settings.dimensions.w) * -view_z / settings.projection.y,
 		view_z,
 	);
 }
@@ -569,104 +701,6 @@ fn aces(color: vec3<f32>) -> vec3<f32> {
 	);
 }
 
-fn display_luma(color: vec3<f32>) -> f32 {
-	let mapped = aces(color);
-	return dot(mapped, vec3<f32>(0.299, 0.587, 0.114));
-}
-
-fn fxaa_hdr(uv: vec2<f32>) -> vec3<f32> {
-	let texel = 1.0 / vec2<f32>(textureDimensions(hdr_texture));
-	let center = textureSample(hdr_texture, linear_sampler, uv).rgb;
-	let northwest = textureSample(
-		hdr_texture,
-		linear_sampler,
-		uv + vec2<f32>(-texel.x, -texel.y),
-	).rgb;
-	let northeast = textureSample(
-		hdr_texture,
-		linear_sampler,
-		uv + vec2<f32>(texel.x, -texel.y),
-	).rgb;
-	let southwest = textureSample(
-		hdr_texture,
-		linear_sampler,
-		uv + vec2<f32>(-texel.x, texel.y),
-	).rgb;
-	let southeast = textureSample(
-		hdr_texture,
-		linear_sampler,
-		uv + vec2<f32>(texel.x, texel.y),
-	).rgb;
-	let luma_center = display_luma(center);
-	let luma_northwest = display_luma(northwest);
-	let luma_northeast = display_luma(northeast);
-	let luma_southwest = display_luma(southwest);
-	let luma_southeast = display_luma(southeast);
-	let luma_min = min(
-		luma_center,
-		min(
-			min(luma_northwest, luma_northeast),
-			min(luma_southwest, luma_southeast),
-		),
-	);
-	let luma_max = max(
-		luma_center,
-		max(
-			max(luma_northwest, luma_northeast),
-			max(luma_southwest, luma_southeast),
-		),
-	);
-	let contrast = luma_max - luma_min;
-	if contrast < max(0.0312, luma_max * 0.125) {
-		return center;
-	}
-	var direction = vec2<f32>(
-		-(luma_northwest + luma_northeast - luma_southwest - luma_southeast),
-		luma_northwest + luma_southwest - luma_northeast - luma_southeast,
-	);
-	let direction_reduce = max(
-		(luma_northwest + luma_northeast + luma_southwest + luma_southeast) *
-			0.03125,
-		0.0078125,
-	);
-	let reciprocal_minimum =
-		1.0 / (min(abs(direction.x), abs(direction.y)) + direction_reduce);
-	direction = clamp(
-		direction * reciprocal_minimum,
-		vec2<f32>(-8.0),
-		vec2<f32>(8.0),
-	) * texel;
-	let first = textureSample(
-		hdr_texture,
-		linear_sampler,
-		uv + direction * (1.0 / 3.0 - 0.5),
-	).rgb;
-	let second = textureSample(
-		hdr_texture,
-		linear_sampler,
-		uv + direction * (2.0 / 3.0 - 0.5),
-	).rgb;
-	let narrow = (first + second) * 0.5;
-	let wide = narrow * 0.5 +
-		(
-			textureSample(
-				hdr_texture,
-				linear_sampler,
-				uv + direction * -0.5,
-			).rgb +
-			textureSample(
-				hdr_texture,
-				linear_sampler,
-				uv + direction * 0.5,
-			).rgb
-		) * 0.25;
-	let wide_luma = display_luma(wide);
-	if wide_luma < luma_min || wide_luma > luma_max {
-		return narrow;
-	}
-	return wide;
-}
-
 @fragment
 fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	var bloom = textureSample(bloom_0, linear_sampler, input.uv).rgb * 0.34;
@@ -676,7 +710,10 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	bloom += textureSample(bloom_4, linear_sampler, input.uv).rgb * 0.07;
 	let ambient_visibility =
 		textureSample(ambient_occlusion_texture, linear_sampler, input.uv).r;
-	let hdr = fxaa_hdr(input.uv) * ambient_visibility + bloom * 0.8;
+	let hdr =
+		textureSample(hdr_texture, linear_sampler, input.uv).rgb *
+		ambient_visibility +
+		bloom * 0.8;
 	return vec4<f32>(aces(hdr), 1.0);
 }
 `

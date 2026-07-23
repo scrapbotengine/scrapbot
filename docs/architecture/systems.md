@@ -20,7 +20,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 | `scrapbot.render.cull` | Encodes GPU visibility, frustum/Hi-Z rejection, LOD selection, and indirect visibility compaction. | WGPU frames; CPU-reference mode substitutes CPU culling. | `render/wgpu_visibility.odin`, `render/wgpu_hiz.odin` |
 | `scrapbot.render.shadow` | Encodes directional shadow rendering. | WGPU frames with applicable shadow state. | `wgpu_encode_shadow_pass` |
 | `scrapbot.render.world` | Encodes depth and world geometry passes and resolves visibility/timing work. | WGPU frames. | `render/wgpu.odin` |
-| `scrapbot.render.post` | Encodes depth-reconstructed ambient occlusion, HDR bloom, and compositing into the presentation target. | WGPU frames. | `render/wgpu_post.odin` |
+| `scrapbot.render.post` | Encodes depth-aware temporal resolution, depth-reconstructed ambient occlusion, HDR bloom, and compositing into the presentation target. | WGPU frames. | `render/wgpu_post.odin` |
 | `scrapbot.render.ui` | Converts changed retained UI streams when needed and encodes project, editor, and overlay UI draws. | WGPU frames; unchanged streams reuse retained GPU buffers. | `render/wgpu.odin`, `render/wgpu_shader.odin` |
 | `scrapbot.render.finish` | Finalizes the command encoder into a command buffer. | WGPU frames. | `wgpu.CommandEncoderFinish` boundary in `render/wgpu.odin` |
 | `scrapbot.render.submit` | Submits the command buffer and advances asynchronous GPU diagnostics. | WGPU frames. | `wgpu.QueueSubmit` boundary in `render/wgpu.odin` |
@@ -114,10 +114,10 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.render.post`
 
 - **Phase/order:** After HDR world rendering and before UI compositing.
-- **Inputs:** HDR world target, scene depth, active projection/viewport, retained ambient-occlusion and bloom resources, and presentation format.
+- **Inputs:** Jittered HDR world target, scene depth, current/previous camera projection state, retained temporal color/depth history, ambient-occlusion and bloom resources, and presentation format.
 - **Outputs:** Composited scene color in the presentation target.
-- **Stable-frame behavior:** Reuses postprocess pipelines/bind groups at stable size; resize or configuration changes explicitly recreate affected resources.
-- **Boundary:** WGPU compute/render encoding for half-resolution depth-reconstructed ambient occlusion, bilateral blur, contrast-adaptive world FXAA, bloom, tone mapping, and composite. UI is excluded and remains crisp.
+- **Stable-frame behavior:** Reuses postprocess pipelines, bind groups, and full-resolution color/depth history at stable size. Resize, sampled-depth replacement, world replacement, or a detected camera cut explicitly rejects history; ordinary frames mutate retained history in place.
+- **Boundary:** WGPU compute/render encoding for camera-reprojected temporal resolution with previous-depth rejection and neighborhood clamping, half-resolution depth-reconstructed ambient occlusion, bilateral blur, bloom, tone mapping, and composite. Culling remains unjittered, while UI is excluded and remains crisp.
 - **Source/tests:** `render/wgpu_post.odin`, `render/wgpu_shader.odin`; WGPU smoke/framegrab tests.
 
 ### `scrapbot.render.ui`

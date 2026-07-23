@@ -11,7 +11,8 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Generalize retained-World viewport targets into explicitly addressable concurrent ECS worlds when multi-world runtime ownership exists.
 - [ ] Replace aggregate asset polling with dependency-aware platform file watching that enqueues exact resource UUID reimports.
 - [ ] Add imported mesh LODs and evaluate meshlets and richer submission against representative scenes.
-- [ ] Add an authored post-processing component with ambient-occlusion radius/intensity/quality, bloom threshold/intensity/scatter, and FXAA controls; evaluate automatic/adaptive exposure separately from authored camera exposure.
+- [ ] Add an authored post-processing component with ambient-occlusion radius/intensity/quality, bloom threshold/intensity/scatter, and temporal-antialiasing history/quality controls; evaluate automatic/adaptive exposure separately from authored camera exposure.
+- [ ] Add per-object motion vectors so temporal antialiasing can reproject animated geometry exactly instead of relying on depth rejection and neighborhood clamping.
 - [ ] Add Hi-Z, visibility, and LOD debug views.
 - [ ] Add deterministic visual comparison for offscreen render output.
 

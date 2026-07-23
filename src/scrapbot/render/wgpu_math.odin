@@ -85,6 +85,79 @@ wgpu_build_camera_matrices :: proc(
 	return view, projection
 }
 
+wgpu_temporal_jitter :: proc(sample_index: u64, width, height: u32) -> Vec2 {
+	if width == 0 || height == 0 {
+		return {}
+	}
+	sequence := [8]Vec2 {
+		{0.5, 1.0 / 3.0},
+		{0.25, 2.0 / 3.0},
+		{0.75, 1.0 / 9.0},
+		{0.125, 4.0 / 9.0},
+		{0.625, 7.0 / 9.0},
+		{0.375, 2.0 / 9.0},
+		{0.875, 5.0 / 9.0},
+		{0.0625, 8.0 / 9.0},
+	}
+	sample := sequence[int(sample_index % u64(len(sequence)))]
+	return {(sample.x - 0.5) * 2 / f32(width), (sample.y - 0.5) * 2 / f32(height)}
+}
+
+wgpu_jitter_projection :: proc(projection: Mat4, jitter: Vec2) -> Mat4 {
+	result := projection
+	result[8] += jitter.x
+	result[9] += jitter.y
+	return result
+}
+
+wgpu_device_depth_to_view_distance :: proc(depth: f32, projection: Mat4) -> f32 {
+	return projection[14] / (depth + projection[10])
+}
+
+wgpu_inverse_rigid_view :: proc(view: Mat4) -> Mat4 {
+	result := mat4_identity()
+	result[0], result[1], result[2] = view[0], view[4], view[8]
+	result[4], result[5], result[6] = view[1], view[5], view[9]
+	result[8], result[9], result[10] = view[2], view[6], view[10]
+	result[12] = -(result[0] * view[12] + result[4] * view[13] + result[8] * view[14])
+	result[13] = -(result[1] * view[12] + result[5] * view[13] + result[9] * view[14])
+	result[14] = -(result[2] * view[12] + result[6] * view[13] + result[10] * view[14])
+	return result
+}
+
+wgpu_temporal_camera_state :: proc(
+	camera: Camera_Instance,
+	has_camera: bool,
+) -> WGPU_Temporal_Camera {
+	if !has_camera {
+		return {position = {0, 2, 6}, forward = vec3_normalize(Vec3{0, -2, -6}), fov = 60}
+	}
+	fov := camera.camera.fov
+	if fov <= 0 {
+		fov = 60
+	}
+	return {
+		position = camera.transform.position,
+		forward = shared.camera_forward(camera.transform.rotation),
+		fov = fov,
+		has_camera = true,
+	}
+}
+
+wgpu_temporal_camera_continuous :: proc(previous, current: WGPU_Temporal_Camera) -> bool {
+	if previous.has_camera != current.has_camera {
+		return false
+	}
+	offset := vec3_sub(current.position, previous.position)
+	if vec3_dot(offset, offset) > 4 {
+		return false
+	}
+	if vec3_dot(previous.forward, current.forward) < 0.8660254 {
+		return false
+	}
+	return math.abs(previous.fov - current.fov) <= 10
+}
+
 wgpu_extract_frustum_planes :: proc(value: Mat4) -> [6][4]f32 {
 	rows := [4][4]f32 {
 		{value[0], value[4], value[8], value[12]},
