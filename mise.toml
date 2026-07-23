@@ -276,7 +276,8 @@ MASK_FRAME="${TMPDIR:-/tmp}/scrapbot-gltf-mask.png"
 LIGHTING_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lighting.png"
 CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
 CLUSTER_PAUSED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-paused.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME"' EXIT
+CLUSTER_RESTART_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-restart.png"
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
@@ -291,6 +292,7 @@ MASK_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --no-hot-
 LIGHTING_JSON="$(bin/scrapbot run tests/fixtures/gpu-lighting --headless --no-hot-reload --frames 2 --framegrab "$LIGHTING_FRAME" --json)"
 CLUSTER_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 10 --framegrab "$CLUSTER_FRAME" --json)"
 CLUSTER_PAUSED_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 40 --ui-script tests/fixtures/ui/clustered-lights-paused.json --framegrab "$CLUSTER_PAUSED_FRAME" --json)"
+CLUSTER_RESTART_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 30 --ui-script tests/fixtures/ui/clustered-lights-restart.json --framegrab "$CLUSTER_RESTART_FRAME" --json)"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);
@@ -363,6 +365,17 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
   process.exit(1);
 }
 ' "$CLUSTER_PAUSED_JSON"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.render_stats;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    result.result?.renderables !== 455 || result.result.draw_batches !== 15 ||
+    stats?.clustered_point_lights !== 320 || stats.cluster_dispatches < 1 ||
+    stats.instance_slots !== 455) {
+  console.error("runtime-built clustered lighting scene did not reconstruct after Stop and Play");
+  process.exit(1);
+}
+' "$CLUSTER_RESTART_JSON"
 node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
@@ -446,6 +459,7 @@ node tools/assert_png_variance.mjs "$LOD_COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$TRANSFORM_COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$MASK_FRAME"
 node tools/assert_png_variance.mjs "$CLUSTER_PAUSED_FRAME"
+node tools/assert_png_variance.mjs "$CLUSTER_RESTART_FRAME"
 '''
 
 [tasks.test-sanitize]

@@ -82,7 +82,6 @@ local function spawn_block(
 	})
 end
 
-local built = false
 scrapbot.system({
 	name = "build_cathedral",
 	writes = {
@@ -95,9 +94,10 @@ scrapbot.system({
 		LightMotion,
 		SculptureSpin,
 	},
-}, function()
-	if built then return end
-	built = true
+}, function(time: ScrapbotTime)
+	-- Stop replaces the ECS world without reloading this Luau environment.
+	-- Build from world-relative state so every fresh playback world gets the demo.
+	if time.frame_index ~= 1 then return end
 
 	spawn_block("Cathedral Floor", 0, -0.35, -19, 10, 0.25, 27, DarkMaterial)
 	spawn_block("Cathedral Ceiling", 0, 8.35, -19, 10, 0.2, 27, DarkMaterial)

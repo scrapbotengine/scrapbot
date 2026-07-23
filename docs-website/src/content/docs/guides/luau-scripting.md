@@ -80,6 +80,8 @@ The optional `name` is shown in live editor tooling, including the system perfor
 
 Every system receives a read-only `ScrapbotTime` snapshot. Use `delta_time` for simulation, `smooth_delta_time` for presentation smoothing, `elapsed_time` for runtime-relative clocks, and `frame_index` for deterministic frame counting.
 
+Stop restores a fresh authoring ECS world but deliberately keeps the loaded Luau VM and its module/closure state. If a system constructs disposable runtime entities once per playback world, guard that work with ECS world state—commonly `time.frame_index == 1`—rather than a closure-local boolean. That lets Play reconstruct the runtime world without reloading scripts.
+
 ## Deferred lifecycle commands
 
 Luau can queue structural ECS mutations:
