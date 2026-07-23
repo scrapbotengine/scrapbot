@@ -274,7 +274,8 @@ TRANSFORM_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-compute.png"
 TRANSFORM_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-cpu.png"
 MASK_FRAME="${TMPDIR:-/tmp}/scrapbot-gltf-mask.png"
 LIGHTING_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lighting.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME"' EXIT
+CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$CLUSTER_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
@@ -287,6 +288,7 @@ TRANSFORM_COMPUTE_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-
 TRANSFORM_CPU_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$TRANSFORM_CPU_FRAME" --json)"
 MASK_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --no-hot-reload --frames 2 --framegrab "$MASK_FRAME" --json)"
 LIGHTING_JSON="$(bin/scrapbot run tests/fixtures/gpu-lighting --headless --no-hot-reload --frames 2 --framegrab "$LIGHTING_FRAME" --json)"
+CLUSTER_JSON="$(bin/scrapbot run examples/clustered-lights --headless --no-hot-reload --frames 10 --framegrab "$CLUSTER_FRAME" --json)"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);
@@ -294,7 +296,7 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
   if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
       !stats?.gpu_driven || stats.compute_culling !== expectedCompute ||
       !stats.clustered_lighting || stats.shadow_cascades !== 4 ||
-      stats.cluster_count !== 3456 || stats.cluster_max_lights !== 64 ||
+      stats.cluster_count !== 3456 || stats.cluster_max_lights !== 256 ||
       stats.cluster_dispatches < 1 ||
       result.result.renderables <= 64 || stats.instance_capacity < 100000 ||
       result.result.draw_batches <= 64 || stats.draw_capacity < result.result.draw_batches ||
@@ -328,13 +330,25 @@ const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
     !stats?.clustered_lighting || stats.shadow_cascades !== 4 ||
-    stats.cluster_count !== 3456 || stats.cluster_max_lights !== 64 ||
+    stats.cluster_count !== 3456 || stats.cluster_max_lights !== 256 ||
     stats.clustered_point_lights !== 17 || stats.cluster_dispatches < 1 ||
     stats.shadow_visible_instances < 1) {
   console.error("GPU clustered lighting and cascaded shadow fixture did not exercise the expected paths");
   process.exit(1);
 }
 ' "$LIGHTING_JSON"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.render_stats;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    !stats?.clustered_lighting || stats.cluster_count !== 3456 ||
+    stats.clustered_point_lights !== 240 ||
+    stats.cluster_max_lights < stats.clustered_point_lights ||
+    stats.cluster_dispatches < 1) {
+  console.error("dense clustered lighting fixture exceeded the per-cluster index budget");
+  process.exit(1);
+}
+' "$CLUSTER_JSON"
 node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;

@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-22
+**Last reviewed:** 2026-07-23
 
 ## Overview
 
@@ -14,7 +14,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Users can select a renderer backend from the CLI.
 - The `wgpu` backend renders full indexed geometry with shared metallic-roughness GGX materials, mipmapped base-color/normal/occlusion/emissive images, a perspective camera, ambient/directional/point lighting, and optional scene-authored image-based environment lighting.
 - The first directional light produces four stabilized, camera-relative 2048×2048 shadow cascades. Only entities with `ShadowCaster` contribute depth, and only entities with `ShadowReceiver` sample the cascades through 3×3 PCF.
-- Lights are extracted into a bounded backend-neutral frame packet: accumulated ambient light, four directional lights, and 256 point lights. WGPU stores point lights in a storage buffer and deterministically builds a 16×9×24 clustered-light grid on the GPU, capped at 64 lights per cluster. Above the procedural horizon, World Environment contributes the first derived directional-light slot without creating an authored entity; explicit ECS lights fill the remaining directional slots.
+- Lights are extracted into a bounded backend-neutral frame packet: accumulated ambient light, four directional lights, and 256 point lights. WGPU stores point lights in a storage buffer and deterministically builds a 16×9×24 clustered-light grid on the GPU. Every cluster can reference the complete packet, preventing dense moving lights from popping at an internal overflow boundary. Above the procedural horizon, World Environment contributes the first derived directional-light slot without creating an authored entity; explicit ECS lights fill the remaining directional slots.
 - Base-color and emissive images use sRGB sampling while metallic-roughness, normal, occlusion, and imported environment products remain linear. Diffuse irradiance and roughness-prefiltered specular reflection join direct GGX lighting and emission in a floating-point HDR target. `scrapbot.world_environment` selects lighting and an independent imported or procedural visible sky. The procedural atmosphere exposes sky/ground color, turbidity, thickness, horizon, and an HDR sun direction, color, intensity, disc, and glow. Sun elevation planet-occludes the disc and drives a day/twilight/night transition plus hemispherical procedural fill. Above the horizon, the sun is the first derived directional render light and therefore drives ordinary GGX lighting and the primary shadow map; explicit ECS lights remain additive. World-environment exposure multiplied by active-camera exposure scales the complete HDR world before bright energy feeds a five-level bloom chain and the world is tone mapped once into an sRGB target.
 - Project UI, transform gizmos, editor-only project-camera bodies and projection frusta, and editor chrome render after world postprocessing and do not bloom.
 - Eligible entities receive internal render-instance components automatically.
@@ -85,7 +85,7 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 **Decision:** Ambient, directional, and point lights are public ECS components. ECS extraction iterates compact active sets, accumulates ambient light, and copies up to four directional and 256 point lights into each render list. WGPU builds deterministic per-cluster point-light lists entirely on the GPU. See ADR-011 and ADR-039.
 **Why:** Lights remain scriptable scene state without exposing ECS storage to renderer backends, while fragment work scales with locally relevant lights instead of the complete packet.
-**Tradeoff:** WGPU reserves a fixed cluster-index budget and ignores lights beyond the packet or 64-light per-cluster limits.
+**Tradeoff:** WGPU reserves about 3.4 MiB for cluster indices. It ignores lights beyond the 256-light frame packet, and a pathological cluster may evaluate all 256 packet lights.
 
 ### 9. Accumulate lighting in linear space and tone map the result
 

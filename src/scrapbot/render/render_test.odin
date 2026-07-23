@@ -9,6 +9,12 @@ import "core:math"
 import "core:testing"
 
 @(test)
+test_cluster_index_budget_covers_every_extracted_point_light :: proc(t: ^testing.T) {
+	testing.expect_value(t, WGPU_CLUSTER_MAX_LIGHTS, shared.MAX_POINT_LIGHTS)
+	testing.expect_value(t, WGPU_CLUSTER_COUNT * WGPU_CLUSTER_MAX_LIGHTS * size_of(u32), 3_538_944)
+}
+
+@(test)
 test_sky_uniform_uses_active_camera_basis_projection_and_aspect :: proc(t: ^testing.T) {
 	list := shared.Render_List {
 		has_camera = true,

@@ -165,7 +165,7 @@ The authored entity is the model root. Resource initialization and reload reconc
 | `scrapbot.shadow_caster` | No fields | Marks renderable geometry as a directional-shadow caster. |
 | `scrapbot.shadow_receiver` | No fields | Marks renderable geometry as a directional-shadow receiver. |
 
-Light query payloads expose the listed data fields. Shadow components are empty marker payloads. The two shadow markers are independent. WGPU extracts at most 256 point lights and assigns them to view-space clusters on the GPU; one cluster evaluates at most 64 point lights.
+Light query payloads expose the listed data fields. Shadow components are empty marker payloads. The two shadow markers are independent. WGPU extracts at most 256 point lights and assigns them to view-space clusters on the GPU. Every cluster can reference the complete bounded packet, while ordinary fragments evaluate only the lights overlapping their cluster.
 
 ## UI composition rules
 
