@@ -856,6 +856,8 @@ reconcile_model_instances :: proc(world: ^shared.World, registry: ^resources.Reg
 					material, _ = resources.material_by_name(registry, "default")
 				}
 				ecs.add_material(world, primitive_entity, material)
+				world.entities[primitive_entity].has_shadow_caster = root.has_shadow_caster
+				world.entities[primitive_entity].has_shadow_receiver = root.has_shadow_receiver
 			}
 		}
 	}

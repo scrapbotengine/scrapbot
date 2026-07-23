@@ -213,7 +213,7 @@ resource = "d4000000-0000-4000-8000-000000000001"
       readFileSync(join(importedDirectory, metadataName), "utf8"),
     );
     if (
-      metadata.schema !== "scrapbot.model.v5.alpha-materials" ||
+      metadata.schema !== "scrapbot.model.v6.semantic-scene" ||
       metadata.node_count !== 1 ||
       metadata.mesh_count !== 1 ||
       metadata.primitive_count !== 1 ||

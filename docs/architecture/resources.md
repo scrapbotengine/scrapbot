@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-22
+**Last verified:** 2026-07-23
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -76,7 +76,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Editor Reimport addresses one authored UUID, forces only that Texture, Model, or Environment importer, updates the existing registry slot, and then reconciles model instances when relevant. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
 - A replaced or removed Model retires generated Geometry and Material outputs absent from the replacement by marking their slots dead and incrementing generation/version. Stable/reused products retain their handles.
 - Texture, Model, and Material inspection target the public `scrapbot.ui_viewport` component at the resource UUID. WGPU resolves the UUID by registry family, assigns an independently sized pooled target, and renders either an aspect-preserving Texture pass or an isolated Model/Material preview scene with its own camera, lighting, environment, and renderer-owned presentation geometry. Stable targets cache by component, target size/aspect, exact resource version, and relevant registry revisions. Import state, dependency path, product type/size, and the last explicit failure remain editor presentation over registry/import state rather than new resource authority.
-- `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material entities without model scans.
+- `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Generated primitives inherit the root's `scrapbot.shadow_caster` and `scrapbot.shadow_receiver` membership during that reconciliation. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material/shadow-marker entities without model scans.
 - Source/tests: `asset_import/imports.odin`, `asset_import/models.odin`, `resources/textures.odin`, `resources/models.odin`, `scrapbot.odin`; importer, registry, and model-instance tests.
 
 ### Font

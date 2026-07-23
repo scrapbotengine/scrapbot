@@ -63,6 +63,16 @@ description = "Import and render the pinned real-world glTF fixture"
 depends = ["build"]
 run = 'node tools/test_external_gltf.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot-damaged-helmet.png"'
 
+[tasks.test-sponza]
+description = "Import and validate the pinned Khronos Sponza fixture"
+depends = ["build"]
+run = "node tools/test_external_sponza.mjs"
+
+[tasks.test-sponza-gpu]
+description = "Import and render the pinned Khronos Sponza fixture"
+depends = ["build"]
+run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot-sponza.png"'
+
 [tasks.build]
 description = "Build the Scrapbot CLI"
 depends = ["luau", "cgltf"]

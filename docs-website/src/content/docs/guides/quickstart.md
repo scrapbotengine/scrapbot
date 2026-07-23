@@ -15,7 +15,7 @@ This installs the pinned tools, initializes Git submodules, downloads checksum-v
 
 Heavyweight or license-constrained fixtures are stored as ignored local state instead of Git. `mise setup-assets` installs only those fixtures, while `mise check-assets` verifies an existing installation without accessing the network. These downloads are development inputs and are never included in Scrapbot's own repository or releases. See the tracked `tests/fixtures/external/README.md` for their sources and licenses before packaging or redistributing a fixture-backed example yourself.
 
-The setup task also places required fixture bytes into ignored example asset directories. After running it, launch `mise scrapbot run examples/gltf-showcase --editor` to inspect the pinned Khronos Damaged Helmet through Scrapbot's static glTF importer, generated materials, and live editor.
+The setup task also places required fixture bytes into ignored example asset directories. After running it, launch `mise scrapbot run examples/gltf-showcase --editor` to inspect the pinned Khronos Damaged Helmet through Scrapbot's static glTF importer, generated materials, and live editor. Use `mise scrapbot run examples/sponza --editor` for the heavyweight external-file path: the pinned Khronos atrium imports as 103 ordinary ECS renderables with generated PBR materials, shadows, environment lighting, and clustered point lights.
 
 ## Build the CLI
 

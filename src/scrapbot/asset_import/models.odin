@@ -925,7 +925,6 @@ load_model_image_bytes :: proc(image: ^cgltf.image, source_path: string) -> ([]u
 	}
 	_ = cgltf.decode_uri(cast([^]u8)decoded_uri)
 	directory := filepath.dir(source_path)
-	defer delete(directory)
 	path, join_err := filepath.join({directory, string(decoded_uri)})
 	if join_err != nil {
 		return nil, "failed to allocate external image path"

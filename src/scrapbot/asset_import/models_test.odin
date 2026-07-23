@@ -4,7 +4,9 @@ import shared "../shared"
 import "core:math"
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 import "core:testing"
+import cgltf "vendor:cgltf"
 
 model_test_declaration :: proc() -> shared.Project_Resource {
 	id, _ := shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000098")
@@ -33,6 +35,45 @@ make_model_test_project :: proc(t: ^testing.T) -> string {
 		"tests/fixtures/gltf/assets/triangle.gltf",
 		"triangle.gltf",
 	)
+}
+
+@(test)
+test_external_model_image_does_not_take_ownership_of_source_directory :: proc(t: ^testing.T) {
+	root, temp_err := os.make_directory_temp("", "scrapbot-model-image-*", context.allocator)
+	testing.expect(t, temp_err == nil)
+	if temp_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	defer delete(root)
+	source_path, source_err := filepath.join({root, "model.gltf"})
+	testing.expect(t, source_err == nil)
+	if source_err != nil {
+		return
+	}
+	defer delete(source_path)
+	image_path, image_path_err := filepath.join({root, "pixel.bin"})
+	testing.expect(t, image_path_err == nil)
+	if image_path_err != nil {
+		return
+	}
+	defer delete(image_path)
+	testing.expect(t, os.write_entire_file(image_path, []u8{1, 2, 3, 4}) == nil)
+	uri, uri_err := strings.clone_to_cstring("pixel.bin", context.temp_allocator)
+	testing.expect(t, uri_err == nil)
+	if uri_err != nil {
+		return
+	}
+	image := cgltf.image {
+		uri = uri,
+	}
+	bytes, load_err := load_model_image_bytes(&image, source_path)
+	defer delete(bytes)
+	testing.expectf(t, load_err == "", "external image load failed: %s", load_err)
+	testing.expect_value(t, len(bytes), 4)
+	if len(bytes) == 4 {
+		testing.expect(t, bytes[0] == 1 && bytes[1] == 2 && bytes[2] == 3 && bytes[3] == 4)
+	}
 }
 
 @(test)

@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-07-22
+**Last reviewed:** 2026-07-23
 
 ## Overview
 
@@ -21,6 +21,7 @@ Asset imports turn artist-authored texture, model, and HDR environment files und
 - Explicit editor reimport targets one Texture, Model, or Environment UUID without restarting Luau/native code; **Reimport All** forces every declared imported product. Automatic hot reload still uses the project asset stamp and importer cache until the platform watcher replaces polling. Ordinary simulation and render frames never scan the asset tree.
 - The editor's resource browser lists textures, environments, and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Environment inspection reports the derived cube-map shape, and the scene's `scrapbot.world_environment` component selects lighting/background resources for ordinary world and model/material preview rendering. Textures render directly on the GPU with aspect-preserving fit. Models render their imported hierarchy, while Materials render on an isolated lit icosphere preview scene. All previews use the public ECS viewport component and independently sized pooled targets; interactive 3D previews support orbit, zoom, and reset.
 - Reimport updates a live resource slot in place and reconciles affected model roots. Generated Geometry and Material products that disappear from a replaced or removed Model are retired with generation bumps, so stale handles cannot remain usable.
+- Shadow caster/receiver markers authored on a Model root are inherited by its generated primitive entities when that model instance reconciles. Imported geometry therefore remains on the ordinary renderer and shadow-marker path instead of needing model-specific shadow submission.
 - Imported models initially exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, texture transforms, blended transparency, and advanced material extensions; unsupported required glTF features reachable from the selected scene fail clearly.
 
 ## Design Decisions
@@ -42,6 +43,8 @@ Asset imports turn artist-authored texture, model, and HDR environment files und
 **Decision:** Preserve one authored Model UUID while publishing imported geometry, material, and node subresources beneath it. Model scene components reconcile these into derived ECS node/primitive entities.
 **Why:** A glTF file is a graph with multiple reusable products, not one mesh blob.
 **Tradeoff:** Imported nodes, meshes, primitives, materials, generated resource names, and derived ECS UUIDs use semantic keys rather than source-array positions. Authored names and hierarchy paths are preferred; unnamed or ambiguous objects receive content-based discriminators. Meaningful renames, reparenting, or otherwise ambiguous identical unnamed siblings can intentionally change identity, while harmless array reordering preserves it.
+
+Model-root shadow markers are copied onto derived primitive entities during the same structural reconciliation. This keeps shadow membership explicit in ordinary ECS renderer state.
 
 ### 4. Keep importing change-driven and recoverable
 

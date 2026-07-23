@@ -1,0 +1,6 @@
+name = "Sponza"
+default_scene = "scenes/main.scene.toml"
+
+[window]
+width = 1600
+height = 900

@@ -17,6 +17,13 @@ test_model_resource_expands_into_stable_derived_ecs_renderables :: proc(t: ^test
 	}
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
+	root_id, _ := shared.entity_uuid_parse("a7100000-0000-4000-8000-000000000003")
+	root_index, root_found := ecs.entity_index_by_uuid(&world, root_id)
+	testing.expect(t, root_found)
+	if root_found {
+		world.entities[root_index].has_shadow_caster = true
+		world.entities[root_index].has_shadow_receiver = true
+	}
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)
 	init_err := init_render_resources(
@@ -27,7 +34,6 @@ test_model_resource_expands_into_stable_derived_ecs_renderables :: proc(t: ^test
 		loaded.resources[:],
 	)
 	testing.expectf(t, init_err == "", "model instance initialization failed: %s", init_err)
-	root_id, _ := shared.entity_uuid_parse("a7100000-0000-4000-8000-000000000003")
 	derived_index := -1
 	for entity, entity_index in world.entities {
 		if entity.alive && entity.model_owner == root_id && entity.geometry_index >= 0 {
@@ -44,6 +50,8 @@ test_model_resource_expands_into_stable_derived_ecs_renderables :: proc(t: ^test
 	testing.expect(t, derived.transform_index >= 0)
 	testing.expect(t, derived.geometry_index >= 0)
 	testing.expect(t, derived.material_index >= 0)
+	testing.expect(t, derived.has_shadow_caster)
+	testing.expect(t, derived.has_shadow_receiver)
 	model_id, _ := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000001")
 	node_id := model_instance_uuid(root_id, model_id, "node:Triangle Node", "")
 	testing.expect_value(t, world.transforms[derived.transform_index].parent, node_id)
@@ -55,7 +63,7 @@ test_model_resource_expands_into_stable_derived_ecs_renderables :: proc(t: ^test
 		testing.expect(t, world.entities[recreated_index].model_owner == root_id)
 		testing.expect(t, world.entities[recreated_index].geometry_index >= 0)
 	}
-	root_index, root_found := ecs.entity_index_by_uuid(&world, root_id)
+	root_index, root_found = ecs.entity_index_by_uuid(&world, root_id)
 	testing.expect(t, root_found)
 	if root_found {
 		duplicate, captured := ecs.capture_entity_snapshot(&world, root_index)

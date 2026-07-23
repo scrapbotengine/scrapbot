@@ -24,6 +24,7 @@ const downloadsRoot = join(
   "tests/fixtures/external/downloads",
 );
 const checkOnly = process.argv.slice(2).includes("--check");
+const downloadConcurrency = 6;
 
 async function sha256(path) {
   const hash = createHash("sha256");
@@ -97,7 +98,9 @@ async function ensurePlacement(asset, source, placement) {
     throw new Error(`${asset.id}: placement duplicates its download path`);
   }
   if (await assetIsCurrent(asset, destination)) {
-    console.log(`[external-assets] ready ${asset.id} at ${placement}`);
+    if (!asset.quiet) {
+      console.log(`[external-assets] ready ${asset.id} at ${placement}`);
+    }
     return true;
   }
   if (checkOnly) {
@@ -114,8 +117,68 @@ async function ensurePlacement(asset, source, placement) {
   }
   rmSync(destination, { force: true });
   renameSync(temporary, destination);
-  console.log(`[external-assets] installed ${asset.id} at ${placement}`);
+  if (!asset.quiet) {
+    console.log(`[external-assets] installed ${asset.id} at ${placement}`);
+  }
   return true;
+}
+
+function expandedAssets(manifest) {
+  const result = [];
+  for (const asset of manifest.assets) {
+    if (asset.files === undefined) {
+      result.push(asset);
+      continue;
+    }
+    if (
+      !Array.isArray(asset.files) ||
+      asset.files.length === 0 ||
+      typeof asset.base_url !== "string" ||
+      asset.base_url === ""
+    ) {
+      throw new Error(`${asset.id}: file bundles require base_url and files`);
+    }
+    const placementRoots = asset.placements ?? [];
+    for (const file of asset.files) {
+      if (
+        typeof file.path !== "string" ||
+        file.path === "" ||
+        file.path.includes("\\") ||
+        file.path.split("/").some((part) => part === "" || part === "." || part === "..")
+      ) {
+        throw new Error(`${asset.id}: bundle file path must be safe and relative`);
+      }
+      result.push({
+        ...file,
+        id: `${asset.id}:${file.path}`,
+        path: `${asset.path}/${file.path}`,
+        url: new URL(file.path, `${asset.base_url.replace(/\/+$/, "")}/`).toString(),
+        source: asset.source,
+        license: asset.license,
+        placements: placementRoots.map((placement) => `${placement}/${file.path}`),
+        quiet: true,
+      });
+    }
+  }
+  return result;
+}
+
+async function runConcurrent(items, concurrency, operation) {
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      for (;;) {
+        const index = next;
+        next += 1;
+        if (index >= items.length) {
+          return;
+        }
+        await operation(items[index]);
+      }
+    },
+  );
+  await Promise.all(workers);
 }
 
 async function main() {
@@ -125,7 +188,8 @@ async function main() {
   }
 
   let missing = false;
-  for (const asset of manifest.assets) {
+  const assets = expandedAssets(manifest);
+  await runConcurrent(assets, downloadConcurrency, async (asset) => {
     const placements = asset.placements ?? [];
     if (
       !Array.isArray(placements) ||
@@ -136,21 +200,34 @@ async function main() {
     const destination = destinationPath(asset);
     const current = await assetIsCurrent(asset, destination);
     if (current) {
-      console.log(`[external-assets] ready ${asset.id}`);
+      if (!asset.quiet) {
+        console.log(`[external-assets] ready ${asset.id}`);
+      }
     } else if (checkOnly) {
       console.error(`[external-assets] missing or invalid ${asset.id}`);
       missing = true;
-      continue;
+      return;
     } else {
-      console.log(`[external-assets] downloading ${asset.id}`);
+      if (!asset.quiet) {
+        console.log(`[external-assets] downloading ${asset.id}`);
+      }
       await downloadAsset(asset, destination);
-      console.log(`[external-assets] verified ${asset.id}`);
+      if (!asset.quiet) {
+        console.log(`[external-assets] verified ${asset.id}`);
+      }
     }
 
     for (const placement of placements) {
       if (!(await ensurePlacement(asset, destination, placement))) {
         missing = true;
       }
+    }
+  });
+  for (const asset of manifest.assets) {
+    if (Array.isArray(asset.files)) {
+      console.log(
+        `[external-assets] ready ${asset.id} (${asset.files.length} files)`,
+      );
     }
   }
 

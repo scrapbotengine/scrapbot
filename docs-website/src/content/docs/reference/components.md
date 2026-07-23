@@ -153,7 +153,7 @@ An entity using this resource-backed path becomes renderable when it has a Trans
 | --- | --- | --- |
 | `resource` | UUID string | Authored `scrapbot.model` project resource to instantiate. |
 
-The authored entity is the model root. Resource initialization and reload reconcile the imported glTF node hierarchy into derived runtime ECS entities with Transform, Geometry, and Material state. Models may contain multiple meshes and primitives; the renderer continues to consume ordinary renderable ECS entities rather than a model-specific draw path. Luau and native systems can query membership, but model resource replacement is currently a scene/editor authoring operation rather than a runtime payload write.
+The authored entity is the model root. Resource initialization and reload reconcile the imported glTF node hierarchy into derived runtime ECS entities with Transform, Geometry, and Material state. `shadow_caster` and `shadow_receiver` markers on the root are inherited by every generated primitive during that reconciliation. Models may contain multiple meshes and primitives; the renderer continues to consume ordinary renderable ECS entities rather than a model-specific draw path. Luau and native systems can query membership, but model resource replacement is currently a scene/editor authoring operation rather than a runtime payload write.
 
 ## Lights and shadows
 

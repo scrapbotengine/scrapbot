@@ -52,6 +52,15 @@ mise test-gltf-gpu
 
 Use `examples/gltf-showcase` for persistent interactive or editor testing of a representative imported model. Its ignored `assets/DamagedHelmet.glb` placement is maintained by `mise setup-assets`; do not commit or redistribute it.
 
+Use the pinned Khronos Sponza bundle when a change needs a substantially larger external-file glTF graph, many generated materials/textures, model-root shadow inheritance, or a real architectural clustered-lighting workload:
+
+```sh
+mise test-sponza
+mise test-sponza-gpu
+```
+
+These are explicit heavyweight lanes, not ordinary `mise test` dependencies. `test-sponza` deletes and freshly rebuilds only the ignored `examples/sponza/.scrapbot` cache, then asserts the pinned import shape. `test-sponza-gpu` also requires 103 renderables/draw batches, clustered point lights, shadow visibility, and writes a bounded framegrab in the platform temporary directory. The source bundle and its license are installed into ignored `examples/sponza/assets/` state by `mise setup-assets`; never commit or redistribute them.
+
 ## Structured Diagnostics
 
 Prefer `--json` for agent-driven CLI checks:
@@ -78,6 +87,7 @@ Compare allocated-slot fields across `runtime_stats.early_storage`, `late_storag
 
 - Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.
 - Use `examples/ecs-showcase` for geometry, materials, render reconciliation, batching, lighting, lifecycle-heavy ECS behavior, and visual renderer changes.
+- Use `examples/sponza` for explicit heavyweight external-file glTF, generated-material, architectural-shadow, and clustered-lighting integration after `mise setup-assets`.
 - Use `examples/ui-showcase` for retained ECS UI hierarchy, box-model layout, horizontal/vertical stacks, smooth clipped scroll areas, SDF-rounded backgrounds, pointer-styled buttons, MTSDF text, and overlay/framegrab changes. Use `--ui-script` for deterministic headless hover, active, focus, typing, scrolling, and editor workflows; do not rely on OS pointer automation.
 
 Validate an example with:
