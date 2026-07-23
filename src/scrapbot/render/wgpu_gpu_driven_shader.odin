@@ -609,6 +609,11 @@ fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
 	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u) {
 		return false;
 	}
+	let camera_offset = bounds.xyz - cull.camera_position.xyz;
+	let conservative_distance = bounds.w * 4.0;
+	if (dot(camera_offset, camera_offset) <= conservative_distance * conservative_distance) {
+		return false;
+	}
 	let clip = cull.view_projection * vec4<f32>(bounds.xyz, 1.0);
 	if (clip.w <= 0.0001) {
 		return false;
@@ -617,27 +622,27 @@ fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
 	let radius_ndc = vec2<f32>(
 		abs(bounds.w * cull.view_projection[0][0] / clip.w),
 		abs(bounds.w * cull.view_projection[1][1] / clip.w)
-	);
+	) * 1.05;
 	let center_px = cull.viewport.xy + vec2<f32>(
 		(ndc.x * 0.5 + 0.5) * cull.viewport.z,
 		(0.5 - ndc.y * 0.5) * cull.viewport.w
 	);
 	let radius_px = radius_ndc * cull.viewport.zw * 0.5;
 	let extent = max(max(radius_px.x * 2.0, radius_px.y * 2.0), 1.0);
-	let mip = min(u32(max(floor(log2(extent)) - 1.0, 0.0)), cull.hiz_mip_count - 1u);
+	let mip = min(u32(max(ceil(log2(extent)), 0.0)), cull.hiz_mip_count - 1u);
 	let mip_size = vec2<i32>(textureDimensions(hiz_depth, i32(mip)));
 	let scale = exp2(f32(mip));
-	let center = vec2<i32>(center_px / scale);
-	let corner_radius = vec2<i32>(ceil(radius_px / scale));
-	let low = clamp(center - corner_radius, vec2<i32>(0), mip_size - vec2<i32>(1));
-	let high = clamp(center + corner_radius, vec2<i32>(0), mip_size - vec2<i32>(1));
-	var farthest_occluder = textureLoad(hiz_depth, center, i32(mip)).x;
-	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, low, i32(mip)).x);
+	let low = clamp(vec2<i32>(floor((center_px - radius_px) / scale)), vec2<i32>(0), mip_size - vec2<i32>(1));
+	let high = clamp(vec2<i32>(floor((center_px + radius_px) / scale)), vec2<i32>(0), mip_size - vec2<i32>(1));
+	var farthest_occluder = textureLoad(hiz_depth, low, i32(mip)).x;
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(high.x, low.y), i32(mip)).x);
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(low.x, high.y), i32(mip)).x);
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, high, i32(mip)).x);
 	let toward_camera = normalize(cull.camera_position.xyz - bounds.xyz);
 	let nearest_clip = cull.view_projection * vec4<f32>(bounds.xyz + toward_camera * bounds.w, 1.0);
+	if (nearest_clip.w <= 0.0001) {
+		return false;
+	}
 	let nearest_depth = nearest_clip.z / nearest_clip.w;
 	return nearest_depth > farthest_occluder + 0.0015;
 }

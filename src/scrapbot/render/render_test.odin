@@ -958,6 +958,13 @@ test_wgpu_hiz_build_waits_for_stable_instance_data :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_hiz_rejects_unsafe_large_sphere_projections :: proc(t: ^testing.T) {
+	camera := Vec3{0, 3.9, 14}
+	testing.expect(t, !wgpu_hiz_sphere_projection_safe({0, 8.35, -19, 23.38}, camera))
+	testing.expect(t, wgpu_hiz_sphere_projection_safe({0, 3.9, -19, 1}, camera))
+}
+
+@(test)
 test_wgpu_frustum_planes_and_cpu_culling_reference :: proc(t: ^testing.T) {
 	planes := wgpu_extract_frustum_planes(mat4_identity())
 	testing.expect(t, wgpu_sphere_visible({0, 0, 0.5, 0.1}, planes))

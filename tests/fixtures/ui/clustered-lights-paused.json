@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
+    {"action": "wait", "frames": 8},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}}
+  ]
+}

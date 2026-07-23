@@ -1737,6 +1737,17 @@ wgpu_hiz_build_requested :: proc(slot_count: int, instance_data_changed: bool) -
 	return slot_count >= WGPU_HIZ_MIN_INSTANCES && !instance_data_changed
 }
 
+wgpu_hiz_sphere_projection_safe :: proc(bounds: [4]f32, camera_position: Vec3) -> bool {
+	offset := Vec3 {
+		bounds[0] - camera_position.x,
+		bounds[1] - camera_position.y,
+		bounds[2] - camera_position.z,
+	}
+	distance_squared := offset.x * offset.x + offset.y * offset.y + offset.z * offset.z
+	conservative_distance := bounds[3] * 4
+	return distance_squared > conservative_distance * conservative_distance
+}
+
 wgpu_retain_render_uniform :: proc(
 	renderer: ^WGPU_Renderer,
 	uniform: WGPU_GPU_Render_Uniform,

@@ -275,7 +275,8 @@ TRANSFORM_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-cpu.png"
 MASK_FRAME="${TMPDIR:-/tmp}/scrapbot-gltf-mask.png"
 LIGHTING_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lighting.png"
 CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$CLUSTER_FRAME"' EXIT
+CLUSTER_PAUSED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-paused.png"
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
@@ -289,6 +290,7 @@ TRANSFORM_CPU_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-relo
 MASK_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --no-hot-reload --frames 2 --framegrab "$MASK_FRAME" --json)"
 LIGHTING_JSON="$(bin/scrapbot run tests/fixtures/gpu-lighting --headless --no-hot-reload --frames 2 --framegrab "$LIGHTING_FRAME" --json)"
 CLUSTER_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 10 --framegrab "$CLUSTER_FRAME" --json)"
+CLUSTER_PAUSED_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 40 --ui-script tests/fixtures/ui/clustered-lights-paused.json --framegrab "$CLUSTER_PAUSED_FRAME" --json)"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);
@@ -349,6 +351,18 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
   process.exit(1);
 }
 ' "$CLUSTER_JSON"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.render_stats;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    !stats?.hiz_occlusion || !stats.hiz_valid ||
+    stats.frustum_candidates !== 451 ||
+    stats.visible_instances + stats.occlusion_culled_instances !== stats.frustum_candidates ||
+    stats.occlusion_culled_instances > 35) {
+  console.error("paused editor Hi-Z rejected a large near-field architectural bound");
+  process.exit(1);
+}
+' "$CLUSTER_PAUSED_JSON"
 node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
@@ -431,6 +445,7 @@ node tools/assert_png_variance.mjs "$COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$LOD_COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$TRANSFORM_COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$MASK_FRAME"
+node tools/assert_png_variance.mjs "$CLUSTER_PAUSED_FRAME"
 '''
 
 [tasks.test-sanitize]
