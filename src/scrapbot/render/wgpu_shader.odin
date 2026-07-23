@@ -352,6 +352,7 @@ struct Temporal_AA_Uniform {
 @group(0) @binding(5) var resolved_color: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(6) var resolved_depth: texture_storage_2d<r32float, write>;
 @group(0) @binding(7) var<uniform> temporal: Temporal_AA_Uniform;
+@group(0) @binding(8) var ambient_occlusion: texture_2d<f32>;
 
 fn viewport_minimum() -> vec2<i32> {
 	return vec2<i32>(floor(temporal.viewport.xy));
@@ -377,6 +378,13 @@ fn reconstruct_view_position(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
 	);
 }
 
+fn current_color_at(pixel: vec2<i32>) -> vec3<f32> {
+	let dimensions = vec2<f32>(textureDimensions(resolved_color));
+	let uv = (vec2<f32>(pixel) + vec2<f32>(0.5)) / dimensions;
+	let visibility = textureSampleLevel(ambient_occlusion, linear_sampler, uv, 0.0).r;
+	return textureLoad(current_color, pixel, 0).rgb * visibility;
+}
+
 fn current_neighborhood(pixel: vec2<i32>) -> array<vec3<f32>, 2> {
 	var minimum = vec3<f32>(1e20);
 	var maximum = vec3<f32>(-1e20);
@@ -387,7 +395,7 @@ fn current_neighborhood(pixel: vec2<i32>) -> array<vec3<f32>, 2> {
 				viewport_minimum(),
 				viewport_maximum(),
 			);
-			let color = textureLoad(current_color, sample_pixel, 0).rgb;
+			let color = current_color_at(sample_pixel);
 			minimum = min(minimum, color);
 			maximum = max(maximum, color);
 		}
@@ -402,7 +410,7 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		return;
 	}
 	let pixel = vec2<i32>(invocation.xy);
-	let color = textureLoad(current_color, pixel, 0).rgb;
+	let color = current_color_at(pixel);
 	let depth = textureLoad(current_depth, pixel, 0);
 	var result = color;
 	if (
@@ -672,7 +680,6 @@ WGPU_COMPOSITE_SHADER :: `
 @group(0) @binding(4) var bloom_2: texture_2d<f32>;
 @group(0) @binding(5) var bloom_3: texture_2d<f32>;
 @group(0) @binding(6) var bloom_4: texture_2d<f32>;
-@group(0) @binding(7) var ambient_occlusion_texture: texture_2d<f32>;
 
 struct Fullscreen_Output {
 	@builtin(position) position: vec4<f32>,
@@ -708,12 +715,7 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	bloom += textureSample(bloom_2, linear_sampler, input.uv).rgb * 0.20;
 	bloom += textureSample(bloom_3, linear_sampler, input.uv).rgb * 0.13;
 	bloom += textureSample(bloom_4, linear_sampler, input.uv).rgb * 0.07;
-	let ambient_visibility =
-		textureSample(ambient_occlusion_texture, linear_sampler, input.uv).r;
-	let hdr =
-		textureSample(hdr_texture, linear_sampler, input.uv).rgb *
-		ambient_visibility +
-		bloom * 0.8;
+	let hdr = textureSample(hdr_texture, linear_sampler, input.uv).rgb + bloom * 0.8;
 	return vec4<f32>(aces(hdr), 1.0);
 }
 `

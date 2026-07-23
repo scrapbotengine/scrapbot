@@ -66,6 +66,11 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Compute},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Temporal_AA_Uniform))},
 		},
+		{
+			binding = 8,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
 	}
 	renderer.temporal_aa_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -293,7 +298,7 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.composite_shader == nil {
 		return "failed to create HDR composite shader"
 	}
-	composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupLayoutEntry
+	composite_entries: [2 + WGPU_BLOOM_LEVELS]wgpu.BindGroupLayoutEntry
 	composite_entries[0] = {
 		binding = 0,
 		visibility = {.Fragment},
@@ -310,11 +315,6 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Fragment},
 			texture = {sampleType = .Float, viewDimension = ._2D},
 		}
-	}
-	composite_entries[2 + WGPU_BLOOM_LEVELS] = {
-		binding = 2 + WGPU_BLOOM_LEVELS,
-		visibility = {.Fragment},
-		texture = {sampleType = .Float, viewDimension = ._2D},
 	}
 	renderer.composite_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -670,34 +670,6 @@ wgpu_ensure_post_targets :: proc(
 	if err != "" {
 		return err
 	}
-	temporal_entries := [?]wgpu.BindGroupEntry {
-		{binding = 0, textureView = renderer.hdr_view},
-		{binding = 1, sampler = renderer.post_sampler},
-		{binding = 2, textureView = depth_view},
-		{binding = 3, textureView = renderer.temporal_history_view},
-		{binding = 4, textureView = renderer.temporal_history_depth_view},
-		{binding = 5, textureView = renderer.temporal_resolved_view},
-		{binding = 6, textureView = renderer.temporal_resolved_depth_view},
-		{
-			binding = 7,
-			buffer = renderer.temporal_aa_uniform_buffer,
-			offset = 0,
-			size = u64(size_of(WGPU_Temporal_AA_Uniform)),
-		},
-	}
-	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = "Scrapbot Temporal AA Bind Group",
-			layout = renderer.temporal_aa_bind_group_layout,
-			entryCount = uint(len(temporal_entries)),
-			entries = raw_data(temporal_entries[:]),
-		},
-	)
-	if renderer.temporal_aa_bind_group == nil {
-		return "failed to create temporal AA bind group"
-	}
-
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
 	for index in 0 ..< len(renderer.ambient_occlusion_textures) {
@@ -763,6 +735,34 @@ wgpu_ensure_post_targets :: proc(
 			return "failed to create ambient occlusion bind groups"
 		}
 	}
+	temporal_entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, textureView = renderer.hdr_view},
+		{binding = 1, sampler = renderer.post_sampler},
+		{binding = 2, textureView = depth_view},
+		{binding = 3, textureView = renderer.temporal_history_view},
+		{binding = 4, textureView = renderer.temporal_history_depth_view},
+		{binding = 5, textureView = renderer.temporal_resolved_view},
+		{binding = 6, textureView = renderer.temporal_resolved_depth_view},
+		{
+			binding = 7,
+			buffer = renderer.temporal_aa_uniform_buffer,
+			offset = 0,
+			size = u64(size_of(WGPU_Temporal_AA_Uniform)),
+		},
+		{binding = 8, textureView = renderer.ambient_occlusion_views[2]},
+	}
+	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot Temporal AA Bind Group",
+			layout = renderer.temporal_aa_bind_group_layout,
+			entryCount = uint(len(temporal_entries)),
+			entries = raw_data(temporal_entries[:]),
+		},
+	)
+	if renderer.temporal_aa_bind_group == nil {
+		return "failed to create temporal AA bind group"
+	}
 
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
 		level_width := max(u32(1), width >> u32(index + 1))
@@ -812,7 +812,7 @@ wgpu_ensure_post_targets :: proc(
 			return "failed to create bloom bind groups"
 		}
 	}
-	composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
+	composite_entries: [2 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
 	composite_entries[0] = {
 		binding = 0,
 		textureView = renderer.temporal_resolved_view,
@@ -826,10 +826,6 @@ wgpu_ensure_post_targets :: proc(
 			binding = u32(index + 2),
 			textureView = renderer.bloom_views[index],
 		}
-	}
-	composite_entries[2 + WGPU_BLOOM_LEVELS] = {
-		binding = 2 + WGPU_BLOOM_LEVELS,
-		textureView = renderer.ambient_occlusion_views[2],
 	}
 	renderer.composite_bind_group = wgpu.DeviceCreateBindGroup(
 		renderer.device,
@@ -908,6 +904,58 @@ wgpu_encode_bloom_and_composite :: proc(
 	if renderer.temporal_history_valid {
 		history_valid = 1
 	}
+	ambient_occlusion_uniform := WGPU_Ambient_Occlusion_Uniform {
+		projection = {projection[0], projection[5], projection[10], projection[14]},
+		viewport = viewport,
+		dimensions = {f32(width), f32(height), projection[8], projection[9]},
+		parameters = {1.25, 0.035, 1.35, 1.15},
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.ambient_occlusion_uniform_buffer,
+		0,
+		&ambient_occlusion_uniform,
+		size_of(ambient_occlusion_uniform),
+	)
+	ambient_occlusion_timestamps, ambient_occlusion_timestamps_enabled := wgpu_gpu_pass_timestamps(
+		renderer,
+		.Ambient_Occlusion,
+	)
+	ambient_occlusion_timestamps_ptr: ^wgpu.PassTimestampWrites
+	if ambient_occlusion_timestamps_enabled {
+		ambient_occlusion_timestamps_ptr = &ambient_occlusion_timestamps
+	}
+	ambient_occlusion_pass := wgpu.CommandEncoderBeginComputePass(
+		encoder,
+		&wgpu.ComputePassDescriptor {
+			label = "Scrapbot Ambient Occlusion Compute Pass",
+			timestampWrites = ambient_occlusion_timestamps_ptr,
+		},
+	)
+	if ambient_occlusion_pass == nil {
+		return "failed to begin ambient occlusion compute pass"
+	}
+	ambient_occlusion_pipelines := [?]wgpu.ComputePipeline {
+		renderer.ambient_occlusion_pipeline,
+		renderer.ambient_occlusion_blur_horizontal_pipeline,
+		renderer.ambient_occlusion_blur_vertical_pipeline,
+	}
+	for pipeline, index in ambient_occlusion_pipelines {
+		wgpu.ComputePassEncoderSetPipeline(ambient_occlusion_pass, pipeline)
+		wgpu.ComputePassEncoderSetBindGroup(
+			ambient_occlusion_pass,
+			0,
+			renderer.ambient_occlusion_bind_groups[index],
+		)
+		wgpu.ComputePassEncoderDispatchWorkgroups(
+			ambient_occlusion_pass,
+			(ambient_occlusion_width + 7) / 8,
+			(ambient_occlusion_height + 7) / 8,
+			1,
+		)
+	}
+	wgpu.ComputePassEncoderEnd(ambient_occlusion_pass)
+	wgpu.ComputePassEncoderRelease(ambient_occlusion_pass)
 	temporal_uniform := WGPU_Temporal_AA_Uniform {
 		previous_view_projection = renderer.temporal_previous_view_projection,
 		inverse_view = renderer.temporal_inverse_view,
@@ -969,58 +1017,6 @@ wgpu_encode_bloom_and_composite :: proc(
 		},
 		&copy_size,
 	)
-	ambient_occlusion_uniform := WGPU_Ambient_Occlusion_Uniform {
-		projection = {projection[0], projection[5], projection[10], projection[14]},
-		viewport = viewport,
-		dimensions = {f32(width), f32(height), projection[8], projection[9]},
-		parameters = {1.25, 0.035, 1.35, 1.15},
-	}
-	wgpu.QueueWriteBuffer(
-		renderer.queue,
-		renderer.ambient_occlusion_uniform_buffer,
-		0,
-		&ambient_occlusion_uniform,
-		size_of(ambient_occlusion_uniform),
-	)
-	ambient_occlusion_timestamps, ambient_occlusion_timestamps_enabled := wgpu_gpu_pass_timestamps(
-		renderer,
-		.Ambient_Occlusion,
-	)
-	ambient_occlusion_timestamps_ptr: ^wgpu.PassTimestampWrites
-	if ambient_occlusion_timestamps_enabled {
-		ambient_occlusion_timestamps_ptr = &ambient_occlusion_timestamps
-	}
-	ambient_occlusion_pass := wgpu.CommandEncoderBeginComputePass(
-		encoder,
-		&wgpu.ComputePassDescriptor {
-			label = "Scrapbot Ambient Occlusion Compute Pass",
-			timestampWrites = ambient_occlusion_timestamps_ptr,
-		},
-	)
-	if ambient_occlusion_pass == nil {
-		return "failed to begin ambient occlusion compute pass"
-	}
-	ambient_occlusion_pipelines := [?]wgpu.ComputePipeline {
-		renderer.ambient_occlusion_pipeline,
-		renderer.ambient_occlusion_blur_horizontal_pipeline,
-		renderer.ambient_occlusion_blur_vertical_pipeline,
-	}
-	for pipeline, index in ambient_occlusion_pipelines {
-		wgpu.ComputePassEncoderSetPipeline(ambient_occlusion_pass, pipeline)
-		wgpu.ComputePassEncoderSetBindGroup(
-			ambient_occlusion_pass,
-			0,
-			renderer.ambient_occlusion_bind_groups[index],
-		)
-		wgpu.ComputePassEncoderDispatchWorkgroups(
-			ambient_occlusion_pass,
-			(ambient_occlusion_width + 7) / 8,
-			(ambient_occlusion_height + 7) / 8,
-			1,
-		)
-	}
-	wgpu.ComputePassEncoderEnd(ambient_occlusion_pass)
-	wgpu.ComputePassEncoderRelease(ambient_occlusion_pass)
 
 	bloom_timestamps, bloom_timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Bloom)
 	bloom_timestamps_ptr: ^wgpu.PassTimestampWrites

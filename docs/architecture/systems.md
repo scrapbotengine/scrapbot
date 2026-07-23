@@ -117,7 +117,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 - **Inputs:** Jittered HDR world target, scene depth, current/previous camera projection state, retained temporal color/depth history, ambient-occlusion and bloom resources, and presentation format.
 - **Outputs:** Composited scene color in the presentation target.
 - **Stable-frame behavior:** Reuses postprocess pipelines, bind groups, and full-resolution color/depth history at stable size. Resize, sampled-depth replacement, world replacement, or a detected camera cut explicitly rejects history; ordinary frames mutate retained history in place.
-- **Boundary:** WGPU compute/render encoding for camera-reprojected temporal resolution with previous-depth rejection and neighborhood clamping, half-resolution depth-reconstructed ambient occlusion, bilateral blur, bloom, tone mapping, and composite. Culling remains unjittered, while UI is excluded and remains crisp.
+- **Boundary:** WGPU compute/render encoding for half-resolution depth-reconstructed ambient occlusion and bilateral blur, followed by camera-reprojected temporal resolution of the AO-modulated HDR signal with previous-depth rejection and neighborhood clamping, bloom, tone mapping, and composite. Culling remains unjittered, while UI is excluded and remains crisp.
 - **Source/tests:** `render/wgpu_post.odin`, `render/wgpu_shader.odin`; WGPU smoke/framegrab tests.
 
 ### `scrapbot.render.ui`
