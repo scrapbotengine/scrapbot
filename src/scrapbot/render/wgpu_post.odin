@@ -1136,7 +1136,12 @@ wgpu_encode_bloom_and_composite :: proc(
 			projection = {projection[0], projection[5], projection[10], projection[14]},
 			viewport = viewport,
 			dimensions = {f32(width), f32(height), projection[8], projection[9]},
-			parameters = {1.25, 0.025, 1.35, 0.85},
+			parameters = {
+				WGPU_GTAO_RADIUS,
+				WGPU_GTAO_HORIZON_BIAS,
+				WGPU_GTAO_POWER,
+				WGPU_GTAO_STRENGTH,
+			},
 		}
 		wgpu.QueueWriteBuffer(
 			renderer.queue,

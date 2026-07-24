@@ -180,6 +180,11 @@ WGPU_Ambient_Occlusion_Uniform :: struct {
 }
 #assert(size_of(WGPU_Ambient_Occlusion_Uniform) == 64)
 
+WGPU_GTAO_RADIUS :: f32(1.0)
+WGPU_GTAO_HORIZON_BIAS :: f32(0.025)
+WGPU_GTAO_POWER :: f32(1.0)
+WGPU_GTAO_STRENGTH :: f32(0.45)
+
 WGPU_Screen_Space_Reflections_Uniform :: struct {
 	projection: [4]f32,
 	viewport: [4]f32,
