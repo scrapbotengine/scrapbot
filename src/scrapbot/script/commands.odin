@@ -586,6 +586,12 @@ read_full_world_environment_table :: proc "c" (
 		"lighting_intensity",
 		&value.lighting_intensity,
 	); err != "" { return }
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"reflection_intensity",
+		&value.reflection_intensity,
+	); err != "" { return }
 	if err = read_ui_number_field(L, payload_index, "lighting_rotation", &value.lighting_rotation);
 	   err != "" { return }
 	if err = read_ui_number_field(L, payload_index, "exposure", &value.exposure);

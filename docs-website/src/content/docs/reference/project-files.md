@@ -192,6 +192,7 @@ name = "World Environment"
 [entities.world_environment]
 lighting = "b1000000-0000-4000-8000-000000000004"
 lighting_intensity = 1
+reflection_intensity = 1
 lighting_rotation = 0
 exposure = 1
 background_visible = true
@@ -212,7 +213,7 @@ sun_size = 1
 sun_glow = 1
 ```
 
-A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune that procedural sky live and do not alter imported HDR backgrounds. The same analytic sky, ground, haze, and sun model supplies roughness-aware diffuse and specular environment lighting, so nonzero-metallic materials remain meaningfully lit without an imported HDR probe. Procedural sun elevation drives horizon occlusion and day/twilight/night presentation; above the horizon it also contributes the primary derived directional light and shadow direction. Explicit ECS lights remain additive. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
+A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. `lighting_intensity` scales all environment lighting; `reflection_intensity` independently scales its specular part. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune that procedural sky live and do not alter imported HDR backgrounds. The same analytic sky, ground, haze, and sun model supplies roughness-aware diffuse and specular environment lighting, so nonzero-metallic materials remain meaningfully lit without an imported HDR probe. Procedural sun elevation drives horizon occlusion and day/twilight/night presentation; above the horizon it also contributes the primary derived directional light and shadow direction. Explicit ECS lights remain additive. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
 
 Built-in primitive convenience:
 

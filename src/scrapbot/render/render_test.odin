@@ -19,7 +19,11 @@ test_world_shaders_light_procedural_skies_through_the_pbr_environment_path :: pr
 			t,
 			strings.contains(shader, "multiple_scattering * multiple_scattering_energy"),
 		)
+		testing.expect(t, strings.contains(shader, "fn specular_ambient_occlusion"))
+		testing.expect(t, strings.contains(shader, "fn environment_horizon_occlusion"))
+		testing.expect(t, strings.contains(shader, "material.alpha.y > 0.5"))
 		testing.expect(t, strings.contains(shader, "procedural_specular *"))
+		testing.expect(t, strings.contains(shader, "environment.reflection_intensity"))
 		testing.expect(t, !strings.contains(shader, "ambient_specular * occlusion"))
 	}
 }

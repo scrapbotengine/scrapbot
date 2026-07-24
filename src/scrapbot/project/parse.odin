@@ -349,6 +349,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		height = shared.DEFAULT_WINDOW_HEIGHT,
 	}
 	config.render.environment_intensity = 1
+	config.render.environment_reflection_intensity = 1
 	config.render.exposure = 1
 	config.render.background_intensity = 1
 	config.render.background_exposure = 1
@@ -493,6 +494,8 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					}
 				case "environment_intensity":
 					config.render.environment_intensity, found = parse_f32(value)
+				case "environment_reflection_intensity":
+					config.render.environment_reflection_intensity, found = parse_f32(value)
 				case "environment_rotation":
 					config.render.environment_rotation, found = parse_f32(value)
 				case "exposure":
@@ -524,6 +527,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			if !found ||
 			   !finite_render_config(config.render) ||
 			   config.render.environment_intensity < 0 ||
+			   config.render.environment_reflection_intensity < 0 ||
 			   config.render.exposure <= 0 ||
 			   config.render.background_intensity < 0 ||
 			   config.render.background_exposure <= 0 ||
@@ -841,6 +845,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.world_environment.lighting, found = parse_basic_string(value)
 					case "lighting_intensity":
 						current.world_environment.lighting_intensity, found = parse_f32(value)
+					case "reflection_intensity":
+						current.world_environment.reflection_intensity, found = parse_f32(value)
 					case "lighting_rotation":
 						current.world_environment.lighting_rotation, found = parse_f32(value)
 					case "exposure":
@@ -1992,6 +1998,8 @@ finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {
 	return(
 		!math.is_nan(value.environment_intensity) &&
 		!math.is_inf(value.environment_intensity) &&
+		!math.is_nan(value.environment_reflection_intensity) &&
+		!math.is_inf(value.environment_reflection_intensity) &&
 		!math.is_nan(value.environment_rotation) &&
 		!math.is_inf(value.environment_rotation) &&
 		!math.is_nan(value.exposure) &&

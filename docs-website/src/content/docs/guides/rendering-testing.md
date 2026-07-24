@@ -33,7 +33,7 @@ The gate pauses the dense Cluster Cathedral inside the editor and requires large
 
 The WGPU path samples base-color and emissive maps as sRGB. Metallic-roughness, normal, occlusion, and imported-environment data remain linear.
 
-Its GGX shader combines material factors, tangent-space normals, direct lights, and environment lighting. Imported glTF geometry keeps authored tangent handedness for stable normal maps across UV seams; geometry without tangents falls back to derivative reconstruction. Imported HDR environments provide diffuse-irradiance and roughness-prefiltered specular cubes.
+Its GGX shader combines material factors, tangent-space normals, direct lights, and environment lighting. Imported glTF geometry keeps authored tangent handedness for stable normal maps across UV seams; geometry without tangents falls back to derivative reconstruction. Imported HDR environments provide diffuse-irradiance and roughness-prefiltered specular cubes. Specular ambient occlusion and normal-map-only horizon occlusion suppress impossible below-surface environment reflections without dimming unperturbed materials. World Environment exposes a second reflection multiplier when specular art direction should differ from diffuse fill.
 
 The procedural atmosphere evaluates equivalent diffuse and roughness-aware specular radiance from its sky, ground, haze, and sun. Metallic materials therefore retain reflected environment color even when no imported probe is selected.
 

@@ -4,7 +4,8 @@ name = "World Environment"
 
 [entities.world_environment]
 lighting = "5a000000-0000-4000-8000-000000000002"
-lighting_intensity = 0.42
+lighting_intensity = 0.3
+reflection_intensity = 0.6
 lighting_rotation = 25
 exposure = 1
 background_visible = true
@@ -18,9 +19,9 @@ ground_color = [0.16, 0.18, 0.22]
 turbidity = 2
 atmosphere_thickness = 1
 horizon_softness = 1
-sun_direction = [-0.45, -0.72, -0.53]
+sun_direction = [-0.28, -0.95, -0.14]
 sun_color = [1, 0.82, 0.62]
-sun_intensity = 1.4
+sun_intensity = 2.2
 sun_size = 0.6
 sun_glow = 0.3
 
@@ -63,9 +64,9 @@ id = "5a100000-0000-4000-8000-000000000004"
 name = "Sun"
 
 [entities.directional_light]
-direction = [-0.45, -0.72, -0.53]
+direction = [-0.28, -0.95, -0.14]
 color = [1, 0.8, 0.58]
-intensity = 1.35
+intensity = 2.2
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000005"

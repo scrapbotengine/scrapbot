@@ -84,6 +84,7 @@ test_scene_world_environment_serialization_persists_procedural_controls :: proc(
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 	environment := shared.world_environment_default()
+	environment.reflection_intensity = 0.65
 	environment.sky_tint = {0.9, 1, 1.1}
 	environment.ground_color = {0.2, 0.18, 0.16}
 	environment.turbidity = 4.5
@@ -102,6 +103,7 @@ test_scene_world_environment_serialization_persists_procedural_controls :: proc(
 	}
 	write_scene_entity(&builder, &entity)
 	serialized := strings.to_string(builder)
+	testing.expect(t, strings.contains(serialized, "reflection_intensity = 0.65"))
 	testing.expect(t, strings.contains(serialized, "sky_tint = [0.9, 1, 1.1]"))
 	testing.expect(t, strings.contains(serialized, "ground_color = [0.2, 0.18, 0.16]"))
 	testing.expect(t, strings.contains(serialized, "turbidity = 4.5"))

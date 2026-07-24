@@ -206,6 +206,9 @@ configure_project_environment :: proc(
 	if math.is_nan(config.environment_intensity) ||
 	   math.is_inf(config.environment_intensity) ||
 	   config.environment_intensity < 0 ||
+	   math.is_nan(config.environment_reflection_intensity) ||
+	   math.is_inf(config.environment_reflection_intensity) ||
+	   config.environment_reflection_intensity < 0 ||
 	   math.is_nan(config.environment_rotation) ||
 	   math.is_inf(config.environment_rotation) ||
 	   math.is_nan(config.exposure) ||
@@ -228,6 +231,7 @@ configure_project_environment :: proc(
 	}
 	if registry.active_environment != handle ||
 	   registry.environment_intensity != config.environment_intensity ||
+	   registry.environment_reflection_intensity != config.environment_reflection_intensity ||
 	   registry.environment_rotation != config.environment_rotation ||
 	   registry.exposure != config.exposure ||
 	   registry.background_visible != config.background_visible ||
@@ -238,6 +242,7 @@ configure_project_environment :: proc(
 	   registry.background_blur != config.background_blur {
 		registry.active_environment = handle
 		registry.environment_intensity = config.environment_intensity
+		registry.environment_reflection_intensity = config.environment_reflection_intensity
 		registry.environment_rotation = config.environment_rotation
 		registry.exposure = config.exposure
 		registry.background_visible = config.background_visible
@@ -306,6 +311,7 @@ configure_world_environment :: proc(
 	}
 	config := shared.Project_Render_Config {
 		environment_intensity = value.lighting_intensity,
+		environment_reflection_intensity = value.reflection_intensity,
 		environment_rotation = value.lighting_rotation,
 		exposure = value.exposure,
 		background_visible = value.background_visible,

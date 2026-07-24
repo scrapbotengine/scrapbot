@@ -403,7 +403,7 @@ push_query_component_table :: proc "c" (
 			if entity.world_environment_index >= 0 &&
 			   entity.world_environment_index < len(world.world_environments) {
 				value := world.world_environments[entity.world_environment_index]
-				lua_createtable(L, 0, 20)
+				lua_createtable(L, 0, 21)
 				lua_pushlstring(
 					L,
 					cstring(raw_data(value.lighting)),
@@ -412,6 +412,8 @@ push_query_component_table :: proc "c" (
 				lua_setfield(L, -2, "lighting")
 				lua_pushnumber(L, f64(value.lighting_intensity))
 				lua_setfield(L, -2, "lighting_intensity")
+				lua_pushnumber(L, f64(value.reflection_intensity))
+				lua_setfield(L, -2, "reflection_intensity")
 				lua_pushnumber(L, f64(value.lighting_rotation))
 				lua_setfield(L, -2, "lighting_rotation")
 				lua_pushnumber(L, f64(value.exposure))

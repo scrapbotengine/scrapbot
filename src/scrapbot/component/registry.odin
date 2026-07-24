@@ -153,6 +153,7 @@ init_registry :: proc(registry: ^Registry) {
 		{
 			Field_Definition{name = "lighting", field_type = .String},
 			Field_Definition{name = "lighting_intensity", field_type = .Number},
+			Field_Definition{name = "reflection_intensity", field_type = .Number},
 			Field_Definition{name = "lighting_rotation", field_type = .Number},
 			Field_Definition{name = "exposure", field_type = .Number},
 			Field_Definition{name = "background_visible", field_type = .Bool},

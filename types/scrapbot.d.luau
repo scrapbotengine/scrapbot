@@ -318,6 +318,7 @@ export type ScrapbotCameraComponent = ScrapbotComponent<ScrapbotCamera, Readonly
 export type ScrapbotWorldEnvironment = {
 	lighting: string,
 	lighting_intensity: number,
+	reflection_intensity: number,
 	lighting_rotation: number,
 	exposure: number,
 	background_visible: boolean,
@@ -341,6 +342,7 @@ export type ScrapbotWorldEnvironment = {
 export type ReadonlyScrapbotWorldEnvironment = {
 	read lighting: string,
 	read lighting_intensity: number,
+	read reflection_intensity: number,
 	read lighting_rotation: number,
 	read exposure: number,
 	read background_visible: boolean,

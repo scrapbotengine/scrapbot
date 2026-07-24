@@ -109,7 +109,8 @@ A scene may contain at most one World Environment component. It belongs on an or
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `lighting` | string | empty | Optional UUID of a `scrapbot.environment` resource used for diffuse/specular image-based lighting. |
-| `lighting_intensity` | number | `1` | Non-negative lighting multiplier. |
+| `lighting_intensity` | number | `1` | Non-negative multiplier shared by diffuse and specular environment lighting. |
+| `reflection_intensity` | number | `1` | Additional non-negative multiplier for specular environment reflections. Use it to art-direct reflection strength without dimming diffuse image-based lighting. |
 | `lighting_rotation` | number | `0` | Lighting Y rotation in degrees. |
 | `exposure` | number | `1` | Positive base linear exposure multiplied by active-camera exposure. |
 | `background_visible` | boolean | `true` | Enables the infinite camera-oriented background. |

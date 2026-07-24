@@ -154,7 +154,7 @@ WGPU_Environment_Uniform :: struct {
 	background_blur: f32,
 	background_enabled: f32,
 	background_max_specular_lod: f32,
-	_padding: f32,
+	reflection_intensity: f32,
 	sun_direction_intensity: [4]f32,
 	sun_color: [4]f32,
 	atmosphere_sky_tint: [4]f32,
@@ -1222,7 +1222,12 @@ wgpu_material_cache :: proc(
 			1 if material.desc.alpha_mode == .Mask else 0,
 			1 if material.desc.double_sided else 0,
 		},
-		alpha = {material.desc.alpha_cutoff, 0, 0, 0},
+		alpha = {
+			material.desc.alpha_cutoff,
+			1 if len(material.desc.normal_image.pixels) > 0 else 0,
+			0,
+			0,
+		},
 	}
 	cached.uniform_buffer = wgpu.DeviceCreateBuffer(
 		renderer.device,

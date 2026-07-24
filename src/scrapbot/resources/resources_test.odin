@@ -660,6 +660,7 @@ test_project_environment_registration_is_stable_and_revision_driven :: proc(t: ^
 	config := shared.Project_Render_Config {
 		environment = id,
 		environment_intensity = 1.5,
+		environment_reflection_intensity = 0.65,
 		environment_rotation = 45,
 		exposure = 0.8,
 		background_visible = true,
@@ -671,6 +672,7 @@ test_project_environment_registration_is_stable_and_revision_driven :: proc(t: ^
 	}
 	testing.expect_value(t, configure_project_environment(&registry, config), "")
 	testing.expect_value(t, registry.active_environment, handle)
+	testing.expect_value(t, registry.environment_reflection_intensity, f32(0.65))
 	testing.expect_value(t, registry.background_environment, background_handle)
 	testing.expect(t, registry.background_visible)
 	testing.expect_value(t, registry.background_intensity, f32(0.75))
@@ -707,6 +709,7 @@ test_world_environment_reconciliation_is_change_driven :: proc(t: ^testing.T) {
 	}
 	environment := shared.world_environment_default()
 	environment.lighting_intensity = 0.75
+	environment.reflection_intensity = 0.6
 	environment.exposure = 1.1
 	environment.background_intensity = 0.8
 	environment.turbidity = 3.5
@@ -723,6 +726,7 @@ test_world_environment_reconciliation_is_change_driven :: proc(t: ^testing.T) {
 
 	testing.expect_value(t, reconcile_world_environment(&registry, &world), "")
 	testing.expect_value(t, registry.environment_intensity, f32(0.75))
+	testing.expect_value(t, registry.environment_reflection_intensity, f32(0.6))
 	testing.expect(t, registry.background_visible)
 	testing.expect_value(t, registry.atmosphere_turbidity, f32(3.5))
 	testing.expect_value(t, registry.atmosphere_sun_direction, shared.Vec3{0.3, 0.4, -0.8})
@@ -733,11 +737,13 @@ test_world_environment_reconciliation_is_change_driven :: proc(t: ^testing.T) {
 	testing.expect_value(t, registry.environment_revision, first_revision)
 
 	world.world_environments[0].background_intensity = 0.4
+	world.world_environments[0].reflection_intensity = 0.35
 	world.world_environments[0].sun_glow = 2.25
 	world.world_environments[0].sun_intensity = 3.5
 	world.entities[0].component_revision += 1
 	testing.expect_value(t, reconcile_world_environment(&registry, &world), "")
 	testing.expect_value(t, registry.background_intensity, f32(0.4))
+	testing.expect_value(t, registry.environment_reflection_intensity, f32(0.35))
 	testing.expect_value(t, registry.atmosphere_sun_glow, f32(2.25))
 	testing.expect_value(t, registry.atmosphere_sun_intensity, f32(3.5))
 	testing.expect(t, registry.environment_revision > first_revision)

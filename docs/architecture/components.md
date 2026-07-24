@@ -95,7 +95,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.world_environment`
 
-- **Contract:** At most one authored component per scene selects Environment-resource UUIDs for image-based lighting and the visible background, plus their independent presentation values. An enabled empty background selects the art-directable procedural atmosphere with its own world-space HDR sun.
+- **Contract:** At most one authored component per scene selects Environment-resource UUIDs for image-based lighting and the visible background, plus independent diffuse/specular lighting strength and presentation values. An enabled empty background selects the art-directable procedural atmosphere with its own world-space HDR sun.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored singleton-by-validation, attached to an ordinary selectable scene entity.
 - **Producers:** Scene loading, automatic editor reflection/history, component membership commands, and playback restore.
 - **Consumers:** The fixed `scrapbot.environment` phase resolves UUIDs to generational Environment handles and updates the renderer-facing resource-registry cache, including procedural color/haze/sun controls. Backend-neutral light extraction inserts an above-horizon procedural sun as the first derived directional-light input without mutating World entities; WGPU consumes that light through ordinary GGX/shadow paths and derives horizon-clipped sky presentation plus procedural fill from the same retained state.

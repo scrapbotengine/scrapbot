@@ -369,6 +369,7 @@ sun_direction = [-0.5, 0.25, -0.83]
 scrapbot.system(Environments, {
 	writes = { scrapbot.world_environment },
 }, function(time, entity, environment)
+	environment.reflection_intensity = 0.45
 	environment.sun_direction.x = 0
 	environment.sun_direction.y = -1
 	environment.sun_direction.z = 0
@@ -382,6 +383,7 @@ end)
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expectf(t, step_err == "", "world environment writeback failed: %s", step_err)
 	testing.expect_value(t, world.world_environments[0].sun_direction, shared.Vec3{0, -1, 0})
+	testing.expect_value(t, world.world_environments[0].reflection_intensity, f32(0.45))
 	testing.expect(t, world.entities[0].component_revision > revision_before)
 }
 

@@ -26,7 +26,7 @@ struct Environment_Uniform {
 	background_blur: f32,
 	background_enabled: f32,
 	background_max_specular_lod: f32,
-	_padding: f32,
+	reflection_intensity: f32,
 	sun_direction_intensity: vec4<f32>,
 	sun_color: vec4<f32>,
 	atmosphere_sky_tint: vec4<f32>,
@@ -551,6 +551,7 @@ wgpu_sync_environment :: proc(
 	}
 	uniform := WGPU_Environment_Uniform {
 		exposure = 1,
+		reflection_intensity = 1,
 		background_max_specular_lod = -1,
 		sun_direction_intensity = sun_direction_intensity,
 		sun_color = sun_color,
@@ -561,6 +562,7 @@ wgpu_sync_environment :: proc(
 	}
 	if registry != nil {
 		uniform.intensity = registry.environment_intensity
+		uniform.reflection_intensity = registry.environment_reflection_intensity
 		uniform.rotation = registry.environment_rotation * f32(math.PI) / 180
 		uniform.exposure = registry.exposure * camera_exposure
 		uniform.background_intensity = registry.background_intensity

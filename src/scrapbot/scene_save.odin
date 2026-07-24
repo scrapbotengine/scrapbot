@@ -262,7 +262,7 @@ write_missing_scene_fields :: proc(
 	if !found || !baseline_found || world.entities[entity_index].origin != .Scene {
 		return
 	}
-	keys: [17]string
+	keys: [21]string
 	key_count := 0
 	switch section {
 		case "transform":
@@ -275,6 +275,7 @@ write_missing_scene_fields :: proc(
 			keys = {
 				"lighting",
 				"lighting_intensity",
+				"reflection_intensity",
 				"lighting_rotation",
 				"exposure",
 				"background_visible",
@@ -288,10 +289,13 @@ write_missing_scene_fields :: proc(
 				"turbidity",
 				"atmosphere_thickness",
 				"horizon_softness",
+				"sun_direction",
+				"sun_color",
+				"sun_intensity",
 				"sun_size",
 				"sun_glow",
 			}
-			key_count = 17
+			key_count = 21
 		case "ambient_light":
 			keys[0], keys[1] = "color", "intensity"
 			key_count = 2
@@ -471,6 +475,8 @@ scene_world_field_value :: proc(
 					return fmt.tprintf("\"%s\"", value.lighting), true
 				case "lighting_intensity":
 					return scene_f32(value.lighting_intensity), true
+				case "reflection_intensity":
+					return scene_f32(value.reflection_intensity), true
 				case "lighting_rotation":
 					return scene_f32(value.lighting_rotation), true
 				case "exposure":
@@ -497,6 +503,12 @@ scene_world_field_value :: proc(
 					return scene_f32(value.atmosphere_thickness), true
 				case "horizon_softness":
 					return scene_f32(value.horizon_softness), true
+				case "sun_direction":
+					return scene_vec3(value.sun_direction), true
+				case "sun_color":
+					return scene_vec3(value.sun_color), true
+				case "sun_intensity":
+					return scene_f32(value.sun_intensity), true
 				case "sun_size":
 					return scene_f32(value.sun_size), true
 				case "sun_glow":

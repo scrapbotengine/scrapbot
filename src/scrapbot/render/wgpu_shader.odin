@@ -36,7 +36,7 @@ struct Environment_Uniform {
 	background_blur: f32,
 	background_enabled: f32,
 	background_max_specular_lod: f32,
-	_padding: f32,
+	reflection_intensity: f32,
 	sun_direction_intensity: vec4<f32>,
 	sun_color: vec4<f32>,
 	atmosphere_sky_tint: vec4<f32>,
@@ -154,6 +154,22 @@ fn environment_specular_response(
 			vec3<f32>(0.001),
 		);
 	return single_scattering + multiple_scattering * multiple_scattering_energy;
+}
+
+fn specular_ambient_occlusion(n_dot_v: f32, occlusion: f32, roughness: f32) -> f32 {
+	return clamp(
+		pow(n_dot_v + occlusion, exp2(-16.0 * roughness - 1.0)) - 1.0 + occlusion,
+		0.0,
+		1.0,
+	);
+}
+
+fn environment_horizon_occlusion(
+	reflection: vec3<f32>,
+	geometric_normal: vec3<f32>,
+) -> f32 {
+	let horizon = clamp(1.0 + dot(reflection, geometric_normal), 0.0, 1.0);
+	return horizon * horizon;
 }
 
 fn distribution_ggx(normal: vec3<f32>, halfway: vec3<f32>, roughness: f32) -> f32 {
@@ -377,9 +393,23 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 	let n_dot_v = max(dot(normal, view), 0.0);
 	let ambient_fresnel = fresnel_schlick_roughness(n_dot_v, f0, roughness);
 	let ambient_diffuse = (vec3<f32>(1.0) - ambient_fresnel) * (1.0 - metallic) * base_color;
+	let geometric_normal_unoriented = normalize(input.world_normal);
+	let geometric_normal = select(
+		-geometric_normal_unoriented,
+		geometric_normal_unoriented,
+		dot(geometric_normal_unoriented, normal) >= 0.0,
+	);
+	let reflection = reflect(-view, normal);
+	let horizon_visibility = select(
+		1.0,
+		environment_horizon_occlusion(reflection, geometric_normal),
+		material.alpha.y > 0.5,
+	);
+	let specular_visibility =
+		specular_ambient_occlusion(n_dot_v, occlusion, roughness) *
+		horizon_visibility;
 	if (environment.enabled > 0.5) {
 		let irradiance = textureSampleLevel(irradiance_cube, environment_sampler, rotate_environment(normal), 0.0).rgb;
-		let reflection = reflect(-view, normal);
 		let prefiltered = textureSampleLevel(
 			specular_cube,
 			environment_sampler,
@@ -389,12 +419,16 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 		let diffuse_ibl = ambient_diffuse * irradiance;
 		let specular_ibl =
 			prefiltered *
-			environment_specular_response(f0, n_dot_v, roughness);
-		color += (diffuse_ibl + specular_ibl) * occlusion * environment.intensity;
+			environment_specular_response(f0, n_dot_v, roughness) *
+			specular_visibility;
+		color += diffuse_ibl * occlusion * environment.intensity;
+		color +=
+			specular_ibl *
+			environment.intensity *
+			environment.reflection_intensity;
 	} else {
 		color += render.ambient.rgb * ambient_diffuse * occlusion;
 		if (environment.background_max_specular_lod < 0.0) {
-			let reflection = reflect(-view, normal);
 			let procedural_irradiance = procedural_environment_radiance(normal, 1.0);
 			let procedural_specular = procedural_environment_radiance(reflection, roughness);
 			color +=
@@ -405,8 +439,9 @@ fn fs_main(input: Vertex_Output) -> @location(0) vec4<f32> {
 			color +=
 				procedural_specular *
 				environment_specular_response(f0, n_dot_v, roughness) *
-				occlusion *
-				environment.intensity;
+				specular_visibility *
+				environment.intensity *
+				environment.reflection_intensity;
 		}
 	}
 	let emissive_map = textureSample(emissive_texture, emissive_sampler, input.uv).rgb;

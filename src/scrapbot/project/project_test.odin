@@ -772,6 +772,7 @@ name = "World Environment"
 [entities.world_environment]
 lighting = ""
 lighting_intensity = 0.8
+reflection_intensity = 0.55
 lighting_rotation = 25
 exposure = 1.2
 background_visible = true
@@ -798,6 +799,7 @@ sun_glow = 1.75
 	testing.expect_value(t, len(scene.entities), 1)
 	testing.expect(t, scene.entities[0].has_world_environment)
 	testing.expect_value(t, scene.entities[0].world_environment.lighting_intensity, f32(0.8))
+	testing.expect_value(t, scene.entities[0].world_environment.reflection_intensity, f32(0.55))
 	testing.expect(t, scene.entities[0].world_environment.background_visible)
 	testing.expect_value(t, scene.entities[0].world_environment.background_blur, f32(0.25))
 	testing.expect_value(t, scene.entities[0].world_environment.sky_tint, shared.Vec3{0.9, 1, 1.1})

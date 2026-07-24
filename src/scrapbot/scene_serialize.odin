@@ -65,6 +65,7 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		write_scene_section(builder, "world_environment")
 		write_scene_string(builder, "lighting", value.lighting)
 		write_scene_value(builder, "lighting_intensity", scene_f32(value.lighting_intensity))
+		write_scene_value(builder, "reflection_intensity", scene_f32(value.reflection_intensity))
 		write_scene_value(builder, "lighting_rotation", scene_f32(value.lighting_rotation))
 		write_scene_value(builder, "exposure", scene_f32(value.exposure))
 		write_scene_value(builder, "background_visible", scene_bool(value.background_visible))

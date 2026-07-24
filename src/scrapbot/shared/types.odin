@@ -55,6 +55,7 @@ Project_Window_Config :: struct {
 Project_Render_Config :: struct {
 	environment: Resource_UUID,
 	environment_intensity: f32,
+	environment_reflection_intensity: f32,
 	environment_rotation: f32,
 	exposure: f32,
 	background_visible: bool,
@@ -293,6 +294,7 @@ world_environment_vec3_is_finite :: proc "contextless" (value: Vec3) -> bool {
 World_Environment_Component :: struct {
 	lighting: string,
 	lighting_intensity: f32,
+	reflection_intensity: f32,
 	lighting_rotation: f32,
 	exposure: f32,
 	background_visible: bool,
@@ -316,6 +318,7 @@ World_Environment_Component :: struct {
 world_environment_default :: proc "contextless" () -> World_Environment_Component {
 	return {
 		lighting_intensity = 1,
+		reflection_intensity = 1,
 		exposure = 1,
 		background_visible = true,
 		background_intensity = 1,
@@ -338,6 +341,9 @@ world_environment_is_valid :: proc "contextless" (value: World_Environment_Compo
 		!math.is_nan(value.lighting_intensity) &&
 		!math.is_inf(value.lighting_intensity) &&
 		value.lighting_intensity >= 0 &&
+		!math.is_nan(value.reflection_intensity) &&
+		!math.is_inf(value.reflection_intensity) &&
+		value.reflection_intensity >= 0 &&
 		!math.is_nan(value.lighting_rotation) &&
 		!math.is_inf(value.lighting_rotation) &&
 		!math.is_nan(value.exposure) &&

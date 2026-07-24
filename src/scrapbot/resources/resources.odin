@@ -189,6 +189,7 @@ Registry :: struct {
 	material_revision: u64,
 	active_environment: Environment_Handle,
 	environment_intensity: f32,
+	environment_reflection_intensity: f32,
 	environment_rotation: f32,
 	exposure: f32,
 	background_visible: bool,
@@ -324,6 +325,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.model_revision = source.model_revision
 	destination.active_environment = source.active_environment
 	destination.environment_intensity = source.environment_intensity
+	destination.environment_reflection_intensity = source.environment_reflection_intensity
 	destination.environment_rotation = source.environment_rotation
 	destination.exposure = source.exposure
 	destination.background_visible = source.background_visible

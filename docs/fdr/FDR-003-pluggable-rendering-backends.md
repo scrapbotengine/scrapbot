@@ -140,7 +140,7 @@ The editor fly view inherits the project camera's switches. Disabled features sk
 
 Imported Environments retain their source-resolution linear panorama for an optional infinite background. Importer-built irradiance and prefiltered specular cubes provide lighting.
 
-One `scrapbot.world_environment` component selects both sources and their presentation settings. An enabled background without a resource renders the procedural atmosphere.
+One `scrapbot.world_environment` component selects both sources and their presentation settings. Its reflection multiplier scales specular environment lighting independently from diffuse irradiance. An enabled background without a resource renders the procedural atmosphere.
 
 Without imported lighting, the world shader evaluates the same procedural sky for diffuse and roughness-aware specular radiance. Sky, ground, haze, and sun controls share one retained revision and uniform update; they create neither per-frame rebuilds nor generated cube resources.
 
