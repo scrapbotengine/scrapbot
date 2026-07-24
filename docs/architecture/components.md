@@ -21,6 +21,7 @@ Lifecycle meanings:
 | `scrapbot.transform` | Spatial | Authored | Yes | UUID-parented local position, rotation, and scale; source for resolved world transforms. |
 | `scrapbot.camera` | Spatial/render | Authored | Yes | Selects camera projection, linear exposure, and per-view TAA/fast-AA/AO/SSR/bloom policy; project camera is distinct from the editor fly camera. |
 | `scrapbot.world_environment` | Environment/render | Authored | Yes | Singleton scene selection for imported lighting, procedural or imported sky presentation, and base exposure. |
+| `scrapbot.volumetric_fog` | Environment/render | Authored | Yes | Singleton global height/distance medium with ambient and shadowed directional scattering. |
 | `scrapbot.ambient_light` | Lighting | Authored | Yes | Compact scene-wide ambient light input. |
 | `scrapbot.directional_light` | Lighting | Authored | Yes | Directional light and current shadow-map source. |
 | `scrapbot.point_light` | Lighting | Authored | Yes | Bounded local light using the entity's resolved world position. |
@@ -102,6 +103,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Structural membership changes rediscover the singleton. Value changes compare the retained entity component revision. Stable frames do not scan World entities or resources.
 - **Surfaces:** Public in scene TOML, Luau membership/query data, native membership, editor authoring, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotworld_environment).
 - **Source/tests:** `resources/environments.odin`, `ecs/world.odin`, `render/wgpu_environment.odin`; `project/project_test.odin`, `resources/resources_test.odin`, `ecs/world_test.odin`, WGPU day/night framegrab smoke tests.
+
+### `scrapbot.volumetric_fog`
+
+- **Contract:** At most one authored component per scene configures a global exponential height medium, distance bound, scattering color, directional anisotropy, ambient fill, and primary-light strength. Absence or zero density disables the effect.
+- **Storage/lifecycle:** Registry-defined custom ECS storage with canonical Number/Vec3 fields; authored singleton-by-validation on an ordinary entity.
+- **Producers:** Scene loading, automatic type-inspected editor controls/history, validated Luau writes, component membership commands, and playback restore.
+- **Consumers:** WGPU postprocessing reads the compact active storage, clamps its reflected payload, and integrates a bounded six-step view ray against scene depth. The first directional light and four-cascade shadow array supply filtered in-scattering.
+- **Invalidation:** Membership and value mutation use ordinary custom-component lifecycle/revisions. The current bounded frame input visits only the fog storage's compact active set; it never scans entities or component capacity. No fog-specific GPU target is allocated, and zero density takes the shader no-op branch.
+- **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, runtime-generated editor inspection, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotvolumetric_fog).
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `render/render_test.odin`, Sponza WGPU framegrab smoke tests.
 
 ### `scrapbot.ambient_light`
 

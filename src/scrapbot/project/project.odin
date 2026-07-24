@@ -652,6 +652,9 @@ register_default_project_components :: proc(registry: ^components.Registry) {
 validate_namespaced_scene_components :: proc(scene: ^Scene) -> string {
 	registry: components.Registry
 	components.init_registry(&registry)
+	if err := validate_scene_component_singletons(scene); err != "" {
+		return err
+	}
 	for entity in scene.entities {
 		for scene_component in entity.custom_components {
 			if !shared.component_name_is_namespaced(scene_component.name) {
@@ -666,12 +669,33 @@ validate_namespaced_scene_components :: proc(scene: ^Scene) -> string {
 }
 
 validate_scene_components :: proc(scene: ^Scene, registry: ^components.Registry) -> string {
+	if err := validate_scene_component_singletons(scene); err != "" {
+		return err
+	}
 	for entity in scene.entities {
 		for scene_component in entity.custom_components {
 			if err := components.validate_custom_component(registry, scene_component); err != "" {
 				return err
 			}
 		}
+	}
+	return ""
+}
+
+validate_scene_component_singletons :: proc(scene: ^Scene) -> string {
+	if scene == nil {
+		return ""
+	}
+	volumetric_fog_count := 0
+	for entity in scene.entities {
+		for scene_component in entity.custom_components {
+			if scene_component.name == "scrapbot.volumetric_fog" {
+				volumetric_fog_count += 1
+			}
+		}
+	}
+	if volumetric_fog_count > 1 {
+		return "a scene may contain only one scrapbot.volumetric_fog component"
 	}
 	return ""
 }

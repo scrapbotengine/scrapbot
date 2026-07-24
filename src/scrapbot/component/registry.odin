@@ -242,6 +242,90 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(
 		registry,
+		"scrapbot.volumetric_fog",
+		{
+			Field_Definition{name = "color", field_type = .Vec3},
+			Field_Definition {
+				name = "density",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.001,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+			Field_Definition {
+				name = "height",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.1},
+			},
+			Field_Definition {
+				name = "height_falloff",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
+			Field_Definition {
+				name = "max_distance",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 1,
+					has_minimum = true,
+					minimum = 0.1,
+					has_maximum = true,
+					maximum = 10000,
+				},
+			},
+			Field_Definition {
+				name = "anisotropy",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = -0.9,
+					has_maximum = true,
+					maximum = 0.9,
+				},
+			},
+			Field_Definition {
+				name = "ambient_intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
+			Field_Definition {
+				name = "light_intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
+		},
+	)
+	register_engine_component(
+		registry,
 		"scrapbot.ambient_light",
 		{
 			Field_Definition{name = "color", field_type = .Vec3},
@@ -575,6 +659,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .Camera, .Authored
 		case "scrapbot.world_environment":
 			return .World_Environment, .Authored
+		case "scrapbot.volumetric_fog":
+			return .Custom, .Authored
 		case "scrapbot.ambient_light":
 			return .Ambient_Light, .Authored
 		case "scrapbot.directional_light":

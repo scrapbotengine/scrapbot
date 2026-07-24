@@ -1,7 +1,133 @@
 package render
 
 import shared "../shared"
+import "core:math"
 import "vendor:wgpu"
+
+WGPU_Volumetric_Fog_Settings :: struct {
+	color: shared.Vec3,
+	density: f32,
+	height: f32,
+	height_falloff: f32,
+	max_distance: f32,
+	anisotropy: f32,
+	ambient_intensity: f32,
+	light_intensity: f32,
+}
+
+wgpu_fog_number :: proc(component: ^shared.Custom_Component, name: string, fallback: f32) -> f32 {
+	if component == nil {
+		return fallback
+	}
+	for field in component.number_fields {
+		if field.name == name {
+			if math.is_nan(field.value) || math.is_inf(field.value) {
+				return fallback
+			}
+			return field.value
+		}
+	}
+	return fallback
+}
+
+wgpu_fog_vec3 :: proc(
+	component: ^shared.Custom_Component,
+	name: string,
+	fallback: shared.Vec3,
+) -> shared.Vec3 {
+	if component == nil {
+		return fallback
+	}
+	for field in component.vec3_fields {
+		if field.name == name {
+			value := field.value
+			if math.is_nan(value.x) ||
+			   math.is_inf(value.x) ||
+			   math.is_nan(value.y) ||
+			   math.is_inf(value.y) ||
+			   math.is_nan(value.z) ||
+			   math.is_inf(value.z) {
+				return fallback
+			}
+			return value
+		}
+	}
+	return fallback
+}
+
+wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fog_Settings {
+	settings := WGPU_Volumetric_Fog_Settings {
+		color = {0.62, 0.72, 0.82},
+		height_falloff = 0.2,
+		max_distance = 100,
+		anisotropy = 0.35,
+		ambient_intensity = 0.15,
+		light_intensity = 1,
+	}
+	if world == nil {
+		return settings
+	}
+	component: ^shared.Custom_Component
+	best_scene_order := 0
+	for &storage in world.custom_components {
+		if storage.name != "scrapbot.volumetric_fog" {
+			continue
+		}
+		for component_index in storage.active_component_indices {
+			if component_index < 0 || component_index >= len(storage.components) {
+				continue
+			}
+			candidate := &storage.components[component_index]
+			entity_index := candidate.entity_index
+			if entity_index < 0 ||
+			   entity_index >= len(world.entities) ||
+			   !world.entities[entity_index].alive {
+				continue
+			}
+			scene_order := world.entities[entity_index].scene_order
+			if component == nil || scene_order < best_scene_order {
+				component = candidate
+				best_scene_order = scene_order
+			}
+		}
+		break
+	}
+	if component == nil {
+		return settings
+	}
+	settings.color = wgpu_fog_vec3(component, "color", settings.color)
+	settings.color.x = max(settings.color.x, 0)
+	settings.color.y = max(settings.color.y, 0)
+	settings.color.z = max(settings.color.z, 0)
+	settings.density = clamp(wgpu_fog_number(component, "density", 0), f32(0), f32(1))
+	settings.height = wgpu_fog_number(component, "height", 0)
+	settings.height_falloff = clamp(
+		wgpu_fog_number(component, "height_falloff", settings.height_falloff),
+		f32(0),
+		f32(10),
+	)
+	settings.max_distance = clamp(
+		wgpu_fog_number(component, "max_distance", settings.max_distance),
+		f32(0.1),
+		f32(10000),
+	)
+	settings.anisotropy = clamp(
+		wgpu_fog_number(component, "anisotropy", settings.anisotropy),
+		f32(-0.9),
+		f32(0.9),
+	)
+	settings.ambient_intensity = clamp(
+		wgpu_fog_number(component, "ambient_intensity", settings.ambient_intensity),
+		f32(0),
+		f32(10),
+	)
+	settings.light_intensity = clamp(
+		wgpu_fog_number(component, "light_intensity", settings.light_intensity),
+		f32(0),
+		f32(10),
+	)
+	return settings
+}
 
 wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	post_chain := wgpu.ShaderSourceWGSL {
@@ -87,6 +213,17 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Compute},
 			texture = {sampleType = .Float, viewDimension = ._2D},
 		},
+		{
+			binding = 12,
+			visibility = {.Compute},
+			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_GPU_Render_Uniform))},
+		},
+		{
+			binding = 13,
+			visibility = {.Compute},
+			texture = {sampleType = .Depth, viewDimension = ._2DArray},
+		},
+		{binding = 14, visibility = {.Compute}, sampler = {type = .Comparison}},
 	}
 	renderer.temporal_aa_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -971,6 +1108,14 @@ wgpu_ensure_post_targets :: proc(
 		{binding = 9, textureView = renderer.screen_space_reflections_view},
 		{binding = 10, textureView = renderer.surface_view},
 		{binding = 11, textureView = renderer.indirect_diffuse_view},
+		{
+			binding = 12,
+			buffer = renderer.gpu_render_uniform_buffer,
+			offset = 0,
+			size = u64(size_of(WGPU_GPU_Render_Uniform)),
+		},
+		{binding = 13, textureView = renderer.shadow_array_view},
+		{binding = 14, sampler = renderer.shadow_sampler},
 	}
 	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
 		renderer.device,
@@ -1115,6 +1260,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	width, height: u32,
 	camera: shared.Camera_Component,
 	has_camera: bool,
+	world: ^shared.World,
 ) -> string {
 	if err := wgpu_ensure_post_targets(renderer, width, height, depth_view); err != "" {
 		return err
@@ -1254,6 +1400,15 @@ wgpu_encode_bloom_and_composite :: proc(
 		},
 		reflections = {1 if resolved_camera.screen_space_reflections else 0, 0, 0, 0},
 	}
+	fog := wgpu_volumetric_fog_settings(world)
+	temporal_uniform.fog_color_density = {fog.color.x, fog.color.y, fog.color.z, fog.density}
+	temporal_uniform.fog_height_distance = {
+		fog.height,
+		fog.height_falloff,
+		fog.max_distance,
+		fog.anisotropy,
+	}
+	temporal_uniform.fog_lighting = {fog.ambient_intensity, fog.light_intensity, 0, 0}
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
 		renderer.temporal_aa_uniform_buffer,

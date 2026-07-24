@@ -203,8 +203,11 @@ WGPU_Temporal_AA_Uniform :: struct {
 	parameters: [4]f32,
 	features: [4]f32,
 	reflections: [4]f32,
+	fog_color_density: [4]f32,
+	fog_height_distance: [4]f32,
+	fog_lighting: [4]f32,
 }
-#assert(size_of(WGPU_Temporal_AA_Uniform) == 224)
+#assert(size_of(WGPU_Temporal_AA_Uniform) == 272)
 
 WGPU_Temporal_Camera :: struct {
 	position: Vec3,
@@ -1827,6 +1830,7 @@ wgpu_encode_render_pass :: proc(
 		target_height,
 		renderer.render_list.camera.camera,
 		renderer.render_list.has_camera,
+		world,
 	); err != "" {
 		return err
 	}

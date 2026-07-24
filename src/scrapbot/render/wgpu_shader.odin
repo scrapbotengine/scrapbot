@@ -645,6 +645,22 @@ struct Temporal_AA_Uniform {
 	parameters: vec4<f32>,
 	features: vec4<f32>,
 	reflections: vec4<f32>,
+	fog_color_density: vec4<f32>,
+	fog_height_distance: vec4<f32>,
+	fog_lighting: vec4<f32>,
+};
+
+struct Render_Uniform {
+	view_projection: mat4x4<f32>,
+	view: mat4x4<f32>,
+	shadow_view_projections: array<mat4x4<f32>, 4>,
+	ambient: vec4<f32>,
+	directional_direction_intensity: array<vec4<f32>, 4>,
+	directional_color: array<vec4<f32>, 4>,
+	light_counts: vec4<u32>,
+	camera_position: vec4<f32>,
+	shadow_cascade_splits: vec4<f32>,
+	shadow_cascade_texel_sizes: vec4<f32>,
 };
 
 @group(0) @binding(0) var current_color: texture_2d<f32>;
@@ -659,6 +675,11 @@ struct Temporal_AA_Uniform {
 @group(0) @binding(9) var screen_space_reflections: texture_2d<f32>;
 @group(0) @binding(10) var surface_data: texture_2d<f32>;
 @group(0) @binding(11) var indirect_diffuse: texture_2d<f32>;
+@group(0) @binding(12) var<uniform> render: Render_Uniform;
+@group(0) @binding(13) var shadow_map: texture_depth_2d_array;
+@group(0) @binding(14) var shadow_sampler: sampler_comparison;
+
+const FOG_STEP_COUNT: u32 = 6u;
 
 fn octahedral_decode(encoded: vec2<f32>) -> vec3<f32> {
 	let value = encoded * 2.0 - vec2<f32>(1.0);
@@ -774,6 +795,124 @@ fn current_color_at(pixel: vec2<i32>) -> vec3<f32> {
 		reflection_color;
 }
 
+fn fog_shadow_visibility(world_position: vec3<f32>, view_depth: f32) -> f32 {
+	if (render.light_counts.x == 0u) {
+		return 0.0;
+	}
+	var cascade_index = 3u;
+	if (view_depth <= render.shadow_cascade_splits.x) {
+		cascade_index = 0u;
+	} else if (view_depth <= render.shadow_cascade_splits.y) {
+		cascade_index = 1u;
+	} else if (view_depth <= render.shadow_cascade_splits.z) {
+		cascade_index = 2u;
+	}
+	let shadow_position =
+		render.shadow_view_projections[cascade_index] * vec4<f32>(world_position, 1.0);
+	if (shadow_position.w <= 0.0) {
+		return 1.0;
+	}
+	let projected = shadow_position.xyz / shadow_position.w;
+	let uv = vec2<f32>(projected.x * 0.5 + 0.5, 0.5 - projected.y * 0.5);
+	if (
+		any(uv < vec2<f32>(0.0)) ||
+		any(uv > vec2<f32>(1.0)) ||
+		projected.z < 0.0 ||
+		projected.z > 1.0
+	) {
+		return 1.0;
+	}
+	let texel = render.shadow_cascade_texel_sizes[cascade_index];
+	var visibility = 0.0;
+	for (var y = 0u; y < 2u; y += 1u) {
+		for (var x = 0u; x < 2u; x += 1u) {
+			let offset = (vec2<f32>(f32(x), f32(y)) - vec2<f32>(0.5)) * texel;
+			visibility += textureSampleCompareLevel(
+				shadow_map,
+				shadow_sampler,
+				uv + offset,
+				i32(cascade_index),
+				projected.z - 0.0007,
+			);
+		}
+	}
+	return visibility * 0.25;
+}
+
+fn fog_phase(cosine: f32, anisotropy: f32) -> f32 {
+	let g = clamp(anisotropy, -0.9, 0.9);
+	let g2 = g * g;
+	return (1.0 - g2) /
+		max(pow(1.0 + g2 - 2.0 * g * cosine, 1.5), 0.001);
+}
+
+fn apply_volumetric_fog(
+	pixel: vec2<i32>,
+	depth: f32,
+	source_color: vec3<f32>,
+) -> vec3<f32> {
+	let base_density = temporal.fog_color_density.w;
+	if (base_density <= 0.0 || !inside_viewport(pixel)) {
+		return source_color;
+	}
+	let maximum_distance = max(temporal.fog_height_distance.z, 0.1);
+	var ray_distance = maximum_distance;
+	if (depth < 0.999999) {
+		ray_distance = min(length(reconstruct_view_position(pixel, depth)), maximum_distance);
+	}
+	if (ray_distance <= 0.0001) {
+		return source_color;
+	}
+	let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
+	let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
+	let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
+	let view_direction = normalize(vec3<f32>(
+		(ndc.x + temporal.parameters.x) / temporal.projection.x,
+		(ndc.y + temporal.parameters.y) / temporal.projection.y,
+		-1.0,
+	));
+	let world_direction = normalize((temporal.inverse_view * vec4<f32>(view_direction, 0.0)).xyz);
+	let camera_position = temporal.inverse_view[3].xyz;
+	let step_length = ray_distance / f32(FOG_STEP_COUNT);
+	var directional_radiance = vec3<f32>(0.0);
+	if (render.light_counts.x > 0u) {
+		let light_direction = normalize(-render.directional_direction_intensity[0].xyz);
+		let directional_phase = fog_phase(
+			dot(world_direction, light_direction),
+			temporal.fog_height_distance.w,
+		);
+		directional_radiance =
+			render.directional_color[0].rgb *
+			temporal.fog_color_density.rgb *
+			render.directional_direction_intensity[0].w *
+			temporal.fog_lighting.y *
+			directional_phase;
+	}
+	let ambient_radiance =
+		temporal.fog_color_density.rgb *
+		temporal.fog_lighting.x;
+	var transmittance = 1.0;
+	var scattering = vec3<f32>(0.0);
+	for (var step = 0u; step < FOG_STEP_COUNT; step += 1u) {
+		let distance = (f32(step) + 0.5) * step_length;
+		let world_position = camera_position + world_direction * distance;
+		let height_offset = world_position.y - temporal.fog_height_distance.x;
+		let height_density = clamp(
+			exp(-height_offset * temporal.fog_height_distance.y),
+			0.0,
+			8.0,
+		);
+		let optical_depth = base_density * height_density * step_length;
+		let step_transmittance = exp(-optical_depth);
+		let view_position = render.view * vec4<f32>(world_position, 1.0);
+		let shadow = fog_shadow_visibility(world_position, max(-view_position.z, 0.0));
+		let incident = ambient_radiance + directional_radiance * shadow;
+		scattering += transmittance * (1.0 - step_transmittance) * incident;
+		transmittance *= step_transmittance;
+	}
+	return source_color * transmittance + scattering;
+}
+
 fn fast_antialias(pixel: vec2<i32>) -> vec3<f32> {
 	let minimum = viewport_minimum();
 	let maximum = viewport_maximum();
@@ -830,13 +969,14 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let ambient_visibility = ambient_visibility_at(pixel);
 	let color = current_color_at(pixel);
 	let depth = textureLoad(current_depth, pixel, 0);
-	var result = color;
+	let fogged_color = apply_volumetric_fog(pixel, depth, color);
+	var result = fogged_color;
 	if (
 		inside_viewport(pixel) &&
 		temporal.features.x <= 0.5 &&
 		temporal.features.y > 0.5
 	) {
-		result = fast_antialias(pixel);
+		result = apply_volumetric_fog(pixel, depth, fast_antialias(pixel));
 	}
 	if (
 		inside_viewport(pixel) &&
@@ -890,7 +1030,7 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 						0.72,
 						clamp(motion_pixels / 8.0, 0.0, 1.0),
 					);
-					result = mix(color, history, history_weight);
+					result = mix(fogged_color, history, history_weight);
 				}
 			}
 		}

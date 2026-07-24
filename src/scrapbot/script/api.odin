@@ -66,6 +66,8 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_setfield(L, -2, "camera")
 	push_registered_component_handle_by_name(L, "scrapbot.world_environment")
 	lua_setfield(L, -2, "world_environment")
+	push_registered_component_handle_by_name(L, "scrapbot.volumetric_fog")
+	lua_setfield(L, -2, "volumetric_fog")
 	push_registered_component_handle_by_name(
 		L,
 		"scrapbot.ambient_light",

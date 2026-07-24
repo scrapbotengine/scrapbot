@@ -365,6 +365,30 @@ export type ReadonlyScrapbotWorldEnvironment = {
 
 export type ScrapbotWorldEnvironmentComponent = ScrapbotComponent<ScrapbotWorldEnvironment, ReadonlyScrapbotWorldEnvironment>
 
+export type ScrapbotVolumetricFog = {
+	color: Vec3,
+	density: number,
+	height: number,
+	height_falloff: number,
+	max_distance: number,
+	anisotropy: number,
+	ambient_intensity: number,
+	light_intensity: number,
+}
+
+export type ReadonlyScrapbotVolumetricFog = {
+	read color: ReadonlyVec3,
+	read density: number,
+	read height: number,
+	read height_falloff: number,
+	read max_distance: number,
+	read anisotropy: number,
+	read ambient_intensity: number,
+	read light_intensity: number,
+}
+
+export type ScrapbotVolumetricFogComponent = ScrapbotComponent<ScrapbotVolumetricFog, ReadonlyScrapbotVolumetricFog>
+
 export type ScrapbotAmbientLight = {
 	color: Vec3,
 	intensity: number,

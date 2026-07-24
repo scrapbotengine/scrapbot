@@ -53,6 +53,16 @@ A scene's World Environment independently selects lighting and its visible backg
 
 The spherical horizon clips the sun and drives the daylight, twilight, and night transition. Above the horizon, the sun becomes the first directional render light and drives direct GGX lighting plus the primary shadow cascades. Explicit ECS lights remain additive.
 
+### Volumetric fog
+
+Add one `scrapbot.volumetric_fog` component to author global height and distance fog. The renderer integrates a fixed six-sample camera ray, stops it at opaque depth or the authored distance bound, and evaluates exponential density around a world-space height plane.
+
+The primary directional light supplies anisotropic in-scattering. Its four cascaded shadows filter that contribution, so sunbeams and occluded haze follow the same shadow geometry as opaque surfaces. Ambient scattering remains available in shadow and at night.
+
+Fog composes before TAA and bloom. Its sample positions are deterministic rather than freshly randomized per frame, avoiding temporal sparkle during slow camera motion. Remove the component or set `density = 0` to make it a no-op. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
+
+This first implementation is one global volume. It does not yet scatter clustered point lights or support local fog shapes.
+
 ### Ambient occlusion
 
 Enabled AO reconstructs view-space positions from depth and samples rotated slices around the mapped surface normal at half resolution. Each depth sample marks only its constant-thickness angular interval in a 32-sector visibility bitmask.
@@ -65,7 +75,7 @@ AO attenuates only indirect diffuse light. It does not dirty direct lights, spec
 
 Enabled SSR marches a reflected view ray through scene depth and samples HDR color only at confirmed on-screen hits. Confidence fades rough, distant, uncertain, and screen-edge hits.
 
-AO and SSR join the current HDR signal before temporal resolution. Enabled TAA uses an eight-sample projection-jitter sequence, camera reprojection, previous-depth rejection, and current-neighborhood clamping.
+Fog, AO, and SSR join the current HDR signal before temporal resolution. Enabled TAA uses an eight-sample projection-jitter sequence, camera reprojection, previous-depth rejection, and current-neighborhood clamping.
 
 When TAA is off, the renderer removes projection jitter and history traffic. Optional fast AA then uses only the current resolved frame. Resize, world replacement, depth replacement, camera cuts, and TAA mode changes invalidate temporal history.
 

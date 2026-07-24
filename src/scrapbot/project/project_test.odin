@@ -859,6 +859,34 @@ sun_direction = [0, 0, 0]
 }
 
 @(test)
+test_scene_rejects_multiple_volumetric_fog_components :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000033"
+name = "Fog A"
+
+[entities.components.scrapbot.volumetric_fog]
+density = 0.01
+
+[[entities]]
+id = "a6000000-0000-4000-8000-000000000034"
+name = "Fog B"
+
+[entities.components.scrapbot.volumetric_fog]
+density = 0.02
+`,
+	)
+	defer destroy_scene(&scene)
+
+	testing.expect_value(t, result.err, Parse_Error.None)
+	testing.expect_value(
+		t,
+		validate_scene_component_singletons(&scene),
+		"a scene may contain only one scrapbot.volumetric_fog component",
+	)
+}
+
+@(test)
 test_scene_parses_shadow_marker_components :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]

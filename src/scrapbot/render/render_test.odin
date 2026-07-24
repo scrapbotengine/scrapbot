@@ -1397,3 +1397,57 @@ test_embedded_viewport_cache_tracks_all_resource_families :: proc(t: ^testing.T)
 	wgpu_invalidate_viewport_cache(&renderer, 0)
 	testing.expect(t, !renderer.ui_viewport_cache_valid[0])
 }
+
+@(test)
+test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^testing.T) {
+	world: World
+	defer delete(world.entities)
+	defer delete(world.custom_components)
+	append(
+		&world.entities,
+		shared.World_Entity{alive = true, scene_order = 8},
+		shared.World_Entity{alive = true, scene_order = 3},
+	)
+	first := shared.Custom_Component {
+		entity_index = 0,
+	}
+	append(&first.number_fields, shared.Named_Number{name = "density", value = 0.02})
+	append(&first.vec3_fields, shared.Named_Vec3{name = "color", value = {1, 0, 0}})
+	defer delete(first.number_fields)
+	defer delete(first.vec3_fields)
+	selected := shared.Custom_Component {
+		entity_index = 1,
+	}
+	append(&selected.number_fields, shared.Named_Number{name = "density", value = 0.035})
+	append(
+		&selected.number_fields,
+		shared.Named_Number{name = "anisotropy", value = 4},
+		shared.Named_Number{name = "max_distance", value = -10},
+	)
+	append(&selected.vec3_fields, shared.Named_Vec3{name = "color", value = {0.2, 0.3, 0.4}})
+	defer delete(selected.number_fields)
+	defer delete(selected.vec3_fields)
+	storage := shared.Custom_Component_Storage {
+		name = "scrapbot.volumetric_fog",
+	}
+	append(&storage.components, first, selected)
+	append(&storage.active_component_indices, 0, 1)
+	defer delete(storage.components)
+	defer delete(storage.active_component_indices)
+	append(&world.custom_components, storage)
+
+	settings := wgpu_volumetric_fog_settings(&world)
+	testing.expect_value(t, settings.color, shared.Vec3{0.2, 0.3, 0.4})
+	testing.expect_value(t, settings.density, f32(0.035))
+	testing.expect_value(t, settings.anisotropy, f32(0.9))
+	testing.expect_value(t, settings.max_distance, f32(0.1))
+}
+
+@(test)
+test_volumetric_fog_shader_is_shadowed_and_temporally_resolved :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn apply_volumetric_fog"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_shadow_visibility"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "textureSampleCompareLevel"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(fogged_color, history"))
+	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "43758.5453"))
+}

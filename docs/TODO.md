@@ -14,7 +14,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Extend the camera's authored TAA/fast-AA/AO/SSR/bloom switches with ambient-occlusion radius/intensity/quality/thickness, reflection distance/thickness/roughness/quality, bloom threshold/intensity/scatter, temporal history/quality, and automatic/adaptive exposure controls; evaluate whether advanced overrides become a separate post-processing component or volume.
 - [ ] Add hierarchical-Z ray marching, rough-reflection filtering, and temporal confidence accumulation to screen-space reflections; keep the current bounded linear ray march as the portable baseline.
 - [ ] Add per-object motion vectors so temporal antialiasing can reproject animated geometry exactly instead of relying on depth rejection and neighborhood clamping.
-- [ ] Add a separate authored volumetric-media component and renderer pass for height/distance fog, directional shadowed scattering, clustered point-light volumes, temporal stabilization, and explicit quality controls; do not grow `scrapbot.world_environment` into a general render-settings bag. See [ADR-038](adr/ADR-038-author-scene-environments-as-ecs-components.md).
+- [ ] Extend `scrapbot.volumetric_fog` beyond its global deterministic directional baseline with clustered point-light scattering, local fog volumes, explicit quality controls, and a half-resolution/froxel path if representative scenes justify it. See [ADR-038](adr/ADR-038-author-scene-environments-as-ecs-components.md).
 - [ ] Add Hi-Z, visibility, and LOD debug views.
 
 ## ECS UI

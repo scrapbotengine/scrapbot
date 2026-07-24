@@ -119,6 +119,8 @@ Backend-neutral extraction converts an above-horizon procedural sun into the fir
 
 Explicit ECS lights remain additive. WGPU retains active point lights in a geometrically growing buffer and rebuilds 16×9×24 cluster membership only after point-light, camera, viewport, or capacity changes. Four stabilized camera-relative projections feed independent shadow-cull lanes and depth-array layers.
 
+One optional `scrapbot.volumetric_fog` component supplies a global exponential height medium. Postprocessing reads only that component storage's compact active set, clamps the reflected payload, and folds six deterministic ray samples into the temporal resolve. Each sample uses the first directional light and a filtered lookup into the same four shadow cascades as opaque rendering. There is no extra fog target or stochastic per-frame pattern. Clustered point-light volumes and local media remain separate follow-up work.
+
 ### Instances and materials
 
 Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. Transform-only changes upload compact position/rotation/scale/local-bounds records, then expand only those slots into GPU matrices and world bounds.
@@ -130,6 +132,8 @@ Material revisions trigger one dependent-instance pass. WGPU replaces only that 
 ### Camera-selected postprocessing
 
 The active camera owns TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
+
+Global volumetric fog is scene-owned rather than camera-owned. It composes before temporal resolution and bloom, stops at scene depth or its authored distance bound, and becomes a shader no-op when absent or at zero density.
 
 World shading writes:
 

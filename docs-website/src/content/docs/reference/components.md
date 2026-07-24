@@ -16,6 +16,7 @@ Most components use the same suffix in every public surface:
 | `scrapbot.transform` | `[entities.transform]` | `scrapbot.transform` | `scrapbot.Transform_Component` |
 | `scrapbot.camera` | `[entities.camera]` | `scrapbot.camera` | Use `scrapbot.Component{name = "scrapbot.camera"}` for membership. |
 | `scrapbot.world_environment` | `[entities.world_environment]` | `scrapbot.world_environment` | Use `scrapbot.Component{name = "scrapbot.world_environment"}` for membership. |
+| `scrapbot.volumetric_fog` | `[entities.components.scrapbot.volumetric_fog]` | `scrapbot.volumetric_fog` | Use `scrapbot.Component{name = "scrapbot.volumetric_fog"}` for membership. |
 | `scrapbot.mesh` | `[entities.mesh]` | `scrapbot.mesh` | `scrapbot.Mesh_Component` |
 | `scrapbot.geometry` | `[entities.geometry]` | `scrapbot.geometry_component` | Use `scrapbot.Component{name = "scrapbot.geometry"}` for membership. |
 | `scrapbot.material` | `[entities.material]` | `scrapbot.material_component` | Use `scrapbot.Component{name = "scrapbot.material"}` for membership. |
@@ -33,6 +34,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.transform` | Data | Optional UUID parent plus local position, Euler rotation, and scale. |
 | `scrapbot.camera` | Data | Perspective camera projection. |
 | `scrapbot.world_environment` | Data/resource references | Singleton scene lighting, sky presentation, and base exposure. |
+| `scrapbot.volumetric_fog` | Data | Singleton global height/distance fog with shadowed directional scattering. |
 | `scrapbot.ambient_light` | Data | Scene-wide ambient contribution. |
 | `scrapbot.directional_light` | Data | Directional light and the source for the current shadow map. |
 | `scrapbot.point_light` | Data | Distance-attenuated light positioned by a Transform. |
@@ -135,6 +137,39 @@ The fixed `scrapbot.environment` engine phase retains the selected entity and co
 Luau queries expose the complete payload. A scheduled system may animate it by declaring `scrapbot.world_environment` in `writes`; validated writeback updates the ECS value and component revision so the retained environment phase sees only the changed singleton. The ECS showcase uses this path for its editable `day_cycle` component and 30-second solar orbit.
 
 The final ten fields art-direct only the built-in procedural atmosphere; imported backgrounds ignore them. Their reflected controls are generated automatically from the component's runtime field shape and numeric editor metadata. The spherical ground clips the sun disc at the horizon. Solar elevation drives day, twilight, and night colors plus hemispherical sky/ground fill. Above the horizon, Scrapbot derives the first directional-light render input from the sun, so it participates in ordinary GGX lighting, shadow culling, and the primary directional shadow map; below the horizon, that light disappears. This does not create an authored entity. Explicit Ambient, Directional, and Point Light components remain additive, with three directional slots left while the sun is active. The observer-above-ground approximation gives the horizon subtle perspective curvature.
+
+### `scrapbot.volumetric_fog`
+
+A scene may contain at most one Volumetric Fog component. It is an ordinary reflected component: its inspector card and controls come from the runtime registry, and scene persistence, Luau access, history, and playback use the generic component paths.
+
+```toml
+[entities.components.scrapbot.volumetric_fog]
+color = [0.56, 0.65, 0.75]
+density = 0.024
+height = 0
+height_falloff = 0.12
+max_distance = 65
+anisotropy = 0.48
+ambient_intensity = 0.22
+light_intensity = 1.1
+```
+
+| Field | Type | Effective default | Meaning |
+| --- | --- | --- | --- |
+| `color` | Vec3 | `[0.62, 0.72, 0.82]` | Non-negative linear HDR scattering color. |
+| `density` | number | `0` | Base extinction density from `0` to `1`. Zero disables fog. |
+| `height` | number | `0` | World-space reference height at which base density applies. |
+| `height_falloff` | number | `0.2` | Exponential density falloff above `height`, from `0` to `10`. |
+| `max_distance` | number | `100` | Maximum camera-ray distance affected by fog, from `0.1` to `10000`. |
+| `anisotropy` | number | `0.35` | Directional scattering bias from `-0.9` to `0.9`. Positive values emphasize forward scattering. |
+| `ambient_intensity` | number | `0.15` | Unshadowed ambient scattering multiplier from `0` to `10`. |
+| `light_intensity` | number | `1` | Primary directional-light scattering multiplier from `0` to `10`. |
+
+The renderer integrates six stable midpoint samples along each visible camera ray. Density varies exponentially with world height and stops at scene depth or `max_distance`. The first directional light contributes anisotropic in-scattering and is filtered through the same four shadow cascades used by opaque geometry.
+
+Fog is composed before temporal antialiasing and bloom. The sampling pattern is deterministic, so a stationary view does not acquire fresh noise each frame. The current slice is one global volume: clustered point-light shafts, local fog volumes, and explicit quality controls are follow-up work.
+
+Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero makes the shader a no-op without allocating a separate fog target.
 
 ### `scrapbot.mesh`
 

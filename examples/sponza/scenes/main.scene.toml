@@ -25,6 +25,16 @@ sun_intensity = 2.2
 sun_size = 0.6
 sun_glow = 0.3
 
+[entities.components.scrapbot.volumetric_fog]
+color = [0.56, 0.65, 0.75]
+density = 0.024
+height = 0
+height_falloff = 0.12
+max_distance = 65
+anisotropy = 0.48
+ambient_intensity = 0.22
+light_intensity = 1.1
+
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000002"
 name = "Main Camera"
