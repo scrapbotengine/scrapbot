@@ -1444,10 +1444,22 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 }
 
 @(test)
-test_volumetric_fog_shader_is_shadowed_and_temporally_resolved :: proc(t: ^testing.T) {
+test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved :: proc(
+	t: ^testing.T,
+) {
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn apply_volumetric_fog"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "FOG_PHASE_NORMALIZATION: f32 = 0.07957747155"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "FOG_PHASE_NORMALIZATION * (1.0 - g2)"),
+	)
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_shadow_visibility"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "textureSampleCompareLevel"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "source_bounds[0] + fog_offset"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "source_bounds[1] + fog_offset"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(fogged_color, history"))
 	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "43758.5453"))
 }

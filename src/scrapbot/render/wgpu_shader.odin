@@ -680,6 +680,7 @@ struct Render_Uniform {
 @group(0) @binding(14) var shadow_sampler: sampler_comparison;
 
 const FOG_STEP_COUNT: u32 = 6u;
+const FOG_PHASE_NORMALIZATION: f32 = 0.07957747155;
 
 fn octahedral_decode(encoded: vec2<f32>) -> vec3<f32> {
 	let value = encoded * 2.0 - vec2<f32>(1.0);
@@ -842,7 +843,7 @@ fn fog_shadow_visibility(world_position: vec3<f32>, view_depth: f32) -> f32 {
 fn fog_phase(cosine: f32, anisotropy: f32) -> f32 {
 	let g = clamp(anisotropy, -0.9, 0.9);
 	let g2 = g * g;
-	return (1.0 - g2) /
+	return FOG_PHASE_NORMALIZATION * (1.0 - g2) /
 		max(pow(1.0 + g2 - 2.0 * g * cosine, 1.5), 0.001);
 }
 
@@ -1011,7 +1012,11 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 					stored_depth < 0.999999 &&
 					abs(stored_linear_depth - expected_linear_depth) <= depth_tolerance
 				) {
-					let bounds = current_neighborhood(pixel);
+					let source_bounds = current_neighborhood(pixel);
+					// History contains resolved fog, while the inexpensive
+					// neighborhood samples are pre-fog. Translate the bounds
+					// into the same radiometric space before clipping history.
+					let fog_offset = fogged_color - color;
 					let history = clamp(
 						textureSampleLevel(
 							history_color,
@@ -1019,8 +1024,8 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 							previous_full_uv,
 							0.0,
 						).rgb,
-						bounds[0],
-						bounds[1],
+						source_bounds[0] + fog_offset,
+						source_bounds[1] + fog_offset,
 					);
 					let motion_pixels = length(
 						(previous_pixel - (vec2<f32>(pixel) + vec2<f32>(0.5))),
