@@ -6136,3 +6136,21 @@ test_editor_preview_reset_restores_camera_without_losing_target :: proc(t: ^test
 	testing.expect(t, updated.orbit == defaults.orbit)
 	testing.expect(t, updated.distance == defaults.distance)
 }
+@(test)
+test_editor_viewport_is_clamped_to_a_small_physical_target :: proc(t: ^testing.T) {
+	state := new(State)
+	defer free(state)
+	state.editor_visible = true
+	state.editor_pixel_density = 2
+	state.node_count = 1
+	state.nodes[0] = {
+		origin = .Editor,
+		editor_role = .Viewport,
+		rect = {124, 26, 314.5, 319},
+	}
+
+	viewport := editor_viewport(state, 480, 270)
+	testing.expect_value(t, viewport, Rect{248, 52, 232, 218})
+	testing.expect(t, viewport.x + viewport.width <= 480)
+	testing.expect(t, viewport.y + viewport.height <= 270)
+}

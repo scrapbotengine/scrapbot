@@ -86,6 +86,29 @@ wgpu_wait_for_buffer_map :: proc(instance: wgpu.Instance, state: ^WGPU_Buffer_Ma
 	return false
 }
 
+wgpu_configure_profile :: proc(renderer: ^WGPU_Renderer, profile: ^Profile_Collector) {
+	if renderer == nil || profile == nil || renderer.adapter == nil {
+		return
+	}
+	renderer.profile = profile
+	info, status := wgpu.AdapterGetInfo(renderer.adapter)
+	if status != .Success {
+		profile.report.metadata.timestamp_queries = renderer.gpu_timestamp_supported
+		return
+	}
+	defer wgpu.AdapterInfoFreeMembers(info)
+	profile_set_adapter(
+		profile,
+		info.vendor,
+		info.device,
+		info.description,
+		info.architecture,
+		fmt.tprintf("%v", info.backendType),
+		fmt.tprintf("%v", info.adapterType),
+		renderer.gpu_timestamp_supported,
+	)
+}
+
 wgpu_init_renderer :: proc(
 	use_surface: bool,
 	ui_state: ^ui.State = nil,

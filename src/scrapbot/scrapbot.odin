@@ -30,6 +30,12 @@ Run_Config :: render.Run_Config
 Framegrab_Region :: render.Framegrab_Region
 Runtime_Stats :: render.Runtime_Stats
 Render_Stats :: render.Render_Stats
+Profile_Collector :: render.Profile_Collector
+Profile_Report :: render.Profile_Report
+Profile_Summary :: render.Profile_Summary
+init_profile_collector :: render.init_profile_collector
+finish_profile_collector :: render.finish_profile_collector
+destroy_profile_collector :: render.destroy_profile_collector
 World_Storage_Stats :: ecs.World_Storage_Stats
 parse_framegrab_region :: render.parse_framegrab_region
 Project_Load_Result :: project.Project_Load_Result
@@ -526,8 +532,10 @@ run_project_internal_untracked :: proc(
 		result.err, _ = strings.clone(imports.err)
 		return result
 	}
-	run_config.window_width = loaded.config.window.width
-	run_config.window_height = loaded.config.window.height
+	if !run_config.override_window_size {
+		run_config.window_width = loaded.config.window.width
+		run_config.window_height = loaded.config.window.height
+	}
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
 		result.err = err
 		return result

@@ -248,6 +248,65 @@ Visible WGPU windows keep stepping and presenting while the platform window is b
 
 Use `--frames` for automated smoke checks so the command returns.
 
+## Render profiling
+
+Use `scrapbot profile` for repeatable renderer CPU/GPU evidence:
+
+```sh
+bin/scrapbot profile examples/sponza \
+  --warmup 60 \
+  --frames 240 \
+  --resolution 1920x1080 \
+  --capture-range 100:104 \
+  --out /tmp/scrapbot-sponza-profile \
+  --json
+```
+
+The measurement pass runs headless with hot reload disabled and a fixed simulation delta. Warmup frames execute but do not enter the report.
+
+The output directory contains:
+
+- `profile.json` with raw frame rows and median, p95, and maximum summaries.
+- `overview.png` from the final measured frame.
+- An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
+
+Each row includes active CPU time, total and per-pass GPU time, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, and cache-hit totals into the work attributable to that frame.
+
+GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
+
+Image capture uses a fresh second replay. PNG mapping can stall the pipeline, so capture time never enters the telemetry report. Keep the range narrow and use `--framegrab-region` when only one area matters.
+
+For valid before/after comparisons, hold these constant:
+
+- executable and project state;
+- machine and GPU adapter;
+- resolution and crop;
+- culling mode and editor visibility;
+- warmup, measured frames, and semantic UI script.
+
+`cpu_active_ms` measures active engine work, not presentation idle or observed window FPS. Profile results are same-machine evidence, not portable hardware scores.
+
+Summarize a report or compare compatible before/after bundles:
+
+```sh
+mise profile-analyze -- /tmp/before/profile.json
+mise profile-analyze -- /tmp/before/profile.json /tmp/after/profile.json
+```
+
+The comparator checks the backend, adapter, physical dimensions, density, viewport, and shaded pixels before calculating pass and counter deltas. Exit status `2` means the inputs are not comparable.
+
+To identify fixed overhead versus pixel-scaled work, run the same project at a bounded resolution matrix:
+
+```sh
+mise profile-sweep -- examples/sponza \
+  --binary bin/scrapbot \
+  --warmup 60 \
+  --frames 240 \
+  --out /tmp/sponza-resolution-sweep
+```
+
+The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution WIDTHxHEIGHT` for an explicit matrix. The driver preserves each complete profile bundle and writes machine-readable `sweep.json`.
+
 ## Headless WebGPU framegrab
 
 ```sh

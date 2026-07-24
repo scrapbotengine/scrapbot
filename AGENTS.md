@@ -50,6 +50,9 @@ bin/scrapbot check <path> --json
 bin/scrapbot build <path> --json
 bin/scrapbot run <path> --backend null --headless --no-hot-reload --frames <n> --json
 bin/scrapbot run <path> --backend wgpu --editor --headless --ui-script <actions.json> --ui-dump /tmp/ui-tree.json --framegrab /tmp/ui.png --json
+bin/scrapbot profile <path> --warmup 60 --frames 240 --resolution 1920x1080 --out /tmp/scrapbot-profile --json
+mise profile-analyze -- /tmp/scrapbot-profile/profile.json
+mise profile-sweep -- <path> --binary bin/scrapbot --out /tmp/scrapbot-sweep
 ```
 
 - Treat `ok`, diagnostic `code`, and documented `result` fields as the automation contract.
@@ -59,6 +62,12 @@ bin/scrapbot run <path> --backend wgpu --editor --headless --ui-script <actions.
 - Keep automated runs bounded with `--frames`.
 - Use a headless WGPU framegrab when correctness depends on rendered output; structured diagnostics do not replace visual verification.
 - For interactive UI/editor bugs, prefer a semantic `--ui-script` over manual clicks or guessed coordinates. Target controls by stable UUID, internal name, or visible text; pair it with `--ui-dump` and a target `capture` action so failures preserve both the reconciled tree and the smallest useful 1:1 PNG.
+- For renderer performance work, capture a bounded `scrapbot profile` bundle before and after the change on the same machine, resolution, project state, and options. Compare raw rows and median/p95/worst summaries in `profile.json`; do not infer GPU regressions from the editor's rolling live snapshot alone.
+- Use each profile row's `counter_deltas` for frame-local upload, rebuild, dispatch, viewport, and UI churn. The nested `render` object is the complete raw renderer snapshot and includes cumulative counters where applicable.
+- Keep profile image ranges narrow. The telemetry pass is clean; `--capture-range START:END` deliberately performs a second replay so lossless PNG readbacks cannot contaminate measured CPU/GPU timings.
+- Treat `cpu_active_ms` as engine work rather than window pacing, and compare only rows with `gpu_timing_valid`. Confirm `physical_width`, `physical_height`, `pixel_density`, `viewport`, and `shaded_pixels` before comparing GPU cost, especially on HiDPI machines.
+- Use `mise profile-analyze -- baseline/profile.json candidate/profile.json` for compatibility checks and pass/counter deltas. It exits with status 2 when adapter or dimensions differ; do not override that warning and call the timings comparable.
+- Use `mise profile-sweep` when separating fixed frame cost from pixel-scaling cost. Its default 540p/720p/1080 matrix is bounded, but use explicit smaller repeated `--resolution` values for smoke tests.
 
 ## Odin Tooling
 

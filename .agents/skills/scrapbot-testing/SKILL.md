@@ -83,6 +83,60 @@ bin/scrapbot run examples/ecs-showcase --backend null --headless --no-hot-reload
 
 Compare allocated-slot fields across `runtime_stats.early_storage`, `late_storage`, and `final_storage`; compare `allocator_early_bytes` with `allocator_late_bytes`; check `allocator_final_bytes`; and inspect the early/late frame timing ratio. Ignore `live_entities` when the workload intentionally oscillates. These are engine-owned signals; direct Luau, SDL, WGPU, driver, GPU, and OS allocations require separate tooling.
 
+## Bounded Render Profiles
+
+Use `scrapbot profile` for renderer performance investigations and before/after evidence:
+
+```sh
+bin/scrapbot profile examples/sponza \
+  --warmup 60 \
+  --frames 240 \
+  --resolution 1920x1080 \
+  --capture-range 100:104 \
+  --out /tmp/scrapbot-sponza-profile \
+  --json
+```
+
+The command writes:
+
+- `profile.json`: raw per-frame CPU, GPU-pass, resolution, viewport, frame-local `counter_deltas`, and complete renderer snapshots plus median, p95, and maximum summaries.
+- `overview.png`: the final measurement-pass frame.
+- `frames/frame-NNNNNN.png`: an optional narrow lossless sequence from a fresh replay.
+
+Follow these rules:
+
+1. Compare the same executable, machine, project state, resolution, culling mode, editor state, warmup, and frame count.
+2. Check physical dimensions, pixel density, viewport, and shaded pixels before interpreting GPU time. HiDPI cost follows physical pixels.
+3. Compare `cpu_active_ms` for active engine work. It intentionally excludes profiler readback waits and presentation idle.
+4. Compare GPU distributions only across rows where `gpu_timing_valid` is true.
+5. Inspect raw rows and counters around p95/worst spikes. A summary alone cannot distinguish upload churn, visibility changes, or one expensive pass.
+6. Keep `--capture-range` tight. Captures run in a second replay so pixel readback does not alter telemetry.
+7. Use `--ui-script` with `--editor` when the workload is an editor interaction. The same script is replayed in both passes.
+8. Treat results as same-machine evidence. Do not establish portable absolute thresholds from one adapter.
+
+Summarize one report or compare two compatible reports with:
+
+```sh
+mise profile-analyze -- /tmp/before/profile.json
+mise profile-analyze -- /tmp/before/profile.json /tmp/after/profile.json
+```
+
+The comparator checks backend, adapter, dimensions, density, viewport, and shaded pixels before reporting pass and counter deltas. Exit status 2 means the reports are not comparable.
+
+Separate fixed overhead from pixel-scaled work with:
+
+```sh
+mise profile-sweep -- examples/sponza \
+  --binary bin/scrapbot \
+  --warmup 60 \
+  --frames 240 \
+  --out /tmp/sponza-resolution-sweep
+```
+
+The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution WIDTHxHEIGHT` to use an explicit bounded matrix. Read `sweep.json`, not the aligned human table, from automation.
+
+Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload.
+
 ## Choose An Example
 
 - Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.

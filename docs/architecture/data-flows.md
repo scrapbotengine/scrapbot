@@ -166,6 +166,25 @@ spawn/despawn-maintained entity-origin counts ─────────┘    
 
 The editor formats values only when the snapshot revision changes. GPU timestamp values are asynchronous, and draw batches describe retained GPU-driven grouping rather than every API draw command in every pass.
 
+### Bounded render profiles
+
+```text
+fixed-delta warmup + measured replay
+                 │
+     active CPU sample by frame ───────────────┐
+     tagged asynchronous GPU timestamps ───────┼─> exact per-frame rows
+     viewport / resolution / renderer counters ┘           │
+                                                   profile.json + overview
+
+optional fresh deterministic replay ──> lossless 1:1 frame sequence
+```
+
+`scrapbot profile` is an opt-in diagnostic path, not an ECS system or ordinary-frame observer. The measurement pass never maps render-target pixels. Timestamp readbacks keep their originating renderer-frame index and patch the matching preallocated row. Bounded batch drains happen outside measured active CPU duration.
+
+A requested capture range starts from a fresh project world and writes images during a second replay. Those readback stalls cannot contaminate the telemetry report.
+
+Post-run tools consume the artifact without engine access. The analyzer ranks GPU-pass p95 values, totals frame-local counters, and rejects comparisons with different adapters or render dimensions. The sweep driver orchestrates independent profile bundles at each requested resolution and writes a compact scaling report.
+
 ## ECS UI and editor
 
 ```text

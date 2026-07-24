@@ -1326,6 +1326,101 @@ test_wgpu_gpu_timing_marks_only_encoded_passes_for_the_sample :: proc(t: ^testin
 }
 
 @(test)
+test_profile_distribution_reports_median_p95_and_max :: proc(t: ^testing.T) {
+	values := []f64{4, 1, 3, 2, 100}
+	distribution := profile_distribution(values)
+	testing.expect_value(t, distribution.samples, 5)
+	testing.expect_value(t, distribution.median_ms, 3.0)
+	testing.expect_value(t, distribution.p95_ms, 100.0)
+	testing.expect_value(t, distribution.max_ms, 100.0)
+
+	even := profile_distribution([]f64{4, 1, 3, 2})
+	testing.expect_value(t, even.median_ms, 2.5)
+}
+
+@(test)
+test_profile_correlates_delayed_gpu_timing_with_originating_frame :: proc(t: ^testing.T) {
+	collector: Profile_Collector
+	init_profile_collector(&collector, 2, 3, "test", "test", "wgpu")
+	defer destroy_profile_collector(&collector)
+
+	stats := Render_Stats {
+		draw_batches = 7,
+	}
+	profile_record_gpu_frame(&collector, 3, {frame = 5.0, world = 3.0, composite = 2.0})
+	profile_record_frame(
+		&collector,
+		2,
+		0.001,
+		1.0 / 60.0,
+		320,
+		180,
+		1,
+		{width = 320, height = 180},
+		&stats,
+	)
+	profile_record_frame(
+		&collector,
+		3,
+		0.002,
+		1.0 / 60.0,
+		320,
+		180,
+		1,
+		{width = 320, height = 180},
+		&stats,
+	)
+	profile_record_gpu_frame(&collector, 2, {frame = 4.0, world = 2.5, composite = 1.5})
+	finish_profile_collector(&collector)
+
+	testing.expect_value(t, collector.report.recorded_frames, 2)
+	testing.expect_value(t, collector.frames[0].render.draw_batches, 7)
+	testing.expect_value(t, collector.frames[0].render.gpu_frame_ms, 4.0)
+	testing.expect_value(t, collector.frames[1].render.gpu_frame_ms, 5.0)
+	testing.expect_value(t, collector.report.summary.gpu_frame.samples, 2)
+	testing.expect_value(t, collector.report.summary.gpu_frame.median_ms, 4.5)
+}
+
+@(test)
+test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T) {
+	collector: Profile_Collector
+	init_profile_collector(&collector, 1, 2, "test", "test", "wgpu")
+	defer destroy_profile_collector(&collector)
+
+	stats := Render_Stats {
+		draw_database_rebuilds = 3,
+		cluster_dispatches = 7,
+		instance_uploads = 11,
+		instance_upload_bytes = 1024,
+		ui_vertex_rebuilds = 5,
+		ui_vertex_upload_bytes = 2048,
+	}
+	profile_record_frame(&collector, 0, 0, 0, 100, 100, 1, {}, &stats)
+
+	stats.cluster_dispatches += 1
+	stats.instance_uploads += 2
+	stats.instance_upload_bytes += 96
+	stats.ui_vertex_rebuilds += 1
+	profile_record_frame(&collector, 1, 0, 0, 100, 100, 1, {}, &stats)
+
+	first := collector.frames[0].counter_deltas
+	testing.expect_value(t, first.draw_database_rebuilds, u64(0))
+	testing.expect_value(t, first.cluster_dispatches, u64(1))
+	testing.expect_value(t, first.instance_uploads, u64(2))
+	testing.expect_value(t, first.instance_upload_bytes, u64(96))
+	testing.expect_value(t, first.ui_vertex_rebuilds, u64(1))
+	testing.expect_value(t, first.ui_vertex_upload_bytes, u64(0))
+
+	stats.draw_database_rebuilds = 1
+	stats.ui_vertex_upload_bytes += 128
+	profile_record_frame(&collector, 2, 0, 0, 100, 100, 1, {}, &stats)
+
+	second := collector.frames[1].counter_deltas
+	testing.expect_value(t, second.draw_database_rebuilds, u64(1))
+	testing.expect_value(t, second.ui_vertex_upload_bytes, u64(128))
+}
+
+@(test)
 test_wgpu_post_timing_includes_camera_post_effects :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_valid = true

@@ -1,7 +1,7 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-19
+**Last reviewed:** 2026-07-24
 
 ## Overview
 
@@ -20,13 +20,14 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 - Visible runs request a 1600×900 logical window by default. Projects may override the startup width and height through `[window]` in `project.toml`; oversized requests preserve their aspect ratio while fitting within 90% of the primary display's usable area.
 - Users can select another renderer, force headless execution, disable hot reload, and limit runs with `--frames`.
 - Users can request a headless WGPU PNG framegrab with `--framegrab`.
+- Users can capture a bounded WGPU performance bundle with `scrapbot profile`, including raw CPU/GPU frame telemetry, pass distributions, resolution/viewport metadata, a final overview, and an optional replayed PNG sequence.
 - Users can pass `--editor` to start with editor chrome visible, while `Cmd/Ctrl+E` toggles it during a windowed run.
 - Users can pass `--no-hot-reload` to disable the default periodic checks of `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories. `--hot-reload` remains available as an explicit, backward-compatible spelling.
 - Users can pass `--scheduler-trace` to report native worker count, parallel stage count, and maximum parallel width after a run.
 - Users can pass `--runtime-stats` to collect early/late engine-frame cost through render preparation, engine-allocator bytes, and detailed ECS storage checkpoints for bounded runs.
 - Windowed runtime-stat runs require a nonzero `--frames` limit; unbounded sessions are rejected because they have no deterministic late sample window.
 - Users can ask for top-level help or command-specific help.
-- `init`, `check`, `build`, and `run` accept `--json` and emit one versioned JSON document with structured diagnostics and command result data.
+- `init`, `check`, `build`, `run`, and `profile` accept `--json` and emit one versioned JSON document with structured diagnostics and command result data.
 - JSON diagnostics have stable codes, severity, messages, and optional paths. Project logging is suppressed so machine-readable stdout is not contaminated.
 - During development, `mise scrapbot` builds and runs the CLI with forwarded arguments.
 
@@ -71,7 +72,7 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 ## Related
 
 - **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008
-- **FDRs:** FDR-002, FDR-003, FDR-006, FDR-008
+- **FDRs:** FDR-002, FDR-003, FDR-006, FDR-008, FDR-012
 
 ## Open Questions
 

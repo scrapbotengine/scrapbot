@@ -35,6 +35,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Structured run results include renderer counters for GPU-driven mode, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, frustum/occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
 - The `wgpu` backend can also render a losslessly compressed headless final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
+- `scrapbot profile` drives the same headless WGPU path at the project resolution or an explicit override. It collects tagged per-frame timestamp results without mapping render-target pixels, then optionally repeats the run to capture a narrow lossless sequence.
 - WGPU sizes the live world and project UI to the complete available viewport, deriving camera aspect from its dimensions, then paints engine chrome in a separate overlay pass.
 - Visible WGPU windows continue stepping and presenting frames during native live resize, reconfiguring the surface to each exposed pixel size instead of waiting for the drag to end.
 - Visible windows use the project's logical startup size and request a high-pixel-density drawable independently. Headless WGPU keeps its deterministic 1280×720 offscreen target.

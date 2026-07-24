@@ -161,11 +161,16 @@ Run_Config :: struct {
 	cpu_culling: bool,
 	window: bool,
 	window_width, window_height: int,
+	override_window_size: bool,
 	hot_reload: bool,
 	editor: bool,
 	max_frames: u32,
 	framegrab_path: string,
 	framegrab_region: Framegrab_Region,
+	framegrab_sequence_directory: string,
+	framegrab_sequence_start: u32,
+	framegrab_sequence_end: u32,
+	framegrab_sequence_index_base: u32,
 	ui_script_path: string,
 	ui_dump_path: string,
 	frame_system: Frame_System_Proc,
@@ -190,6 +195,7 @@ Run_Config :: struct {
 	runtime_reimport_data: rawptr,
 	resource_registry: ^resources.Registry,
 	stats: ^Render_Stats,
+	profile: ^Profile_Collector,
 	performance_diagnostics: ^Performance_Diagnostics_Accumulator,
 	collect_runtime_stats: bool,
 	runtime_stats: ^Runtime_Stats,
@@ -475,11 +481,12 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				frame = ecs.render_frame_from_world(world)
 				return
 			}
-			if run_config.framegrab_path != "" {
+			if run_config.framegrab_path != "" || run_config.framegrab_sequence_directory != "" {
+				window_width, window_height := renderer_window_size(run_config)
 				window_err := platform.open_hidden_runtime_window(
 					"Scrapbot WGPU Headless",
-					1280,
-					720,
+					window_width,
+					window_height,
 				)
 				if window_err != "" {
 					return frame, window_err
@@ -491,7 +498,7 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				frame = ecs.render_frame_from_world(world)
 				return
 			}
-			err = "wgpu renderer backend currently requires --window or --framegrab"
+			err = "wgpu renderer backend currently requires --window, --framegrab, or a framegrab sequence"
 			return
 	}
 

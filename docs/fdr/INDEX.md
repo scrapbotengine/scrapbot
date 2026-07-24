@@ -13,3 +13,4 @@
 | [FDR-009](FDR-009-project-resources.md) | Project resources | Active | 2026-07-17 |
 | [FDR-010](FDR-010-runtime-input.md) | Runtime input | Active | 2026-07-21 |
 | [FDR-011](FDR-011-asset-imports.md) | Asset imports | In Progress | 2026-07-22 |
+| [FDR-012](FDR-012-render-profiling.md) | Render profiling | Active | 2026-07-24 |

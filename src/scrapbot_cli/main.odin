@@ -7,6 +7,8 @@ import "core:flags"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:strconv"
+import "core:strings"
 
 PARSING_STYLE :: flags.Parsing_Style.Unix
 
@@ -48,6 +50,20 @@ Run_Options :: struct {
 	framegrab_region: string `name:"framegrab-region" usage:"Export a 1:1 top-left pixel crop as x,y,width,height."`,
 	ui_script: string `name:"ui-script" usage:"Replay semantic UI actions from a JSON script."`,
 	ui_dump: string `name:"ui-dump" usage:"Write the final reconciled UI tree as JSON."`,
+	json: bool `usage:"Emit one machine-readable JSON result."`,
+}
+
+Profile_Options :: struct {
+	path: string `args:"pos=0" usage:"Project directory to profile."`,
+	out: string `usage:"Artifact bundle directory."`,
+	warmup: u32 `usage:"Warmup frames excluded from the report."`,
+	frames: u32 `usage:"Measured frames written to the report."`,
+	resolution: string `usage:"Override the project resolution as WIDTHxHEIGHT."`,
+	capture_range: string `name:"capture-range" usage:"Replay and capture measured frames START:END, inclusive."`,
+	framegrab_region: string `name:"framegrab-region" usage:"Capture a 1:1 top-left pixel crop as x,y,width,height."`,
+	cpu_culling: bool `name:"cpu-culling" usage:"Use CPU culling as the WGPU correctness-reference path."`,
+	editor: bool `usage:"Profile with the editor shell visible."`,
+	ui_script: string `name:"ui-script" usage:"Replay semantic UI actions during both deterministic passes."`,
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
 
@@ -98,6 +114,15 @@ Run_Stats_Result :: struct {
 	runtime_stats: scrapbot.Runtime_Stats,
 	render_stats: scrapbot.Render_Stats,
 }
+Profile_Command_Result :: struct {
+	directory: string,
+	report: string,
+	overview: string,
+	frames_directory: string,
+	recorded_frames: int,
+	gpu_timed_frames: int,
+	summary: scrapbot.Profile_Summary,
+}
 Error_Result :: struct {}
 
 main :: proc() {
@@ -135,11 +160,233 @@ run :: proc() -> int {
 			return run_build(args[1:])
 		case "run":
 			return run_project(args[1:])
+		case "profile":
+			return run_profile(args[1:])
 		case:
 			fmt.eprintf("unknown command: %s\n", args[0])
 			print_help()
 			return 1
 	}
+}
+
+parse_profile_resolution :: proc(value: string) -> (width, height: int, ok: bool) {
+	if value == "" {
+		return 0, 0, true
+	}
+	parts := strings.split(strings.to_lower(value), "x")
+	defer delete(parts)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	parsed_width, width_ok := strconv.parse_uint(strings.trim_space(parts[0]))
+	parsed_height, height_ok := strconv.parse_uint(strings.trim_space(parts[1]))
+	if !width_ok ||
+	   !height_ok ||
+	   parsed_width == 0 ||
+	   parsed_height == 0 ||
+	   parsed_width > 16_384 ||
+	   parsed_height > 16_384 {
+		return 0, 0, false
+	}
+	return int(parsed_width), int(parsed_height), true
+}
+
+parse_profile_capture_range :: proc(
+	value: string,
+	frames: u32,
+) -> (
+	start, end: u32,
+	enabled, ok: bool,
+) {
+	if value == "" {
+		return 0, 0, false, true
+	}
+	parts := strings.split(value, ":")
+	defer delete(parts)
+	if len(parts) != 2 {
+		return 0, 0, false, false
+	}
+	parsed_start, start_ok := strconv.parse_uint(strings.trim_space(parts[0]))
+	parsed_end, end_ok := strconv.parse_uint(strings.trim_space(parts[1]))
+	if !start_ok || !end_ok || parsed_start > parsed_end || parsed_end >= uint(frames) {
+		return 0, 0, false, false
+	}
+	return u32(parsed_start), u32(parsed_end), true, true
+}
+
+run_profile :: proc(args: []string) -> int {
+	opt := Profile_Options {
+		path = ".",
+		out = "profile",
+		warmup = 60,
+		frames = 240,
+	}
+	code, should_run := parse_command_args(&opt, args, "scrapbot profile")
+	if !should_run {
+		return code
+	}
+	if opt.frames == 0 {
+		message := "--frames must be greater than zero"
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_ARGUMENT_ERROR", message, opt.path)
+		} else {
+			fmt.eprintln(message)
+		}
+		return 1
+	}
+	width, height, resolution_ok := parse_profile_resolution(opt.resolution)
+	capture_start, capture_end, capture_enabled, capture_ok := parse_profile_capture_range(
+		opt.capture_range,
+		opt.frames,
+	)
+	region, region_ok := scrapbot.parse_framegrab_region(opt.framegrab_region)
+	if !resolution_ok || !capture_ok || !region_ok {
+		message := "expected --resolution WIDTHxHEIGHT, --capture-range START:END within measured frames, and --framegrab-region x,y,width,height"
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_ARGUMENT_ERROR", message, opt.path)
+		} else {
+			fmt.eprintln(message)
+		}
+		return 1
+	}
+	if make_err := os.make_directory_all(opt.out); make_err != nil {
+		message := fmt.tprintf("failed to create profile directory: %v", make_err)
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_PROFILE_FAILED", message, opt.out)
+		} else {
+			fmt.eprintln(message)
+		}
+		return 1
+	}
+	report_path, report_path_err := filepath.join({opt.out, "profile.json"})
+	overview_path, overview_path_err := filepath.join({opt.out, "overview.png"})
+	frames_directory, frames_path_err := filepath.join({opt.out, "frames"})
+	if report_path_err != nil || overview_path_err != nil || frames_path_err != nil {
+		message := "failed to allocate profile artifact paths"
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_PROFILE_FAILED", message, opt.out)
+		} else {
+			fmt.eprintln(message)
+		}
+		return 1
+	}
+	defer delete(report_path)
+	defer delete(overview_path)
+	defer delete(frames_directory)
+
+	collector: scrapbot.Profile_Collector
+	scrapbot.init_profile_collector(
+		&collector,
+		opt.warmup,
+		opt.frames,
+		scrapbot.VERSION,
+		scrapbot.host_target(),
+		"wgpu",
+	)
+	defer scrapbot.destroy_profile_collector(&collector)
+	total_frames := opt.warmup + opt.frames
+	config := scrapbot.Run_Config {
+		backend = .WGPU,
+		cpu_culling = opt.cpu_culling,
+		window = false,
+		window_width = width,
+		window_height = height,
+		override_window_size = opt.resolution != "",
+		hot_reload = false,
+		editor = opt.editor,
+		max_frames = total_frames,
+		framegrab_path = overview_path,
+		framegrab_region = region,
+		ui_script_path = opt.ui_script,
+		profile = &collector,
+		log_enabled = false,
+	}
+	result := scrapbot.run_project(opt.path, config)
+	if result.err != "" {
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_PROFILE_FAILED", result.err, opt.path)
+		} else {
+			fmt.eprintln(result.err)
+		}
+		return 1
+	}
+	scrapbot.finish_profile_collector(&collector)
+
+	if capture_enabled {
+		if make_err := os.make_directory_all(frames_directory); make_err != nil {
+			message := fmt.tprintf("failed to create capture directory: %v", make_err)
+			if opt.json {
+				emit_json_error("profile", "SCRAPBOT_PROFILE_FAILED", message, frames_directory)
+			} else {
+				fmt.eprintln(message)
+			}
+			return 1
+		}
+		capture_config := config
+		capture_config.profile = nil
+		capture_config.framegrab_path = ""
+		capture_config.framegrab_sequence_directory = frames_directory
+		capture_config.framegrab_sequence_start = opt.warmup + capture_start
+		capture_config.framegrab_sequence_end = opt.warmup + capture_end
+		capture_config.framegrab_sequence_index_base = opt.warmup
+		capture_result := scrapbot.run_project(opt.path, capture_config)
+		if capture_result.err != "" {
+			if opt.json {
+				emit_json_error(
+					"profile",
+					"SCRAPBOT_PROFILE_CAPTURE_FAILED",
+					capture_result.err,
+					opt.path,
+				)
+			} else {
+				fmt.eprintln(capture_result.err)
+			}
+			return 1
+		}
+	}
+
+	report_data, marshal_err := json.marshal(collector.report)
+	if marshal_err != nil {
+		message := fmt.tprintf("failed to encode profile report: %v", marshal_err)
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_PROFILE_FAILED", message, report_path)
+		} else {
+			fmt.eprintln(message)
+		}
+		return 1
+	}
+	defer delete(report_data)
+	if write_err := os.write_entire_file(report_path, report_data); write_err != nil {
+		message := fmt.tprintf("failed to write profile report: %v", write_err)
+		if opt.json {
+			emit_json_error("profile", "SCRAPBOT_PROFILE_FAILED", message, report_path)
+		} else {
+			fmt.eprintln(message)
+		}
+		return 1
+	}
+	command_result := Profile_Command_Result {
+		directory = opt.out,
+		report = report_path,
+		overview = overview_path,
+		frames_directory = frames_directory if capture_enabled else "",
+		recorded_frames = collector.report.recorded_frames,
+		gpu_timed_frames = collector.report.gpu_timed_frames,
+		summary = collector.report.summary,
+	}
+	if opt.json {
+		emit_json_success("profile", command_result)
+		return 0
+	}
+	fmt.printf(
+		"profile: %d CPU frames, %d GPU-timed frames; CPU p95 %.3f ms, GPU p95 %.3f ms\nartifacts: %s\n",
+		collector.report.recorded_frames,
+		collector.report.gpu_timed_frames,
+		collector.report.summary.cpu_active.p95_ms,
+		collector.report.summary.gpu_frame.p95_ms,
+		opt.out,
+	)
+	return 0
 }
 
 run_import :: proc(args: []string) -> int {
@@ -515,6 +762,8 @@ print_command_help :: proc(command: string) -> int {
 			flags.write_usage(stdout, Build_Options, "scrapbot build", PARSING_STYLE)
 		case "run":
 			flags.write_usage(stdout, Run_Options, "scrapbot run", PARSING_STYLE)
+		case "profile":
+			flags.write_usage(stdout, Profile_Options, "scrapbot profile", PARSING_STYLE)
 		case:
 			fmt.eprintf("unknown command: %s\n", command)
 			print_help()
@@ -532,6 +781,8 @@ print_help :: proc() {
   scrapbot build [path]          Build a host-native runnable game package
   scrapbot run [path] [--backend null|wgpu] [--cpu-culling] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json]
                                   Load the project and render
+  scrapbot profile [path] [--out profile] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END]
+                                  Capture deterministic CPU/GPU frame telemetry and optional replay frames
   scrapbot help <command>         Print command-specific options
   scrapbot --version             Print the engine version`,
 	)

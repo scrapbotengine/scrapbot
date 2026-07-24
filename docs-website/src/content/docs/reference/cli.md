@@ -7,7 +7,7 @@ All commands run against a project directory. When omitted, the project path def
 
 ## Machine-readable output
 
-`init`, `import`, `check`, `build`, and `run` accept `--json`. JSON mode emits exactly one document to stdout and suppresses project log lines:
+`init`, `import`, `check`, `build`, `run`, and `profile` accept `--json`. JSON mode emits exactly one document to stdout and suppresses project log lines:
 
 ```json
 {
@@ -133,6 +133,16 @@ The editor shell keeps the running project live across the complete central view
 With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
 
 JSON run results also include `render_stats`. For WGPU it reports whether compute culling and clustered lighting are active; shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values; draw-database, instance-slot, and visibility-buffer capacities; database rebuilds and cumulative instance uploads; frustum candidates, explicit frustum rejections, visible instances, and occlusion rejections; per-LOD visible counts; Hi-Z state; and retained-UI vertex rebuild/upload counters, including separate project, editor, and editor-world overlay rebuild counts. When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms`, `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` samples. Visibility counters and timestamps use multi-frame readback rings: the renderer never waits synchronously and retains the latest completed sample when a frame has no new result.
+
+## `scrapbot profile`
+
+```sh
+scrapbot profile [path] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END] [--framegrab-region x,y,width,height] [--editor] [--ui-script actions.json] [--cpu-culling] [--out directory] [--json]
+```
+
+Runs a bounded headless WGPU measurement after an excluded warmup. The output bundle contains raw exact-frame CPU/GPU telemetry in `profile.json` and a final `overview.png`. A capture range triggers a fresh replay and writes a lossless PNG sequence, keeping pixel readback stalls outside the measured pass.
+
+Use `mise profile-analyze` to summarize or compare reports and `mise profile-sweep` to repeat the workload at a bounded resolution matrix. See [Rendering And Testing](/guides/rendering-testing/#render-profiling) for artifact fields, comparison rules, and agent-oriented workflows.
 
 ## `scrapbot help`
 

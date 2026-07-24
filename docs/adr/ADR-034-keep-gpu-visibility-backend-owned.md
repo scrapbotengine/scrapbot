@@ -36,7 +36,9 @@ Bounding spheres remain conservative:
 
 Treat LOD as geometry-resource data, not an entity or backend-specific component. A UUID-backed `scrapbot.geometry_lod` project resource owns an icosphere level chain and descending screen-radius thresholds. ECS entities still reference one stable geometry handle. The persistent GPU instance record carries the resolved alternate batch indices and thresholds, and the visibility shader selects the draw batch from projected screen radius before compaction. The CPU reference path implements the same selection rule.
 
-Use optional WebGPU timestamp queries and asynchronous multi-frame readback rings for per-pass GPU execution time and visibility/LOD counters. Never block the render loop waiting for diagnostic data. A frame without completed readback retains the most recent valid sample.
+Use optional WebGPU timestamp queries and asynchronous multi-frame readback rings for per-pass GPU execution time and visibility/LOD counters. Never block an ordinary render loop waiting for diagnostic data. A frame without completed readback retains the most recent valid live-editor sample.
+
+An explicit bounded `scrapbot profile` run tags each timestamp readback with its originating renderer-frame index and drains the ring in batches. The drain wait is excluded from recorded active CPU time. This opt-in diagnostic exception produces exact per-frame correlation without changing ordinary-frame behavior.
 
 Keep a CPU implementation of the same bounding-sphere/frustum test as a deterministic correctness oracle. CPU editor picking remains independent because it needs exact triangle hits and entity identity rather than render visibility.
 

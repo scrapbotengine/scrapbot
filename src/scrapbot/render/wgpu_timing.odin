@@ -91,6 +91,7 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 		return
 	}
 	wgpu.DevicePoll(renderer.device, false)
+	wgpu.InstanceProcessEvents(renderer.instance)
 	for &readback in renderer.gpu_timestamp_readbacks {
 		if !readback.pending || !readback.map_state.completed {
 			continue
@@ -146,11 +147,29 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 		}
 		renderer.gpu_timestamp_frame_ms = frame_ms
 		renderer.gpu_timestamp_valid = true
+		profile_record_gpu_frame(
+			renderer.profile,
+			readback.frame_index,
+			{
+				frame = frame_ms,
+				cull = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)],
+				shadow = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)],
+				depth = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)],
+				world = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.World)],
+				hiz = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)],
+				temporal_aa = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Temporal_AA)],
+				ambient_occlusion = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Ambient_Occlusion)],
+				screen_space_reflections = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Screen_Space_Reflections)],
+				bloom = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Bloom)],
+				composite = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Composite)],
+				ui = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.UI)],
+			},
+		)
 		wgpu.BufferUnmap(readback.buffer)
 	}
 }
 
-wgpu_gpu_timing_begin_frame :: proc(renderer: ^WGPU_Renderer) {
+wgpu_gpu_timing_begin_frame :: proc(renderer: ^WGPU_Renderer, frame_index: u64 = 0) {
 	if renderer == nil || !renderer.gpu_timestamp_supported {
 		return
 	}
@@ -161,11 +180,21 @@ wgpu_gpu_timing_begin_frame :: proc(renderer: ^WGPU_Renderer) {
 		readback := &renderer.gpu_timestamp_readbacks[index]
 		if !readback.pending {
 			readback.phase_mask = 0
+			readback.frame_index = frame_index
 			renderer.gpu_timestamp_active_slot = index
 			renderer.gpu_timestamp_next_slot = (index + 1) % WGPU_GPU_TIMESTAMP_FRAMES
 			return
 		}
 	}
+}
+
+wgpu_gpu_timing_drain :: proc(renderer: ^WGPU_Renderer) {
+	if renderer == nil || !renderer.gpu_timestamp_supported {
+		return
+	}
+	wgpu.DevicePoll(renderer.device, true)
+	wgpu.InstanceProcessEvents(renderer.instance)
+	wgpu_gpu_timing_consume_readbacks(renderer)
 }
 
 wgpu_gpu_pass_timestamps :: proc(

@@ -130,6 +130,14 @@ description = "Stress retained native query chunks with a high-churn emitter"
 depends = ["build"]
 run = "node tools/benchmark_native_queries.mjs \"$@\""
 
+[tasks.profile-analyze]
+description = "Summarize or compare Scrapbot render profile reports"
+run = "node tools/analyze_render_profile.mjs \"$@\""
+
+[tasks.profile-sweep]
+description = "Profile one project across a bounded resolution matrix"
+run = "node tools/profile_resolution_sweep.mjs \"$@\""
+
 [tasks.luau]
 description = "Build embedded Luau"
 run = '''

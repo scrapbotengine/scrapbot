@@ -60,6 +60,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - Play/Pause/Step (`Cmd/Ctrl+R`, `Cmd/Ctrl+T`) with a non-destructive in-memory authoring baseline, stopped-mode Undo/Redo, explicit project-wide Save, and scene Revert.
 - RMB-captured WASD fly camera, precise entity picking, and translation/rotation/scale gizmos with plane and center handles.
 - System profiler publishing engine, project-Odin, Luau, and CPU render-phase timings from a rolling window.
+- Bounded headless render profiler with exact frame-correlated GPU pass timestamps, active-CPU timing, per-frame upload/rebuild counters, resolution metadata, and optional lossless replay captures.
 
 ### Examples
 
@@ -278,6 +279,7 @@ Run the full local suite with `mise test` (includes a 2,000-frame lifecycle CPU/
   - [x] Project validation
   - [ ] Deterministic stepping
   - [ ] Benchmark runner
+  - [x] Deterministic render profiling bundles
   - [x] JSON command output
 - Verification
   - [ ] Gameplay test fixtures

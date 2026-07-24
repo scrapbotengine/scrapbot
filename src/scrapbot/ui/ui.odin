@@ -1563,10 +1563,13 @@ editor_viewport_for_scale :: proc(
 		}
 		if !found { available = {(EDITOR_LEFT_SIDEBAR_WIDTH + EDITOR_VIEWPORT_INSET) * scale, EDITOR_TOP_BAR_HEIGHT * scale, drawable_width - (EDITOR_LEFT_SIDEBAR_WIDTH + EDITOR_RIGHT_SIDEBAR_WIDTH + EDITOR_VIEWPORT_INSET * 2) * scale, drawable_height - (EDITOR_TOP_BAR_HEIGHT + EDITOR_STATUS_BAR_HEIGHT) * scale} }
 	}
-	if available.width <= 0 ||
-	   available.height <=
-		   0 { return {available.x, available.y, max(available.width, 0), max(available.height, 0)} }
-	return available
+	target_width := max(drawable_width, 0)
+	target_height := max(drawable_height, 0)
+	x0 := clamp(available.x, 0, target_width)
+	y0 := clamp(available.y, 0, target_height)
+	x1 := clamp(available.x + max(available.width, 0), x0, target_width)
+	y1 := clamp(available.y + max(available.height, 0), y0, target_height)
+	return {x0, y0, x1 - x0, y1 - y0}
 }
 
 project_pointer_input :: proc(

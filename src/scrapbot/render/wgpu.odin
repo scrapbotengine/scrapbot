@@ -8,6 +8,7 @@ import ui "../ui"
 import base_runtime "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:path/filepath"
 import "core:time"
 import "vendor:wgpu"
 
@@ -64,6 +65,7 @@ WGPU_GPU_Timestamp_Readback :: struct {
 	buffer: wgpu.Buffer,
 	map_state: WGPU_Buffer_Map_State,
 	pending: bool,
+	frame_index: u64,
 	hiz_mip_count: int,
 	phase_mask: u32,
 }
@@ -643,6 +645,8 @@ WGPU_Renderer :: struct {
 	gpu_timestamp_valid: bool,
 	gpu_timestamp_phase_ms: [WGPU_GPU_TIMESTAMP_PHASE_COUNT]f64,
 	gpu_timestamp_frame_ms: f64,
+	profile: ^Profile_Collector,
+	profile_frame_index: u64,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
 	shadow_bind_group: wgpu.BindGroup,
 	shadow_pipeline_layout: wgpu.PipelineLayout,
@@ -2430,7 +2434,8 @@ wgpu_draw_frame :: proc(
 		return false, false, "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
-	wgpu_gpu_timing_begin_frame(renderer)
+	profile_frame_index := renderer.profile_frame_index
+	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2510,6 +2515,10 @@ wgpu_draw_frame :: proc(
 		return false, false, "failed to present wgpu surface"
 	}
 	record_system_profile_phase(config, .Render_Present, present_start)
+	profile_active_frame_seconds := frame_active_seconds(active_frame_start)
+	if config.profile != nil && (profile_frame_index + 1) % u64(WGPU_GPU_TIMESTAMP_FRAMES) == 0 {
+		wgpu_gpu_timing_drain(renderer)
+	}
 	if config.stats != nil {
 		wgpu_publish_gpu_timing(renderer, config.stats)
 		wgpu_publish_visibility(renderer, config.stats)
@@ -2525,13 +2534,27 @@ wgpu_draw_frame :: proc(
 		config.stats.ui_viewport_redraws = renderer.ui_viewport_redraw_count
 		config.stats.ui_viewport_cache_hits = renderer.ui_viewport_cache_hit_count
 	}
+	active_frame_seconds :=
+		profile_active_frame_seconds if config.profile != nil else frame_active_seconds(active_frame_start)
 	performance_diagnostics_commit_frame(
 		config.performance_diagnostics,
 		config.stats,
 		world,
 		delta_time,
-		frame_active_seconds(active_frame_start),
+		active_frame_seconds,
 	)
+	profile_record_frame(
+		config.profile,
+		profile_frame_index,
+		active_frame_seconds,
+		delta_time,
+		renderer.width,
+		renderer.height,
+		platform.runtime_window_pixel_density(),
+		viewport,
+		config.stats,
+	)
+	renderer.profile_frame_index += 1
 	commit_system_profile_frame(config)
 
 	return true, false, ""
@@ -2623,7 +2646,8 @@ wgpu_render_offscreen_frame :: proc(
 		return "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
-	wgpu_gpu_timing_begin_frame(renderer)
+	profile_frame_index := renderer.profile_frame_index
+	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2713,6 +2737,10 @@ wgpu_render_offscreen_frame :: proc(
 		wgpu_visibility_after_submit(renderer)
 	}
 	record_system_profile_phase(config, .Render_Submit, submit_start)
+	profile_active_frame_seconds := frame_active_seconds(active_frame_start)
+	if config.profile != nil && (profile_frame_index + 1) % u64(WGPU_GPU_TIMESTAMP_FRAMES) == 0 {
+		wgpu_gpu_timing_drain(renderer)
+	}
 	if config.stats != nil {
 		wgpu_publish_gpu_timing(renderer, config.stats)
 		wgpu_publish_visibility(renderer, config.stats)
@@ -2728,15 +2756,73 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.ui_viewport_redraws = renderer.ui_viewport_redraw_count
 		config.stats.ui_viewport_cache_hits = renderer.ui_viewport_cache_hit_count
 	}
+	active_frame_seconds :=
+		profile_active_frame_seconds if config.profile != nil else frame_active_seconds(active_frame_start)
 	performance_diagnostics_commit_frame(
 		config.performance_diagnostics,
 		config.stats,
 		world,
 		1.0 / 60.0,
-		frame_active_seconds(active_frame_start),
+		active_frame_seconds,
 	)
+	profile_record_frame(
+		config.profile,
+		profile_frame_index,
+		active_frame_seconds,
+		1.0 / 60.0,
+		width,
+		height,
+		1,
+		viewport,
+		config.stats,
+	)
+	renderer.profile_frame_index += 1
 	commit_system_profile_frame(config)
 	return ""
+}
+
+wgpu_write_framegrab_readback :: proc(
+	renderer: ^WGPU_Renderer,
+	readback: wgpu.Buffer,
+	readback_size: u64,
+	row_stride, frame_width, frame_height: u32,
+	capture_x, capture_y, capture_width, capture_height: u32,
+	path: string,
+) -> string {
+	map_state: WGPU_Buffer_Map_State
+	wgpu.BufferMapAsync(
+		readback,
+		{.Read},
+		0,
+		uint(readback_size),
+		wgpu.BufferMapCallbackInfo {
+			mode = .AllowSpontaneos,
+			callback = wgpu_buffer_map_callback,
+			userdata1 = &map_state,
+		},
+	)
+	if !wgpu_wait_for_buffer_map(renderer.instance, &map_state) {
+		message := map_state.message
+		if message == "" {
+			message = "request timed out"
+		}
+		return fmt.tprintf("failed to map wgpu readback buffer: %s", message)
+	}
+	defer wgpu.BufferUnmap(readback)
+	mapped := wgpu.BufferGetMappedRange(readback, 0, uint(readback_size))
+	capture_row_bytes := capture_width * 4
+	pixels := make([]u8, int(capture_row_bytes * capture_height))
+	defer delete(pixels)
+	for y in 0 ..< int(capture_height) {
+		dst := y * int(capture_row_bytes)
+		src := (y + int(capture_y)) * int(row_stride) + int(capture_x * 4)
+		copy_framegrab_row(
+			pixels[dst:dst + int(capture_row_bytes)],
+			mapped[src:src + int(capture_row_bytes)],
+			renderer.format,
+		)
+	}
+	return write_png_rgba8(path, pixels, capture_width, capture_height)
 }
 
 wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
@@ -2745,17 +2831,24 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	if init_err != "" {
 		return init_err
 	}
+	wgpu_configure_profile(&renderer, config.profile)
 
-	width := WGPU_OFFSCREEN_WIDTH
-	height := WGPU_OFFSCREEN_HEIGHT
+	width := u32(WGPU_OFFSCREEN_WIDTH)
+	height := u32(WGPU_OFFSCREEN_HEIGHT)
+	profile_dimensions := config.profile != nil || config.framegrab_sequence_directory != ""
+	if profile_dimensions {
+		width = u32(max(config.window_width, 1))
+		height = u32(max(config.window_height, 1))
+	}
 	capture_x, capture_y, capture_width, capture_height := u32(0), u32(0), width, height
 	if config.framegrab_region.width > 0 {
 		region := config.framegrab_region
 		if region.x >= width ||
 		   region.y >= height ||
 		   region.width > width - region.x ||
-		   region.height >
-			   height - region.y { return "framegrab region must fit within the 1280x720 frame" }
+		   region.height > height - region.y {
+			return fmt.tprintf("framegrab region must fit within the %dx%d frame", width, height)
+		}
 		capture_x, capture_y, capture_width, capture_height =
 			region.x, region.y, region.width, region.height
 	}
@@ -2812,7 +2905,13 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	}
 	diagnostic_err := ""
 	for index in 0 ..< frame_count {
-		capture := config.ui_driver != nil || index == frame_count - 1
+		sequence_capture :=
+			config.framegrab_sequence_directory != "" &&
+			index >= config.framegrab_sequence_start &&
+			index <= config.framegrab_sequence_end
+		final_capture := config.framegrab_path != "" && index == frame_count - 1
+		diagnostic_capture := config.ui_driver != nil && config.framegrab_path != ""
+		capture := diagnostic_capture || sequence_capture || final_capture
 		err := wgpu_render_offscreen_frame(
 			&renderer,
 			world,
@@ -2832,8 +2931,37 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 			diagnostic_err = err
 			break
 		}
-		if config.ui_driver != nil && ui.diagnostic_driver_is_complete(config.ui_driver) {
+		if config.ui_driver != nil &&
+		   ui.diagnostic_driver_is_complete(config.ui_driver) &&
+		   config.profile == nil &&
+		   config.framegrab_sequence_directory == "" {
 			break
+		}
+		if sequence_capture {
+			sequence_index := index - config.framegrab_sequence_index_base
+			file_name := fmt.aprintf("frame-%06d.png", sequence_index)
+			path, path_err := filepath.join({config.framegrab_sequence_directory, file_name})
+			delete(file_name)
+			if path_err != nil {
+				return "failed to allocate profile frame path"
+			}
+			write_err := wgpu_write_framegrab_readback(
+				&renderer,
+				readback,
+				readback_size,
+				row_stride,
+				width,
+				height,
+				capture_x,
+				capture_y,
+				capture_width,
+				capture_height,
+				path,
+			)
+			delete(path)
+			if write_err != "" {
+				return write_err
+			}
 		}
 	}
 	if config.ui_driver != nil && !ui.diagnostic_driver_is_complete(config.ui_driver) {
@@ -2865,26 +2993,7 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		}
 	}
 
-	map_state: WGPU_Buffer_Map_State
-	wgpu.BufferMapAsync(
-		readback,
-		{.Read},
-		0,
-		uint(readback_size),
-		wgpu.BufferMapCallbackInfo {
-			mode = .AllowSpontaneos,
-			callback = wgpu_buffer_map_callback,
-			userdata1 = &map_state,
-		},
-	)
-	if !wgpu_wait_for_buffer_map(renderer.instance, &map_state) {
-		message := map_state.message
-		if message == "" {
-			message = "request timed out"
-		}
-		return fmt.tprintf("failed to map wgpu readback buffer: %s", message)
-	}
-	wgpu_gpu_timing_consume_readbacks(&renderer)
+	wgpu_gpu_timing_drain(&renderer)
 	if !config.cpu_culling {
 		wgpu_visibility_consume_readbacks(&renderer)
 	}
@@ -2892,25 +3001,22 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		wgpu_publish_gpu_timing(&renderer, config.stats)
 		wgpu_publish_visibility(&renderer, config.stats)
 	}
-	defer wgpu.BufferUnmap(readback)
-
-	mapped := wgpu.BufferGetMappedRange(readback, 0, uint(readback_size))
-	capture_row_bytes := capture_width * 4
-	pixels := make([]u8, int(capture_row_bytes * capture_height))
-	defer delete(pixels)
-	for y in 0 ..< int(capture_height) {
-		dst := y * int(capture_row_bytes)
-		src := (y + int(capture_y)) * int(row_stride) + int(capture_x * 4)
-		copy_framegrab_row(
-			pixels[dst:dst + int(capture_row_bytes)],
-			mapped[src:src + int(capture_row_bytes)],
-			renderer.format,
-		)
-	}
-
-	if write_err := write_png_rgba8(config.framegrab_path, pixels, capture_width, capture_height);
-	   write_err != "" {
-		return write_err
+	if config.framegrab_path != "" {
+		if write_err := wgpu_write_framegrab_readback(
+			&renderer,
+			readback,
+			readback_size,
+			row_stride,
+			width,
+			height,
+			capture_x,
+			capture_y,
+			capture_width,
+			capture_height,
+			config.framegrab_path,
+		); write_err != "" {
+			return write_err
+		}
 	}
 	return diagnostic_err
 }
@@ -2939,6 +3045,8 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 	if init_err != "" {
 		return init_err
 	}
+	wgpu_configure_profile(&renderer, config.profile)
+	defer wgpu_gpu_timing_drain(&renderer)
 
 	frame_count: u32
 	previous_tick := time.tick_now()

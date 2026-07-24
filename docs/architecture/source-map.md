@@ -1,6 +1,6 @@
 # Source Map
 
-**Last verified:** 2026-07-22
+**Last verified:** 2026-07-24
 
 | Path | Responsibility | Important boundaries |
 | --- | --- | --- |
@@ -18,7 +18,7 @@
 | `src/scrapbot/extension/` | Idiomatic Odin wrapper for extension authors. | Typed descriptors/payloads over the raw ABI. |
 | `src/scrapbot/native/` | Native extension building, loading, registration, callbacks, UI bridging. | Host validation, dynamic-library lifetime, and per-system command buffers. |
 | `src/scrapbot/ui/` | Retained ECS UI, interaction, editor ECS composition, runtime component-payload inspection/bindings, diagnostics, fonts. | Generic mechanics stay public; editor meaning stays in bindings/orchestration. Component cards may not be hand-authored per type. |
-| `src/scrapbot/render/` | Backend interface, null backend, WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess. | Backend-neutral inputs; WGPU owns GPU state, pooled adaptive viewport targets, isolated resource-preview scenes, and caches. |
+| `src/scrapbot/render/` | Backend interface, null backend, WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess, and bounded profile collection. | Backend-neutral inputs; WGPU owns GPU state, pooled adaptive viewport targets, isolated resource-preview scenes, caches, and tagged asynchronous timing readbacks. |
 | `src/scrapbot/platform/` | SDL window/input/cursor integration. | OS events are translated into engine-owned input snapshots. |
 | `src/scrapbot/hot_reload.odin` | Project source/product change detection and safe runtime replacement. | Failed reload retains last-good runtime/world. |
 | `src/scrapbot/playback.odin` | Play/Stop baseline capture and restoration. | Restores ECS/resource authoring state without reloading code. |
@@ -26,6 +26,7 @@
 | `src/scrapbot/package.odin` | Packaged-project product assembly. | Separates source state from build products. |
 | `docs/adr/`, `docs/fdr/`, `docs/architecture/` | Decisions, feature contracts, and current source map. | Keep rationale, behavior, and inventory distinct. |
 | `docs-website/` | Public user documentation. | Canonical user-facing APIs and workflows. |
+| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs` | Agent-oriented render-profile summary, compatibility comparison, and bounded pixel-cost sweeps. | Consume profile artifacts after runs; never participate in ordinary engine frames. |
 
 ## Dependency direction
 
