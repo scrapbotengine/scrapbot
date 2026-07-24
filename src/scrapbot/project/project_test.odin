@@ -278,6 +278,8 @@ name = "Neon"
 [material]
 base_color = [0.1, 0.2, 0.3, 1]
 emissive = [8, 2, 0.5]
+metallic = 0.65
+roughness = 0.2
 texture = "a1000000-0000-4000-8000-000000000000"
 `,
 	)
@@ -285,6 +287,8 @@ texture = "a1000000-0000-4000-8000-000000000000"
 	testing.expect_value(t, resource.name, "Neon")
 	testing.expect_value(t, resource.material.base_color, Vec4{0.1, 0.2, 0.3, 1})
 	testing.expect_value(t, resource.material.emissive, Vec3{8, 2, 0.5})
+	testing.expect_value(t, resource.material.metallic, f32(0.65))
+	testing.expect_value(t, resource.material.roughness, f32(0.2))
 	texture_id, _ := shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000000")
 	testing.expect_value(t, resource.material.texture, texture_id)
 }
@@ -308,6 +312,34 @@ texture = "../outside.png"
 `,
 	)
 	testing.expect(t, unsafe_texture.err == .Invalid_Field)
+	defaults, defaults_result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000003"
+type = "scrapbot.material"
+name = "Defaults"
+[material]
+`,
+	)
+	testing.expect(t, defaults_result.err == .None)
+	testing.expect_value(t, defaults.material.metallic, f32(0))
+	testing.expect_value(t, defaults.material.roughness, f32(0.8))
+	_, invalid_metallic := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000004"
+type = "scrapbot.material"
+name = "Invalid Metallic"
+[material]
+metallic = 1.1
+`,
+	)
+	testing.expect(t, invalid_metallic.err == .Invalid_Field)
+	_, invalid_roughness := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000005"
+type = "scrapbot.material"
+name = "Invalid Roughness"
+[material]
+roughness = -0.1
+`,
+	)
+	testing.expect(t, invalid_roughness.err == .Invalid_Field)
 }
 
 @(test)

@@ -66,6 +66,8 @@ test_project_save_commits_scene_and_resource_as_one_reloadable_state :: proc(t: 
 	}
 	material.desc.base_color = {0.125, 0.25, 0.5, 1}
 	material.desc.emissive = {3, 2, 1}
+	material.desc.metallic_factor = 0.75
+	material.desc.roughness_factor = 0.25
 
 	scene_path, scene_path_err := filepath.join({root, loaded.config.default_scene})
 	testing.expect(t, scene_path_err == nil)
@@ -102,6 +104,8 @@ test_project_save_commits_scene_and_resource_as_one_reloadable_state :: proc(t: 
 		testing.expect_value(t, reloaded.scene.entities[1].transform.position.x, f32(12.5))
 		testing.expect_value(t, reloaded.resources[0].material.base_color.x, f32(0.125))
 		testing.expect_value(t, reloaded.resources[0].material.emissive, shared.Vec3{3, 2, 1})
+		testing.expect_value(t, reloaded.resources[0].material.metallic, f32(0.75))
+		testing.expect_value(t, reloaded.resources[0].material.roughness, f32(0.25))
 	}
 
 	first_scene := clone_file_text(t, scene_path)

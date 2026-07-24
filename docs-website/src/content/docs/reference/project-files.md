@@ -92,10 +92,12 @@ name = "Coral"
 [material]
 base_color = [1.0, 0.25, 0.08, 1.0]
 emissive = [0.0, 0.0, 0.0]
+metallic = 0.0
+roughness = 0.8
 texture = "b1000000-0000-4000-8000-000000000002"
 ```
 
-`base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, and `texture` is optional. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
+`base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, `metallic` defaults to `0`, and `roughness` defaults to `0.8`. Metallic and roughness are finite factors from `0` to `1`. `texture` is optional. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
 
 Static glTF model resources point at `.gltf` or `.glb` sources:
 

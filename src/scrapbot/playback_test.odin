@@ -145,7 +145,12 @@ test_playback_baseline_restores_runtime_material_edits :: proc(t: ^testing.T) {
 		resource_id,
 		"Playback Material",
 		"playback.resource.toml",
-		{base_color = {0.2, 0.3, 0.4, 1}, emissive = {1, 2, 3}},
+		{
+			base_color = {0.2, 0.3, 0.4, 1},
+			emissive = {1, 2, 3},
+			metallic_factor = 0.25,
+			roughness_factor = 0.75,
+		},
 	)
 	testing.expect(t, register_err == "")
 	baseline: Playback_Baseline
@@ -155,6 +160,8 @@ test_playback_baseline_restores_runtime_material_edits :: proc(t: ^testing.T) {
 	testing.expect(t, alive)
 	material.desc.base_color = {0.9, 0.8, 0.7, 0.6}
 	material.desc.emissive = {8, 7, 6}
+	material.desc.metallic_factor = 1
+	material.desc.roughness_factor = 0.1
 	material.version += 1
 	mutated_version := material.version
 	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world, &registry) == "")
@@ -163,6 +170,8 @@ test_playback_baseline_restores_runtime_material_edits :: proc(t: ^testing.T) {
 	if alive {
 		testing.expect_value(t, material.desc.base_color, resources.Vec4{0.2, 0.3, 0.4, 1})
 		testing.expect_value(t, material.desc.emissive, shared.Vec3{1, 2, 3})
+		testing.expect_value(t, material.desc.metallic_factor, f32(0.25))
+		testing.expect_value(t, material.desc.roughness_factor, f32(0.75))
 		testing.expect_value(t, material.version, mutated_version + 1)
 	}
 }

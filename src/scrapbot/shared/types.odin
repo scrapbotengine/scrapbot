@@ -136,6 +136,8 @@ Project_Environment_Resource :: struct {
 Project_Material_Resource :: struct {
 	base_color: Vec4,
 	emissive: Vec3,
+	metallic: f32,
+	roughness: f32,
 	texture: Resource_UUID,
 }
 
@@ -915,6 +917,8 @@ Editor_Inspector_Field :: enum {
 	Point_Range,
 	Material_Base_Color,
 	Material_Emissive,
+	Material_Metallic,
+	Material_Roughness,
 	Custom_Number,
 	Custom_Vec2,
 	Custom_Vec3,

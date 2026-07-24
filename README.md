@@ -70,6 +70,7 @@ Example projects live in [`examples/`](examples/):
 - `ecs-stress` — roughly 3,000 glowing renderables sustained through retained query plans, chunked storage, and SIMD integration.
 - `clustered-lights` — 320 animated HDR point lights through GPU-computed view-frustum clusters in a bloom-soaked tunnel.
 - `gltf-showcase` — the pinned Khronos Damaged Helmet through the real glTF importer, lit by a pinned CC0 HDR environment.
+- `pbr-materials` — deterministic authored metallic/roughness reference grid for isolating material and lighting changes.
 - `sponza` — the Khronos Sponza atrium as 103 ECS renderables with 25 PBR materials, directional shadows, and clustered point lights.
 
 ### Testing

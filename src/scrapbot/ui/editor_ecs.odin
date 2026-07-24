@@ -2418,6 +2418,12 @@ editor_ui_set_numeric_metadata :: proc(
 			input.step = 0.1
 			input.minimum = 0
 			input.has_minimum = true
+		case .Material_Metallic, .Material_Roughness:
+			input.step = 0.01
+			input.minimum = 0
+			input.maximum = 1
+			input.has_minimum = true
+			input.has_maximum = true
 	}
 }
 
@@ -3462,6 +3468,20 @@ editor_ui_build_resource_inspector_panels :: proc(
 		"emissive",
 		emissive_values[:],
 		.Material_Emissive,
+		material.id,
+	)
+	editor_ui_inspector_resource_values(
+		&builder,
+		"metallic",
+		[]string{fmt.tprintf("%.2f", material.desc.metallic_factor)},
+		.Material_Metallic,
+		material.id,
+	)
+	editor_ui_inspector_resource_values(
+		&builder,
+		"roughness",
+		[]string{fmt.tprintf("%.2f", material.desc.roughness_factor)},
+		.Material_Roughness,
 		material.id,
 	)
 	texture := material.texture_asset

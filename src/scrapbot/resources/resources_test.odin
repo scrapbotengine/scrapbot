@@ -66,7 +66,12 @@ test_project_material_save_writes_only_its_standalone_resource :: proc(t: ^testi
 		id,
 		"Editable",
 		"editable.resource.toml",
-		{base_color = {0.25, 0.5, 0.75, 1}, emissive = {4, 2, 1}},
+		{
+			base_color = {0.25, 0.5, 0.75, 1},
+			emissive = {4, 2, 1},
+			metallic_factor = 0.65,
+			roughness_factor = 0.2,
+		},
 	)
 	testing.expect(t, register_err == "")
 	testing.expect(t, save_project_materials(&registry, root, []shared.Resource_UUID{id}) == "")
@@ -76,6 +81,36 @@ test_project_material_save_writes_only_its_standalone_resource :: proc(t: ^testi
 		text := string(bytes)
 		testing.expect(t, len(text) > len("untouched"))
 		testing.expect(t, text != "untouched")
+	}
+	loaded, load_err := project.load_project_resources(root)
+	defer project.destroy_project_resources(&loaded)
+	testing.expect(t, load_err == "")
+	if len(loaded) == 1 {
+		testing.expect_value(t, loaded[0].material.metallic, f32(0.65))
+		testing.expect_value(t, loaded[0].material.roughness, f32(0.2))
+	}
+}
+
+@(test)
+test_project_material_registration_preserves_authored_surface_factors :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000032")
+	testing.expect(t, valid)
+	handle, register_err := register_project_material(
+		&registry,
+		id,
+		"Surface",
+		"surface.resource.toml",
+		{base_color = {0.25, 0.5, 0.75, 1}, metallic_factor = 0.7, roughness_factor = 0.15},
+	)
+	testing.expect(t, register_err == "")
+	material, alive := get_material(&registry, handle)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, material.desc.metallic_factor, f32(0.7))
+		testing.expect_value(t, material.desc.roughness_factor, f32(0.15))
+		testing.expect(t, !material.desc.pbr)
 	}
 }
 

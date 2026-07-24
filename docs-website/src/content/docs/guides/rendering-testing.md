@@ -24,6 +24,12 @@ local neon = scrapbot.material.emissive("neon", 0.1, 0.5, 1.0, 8.0)
 
 The non-negative RGB values define hue and `intensity` scales the emitted linear radiance. HDR values are intentionally not clamped to display white.
 
+Use `examples/pbr-materials` as the small, deterministic authored-material reference. Its upper row is dielectric, its lower row is metallic, and roughness increases from left to right. The scene intentionally disables ambient occlusion, reflections, bloom, and external assets so changes to direct GGX material behavior are easy to isolate:
+
+```sh
+scrapbot run examples/pbr-materials
+```
+
 Screen-space ECS UI is reconciled after engine/project systems and painted as a blended overlay after world geometry. Visible windows feed platform pointer and keyboard state into the retained interaction system. Headless runs normally provide no interaction, but a semantic UI diagnostic script can drive the same reconciled controls deterministically without OS automation. `examples/ui-showcase` exercises the box model, hidden subtrees, nested horizontal and vertical stacks, titled panels, equal-width multi-column tables, selectable lists, progress indicators, smooth clipped scrolling, SDF-rounded styling, buttons, numeric and text inputs, checkboxes, and the embedded Inter typeface rendered from a precomputed MTSDF atlas. See [ECS UI](/guides/ecs-ui/) for the shared project/editor component contract.
 
 With `--editor`, WGPU fills the complete central project viewport with world rendering and derives camera aspect from that live rectangle. Project UI retains one uniform canvas-to-window scale, is translated and clipped to the free-aspect viewport, and uses the inverse transform for pointer input and semantic diagnostics; it is never stretched independently along X and Y. Transient editor-origin ECS UI paints in a separate full-window coordinate and paint domain. Visible windows use the display's native pixel density while retaining logical editor dimensions, keeping UI text crisp on HiDPI displays. The editor-origin scene-camera entity clones the initial project view and supports right-mouse-captured WASD, Space, and Ctrl fly navigation in a visible window. Use `examples/ecs-showcase` to verify live geometry and `examples/ui-showcase` to verify project UI scaling:

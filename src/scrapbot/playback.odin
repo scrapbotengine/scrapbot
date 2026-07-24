@@ -25,6 +25,8 @@ Playback_Baseline_Material :: struct {
 	id: shared.Resource_UUID,
 	base_color: resources.Vec4,
 	emissive: shared.Vec3,
+	metallic_factor: f32,
+	roughness_factor: f32,
 }
 
 capture_playback_baseline :: proc(
@@ -70,6 +72,8 @@ capture_playback_baseline :: proc(
 					id = material.id,
 					base_color = material.desc.base_color,
 					emissive = material.desc.emissive,
+					metallic_factor = material.desc.metallic_factor,
+					roughness_factor = material.desc.roughness_factor,
 				},
 			)
 		}
@@ -132,9 +136,13 @@ restore_playback_baseline :: proc(
 				continue
 			}
 			if material.desc.base_color != baseline_material.base_color ||
-			   material.desc.emissive != baseline_material.emissive {
+			   material.desc.emissive != baseline_material.emissive ||
+			   material.desc.metallic_factor != baseline_material.metallic_factor ||
+			   material.desc.roughness_factor != baseline_material.roughness_factor {
 				material.desc.base_color = baseline_material.base_color
 				material.desc.emissive = baseline_material.emissive
+				material.desc.metallic_factor = baseline_material.metallic_factor
+				material.desc.roughness_factor = baseline_material.roughness_factor
 				_ = resources.touch_material(registry, handle)
 			}
 		}

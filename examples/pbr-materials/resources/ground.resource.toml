@@ -1,0 +1,9 @@
+id = "b1000000-0000-4000-8000-00000000000b"
+type = "scrapbot.material"
+name = "Reference Ground"
+
+[material]
+base_color = [0.12, 0.13, 0.15, 1]
+emissive = [0, 0, 0]
+metallic = 0
+roughness = 0.8

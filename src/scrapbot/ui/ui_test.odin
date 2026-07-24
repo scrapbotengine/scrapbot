@@ -51,6 +51,26 @@ test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^
 	value, read_ok = editor_resource_number(state, binding)
 	testing.expect(t, read_ok)
 	testing.expect_value(t, value, f32(0.25))
+
+	metallic_binding := shared.Editor_UI_Component {
+		resource_id = resource_id,
+		inspector_field = .Material_Metallic,
+	}
+	testing.expect(t, editor_resource_write_number(state, metallic_binding, 0.75))
+	metallic, metallic_ok := editor_resource_number(state, metallic_binding)
+	testing.expect(t, metallic_ok)
+	testing.expect_value(t, metallic, f32(0.75))
+	testing.expect(t, !editor_resource_write_number(state, metallic_binding, 1.1))
+
+	roughness_binding := shared.Editor_UI_Component {
+		resource_id = resource_id,
+		inspector_field = .Material_Roughness,
+	}
+	testing.expect(t, editor_resource_write_number(state, roughness_binding, 0.35))
+	roughness, roughness_ok := editor_resource_number(state, roughness_binding)
+	testing.expect(t, roughness_ok)
+	testing.expect_value(t, roughness, f32(0.35))
+	testing.expect(t, !editor_resource_write_number(state, roughness_binding, -0.1))
 }
 
 @(test)

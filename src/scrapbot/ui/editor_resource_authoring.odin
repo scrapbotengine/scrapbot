@@ -40,6 +40,10 @@ editor_resource_number :: proc(state: ^State, binding: shared.Editor_UI_Componen
 			if axis >= 0 && axis < len(values) {
 				return values[axis], true
 			}
+		case .Material_Metallic:
+			return material.desc.metallic_factor, true
+		case .Material_Roughness:
+			return material.desc.roughness_factor, true
 	}
 	return 0, false
 }
@@ -90,6 +94,18 @@ editor_resource_write_number :: proc(
 				values[axis]^ = number
 				written = true
 			}
+		case .Material_Metallic:
+			if number < 0 || number > 1 {
+				return false
+			}
+			material.desc.metallic_factor = number
+			written = true
+		case .Material_Roughness:
+			if number < 0 || number > 1 {
+				return false
+			}
+			material.desc.roughness_factor = number
+			written = true
 	}
 	if written {
 		_ = resources.touch_material(state.resource_registry, handle)
@@ -210,6 +226,7 @@ editor_authoring_create_resource :: proc(state: ^State) -> bool {
 	after.name, _ = strings.clone(name)
 	after.source, _ = strings.clone(source)
 	after.desc.base_color = {0.8, 0.8, 0.8, 1}
+	after.desc.roughness_factor = 0.8
 	if resources.apply_project_material_snapshot(state.resource_registry, id, after) != "" {
 		resources.destroy_project_material_snapshot(after)
 		free(after)

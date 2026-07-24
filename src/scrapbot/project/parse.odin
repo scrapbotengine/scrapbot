@@ -28,6 +28,7 @@ parse_project_resource :: proc(
 	resource.texture.color_space = .SRGB
 	resource.texture.generate_mipmaps = true
 	resource.material.base_color = {1, 1, 1, 1}
+	resource.material.roughness = 0.8
 	resource.geometry_lod.radius = 0.5
 	section := ""
 	type_name := ""
@@ -155,6 +156,10 @@ parse_project_resource :: proc(
 					resource.material.base_color, found = parse_vec4(value)
 				case "emissive":
 					resource.material.emissive, found = parse_vec3(value)
+				case "metallic":
+					resource.material.metallic, found = parse_f32(value)
+				case "roughness":
+					resource.material.roughness, found = parse_f32(value)
 				case "texture":
 					raw_texture: string
 					raw_texture, found = parse_basic_string(value)
@@ -268,6 +273,24 @@ parse_project_resource :: proc(
 			return resource, fail(
 				.Invalid_Field,
 				"material.emissive must be finite and non-negative",
+			)
+		}
+		if math.is_nan(resource.material.metallic) ||
+		   math.is_inf(resource.material.metallic) ||
+		   resource.material.metallic < 0 ||
+		   resource.material.metallic > 1 {
+			return resource, fail(
+				.Invalid_Field,
+				"material.metallic must be finite and between zero and one",
+			)
+		}
+		if math.is_nan(resource.material.roughness) ||
+		   math.is_inf(resource.material.roughness) ||
+		   resource.material.roughness < 0 ||
+		   resource.material.roughness > 1 {
+			return resource, fail(
+				.Invalid_Field,
+				"material.roughness must be finite and between zero and one",
 			)
 		}
 	} else {

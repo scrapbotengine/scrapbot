@@ -1,0 +1,9 @@
+id = "b1000000-0000-4000-8000-00000000000a"
+type = "scrapbot.material"
+name = "Metal 1.00"
+
+[material]
+base_color = [0.72, 0.24, 0.08, 1]
+emissive = [0, 0, 0]
+metallic = 1
+roughness = 1

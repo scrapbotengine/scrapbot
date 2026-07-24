@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-23
+**Last verified:** 2026-07-24
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -114,8 +114,8 @@ resources.Registry slot ── {index, generation} ──> ECS component
 
 - **Save** serializes only dirty authored resource UUIDs, validates resulting scene references, and commits scene/resource file changes through one recoverable project transaction.
 - **Revert** reloads project resource declarations from disk, updates/deactivates runtime entries, then rebuilds the scene world and rebinds the existing script runtime.
-- **Play** captures authored Material base color and emissive values in the in-memory playback baseline alongside authored scene entities.
-- **Stop** restores those captured base color/emissive values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
+- **Play** captures authored Material base color, emissive, metallic, and roughness values in the in-memory playback baseline alongside authored scene entities.
+- **Stop** restores those captured surface values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
 - **Explicit Reimport** forces one UUID (or all imported resources), mutates live registry entries, retires stale generated model outputs, and reconciles Model roots without reloading the world, Luau, or native extensions.
 - **Hot reload** ensures imports and re-registers fonts, textures, environments, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
 

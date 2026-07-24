@@ -885,7 +885,7 @@ register_project_material :: proc(
 	if source == "" {
 		return {}, "project material source must not be empty"
 	}
-	normalized_desc := normalize_material_desc(desc)
+	normalized_desc := normalize_material_desc(desc, true)
 	if err := validate_material_desc(normalized_desc); err != "" {
 		return {}, err
 	}
@@ -1157,6 +1157,8 @@ register_project_materials :: proc(
 				declaration.material.base_color.w,
 			},
 			emissive = declaration.material.emissive,
+			metallic_factor = declaration.material.metallic,
+			roughness_factor = declaration.material.roughness,
 		}
 		if declaration.material.texture != (shared.Resource_UUID{}) {
 			texture_handle, found := texture_handle_by_uuid(registry, declaration.material.texture)
@@ -1303,6 +1305,8 @@ name = "%s"
 [material]
 base_color = [%.9g, %.9g, %.9g, %.9g]
 emissive = [%.9g, %.9g, %.9g]
+metallic = %.9g
+roughness = %.9g
 `,
 			shared.resource_uuid_to_string(material.id, id_buffer[:]),
 			material.name,
@@ -1313,6 +1317,8 @@ emissive = [%.9g, %.9g, %.9g]
 			material.desc.emissive.x,
 			material.desc.emissive.y,
 			material.desc.emissive.z,
+			material.desc.metallic_factor,
+			material.desc.roughness_factor,
 		)
 		if material.texture_id != (shared.Resource_UUID{}) {
 			texture_buffer: [36]u8
@@ -1342,6 +1348,8 @@ emissive = [%.9g, %.9g, %.9g]
 		   parsed.name != material.name ||
 		   parsed.material.base_color != shared.Vec4(material.desc.base_color) ||
 		   parsed.material.emissive != material.desc.emissive ||
+		   parsed.material.metallic != material.desc.metallic_factor ||
+		   parsed.material.roughness != material.desc.roughness_factor ||
 		   parsed.material.texture != material.texture_id {
 			delete(source)
 			delete(resource_path)
@@ -1649,11 +1657,16 @@ validate_material_desc :: proc(desc: Material_Desc) -> string {
 	return ""
 }
 
-normalize_material_desc :: proc(desc: Material_Desc) -> Material_Desc {
+normalize_material_desc :: proc(
+	desc: Material_Desc,
+	preserve_surface_factors := false,
+) -> Material_Desc {
 	result := desc
 	if !result.pbr {
-		result.metallic_factor = 0
-		result.roughness_factor = 0.8
+		if !preserve_surface_factors {
+			result.metallic_factor = 0
+			result.roughness_factor = 0.8
+		}
 		result.normal_scale = 1
 		result.occlusion_strength = 1
 	}
