@@ -1423,6 +1423,7 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 		&selected.number_fields,
 		shared.Named_Number{name = "anisotropy", value = 4},
 		shared.Named_Number{name = "max_distance", value = -10},
+		shared.Named_Number{name = "point_light_intensity", value = 0.7},
 	)
 	append(&selected.vec3_fields, shared.Named_Vec3{name = "color", value = {0.2, 0.3, 0.4}})
 	defer delete(selected.number_fields)
@@ -1441,6 +1442,7 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 	testing.expect_value(t, settings.density, f32(0.035))
 	testing.expect_value(t, settings.anisotropy, f32(0.9))
 	testing.expect_value(t, settings.max_distance, f32(0.1))
+	testing.expect_value(t, settings.point_light_intensity, f32(0.7))
 }
 
 @(test)
@@ -1458,6 +1460,9 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	)
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_shadow_visibility"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "textureSampleCompareLevel"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_point_light_radiance"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "cluster_light_counts"))
+	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "FOG_MAX_POINT_LIGHTS_PER_STEP"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "source_bounds[0] + fog_offset"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "source_bounds[1] + fog_offset"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(fogged_color, history"))

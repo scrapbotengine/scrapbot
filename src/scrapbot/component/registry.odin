@@ -322,6 +322,18 @@ init_registry :: proc(registry: ^Registry) {
 					maximum = 10,
 				},
 			},
+			Field_Definition {
+				name = "point_light_intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
 		},
 	)
 	register_engine_component(

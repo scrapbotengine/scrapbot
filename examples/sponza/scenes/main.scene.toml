@@ -34,6 +34,7 @@ max_distance = 65
 anisotropy = 0.48
 ambient_intensity = 0.22
 light_intensity = 1.1
+point_light_intensity = 0.6
 
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000002"

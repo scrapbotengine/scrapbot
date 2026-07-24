@@ -34,7 +34,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.transform` | Data | Optional UUID parent plus local position, Euler rotation, and scale. |
 | `scrapbot.camera` | Data | Perspective camera projection. |
 | `scrapbot.world_environment` | Data/resource references | Singleton scene lighting, sky presentation, and base exposure. |
-| `scrapbot.volumetric_fog` | Data | Singleton global height/distance fog with shadowed directional scattering. |
+| `scrapbot.volumetric_fog` | Data | Singleton global height/distance fog with shadowed directional and clustered point-light scattering. |
 | `scrapbot.ambient_light` | Data | Scene-wide ambient contribution. |
 | `scrapbot.directional_light` | Data | Directional light and the source for the current shadow map. |
 | `scrapbot.point_light` | Data | Distance-attenuated light positioned by a Transform. |
@@ -152,6 +152,7 @@ max_distance = 65
 anisotropy = 0.48
 ambient_intensity = 0.22
 light_intensity = 1.1
+point_light_intensity = 0.6
 ```
 
 | Field | Type | Effective default | Meaning |
@@ -164,10 +165,13 @@ light_intensity = 1.1
 | `anisotropy` | number | `0.35` | Directional scattering bias from `-0.9` to `0.9`. Positive values emphasize forward scattering. |
 | `ambient_intensity` | number | `0.15` | Unshadowed ambient scattering multiplier from `0` to `10`. |
 | `light_intensity` | number | `1` | Primary directional-light scattering multiplier from `0` to `10`. |
+| `point_light_intensity` | number | `0` | Clustered point-light scattering multiplier from `0` to `10`. Zero disables local-light scattering. |
 
 The renderer integrates six stable midpoint samples along each visible camera ray. Density varies exponentially with world height and stops at scene depth or `max_distance`. The first directional light contributes anisotropic in-scattering and is filtered through the same four shadow cascades used by opaque geometry.
 
-Fog is composed before temporal antialiasing and bloom. The sampling pattern is deterministic, so a stationary view does not acquire fresh noise each frame. The current slice is one global volume: clustered point-light shafts, local fog volumes, and explicit quality controls are follow-up work.
+When enabled, each midpoint reads every relevant point light from the same GPU-built view-frustum cluster used by opaque surface lighting. Point-light scattering is currently unshadowed.
+
+Fog is composed before temporal antialiasing and bloom. The sampling pattern is deterministic, so a stationary view does not acquire fresh noise each frame. Local fog volumes, froxels, and explicit quality controls remain follow-up work.
 
 Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero makes the shader a no-op without allocating a separate fog target.
 

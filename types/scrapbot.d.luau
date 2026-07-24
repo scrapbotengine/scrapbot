@@ -374,6 +374,7 @@ export type ScrapbotVolumetricFog = {
 	anisotropy: number,
 	ambient_intensity: number,
 	light_intensity: number,
+	point_light_intensity: number,
 }
 
 export type ReadonlyScrapbotVolumetricFog = {
@@ -385,6 +386,7 @@ export type ReadonlyScrapbotVolumetricFog = {
 	read anisotropy: number,
 	read ambient_intensity: number,
 	read light_intensity: number,
+	read point_light_intensity: number,
 }
 
 export type ScrapbotVolumetricFogComponent = ScrapbotComponent<ScrapbotVolumetricFog, ReadonlyScrapbotVolumetricFog>

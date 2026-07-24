@@ -13,6 +13,7 @@ WGPU_Volumetric_Fog_Settings :: struct {
 	anisotropy: f32,
 	ambient_intensity: f32,
 	light_intensity: f32,
+	point_light_intensity: f32,
 }
 
 wgpu_fog_number :: proc(component: ^shared.Custom_Component, name: string, fallback: f32) -> f32 {
@@ -126,6 +127,11 @@ wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fo
 		f32(0),
 		f32(10),
 	)
+	settings.point_light_intensity = clamp(
+		wgpu_fog_number(component, "point_light_intensity", settings.point_light_intensity),
+		f32(0),
+		f32(10),
+	)
 	return settings
 }
 
@@ -236,12 +242,16 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.temporal_aa_bind_group_layout == nil {
 		return "failed to create temporal AA bind group layout"
 	}
+	temporal_aa_bind_group_layouts := [?]wgpu.BindGroupLayout {
+		renderer.temporal_aa_bind_group_layout,
+		renderer.gpu_cluster_bind_group_layout,
+	}
 	renderer.temporal_aa_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
 			label = "Scrapbot Temporal AA Pipeline Layout",
-			bindGroupLayoutCount = 1,
-			bindGroupLayouts = &renderer.temporal_aa_bind_group_layout,
+			bindGroupLayoutCount = uint(len(temporal_aa_bind_group_layouts)),
+			bindGroupLayouts = raw_data(temporal_aa_bind_group_layouts[:]),
 		},
 	)
 	if renderer.temporal_aa_pipeline_layout == nil {
@@ -1408,7 +1418,12 @@ wgpu_encode_bloom_and_composite :: proc(
 		fog.max_distance,
 		fog.anisotropy,
 	}
-	temporal_uniform.fog_lighting = {fog.ambient_intensity, fog.light_intensity, 0, 0}
+	temporal_uniform.fog_lighting = {
+		fog.ambient_intensity,
+		fog.light_intensity,
+		fog.point_light_intensity,
+		0,
+	}
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
 		renderer.temporal_aa_uniform_buffer,
@@ -1436,6 +1451,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	}
 	wgpu.ComputePassEncoderSetPipeline(temporal_pass, renderer.temporal_aa_pipeline)
 	wgpu.ComputePassEncoderSetBindGroup(temporal_pass, 0, renderer.temporal_aa_bind_group)
+	wgpu.ComputePassEncoderSetBindGroup(temporal_pass, 1, renderer.gpu_cluster_bind_group)
 	wgpu.ComputePassEncoderDispatchWorkgroups(temporal_pass, (width + 7) / 8, (height + 7) / 8, 1)
 	wgpu.ComputePassEncoderEnd(temporal_pass)
 	wgpu.ComputePassEncoderRelease(temporal_pass)

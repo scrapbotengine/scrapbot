@@ -663,6 +663,19 @@ struct Render_Uniform {
 	shadow_cascade_texel_sizes: vec4<f32>,
 };
 
+struct Point_Light {
+	position_range: vec4<f32>,
+	color_intensity: vec4<f32>,
+};
+
+struct Cluster_Uniform {
+	view: mat4x4<f32>,
+	projection: mat4x4<f32>,
+	viewport: vec4<f32>,
+	z_parameters: vec4<f32>,
+	counts: vec4<u32>,
+};
+
 @group(0) @binding(0) var current_color: texture_2d<f32>;
 @group(0) @binding(1) var linear_sampler: sampler;
 @group(0) @binding(2) var current_depth: texture_depth_2d;
@@ -678,6 +691,10 @@ struct Render_Uniform {
 @group(0) @binding(12) var<uniform> render: Render_Uniform;
 @group(0) @binding(13) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(14) var shadow_sampler: sampler_comparison;
+@group(1) @binding(0) var<storage, read> point_lights: array<Point_Light>;
+@group(1) @binding(1) var<storage, read_write> cluster_light_counts: array<u32>;
+@group(1) @binding(2) var<storage, read_write> cluster_light_indices: array<u32>;
+@group(1) @binding(3) var<uniform> cluster: Cluster_Uniform;
 
 const FOG_STEP_COUNT: u32 = 6u;
 const FOG_PHASE_NORMALIZATION: f32 = 0.07957747155;
@@ -847,6 +864,67 @@ fn fog_phase(cosine: f32, anisotropy: f32) -> f32 {
 		max(pow(1.0 + g2 - 2.0 * g * cosine, 1.5), 0.001);
 }
 
+fn fog_cluster_index(position: vec2<f32>, view_depth: f32) -> u32 {
+	let viewport_position = clamp(
+		position - cluster.viewport.xy,
+		vec2<f32>(0.0),
+		max(cluster.viewport.zw - vec2<f32>(0.0001), vec2<f32>(0.0)),
+	);
+	let tile_size = cluster.viewport.zw / vec2<f32>(cluster.counts.xy);
+	let tile = min(
+		vec2<u32>(viewport_position / tile_size),
+		cluster.counts.xy - vec2<u32>(1u),
+	);
+	let near_plane = cluster.z_parameters.x;
+	let far_plane = cluster.z_parameters.y;
+	let depth = clamp(view_depth, near_plane, far_plane);
+	let slice = min(
+		u32(floor(log2(depth / near_plane) / cluster.z_parameters.z * f32(cluster.counts.z))),
+		cluster.counts.z - 1u,
+	);
+	return tile.x + tile.y * cluster.counts.x + slice * cluster.counts.x * cluster.counts.y;
+}
+
+fn fog_point_light_radiance(
+	screen_position: vec2<f32>,
+	world_position: vec3<f32>,
+	view_depth: f32,
+	world_direction: vec3<f32>,
+) -> vec3<f32> {
+	if (temporal.fog_lighting.z <= 0.0 || cluster.counts.w == 0u) {
+		return vec3<f32>(0.0);
+	}
+	let cluster_index = fog_cluster_index(screen_position, view_depth);
+	let light_count = min(cluster_light_counts[cluster_index], u32(cluster.z_parameters.w));
+	var radiance = vec3<f32>(0.0);
+	for (var index = 0u; index < light_count; index += 1u) {
+		let light_index =
+			cluster_light_indices[cluster_index * u32(cluster.z_parameters.w) + index];
+		let point_light = point_lights[light_index];
+		let offset = point_light.position_range.xyz - world_position;
+		let distance = length(offset);
+		let range = point_light.position_range.w;
+		if (distance >= range || distance <= 0.0001) {
+			continue;
+		}
+		let light_direction = offset / distance;
+		let range_fade = max(1.0 - distance / range, 0.0);
+		let attenuation = range_fade * range_fade / (1.0 + distance * distance);
+		let phase = fog_phase(
+			dot(world_direction, light_direction),
+			temporal.fog_height_distance.w,
+		);
+		radiance +=
+			point_light.color_intensity.rgb *
+			point_light.color_intensity.w *
+			attenuation *
+			phase;
+	}
+	return radiance *
+		temporal.fog_color_density.rgb *
+		temporal.fog_lighting.z;
+}
+
 fn apply_volumetric_fog(
 	pixel: vec2<i32>,
 	depth: f32,
@@ -906,8 +984,15 @@ fn apply_volumetric_fog(
 		let optical_depth = base_density * height_density * step_length;
 		let step_transmittance = exp(-optical_depth);
 		let view_position = render.view * vec4<f32>(world_position, 1.0);
-		let shadow = fog_shadow_visibility(world_position, max(-view_position.z, 0.0));
-		let incident = ambient_radiance + directional_radiance * shadow;
+		let view_depth = max(-view_position.z, 0.0);
+		let shadow = fog_shadow_visibility(world_position, view_depth);
+		let point_radiance = fog_point_light_radiance(
+			sample_position,
+			world_position,
+			view_depth,
+			world_direction,
+		);
+		let incident = ambient_radiance + directional_radiance * shadow + point_radiance;
 		scattering += transmittance * (1.0 - step_transmittance) * incident;
 		transmittance *= step_transmittance;
 	}

@@ -63,9 +63,11 @@ Add one `scrapbot.volumetric_fog` component to author global height and distance
 
 The primary directional light supplies anisotropic in-scattering. Its four cascaded shadows filter that contribution, so sunbeams and occluded haze follow the same shadow geometry as opaque surfaces. Ambient scattering remains available in shadow and at night.
 
+`point_light_intensity` independently opts clustered point lights into the medium. Every ray step reuses its complete GPU-built view-frustum cluster; Scrapbot does not build or upload another fog-only light list.
+
 Fog composes before TAA and bloom. Its sample positions are deterministic rather than freshly randomized per frame, avoiding temporal sparkle during slow camera motion. Remove the component or set `density = 0` to make it a no-op. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
 
-This first implementation is one global volume. It does not yet scatter clustered point lights or support local fog shapes.
+This implementation remains one global volume. It does not yet support local fog shapes or authored quality controls.
 
 ### Ambient occlusion
 

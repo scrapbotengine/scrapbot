@@ -68,7 +68,9 @@ Frustum and LOD work uses the unjittered camera. Retained Hi-Z depth tracks the 
 
 Surface data, indirect diffuse, and reflection output are current-frame derived targets. Visibility-bitmask AO consumes depth plus mapped normals and attenuates only indirect diffuse. SSR consumes surface data and HDR color.
 
-Global fog is integrated into the temporal resolve with six fixed midpoint samples. It reconstructs each ray from depth, evaluates exponential world-height density, and samples the first directional light's cascaded shadows with a 2×2 filter. It adds no history or intermediate target of its own; TAA stabilizes its composed result when enabled.
+Global fog is integrated into the temporal resolve with six fixed midpoint samples. It reconstructs each ray from depth, evaluates exponential world-height density, and samples the first directional light's cascaded shadows with a 2×2 filter.
+
+Opt-in point-light scattering reads the existing GPU cluster table at each midpoint and evaluates every relevant local light. Fog owns no duplicate light list, history, or intermediate target; TAA stabilizes its composed result when enabled.
 
 Temporal color and depth retain prior-frame state. Resize, depth-view replacement, world replacement, and detected camera cuts reject that history.
 
