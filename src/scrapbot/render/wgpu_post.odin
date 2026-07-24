@@ -77,6 +77,16 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Compute},
 			texture = {sampleType = .Float, viewDimension = ._2D},
 		},
+		{
+			binding = 10,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{
+			binding = 11,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
 	}
 	renderer.temporal_aa_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -155,6 +165,11 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		},
 		{
 			binding = 3,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{
+			binding = 4,
 			visibility = {.Compute},
 			buffer = {
 				type = .Uniform,
@@ -632,6 +647,14 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.TextureRelease(renderer.surface_texture)
 		renderer.surface_texture = nil
 	}
+	if renderer.indirect_diffuse_view != nil {
+		wgpu.TextureViewRelease(renderer.indirect_diffuse_view)
+		renderer.indirect_diffuse_view = nil
+	}
+	if renderer.indirect_diffuse_texture != nil {
+		wgpu.TextureRelease(renderer.indirect_diffuse_texture)
+		renderer.indirect_diffuse_texture = nil
+	}
 	renderer.post_width = 0
 	renderer.post_height = 0
 	renderer.post_depth_view = nil
@@ -767,6 +790,18 @@ wgpu_ensure_post_targets :: proc(
 	if err != "" {
 		return err
 	}
+	renderer.indirect_diffuse_texture, renderer.indirect_diffuse_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Indirect Diffuse",
+			width,
+			height,
+			.RGBA16Float,
+			{.RenderAttachment, .TextureBinding},
+		)
+	if err != "" {
+		return err
+	}
 	renderer.screen_space_reflections_texture, renderer.screen_space_reflections_view, err =
 		wgpu_create_post_texture(
 			renderer,
@@ -897,8 +932,9 @@ wgpu_ensure_post_targets :: proc(
 			{binding = 0, textureView = depth_view},
 			{binding = 1, textureView = ambient_occlusion_sources[index]},
 			{binding = 2, textureView = ambient_occlusion_destinations[index]},
+			{binding = 3, textureView = renderer.surface_view},
 			{
-				binding = 3,
+				binding = 4,
 				buffer = renderer.ambient_occlusion_uniform_buffer,
 				offset = 0,
 				size = u64(size_of(WGPU_Ambient_Occlusion_Uniform)),
@@ -933,6 +969,8 @@ wgpu_ensure_post_targets :: proc(
 		},
 		{binding = 8, textureView = renderer.ambient_occlusion_views[2]},
 		{binding = 9, textureView = renderer.screen_space_reflections_view},
+		{binding = 10, textureView = renderer.surface_view},
+		{binding = 11, textureView = renderer.indirect_diffuse_view},
 	}
 	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
 		renderer.device,
@@ -1098,7 +1136,7 @@ wgpu_encode_bloom_and_composite :: proc(
 			projection = {projection[0], projection[5], projection[10], projection[14]},
 			viewport = viewport,
 			dimensions = {f32(width), f32(height), projection[8], projection[9]},
-			parameters = {1.25, 0.035, 1.35, 1.15},
+			parameters = {1.25, 0.025, 1.35, 0.85},
 		}
 		wgpu.QueueWriteBuffer(
 			renderer.queue,

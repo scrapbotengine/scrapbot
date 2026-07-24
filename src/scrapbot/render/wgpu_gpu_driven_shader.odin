@@ -420,6 +420,7 @@ fn cluster_index(position: vec2<f32>, view_depth: f32) -> u32 {
 struct Fragment_Output {
 	@location(0) color: vec4<f32>,
 	@location(1) surface: vec4<f32>,
+	@location(2) indirect_diffuse: vec4<f32>,
 };
 
 fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
@@ -456,6 +457,7 @@ fn fs_main(
 	let occlusion = mix(1.0, occlusion_sample, material.pbr_factors.w);
 	let f0 = mix(vec3<f32>(0.04), base_color, metallic);
 	var color = vec3<f32>(0.0);
+	var indirect_diffuse = vec3<f32>(0.0);
 	var shadow = 1.0;
 	if (input.shadow_receiver > 0.5 && render.light_counts.x > 0u) {
 		let shadow_normal = normalize(
@@ -503,9 +505,11 @@ fn fs_main(
 		let brdf = environment_brdf(n_dot_v, roughness);
 		let diffuse_ibl = ambient_diffuse * irradiance;
 		let specular_ibl = prefiltered * (ambient_fresnel * brdf.x + brdf.y);
-		color += (diffuse_ibl + specular_ibl) * occlusion * environment.intensity;
+		indirect_diffuse += diffuse_ibl * occlusion * environment.intensity;
+		color += specular_ibl * occlusion * environment.intensity;
 	} else {
-		color += render.ambient.rgb * (ambient_diffuse + ambient_specular) * occlusion;
+		indirect_diffuse += render.ambient.rgb * ambient_diffuse * occlusion;
+		color += render.ambient.rgb * ambient_specular * occlusion;
 		if (environment.background_max_specular_lod < 0.0) {
 			let daylight = procedural_daylight();
 			let hemisphere = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
@@ -519,13 +523,23 @@ fn fs_main(
 				environment.atmosphere_ground_color.rgb * 0.08,
 				daylight,
 			);
-			color += ambient_diffuse * mix(ground_fill, sky_fill, hemisphere) * occlusion;
+			indirect_diffuse +=
+				ambient_diffuse *
+				mix(ground_fill, sky_fill, hemisphere) *
+				occlusion;
 		}
 	}
 	let emissive_map = textureSample(emissive_texture, emissive_sampler, input.uv).rgb;
 	let emissive = mix(input.emissive, input.emissive * emissive_map, material.flags.x);
 	var output: Fragment_Output;
-	output.color = vec4<f32>((color + emissive) * environment.exposure, 1.0);
+	output.color = vec4<f32>(
+		(color + indirect_diffuse + emissive) * environment.exposure,
+		1.0,
+	);
+	output.indirect_diffuse = vec4<f32>(
+		indirect_diffuse * environment.exposure,
+		1.0,
+	);
 	let view_normal = normalize((render.view * vec4<f32>(normal, 0.0)).xyz);
 	output.surface = vec4<f32>(
 		octahedral_encode(view_normal) * 0.5 + vec2<f32>(0.5),

@@ -683,6 +683,8 @@ WGPU_Renderer :: struct {
 	hdr_view: wgpu.TextureView,
 	surface_texture: wgpu.Texture,
 	surface_view: wgpu.TextureView,
+	indirect_diffuse_texture: wgpu.Texture,
+	indirect_diffuse_view: wgpu.TextureView,
 	bloom_textures: [WGPU_BLOOM_LEVELS]wgpu.Texture,
 	bloom_views: [WGPU_BLOOM_LEVELS]wgpu.TextureView,
 	bloom_compute_bind_groups: [WGPU_BLOOM_LEVELS]wgpu.BindGroup,
@@ -1676,7 +1678,7 @@ wgpu_encode_render_pass :: proc(
 	   err != "" {
 		return err
 	}
-	color_attachments := [2]wgpu.RenderPassColorAttachment {
+	color_attachments := [3]wgpu.RenderPassColorAttachment {
 		{
 			view = renderer.hdr_view,
 			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
@@ -1685,6 +1687,13 @@ wgpu_encode_render_pass :: proc(
 		},
 		{
 			view = renderer.surface_view,
+			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+			loadOp = .Clear,
+			storeOp = .Store,
+			clearValue = {},
+		},
+		{
+			view = renderer.indirect_diffuse_view,
 			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
 			loadOp = .Clear,
 			storeOp = .Store,

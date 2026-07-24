@@ -19,8 +19,8 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 | `scrapbot.prepare` | Applies render extraction mutations and prepares retained GPU draw batches/uniform inputs. | Every rendered frame; changed work follows render/resource dirty signals. | `ecs.populate_resource_render_list`, `render/wgpu_gpu_driven.odin` |
 | `scrapbot.render.cull` | Encodes GPU visibility, frustum/Hi-Z rejection, LOD selection, and indirect visibility compaction. | WGPU frames; CPU-reference mode substitutes CPU culling. | `render/wgpu_visibility.odin`, `render/wgpu_hiz.odin` |
 | `scrapbot.render.shadow` | Encodes directional shadow rendering. | WGPU frames with applicable shadow state. | `wgpu_encode_shadow_pass` |
-| `scrapbot.render.world` | Encodes depth and world geometry passes and resolves visibility/timing work. | WGPU frames. | `render/wgpu.odin` |
-| `scrapbot.render.post` | Encodes depth-aware temporal resolution, depth-reconstructed ambient occlusion, material-aware screen-space reflections, HDR bloom, and compositing into the presentation target. | WGPU frames. | `render/wgpu_post.odin` |
+| `scrapbot.render.world` | Encodes depth and world geometry into HDR, surface-data, and indirect-diffuse targets and resolves visibility/timing work. | WGPU frames. | `render/wgpu.odin` |
+| `scrapbot.render.post` | Encodes horizon-integrated GTAO, depth-aware temporal resolution, material-aware screen-space reflections, HDR bloom, and compositing into the presentation target. | WGPU frames. | `render/wgpu_post.odin` |
 | `scrapbot.render.ui` | Converts changed retained UI streams when needed and encodes project, editor, and overlay UI draws. | WGPU frames; unchanged streams reuse retained GPU buffers. | `render/wgpu.odin`, `render/wgpu_shader.odin` |
 | `scrapbot.render.finish` | Finalizes the command encoder into a command buffer. | WGPU frames. | `wgpu.CommandEncoderFinish` boundary in `render/wgpu.odin` |
 | `scrapbot.render.submit` | Submits the command buffer and advances asynchronous GPU diagnostics. | WGPU frames. | `wgpu.QueueSubmit` boundary in `render/wgpu.odin` |
@@ -106,7 +106,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 - **Phase/order:** After shadow encoding and before HDR postprocessing.
 - **Inputs:** Visible indirect draws, camera/light uniforms, geometry/material caches, shadow/depth resources.
-- **Outputs:** Depth and HDR world-color targets plus timing/query state needed by later phases.
+- **Outputs:** Depth, HDR world-color, compact surface-data, and indirect-diffuse targets plus timing/query state needed by later phases.
 - **Stable-frame behavior:** Reuses retained draw databases, resource caches, pipelines, and unchanged instance buffers.
 - **Boundary:** WGPU depth/world render-pass encoding.
 - **Source/tests:** `render/wgpu.odin`, `render/wgpu_shader.odin`, `render/wgpu_gpu_driven.odin`; `render/render_test.odin`, WGPU smoke/framegrab tests.
@@ -114,10 +114,10 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.render.post`
 
 - **Phase/order:** After HDR world rendering and before UI compositing.
-- **Inputs:** HDR world target, scene depth, octahedral view normal/roughness/metallic surface target, active-camera TAA/fast-AA/AO/SSR/bloom switches, current/previous camera projection state, retained temporal color/depth history, ambient-occlusion/reflection/bloom resources, and presentation format.
+- **Inputs:** HDR world target, scene depth, octahedral view normal/roughness/metallic surface target, separately retained indirect diffuse light, active-camera TAA/fast-AA/AO/SSR/bloom switches, current/previous camera projection state, retained temporal color/depth history, ambient-occlusion/reflection/bloom resources, and presentation format.
 - **Outputs:** Composited scene color in the presentation target.
 - **Stable-frame behavior:** Reuses postprocess pipelines, bind groups, full-resolution surface/reflection targets, and color/depth history at stable size. Resize, sampled-depth replacement, world replacement, a detected camera cut, or a TAA-mode change rejects history. Disabled AO, SSR, and bloom skip their compute passes; disabled TAA skips projection jitter and history copies.
-- **Boundary:** WGPU compute/render encoding for optional half-resolution depth-reconstructed ambient occlusion with per-pixel rotated sampling, depth-aware blur, and depth-aware full-resolution upsampling; optional bounded view-space SSR over material surface data; then either camera-reprojected temporal resolution, lightweight current-frame fast AA, or a direct resolve; followed by optional bloom, tone mapping, and composite. TAA takes precedence over fast AA. Culling remains unjittered, while UI is excluded and remains crisp.
+- **Boundary:** WGPU compute/render encoding for optional half-resolution GTAO with rotated horizon slices, analytical arc integration, joint depth/normal-aware blur and upsampling, and indirect-diffuse-only composition; optional bounded view-space SSR over material surface data; then either camera-reprojected temporal resolution, lightweight current-frame fast AA, or a direct resolve; followed by optional bloom, tone mapping, and composite. TAA takes precedence over fast AA. Culling remains unjittered, while UI is excluded and remains crisp.
 - **Source/tests:** `render/wgpu_post.odin`, `render/wgpu_shader.odin`; WGPU smoke/framegrab tests.
 
 ### `scrapbot.render.ui`

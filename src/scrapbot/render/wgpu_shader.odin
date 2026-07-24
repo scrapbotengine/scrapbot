@@ -486,6 +486,18 @@ struct Temporal_AA_Uniform {
 @group(0) @binding(7) var<uniform> temporal: Temporal_AA_Uniform;
 @group(0) @binding(8) var ambient_occlusion: texture_2d<f32>;
 @group(0) @binding(9) var screen_space_reflections: texture_2d<f32>;
+@group(0) @binding(10) var surface_data: texture_2d<f32>;
+@group(0) @binding(11) var indirect_diffuse: texture_2d<f32>;
+
+fn octahedral_decode(encoded: vec2<f32>) -> vec3<f32> {
+	let value = encoded * 2.0 - vec2<f32>(1.0);
+	var normal = vec3<f32>(value, 1.0 - abs(value.x) - abs(value.y));
+	if (normal.z < 0.0) {
+		let folded = (vec2<f32>(1.0) - abs(normal.yx)) * sign(normal.xy);
+		normal = vec3<f32>(folded, normal.z);
+	}
+	return normalize(normal);
+}
 
 fn viewport_minimum() -> vec2<i32> {
 	return vec2<i32>(floor(temporal.viewport.xy));
@@ -530,6 +542,7 @@ fn ambient_occlusion_at(pixel: vec2<i32>) -> f32 {
 	let base = vec2<i32>(floor(ao_position));
 	let fraction = fract(ao_position);
 	let center_depth = linear_view_depth(pixel);
+	let center_normal = octahedral_decode(textureLoad(surface_data, pixel, 0).xy);
 	var visibility = 0.0;
 	var weight_total = 0.0;
 	for (var y = 0; y <= 1; y += 1) {
@@ -542,15 +555,19 @@ fn ambient_occlusion_at(pixel: vec2<i32>) -> f32 {
 				viewport_maximum(),
 			);
 			let sample_depth = linear_view_depth(representative_pixel);
+			let sample_normal = octahedral_decode(
+				textureLoad(surface_data, representative_pixel, 0).xy,
+			);
 			let bilinear = mix(1.0 - fraction.x, fraction.x, f32(x)) *
 				mix(1.0 - fraction.y, fraction.y, f32(y));
 			let depth_sigma = max(0.01, center_depth * 0.002);
 			let depth_delta = sample_depth - center_depth;
 			let depth_weight = exp(
 				-(depth_delta * depth_delta) /
-				max(2.0 * depth_sigma * depth_sigma, 0.000001),
+					max(2.0 * depth_sigma * depth_sigma, 0.000001),
 			);
-			let weight = bilinear * depth_weight;
+			let normal_weight = pow(max(dot(center_normal, sample_normal), 0.0), 8.0);
+			let weight = bilinear * depth_weight * normal_weight;
 			visibility += textureLoad(ambient_occlusion, ao_pixel, 0).r * weight;
 			weight_total += weight;
 		}
@@ -578,7 +595,11 @@ fn current_color_at(pixel: vec2<i32>) -> vec3<f32> {
 	if (temporal.reflections.x > 0.5) {
 		reflection_color = textureLoad(screen_space_reflections, pixel, 0).rgb;
 	}
-	return textureLoad(current_color, pixel, 0).rgb * ambient_visibility_at(pixel) +
+	let source_color = textureLoad(current_color, pixel, 0).rgb;
+	let source_indirect_diffuse = textureLoad(indirect_diffuse, pixel, 0).rgb;
+	return source_color -
+		source_indirect_diffuse +
+		source_indirect_diffuse * ambient_visibility_at(pixel) +
 		reflection_color;
 }
 
@@ -719,7 +740,13 @@ struct Ambient_Occlusion_Uniform {
 @group(0) @binding(0) var scene_depth: texture_depth_2d;
 @group(0) @binding(1) var source_occlusion: texture_2d<f32>;
 @group(0) @binding(2) var destination_occlusion: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(3) var<uniform> settings: Ambient_Occlusion_Uniform;
+@group(0) @binding(3) var surface_data: texture_2d<f32>;
+@group(0) @binding(4) var<uniform> settings: Ambient_Occlusion_Uniform;
+
+const PI: f32 = 3.14159265359;
+const HALF_PI: f32 = 1.57079632679;
+const SLICE_COUNT: u32 = 3u;
+const STEPS_PER_SIDE: u32 = 6u;
 
 fn viewport_minimum() -> vec2<i32> {
 	return vec2<i32>(floor(settings.viewport.xy));
@@ -753,32 +780,18 @@ fn view_position(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
 	);
 }
 
-fn closest_difference(
-	center: vec3<f32>,
-	negative: vec3<f32>,
-	positive: vec3<f32>,
-) -> vec3<f32> {
-	let to_negative = center - negative;
-	let to_positive = positive - center;
-	return select(to_positive, to_negative, abs(to_negative.z) < abs(to_positive.z));
+fn octahedral_decode(encoded: vec2<f32>) -> vec3<f32> {
+	let value = encoded * 2.0 - vec2<f32>(1.0);
+	var normal = vec3<f32>(value, 1.0 - abs(value.x) - abs(value.y));
+	if (normal.z < 0.0) {
+		let folded = (vec2<f32>(1.0) - abs(normal.yx)) * sign(normal.xy);
+		normal = vec3<f32>(folded, normal.z);
+	}
+	return normalize(normal);
 }
 
-fn view_normal(pixel: vec2<i32>, center: vec3<f32>) -> vec3<f32> {
-	let left_pixel = clamp_full_pixel(pixel + vec2<i32>(-1, 0));
-	let right_pixel = clamp_full_pixel(pixel + vec2<i32>(1, 0));
-	let up_pixel = clamp_full_pixel(pixel + vec2<i32>(0, -1));
-	let down_pixel = clamp_full_pixel(pixel + vec2<i32>(0, 1));
-	let left = view_position(left_pixel, depth_at(left_pixel));
-	let right = view_position(right_pixel, depth_at(right_pixel));
-	let up = view_position(up_pixel, depth_at(up_pixel));
-	let down = view_position(down_pixel, depth_at(down_pixel));
-	let horizontal = closest_difference(center, left, right);
-	let vertical = closest_difference(center, up, down);
-	var normal = normalize(cross(horizontal, vertical));
-	if (normal.z < 0.0) {
-		normal = -normal;
-	}
-	return normal;
+fn view_normal(pixel: vec2<i32>) -> vec3<f32> {
+	return octahedral_decode(textureLoad(surface_data, clamp_full_pixel(pixel), 0).xy);
 }
 
 fn spatial_rotation(pixel: vec2<i32>) -> f32 {
@@ -789,6 +802,35 @@ fn spatial_rotation(pixel: vec2<i32>) -> f32 {
 	value *= 0x7feb352du;
 	value ^= value >> 15u;
 	return f32(value & 0xffffu) * (6.28318530718 / 65536.0);
+}
+
+fn integrate_arc(horizon: f32, normal_angle: f32, cos_normal: f32) -> f32 {
+	return (
+		cos_normal +
+		2.0 * horizon * sin(normal_angle) -
+		cos(2.0 * horizon - normal_angle)
+	) * 0.25;
+}
+
+fn horizon_cosine(
+	center: vec3<f32>,
+	view_direction: vec3<f32>,
+	sample_pixel: vec2<i32>,
+	radius: f32,
+) -> f32 {
+	let sample_depth = depth_at(sample_pixel);
+	if (sample_depth >= 0.999999) {
+		return -1.0;
+	}
+	let sample_position = view_position(sample_pixel, sample_depth);
+	let difference = sample_position - center;
+	let distance = length(difference);
+	if (distance <= 0.0001 || distance >= radius) {
+		return -1.0;
+	}
+	let radius_falloff = clamp(1.0 - distance / radius, 0.0, 1.0);
+	let candidate = dot(view_direction, difference / distance);
+	return mix(-1.0, candidate, radius_falloff * radius_falloff);
 }
 
 @compute @workgroup_size(8, 8)
@@ -805,42 +847,102 @@ fn ambient_occlusion_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		return;
 	}
 	let center = view_position(pixel, depth);
-	let normal = view_normal(pixel, center);
+	let normal = view_normal(pixel);
+	let view_direction = normalize(-center);
 	let radius = settings.parameters.x;
-	let bias = settings.parameters.y;
 	let projected_radius = clamp(
 		radius * settings.projection.y * settings.viewport.w / max(-center.z, 0.001) * 0.5,
 		2.0,
-		96.0,
+		128.0,
 	);
 	let rotation = spatial_rotation(ao_pixel);
-	var occlusion = 0.0;
-	for (var index = 0u; index < 16u; index += 1u) {
-		let ring = sqrt((f32(index) + 1.0) / 16.0);
-		let angle = rotation + f32(index) * 2.39996322973;
-		let direction = vec2<f32>(cos(angle), sin(angle));
-		let offset = vec2<i32>(round(direction * projected_radius * ring));
-		let sample_pixel = clamp_full_pixel(pixel + offset);
-		let sample_depth = depth_at(sample_pixel);
-		if (sample_depth >= 0.999999) {
+	let sample_jitter = fract(rotation * 0.15915494309);
+	var visibility = 0.0;
+	for (var slice = 0u; slice < SLICE_COUNT; slice += 1u) {
+		let angle = rotation + (f32(slice) + 0.5) * PI / f32(SLICE_COUNT);
+		let screen_direction = vec2<f32>(cos(angle), sin(angle));
+		let slice_direction = vec3<f32>(screen_direction, 0.0);
+		let slice_normal = normalize(cross(slice_direction, view_direction));
+		let projected_normal = normal - slice_normal * dot(normal, slice_normal);
+		let projected_normal_length = length(projected_normal);
+		if (projected_normal_length <= 0.0001) {
 			continue;
 		}
-		let sample_position = view_position(sample_pixel, sample_depth);
-		let difference = sample_position - center;
-		let distance = length(difference);
-		if (distance <= 0.0001 || distance >= radius) {
-			continue;
+		let normalized_projected_normal = projected_normal / projected_normal_length;
+		let cos_normal = clamp(
+			dot(normalized_projected_normal, view_direction),
+			-1.0,
+			1.0,
+		);
+		let normal_sign = select(
+			-1.0,
+			1.0,
+			dot(slice_direction, projected_normal) >= 0.0,
+		);
+		let normal_angle = normal_sign * acos(cos_normal);
+		var negative_horizon_cosine = -1.0;
+		var positive_horizon_cosine = -1.0;
+		for (var step = 0u; step < STEPS_PER_SIDE; step += 1u) {
+			let normalized_step =
+				(f32(step) + 0.35 + sample_jitter * 0.3) /
+				f32(STEPS_PER_SIDE);
+			let sample_distance = max(
+				1.0,
+				projected_radius * normalized_step * normalized_step,
+			);
+			let offset = vec2<i32>(round(screen_direction * sample_distance));
+			negative_horizon_cosine = max(
+				negative_horizon_cosine,
+				horizon_cosine(
+					center,
+					view_direction,
+					clamp_full_pixel(pixel - offset),
+					radius,
+				),
+			);
+			positive_horizon_cosine = max(
+				positive_horizon_cosine,
+				horizon_cosine(
+					center,
+					view_direction,
+					clamp_full_pixel(pixel + offset),
+					radius,
+				),
+			);
 		}
-		let horizon = max(dot(normal, difference / distance) - bias, 0.0);
-		let normalized_distance = distance / radius;
-		occlusion += horizon * (1.0 - normalized_distance * normalized_distance);
+		var negative_horizon = -acos(clamp(negative_horizon_cosine, -1.0, 1.0));
+		var positive_horizon = acos(clamp(positive_horizon_cosine, -1.0, 1.0));
+		negative_horizon = normal_angle + clamp(
+			negative_horizon - normal_angle + settings.parameters.y,
+			-HALF_PI,
+			HALF_PI,
+		);
+		positive_horizon = normal_angle + clamp(
+			positive_horizon - normal_angle - settings.parameters.y,
+			-HALF_PI,
+			HALF_PI,
+		);
+		let slice_visibility = projected_normal_length * (
+			integrate_arc(
+				negative_horizon,
+				normal_angle,
+				cos_normal,
+			) +
+			integrate_arc(
+				positive_horizon,
+				normal_angle,
+				cos_normal,
+			)
+		);
+		visibility += clamp(slice_visibility, 0.0, 1.0);
 	}
-	let amount = clamp(
-		occlusion * settings.parameters.z * (2.0 / 16.0),
+	visibility = clamp(
+		visibility / f32(SLICE_COUNT),
 		0.0,
 		1.0,
 	);
-	let visibility = pow(1.0 - amount, settings.parameters.w);
+	visibility = pow(visibility, settings.parameters.z);
+	visibility = mix(1.0, visibility, settings.parameters.w);
 	textureStore(
 		destination_occlusion,
 		ao_pixel,
@@ -860,12 +962,14 @@ fn bilateral_blur(pixel: vec2<i32>, axis: vec2<i32>) -> f32 {
 	let dimensions = vec2<i32>(textureDimensions(source_occlusion));
 	let center_full_pixel = full_pixel_from_ao(pixel);
 	let center_depth = linear_view_depth(center_full_pixel);
+	let center_normal = view_normal(center_full_pixel);
 	var total = 0.0;
 	var weight_total = 0.0;
 	for (var offset = -2; offset <= 2; offset += 1) {
 		let sample_pixel = clamp(pixel + axis * offset, vec2<i32>(0), dimensions - vec2<i32>(1));
 		let sample_full_pixel = full_pixel_from_ao(sample_pixel);
 		let sample_depth = linear_view_depth(sample_full_pixel);
+		let sample_normal = view_normal(sample_full_pixel);
 		var spatial_weight = 0.40;
 		if (abs(offset) == 1) {
 			spatial_weight = 0.24;
@@ -878,7 +982,8 @@ fn bilateral_blur(pixel: vec2<i32>, axis: vec2<i32>) -> f32 {
 			-(depth_delta * depth_delta) /
 				max(2.0 * depth_sigma * depth_sigma, 0.000001),
 		);
-		let weight = spatial_weight * depth_weight;
+		let normal_weight = pow(max(dot(center_normal, sample_normal), 0.0), 8.0);
+		let weight = spatial_weight * depth_weight * normal_weight;
 		total += textureLoad(source_occlusion, sample_pixel, 0).r * weight;
 		weight_total += weight;
 	}

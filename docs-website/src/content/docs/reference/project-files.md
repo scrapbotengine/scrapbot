@@ -172,7 +172,7 @@ screen_space_reflections = false
 bloom = true
 ```
 
-A camera reads its world position and Euler orientation from the entity's resolved transform chain. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll. `exposure` is a positive linear multiplier, defaults to `1`, and combines with the World Environment exposure. TAA, ambient occlusion, and bloom default on; fast fullscreen antialiasing and material-aware screen-space reflections default off. Fast AA is used only when TAA is off. SSR reflects only current-frame, on-screen world surfaces and fades rough, distant, uncertain, and screen-edge hits. These switches are per camera and may be changed live through the generated inspector or Luau query writeback.
+A camera reads its world position and Euler orientation from the entity's resolved transform chain. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll. `exposure` is a positive linear multiplier, defaults to `1`, and combines with the World Environment exposure. TAA, GTAO ambient occlusion, and bloom default on; fast fullscreen antialiasing and material-aware screen-space reflections default off. Fast AA is used only when TAA is off. GTAO affects only indirect diffuse lighting and cannot see geometry absent from the current depth buffer. SSR reflects only current-frame, on-screen world surfaces and fades rough, distant, uncertain, and screen-edge hits. These switches are per camera and may be changed live through the generated inspector or Luau query writeback.
 
 World environment:
 

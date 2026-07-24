@@ -96,7 +96,7 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `exposure` | number | Positive linear camera-exposure multiplier. Defaults to `1` and multiplies project render exposure. |
 | `temporal_antialiasing` | boolean | Enables projection jitter and retained depth-aware temporal resolution. Defaults to `true`. |
 | `fast_antialiasing` | boolean | Enables a lightweight current-frame fullscreen edge filter when temporal antialiasing is disabled. Defaults to `false`; TAA takes precedence when both are enabled. |
-| `ambient_occlusion` | boolean | Enables half-resolution, rotated depth-reconstructed ambient occlusion with depth-aware blur and upsampling. Defaults to `true`. |
+| `ambient_occlusion` | boolean | Enables half-resolution GTAO with horizon integration, mapped surface normals, joint depth/normal filtering, and indirect-diffuse-only composition. Defaults to `true`. |
 | `screen_space_reflections` | boolean | Enables material-aware screen-space reflections for sufficiently smooth visible surfaces. Defaults to `false`. |
 | `bloom` | boolean | Enables the five-level HDR bloom pyramid. Defaults to `true`. |
 

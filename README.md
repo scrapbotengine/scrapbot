@@ -42,7 +42,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 - Pluggable backends: a deterministic `null` backend for headless smoke tests, and a full `wgpu` backend.
 - GPU-driven pipeline: persistent slot-addressed instance storage, dirty-only transform uploads, a growing retained draw database, compute camera/shadow frustum culling, depth prepass with adaptive Hi-Z occlusion, screen-radius LOD selection, and indexed indirect draws with asynchronous GPU timing readback.
-- HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, image-based lighting or a procedural haze sky via one `scrapbot.world_environment` component, half-res ambient occlusion, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
+- HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, image-based lighting or a procedural haze sky via one `scrapbot.world_environment` component, half-resolution GTAO over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
 - Per-camera render-feature policy: TAA, fast AA, AO, and bloom are authored booleans on `scrapbot.camera`; disabled effects skip their GPU work.
 - UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, generated LOD chains) with hot reload, targeted reimport, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
 
@@ -172,7 +172,7 @@ Run the full local suite with `mise test` (includes a 2,000-frame lifecycle CPU/
   - [x] HDR rendering
   - [x] Imported image-based lighting with opt-in independently configured HDR backgrounds and per-camera exposure
   - [x] Authored ECS world environments with a renderer-native procedural haze sky
-  - [x] Depth-aware temporal antialiasing, depth-reconstructed ambient occlusion, material-aware screen-space reflections, multi-scale bloom, and tone-mapping postprocessing
+  - [x] Depth-aware temporal antialiasing, horizon-integrated GTAO, material-aware screen-space reflections, multi-scale bloom, and tone-mapping postprocessing
   - [x] Compute camera and shadow frustum culling
   - [x] GPU-computed clustered point lighting
   - [x] Persistent GPU instances, visibility compaction, and indexed indirect drawing

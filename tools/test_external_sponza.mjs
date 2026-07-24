@@ -113,6 +113,7 @@ function main() {
       rendered.result?.renderables !== 103 ||
       rendered.result?.draw_batches !== 103 ||
       rendered.result?.render_stats?.clustered_point_lights !== 11 ||
+      rendered.result?.render_stats?.gpu_ambient_occlusion_ms <= 0 ||
       rendered.result?.render_stats?.gpu_screen_space_reflections_ms <= 0 ||
       rendered.result?.render_stats?.shadow_visible_instances <= 0
     ) {

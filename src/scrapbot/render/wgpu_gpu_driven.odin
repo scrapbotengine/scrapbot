@@ -23,7 +23,8 @@ wgpu_create_gpu_world_pipeline :: proc(
 	cull_mode: wgpu.CullMode,
 	label: string,
 ) -> wgpu.RenderPipeline {
-	targets := [2]wgpu.ColorTargetState {
+	targets := [3]wgpu.ColorTargetState {
+		{format = .RGBA16Float, writeMask = wgpu.ColorWriteMaskFlags_All},
 		{format = .RGBA16Float, writeMask = wgpu.ColorWriteMaskFlags_All},
 		{format = .RGBA16Float, writeMask = wgpu.ColorWriteMaskFlags_All},
 	}
