@@ -230,6 +230,16 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			texture = {sampleType = .Depth, viewDimension = ._2DArray},
 		},
 		{binding = 14, visibility = {.Compute}, sampler = {type = .Comparison}},
+		{
+			binding = 15,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{
+			binding = 16,
+			visibility = {.Compute},
+			storageTexture = {access = .WriteOnly, format = .RGBA16Float, viewDimension = ._2D},
+		},
 	}
 	renderer.temporal_aa_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -267,6 +277,17 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	)
 	if renderer.temporal_aa_pipeline == nil {
 		return "failed to create temporal AA compute pipeline"
+	}
+	renderer.volumetric_fog_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot Volumetric Fog Pipeline",
+			layout = renderer.temporal_aa_pipeline_layout,
+			compute = {module = renderer.temporal_aa_shader, entryPoint = "volumetric_fog_cs"},
+		},
+	)
+	if renderer.volumetric_fog_pipeline == nil {
+		return "failed to create volumetric fog compute pipeline"
 	}
 	renderer.temporal_aa_uniform_buffer = wgpu.DeviceCreateBuffer(
 		renderer.device,
@@ -862,6 +883,26 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.TextureRelease(renderer.temporal_history_depth_texture)
 		renderer.temporal_history_depth_texture = nil
 	}
+	if renderer.volumetric_fog_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.volumetric_fog_bind_group)
+		renderer.volumetric_fog_bind_group = nil
+	}
+	if renderer.volumetric_fog_view != nil {
+		wgpu.TextureViewRelease(renderer.volumetric_fog_view)
+		renderer.volumetric_fog_view = nil
+	}
+	if renderer.volumetric_fog_texture != nil {
+		wgpu.TextureRelease(renderer.volumetric_fog_texture)
+		renderer.volumetric_fog_texture = nil
+	}
+	if renderer.volumetric_fog_dummy_view != nil {
+		wgpu.TextureViewRelease(renderer.volumetric_fog_dummy_view)
+		renderer.volumetric_fog_dummy_view = nil
+	}
+	if renderer.volumetric_fog_dummy_texture != nil {
+		wgpu.TextureRelease(renderer.volumetric_fog_dummy_texture)
+		renderer.volumetric_fog_dummy_texture = nil
+	}
 	for index in 0 ..< len(renderer.ambient_occlusion_bind_groups) {
 		if renderer.ambient_occlusion_bind_groups[index] != nil {
 			wgpu.BindGroupRelease(renderer.ambient_occlusion_bind_groups[index])
@@ -943,6 +984,9 @@ wgpu_release_post_process :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.temporal_aa_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.temporal_aa_pipeline)
+	}
+	if renderer.volumetric_fog_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.volumetric_fog_pipeline)
 	}
 	if renderer.temporal_aa_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.temporal_aa_pipeline_layout)
@@ -1080,6 +1124,18 @@ wgpu_ensure_post_targets :: proc(
 	if err != "" {
 		return err
 	}
+	renderer.volumetric_fog_dummy_texture, renderer.volumetric_fog_dummy_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Volumetric Fog Unused Binding",
+			1,
+			1,
+			.RGBA16Float,
+			{.TextureBinding, .StorageBinding},
+		)
+	if err != "" {
+		return err
+	}
 	renderer.indirect_diffuse_texture, renderer.indirect_diffuse_view, err =
 		wgpu_create_post_texture(
 			renderer,
@@ -1177,6 +1233,19 @@ wgpu_ensure_post_targets :: proc(
 	if err != "" {
 		return err
 	}
+	volumetric_fog_width := max(u32(1), (width + 1) / 2)
+	volumetric_fog_height := max(u32(1), (height + 1) / 2)
+	renderer.volumetric_fog_texture, renderer.volumetric_fog_view, err = wgpu_create_post_texture(
+		renderer,
+		"Scrapbot Volumetric Fog",
+		volumetric_fog_width,
+		volumetric_fog_height,
+		.RGBA16Float,
+		{.TextureBinding, .StorageBinding},
+	)
+	if err != "" {
+		return err
+	}
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
 	for index in 0 ..< len(renderer.ambient_occlusion_textures) {
@@ -1269,6 +1338,8 @@ wgpu_ensure_post_targets :: proc(
 		},
 		{binding = 13, textureView = renderer.shadow_array_view},
 		{binding = 14, sampler = renderer.shadow_sampler},
+		{binding = 15, textureView = renderer.volumetric_fog_view},
+		{binding = 16, textureView = renderer.volumetric_fog_dummy_view},
 	}
 	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
 		renderer.device,
@@ -1281,6 +1352,27 @@ wgpu_ensure_post_targets :: proc(
 	)
 	if renderer.temporal_aa_bind_group == nil {
 		return "failed to create temporal AA bind group"
+	}
+	volumetric_fog_entries := temporal_entries
+	volumetric_fog_entries[15] = {
+		binding = 15,
+		textureView = renderer.volumetric_fog_dummy_view,
+	}
+	volumetric_fog_entries[16] = {
+		binding = 16,
+		textureView = renderer.volumetric_fog_view,
+	}
+	renderer.volumetric_fog_bind_group = wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot Volumetric Fog Bind Group",
+			layout = renderer.temporal_aa_bind_group_layout,
+			entryCount = uint(len(volumetric_fog_entries)),
+			entries = raw_data(volumetric_fog_entries[:]),
+		},
+	)
+	if renderer.volumetric_fog_bind_group == nil {
+		return "failed to create volumetric fog bind group"
 	}
 
 	automatic_exposure_entries := [?]wgpu.BindGroupEntry {
@@ -1465,6 +1557,8 @@ wgpu_encode_bloom_and_composite :: proc(
 	}
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
+	volumetric_fog_width := max(u32(1), (width + 1) / 2)
+	volumetric_fog_height := max(u32(1), (height + 1) / 2)
 	projection := renderer.gpu_cluster_uniform.projection
 	viewport := renderer.gpu_cluster_uniform.viewport
 	history_valid := f32(0)
@@ -1620,6 +1714,45 @@ wgpu_encode_bloom_and_composite :: proc(
 		&temporal_uniform,
 		size_of(temporal_uniform),
 	)
+	if fog.density > 0 {
+		volumetric_fog_timestamps, volumetric_fog_timestamps_enabled := wgpu_gpu_pass_timestamps(
+			renderer,
+			.Volumetric_Fog,
+		)
+		volumetric_fog_timestamps_ptr: ^wgpu.PassTimestampWrites
+		if volumetric_fog_timestamps_enabled {
+			volumetric_fog_timestamps_ptr = &volumetric_fog_timestamps
+		}
+		volumetric_fog_pass := wgpu.CommandEncoderBeginComputePass(
+			encoder,
+			&wgpu.ComputePassDescriptor {
+				label = "Scrapbot Volumetric Fog Compute Pass",
+				timestampWrites = volumetric_fog_timestamps_ptr,
+			},
+		)
+		if volumetric_fog_pass == nil {
+			return "failed to begin volumetric fog compute pass"
+		}
+		wgpu.ComputePassEncoderSetPipeline(volumetric_fog_pass, renderer.volumetric_fog_pipeline)
+		wgpu.ComputePassEncoderSetBindGroup(
+			volumetric_fog_pass,
+			0,
+			renderer.volumetric_fog_bind_group,
+		)
+		wgpu.ComputePassEncoderSetBindGroup(
+			volumetric_fog_pass,
+			1,
+			renderer.gpu_cluster_bind_group,
+		)
+		wgpu.ComputePassEncoderDispatchWorkgroups(
+			volumetric_fog_pass,
+			(volumetric_fog_width + 7) / 8,
+			(volumetric_fog_height + 7) / 8,
+			1,
+		)
+		wgpu.ComputePassEncoderEnd(volumetric_fog_pass)
+		wgpu.ComputePassEncoderRelease(volumetric_fog_pass)
+	}
 	temporal_timestamps, temporal_timestamps_enabled := wgpu_gpu_pass_timestamps(
 		renderer,
 		.Temporal_AA,
@@ -1696,9 +1829,18 @@ wgpu_encode_bloom_and_composite :: proc(
 			&automatic_exposure_settings,
 			size_of(automatic_exposure_settings),
 		)
+		automatic_exposure_timestamps, automatic_exposure_timestamps_enabled :=
+			wgpu_gpu_pass_timestamps(renderer, .Automatic_Exposure)
+		automatic_exposure_timestamps_ptr: ^wgpu.PassTimestampWrites
+		if automatic_exposure_timestamps_enabled {
+			automatic_exposure_timestamps_ptr = &automatic_exposure_timestamps
+		}
 		automatic_exposure_pass := wgpu.CommandEncoderBeginComputePass(
 			encoder,
-			&wgpu.ComputePassDescriptor{label = "Scrapbot Automatic Exposure Compute Pass"},
+			&wgpu.ComputePassDescriptor {
+				label = "Scrapbot Automatic Exposure Compute Pass",
+				timestampWrites = automatic_exposure_timestamps_ptr,
+			},
 		)
 		if automatic_exposure_pass == nil {
 			return "failed to begin automatic exposure compute pass"

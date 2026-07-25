@@ -30,6 +30,15 @@ function report(gpuP95, width = 100, uploads = 2) {
         shaded_pixels: width * 50,
         viewport: { x: 0, y: 0, width, height: 50 },
         counter_deltas: { instance_uploads: uploads },
+        workload: {
+          world: {
+            enabled: true,
+            width,
+            height: 50,
+            passes: 1,
+            draws: 4,
+          },
+        },
       },
       {
         physical_width: width,
@@ -48,7 +57,26 @@ test("summarizes pass cost and frame-local counters", () => {
   assert.equal(summary.counter_totals.instance_uploads, 3);
   assert.equal(summary.gpu_passes_by_p95[0].pass, "world");
   assert.equal(summary.gpu_passes_by_p95[0].percent_of_gpu_frame_p95, 50);
+  assert.equal(summary.gpu_passes_by_p95[0].workload.draws, 4);
+  assert.equal(summary.workload.world.width, 100);
   assert.equal(summary.gpu_p95_ms_per_megapixel, 800);
+});
+
+test("uses an enabled workload when a change-driven pass skips the first frame", () => {
+  const input = report(4);
+  input.frames[0].workload.instance_expansion = { enabled: false };
+  input.frames[1].workload = {
+    instance_expansion: {
+      enabled: true,
+      passes: 1,
+      workgroups: 2,
+      invocations: 128,
+      instances: 65,
+    },
+  };
+  const summary = summarizeRenderProfile(input);
+  assert.equal(summary.workload.instance_expansion.enabled, true);
+  assert.equal(summary.workload.instance_expansion.instances, 65);
 });
 
 test("compares compatible reports with absolute and relative deltas", () => {

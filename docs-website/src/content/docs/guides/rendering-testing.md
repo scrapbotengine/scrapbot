@@ -59,13 +59,13 @@ Use either the procedural sun or one authored directional light when a scene nee
 
 ### Volumetric fog
 
-Add one `scrapbot.volumetric_fog` component to author global height and distance fog. The renderer integrates a fixed 16-sample camera ray, stops it at opaque depth or the authored distance bound, and evaluates exponential density around a world-space height plane.
+Add one `scrapbot.volumetric_fog` component to author global height and distance fog. A half-resolution compute pass integrates a fixed 16-sample camera ray, stops it at opaque depth or the authored distance bound, and evaluates exponential density around a world-space height plane.
 
 The primary directional light supplies anisotropic in-scattering. Its four cascaded shadows filter that contribution, so sunbeams and occluded haze follow the same shadow geometry as opaque surfaces. Ambient scattering remains available in shadow and at night.
 
 `point_light_intensity` independently opts clustered point lights into the medium. Every ray step reuses its complete GPU-built view-frustum cluster; Scrapbot does not build or upload another fog-only light list.
 
-Fog composes before TAA and bloom. A low-discrepancy sub-step offset rotates across the eight-frame temporal sequence. TAA integrates those samples into smooth shafts without the bands produced by fixed midpoint slices. Remove the component or set `density = 0` to make it a no-op. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
+Fog is depth-aware upsampled before TAA and bloom. A low-discrepancy sub-step offset rotates across the eight-frame temporal sequence. TAA integrates those samples into smooth shafts without the bands produced by fixed midpoint slices. Remove the component or set `density = 0` to skip the fog dispatch. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
 
 This implementation remains one global volume. It does not yet support local fog shapes or authored quality controls.
 
@@ -270,7 +270,11 @@ The output directory contains:
 - `overview.png` from the final measured frame.
 - An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
 
-Each row includes active CPU time, total and per-pass GPU time, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, and cache-hit totals into the work attributable to that frame.
+Each row includes active CPU time, exact whole-frame and per-pass GPU time, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot.
+
+The `workload` object records the dispatch size, render extent, draws, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
+
+`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, and cache-hit totals into the work attributable to that frame.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
 
@@ -293,7 +297,7 @@ mise profile-analyze -- /tmp/before/profile.json
 mise profile-analyze -- /tmp/before/profile.json /tmp/after/profile.json
 ```
 
-The comparator checks the backend, adapter, physical dimensions, density, viewport, and shaded pixels before calculating pass and counter deltas. Exit status `2` means the inputs are not comparable.
+The analyzer prints the representative workload next to each timed pass. The comparator checks the backend, adapter, physical dimensions, density, viewport, and shaded pixels before calculating pass and counter deltas. Exit status `2` means the inputs are not comparable.
 
 To identify fixed overhead versus pixel-scaled work, run the same project at a bounded resolution matrix:
 

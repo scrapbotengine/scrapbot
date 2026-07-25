@@ -1424,19 +1424,27 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 test_wgpu_post_timing_includes_camera_post_effects :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_valid = true
+	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Instance_Expansion)] = 0.10
+	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)] = 0.20
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Temporal_AA)] = 0.125
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Ambient_Occlusion)] = 0.25
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Screen_Space_Reflections)] = 0.375
+	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Volumetric_Fog)] = 0.625
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Bloom)] = 0.50
+	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Automatic_Exposure)] = 0.30
 	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Composite)] = 0.75
 	stats: Render_Stats
 	wgpu_publish_gpu_timing(&renderer, &stats)
+	testing.expect_value(t, stats.gpu_instance_expansion_ms, 0.10)
+	testing.expect_value(t, stats.gpu_clustered_lighting_ms, 0.20)
 	testing.expect_value(t, stats.gpu_temporal_aa_ms, 0.125)
 	testing.expect_value(t, stats.gpu_ambient_occlusion_ms, 0.25)
 	testing.expect_value(t, stats.gpu_screen_space_reflections_ms, 0.375)
+	testing.expect_value(t, stats.gpu_volumetric_fog_ms, 0.625)
 	testing.expect_value(t, stats.gpu_bloom_ms, 0.50)
+	testing.expect_value(t, stats.gpu_automatic_exposure_ms, 0.30)
 	testing.expect_value(t, stats.gpu_composite_ms, 0.75)
-	testing.expect_value(t, stats.gpu_post_ms, 2.0)
+	testing.expect_value(t, stats.gpu_post_ms, 2.925)
 }
 
 @(test)
@@ -1459,7 +1467,8 @@ test_wgpu_gpu_shadow_timing_uses_distinct_queries_for_every_cascade :: proc(t: ^
 		second.beginningOfPassWriteIndex,
 		u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE),
 	)
-	testing.expect_value(t, last.endOfPassWriteIndex, u32(WGPU_GPU_TIMESTAMP_QUERY_COUNT - 1))
+	testing.expect_value(t, last.endOfPassWriteIndex, u32(WGPU_GPU_FRAME_QUERY_BASE - 1))
+	testing.expect_value(t, WGPU_GPU_TIMESTAMP_QUERY_COUNT, WGPU_GPU_FRAME_QUERY_BASE + 2)
 }
 
 @(test)
@@ -1632,6 +1641,16 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	t: ^testing.T,
 ) {
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn apply_volumetric_fog"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn volumetric_fog_cs"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn volumetric_fog_at"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "textureStore(\n\t\tvolumetric_fog_output"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "abs(center_depth - sample_depth)"),
+	)
 	testing.expect(
 		t,
 		strings.contains(WGPU_TEMPORAL_AA_SHADER, "FOG_PHASE_NORMALIZATION: f32 = 0.07957747155"),
@@ -1688,4 +1707,21 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "jitter_motion"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(fogged_color, history"))
 	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "43758.5453"))
+}
+
+@(test)
+test_profile_compute_workload_reports_dispatch_upper_bounds :: proc(t: ^testing.T) {
+	workload := wgpu_profile_compute_workload(true, 17, 9, 3, 16)
+	testing.expect(t, workload.enabled)
+	testing.expect_value(t, workload.width, u32(17))
+	testing.expect_value(t, workload.height, u32(9))
+	testing.expect_value(t, workload.passes, u32(3))
+	testing.expect_value(t, workload.workgroups, u64(18))
+	testing.expect_value(t, workload.invocations, u64(1_152))
+	testing.expect_value(t, workload.samples_per_pixel, u32(16))
+	testing.expect_value(
+		t,
+		wgpu_profile_compute_workload(false, 17, 9, 3, 16),
+		Profile_Pass_Workload{},
+	)
 }

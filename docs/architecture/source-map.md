@@ -1,6 +1,6 @@
 # Source Map
 
-**Last verified:** 2026-07-24
+**Last verified:** 2026-07-25
 
 | Path | Responsibility | Important boundaries |
 | --- | --- | --- |
@@ -26,7 +26,7 @@
 | `src/scrapbot/package.odin` | Packaged-project product assembly. | Separates source state from build products. |
 | `docs/adr/`, `docs/fdr/`, `docs/architecture/` | Decisions, feature contracts, and current source map. | Keep rationale, behavior, and inventory distinct. |
 | `docs-website/` | Public user documentation. | Canonical user-facing APIs and workflows. |
-| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs` | Agent-oriented render-profile summary, compatibility comparison, and bounded pixel-cost sweeps. | Consume profile artifacts after runs; never participate in ordinary engine frames. |
+| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs` | Agent-oriented render-profile timing/workload summary, compatibility comparison, and bounded pixel-cost sweeps. | Consume profile artifacts after runs; never participate in ordinary engine frames. |
 
 ## Dependency direction
 

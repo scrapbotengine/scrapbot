@@ -308,9 +308,17 @@ wgpu_encode_clustered_lighting :: proc(
 	if !renderer.gpu_cluster_dirty {
 		return ""
 	}
+	timestamps, timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Clustered_Lighting)
+	timestamps_ptr: ^wgpu.PassTimestampWrites
+	if timestamps_enabled {
+		timestamps_ptr = &timestamps
+	}
 	pass := wgpu.CommandEncoderBeginComputePass(
 		encoder,
-		&wgpu.ComputePassDescriptor{label = "Scrapbot Clustered Lighting Pass"},
+		&wgpu.ComputePassDescriptor {
+			label = "Scrapbot Clustered Lighting Pass",
+			timestampWrites = timestamps_ptr,
+		},
 	)
 	if pass == nil {
 		return "failed to begin clustered lighting pass"

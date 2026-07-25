@@ -17,6 +17,35 @@ Profile_Viewport :: struct {
 	x, y, width, height: f32,
 }
 
+Profile_Pass_Workload :: struct {
+	enabled: bool,
+	width, height: u32,
+	passes: u32,
+	workgroups: u64,
+	invocations: u64,
+	draws: u64,
+	instances: u64,
+	samples_per_pixel: u32,
+}
+
+Profile_Workload :: struct {
+	instance_expansion: Profile_Pass_Workload,
+	cull: Profile_Pass_Workload,
+	clustered_lighting: Profile_Pass_Workload,
+	shadow: Profile_Pass_Workload,
+	depth: Profile_Pass_Workload,
+	world: Profile_Pass_Workload,
+	hiz: Profile_Pass_Workload,
+	ambient_occlusion: Profile_Pass_Workload,
+	screen_space_reflections: Profile_Pass_Workload,
+	volumetric_fog: Profile_Pass_Workload,
+	temporal_aa: Profile_Pass_Workload,
+	bloom: Profile_Pass_Workload,
+	automatic_exposure: Profile_Pass_Workload,
+	composite: Profile_Pass_Workload,
+	ui: Profile_Pass_Workload,
+}
+
 Profile_Counter_Deltas :: struct {
 	draw_database_rebuilds: u64,
 	cluster_dispatches: u64,
@@ -49,11 +78,14 @@ Profile_Frame :: struct {
 	gpu_timing_valid: bool,
 	render: Render_Stats,
 	counter_deltas: Profile_Counter_Deltas,
+	workload: Profile_Workload,
 }
 
 Profile_Summary :: struct {
 	cpu_active: Profile_Distribution,
 	gpu_frame: Profile_Distribution,
+	gpu_instance_expansion: Profile_Distribution,
+	gpu_clustered_lighting: Profile_Distribution,
 	gpu_cull: Profile_Distribution,
 	gpu_shadow: Profile_Distribution,
 	gpu_depth: Profile_Distribution,
@@ -62,7 +94,9 @@ Profile_Summary :: struct {
 	gpu_temporal_aa: Profile_Distribution,
 	gpu_ambient_occlusion: Profile_Distribution,
 	gpu_screen_space_reflections: Profile_Distribution,
+	gpu_volumetric_fog: Profile_Distribution,
 	gpu_bloom: Profile_Distribution,
+	gpu_automatic_exposure: Profile_Distribution,
 	gpu_composite: Profile_Distribution,
 	gpu_ui: Profile_Distribution,
 }
@@ -188,6 +222,7 @@ profile_record_frame :: proc(
 	pixel_density: f32,
 	viewport: ui.Rect,
 	stats: ^Render_Stats,
+	workload: Profile_Workload = {},
 ) {
 	if collector == nil {
 		return
@@ -224,6 +259,7 @@ profile_record_frame :: proc(
 	}
 	frame.shaded_pixels = u64(max(viewport.width, 0) * max(viewport.height, 0))
 	frame.counter_deltas = counter_deltas
+	frame.workload = workload
 	if stats != nil {
 		gpu_valid := frame.gpu_timing_valid
 		gpu := profile_gpu_stats(frame.render)
@@ -316,14 +352,16 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 }
 
 Profile_GPU_Stats :: struct {
-	frame, cull, shadow, depth, world, hiz: f64,
+	frame, instance_expansion, clustered_lighting, cull, shadow, depth, world, hiz: f64,
 	temporal_aa, ambient_occlusion, screen_space_reflections: f64,
-	bloom, composite, ui: f64,
+	volumetric_fog, bloom, automatic_exposure, composite, ui: f64,
 }
 
 profile_gpu_stats :: proc(stats: Render_Stats) -> Profile_GPU_Stats {
 	return {
 		frame = stats.gpu_frame_ms,
+		instance_expansion = stats.gpu_instance_expansion_ms,
+		clustered_lighting = stats.gpu_clustered_lighting_ms,
 		cull = stats.gpu_cull_ms,
 		shadow = stats.gpu_shadow_ms,
 		depth = stats.gpu_depth_ms,
@@ -332,7 +370,9 @@ profile_gpu_stats :: proc(stats: Render_Stats) -> Profile_GPU_Stats {
 		temporal_aa = stats.gpu_temporal_aa_ms,
 		ambient_occlusion = stats.gpu_ambient_occlusion_ms,
 		screen_space_reflections = stats.gpu_screen_space_reflections_ms,
+		volumetric_fog = stats.gpu_volumetric_fog_ms,
 		bloom = stats.gpu_bloom_ms,
+		automatic_exposure = stats.gpu_automatic_exposure_ms,
 		composite = stats.gpu_composite_ms,
 		ui = stats.gpu_ui_ms,
 	}
@@ -341,6 +381,8 @@ profile_gpu_stats :: proc(stats: Render_Stats) -> Profile_GPU_Stats {
 profile_apply_gpu_stats :: proc(stats: ^Render_Stats, gpu: Profile_GPU_Stats) {
 	stats.gpu_timestamps_valid = true
 	stats.gpu_frame_ms = gpu.frame
+	stats.gpu_instance_expansion_ms = gpu.instance_expansion
+	stats.gpu_clustered_lighting_ms = gpu.clustered_lighting
 	stats.gpu_cull_ms = gpu.cull
 	stats.gpu_shadow_ms = gpu.shadow
 	stats.gpu_depth_ms = gpu.depth
@@ -349,14 +391,18 @@ profile_apply_gpu_stats :: proc(stats: ^Render_Stats, gpu: Profile_GPU_Stats) {
 	stats.gpu_temporal_aa_ms = gpu.temporal_aa
 	stats.gpu_ambient_occlusion_ms = gpu.ambient_occlusion
 	stats.gpu_screen_space_reflections_ms = gpu.screen_space_reflections
+	stats.gpu_volumetric_fog_ms = gpu.volumetric_fog
 	stats.gpu_bloom_ms = gpu.bloom
+	stats.gpu_automatic_exposure_ms = gpu.automatic_exposure
 	stats.gpu_composite_ms = gpu.composite
 	stats.gpu_ui_ms = gpu.ui
 	stats.gpu_post_ms =
 		gpu.temporal_aa +
 		gpu.ambient_occlusion +
 		gpu.screen_space_reflections +
+		gpu.volumetric_fog +
 		gpu.bloom +
+		gpu.automatic_exposure +
 		gpu.composite
 }
 
@@ -410,6 +456,8 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	}
 	cpu := make([dynamic]f64, 0, len(collector.frames))
 	gpu_frame := make([dynamic]f64, 0, len(collector.frames))
+	gpu_instance_expansion := make([dynamic]f64, 0, len(collector.frames))
+	gpu_clustered_lighting := make([dynamic]f64, 0, len(collector.frames))
 	gpu_cull := make([dynamic]f64, 0, len(collector.frames))
 	gpu_shadow := make([dynamic]f64, 0, len(collector.frames))
 	gpu_depth := make([dynamic]f64, 0, len(collector.frames))
@@ -418,12 +466,16 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	gpu_taa := make([dynamic]f64, 0, len(collector.frames))
 	gpu_ao := make([dynamic]f64, 0, len(collector.frames))
 	gpu_ssr := make([dynamic]f64, 0, len(collector.frames))
+	gpu_fog := make([dynamic]f64, 0, len(collector.frames))
 	gpu_bloom := make([dynamic]f64, 0, len(collector.frames))
+	gpu_automatic_exposure := make([dynamic]f64, 0, len(collector.frames))
 	gpu_composite := make([dynamic]f64, 0, len(collector.frames))
 	gpu_ui := make([dynamic]f64, 0, len(collector.frames))
 	defer {
 		delete(cpu)
 		delete(gpu_frame)
+		delete(gpu_instance_expansion)
+		delete(gpu_clustered_lighting)
 		delete(gpu_cull)
 		delete(gpu_shadow)
 		delete(gpu_depth)
@@ -432,7 +484,9 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		delete(gpu_taa)
 		delete(gpu_ao)
 		delete(gpu_ssr)
+		delete(gpu_fog)
 		delete(gpu_bloom)
+		delete(gpu_automatic_exposure)
 		delete(gpu_composite)
 		delete(gpu_ui)
 	}
@@ -443,6 +497,8 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		}
 		stats := frame.render
 		append(&gpu_frame, stats.gpu_frame_ms)
+		append(&gpu_instance_expansion, stats.gpu_instance_expansion_ms)
+		append(&gpu_clustered_lighting, stats.gpu_clustered_lighting_ms)
 		append(&gpu_cull, stats.gpu_cull_ms)
 		append(&gpu_shadow, stats.gpu_shadow_ms)
 		append(&gpu_depth, stats.gpu_depth_ms)
@@ -451,7 +507,9 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		append(&gpu_taa, stats.gpu_temporal_aa_ms)
 		append(&gpu_ao, stats.gpu_ambient_occlusion_ms)
 		append(&gpu_ssr, stats.gpu_screen_space_reflections_ms)
+		append(&gpu_fog, stats.gpu_volumetric_fog_ms)
 		append(&gpu_bloom, stats.gpu_bloom_ms)
+		append(&gpu_automatic_exposure, stats.gpu_automatic_exposure_ms)
 		append(&gpu_composite, stats.gpu_composite_ms)
 		append(&gpu_ui, stats.gpu_ui_ms)
 	}
@@ -461,6 +519,8 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	collector.report.summary = {
 		cpu_active = profile_distribution(cpu[:]),
 		gpu_frame = profile_distribution(gpu_frame[:]),
+		gpu_instance_expansion = profile_distribution(gpu_instance_expansion[:]),
+		gpu_clustered_lighting = profile_distribution(gpu_clustered_lighting[:]),
 		gpu_cull = profile_distribution(gpu_cull[:]),
 		gpu_shadow = profile_distribution(gpu_shadow[:]),
 		gpu_depth = profile_distribution(gpu_depth[:]),
@@ -469,7 +529,9 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		gpu_temporal_aa = profile_distribution(gpu_taa[:]),
 		gpu_ambient_occlusion = profile_distribution(gpu_ao[:]),
 		gpu_screen_space_reflections = profile_distribution(gpu_ssr[:]),
+		gpu_volumetric_fog = profile_distribution(gpu_fog[:]),
 		gpu_bloom = profile_distribution(gpu_bloom[:]),
+		gpu_automatic_exposure = profile_distribution(gpu_automatic_exposure[:]),
 		gpu_composite = profile_distribution(gpu_composite[:]),
 		gpu_ui = profile_distribution(gpu_ui[:]),
 	}

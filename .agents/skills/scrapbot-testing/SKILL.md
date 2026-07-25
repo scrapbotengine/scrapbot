@@ -99,7 +99,7 @@ bin/scrapbot profile examples/sponza \
 
 The command writes:
 
-- `profile.json`: raw per-frame CPU, GPU-pass, resolution, viewport, frame-local `counter_deltas`, and complete renderer snapshots plus median, p95, and maximum summaries.
+- `profile.json`: raw per-frame CPU, GPU-pass, resolution, viewport, frame-local `counter_deltas`, structured pass `workload`, and complete renderer snapshots plus median, p95, and maximum summaries.
 - `overview.png`: the final measurement-pass frame.
 - `frames/frame-NNNNNN.png`: an optional narrow lossless sequence from a fresh replay.
 
@@ -110,9 +110,10 @@ Follow these rules:
 3. Compare `cpu_active_ms` for active engine work. It intentionally excludes profiler readback waits and presentation idle.
 4. Compare GPU distributions only across rows where `gpu_timing_valid` is true.
 5. Inspect raw rows and counters around p95/worst spikes. A summary alone cannot distinguish upload churn, visibility changes, or one expensive pass.
-6. Keep `--capture-range` tight. Captures run in a second replay so pixel readback does not alter telemetry.
-7. Use `--ui-script` with `--editor` when the workload is an editor interaction. The same script is replayed in both passes.
-8. Treat results as same-machine evidence. Do not establish portable absolute thresholds from one adapter.
+6. Read the matching `workload` entry before changing a pass. Target dimensions, pass count, workgroups/invocations, draws/instances, and fixed sample budgets distinguish pixel scaling from repeated dispatch, geometry pressure, or shader complexity.
+7. Keep `--capture-range` tight. Captures run in a second replay so pixel readback does not alter telemetry.
+8. Use `--ui-script` with `--editor` when the workload is an editor interaction. The same script is replayed in both passes.
+9. Treat results as same-machine evidence. Do not establish portable absolute thresholds from one adapter.
 
 Summarize one report or compare two compatible reports with:
 

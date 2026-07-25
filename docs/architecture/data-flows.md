@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-07-24
+**Last verified:** 2026-07-25
 
 ## Project load and world bootstrap
 
@@ -123,9 +123,9 @@ Scenes that need one coherent sun should use either the procedural environment s
 
 WGPU retains active point lights in a geometrically growing buffer and rebuilds 16×9×24 cluster membership only after point-light, camera, viewport, or capacity changes. Four stabilized camera-relative projections feed independent shadow-cull lanes and depth-array layers.
 
-One optional `scrapbot.volumetric_fog` component supplies a global exponential height medium. Postprocessing reads only that component storage's compact active set, clamps the reflected payload, and folds 16 temporally rotated low-discrepancy ray samples into the temporal resolve.
+One optional `scrapbot.volumetric_fog` component supplies a global exponential height medium. Postprocessing reads only that component storage's compact active set and clamps the reflected payload. A separately timed half-resolution compute pass folds 16 temporally rotated low-discrepancy ray samples into scattering/transmittance; the full-resolution temporal pass depth-aware upsamples that result before history accumulation.
 
-Each sample uses the first directional light and a 2×2 UV-space filtered lookup into the same four shadow cascades as opaque rendering. Both paths cross-fade the final 10% of each cascade into its successor and fade the final cascade to unshadowed. Opt-in local scattering reads every relevant point light from the existing GPU-built cluster for that sample. A low-discrepancy spatial offset rotates across the eight-frame temporal sequence so fixed ray slices do not appear as bands; there is no duplicate light list or extra fog target. Local fog volumes remain follow-up work.
+Each sample uses the first directional light and a 2×2 UV-space filtered lookup into the same four shadow cascades as opaque rendering. Both paths cross-fade the final 10% of each cascade into its successor and fade the final cascade to unshadowed. Opt-in local scattering reads every relevant point light from the existing GPU-built cluster for that sample. A low-discrepancy spatial offset rotates across the eight-frame temporal sequence so fixed ray slices do not appear as bands; there is no duplicate light list. The half-resolution fog target is retained and recreated only with the other post targets. Local fog volumes remain follow-up work.
 
 ### Instances and materials
 
@@ -183,7 +183,7 @@ optional fresh deterministic replay ──> lossless 1:1 frame sequence
 
 A requested capture range starts from a fresh project world and writes images during a second replay. Those readback stalls cannot contaminate the telemetry report.
 
-Post-run tools consume the artifact without engine access. The analyzer ranks GPU-pass p95 values, totals frame-local counters, and rejects comparisons with different adapters or render dimensions. The sweep driver orchestrates independent profile bundles at each requested resolution and writes a compact scaling report.
+Post-run tools consume the artifact without engine access. The analyzer ranks GPU-pass p95 values, prints representative target/dispatch/draw/sample workloads, totals frame-local counters, and rejects comparisons with different adapters or render dimensions. The sweep driver orchestrates independent profile bundles at each requested resolution and writes a compact scaling report.
 
 ## ECS UI and editor
 

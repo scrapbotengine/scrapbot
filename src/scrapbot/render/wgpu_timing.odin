@@ -107,6 +107,7 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 			u64,
 		)
 		frame_ms := 0.0
+		phase_sum_ms := 0.0
 		for phase_index in 0 ..< WGPU_GPU_TIMESTAMP_PHASE_COUNT {
 			if readback.phase_mask & (u32(1) << u32(phase_index)) == 0 {
 				renderer.gpu_timestamp_phase_ms[phase_index] = 0
@@ -119,7 +120,7 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 				duration_ms = f64(end - begin) * renderer.gpu_timestamp_period_ns / 1_000_000.0
 			}
 			renderer.gpu_timestamp_phase_ms[phase_index] = duration_ms
-			frame_ms += duration_ms
+			phase_sum_ms += duration_ms
 		}
 		for mip_index in 1 ..< readback.hiz_mip_count {
 			query_index := WGPU_GPU_HIZ_EXTRA_QUERY_BASE + (mip_index - 1) * 2
@@ -128,7 +129,7 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 			if end >= begin {
 				duration_ms := f64(end - begin) * renderer.gpu_timestamp_period_ns / 1_000_000.0
 				renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)] += duration_ms
-				frame_ms += duration_ms
+				phase_sum_ms += duration_ms
 			}
 		}
 		if readback.phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.Shadow)) != 0 {
@@ -141,9 +142,17 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 						f64(end - begin) * renderer.gpu_timestamp_period_ns / 1_000_000.0
 					renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)] +=
 						duration_ms
-					frame_ms += duration_ms
+					phase_sum_ms += duration_ms
 				}
 			}
+		}
+		frame_begin := values[WGPU_GPU_FRAME_QUERY_BASE]
+		frame_end := values[WGPU_GPU_FRAME_QUERY_BASE + 1]
+		if frame_end > frame_begin {
+			frame_ms =
+				f64(frame_end - frame_begin) * renderer.gpu_timestamp_period_ns / 1_000_000.0
+		} else {
+			frame_ms = phase_sum_ms
 		}
 		renderer.gpu_timestamp_frame_ms = frame_ms
 		renderer.gpu_timestamp_valid = true
@@ -152,6 +161,8 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 			readback.frame_index,
 			{
 				frame = frame_ms,
+				instance_expansion = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Instance_Expansion)],
+				clustered_lighting = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)],
 				cull = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)],
 				shadow = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)],
 				depth = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)],
@@ -160,7 +171,9 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 				temporal_aa = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Temporal_AA)],
 				ambient_occlusion = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Ambient_Occlusion)],
 				screen_space_reflections = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Screen_Space_Reflections)],
+				volumetric_fog = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Volumetric_Fog)],
 				bloom = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Bloom)],
+				automatic_exposure = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Automatic_Exposure)],
 				composite = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Composite)],
 				ui = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.UI)],
 			},
@@ -195,6 +208,28 @@ wgpu_gpu_timing_drain :: proc(renderer: ^WGPU_Renderer) {
 	wgpu.DevicePoll(renderer.device, true)
 	wgpu.InstanceProcessEvents(renderer.instance)
 	wgpu_gpu_timing_consume_readbacks(renderer)
+}
+
+wgpu_gpu_timing_write_frame_begin :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandEncoder) {
+	if renderer == nil || encoder == nil || renderer.gpu_timestamp_active_slot < 0 {
+		return
+	}
+	wgpu.CommandEncoderWriteTimestamp(
+		encoder,
+		renderer.gpu_timestamp_query_set,
+		u32(WGPU_GPU_FRAME_QUERY_BASE),
+	)
+}
+
+wgpu_gpu_timing_write_frame_end :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandEncoder) {
+	if renderer == nil || encoder == nil || renderer.gpu_timestamp_active_slot < 0 {
+		return
+	}
+	wgpu.CommandEncoderWriteTimestamp(
+		encoder,
+		renderer.gpu_timestamp_query_set,
+		u32(WGPU_GPU_FRAME_QUERY_BASE + 1),
+	)
 }
 
 wgpu_gpu_pass_timestamps :: proc(
@@ -320,6 +355,10 @@ wgpu_publish_gpu_timing :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.gpu_timestamps_supported = renderer.gpu_timestamp_supported
 	stats.gpu_timestamps_valid = renderer.gpu_timestamp_valid
 	stats.gpu_frame_ms = renderer.gpu_timestamp_frame_ms
+	stats.gpu_instance_expansion_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Instance_Expansion)]
+	stats.gpu_clustered_lighting_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)]
 	stats.gpu_cull_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)]
 	stats.gpu_shadow_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)]
 	stats.gpu_depth_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)]
@@ -331,14 +370,20 @@ wgpu_publish_gpu_timing :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Ambient_Occlusion)]
 	stats.gpu_screen_space_reflections_ms =
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Screen_Space_Reflections)]
+	stats.gpu_volumetric_fog_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Volumetric_Fog)]
 	stats.gpu_bloom_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Bloom)]
+	stats.gpu_automatic_exposure_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Automatic_Exposure)]
 	stats.gpu_composite_ms =
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Composite)]
 	stats.gpu_post_ms =
 		stats.gpu_temporal_aa_ms +
 		stats.gpu_ambient_occlusion_ms +
 		stats.gpu_screen_space_reflections_ms +
+		stats.gpu_volumetric_fog_ms +
 		stats.gpu_bloom_ms +
+		stats.gpu_automatic_exposure_ms +
 		stats.gpu_composite_ms
 	stats.gpu_ui_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.UI)]
 	stats.hiz_occlusion = renderer.gpu_hiz_occlusion_enabled

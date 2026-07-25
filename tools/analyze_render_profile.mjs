@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 
 const GPU_METRICS = [
   ["gpu_frame", "frame"],
+  ["gpu_instance_expansion", "instance_expansion"],
+  ["gpu_clustered_lighting", "clustered_lighting"],
   ["gpu_cull", "cull"],
   ["gpu_shadow", "shadow"],
   ["gpu_depth", "depth"],
@@ -14,7 +16,9 @@ const GPU_METRICS = [
   ["gpu_temporal_aa", "temporal_aa"],
   ["gpu_ambient_occlusion", "ambient_occlusion"],
   ["gpu_screen_space_reflections", "screen_space_reflections"],
+  ["gpu_volumetric_fog", "volumetric_fog"],
   ["gpu_bloom", "bloom"],
+  ["gpu_automatic_exposure", "automatic_exposure"],
   ["gpu_composite", "composite"],
   ["gpu_ui", "ui"],
 ];
@@ -59,8 +63,21 @@ function counterTotals(report) {
   return totals;
 }
 
+function representativeWorkload(report) {
+  const result = {};
+  for (const frame of report.frames ?? []) {
+    for (const [pass, workload] of Object.entries(frame.workload ?? {})) {
+      if (!(pass in result) || (!result[pass]?.enabled && workload?.enabled)) {
+        result[pass] = workload;
+      }
+    }
+  }
+  return result;
+}
+
 function passRanking(report) {
   const frameP95 = finite(report.summary.gpu_frame?.p95_ms);
+  const workload = representativeWorkload(report);
   return GPU_METRICS
     .filter(([metric]) => metric !== "gpu_frame")
     .map(([metric, pass]) => {
@@ -69,6 +86,7 @@ function passRanking(report) {
         pass,
         p95_ms: p95Ms,
         percent_of_gpu_frame_p95: frameP95 > 0 ? (p95Ms / frameP95) * 100 : 0,
+        workload: workload[pass] ?? null,
       };
     })
     .filter((entry) => entry.p95_ms > 0)
@@ -91,6 +109,7 @@ export function summarizeRenderProfile(report, file = "") {
     gpu_frame: report.summary.gpu_frame,
     gpu_p95_ms_per_megapixel: megapixels > 0 ? gpuP95 / megapixels : 0,
     gpu_passes_by_p95: passRanking(report),
+    workload: representativeWorkload(report),
     counter_totals: counterTotals(report),
   };
 }
@@ -203,12 +222,31 @@ function printSummary(summary) {
   );
   console.log("GPU passes by p95:");
   for (const pass of summary.gpu_passes_by_p95) {
+    const workload = pass.workload;
+    const workloadText =
+      workload?.enabled
+        ? ` ${workload.width || 0}x${workload.height || 0}, ` +
+          `${workload.passes || 0} pass, ${workload.workgroups || 0} groups, ` +
+          `${workload.samples_per_pixel || 0} samples/pixel`
+        : "";
     console.log(
       `  ${pass.pass.padEnd(26)} ${formatMs(pass.p95_ms).padStart(10)} ` +
-      `(${pass.percent_of_gpu_frame_p95.toFixed(1)}%)`,
+      `(${pass.percent_of_gpu_frame_p95.toFixed(1)}%)${workloadText}`,
     );
   }
   console.log("Pass p95 values are independent distributions and are not additive.");
+  console.log("Representative pass workloads:");
+  for (const [pass, workload] of Object.entries(summary.workload)) {
+    if (!workload?.enabled) continue;
+    console.log(
+      `  ${pass.padEnd(26)} ` +
+        `${workload.width || 0}x${workload.height || 0}, ` +
+        `${workload.passes || 0} pass, ${workload.workgroups || 0} groups, ` +
+        `${workload.invocations || 0} invocations, ${workload.draws || 0} draws, ` +
+        `${workload.instances || 0} instances, ` +
+        `${workload.samples_per_pixel || 0} samples/pixel`,
+    );
+  }
 }
 
 function printComparison(comparison) {

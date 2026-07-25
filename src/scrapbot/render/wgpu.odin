@@ -42,6 +42,8 @@ WGPU_CLUSTER_COUNT :: WGPU_CLUSTER_COUNT_X * WGPU_CLUSTER_COUNT_Y * WGPU_CLUSTER
 WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
 
 WGPU_GPU_Timestamp_Phase :: enum u32 {
+	Instance_Expansion,
+	Clustered_Lighting,
 	Cull,
 	Shadow,
 	Depth,
@@ -50,7 +52,9 @@ WGPU_GPU_Timestamp_Phase :: enum u32 {
 	Temporal_AA,
 	Ambient_Occlusion,
 	Screen_Space_Reflections,
+	Volumetric_Fog,
 	Bloom,
+	Automatic_Exposure,
 	Composite,
 	UI,
 }
@@ -58,8 +62,8 @@ WGPU_GPU_Timestamp_Phase :: enum u32 {
 WGPU_GPU_TIMESTAMP_PHASE_COUNT :: int(WGPU_GPU_Timestamp_Phase.UI) + 1
 WGPU_GPU_HIZ_EXTRA_QUERY_BASE :: WGPU_GPU_TIMESTAMP_PHASE_COUNT * 2
 WGPU_GPU_SHADOW_EXTRA_QUERY_BASE :: WGPU_GPU_HIZ_EXTRA_QUERY_BASE + (WGPU_MAX_HIZ_LEVELS - 1) * 2
-WGPU_GPU_TIMESTAMP_QUERY_COUNT ::
-	WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (WGPU_SHADOW_CASCADE_COUNT - 1) * 2
+WGPU_GPU_FRAME_QUERY_BASE :: WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (WGPU_SHADOW_CASCADE_COUNT - 1) * 2
+WGPU_GPU_TIMESTAMP_QUERY_COUNT :: WGPU_GPU_FRAME_QUERY_BASE + 2
 
 WGPU_GPU_Timestamp_Readback :: struct {
 	buffer: wgpu.Buffer,
@@ -661,8 +665,14 @@ WGPU_Renderer :: struct {
 	temporal_aa_bind_group_layout: wgpu.BindGroupLayout,
 	temporal_aa_pipeline_layout: wgpu.PipelineLayout,
 	temporal_aa_pipeline: wgpu.ComputePipeline,
+	volumetric_fog_pipeline: wgpu.ComputePipeline,
 	temporal_aa_uniform_buffer: wgpu.Buffer,
 	temporal_aa_bind_group: wgpu.BindGroup,
+	volumetric_fog_bind_group: wgpu.BindGroup,
+	volumetric_fog_texture: wgpu.Texture,
+	volumetric_fog_view: wgpu.TextureView,
+	volumetric_fog_dummy_texture: wgpu.Texture,
+	volumetric_fog_dummy_view: wgpu.TextureView,
 	temporal_resolved_texture: wgpu.Texture,
 	temporal_resolved_view: wgpu.TextureView,
 	temporal_history_texture: wgpu.Texture,
@@ -761,6 +771,222 @@ WGPU_UI_Stream_Key :: struct {
 	target_width: u32,
 	target_height: u32,
 	viewport: ui.Rect,
+}
+
+wgpu_profile_compute_workload :: proc(
+	enabled: bool,
+	width, height, passes, samples_per_pixel: u32,
+) -> Profile_Pass_Workload {
+	if !enabled || width == 0 || height == 0 || passes == 0 {
+		return {}
+	}
+	workgroups_per_pass := u64((width + 7) / 8) * u64((height + 7) / 8)
+	return {
+		enabled = true,
+		width = width,
+		height = height,
+		passes = passes,
+		workgroups = workgroups_per_pass * u64(passes),
+		invocations = workgroups_per_pass * u64(passes) * 64,
+		samples_per_pixel = samples_per_pixel,
+	}
+}
+
+wgpu_profile_workload :: proc(
+	renderer: ^WGPU_Renderer,
+	world: ^World,
+	viewport: ui.Rect,
+	width, height: u32,
+	cluster_dispatched: bool,
+	stats: ^Render_Stats,
+) -> Profile_Workload {
+	if renderer == nil {
+		return {}
+	}
+	camera := shared.camera_defaults()
+	if renderer.render_list.has_camera {
+		camera = renderer.render_list.camera.camera
+	}
+	viewport_width := u32(max(viewport.width, 0))
+	viewport_height := u32(max(viewport.height, 0))
+	batches := u64(0)
+	visible_instances := u64(0)
+	shadow_instances := u64(0)
+	if stats != nil {
+		batches = u64(max(stats.draw_batches, 0))
+		visible_instances = u64(stats.visible_instances)
+		shadow_instances = u64(stats.shadow_visible_instances)
+	}
+	instance_expansion := Profile_Pass_Workload{}
+	if len(renderer.gpu_transform_updates) > 1 {
+		update_count := u64(len(renderer.gpu_transform_updates) - 1)
+		instance_expansion = {
+			enabled = true,
+			passes = 1,
+			workgroups = (update_count + 63) / 64,
+			invocations = ((update_count + 63) / 64) * 64,
+			instances = update_count,
+		}
+	}
+	cull := Profile_Pass_Workload{}
+	if stats != nil && stats.compute_culling && renderer.gpu_slot_count > 0 {
+		cull = {
+			enabled = true,
+			passes = 1,
+			workgroups = u64((renderer.gpu_slot_count + 63) / 64) * u64(WGPU_SHADOW_CASCADE_COUNT),
+			invocations = u64(
+				(renderer.gpu_slot_count + 63) / 64,
+			) * u64(WGPU_SHADOW_CASCADE_COUNT) * 64,
+			instances = u64(renderer.gpu_slot_count),
+		}
+	}
+	clustered := Profile_Pass_Workload{}
+	if cluster_dispatched {
+		clustered = {
+			enabled = true,
+			passes = 1,
+			workgroups = u64((WGPU_CLUSTER_COUNT + 63) / 64),
+			invocations = u64((WGPU_CLUSTER_COUNT + 63) / 64) * 64,
+			instances = u64(renderer.gpu_clustered_light_count),
+		}
+	}
+	shadow := Profile_Pass_Workload{}
+	shadow_cascades := u32(0)
+	if renderer.render_list.directional_light_count > 0 {
+		shadow_cascades = WGPU_SHADOW_CASCADE_COUNT
+		shadow = {
+			enabled = true,
+			width = WGPU_SHADOW_MAP_SIZE,
+			height = WGPU_SHADOW_MAP_SIZE,
+			passes = shadow_cascades,
+			draws = batches * u64(shadow_cascades),
+			instances = shadow_instances,
+		}
+	}
+	hiz_workgroups: u64
+	hiz_invocations: u64
+	hiz_width, hiz_height := viewport_width, viewport_height
+	for _ in 0 ..< max(renderer.gpu_hiz_mip_count, 0) {
+		groups := u64((max(hiz_width, u32(1)) + 7) / 8) * u64((max(hiz_height, u32(1)) + 7) / 8)
+		hiz_workgroups += groups
+		hiz_invocations += groups * 64
+		hiz_width = max(hiz_width / 2, 1)
+		hiz_height = max(hiz_height / 2, 1)
+	}
+	hiz := Profile_Pass_Workload{}
+	if renderer.gpu_hiz_mip_count > 0 {
+		hiz = {
+			enabled = true,
+			width = viewport_width,
+			height = viewport_height,
+			passes = u32(renderer.gpu_hiz_mip_count),
+			workgroups = hiz_workgroups,
+			invocations = hiz_invocations,
+		}
+	}
+	fog := wgpu_volumetric_fog_settings(world)
+	ao_width := max(u32(1), (width + 1) / 2)
+	ao_height := max(u32(1), (height + 1) / 2)
+	fog_width := max(u32(1), (width + 1) / 2)
+	fog_height := max(u32(1), (height + 1) / 2)
+	bloom_workgroups: u64
+	bloom_invocations: u64
+	for index in 0 ..< WGPU_BLOOM_LEVELS {
+		level_width := max(u32(1), width >> u32(index + 1))
+		level_height := max(u32(1), height >> u32(index + 1))
+		groups := u64((level_width + 7) / 8) * u64((level_height + 7) / 8)
+		bloom_workgroups += groups
+		bloom_invocations += groups * 64
+	}
+	bloom := Profile_Pass_Workload{}
+	if camera.bloom {
+		bloom = {
+			enabled = true,
+			width = max(width / 2, 1),
+			height = max(height / 2, 1),
+			passes = WGPU_BLOOM_LEVELS,
+			workgroups = bloom_workgroups,
+			invocations = bloom_invocations,
+		}
+	}
+	ui_draws := u64(0)
+	if len(renderer.ui_project_vertices) > 0 {
+		ui_draws += 1
+	}
+	if len(renderer.ui_editor_vertices) > 0 {
+		ui_draws += 1
+	}
+	if len(renderer.ui_overlay_vertices) > 0 {
+		ui_draws += 1
+	}
+	return {
+		instance_expansion = instance_expansion,
+		cull = cull,
+		clustered_lighting = clustered,
+		shadow = shadow,
+		depth = {
+			enabled = batches > 0,
+			width = viewport_width,
+			height = viewport_height,
+			passes = 1,
+			draws = batches,
+			instances = visible_instances,
+		},
+		world = {
+			enabled = batches > 0,
+			width = viewport_width,
+			height = viewport_height,
+			passes = 1,
+			draws = batches,
+			instances = visible_instances,
+		},
+		hiz = hiz,
+		ambient_occlusion = wgpu_profile_compute_workload(
+			camera.ambient_occlusion,
+			ao_width,
+			ao_height,
+			3,
+			36,
+		),
+		screen_space_reflections = wgpu_profile_compute_workload(
+			camera.screen_space_reflections,
+			width,
+			height,
+			1,
+			64,
+		),
+		volumetric_fog = wgpu_profile_compute_workload(
+			fog.density > 0,
+			fog_width,
+			fog_height,
+			1,
+			16,
+		),
+		temporal_aa = wgpu_profile_compute_workload(
+			true,
+			width,
+			height,
+			1,
+			9 if camera.temporal_antialiasing else 1,
+		),
+		bloom = bloom,
+		automatic_exposure = {
+			enabled = camera.automatic_exposure,
+			width = width,
+			height = height,
+			passes = 1,
+			workgroups = 1 if camera.automatic_exposure else 0,
+			invocations = 256 if camera.automatic_exposure else 0,
+		},
+		composite = {enabled = true, width = width, height = height, passes = 1, draws = 1},
+		ui = {
+			enabled = ui_draws > 0,
+			width = width,
+			height = height,
+			passes = 1,
+			draws = ui_draws,
+		},
+	}
 }
 
 wgpu_ui_stream_key :: proc(
@@ -2436,6 +2662,7 @@ wgpu_draw_frame :: proc(
 	defer wgpu.CommandEncoderRelease(encoder)
 	profile_frame_index := renderer.profile_frame_index
 	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
+	wgpu_gpu_timing_write_frame_begin(renderer, encoder)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2447,6 +2674,7 @@ wgpu_draw_frame :: proc(
 			return false, false, err
 		}
 	}
+	cluster_dispatches_before := renderer.gpu_cluster_dispatch_count
 	if err = wgpu_encode_clustered_lighting(renderer, encoder); err != "" {
 		return false, false, err
 	}
@@ -2491,6 +2719,7 @@ wgpu_draw_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_resolve(renderer, encoder)
 	}
+	wgpu_gpu_timing_write_frame_end(renderer, encoder)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -2553,6 +2782,15 @@ wgpu_draw_frame :: proc(
 		platform.runtime_window_pixel_density(),
 		viewport,
 		config.stats,
+		wgpu_profile_workload(
+			renderer,
+			world,
+			viewport,
+			renderer.width,
+			renderer.height,
+			renderer.gpu_cluster_dispatch_count > cluster_dispatches_before,
+			config.stats,
+		),
 	)
 	renderer.profile_frame_index += 1
 	commit_system_profile_frame(config)
@@ -2648,6 +2886,7 @@ wgpu_render_offscreen_frame :: proc(
 	defer wgpu.CommandEncoderRelease(encoder)
 	profile_frame_index := renderer.profile_frame_index
 	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
+	wgpu_gpu_timing_write_frame_begin(renderer, encoder)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2659,6 +2898,7 @@ wgpu_render_offscreen_frame :: proc(
 			return err
 		}
 	}
+	cluster_dispatches_before := renderer.gpu_cluster_dispatch_count
 	if err := wgpu_encode_clustered_lighting(renderer, encoder); err != "" {
 		return err
 	}
@@ -2703,7 +2943,6 @@ wgpu_render_offscreen_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_resolve(renderer, encoder)
 	}
-	wgpu_gpu_timing_resolve(renderer, encoder)
 
 	if readback != nil {
 		wgpu.CommandEncoderCopyTextureToBuffer(
@@ -2719,6 +2958,8 @@ wgpu_render_offscreen_frame :: proc(
 			&wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 		)
 	}
+	wgpu_gpu_timing_write_frame_end(renderer, encoder)
+	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
 		encoder,
@@ -2775,6 +3016,15 @@ wgpu_render_offscreen_frame :: proc(
 		1,
 		viewport,
 		config.stats,
+		wgpu_profile_workload(
+			renderer,
+			world,
+			viewport,
+			width,
+			height,
+			renderer.gpu_cluster_dispatch_count > cluster_dispatches_before,
+			config.stats,
+		),
 	)
 	renderer.profile_frame_index += 1
 	commit_system_profile_frame(config)

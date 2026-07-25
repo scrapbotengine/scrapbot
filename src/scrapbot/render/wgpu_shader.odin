@@ -777,6 +777,8 @@ struct Cluster_Uniform {
 @group(0) @binding(12) var<uniform> render: Render_Uniform;
 @group(0) @binding(13) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(14) var shadow_sampler: sampler_comparison;
+@group(0) @binding(15) var volumetric_fog: texture_2d<f32>;
+@group(0) @binding(16) var volumetric_fog_output: texture_storage_2d<rgba16float, write>;
 @group(1) @binding(0) var<storage, read> point_lights: array<Point_Light>;
 @group(1) @binding(1) var<storage, read_write> cluster_light_counts: array<u32>;
 @group(1) @binding(2) var<storage, read_write> cluster_light_indices: array<u32>;
@@ -1034,14 +1036,13 @@ fn fog_point_light_radiance(
 		temporal.fog_lighting.z;
 }
 
-fn apply_volumetric_fog(
+fn integrate_volumetric_fog(
 	pixel: vec2<i32>,
 	depth: f32,
-	source_color: vec3<f32>,
-) -> vec3<f32> {
+) -> vec4<f32> {
 	let base_density = temporal.fog_color_density.w;
 	if (base_density <= 0.0 || !inside_viewport(pixel)) {
-		return source_color;
+		return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 	}
 	let maximum_distance = max(temporal.fog_height_distance.z, 0.1);
 	var ray_distance = maximum_distance;
@@ -1049,7 +1050,7 @@ fn apply_volumetric_fog(
 		ray_distance = min(length(reconstruct_view_position(pixel, depth)), maximum_distance);
 	}
 	if (ray_distance <= 0.0001) {
-		return source_color;
+		return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 	}
 	let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
 	let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
@@ -1113,7 +1114,64 @@ fn apply_volumetric_fog(
 		scattering += transmittance * (1.0 - step_transmittance) * incident;
 		transmittance *= step_transmittance;
 	}
-	return source_color * transmittance + scattering;
+	return vec4<f32>(scattering, transmittance);
+}
+
+fn volumetric_fog_at(pixel: vec2<i32>) -> vec4<f32> {
+	let full_dimensions = vec2<i32>(textureDimensions(resolved_color));
+	let fog_dimensions = vec2<i32>(textureDimensions(volumetric_fog));
+	let fog_position =
+		(vec2<f32>(pixel) + vec2<f32>(0.5)) *
+		vec2<f32>(fog_dimensions) /
+		vec2<f32>(full_dimensions) -
+		vec2<f32>(0.5);
+	let base = vec2<i32>(floor(fog_position));
+	let fraction = fract(fog_position);
+	let center_depth = linear_view_depth(pixel);
+	var accumulated = vec4<f32>(0.0);
+	var total_weight = 0.0;
+	for (var y = 0; y < 2; y += 1) {
+		for (var x = 0; x < 2; x += 1) {
+			let fog_pixel = clamp(
+				base + vec2<i32>(x, y),
+				vec2<i32>(0),
+				fog_dimensions - vec2<i32>(1),
+			);
+			let full_pixel = min(
+				fog_pixel * 2 + vec2<i32>(1),
+				full_dimensions - vec2<i32>(1),
+			);
+			let sample_depth = linear_view_depth(full_pixel);
+			let depth_scale = max(min(center_depth, sample_depth), 1.0);
+			let depth_weight = exp(-abs(center_depth - sample_depth) / depth_scale * 24.0);
+			let spatial_weight =
+				select(1.0 - fraction.x, fraction.x, x == 1) *
+				select(1.0 - fraction.y, fraction.y, y == 1);
+			let weight = max(spatial_weight, 0.0001) * depth_weight;
+			accumulated += textureLoad(volumetric_fog, fog_pixel, 0) * weight;
+			total_weight += weight;
+		}
+	}
+	if (total_weight <= 0.0001) {
+		let nearest = clamp(
+			vec2<i32>(round(fog_position)),
+			vec2<i32>(0),
+			fog_dimensions - vec2<i32>(1),
+		);
+		return textureLoad(volumetric_fog, nearest, 0);
+	}
+	return accumulated / total_weight;
+}
+
+fn apply_volumetric_fog(
+	pixel: vec2<i32>,
+	source_color: vec3<f32>,
+) -> vec3<f32> {
+	if (temporal.fog_color_density.w <= 0.0 || !inside_viewport(pixel)) {
+		return source_color;
+	}
+	let fog = volumetric_fog_at(pixel);
+	return source_color * fog.a + fog.rgb;
 }
 
 fn fast_antialias(pixel: vec2<i32>) -> vec3<f32> {
@@ -1190,6 +1248,25 @@ fn current_neighborhood(pixel: vec2<i32>) -> array<vec3<f32>, 2> {
 }
 
 @compute @workgroup_size(8, 8)
+fn volumetric_fog_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	let dimensions = textureDimensions(volumetric_fog_output);
+	if (invocation.x >= dimensions.x || invocation.y >= dimensions.y) {
+		return;
+	}
+	let full_dimensions = vec2<i32>(textureDimensions(current_depth));
+	let pixel = min(
+		vec2<i32>(invocation.xy) * 2 + vec2<i32>(1),
+		full_dimensions - vec2<i32>(1),
+	);
+	let depth = textureLoad(current_depth, pixel, 0);
+	textureStore(
+		volumetric_fog_output,
+		vec2<i32>(invocation.xy),
+		integrate_volumetric_fog(pixel, depth),
+	);
+}
+
+@compute @workgroup_size(8, 8)
 fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let dimensions = textureDimensions(resolved_color);
 	if (invocation.x >= dimensions.x || invocation.y >= dimensions.y) {
@@ -1199,14 +1276,14 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let ambient_visibility = ambient_visibility_at(pixel);
 	let color = current_color_at(pixel);
 	let depth = textureLoad(current_depth, pixel, 0);
-	let fogged_color = apply_volumetric_fog(pixel, depth, color);
+	let fogged_color = apply_volumetric_fog(pixel, color);
 	var result = fogged_color;
 	if (
 		inside_viewport(pixel) &&
 		temporal.features.x <= 0.5 &&
 		temporal.features.y > 0.5
 	) {
-		result = apply_volumetric_fog(pixel, depth, fast_antialias(pixel));
+		result = apply_volumetric_fog(pixel, fast_antialias(pixel));
 	}
 	if (
 		inside_viewport(pixel) &&

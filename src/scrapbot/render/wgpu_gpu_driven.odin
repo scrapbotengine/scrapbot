@@ -2207,9 +2207,17 @@ wgpu_encode_gpu_instance_expansion :: proc(
 	if renderer == nil || len(renderer.gpu_transform_updates) <= 1 {
 		return ""
 	}
+	timestamps, timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Instance_Expansion)
+	timestamps_ptr: ^wgpu.PassTimestampWrites
+	if timestamps_enabled {
+		timestamps_ptr = &timestamps
+	}
 	pass := wgpu.CommandEncoderBeginComputePass(
 		encoder,
-		&wgpu.ComputePassDescriptor{label = "Scrapbot GPU Transform Expansion Pass"},
+		&wgpu.ComputePassDescriptor {
+			label = "Scrapbot GPU Transform Expansion Pass",
+			timestampWrites = timestamps_ptr,
+		},
 	)
 	if pass == nil {
 		return "failed to begin GPU transform expansion pass"
