@@ -109,4 +109,7 @@ Headless WebGPU can write a framegrab:
 bin/scrapbot run examples/minimal --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png
 ```
 
-On macOS, WGPU framegrabs still need the platform window system because the current Metal bootstrap uses SDL3 internally.
+Without `--framegrab`, the same command remains a real bounded GPU run but skips pixel
+readback. Headless WGPU requests the native adapter directly and creates neither SDL state nor
+an OS presentation surface. The host must still expose a compatible Metal, Vulkan, or D3D12
+adapter; GPU-less CI workers and managed sandboxes that hide devices should use `--backend null`.

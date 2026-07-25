@@ -3,10 +3,11 @@ title: Rendering And Testing
 description: Run the null and WebGPU backends, smoke-test projects, and verify generated framegrabs.
 ---
 
-Scrapbot has two rendering paths today:
+Scrapbot has two renderer backends today:
 
-- `null`: headless renderer for fast smoke tests.
-- `wgpu`: SDL3 plus `wgpu-native` for the complete GPU-driven renderer.
+- `null`: deterministic simulation/render-extraction smoke tests without a GPU.
+- `wgpu`: the complete GPU-driven renderer, using SDL3 only for visible surface runs and a
+  surface-free native adapter for offscreen runs.
 
 The WGPU backend includes:
 
@@ -21,11 +22,31 @@ WGPU retains geometry/material/LOD batches across Transform-only frames. Stable 
 
 Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path. The compute path also disables previous-frame Hi-Z rejection whenever the camera or a persistent instance record changes, then rebuilds the pyramid from the current conservative frustum result.
 
-Run `mise test-gpu` for the bounded GPU acceptance gate. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
+Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
 
 The comparator permits at most one 8-bit channel step in sixteen channels across a complete frame. This covers harmless backend rounding without accepting a visible mismatch.
 
 The gate pauses the dense Cluster Cathedral inside the editor and requires large near-field bounds to remain visible while Hi-Z rejects eligible hidden instances. A separate authored-resource fixture places one instance in each of three GPU-selected LODs and requires the CPU reference to select and render the same result.
+
+For a smaller CI qualification with persistent diagnostics, run:
+
+```sh
+mise test-gpu-offscreen -- --out /tmp/scrapbot-gpu-offscreen
+```
+
+This surface-free gate renders the minimal, GPU-visibility, CPU-reference, and deterministic PBR
+scenes. It checks nonblank output, compute/reference agreement, renderer diagnostics, timestamp
+coherence when supported, and the PBR image contract.
+
+The output directory contains:
+
+- `manifest.json`, with host information plus per-case GPU timings and renderer counters;
+- one complete Scrapbot JSON envelope and stderr log per case;
+- one lossless 1:1 PNG per case.
+
+Artifacts survive failures. CI uploads the complete directory even when a case fails, so inspect
+the manifest before rerunning or guessing from the job log. GPU timings are evidence, not portable
+pass/fail thresholds.
 
 ## Lighting and postprocessing
 
@@ -313,6 +334,21 @@ The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution 
 
 ## Headless WebGPU framegrab
 
+A bounded offscreen GPU run needs neither a window nor a capture:
+
+```sh
+bin/scrapbot run examples/minimal \
+  --backend wgpu \
+  --headless \
+  --frames 120 \
+  --json
+```
+
+This creates no SDL window or presentation surface and allocates no pixel-readback buffer.
+The host must still expose a compatible native GPU adapter.
+
+Add `--framegrab` when pixels are part of the verification:
+
 ```sh
 bin/scrapbot run examples/minimal \
   --backend wgpu \
@@ -352,7 +388,9 @@ The normal Odin suite includes persistence torture harnesses:
 
 These are structural and golden-text assertions, not machine-dependent timing thresholds.
 
-WGPU smoke tests are not part of the default suite because they may need platform window-system access.
+WGPU smoke tests are not part of the default suite because many ordinary CI workers and managed
+sandboxes expose no native graphics adapter. Offscreen runs do not require a window system, but
+they still require Metal, Vulkan, or D3D12 device access.
 
 ## Runtime growth checks
 

@@ -214,6 +214,18 @@ Run_Config :: struct {
 	last_drawable_height: f32,
 }
 
+Renderer_Output_Mode :: enum {
+	Surface,
+	Offscreen,
+}
+
+renderer_output_mode :: proc(config: ^Run_Config) -> Renderer_Output_Mode {
+	if config != nil && config.backend == .WGPU && config.window {
+		return .Surface
+	}
+	return .Offscreen
+}
+
 performance_diagnostics_commit_frame :: proc(
 	accumulator: ^Performance_Diagnostics_Accumulator,
 	stats: ^Render_Stats,
@@ -468,7 +480,7 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 			return renderer_submit(&renderer, world), ""
 		case .WGPU:
 			frame = ecs.render_frame_from_world(world)
-			if run_config.window {
+			if renderer_output_mode(&run_config) == .Surface {
 				window_width, window_height := renderer_window_size(run_config)
 				window_err := platform.open_runtime_window(
 					"Scrapbot WGPU",
@@ -485,24 +497,8 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				frame = ecs.render_frame_from_world(world)
 				return
 			}
-			if run_config.framegrab_path != "" || run_config.framegrab_sequence_directory != "" {
-				window_width, window_height := renderer_window_size(run_config)
-				window_err := platform.open_hidden_runtime_window(
-					"Scrapbot WGPU Headless",
-					window_width,
-					window_height,
-				)
-				if window_err != "" {
-					return frame, window_err
-				}
-				defer platform.close_runtime_window()
-				platform.pump_runtime_window_events()
-
-				err = wgpu_run_headless(world, &run_config)
-				frame = ecs.render_frame_from_world(world)
-				return
-			}
-			err = "wgpu renderer backend currently requires --window, --framegrab, or a framegrab sequence"
+			err = wgpu_run_headless(world, &run_config)
+			frame = ecs.render_frame_from_world(world)
 			return
 	}
 

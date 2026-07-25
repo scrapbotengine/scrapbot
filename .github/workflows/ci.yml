@@ -54,6 +54,17 @@ jobs:
           unzip -q "/tmp/$WGPU_ARCHIVE" -d "$WGPU_LIB_DIR/$WGPU_PACKAGE"
       - name: Test
         run: mise test
+      - name: Offscreen Metal acceptance
+        id: gpu-acceptance
+        run: mise test-gpu-offscreen -- --out "$RUNNER_TEMP/scrapbot-gpu-offscreen"
+      - name: Upload offscreen Metal artifacts
+        if: always() && steps.gpu-acceptance.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-offscreen-macos-${{ runner.arch }}
+          path: ${{ runner.temp }}/scrapbot-gpu-offscreen
+          if-no-files-found: error
+          retention-days: 14
 
   linux:
     runs-on: ubuntu-latest

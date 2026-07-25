@@ -10,6 +10,36 @@ import "core:strings"
 import "core:testing"
 
 @(test)
+test_wgpu_headless_runs_use_offscreen_output_without_requiring_capture :: proc(t: ^testing.T) {
+	config := Run_Config {
+		backend = .WGPU,
+		window = false,
+	}
+	testing.expect_value(t, renderer_output_mode(&config), Renderer_Output_Mode.Offscreen)
+	testing.expect(t, !wgpu_offscreen_capture_requested(&config))
+
+	config.framegrab_path = "/tmp/frame.png"
+	testing.expect_value(t, renderer_output_mode(&config), Renderer_Output_Mode.Offscreen)
+	testing.expect(t, wgpu_offscreen_capture_requested(&config))
+
+	config.framegrab_path = ""
+	config.framegrab_sequence_directory = "/tmp/frames"
+	testing.expect(t, wgpu_offscreen_capture_requested(&config))
+}
+
+@(test)
+test_wgpu_window_runs_are_the_only_surface_output_mode :: proc(t: ^testing.T) {
+	config := Run_Config {
+		backend = .WGPU,
+		window = true,
+	}
+	testing.expect_value(t, renderer_output_mode(&config), Renderer_Output_Mode.Surface)
+
+	config.backend = .Null
+	testing.expect_value(t, renderer_output_mode(&config), Renderer_Output_Mode.Offscreen)
+}
+
+@(test)
 test_world_shaders_light_procedural_skies_through_the_pbr_environment_path :: proc(t: ^testing.T) {
 	shaders := [?]string{WGPU_GPU_DRIVEN_SHADER, WGPU_RENDER_SHADER}
 	for shader in shaders {

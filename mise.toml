@@ -204,6 +204,7 @@ bin/scrapbot check examples/asteroids
 bin/scrapbot check examples/clustered-lights
 node examples/clustered-lights/generate-scene.mjs --check
 node tools/generate_workspace_luau_types.mjs --check
+node --test tools/test_gpu_offscreen.test.mjs
 bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/asteroids --backend null --headless --no-hot-reload --frames 5
@@ -502,6 +503,11 @@ node tools/assert_png_variance.mjs "$CLUSTER_STOPPED_FRAME"
 node tools/assert_png_variance.mjs "$CLUSTER_RESTART_FRAME"
 node tools/assert_png_contract.mjs "$PBR_FRAME" tests/fixtures/visual/pbr-materials.json
 '''
+
+[tasks.test-gpu-offscreen]
+description = "Run the bounded artifact-preserving offscreen WGPU acceptance gate"
+depends = ["build"]
+run = 'node tools/test_gpu_offscreen.mjs "$@"'
 
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"

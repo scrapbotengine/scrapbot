@@ -41,6 +41,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Testing And Diagnostics
 
+- [ ] Extend offscreen WGPU CI coverage from Metal to representative Vulkan and D3D12 adapters.
 - [ ] Apply a baseline `odinfmt` pass and promote formatting audit into the default test gate.
 - [ ] Add OS resident-memory sampling for foreign-library and GPU allocations.
 - [ ] Add persisted baselines and trend reporting for representative simulation, editor, and rendering workloads. Render profiles now have compatibility-checked comparison and resolution-sweep tools; CI history and regression policy remain.

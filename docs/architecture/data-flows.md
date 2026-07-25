@@ -100,8 +100,16 @@ typed ECS/resource mutation
                                       │
        compute cull + shadow + depth/sky/world + camera-selected postprocessing
                                       │
-                       retained UI streams + presentation
+                         retained UI streams
+                           ┌──────────┴──────────┐
+                 SDL/WGPU surface          offscreen texture
+                    + present           + optional readback
 ```
+
+Windowed WGPU owns SDL input and an OS presentation surface. Headless WGPU never creates
+SDL state or a surface: it requests the native adapter directly, submits the same retained
+renderer workload into an offscreen target, and allocates a map-readable buffer only for an
+explicit framegrab or capture sequence.
 
 ### Environment and lights
 

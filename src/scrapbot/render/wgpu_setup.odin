@@ -10,6 +10,15 @@ import "core:time"
 import "vendor:wgpu"
 import wgpu_sdl3 "vendor:wgpu/sdl3glue"
 
+wgpu_copy_callback_message :: proc "contextless" (destination: []u8, message: string) -> int {
+	message_length := len(message)
+	if message_length > len(destination) {
+		message_length = len(destination)
+	}
+	copy(destination[:message_length], message[:message_length])
+	return message_length
+}
+
 wgpu_request_adapter_callback :: proc "c" (
 	status: wgpu.RequestAdapterStatus,
 	adapter: wgpu.Adapter,
@@ -21,7 +30,7 @@ wgpu_request_adapter_callback :: proc "c" (
 	state.completed = true
 	state.status = status
 	state.adapter = adapter
-	state.message = message
+	state.message_length = wgpu_copy_callback_message(state.message[:], message)
 }
 
 wgpu_request_device_callback :: proc "c" (
@@ -35,7 +44,7 @@ wgpu_request_device_callback :: proc "c" (
 	state.completed = true
 	state.status = status
 	state.device = device
-	state.message = message
+	state.message_length = wgpu_copy_callback_message(state.message[:], message)
 }
 
 wgpu_buffer_map_callback :: proc "c" (
@@ -47,7 +56,7 @@ wgpu_buffer_map_callback :: proc "c" (
 	state := cast(^WGPU_Buffer_Map_State)userdata1
 	state.completed = true
 	state.status = status
-	state.message = message
+	state.message_length = wgpu_copy_callback_message(state.message[:], message)
 }
 
 wgpu_wait_for_adapter :: proc(
@@ -158,7 +167,7 @@ wgpu_init_renderer :: proc(
 		},
 	)
 	if !wgpu_wait_for_adapter(renderer.instance, &adapter_state) {
-		message := adapter_state.message
+		message := string(adapter_state.message[:adapter_state.message_length])
 		if message == "" {
 			message = "request timed out"
 		}
@@ -186,7 +195,7 @@ wgpu_init_renderer :: proc(
 		},
 	)
 	if !wgpu_wait_for_device(renderer.instance, &device_state) {
-		message := device_state.message
+		message := string(device_state.message[:device_state.message_length])
 		if message == "" {
 			message = "request timed out"
 		}

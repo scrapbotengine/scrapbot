@@ -18,15 +18,15 @@
 | `src/scrapbot/extension/` | Idiomatic Odin wrapper for extension authors. | Typed descriptors/payloads over the raw ABI. |
 | `src/scrapbot/native/` | Native extension building, loading, registration, callbacks, UI bridging. | Host validation, dynamic-library lifetime, and per-system command buffers. |
 | `src/scrapbot/ui/` | Retained ECS UI, interaction, editor ECS composition, runtime component-payload inspection/bindings, diagnostics, fonts. | Generic mechanics stay public; editor meaning stays in bindings/orchestration. Component cards may not be hand-authored per type. |
-| `src/scrapbot/render/` | Backend interface, null backend, WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess, and bounded profile collection. | Backend-neutral inputs; WGPU owns GPU state, pooled adaptive viewport targets, isolated resource-preview scenes, caches, and tagged asynchronous timing readbacks. |
-| `src/scrapbot/platform/` | SDL window/input/cursor integration. | OS events are translated into engine-owned input snapshots. |
+| `src/scrapbot/render/` | Backend interface, null backend, surface/offscreen WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess, and bounded profile collection. | Backend-neutral inputs; WGPU owns GPU state, pooled adaptive viewport targets, isolated resource-preview scenes, caches, optional capture readback, and tagged asynchronous timing readbacks. |
+| `src/scrapbot/platform/` | SDL window/input/cursor integration for visible runs. | OS events are translated into engine-owned input snapshots; offscreen WGPU does not initialize this boundary. |
 | `src/scrapbot/hot_reload.odin` | Project source/product change detection and safe runtime replacement. | Failed reload retains last-good runtime/world. |
 | `src/scrapbot/playback.odin` | Play/Stop baseline capture and restoration. | Restores ECS/resource authoring state without reloading code. |
 | `src/scrapbot/scene_*.odin`, `project_save.odin` | Scene serialization, semantic/structural patching, project-wide persistence. | Stable UUID targeting and recoverable multi-file commits. |
 | `src/scrapbot/package.odin` | Packaged-project product assembly. | Separates source state from build products. |
 | `docs/adr/`, `docs/fdr/`, `docs/architecture/` | Decisions, feature contracts, and current source map. | Keep rationale, behavior, and inventory distinct. |
 | `docs-website/` | Public user documentation. | Canonical user-facing APIs and workflows. |
-| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs` | Agent-oriented render-profile timing/workload summary, compatibility comparison, and bounded pixel-cost sweeps. | Consume profile artifacts after runs; never participate in ordinary engine frames. |
+| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs`, `tools/test_gpu_offscreen.mjs` | Agent-oriented render-profile analysis, bounded pixel-cost sweeps, and artifact-preserving offscreen GPU acceptance. | Consume or orchestrate bounded renderer runs; never participate in ordinary engine frames. |
 
 ## Dependency direction
 

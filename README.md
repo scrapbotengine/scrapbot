@@ -26,7 +26,7 @@ Scrapbot is a small Odin CLI and runtime with an embedded Luau scripting layer, 
 - `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>` with the game executable, project data, and native extension artifacts.
 - `scrapbot run [path] [options]` loads the scene into a native ECS world, executes `scripts/main.luau`, runs native and script systems, and renders through the selected backend. Ordinary development is simply `scrapbot run <path>` (windowed WGPU with hot reload). Options include `--backend null|wgpu`, `--window|--headless`, `--hot-reload|--no-hot-reload`, `--editor`, `--frames n`, `--framegrab out.png`, `--scheduler-trace`, `--runtime-stats`, `--ui-script`, `--ui-dump`, and `--cpu-culling` (deterministic CPU reference path for GPU culling).
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
-- Every command emits structured `--json` output with stable diagnostic codes — the automation contract for agents. Headless runs support final-frame PNG framegrabs and semantic UI scripting: `--ui-script` targets reconciled controls by UUID, name, or text, replays interactions, and asserts state; `--ui-dump` exposes the full logical and screen-space UI tree as JSON.
+- Every command emits structured `--json` output with stable diagnostic codes — the automation contract for agents. Headless WGPU runs create a device and offscreen target without SDL or an OS presentation surface, can execute without a pixel readback, and optionally support final-frame PNG framegrabs and semantic UI scripting. `--ui-script` targets reconciled controls by UUID, name, or text, replays interactions, and asserts state; `--ui-dump` exposes the full logical and screen-space UI tree as JSON.
 
 During development, use `mise build` to compile the optimized CLI and `mise scrapbot -- [args...]` to compile and run it. `mise build-dev` emits a fast `-o:minimal` binary; `mise benchmark-profiles` compares build profiles on a bounded run. Run `mise setup` once after cloning to install pinned tools, initialize source dependencies, download checksum-verified external fixtures, and configure the tracked Git hooks (`mise setup-assets` / `mise check-assets` manage only the fixtures).
 
@@ -40,7 +40,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 ### Rendering
 
-- Pluggable backends: a deterministic `null` backend for headless smoke tests, and a full `wgpu` backend.
+- Pluggable backends: a deterministic `null` backend for simulation smoke tests, and a full `wgpu` backend with independent surface and offscreen execution.
 - GPU-driven pipeline: persistent slot-addressed instance storage, dirty-only transform uploads, a growing retained draw database, compute camera/shadow frustum culling, depth prepass with adaptive Hi-Z occlusion, screen-radius LOD selection, and indexed indirect draws with asynchronous GPU timing readback.
 - HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, imported image-based lighting with independent diffuse/specular strength or roughness-aware analytic environment lighting from a procedural haze sky via one `scrapbot.world_environment` component, authored global height/distance fog with shadowed directional scattering, half-resolution thickness-aware visibility-bitmask ambient occlusion over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
 - Per-camera render-feature policy: TAA, fast AA, AO, and bloom are authored booleans on `scrapbot.camera`; disabled effects skip their GPU work.
@@ -77,6 +77,11 @@ Example projects live in [`examples/`](examples/):
 ### Testing
 
 Run the full local suite with `mise test` (includes a 2,000-frame lifecycle CPU/RAM growth gate). `mise test-soak` runs the extended 10,000-frame check; `mise test-sanitize` runs the Linux AddressSanitizer lane. CI covers macOS, Linux, and Windows, plus the ASan lane on Linux.
+
+`mise test-gpu-offscreen` runs the bounded surface-free WGPU acceptance gate. It preserves
+structured diagnostics, GPU timings/counters, and 1:1 PNGs under
+`$TMPDIR/scrapbot-gpu-offscreen` by default. Metal CI uploads the complete bundle even when the
+gate fails.
 
 ## Features / Roadmap
 
@@ -283,7 +288,7 @@ Run the full local suite with `mise test` (includes a 2,000-frame lifecycle CPU/
   - [x] JSON command output
 - Verification
   - [ ] Gameplay test fixtures
-  - [ ] Offscreen render verification
+  - [x] Artifact-preserving offscreen WGPU acceptance gate
   - [ ] Editor screenshot tests
   - [x] Compile-time-gated world-integrity validation
   - [x] Seeded editor lifecycle state-machine tests

@@ -372,7 +372,8 @@ WGPU_Request_Adapter_State :: struct {
 	completed: bool,
 	status: wgpu.RequestAdapterStatus,
 	adapter: wgpu.Adapter,
-	message: string,
+	message: [512]u8,
+	message_length: int,
 }
 
 wgpu_material_cache_slot :: proc(
@@ -415,13 +416,15 @@ WGPU_Request_Device_State :: struct {
 	completed: bool,
 	status: wgpu.RequestDeviceStatus,
 	device: wgpu.Device,
-	message: string,
+	message: [512]u8,
+	message_length: int,
 }
 
 WGPU_Buffer_Map_State :: struct {
 	completed: bool,
 	status: wgpu.MapAsyncStatus,
-	message: string,
+	message: [512]u8,
+	message_length: int,
 }
 
 WGPU_Renderer :: struct {
@@ -3052,7 +3055,7 @@ wgpu_write_framegrab_readback :: proc(
 		},
 	)
 	if !wgpu_wait_for_buffer_map(renderer.instance, &map_state) {
-		message := map_state.message
+		message := string(map_state.message[:map_state.message_length])
 		if message == "" {
 			message = "request timed out"
 		}
@@ -3075,8 +3078,15 @@ wgpu_write_framegrab_readback :: proc(
 	return write_png_rgba8(path, pixels, capture_width, capture_height)
 }
 
+wgpu_offscreen_capture_requested :: proc(config: ^Run_Config) -> bool {
+	if config == nil {
+		return false
+	}
+	return config.framegrab_path != "" || config.framegrab_sequence_directory != ""
+}
+
 wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
-	renderer, init_err := wgpu_init_renderer(true, config.ui_state)
+	renderer, init_err := wgpu_init_renderer(false, config.ui_state)
 	defer wgpu_destroy_renderer(&renderer)
 	if init_err != "" {
 		return init_err
@@ -3136,18 +3146,21 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	defer wgpu.TextureViewRelease(depth_view)
 	defer wgpu.TextureRelease(depth_texture)
 
-	readback := wgpu.DeviceCreateBuffer(
-		renderer.device,
-		&wgpu.BufferDescriptor {
-			label = "Scrapbot Headless Readback Buffer",
-			usage = {.CopyDst, .MapRead},
-			size = readback_size,
-		},
-	)
-	if readback == nil {
-		return "failed to create wgpu headless readback buffer"
+	readback: wgpu.Buffer
+	if wgpu_offscreen_capture_requested(config) {
+		readback = wgpu.DeviceCreateBuffer(
+			renderer.device,
+			&wgpu.BufferDescriptor {
+				label = "Scrapbot Headless Readback Buffer",
+				usage = {.CopyDst, .MapRead},
+				size = readback_size,
+			},
+		)
+		if readback == nil {
+			return "failed to create wgpu headless readback buffer"
+		}
+		defer wgpu.BufferRelease(readback)
 	}
-	defer wgpu.BufferRelease(readback)
 
 	frame_count := config.max_frames
 	if frame_count == 0 {

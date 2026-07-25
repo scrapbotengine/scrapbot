@@ -33,14 +33,20 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
 - Structured run results include renderer counters for GPU-driven mode, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, frustum/occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
-- The `wgpu` backend can also render a losslessly compressed headless final-frame PNG with `--framegrab`.
+- Headless `wgpu` creates an adapter and device without SDL or an OS presentation surface, renders into an offscreen texture, and can run bounded GPU workloads without reading pixels back.
+- The offscreen path can optionally render a losslessly compressed final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
 - `scrapbot profile` drives the same headless WGPU path at the project resolution or an explicit override. It collects tagged per-frame timestamp results without mapping render-target pixels, then optionally repeats the run to capture a narrow lossless sequence.
 - WGPU sizes the live world and project UI to the complete available viewport, deriving camera aspect from its dimensions, then paints engine chrome in a separate overlay pass.
 - Visible WGPU windows continue stepping and presenting frames during native live resize, reconfiguring the surface to each exposed pixel size instead of waiting for the drag to end.
 - Visible windows use the project's logical startup size and request a high-pixel-density drawable independently. Headless WGPU keeps its deterministic 1280×720 offscreen target.
-- The `wgpu` backend currently requires a visible window or a framegrab target. Source-project runs provide the window by default.
-- Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes, while headless `0` captures one frame.
+- Source-project runs provide a visible WGPU window by default. `--headless` selects the offscreen path whether or not a framegrab is requested.
+- Renderer runs can be limited with `--frames`; windowed `0` means run until the window closes,
+  while headless `0` renders one frame.
+- `mise test-gpu-offscreen` qualifies the surface-free path with a bounded Metal CI gate. It
+  preserves one structured envelope, stderr log, and 1:1 PNG per case plus a timing/counter
+  manifest; failures keep partial artifacts. Absolute GPU times remain diagnostic rather than
+  portable thresholds.
 - Users can request a short-lived SDL3 window with the null backend for platform smoke checks.
 - Future backends should not require scene files or gameplay code to know backend-specific GPU handles.
 
@@ -72,9 +78,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 
 ### 5. Keep headless framegrabs on the same render path
 
-**Decision:** Headless WGPU renders the same ECS cube pipeline into an offscreen texture, reads the final frame back to CPU memory, and writes a losslessly compressed full-frame PNG or explicit 1:1 pixel crop.
+**Decision:** Headless WGPU requests a surface-free adapter/device, renders the same ECS pipeline into an offscreen texture, and allocates no readback buffer unless a framegrab or capture sequence is requested. An optional readback writes a losslessly compressed full-frame PNG or explicit 1:1 pixel crop.
 **Why:** This gives agents and tests a visual artifact that exercises the same scene-driven renderer path as the windowed backend while allowing focused inspection without shipping unrelated pixels through an agent conversation.
-**Tradeoff:** On macOS, the current implementation creates a hidden SDL3 window for Metal adapter bootstrap even though the captured frame is rendered offscreen.
+**Tradeoff:** Offscreen WGPU still requires the host or sandbox to expose a compatible native graphics adapter. GPU-less workers and managed macOS sandboxes that hide Metal devices must use the null backend or a GPU-enabled runner.
 
 ### 6. Use ECS renderable queries as the first backend boundary
 

@@ -115,13 +115,13 @@ Options:
 | `--backend wgpu` | Explicitly use the default WebGPU renderer. |
 | `--cpu-culling` | Keep WGPU storage and indirect drawing, but compute camera/shadow visibility through the deterministic CPU reference path. |
 | `--window` | Explicitly open the default platform window. |
-| `--headless` | Run without a visible window; select the null backend or request a WGPU framegrab. |
+| `--headless` | Run without SDL or a presentation surface. WGPU renders to an offscreen texture even when no framegrab is requested. |
 | `--editor` | Start with the editor shell visible. `Cmd/Ctrl+E` toggles it in a visible window. |
 | `--hot-reload` | Explicitly enable the default project-file, script, asset, and native-extension polling. |
 | `--no-hot-reload` | Disable source-project hot reload for deterministic runs. |
 | `--scheduler-trace` | Print native worker count, parallel stage count, and maximum stage width. |
 | `--runtime-stats` | Collect early/late engine-frame timing through render preparation, engine-allocator bytes, and ECS storage checkpoints. Windowed runs also require nonzero `--frames`. |
-| `--frames n` | Limit renderer frames. |
+| `--frames n` | Limit renderer frames. A zero value renders one headless frame or runs a window until close. |
 | `--framegrab out.png` | Write the final headless WGPU frame to a PNG. |
 | `--framegrab-region x,y,width,height` | Export only this top-left-origin 1:1 pixel region; requires `--framegrab`. |
 | `--ui-script actions.json` | Replay a versioned semantic UI diagnostic script. A zero `--frames` value becomes a 240-frame safety bound. |

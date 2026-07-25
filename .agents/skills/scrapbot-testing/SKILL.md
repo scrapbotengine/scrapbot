@@ -168,13 +168,37 @@ Use `--frames` for automated smoke checks so the command returns. Without `--fra
 
 ## Headless WGPU Framegrabs
 
-Headless framegrab renders the same resource-backed ECS path into an offscreen texture, reads back the final frame, and writes a PNG:
+Headless WGPU requests a surface-free native adapter and renders the same resource-backed ECS path into an offscreen texture. A run without `--framegrab` performs no pixel readback; adding `--framegrab` reads the final frame and writes a PNG. This path creates neither SDL state nor an OS presentation surface, but the host or sandbox must still expose a native graphics adapter:
 
 After changing instance storage, batching, culling, shadows, depth/Hi-Z, geometry LODs, indirect drawing, GPU timestamps/counters, postprocessing, UI geometry retention, or WGPU bind layouts, run `mise test-gpu`. It exercises a greater-than-64-batch scene with more than 256 instances, proves real Hi-Z rejection, validates asynchronous timing/visibility diagnostics and retained UI uploads, and compares adjacent phases of a static TAA view with a PSNR floor. Compute/CPU-reference captures must otherwise match exactly or differ only by a bounded number of one-value 8-bit channels. The gate also loads a UUID-backed `scrapbot.geometry_lod` fixture and requires one visible instance in each of LOD 0, 1, and 2.
+
+Use the smaller artifact-preserving acceptance gate for CI qualification and renderer orientation:
+
+```sh
+mise test-gpu-offscreen -- --out /tmp/scrapbot-gpu-offscreen
+```
+
+It renders `examples/minimal`, compute- and CPU-culled variants of
+`tests/fixtures/gpu-driven`, and `examples/pbr-materials`. The gate requires nonblank PNGs,
+bounded compute/reference agreement, coherent structured renderer diagnostics, and the PBR visual
+contract. It does not impose absolute GPU timing limits.
+
+The output directory is the debugging contract:
+
+- `manifest.json` summarizes the host, outcome, GPU timings, workload counters, and artifact names.
+- Each case keeps its complete Scrapbot JSON envelope, stderr log, and 1:1 PNG.
+- A failed process still writes a failed manifest and preserves every artifact produced before the
+  failure.
+
+CI must upload this directory with `if: always()`. Read the manifest first, then inspect the
+smallest relevant PNG or stderr log. Do not rerun a failed gate blindly when its artifacts already
+identify adapter acquisition, structured-contract, pixel-variance, reference-diff, or PBR-contract
+failure.
 
 The same task imports and renders `tests/fixtures/gltf-materials`, whose back-facing triangle uses a partially transparent base-color texture, glTF `MASK`, an explicit cutoff, and `doubleSided`. Preserve this fixture when changing imported material products, material uniforms/bind groups, raster culling, depth prepasses, or shadow pipelines.
 
 ```sh
+bin/scrapbot run examples/minimal --backend wgpu --headless --frames 20 --json
 bin/scrapbot run examples/minimal --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-framegrab.png
 bin/scrapbot run examples/ecs-showcase --backend wgpu --headless --frames 20 --framegrab /tmp/scrapbot-showcase.png
 bin/scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png
@@ -231,7 +255,10 @@ bin/scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 \
   --framegrab-region 40,40,560,600
 ```
 
-On macOS, this still creates a hidden SDL3 window internally for Metal adapter bootstrap. It therefore needs the same window-system approval as visible SDL runs. Do not add this command to the default `mise test` unless the environment can run it without GUI approval.
+On macOS, this does not initialize SDL or WindowServer. A managed sandbox may still hide every
+Metal adapter; the structured failure then reports that no suitable graphics adapter exists.
+Do not claim GPU verification from a null-backend fallback, and do not add WGPU commands to the
+default `mise test` until its workers expose a supported adapter.
 
 Verify the generated artifact:
 
@@ -349,6 +376,8 @@ Do not weaken project atomicity to per-file atomic renames. Production editor an
 - Prefer `mise test` over reconstructing the suite manually.
 - Prefer versioned `--json` output over parsing human-readable CLI output.
 - Keep GPU commands out of the default suite while they require GUI/window-system approval.
+- Keep `mise test-gpu-offscreen` separate from the default suite because it requires a real adapter;
+  its pure manifest/result validation tests belong in `mise test`.
 - Use `/tmp` for generated framegrabs and temporary test artifacts unless the user asks to keep them.
 - Prefer structured diagnostics plus `file`/size checks before loading image pixels into the conversation.
 - Preserve agent choice: use a full frame for composition, a 1:1 region for detail, and never downsample the only verification artifact.
