@@ -1854,3 +1854,42 @@ test_profile_compute_workload_reports_dispatch_upper_bounds :: proc(t: ^testing.
 		Profile_Pass_Workload{},
 	)
 }
+
+@(test)
+test_render_target_layout_scales_world_grid_but_preserves_output_viewport :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.resolution_scale = 0.5
+	output_viewport := ui.Rect {
+		x = 300,
+		y = 80,
+		width = 1320,
+		height = 940,
+	}
+	layout := wgpu_render_target_layout(1920, 1080, output_viewport, camera)
+	testing.expect_value(t, layout.output_width, u32(1920))
+	testing.expect_value(t, layout.output_height, u32(1080))
+	testing.expect_value(t, layout.render_width, u32(960))
+	testing.expect_value(t, layout.render_height, u32(540))
+	testing.expect_value(t, layout.output_viewport, output_viewport)
+	testing.expect_value(
+		t,
+		layout.render_viewport,
+		ui.Rect{x = 150, y = 40, width = 660, height = 470},
+	)
+}
+
+@(test)
+test_render_target_layout_defaults_to_native_resolution :: proc(t: ^testing.T) {
+	camera: shared.Camera_Component
+	output_viewport := ui.Rect {
+		x = 16.25,
+		y = 24.5,
+		width = 639.5,
+		height = 359.25,
+	}
+	layout := wgpu_render_target_layout(800, 450, output_viewport, camera)
+	testing.expect_value(t, layout.render_width, u32(800))
+	testing.expect_value(t, layout.render_height, u32(450))
+	testing.expect_value(t, layout.render_viewport, output_viewport)
+	testing.expect_value(t, layout.resolution_scale, f32(1))
+}

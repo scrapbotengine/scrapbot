@@ -967,6 +967,7 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 
 wgpu_release_post_process :: proc(renderer: ^WGPU_Renderer) {
 	wgpu_release_post_targets(renderer)
+	wgpu_release_render_depth(renderer)
 	if renderer.post_sampler != nil {
 		wgpu.SamplerRelease(renderer.post_sampler)
 	}
@@ -1486,6 +1487,7 @@ wgpu_encode_fullscreen_pass :: proc(
 	bind_group: wgpu.BindGroup,
 	label: string,
 	timestamp_phase: WGPU_GPU_Timestamp_Phase,
+	output_width, output_height: u32,
 ) -> string {
 	attachment := wgpu.RenderPassColorAttachment {
 		view = view,
@@ -1511,6 +1513,8 @@ wgpu_encode_fullscreen_pass :: proc(
 	if pass == nil {
 		return "failed to begin post-process pass"
 	}
+	wgpu.RenderPassEncoderSetViewport(pass, 0, 0, f32(output_width), f32(output_height), 0, 1)
+	wgpu.RenderPassEncoderSetScissorRect(pass, 0, 0, output_width, output_height)
 	wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, bind_group)
 	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
@@ -1525,6 +1529,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	output_view: wgpu.TextureView,
 	depth_view: wgpu.TextureView,
 	width, height: u32,
+	output_width, output_height: u32,
 	camera: shared.Camera_Component,
 	has_camera: bool,
 	world: ^shared.World,
@@ -1892,6 +1897,8 @@ wgpu_encode_bloom_and_composite :: proc(
 		renderer.composite_bind_groups[temporal_output_index],
 		"Scrapbot HDR Composite Pass",
 		.Composite,
+		output_width,
+		output_height,
 	)
 	if err != "" {
 		return err

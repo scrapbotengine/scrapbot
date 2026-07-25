@@ -744,6 +744,10 @@ WGPU_Renderer :: struct {
 	post_depth_view: wgpu.TextureView,
 	post_width: u32,
 	post_height: u32,
+	render_depth_texture: wgpu.Texture,
+	render_depth_view: wgpu.TextureView,
+	render_depth_width: u32,
+	render_depth_height: u32,
 	geometry_cache: [dynamic]WGPU_Geometry_Cache,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
 	material_cache: [dynamic]WGPU_Material_Cache,
@@ -781,6 +785,107 @@ WGPU_UI_Stream_Key :: struct {
 	viewport: ui.Rect,
 }
 
+WGPU_Render_Target_Layout :: struct {
+	output_width: u32,
+	output_height: u32,
+	render_width: u32,
+	render_height: u32,
+	output_viewport: ui.Rect,
+	render_viewport: ui.Rect,
+	resolution_scale: f32,
+}
+
+wgpu_render_target_layout :: proc(
+	output_width, output_height: u32,
+	output_viewport: ui.Rect,
+	camera: shared.Camera_Component,
+) -> WGPU_Render_Target_Layout {
+	scale := shared.camera_resolution_scale(camera)
+	render_width := max(u32(1), u32(math.round(f32(output_width) * scale)))
+	render_height := max(u32(1), u32(math.round(f32(output_height) * scale)))
+	if render_width == output_width && render_height == output_height {
+		return {
+			output_width = output_width,
+			output_height = output_height,
+			render_width = render_width,
+			render_height = render_height,
+			output_viewport = output_viewport,
+			render_viewport = output_viewport,
+			resolution_scale = scale,
+		}
+	}
+	scale_x := f32(render_width) / f32(max(output_width, u32(1)))
+	scale_y := f32(render_height) / f32(max(output_height, u32(1)))
+	x0 := clamp(math.floor(output_viewport.x * scale_x), 0, f32(render_width - 1))
+	y0 := clamp(math.floor(output_viewport.y * scale_y), 0, f32(render_height - 1))
+	x1 := clamp(
+		math.ceil((output_viewport.x + output_viewport.width) * scale_x),
+		x0 + 1,
+		f32(render_width),
+	)
+	y1 := clamp(
+		math.ceil((output_viewport.y + output_viewport.height) * scale_y),
+		y0 + 1,
+		f32(render_height),
+	)
+	return {
+		output_width = output_width,
+		output_height = output_height,
+		render_width = render_width,
+		render_height = render_height,
+		output_viewport = output_viewport,
+		render_viewport = {x = x0, y = y0, width = x1 - x0, height = y1 - y0},
+		resolution_scale = scale,
+	}
+}
+
+wgpu_release_render_depth :: proc(renderer: ^WGPU_Renderer) {
+	if renderer.render_depth_view != nil {
+		wgpu.TextureViewRelease(renderer.render_depth_view)
+		renderer.render_depth_view = nil
+	}
+	if renderer.render_depth_texture != nil {
+		wgpu.TextureRelease(renderer.render_depth_texture)
+		renderer.render_depth_texture = nil
+	}
+	renderer.render_depth_width = 0
+	renderer.render_depth_height = 0
+}
+
+wgpu_render_depth_view :: proc(
+	renderer: ^WGPU_Renderer,
+	output_depth_view: wgpu.TextureView,
+	output_width, output_height: u32,
+	render_width, render_height: u32,
+) -> (
+	wgpu.TextureView,
+	string,
+) {
+	if render_width == output_width && render_height == output_height {
+		if renderer.render_depth_view != nil {
+			wgpu_release_post_targets(renderer)
+			wgpu_release_render_depth(renderer)
+		}
+		return output_depth_view, ""
+	}
+	if renderer.render_depth_view != nil &&
+	   renderer.render_depth_width == render_width &&
+	   renderer.render_depth_height == render_height {
+		return renderer.render_depth_view, ""
+	}
+	wgpu_release_post_targets(renderer)
+	wgpu_release_render_depth(renderer)
+	texture, view, err := wgpu_create_depth_texture(renderer, render_width, render_height)
+	if err != "" {
+		return nil, err
+	}
+	renderer.render_depth_texture = texture
+	renderer.render_depth_view = view
+	renderer.render_depth_width = render_width
+	renderer.render_depth_height = render_height
+	return view, ""
+}
+
 wgpu_profile_compute_workload :: proc(
 	enabled: bool,
 	width, height, passes, samples_per_pixel: u32,
@@ -805,6 +910,7 @@ wgpu_profile_workload :: proc(
 	world: ^World,
 	viewport: ui.Rect,
 	width, height: u32,
+	output_width, output_height: u32,
 	cluster_dispatched: bool,
 	stats: ^Render_Stats,
 	render_feature_overrides: Render_Feature_Overrides,
@@ -991,11 +1097,17 @@ wgpu_profile_workload :: proc(
 			workgroups = 1 if camera.automatic_exposure else 0,
 			invocations = 256 if camera.automatic_exposure else 0,
 		},
-		composite = {enabled = true, width = width, height = height, passes = 1, draws = 1},
+		composite = {
+			enabled = true,
+			width = output_width,
+			height = output_height,
+			passes = 1,
+			draws = 1,
+		},
 		ui = {
 			enabled = ui_draws > 0,
-			width = width,
-			height = height,
+			width = output_width,
+			height = output_height,
 			passes = 1,
 			draws = ui_draws,
 		},
@@ -1934,14 +2046,15 @@ wgpu_encode_render_pass :: proc(
 	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
 	color_view: wgpu.TextureView,
-	depth_view: wgpu.TextureView,
+	output_depth_view: wgpu.TextureView,
+	render_depth_view: wgpu.TextureView,
 	batches: []WGPU_Draw_Batch,
 	registry: ^resources.Registry,
 	world: ^World,
 	ui_state: ^ui.State,
 	config: ^Run_Config,
 	label: string,
-	target_width, target_height: u32,
+	layout: WGPU_Render_Target_Layout,
 	delta_time: f32,
 ) -> string {
 	world_start := time.tick_now()
@@ -1949,12 +2062,15 @@ wgpu_encode_render_pass :: proc(
 	if err := wgpu_sync_environment(renderer, registry, &renderer.render_list); err != "" {
 		return err
 	}
-	if err := wgpu_ensure_post_targets(renderer, target_width, target_height, depth_view);
-	   err != "" {
+	if err := wgpu_ensure_post_targets(
+		renderer,
+		layout.render_width,
+		layout.render_height,
+		render_depth_view,
+	); err != "" {
 		return err
 	}
-	if err := wgpu_encode_sky_pass(renderer, encoder, ui_state, target_width, target_height);
-	   err != "" {
+	if err := wgpu_encode_sky_pass(renderer, encoder, layout.render_viewport); err != "" {
 		return err
 	}
 	color_attachments := [3]wgpu.RenderPassColorAttachment {
@@ -1980,7 +2096,7 @@ wgpu_encode_render_pass :: proc(
 		},
 	}
 	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
-		view = depth_view,
+		view = render_depth_view,
 		depthLoadOp = .Load,
 		depthStoreOp = .Store,
 		depthClearValue = 1.0,
@@ -2007,9 +2123,7 @@ wgpu_encode_render_pass :: proc(
 	}
 	defer wgpu.RenderPassEncoderRelease(render_pass)
 
-	drawable_width := f32(target_width)
-	drawable_height := f32(target_height)
-	viewport := ui.editor_viewport(ui_state, drawable_width, drawable_height)
+	viewport := layout.render_viewport
 	wgpu.RenderPassEncoderSetViewport(
 		render_pass,
 		viewport.x,
@@ -2068,7 +2182,7 @@ wgpu_encode_render_pass :: proc(
 	wgpu.RenderPassEncoderEnd(render_pass)
 	record_system_profile_phase(config, .Render_World, world_start)
 	if renderer.gpu_hiz_requested {
-		if err := wgpu_encode_hiz_pyramid(renderer, encoder, depth_view); err != "" {
+		if err := wgpu_encode_hiz_pyramid(renderer, encoder, render_depth_view); err != "" {
 			return err
 		}
 	} else {
@@ -2090,9 +2204,11 @@ wgpu_encode_render_pass :: proc(
 		renderer,
 		encoder,
 		color_view,
-		depth_view,
-		target_width,
-		target_height,
+		render_depth_view,
+		layout.render_width,
+		layout.render_height,
+		layout.output_width,
+		layout.output_height,
 		renderer.render_list.camera.camera,
 		renderer.render_list.has_camera,
 		world,
@@ -2111,7 +2227,7 @@ wgpu_encode_render_pass :: proc(
 			storeOp = .Store,
 		}
 		ui_depth_attachment := wgpu.RenderPassDepthStencilAttachment {
-			view = depth_view,
+			view = output_depth_view,
 			depthLoadOp = .Load,
 			depthStoreOp = .Store,
 			stencilLoadOp = .Undefined,
@@ -2134,9 +2250,9 @@ wgpu_encode_render_pass :: proc(
 		)
 		if ui_pass == nil { return "failed to begin UI overlay render pass" }
 		defer wgpu.RenderPassEncoderRelease(ui_pass)
-		drawable_width := f32(target_width)
-		drawable_height := f32(target_height)
-		viewport := ui.editor_viewport(ui_state, drawable_width, drawable_height)
+		drawable_width := f32(layout.output_width)
+		drawable_height := f32(layout.output_height)
+		viewport := layout.output_viewport
 		project_command_count := clamp(ui_state.editor_paint_start, 0, ui_state.paint_count)
 		editor_command_end := clamp(
 			ui_state.editor_paint_end,
@@ -2145,8 +2261,8 @@ wgpu_encode_render_pass :: proc(
 		)
 		project_key := wgpu_ui_stream_key(
 			ui_state.project_paint_output_revision,
-			target_width,
-			target_height,
+			layout.output_width,
+			layout.output_height,
 			viewport,
 		)
 		if !renderer.ui_project_stream_key_valid || renderer.ui_project_stream_key != project_key {
@@ -2174,8 +2290,8 @@ wgpu_encode_render_pass :: proc(
 		}
 		editor_key := wgpu_ui_stream_key(
 			ui_state.editor_paint_output_revision,
-			target_width,
-			target_height,
+			layout.output_width,
+			layout.output_height,
 		)
 		if !renderer.ui_editor_stream_key_valid || renderer.ui_editor_stream_key != editor_key {
 			stream_changed :=
@@ -2203,8 +2319,8 @@ wgpu_encode_render_pass :: proc(
 		}
 		overlay_key := wgpu_ui_stream_key(
 			ui_state.editor_overlay_paint_output_revision,
-			target_width,
-			target_height,
+			layout.output_width,
+			layout.output_height,
 		)
 		if !renderer.ui_overlay_stream_key_valid || renderer.ui_overlay_stream_key != overlay_key {
 			stream_changed :=
@@ -2231,7 +2347,13 @@ wgpu_encode_render_pass :: proc(
 			}
 		}
 		wgpu.RenderPassEncoderSetViewport(ui_pass, 0, 0, drawable_width, drawable_height, 0, 1)
-		wgpu.RenderPassEncoderSetScissorRect(ui_pass, 0, 0, target_width, target_height)
+		wgpu.RenderPassEncoderSetScissorRect(
+			ui_pass,
+			0,
+			0,
+			layout.output_width,
+			layout.output_height,
+		)
 		wgpu.RenderPassEncoderSetPipeline(ui_pass, renderer.ui_pipeline)
 		wgpu.RenderPassEncoderSetBindGroup(ui_pass, 0, renderer.ui_bind_group)
 		project_vertex_count := u32(len(renderer.ui_project_vertices))
@@ -2254,7 +2376,13 @@ wgpu_encode_render_pass :: proc(
 		}
 		editor_vertex_count := u32(len(renderer.ui_editor_vertices))
 		if ui_state.editor_visible && editor_vertex_count > 0 {
-			wgpu.RenderPassEncoderSetScissorRect(ui_pass, 0, 0, target_width, target_height)
+			wgpu.RenderPassEncoderSetScissorRect(
+				ui_pass,
+				0,
+				0,
+				layout.output_width,
+				layout.output_height,
+			)
 			wgpu.RenderPassEncoderSetVertexBuffer(
 				ui_pass,
 				0,
@@ -2301,8 +2429,7 @@ wgpu_encode_depth_prepass :: proc(
 	depth_view: wgpu.TextureView,
 	batches: []WGPU_Draw_Batch,
 	registry: ^resources.Registry,
-	ui_state: ^ui.State,
-	target_width, target_height: u32,
+	viewport: ui.Rect,
 ) -> string {
 	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
 		view = depth_view,
@@ -2329,7 +2456,6 @@ wgpu_encode_depth_prepass :: proc(
 		return "failed to begin depth prepass"
 	}
 	defer wgpu.RenderPassEncoderRelease(pass)
-	viewport := ui.editor_viewport(ui_state, f32(target_width), f32(target_height))
 	wgpu.RenderPassEncoderSetViewport(
 		pass,
 		viewport.x,
@@ -2616,13 +2742,29 @@ wgpu_draw_frame :: proc(
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
 	viewport := ui.editor_viewport(config.ui_state, f32(renderer.width), f32(renderer.height))
+	camera := shared.camera_defaults()
+	if renderer.render_list.has_camera {
+		camera = renderer.render_list.camera.camera
+	}
+	layout := wgpu_render_target_layout(renderer.width, renderer.height, viewport, camera)
+	render_depth_view, render_depth_err := wgpu_render_depth_view(
+		renderer,
+		renderer.depth_view,
+		renderer.width,
+		renderer.height,
+		layout.render_width,
+		layout.render_height,
+	)
+	if render_depth_err != "" {
+		return false, false, render_depth_err
+	}
 	batches, batch_count, prepare_err := wgpu_prepare_gpu_draw_batches(
 		renderer,
 		&renderer.render_list,
 		config.resource_registry,
-		viewport,
-		renderer.width,
-		renderer.height,
+		layout.render_viewport,
+		layout.render_width,
+		layout.render_height,
 		config.cpu_culling,
 	)
 	if prepare_err != "" {
@@ -2634,8 +2776,8 @@ wgpu_draw_frame :: proc(
 		wgpu_prepare_cpu_culling(
 			renderer,
 			&renderer.render_list,
-			u32(viewport.width),
-			u32(viewport.height),
+			u32(layout.render_viewport.width),
+			u32(layout.render_viewport.height),
 		)
 	}
 	if config.stats != nil {
@@ -2703,12 +2845,10 @@ wgpu_draw_frame :: proc(
 	if err = wgpu_encode_depth_prepass(
 		renderer,
 		encoder,
-		renderer.depth_view,
+		render_depth_view,
 		batches[:batch_count],
 		config.resource_registry,
-		config.ui_state,
-		renderer.width,
-		renderer.height,
+		layout.render_viewport,
 	); err != "" {
 		return false, false, err
 	}
@@ -2717,14 +2857,14 @@ wgpu_draw_frame :: proc(
 		encoder,
 		view,
 		renderer.depth_view,
+		render_depth_view,
 		batches[:batch_count],
 		config.resource_registry,
 		world,
 		config.ui_state,
 		config,
 		"Scrapbot Geometry Pass",
-		renderer.width,
-		renderer.height,
+		layout,
 		delta_time,
 	); err != "" {
 		return false, false, err
@@ -2797,9 +2937,11 @@ wgpu_draw_frame :: proc(
 		wgpu_profile_workload(
 			renderer,
 			world,
-			viewport,
-			renderer.width,
-			renderer.height,
+			layout.render_viewport,
+			layout.render_width,
+			layout.render_height,
+			layout.output_width,
+			layout.output_height,
 			renderer.gpu_cluster_dispatch_count > cluster_dispatches_before,
 			config.stats,
 			config.render_feature_overrides,
@@ -2839,13 +2981,29 @@ wgpu_render_offscreen_frame :: proc(
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
 	viewport := ui.editor_viewport(config.ui_state, f32(width), f32(height))
+	camera := shared.camera_defaults()
+	if renderer.render_list.has_camera {
+		camera = renderer.render_list.camera.camera
+	}
+	layout := wgpu_render_target_layout(width, height, viewport, camera)
+	render_depth_view, render_depth_err := wgpu_render_depth_view(
+		renderer,
+		depth_view,
+		width,
+		height,
+		layout.render_width,
+		layout.render_height,
+	)
+	if render_depth_err != "" {
+		return render_depth_err
+	}
 	batches, batch_count, prepare_err := wgpu_prepare_gpu_draw_batches(
 		renderer,
 		&renderer.render_list,
 		config.resource_registry,
-		viewport,
-		width,
-		height,
+		layout.render_viewport,
+		layout.render_width,
+		layout.render_height,
 		config.cpu_culling,
 	)
 	if prepare_err != "" {
@@ -2857,8 +3015,8 @@ wgpu_render_offscreen_frame :: proc(
 		wgpu_prepare_cpu_culling(
 			renderer,
 			&renderer.render_list,
-			u32(viewport.width),
-			u32(viewport.height),
+			u32(layout.render_viewport.width),
+			u32(layout.render_viewport.height),
 		)
 	}
 	if config != nil && config.stats != nil {
@@ -2926,12 +3084,10 @@ wgpu_render_offscreen_frame :: proc(
 	if err := wgpu_encode_depth_prepass(
 		renderer,
 		encoder,
-		depth_view,
+		render_depth_view,
 		batches[:batch_count],
 		config.resource_registry,
-		config.ui_state,
-		width,
-		height,
+		layout.render_viewport,
 	); err != "" {
 		return err
 	}
@@ -2940,14 +3096,14 @@ wgpu_render_offscreen_frame :: proc(
 		encoder,
 		view,
 		depth_view,
+		render_depth_view,
 		batches[:batch_count],
 		config.resource_registry,
 		world,
 		config.ui_state,
 		config,
 		"Scrapbot Headless Geometry Pass",
-		width,
-		height,
+		layout,
 		1.0 / 60.0,
 	); err != "" {
 		return err
@@ -3038,9 +3194,11 @@ wgpu_render_offscreen_frame :: proc(
 		wgpu_profile_workload(
 			renderer,
 			world,
-			viewport,
-			width,
-			height,
+			layout.render_viewport,
+			layout.render_width,
+			layout.render_height,
+			layout.output_width,
+			layout.output_height,
 			renderer.gpu_cluster_dispatch_count > cluster_dispatches_before,
 			config.stats,
 			config.render_feature_overrides,

@@ -90,6 +90,7 @@ scale = [1, 1, 1]
 fov = 60
 near = 0.1
 far = 100
+resolution_scale = 1
 exposure = 1
 automatic_exposure = false
 automatic_exposure_min = 0.125

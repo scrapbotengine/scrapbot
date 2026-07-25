@@ -271,6 +271,7 @@ Camera_Component :: struct {
 	fov: f32,
 	near: f32,
 	far: f32,
+	resolution_scale: f32,
 	exposure: f32,
 	automatic_exposure: bool,
 	automatic_exposure_min: f32,

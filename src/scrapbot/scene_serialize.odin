@@ -37,6 +37,11 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		write_scene_value(builder, "fov", scene_f32(entity.camera.fov))
 		write_scene_value(builder, "near", scene_f32(entity.camera.near))
 		write_scene_value(builder, "far", scene_f32(entity.camera.far))
+		write_scene_value(
+			builder,
+			"resolution_scale",
+			scene_f32(shared.camera_resolution_scale(entity.camera)),
+		)
 		write_scene_value(builder, "exposure", scene_f32(shared.camera_exposure(entity.camera)))
 		write_scene_value(
 			builder,

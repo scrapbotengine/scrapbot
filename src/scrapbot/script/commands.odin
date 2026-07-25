@@ -506,6 +506,10 @@ read_full_camera_table :: proc "c" (
 	if err = read_ui_number_field(L, payload_index, "far", &value.far); err != "" {
 		return
 	}
+	if err = read_ui_number_field(L, payload_index, "resolution_scale", &value.resolution_scale);
+	   err != "" {
+		return
+	}
 	if err = read_ui_number_field(L, payload_index, "exposure", &value.exposure); err != "" {
 		return
 	}
@@ -590,6 +594,10 @@ read_full_camera_table :: proc "c" (
 	   math.is_nan(value.far) ||
 	   math.is_inf(value.far) ||
 	   value.far <= value.near ||
+	   math.is_nan(value.resolution_scale) ||
+	   math.is_inf(value.resolution_scale) ||
+	   value.resolution_scale < 0.5 ||
+	   value.resolution_scale > 1 ||
 	   math.is_nan(value.exposure) ||
 	   math.is_inf(value.exposure) ||
 	   value.exposure <= 0 ||

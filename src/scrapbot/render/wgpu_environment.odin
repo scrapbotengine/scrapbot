@@ -361,10 +361,8 @@ wgpu_create_sky_resources :: proc(renderer: ^WGPU_Renderer) -> string {
 wgpu_encode_sky_pass :: proc(
 	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
-	ui_state: ^ui.State,
-	target_width, target_height: u32,
+	viewport: ui.Rect,
 ) -> string {
-	viewport := ui.editor_viewport(ui_state, f32(target_width), f32(target_height))
 	wgpu_update_sky_uniform(renderer, &renderer.render_list, viewport.width, viewport.height)
 	color_attachment := wgpu.RenderPassColorAttachment {
 		view = renderer.hdr_view,

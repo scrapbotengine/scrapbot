@@ -817,6 +817,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.camera.near, found = parse_f32(value)
 					case "far":
 						current.camera.far, found = parse_f32(value)
+					case "resolution_scale":
+						current.camera.resolution_scale, found = parse_f32(value)
 					case "exposure":
 						current.camera.exposure, found = parse_f32(value)
 					case "automatic_exposure":
@@ -1483,6 +1485,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		}
 		if entity.has_camera {
 			exposure := entity.camera.exposure
+			resolution_scale := entity.camera.resolution_scale
+			if resolution_scale == 0 {
+				resolution_scale = 1
+			}
 			automatic_exposure_min := shared.camera_automatic_exposure_min(entity.camera)
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
 			automatic_exposure_speed := shared.camera_automatic_exposure_speed(entity.camera)
@@ -1491,6 +1497,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if math.is_nan(exposure) ||
 			   math.is_inf(exposure) ||
 			   exposure <= 0 ||
+			   math.is_nan(resolution_scale) ||
+			   math.is_inf(resolution_scale) ||
+			   resolution_scale < 0.5 ||
+			   resolution_scale > 1 ||
 			   math.is_nan(automatic_exposure_min) ||
 			   math.is_inf(automatic_exposure_min) ||
 			   automatic_exposure_min <= 0 ||

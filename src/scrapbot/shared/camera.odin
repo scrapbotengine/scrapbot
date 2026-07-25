@@ -7,6 +7,7 @@ camera_defaults :: proc "contextless" () -> Camera_Component {
 		fov = 60,
 		near = 0.1,
 		far = 1000,
+		resolution_scale = 1,
 		exposure = 1,
 		automatic_exposure_min = 0.125,
 		automatic_exposure_max = 8,
@@ -27,6 +28,7 @@ camera_copy_render_features :: proc "contextless" (
 	if destination == nil {
 		return
 	}
+	destination.resolution_scale = source.resolution_scale
 	destination.exposure = source.exposure
 	destination.automatic_exposure = source.automatic_exposure
 	destination.automatic_exposure_min = source.automatic_exposure_min
@@ -39,6 +41,13 @@ camera_copy_render_features :: proc "contextless" (
 	destination.screen_space_reflections = source.screen_space_reflections
 	destination.screen_space_reflections_quality = source.screen_space_reflections_quality
 	destination.bloom = source.bloom
+}
+
+camera_resolution_scale :: proc "contextless" (camera: Camera_Component) -> f32 {
+	if camera.resolution_scale == 0 {
+		return 1
+	}
+	return clamp(camera.resolution_scale, 0.5, 1)
 }
 
 camera_exposure :: proc "contextless" (camera: Camera_Component) -> f32 {

@@ -106,6 +106,12 @@ Fog, AO, and SSR join the current HDR signal before temporal resolution. Enabled
 
 TAA alternates two retained HDR color/depth pairs between current output and previous history. This avoids copying full-resolution history every frame. When TAA is off, the renderer removes projection jitter and history sampling. Optional fast AA then uses only the current resolved frame. Resize, world replacement, depth replacement, camera cuts, and TAA mode changes invalidate temporal history.
 
+### World resolution scale
+
+Set `scrapbot.camera.resolution_scale` from `0.5` to `1` to trade world sharpness for GPU pixel cost. The world, depth, Hi-Z, and post chain use the scaled grid. Final composition upscales into the native output before project UI, gizmos, and editor chrome render at native resolution.
+
+The default is `1`. Start with `0.75` for a heavy scene on a HiDPI display, then profile and inspect the result. A scale change replaces size-dependent targets and rejects temporal history once; an unchanged scale performs no target allocation work.
+
 The primary directional light uses four stabilized shadow cascades. Opaque receivers resolve each cascade with a wider tent-weighted filter and blend across cascade boundaries; volumetric fog uses a cheaper filtered lookup at every ray-march step.
 
 World-environment and active-camera exposure multiply together. A camera may instead enable automatic exposure: one GPU workgroup meters 256 viewport-stratified log-luminance samples, clamps the target, and exponentially adapts a persistent GPU scalar. There is no CPU readback or synchronization point. The manual camera exposure becomes compensation, and both bloom extraction and final composition consume the same adapted scalar.

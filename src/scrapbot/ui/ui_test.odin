@@ -4779,7 +4779,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					shadow_field_control_count += 1
 				}
 				if component.reflected_component_id == camera_definition.id &&
-				   component.reflected_field_index == 3 {
+				   component.reflected_field_index == 4 {
 					exposure_input = component.entity_index
 				}
 				if component.reflected_component_id == transform_definition.id &&
@@ -4813,8 +4813,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, checkbox_count >= 2)
 	testing.expect(t, found_bound_checkbox)
-	testing.expect(t, camera_definition.field_count == 15)
-	testing.expect(t, camera_input_count == 9)
+	testing.expect(t, camera_definition.field_count == 16)
+	testing.expect(t, camera_input_count == 10)
 	testing.expect(t, found_transform && found_button && found_shadow)
 	testing.expect(t, shadow_field_control_count == 0)
 	testing.expect(t, found_position)

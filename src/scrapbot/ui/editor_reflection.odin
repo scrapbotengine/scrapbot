@@ -916,6 +916,10 @@ editor_reflected_component_valid :: proc(
 	}
 	switch definition_name {
 		case "scrapbot.camera":
+			resolution_scale := entity.camera.resolution_scale
+			if resolution_scale == 0 {
+				resolution_scale = 1
+			}
 			exposure := shared.camera_exposure(entity.camera)
 			automatic_exposure_min := shared.camera_automatic_exposure_min(entity.camera)
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
@@ -925,6 +929,10 @@ editor_reflected_component_valid :: proc(
 				entity.camera.fov <= 179 &&
 				entity.camera.near > 0 &&
 				entity.camera.far > entity.camera.near &&
+				!math.is_nan(resolution_scale) &&
+				!math.is_inf(resolution_scale) &&
+				resolution_scale >= 0.5 &&
+				resolution_scale <= 1 &&
 				!math.is_nan(exposure) &&
 				!math.is_inf(exposure) &&
 				exposure > 0 &&

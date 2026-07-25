@@ -600,6 +600,11 @@ far = 100
 	defer destroy_scene(&default_exposure)
 	testing.expect(t, default_result.err == .None)
 	testing.expect_value(t, default_exposure.entities[0].camera.exposure, f32(1))
+	testing.expect_value(
+		t,
+		shared.camera_resolution_scale(default_exposure.entities[0].camera),
+		f32(1),
+	)
 	testing.expect(t, !default_exposure.entities[0].camera.automatic_exposure)
 	testing.expect_value(
 		t,
@@ -638,6 +643,7 @@ id = "a6000000-0000-4000-8000-000000000093"
 name = "Camera"
 
 [entities.camera]
+resolution_scale = 0.75
 automatic_exposure = true
 automatic_exposure_min = 0.25
 automatic_exposure_max = 6
@@ -653,6 +659,7 @@ bloom = false
 	)
 	defer destroy_scene(&configured)
 	testing.expect(t, configured_result.err == .None)
+	testing.expect_value(t, configured.entities[0].camera.resolution_scale, f32(0.75))
 	testing.expect(t, configured.entities[0].camera.automatic_exposure)
 	testing.expect_value(t, configured.entities[0].camera.automatic_exposure_min, f32(0.25))
 	testing.expect_value(t, configured.entities[0].camera.automatic_exposure_max, f32(6))
@@ -717,6 +724,18 @@ screen_space_reflections_quality = 0.1
 	)
 	defer destroy_scene(&invalid_reflection_quality)
 	testing.expect(t, invalid_reflection_quality_result.err == .Invalid_Field)
+
+	invalid_resolution_scale, invalid_resolution_scale_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000097"
+name = "Camera"
+
+[entities.camera]
+resolution_scale = 0.25
+`,
+	)
+	defer destroy_scene(&invalid_resolution_scale)
+	testing.expect(t, invalid_resolution_scale_result.err == .Invalid_Field)
 }
 
 @(test)
