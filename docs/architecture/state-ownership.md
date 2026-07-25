@@ -73,7 +73,7 @@ Global fog is integrated into the temporal resolve with 16 low-discrepancy sub-s
 
 Opt-in point-light scattering reads the existing GPU cluster table at each midpoint and evaluates every relevant local light. Fog owns no duplicate light list, history, or intermediate target; TAA stabilizes its composed result when enabled.
 
-Temporal color and depth use two retained texture pairs. Each frame resolves into one pair while sampling the other, then swaps their roles without a full-resolution GPU copy. Automatic exposure, bloom, and composite select the current output through prebuilt bind groups. Resize, depth-view replacement, world replacement, and detected camera cuts reject history.
+Temporal color and depth use two retained texture pairs. Each frame resolves into one pair while sampling the other, then swaps their roles without a full-resolution GPU copy. The resolve's exact 3×3 current-color neighborhood lives only in a dispatch-local 10×10 workgroup tile; it adds no retained owner or invalidation path. Automatic exposure, bloom, and composite select the current output through prebuilt bind groups. Resize, depth-view replacement, world replacement, and detected camera cuts reject history.
 
 Half-resolution AO targets and their depth/surface bindings retain a stable output shape. They rebuild only when output dimensions or the sampled depth view change.
 

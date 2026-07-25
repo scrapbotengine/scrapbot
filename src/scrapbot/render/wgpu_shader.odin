@@ -791,6 +791,11 @@ struct Cluster_Uniform {
 
 const FOG_STEP_COUNT: u32 = 16u;
 const FOG_PHASE_NORMALIZATION: f32 = 0.07957747155;
+const TEMPORAL_WORKGROUP_WIDTH: u32 = 8u;
+const TEMPORAL_TILE_WIDTH: u32 = TEMPORAL_WORKGROUP_WIDTH + 2u;
+const TEMPORAL_TILE_SIZE: u32 = TEMPORAL_TILE_WIDTH * TEMPORAL_TILE_WIDTH;
+
+var<workgroup> current_color_tile: array<vec4<f32>, TEMPORAL_TILE_SIZE>;
 
 fn octahedral_decode(encoded: vec2<f32>) -> vec3<f32> {
 	let value = encoded * 2.0 - vec2<f32>(1.0);
@@ -1179,14 +1184,18 @@ fn apply_volumetric_fog(
 	return source_color * fog.a + fog.rgb;
 }
 
-fn fast_antialias(pixel: vec2<i32>) -> vec3<f32> {
-	let minimum = viewport_minimum();
-	let maximum = viewport_maximum();
-	let north = current_color_at(clamp(pixel + vec2<i32>(0, -1), minimum, maximum));
-	let south = current_color_at(clamp(pixel + vec2<i32>(0, 1), minimum, maximum));
-	let west = current_color_at(clamp(pixel + vec2<i32>(-1, 0), minimum, maximum));
-	let east = current_color_at(clamp(pixel + vec2<i32>(1, 0), minimum, maximum));
-	let center = current_color_at(pixel);
+fn temporal_tile_color(position: vec2<i32>) -> vec3<f32> {
+	let index = u32(position.y) * TEMPORAL_TILE_WIDTH + u32(position.x);
+	return current_color_tile[index].rgb;
+}
+
+fn fast_antialias(local_pixel: vec2<u32>) -> vec3<f32> {
+	let tile_pixel = vec2<i32>(local_pixel) + vec2<i32>(1);
+	let north = temporal_tile_color(tile_pixel + vec2<i32>(0, -1));
+	let south = temporal_tile_color(tile_pixel + vec2<i32>(0, 1));
+	let west = temporal_tile_color(tile_pixel + vec2<i32>(-1, 0));
+	let east = temporal_tile_color(tile_pixel + vec2<i32>(1, 0));
+	let center = temporal_tile_color(tile_pixel);
 	let luma = vec3<f32>(0.299, 0.587, 0.114);
 	let center_luma = dot(center, luma);
 	let north_luma = dot(north, luma);
@@ -1223,19 +1232,18 @@ fn ycocg_to_rgb(color: vec3<f32>) -> vec3<f32> {
 	);
 }
 
-fn current_neighborhood(pixel: vec2<i32>) -> array<vec3<f32>, 2> {
+fn current_neighborhood_from_tile(local_pixel: vec2<u32>) -> array<vec3<f32>, 2> {
 	var minimum = vec3<f32>(1e20);
 	var maximum = vec3<f32>(-1e20);
 	var first_moment = vec3<f32>(0.0);
 	var second_moment = vec3<f32>(0.0);
 	for (var y = -1; y <= 1; y += 1) {
 		for (var x = -1; x <= 1; x += 1) {
-			let sample_pixel = clamp(
-				pixel + vec2<i32>(x, y),
-				viewport_minimum(),
-				viewport_maximum(),
+			let tile_pixel = vec2<i32>(
+				i32(local_pixel.x) + x + 1,
+				i32(local_pixel.y) + y + 1,
 			);
-			let color = rgb_to_ycocg(current_color_at(sample_pixel));
+			let color = rgb_to_ycocg(temporal_tile_color(tile_pixel));
 			minimum = min(minimum, color);
 			maximum = max(maximum, color);
 			first_moment += color;
@@ -1272,14 +1280,42 @@ fn volumetric_fog_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 }
 
 @compute @workgroup_size(8, 8)
-fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
+fn temporal_aa_cs(
+	@builtin(global_invocation_id) invocation: vec3<u32>,
+	@builtin(local_invocation_id) local_invocation: vec3<u32>,
+	@builtin(local_invocation_index) local_index: u32,
+) {
 	let dimensions = textureDimensions(resolved_color);
+	let workgroup_origin =
+		vec2<i32>(invocation.xy) -
+		vec2<i32>(local_invocation.xy) -
+		vec2<i32>(1);
+	for (
+		var tile_index = local_index;
+		tile_index < TEMPORAL_TILE_SIZE;
+		tile_index += TEMPORAL_WORKGROUP_WIDTH * TEMPORAL_WORKGROUP_WIDTH
+	) {
+		let tile_position = vec2<i32>(
+			i32(tile_index % TEMPORAL_TILE_WIDTH),
+			i32(tile_index / TEMPORAL_TILE_WIDTH),
+		);
+		let sample_pixel = clamp(
+			workgroup_origin + tile_position,
+			viewport_minimum(),
+			viewport_maximum(),
+		);
+		current_color_tile[tile_index] = vec4<f32>(current_color_at(sample_pixel), 1.0);
+	}
+	workgroupBarrier();
 	if (invocation.x >= dimensions.x || invocation.y >= dimensions.y) {
 		return;
 	}
 	let pixel = vec2<i32>(invocation.xy);
-	let ambient_visibility = ambient_visibility_at(pixel);
-	let color = current_color_at(pixel);
+	let local_pixel = local_invocation.xy;
+	var color = current_color_at(pixel);
+	if (inside_viewport(pixel)) {
+		color = temporal_tile_color(vec2<i32>(local_pixel) + vec2<i32>(1));
+	}
 	let depth = textureLoad(current_depth, pixel, 0);
 	let fogged_color = apply_volumetric_fog(pixel, color);
 	var result = fogged_color;
@@ -1288,7 +1324,7 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		temporal.features.x <= 0.5 &&
 		temporal.features.y > 0.5
 	) {
-		result = apply_volumetric_fog(pixel, fast_antialias(pixel));
+		result = apply_volumetric_fog(pixel, fast_antialias(local_pixel));
 	}
 	if (
 		inside_viewport(pixel) &&
@@ -1361,7 +1397,7 @@ fn temporal_aa_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 					stored_depth < 0.999999 &&
 					abs(stored_linear_depth - expected_linear_depth) <= depth_tolerance
 				) {
-					let source_bounds = current_neighborhood(pixel);
+					let source_bounds = current_neighborhood_from_tile(local_pixel);
 					// History contains resolved fog, while the inexpensive
 					// neighborhood samples are pre-fog. Translate the bounds
 					// into the same radiometric space before clipping history.

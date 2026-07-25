@@ -18,7 +18,7 @@ This follows Therrien, Levesque, and Gilet's [Screen Space Indirect Lighting wit
 
 Filter and upscale AO only through depth- and normal-similar neighbors. Apply visibility only to indirect diffuse; direct lights, specular lighting, emission, and SSR remain unoccluded.
 
-The temporal resolve reconstructs world position, reprojects through the previous camera, rejects mismatched depth, clamps history to the current 3×3 neighborhood, and reduces history weight during screen-space motion. Two retained color/depth pairs alternate as current output and previous history, avoiding full-resolution history copies. Camera cuts, world replacement, resize, and depth-target replacement invalidate history.
+The temporal resolve reconstructs world position, reprojects through the previous camera, rejects mismatched depth, clamps history to the current 3×3 neighborhood, and reduces history weight during screen-space motion. Each 8×8 compute workgroup composes one shared 10×10 current-color tile, including its one-pixel halo, so the exact neighborhood does not repeatedly evaluate AO upsampling, indirect diffuse, and SSR. Two retained color/depth pairs alternate as current output and previous history, avoiding full-resolution history copies. Camera cuts, world replacement, resize, and depth-target replacement invalidate history.
 
 Keep frustum and Hi-Z culling on the unjittered camera so the sample sequence cannot change visibility.
 

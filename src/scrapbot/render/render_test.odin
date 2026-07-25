@@ -264,6 +264,35 @@ test_wgpu_inverse_rigid_view_roundtrips_camera_matrix :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_temporal_resolve_reuses_one_workgroup_tile_for_exact_neighborhood_clamping :: proc(
+	t: ^testing.T,
+) {
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_TEMPORAL_AA_SHADER,
+			"var<workgroup> current_color_tile: array<vec4<f32>, TEMPORAL_TILE_SIZE>",
+		),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "tile_index += TEMPORAL_WORKGROUP_WIDTH"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "workgroupBarrier()"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn current_neighborhood_from_tile"),
+	)
+	testing.expect(
+		t,
+		!strings.contains(
+			WGPU_TEMPORAL_AA_SHADER,
+			"let color = rgb_to_ycocg(current_color_at(sample_pixel))",
+		),
+	)
+}
+
+@(test)
 test_wgpu_temporal_camera_continuity_rejects_cuts :: proc(t: ^testing.T) {
 	camera := WGPU_Temporal_Camera {
 		position = {0, 1, 2},
