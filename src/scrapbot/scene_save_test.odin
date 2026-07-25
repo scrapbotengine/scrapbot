@@ -67,6 +67,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	camera.ambient_occlusion = false
 	camera.ambient_occlusion_quality = 0.75
 	camera.screen_space_reflections = true
+	camera.screen_space_reflections_quality = 0.25
 	camera.bloom = false
 	entity := shared.Scene_Entity {
 		id = shared.entity_uuid_from_engine_name("scene-save-camera"),
@@ -86,6 +87,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	testing.expect(t, strings.contains(serialized, "ambient_occlusion = false"))
 	testing.expect(t, strings.contains(serialized, "ambient_occlusion_quality = 0.75"))
 	testing.expect(t, strings.contains(serialized, "screen_space_reflections = true"))
+	testing.expect(t, strings.contains(serialized, "screen_space_reflections_quality = 0.25"))
 	testing.expect(t, strings.contains(serialized, "bloom = false"))
 }
 

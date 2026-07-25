@@ -281,6 +281,7 @@ Camera_Component :: struct {
 	ambient_occlusion: bool,
 	ambient_occlusion_quality: f32,
 	screen_space_reflections: bool,
+	screen_space_reflections_quality: f32,
 	bloom: bool,
 }
 

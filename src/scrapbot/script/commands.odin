@@ -569,6 +569,14 @@ read_full_camera_table :: proc "c" (
 	); err != "" {
 		return
 	}
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"screen_space_reflections_quality",
+		&value.screen_space_reflections_quality,
+	); err != "" {
+		return
+	}
 	if err = read_ui_bool_field(L, payload_index, "bloom", &value.bloom); err != "" {
 		return
 	}
@@ -597,7 +605,11 @@ read_full_camera_table :: proc "c" (
 	   math.is_nan(value.ambient_occlusion_quality) ||
 	   math.is_inf(value.ambient_occlusion_quality) ||
 	   value.ambient_occlusion_quality < 0.25 ||
-	   value.ambient_occlusion_quality > 1 {
+	   value.ambient_occlusion_quality > 1 ||
+	   math.is_nan(value.screen_space_reflections_quality) ||
+	   math.is_inf(value.screen_space_reflections_quality) ||
+	   value.screen_space_reflections_quality < 0.25 ||
+	   value.screen_space_reflections_quality > 1 {
 		return value, "invalid scrapbot.camera payload"
 	}
 	return value, ""

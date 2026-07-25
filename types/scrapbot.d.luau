@@ -303,6 +303,7 @@ export type ScrapbotCamera = {
 	ambient_occlusion: boolean,
 	ambient_occlusion_quality: number,
 	screen_space_reflections: boolean,
+	screen_space_reflections_quality: number,
 	bloom: boolean,
 }
 
@@ -320,6 +321,7 @@ export type ReadonlyScrapbotCamera = {
 	read ambient_occlusion: boolean,
 	read ambient_occlusion_quality: number,
 	read screen_space_reflections: boolean,
+	read screen_space_reflections_quality: number,
 	read bloom: boolean,
 }
 

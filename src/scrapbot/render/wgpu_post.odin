@@ -1609,11 +1609,19 @@ wgpu_encode_bloom_and_composite :: proc(
 		wgpu.ComputePassEncoderRelease(ambient_occlusion_pass)
 	}
 	if resolved_camera.screen_space_reflections {
+		reflection_sample_count := shared.camera_screen_space_reflections_sample_count(
+			resolved_camera,
+		)
 		reflections_uniform := WGPU_Screen_Space_Reflections_Uniform {
 			projection = {projection[0], projection[5], projection[10], projection[14]},
 			viewport = viewport,
 			parameters = {40.0, 0.08, 0.10, 0.65},
-			_padding = {projection[8], projection[9], 0, 0},
+			_padding = {
+				projection[8],
+				projection[9],
+				f32(reflection_sample_count),
+				shared.camera_screen_space_reflections_stride_scale(resolved_camera),
+			},
 		}
 		wgpu.QueueWriteBuffer(
 			renderer.queue,

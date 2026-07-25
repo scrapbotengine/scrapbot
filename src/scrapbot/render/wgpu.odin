@@ -966,7 +966,7 @@ wgpu_profile_workload :: proc(
 			width,
 			height,
 			1,
-			64,
+			shared.camera_screen_space_reflections_sample_count(camera),
 		),
 		volumetric_fog = wgpu_profile_compute_workload(
 			fog.density > 0,

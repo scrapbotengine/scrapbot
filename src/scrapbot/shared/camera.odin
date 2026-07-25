@@ -15,6 +15,7 @@ camera_defaults :: proc "contextless" () -> Camera_Component {
 		ambient_occlusion = true,
 		ambient_occlusion_quality = 0.5,
 		screen_space_reflections = false,
+		screen_space_reflections_quality = 0.5,
 		bloom = true,
 	}
 }
@@ -36,6 +37,7 @@ camera_copy_render_features :: proc "contextless" (
 	destination.ambient_occlusion = source.ambient_occlusion
 	destination.ambient_occlusion_quality = source.ambient_occlusion_quality
 	destination.screen_space_reflections = source.screen_space_reflections
+	destination.screen_space_reflections_quality = source.screen_space_reflections_quality
 	destination.bloom = source.bloom
 }
 
@@ -86,6 +88,38 @@ camera_ambient_occlusion_sample_count :: proc "contextless" (camera: Camera_Comp
 		return 24
 	}
 	return 36
+}
+
+camera_screen_space_reflections_quality :: proc "contextless" (camera: Camera_Component) -> f32 {
+	if camera.screen_space_reflections_quality <= 0 {
+		return 0.5
+	}
+	return clamp(camera.screen_space_reflections_quality, 0.25, 1)
+}
+
+camera_screen_space_reflections_sample_count :: proc "contextless" (
+	camera: Camera_Component,
+) -> u32 {
+	quality := camera_screen_space_reflections_quality(camera)
+	if quality < 0.375 {
+		return 16
+	}
+	if quality < 0.625 {
+		return 32
+	}
+	if quality < 0.875 {
+		return 48
+	}
+	return 64
+}
+
+camera_screen_space_reflections_stride_scale :: proc "contextless" (
+	camera: Camera_Component,
+) -> f32 {
+	sample_count := f32(camera_screen_space_reflections_sample_count(camera))
+	high_quality_distance := f32(2 + 64) + 0.035 * f32(64 * 63) * 0.5
+	tier_distance := 2 + sample_count + 0.035 * sample_count * (sample_count - 1) * 0.5
+	return high_quality_distance / tier_distance
 }
 
 camera_forward :: proc(rotation: Vec3) -> Vec3 {

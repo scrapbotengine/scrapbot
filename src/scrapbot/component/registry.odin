@@ -172,6 +172,18 @@ init_registry :: proc(registry: ^Registry) {
 				},
 			},
 			Field_Definition{name = "screen_space_reflections", field_type = .Bool},
+			Field_Definition {
+				name = "screen_space_reflections_quality",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.25,
+					has_minimum = true,
+					minimum = 0.25,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition{name = "bloom", field_type = .Bool},
 		},
 	)

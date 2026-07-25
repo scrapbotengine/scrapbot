@@ -673,11 +673,16 @@ fn screen_space_reflections_cs(@builtin(global_invocation_id) invocation: vec3<u
 	}
 	let maximum_distance = reflection.parameters.x;
 	let thickness = max(reflection.parameters.y, -origin.z * 0.0015);
-	let stride = max(reflection.parameters.z, -origin.z * 0.002);
+	let maximum_steps = clamp(u32(reflection.padding.z + 0.5), 1u, 64u);
+	let stride_scale = max(reflection.padding.w, 1.0);
+	let stride = max(reflection.parameters.z, -origin.z * 0.002) * stride_scale;
 	var distance = stride * 2.0;
 	var hit_uv = vec2<f32>(0.0);
 	var hit = false;
 	for (var step = 0u; step < 64u; step = step + 1u) {
+		if (step >= maximum_steps) {
+			break;
+		}
 		let ray_position = origin + direction * distance;
 		if (distance > maximum_distance || ray_position.z >= -0.001) {
 			break;

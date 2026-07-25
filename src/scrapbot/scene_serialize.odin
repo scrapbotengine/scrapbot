@@ -83,6 +83,11 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 			"screen_space_reflections",
 			scene_bool(entity.camera.screen_space_reflections),
 		)
+		write_scene_value(
+			builder,
+			"screen_space_reflections_quality",
+			scene_f32(shared.camera_screen_space_reflections_quality(entity.camera)),
+		)
 		write_scene_value(builder, "bloom", scene_bool(entity.camera.bloom))
 	}
 	if entity.has_world_environment {

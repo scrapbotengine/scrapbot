@@ -837,6 +837,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.camera.ambient_occlusion_quality, found = parse_f32(value)
 					case "screen_space_reflections":
 						current.camera.screen_space_reflections, found = parse_bool(value)
+					case "screen_space_reflections_quality":
+						current.camera.screen_space_reflections_quality, found = parse_f32(value)
 					case "bloom":
 						current.camera.bloom, found = parse_bool(value)
 					case:
@@ -1485,6 +1487,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
 			automatic_exposure_speed := shared.camera_automatic_exposure_speed(entity.camera)
 			ambient_occlusion_quality := entity.camera.ambient_occlusion_quality
+			screen_space_reflections_quality := entity.camera.screen_space_reflections_quality
 			if math.is_nan(exposure) ||
 			   math.is_inf(exposure) ||
 			   exposure <= 0 ||
@@ -1500,7 +1503,11 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   math.is_nan(ambient_occlusion_quality) ||
 			   math.is_inf(ambient_occlusion_quality) ||
 			   ambient_occlusion_quality < 0.25 ||
-			   ambient_occlusion_quality > 1 {
+			   ambient_occlusion_quality > 1 ||
+			   math.is_nan(screen_space_reflections_quality) ||
+			   math.is_inf(screen_space_reflections_quality) ||
+			   screen_space_reflections_quality < 0.25 ||
+			   screen_space_reflections_quality > 1 {
 				return scene, fail(
 					.Invalid_Field,
 					fmt.tprintf(

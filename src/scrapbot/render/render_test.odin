@@ -162,6 +162,26 @@ test_ambient_occlusion_quality_uses_bounded_sample_tiers :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_screen_space_reflections_quality_uses_bounded_sample_tiers :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	testing.expect_value(t, shared.camera_screen_space_reflections_quality(camera), f32(0.5))
+	testing.expect_value(t, shared.camera_screen_space_reflections_sample_count(camera), u32(32))
+	testing.expect(t, shared.camera_screen_space_reflections_stride_scale(camera) > 2.6)
+	testing.expect(t, shared.camera_screen_space_reflections_stride_scale(camera) < 2.7)
+	camera.screen_space_reflections_quality = 0.25
+	testing.expect_value(t, shared.camera_screen_space_reflections_sample_count(camera), u32(16))
+	camera.screen_space_reflections_quality = 0.75
+	testing.expect_value(t, shared.camera_screen_space_reflections_sample_count(camera), u32(48))
+	camera.screen_space_reflections_quality = 1
+	testing.expect_value(t, shared.camera_screen_space_reflections_sample_count(camera), u32(64))
+	testing.expect_value(t, shared.camera_screen_space_reflections_stride_scale(camera), f32(1))
+	testing.expect(
+		t,
+		strings.contains(WGPU_SCREEN_SPACE_REFLECTIONS_SHADER, "step >= maximum_steps"),
+	)
+}
+
+@(test)
 test_cluster_index_budget_starts_at_256_and_grows_geometrically :: proc(t: ^testing.T) {
 	testing.expect_value(t, WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY, 256)
 	testing.expect_value(

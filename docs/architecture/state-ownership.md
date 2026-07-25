@@ -67,7 +67,7 @@ Frustum and LOD work uses the unjittered camera. TAA's eight projection samples 
 
 ### Postprocessing
 
-Surface data, indirect diffuse, and reflection output are current-frame derived targets. Visibility-bitmask AO consumes depth plus mapped normals and attenuates only indirect diffuse. SSR consumes surface data and HDR color.
+Surface data, indirect diffuse, and reflection output are current-frame derived targets. Visibility-bitmask AO consumes depth plus mapped normals and attenuates only indirect diffuse. SSR consumes surface data and HDR color. AO and SSR quality tiers update only their next uniform and bounded shader loop; retained target allocation and bind groups remain unchanged.
 
 Global fog is integrated into the temporal resolve with 16 low-discrepancy sub-step samples rotated across the eight-frame temporal sequence. It reconstructs each ray from depth, evaluates exponential world-height density, and samples the first directional light's cascaded shadows with a 2×2 UV-space filter and adjacent-cascade cross-fades.
 

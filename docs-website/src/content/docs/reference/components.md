@@ -105,13 +105,16 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `ambient_occlusion` | boolean | Enables half-resolution, thickness-aware visibility-bitmask ambient occlusion with mapped surface normals, joint depth/normal filtering, and indirect-diffuse-only composition. Defaults to `true`. |
 | `ambient_occlusion_quality` | number | Selects a bounded AO sampling tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (16 samples per half-resolution pixel); `0.25`, `0.75`, and `1` use 8, 24, and 36 samples. |
 | `screen_space_reflections` | boolean | Enables material-aware screen-space reflections for sufficiently smooth visible surfaces. Defaults to `false`. |
+| `screen_space_reflections_quality` | number | Selects a bounded SSR ray-march tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (32 steps per eligible pixel); `0.25`, `0.75`, and `1` use 16, 48, and 64 steps. |
 | `bloom` | boolean | Enables the five-level HDR bloom pyramid. Defaults to `true`. |
 
 The camera reads position and orientation from a Transform on the same entity. The active camera's exposure and render-feature switches control that rendered view, including while an editor fly camera supplies the editor viewport's pose.
 
 Automatic exposure samples only the active rendered viewport—not editor chrome—and adapts one persistent GPU exposure value without a CPU readback. Bloom and final composition consume the same value. Disabling it skips the metering dispatch and preserves the fixed-exposure path.
 
-SSR ray-marches the current frame's HDR color, depth, and material surface data. As a screen-space effect, it cannot reflect off-screen or occluded objects and fades uncertain, rough, distant, and screen-edge hits. AO quality changes its bounded view-space sampling work without reallocating targets. Disabling AO, SSR, or bloom skips their compute work; disabling TAA removes jitter and history sampling. Luau queries expose and may write the complete payload when the system declares `scrapbot.camera` in `writes`.
+SSR ray-marches the current frame's HDR color, depth, and material surface data. As a screen-space effect, it cannot reflect off-screen or occluded objects and fades uncertain, rough, distant, and screen-edge hits.
+
+AO and SSR quality change only bounded shader work; neither reallocates a target. Lower SSR tiers widen their step stride to preserve approximately the same ray reach with coarser intersection precision. Disabling AO, SSR, or bloom skips their compute work; disabling TAA removes jitter and history sampling. Luau queries expose and may write the complete payload when the system declares `scrapbot.camera` in `writes`.
 
 ### `scrapbot.world_environment`
 
