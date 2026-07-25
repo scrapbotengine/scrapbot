@@ -619,6 +619,11 @@ far = 100
 	testing.expect(t, default_exposure.entities[0].camera.temporal_antialiasing)
 	testing.expect(t, !default_exposure.entities[0].camera.fast_antialiasing)
 	testing.expect(t, default_exposure.entities[0].camera.ambient_occlusion)
+	testing.expect_value(
+		t,
+		default_exposure.entities[0].camera.ambient_occlusion_quality,
+		f32(0.5),
+	)
 	testing.expect(t, !default_exposure.entities[0].camera.screen_space_reflections)
 	testing.expect(t, default_exposure.entities[0].camera.bloom)
 
@@ -635,6 +640,7 @@ automatic_exposure_speed = 1.5
 temporal_antialiasing = false
 fast_antialiasing = true
 ambient_occlusion = false
+ambient_occlusion_quality = 0.75
 screen_space_reflections = true
 bloom = false
 `,
@@ -648,6 +654,7 @@ bloom = false
 	testing.expect(t, !configured.entities[0].camera.temporal_antialiasing)
 	testing.expect(t, configured.entities[0].camera.fast_antialiasing)
 	testing.expect(t, !configured.entities[0].camera.ambient_occlusion)
+	testing.expect_value(t, configured.entities[0].camera.ambient_occlusion_quality, f32(0.75))
 	testing.expect(t, configured.entities[0].camera.screen_space_reflections)
 	testing.expect(t, !configured.entities[0].camera.bloom)
 
@@ -675,6 +682,18 @@ automatic_exposure_max = 1
 	)
 	defer destroy_scene(&invalid_range)
 	testing.expect(t, invalid_range_result.err == .Invalid_Field)
+
+	invalid_quality, invalid_quality_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000095"
+name = "Camera"
+
+[entities.camera]
+ambient_occlusion_quality = 1.25
+`,
+	)
+	defer destroy_scene(&invalid_quality)
+	testing.expect(t, invalid_quality_result.err == .Invalid_Field)
 }
 
 @(test)

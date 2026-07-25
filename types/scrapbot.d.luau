@@ -301,6 +301,7 @@ export type ScrapbotCamera = {
 	temporal_antialiasing: boolean,
 	fast_antialiasing: boolean,
 	ambient_occlusion: boolean,
+	ambient_occlusion_quality: number,
 	screen_space_reflections: boolean,
 	bloom: boolean,
 }
@@ -317,6 +318,7 @@ export type ReadonlyScrapbotCamera = {
 	read temporal_antialiasing: boolean,
 	read fast_antialiasing: boolean,
 	read ambient_occlusion: boolean,
+	read ambient_occlusion_quality: number,
 	read screen_space_reflections: boolean,
 	read bloom: boolean,
 }

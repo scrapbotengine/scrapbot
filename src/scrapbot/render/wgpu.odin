@@ -807,6 +807,7 @@ wgpu_profile_workload :: proc(
 	width, height: u32,
 	cluster_dispatched: bool,
 	stats: ^Render_Stats,
+	render_feature_overrides: Render_Feature_Overrides,
 ) -> Profile_Workload {
 	if renderer == nil {
 		return {}
@@ -815,6 +816,7 @@ wgpu_profile_workload :: proc(
 	if renderer.render_list.has_camera {
 		camera = renderer.render_list.camera.camera
 	}
+	camera = apply_render_feature_overrides(camera, render_feature_overrides)
 	viewport_width := u32(max(viewport.width, 0))
 	viewport_height := u32(max(viewport.height, 0))
 	batches := u64(0)
@@ -893,6 +895,9 @@ wgpu_profile_workload :: proc(
 		}
 	}
 	fog := wgpu_volumetric_fog_settings(world)
+	if render_feature_overrides.disable_volumetric_fog {
+		fog.density = 0
+	}
 	ao_width := max(u32(1), (width + 1) / 2)
 	ao_height := max(u32(1), (height + 1) / 2)
 	fog_width := max(u32(1), (width + 1) / 2)
@@ -954,7 +959,7 @@ wgpu_profile_workload :: proc(
 			ao_width,
 			ao_height,
 			3,
-			36,
+			shared.camera_ambient_occlusion_sample_count(camera),
 		),
 		screen_space_reflections = wgpu_profile_compute_workload(
 			camera.screen_space_reflections,
@@ -2092,6 +2097,7 @@ wgpu_encode_render_pass :: proc(
 		renderer.render_list.has_camera,
 		world,
 		delta_time,
+		config.render_feature_overrides,
 	); err != "" {
 		return err
 	}
@@ -2796,6 +2802,7 @@ wgpu_draw_frame :: proc(
 			renderer.height,
 			renderer.gpu_cluster_dispatch_count > cluster_dispatches_before,
 			config.stats,
+			config.render_feature_overrides,
 		),
 	)
 	renderer.profile_frame_index += 1
@@ -3036,6 +3043,7 @@ wgpu_render_offscreen_frame :: proc(
 			height,
 			renderer.gpu_cluster_dispatch_count > cluster_dispatches_before,
 			config.stats,
+			config.render_feature_overrides,
 		),
 	)
 	renderer.profile_frame_index += 1

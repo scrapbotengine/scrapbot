@@ -332,6 +332,18 @@ mise profile-sweep -- examples/sponza \
 
 The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution WIDTHxHEIGHT` for an explicit matrix. The driver preserves each complete profile bundle and writes machine-readable `sweep.json`.
 
+To estimate which authored effects dominate one workload, run paired feature ablation:
+
+```sh
+mise profile-features -- examples/sponza \
+  --feature ambient-occlusion \
+  --feature screen-space-reflections \
+  --resolution 1920x1080 \
+  --out /tmp/sponza-feature-sweep
+```
+
+For every selected feature, the driver records a fresh reference immediately before profiling the same scene with only that feature disabled. This limits warmup, scheduler, and thermal drift that can invalidate one shared baseline across a long sweep. The overrides exist only in the bounded profile run; they do not mutate the scene or camera. The resulting `feature-sweep.json` keeps both report paths and the estimated p95 GPU cost.
+
 ### Historical benchmark bundles
 
 Build the representative benchmark matrix locally with:

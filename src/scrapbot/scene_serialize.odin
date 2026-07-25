@@ -75,6 +75,11 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		)
 		write_scene_value(
 			builder,
+			"ambient_occlusion_quality",
+			scene_f32(shared.camera_ambient_occlusion_quality(entity.camera)),
+		)
+		write_scene_value(
+			builder,
 			"screen_space_reflections",
 			scene_bool(entity.camera.screen_space_reflections),
 		)

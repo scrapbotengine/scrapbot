@@ -138,6 +138,10 @@ run = "node tools/analyze_render_profile.mjs \"$@\""
 description = "Profile one project across a bounded resolution matrix"
 run = "node tools/profile_resolution_sweep.mjs \"$@\""
 
+[tasks.profile-features]
+description = "Profile isolated camera and post-processing feature costs"
+run = "node tools/profile_feature_sweep.mjs \"$@\""
+
 [tasks.gpu-benchmarks]
 description = "Build a representative multi-resolution GPU benchmark bundle"
 depends = ["build"]

@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-24
+**Last verified:** 2026-07-25
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -86,11 +86,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.camera`
 
-- **Contract:** Perspective projection, positive fixed exposure or opt-in GPU-adaptive exposure, and per-view temporal-AA, fast-AA, ambient-occlusion, screen-space-reflection, and bloom switches attached to an entity whose Transform supplies the project-camera pose. Automatic exposure clamps to authored positive bounds, adapts at an authored positive inverse-seconds rate, and treats manual exposure as compensation. TAA takes precedence over fast AA. Zero-valued legacy/programmatic components normalize to fixed exposure `1`, automatic bounds `0.125`–`8`, and speed `2`; authored TOML defaults automatic exposure off, TAA/AO/bloom on, and fast AA/SSR off.
+- **Contract:** Perspective projection, positive fixed exposure or opt-in GPU-adaptive exposure, and per-view temporal-AA, fast-AA, ambient-occlusion, screen-space-reflection, and bloom policy attached to an entity whose Transform supplies the project-camera pose. AO exposes a bounded `0.25`–`1` sample-quality tier. Automatic exposure clamps to authored positive bounds, adapts at an authored positive inverse-seconds rate, and treats manual exposure as compensation. TAA takes precedence over fast AA. Zero-valued legacy/programmatic components normalize to fixed exposure `1`, automatic bounds `0.125`–`8`, speed `2`, and balanced AO quality `0.5`; authored TOML defaults automatic exposure off, TAA/AO/bloom on, and fast AA/SSR off.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored.
 - **Producers:** Scene loading, editor/component authoring, validated Luau query writeback, and native membership commands.
 - **Consumers:** Active-camera selection, render-view construction, postprocess dispatch/jitter/history/exposure policy, global environment uniform, visible-sky ray construction, editor camera mesh/frustum visualization, and scene picking.
-- **Invalidation:** Membership is structural; projection, exposure, render-feature, or Transform changes update compact camera input. Fixed exposure changes rewrite only the environment uniform. Automatic exposure uses a persistent GPU scalar and one bounded metering dispatch per enabled frame; disabling it restores scalar `1` once and performs no metering work. TAA mode changes reject temporal history; disabled AO/SSR/bloom skip their compute work. The editor fly camera contributes pose/lens while inheriting the active project camera's render-feature policy.
+- **Invalidation:** Membership is structural; projection, exposure, render-feature, quality, or Transform changes update compact camera input. Fixed exposure changes rewrite only the environment uniform. Automatic exposure uses a persistent GPU scalar and one bounded metering dispatch per enabled frame; disabling it restores scalar `1` once and performs no metering work. AO quality changes only the next uniform and loop bound; it does not rebuild retained post targets. TAA mode changes reject temporal history; disabled AO/SSR/bloom skip their compute work. The editor fly camera contributes pose/lens while inheriting the active project camera's render-feature policy.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, automatic editor inspection/history, and persistence; native Odin currently exposes membership. See the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotcamera).
 - **Source/tests:** `ecs/world.odin`, `render/render.odin`, `render/camera_visualizer.odin`; `render/camera_visualizer_test.odin`, `render/render_test.odin`.
 

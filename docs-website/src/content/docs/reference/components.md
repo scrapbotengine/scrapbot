@@ -103,6 +103,7 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `temporal_antialiasing` | boolean | Enables projection jitter and retained depth-aware temporal resolution. Defaults to `true`. |
 | `fast_antialiasing` | boolean | Enables a lightweight current-frame fullscreen edge filter when temporal antialiasing is disabled. Defaults to `false`; TAA takes precedence when both are enabled. |
 | `ambient_occlusion` | boolean | Enables half-resolution, thickness-aware visibility-bitmask ambient occlusion with mapped surface normals, joint depth/normal filtering, and indirect-diffuse-only composition. Defaults to `true`. |
+| `ambient_occlusion_quality` | number | Selects a bounded AO sampling tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (16 samples per half-resolution pixel); `0.25`, `0.75`, and `1` use 8, 24, and 36 samples. |
 | `screen_space_reflections` | boolean | Enables material-aware screen-space reflections for sufficiently smooth visible surfaces. Defaults to `false`. |
 | `bloom` | boolean | Enables the five-level HDR bloom pyramid. Defaults to `true`. |
 
@@ -110,7 +111,7 @@ The camera reads position and orientation from a Transform on the same entity. T
 
 Automatic exposure samples only the active rendered viewport—not editor chrome—and adapts one persistent GPU exposure value without a CPU readback. Bloom and final composition consume the same value. Disabling it skips the metering dispatch and preserves the fixed-exposure path.
 
-SSR ray-marches the current frame's HDR color, depth, and material surface data. As a screen-space effect, it cannot reflect off-screen or occluded objects and fades uncertain, rough, distant, and screen-edge hits. Disabling AO, SSR, or bloom skips their compute work; disabling TAA removes jitter and history sampling. Luau queries expose and may write the complete payload when the system declares `scrapbot.camera` in `writes`.
+SSR ray-marches the current frame's HDR color, depth, and material surface data. As a screen-space effect, it cannot reflect off-screen or occluded objects and fades uncertain, rough, distant, and screen-edge hits. AO quality changes its bounded view-space sampling work without reallocating targets. Disabling AO, SSR, or bloom skips their compute work; disabling TAA removes jitter and history sampling. Luau queries expose and may write the complete payload when the system declares `scrapbot.camera` in `writes`.
 
 ### `scrapbot.world_environment`
 

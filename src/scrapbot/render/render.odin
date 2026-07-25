@@ -160,9 +160,47 @@ Runtime_Stats_Collector :: struct {
 	allocator_current_bytes: ^i64,
 	allocator_peak_bytes: ^i64,
 }
+
+Render_Feature_Overrides :: struct {
+	disable_automatic_exposure: bool,
+	disable_temporal_antialiasing: bool,
+	disable_fast_antialiasing: bool,
+	disable_ambient_occlusion: bool,
+	disable_screen_space_reflections: bool,
+	disable_bloom: bool,
+	disable_volumetric_fog: bool,
+}
+
+apply_render_feature_overrides :: proc "contextless" (
+	camera: shared.Camera_Component,
+	overrides: Render_Feature_Overrides,
+) -> shared.Camera_Component {
+	resolved := camera
+	if overrides.disable_automatic_exposure {
+		resolved.automatic_exposure = false
+	}
+	if overrides.disable_temporal_antialiasing {
+		resolved.temporal_antialiasing = false
+	}
+	if overrides.disable_fast_antialiasing {
+		resolved.fast_antialiasing = false
+	}
+	if overrides.disable_ambient_occlusion {
+		resolved.ambient_occlusion = false
+	}
+	if overrides.disable_screen_space_reflections {
+		resolved.screen_space_reflections = false
+	}
+	if overrides.disable_bloom {
+		resolved.bloom = false
+	}
+	return resolved
+}
+
 Run_Config :: struct {
 	backend: Renderer_Backend,
 	cpu_culling: bool,
+	render_feature_overrides: Render_Feature_Overrides,
 	window: bool,
 	window_width, window_height: int,
 	override_window_size: bool,

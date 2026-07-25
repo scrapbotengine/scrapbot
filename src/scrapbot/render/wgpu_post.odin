@@ -1529,6 +1529,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	has_camera: bool,
 	world: ^shared.World,
 	delta_time: f32,
+	render_feature_overrides: Render_Feature_Overrides,
 ) -> string {
 	if err := wgpu_ensure_post_targets(renderer, width, height, depth_view); err != "" {
 		return err
@@ -1537,6 +1538,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	if !has_camera {
 		resolved_camera = shared.camera_defaults()
 	}
+	resolved_camera = apply_render_feature_overrides(resolved_camera, render_feature_overrides)
 	temporal_output_index := renderer.temporal_output_index
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
@@ -1557,7 +1559,7 @@ wgpu_encode_bloom_and_composite :: proc(
 				WGPU_VISIBILITY_AO_RADIUS,
 				WGPU_VISIBILITY_AO_POWER,
 				WGPU_VISIBILITY_AO_STRENGTH,
-				0,
+				shared.camera_ambient_occlusion_quality(resolved_camera),
 			},
 			visibility_parameters = {WGPU_VISIBILITY_AO_THICKNESS, 0, 0, 0},
 		}
@@ -1677,6 +1679,9 @@ wgpu_encode_bloom_and_composite :: proc(
 		},
 	}
 	fog := wgpu_volumetric_fog_settings(world)
+	if render_feature_overrides.disable_volumetric_fog {
+		fog.density = 0
+	}
 	temporal_uniform.fog_color_density = {fog.color.x, fog.color.y, fog.color.z, fog.density}
 	temporal_uniform.fog_height_distance = {
 		fog.height,

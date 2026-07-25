@@ -142,8 +142,23 @@ test_ambient_occlusion_tracks_thickness_with_visibility_sectors :: proc(t: ^test
 		strings.contains(WGPU_AMBIENT_OCCLUSION_SHADER, "countOneBits(occluded_sectors)"),
 	)
 	testing.expect(t, !strings.contains(WGPU_AMBIENT_OCCLUSION_SHADER, "negative_horizon_cosine"))
+	testing.expect(t, strings.contains(WGPU_AMBIENT_OCCLUSION_SHADER, "fn fast_acos"))
+	testing.expect(t, strings.contains(WGPU_AMBIENT_OCCLUSION_SHADER, "let quality = clamp"))
 	testing.expect(t, WGPU_VISIBILITY_AO_THICKNESS > 0)
 	testing.expect(t, WGPU_VISIBILITY_AO_THICKNESS < WGPU_VISIBILITY_AO_RADIUS)
+}
+
+@(test)
+test_ambient_occlusion_quality_uses_bounded_sample_tiers :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	testing.expect_value(t, shared.camera_ambient_occlusion_quality(camera), f32(0.5))
+	testing.expect_value(t, shared.camera_ambient_occlusion_sample_count(camera), u32(16))
+	camera.ambient_occlusion_quality = 0.25
+	testing.expect_value(t, shared.camera_ambient_occlusion_sample_count(camera), u32(8))
+	camera.ambient_occlusion_quality = 0.75
+	testing.expect_value(t, shared.camera_ambient_occlusion_sample_count(camera), u32(24))
+	camera.ambient_occlusion_quality = 1
+	testing.expect_value(t, shared.camera_ambient_occlusion_sample_count(camera), u32(36))
 }
 
 @(test)

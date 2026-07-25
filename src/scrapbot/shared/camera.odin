@@ -13,6 +13,7 @@ camera_defaults :: proc "contextless" () -> Camera_Component {
 		automatic_exposure_speed = 2,
 		temporal_antialiasing = true,
 		ambient_occlusion = true,
+		ambient_occlusion_quality = 0.5,
 		screen_space_reflections = false,
 		bloom = true,
 	}
@@ -33,6 +34,7 @@ camera_copy_render_features :: proc "contextless" (
 	destination.temporal_antialiasing = source.temporal_antialiasing
 	destination.fast_antialiasing = source.fast_antialiasing
 	destination.ambient_occlusion = source.ambient_occlusion
+	destination.ambient_occlusion_quality = source.ambient_occlusion_quality
 	destination.screen_space_reflections = source.screen_space_reflections
 	destination.bloom = source.bloom
 }
@@ -63,6 +65,27 @@ camera_automatic_exposure_speed :: proc "contextless" (camera: Camera_Component)
 		return 2
 	}
 	return camera.automatic_exposure_speed
+}
+
+camera_ambient_occlusion_quality :: proc "contextless" (camera: Camera_Component) -> f32 {
+	if camera.ambient_occlusion_quality <= 0 {
+		return 0.5
+	}
+	return clamp(camera.ambient_occlusion_quality, 0.25, 1)
+}
+
+camera_ambient_occlusion_sample_count :: proc "contextless" (camera: Camera_Component) -> u32 {
+	quality := camera_ambient_occlusion_quality(camera)
+	if quality < 0.375 {
+		return 8
+	}
+	if quality < 0.625 {
+		return 16
+	}
+	if quality < 0.875 {
+		return 24
+	}
+	return 36
 }
 
 camera_forward :: proc(rotation: Vec3) -> Vec3 {

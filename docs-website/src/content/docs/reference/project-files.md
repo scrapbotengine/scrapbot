@@ -180,6 +180,7 @@ automatic_exposure_speed = 2
 temporal_antialiasing = true
 fast_antialiasing = false
 ambient_occlusion = true
+ambient_occlusion_quality = 0.5
 screen_space_reflections = false
 bloom = true
 ```
@@ -190,7 +191,7 @@ A camera reads its world position and Euler orientation from the entity's resolv
 
 Automatic metering samples only the active game viewport. It does not include editor chrome and does not read luminance back to the CPU.
 
-TAA, visibility-bitmask ambient occlusion, and bloom default on; fast fullscreen antialiasing and material-aware screen-space reflections default off. Fast AA is used only when TAA is off. Ambient occlusion models visible depth samples with constant thickness so thin geometry does not permanently close a whole sampling slice; it affects only indirect diffuse lighting and cannot see geometry absent from the current depth buffer. SSR reflects only current-frame, on-screen world surfaces and fades rough, distant, uncertain, and screen-edge hits. These switches are per camera and may be changed live through the generated inspector or Luau query writeback.
+TAA, visibility-bitmask ambient occlusion, and bloom default on; fast fullscreen antialiasing and material-aware screen-space reflections default off. Fast AA is used only when TAA is off. Ambient occlusion models visible depth samples with constant thickness so thin geometry does not permanently close a whole sampling slice; it affects only indirect diffuse lighting and cannot see geometry absent from the current depth buffer. `ambient_occlusion_quality` selects bounded `0.25`, `0.5`, `0.75`, and `1` sampling tiers; the balanced `0.5` default uses 16 samples per half-resolution pixel. SSR reflects only current-frame, on-screen world surfaces and fades rough, distant, uncertain, and screen-edge hits. These camera values may be changed live through the generated inspector or Luau query writeback.
 
 World environment:
 

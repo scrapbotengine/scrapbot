@@ -553,6 +553,14 @@ read_full_camera_table :: proc "c" (
 	   err != "" {
 		return
 	}
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"ambient_occlusion_quality",
+		&value.ambient_occlusion_quality,
+	); err != "" {
+		return
+	}
 	if err = read_ui_bool_field(
 		L,
 		payload_index,
@@ -585,7 +593,11 @@ read_full_camera_table :: proc "c" (
 	   value.automatic_exposure_max < value.automatic_exposure_min ||
 	   math.is_nan(value.automatic_exposure_speed) ||
 	   math.is_inf(value.automatic_exposure_speed) ||
-	   value.automatic_exposure_speed <= 0 {
+	   value.automatic_exposure_speed <= 0 ||
+	   math.is_nan(value.ambient_occlusion_quality) ||
+	   math.is_inf(value.ambient_occlusion_quality) ||
+	   value.ambient_occlusion_quality < 0.25 ||
+	   value.ambient_occlusion_quality > 1 {
 		return value, "invalid scrapbot.camera payload"
 	}
 	return value, ""

@@ -61,6 +61,7 @@ Profile_Options :: struct {
 	resolution: string `usage:"Override the project resolution as WIDTHxHEIGHT."`,
 	capture_range: string `name:"capture-range" usage:"Replay and capture measured frames START:END, inclusive."`,
 	framegrab_region: string `name:"framegrab-region" usage:"Capture a 1:1 top-left pixel crop as x,y,width,height."`,
+	disabled_features: string `name:"disabled-features" usage:"Comma-separated profile-only feature disables: automatic-exposure, temporal-antialiasing, fast-antialiasing, ambient-occlusion, screen-space-reflections, bloom, volumetric-fog."`,
 	cpu_culling: bool `name:"cpu-culling" usage:"Use CPU culling as the WGPU correctness-reference path."`,
 	editor: bool `usage:"Profile with the editor shell visible."`,
 	ui_script: string `name:"ui-script" usage:"Replay semantic UI actions during both deterministic passes."`,
@@ -214,6 +215,41 @@ parse_profile_capture_range :: proc(
 	return u32(parsed_start), u32(parsed_end), true, true
 }
 
+parse_profile_disabled_features :: proc(
+	value: string,
+) -> (
+	overrides: scrapbot.Render_Feature_Overrides,
+	ok: bool,
+) {
+	if strings.trim_space(value) == "" {
+		return {}, true
+	}
+	features := strings.split(value, ",")
+	defer delete(features)
+	for feature_value in features {
+		feature := strings.trim_space(feature_value)
+		switch feature {
+			case "automatic-exposure":
+				overrides.disable_automatic_exposure = true
+			case "temporal-antialiasing":
+				overrides.disable_temporal_antialiasing = true
+			case "fast-antialiasing":
+				overrides.disable_fast_antialiasing = true
+			case "ambient-occlusion":
+				overrides.disable_ambient_occlusion = true
+			case "screen-space-reflections":
+				overrides.disable_screen_space_reflections = true
+			case "bloom":
+				overrides.disable_bloom = true
+			case "volumetric-fog":
+				overrides.disable_volumetric_fog = true
+			case:
+				return {}, false
+		}
+	}
+	return overrides, true
+}
+
 run_profile :: proc(args: []string) -> int {
 	opt := Profile_Options {
 		path = ".",
@@ -240,8 +276,9 @@ run_profile :: proc(args: []string) -> int {
 		opt.frames,
 	)
 	region, region_ok := scrapbot.parse_framegrab_region(opt.framegrab_region)
-	if !resolution_ok || !capture_ok || !region_ok {
-		message := "expected --resolution WIDTHxHEIGHT, --capture-range START:END within measured frames, and --framegrab-region x,y,width,height"
+	render_feature_overrides, features_ok := parse_profile_disabled_features(opt.disabled_features)
+	if !resolution_ok || !capture_ok || !region_ok || !features_ok {
+		message := "expected valid --resolution, --capture-range, --framegrab-region, and --disabled-features values"
 		if opt.json {
 			emit_json_error("profile", "SCRAPBOT_ARGUMENT_ERROR", message, opt.path)
 		} else {
@@ -283,11 +320,13 @@ run_profile :: proc(args: []string) -> int {
 		scrapbot.host_target(),
 		"wgpu",
 	)
+	scrapbot.profile_set_disabled_render_features(&collector, opt.disabled_features)
 	defer scrapbot.destroy_profile_collector(&collector)
 	total_frames := opt.warmup + opt.frames
 	config := scrapbot.Run_Config {
 		backend = .WGPU,
 		cpu_culling = opt.cpu_culling,
+		render_feature_overrides = render_feature_overrides,
 		window = false,
 		window_width = width,
 		window_height = height,
@@ -781,7 +820,7 @@ print_help :: proc() {
   scrapbot build [path]          Build a host-native runnable game package
   scrapbot run [path] [--backend null|wgpu] [--cpu-culling] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json]
                                   Load the project and render
-  scrapbot profile [path] [--out profile] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END]
+  scrapbot profile [path] [--out profile] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END] [--disabled-features names]
                                   Capture deterministic CPU/GPU frame telemetry and optional replay frames
   scrapbot help <command>         Print command-specific options
   scrapbot --version             Print the engine version`,

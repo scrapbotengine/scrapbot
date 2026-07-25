@@ -65,6 +65,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	camera.temporal_antialiasing = false
 	camera.fast_antialiasing = true
 	camera.ambient_occlusion = false
+	camera.ambient_occlusion_quality = 0.75
 	camera.screen_space_reflections = true
 	camera.bloom = false
 	entity := shared.Scene_Entity {
@@ -83,6 +84,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	testing.expect(t, strings.contains(serialized, "temporal_antialiasing = false"))
 	testing.expect(t, strings.contains(serialized, "fast_antialiasing = true"))
 	testing.expect(t, strings.contains(serialized, "ambient_occlusion = false"))
+	testing.expect(t, strings.contains(serialized, "ambient_occlusion_quality = 0.75"))
 	testing.expect(t, strings.contains(serialized, "screen_space_reflections = true"))
 	testing.expect(t, strings.contains(serialized, "bloom = false"))
 }

@@ -27,6 +27,7 @@ DEFAULT_LUAU_TYPES :: shared.DEFAULT_LUAU_TYPES
 
 Renderer_Backend :: shared.Renderer_Backend
 Run_Config :: render.Run_Config
+Render_Feature_Overrides :: render.Render_Feature_Overrides
 Framegrab_Region :: render.Framegrab_Region
 Runtime_Stats :: render.Runtime_Stats
 Render_Stats :: render.Render_Stats
@@ -34,6 +35,7 @@ Profile_Collector :: render.Profile_Collector
 Profile_Report :: render.Profile_Report
 Profile_Summary :: render.Profile_Summary
 init_profile_collector :: render.init_profile_collector
+profile_set_disabled_render_features :: render.profile_set_disabled_render_features
 finish_profile_collector :: render.finish_profile_collector
 destroy_profile_collector :: render.destroy_profile_collector
 World_Storage_Stats :: ecs.World_Storage_Stats

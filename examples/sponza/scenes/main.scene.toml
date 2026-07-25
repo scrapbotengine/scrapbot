@@ -57,6 +57,7 @@ automatic_exposure_speed = 1.5
 temporal_antialiasing = true
 fast_antialiasing = false
 ambient_occlusion = true
+ambient_occlusion_quality = 0.5
 screen_space_reflections = true
 bloom = true
 

@@ -460,6 +460,7 @@ scrapbot.system(Cameras, {
 	camera.temporal_antialiasing = false
 	camera.fast_antialiasing = true
 	camera.ambient_occlusion = false
+	camera.ambient_occlusion_quality = 0.75
 	camera.screen_space_reflections = true
 	camera.bloom = false
 end)
@@ -478,6 +479,7 @@ end)
 	testing.expect(t, !world.cameras[0].temporal_antialiasing)
 	testing.expect(t, world.cameras[0].fast_antialiasing)
 	testing.expect(t, !world.cameras[0].ambient_occlusion)
+	testing.expect_value(t, world.cameras[0].ambient_occlusion_quality, f32(0.75))
 	testing.expect(t, world.cameras[0].screen_space_reflections)
 	testing.expect(t, !world.cameras[0].bloom)
 }

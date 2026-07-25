@@ -1409,8 +1409,6 @@ struct Ambient_Occlusion_Uniform {
 
 const PI: f32 = 3.14159265359;
 const HALF_PI: f32 = 1.57079632679;
-const SLICE_COUNT: u32 = 3u;
-const STEPS_PER_SIDE: u32 = 6u;
 const SECTOR_COUNT: u32 = 32u;
 
 fn viewport_minimum() -> vec2<i32> {
@@ -1469,6 +1467,15 @@ fn spatial_rotation(pixel: vec2<i32>) -> f32 {
 	return f32(value & 0xffffu) * (6.28318530718 / 65536.0);
 }
 
+fn fast_acos(value: f32) -> f32 {
+	let x = abs(clamp(value, -1.0, 1.0));
+	var result = -0.0187293 * x + 0.0742610;
+	result = result * x - 0.2121144;
+	result = result * x + 1.5707288;
+	result *= sqrt(max(1.0 - x, 0.0));
+	return select(PI - result, result, value >= 0.0);
+}
+
 fn sector_mask(minimum_horizon: f32, maximum_horizon: f32) -> u32 {
 	let minimum_sector = min(
 		u32(floor(clamp(minimum_horizon, 0.0, 1.0) * f32(SECTOR_COUNT))),
@@ -1517,12 +1524,12 @@ fn accumulate_visibility_sectors(
 	if (back_distance <= 0.0001) {
 		return occluded_sectors;
 	}
-	let front_angle = acos(clamp(
+	let front_angle = fast_acos(clamp(
 		dot(difference / distance, view_direction),
 		-1.0,
 		1.0,
 	));
-	let back_angle = acos(clamp(
+	let back_angle = fast_acos(clamp(
 		dot(back_difference / back_distance, view_direction),
 		-1.0,
 		1.0,
@@ -1568,9 +1575,20 @@ fn ambient_occlusion_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	);
 	let rotation = spatial_rotation(ao_pixel);
 	let sample_jitter = fract(rotation * 0.15915494309);
+	let quality = clamp(settings.parameters.w, 0.25, 1.0);
+	var slice_count = 2u;
+	var steps_per_side = 4u;
+	if (quality < 0.375) {
+		steps_per_side = 2u;
+	} else if (quality >= 0.875) {
+		slice_count = 3u;
+		steps_per_side = 6u;
+	} else if (quality >= 0.625) {
+		slice_count = 3u;
+	}
 	var visibility = 0.0;
-	for (var slice = 0u; slice < SLICE_COUNT; slice += 1u) {
-		let angle = rotation + (f32(slice) + 0.5) * PI / f32(SLICE_COUNT);
+	for (var slice = 0u; slice < slice_count; slice += 1u) {
+		let angle = rotation + (f32(slice) + 0.5) * PI / f32(slice_count);
 		let screen_direction = vec2<f32>(cos(angle), sin(angle));
 		let slice_direction = vec3<f32>(screen_direction, 0.0);
 		let slice_normal = normalize(cross(slice_direction, view_direction));
@@ -1594,10 +1612,10 @@ fn ambient_occlusion_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		);
 		let normal_angle = -normal_sign * acos(cos_normal);
 		var occluded_sectors = 0u;
-		for (var step = 0u; step < STEPS_PER_SIDE; step += 1u) {
+		for (var step = 0u; step < steps_per_side; step += 1u) {
 			let normalized_step =
 				(f32(step) + 0.35 + sample_jitter * 0.3) /
-				f32(STEPS_PER_SIDE);
+				f32(steps_per_side);
 			let sample_distance = max(
 				1.0,
 				projected_radius * normalized_step * normalized_step,
@@ -1629,7 +1647,7 @@ fn ambient_occlusion_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 			f32(countOneBits(occluded_sectors)) / f32(SECTOR_COUNT);
 	}
 	visibility = clamp(
-		visibility / f32(SLICE_COUNT),
+		visibility / f32(slice_count),
 		0.0,
 		1.0,
 	);

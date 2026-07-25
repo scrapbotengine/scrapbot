@@ -111,6 +111,7 @@ Profile_Metadata :: struct {
 	adapter_architecture: string,
 	adapter_backend: string,
 	adapter_type: string,
+	disabled_render_features: string,
 	timestamp_queries: bool,
 }
 
@@ -178,7 +179,16 @@ destroy_profile_collector :: proc(collector: ^Profile_Collector) {
 	delete(metadata.adapter_architecture)
 	delete(metadata.adapter_backend)
 	delete(metadata.adapter_type)
+	delete(metadata.disabled_render_features)
 	collector^ = {}
+}
+
+profile_set_disabled_render_features :: proc(collector: ^Profile_Collector, features: string) {
+	if collector == nil {
+		return
+	}
+	delete(collector.report.metadata.disabled_render_features)
+	collector.report.metadata.disabled_render_features = strings.clone(features)
 }
 
 profile_set_adapter :: proc(
