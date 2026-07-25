@@ -145,9 +145,11 @@ Material revisions trigger one dependent-instance pass. WGPU replaces only that 
 
 ### Camera-selected postprocessing
 
-The active camera owns world render scale, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
+The active camera owns the manual world-render ceiling, optional GPU-budgeted dynamic-resolution floor/target, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
 
-WGPU derives one output layout and one world-render layout after camera extraction. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target, then project UI, gizmos, and editor chrome render at native resolution.
+Before layout, WGPU drains any completed asynchronous timestamp readbacks. Dynamic resolution processes every newly completed scalable-GPU sample exactly once, filters it, and applies asymmetric hysteresis in quantized 5% steps. Samples retain their render-policy generation, so delayed evidence from an old scale or camera cannot affect the new controller state. Native project/editor UI time is excluded. The authored `resolution_scale` remains the ceiling, the authored minimum remains the floor, and unsupported timestamps select the ceiling.
+
+WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target, then project UI, gizmos, and editor chrome render at native resolution.
 
 Global volumetric fog is scene-owned rather than camera-owned. It composes before temporal resolution and bloom, stops at scene depth or its authored distance bound, and becomes a shader no-op when absent or at zero density.
 
@@ -163,7 +165,7 @@ SSR ray-marches depth and samples confirmed current-frame HDR hits. The result f
 
 When automatic exposure is enabled, one GPU workgroup samples 256 stratified pixels inside the active viewport, reduces their log luminance, and exponentially adapts a persistent clamped scalar. The scalar remains GPU-resident and is shared by bloom extraction and final composition. Temporal HDR history stays scene-linear.
 
-Changing render scale replaces only size-dependent targets and rejects temporal history. Stable frames reuse the targets and their bindings. Disabling TAA removes jitter and history traffic. Disabling automatic exposure, AO, SSR, or bloom skips that compute dispatch. These value changes never reconcile renderable membership or rebuild imported textures.
+Changing effective render scale replaces only size-dependent targets and rejects temporal history. Stable frames reuse the targets and their bindings. Disabling TAA removes jitter and history traffic. Disabling automatic exposure, AO, SSR, or bloom skips that compute dispatch. These value changes never reconcile renderable membership or rebuild imported textures.
 
 ## Performance diagnostics
 

@@ -819,6 +819,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.camera.far, found = parse_f32(value)
 					case "resolution_scale":
 						current.camera.resolution_scale, found = parse_f32(value)
+					case "dynamic_resolution":
+						current.camera.dynamic_resolution, found = parse_bool(value)
+					case "dynamic_resolution_min_scale":
+						current.camera.dynamic_resolution_min_scale, found = parse_f32(value)
+					case "dynamic_resolution_target_ms":
+						current.camera.dynamic_resolution_target_ms, found = parse_f32(value)
 					case "exposure":
 						current.camera.exposure, found = parse_f32(value)
 					case "automatic_exposure":
@@ -1489,6 +1495,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if resolution_scale == 0 {
 				resolution_scale = 1
 			}
+			dynamic_resolution_min_scale := entity.camera.dynamic_resolution_min_scale
+			dynamic_resolution_target_ms := entity.camera.dynamic_resolution_target_ms
 			automatic_exposure_min := shared.camera_automatic_exposure_min(entity.camera)
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
 			automatic_exposure_speed := shared.camera_automatic_exposure_speed(entity.camera)
@@ -1501,6 +1509,14 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   math.is_inf(resolution_scale) ||
 			   resolution_scale < 0.5 ||
 			   resolution_scale > 1 ||
+			   math.is_nan(dynamic_resolution_min_scale) ||
+			   math.is_inf(dynamic_resolution_min_scale) ||
+			   dynamic_resolution_min_scale < 0.5 ||
+			   dynamic_resolution_min_scale > resolution_scale ||
+			   math.is_nan(dynamic_resolution_target_ms) ||
+			   math.is_inf(dynamic_resolution_target_ms) ||
+			   dynamic_resolution_target_ms < 1 ||
+			   dynamic_resolution_target_ms > 100 ||
 			   math.is_nan(automatic_exposure_min) ||
 			   math.is_inf(automatic_exposure_min) ||
 			   automatic_exposure_min <= 0 ||

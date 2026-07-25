@@ -6,6 +6,7 @@ import resources "../resources"
 import shared "../shared"
 import ui "../ui"
 import "core:fmt"
+import "core:math"
 import "core:strconv"
 import "core:strings"
 import "core:time"
@@ -64,6 +65,9 @@ Render_Stats :: struct {
 	gpu_timestamps_supported: bool,
 	gpu_timestamps_valid: bool,
 	gpu_frame_ms: f64,
+	render_scale: f32,
+	dynamic_resolution: bool,
+	dynamic_resolution_filtered_gpu_ms: f64,
 	gpu_instance_expansion_ms: f64,
 	gpu_clustered_lighting_ms: f64,
 	gpu_cull_ms: f64,
@@ -113,6 +117,136 @@ Render_Stats :: struct {
 	ui_viewport_target_resizes: u64,
 	ui_viewport_redraws: u64,
 	ui_viewport_cache_hits: u64,
+}
+
+Dynamic_Resolution_State :: struct {
+	initialized: bool,
+	enabled: bool,
+	generation: u64,
+	policy_owner: shared.Entity_UUID,
+	maximum_scale: f32,
+	minimum_scale: f32,
+	target_ms: f32,
+	effective_scale: f32,
+	filtered_gpu_ms: f64,
+	has_filtered_sample: bool,
+	last_sample_serial: u64,
+	over_budget_samples: int,
+	under_budget_samples: int,
+	cooldown_samples: int,
+}
+
+DYNAMIC_RESOLUTION_SCALE_STEP :: f32(0.05)
+DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO :: f64(1.08)
+DYNAMIC_RESOLUTION_UNDER_BUDGET_RATIO :: f64(0.72)
+DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES :: 3
+DYNAMIC_RESOLUTION_UNDER_BUDGET_SAMPLES :: 30
+DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES :: 8
+DYNAMIC_RESOLUTION_FILTER_ALPHA :: f64(0.2)
+
+dynamic_resolution_quantize :: proc "contextless" (scale, minimum, maximum: f32) -> f32 {
+	steps := math.round(scale / DYNAMIC_RESOLUTION_SCALE_STEP)
+	return clamp(steps * DYNAMIC_RESOLUTION_SCALE_STEP, minimum, maximum)
+}
+
+dynamic_resolution_scale :: proc "contextless" (
+	state: ^Dynamic_Resolution_State,
+	camera: shared.Camera_Component,
+	timestamps_supported: bool,
+	sample_serial: u64,
+	gpu_frame_ms, gpu_ui_ms: f64,
+	policy_owner: shared.Entity_UUID = {},
+) -> f32 {
+	maximum := shared.camera_resolution_scale(camera)
+	minimum := shared.camera_dynamic_resolution_min_scale(camera)
+	target := shared.camera_dynamic_resolution_target_ms(camera)
+	enabled := camera.dynamic_resolution && timestamps_supported
+	if state == nil {
+		return maximum
+	}
+	policy_changed :=
+		!state.initialized ||
+		state.enabled != enabled ||
+		state.policy_owner != policy_owner ||
+		state.maximum_scale != maximum ||
+		state.minimum_scale != minimum ||
+		state.target_ms != target
+	if policy_changed {
+		was_enabled := state.initialized && state.enabled
+		owner_changed := state.initialized && state.policy_owner != policy_owner
+		if !was_enabled || !enabled || owner_changed {
+			state.effective_scale = maximum
+		} else {
+			state.effective_scale = dynamic_resolution_quantize(
+				state.effective_scale,
+				minimum,
+				maximum,
+			)
+		}
+		state.initialized = true
+		state.enabled = enabled
+		state.generation += 1
+		state.policy_owner = policy_owner
+		state.maximum_scale = maximum
+		state.minimum_scale = minimum
+		state.target_ms = target
+		state.filtered_gpu_ms = 0
+		state.has_filtered_sample = false
+		state.over_budget_samples = 0
+		state.under_budget_samples = 0
+		state.cooldown_samples = 0
+	}
+	if !enabled || sample_serial == 0 || sample_serial == state.last_sample_serial {
+		return state.effective_scale
+	}
+	state.last_sample_serial = sample_serial
+	scalable_frame_ms := max(gpu_frame_ms - gpu_ui_ms, 0)
+	if !state.has_filtered_sample {
+		state.filtered_gpu_ms = scalable_frame_ms
+		state.has_filtered_sample = true
+	} else {
+		state.filtered_gpu_ms +=
+			(scalable_frame_ms - state.filtered_gpu_ms) * DYNAMIC_RESOLUTION_FILTER_ALPHA
+	}
+	if state.cooldown_samples > 0 {
+		state.cooldown_samples -= 1
+		return state.effective_scale
+	}
+	over_budget := state.filtered_gpu_ms > f64(target) * DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO
+	under_budget := state.filtered_gpu_ms < f64(target) * DYNAMIC_RESOLUTION_UNDER_BUDGET_RATIO
+	if over_budget {
+		state.over_budget_samples += 1
+		state.under_budget_samples = 0
+	} else if under_budget {
+		state.under_budget_samples += 1
+		state.over_budget_samples = 0
+	} else {
+		state.over_budget_samples = 0
+		state.under_budget_samples = 0
+	}
+	next_scale := state.effective_scale
+	adjustment_due := false
+	if state.over_budget_samples >= DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES {
+		next_scale -= DYNAMIC_RESOLUTION_SCALE_STEP
+		adjustment_due = true
+	} else if state.under_budget_samples >= DYNAMIC_RESOLUTION_UNDER_BUDGET_SAMPLES {
+		next_scale += DYNAMIC_RESOLUTION_SCALE_STEP
+		adjustment_due = true
+	}
+	if !adjustment_due {
+		return state.effective_scale
+	}
+	next_scale = dynamic_resolution_quantize(next_scale, minimum, maximum)
+	if next_scale != state.effective_scale {
+		state.effective_scale = next_scale
+		state.generation += 1
+		state.filtered_gpu_ms = 0
+		state.has_filtered_sample = false
+		state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
+	}
+	state.over_budget_samples = 0
+	state.under_budget_samples = 0
+	return state.effective_scale
 }
 
 PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES :: 5
@@ -306,6 +440,7 @@ performance_diagnostics_commit_frame :: proc(
 		snapshot.fps = 1000 / average_frame_interval_ms
 	}
 	snapshot.gpu_frame_ms = stats.gpu_frame_ms
+	snapshot.render_scale = stats.render_scale
 	snapshot.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	snapshot.entity_count = world.scene_entity_count + world.runtime_entity_count
 	snapshot.draw_batches = stats.draw_batches

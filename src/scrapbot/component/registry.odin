@@ -151,6 +151,31 @@ init_registry :: proc(registry: ^Registry) {
 					maximum = 1,
 				},
 			},
+			Field_Definition{name = "dynamic_resolution", field_type = .Bool},
+			Field_Definition {
+				name = "dynamic_resolution_min_scale",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0.5,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+			Field_Definition {
+				name = "dynamic_resolution_target_ms",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.5,
+					has_minimum = true,
+					minimum = 1,
+					has_maximum = true,
+					maximum = 100,
+				},
+			},
 			Field_Definition{name = "exposure", field_type = .Number},
 			Field_Definition{name = "automatic_exposure", field_type = .Bool},
 			Field_Definition {

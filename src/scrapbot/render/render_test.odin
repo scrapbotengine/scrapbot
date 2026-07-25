@@ -680,6 +680,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 		draw_batches = 7,
 		gpu_timestamps_valid = true,
 		gpu_frame_ms = 2.25,
+		render_scale = 0.75,
 		instance_slots = 12,
 		frustum_candidates = 11,
 		frustum_culled_instances = 4,
@@ -699,6 +700,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, math.abs(snapshot.fps - 50) < 0.001)
 	testing.expect(t, math.abs(snapshot.frame_ms - 6) < 0.001)
 	testing.expect(t, snapshot.gpu_frame_ms == 2.25)
+	testing.expect_value(t, snapshot.render_scale, f32(0.75))
 	testing.expect(t, snapshot.gpu_timestamps_valid)
 	testing.expect(t, snapshot.entity_count == 2)
 	testing.expect(t, snapshot.draw_batches == 7)
@@ -1892,4 +1894,168 @@ test_render_target_layout_defaults_to_native_resolution :: proc(t: ^testing.T) {
 	testing.expect_value(t, layout.render_height, u32(450))
 	testing.expect_value(t, layout.render_viewport, output_viewport)
 	testing.expect_value(t, layout.resolution_scale, f32(1))
+}
+
+@(test)
+test_dynamic_resolution_requires_sustained_unique_gpu_samples :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_min_scale = 0.5
+	camera.dynamic_resolution_target_ms = 10
+	state: Dynamic_Resolution_State
+	scale := dynamic_resolution_scale(&state, camera, true, 1, 20, 0)
+	testing.expect_value(t, scale, f32(1))
+	scale = dynamic_resolution_scale(&state, camera, true, 1, 20, 0)
+	testing.expect_value(t, scale, f32(1))
+	scale = dynamic_resolution_scale(&state, camera, true, 2, 20, 0)
+	testing.expect_value(t, scale, f32(1))
+	scale = dynamic_resolution_scale(&state, camera, true, 3, 20, 0)
+	testing.expect_value(t, scale, f32(0.95))
+	testing.expect_value(t, state.cooldown_samples, DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES)
+}
+
+@(test)
+test_dynamic_resolution_excludes_native_ui_and_respects_manual_bounds :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.resolution_scale = 0.8
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_min_scale = 0.7
+	camera.dynamic_resolution_target_ms = 10
+	state: Dynamic_Resolution_State
+	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+		scale := dynamic_resolution_scale(&state, camera, true, serial, 20, 12)
+		testing.expect_value(t, scale, f32(0.8))
+	}
+	for serial in u64(4) ..= u64(6) {
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 24, 0)
+	}
+	testing.expect_value(t, state.effective_scale, f32(0.75))
+	for serial in u64(7) ..= u64(64) {
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 24, 0)
+	}
+	testing.expect_value(t, state.effective_scale, f32(0.7))
+}
+
+@(test)
+test_dynamic_resolution_falls_back_to_manual_scale_without_timestamps :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.resolution_scale = 0.75
+	camera.dynamic_resolution = true
+	state: Dynamic_Resolution_State
+	scale := dynamic_resolution_scale(&state, camera, false, 0, 0, 0)
+	testing.expect_value(t, scale, f32(0.75))
+	testing.expect(t, !state.enabled)
+}
+
+@(test)
+test_dynamic_resolution_rejects_delayed_samples_from_previous_scale_generation :: proc(
+	t: ^testing.T,
+) {
+	camera := shared.camera_defaults()
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_target_ms = 10
+	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_supported = true
+	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0, 0)
+	initial_generation := renderer.dynamic_resolution.generation
+	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+		_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, serial, 20, 0)
+	}
+	testing.expect(t, renderer.dynamic_resolution.generation != initial_generation)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, initial_generation, 1, 20, 0)
+	testing.expect_value(t, renderer.gpu_timestamp_resolution_sample_count, 0)
+	testing.expect_value(t, renderer.gpu_timestamp_sample_serial, u64(0))
+	wgpu_dynamic_resolution_accumulate_sample(
+		&renderer,
+		renderer.dynamic_resolution.generation,
+		2,
+		8,
+		2,
+	)
+	testing.expect_value(t, renderer.gpu_timestamp_resolution_sample_count, 1)
+	testing.expect_value(t, renderer.gpu_timestamp_sample_serial, u64(1))
+	testing.expect(t, math.abs(renderer.gpu_timestamp_resolution_samples[0].gpu_ms - 6) < 0.001)
+}
+
+@(test)
+test_dynamic_resolution_batches_match_individual_sample_hysteresis :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_target_ms = 10
+	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_supported = true
+	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0, 0)
+	generation := renderer.dynamic_resolution.generation
+	for frame_index in 0 ..< DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES {
+		wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, u64(frame_index), 20, 0)
+	}
+	scale := wgpu_dynamic_resolution_scale(&renderer, camera, {})
+	testing.expect_value(t, scale, f32(0.95))
+}
+
+@(test)
+test_dynamic_resolution_processes_completed_samples_in_frame_order :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_target_ms = 10
+	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_supported = true
+	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0, 0)
+	generation := renderer.dynamic_resolution.generation
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 4, 20, 0)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 1, 5, 0)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 2, 5, 0)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 3, 5, 0)
+	_ = wgpu_dynamic_resolution_scale(&renderer, camera, {})
+
+	expected: Dynamic_Resolution_State
+	expected_samples := [4]f64{5, 5, 5, 20}
+	for sample, serial in expected_samples {
+		_ = dynamic_resolution_scale(&expected, camera, true, u64(serial + 1), sample, 0)
+	}
+	testing.expect(
+		t,
+		math.abs(renderer.dynamic_resolution.filtered_gpu_ms - expected.filtered_gpu_ms) < 0.001,
+	)
+	testing.expect_value(
+		t,
+		renderer.dynamic_resolution.over_budget_samples,
+		expected.over_budget_samples,
+	)
+	testing.expect_value(
+		t,
+		renderer.dynamic_resolution.under_budget_samples,
+		expected.under_budget_samples,
+	)
+	testing.expect_value(t, renderer.dynamic_resolution.effective_scale, expected.effective_scale)
+}
+
+@(test)
+test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_target_ms = 10
+	first_owner, first_owner_ok := shared.entity_uuid_parse("10000000-0000-4000-8000-000000000001")
+	second_owner, second_owner_ok := shared.entity_uuid_parse(
+		"10000000-0000-4000-8000-000000000002",
+	)
+	testing.expect(t, first_owner_ok)
+	testing.expect(t, second_owner_ok)
+	state: Dynamic_Resolution_State
+	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 20, 0, first_owner)
+	}
+	testing.expect_value(t, state.effective_scale, f32(0.95))
+	scale := dynamic_resolution_scale(
+		&state,
+		camera,
+		true,
+		state.last_sample_serial,
+		0,
+		0,
+		second_owner,
+	)
+	testing.expect_value(t, scale, f32(1))
+	testing.expect_value(t, state.policy_owner, second_owner)
+	testing.expect(t, !state.has_filtered_sample)
 }

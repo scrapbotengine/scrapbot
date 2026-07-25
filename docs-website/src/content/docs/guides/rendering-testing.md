@@ -297,13 +297,31 @@ The output directory contains:
 - `overview.png` from the final measured frame.
 - An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
 
-Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot.
+Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, whether dynamic resolution is active, and its filtered scalable-GPU signal.
 
 The `workload` object records the dispatch size, render extent, draws, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
 
 `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, and cache-hit totals into the work attributable to that frame.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
+
+### Dynamic resolution
+
+Set the policy on the active `scrapbot.camera`:
+
+```toml
+[entities.camera]
+resolution_scale = 1
+dynamic_resolution = true
+dynamic_resolution_min_scale = 0.6
+dynamic_resolution_target_ms = 16.667
+```
+
+The manual scale is the ceiling, not a second multiplier. WGPU processes every completed timestamp sample once, removes native UI time, filters the result, and uses hysteretic 5% steps. It lowers scale faster than it raises it to avoid oscillation. Delayed samples from an old scale or active project camera are discarded.
+
+Scale changes reject temporal history and resize only scale-dependent targets. An unchanged scale reuses all retained targets. Backends without timestamps stay at `resolution_scale`.
+
+Use a long enough warmup when profiling adaptive policy. The measured rows should represent its settled scale rather than startup convergence. For fixed-scale feature comparisons, disable dynamic resolution.
 
 Image capture uses a fresh second replay. PNG mapping can stall the pipeline, so capture time never enters the telemetry report. Keep the range narrow and use `--framegrab-region` when only one area matters.
 

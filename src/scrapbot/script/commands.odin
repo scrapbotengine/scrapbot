@@ -510,6 +510,26 @@ read_full_camera_table :: proc "c" (
 	   err != "" {
 		return
 	}
+	if err = read_ui_bool_field(L, payload_index, "dynamic_resolution", &value.dynamic_resolution);
+	   err != "" {
+		return
+	}
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"dynamic_resolution_min_scale",
+		&value.dynamic_resolution_min_scale,
+	); err != "" {
+		return
+	}
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"dynamic_resolution_target_ms",
+		&value.dynamic_resolution_target_ms,
+	); err != "" {
+		return
+	}
 	if err = read_ui_number_field(L, payload_index, "exposure", &value.exposure); err != "" {
 		return
 	}
@@ -598,6 +618,14 @@ read_full_camera_table :: proc "c" (
 	   math.is_inf(value.resolution_scale) ||
 	   value.resolution_scale < 0.5 ||
 	   value.resolution_scale > 1 ||
+	   math.is_nan(value.dynamic_resolution_min_scale) ||
+	   math.is_inf(value.dynamic_resolution_min_scale) ||
+	   value.dynamic_resolution_min_scale < 0.5 ||
+	   value.dynamic_resolution_min_scale > value.resolution_scale ||
+	   math.is_nan(value.dynamic_resolution_target_ms) ||
+	   math.is_inf(value.dynamic_resolution_target_ms) ||
+	   value.dynamic_resolution_target_ms < 1 ||
+	   value.dynamic_resolution_target_ms > 100 ||
 	   math.is_nan(value.exposure) ||
 	   math.is_inf(value.exposure) ||
 	   value.exposure <= 0 ||

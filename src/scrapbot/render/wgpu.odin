@@ -78,8 +78,16 @@ WGPU_GPU_Timestamp_Readback :: struct {
 	map_state: WGPU_Buffer_Map_State,
 	pending: bool,
 	frame_index: u64,
+	dynamic_resolution_generation: u64,
 	hiz_mip_count: int,
 	phase_mask: u32,
+}
+
+WGPU_Dynamic_Resolution_Sample :: struct {
+	generation: u64,
+	serial: u64,
+	frame_index: u64,
+	gpu_ms: f64,
 }
 
 WGPU_GPU_Visibility_Counters :: struct {
@@ -658,8 +666,12 @@ WGPU_Renderer :: struct {
 	gpu_timestamp_active_slot: int,
 	gpu_timestamp_supported: bool,
 	gpu_timestamp_valid: bool,
+	gpu_timestamp_sample_serial: u64,
+	gpu_timestamp_resolution_samples: [WGPU_GPU_TIMESTAMP_FRAMES]WGPU_Dynamic_Resolution_Sample,
+	gpu_timestamp_resolution_sample_count: int,
 	gpu_timestamp_phase_ms: [WGPU_GPU_TIMESTAMP_PHASE_COUNT]f64,
 	gpu_timestamp_frame_ms: f64,
+	dynamic_resolution: Dynamic_Resolution_State,
 	profile: ^Profile_Collector,
 	profile_frame_index: u64,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
@@ -793,6 +805,83 @@ WGPU_Render_Target_Layout :: struct {
 	output_viewport: ui.Rect,
 	render_viewport: ui.Rect,
 	resolution_scale: f32,
+}
+
+wgpu_dynamic_resolution_scale :: proc(
+	renderer: ^WGPU_Renderer,
+	camera: shared.Camera_Component,
+	policy_owner: shared.Entity_UUID,
+) -> f32 {
+	if renderer == nil {
+		return shared.camera_resolution_scale(camera)
+	}
+	scale := dynamic_resolution_scale(
+		&renderer.dynamic_resolution,
+		camera,
+		renderer.gpu_timestamp_supported,
+		renderer.dynamic_resolution.last_sample_serial,
+		0,
+		0,
+		policy_owner,
+	)
+	samples := renderer.gpu_timestamp_resolution_samples[:renderer.gpu_timestamp_resolution_sample_count]
+	for index in 1 ..< len(samples) {
+		sample := samples[index]
+		cursor := index
+		for cursor > 0 && samples[cursor - 1].frame_index > sample.frame_index {
+			samples[cursor] = samples[cursor - 1]
+			cursor -= 1
+		}
+		samples[cursor] = sample
+	}
+	for sample in samples {
+		if sample.generation != renderer.dynamic_resolution.generation {
+			continue
+		}
+		generation := renderer.dynamic_resolution.generation
+		scale = dynamic_resolution_scale(
+			&renderer.dynamic_resolution,
+			camera,
+			renderer.gpu_timestamp_supported,
+			sample.serial,
+			sample.gpu_ms,
+			0,
+			policy_owner,
+		)
+		if renderer.dynamic_resolution.generation != generation {
+			break
+		}
+	}
+	renderer.gpu_timestamp_resolution_sample_count = 0
+	if renderer.gpu_timestamp_active_slot >= 0 {
+		readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
+		readback.dynamic_resolution_generation = renderer.dynamic_resolution.generation
+	}
+	return scale
+}
+
+wgpu_dynamic_resolution_accumulate_sample :: proc(
+	renderer: ^WGPU_Renderer,
+	generation: u64,
+	frame_index: u64,
+	frame_ms, ui_ms: f64,
+) {
+	if renderer == nil ||
+	   !renderer.dynamic_resolution.initialized ||
+	   generation != renderer.dynamic_resolution.generation ||
+	   renderer.gpu_timestamp_resolution_sample_count >=
+		   len(renderer.gpu_timestamp_resolution_samples) {
+		return
+	}
+	renderer.gpu_timestamp_sample_serial += 1
+	index := renderer.gpu_timestamp_resolution_sample_count
+	renderer.gpu_timestamp_resolution_samples[index] = {
+		generation = generation,
+		serial = renderer.gpu_timestamp_sample_serial,
+		frame_index = frame_index,
+		gpu_ms = max(frame_ms - ui_ms, 0),
+	}
+	renderer.gpu_timestamp_resolution_sample_count += 1
 }
 
 wgpu_render_target_layout :: proc(
@@ -2741,11 +2830,16 @@ wgpu_draw_frame :: proc(
 		&renderer.render_list,
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
+	profile_frame_index := renderer.profile_frame_index
+	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	viewport := ui.editor_viewport(config.ui_state, f32(renderer.width), f32(renderer.height))
 	camera := shared.camera_defaults()
+	policy_owner: shared.Entity_UUID
 	if renderer.render_list.has_camera {
 		camera = renderer.render_list.camera.camera
+		policy_owner = renderer.render_list.camera.policy_owner
 	}
+	camera.resolution_scale = wgpu_dynamic_resolution_scale(renderer, camera, policy_owner)
 	layout := wgpu_render_target_layout(renderer.width, renderer.height, viewport, camera)
 	render_depth_view, render_depth_err := wgpu_render_depth_view(
 		renderer,
@@ -2785,6 +2879,10 @@ wgpu_draw_frame :: proc(
 		config.stats.draw_capacity = renderer.gpu_draw_capacity
 		config.stats.draw_database_rebuilds = renderer.gpu_draw_database_rebuild_count
 		config.stats.gpu_driven = true
+		config.stats.render_scale = layout.resolution_scale
+		config.stats.dynamic_resolution = renderer.dynamic_resolution.enabled
+		config.stats.dynamic_resolution_filtered_gpu_ms =
+			renderer.dynamic_resolution.filtered_gpu_ms
 		config.stats.compute_culling = !config.cpu_culling
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
@@ -2816,8 +2914,6 @@ wgpu_draw_frame :: proc(
 		return false, false, "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
-	profile_frame_index := renderer.profile_frame_index
-	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2980,11 +3076,16 @@ wgpu_render_offscreen_frame :: proc(
 		&renderer.render_list,
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
+	profile_frame_index := renderer.profile_frame_index
+	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	viewport := ui.editor_viewport(config.ui_state, f32(width), f32(height))
 	camera := shared.camera_defaults()
+	policy_owner: shared.Entity_UUID
 	if renderer.render_list.has_camera {
 		camera = renderer.render_list.camera.camera
+		policy_owner = renderer.render_list.camera.policy_owner
 	}
+	camera.resolution_scale = wgpu_dynamic_resolution_scale(renderer, camera, policy_owner)
 	layout := wgpu_render_target_layout(width, height, viewport, camera)
 	render_depth_view, render_depth_err := wgpu_render_depth_view(
 		renderer,
@@ -3024,6 +3125,10 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.draw_capacity = renderer.gpu_draw_capacity
 		config.stats.draw_database_rebuilds = renderer.gpu_draw_database_rebuild_count
 		config.stats.gpu_driven = true
+		config.stats.render_scale = layout.resolution_scale
+		config.stats.dynamic_resolution = renderer.dynamic_resolution.enabled
+		config.stats.dynamic_resolution_filtered_gpu_ms =
+			renderer.dynamic_resolution.filtered_gpu_ms
 		config.stats.compute_culling = !config.cpu_culling
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
@@ -3055,8 +3160,6 @@ wgpu_render_offscreen_frame :: proc(
 		return "failed to create wgpu command encoder"
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
-	profile_frame_index := renderer.profile_frame_index
-	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}

@@ -605,6 +605,17 @@ far = 100
 		shared.camera_resolution_scale(default_exposure.entities[0].camera),
 		f32(1),
 	)
+	testing.expect(t, !default_exposure.entities[0].camera.dynamic_resolution)
+	testing.expect_value(
+		t,
+		shared.camera_dynamic_resolution_min_scale(default_exposure.entities[0].camera),
+		f32(0.5),
+	)
+	testing.expect_value(
+		t,
+		shared.camera_dynamic_resolution_target_ms(default_exposure.entities[0].camera),
+		f32(16.667),
+	)
 	testing.expect(t, !default_exposure.entities[0].camera.automatic_exposure)
 	testing.expect_value(
 		t,
@@ -644,6 +655,9 @@ name = "Camera"
 
 [entities.camera]
 resolution_scale = 0.75
+dynamic_resolution = true
+dynamic_resolution_min_scale = 0.6
+dynamic_resolution_target_ms = 10
 automatic_exposure = true
 automatic_exposure_min = 0.25
 automatic_exposure_max = 6
@@ -660,6 +674,9 @@ bloom = false
 	defer destroy_scene(&configured)
 	testing.expect(t, configured_result.err == .None)
 	testing.expect_value(t, configured.entities[0].camera.resolution_scale, f32(0.75))
+	testing.expect(t, configured.entities[0].camera.dynamic_resolution)
+	testing.expect_value(t, configured.entities[0].camera.dynamic_resolution_min_scale, f32(0.6))
+	testing.expect_value(t, configured.entities[0].camera.dynamic_resolution_target_ms, f32(10))
 	testing.expect(t, configured.entities[0].camera.automatic_exposure)
 	testing.expect_value(t, configured.entities[0].camera.automatic_exposure_min, f32(0.25))
 	testing.expect_value(t, configured.entities[0].camera.automatic_exposure_max, f32(6))
@@ -736,6 +753,44 @@ resolution_scale = 0.25
 	)
 	defer destroy_scene(&invalid_resolution_scale)
 	testing.expect(t, invalid_resolution_scale_result.err == .Invalid_Field)
+
+	invalid_dynamic_minimum, invalid_dynamic_minimum_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000098"
+name = "Camera"
+
+[entities.camera]
+resolution_scale = 0.75
+dynamic_resolution_min_scale = 0.9
+`,
+	)
+	defer destroy_scene(&invalid_dynamic_minimum)
+	testing.expect(t, invalid_dynamic_minimum_result.err == .Invalid_Field)
+
+	invalid_dynamic_target, invalid_dynamic_target_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000099"
+name = "Camera"
+
+[entities.camera]
+dynamic_resolution_target_ms = 0.5
+`,
+	)
+	defer destroy_scene(&invalid_dynamic_target)
+	testing.expect(t, invalid_dynamic_target_result.err == .Invalid_Field)
+
+	invalid_dynamic_zero, invalid_dynamic_zero_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000100"
+name = "Camera"
+
+[entities.camera]
+dynamic_resolution_min_scale = 0
+dynamic_resolution_target_ms = 0
+`,
+	)
+	defer destroy_scene(&invalid_dynamic_zero)
+	testing.expect(t, invalid_dynamic_zero_result.err == .Invalid_Field)
 }
 
 @(test)

@@ -1967,6 +1967,7 @@ first_camera_instance :: proc(world: ^World) -> (instance: Camera_Instance, ok: 
 	world_transform, _ := resolve_world_transform(world, selected_entity_index)
 	return Camera_Instance {
 			entity = entity,
+			policy_owner = entity.uuid,
 			transform = world_transform,
 			camera = world.cameras[entity.camera_index],
 		},
@@ -2007,6 +2008,7 @@ active_camera_instance :: proc(
 			if project_camera, has_project_camera := first_camera_instance(world);
 			   has_project_camera {
 				shared.camera_copy_render_features(&editor_camera.camera, project_camera.camera)
+				editor_camera.policy_owner = project_camera.entity.uuid
 			}
 			return editor_camera, true
 		}

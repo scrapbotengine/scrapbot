@@ -920,6 +920,14 @@ editor_reflected_component_valid :: proc(
 			if resolution_scale == 0 {
 				resolution_scale = 1
 			}
+			dynamic_resolution_min_scale := entity.camera.dynamic_resolution_min_scale
+			if dynamic_resolution_min_scale == 0 {
+				dynamic_resolution_min_scale = 0.5
+			}
+			dynamic_resolution_target_ms := entity.camera.dynamic_resolution_target_ms
+			if dynamic_resolution_target_ms == 0 {
+				dynamic_resolution_target_ms = 16.667
+			}
 			exposure := shared.camera_exposure(entity.camera)
 			automatic_exposure_min := shared.camera_automatic_exposure_min(entity.camera)
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
@@ -933,6 +941,14 @@ editor_reflected_component_valid :: proc(
 				!math.is_inf(resolution_scale) &&
 				resolution_scale >= 0.5 &&
 				resolution_scale <= 1 &&
+				!math.is_nan(dynamic_resolution_min_scale) &&
+				!math.is_inf(dynamic_resolution_min_scale) &&
+				dynamic_resolution_min_scale >= 0.5 &&
+				dynamic_resolution_min_scale <= resolution_scale &&
+				!math.is_nan(dynamic_resolution_target_ms) &&
+				!math.is_inf(dynamic_resolution_target_ms) &&
+				dynamic_resolution_target_ms >= 1 &&
+				dynamic_resolution_target_ms <= 100 &&
 				!math.is_nan(exposure) &&
 				!math.is_inf(exposure) &&
 				exposure > 0 &&

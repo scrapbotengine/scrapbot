@@ -1007,7 +1007,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"__scrapbot_editor_diagnostics_table",
 		EDITOR_UI_DIAGNOSTICS_NAME,
 		.None,
-		{size = {100, 182}, fill_width = true, fit_content_height = true},
+		{size = {100, 208}, fill_width = true, fit_content_height = true},
 	)
 	editor_ui_add_table(
 		world,
@@ -1018,6 +1018,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"FPS",
 		"FRAME",
 		"GPU FRAME",
+		"RENDER SCALE",
 		"ENTITIES",
 		"DRAW BATCHES",
 		"FRUSTUM CULLED",
@@ -1589,10 +1590,11 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 		return
 	}
 	diagnostics := state.performance_diagnostics
-	values := [7]string {
+	values := [8]string {
 		fmt.tprintf("%.1f", diagnostics.fps),
 		fmt.tprintf("%.2f ms", diagnostics.frame_ms),
 		"--",
+		fmt.tprintf("%.0f%%", diagnostics.render_scale * 100),
 		fmt.tprintf("%d", diagnostics.entity_count),
 		fmt.tprintf("%d", diagnostics.draw_batches),
 		fmt.tprintf("%d", diagnostics.frustum_culled_instances),

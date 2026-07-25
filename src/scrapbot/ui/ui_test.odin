@@ -4779,7 +4779,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					shadow_field_control_count += 1
 				}
 				if component.reflected_component_id == camera_definition.id &&
-				   component.reflected_field_index == 4 {
+				   component.reflected_field_index == 7 {
 					exposure_input = component.entity_index
 				}
 				if component.reflected_component_id == transform_definition.id &&
@@ -4813,8 +4813,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, checkbox_count >= 2)
 	testing.expect(t, found_bound_checkbox)
-	testing.expect(t, camera_definition.field_count == 16)
-	testing.expect(t, camera_input_count == 10)
+	testing.expect(t, camera_definition.field_count == 19)
+	testing.expect(t, camera_input_count == 12)
 	testing.expect(t, found_transform && found_button && found_shadow)
 	testing.expect(t, shadow_field_control_count == 0)
 	testing.expect(t, found_position)
@@ -5932,6 +5932,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		fps = 59.9,
 		frame_ms = 16.69,
 		gpu_frame_ms = 2.25,
+		render_scale = 0.75,
 		gpu_timestamps_valid = true,
 		entity_count = 42,
 		draw_batches = 7,
@@ -5955,7 +5956,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_vstack_index >= 0)
 		testing.expect(t, world.ui_panels[entity.ui_panel_index].title == "PERFORMANCE")
 	}
-	expected_values := [7]string{"59.9", "16.69 ms", "2.25 ms", "42", "7", "9", "13"}
+	expected_values := [8]string{"59.9", "16.69 ms", "2.25 ms", "75%", "42", "7", "9", "13"}
 	for expected, slot in expected_values {
 		cell, found := editor_ui_entity(&world, .Diagnostics_Value, slot)
 		testing.expect(t, found)
@@ -5974,7 +5975,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 	diagnostics.entity_count = 43
 	diagnostics.revision += 1
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
-	entity_value, found := editor_ui_entity(&world, .Diagnostics_Value, 3)
+	entity_value, found := editor_ui_entity(&world, .Diagnostics_Value, 4)
 	testing.expect(t, found)
 	if found {
 		text := world.ui_texts[world.entities[entity_value].ui_text_index]

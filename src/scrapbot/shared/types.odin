@@ -272,6 +272,9 @@ Camera_Component :: struct {
 	near: f32,
 	far: f32,
 	resolution_scale: f32,
+	dynamic_resolution: bool,
+	dynamic_resolution_min_scale: f32,
+	dynamic_resolution_target_ms: f32,
 	exposure: f32,
 	automatic_exposure: bool,
 	automatic_exposure_min: f32,
@@ -999,6 +1002,7 @@ Performance_Diagnostics :: struct {
 	fps: f64,
 	frame_ms: f64,
 	gpu_frame_ms: f64,
+	render_scale: f32,
 	gpu_timestamps_valid: bool,
 	entity_count: int,
 	draw_batches: int,
@@ -1241,6 +1245,7 @@ Render_Batch_Key :: struct {
 
 Camera_Instance :: struct {
 	entity: World_Entity,
+	policy_owner: Entity_UUID,
 	transform: Transform_Component,
 	camera: Camera_Component,
 }

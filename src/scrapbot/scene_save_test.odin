@@ -59,6 +59,9 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	camera.far = 100
 	camera.exposure = 1.5
 	camera.automatic_exposure = true
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_min_scale = 0.65
+	camera.dynamic_resolution_target_ms = 12
 	camera.automatic_exposure_min = 0.25
 	camera.automatic_exposure_max = 6
 	camera.automatic_exposure_speed = 3
@@ -79,6 +82,9 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	serialized := strings.to_string(builder)
 	testing.expect(t, strings.contains(serialized, "exposure = 1.5"))
 	testing.expect(t, strings.contains(serialized, "automatic_exposure = true"))
+	testing.expect(t, strings.contains(serialized, "dynamic_resolution = true"))
+	testing.expect(t, strings.contains(serialized, "dynamic_resolution_min_scale = 0.65"))
+	testing.expect(t, strings.contains(serialized, "dynamic_resolution_target_ms = 12"))
 	testing.expect(t, strings.contains(serialized, "automatic_exposure_min = 0.25"))
 	testing.expect(t, strings.contains(serialized, "automatic_exposure_max = 6"))
 	testing.expect(t, strings.contains(serialized, "automatic_exposure_speed = 3"))

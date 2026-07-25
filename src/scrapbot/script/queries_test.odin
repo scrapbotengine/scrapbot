@@ -453,6 +453,9 @@ scrapbot.system(Cameras, {
 	writes = { scrapbot.camera },
 }, function(time, entity, camera)
 	camera.resolution_scale = 0.75
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_min_scale = 0.6
+	camera.dynamic_resolution_target_ms = 10
 	camera.exposure = 1.25
 	camera.automatic_exposure = true
 	camera.automatic_exposure_min = 0.5
@@ -474,6 +477,9 @@ end)
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expectf(t, step_err == "", "camera writeback failed: %s", step_err)
 	testing.expect_value(t, world.cameras[0].resolution_scale, f32(0.75))
+	testing.expect(t, world.cameras[0].dynamic_resolution)
+	testing.expect_value(t, world.cameras[0].dynamic_resolution_min_scale, f32(0.6))
+	testing.expect_value(t, world.cameras[0].dynamic_resolution_target_ms, f32(10))
 	testing.expect_value(t, world.cameras[0].exposure, f32(1.25))
 	testing.expect(t, world.cameras[0].automatic_exposure)
 	testing.expect_value(t, world.cameras[0].automatic_exposure_min, f32(0.5))

@@ -87,6 +87,7 @@ test_editor_scene_camera_is_an_ecs_entity_and_fly_system_moves_it :: proc(t: ^te
 	camera, has_camera := active_camera_instance(&world, true)
 	testing.expect(t, has_camera)
 	testing.expect(t, camera.entity.id.index == u32(entity_index))
+	testing.expect_value(t, camera.policy_owner, world.entities[0].uuid)
 	testing.expect(t, camera.camera.fov == 55)
 	testing.expect(t, !camera.camera.temporal_antialiasing)
 	testing.expect(t, camera.camera.fast_antialiasing)

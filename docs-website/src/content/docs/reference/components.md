@@ -95,7 +95,10 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `fov` | number | Vertical field of view in degrees. The editor constrains authored values to 1–179. |
 | `near` | number | Positive near clipping plane. |
 | `far` | number | Far clipping plane, greater than `near`. |
-| `resolution_scale` | number | World/depth/post render-grid scale from `0.5` to `1`. Defaults to native resolution (`1`); final output is upscaled while project UI and editor chrome stay native-resolution. |
+| `resolution_scale` | number | World/depth/post render-grid scale from `0.5` to `1`. Defaults to native resolution (`1`). When dynamic resolution is enabled, this is its maximum scale. |
+| `dynamic_resolution` | boolean | Lets WGPU lower and recover world resolution against a GPU-time budget. Defaults to `false`. |
+| `dynamic_resolution_min_scale` | number | Dynamic-resolution floor from `0.5` through `resolution_scale`. Defaults to `0.5`. |
+| `dynamic_resolution_target_ms` | number | Scalable-world GPU-time target from `1` to `100` milliseconds. Defaults to `16.667`. |
 | `exposure` | number | Positive linear exposure multiplier. Defaults to `1`; it is fixed exposure when automatic exposure is off and compensation when it is on. |
 | `automatic_exposure` | boolean | Enables GPU-resident, viewport-scoped luminance metering and adaptation. Defaults to `false`. |
 | `automatic_exposure_min` | number | Positive minimum automatic exposure. Defaults to `0.125`. |
@@ -111,7 +114,11 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 
 The camera reads position and orientation from a Transform on the same entity. The active camera's resolution, exposure, and render-feature policy controls that rendered view, including while an editor fly camera supplies the editor viewport's pose.
 
-Reducing `resolution_scale` lowers the world, depth, Hi-Z, and post-processing pixel workload. The renderer composites that result into the native output target before drawing project UI, gizmos, and editor chrome at native resolution. Changing the scale rebuilds only size-dependent render targets and rejects temporal history; stable frames reuse them.
+Reducing `resolution_scale` lowers the world, depth, Hi-Z, and post-processing pixel workload. The renderer composites that result into the native output target before drawing project UI, gizmos, and editor chrome at native resolution.
+
+With `dynamic_resolution = true`, WGPU treats `resolution_scale` as a ceiling and `dynamic_resolution_min_scale` as a floor. It uses asynchronous GPU timestamps, a filtered signal, asymmetric hysteresis, and 5% scale steps. Editor/project UI timing is excluded so expensive chrome does not lower world quality. Backends without GPU timestamps use the authored ceiling unchanged.
+
+A scale step rebuilds only size-dependent render targets and rejects temporal history. Stable scale reuses them. The performance inspector and `scrapbot profile` report the effective scale.
 
 Automatic exposure samples only the active rendered viewport—not editor chrome—and adapts one persistent GPU exposure value without a CPU readback. Bloom and final composition consume the same value. Disabling it skips the metering dispatch and preserves the fixed-exposure path.
 

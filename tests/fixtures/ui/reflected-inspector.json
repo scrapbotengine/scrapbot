@@ -6,6 +6,7 @@
     {"action": "wait", "frames": 2},
     {"action": "click", "target": {"text": "Main Camera", "origin": "editor"}},
     {"action": "expect", "target": {"text": "resolution_scale", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "dynamic_resolution_target_ms", "origin": "editor"}, "expect": "visible"},
     {"action": "type", "target": {"text": "60.00", "origin": "editor"}, "text": "75"},
     {"action": "key", "key": "enter"},
     {"action": "expect", "target": {"text": "75.00", "origin": "editor"}, "expect": "text", "text": "75.00"},

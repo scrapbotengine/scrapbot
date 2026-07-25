@@ -201,6 +201,13 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 		frame_ms = phase_sum_ms
 		renderer.gpu_timestamp_frame_ms = frame_ms
 		renderer.gpu_timestamp_valid = true
+		wgpu_dynamic_resolution_accumulate_sample(
+			renderer,
+			readback.dynamic_resolution_generation,
+			readback.frame_index,
+			frame_ms,
+			renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.UI)],
+		)
 		profile_record_gpu_frame(
 			renderer.profile,
 			readback.frame_index,
