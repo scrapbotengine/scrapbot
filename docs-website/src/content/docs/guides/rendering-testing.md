@@ -291,7 +291,7 @@ The output directory contains:
 - `overview.png` from the final measured frame.
 - An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
 
-Each row includes active CPU time, exact whole-frame and per-pass GPU time, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot.
+Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot.
 
 The `workload` object records the dispatch size, render extent, draws, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
 

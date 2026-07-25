@@ -8,6 +8,7 @@ import ui "../ui"
 import "core:math"
 import "core:strings"
 import "core:testing"
+import "vendor:wgpu"
 
 @(test)
 test_wgpu_headless_runs_use_offscreen_output_without_requiring_capture :: proc(t: ^testing.T) {
@@ -1356,6 +1357,41 @@ test_wgpu_gpu_timing_marks_only_encoded_passes_for_the_sample :: proc(t: ^testin
 }
 
 @(test)
+test_wgpu_gpu_timing_requests_pass_timestamp_feature :: proc(t: ^testing.T) {
+	features, count := wgpu_timestamp_required_features(true)
+	testing.expect_value(t, count, 1)
+	testing.expect_value(t, features[0], wgpu.FeatureName.TimestampQuery)
+
+	_, unsupported_count := wgpu_timestamp_required_features(false)
+	testing.expect_value(t, unsupported_count, 0)
+}
+
+@(test)
+test_wgpu_gpu_timing_resolves_only_queries_written_by_the_frame :: proc(t: ^testing.T) {
+	testing.expect_value(
+		t,
+		wgpu_gpu_timestamp_resolve_bytes(),
+		u64(WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT) * WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT,
+	)
+	phase_mask :=
+		u32(1) << u32(WGPU_GPU_Timestamp_Phase.Shadow) |
+		u32(1) << u32(WGPU_GPU_Timestamp_Phase.World)
+	ranges, count := wgpu_gpu_timestamp_resolve_ranges(phase_mask, 3)
+	testing.expect_value(t, count, 4)
+	testing.expect_value(t, ranges[0].first, u32(WGPU_GPU_Timestamp_Phase.Shadow) * 2)
+	testing.expect_value(t, ranges[0].count, 2)
+	testing.expect_value(t, ranges[1].first, u32(WGPU_GPU_Timestamp_Phase.World) * 2)
+	testing.expect_value(t, ranges[1].count, 2)
+	testing.expect_value(t, ranges[2].first, u32(WGPU_GPU_HIZ_EXTRA_QUERY_BASE))
+	testing.expect_value(t, ranges[2].count, 4)
+	testing.expect_value(t, ranges[3].first, u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE))
+	testing.expect_value(t, ranges[3].count, u32((WGPU_SHADOW_CASCADE_COUNT - 1) * 2))
+
+	_, empty_count := wgpu_gpu_timestamp_resolve_ranges(0, 0)
+	testing.expect_value(t, empty_count, 0)
+}
+
+@(test)
 test_profile_distribution_reports_median_p95_and_max :: proc(t: ^testing.T) {
 	values := []f64{4, 1, 3, 2, 100}
 	distribution := profile_distribution(values)
@@ -1497,8 +1533,7 @@ test_wgpu_gpu_shadow_timing_uses_distinct_queries_for_every_cascade :: proc(t: ^
 		second.beginningOfPassWriteIndex,
 		u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE),
 	)
-	testing.expect_value(t, last.endOfPassWriteIndex, u32(WGPU_GPU_FRAME_QUERY_BASE - 1))
-	testing.expect_value(t, WGPU_GPU_TIMESTAMP_QUERY_COUNT, WGPU_GPU_FRAME_QUERY_BASE + 2)
+	testing.expect_value(t, last.endOfPassWriteIndex, u32(WGPU_GPU_TIMESTAMP_QUERY_COUNT - 1))
 }
 
 @(test)

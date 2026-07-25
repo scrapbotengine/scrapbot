@@ -175,14 +175,16 @@ wgpu_init_renderer :: proc(
 	}
 	renderer.adapter = adapter_state.adapter
 
-	timestamp_features := [?]wgpu.FeatureName{.TimestampQuery}
-	timestamp_supported := bool(wgpu.AdapterHasFeature(renderer.adapter, .TimestampQuery))
+	timestamp_features, timestamp_feature_count := wgpu_timestamp_required_features(
+		bool(wgpu.AdapterHasFeature(renderer.adapter, .TimestampQuery)),
+	)
+	timestamp_supported := timestamp_feature_count > 0
 	device_descriptor := wgpu.DeviceDescriptor {
 		label = "Scrapbot Device",
 	}
 	if timestamp_supported {
-		device_descriptor.requiredFeatureCount = uint(len(timestamp_features))
-		device_descriptor.requiredFeatures = raw_data(timestamp_features[:])
+		device_descriptor.requiredFeatureCount = uint(timestamp_feature_count)
+		device_descriptor.requiredFeatures = raw_data(timestamp_features[:timestamp_feature_count])
 	}
 	device_state: WGPU_Request_Device_State
 	wgpu.AdapterRequestDevice(

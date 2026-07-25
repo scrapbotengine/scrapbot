@@ -2,8 +2,60 @@ package render
 
 import "vendor:wgpu"
 
+wgpu_timestamp_required_features :: proc(
+	timestamp_query_supported: bool,
+) -> (
+	features: [1]wgpu.FeatureName,
+	count: int,
+) {
+	if !timestamp_query_supported {
+		return
+	}
+	features[0] = .TimestampQuery
+	count = 1
+	return
+}
+
 wgpu_gpu_timestamp_bytes :: proc() -> u64 {
 	return u64(WGPU_GPU_TIMESTAMP_QUERY_COUNT) * u64(size_of(u64))
+}
+
+wgpu_gpu_timestamp_resolve_bytes :: proc() -> u64 {
+	return u64(WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT) * WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT
+}
+
+wgpu_gpu_timestamp_resolve_ranges :: proc(
+	phase_mask: u32,
+	hiz_mip_count: int,
+) -> (
+	ranges: [WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT]WGPU_GPU_Timestamp_Resolve_Range,
+	count: int,
+) {
+	for phase_index in 0 ..< WGPU_GPU_TIMESTAMP_PHASE_COUNT {
+		if phase_mask & (u32(1) << u32(phase_index)) == 0 {
+			continue
+		}
+		ranges[count] = {
+			first = u32(phase_index * 2),
+			count = 2,
+		}
+		count += 1
+	}
+	if hiz_mip_count > 1 {
+		ranges[count] = {
+			first = u32(WGPU_GPU_HIZ_EXTRA_QUERY_BASE),
+			count = u32((hiz_mip_count - 1) * 2),
+		}
+		count += 1
+	}
+	if phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.Shadow)) != 0 {
+		ranges[count] = {
+			first = u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE),
+			count = u32((WGPU_SHADOW_CASCADE_COUNT - 1) * 2),
+		}
+		count += 1
+	}
+	return
 }
 
 wgpu_create_gpu_timing :: proc(renderer: ^WGPU_Renderer) {
@@ -28,7 +80,7 @@ wgpu_create_gpu_timing :: proc(renderer: ^WGPU_Renderer) {
 		renderer,
 		"Scrapbot GPU Timestamp Resolve Buffer",
 		{.QueryResolve, .CopySrc},
-		wgpu_gpu_timestamp_bytes(),
+		wgpu_gpu_timestamp_resolve_bytes(),
 	)
 	if resolve_buffer == nil {
 		wgpu.QuerySetRelease(query_set)
@@ -146,14 +198,7 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 				}
 			}
 		}
-		frame_begin := values[WGPU_GPU_FRAME_QUERY_BASE]
-		frame_end := values[WGPU_GPU_FRAME_QUERY_BASE + 1]
-		if frame_end > frame_begin {
-			frame_ms =
-				f64(frame_end - frame_begin) * renderer.gpu_timestamp_period_ns / 1_000_000.0
-		} else {
-			frame_ms = phase_sum_ms
-		}
+		frame_ms = phase_sum_ms
 		renderer.gpu_timestamp_frame_ms = frame_ms
 		renderer.gpu_timestamp_valid = true
 		profile_record_gpu_frame(
@@ -208,28 +253,6 @@ wgpu_gpu_timing_drain :: proc(renderer: ^WGPU_Renderer) {
 	wgpu.DevicePoll(renderer.device, true)
 	wgpu.InstanceProcessEvents(renderer.instance)
 	wgpu_gpu_timing_consume_readbacks(renderer)
-}
-
-wgpu_gpu_timing_write_frame_begin :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandEncoder) {
-	if renderer == nil || encoder == nil || renderer.gpu_timestamp_active_slot < 0 {
-		return
-	}
-	wgpu.CommandEncoderWriteTimestamp(
-		encoder,
-		renderer.gpu_timestamp_query_set,
-		u32(WGPU_GPU_FRAME_QUERY_BASE),
-	)
-}
-
-wgpu_gpu_timing_write_frame_end :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandEncoder) {
-	if renderer == nil || encoder == nil || renderer.gpu_timestamp_active_slot < 0 {
-		return
-	}
-	wgpu.CommandEncoderWriteTimestamp(
-		encoder,
-		renderer.gpu_timestamp_query_set,
-		u32(WGPU_GPU_FRAME_QUERY_BASE + 1),
-	)
 }
 
 wgpu_gpu_pass_timestamps :: proc(
@@ -308,23 +331,36 @@ wgpu_gpu_timing_resolve :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandE
 		return
 	}
 	readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
+	if wgpu.BufferGetSize(renderer.gpu_timestamp_resolve_buffer) <
+		   wgpu_gpu_timestamp_resolve_bytes() ||
+	   wgpu.BufferGetSize(readback.buffer) < wgpu_gpu_timestamp_bytes() {
+		return
+	}
 	readback.hiz_mip_count = renderer.gpu_hiz_mip_count if renderer.gpu_hiz_requested else 0
-	wgpu.CommandEncoderResolveQuerySet(
-		encoder,
-		renderer.gpu_timestamp_query_set,
-		0,
-		u32(WGPU_GPU_TIMESTAMP_QUERY_COUNT),
-		renderer.gpu_timestamp_resolve_buffer,
-		0,
+	ranges, range_count := wgpu_gpu_timestamp_resolve_ranges(
+		readback.phase_mask,
+		readback.hiz_mip_count,
 	)
-	wgpu.CommandEncoderCopyBufferToBuffer(
-		encoder,
-		renderer.gpu_timestamp_resolve_buffer,
-		0,
-		readback.buffer,
-		0,
-		wgpu_gpu_timestamp_bytes(),
-	)
+	for resolve_range, range_index in ranges[:range_count] {
+		resolve_offset := u64(range_index) * WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT
+		copy_size := u64(resolve_range.count) * u64(size_of(u64))
+		wgpu.CommandEncoderResolveQuerySet(
+			encoder,
+			renderer.gpu_timestamp_query_set,
+			resolve_range.first,
+			resolve_range.count,
+			renderer.gpu_timestamp_resolve_buffer,
+			resolve_offset,
+		)
+		wgpu.CommandEncoderCopyBufferToBuffer(
+			encoder,
+			renderer.gpu_timestamp_resolve_buffer,
+			resolve_offset,
+			readback.buffer,
+			u64(resolve_range.first) * u64(size_of(u64)),
+			copy_size,
+		)
+	}
 }
 
 wgpu_gpu_timing_after_submit :: proc(renderer: ^WGPU_Renderer) {

@@ -62,8 +62,16 @@ WGPU_GPU_Timestamp_Phase :: enum u32 {
 WGPU_GPU_TIMESTAMP_PHASE_COUNT :: int(WGPU_GPU_Timestamp_Phase.UI) + 1
 WGPU_GPU_HIZ_EXTRA_QUERY_BASE :: WGPU_GPU_TIMESTAMP_PHASE_COUNT * 2
 WGPU_GPU_SHADOW_EXTRA_QUERY_BASE :: WGPU_GPU_HIZ_EXTRA_QUERY_BASE + (WGPU_MAX_HIZ_LEVELS - 1) * 2
-WGPU_GPU_FRAME_QUERY_BASE :: WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (WGPU_SHADOW_CASCADE_COUNT - 1) * 2
-WGPU_GPU_TIMESTAMP_QUERY_COUNT :: WGPU_GPU_FRAME_QUERY_BASE + 2
+WGPU_GPU_TIMESTAMP_QUERY_COUNT ::
+	WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (WGPU_SHADOW_CASCADE_COUNT - 1) * 2
+WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT :: u64(256)
+WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT :: WGPU_GPU_TIMESTAMP_PHASE_COUNT + 2
+#assert((WGPU_MAX_HIZ_LEVELS - 1) * 2 * size_of(u64) <= WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT)
+
+WGPU_GPU_Timestamp_Resolve_Range :: struct {
+	first: u32,
+	count: u32,
+}
 
 WGPU_GPU_Timestamp_Readback :: struct {
 	buffer: wgpu.Buffer,
@@ -2665,7 +2673,6 @@ wgpu_draw_frame :: proc(
 	defer wgpu.CommandEncoderRelease(encoder)
 	profile_frame_index := renderer.profile_frame_index
 	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
-	wgpu_gpu_timing_write_frame_begin(renderer, encoder)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2722,7 +2729,6 @@ wgpu_draw_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_resolve(renderer, encoder)
 	}
-	wgpu_gpu_timing_write_frame_end(renderer, encoder)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -2889,7 +2895,6 @@ wgpu_render_offscreen_frame :: proc(
 	defer wgpu.CommandEncoderRelease(encoder)
 	profile_frame_index := renderer.profile_frame_index
 	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
-	wgpu_gpu_timing_write_frame_begin(renderer, encoder)
 	if !config.cpu_culling {
 		wgpu_visibility_begin_frame(renderer)
 	}
@@ -2948,6 +2953,14 @@ wgpu_render_offscreen_frame :: proc(
 	}
 
 	if readback != nil {
+		required_readback_size := u64(row_stride) * u64(height)
+		if wgpu.BufferGetSize(readback) < required_readback_size {
+			return fmt.tprintf(
+				"wgpu headless readback buffer is %d bytes; expected at least %d",
+				wgpu.BufferGetSize(readback),
+				required_readback_size,
+			)
+		}
 		wgpu.CommandEncoderCopyTextureToBuffer(
 			encoder,
 			&wgpu.TexelCopyTextureInfo{texture = texture, aspect = .All},
@@ -2961,7 +2974,6 @@ wgpu_render_offscreen_frame :: proc(
 			&wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 		)
 	}
-	wgpu_gpu_timing_write_frame_end(renderer, encoder)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -3147,6 +3159,9 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	defer wgpu.TextureRelease(depth_texture)
 
 	readback: wgpu.Buffer
+	defer if readback != nil {
+		wgpu.BufferRelease(readback)
+	}
 	if wgpu_offscreen_capture_requested(config) {
 		readback = wgpu.DeviceCreateBuffer(
 			renderer.device,
@@ -3159,7 +3174,13 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		if readback == nil {
 			return "failed to create wgpu headless readback buffer"
 		}
-		defer wgpu.BufferRelease(readback)
+		if wgpu.BufferGetSize(readback) < readback_size {
+			return fmt.tprintf(
+				"wgpu created a %d-byte headless readback buffer; requested %d bytes",
+				wgpu.BufferGetSize(readback),
+				readback_size,
+			)
+		}
 	}
 
 	frame_count := config.max_frames
@@ -3175,6 +3196,14 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		final_capture := config.framegrab_path != "" && index == frame_count - 1
 		diagnostic_capture := config.ui_driver != nil && config.framegrab_path != ""
 		capture := diagnostic_capture || sequence_capture || final_capture
+		if capture && wgpu.BufferGetSize(readback) < readback_size {
+			return fmt.tprintf(
+				"wgpu headless readback buffer changed to %d bytes before frame %d; expected %d",
+				wgpu.BufferGetSize(readback),
+				index,
+				readback_size,
+			)
+		}
 		err := wgpu_render_offscreen_frame(
 			&renderer,
 			world,
