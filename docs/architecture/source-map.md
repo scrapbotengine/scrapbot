@@ -26,7 +26,7 @@
 | `src/scrapbot/package.odin` | Packaged-project product assembly. | Separates source state from build products. |
 | `docs/adr/`, `docs/fdr/`, `docs/architecture/` | Decisions, feature contracts, and current source map. | Keep rationale, behavior, and inventory distinct. |
 | `docs-website/` | Public user documentation. | Canonical user-facing APIs and workflows. |
-| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs`, `tools/test_gpu_offscreen.mjs` | Agent-oriented render-profile analysis, bounded pixel-cost sweeps, and artifact-preserving offscreen GPU acceptance. | Consume or orchestrate bounded renderer runs; never participate in ordinary engine frames. |
+| `tools/analyze_render_profile.mjs`, `tools/profile_resolution_sweep.mjs`, `tools/run_gpu_benchmarks.mjs`, `tools/compare_gpu_benchmarks.mjs`, `tools/test_gpu_offscreen.mjs` | Agent-oriented render-profile analysis, bounded pixel-cost sweeps, historical benchmark bundles/comparison, and artifact-preserving offscreen GPU acceptance. | Consume or orchestrate bounded renderer runs; never participate in ordinary engine frames. Hardware histories compare only adapter- and dimension-compatible evidence. |
 
 ## Dependency direction
 

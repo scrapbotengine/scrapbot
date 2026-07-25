@@ -1,0 +1,100 @@
+name: GPU Benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpu-benchmarks-metal
+  cancel-in-progress: false
+
+jobs:
+  metal:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - name: Install SDL3
+        run: brew install sdl3
+      - name: Prepare Odin vendor libraries
+        run: |
+          make -C "$(odin root)/vendor/stb/src"
+          case "$(uname -m)" in
+            arm64) WGPU_ARCH="aarch64" ;;
+            x86_64) WGPU_ARCH="x86_64" ;;
+            *) echo "unsupported macOS architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          WGPU_ARCHIVE="wgpu-macos-$WGPU_ARCH-release.zip"
+          WGPU_VERSION="v29.0.1.1"
+          WGPU_LIB_DIR="$(odin root)/vendor/wgpu/lib"
+          WGPU_PACKAGE="${WGPU_ARCHIVE%.zip}"
+          mkdir -p "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+          curl --fail --location --retry 3 \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/$WGPU_ARCHIVE" \
+            --output "$RUNNER_TEMP/$WGPU_ARCHIVE"
+          unzip -q "$RUNNER_TEMP/$WGPU_ARCHIVE" -d "$WGPU_LIB_DIR/$WGPU_PACKAGE"
+      - name: Install benchmark fixtures
+        run: mise setup-assets
+      - name: Download previous successful bundle
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/gpu-benchmark-previous"
+          PREVIOUS_RUN_ID="$(
+            gh run list \
+              --workflow gpu-benchmarks.yml \
+              --branch main \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty'
+          )"
+          if [ -z "$PREVIOUS_RUN_ID" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh run download "$PREVIOUS_RUN_ID" \
+            --name "gpu-benchmarks-metal-${RUNNER_ARCH}" \
+            --dir "$RUNNER_TEMP/gpu-benchmark-previous"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "run_id=$PREVIOUS_RUN_ID" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run Metal resolution sweeps
+        id: benchmark
+        run: |
+          mise gpu-benchmarks -- \
+            --out "$RUNNER_TEMP/gpu-benchmark-current" \
+            --warmup 60 \
+            --frames 240
+      - name: Compare with previous compatible bundle
+        if: steps.benchmark.outcome == 'success'
+        run: |
+          if [ "${{ steps.baseline.outputs.available }}" = "true" ]; then
+            BASELINE="$RUNNER_TEMP/gpu-benchmark-previous"
+          else
+            BASELINE="-"
+          fi
+          mise gpu-benchmark-compare -- \
+            "$BASELINE" \
+            "$RUNNER_TEMP/gpu-benchmark-current" \
+            "$RUNNER_TEMP/gpu-benchmark-current/comparison"
+          cat "$RUNNER_TEMP/gpu-benchmark-current/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/gpu-benchmark-current/comparison/comparison.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload GPU benchmark bundle
+        if: always() && steps.benchmark.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-benchmarks-metal-${{ runner.arch }}
+          path: ${{ runner.temp }}/gpu-benchmark-current
+          if-no-files-found: error
+          retention-days: 90

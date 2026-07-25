@@ -138,6 +138,37 @@ The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution 
 
 Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload.
 
+### Historical GPU benchmark bundles
+
+Use the benchmark orchestrator when a renderer change needs trend evidence across representative
+workloads and pixel counts:
+
+```sh
+mise setup-assets
+mise gpu-benchmarks -- --out /tmp/scrapbot-gpu-benchmarks
+```
+
+It profiles `minimal`, `ecs-showcase`, and `sponza` at 960×540, 1280×720, and 1920×1080.
+Pass `--without-sponza` for a smaller local run without the external fixture.
+
+Compare complete bundles with:
+
+```sh
+mise gpu-benchmark-compare -- \
+  /tmp/baseline \
+  /tmp/candidate \
+  /tmp/comparison
+```
+
+Read `summary.md` and `comparison/comparison.md` for orientation. Use `manifest.json`,
+`sweep.json`, `profile.json`, and `comparison.json` for automation or diagnosis.
+
+The scheduled/manual `GPU Benchmarks` workflow retains the current Metal bundle and compares it
+with the previous successful same-architecture artifact. Never copy deltas across incompatible
+adapters, dimensions, density, viewports, shaded pixels, timestamp support, or culling modes. Never
+turn one runner's timings into portable hard thresholds. A suspicious history point is a prompt
+for a controlled same-machine before/after reproduction.
+
 ## Choose An Example
 
 - Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.

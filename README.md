@@ -83,6 +83,11 @@ structured diagnostics, GPU timings/counters, and 1:1 PNGs under
 `$TMPDIR/scrapbot-gpu-offscreen` by default. Metal CI uploads the complete bundle even when the
 gate fails.
 
+`mise gpu-benchmarks` profiles `minimal`, `ecs-showcase`, and `sponza` at 540p, 720p, and
+1080p. The scheduled/manual Metal workflow retains each bundle and compares it with the previous
+successful run only when the adapter and complete render dimensions match. These histories expose
+trends; they are not portable performance thresholds.
+
 ## Features / Roadmap
 
 ### Engine Core

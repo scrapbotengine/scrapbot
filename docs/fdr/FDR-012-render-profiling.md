@@ -26,6 +26,9 @@
 - Project logging is suppressed in both passes so console I/O does not contaminate active-CPU evidence.
 - `mise profile-analyze` summarizes one report or compares two reports after checking adapter and render dimensions. Its human report prints the representative workload beside each timed pass so a duration can be related to resolution, dispatch, draw, instance, and sample counts.
 - `mise profile-sweep` repeats the command over an explicit or default bounded resolution matrix and writes `sweep.json`.
+- `mise gpu-benchmarks` builds one artifact bundle containing representative `minimal`, `ecs-showcase`, and `sponza` resolution sweeps.
+- `mise gpu-benchmark-compare` compares two bundles through the same adapter/dimension compatibility contract and never invents deltas for incompatible points.
+- The scheduled/manual Metal workflow compares the current bundle with the previous successful same-architecture artifact and retains the current evidence for 90 days. Historical timings are informational, not portable pass/fail thresholds.
 
 ## Design Decisions
 
@@ -69,5 +72,5 @@
 ## Open Questions
 
 - Which deterministic project input and random-seed contract should generalize beyond semantic editor scripts?
-- Which representative workloads should gain persisted baselines, history, and machine-readable regression thresholds?
+- After enough same-runner history exists, which regressions are stable enough for an opt-in policy?
 - Which platforms should expose native GPU-capture launchers from the bundle?

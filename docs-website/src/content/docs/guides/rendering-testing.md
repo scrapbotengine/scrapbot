@@ -332,6 +332,39 @@ mise profile-sweep -- examples/sponza \
 
 The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution WIDTHxHEIGHT` for an explicit matrix. The driver preserves each complete profile bundle and writes machine-readable `sweep.json`.
 
+### Historical benchmark bundles
+
+Build the representative benchmark matrix locally with:
+
+```sh
+mise setup-assets
+mise gpu-benchmarks -- --out /tmp/scrapbot-gpu-benchmarks
+```
+
+The bundle contains `minimal`, `ecs-showcase`, and `sponza` sweeps at 540p, 720p, and 1080p,
+plus a top-level manifest and Markdown summary. Use `--without-sponza` for a bounded run that
+does not require the external Sponza fixture.
+
+Compare two bundles with:
+
+```sh
+mise gpu-benchmark-compare -- \
+  /tmp/baseline \
+  /tmp/candidate \
+  /tmp/comparison
+```
+
+The comparator reuses the render profiler's compatibility contract. It reports timing deltas only
+when backend, adapter, timestamp support, culling mode, physical dimensions, density, viewport,
+and shaded pixels match. Incompatible points remain visible as incompatible evidence.
+
+The scheduled/manual `GPU Benchmarks` GitHub Actions workflow runs this matrix on its pinned Metal
+runner. It downloads the previous successful artifact of the same architecture, writes the
+comparison into the job summary, and retains the complete current bundle for 90 days.
+
+Do not treat this history as a cross-machine leaderboard or a hard portable gate. Use it to spot a
+trend, then reproduce that trend with controlled before/after profiles on the same machine.
+
 ## Headless WebGPU framegrab
 
 A bounded offscreen GPU run needs neither a window nor a capture:

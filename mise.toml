@@ -138,6 +138,15 @@ run = "node tools/analyze_render_profile.mjs \"$@\""
 description = "Profile one project across a bounded resolution matrix"
 run = "node tools/profile_resolution_sweep.mjs \"$@\""
 
+[tasks.gpu-benchmarks]
+description = "Build a representative multi-resolution GPU benchmark bundle"
+depends = ["build"]
+run = "node tools/run_gpu_benchmarks.mjs \"$@\""
+
+[tasks.gpu-benchmark-compare]
+description = "Compare two compatible GPU benchmark bundles"
+run = "node tools/compare_gpu_benchmarks.mjs \"$@\""
+
 [tasks.luau]
 description = "Build embedded Luau"
 run = '''
@@ -205,6 +214,7 @@ bin/scrapbot check examples/clustered-lights
 node examples/clustered-lights/generate-scene.mjs --check
 node tools/generate_workspace_luau_types.mjs --check
 node --test tools/test_gpu_offscreen.test.mjs
+node --test tools/gpu_benchmarks.test.mjs
 bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/asteroids --backend null --headless --no-hot-reload --frames 5
