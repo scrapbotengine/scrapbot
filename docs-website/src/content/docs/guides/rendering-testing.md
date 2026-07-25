@@ -104,7 +104,7 @@ Enabled SSR marches a reflected view ray through scene depth and samples HDR col
 
 Fog, AO, and SSR join the current HDR signal before temporal resolution. Enabled TAA uses an eight-sample projection-jitter sequence bounded to a quarter pixel. History lives on a stable output grid and is camera-reprojected with the sample offset removed. A local depth match and YCoCg variance clipping reject invalid history without making a motionless view follow the jitter pattern.
 
-When TAA is off, the renderer removes projection jitter and history traffic. Optional fast AA then uses only the current resolved frame. Resize, world replacement, depth replacement, camera cuts, and TAA mode changes invalidate temporal history.
+TAA alternates two retained HDR color/depth pairs between current output and previous history. This avoids copying full-resolution history every frame. When TAA is off, the renderer removes projection jitter and history sampling. Optional fast AA then uses only the current resolved frame. Resize, world replacement, depth replacement, camera cuts, and TAA mode changes invalidate temporal history.
 
 The primary directional light uses four stabilized shadow cascades. Opaque receivers resolve each cascade with a wider tent-weighted filter and blend across cascade boundaries; volumetric fog uses a cheaper filtered lookup at every ray-march step.
 

@@ -839,49 +839,35 @@ wgpu_create_post_texture :: proc(
 }
 
 wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
-	if renderer.automatic_exposure_bind_group != nil {
-		wgpu.BindGroupRelease(renderer.automatic_exposure_bind_group)
-		renderer.automatic_exposure_bind_group = nil
-	}
-	if renderer.composite_bind_group != nil {
-		wgpu.BindGroupRelease(renderer.composite_bind_group)
-		renderer.composite_bind_group = nil
-	}
-	if renderer.temporal_aa_bind_group != nil {
-		wgpu.BindGroupRelease(renderer.temporal_aa_bind_group)
-		renderer.temporal_aa_bind_group = nil
-	}
-	if renderer.temporal_resolved_view != nil {
-		wgpu.TextureViewRelease(renderer.temporal_resolved_view)
-		renderer.temporal_resolved_view = nil
-	}
-	if renderer.temporal_resolved_texture != nil {
-		wgpu.TextureRelease(renderer.temporal_resolved_texture)
-		renderer.temporal_resolved_texture = nil
-	}
-	if renderer.temporal_history_view != nil {
-		wgpu.TextureViewRelease(renderer.temporal_history_view)
-		renderer.temporal_history_view = nil
-	}
-	if renderer.temporal_history_texture != nil {
-		wgpu.TextureRelease(renderer.temporal_history_texture)
-		renderer.temporal_history_texture = nil
-	}
-	if renderer.temporal_resolved_depth_view != nil {
-		wgpu.TextureViewRelease(renderer.temporal_resolved_depth_view)
-		renderer.temporal_resolved_depth_view = nil
-	}
-	if renderer.temporal_resolved_depth_texture != nil {
-		wgpu.TextureRelease(renderer.temporal_resolved_depth_texture)
-		renderer.temporal_resolved_depth_texture = nil
-	}
-	if renderer.temporal_history_depth_view != nil {
-		wgpu.TextureViewRelease(renderer.temporal_history_depth_view)
-		renderer.temporal_history_depth_view = nil
-	}
-	if renderer.temporal_history_depth_texture != nil {
-		wgpu.TextureRelease(renderer.temporal_history_depth_texture)
-		renderer.temporal_history_depth_texture = nil
+	for index in 0 ..< len(renderer.temporal_color_textures) {
+		if renderer.automatic_exposure_bind_groups[index] != nil {
+			wgpu.BindGroupRelease(renderer.automatic_exposure_bind_groups[index])
+			renderer.automatic_exposure_bind_groups[index] = nil
+		}
+		if renderer.composite_bind_groups[index] != nil {
+			wgpu.BindGroupRelease(renderer.composite_bind_groups[index])
+			renderer.composite_bind_groups[index] = nil
+		}
+		if renderer.temporal_aa_bind_groups[index] != nil {
+			wgpu.BindGroupRelease(renderer.temporal_aa_bind_groups[index])
+			renderer.temporal_aa_bind_groups[index] = nil
+		}
+		if renderer.temporal_color_views[index] != nil {
+			wgpu.TextureViewRelease(renderer.temporal_color_views[index])
+			renderer.temporal_color_views[index] = nil
+		}
+		if renderer.temporal_color_textures[index] != nil {
+			wgpu.TextureRelease(renderer.temporal_color_textures[index])
+			renderer.temporal_color_textures[index] = nil
+		}
+		if renderer.temporal_depth_views[index] != nil {
+			wgpu.TextureViewRelease(renderer.temporal_depth_views[index])
+			renderer.temporal_depth_views[index] = nil
+		}
+		if renderer.temporal_depth_textures[index] != nil {
+			wgpu.TextureRelease(renderer.temporal_depth_textures[index])
+			renderer.temporal_depth_textures[index] = nil
+		}
 	}
 	if renderer.volumetric_fog_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.volumetric_fog_bind_group)
@@ -929,11 +915,15 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.TextureRelease(renderer.screen_space_reflections_texture)
 		renderer.screen_space_reflections_texture = nil
 	}
-	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		if renderer.bloom_compute_bind_groups[index] != nil {
-			wgpu.BindGroupRelease(renderer.bloom_compute_bind_groups[index])
-			renderer.bloom_compute_bind_groups[index] = nil
+	for temporal_index in 0 ..< len(renderer.bloom_compute_bind_groups) {
+		for index in 0 ..< WGPU_BLOOM_LEVELS {
+			if renderer.bloom_compute_bind_groups[temporal_index][index] != nil {
+				wgpu.BindGroupRelease(renderer.bloom_compute_bind_groups[temporal_index][index])
+				renderer.bloom_compute_bind_groups[temporal_index][index] = nil
+			}
 		}
+	}
+	for index in 0 ..< WGPU_BLOOM_LEVELS {
 		if renderer.bloom_views[index] != nil {
 			wgpu.TextureViewRelease(renderer.bloom_views[index])
 			renderer.bloom_views[index] = nil
@@ -970,6 +960,7 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 	renderer.post_width = 0
 	renderer.post_height = 0
 	renderer.post_depth_view = nil
+	renderer.temporal_output_index = 0
 	renderer.temporal_history_valid = false
 	renderer.automatic_exposure_valid = false
 }
@@ -1185,53 +1176,31 @@ wgpu_ensure_post_targets :: proc(
 	if renderer.screen_space_reflections_bind_group == nil {
 		return "failed to create screen-space reflections bind group"
 	}
-	renderer.temporal_resolved_texture, renderer.temporal_resolved_view, err =
-		wgpu_create_post_texture(
-			renderer,
-			"Scrapbot Temporal Resolved Color",
-			width,
-			height,
-			.RGBA16Float,
-			{.TextureBinding, .StorageBinding, .CopySrc},
-		)
-	if err != "" {
-		return err
-	}
-	renderer.temporal_history_texture, renderer.temporal_history_view, err =
-		wgpu_create_post_texture(
-			renderer,
-			"Scrapbot Temporal History Color",
-			width,
-			height,
-			.RGBA16Float,
-			{.TextureBinding, .CopyDst},
-		)
-	if err != "" {
-		return err
-	}
-	renderer.temporal_resolved_depth_texture, renderer.temporal_resolved_depth_view, err =
-		wgpu_create_post_texture(
-			renderer,
-			"Scrapbot Temporal Resolved Depth",
-			width,
-			height,
-			.R32Float,
-			{.StorageBinding, .CopySrc},
-		)
-	if err != "" {
-		return err
-	}
-	renderer.temporal_history_depth_texture, renderer.temporal_history_depth_view, err =
-		wgpu_create_post_texture(
-			renderer,
-			"Scrapbot Temporal History Depth",
-			width,
-			height,
-			.R32Float,
-			{.TextureBinding, .CopyDst},
-		)
-	if err != "" {
-		return err
+	for index in 0 ..< len(renderer.temporal_color_textures) {
+		renderer.temporal_color_textures[index], renderer.temporal_color_views[index], err =
+			wgpu_create_post_texture(
+				renderer,
+				"Scrapbot Temporal Color",
+				width,
+				height,
+				.RGBA16Float,
+				{.TextureBinding, .StorageBinding},
+			)
+		if err != "" {
+			return err
+		}
+		renderer.temporal_depth_textures[index], renderer.temporal_depth_views[index], err =
+			wgpu_create_post_texture(
+				renderer,
+				"Scrapbot Temporal Depth",
+				width,
+				height,
+				.R32Float,
+				{.TextureBinding, .StorageBinding},
+			)
+		if err != "" {
+			return err
+		}
 	}
 	volumetric_fog_width := max(u32(1), (width + 1) / 2)
 	volumetric_fog_height := max(u32(1), (height + 1) / 2)
@@ -1312,46 +1281,50 @@ wgpu_ensure_post_targets :: proc(
 			return "failed to create ambient occlusion bind groups"
 		}
 	}
-	temporal_entries := [?]wgpu.BindGroupEntry {
-		{binding = 0, textureView = renderer.hdr_view},
-		{binding = 1, sampler = renderer.post_sampler},
-		{binding = 2, textureView = depth_view},
-		{binding = 3, textureView = renderer.temporal_history_view},
-		{binding = 4, textureView = renderer.temporal_history_depth_view},
-		{binding = 5, textureView = renderer.temporal_resolved_view},
-		{binding = 6, textureView = renderer.temporal_resolved_depth_view},
-		{
-			binding = 7,
-			buffer = renderer.temporal_aa_uniform_buffer,
-			offset = 0,
-			size = u64(size_of(WGPU_Temporal_AA_Uniform)),
-		},
-		{binding = 8, textureView = renderer.ambient_occlusion_views[2]},
-		{binding = 9, textureView = renderer.screen_space_reflections_view},
-		{binding = 10, textureView = renderer.surface_view},
-		{binding = 11, textureView = renderer.indirect_diffuse_view},
-		{
-			binding = 12,
-			buffer = renderer.gpu_render_uniform_buffer,
-			offset = 0,
-			size = u64(size_of(WGPU_GPU_Render_Uniform)),
-		},
-		{binding = 13, textureView = renderer.shadow_array_view},
-		{binding = 14, sampler = renderer.shadow_sampler},
-		{binding = 15, textureView = renderer.volumetric_fog_view},
-		{binding = 16, textureView = renderer.volumetric_fog_dummy_view},
-	}
-	renderer.temporal_aa_bind_group = wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = "Scrapbot Temporal AA Bind Group",
-			layout = renderer.temporal_aa_bind_group_layout,
-			entryCount = uint(len(temporal_entries)),
-			entries = raw_data(temporal_entries[:]),
-		},
-	)
-	if renderer.temporal_aa_bind_group == nil {
-		return "failed to create temporal AA bind group"
+	temporal_entries: [17]wgpu.BindGroupEntry
+	for output_index in 0 ..< len(renderer.temporal_color_views) {
+		history_index := 1 - output_index
+		temporal_entries = {
+			{binding = 0, textureView = renderer.hdr_view},
+			{binding = 1, sampler = renderer.post_sampler},
+			{binding = 2, textureView = depth_view},
+			{binding = 3, textureView = renderer.temporal_color_views[history_index]},
+			{binding = 4, textureView = renderer.temporal_depth_views[history_index]},
+			{binding = 5, textureView = renderer.temporal_color_views[output_index]},
+			{binding = 6, textureView = renderer.temporal_depth_views[output_index]},
+			{
+				binding = 7,
+				buffer = renderer.temporal_aa_uniform_buffer,
+				offset = 0,
+				size = u64(size_of(WGPU_Temporal_AA_Uniform)),
+			},
+			{binding = 8, textureView = renderer.ambient_occlusion_views[2]},
+			{binding = 9, textureView = renderer.screen_space_reflections_view},
+			{binding = 10, textureView = renderer.surface_view},
+			{binding = 11, textureView = renderer.indirect_diffuse_view},
+			{
+				binding = 12,
+				buffer = renderer.gpu_render_uniform_buffer,
+				offset = 0,
+				size = u64(size_of(WGPU_GPU_Render_Uniform)),
+			},
+			{binding = 13, textureView = renderer.shadow_array_view},
+			{binding = 14, sampler = renderer.shadow_sampler},
+			{binding = 15, textureView = renderer.volumetric_fog_view},
+			{binding = 16, textureView = renderer.volumetric_fog_dummy_view},
+		}
+		renderer.temporal_aa_bind_groups[output_index] = wgpu.DeviceCreateBindGroup(
+			renderer.device,
+			&wgpu.BindGroupDescriptor {
+				label = "Scrapbot Temporal AA Bind Group",
+				layout = renderer.temporal_aa_bind_group_layout,
+				entryCount = uint(len(temporal_entries)),
+				entries = raw_data(temporal_entries[:]),
+			},
+		)
+		if renderer.temporal_aa_bind_groups[output_index] == nil {
+			return "failed to create temporal AA bind group"
+		}
 	}
 	volumetric_fog_entries := temporal_entries
 	volumetric_fog_entries[15] = {
@@ -1375,32 +1348,34 @@ wgpu_ensure_post_targets :: proc(
 		return "failed to create volumetric fog bind group"
 	}
 
-	automatic_exposure_entries := [?]wgpu.BindGroupEntry {
-		{binding = 0, textureView = renderer.temporal_resolved_view},
-		{
-			binding = 1,
-			buffer = renderer.automatic_exposure_settings_buffer,
-			offset = 0,
-			size = u64(size_of(WGPU_Automatic_Exposure_Settings)),
-		},
-		{
-			binding = 2,
-			buffer = renderer.automatic_exposure_state_buffer,
-			offset = 0,
-			size = u64(size_of(WGPU_Automatic_Exposure_State)),
-		},
-	}
-	renderer.automatic_exposure_bind_group = wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = "Scrapbot Automatic Exposure Bind Group",
-			layout = renderer.automatic_exposure_bind_group_layout,
-			entryCount = uint(len(automatic_exposure_entries)),
-			entries = raw_data(automatic_exposure_entries[:]),
-		},
-	)
-	if renderer.automatic_exposure_bind_group == nil {
-		return "failed to create automatic exposure bind group"
+	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
+		automatic_exposure_entries := [?]wgpu.BindGroupEntry {
+			{binding = 0, textureView = renderer.temporal_color_views[temporal_index]},
+			{
+				binding = 1,
+				buffer = renderer.automatic_exposure_settings_buffer,
+				offset = 0,
+				size = u64(size_of(WGPU_Automatic_Exposure_Settings)),
+			},
+			{
+				binding = 2,
+				buffer = renderer.automatic_exposure_state_buffer,
+				offset = 0,
+				size = u64(size_of(WGPU_Automatic_Exposure_State)),
+			},
+		}
+		renderer.automatic_exposure_bind_groups[temporal_index] = wgpu.DeviceCreateBindGroup(
+			renderer.device,
+			&wgpu.BindGroupDescriptor {
+				label = "Scrapbot Automatic Exposure Bind Group",
+				layout = renderer.automatic_exposure_bind_group_layout,
+				entryCount = uint(len(automatic_exposure_entries)),
+				entries = raw_data(automatic_exposure_entries[:]),
+			},
+		)
+		if renderer.automatic_exposure_bind_groups[temporal_index] == nil {
+			return "failed to create automatic exposure bind group"
+		}
 	}
 
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
@@ -1430,66 +1405,73 @@ wgpu_ensure_post_targets :: proc(
 		renderer.bloom_views[index] = view
 	}
 
-	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		source :=
-			renderer.temporal_resolved_view if index == 0 else renderer.bloom_views[index - 1]
-		entries := [?]wgpu.BindGroupEntry {
-			{binding = 0, textureView = source},
-			{binding = 1, sampler = renderer.post_sampler},
-			{binding = 2, textureView = renderer.bloom_views[index]},
-			{
-				binding = 3,
-				buffer = renderer.automatic_exposure_state_buffer,
-				offset = 0,
-				size = u64(size_of(WGPU_Automatic_Exposure_State)),
-			},
+	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
+		for index in 0 ..< WGPU_BLOOM_LEVELS {
+			source := renderer.temporal_color_views[temporal_index]
+			if index > 0 {
+				source = renderer.bloom_views[index - 1]
+			}
+			entries := [?]wgpu.BindGroupEntry {
+				{binding = 0, textureView = source},
+				{binding = 1, sampler = renderer.post_sampler},
+				{binding = 2, textureView = renderer.bloom_views[index]},
+				{
+					binding = 3,
+					buffer = renderer.automatic_exposure_state_buffer,
+					offset = 0,
+					size = u64(size_of(WGPU_Automatic_Exposure_State)),
+				},
+			}
+			renderer.bloom_compute_bind_groups[temporal_index][index] = wgpu.DeviceCreateBindGroup(
+				renderer.device,
+				&wgpu.BindGroupDescriptor {
+					label = "Scrapbot Bloom Compute Bind Group",
+					layout = renderer.bloom_compute_bind_group_layout,
+					entryCount = uint(len(entries)),
+					entries = raw_data(entries[:]),
+				},
+			)
+			if renderer.bloom_compute_bind_groups[temporal_index][index] == nil {
+				return "failed to create bloom bind groups"
+			}
 		}
-		renderer.bloom_compute_bind_groups[index] = wgpu.DeviceCreateBindGroup(
+	}
+	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
+		composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
+		composite_entries[0] = {
+			binding = 0,
+			textureView = renderer.temporal_color_views[temporal_index],
+		}
+		composite_entries[1] = {
+			binding = 1,
+			sampler = renderer.post_sampler,
+		}
+		for index in 0 ..< WGPU_BLOOM_LEVELS {
+			composite_entries[index + 2] = {
+				binding = u32(index + 2),
+				textureView = renderer.bloom_views[index],
+			}
+		}
+		composite_entries[2 + WGPU_BLOOM_LEVELS] = {
+			binding = u32(2 + WGPU_BLOOM_LEVELS),
+			buffer = renderer.automatic_exposure_state_buffer,
+			offset = 0,
+			size = u64(size_of(WGPU_Automatic_Exposure_State)),
+		}
+		renderer.composite_bind_groups[temporal_index] = wgpu.DeviceCreateBindGroup(
 			renderer.device,
 			&wgpu.BindGroupDescriptor {
-				label = "Scrapbot Bloom Compute Bind Group",
-				layout = renderer.bloom_compute_bind_group_layout,
-				entryCount = uint(len(entries)),
-				entries = raw_data(entries[:]),
+				label = "Scrapbot HDR Composite Bind Group",
+				layout = renderer.composite_bind_group_layout,
+				entryCount = uint(len(composite_entries)),
+				entries = raw_data(composite_entries[:]),
 			},
 		)
-		if renderer.bloom_compute_bind_groups[index] == nil {
-			return "failed to create bloom bind groups"
+		if renderer.composite_bind_groups[temporal_index] == nil {
+			return "failed to create HDR composite bind group"
 		}
 	}
-	composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
-	composite_entries[0] = {
-		binding = 0,
-		textureView = renderer.temporal_resolved_view,
-	}
-	composite_entries[1] = {
-		binding = 1,
-		sampler = renderer.post_sampler,
-	}
-	for index in 0 ..< WGPU_BLOOM_LEVELS {
-		composite_entries[index + 2] = {
-			binding = u32(index + 2),
-			textureView = renderer.bloom_views[index],
-		}
-	}
-	composite_entries[2 + WGPU_BLOOM_LEVELS] = {
-		binding = u32(2 + WGPU_BLOOM_LEVELS),
-		buffer = renderer.automatic_exposure_state_buffer,
-		offset = 0,
-		size = u64(size_of(WGPU_Automatic_Exposure_State)),
-	}
-	renderer.composite_bind_group = wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = "Scrapbot HDR Composite Bind Group",
-			layout = renderer.composite_bind_group_layout,
-			entryCount = uint(len(composite_entries)),
-			entries = raw_data(composite_entries[:]),
-		},
-	)
-	if renderer.composite_bind_group == nil {
-		return "failed to create HDR composite bind group"
-	}
+	renderer.temporal_output_index = 0
 	renderer.post_width = width
 	renderer.post_height = height
 	renderer.post_depth_view = depth_view
@@ -1555,6 +1537,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	if !has_camera {
 		resolved_camera = shared.camera_defaults()
 	}
+	temporal_output_index := renderer.temporal_output_index
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
 	volumetric_fog_width := max(u32(1), (width + 1) / 2)
@@ -1772,40 +1755,15 @@ wgpu_encode_bloom_and_composite :: proc(
 		return "failed to begin temporal AA compute pass"
 	}
 	wgpu.ComputePassEncoderSetPipeline(temporal_pass, renderer.temporal_aa_pipeline)
-	wgpu.ComputePassEncoderSetBindGroup(temporal_pass, 0, renderer.temporal_aa_bind_group)
+	wgpu.ComputePassEncoderSetBindGroup(
+		temporal_pass,
+		0,
+		renderer.temporal_aa_bind_groups[temporal_output_index],
+	)
 	wgpu.ComputePassEncoderSetBindGroup(temporal_pass, 1, renderer.gpu_cluster_bind_group)
 	wgpu.ComputePassEncoderDispatchWorkgroups(temporal_pass, (width + 7) / 8, (height + 7) / 8, 1)
 	wgpu.ComputePassEncoderEnd(temporal_pass)
 	wgpu.ComputePassEncoderRelease(temporal_pass)
-	copy_size := wgpu.Extent3D {
-		width = width,
-		height = height,
-		depthOrArrayLayers = 1,
-	}
-	if resolved_camera.temporal_antialiasing {
-		wgpu.CommandEncoderCopyTextureToTexture(
-			encoder,
-			&wgpu.TexelCopyTextureInfo {
-				texture = renderer.temporal_resolved_texture,
-				aspect = .All,
-			},
-			&wgpu.TexelCopyTextureInfo{texture = renderer.temporal_history_texture, aspect = .All},
-			&copy_size,
-		)
-		wgpu.CommandEncoderCopyTextureToTexture(
-			encoder,
-			&wgpu.TexelCopyTextureInfo {
-				texture = renderer.temporal_resolved_depth_texture,
-				aspect = .All,
-			},
-			&wgpu.TexelCopyTextureInfo {
-				texture = renderer.temporal_history_depth_texture,
-				aspect = .All,
-			},
-			&copy_size,
-		)
-	}
-
 	if resolved_camera.automatic_exposure {
 		automatic_exposure_settings := WGPU_Automatic_Exposure_Settings {
 			viewport = viewport,
@@ -1852,7 +1810,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		wgpu.ComputePassEncoderSetBindGroup(
 			automatic_exposure_pass,
 			0,
-			renderer.automatic_exposure_bind_group,
+			renderer.automatic_exposure_bind_groups[temporal_output_index],
 		)
 		wgpu.ComputePassEncoderDispatchWorkgroups(automatic_exposure_pass, 1, 1, 1)
 		wgpu.ComputePassEncoderEnd(automatic_exposure_pass)
@@ -1898,7 +1856,11 @@ wgpu_encode_bloom_and_composite :: proc(
 			level_width := max(u32(1), width >> u32(index + 1))
 			level_height := max(u32(1), height >> u32(index + 1))
 			wgpu.ComputePassEncoderSetPipeline(pass, pipeline)
-			wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.bloom_compute_bind_groups[index])
+			wgpu.ComputePassEncoderSetBindGroup(
+				pass,
+				0,
+				renderer.bloom_compute_bind_groups[temporal_output_index][index],
+			)
 			wgpu.ComputePassEncoderDispatchWorkgroups(
 				pass,
 				(level_width + 7) / 8,
@@ -1914,7 +1876,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		encoder,
 		output_view,
 		renderer.composite_pipeline,
-		renderer.composite_bind_group,
+		renderer.composite_bind_groups[temporal_output_index],
 		"Scrapbot HDR Composite Pass",
 		.Composite,
 	)
@@ -1924,6 +1886,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	renderer.temporal_previous_view_projection = renderer.temporal_current_view_projection
 	renderer.temporal_previous_projection = renderer.temporal_current_projection
 	renderer.temporal_history_valid = resolved_camera.temporal_antialiasing
+	renderer.temporal_output_index = 1 - temporal_output_index
 	if resolved_camera.temporal_antialiasing {
 		renderer.temporal_sample_index += 1
 	} else {
