@@ -40,6 +40,7 @@ run = "node tools/check_staged_odin_format.mjs"
 description = "Install project tools, source dependencies, external fixtures, and Git hooks"
 run = '''
 mise install
+mise run wgpu
 git submodule update --init --recursive
 node tools/setup_external_assets.mjs
 git config --local core.hooksPath .githooks
@@ -75,7 +76,7 @@ run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot
 
 [tasks.build]
 description = "Build the Scrapbot CLI"
-depends = ["luau", "cgltf"]
+depends = ["luau", "cgltf", "wgpu"]
 run = '''
 mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
@@ -96,7 +97,7 @@ odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUA
 
 [tasks.build-dev]
 description = "Build the Scrapbot CLI for fast development iteration"
-depends = ["luau", "cgltf"]
+depends = ["luau", "cgltf", "wgpu"]
 run = '''
 mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
@@ -170,6 +171,38 @@ esac
 if [ ! -f "$CGLTF_LIB" ]; then
   make -C "$CGLTF_ROOT/src"
 fi
+'''
+
+[tasks.wgpu]
+description = "Install Odin's pinned wgpu-native vendor library when absent"
+run = '''
+WGPU_VERSION="v29.0.1.1"
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64) WGPU_PACKAGE="wgpu-macos-aarch64-release" ;;
+  Darwin:x86_64) WGPU_PACKAGE="wgpu-macos-x86_64-release" ;;
+  Linux:aarch64|Linux:arm64) WGPU_PACKAGE="wgpu-linux-aarch64-release" ;;
+  Linux:x86_64) WGPU_PACKAGE="wgpu-linux-x86_64-release" ;;
+  *) echo "unsupported wgpu-native host: $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+
+WGPU_LIB_DIR="$(odin root)/vendor/wgpu/lib"
+WGPU_PACKAGE_DIR="$WGPU_LIB_DIR/$WGPU_PACKAGE"
+case "$(uname -s)" in
+  Darwin) WGPU_LIBRARY="$WGPU_PACKAGE_DIR/lib/libwgpu_native.a" ;;
+  Linux) WGPU_LIBRARY="$WGPU_PACKAGE_DIR/lib/libwgpu_native.a" ;;
+esac
+
+if [ ! -f "$WGPU_LIBRARY" ]; then
+  WGPU_DOWNLOAD="${TMPDIR:-/tmp}/$WGPU_PACKAGE.zip"
+  mkdir -p "$WGPU_PACKAGE_DIR"
+  curl --fail --location --retry 3 \
+    "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/$WGPU_PACKAGE.zip" \
+    --output "$WGPU_DOWNLOAD"
+  unzip -q -o "$WGPU_DOWNLOAD" -d "$WGPU_PACKAGE_DIR"
+  rm -f "$WGPU_DOWNLOAD"
+fi
+
+test -f "$WGPU_LIBRARY"
 '''
 
 [tasks.scrapbot]
