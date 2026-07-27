@@ -52,7 +52,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_scroll_area` | UI viewport | Clipping, smooth pixel scrolling, and scrollbar style. |
 | `scrapbot.ui_panel` | UI framing | Optional title band and collapsible disclosure. |
 | `scrapbot.ui_table` | UI flow | Row-major multi-column layout. |
-| `scrapbot.ui_list` | UI flow | Selectable direct-child rows. |
+| `scrapbot.ui_list` | UI flow | Filterable, virtualizable selectable direct-child rows and trees. |
 | `scrapbot.ui_progress` | UI indicator | Track and clamped progress fill. |
 | `scrapbot.ui_viewport` | UI content | Interactive renderer-backed Texture, Model, Material, or World view. |
 | `scrapbot.ui_state` | UI interaction | Renderer-owned interaction values and edge revisions. |
@@ -303,6 +303,7 @@ Panels do not own a special close/remove control. Any direct child `ui_button` w
 | Field | Default |
 | --- | --- |
 | `selected` | Empty UUID |
+| `filter_input` | Empty UUID |
 | `gap` | `0` |
 | `selection_background` | `[0.045, 0.095, 0.105, 1]` |
 | `hover_background` | `[0.028, 0.038, 0.050, 1]` |
@@ -316,10 +317,17 @@ Panels do not own a special close/remove control. Any direct child `ui_button` w
 | `drop_indicator_inset` | `8` |
 | `tree_enabled` | `false` |
 | `tree_indent` | `14` |
+| `virtualized` | `false` |
+| `item_height` | `0` |
+| `overscan` | `0` |
 
 Direct children become full-width selectable rows. Clicking a row or descendant stores the direct child's UUID in `selected`. With `draggable = true`, dragging resolves source and target to direct children. The top and bottom `drop_edge_fraction` of a row classify as `before` and `after` and paint a clipped lander line; its middle classifies as `into` and paints `drop_target_background`. The placement is published through the list's `ui_state`. Threshold, indicator thickness, and inset must be non-negative; the edge fraction must be between 0 and 0.5.
 
 With `tree_enabled = true`, direct children whose layout has `tree_item = true` are flattened depth-first after ordinary direct children. `tree_parent` references another tree row UUID, `tree_order` orders siblings, `tree_indent` offsets row contents without narrowing the full-width selection box, and `tree_collapsed` suppresses descendants. Invalid or cyclic metadata is rendered safely and deterministically. A successful drop mutates the source row's public `tree_parent` and normalizes the affected sibling orders: `into` reparents beneath the target, while `before`/`after` adopts the target's parent and inserts beside it. Descendants follow their row automatically. Disclosure controls remain ordinary composable buttons whose project system toggles `tree_collapsed`.
+
+Set `filter_input` to the UUID of a same-origin `scrapbot.ui_input`. Its text filters rows by an ASCII case-insensitive substring match over descendant `ui_text`, `ui_button`, and `ui_input` text. Tree filtering retains matching rows and their ancestors and temporarily traverses collapsed branches without changing `tree_collapsed`.
+
+Set `virtualized = true` with a positive uniform `item_height` to lay out only the visible rows plus `overscan` rows on each side. The list still reports the exact complete scroll extent when combined with `ui_scroll_area`. Filtering and tree ordering are cached until structure or relevant UI content changes; scrolling does not rescan all rows. `overscan` must be non-negative.
 
 ### `scrapbot.ui_progress`
 

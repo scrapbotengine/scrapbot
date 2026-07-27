@@ -20,7 +20,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 ## ECS UI
 
 - [ ] Emit reusable button activation and other UI command events.
-- [ ] Add virtualized reusable list/tree views with filtering for large data sets.
 - [ ] Add canvas scaling and richer sizing and alignment policies.
 
 ## Project Runtime And Scripting
@@ -35,7 +34,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 - [ ] Add an opt-in runtime-entity browser policy on top of bounded, virtualized list rows.
 - [ ] Add specialized enum, color, and entity-reference inspectors, followed by array and nested-value editing.
-- [ ] Add searchable scene, resource, component, and system browsers.
+- [ ] Add searchable resource, component, and system browsers using the public filtered-list contract already consumed by the Scene browser.
 - [ ] Add transform snapping and multi-selection editing.
 - [ ] Add a scalable picking broad phase or GPU identity pass before exact triangle tests.
 

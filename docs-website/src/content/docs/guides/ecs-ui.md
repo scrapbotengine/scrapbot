@@ -25,6 +25,8 @@ Every visible element starts with `scrapbot.ui_layout`. Add at most one flow con
 
 Panels, scroll areas, and progress indicators compose with flow/content components rather than replacing them. For example, one entity can be a titled panel, a scroll viewport, and a selectable list.
 
+Lists may reference a same-origin public input by UUID for reusable descendant-content filtering. Tree filters retain matching ancestors and reveal matches beneath collapsed rows without mutating collapse state. For large data sets, enable uniform-row virtualization with an explicit item height and overscan count; combine the list with a scroll area to retain the complete scroll extent while only visible rows are laid out. The editor Scene browser consumes this same public contract.
+
 ## Build a tree in scene TOML
 
 UI parents are stable entity UUIDs, never display names:
@@ -197,4 +199,4 @@ Headless runs normally have no platform pointer, but `--ui-script` can semantica
 
 ## Current limits
 
-The current text/input slice is printable ASCII and single-line. Clipboard operations, IME composition, Unicode shaping, multiline editing, UI themes, accessibility semantics, list virtualization, and general command-event routing remain future work.
+The current text/input slice is printable ASCII and single-line. List filtering folds ASCII case only, and virtualized rows require one uniform item height. Clipboard operations, IME composition, Unicode shaping, multiline editing, UI themes, accessibility semantics, and general command-event routing remain future work.
