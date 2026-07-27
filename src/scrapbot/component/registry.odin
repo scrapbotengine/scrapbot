@@ -529,6 +529,7 @@ init_registry :: proc(registry: ^Registry) {
 		"scrapbot.ui_list",
 		{
 			Field_Definition{name = "selected", field_type = .String},
+			Field_Definition{name = "filter_input", field_type = .String},
 			Field_Definition{name = "gap", field_type = .Number},
 			Field_Definition{name = "selection_background", field_type = .Vec4},
 			Field_Definition{name = "hover_background", field_type = .Vec4},
@@ -542,6 +543,9 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "drop_indicator_inset", field_type = .Number},
 			Field_Definition{name = "tree_enabled", field_type = .Bool},
 			Field_Definition{name = "tree_indent", field_type = .Number},
+			Field_Definition{name = "virtualized", field_type = .Bool},
+			Field_Definition{name = "item_height", field_type = .Number},
+			Field_Definition{name = "overscan", field_type = .Number},
 		},
 	)
 	register_engine_component(

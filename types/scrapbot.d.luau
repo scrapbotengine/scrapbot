@@ -659,6 +659,7 @@ export type ScrapbotUiTableComponent = ScrapbotComponent<ScrapbotUiTable, Readon
 
 export type ScrapbotUiList = {
 	selected: string?,
+	filter_input: string?,
 	gap: number?,
 	selection_background: Vec4?,
 	hover_background: Vec4?,
@@ -672,10 +673,14 @@ export type ScrapbotUiList = {
 	drop_indicator_inset: number?,
 	tree_enabled: boolean?,
 	tree_indent: number?,
+	virtualized: boolean?,
+	item_height: number?,
+	overscan: number?,
 }
 
 export type ReadonlyScrapbotUiList = {
 	read selected: string,
+	read filter_input: string,
 	read gap: number,
 	read selection_background: ReadonlyVec4,
 	read hover_background: ReadonlyVec4,
@@ -689,6 +694,9 @@ export type ReadonlyScrapbotUiList = {
 	read drop_indicator_inset: number,
 	read tree_enabled: boolean,
 	read tree_indent: number,
+	read virtualized: boolean,
+	read item_height: number,
+	read overscan: number,
 }
 
 export type ScrapbotUiListComponent = ScrapbotComponent<ScrapbotUiList, ReadonlyScrapbotUiList>

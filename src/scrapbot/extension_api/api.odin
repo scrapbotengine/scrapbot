@@ -221,6 +221,7 @@ UI_Table_Payload :: struct {
 
 UI_List_Payload :: struct {
 	selected: UUID,
+	filter_input: UUID,
 	gap: f32,
 	selection_background: Vec4,
 	hover_background: Vec4,
@@ -234,6 +235,9 @@ UI_List_Payload :: struct {
 	drop_indicator_inset: f32,
 	tree_enabled: c.int,
 	tree_indent: f32,
+	virtualized: c.int,
+	item_height: f32,
+	overscan: c.int,
 }
 
 UI_Drop_Placement :: enum c.int {

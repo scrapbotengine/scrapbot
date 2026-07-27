@@ -132,6 +132,7 @@ Node :: struct {
 	split_weight: f32,
 	split_parent: shared.Entity,
 	tree_depth: int,
+	list_flow_offset, list_flow_count: int,
 	viewport_layer: int,
 	split_weight_valid: bool,
 	seen, laid_out, hovered, active, has_clip: bool,
@@ -291,6 +292,16 @@ State :: struct {
 	ui_editor_viewport: Rect,
 	ui_structure_sync_count: u64,
 	ui_hierarchy_rebuild_count: u64,
+	ui_project_list_flow_revision: u64,
+	ui_editor_list_flow_revision: u64,
+	ui_project_list_flow_structure_revision: u64,
+	ui_editor_list_flow_structure_revision: u64,
+	ui_project_list_flow_rebuild_count: u64,
+	ui_editor_list_flow_rebuild_count: u64,
+	ui_project_list_flow_nodes: [MAX_NODES]int,
+	ui_editor_list_flow_nodes: [MAX_NODES]int,
+	ui_project_list_flow_count: int,
+	ui_editor_list_flow_count: int,
 	layout_node_visit_count: u64,
 	layout_child_edge_visit_count: u64,
 	paint_node_visit_count: u64,
@@ -1870,6 +1881,16 @@ layout_all :: proc(
 	layout_project := true,
 	layout_editor := true,
 ) -> string {
+	if layout_project &&
+	   (state.ui_project_list_flow_revision != world.ui_project_layout_revision ||
+			   state.ui_project_list_flow_structure_revision != world.ui_structure_revision) {
+		rebuild_list_flow_cache(state, world, false)
+	}
+	if layout_editor &&
+	   (state.ui_editor_list_flow_revision != world.ui_editor_layout_revision ||
+			   state.ui_editor_list_flow_structure_revision != world.ui_structure_revision) {
+		rebuild_list_flow_cache(state, world, true)
+	}
 	for _ in 0 ..< 4 {
 		state.next_paint_order = 0
 		preserved_handle_count := 0
@@ -2032,6 +2053,146 @@ mark_tree_branch_hidden :: proc(
 	}
 }
 
+ascii_fold_byte :: proc "contextless" (value: u8) -> u8 {
+	if value >= 'A' && value <= 'Z' {
+		return value + ('a' - 'A')
+	}
+	return value
+}
+
+string_contains_folded_ascii :: proc "contextless" (value, query: string) -> bool {
+	if len(query) == 0 {
+		return true
+	}
+	if len(query) > len(value) {
+		return false
+	}
+	for start in 0 ..= len(value) - len(query) {
+		matches := true
+		for offset in 0 ..< len(query) {
+			if ascii_fold_byte(value[start + offset]) != ascii_fold_byte(query[offset]) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
+}
+
+node_contains_filter_text :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	filter: string,
+	depth: int = 0,
+) -> bool {
+	if state == nil ||
+	   world == nil ||
+	   node_index < 0 ||
+	   node_index >= state.node_count ||
+	   depth > MAX_NODES {
+		return false
+	}
+	node := state.nodes[node_index]
+	if node.text_index >= 0 &&
+	   node.text_index < len(world.ui_texts) &&
+	   string_contains_folded_ascii(world.ui_texts[node.text_index].text, filter) {
+		return true
+	}
+	if node.button_index >= 0 &&
+	   node.button_index < len(world.ui_buttons) &&
+	   string_contains_folded_ascii(world.ui_buttons[node.button_index].text, filter) {
+		return true
+	}
+	if node.input_index >= 0 &&
+	   node.input_index < len(world.ui_inputs) &&
+	   string_contains_folded_ascii(world.ui_inputs[node.input_index].text, filter) {
+		return true
+	}
+	child := node.first_child_node
+	for child >= 0 {
+		if node_contains_filter_text(state, world, child, filter, depth + 1) {
+			return true
+		}
+		child = state.nodes[child].next_sibling_node
+	}
+	return false
+}
+
+list_filter_text :: proc(state: ^State, world: ^shared.World, list_node_index: int) -> string {
+	if state == nil || world == nil || list_node_index < 0 || list_node_index >= state.node_count {
+		return ""
+	}
+	list_node := state.nodes[list_node_index]
+	if list_node.list_index < 0 || list_node.list_index >= len(world.ui_lists) {
+		return ""
+	}
+	filter_input := world.ui_lists[list_node.list_index].filter_input
+	if filter_input == (shared.Entity_UUID{}) {
+		return ""
+	}
+	entity_index, found := world.entity_by_uuid[filter_input]
+	if !found ||
+	   entity_index < 0 ||
+	   entity_index >= len(world.entities) ||
+	   !world.entities[entity_index].alive ||
+	   world.entities[entity_index].origin != list_node.origin {
+		return ""
+	}
+	input_index := world.entities[entity_index].ui_input_index
+	if input_index < 0 || input_index >= len(world.ui_inputs) {
+		return ""
+	}
+	return world.ui_inputs[input_index].text
+}
+
+mark_tree_filter_matches :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	filter: string,
+	first_child: ^[MAX_NODES]int,
+	next_sibling: ^[MAX_NODES]int,
+	suppressed: ^[MAX_NODES]bool,
+	keep: ^[MAX_NODES]bool,
+	visit: ^[MAX_NODES]u8,
+) -> bool {
+	if node_index < 0 || node_index >= state.node_count || suppressed[node_index] {
+		return false
+	}
+	if visit[node_index] == 1 {
+		return false
+	}
+	if visit[node_index] == 2 {
+		return keep[node_index]
+	}
+	visit[node_index] = 1
+	matches := node_contains_filter_text(state, world, node_index, filter)
+	child := first_child[node_index]
+	for child >= 0 {
+		matches =
+			mark_tree_filter_matches(
+				state,
+				world,
+				child,
+				filter,
+				first_child,
+				next_sibling,
+				suppressed,
+				keep,
+				visit,
+			) ||
+			matches
+		child = next_sibling[child]
+	}
+	keep[node_index] = matches
+	visit[node_index] = 2
+	return matches
+}
+
 append_tree_branch :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -2042,8 +2203,14 @@ append_tree_branch :: proc(
 	visit: ^[MAX_NODES]u8,
 	output: ^[MAX_NODES]int,
 	output_count: ^int,
+	filter_active: bool,
+	keep: ^[MAX_NODES]bool,
 ) {
 	if node_index < 0 || node_index >= state.node_count || visit[node_index] != 0 {
+		return
+	}
+	if filter_active && !keep[node_index] {
+		visit[node_index] = 2
 		return
 	}
 	visit[node_index] = 1
@@ -2053,7 +2220,7 @@ append_tree_branch :: proc(
 		output_count^ += 1
 	}
 	layout := world.ui_layouts[state.nodes[node_index].layout_index]
-	if !layout.tree_collapsed && !layout.hidden {
+	if (!layout.tree_collapsed || filter_active) && !layout.hidden {
 		child := first_child[node_index]
 		for child >= 0 {
 			append_tree_branch(
@@ -2066,6 +2233,8 @@ append_tree_branch :: proc(
 				visit,
 				output,
 				output_count,
+				filter_active,
+				keep,
 			)
 			child = next_sibling[child]
 		}
@@ -2085,6 +2254,8 @@ tree_list_flow :: proc(
 	list_node_index: int,
 	output: ^[MAX_NODES]int,
 ) -> int {
+	filter := list_filter_text(state, world, list_node_index)
+	filter_active := len(filter) > 0
 	candidates: [MAX_NODES]int
 	candidate_count := 0
 	output_count := 0
@@ -2096,7 +2267,7 @@ tree_list_flow :: proc(
 		if layout.tree_item {
 			candidates[candidate_count] = child
 			candidate_count += 1
-		} else {
+		} else if !filter_active || node_contains_filter_text(state, world, child, filter) {
 			output[output_count] = child
 			output_count += 1
 		}
@@ -2156,6 +2327,39 @@ tree_list_flow :: proc(
 			mark_tree_branch_hidden(candidates[index], &first_child, &next_sibling, &visit)
 		}
 	}
+	keep: [MAX_NODES]bool
+	if filter_active {
+		filter_visit: [MAX_NODES]u8
+		for index in 0 ..< root_count {
+			_ = mark_tree_filter_matches(
+				state,
+				world,
+				roots[index],
+				filter,
+				&first_child,
+				&next_sibling,
+				&suppressed,
+				&keep,
+				&filter_visit,
+			)
+		}
+		for index in 0 ..< candidate_count {
+			node_index := candidates[index]
+			if filter_visit[node_index] == 0 {
+				_ = mark_tree_filter_matches(
+					state,
+					world,
+					node_index,
+					filter,
+					&first_child,
+					&next_sibling,
+					&suppressed,
+					&keep,
+					&filter_visit,
+				)
+			}
+		}
+	}
 	for index in 0 ..< root_count {
 		append_tree_branch(
 			state,
@@ -2167,6 +2371,8 @@ tree_list_flow :: proc(
 			&visit,
 			output,
 			&output_count,
+			filter_active,
+			&keep,
 		)
 	}
 	// Malformed cycles are still rendered deterministically as roots rather than hanging layout.
@@ -2182,10 +2388,76 @@ tree_list_flow :: proc(
 				&visit,
 				output,
 				&output_count,
+				filter_active,
+				&keep,
 			)
 		}
 	}
 	return output_count
+}
+
+flat_list_flow :: proc(
+	state: ^State,
+	world: ^shared.World,
+	list_node_index: int,
+	output: ^[MAX_NODES]int,
+) -> int {
+	filter := list_filter_text(state, world, list_node_index)
+	filter_active := len(filter) > 0
+	output_count := 0
+	child := state.nodes[list_node_index].first_child_node
+	for child >= 0 {
+		if !filter_active || node_contains_filter_text(state, world, child, filter) {
+			output[output_count] = child
+			output_count += 1
+		}
+		child = state.nodes[child].next_sibling_node
+	}
+	return output_count
+}
+
+rebuild_list_flow_cache :: proc(state: ^State, world: ^shared.World, editor: bool) {
+	if state == nil || world == nil {
+		return
+	}
+	cache := &state.ui_project_list_flow_nodes
+	cache_count := &state.ui_project_list_flow_count
+	if editor {
+		cache = &state.ui_editor_list_flow_nodes
+		cache_count = &state.ui_editor_list_flow_count
+		state.ui_editor_list_flow_rebuild_count += 1
+	} else {
+		state.ui_project_list_flow_rebuild_count += 1
+	}
+	cache_count^ = 0
+	for &node, node_index in state.nodes[:state.node_count] {
+		if (node.origin == .Editor) != editor ||
+		   node.list_index < 0 ||
+		   node.list_index >= len(world.ui_lists) {
+			continue
+		}
+		flow: [MAX_NODES]int
+		flow_count := 0
+		list := world.ui_lists[node.list_index]
+		if list.tree_enabled {
+			flow_count = tree_list_flow(state, world, node_index, &flow)
+		} else {
+			flow_count = flat_list_flow(state, world, node_index, &flow)
+		}
+		node.list_flow_offset = cache_count^
+		node.list_flow_count = min(flow_count, MAX_NODES - cache_count^)
+		for index in 0 ..< node.list_flow_count {
+			cache[cache_count^] = flow[index]
+			cache_count^ += 1
+		}
+	}
+	if editor {
+		state.ui_editor_list_flow_revision = world.ui_editor_layout_revision
+		state.ui_editor_list_flow_structure_revision = world.ui_structure_revision
+	} else {
+		state.ui_project_list_flow_revision = world.ui_project_layout_revision
+		state.ui_project_list_flow_structure_revision = world.ui_structure_revision
+	}
 }
 
 layout_node :: proc(
@@ -2482,29 +2754,52 @@ layout_node :: proc(
 		table_column_offsets[column] = table_offset
 		table_offset += table_column_widths[column] + table.column_gap
 	}
-	list_flow_children: [MAX_NODES]int
-	list_flow_count := 0
-	if is_list && list.tree_enabled {
-		list_flow_count = tree_list_flow(state, world, node_index, &list_flow_children)
+	list_flow_children := &state.ui_project_list_flow_nodes
+	if node.origin == .Editor {
+		list_flow_children = &state.ui_editor_list_flow_nodes
+	}
+	list_flow_offset := node.list_flow_offset
+	list_flow_count := node.list_flow_count
+	list_flow_start := 0
+	list_flow_end := list_flow_count
+	virtual_content_height := f32(0)
+	if is_list && list.virtualized {
+		stride := list.item_height + list.gap
+		if list_flow_count > 0 {
+			virtual_content_height =
+				f32(list_flow_count) * list.item_height + f32(list_flow_count - 1) * list.gap
+		}
+		virtual_scroll_max := max(virtual_content_height - content.height, 0)
+		node.scroll_target = clamp(node.scroll_target, 0, virtual_scroll_max)
+		node.scroll_offset = clamp(node.scroll_offset, 0, virtual_scroll_max)
+		scroll_offset = node.scroll_offset
+		if stride > 0 {
+			list_flow_start = max(int(math.floor(scroll_offset / stride)) - list.overscan, 0)
+			list_flow_end = min(
+				int(math.ceil((scroll_offset + content.height) / stride)) + list.overscan,
+				list_flow_count,
+			)
+		}
+		cursor = f32(list_flow_start) * stride
 	}
 	child_index := node.first_child_node
-	if is_list && list.tree_enabled {
+	if is_list {
 		child_index = -1
-		if list_flow_count > 0 {
-			child_index = list_flow_children[0]
+		if list_flow_start < list_flow_end {
+			child_index = list_flow_children[list_flow_offset + list_flow_start]
 		}
 	}
-	list_flow_ordinal := 0
+	list_flow_ordinal := list_flow_start
 	for child_index >= 0 {
 		when ODIN_TEST {
 			state.layout_child_edge_visit_count += 1
 		}
 		child := &state.nodes[child_index]
 		next_child_index := child.next_sibling_node
-		if is_list && list.tree_enabled {
+		if is_list {
 			next_child_index = -1
-			if list_flow_ordinal + 1 < list_flow_count {
-				next_child_index = list_flow_children[list_flow_ordinal + 1]
+			if list_flow_ordinal + 1 < list_flow_end {
+				next_child_index = list_flow_children[list_flow_offset + list_flow_ordinal + 1]
 			}
 			list_flow_ordinal += 1
 		}
@@ -2590,11 +2885,21 @@ layout_node :: proc(
 			child_flowed = true
 		} else if is_list {
 			child_size.x = max(content.width - child_layout.margin.w - child_layout.margin.y, 0)
+			if list.virtualized {
+				child_size.y = max(
+					list.item_height - child_layout.margin.x - child_layout.margin.z,
+					0,
+				)
+			}
 			position = {
 				content.x + child_layout.margin.w,
 				content.y + cursor + child_layout.margin.x,
 			}
-			cursor += child_layout.margin.x + child_size.y + child_layout.margin.z + list.gap
+			if list.virtualized {
+				cursor += list.item_height + list.gap
+			} else {
+				cursor += child_layout.margin.x + child_size.y + child_layout.margin.z + list.gap
+			}
 			has_child_size = true
 			child_flowed = true
 		} else if is_hstack {position = {content.x + cursor + child_layout.margin.w, content.y + child_layout.margin.x}; cursor += child_layout.margin.w + child_size.x + child_layout.margin.y; if stack.draggable && child_ordinal < child_count - 1 && state.split_handle_count < MAX_NODES {handle_rect := Rect{content.x + cursor, content.y, max(gap, 8), content.height}; handle_rect.x += (gap - handle_rect.width) * 0.5; state.split_handles[state.split_handle_count] = {
@@ -2643,6 +2948,9 @@ layout_node :: proc(
 	}
 	if is_table &&
 	   child_count > 0 { content_bottom = max(content_bottom, table_y + table_row_height) }
+	if is_list && list.virtualized {
+		content_bottom = max(content_bottom, virtual_content_height)
+	}
 	if is_scroll_area { node.scroll_content_height = max(content.height, content_bottom); node.scroll_max = max(node.scroll_content_height - content.height, 0); node.scroll_target = clamp(node.scroll_target, 0, node.scroll_max); node.scroll_offset = clamp(node.scroll_offset, 0, node.scroll_max) }
 	if layout.fit_content_width || layout.fit_content_height {
 		next_size := node.resolved_size

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 100,
+  "actions": [
+    {"action": "wait", "frames": 12},
+    {"action": "type", "target": {"name": "__scrapbot_editor_scene_filter", "origin": "editor"}, "text": "static green"},
+    {"action": "wait", "frames": 4},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_scene_filter", "origin": "editor"}, "expect": "text", "text": "static green"},
+    {"action": "expect", "target": {"text": "Static Light Rig", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "Static Green Light", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene", "origin": "editor"}, "padding": 4}
+  ]
+}

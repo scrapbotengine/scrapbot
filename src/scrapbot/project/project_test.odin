@@ -1365,6 +1365,7 @@ name = "List"
 size = [240, 160]
 [entities.ui_list]
 selected = "a6000000-0000-4000-8000-000000000031"
+filter_input = "a6000000-0000-4000-8000-000000000031"
 gap = 3
 selection_background = [0.1, 0.5, 0.4, 1]
 hover_background = [0.2, 0.3, 0.4, 1]
@@ -1375,6 +1376,9 @@ drop_edge_fraction = 0.2
 drop_target_background = [0.05, 0.1, 0.15, 1]
 tree_enabled = true
 tree_indent = 18
+virtualized = true
+item_height = 30
+overscan = 4
 [[entities]]
 id = "a6000000-0000-4000-8000-000000000031"
 name = "Item"
@@ -1396,6 +1400,7 @@ size = 14
 	testing.expect(t, scene.entities[0].has_ui_list)
 	list := scene.entities[0].ui_list
 	testing.expect(t, list.selected == selected_id)
+	testing.expect(t, list.filter_input == selected_id)
 	testing.expect(t, list.gap == 3)
 	testing.expect(t, list.selection_background == Vec4{0.1, 0.5, 0.4, 1})
 	testing.expect(t, list.hover_background == Vec4{0.2, 0.3, 0.4, 1})
@@ -1406,6 +1411,9 @@ size = 14
 	testing.expect(t, list.drop_target_background == Vec4{0.05, 0.1, 0.15, 1})
 	testing.expect(t, list.tree_enabled)
 	testing.expect(t, list.tree_indent == 18)
+	testing.expect(t, list.virtualized)
+	testing.expect(t, list.item_height == 30)
+	testing.expect(t, list.overscan == 4)
 	testing.expect(t, scene.entities[1].ui_layout.tree_item)
 	testing.expect(t, scene.entities[1].ui_layout.tree_parent == selected_id)
 	testing.expect(t, scene.entities[1].ui_layout.tree_order == 7)

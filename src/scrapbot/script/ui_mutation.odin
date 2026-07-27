@@ -249,6 +249,10 @@ read_ui_component_command_from_luau :: proc "c" (
 			value := current_ui_list(world, entity_index, base)
 			if err := read_ui_uuid_field(L, payload_index, "selected", &value.selected);
 			   err != "" { return err }
+			if err := read_ui_uuid_field(L, payload_index, "filter_input", &value.filter_input);
+			   err != "" {
+				return err
+			}
 			if err := read_ui_number_field(L, payload_index, "gap", &value.gap);
 			   err != "" { return err }
 			if err := read_ui_vec4_field(
@@ -311,9 +315,19 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "tree_indent", &value.tree_indent);
 			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "virtualized", &value.virtualized);
+			   err != "" {
+				return err
+			}
+			if err := read_ui_number_field(L, payload_index, "item_height", &value.item_height);
+			   err != "" { return err }
+			overscan := f32(value.overscan)
+			if err := read_ui_number_field(L, payload_index, "overscan", &overscan);
+			   err != "" { return err }
+			value.overscan = int(overscan)
 			if !shared.ui_list_is_valid(
 				value,
-			) { return "ui_list requires valid non-negative drag and layout values" }
+			) { return "ui_list requires valid drag, tree, filter, and virtualization values" }
 			command.list = value
 			return ecs.init_ui_component_command(command, .List)
 		case "scrapbot.ui_progress":

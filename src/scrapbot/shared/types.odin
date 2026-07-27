@@ -502,6 +502,7 @@ UI_Table_Component :: struct {
 }
 UI_List_Component :: struct {
 	selected: Entity_UUID,
+	filter_input: Entity_UUID,
 	gap: f32,
 	selection_background: Vec4,
 	hover_background: Vec4,
@@ -515,6 +516,9 @@ UI_List_Component :: struct {
 	drop_indicator_inset: f32,
 	tree_enabled: bool,
 	tree_indent: f32,
+	virtualized: bool,
+	item_height: f32,
+	overscan: int,
 }
 UI_Drop_Placement :: enum {
 	None,
@@ -825,7 +829,10 @@ ui_list_is_valid :: proc "contextless" (value: UI_List_Component) -> bool {
 		value.drop_edge_fraction <= 0.5 &&
 		value.drop_indicator_thickness >= 0 &&
 		value.drop_indicator_inset >= 0 &&
-		value.tree_indent >= 0 \
+		value.tree_indent >= 0 &&
+		value.item_height >= 0 &&
+		value.overscan >= 0 &&
+		(!value.virtualized || value.item_height > 0) \
 	)
 }
 
@@ -1042,6 +1049,7 @@ Editor_UI_Role :: enum {
 	Systems_Name,
 	Systems_Time,
 	Systems_Origin,
+	Browser_Filter,
 	Browser_Scroll,
 	Browser_Row,
 	Browser_Row_Disclosure,

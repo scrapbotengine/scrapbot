@@ -64,8 +64,12 @@ name = "Checkbox"
 [entities.ui_layout]
 size = [32, 32]
 [entities.ui_list]
+filter_input = "aa000000-0000-4000-8000-000000000002"
 tree_enabled = true
 tree_indent = 18
+virtualized = true
+item_height = 32
+overscan = 3
 [entities.ui_checkbox]
 checked = true
 corner_radius = 0
@@ -137,7 +141,9 @@ scrapbot.system(function()
 	assert(count == 1)
 	scrapbot.query(scrapbot.ui_list):each(function(entity, list)
 		assert(list.tree_enabled == true and list.tree_indent == 18)
-		scrapbot.add_component(entity, scrapbot.ui_list, {tree_indent = 20})
+		assert(list.filter_input == "aa000000-0000-4000-8000-000000000002")
+		assert(list.virtualized == true and list.item_height == 32 and list.overscan == 3)
+		scrapbot.add_component(entity, scrapbot.ui_list, {tree_indent = 20, item_height = 36, overscan = 5})
 	end)
 	scrapbot.query(scrapbot.ui_scroll_area):each(function(entity, scroll)
 		assert(scroll.scrollbar_width == 5 and scroll.scrollbar_corner_radius == 0)
@@ -238,6 +244,9 @@ end)
 	testing.expect(t, table.min_column_width == 60)
 	panel := world.ui_panels[world.entities[0].ui_panel_index]
 	testing.expect(t, panel.collapsible && panel.collapsed)
+	list := world.ui_lists[world.entities[1].ui_list_index]
+	testing.expect(t, list.filter_input == world.entities[1].uuid)
+	testing.expect(t, list.virtualized && list.item_height == 36 && list.overscan == 5)
 	button_index := world.entities[1].ui_button_index
 	testing.expect(t, button_index >= 0 && button_index < len(world.ui_buttons))
 	if button_index >= 0 && button_index < len(world.ui_buttons) {

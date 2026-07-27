@@ -116,6 +116,7 @@ system_get_ui_component :: proc "c" (
 			value := step.world.ui_lists[world_entity.ui_list_index]
 			payload.list = {
 				selected = api_uuid_from_shared(value.selected),
+				filter_input = api_uuid_from_shared(value.filter_input),
 				gap = value.gap,
 				selection_background = api_vec4_from_shared(value.selection_background),
 				hover_background = api_vec4_from_shared(value.hover_background),
@@ -129,6 +130,9 @@ system_get_ui_component :: proc "c" (
 				drop_indicator_inset = value.drop_indicator_inset,
 				tree_enabled = bool_to_c_int(value.tree_enabled),
 				tree_indent = value.tree_indent,
+				virtualized = bool_to_c_int(value.virtualized),
+				item_height = value.item_height,
+				overscan = c.int(value.overscan),
 			}
 		case "scrapbot.ui_progress":
 			if world_entity.ui_progress_index < 0 ||
@@ -424,6 +428,7 @@ ui_command_from_api_payload :: proc "c" (
 		case "scrapbot.ui_list":
 			value := shared.UI_List_Component {
 				selected = shared_uuid_from_api(payload.list.selected),
+				filter_input = shared_uuid_from_api(payload.list.filter_input),
 				gap = payload.list.gap,
 				selection_background = shared_vec4_from_api(payload.list.selection_background),
 				hover_background = shared_vec4_from_api(payload.list.hover_background),
@@ -437,6 +442,9 @@ ui_command_from_api_payload :: proc "c" (
 				drop_indicator_inset = payload.list.drop_indicator_inset,
 				tree_enabled = payload.list.tree_enabled != 0,
 				tree_indent = payload.list.tree_indent,
+				virtualized = payload.list.virtualized != 0,
+				item_height = payload.list.item_height,
+				overscan = int(payload.list.overscan),
 			}
 			if !shared.ui_list_is_valid(value) {
 				return "native ui_list payload is invalid"

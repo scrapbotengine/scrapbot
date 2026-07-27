@@ -18,6 +18,8 @@ EDITOR_UI_LEFT_CONTENT_NAME :: "__scrapbot_editor_left_content"
 EDITOR_UI_DIAGNOSTICS_NAME :: "__scrapbot_editor_diagnostics"
 EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
 EDITOR_UI_SCENE_NAME :: "__scrapbot_editor_scene"
+EDITOR_UI_SCENE_FILTER_NAME :: "__scrapbot_editor_scene_filter"
+EDITOR_UI_SCENE_LIST_NAME :: "__scrapbot_editor_scene_list"
 EDITOR_UI_SCENE_TOOLS_NAME :: "__scrapbot_editor_scene_tools"
 EDITOR_UI_RESOURCES_NAME :: "__scrapbot_editor_resources"
 EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
@@ -33,7 +35,7 @@ EDITOR_UI_RESOURCE_MENU_NAME :: "__scrapbot_editor_resource_menu"
 EDITOR_UI_RESOURCE_MENU_CONTENT_NAME :: "__scrapbot_editor_resource_menu_content"
 EDITOR_SIDEBAR_PADDING :: f32(10)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
-EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(618)
+EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
 EDITOR_SECTION_TITLE_HEIGHT :: f32(34)
 EDITOR_SECTION_BACKGROUND :: shared.Vec4{0.019, 0.024, 0.032, 1}
 EDITOR_LIST_BACKGROUND :: shared.Vec4{0.010, 0.014, 0.020, 1}
@@ -326,6 +328,7 @@ editor_ui_handle_activation :: proc(
 				     .Systems_Name,
 				     .Systems_Time,
 				     .Systems_Origin,
+				     .Browser_Filter,
 				     .Browser_Scroll,
 				     .Project_Resources_Scroll,
 				     .Inspector_Header,
@@ -1070,14 +1073,60 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		EDITOR_UI_SCENE_NAME,
 		EDITOR_UI_LEFT_CONTENT_NAME,
-		.Browser_Scroll,
+		.None,
 		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 434}),
 	)
 	editor_ui_add_section_panel(world, scene, "SCENE")
+	editor_ui_add_vstack(world, scene, {fill = true})
+	scene_filter := editor_ui_create_box(
+		world,
+		EDITOR_UI_SCENE_FILTER_NAME,
+		EDITOR_UI_SCENE_NAME,
+		.Browser_Filter,
+		{
+			size = {2000, 34},
+			padding = {7, 7, 6, 7},
+			background = {0.013, 0.018, 0.025, 1},
+			border_color = EDITOR_SECTION_BORDER,
+			border_width = 1,
+			fixed_in_fill = true,
+		},
+	)
+	filter_input := shared.ui_input_default()
+	filter_input.color = {0.82, 0.84, 0.88, 1}
+	filter_input.size = EDITOR_TEXT_SIZE
+	filter_input.prefix = "FILTER"
+	filter_input.prefix_width = 42
+	filter_input.prefix_color = {0.46, 0.49, 0.55, 1}
+	filter_input.prefix_background = {0.024, 0.031, 0.041, 1}
+	filter_input.selection_background = {0.08, 0.48, 0.40, 0.48}
+	filter_input.focus_border_color = {0.12, 0.78, 0.66, 1}
+	editor_ui_add_input(world, scene_filter, filter_input)
+	scene_tools := editor_ui_create_box(
+		world,
+		EDITOR_UI_SCENE_TOOLS_NAME,
+		EDITOR_UI_SCENE_NAME,
+		.None,
+		{
+			size = {2000, 34},
+			padding = {2, 6, 2, 6},
+			background = EDITOR_SECTION_BACKGROUND,
+			fixed_in_fill = true,
+		},
+	)
+	editor_ui_add_hstack(world, scene_tools, {gap = 4})
+	scene_list := editor_ui_create_box(
+		world,
+		EDITOR_UI_SCENE_LIST_NAME,
+		EDITOR_UI_SCENE_NAME,
+		.Browser_Scroll,
+		{size = {2000, 332}, fill_width = true},
+	)
 	editor_ui_add_list(
 		world,
-		scene,
+		scene_list,
 		{
+			filter_input = world.entities[scene_filter].uuid,
 			selection_background = {0.040, 0.088, 0.098, 1},
 			hover_background = {0.028, 0.038, 0.050, 1},
 			active_background = {0.050, 0.067, 0.088, 1},
@@ -1090,17 +1139,12 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			drop_indicator_inset = 8,
 			tree_enabled = true,
 			tree_indent = 14,
+			virtualized = true,
+			item_height = EDITOR_ENTITY_ROW_HEIGHT,
+			overscan = 2,
 		},
 	)
-	editor_ui_add_scroll(world, scene)
-	scene_tools := editor_ui_create_box(
-		world,
-		EDITOR_UI_SCENE_TOOLS_NAME,
-		EDITOR_UI_SCENE_NAME,
-		.None,
-		{size = {2000, 34}, padding = {2, 6, 2, 6}, background = EDITOR_SECTION_BACKGROUND},
-	)
-	editor_ui_add_hstack(world, scene_tools, {gap = 4})
+	editor_ui_add_scroll(world, scene_list)
 	create_button := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_entity_create",
@@ -1412,7 +1456,7 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 	row = editor_ui_create_box(
 		world,
 		row_name,
-		EDITOR_UI_SCENE_NAME,
+		EDITOR_UI_SCENE_LIST_NAME,
 		.Browser_Row,
 		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
 		slot,
@@ -4387,7 +4431,8 @@ editor_ui_input_binding :: proc(
 	if binding.role != .Inspector_Input &&
 	   binding.role != .Inspector_Entity_Name &&
 	   binding.role != .Inspector_Resource_Name &&
-	   binding.role != .Inspector_Resource_Source {
+	   binding.role != .Inspector_Resource_Source &&
+	   binding.role != .Browser_Filter {
 		return {}, nil, false
 	}
 	return binding, &world.ui_inputs[entity.ui_input_index], true
@@ -4442,6 +4487,9 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 		return
 	}
 	interaction := world.ui_states[entity.ui_state_index]
+	if binding.role == .Browser_Filter {
+		return
+	}
 	if binding.role == .Inspector_Entity_Name {
 		if interaction.submitted {
 			if selected, ok := editor_selected_world_index(state, world); ok {

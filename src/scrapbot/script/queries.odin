@@ -702,8 +702,9 @@ push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component)
 }
 
 push_ui_list_table :: proc "c" (L: Lua_State, value: shared.UI_List_Component) {
-	lua_createtable(L, 0, 12)
+	lua_createtable(L, 0, 18)
 	push_uuid_field(L, "selected", value.selected)
+	push_uuid_field(L, "filter_input", value.filter_input)
 	push_number_field(L, "gap", value.gap)
 	push_vec4_field(L, "selection_background", value.selection_background)
 	push_vec4_field(L, "hover_background", value.hover_background)
@@ -717,6 +718,9 @@ push_ui_list_table :: proc "c" (L: Lua_State, value: shared.UI_List_Component) {
 	push_number_field(L, "drop_indicator_inset", value.drop_indicator_inset)
 	push_bool_field(L, "tree_enabled", value.tree_enabled)
 	push_number_field(L, "tree_indent", value.tree_indent)
+	push_bool_field(L, "virtualized", value.virtualized)
+	push_number_field(L, "item_height", value.item_height)
+	push_number_field(L, "overscan", f32(value.overscan))
 }
 
 push_ui_progress_table :: proc "c" (L: Lua_State, value: shared.UI_Progress_Component) {

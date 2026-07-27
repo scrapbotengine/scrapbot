@@ -19,6 +19,49 @@ ui_entity_is_mutable :: proc(world: ^World, entity_index: int) -> bool {
 	)
 }
 
+mark_ui_ancestor_list_filter_changed :: proc(world: ^World, entity_index: int) {
+	if !ui_entity_is_mutable(world, entity_index) {
+		return
+	}
+	if world.entities[entity_index].ui_layout_index < 0 ||
+	   world.entities[entity_index].ui_layout_index >= len(world.ui_layouts) {
+		return
+	}
+	parent := world.ui_layouts[world.entities[entity_index].ui_layout_index].parent
+	for _ in 0 ..< len(world.entities) {
+		parent_index, found := entity_index_by_uuid(world, parent)
+		if !found {
+			return
+		}
+		entity := world.entities[parent_index]
+		if entity.ui_list_index >= 0 &&
+		   entity.ui_list_index < len(world.ui_lists) &&
+		   world.ui_lists[entity.ui_list_index].filter_input != (shared.Entity_UUID{}) {
+			mark_ui_layout_changed(world, parent_index)
+		}
+		if entity.ui_layout_index < 0 || entity.ui_layout_index >= len(world.ui_layouts) {
+			return
+		}
+		parent = world.ui_layouts[entity.ui_layout_index].parent
+	}
+}
+
+mark_ui_filter_input_changed :: proc(world: ^World, entity_index: int) {
+	if !ui_entity_is_mutable(world, entity_index) {
+		return
+	}
+	input_uuid := world.entities[entity_index].uuid
+	for &entity, list_entity_index in world.entities {
+		if !entity.alive ||
+		   entity.ui_list_index < 0 ||
+		   entity.ui_list_index >= len(world.ui_lists) ||
+		   world.ui_lists[entity.ui_list_index].filter_input != input_uuid {
+			continue
+		}
+		mark_ui_layout_changed(world, list_entity_index)
+	}
+}
+
 ensure_ui_state :: proc(world: ^World, entity_index: int) -> ^UI_State_Component {
 	if !ui_entity_is_mutable(world, entity_index) {
 		return nil
@@ -403,7 +446,13 @@ set_ui_list :: proc(world: ^World, entity_index: int, value: UI_List_Component) 
 	entity := &world.entities[entity_index]
 	if entity.ui_list_index >= 0 && entity.ui_list_index < len(world.ui_lists) {
 		current := world.ui_lists[entity.ui_list_index]
-		if current.gap != value.gap {
+		if current.filter_input != value.filter_input ||
+		   current.gap != value.gap ||
+		   current.tree_enabled != value.tree_enabled ||
+		   current.tree_indent != value.tree_indent ||
+		   current.virtualized != value.virtualized ||
+		   current.item_height != value.item_height ||
+		   current.overscan != value.overscan {
 			mark_ui_layout_changed(world, entity_index)
 		} else if current != value {
 			mark_ui_paint_changed(world, entity_index)
@@ -475,6 +524,7 @@ set_ui_text :: proc(world: ^World, entity_index: int, value: UI_Text_Component) 
 	entity := &world.entities[entity_index]
 	if entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts) {
 		current := &world.ui_texts[entity.ui_text_index]
+		filter_text_changed := current.text != value.text
 		paint_changed := current^ != value
 		intrinsic_changed :=
 			current.text != value.text ||
@@ -486,6 +536,9 @@ set_ui_text :: proc(world: ^World, entity_index: int, value: UI_Text_Component) 
 		current^ = text
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
+		if filter_text_changed {
+			mark_ui_ancestor_list_filter_changed(world, entity_index)
 		}
 		if paint_changed {
 			mark_ui_paint_changed(world, entity_index)
@@ -513,6 +566,7 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 	entity := &world.entities[entity_index]
 	if entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons) {
 		current := &world.ui_buttons[entity.ui_button_index]
+		filter_text_changed := current.text != value.text
 		paint_changed := current^ != value
 		intrinsic_changed :=
 			current.text != value.text ||
@@ -526,6 +580,9 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 		current^ = button
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
+		if filter_text_changed {
+			mark_ui_ancestor_list_filter_changed(world, entity_index)
 		}
 		if paint_changed {
 			mark_ui_paint_changed(world, entity_index)
@@ -554,6 +611,7 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 	entity := &world.entities[entity_index]
 	if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
 		current := &world.ui_inputs[entity.ui_input_index]
+		filter_text_changed := current.text != value.text
 		paint_changed := current^ != value
 		intrinsic_changed :=
 			current.text != value.text ||
@@ -568,6 +626,10 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 		current^ = input
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)
+		}
+		if filter_text_changed {
+			mark_ui_ancestor_list_filter_changed(world, entity_index)
+			mark_ui_filter_input_changed(world, entity_index)
 		}
 		if paint_changed {
 			mark_ui_paint_changed(world, entity_index)
@@ -659,6 +721,7 @@ set_ui_text_value :: proc(world: ^World, entity_index: int, value: string) -> bo
 	delete_world_string(world, text.text)
 	text.text = clone_world_string(world, value)
 	mark_ui_intrinsic_layout_changed(world, entity_index)
+	mark_ui_ancestor_list_filter_changed(world, entity_index)
 	mark_ui_paint_changed(world, entity_index)
 	return true
 }
@@ -678,6 +741,8 @@ set_ui_input_value :: proc(world: ^World, entity_index: int, value: string) -> b
 	delete_world_string(world, input.text)
 	input.text = clone_world_string(world, value)
 	mark_ui_intrinsic_layout_changed(world, entity_index)
+	mark_ui_ancestor_list_filter_changed(world, entity_index)
+	mark_ui_filter_input_changed(world, entity_index)
 	mark_ui_paint_changed(world, entity_index)
 	return true
 }

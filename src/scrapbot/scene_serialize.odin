@@ -284,6 +284,9 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_section(builder, "ui_list")
 		if value.selected !=
 		   (shared.Entity_UUID{}) { write_scene_string(builder, "selected", scene_uuid(value.selected)) }
+		if value.filter_input != (shared.Entity_UUID{}) {
+			write_scene_string(builder, "filter_input", scene_uuid(value.filter_input))
+		}
 		write_scene_value(builder, "gap", scene_f32(value.gap))
 		write_scene_value(builder, "selection_background", scene_vec4(value.selection_background))
 		write_scene_value(builder, "hover_background", scene_vec4(value.hover_background))
@@ -305,6 +308,9 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "drop_indicator_inset", scene_f32(value.drop_indicator_inset))
 		write_scene_value(builder, "tree_enabled", scene_bool(value.tree_enabled))
 		write_scene_value(builder, "tree_indent", scene_f32(value.tree_indent))
+		write_scene_value(builder, "virtualized", scene_bool(value.virtualized))
+		write_scene_value(builder, "item_height", scene_f32(value.item_height))
+		write_scene_value(builder, "overscan", fmt.tprintf("%d", value.overscan))
 	}
 	if entity.has_ui_progress {
 		value := entity.ui_progress

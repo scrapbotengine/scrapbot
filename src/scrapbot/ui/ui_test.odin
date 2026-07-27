@@ -4,6 +4,7 @@ import component "../component"
 import ecs "../ecs"
 import resources "../resources"
 import shared "../shared"
+import "core:fmt"
 import "core:math"
 import "core:testing"
 
@@ -1006,6 +1007,184 @@ test_tree_list_flattens_indents_collapses_and_moves_subtrees :: proc(t: ^testing
 		t,
 		!tree_list_apply_drop(state, &world, 0, world.entities[2].id, world.entities[4].id, .Into),
 	)
+}
+
+@(test)
+test_list_filter_keeps_matching_tree_ancestors_and_temporarily_reveals_collapsed_branches :: proc(
+	t: ^testing.T,
+) {
+	root_id := ui_test_id("Filtered Tree Root")
+	filter_id := ui_test_id("Filtered Tree Input")
+	list_id := ui_test_id("Filtered Tree List")
+	parent_id := ui_test_id("Filtered Tree Parent")
+	child_id := ui_test_id("Filtered Tree Child")
+	other_id := ui_test_id("Filtered Tree Other")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Root",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 160}},
+			has_ui_vstack = true,
+			ui_vstack = {},
+		},
+		shared.Scene_Entity {
+			id = filter_id,
+			name = "Filter",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {240, 28}},
+			has_ui_input = true,
+			ui_input = {text = "needle", size = 14},
+		},
+		shared.Scene_Entity {
+			id = list_id,
+			name = "List",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {240, 132}},
+			has_ui_list = true,
+			ui_list = {filter_input = filter_id, tree_enabled = true, tree_indent = 12},
+		},
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = list_id,
+				size = {240, 24},
+				tree_item = true,
+				tree_collapsed = true,
+			},
+			has_ui_text = true,
+			ui_text = {text = "Parent", size = 14},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = list_id,
+				size = {240, 24},
+				tree_item = true,
+				tree_parent = parent_id,
+			},
+			has_ui_text = true,
+			ui_text = {text = "Needle Child", size = 14},
+		},
+		shared.Scene_Entity {
+			id = other_id,
+			name = "Other",
+			has_ui_layout = true,
+			ui_layout = {parent = list_id, size = {240, 24}, tree_item = true, tree_order = 1},
+			has_ui_text = true,
+			ui_text = {text = "Other", size = 14},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 160) == "")
+
+	list_node := find_node_by_entity_index(state, 2)
+	parent_node := find_node_by_entity_index(state, 3)
+	child_node := find_node_by_entity_index(state, 4)
+	other_node := find_node_by_entity_index(state, 5)
+	testing.expect(t, list_node >= 0)
+	testing.expect(t, parent_node >= 0 && state.nodes[parent_node].laid_out)
+	testing.expect(t, child_node >= 0 && state.nodes[child_node].laid_out)
+	testing.expect(t, other_node >= 0 && !state.nodes[other_node].laid_out)
+	if list_node >= 0 {
+		testing.expect_value(t, state.nodes[list_node].list_flow_count, 2)
+	}
+	if parent_node >= 0 && child_node >= 0 {
+		testing.expect_value(t, state.nodes[parent_node].tree_depth, 0)
+		testing.expect_value(t, state.nodes[child_node].tree_depth, 1)
+	}
+	parent_layout := world.ui_layouts[world.entities[3].ui_layout_index]
+	testing.expect(t, parent_layout.tree_collapsed)
+
+	testing.expect(t, ecs.set_ui_input_value(&world, 1, ""))
+	testing.expect(t, reconcile(state, &world, 240, 160) == "")
+	testing.expect(t, state.nodes[parent_node].laid_out)
+	testing.expect(t, !state.nodes[child_node].laid_out)
+	testing.expect(t, state.nodes[other_node].laid_out)
+	if list_node >= 0 {
+		testing.expect_value(t, state.nodes[list_node].list_flow_count, 2)
+	}
+	parent_layout = world.ui_layouts[world.entities[3].ui_layout_index]
+	testing.expect(t, parent_layout.tree_collapsed)
+}
+
+@(test)
+test_virtualized_list_reuses_filtered_flow_cache_while_scrolling :: proc(t: ^testing.T) {
+	list_id := ui_test_id("Virtualized List")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = list_id,
+			name = "List",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 80}},
+			has_ui_list = true,
+			ui_list = {virtualized = true, item_height = 20, overscan = 1},
+			has_ui_scroll_area = true,
+			ui_scroll_area = shared.ui_scroll_area_default(),
+		},
+	)
+	for index in 0 ..< 100 {
+		append(
+			&scene.entities,
+			shared.Scene_Entity {
+				id = ui_test_id(fmt.tprintf("Virtualized Row %d", index)),
+				name = fmt.tprintf("Row %d", index),
+				has_ui_layout = true,
+				ui_layout = {parent = list_id, size = {240, 20}},
+				has_ui_text = true,
+				ui_text = {text = fmt.tprintf("Row %d", index), size = 14},
+			},
+		)
+	}
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 80) == "")
+
+	list_node := find_node_by_entity_index(state, 0)
+	testing.expect(t, list_node >= 0)
+	if list_node < 0 {
+		return
+	}
+	testing.expect_value(t, state.nodes[list_node].list_flow_count, 100)
+	testing.expect(t, math.abs(state.nodes[list_node].scroll_content_height - 2000) < 0.01)
+	initial_rebuilds := state.ui_project_list_flow_rebuild_count
+	initial_layout_visits := state.layout_child_edge_visit_count
+	testing.expect(t, initial_layout_visits < 20)
+	testing.expect(t, !state.nodes[find_node_by_entity_index(state, 100)].laid_out)
+
+	state.nodes[list_node].scroll_offset = 1000
+	state.nodes[list_node].scroll_target = 1000
+	state.ui_layout_valid = false
+	testing.expect(t, reconcile(state, &world, 240, 80) == "")
+	testing.expect_value(t, state.ui_project_list_flow_rebuild_count, initial_rebuilds)
+	testing.expect(t, state.layout_child_edge_visit_count < 20)
+	testing.expect(t, state.nodes[find_node_by_entity_index(state, 51)].laid_out)
+	testing.expect(t, !state.nodes[find_node_by_entity_index(state, 1)].laid_out)
+
+	layout_visits := state.layout_node_visit_count
+	testing.expect(t, reconcile(state, &world, 240, 80) == "")
+	testing.expect_value(t, state.ui_project_list_flow_rebuild_count, initial_rebuilds)
+	testing.expect(t, layout_visits > 0)
+	testing.expect_value(t, state.layout_node_visit_count, u64(0))
 }
 
 @(test)
@@ -3401,10 +3580,14 @@ test_editor_scene_panel_is_a_flush_scrollable_selectable_list :: proc(t: ^testin
 	testing.expect(t, scene_node >= 0 && row_found)
 	if scene_node < 0 || !row_found { return }
 	scene_panel := state.nodes[scene_node]
+	panel_entity_index :=
+		world.entity_by_uuid[shared.entity_uuid_from_engine_name(EDITOR_UI_SCENE_NAME)]
+	panel_node := find_node_by_entity_index(state, panel_entity_index)
 	row_node := find_node_by_entity_index(state, first_row)
 	testing.expect(t, scene_panel.list_index >= 0)
 	testing.expect(t, scene_panel.scroll_area_index >= 0)
-	testing.expect(t, scene_panel.panel_index >= 0)
+	testing.expect(t, scene_panel.panel_index < 0)
+	testing.expect(t, panel_node >= 0 && state.nodes[panel_node].panel_index >= 0)
 	testing.expect(t, world.ui_layouts[scene_panel.layout_index].padding == shared.Vec4{})
 	testing.expect(t, row_node >= 0)
 	if row_node >= 0 {
@@ -4096,8 +4279,23 @@ test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection 
 	runtime_row_node := find_node_by_entity_index(state, runtime_row_entity)
 	testing.expect(t, runtime_row_node >= 0 && state.nodes[runtime_row_node].has_clip)
 	row_rect := state.nodes[runtime_row_node].rect
-	row_point := shared.Vec2{row_rect.x + 20, row_rect.y + row_rect.height * 0.5}
-	testing.expect(t, node_pointer_contains(state.nodes[runtime_row_node], row_point))
+	row_visible := rect_intersection(row_rect, state.nodes[runtime_row_node].clip)
+	row_point := shared.Vec2 {
+		row_visible.x + min(row_visible.width * 0.5, 20),
+		row_visible.y + row_visible.height * 0.5,
+	}
+	testing.expectf(
+		t,
+		node_pointer_contains(state.nodes[runtime_row_node], row_point),
+		"runtime row laid_out=%v rect=%v clip=%v visible=%v has_clip=%v point=%v browser=%v",
+		state.nodes[runtime_row_node].laid_out,
+		state.nodes[runtime_row_node].rect,
+		state.nodes[runtime_row_node].clip,
+		row_visible,
+		state.nodes[runtime_row_node].has_clip,
+		row_point,
+		state.nodes[browser_index].rect,
+	)
 	testing.expect(
 		t,
 		reconcile(
@@ -4395,7 +4593,10 @@ test_editor_reparents_transformless_entities_and_uses_transformless_parents :: p
 	parent_node := find_node_by_entity_index(state, parent_row)
 	child_node := find_node_by_entity_index(state, child_row)
 	testing.expect(t, parent_node >= 0 && child_node >= 0)
-	if diagnostic_reveal_target(state, &world, child_node) {
+	for _ in 0 ..< 4 {
+		if !diagnostic_reveal_target(state, &world, child_node) {
+			break
+		}
 		testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 		parent_node = find_node_by_entity_index(state, parent_row)
 		child_node = find_node_by_entity_index(state, child_row)
@@ -4408,6 +4609,22 @@ test_editor_reparents_transformless_entities_and_uses_transformless_parents :: p
 		state.nodes[parent_node].rect.x + 40,
 		state.nodes[parent_node].rect.y + state.nodes[parent_node].rect.height * 0.5,
 	}
+	testing.expectf(
+		t,
+		node_pointer_contains(state.nodes[child_node], start),
+		"child row is not interactable: rect=%v clip=%v point=%v",
+		state.nodes[child_node].rect,
+		state.nodes[child_node].clip,
+		start,
+	)
+	testing.expectf(
+		t,
+		node_pointer_contains(state.nodes[parent_node], target),
+		"parent row is not interactable: rect=%v clip=%v point=%v",
+		state.nodes[parent_node].rect,
+		state.nodes[parent_node].clip,
+		target,
+	)
 	testing.expect(
 		t,
 		reconcile(
@@ -4419,6 +4636,7 @@ test_editor_reparents_transformless_entities_and_uses_transformless_parents :: p
 		) ==
 		"",
 	)
+	testing.expectf(t, state.list_drags[1].armed, "scene tree drag did not arm from child row")
 	testing.expect(
 		t,
 		reconcile(

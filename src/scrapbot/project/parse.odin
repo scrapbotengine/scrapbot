@@ -1175,6 +1175,14 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 								raw_selected,
 							)
 						}
+					case "filter_input":
+						raw_filter_input: string
+						raw_filter_input, found = parse_basic_string(value)
+						if found {
+							current.ui_list.filter_input, found = shared.entity_uuid_parse(
+								raw_filter_input,
+							)
+						}
 					case "gap":
 						current.ui_list.gap, found = parse_f32(value)
 					case "selection_background":
@@ -1201,6 +1209,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_list.tree_enabled, found = parse_bool(value)
 					case "tree_indent":
 						current.ui_list.tree_indent, found = parse_f32(value)
+					case "virtualized":
+						current.ui_list.virtualized, found = parse_bool(value)
+					case "item_height":
+						current.ui_list.item_height, found = parse_f32(value)
+					case "overscan":
+						current.ui_list.overscan, found = parse_int(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,

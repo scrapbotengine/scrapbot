@@ -83,8 +83,12 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	panel.collapsible = true
 	testing.expect(t, ecs.set_ui_panel(&world, entity_index, panel))
 	list := shared.ui_list_default()
+	list.filter_input = world.entities[entity_index].uuid
 	list.tree_enabled = true
 	list.tree_indent = 19
+	list.virtualized = true
+	list.item_height = 28
+	list.overscan = 4
 	testing.expect(t, ecs.set_ui_list(&world, entity_index, list))
 
 	commands: ecs.Command_Buffer
@@ -185,6 +189,13 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, list_payload.list.tree_enabled != 0)
 	testing.expect(t, list_payload.list.tree_indent == 19)
+	testing.expect(
+		t,
+		list_payload.list.filter_input == api_uuid_from_shared(world.entities[entity_index].uuid),
+	)
+	testing.expect(t, list_payload.list.virtualized != 0)
+	testing.expect(t, list_payload.list.item_height == 28)
+	testing.expect(t, list_payload.list.overscan == 4)
 	table_payload: api.UI_Component_Payload
 	testing.expect(
 		t,

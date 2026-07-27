@@ -648,14 +648,13 @@ diagnostic_reveal_target :: proc(state: ^State, world: ^shared.World, node_index
 				delta = target.y + target.height - viewport_bottom
 			}
 			if delta != 0 {
-				ancestor.scroll_target = clamp(
-					ancestor.scroll_target + delta,
-					0,
-					ancestor.scroll_max,
-				)
-				ancestor.scroll_offset = ancestor.scroll_target
-				state.ui_layout_valid = false
-				return true
+				next_target := clamp(ancestor.scroll_target + delta, 0, ancestor.scroll_max)
+				if next_target != ancestor.scroll_target {
+					ancestor.scroll_target = next_target
+					ancestor.scroll_offset = ancestor.scroll_target
+					state.ui_layout_valid = false
+					return true
+				}
 			}
 		}
 		ancestor_entity_index = ancestor.parent_entity_index
