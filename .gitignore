@@ -5,3 +5,4 @@ examples/*/build/
 /tests/fixtures/external/downloads/
 /examples/gltf-showcase/assets/
 /examples/sponza/assets/
+.vscode/settings.json
