@@ -31,7 +31,7 @@ Lifecycle meanings:
 | `scrapbot.model` | Render membership | Authored | Yes | UUID-backed imported model root; reconciles derived node/primitive render entities. |
 | `scrapbot.shadow_caster` | Rendering | Authored | Yes | Marker enabling participation in shadow rendering. |
 | `scrapbot.shadow_receiver` | Rendering | Authored | Yes | Marker enabling shadow reception. |
-| `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent, responsive sizing, visibility, and tree-row metadata. |
+| `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent/popup anchor, responsive sizing, visibility, and tree-row metadata. |
 | `scrapbot.ui_hstack` | UI layout | Authored | Yes | Horizontal flow, proportional fill, and optional draggable gaps. |
 | `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical flow, proportional fill, and optional draggable gaps. |
 | `scrapbot.ui_scroll_area` | UI container | Authored | Yes | Retained smooth vertical scrolling, clipping, and scrollbar styling. |
@@ -42,7 +42,7 @@ Lifecycle meanings:
 | `scrapbot.ui_progress` | UI content | Authored | Yes | Reusable bounded progress visualization. |
 | `scrapbot.ui_viewport` | UI content | Authored | Yes | Interactive renderer-backed Texture, Model, Material, or World surface composited through ordinary UI paint. |
 | `scrapbot.ui_state` | UI interaction | Derived | Read-only | Renderer-owned hover/focus/activation/change/drop state and monotonic revisions. |
-| `scrapbot.ui_button` | UI control | Authored | Yes | Text or SDF-icon activation control consuming generic element state. |
+| `scrapbot.ui_button` | UI control | Authored | Yes | Text or SDF-icon activation control with an optional popup target UUID. |
 | `scrapbot.ui_input` | UI control | Authored | Yes | Single-line text/numeric input with focus, selection, validation, stepping, and opt-in scrubbing. |
 | `scrapbot.ui_checkbox` | UI control | Authored | Yes | Reusable SDF boolean control with read-only mode. |
 | `scrapbot.internal.render_instance` | Rendering | Derived | No | Engine-owned stable render slot derived from renderable component membership. |
@@ -206,11 +206,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_layout`
 
-- **Contract:** Required UI geometry/hierarchy box containing UUID parent, sizing, box style, visibility, and tree-row metadata.
+- **Contract:** Required UI geometry/hierarchy box containing UUID parent, sizing, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Scene TOML, Luau/native UI APIs, editor composition, generic UI setters.
-- **Consumers:** Retained hierarchy, layout, clipping, interaction hit testing, painting, tree/list mechanics.
-- **Invalidation:** Attach/remove/parent changes enqueue structural work; layout-affecting setters advance layout revision and visual setters advance paint revision.
+- **Consumers:** Retained hierarchy, layout, clipping, interaction hit testing, painting, tree/list mechanics, and generic popup placement/dismissal.
+- **Invalidation:** Attach/remove/parent changes enqueue structural work; layout-affecting setters advance layout revision and visual setters advance paint revision. Popup open/anchor/constraint changes target the affected domain; stable closed or unchanged popups do no derived work.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_layout).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ecs/ui_components_test.odin`, `ui/ui_retained_test.odin`.
 
@@ -306,10 +306,10 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_button`
 
-- **Contract:** Text and/or reusable SDF-icon activation control consuming generic pointer/focus state.
+- **Contract:** Text and/or reusable SDF-icon activation control consuming generic pointer/focus state, with an optional public popup-root target UUID.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
-- **Consumers:** Measurement, hit testing, hover/active painting, activation bindings, panel title actions.
+- **Consumers:** Measurement, hit testing, hover/active painting, activation bindings, panel title actions, and generic popup toggling.
 - **Invalidation:** Content/style changes dirty layout/paint; pointer/keyboard edges target interaction state and activation revision.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_button).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ui/ui_test.odin`, `ui/diagnostic_driver_test.odin`.

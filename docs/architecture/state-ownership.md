@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-07-25
+**Last verified:** 2026-07-28
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -16,7 +16,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Geometry/material/environment descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. See [Resource render state](#resource-render-state). |
 | Texture/Model imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content fingerprints reuse unchanged products, atomic writes preserve last-good files, and model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
 | Authoring history and dirty UUID candidates | Editor UI state | In-memory authoring authority until Save/Revert | One transaction per completed gesture or structural operation; playback mutations remain disposable. |
-| Retained UI hierarchy, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components | Structural dirty queue plus independent project/editor layout and paint revisions. |
+| Retained UI hierarchy, popup rectangles, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components | Structural dirty queue plus independent project/editor layout and paint revisions. Popup placement derives from the live anchor/viewport only after affected ECS open, anchor, or constraint changes. |
 | `scrapbot.ui_state` components | UI reconciler | Derived, renderer-owned | Targeted interaction-dirty queue and retained node state; project code reads only. |
 | Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership and resource resolution | Structural/static dirty queue, separate exact Transform queue, and resource revisions. Static extraction supersedes a same-frame Transform entry. Entity and slot reverse indexes are bidirectional ownership maps: delayed removal of a stale owner must never erase a newly reused slot's mapping. Batch appearance/disappearance advances topology exactly at the membership boundary. |
 | GPU instances, draw/visibility data, lights, shadows, postprocess targets, pipelines, and resource caches | WGPU backend | Derived backend state | Exact dirty queues, resource versions, camera/viewport revisions, target shape, capacity growth, world replacement, or backend lifetime. Windowed runs add an SDL-backed surface; headless runs own only an offscreen color target and allocate readback storage on explicit capture. See [WGPU derived state](#wgpu-derived-state). |

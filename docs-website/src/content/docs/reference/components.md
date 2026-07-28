@@ -46,7 +46,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.shadow_receiver` | Marker | Opts renderable geometry into directional shadow sampling. |
 | `scrapbot.keyboard_input` | Derived singleton | Read-only keyboard held/pressed/released frame snapshot. |
 | `scrapbot.pointer_input` | Derived singleton | Read-only pointer position/delta/wheel/button frame snapshot. |
-| `scrapbot.ui_layout` | UI box | Required geometry, hierarchy, sizing, and SDF box style. |
+| `scrapbot.ui_layout` | UI box | Required geometry, hierarchy, sizing, SDF box style, and optional popup-root behavior. |
 | `scrapbot.ui_hstack` | UI flow | Horizontal child layout. |
 | `scrapbot.ui_vstack` | UI flow | Vertical child layout. |
 | `scrapbot.ui_scroll_area` | UI viewport | Clipping, smooth pixel scrolling, and scrollbar style. |
@@ -57,7 +57,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_viewport` | UI content | Interactive renderer-backed Texture, Model, Material, or World view. |
 | `scrapbot.ui_state` | UI interaction | Renderer-owned interaction values and edge revisions. |
 | `scrapbot.ui_text` | UI content | Text label. |
-| `scrapbot.ui_button` | UI content | Activatable text and/or SDF-icon button. |
+| `scrapbot.ui_button` | UI content | Activatable text and/or SDF-icon button with an optional popup target. |
 | `scrapbot.ui_input` | UI content | Single-line text or numeric input. |
 | `scrapbot.ui_checkbox` | UI content | Boolean control. |
 <!-- inventory:public-engine-components:end -->
@@ -252,6 +252,8 @@ Vectors use `{x, y}`, `{x, y, z}`, or `{x, y, z, w}` in Luau and fixed arrays in
 | `fit_content_width: bool`, `fit_content_height: bool` | Size around visible descendants on each axis. |
 | `fixed_in_fill: bool` | Preserve authored main-axis size while flexible stack siblings divide remaining space. |
 | `tree_item: bool`, `tree_parent: string`, `tree_order: number`, `tree_collapsed: bool` | Opt a direct child of a tree-enabled list into its semantic hierarchy. Parent is another row UUID, order is sibling-local, and collapse omits descendants without despawning them. |
+| `popup: bool`, `popup_anchor: string`, `popup_open: bool`, `popup_close_on_selection: bool` | Make this root a floating popup anchored to another UI UUID. Closed popups leave layout/paint/interaction; selection dismissal applies to descendant lists. Popup roots cannot have a parent. |
+| `popup_gap: number`, `popup_min_width: number`, `popup_max_width: number`, `popup_max_height: number`, `popup_viewport_margin: number` | Non-negative placement constraints. Zero maximums mean unbounded. A non-zero maximum width must be at least the minimum width. Placement prefers below the anchor, flips above when needed, and clamps to the UI viewport without overwriting authored geometry. |
 
 ### `scrapbot.ui_hstack` and `scrapbot.ui_vstack`
 
@@ -387,6 +389,9 @@ This component is renderer-owned and read-only. It is queryable from Luau and na
 | `icon` | `none` | `none`, `close`, `plus`, `chevron_right`, or `chevron_down`; an icon-only button needs no text. |
 | `icon_inset`, `icon_stroke` | `6`, `1.5` | Non-negative SDF icon geometry. Twice the inset cannot exceed the button's layout width or height. |
 | `panel_action` | `false` | Place this direct child button in its parent's panel title band. |
+| `popup` | Empty UUID | Target a popup-layout root. Activation assigns this button as its anchor, toggles it, and closes another open popup in the same UI domain. |
+
+Same-domain pointer presses outside a popup and Escape close it through shared UI mechanics. Combine a popup root with ordinary stack, list, and scroll-area components rather than creating a private menu widget.
 
 ### `scrapbot.ui_input`
 

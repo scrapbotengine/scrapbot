@@ -104,6 +104,44 @@ Use `ui_scroll_area` when content can exceed its viewport. Its content moves by 
 
 Project UI uses one uniform canvas scale when Scrapbot embeds it in the editor's free-aspect game viewport. The engine translates and clips the result rather than stretching horizontal and vertical dimensions independently, so text and rounded controls preserve their proportions. Pointer hit testing uses the inverse of the same transform.
 
+## Compose a popup
+
+A popup is a root `ui_layout`, not a private menu widget. Point an ordinary button at the popup UUID, then compose the popup from the same stack, list, scroll-area, and content components used elsewhere:
+
+```toml
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000120"
+name = "Open Difficulty"
+
+[entities.ui_layout]
+position = [32, 32]
+size = [180, 40]
+
+[entities.ui_button]
+text = "Difficulty"
+popup = "d4000000-0000-4000-8000-000000000121"
+
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000121"
+name = "Difficulty Popup"
+
+[entities.ui_layout]
+size = [180, 240]
+popup = true
+popup_close_on_selection = true
+popup_gap = 4
+popup_min_width = 180
+popup_max_height = 160
+popup_viewport_margin = 8
+background = [0.025, 0.03, 0.04, 1]
+
+[entities.ui_list]
+
+[entities.ui_scroll_area]
+```
+
+The popup must remain a root, while its menu rows are ordinary children. Activating the button assigns it as the anchor and toggles `popup_open`. Shared UI places the popup below or above the anchor, clamps it to the current UI viewport, scrolls oversized content, closes another open popup in the same project/editor UI domain, and dismisses it on same-domain outside presses or Escape. With `popup_close_on_selection = true`, selecting a descendant list row also closes it. The derived screen rectangle never overwrites the authored `position` or `size`.
+
 ## Style controls per entity
 
 Layout backgrounds, borders, and corner radii are SDF shapes. Controls expose their own internal chrome as component fields:
