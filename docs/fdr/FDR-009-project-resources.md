@@ -1,7 +1,7 @@
 # FDR-009: Project resources
 
 **Status:** Active
-**Last reviewed:** 2026-07-24
+**Last reviewed:** 2026-07-27
 
 ## Overview
 
@@ -16,7 +16,7 @@ Project resources are reusable, typed bags of authored data stored outside the E
 - Project loading rejects malformed resources, duplicate UUIDs, unsafe paths, invalid material data, and unresolved scene material references.
 - Authored resources load before scene render reconciliation. Content reload preserves runtime handle identity and increments the resource version; removal invalidates old handles; reappearance reuses the registry slot with a new generation.
 - Runtime-created Luau or native materials remain transient, name-addressed resources and cannot overwrite authored project materials.
-- A reusable ECS-built resource browser lists authored materials alongside the scene browser. Selecting a resource opens the ordinary inspector stack with editable name and relative source path, inline base-color, emissive, metallic, and roughness controls, texture metadata, usage count, deletion availability, and Find Usage.
+- A reusable ECS-built resource browser lists authored materials, textures, environments, and models alongside the Scene browser. It composes a public input with a public uniformly virtualized list and scroll area, filters names case-insensitively, and keeps its fixed authoring toolbar outside row flow. Selecting a resource opens the ordinary inspector stack with editable name and relative source path, inline base-color, emissive, metallic, and roughness controls, texture metadata, usage count, deletion availability, and Find Usage.
 - While stopped, the browser can create, duplicate, rename, move, and delete resources. These operations preserve UUID references, enter bounded structural Undo/Redo history, and remain in memory until Save. Deletion is blocked while any live non-editor entity references the resource UUID.
 - The entity material panel presents the referenced resource, stable UUID, and inline numeric controls for base color, emissive color, metallic, and roughness. A reusable ECS-built popup switches references between known authored materials.
 - Inline material values use the ordinary numeric input contract during every playback state. Running or paused edits preview immediately as disposable runtime changes and Stop restores the captured authoring resource values. Stopped edits become authoring transactions with Undo/Redo. Resource-reference changes remain stopped-mode structural authoring. Save validates every dirty resource and scene candidate, then commits their standalone files together through one recoverable project transaction. Revert reloads project resources and scene entities without reloading Luau or Odin.

@@ -67,7 +67,7 @@ Stop returns to that captured state without reloading code or the scene file:
 
 Stopped is authoring mode. The bottom bar retains `/ UNSAVED` until Save—or `Ctrl/Cmd+S`—writes the changes, Undo/Redo returns to the clean history position, or Revert discards them.
 
-Project resources participate in the same authoring state. The Resources panel is a selectable ECS list with Create, Duplicate, and Delete controls.
+Project resources participate in the same authoring state. The Resources panel composes the public filter input, virtualized selectable list, and scroll-area components with Create, Duplicate, Delete, and Reimport All controls. Type a case-insensitive name substring into its filter without changing resource selection or registry state.
 
 Selecting a material opens an inline resource inspector:
 
@@ -219,7 +219,7 @@ Use the top-bar controls or `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` for Undo and Red
 
 While stopped, authored changes can be saved. Edits to unpromoted runtime entities and all edits made while running or paused are session-only and do not enter authoring history.
 
-Resource-browser values and the selected entity's running component values refresh every 200 ms, while selection and stopped-authoring changes refresh immediately. This periodic value refresh does not rebuild the scene browser; explicit hierarchy invalidation, filter edits, and selection changes do. A periodic refresh leaves the actively edited text alone. Type into the Scene panel's filter field to match entity labels case-insensitively. Matching descendants retain their hierarchy context and appear beneath collapsed ancestors without changing those ancestors' saved collapse state. The scene browser uses the public virtualized-list contract, so scrolling visits only visible rows plus a small overscan window. The scene browser and inspector scroll independently with pixel-continuous targets, frame-time smoothing without line snapping, clipped partial content, and proportional scrollbars. Fractional trackpad deltas remain fractional.
+Resource-browser values and the selected entity's running component values refresh every 200 ms, while selection and stopped-authoring changes refresh immediately. This periodic value refresh does not rebuild the Scene browser; explicit hierarchy invalidation, filter edits, and selection changes do. A periodic refresh leaves the actively edited text alone. Type into the Scene panel's filter field to match entity labels case-insensitively. Matching descendants retain their hierarchy context and appear beneath collapsed ancestors without changing those ancestors' saved collapse state. The Scene and Resource browsers use the public virtualized-list contract, so scrolling visits only visible rows plus a small overscan window. Their filters, scroll targets, and the inspector scroll remain independent, with frame-time smoothing without line snapping, clipped partial content, and proportional scrollbars. Fractional trackpad deltas remain fractional.
 
 ## Transform an entity
 
