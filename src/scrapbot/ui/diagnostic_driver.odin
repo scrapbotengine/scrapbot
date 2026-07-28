@@ -616,12 +616,12 @@ diagnostic_target_rect :: proc(
 				continue
 			}
 			rect := diagnostic_node_visible_rect(child)
-			return rect, rect.width > 0 && rect.height > 0
+			return rect, true
 		}
 		return {}, false
 	}
 	rect := diagnostic_node_visible_rect(node)
-	return rect, rect.width > 0 && rect.height > 0
+	return rect, true
 }
 
 diagnostic_reveal_target :: proc(state: ^State, world: ^shared.World, node_index: int) -> bool {

@@ -298,6 +298,14 @@ test_diagnostic_driver_reveals_targets_inside_scroll_areas :: proc(t: ^testing.T
 	}
 	before := diagnostic_node_visible_rect(state.nodes[target_node])
 	testing.expect(t, before.height == 0)
+	target_rect, target_exists := diagnostic_target_rect(
+		state,
+		&world,
+		target_node,
+		{name = "Driver Offscreen Target"},
+	)
+	testing.expect(t, target_exists)
+	testing.expect(t, target_rect.height == 0)
 	testing.expect(t, diagnostic_reveal_target(state, &world, target_node))
 	testing.expect(t, state.nodes[scroll_node].scroll_offset > 0)
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")

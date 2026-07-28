@@ -161,8 +161,52 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 		}
 	}
 	testing.expect_value(t, resource_rows, 3)
-	_, browser_found := editor_ui_entity(&world, .Project_Resources_Scroll)
+	browser, browser_found := editor_ui_entity(&world, .Project_Resources_Scroll)
 	testing.expect(t, browser_found)
+	filter, filter_found := editor_ui_entity(&world, .Browser_Filter, 1)
+	testing.expect(t, filter_found)
+	panel, panel_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_RESOURCES_NAME),
+	)
+	testing.expect(t, panel_found)
+	if browser_found && filter_found && panel_found {
+		browser_entity := world.entities[browser]
+		panel_entity := world.entities[panel]
+		testing.expect(t, browser_entity.ui_list_index >= 0)
+		testing.expect(t, browser_entity.ui_scroll_area_index >= 0)
+		testing.expect(t, browser_entity.ui_panel_index < 0)
+		testing.expect(t, panel_entity.ui_panel_index >= 0)
+		testing.expect(t, panel_entity.ui_vstack_index >= 0)
+		list := world.ui_lists[browser_entity.ui_list_index]
+		testing.expect_value(t, list.filter_input, world.entities[filter].uuid)
+		testing.expect(t, list.virtualized)
+		testing.expect_value(t, list.item_height, EDITOR_ENTITY_ROW_HEIGHT)
+		testing.expect_value(t, list.overscan, 2)
+		browser_layout := world.ui_layouts[browser_entity.ui_layout_index]
+		testing.expect_value(t, browser_layout.parent, panel_entity.uuid)
+
+		testing.expect(t, ecs.set_ui_input_value(&world, filter, "renamed"))
+		testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
+		laid_out_resource_rows := 0
+		for binding in world.editor_uis {
+			if binding.role != .Project_Resource_Row || binding.entity_index < 0 {
+				continue
+			}
+			node_index := find_node_by_entity_index(state, binding.entity_index)
+			if node_index >= 0 && state.nodes[node_index].laid_out {
+				laid_out_resource_rows += 1
+			}
+		}
+		testing.expect_value(t, laid_out_resource_rows, 1)
+		browser_node := find_node_by_entity_index(state, browser)
+		testing.expect(t, browser_node >= 0)
+		if browser_node >= 0 {
+			testing.expect_value(t, state.nodes[browser_node].list_flow_count, 1)
+		}
+		testing.expect(t, ecs.set_ui_input_value(&world, filter, ""))
+		testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
+	}
 	_, resource_name_found := editor_ui_entity(&world, .Inspector_Resource_Name)
 	testing.expect(t, resource_name_found)
 

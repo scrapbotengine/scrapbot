@@ -22,6 +22,8 @@ EDITOR_UI_SCENE_FILTER_NAME :: "__scrapbot_editor_scene_filter"
 EDITOR_UI_SCENE_LIST_NAME :: "__scrapbot_editor_scene_list"
 EDITOR_UI_SCENE_TOOLS_NAME :: "__scrapbot_editor_scene_tools"
 EDITOR_UI_RESOURCES_NAME :: "__scrapbot_editor_resources"
+EDITOR_UI_RESOURCES_FILTER_NAME :: "__scrapbot_editor_resources_filter"
+EDITOR_UI_RESOURCES_LIST_NAME :: "__scrapbot_editor_resources_list"
 EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
@@ -817,6 +819,39 @@ editor_ui_add_list :: proc(
 	_ = ecs.set_ui_list(world, entity_index, value)
 }
 
+editor_ui_create_browser_filter :: proc(
+	world: ^shared.World,
+	name, parent: string,
+	slot: int,
+) -> int {
+	entity_index := editor_ui_create_box(
+		world,
+		name,
+		parent,
+		.Browser_Filter,
+		{
+			size = {2000, 34},
+			padding = {7, 7, 6, 7},
+			background = {0.013, 0.018, 0.025, 1},
+			border_color = EDITOR_SECTION_BORDER,
+			border_width = 1,
+			fixed_in_fill = true,
+		},
+		slot,
+	)
+	value := shared.ui_input_default()
+	value.color = {0.82, 0.84, 0.88, 1}
+	value.size = EDITOR_TEXT_SIZE
+	value.prefix = "FILTER"
+	value.prefix_width = 42
+	value.prefix_color = {0.46, 0.49, 0.55, 1}
+	value.prefix_background = {0.024, 0.031, 0.041, 1}
+	value.selection_background = {0.08, 0.48, 0.40, 0.48}
+	value.focus_border_color = {0.12, 0.78, 0.66, 1}
+	editor_ui_add_input(world, entity_index, value)
+	return entity_index
+}
+
 editor_ui_set_text :: proc(world: ^shared.World, entity_index: int, value: string) {
 	_ = ecs.set_ui_text_value(world, entity_index, value)
 }
@@ -1078,30 +1113,12 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	editor_ui_add_section_panel(world, scene, "SCENE")
 	editor_ui_add_vstack(world, scene, {fill = true})
-	scene_filter := editor_ui_create_box(
+	scene_filter := editor_ui_create_browser_filter(
 		world,
 		EDITOR_UI_SCENE_FILTER_NAME,
 		EDITOR_UI_SCENE_NAME,
-		.Browser_Filter,
-		{
-			size = {2000, 34},
-			padding = {7, 7, 6, 7},
-			background = {0.013, 0.018, 0.025, 1},
-			border_color = EDITOR_SECTION_BORDER,
-			border_width = 1,
-			fixed_in_fill = true,
-		},
+		0,
 	)
-	filter_input := shared.ui_input_default()
-	filter_input.color = {0.82, 0.84, 0.88, 1}
-	filter_input.size = EDITOR_TEXT_SIZE
-	filter_input.prefix = "FILTER"
-	filter_input.prefix_width = 42
-	filter_input.prefix_color = {0.46, 0.49, 0.55, 1}
-	filter_input.prefix_background = {0.024, 0.031, 0.041, 1}
-	filter_input.selection_background = {0.08, 0.48, 0.40, 0.48}
-	filter_input.focus_border_color = {0.12, 0.78, 0.66, 1}
-	editor_ui_add_input(world, scene_filter, filter_input)
 	scene_tools := editor_ui_create_box(
 		world,
 		EDITOR_UI_SCENE_TOOLS_NAME,
@@ -1182,28 +1199,51 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		EDITOR_UI_RESOURCES_NAME,
 		EDITOR_UI_LEFT_CONTENT_NAME,
-		.Project_Resources_Scroll,
+		.None,
 		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 240}),
 	)
 	editor_ui_add_section_panel(world, resource_browser, "RESOURCES / 0")
-	editor_ui_add_list(
+	editor_ui_add_vstack(world, resource_browser, {fill = true})
+	resource_filter := editor_ui_create_browser_filter(
 		world,
-		resource_browser,
-		{
-			selection_background = {0.040, 0.088, 0.098, 1},
-			hover_background = {0.028, 0.038, 0.050, 1},
-			active_background = {0.050, 0.067, 0.088, 1},
-		},
+		EDITOR_UI_RESOURCES_FILTER_NAME,
+		EDITOR_UI_RESOURCES_NAME,
+		1,
 	)
-	editor_ui_add_scroll(world, resource_browser)
 	resource_tools := editor_ui_create_box(
 		world,
 		EDITOR_UI_RESOURCE_TOOLS_NAME,
 		EDITOR_UI_RESOURCES_NAME,
 		.None,
-		{size = {2000, 34}, padding = {2, 6, 2, 6}, background = EDITOR_SECTION_BACKGROUND},
+		{
+			size = {2000, 34},
+			padding = {2, 6, 2, 6},
+			background = EDITOR_SECTION_BACKGROUND,
+			fixed_in_fill = true,
+		},
 	)
 	editor_ui_add_hstack(world, resource_tools, {gap = 4})
+	resource_list := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCES_LIST_NAME,
+		EDITOR_UI_RESOURCES_NAME,
+		.Project_Resources_Scroll,
+		{size = {2000, 140}, fill_width = true},
+	)
+	editor_ui_add_list(
+		world,
+		resource_list,
+		{
+			filter_input = world.entities[resource_filter].uuid,
+			selection_background = {0.040, 0.088, 0.098, 1},
+			hover_background = {0.028, 0.038, 0.050, 1},
+			active_background = {0.050, 0.067, 0.088, 1},
+			virtualized = true,
+			item_height = EDITOR_ENTITY_ROW_HEIGHT,
+			overscan = 2,
+		},
+	)
+	editor_ui_add_scroll(world, resource_list)
 	resource_create := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_resource_create",
@@ -1503,7 +1543,7 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 	row = editor_ui_create_box(
 		world,
 		row_name,
-		EDITOR_UI_RESOURCES_NAME,
+		EDITOR_UI_RESOURCES_LIST_NAME,
 		.Project_Resource_Row,
 		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
 		slot,
@@ -4033,7 +4073,12 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		}
 	}
 	if browser, found := editor_ui_entity(world, .Project_Resources_Scroll); found {
-		editor_ui_set_panel_title(world, browser, fmt.tprintf("RESOURCES / %d", resource_count))
+		if panel, panel_found := ecs.entity_index_by_uuid(
+			world,
+			shared.entity_uuid_from_engine_name(EDITOR_UI_RESOURCES_NAME),
+		); panel_found {
+			editor_ui_set_panel_title(world, panel, fmt.tprintf("RESOURCES / %d", resource_count))
+		}
 		if world.entities[browser].ui_list_index >= 0 &&
 		   world.entities[browser].ui_list_index < len(world.ui_lists) {
 			world.ui_lists[world.entities[browser].ui_list_index].selected = selected_resource_row

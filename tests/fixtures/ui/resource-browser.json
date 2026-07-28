@@ -4,7 +4,9 @@
   "actions": [
     {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
     {"action": "wait", "frames": 2},
-    {"action": "click", "target": {"text": "Icosphere", "origin": "editor", "occurrence": 1}},
+    {"action": "type", "target": {"name": "__scrapbot_editor_resources_filter", "origin": "editor"}, "text": "icosphere"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_resources_filter", "origin": "editor"}, "expect": "text", "text": "icosphere"},
+    {"action": "click", "target": {"text": "Icosphere", "origin": "editor"}},
     {"action": "wait", "frames": 2},
     {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_resource_name", "origin": "editor"}, "expect": "text", "text": "Icosphere"},
     {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_resource_source", "origin": "editor"}, "expect": "text", "text": "icosphere.resource.toml"},
