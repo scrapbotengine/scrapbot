@@ -676,20 +676,26 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if section == "ui_hstack" { current.has_ui_hstack = true }
 			if section == "ui_vstack" { current.has_ui_vstack = true }
 			if section == "ui_scroll_area" {
+				if !current.has_ui_scroll_area {
+					current.ui_scroll_area = shared.ui_scroll_area_default()
+				}
 				current.has_ui_scroll_area = true
-				current.ui_scroll_area = shared.ui_scroll_area_default()
 			}
 			if section == "ui_panel" {
+				if !current.has_ui_panel {
+					current.ui_panel = shared.ui_panel_default()
+				}
 				current.has_ui_panel = true
-				current.ui_panel = shared.ui_panel_default()
 			}
 			if section == "ui_table" {
 				current.has_ui_table = true
 				current.ui_table = shared.ui_table_default()
 			}
 			if section == "ui_list" {
+				if !current.has_ui_list {
+					current.ui_list = shared.ui_list_default()
+				}
 				current.has_ui_list = true
-				current.ui_list = shared.ui_list_default()
 			}
 			if section == "ui_progress" {
 				current.has_ui_progress = true
@@ -700,24 +706,34 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				current.ui_viewport = shared.ui_viewport_default()
 			}
 			if section == "ui_text" {
+				if !current.has_ui_text {
+					current.ui_text = shared.ui_text_default()
+				}
 				current.has_ui_text = true
-				current.ui_text = shared.ui_text_default()
 			}
 			if section == "ui_button" {
+				if !current.has_ui_button {
+					current.ui_button = shared.ui_button_default()
+				}
 				current.has_ui_button = true
-				current.ui_button = shared.ui_button_default()
 			}
 			if section == "ui_input" {
+				if !current.has_ui_input {
+					current.ui_input = shared.ui_input_default()
+				}
 				current.has_ui_input = true
-				current.ui_input = shared.ui_input_default()
 			}
 			if section == "ui_checkbox" {
+				if !current.has_ui_checkbox {
+					current.ui_checkbox = shared.ui_checkbox_default()
+				}
 				current.has_ui_checkbox = true
-				current.ui_checkbox = shared.ui_checkbox_default()
 			}
 			if section == "ui_color_picker" {
+				if !current.has_ui_color_picker {
+					current.ui_color_picker = shared.ui_color_picker_default()
+				}
 				current.has_ui_color_picker = true
-				current.ui_color_picker = shared.ui_color_picker_default()
 			}
 			current_component = nil
 			continue
@@ -778,6 +794,37 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 								.Invalid_Field,
 								"entity name must be a basic string",
 							)
+						}
+					case "ui_theme":
+						raw_theme, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_theme, found = shared.ui_theme_name_parse(raw_theme)
+						} else {
+							found = false
+						}
+						if !found {
+							return scene, fail(
+								.Invalid_Field,
+								"entity ui_theme must name a supported built-in UI theme",
+							)
+						}
+						current.has_ui_theme = true
+						if current.ui_theme_recipe_count > 0 {
+							apply_scene_ui_theme(current)
+						}
+					case "ui_recipes":
+						current.ui_theme_recipe_count, found = parse_ui_theme_recipes(
+							value,
+							&current.ui_theme_recipes,
+						)
+						if !found {
+							return scene, fail(
+								.Invalid_Field,
+								"entity ui_recipes must be a non-empty array of supported recipe names",
+							)
+						}
+						if current.has_ui_theme {
+							apply_scene_ui_theme(current)
 						}
 					case:
 						return scene, fail(
@@ -1581,6 +1628,15 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			return scene, fail(.Invalid_Field, fmt.tprintf("entity %d has a duplicate id", index))
 		}
 		entity_indices[entity.id] = index
+		if entity.has_ui_theme != (entity.ui_theme_recipe_count > 0) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"entity '%s' must declare ui_theme and ui_recipes together",
+					entity.name,
+				),
+			)
+		}
 		if entity.has_transform && entity.transform.scale == (Vec3{}) {
 			scene.entities[index].transform.scale = Vec3{1, 1, 1}
 		}
@@ -1964,6 +2020,88 @@ parse_basic_string :: proc(value: string) -> (out: string, ok: bool) {
 		return "", false
 	}
 	return body, true
+}
+
+parse_ui_theme_recipes :: proc(
+	value: string,
+	out: ^[shared.UI_THEME_RECIPE_CAPACITY]shared.UI_Theme_Recipe,
+) -> (
+	count: int,
+	ok: bool,
+) {
+	if out == nil {
+		return 0, false
+	}
+	text := strings.trim_space(value)
+	if len(text) < 2 || text[0] != '[' || text[len(text) - 1] != ']' {
+		return 0, false
+	}
+	body := strings.trim_space(text[1:len(text) - 1])
+	if body == "" {
+		return 0, false
+	}
+	parts := strings.split(body, ",")
+	defer delete(parts)
+	if len(parts) > len(out^) {
+		return 0, false
+	}
+	for part, index in parts {
+		name, parsed := parse_basic_string(strings.trim_space(part))
+		if !parsed {
+			return 0, false
+		}
+		out[index], parsed = shared.ui_theme_recipe_parse(name)
+		if !parsed {
+			return 0, false
+		}
+	}
+	return len(parts), true
+}
+
+apply_scene_ui_theme :: proc(entity: ^Scene_Entity) {
+	if entity == nil || !entity.has_ui_theme || entity.ui_theme_recipe_count <= 0 {
+		return
+	}
+	resolved := shared.ui_theme_resolve(
+		entity.ui_theme,
+		entity.ui_theme_recipes[:entity.ui_theme_recipe_count],
+	)
+	if resolved.has_layout {
+		entity.has_ui_layout = true
+		entity.ui_layout = resolved.layout
+	}
+	if resolved.has_scroll_area {
+		entity.has_ui_scroll_area = true
+		entity.ui_scroll_area = resolved.scroll_area
+	}
+	if resolved.has_panel {
+		entity.has_ui_panel = true
+		entity.ui_panel = resolved.panel
+	}
+	if resolved.has_list {
+		entity.has_ui_list = true
+		entity.ui_list = resolved.list
+	}
+	if resolved.has_text {
+		entity.has_ui_text = true
+		entity.ui_text = resolved.text
+	}
+	if resolved.has_button {
+		entity.has_ui_button = true
+		entity.ui_button = resolved.button
+	}
+	if resolved.has_input {
+		entity.has_ui_input = true
+		entity.ui_input = resolved.input
+	}
+	if resolved.has_checkbox {
+		entity.has_ui_checkbox = true
+		entity.ui_checkbox = resolved.checkbox
+	}
+	if resolved.has_color_picker {
+		entity.has_ui_color_picker = true
+		entity.ui_color_picker = resolved.color_picker
+	}
 }
 
 parse_ui_text_alignment :: proc(value: string) -> (out: shared.UI_Text_Alignment, ok: bool) {

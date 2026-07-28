@@ -116,6 +116,7 @@ The context includes:
 - `get_transform` and `set_transform`;
 - scalar Number/Vec2/Vec3/Vec4 field reads and writes for schema-backed custom components;
 - `get_ui_component` and `set_ui_component` for complete public ECS UI value and style payloads;
+- `resolve_ui_theme` for host-owned named recipe resolution into caller-provided UI payload storage;
 - full indexed geometry and shared material registration;
 - linear HDR emission through the material descriptor's `emissive` vector;
 
@@ -155,6 +156,8 @@ Text, font resource names, and input prefixes use bounded byte arrays inside the
 `scrapbot.ui_state` is readable through the same API and publishes hover, active, focus, activation, change, validity, submit/cancel edges, and their monotonic revision counters. It is renderer-owned and cannot be passed to `set_ui_component`.
 
 UI mutation and removal are deferred through the callback's command buffer. A `Spawn_Options` value can include up to eight UI payloads and an optional output UUID pointer. The UUID is filled when the spawn command is accepted, allowing other entities in the same deferred batch to refer to the new UI entity by stable identity.
+
+`UI_Theme_Name` and `UI_Theme_Recipe` are fixed-layout enums shared with scene and Luau recipe names. `resolve_ui_theme` accepts one theme plus 1–16 ordered recipes and fills caller-owned `UI_Component_Payload` storage. It performs no ECS mutation and requires no component access; the later spawn or set operation enforces ordinary declared writes. The Odin wrapper exposes this callback as `scrapbot.ui_theme_resolve`.
 
 ## Current limits
 

@@ -243,7 +243,7 @@ trends; they are not portable performance thresholds.
   - [x] Scene-defined UI API
   - [x] Margins, padding, hidden subtrees, backgrounds, rounded corners, and borders
   - [x] Explicit composition-time theme recipes resolving to ordinary component values
-  - [ ] Project-facing theme-recipe helpers for Luau, native Odin, and text-first authoring
+  - [x] Project-facing theme-recipe helpers for Luau, native Odin, and text-first authoring
 
 ### Editor
 

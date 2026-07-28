@@ -158,7 +158,7 @@ Layout backgrounds, borders, and corner radii are SDF shapes. Controls expose th
 
 Set a supported corner radius to `0` for square geometry. Omit `font` to use embedded Inter, or reference a project font declared in `project.toml`.
 
-Scrapbot's reduced editor theme is one reusable engine-composition recipe, not a renderer mode. Scene TOML currently stores resolved style values rather than a named theme resource. Reuse values in scene-generation or project code, override any field per entity, or ignore the editor recipe entirely. See [UI theming](/guides/ui-theming/).
+Scrapbot's reduced editor theme is one reusable composition recipe, not a renderer mode. Scene TOML, Luau, and native Odin can resolve the same named recipes into ordinary components, override any field per entity, or ignore the recipe system entirely. See [UI theming](/guides/ui-theming/).
 
 ## React through `ui_state`
 
@@ -240,4 +240,4 @@ Headless runs normally have no platform pointer, but `--ui-script` can semantica
 
 ## Current limits
 
-The current text/input slice is printable ASCII and single-line. List filtering folds ASCII case only, and virtualized rows require one uniform item height. Clipboard operations, IME composition, Unicode shaping, multiline editing, UI themes, accessibility semantics, and general command-event routing remain future work.
+The current text/input slice is printable ASCII and single-line. List filtering folds ASCII case only, and virtualized rows require one uniform item height. Clipboard operations, IME composition, Unicode shaping, multiline editing, project-defined named theme resources, accessibility semantics, and general command-event routing remain future work.

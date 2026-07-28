@@ -6,18 +6,18 @@
 | --- | --- | --- |
 | `src/scrapbot_cli/main.odin` | CLI entry point and command dispatch. | Human/JSON diagnostics delegate into engine packages. |
 | `src/scrapbot/scrapbot.odin` | Runtime composition, native/Luau scheduling, profiling, project load/run orchestration. | Joins registries, executor, resources, renderer, and hot reload. |
-| `src/scrapbot/shared/` | Cross-package POD types, UUIDs, transforms, camera math, public world shapes. | Avoid backend-owned objects and allocator-sensitive ABI leakage. |
+| `src/scrapbot/shared/` | Cross-package POD types, UUIDs, transforms, camera math, public world shapes, and canonical UI theme vocabulary/resolution. | Avoid backend-owned objects and allocator-sensitive ABI leakage. Theme recipes may produce only ordinary public UI component values. |
 | `src/scrapbot/component/` | Component registry and generated Luau declarations. | Canonical component names, ownership, storage kind, lifecycle, and field schemas. |
 | `src/scrapbot/ecs/` | World storage, typed mutation, commands, authoring snapshots, hierarchy, integrity, UI storage. | All mutation must preserve indexes and publish structural/render/UI invalidation. |
-| `src/scrapbot/project/` | Project/scene parsing, resource discovery, fonts, configuration, recoverable save transaction. | Persistent source identity and validation. |
+| `src/scrapbot/project/` | Project/scene parsing, UI theme authoring resolution, resource discovery, fonts, configuration, recoverable save transaction. | Persistent source identity and validation. Theme directives are consumed before explicit component fields. |
 | `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, texture mips, static glTF decoding, and HDR-to-IBL preprocessing. | Source/dependency fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
 | `src/scrapbot/resources/` | Runtime geometry/texture/environment/model/material/font registries and generational handles. | Shared descriptions outside ECS; backend caches consume versions. |
 | `src/scrapbot/schedule/` | Access-derived plan and native worker executor. | Native parallel batches, conflicts, and serial barriers. |
-| `src/scrapbot/script/` | Luau VM, public APIs, schemas, queries, write-back, UI mutation, generated-type integration. | Deferred lifecycle and declared-write enforcement. |
-| `src/scrapbot/extension_api/` | Raw C-compatible native extension ABI. | Fixed layouts and callbacks only. |
-| `src/scrapbot/extension/` | Idiomatic Odin wrapper for extension authors. | Typed descriptors/payloads over the raw ABI. |
-| `src/scrapbot/native/` | Native extension building, loading, registration, callbacks, UI bridging. | Host validation, dynamic-library lifetime, and per-system command buffers. |
-| `src/scrapbot/ui/` | Retained ECS UI, interaction, explicit composition-time theme recipes, editor ECS composition, runtime component-payload inspection/bindings, diagnostics, fonts. | Theme recipes resolve to ordinary public components before storage. Generic mechanics stay public; editor meaning stays in bindings/orchestration. Component cards may not be hand-authored per type. |
+| `src/scrapbot/script/` | Luau VM, public APIs, schemas, queries, write-back, UI theme/component composition, generated-type integration. | Theme resolution returns mutable ordinary component maps; deferred lifecycle and declared-write enforcement remain at attachment. |
+| `src/scrapbot/extension_api/` | Raw C-compatible native extension ABI. | Fixed layouts and callbacks only, including host-owned UI theme resolution into caller buffers. |
+| `src/scrapbot/extension/` | Idiomatic Odin wrapper for extension authors. | Typed descriptors, UI theme recipes, and payloads over the raw ABI. |
+| `src/scrapbot/native/` | Native extension building, loading, registration, callbacks, UI theme/component bridging. | Host validation, dynamic-library lifetime, and per-system command buffers. |
+| `src/scrapbot/ui/` | Retained ECS UI, interaction, editor ECS composition, runtime component-payload inspection/bindings, diagnostics, fonts. | Editor recipes consume the shared composition contract and resolve to ordinary public components before storage. Generic mechanics stay public; editor meaning stays in bindings/orchestration. Component cards may not be hand-authored per type. |
 | `src/scrapbot/render/` | Backend interface, null backend, surface/offscreen WGPU rendering, GPU-driven visibility, picking, gizmos, embedded UI viewports, postprocess, and bounded profile collection. | Backend-neutral inputs; WGPU owns GPU state, pooled adaptive viewport targets, isolated resource-preview scenes, caches, optional capture readback, and tagged asynchronous timing readbacks. |
 | `src/scrapbot/platform/` | SDL window/input/cursor integration for visible runs. | OS events are translated into engine-owned input snapshots; offscreen WGPU does not initialize this boundary. |
 | `src/scrapbot/hot_reload.odin` | Project source/product change detection and safe runtime replacement. | Failed reload retains last-good runtime/world. |

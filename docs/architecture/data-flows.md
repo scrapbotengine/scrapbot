@@ -200,9 +200,14 @@ Post-run tools consume the artifact without engine access. The analyzer ranks GP
 ## ECS UI and editor
 
 ```text
-theme recipe + entity overrides (optional composition input)
+shared built-in theme + ordered named recipes
                          │
-scene TOML / Luau / native Odin / editor composition
+     ┌───────────────────┼───────────────────┐
+scene TOML          Luau component map   native host callback
+     └───────────────────┼───────────────────┘
+              editor composition
+                         │
+              explicit entity overrides
                          │
            fully resolved public ui_* components
                          │
@@ -215,7 +220,7 @@ scene TOML / Luau / native Odin / editor composition
  read-only ui_state + independent GPU vertex streams
 ```
 
-Theme recipes are consumed only while composing or explicitly restyling entities. They preserve hierarchy and behavior fields, write presentation through ordinary typed component values, and leave no retained theme dependency. The editor applies the reduced dark recipe before adding small semantic overrides.
+Theme recipes are consumed only while loading, composing, or explicitly restyling entities. Scene directives create typed component defaults before component sections override fields. Luau returns a mutable component map; native Odin delegates to a host callback that fills caller-owned ABI payloads. All paths share the engine-owned recipe vocabulary, preserve hierarchy and behavior fields, and leave no retained theme dependency. The editor applies the reduced dark recipe before adding small semantic overrides.
 
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 

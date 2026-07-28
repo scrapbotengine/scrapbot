@@ -14,6 +14,22 @@ The effective appearance therefore remains visible in ECS:
 
 The renderer does not receive a theme name. It consumes the same layout, text, button, input, list, panel, scrollbar, checkbox, progress, and color-picker fields regardless of how their values were chosen.
 
+## Built-in theme and recipe vocabulary
+
+The current built-in theme is `reduced_dark`. It is the editor's restrained visual language, not a mandatory project look.
+
+Recipes are composable and applied in order:
+
+| Group | Recipes | Components produced |
+| --- | --- | --- |
+| Surfaces | `canvas`, `region`, `panel_surface`, `raised`, `control`, `overlay` | `ui_layout` |
+| Text | `primary_text`, `secondary_text`, `muted_text`, `accent_text`, `warning_text`, `danger_text` | `ui_text` |
+| Buttons | `quiet_button`, `standard_button`, `primary_button`, `destructive_button` | `ui_layout`, `ui_button` |
+| Controls | `input`, `checkbox`, `color_picker` | The matching control; `input` also produces `ui_layout` |
+| Containers | `panel`, `list`, `scroll_area` | The matching container; `panel` also produces `ui_layout` |
+
+Later recipes replace presentation fields on components produced by an earlier recipe. Explicit component values are applied after every recipe and therefore win. Recipe output may still be incomplete as a valid entity: text and button recipes intentionally leave content empty for the caller to provide.
+
 ## Why themes resolve explicitly
 
 Explicit resolution preserves several Scrapbot guarantees:
@@ -150,11 +166,77 @@ Theme application should preserve fields that identify or control the element:
 
 Only the intended presentation fields should change. Applying a surface recipe, for example, may set background, border, width, and radius while leaving parent and responsive sizing untouched.
 
-## Text-first projects
+## Resolve recipes in scene TOML
 
-Scene TOML currently stores resolved component values rather than referencing a named theme resource. This is verbose, but it makes a scene self-describing and keeps Save, hot reload, diagnostics, and generated APIs aligned.
+Declare `ui_theme` and `ui_recipes` in the entity table, before its component sections:
 
-Use scene-generation code or project conventions to reuse values across a large interface. A future project-facing theme helper or theme resource must still resolve through the same public fields; it will not create a second renderer style store or implicit stable-frame cascade.
+```toml
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000202"
+name = "Arcade Action"
+ui_theme = "reduced_dark"
+ui_recipes = ["primary_button"]
+
+[entities.ui_layout]
+position = [260, 40]
+size = [260, 82]
+background = [0.98, 0.12, 0.38, 1]
+border_color = [1, 0.68, 0.16, 1]
+border_width = 4
+corner_radius = 28
+
+[entities.ui_button]
+text = "BOOST"
+color = [1, 1, 1, 1]
+size = 24
+```
+
+The recipe creates `ui_layout` and `ui_button`; the component sections replace selected values to produce the arcade treatment. Compose containers with arrays such as `["panel", "scroll_area"]`. Both fields are required together, the array must be non-empty, and one entity may apply at most 16 recipes.
+
+Theme directives are load-time authoring input. The resulting ECS entity contains only the resolved components.
+
+## Resolve recipes in Luau
+
+`scrapbot.ui.resolve` returns a mutable component map suitable for `scrapbot.spawn`:
+
+```lua
+local components = scrapbot.ui.resolve("reduced_dark", { "primary_button" })
+components["scrapbot.ui_layout"].size = { x = 260, y = 82 }
+components["scrapbot.ui_layout"].corner_radius = 28
+components["scrapbot.ui_layout"].background = { x = 0.98, y = 0.12, z = 0.38, w = 1 }
+components["scrapbot.ui_button"].text = "BOOST"
+
+scrapbot.spawn({
+	name = "Arcade Action",
+	components = components,
+})
+```
+
+Resolution is pure composition and requires no system access. The eventual spawn or component attachment still requires declared writes for every returned component.
+
+## Resolve recipes in native Odin
+
+The native helper delegates resolution to the host, keeping palette values out of the extension ABI:
+
+```odin
+recipes := [?]scrapbot.UI_Theme_Recipe{.Panel, .Scroll_Area}
+storage: [scrapbot.UI_THEME_PAYLOAD_CAPACITY]scrapbot.UI_Component_Payload
+components, err := scrapbot.ui_theme_resolve(
+	ctx,
+	.Reduced_Dark,
+	recipes[:],
+	storage[:],
+)
+if err != nil {
+	return err
+}
+```
+
+The returned slice borrows caller storage and contains ordinary typed UI payloads. Override their fields, set bounded text/font/prefix strings with the existing payload helpers, and pass the slice to `spawn_options_with_ui`. Native systems need the same declared writes as manually constructed payloads.
+
+## Project-defined themes
+
+Projects can already create wholly unrelated interfaces through explicit overrides, as Neon Arcade demonstrates. Named project-defined theme resources are not yet part of the project format. If added, they must resolve through this same recipe-to-component boundary; they will not create a renderer style store or implicit stable-frame cascade.
 
 ## Test a visual system
 

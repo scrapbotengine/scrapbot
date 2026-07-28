@@ -7,6 +7,39 @@ import c "core:c"
 import "core:testing"
 
 @(test)
+test_native_ui_theme_api_resolves_shared_recipes_into_abi_payloads :: proc(t: ^testing.T) {
+	ctx := api.System_Context{}
+	recipes := [?]api.UI_Theme_Recipe{.Primary_Button, .Checkbox}
+	payloads: [9]api.UI_Component_Payload
+	payload_count: c.int
+	err := system_resolve_ui_theme(
+		&ctx,
+		.Reduced_Dark,
+		raw_data(recipes[:]),
+		c.int(len(recipes)),
+		raw_data(payloads[:]),
+		c.int(len(payloads)),
+		&payload_count,
+	)
+	testing.expect(t, err == nil)
+	testing.expect(t, payload_count == 3)
+	theme := shared.ui_theme_reduced_dark()
+	testing.expect(t, string(payloads[0].component) == "scrapbot.ui_layout")
+	testing.expect(t, payloads[0].layout.size == api.Vec2{80, theme.metrics.control_height})
+	testing.expect(
+		t,
+		payloads[0].layout.background == api_vec4_from_shared(theme.palette.accent_soft),
+	)
+	testing.expect(t, string(payloads[1].component) == "scrapbot.ui_button")
+	testing.expect(t, payloads[1].button.color == api_vec4_from_shared(theme.palette.accent_text))
+	testing.expect(t, string(payloads[2].component) == "scrapbot.ui_checkbox")
+	testing.expect(
+		t,
+		payloads[2].checkbox.border_color == api_vec4_from_shared(theme.palette.border_strong),
+	)
+}
+
+@(test)
 test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: proc(
 	t: ^testing.T,
 ) {

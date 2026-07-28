@@ -316,3 +316,62 @@ end)
 		testing.expect(t, parent == world.entities[spawned_index].uuid)
 	}
 }
+
+@(test)
+test_luau_ui_theme_resolver_returns_overridable_spawn_components :: proc(t: ^testing.T) {
+	world: ecs.World
+	defer ecs.destroy_world(&world)
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`
+local spawned = false
+scrapbot.system({
+	name = "spawn_themed_ui",
+	writes = { scrapbot.ui_layout, scrapbot.ui_button, scrapbot.ui_panel, scrapbot.ui_scroll_area },
+}, function()
+	if spawned then return end
+	spawned = true
+
+	local action = scrapbot.ui.resolve("reduced_dark", { "primary_button" })
+	action["scrapbot.ui_layout"].size = { x = 240, y = 72 }
+	action["scrapbot.ui_layout"].corner_radius = 24
+	action["scrapbot.ui_button"].text = "BOOST"
+	scrapbot.spawn({ name = "Themed Action", components = action })
+
+	local panel = scrapbot.ui.resolve("reduced_dark", { "panel", "scroll_area" })
+	panel["scrapbot.ui_panel"].title = "THEME"
+	scrapbot.spawn({ name = "Themed Panel", components = panel })
+end)
+`,
+		"=test",
+		&world,
+	)
+	testing.expectf(t, result.err == "", "script failed: %s", result.err)
+	testing.expect(t, result.ran)
+	testing.expectf(t, step_runtime(&runtime, &world, 0) == "", "themed UI spawn failed")
+	testing.expect(t, len(world.entities) == 2)
+	if len(world.entities) != 2 {
+		return
+	}
+	theme := shared.ui_theme_reduced_dark()
+	action := world.entities[0]
+	testing.expect(t, action.ui_layout_index >= 0)
+	testing.expect(t, action.ui_button_index >= 0)
+	if action.ui_layout_index >= 0 {
+		layout := world.ui_layouts[action.ui_layout_index]
+		testing.expect(t, layout.size == shared.Vec2{240, 72})
+		testing.expect(t, layout.corner_radius == 24)
+		testing.expect(t, layout.background == theme.palette.accent_soft)
+	}
+	if action.ui_button_index >= 0 {
+		button := world.ui_buttons[action.ui_button_index]
+		testing.expect(t, button.text == "BOOST")
+		testing.expect(t, button.color == theme.palette.accent_text)
+	}
+	panel := world.entities[1]
+	testing.expect(t, panel.ui_layout_index >= 0)
+	testing.expect(t, panel.ui_panel_index >= 0)
+	testing.expect(t, panel.ui_scroll_area_index >= 0)
+}

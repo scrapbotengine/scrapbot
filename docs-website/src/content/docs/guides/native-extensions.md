@@ -199,6 +199,34 @@ scrapbot.system(&reg, "native_ui", accesses[:], native_ui_system)
 
 Constructors accept the complete public value and style payload. Defaults are reusable starting points, and every field—including background, border, text colors, and corner radius—can be overridden per entity. A zero corner radius produces square corners.
 
+For a coherent starting point, resolve the same named recipes available to scene TOML and Luau. The host owns the recipe values and writes ordinary ABI payloads into caller-provided storage:
+
+```odin
+recipes := [?]scrapbot.UI_Theme_Recipe{.Primary_Button}
+theme_storage: [scrapbot.UI_THEME_PAYLOAD_CAPACITY]scrapbot.UI_Component_Payload
+components, theme_err := scrapbot.ui_theme_resolve(
+	ctx,
+	.Reduced_Dark,
+	recipes[:],
+	theme_storage[:],
+)
+if theme_err != nil {
+	return theme_err
+}
+
+components[0].layout.size = {240, 72}
+components[0].layout.corner_radius = 24
+if !scrapbot.ui_payload_set_strings(&components[1], "BOOST", "") {
+	return "native UI button text exceeds the ABI buffer"
+}
+
+spawn := scrapbot.spawn_options_with_ui("Themed Action", components)
+_, err := scrapbot.spawn_with_uuid(ctx, &spawn)
+return err
+```
+
+Recipe payloads are ordered by component kind, with layout first when present. Prefer selecting the payload by its `component` field in reusable code that composes several recipes. The fixed helper capacity covers every component the current recipe vocabulary can produce.
+
 ```odin
 layout := scrapbot.ui_layout_default()
 layout.size = {320, 64}

@@ -12,6 +12,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the most precise API ref
 | `scrapbot.log(message)` | Print a Luau log line. |
 | `scrapbot.entity_count()` | Return alive entity count. |
 | `scrapbot.renderable_count()` | Return renderable count. |
+| `scrapbot.ui.resolve(theme, recipes)` | Resolve a built-in UI theme and ordered recipe array into a mutable component map suitable for `scrapbot.spawn`. |
 
 ## Components
 
@@ -68,6 +69,22 @@ World Environment queries expose the complete scene-authored payload. Declare `s
 Transform query payloads expose `parent`, `position`, `rotation`, and `scale`. `parent` is an entity UUID string or empty for a root, and TRS values are local to that parent. A parent without a Transform contributes an identity spatial basis. Writeback rejects a missing parent, self-parenting, and cycles. Rendering and spatial editor tools derive world transforms automatically.
 
 Shadow caster and receiver handles have empty marker payloads. They can be queried and used with deferred `spawn`, `add_component`, and `remove_component` calls.
+
+Theme resolution returns the same ordinary component map accepted by `scrapbot.spawn`:
+
+```lua
+local components = scrapbot.ui.resolve("reduced_dark", { "primary_button" })
+components["scrapbot.ui_layout"].size = { x = 240, y = 72 }
+components["scrapbot.ui_layout"].corner_radius = 24
+components["scrapbot.ui_button"].text = "BOOST"
+
+scrapbot.spawn({
+	name = "Themed Action",
+	components = components,
+})
+```
+
+The generated types constrain built-in theme and recipe names. Resolution itself does not require component access, but spawning or attaching the returned components requires the same declared writes as hand-authored payloads. See [UI theming](/guides/ui-theming/) for the complete recipe vocabulary and override rules.
 
 UI query payloads expose the same complete layout, value, and style fields used by the editor. Layout payloads include `min_size`, per-axis `fill_width`/`fill_height`, per-axis `fit_content_width`/`fit_content_height`, and `fixed_in_fill` for fixed bars or headers inside a fill stack. Tree rows additionally expose `tree_item`, semantic `tree_parent`, sibling-local `tree_order`, and `tree_collapsed`. `scrapbot.ui_table` exposes proportional and resizable column policies plus a minimum column width; the first row's authored cell widths supply the proportions. `scrapbot.ui_list` can opt into direct-child dragging with configurable edge zones, insertion lines, and into-row tint, or enable shared nested-tree flattening and mutation with `tree_enabled` and `tree_indent`. `scrapbot.ui_progress` provides a reusable value/maximum indicator with track, fill, inset, corner, and direction styling. `scrapbot.ui_viewport` exposes Texture/Model/Material/World targets, optional camera/root UUIDs, orbit, distance, clear color, and shared interaction policy. Scrollbars, panel disclosures, button icons/title placement, input prefixes/selections/borders/carets, and checkbox boxes/checkmarks expose their geometry, colors, borders, and corner radii as ordinary mutable fields. A direct child button with `panel_action = true` occupies its parent panel's title band and advances its own ordinary activation revision. `scrapbot.ui_input` also exposes reusable numeric values, bounds, stepping, and scrubbing. Every laid-out element receives a renderer-owned, read-only `scrapbot.ui_state` payload with hover/active/focus, activation/change, validity, submit/cancel edges, draggable-list source/target UUIDs, `drop_placement` (`none`, `before`, `into`, or `after`), and monotonic revision counters including `drop_revision`. Transient booleans describe the most recent UI pass; revision counters let systems detect edges reliably.
 

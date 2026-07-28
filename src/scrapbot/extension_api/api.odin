@@ -403,6 +403,35 @@ UI_Component_Payload :: struct {
 	prefix_len: c.int,
 }
 
+UI_Theme_Name :: enum u32 {
+	Reduced_Dark,
+}
+
+UI_Theme_Recipe :: enum u32 {
+	Canvas,
+	Region,
+	Panel_Surface,
+	Raised,
+	Control,
+	Overlay,
+	Primary_Text,
+	Secondary_Text,
+	Muted_Text,
+	Accent_Text,
+	Warning_Text,
+	Danger_Text,
+	Quiet_Button,
+	Standard_Button,
+	Primary_Button,
+	Destructive_Button,
+	Input,
+	Panel,
+	List,
+	Scroll_Area,
+	Checkbox,
+	Color_Picker,
+}
+
 Spawn_Options :: struct {
 	name: cstring,
 	transform: ^Transform,
@@ -490,6 +519,7 @@ System_Context :: struct {
 	set_vec4_field: Set_Vec4_Field_Proc,
 	get_ui_component: Get_UI_Component_Proc,
 	set_ui_component: Set_UI_Component_Proc,
+	resolve_ui_theme: Resolve_UI_Theme_Proc,
 	spawn: Spawn_Proc,
 	despawn: Despawn_Proc,
 	add_transform: Add_Transform_Proc,
@@ -622,6 +652,16 @@ Set_UI_Component_Proc :: #type proc "c" (
 	ctx: ^System_Context,
 	entity: Entity,
 	payload: ^UI_Component_Payload,
+) -> cstring
+
+Resolve_UI_Theme_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	theme: UI_Theme_Name,
+	recipes: [^]UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
 ) -> cstring
 
 Spawn_Proc :: #type proc "c" (ctx: ^System_Context, options: ^Spawn_Options) -> cstring

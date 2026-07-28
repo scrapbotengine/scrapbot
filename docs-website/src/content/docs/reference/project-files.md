@@ -149,6 +149,25 @@ name = "Main Camera"
 
 Every entity must have a unique, non-zero RFC UUID in `id` and a `name`. The ID is stable project identity; the name is an editable display label.
 
+UI entities may also resolve a built-in theme through ordered composition recipes:
+
+```toml
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000002"
+name = "Primary Action"
+ui_theme = "reduced_dark"
+ui_recipes = ["primary_button"]
+
+[entities.ui_layout]
+size = [240, 72]
+corner_radius = 24
+
+[entities.ui_button]
+text = "BOOST"
+```
+
+`ui_theme` and `ui_recipes` must appear together in the entity table. Recipes create the relevant ordinary `ui_*` component values in array order; component sections then override any field. An entity may compose up to 16 recipes. The supported theme and recipe names are listed in [UI theming](/guides/ui-theming/).
+
 ## Built-in component sections
 
 For a complete inventory of public engine components, reflected fields, defaults, constraints, and cross-surface names, see the [Engine Component Reference](/reference/components/).

@@ -120,26 +120,23 @@ active_color = [0.82, 0.84, 1, 1]
 [[entities]]
 id = "30000000-0000-4000-8000-000000000009"
 name = "Cancel Button"
+ui_theme = "reduced_dark"
+ui_recipes = ["standard_button"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000007"
 margin = [0, 0, 0, 4]
 size = [126, 52]
-padding = [14, 22, 12, 22]
-background = [0.16, 0.20, 0.32, 1]
-corner_radius = 12
 
 [entities.ui_button]
 text = "CANCEL"
-color = [0.82, 0.86, 0.96, 1]
 size = 16
-hover_background = [0.22, 0.27, 0.42, 1]
-active_background = [0.10, 0.13, 0.22, 1]
-active_color = [0.68, 0.72, 0.84, 1]
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000019"
 name = "Enabled Checkbox"
+ui_theme = "reduced_dark"
+ui_recipes = ["checkbox"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000007"
@@ -153,6 +150,8 @@ box_size = 22
 [[entities]]
 id = "30000000-0000-4000-8000-00000000000a"
 name = "Feature Scroll"
+ui_theme = "reduced_dark"
+ui_recipes = ["panel_surface", "scroll_area"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000001"

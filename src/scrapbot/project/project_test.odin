@@ -1234,6 +1234,83 @@ test_init_project_refuses_to_overwrite_any_generated_file :: proc(t: ^testing.T)
 	defer delete(project_path)
 	testing.expect(t, !os.exists(project_path))
 }
+
+@(test)
+test_scene_ui_theme_recipes_resolve_before_explicit_component_overrides :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-0000000000a1"
+name = "Themed Action"
+ui_theme = "reduced_dark"
+ui_recipes = ["primary_button"]
+
+[entities.ui_layout]
+size = [240, 72]
+corner_radius = 24
+
+[entities.ui_button]
+text = "BOOST"
+
+[[entities]]
+id = "a6000000-0000-4000-8000-0000000000a2"
+name = "Themed Panel"
+ui_recipes = ["panel", "scroll_area"]
+ui_theme = "reduced_dark"
+
+[entities.ui_panel]
+title = "THEME"
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "unexpected parse error: %s", result.message)
+	testing.expect(t, len(scene.entities) == 2)
+	if len(scene.entities) != 2 {
+		return
+	}
+	theme := shared.ui_theme_reduced_dark()
+	action := scene.entities[0]
+	testing.expect(t, action.has_ui_layout)
+	testing.expect(t, action.has_ui_button)
+	testing.expect(t, action.ui_layout.size == shared.Vec2{240, 72})
+	testing.expect(t, action.ui_layout.corner_radius == 24)
+	testing.expect(t, action.ui_layout.background == theme.palette.accent_soft)
+	testing.expect(t, action.ui_layout.border_color == theme.palette.accent)
+	testing.expect(t, action.ui_button.text == "BOOST")
+	testing.expect(t, action.ui_button.color == theme.palette.accent_text)
+
+	panel := scene.entities[1]
+	testing.expect(t, panel.has_ui_layout)
+	testing.expect(t, panel.has_ui_panel)
+	testing.expect(t, panel.has_ui_scroll_area)
+	testing.expect(t, panel.ui_layout.background == theme.palette.panel)
+	testing.expect(t, panel.ui_panel.title == "THEME")
+	testing.expect(t, panel.ui_scroll_area.scrollbar_thumb_color == theme.palette.border_strong)
+}
+
+@(test)
+test_scene_ui_theme_directives_require_supported_complete_pairs :: proc(t: ^testing.T) {
+	missing_recipes, missing_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-0000000000b1"
+name = "Missing Recipes"
+ui_theme = "reduced_dark"
+`,
+	)
+	defer destroy_scene(&missing_recipes)
+	testing.expect(t, missing_result.err == .Invalid_Field)
+
+	unsupported, unsupported_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-0000000000b2"
+name = "Unsupported Recipe"
+ui_theme = "reduced_dark"
+ui_recipes = ["glow_everything"]
+`,
+	)
+	defer destroy_scene(&unsupported)
+	testing.expect(t, unsupported_result.err == .Invalid_Field)
+}
+
 @(test)
 test_scene_parses_ecs_ui_hierarchy :: proc(t: ^testing.T) {
 	scene, result := parse_scene(

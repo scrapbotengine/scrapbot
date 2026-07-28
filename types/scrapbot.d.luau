@@ -46,6 +46,9 @@ export type Scrapbot = {
 	ui_input: ScrapbotUiInputComponent,
 	ui_checkbox: ScrapbotUiCheckboxComponent,
 	ui_color_picker: ScrapbotUiColorPickerComponent,
+	ui: {
+		resolve: (theme: ScrapbotUiThemeName, recipes: {ScrapbotUiThemeRecipe}) -> {[string]: any},
+	},
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
@@ -101,6 +104,10 @@ export type ScrapbotPointerSnapshot = {
 export type ScrapbotGeometryResource = {kind: "geometry", index: number, generation: number}
 
 export type ScrapbotMaterialResource = {kind: "material", index: number, generation: number}
+
+export type ScrapbotUiThemeName = "reduced_dark"
+
+export type ScrapbotUiThemeRecipe = "canvas" | "region" | "panel_surface" | "raised" | "control" | "overlay" | "primary_text" | "secondary_text" | "muted_text" | "accent_text" | "warning_text" | "danger_text" | "quiet_button" | "standard_button" | "primary_button" | "destructive_button" | "input" | "panel" | "list" | "scroll_area" | "checkbox" | "color_picker"
 
 export type ScrapbotGeometryVertex = {position: Vec3, normal: Vec3, uv: {x: number, y: number}, tangent: Vec4?}
 

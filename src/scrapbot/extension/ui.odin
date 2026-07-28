@@ -37,6 +37,10 @@ UI_Checkbox :: raw.UI_Checkbox_Payload
 UI_Color_Picker :: raw.UI_Color_Picker_Payload
 UI_State :: raw.UI_State_Payload
 UI_Component_Payload :: raw.UI_Component_Payload
+UI_Theme_Name :: raw.UI_Theme_Name
+UI_Theme_Recipe :: raw.UI_Theme_Recipe
+
+UI_THEME_PAYLOAD_CAPACITY :: 9
 
 UI_Layout_Component :: Component {
 	name = UI_LAYOUT,
@@ -215,6 +219,43 @@ ui_color_picker_default :: proc "contextless" () -> UI_Color_Picker {
 		checker_light = {0.62, 0.64, 0.68, 1},
 		checker_dark = {0.34, 0.36, 0.40, 1},
 	}
+}
+
+ui_theme_resolve :: proc "contextless" (
+	ctx: ^System_Context,
+	theme: UI_Theme_Name,
+	recipes: []UI_Theme_Recipe,
+	buffer: []UI_Component_Payload,
+) -> (
+	payloads: []UI_Component_Payload,
+	err: cstring,
+) {
+	if ctx == nil || ctx.resolve_ui_theme == nil {
+		return nil, "Scrapbot UI theme API is not available"
+	}
+	if len(recipes) == 0 {
+		return nil, "Scrapbot UI theme recipes must not be empty"
+	}
+	if len(buffer) == 0 {
+		return nil, "Scrapbot UI theme payload buffer is not available"
+	}
+	payload_count: c.int
+	err = ctx.resolve_ui_theme(
+		ctx,
+		theme,
+		raw_data(recipes),
+		c.int(len(recipes)),
+		raw_data(buffer),
+		c.int(len(buffer)),
+		&payload_count,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if payload_count < 0 || payload_count > c.int(len(buffer)) {
+		return nil, "Scrapbot UI theme API returned an invalid payload count"
+	}
+	return buffer[:int(payload_count)], nil
 }
 
 ui_layout :: proc "contextless" (value: UI_Layout) -> UI_Component_Payload {

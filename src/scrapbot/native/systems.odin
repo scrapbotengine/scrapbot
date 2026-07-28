@@ -241,6 +241,7 @@ step_system :: proc(
 		set_vec4_field = system_set_vec4_field,
 		get_ui_component = system_get_ui_component,
 		set_ui_component = system_set_ui_component,
+		resolve_ui_theme = system_resolve_ui_theme,
 		spawn = system_spawn,
 		despawn = system_despawn,
 		add_transform = system_add_transform,

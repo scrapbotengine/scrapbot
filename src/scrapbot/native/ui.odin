@@ -5,6 +5,309 @@ import api "../extension_api"
 import shared "../shared"
 import c "core:c"
 
+system_resolve_ui_theme :: proc "c" (
+	ctx: ^api.System_Context,
+	theme_name: api.UI_Theme_Name,
+	recipes: [^]api.UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]api.UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
+) -> cstring {
+	if ctx == nil || out_payload_count == nil {
+		return "native UI theme output is not available"
+	}
+	out_payload_count^ = 0
+	if theme_name != .Reduced_Dark {
+		return "native UI theme is not supported"
+	}
+	if recipes == nil || recipe_count <= 0 || recipe_count > shared.UI_THEME_RECIPE_CAPACITY {
+		return "native UI theme recipes must contain between one and sixteen entries"
+	}
+	shared_recipes: [shared.UI_THEME_RECIPE_CAPACITY]shared.UI_Theme_Recipe
+	for index in 0 ..< int(recipe_count) {
+		raw_recipe := u32(recipes[index])
+		if raw_recipe > u32(api.UI_Theme_Recipe.Color_Picker) {
+			return "native UI theme recipe is not supported"
+		}
+		shared_recipes[index] = shared.UI_Theme_Recipe(raw_recipe)
+	}
+	resolved := shared.ui_theme_resolve(.Reduced_Dark, shared_recipes[:int(recipe_count)])
+	required := 0
+	if resolved.has_layout { required += 1 }
+	if resolved.has_scroll_area { required += 1 }
+	if resolved.has_panel { required += 1 }
+	if resolved.has_list { required += 1 }
+	if resolved.has_text { required += 1 }
+	if resolved.has_button { required += 1 }
+	if resolved.has_input { required += 1 }
+	if resolved.has_checkbox { required += 1 }
+	if resolved.has_color_picker { required += 1 }
+	if payloads == nil || payload_capacity < c.int(required) {
+		return "native UI theme payload buffer is too small"
+	}
+
+	count := 0
+	if resolved.has_layout {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_layout",
+			layout = api_ui_theme_layout(resolved.layout),
+		}
+		count += 1
+	}
+	if resolved.has_scroll_area {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_scroll_area",
+			scroll_area = api_ui_theme_scroll_area(resolved.scroll_area),
+		}
+		count += 1
+	}
+	if resolved.has_panel {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_panel",
+			panel = api_ui_theme_panel(resolved.panel),
+		}
+		count += 1
+	}
+	if resolved.has_list {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_list",
+			list = api_ui_theme_list(resolved.list),
+		}
+		count += 1
+	}
+	if resolved.has_text {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_text",
+			text = api_ui_theme_text(resolved.text),
+		}
+		count += 1
+	}
+	if resolved.has_button {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_button",
+			button = api_ui_theme_button(resolved.button),
+		}
+		count += 1
+	}
+	if resolved.has_input {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_input",
+			input = api_ui_theme_input(resolved.input),
+		}
+		count += 1
+	}
+	if resolved.has_checkbox {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_checkbox",
+			checkbox = api_ui_theme_checkbox(resolved.checkbox),
+		}
+		count += 1
+	}
+	if resolved.has_color_picker {
+		payloads[count] = api.UI_Component_Payload {
+			component = "scrapbot.ui_color_picker",
+			color_picker = api_ui_theme_color_picker(resolved.color_picker),
+		}
+		count += 1
+	}
+	out_payload_count^ = c.int(count)
+	return nil
+}
+
+api_ui_theme_layout :: proc "contextless" (
+	value: shared.UI_Layout_Component,
+) -> api.UI_Layout_Payload {
+	return {
+		parent = api_uuid_from_shared(value.parent),
+		popup_anchor = api_uuid_from_shared(value.popup_anchor),
+		position = api_vec2_from_shared(value.position),
+		size = api_vec2_from_shared(value.size),
+		min_size = api_vec2_from_shared(value.min_size),
+		margin = api_vec4_from_shared(value.margin),
+		padding = api_vec4_from_shared(value.padding),
+		background = api_vec4_from_shared(value.background),
+		border_color = api_vec4_from_shared(value.border_color),
+		border_width = value.border_width,
+		corner_radius = value.corner_radius,
+		hidden = bool_to_c_int(value.hidden),
+		fill_width = bool_to_c_int(value.fill_width),
+		fill_height = bool_to_c_int(value.fill_height),
+		fit_content_width = bool_to_c_int(value.fit_content_width),
+		fit_content_height = bool_to_c_int(value.fit_content_height),
+		fixed_in_fill = bool_to_c_int(value.fixed_in_fill),
+		tree_item = bool_to_c_int(value.tree_item),
+		tree_parent = api_uuid_from_shared(value.tree_parent),
+		tree_order = c.int(value.tree_order),
+		tree_collapsed = bool_to_c_int(value.tree_collapsed),
+		popup = bool_to_c_int(value.popup),
+		popup_open = bool_to_c_int(value.popup_open),
+		popup_close_on_selection = bool_to_c_int(value.popup_close_on_selection),
+		popup_gap = value.popup_gap,
+		popup_min_width = value.popup_min_width,
+		popup_max_width = value.popup_max_width,
+		popup_max_height = value.popup_max_height,
+		popup_viewport_margin = value.popup_viewport_margin,
+	}
+}
+
+api_ui_theme_scroll_area :: proc "contextless" (
+	value: shared.UI_Scroll_Area_Component,
+) -> api.UI_Scroll_Area_Payload {
+	return {
+		scroll_speed = value.scroll_speed,
+		smoothness = value.smoothness,
+		scrollbar_width = value.scrollbar_width,
+		scrollbar_right = value.scrollbar_right,
+		scrollbar_vertical_inset = value.scrollbar_vertical_inset,
+		minimum_thumb_size = value.minimum_thumb_size,
+		scrollbar_corner_radius = value.scrollbar_corner_radius,
+		scrollbar_track_color = api_vec4_from_shared(value.scrollbar_track_color),
+		scrollbar_thumb_color = api_vec4_from_shared(value.scrollbar_thumb_color),
+	}
+}
+
+api_ui_theme_panel :: proc "contextless" (
+	value: shared.UI_Panel_Component,
+) -> api.UI_Panel_Payload {
+	return {
+		title_color = api_vec4_from_shared(value.title_color),
+		title_background = api_vec4_from_shared(value.title_background),
+		title_size = value.title_size,
+		title_height = value.title_height,
+		disclosure_size = value.disclosure_size,
+		disclosure_margin = value.disclosure_margin,
+		disclosure_gap = value.disclosure_gap,
+		disclosure_corner_radius = value.disclosure_corner_radius,
+		collapsible = bool_to_c_int(value.collapsible),
+		collapsed = bool_to_c_int(value.collapsed),
+	}
+}
+
+api_ui_theme_list :: proc "contextless" (value: shared.UI_List_Component) -> api.UI_List_Payload {
+	return {
+		selected = api_uuid_from_shared(value.selected),
+		filter_input = api_uuid_from_shared(value.filter_input),
+		gap = value.gap,
+		selection_background = api_vec4_from_shared(value.selection_background),
+		hover_background = api_vec4_from_shared(value.hover_background),
+		active_background = api_vec4_from_shared(value.active_background),
+		draggable = bool_to_c_int(value.draggable),
+		drag_threshold = value.drag_threshold,
+		drop_edge_fraction = value.drop_edge_fraction,
+		drop_target_background = api_vec4_from_shared(value.drop_target_background),
+		drop_indicator_color = api_vec4_from_shared(value.drop_indicator_color),
+		drop_indicator_thickness = value.drop_indicator_thickness,
+		drop_indicator_inset = value.drop_indicator_inset,
+		tree_enabled = bool_to_c_int(value.tree_enabled),
+		tree_indent = value.tree_indent,
+		virtualized = bool_to_c_int(value.virtualized),
+		item_height = value.item_height,
+		overscan = c.int(value.overscan),
+	}
+}
+
+api_ui_theme_text :: proc "contextless" (value: shared.UI_Text_Component) -> api.UI_Text_Payload {
+	return {
+		color = api_vec4_from_shared(value.color),
+		size = value.size,
+		alignment = api_text_alignment_from_shared(value.alignment),
+	}
+}
+
+api_ui_theme_button :: proc "contextless" (
+	value: shared.UI_Button_Component,
+) -> api.UI_Button_Payload {
+	return {
+		popup = api_uuid_from_shared(value.popup),
+		color = api_vec4_from_shared(value.color),
+		size = value.size,
+		alignment = api_text_alignment_from_shared(value.alignment),
+		hover_background = api_vec4_from_shared(value.hover_background),
+		active_background = api_vec4_from_shared(value.active_background),
+		hover_color = api_vec4_from_shared(value.hover_color),
+		active_color = api_vec4_from_shared(value.active_color),
+		icon = api_icon_from_shared(value.icon),
+		icon_inset = value.icon_inset,
+		icon_stroke = value.icon_stroke,
+		panel_action = bool_to_c_int(value.panel_action),
+	}
+}
+
+api_ui_theme_input :: proc "contextless" (
+	value: shared.UI_Input_Component,
+) -> api.UI_Input_Payload {
+	return {
+		color = api_vec4_from_shared(value.color),
+		prefix_color = api_vec4_from_shared(value.prefix_color),
+		prefix_background = api_vec4_from_shared(value.prefix_background),
+		size = value.size,
+		prefix_width = value.prefix_width,
+		selection_background = api_vec4_from_shared(value.selection_background),
+		focus_border_color = api_vec4_from_shared(value.focus_border_color),
+		invalid_border_color = api_vec4_from_shared(value.invalid_border_color),
+		caret_color = api_vec4_from_shared(value.caret_color),
+		number = value.number,
+		step = value.step,
+		minimum = value.minimum,
+		maximum = value.maximum,
+		prefix_gap = value.prefix_gap,
+		prefix_corner_radius = value.prefix_corner_radius,
+		prefix_text_padding = value.prefix_text_padding,
+		selection_corner_radius = value.selection_corner_radius,
+		focus_border_width = value.focus_border_width,
+		invalid_border_width = value.invalid_border_width,
+		caret_width = value.caret_width,
+		caret_inset = value.caret_inset,
+		read_only = bool_to_c_int(value.read_only),
+		numeric = bool_to_c_int(value.numeric),
+		draggable = bool_to_c_int(value.draggable),
+		has_minimum = bool_to_c_int(value.has_minimum),
+		has_maximum = bool_to_c_int(value.has_maximum),
+	}
+}
+
+api_ui_theme_checkbox :: proc "contextless" (
+	value: shared.UI_Checkbox_Component,
+) -> api.UI_Checkbox_Payload {
+	return {
+		checked = bool_to_c_int(value.checked),
+		box_size = value.box_size,
+		background = api_vec4_from_shared(value.background),
+		checked_background = api_vec4_from_shared(value.checked_background),
+		border_color = api_vec4_from_shared(value.border_color),
+		check_color = api_vec4_from_shared(value.check_color),
+		hover_background = api_vec4_from_shared(value.hover_background),
+		active_background = api_vec4_from_shared(value.active_background),
+		corner_radius = value.corner_radius,
+		border_width = value.border_width,
+		check_inset = value.check_inset,
+		check_corner_radius = value.check_corner_radius,
+		read_only = bool_to_c_int(value.read_only),
+	}
+}
+
+api_ui_theme_color_picker :: proc "contextless" (
+	value: shared.UI_Color_Picker_Component,
+) -> api.UI_Color_Picker_Payload {
+	return {
+		value = api_vec4_from_shared(value.value),
+		hdr = bool_to_c_int(value.hdr),
+		show_alpha = bool_to_c_int(value.show_alpha),
+		read_only = bool_to_c_int(value.read_only),
+		exposure = value.exposure,
+		maximum_exposure = value.maximum_exposure,
+		track_height = value.track_height,
+		gap = value.gap,
+		thumb_radius = value.thumb_radius,
+		thumb_color = api_vec4_from_shared(value.thumb_color),
+		thumb_border_color = api_vec4_from_shared(value.thumb_border_color),
+		thumb_border_width = value.thumb_border_width,
+		checker_light = api_vec4_from_shared(value.checker_light),
+		checker_dark = api_vec4_from_shared(value.checker_dark),
+	}
+}
+
 system_get_ui_component :: proc "c" (
 	ctx: ^api.System_Context,
 	entity: api.Entity,

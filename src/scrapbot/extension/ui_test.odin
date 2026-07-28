@@ -12,6 +12,68 @@ UI_Test_Host :: struct {
 	last_text_len: int,
 }
 
+ui_test_resolve_theme :: proc "c" (
+	ctx: ^raw.System_Context,
+	theme: raw.UI_Theme_Name,
+	recipes: [^]raw.UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]raw.UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
+) -> cstring {
+	if ctx == nil ||
+	   theme != .Reduced_Dark ||
+	   recipes == nil ||
+	   recipe_count != 1 ||
+	   recipes[0] != .Primary_Button ||
+	   payloads == nil ||
+	   payload_capacity < 1 ||
+	   out_payload_count == nil {
+		return "invalid theme request"
+	}
+	payloads[0] = ui_layout(UI_Layout{size = {80, 30}, corner_radius = 5})
+	out_payload_count^ = 1
+	return nil
+}
+
+@(test)
+test_ui_theme_helper_uses_caller_storage_and_host_resolution :: proc(t: ^testing.T) {
+	ctx := System_Context {
+		resolve_ui_theme = ui_test_resolve_theme,
+	}
+	recipes := [?]UI_Theme_Recipe{.Primary_Button}
+	buffer: [UI_THEME_PAYLOAD_CAPACITY]UI_Component_Payload
+	payloads, err := ui_theme_resolve(&ctx, .Reduced_Dark, recipes[:], buffer[:])
+	testing.expect(t, err == nil)
+	testing.expect(t, len(payloads) == 1)
+	testing.expect(t, payloads[0].component == UI_LAYOUT)
+	testing.expect(t, payloads[0].layout.size == Vec2{80, 30})
+	testing.expect(t, payloads[0].layout.corner_radius == 5)
+}
+
+@(test)
+test_ui_theme_helper_rejects_invalid_host_payload_count :: proc(t: ^testing.T) {
+	ctx := System_Context {
+		resolve_ui_theme = proc "c" (
+			ctx: ^System_Context,
+			theme: UI_Theme_Name,
+			recipes: [^]UI_Theme_Recipe,
+			recipe_count: c.int,
+			payloads: [^]UI_Component_Payload,
+			payload_capacity: c.int,
+			out_payload_count: ^c.int,
+		) -> cstring {
+			out_payload_count^ = payload_capacity + 1
+			return nil
+		},
+	}
+	recipes := [?]UI_Theme_Recipe{.Primary_Button}
+	buffer: [UI_THEME_PAYLOAD_CAPACITY]UI_Component_Payload
+	payloads, err := ui_theme_resolve(&ctx, .Reduced_Dark, recipes[:], buffer[:])
+	testing.expect(t, payloads == nil)
+	testing.expect(t, err != nil)
+}
+
 @(test)
 test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^testing.T) {
 	layout := ui_layout_default()

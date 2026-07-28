@@ -138,6 +138,11 @@ register_scrapbot_api :: proc(L: Lua_State) {
 		"scrapbot.ui_color_picker",
 	); lua_setfield(L, -2, "ui_color_picker")
 
+	lua_createtable(L, 0, 1)
+	lua_pushcclosurek(L, scrapbot_ui_theme_resolve, "scrapbot.ui.resolve", 0, nil)
+	lua_setfield(L, -2, "resolve")
+	lua_setfield(L, -2, "ui")
+
 	push_registered_component_handle_by_name(L, "scrapbot.mesh")
 	lua_setfield(L, -2, "mesh")
 
