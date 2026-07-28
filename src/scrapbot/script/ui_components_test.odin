@@ -63,6 +63,15 @@ id = "aa000000-0000-4000-8000-000000000002"
 name = "Checkbox"
 [entities.ui_layout]
 size = [32, 32]
+popup = true
+popup_anchor = "aa000000-0000-4000-8000-000000000001"
+popup_open = true
+popup_close_on_selection = true
+popup_gap = 4
+popup_min_width = 180
+popup_max_width = 320
+popup_max_height = 160
+popup_viewport_margin = 6
 [entities.ui_list]
 filter_input = "aa000000-0000-4000-8000-000000000002"
 tree_enabled = true
@@ -139,7 +148,13 @@ scrapbot.system(function()
 		count += 1
 	end)
 	assert(count == 1)
-	scrapbot.query(scrapbot.ui_list):each(function(entity, list)
+	scrapbot.query(scrapbot.ui_layout, scrapbot.ui_list):each(function(entity, layout, list)
+		assert(layout.popup == true)
+		assert(layout.popup_anchor == "aa000000-0000-4000-8000-000000000001")
+		assert(layout.popup_open == true and layout.popup_close_on_selection == true)
+		assert(layout.popup_gap == 4 and layout.popup_min_width == 180)
+		assert(layout.popup_max_width == 320 and layout.popup_max_height == 160)
+		assert(layout.popup_viewport_margin == 6)
 		assert(list.tree_enabled == true and list.tree_indent == 18)
 		assert(list.filter_input == "aa000000-0000-4000-8000-000000000002")
 		assert(list.virtualized == true and list.item_height == 32 and list.overscan == 3)
@@ -200,7 +215,7 @@ scrapbot.system(function()
 	end)
 	scrapbot.query(scrapbot.ui_checkbox):each(function(entity)
 		scrapbot.remove_component(entity, scrapbot.ui_checkbox)
-		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", size = 14, alignment = "right", icon = "close", icon_inset = 4, icon_stroke = 2, panel_action = true})
+		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", popup = "aa000000-0000-4000-8000-000000000002", size = 14, alignment = "right", icon = "close", icon_inset = 4, icon_stroke = 2, panel_action = true})
 	end)
 	local root_id = scrapbot.spawn({
 		name = "Runtime UI",
@@ -251,6 +266,7 @@ end)
 	testing.expect(t, button_index >= 0 && button_index < len(world.ui_buttons))
 	if button_index >= 0 && button_index < len(world.ui_buttons) {
 		testing.expect(t, world.ui_buttons[button_index].text == "Toggle")
+		testing.expect(t, world.ui_buttons[button_index].popup == world.entities[1].uuid)
 		testing.expect(t, world.ui_buttons[button_index].alignment == .Right)
 		testing.expect(t, world.ui_buttons[button_index].icon == .Close)
 		testing.expect(t, world.ui_buttons[button_index].panel_action)

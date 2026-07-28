@@ -8,6 +8,16 @@ import "core:fmt"
 import "core:math"
 import "core:testing"
 
+UI_Test_U8_Enum :: enum u8 {
+	Low  = 1,
+	High = 240,
+}
+
+UI_Test_I16_Enum :: enum i16 {
+	Negative = -7,
+	Positive = 32000,
+}
+
 @(test)
 test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^testing.T) {
 	scene: shared.Scene
@@ -1788,67 +1798,6 @@ test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, line_count == 2)
-}
-
-@(test)
-test_popup_helpers_share_ancestry_flip_and_viewport_clamping :: proc(t: ^testing.T) {
-	anchor_id := ui_test_id("Popup Helper Anchor")
-	popup_id := ui_test_id("Popup Helper Menu")
-	scene: shared.Scene
-	defer delete(scene.entities)
-	append(
-		&scene.entities,
-		shared.Scene_Entity {
-			id = anchor_id,
-			name = "Popup Helper Anchor",
-			has_ui_layout = true,
-			ui_layout = {position = {180, 100}, size = {100, 20}},
-		},
-		shared.Scene_Entity {
-			id = popup_id,
-			name = "Popup Helper Menu",
-			has_ui_layout = true,
-			ui_layout = {size = {10, 10}},
-		},
-		shared.Scene_Entity {
-			id = ui_test_id("Popup Helper Item"),
-			name = "Popup Helper Item",
-			has_ui_layout = true,
-			ui_layout = {parent = popup_id, size = {80, 24}},
-		},
-	)
-	world := ecs.build_world(&scene)
-	defer ecs.destroy_world(&world)
-	state := new(State)
-	defer free(state)
-	testing.expect(t, init(state) == "")
-	defer destroy(state)
-	testing.expect(t, reconcile(state, &world, 240, 130) == "")
-	testing.expect(
-		t,
-		place_popup(
-			state,
-			&world,
-			1,
-			0,
-			90,
-			240,
-			130,
-			{
-				minimum_width = 100,
-				maximum_width = 160,
-				maximum_height = 100,
-				viewport_margin = 8,
-				gap = 4,
-			},
-		),
-	)
-	layout := world.ui_layouts[world.entities[1].ui_layout_index]
-	testing.expect(t, layout.size == shared.Vec2{100, 90})
-	testing.expect(t, layout.position == shared.Vec2{132, 8})
-	testing.expect(t, popup_contains_entity(&world, world.entities[0].id, 0, 1))
-	testing.expect(t, popup_contains_entity(&world, world.entities[1].id, 0, 1))
-	testing.expect(t, popup_contains_entity(&world, world.entities[2].id, 0, 1))
 }
 
 @(test)
@@ -3833,10 +3782,11 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	if !menu_found {
 		return
 	}
-	state.editor_component_menu_open = true
+	testing.expect(t, handle_popup_press(state, &world, world.entities[button].id))
+	editor_ui_handle_activation(state, &world, world.entities[button].id, {})
 	state.editor_snapshot_valid = false
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
-	testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].hidden)
+	testing.expect(t, world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
 	filter, filter_found := editor_ui_entity(&world, .Browser_Filter, 3)
 	content, content_found := editor_ui_entity(&world, .Inspector_Component_Menu_Content)
 	testing.expect(t, filter_found && content_found)
@@ -3879,6 +3829,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	}
 	project_group_found := false
 	engine_group_found := false
+	group_selection_checked := false
 	for binding in world.editor_uis {
 		if binding.role != .Inspector_Component_Menu_Group {
 			continue
@@ -3890,8 +3841,14 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		label := world.ui_texts[entity.ui_text_index].text
 		project_group_found = project_group_found || label == "PROJECT"
 		engine_group_found = engine_group_found || label == "scrapbot"
+		if !group_selection_checked {
+			testing.expect(t, handle_list_press(&world, entity.id))
+			testing.expect(t, !close_selection_popup(state, &world, entity.id))
+			testing.expect(t, world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
+			group_selection_checked = true
+		}
 	}
-	testing.expect(t, project_group_found && engine_group_found)
+	testing.expect(t, project_group_found && engine_group_found && group_selection_checked)
 	for binding in world.editor_uis {
 		if binding.role != .Inspector_Component_Menu_Item {
 			continue
@@ -3973,12 +3930,14 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	if !item_found {
 		return
 	}
+	testing.expect(t, handle_list_press(&world, world.entities[item].id))
+	testing.expect(t, !close_selection_popup(state, &world, world.entities[item].id))
 	editor_ui_handle_activation(state, &world, world.entities[item].id, {})
 	testing.expect(
 		t,
 		ecs.entity_has_component(&world, 0, registry.definitions[definition_index].id, "floating"),
 	)
-	testing.expect(t, !state.editor_component_menu_open)
+	testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
 	state.editor_snapshot_valid = false
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	component_action := -1
@@ -4140,8 +4099,13 @@ test_running_component_picker_changes_live_membership_without_authoring_history 
 	if !button_found {
 		return
 	}
+	testing.expect(t, handle_popup_press(state, &world, world.entities[button].id))
 	editor_ui_handle_activation(state, &world, world.entities[button].id, {})
-	testing.expect(t, state.editor_component_menu_open)
+	menu, menu_found := editor_ui_entity(&world, .Inspector_Component_Menu)
+	testing.expect(t, menu_found)
+	if menu_found {
+		testing.expect(t, world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
+	}
 	state.editor_snapshot_valid = false
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	camera_index, camera_found := component.find_definition_index(&registry, "scrapbot.camera")
@@ -4950,6 +4914,13 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	shadow_definition, _ := component.find_definition(&registry, "scrapbot.shadow_caster")
 	button_definition, _ := component.find_definition(&registry, "scrapbot.ui_button")
 	layout_definition, _ := component.find_definition(&registry, "scrapbot.ui_layout")
+	layout_hidden_field := -1
+	for field, index in layout_definition.fields[:layout_definition.field_count] {
+		if field.name == "hidden" {
+			layout_hidden_field = index
+			break
+		}
+	}
 	state := new(
 		State,
 	); defer free(state); testing.expect(t, init(state) == ""); defer destroy(state); state.editor_visible = true
@@ -5100,7 +5071,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				)
 				checkbox := world.ui_checkboxes[entity.ui_checkbox_index]
 				if component.reflected_component_id == layout_definition.id &&
-				   component.reflected_field_index == 10 {
+				   component.reflected_field_index == layout_hidden_field {
 					found_bound_checkbox =
 						found_bound_checkbox || !checkbox.read_only && !checkbox.checked
 				}
@@ -5982,6 +5953,139 @@ test_reflected_inspector_edits_every_registry_field_shape_with_structural_undo :
 }
 
 @(test)
+test_public_popup_anchors_clamps_scrolls_and_closes_generically :: proc(t: ^testing.T) {
+	anchor_id := ui_test_id("Popup Anchor")
+	popup_id := ui_test_id("Popup Root")
+	content_id := ui_test_id("Popup Content")
+	outside_id := ui_test_id("Popup Outside")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = anchor_id,
+			name = "Popup Anchor",
+			has_ui_layout = true,
+			ui_layout = {position = {40, 180}, size = {180, 30}},
+			has_ui_button = true,
+			ui_button = {text = "Choose", size = 13, popup = popup_id},
+		},
+		shared.Scene_Entity {
+			id = popup_id,
+			name = "Popup Root",
+			has_ui_layout = true,
+			ui_layout = {
+				size = {400, 630},
+				padding = {5, 5, 5, 5},
+				popup = true,
+				popup_close_on_selection = true,
+				popup_gap = 4,
+				popup_min_width = 360,
+				popup_max_height = 100,
+				popup_viewport_margin = 4,
+			},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true},
+		},
+		shared.Scene_Entity {
+			id = content_id,
+			name = "Popup Content",
+			has_ui_layout = true,
+			ui_layout = {parent = popup_id, size = {170, 1}, fill_width = true},
+			has_ui_scroll_area = true,
+			ui_scroll_area = shared.ui_scroll_area_default(),
+			has_ui_list = true,
+			ui_list = shared.ui_list_default(),
+		},
+		shared.Scene_Entity {
+			id = outside_id,
+			name = "Popup Outside",
+			has_ui_layout = true,
+			ui_layout = {position = {240, 10}, size = {40, 30}},
+			has_ui_button = true,
+			ui_button = {text = "Outside", size = 13},
+		},
+	)
+	for index in 0 ..< 20 {
+		append(
+			&scene.entities,
+			shared.Scene_Entity {
+				id = ui_test_id(fmt.tprintf("Popup Item %d", index)),
+				name = fmt.tprintf("Popup Item %d", index),
+				has_ui_layout = true,
+				ui_layout = {parent = content_id, size = {170, 30}},
+				has_ui_button = true,
+				ui_button = {text = fmt.tprintf("Item %d", index), size = 13},
+			},
+		)
+	}
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+
+	testing.expect(t, reconcile(state, &world, 300, 220) == "")
+	popup_node := find_node(state, world.entities[1].id)
+	testing.expect(t, popup_node >= 0)
+	if popup_node < 0 {
+		return
+	}
+	testing.expect(t, !state.nodes[popup_node].laid_out)
+	testing.expect(t, handle_popup_press(state, &world, world.entities[0].id))
+	testing.expect(t, reconcile(state, &world, 300, 220) == "")
+	popup_node = find_node(state, world.entities[1].id)
+	content_node := find_node(state, world.entities[2].id)
+	testing.expect(t, popup_node >= 0 && content_node >= 0)
+	if popup_node < 0 || content_node < 0 {
+		return
+	}
+	testing.expect(t, state.nodes[popup_node].laid_out)
+	testing.expect_value(t, state.nodes[popup_node].rect.height, f32(100))
+	testing.expect_value(t, state.nodes[popup_node].rect.width, f32(292))
+	testing.expect(t, state.nodes[popup_node].rect.y < state.nodes[0].rect.y)
+	testing.expect(t, state.nodes[content_node].scroll_max > 0)
+
+	selected_index := 4 + 15
+	testing.expect(t, handle_list_press(&world, world.entities[selected_index].id))
+	testing.expect(t, close_selection_popup(state, &world, world.entities[selected_index].id))
+	testing.expect_value(
+		t,
+		world.ui_lists[world.entities[2].ui_list_index].selected,
+		world.entities[selected_index].uuid,
+	)
+	testing.expect(t, !world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+
+	anchor_button := world.ui_buttons[world.entities[0].ui_button_index]
+	anchor_button.popup = {}
+	testing.expect(t, ecs.set_ui_button(&world, 0, anchor_button))
+	testing.expect(t, !handle_popup_press(state, &world, world.entities[0].id))
+	testing.expect(t, !world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+	anchor_button.popup = popup_id
+	testing.expect(t, ecs.set_ui_button(&world, 0, anchor_button))
+
+	testing.expect(t, handle_popup_press(state, &world, world.entities[0].id))
+	testing.expect(t, !close_popups_on_escape(state, &world, true, false))
+	testing.expect(t, world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+	testing.expect(t, close_popups_on_escape(state, &world, false, true))
+	testing.expect(t, handle_popup_press(state, &world, world.entities[0].id))
+	anchor_layout := world.ui_layouts[world.entities[0].ui_layout_index]
+	anchor_layout.hidden = true
+	testing.expect(t, ecs.set_ui_layout(&world, 0, anchor_layout))
+	testing.expect(t, reconcile(state, &world, 300, 220) == "")
+	testing.expect(t, !world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+	anchor_layout.hidden = false
+	testing.expect(t, ecs.set_ui_layout(&world, 0, anchor_layout))
+	testing.expect(t, reconcile(state, &world, 300, 220) == "")
+	testing.expect(t, handle_popup_press(state, &world, world.entities[0].id))
+	testing.expect(t, close_popups_on_escape(state, &world))
+	testing.expect(t, handle_popup_press(state, &world, world.entities[0].id))
+	testing.expect(t, handle_popup_press(state, &world, world.entities[3].id))
+	testing.expect(t, !world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+}
+
+@(test)
 test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history :: proc(
 	t: ^testing.T,
 ) {
@@ -5996,6 +6100,23 @@ test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history ::
 		"missing",
 	)
 	testing.expect(t, !parsed && icon == .Plus)
+	small := UI_Test_U8_Enum.Low
+	changed, parsed = editor_reflected_set_enum_value(
+		any{rawptr(&small), typeid_of(UI_Test_U8_Enum)},
+		"High",
+	)
+	testing.expect(t, changed && parsed && small == .High)
+	signed := UI_Test_I16_Enum.Positive
+	changed, parsed = editor_reflected_set_enum_value(
+		any{rawptr(&signed), typeid_of(UI_Test_I16_Enum)},
+		"Negative",
+	)
+	testing.expect(t, changed && parsed && signed == .Negative)
+	unknown := transmute(UI_Test_U8_Enum)u8(42)
+	unknown_name, unknown_named := editor_reflected_enum_display_name(
+		any{rawptr(&unknown), typeid_of(UI_Test_U8_Enum)},
+	)
+	testing.expect(t, !unknown_named && unknown_name == "<unknown: 42>")
 
 	scene := shared.Scene{}
 	defer delete(scene.entities)
@@ -6006,6 +6127,14 @@ test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history ::
 		shared.Scene_Entity {
 			id = ui_test_id("Enum Inspector"),
 			name = "Enum Inspector",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 48}},
+			has_ui_text = true,
+			ui_text = text,
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Second Enum Inspector"),
+			name = "Second Enum Inspector",
 			has_ui_layout = true,
 			ui_layout = {size = {240, 48}},
 			has_ui_text = true,
@@ -6060,13 +6189,14 @@ test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history ::
 	button_entity := world.entities[enum_button]
 	testing.expect(t, button_entity.ui_button_index >= 0)
 	testing.expect(t, world.ui_buttons[button_entity.ui_button_index].text == "Left")
+	testing.expect(t, handle_popup_press(state, &world, button_entity.id))
 	editor_ui_handle_activation(state, &world, button_entity.id, {})
-	testing.expect(t, state.editor_enum_menu_open)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	menu, menu_found := editor_ui_entity(&world, .Inspector_Enum_Menu)
 	content, content_found := editor_ui_entity(&world, .Inspector_Enum_Menu_Content)
 	testing.expect(t, menu_found && content_found)
 	if menu_found && content_found {
-		testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].hidden)
+		testing.expect(t, world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
 		content_entity := world.entities[content]
 		testing.expect(t, content_entity.ui_list_index >= 0)
 		testing.expect(t, content_entity.ui_scroll_area_index >= 0)
@@ -6082,12 +6212,24 @@ test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history ::
 	if !right_found {
 		return
 	}
+	testing.expect(t, handle_list_press(&world, world.entities[right_item].id))
+	testing.expect(t, close_selection_popup(state, &world, world.entities[right_item].id))
 	editor_ui_handle_activation(state, &world, world.entities[right_item].id, {})
-	testing.expect(t, !state.editor_enum_menu_open)
+	if menu_found {
+		testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
+	}
 	testing.expect(t, world.ui_texts[world.entities[0].ui_text_index].alignment == .Right)
 	testing.expect_value(t, state.editor_history_count, 1)
 	testing.expect(t, editor_undo(state, &world))
 	testing.expect(t, world.ui_texts[world.entities[0].ui_text_index].alignment == .Left)
+
+	testing.expect(t, handle_popup_press(state, &world, button_entity.id))
+	editor_ui_handle_activation(state, &world, button_entity.id, {})
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	state.editor_selected_entity = world.entities[1].id
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
 }
 
 @(test)

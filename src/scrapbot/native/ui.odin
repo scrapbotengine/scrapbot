@@ -34,6 +34,7 @@ system_get_ui_component :: proc "c" (
 			value := step.world.ui_layouts[world_entity.ui_layout_index]
 			payload.layout = {
 				parent = api_uuid_from_shared(value.parent),
+				popup_anchor = api_uuid_from_shared(value.popup_anchor),
 				position = api_vec2_from_shared(value.position),
 				size = api_vec2_from_shared(value.size),
 				min_size = api_vec2_from_shared(value.min_size),
@@ -53,6 +54,14 @@ system_get_ui_component :: proc "c" (
 				tree_parent = api_uuid_from_shared(value.tree_parent),
 				tree_order = c.int(value.tree_order),
 				tree_collapsed = bool_to_c_int(value.tree_collapsed),
+				popup = bool_to_c_int(value.popup),
+				popup_open = bool_to_c_int(value.popup_open),
+				popup_close_on_selection = bool_to_c_int(value.popup_close_on_selection),
+				popup_gap = value.popup_gap,
+				popup_min_width = value.popup_min_width,
+				popup_max_width = value.popup_max_width,
+				popup_max_height = value.popup_max_height,
+				popup_viewport_margin = value.popup_viewport_margin,
 			}
 		case "scrapbot.ui_hstack":
 			if world_entity.ui_hstack_index < 0 ||
@@ -198,6 +207,7 @@ system_get_ui_component :: proc "c" (
 			   world_entity.ui_button_index >= len(step.world.ui_buttons) { return 0 }
 			value := step.world.ui_buttons[world_entity.ui_button_index]
 			payload.button = {
+				popup = api_uuid_from_shared(value.popup),
 				color = api_vec4_from_shared(value.color),
 				size = value.size,
 				alignment = api_text_alignment_from_shared(value.alignment),
@@ -329,6 +339,7 @@ ui_command_from_api_payload :: proc "c" (
 		case "scrapbot.ui_layout":
 			value := shared.UI_Layout_Component {
 				parent = shared_uuid_from_api(payload.layout.parent),
+				popup_anchor = shared_uuid_from_api(payload.layout.popup_anchor),
 				position = shared_vec2_from_api(payload.layout.position),
 				size = shared_vec2_from_api(payload.layout.size),
 				min_size = shared_vec2_from_api(payload.layout.min_size),
@@ -348,6 +359,14 @@ ui_command_from_api_payload :: proc "c" (
 				tree_parent = shared_uuid_from_api(payload.layout.tree_parent),
 				tree_order = int(payload.layout.tree_order),
 				tree_collapsed = payload.layout.tree_collapsed != 0,
+				popup = payload.layout.popup != 0,
+				popup_open = payload.layout.popup_open != 0,
+				popup_close_on_selection = payload.layout.popup_close_on_selection != 0,
+				popup_gap = payload.layout.popup_gap,
+				popup_min_width = payload.layout.popup_min_width,
+				popup_max_width = payload.layout.popup_max_width,
+				popup_max_height = payload.layout.popup_max_height,
+				popup_viewport_margin = payload.layout.popup_viewport_margin,
 			}
 			if !shared.ui_layout_is_valid(value) {
 				return "native ui_layout payload is invalid"
@@ -502,6 +521,7 @@ ui_command_from_api_payload :: proc "c" (
 			value := shared.UI_Button_Component {
 				text = text,
 				font = font,
+				popup = shared_uuid_from_api(payload.button.popup),
 				color = shared_vec4_from_api(payload.button.color),
 				size = payload.button.size,
 				alignment = alignment,

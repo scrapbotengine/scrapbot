@@ -157,6 +157,7 @@ UI_Icon :: enum c.int {
 
 UI_Layout_Payload :: struct {
 	parent: UUID,
+	popup_anchor: UUID,
 	position: Vec2,
 	size: Vec2,
 	min_size: Vec2,
@@ -176,6 +177,14 @@ UI_Layout_Payload :: struct {
 	tree_parent: UUID,
 	tree_order: c.int,
 	tree_collapsed: c.int,
+	popup: c.int,
+	popup_open: c.int,
+	popup_close_on_selection: c.int,
+	popup_gap: f32,
+	popup_min_width: f32,
+	popup_max_width: f32,
+	popup_max_height: f32,
+	popup_viewport_margin: f32,
 }
 
 UI_Stack_Payload :: struct {
@@ -274,6 +283,7 @@ UI_Text_Payload :: struct {
 }
 
 UI_Button_Payload :: struct {
+	popup: UUID,
 	color: Vec4,
 	size: f32,
 	alignment: UI_Text_Alignment,

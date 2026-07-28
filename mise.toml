@@ -254,6 +254,7 @@ node --test tools/test_gpu_offscreen.test.mjs
 node --test tools/gpu_benchmarks.test.mjs
 bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload --frames 1
+bin/scrapbot run examples/ui-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/enum-inspector.json --json
 bin/scrapbot run examples/asteroids --backend null --headless --no-hot-reload --frames 5
 STRESS_JSON="$(bin/scrapbot run examples/ecs-stress --backend null --headless --no-hot-reload --frames 180 --runtime-stats --json)"
 node -e '

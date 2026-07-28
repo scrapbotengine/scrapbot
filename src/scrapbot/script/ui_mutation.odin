@@ -28,6 +28,8 @@ read_ui_component_command_from_luau :: proc "c" (
 			value := current_ui_layout(world, entity_index, base)
 			if err := read_ui_uuid_field(L, payload_index, "parent", &value.parent);
 			   err != "" { return err }
+			if err := read_ui_uuid_field(L, payload_index, "popup_anchor", &value.popup_anchor);
+			   err != "" { return err }
 			if err := read_ui_vec2_field(L, payload_index, "position", &value.position);
 			   err != "" { return err }
 			if err := read_ui_vec2_field(L, payload_index, "size", &value.size);
@@ -77,6 +79,42 @@ read_ui_component_command_from_luau :: proc "c" (
 				payload_index,
 				"tree_collapsed",
 				&value.tree_collapsed,
+			); err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "popup", &value.popup);
+			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "popup_open", &value.popup_open);
+			   err != "" { return err }
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"popup_close_on_selection",
+				&value.popup_close_on_selection,
+			); err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "popup_gap", &value.popup_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"popup_min_width",
+				&value.popup_min_width,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"popup_max_width",
+				&value.popup_max_width,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"popup_max_height",
+				&value.popup_max_height,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"popup_viewport_margin",
+				&value.popup_viewport_margin,
 			); err != "" { return err }
 			if err := read_ui_bool_field(
 				L,
@@ -417,6 +455,8 @@ read_ui_component_command_from_luau :: proc "c" (
 			if err := read_ui_string_field(L, payload_index, "text", &value.text);
 			   err != "" { return err }
 			if err := read_ui_string_field(L, payload_index, "font", &value.font);
+			   err != "" { return err }
+			if err := read_ui_uuid_field(L, payload_index, "popup", &value.popup);
 			   err != "" { return err }
 			if err := read_ui_vec4_field(L, payload_index, "color", &value.color);
 			   err != "" { return err }

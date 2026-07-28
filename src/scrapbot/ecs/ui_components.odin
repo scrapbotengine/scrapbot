@@ -278,7 +278,16 @@ set_ui_layout :: proc(world: ^World, entity_index: int, value: UI_Layout_Compone
 			current.tree_item != value.tree_item ||
 			current.tree_parent != value.tree_parent ||
 			current.tree_order != value.tree_order ||
-			current.tree_collapsed != value.tree_collapsed
+			current.tree_collapsed != value.tree_collapsed ||
+			current.popup != value.popup ||
+			current.popup_anchor != value.popup_anchor ||
+			current.popup_open != value.popup_open ||
+			current.popup_close_on_selection != value.popup_close_on_selection ||
+			current.popup_gap != value.popup_gap ||
+			current.popup_min_width != value.popup_min_width ||
+			current.popup_max_width != value.popup_max_width ||
+			current.popup_max_height != value.popup_max_height ||
+			current.popup_viewport_margin != value.popup_viewport_margin
 		current^ = value
 		if hierarchy_changed {
 			mark_ui_subtree_dirty(world, entity_index)

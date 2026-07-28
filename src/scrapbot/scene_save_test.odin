@@ -98,6 +98,41 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_scene_popup_serialization_preserves_disabled_configuration :: proc(t: ^testing.T) {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	anchor := shared.entity_uuid_from_engine_name("scene-save-popup-anchor")
+	popup := shared.entity_uuid_from_engine_name("scene-save-popup")
+	entity := shared.Scene_Entity {
+		id = popup,
+		name = "Configured Popup",
+		has_ui_layout = true,
+		ui_layout = {
+			size = {180, 240},
+			popup_anchor = anchor,
+			popup_open = true,
+			popup_close_on_selection = true,
+			popup_gap = 4,
+			popup_min_width = 180,
+			popup_max_width = 320,
+			popup_max_height = 160,
+			popup_viewport_margin = 6,
+		},
+	}
+	write_scene_entity(&builder, &entity)
+	serialized := strings.to_string(builder)
+	testing.expect(t, !strings.contains(serialized, "popup = true"))
+	testing.expect(t, strings.contains(serialized, "popup_anchor ="))
+	testing.expect(t, strings.contains(serialized, "popup_open = true"))
+	testing.expect(t, strings.contains(serialized, "popup_close_on_selection = true"))
+	testing.expect(t, strings.contains(serialized, "popup_gap = 4"))
+	testing.expect(t, strings.contains(serialized, "popup_min_width = 180"))
+	testing.expect(t, strings.contains(serialized, "popup_max_width = 320"))
+	testing.expect(t, strings.contains(serialized, "popup_max_height = 160"))
+	testing.expect(t, strings.contains(serialized, "popup_viewport_margin = 6"))
+}
+
+@(test)
 test_scene_world_environment_serialization_persists_procedural_controls :: proc(t: ^testing.T) {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)

@@ -501,6 +501,7 @@ export type ScrapbotShadowReceiverComponent = ScrapbotComponent<ScrapbotShadowRe
 
 export type ScrapbotUiLayout = {
 	parent: string?,
+	popup_anchor: string?,
 	position: Vec2?,
 	size: Vec2?,
 	min_size: Vec2?,
@@ -520,10 +521,19 @@ export type ScrapbotUiLayout = {
 	tree_parent: string?,
 	tree_order: number?,
 	tree_collapsed: boolean?,
+	popup: boolean?,
+	popup_open: boolean?,
+	popup_close_on_selection: boolean?,
+	popup_gap: number?,
+	popup_min_width: number?,
+	popup_max_width: number?,
+	popup_max_height: number?,
+	popup_viewport_margin: number?,
 }
 
 export type ReadonlyScrapbotUiLayout = {
 	read parent: string,
+	read popup_anchor: string,
 	read position: ReadonlyVec2,
 	read size: ReadonlyVec2,
 	read min_size: ReadonlyVec2,
@@ -543,6 +553,14 @@ export type ReadonlyScrapbotUiLayout = {
 	read tree_parent: string,
 	read tree_order: number,
 	read tree_collapsed: boolean,
+	read popup: boolean,
+	read popup_open: boolean,
+	read popup_close_on_selection: boolean,
+	read popup_gap: number,
+	read popup_min_width: number,
+	read popup_max_width: number,
+	read popup_max_height: number,
+	read popup_viewport_margin: number,
 }
 
 export type ScrapbotUiLayoutComponent = ScrapbotComponent<ScrapbotUiLayout, ReadonlyScrapbotUiLayout>
@@ -808,6 +826,7 @@ export type ScrapbotUiStateComponent = ScrapbotComponent<never, ReadonlyScrapbot
 export type ScrapbotUiButton = {
 	text: string?,
 	font: string?,
+	popup: string?,
 	color: Vec4?,
 	size: number?,
 	alignment: string?,
@@ -824,6 +843,7 @@ export type ScrapbotUiButton = {
 export type ReadonlyScrapbotUiButton = {
 	read text: string,
 	read font: string,
+	read popup: string,
 	read color: ReadonlyVec4,
 	read size: number,
 	read alignment: string,

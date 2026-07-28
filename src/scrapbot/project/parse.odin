@@ -1005,6 +1005,15 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						} else {
 							found = false
 						}
+					case "popup_anchor":
+						raw_anchor, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_layout.popup_anchor, found = shared.entity_uuid_parse(
+								raw_anchor,
+							)
+						} else {
+							found = false
+						}
 					case "position":
 						current.ui_layout.position, found = parse_vec2(value)
 					case "size":
@@ -1050,6 +1059,22 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_layout.tree_order, found = parse_int(value)
 					case "tree_collapsed":
 						current.ui_layout.tree_collapsed, found = parse_bool(value)
+					case "popup":
+						current.ui_layout.popup, found = parse_bool(value)
+					case "popup_open":
+						current.ui_layout.popup_open, found = parse_bool(value)
+					case "popup_close_on_selection":
+						current.ui_layout.popup_close_on_selection, found = parse_bool(value)
+					case "popup_gap":
+						current.ui_layout.popup_gap, found = parse_f32(value)
+					case "popup_min_width":
+						current.ui_layout.popup_min_width, found = parse_f32(value)
+					case "popup_max_width":
+						current.ui_layout.popup_max_width, found = parse_f32(value)
+					case "popup_max_height":
+						current.ui_layout.popup_max_height, found = parse_f32(value)
+					case "popup_viewport_margin":
+						current.ui_layout.popup_viewport_margin, found = parse_f32(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -1303,7 +1328,15 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				current.has_ui_button = true
 				switch key {case "text":
 						current.ui_button.text, found = parse_basic_string(value); case "font":
-						current.ui_button.font, found = parse_basic_string(value); case "color":
+						current.ui_button.font, found = parse_basic_string(value)
+					case "popup":
+						raw_popup, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_button.popup, found = shared.entity_uuid_parse(raw_popup)
+						} else {
+							found = false
+						}
+					case "color":
 						current.ui_button.color, found = parse_vec4(value); case "size":
 						current.ui_button.size, found = parse_f32(value); case "alignment":
 						current.ui_button.alignment, found = parse_ui_text_alignment(
@@ -1766,6 +1799,40 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				.Invalid_Field,
 				fmt.tprintf("UI entity '%s' cannot parent itself", entity.name),
 			)
+		}
+	}
+	for entity in scene.entities {
+		if entity.has_ui_layout && entity.ui_layout.popup_anchor != (shared.Entity_UUID{}) {
+			anchor_found := false
+			for candidate in scene.entities {
+				if candidate.id == entity.ui_layout.popup_anchor && candidate.has_ui_layout {
+					anchor_found = true
+					break
+				}
+			}
+			if !anchor_found || entity.ui_layout.popup_anchor == entity.id {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("UI popup anchor for '%s' is invalid", entity.name),
+				)
+			}
+		}
+		if entity.has_ui_button && entity.ui_button.popup != (shared.Entity_UUID{}) {
+			popup_found := false
+			for candidate in scene.entities {
+				if candidate.id == entity.ui_button.popup &&
+				   candidate.has_ui_layout &&
+				   candidate.ui_layout.popup {
+					popup_found = true
+					break
+				}
+			}
+			if !popup_found || entity.ui_button.popup == entity.id {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("UI button popup for '%s' is invalid", entity.name),
+				)
+			}
 		}
 	}
 	for entity in scene.entities {

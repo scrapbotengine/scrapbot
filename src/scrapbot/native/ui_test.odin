@@ -26,7 +26,20 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	layout.tree_parent = shared.entity_uuid_from_engine_name("Native Tree Parent")
 	layout.tree_order = 6
 	layout.tree_collapsed = true
+	layout.popup = true
+	layout.popup_anchor = shared.entity_uuid_from_engine_name("Native Popup Anchor")
+	layout.popup_open = true
+	layout.popup_close_on_selection = true
+	layout.popup_gap = 4
+	layout.popup_min_width = 180
+	layout.popup_max_width = 320
+	layout.popup_max_height = 160
+	layout.popup_viewport_margin = 6
 	testing.expect(t, ecs.set_ui_layout(&world, entity_index, layout))
+	button := shared.ui_button_default()
+	button.text = "Popup"
+	button.popup = world.entities[entity_index].uuid
+	testing.expect(t, ecs.set_ui_button(&world, entity_index, button))
 	text := shared.ui_text_default()
 	text.text = "Before"
 	text.font = "Inter"
@@ -182,6 +195,27 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, layout_payload.layout.tree_order == 6)
 	testing.expect(t, layout_payload.layout.tree_collapsed != 0)
+	testing.expect(t, layout_payload.layout.popup != 0)
+	testing.expect(
+		t,
+		layout_payload.layout.popup_anchor == api_uuid_from_shared(layout.popup_anchor),
+	)
+	testing.expect(t, layout_payload.layout.popup_open != 0)
+	testing.expect(t, layout_payload.layout.popup_close_on_selection != 0)
+	testing.expect(t, layout_payload.layout.popup_gap == 4)
+	testing.expect(t, layout_payload.layout.popup_min_width == 180)
+	testing.expect(t, layout_payload.layout.popup_max_width == 320)
+	testing.expect(t, layout_payload.layout.popup_max_height == 160)
+	testing.expect(t, layout_payload.layout.popup_viewport_margin == 6)
+	button_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_button", &button_payload) != 0,
+	)
+	testing.expect(
+		t,
+		button_payload.button.popup == api_uuid_from_shared(world.entities[entity_index].uuid),
+	)
 	list_payload: api.UI_Component_Payload
 	testing.expect(
 		t,

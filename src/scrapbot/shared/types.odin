@@ -442,6 +442,7 @@ Point_Light_Component :: struct {
 
 UI_Layout_Component :: struct {
 	parent: Entity_UUID,
+	popup_anchor: Entity_UUID,
 	position: Vec2,
 	size: Vec2,
 	min_size: Vec2,
@@ -461,6 +462,14 @@ UI_Layout_Component :: struct {
 	tree_parent: Entity_UUID,
 	tree_order: int,
 	tree_collapsed: bool,
+	popup: bool,
+	popup_open: bool,
+	popup_close_on_selection: bool,
+	popup_gap: f32,
+	popup_min_width: f32,
+	popup_max_width: f32,
+	popup_max_height: f32,
+	popup_viewport_margin: f32,
 }
 UI_Stack_Component :: struct {
 	gap: f32,
@@ -585,6 +594,7 @@ UI_Text_Component :: struct {
 UI_Button_Component :: struct {
 	text: string,
 	font: string,
+	popup: Entity_UUID,
 	color: Vec4,
 	size: f32,
 	alignment: UI_Text_Alignment,
@@ -773,6 +783,13 @@ ui_layout_is_valid :: proc "contextless" (value: UI_Layout_Component) -> bool {
 		value.corner_radius >= 0 &&
 		value.min_size.x >= 0 &&
 		value.min_size.y >= 0 &&
+		value.popup_gap >= 0 &&
+		value.popup_min_width >= 0 &&
+		value.popup_max_width >= 0 &&
+		value.popup_max_height >= 0 &&
+		value.popup_viewport_margin >= 0 &&
+		(value.popup_max_width == 0 || value.popup_max_width >= value.popup_min_width) &&
+		(!value.popup || value.parent == (Entity_UUID{})) &&
 		ui_vec4_is_non_negative(value.margin) &&
 		ui_vec4_is_non_negative(value.padding) \
 	)

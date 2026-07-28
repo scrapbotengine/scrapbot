@@ -447,6 +447,19 @@ editor_reflected_value_is_enum :: proc(value: any) -> bool {
 	return value != nil && len(reflect.enum_field_names(value.id)) > 0
 }
 
+editor_reflected_enum_display_name :: proc(value: any) -> (string, bool) {
+	if !editor_reflected_value_is_enum(value) {
+		return "", false
+	}
+	if name, found := reflect.enum_name_from_value_any(value); found {
+		return name, true
+	}
+	if raw, found := reflect.as_i64(value); found {
+		return fmt.tprintf("<unknown: %d>", raw), false
+	}
+	return "<unknown>", false
+}
+
 editor_reflected_set_enum_value :: proc(value: any, name: string) -> (bool, bool) {
 	if !editor_reflected_value_is_enum(value) {
 		return false, false
@@ -1107,17 +1120,21 @@ editor_reflected_set_field_text :: proc(
 		return false, false
 	}
 	changed, parsed := false, false
-	switch field.field_type {
-		case .Number, .Vec2, .Vec3, .Vec4, .Color:
-			number, ok := strconv.parse_f32(strings.trim_space(text))
-			if !ok {
+	if editor_reflected_value_is_enum(field_value) {
+		changed, parsed = editor_reflected_set_enum_value(field_value, text)
+	} else {
+		switch field.field_type {
+			case .Number, .Vec2, .Vec3, .Vec4, .Color:
+				number, ok := strconv.parse_f32(strings.trim_space(text))
+				if !ok {
+					return false, false
+				}
+				changed, parsed = editor_reflected_set_number(field_value, axis, number)
+			case .String:
+				changed, parsed = editor_reflected_set_text_value(field_value, text)
+			case .Bool:
 				return false, false
-			}
-			changed, parsed = editor_reflected_set_number(field_value, axis, number)
-		case .String:
-			changed, parsed = editor_reflected_set_text_value(field_value, text)
-		case .Bool:
-			return false, false
+		}
 	}
 	if !parsed {
 		return false, false

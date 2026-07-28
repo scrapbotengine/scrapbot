@@ -450,6 +450,7 @@ init_registry :: proc(registry: ^Registry) {
 		"scrapbot.ui_layout",
 		{
 			Field_Definition{name = "parent", field_type = .String},
+			Field_Definition{name = "popup_anchor", field_type = .String},
 			Field_Definition{name = "position", field_type = .Vec2},
 			Field_Definition{name = "size", field_type = .Vec2},
 			Field_Definition{name = "min_size", field_type = .Vec2},
@@ -469,6 +470,14 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "tree_parent", field_type = .String},
 			Field_Definition{name = "tree_order", field_type = .Number},
 			Field_Definition{name = "tree_collapsed", field_type = .Bool},
+			Field_Definition{name = "popup", field_type = .Bool},
+			Field_Definition{name = "popup_open", field_type = .Bool},
+			Field_Definition{name = "popup_close_on_selection", field_type = .Bool},
+			Field_Definition{name = "popup_gap", field_type = .Number},
+			Field_Definition{name = "popup_min_width", field_type = .Number},
+			Field_Definition{name = "popup_max_width", field_type = .Number},
+			Field_Definition{name = "popup_max_height", field_type = .Number},
+			Field_Definition{name = "popup_viewport_margin", field_type = .Number},
 		},
 	)
 	stack_fields := [?]Field_Definition {
@@ -614,6 +623,7 @@ init_registry :: proc(registry: ^Registry) {
 		{
 			Field_Definition{name = "text", field_type = .String},
 			Field_Definition{name = "font", field_type = .String},
+			Field_Definition{name = "popup", field_type = .String},
 			Field_Definition{name = "color", field_type = .Vec4},
 			Field_Definition{name = "size", field_type = .Number},
 			Field_Definition{name = "alignment", field_type = .String},

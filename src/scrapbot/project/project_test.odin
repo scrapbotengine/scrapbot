@@ -1421,6 +1421,69 @@ size = 14
 }
 
 @(test)
+test_scene_parses_public_popup_anchors_and_button_targets :: proc(t: ^testing.T) {
+	popup_id, _ := shared.entity_uuid_parse("a6000000-0000-4000-8000-000000000041")
+	button_id, _ := shared.entity_uuid_parse("a6000000-0000-4000-8000-000000000040")
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000040"
+name = "Popup Button"
+[entities.ui_layout]
+size = [180, 30]
+[entities.ui_button]
+text = "Choose"
+popup = "a6000000-0000-4000-8000-000000000041"
+[[entities]]
+id = "a6000000-0000-4000-8000-000000000041"
+name = "Popup"
+[entities.ui_layout]
+size = [180, 420]
+popup = true
+popup_anchor = "a6000000-0000-4000-8000-000000000040"
+popup_open = true
+popup_close_on_selection = true
+popup_gap = 4
+popup_min_width = 180
+popup_max_width = 320
+popup_max_height = 160
+popup_viewport_margin = 6
+[entities.ui_vstack]
+fill = true
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	testing.expect_value(t, len(scene.entities), 2)
+	if len(scene.entities) != 2 {
+		return
+	}
+	testing.expect_value(t, scene.entities[0].ui_button.popup, popup_id)
+	layout := scene.entities[1].ui_layout
+	testing.expect(t, layout.popup)
+	testing.expect_value(t, layout.popup_anchor, button_id)
+	testing.expect(t, layout.popup_open && layout.popup_close_on_selection)
+	testing.expect(t, layout.popup_gap == 4)
+	testing.expect(t, layout.popup_min_width == 180)
+	testing.expect(t, layout.popup_max_width == 320)
+	testing.expect(t, layout.popup_max_height == 160)
+	testing.expect(t, layout.popup_viewport_margin == 6)
+
+	invalid, invalid_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000042"
+name = "Broken Popup Button"
+[entities.ui_layout]
+size = [180, 30]
+[entities.ui_button]
+text = "Choose"
+popup = "a6000000-0000-4000-8000-000000000043"
+`,
+	)
+	defer destroy_scene(&invalid)
+	testing.expect(t, invalid_result.err == .Invalid_Field)
+}
+
+@(test)
 test_scene_parses_styled_ui_progress :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]

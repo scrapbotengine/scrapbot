@@ -899,12 +899,19 @@ diagnostic_driver_write_dump :: proc(
 			},
 		)
 	}
+	editor_component_menu_open := false
+	if menu, found := editor_ui_entity(world, .Inspector_Component_Menu); found {
+		entity := world.entities[menu]
+		if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
+			editor_component_menu_open = world.ui_layouts[entity.ui_layout_index].popup_open
+		}
+	}
 	dump := Diagnostic_Tree_Dump {
 		schema_version = DIAGNOSTIC_DRIVER_SCHEMA_VERSION,
 		drawable_width = drawable_width,
 		drawable_height = drawable_height,
 		editor_visible = state.editor_visible,
-		editor_component_menu_open = state.editor_component_menu_open,
+		editor_component_menu_open = editor_component_menu_open,
 		editor_inspector_snapshot_refresh_count = state.editor_inspector_snapshot_refresh_count,
 		nodes = nodes[:],
 	}

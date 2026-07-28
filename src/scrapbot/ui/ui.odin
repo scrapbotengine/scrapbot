@@ -367,10 +367,6 @@ State :: struct {
 	editor_inspector_snapshot_resource_version: u32,
 	editor_inspector_snapshot_stopped: bool,
 	editor_inspector_snapshot_refresh_count: u64,
-	editor_enum_menu_open: bool,
-	editor_enum_menu_button_slot: int,
-	editor_component_menu_open: bool,
-	editor_resource_menu_open: bool,
 	editor_layout_invalidated: bool,
 	editor_transport_visual_state: Editor_Transport_Visual_State,
 	editor_transport_visual_valid: bool,
@@ -1069,9 +1065,6 @@ reconcile :: proc(
 	editor_height := surface_height / editor_scale
 	reconcile_editor_ui_world(state, world)
 	if err := sync_ui_structure(state, world); err != "" { return err }
-	editor_ui_anchor_enum_menu(state, world, editor_width, editor_height)
-	editor_ui_anchor_component_menu(state, world, editor_width, editor_height)
-	editor_ui_anchor_resource_menu(state, world, editor_width, editor_height)
 	project_layout := Rect{0, 0, width, height}
 	editor_layout := Rect{0, 0, editor_width, editor_height}
 	fresh_pointer_press :=
@@ -1163,9 +1156,6 @@ reconcile :: proc(
 		!editor_pointer.primary_down &&
 		state.editor_previous_primary_down
 	project_pressed, project_pressed_ok := update_interaction(state, project_pointer, false)
-	component_menu_was_open := state.editor_component_menu_open
-	resource_menu_was_open := state.editor_resource_menu_open
-	enum_menu_was_open := state.editor_enum_menu_open
 	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
 	if project_press_started && project_pressed_ok {
 		list_drag_begin(state, world, project_pressed, project_pointer.position, false)
@@ -1186,7 +1176,11 @@ reconcile :: proc(
 			state,
 			{kind = .Activated, entity = pressed, position = editor_pointer.position},
 		)
-		_ = handle_list_press(world, pressed)
+		panel_changed = handle_popup_press(state, world, pressed) || panel_changed
+		list_changed := handle_list_press(world, pressed)
+		if list_changed {
+			panel_changed = close_selection_popup(state, world, pressed) || panel_changed
+		}
 		editor_ui_prepare_input_focus(state, world, int(pressed.index))
 		handle_input_press(state, world, pressed, editor_pointer.position)
 		checkbox_changed := handle_checkbox_press(state, world, pressed)
@@ -1205,43 +1199,17 @@ reconcile :: proc(
 		}
 		panel_changed = panel_title_changed || panel_changed
 	}
-	if component_menu_was_open &&
-	   editor_press_started &&
-	   (!pressed_ok || !editor_ui_component_menu_contains(world, pressed)) {
-		editor_ui_close_component_menu(state, world)
-		panel_changed = true
-	}
-	if enum_menu_was_open &&
-	   editor_press_started &&
-	   (!pressed_ok || !editor_ui_enum_menu_contains(state, world, pressed)) {
-		editor_ui_close_enum_menu(state, world)
-		panel_changed = true
-	}
-	if state.editor_enum_menu_open && keyboard.escape {
-		editor_ui_close_enum_menu(state, world)
-		panel_changed = true
-	}
-	if state.editor_component_menu_open && keyboard.escape {
-		editor_ui_close_component_menu(state, world)
-		panel_changed = true
-	}
-	if resource_menu_was_open &&
-	   editor_press_started &&
-	   (!pressed_ok || !editor_ui_resource_menu_contains(world, pressed)) {
-		editor_ui_close_resource_menu(state, world)
-		panel_changed = true
-	}
-	if state.editor_resource_menu_open && keyboard.escape {
-		editor_ui_close_resource_menu(state, world)
-		panel_changed = true
-	}
 	if project_pressed_ok {
 		_ = ecs.mark_ui_activated(world, int(project_pressed.index))
 		append_ui_event(
 			state,
 			{kind = .Activated, entity = project_pressed, position = project_pointer.position},
 		)
-		_ = handle_list_press(world, project_pressed)
+		panel_changed = handle_popup_press(state, world, project_pressed) || panel_changed
+		list_changed := handle_list_press(world, project_pressed)
+		if list_changed {
+			panel_changed = close_selection_popup(state, world, project_pressed) || panel_changed
+		}
 		handle_input_press(state, world, project_pressed, project_pointer.position)
 		checkbox_changed := handle_checkbox_press(state, world, project_pressed)
 		if checkbox_changed {
@@ -1261,6 +1229,18 @@ reconcile :: proc(
 			)
 		}
 		panel_changed = panel_title_changed || panel_changed
+	}
+	if editor_press_started && !pressed_ok {
+		panel_changed = close_popups_on_escape(state, world, true, false) || panel_changed
+	}
+	if project_press_started && !project_pressed_ok {
+		panel_changed = close_popups_on_escape(state, world, false, true) || panel_changed
+	}
+	if keyboard.escape {
+		panel_changed = close_popups_on_escape(state, world) || panel_changed
+	}
+	if keyboard.editor_toggle {
+		panel_changed = close_popups_on_escape(state, world, true, false) || panel_changed
 	}
 	panel_changed = editor_ui_consume_events(state, world) || panel_changed
 	sync_ui_interaction_states(state, world)
@@ -1621,90 +1601,6 @@ project_pointer_input :: proc(
 	}
 }
 
-Popup_Placement :: struct {
-	minimum_width: f32,
-	maximum_width: f32,
-	maximum_height: f32,
-	viewport_margin: f32,
-	gap: f32,
-	viewport_top: f32,
-	viewport_bottom: f32,
-}
-
-popup_contains_entity :: proc(
-	world: ^shared.World,
-	entity: shared.Entity,
-	anchor_entity_index, popup_entity_index: int,
-) -> bool {
-	if world == nil || !ecs.entity_is_alive(world, int(entity.index)) {
-		return false
-	}
-	index := int(entity.index)
-	origin := world.entities[index].origin
-	for _ in 0 ..< MAX_NODES {
-		if index == anchor_entity_index || index == popup_entity_index {
-			return true
-		}
-		value := world.entities[index]
-		if value.ui_layout_index < 0 || value.ui_layout_index >= len(world.ui_layouts) {
-			break
-		}
-		parent := world.ui_layouts[value.ui_layout_index].parent
-		if parent == (shared.Entity_UUID{}) {
-			break
-		}
-		index = find_parent_entity(world, parent, origin)
-		if index < 0 {
-			break
-		}
-	}
-	return false
-}
-
-place_popup :: proc(
-	state: ^State,
-	world: ^shared.World,
-	popup_entity_index, anchor_entity_index: int,
-	content_height, viewport_width, viewport_height: f32,
-	placement: Popup_Placement,
-) -> bool {
-	if state == nil ||
-	   world == nil ||
-	   !ecs.entity_is_alive(world, popup_entity_index) ||
-	   !ecs.entity_is_alive(world, anchor_entity_index) {
-		return false
-	}
-	popup := world.entities[popup_entity_index]
-	if popup.ui_layout_index < 0 || popup.ui_layout_index >= len(world.ui_layouts) {
-		return false
-	}
-	anchor_node := find_node_by_entity_index(state, anchor_entity_index)
-	if anchor_node < 0 || !state.nodes[anchor_node].laid_out {
-		return false
-	}
-	anchor := state.nodes[anchor_node].rect
-	if anchor.width <= 0 {
-		return false
-	}
-	margin := max(placement.viewport_margin, 0)
-	gap := max(placement.gap, 0)
-	bottom := viewport_height - margin - max(placement.viewport_bottom, 0)
-	top := margin + max(placement.viewport_top, 0)
-	layout := &world.ui_layouts[popup.ui_layout_index]
-	layout.size.x = clamp(anchor.width, placement.minimum_width, placement.maximum_width)
-	layout.size.y = min(content_height, min(placement.maximum_height, max(bottom - top, 0)))
-	layout.position.x = clamp(
-		anchor.x,
-		margin,
-		max(viewport_width - layout.size.x - margin, margin),
-	)
-	layout.position.y = anchor.y + anchor.height + gap
-	if layout.position.y + layout.size.y > bottom {
-		layout.position.y = max(anchor.y - layout.size.y - gap, top)
-	}
-	return true
-}
-
 editor_clear_selection :: proc(state: ^State) {if state == nil { return }
 	state.editor_has_selection = false
 	state.editor_snapshot_valid = false
@@ -1888,6 +1784,75 @@ find_parent_entity :: proc(
 	return -1
 }
 
+ui_layout_is_popup :: proc "contextless" (layout: shared.UI_Layout_Component) -> bool {
+	return layout.popup
+}
+
+layout_popup_root :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	viewport: Rect,
+) -> string {
+	node := &state.nodes[node_index]
+	layout := world.ui_layouts[node.layout_index]
+	if !layout.popup_open {
+		return ""
+	}
+	anchor_entity_index, anchor_found := ecs.entity_index_by_uuid(world, layout.popup_anchor)
+	if !anchor_found || world.entities[anchor_entity_index].origin != node.origin {
+		_ = set_popup_open(world, int(node.entity.index), false)
+		return ""
+	}
+	anchor_node_index := find_node_by_entity_index(state, anchor_entity_index)
+	if anchor_node_index < 0 || !state.nodes[anchor_node_index].laid_out {
+		_ = set_popup_open(world, int(node.entity.index), false)
+		return ""
+	}
+	anchor := state.nodes[anchor_node_index].rect
+	margin := max(layout.popup_viewport_margin, 0)
+	gap := max(layout.popup_gap, 0)
+	top := viewport.y + margin
+	bottom := viewport.y + viewport.height - margin
+	size := node_layout_size(world, node^, layout)
+	if layout.popup_min_width > 0 {
+		size.x = max(size.x, layout.popup_min_width)
+	}
+	if layout.popup_max_width > 0 {
+		size.x = min(size.x, layout.popup_max_width)
+	}
+	size.x = min(size.x, max(viewport.width - margin * 2, 0))
+	available_height := max(bottom - top, 0)
+	if layout.popup_max_height > 0 {
+		available_height = min(available_height, layout.popup_max_height)
+	}
+	size.y = min(size.y, available_height)
+	position := shared.Vec2 {
+		clamp(
+			anchor.x,
+			viewport.x + margin,
+			max(viewport.x + viewport.width - size.x - margin, viewport.x + margin),
+		),
+		anchor.y + anchor.height + gap,
+	}
+	if position.y + size.y > bottom {
+		position.y = max(anchor.y - size.y - gap, top)
+	}
+	return layout_node(
+		state,
+		world,
+		node_index,
+		viewport,
+		position,
+		true,
+		size,
+		true,
+		{},
+		false,
+		0,
+	)
+}
+
 layout_all :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -1937,8 +1902,32 @@ layout_all :: proc(
 			if state.nodes[i].origin == .Editor {
 				viewport = editor_viewport
 			}
+			layout := world.ui_layouts[state.nodes[i].layout_index]
+			if ui_layout_is_popup(layout) {
+				continue
+			}
 			if err := layout_node(state, world, i, viewport, {}, false, {}, false, {}, false, 0);
 			   err != "" {
+				return err
+			}
+		}
+		for i in 0 ..< state.node_count {
+			if state.nodes[i].parent_entity_index >= 0 {
+				continue
+			}
+			if (state.nodes[i].origin == .Editor && !layout_editor) ||
+			   (state.nodes[i].origin != .Editor && !layout_project) {
+				continue
+			}
+			layout := world.ui_layouts[state.nodes[i].layout_index]
+			if !ui_layout_is_popup(layout) {
+				continue
+			}
+			viewport := project_viewport
+			if state.nodes[i].origin == .Editor {
+				viewport = editor_viewport
+			}
+			if err := layout_popup_root(state, world, i, viewport); err != "" {
 				return err
 			}
 		}
@@ -2494,7 +2483,13 @@ layout_node :: proc(
 	node := &state.nodes[node_index]; layout := world.ui_layouts[node.layout_index]
 	node.laid_out = true
 	layout_size := node_layout_size(world, node^, layout)
-	if node.parent_entity_index < 0 {
+	if node.parent_entity_index < 0 && flowed {
+		size := layout_size
+		if has_flow_size {
+			size = flow_size
+		}
+		node.rect = {flow_position.x, flow_position.y, size.x, size.y}
+	} else if node.parent_entity_index < 0 {
 		if layout.fill_width {
 			layout_size.x = max(
 				parent.width - layout.position.x - layout.margin.w - layout.margin.y,
@@ -4301,6 +4296,129 @@ list_drag_update :: proc(
 		)
 	}
 	list_drag_reset(state, world, slot)
+}
+
+set_popup_open :: proc(world: ^shared.World, entity_index: int, open: bool) -> bool {
+	if world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return false
+	}
+	entity := world.entities[entity_index]
+	if entity.ui_layout_index < 0 || entity.ui_layout_index >= len(world.ui_layouts) {
+		return false
+	}
+	layout := world.ui_layouts[entity.ui_layout_index]
+	if !ui_layout_is_popup(layout) || layout.popup_open == open {
+		return false
+	}
+	layout.popup_open = open
+	if !ecs.set_ui_layout(world, entity_index, layout) {
+		return false
+	}
+	_ = ecs.mark_ui_changed(world, entity_index)
+	return true
+}
+
+popup_contains_node :: proc(state: ^State, popup_node_index, node_index: int) -> bool {
+	if state == nil || popup_node_index < 0 || node_index < 0 {
+		return false
+	}
+	for index := node_index; index >= 0; index = state.nodes[index].parent_node_index {
+		if index == popup_node_index {
+			return true
+		}
+	}
+	return false
+}
+
+handle_popup_press :: proc(state: ^State, world: ^shared.World, pressed: shared.Entity) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	pressed_node_index := find_node(state, pressed)
+	pressed_entity_index := int(pressed.index)
+	if pressed_entity_index < 0 || pressed_entity_index >= len(world.entities) {
+		return false
+	}
+	pressed_entity := world.entities[pressed_entity_index]
+	changed := false
+	toggle_node_index := -1
+	popup_target: shared.Entity_UUID
+	if pressed_entity.ui_button_index >= 0 &&
+	   pressed_entity.ui_button_index < len(world.ui_buttons) {
+		popup_target = world.ui_buttons[pressed_entity.ui_button_index].popup
+	}
+	for node, node_index in state.nodes[:state.node_count] {
+		if (node.origin == .Editor) != (pressed_entity.origin == .Editor) {
+			continue
+		}
+		layout := world.ui_layouts[node.layout_index]
+		if !ui_layout_is_popup(layout) {
+			continue
+		}
+		if popup_target != (shared.Entity_UUID{}) &&
+		   world.entities[int(node.entity.index)].uuid == popup_target {
+			toggle_node_index = node_index
+			continue
+		}
+		if layout.popup_open && !popup_contains_node(state, node_index, pressed_node_index) {
+			changed = set_popup_open(world, int(node.entity.index), false) || changed
+		}
+	}
+	if toggle_node_index >= 0 {
+		node := state.nodes[toggle_node_index]
+		layout := world.ui_layouts[node.layout_index]
+		if layout.popup_anchor != pressed_entity.uuid {
+			layout.popup_anchor = pressed_entity.uuid
+			_ = ecs.set_ui_layout(world, int(node.entity.index), layout)
+		}
+		changed = set_popup_open(world, int(node.entity.index), !layout.popup_open) || changed
+	}
+	return changed
+}
+
+close_selection_popup :: proc(
+	state: ^State,
+	world: ^shared.World,
+	selected: shared.Entity,
+) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	for node_index := find_node(state, selected);
+	    node_index >= 0;
+	    node_index = state.nodes[node_index].parent_node_index {
+		node := state.nodes[node_index]
+		layout := world.ui_layouts[node.layout_index]
+		if ui_layout_is_popup(layout) && layout.popup_open && layout.popup_close_on_selection {
+			return set_popup_open(world, int(node.entity.index), false)
+		}
+	}
+	return false
+}
+
+close_popups_on_escape :: proc(
+	state: ^State,
+	world: ^shared.World,
+	editor_only := false,
+	project_only := false,
+) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	changed := false
+	for node in state.nodes[:state.node_count] {
+		if editor_only && node.origin != .Editor {
+			continue
+		}
+		if project_only && node.origin == .Editor {
+			continue
+		}
+		layout := world.ui_layouts[node.layout_index]
+		if ui_layout_is_popup(layout) && layout.popup_open {
+			changed = set_popup_open(world, int(node.entity.index), false) || changed
+		}
+	}
+	return changed
 }
 
 handle_list_press :: proc(world: ^shared.World, pressed: shared.Entity) -> bool {

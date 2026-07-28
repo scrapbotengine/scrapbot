@@ -217,6 +217,37 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		}
 		write_scene_value(builder, "tree_order", fmt.tprintf("%d", value.tree_order))
 		write_scene_value(builder, "tree_collapsed", scene_bool(value.tree_collapsed))
+		if value.popup {
+			write_scene_value(builder, "popup", scene_bool(true))
+		}
+		if value.popup_anchor != (shared.Entity_UUID{}) {
+			write_scene_string(builder, "popup_anchor", scene_uuid(value.popup_anchor))
+		}
+		if value.popup_open {
+			write_scene_value(builder, "popup_open", scene_bool(true))
+		}
+		if value.popup_close_on_selection {
+			write_scene_value(builder, "popup_close_on_selection", scene_bool(true))
+		}
+		if value.popup_gap > 0 {
+			write_scene_value(builder, "popup_gap", scene_f32(value.popup_gap))
+		}
+		if value.popup_min_width > 0 {
+			write_scene_value(builder, "popup_min_width", scene_f32(value.popup_min_width))
+		}
+		if value.popup_max_width > 0 {
+			write_scene_value(builder, "popup_max_width", scene_f32(value.popup_max_width))
+		}
+		if value.popup_max_height > 0 {
+			write_scene_value(builder, "popup_max_height", scene_f32(value.popup_max_height))
+		}
+		if value.popup_viewport_margin > 0 {
+			write_scene_value(
+				builder,
+				"popup_viewport_margin",
+				scene_f32(value.popup_viewport_margin),
+			)
+		}
 	}
 	if entity.has_ui_hstack { write_scene_stack(builder, "ui_hstack", entity.ui_hstack) }
 	if entity.has_ui_vstack { write_scene_stack(builder, "ui_vstack", entity.ui_vstack) }
@@ -375,6 +406,9 @@ write_scene_button :: proc(builder: ^strings.Builder, value: shared.UI_Button_Co
 	write_scene_section(builder, "ui_button")
 	write_scene_string(builder, "text", value.text)
 	write_scene_string(builder, "font", value.font)
+	if value.popup != (shared.Entity_UUID{}) {
+		write_scene_string(builder, "popup", scene_uuid(value.popup))
+	}
 	write_scene_value(builder, "color", scene_vec4(value.color))
 	write_scene_value(builder, "size", scene_f32(value.size))
 	write_scene_string(builder, "alignment", scene_alignment(value.alignment))

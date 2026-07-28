@@ -630,8 +630,9 @@ push_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared.Entity_U
 }
 
 push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Component) {
-	lua_createtable(L, 0, 20)
+	lua_createtable(L, 0, 29)
 	push_uuid_field(L, "parent", value.parent)
+	push_uuid_field(L, "popup_anchor", value.popup_anchor)
 	push_vec2_field(L, "position", value.position)
 	push_vec2_field(L, "size", value.size)
 	push_vec2_field(L, "min_size", value.min_size)
@@ -651,6 +652,14 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_uuid_field(L, "tree_parent", value.tree_parent)
 	push_number_field(L, "tree_order", f32(value.tree_order))
 	push_bool_field(L, "tree_collapsed", value.tree_collapsed)
+	push_bool_field(L, "popup", value.popup)
+	push_bool_field(L, "popup_open", value.popup_open)
+	push_bool_field(L, "popup_close_on_selection", value.popup_close_on_selection)
+	push_number_field(L, "popup_gap", value.popup_gap)
+	push_number_field(L, "popup_min_width", value.popup_min_width)
+	push_number_field(L, "popup_max_width", value.popup_max_width)
+	push_number_field(L, "popup_max_height", value.popup_max_height)
+	push_number_field(L, "popup_viewport_margin", value.popup_viewport_margin)
 }
 
 push_ui_stack_table :: proc "c" (L: Lua_State, value: shared.UI_Stack_Component) {
@@ -802,9 +811,10 @@ push_ui_text_table :: proc "c" (L: Lua_State, value: shared.UI_Text_Component) {
 }
 
 push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Component) {
-	lua_createtable(L, 0, 13)
+	lua_createtable(L, 0, 14)
 	push_string_field(L, "text", value.text)
 	push_string_field(L, "font", value.font)
+	push_uuid_field(L, "popup", value.popup)
 	push_vec4_field(L, "color", value.color)
 	push_number_field(L, "size", value.size)
 	push_string_field(L, "alignment", ui_text_alignment_name(value.alignment))
