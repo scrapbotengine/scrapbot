@@ -3011,7 +3011,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
-			theme.palette.canvas,
+			theme.palette.warning_subtle,
 		)
 		testing.expect(
 			t,
@@ -3019,11 +3019,9 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 			theme.palette.warning_soft,
 		)
 	}
-	testing.expect(
-		t,
-		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_color ==
-		theme.palette.warning,
-	)
+	playback_viewport := world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
+	testing.expect(t, playback_viewport.border_color == theme.palette.warning_soft)
+	testing.expect(t, playback_viewport.border_width == 2)
 
 	press := proc(state: ^State, world: ^shared.World, node_index: int) {
 		rect := state.nodes[node_index].rect
@@ -3084,12 +3082,12 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
-			theme.palette.canvas,
+			theme.palette.region,
 		)
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[status_bar_index].ui_layout_index].background ==
-			theme.palette.canvas,
+			theme.palette.region,
 		)
 	}
 	testing.expect(
@@ -3508,7 +3506,7 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 		testing.expect(t, panel.title == expected_titles[section_index])
 		testing.expect(t, panel.collapsible)
 		testing.expect(t, panel.title_height == EDITOR_SECTION_TITLE_HEIGHT)
-		testing.expect(t, panel.title_color == theme.palette.text)
+		testing.expect(t, panel.title_color == theme.palette.text_secondary)
 		testing.expect(t, panel.title_background == theme.palette.raised)
 		testing.expect(t, layout.background == expected_backgrounds[section_index])
 		testing.expect(t, layout.border_color == theme.palette.border)
@@ -3905,7 +3903,9 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		button_entity := world.entities[button]
 		button_layout := world.ui_layouts[button_entity.ui_layout_index]
 		button_value := world.ui_buttons[button_entity.ui_button_index]
-		testing.expect(t, button_layout.border_color == shared.Vec4{0.075, 0.090, 0.115, 1})
+		theme := reduced_dark_theme()
+		testing.expect(t, button_layout.border_color == theme.palette.border)
+		testing.expect(t, button_layout.border_width == 0)
 		testing.expect(t, button_value.text == "Add Component")
 		testing.expect(t, button_value.alignment == .Center)
 		testing.expect(t, button_value.hover_color.w == 1)
@@ -4032,7 +4032,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 				last_hover_glyph_index := -1
 				for command, command_index in state.paint[:state.paint_count] {
 					if command.kind == .Panel &&
-					   command.color == (shared.Vec4{0.030, 0.105, 0.092, 1}) &&
+					   command.color == reduced_dark_theme().palette.hover &&
 					   command.rect == camera_rect {
 						hover_paint_index = command_index
 					}
@@ -5120,7 +5120,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 				panel := world.ui_panels[entity.ui_panel_index]
 				layout := world.ui_layouts[entity.ui_layout_index]
 				testing.expect(t, panel.title_height == INSPECTOR_PANEL_TITLE_HEIGHT)
-				testing.expect(t, panel.title_size == EDITOR_TEXT_SIZE)
+				testing.expect(t, panel.title_size == theme.metrics.small_text_size)
 				testing.expect(t, layout.padding == INSPECTOR_PANEL_PADDING)
 				found_transform = found_transform || panel.title == "TRANSFORM"
 				found_button = found_button || panel.title == "UI BUTTON"

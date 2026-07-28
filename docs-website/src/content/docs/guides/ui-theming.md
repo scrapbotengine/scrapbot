@@ -16,7 +16,7 @@ The renderer does not receive a theme name. It consumes the same layout, text, b
 
 ## Built-in theme and recipe vocabulary
 
-The current built-in theme is `reduced_dark`. It is the editor's restrained visual language, not a mandatory project look.
+The current built-in theme is `reduced_dark`. It is the editor's restrained, almost-black visual language, not a mandatory project look.
 
 Recipes are composable and applied in order:
 
@@ -47,10 +47,10 @@ Themes intentionally do not mutate existing entities automatically. Restyling a 
 
 Scrapbot's editor uses the UI system's reduced dark recipe:
 
-- Deep neutral canvas and region surfaces.
-- Slightly raised panel headers and controls.
-- Quiet borders reserved for controls, focus, and major boundaries.
-- One compact typography and spacing scale.
+- Almost-black canvas and region surfaces with small tonal elevation steps.
+- Slightly raised, subtly rounded panel headers and controls.
+- Borderless resting surfaces; focus, validation, and playback receive deliberate semantic emphasis.
+- Embedded Inter at a compact 13-pixel body and 12-pixel technical-title scale.
 - Mint for identity, focus, selection, and positive authoring state.
 - Amber for temporary playback state.
 - Red for invalid or destructive state.
@@ -72,17 +72,15 @@ name = "Reduced Action"
 position = [40, 40]
 size = [180, 34]
 padding = [7, 10, 6, 10]
-background = [0.018, 0.023, 0.031, 1]
-border_color = [0.05, 0.06, 0.076, 1]
-border_width = 1
-corner_radius = 5
+background = [0.016, 0.021, 0.028, 1]
+corner_radius = 6
 
 [entities.ui_button]
 text = "Apply"
-color = [0.86, 0.88, 0.92, 1]
+color = [0.82, 0.85, 0.90, 1]
 size = 13
-hover_background = [0.028, 0.036, 0.048, 1]
-active_background = [0.042, 0.053, 0.07, 1]
+hover_background = [0.032, 0.041, 0.055, 1]
+active_background = [0.045, 0.057, 0.076, 1]
 ```
 
 The same components can produce an unrelated arcade treatment:
@@ -136,7 +134,7 @@ Choose reusable scales for:
 - Small, ordinary, and large gaps.
 - Control and panel padding.
 - Small, ordinary, and large corner radii.
-- Ordinary and emphasized border widths.
+- Resting and semantic-emphasis boundary policies, including when to omit borders.
 
 Individual layouts remain free to override every metric. A theme scale is a consistency tool, not validation.
 

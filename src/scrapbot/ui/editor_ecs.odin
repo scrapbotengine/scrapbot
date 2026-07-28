@@ -771,7 +771,7 @@ editor_ui_create_transport_button :: proc(
 	role: shared.Editor_UI_Role,
 ) -> int {
 	theme := reduced_dark_theme()
-	layout, value := theme_button(theme)
+	layout, value := theme_button(theme, .Quiet)
 	layout.size = {58, theme.metrics.control_height}
 	button := editor_ui_create_box(world, name, parent, role, layout)
 	value.text = label
@@ -885,10 +885,10 @@ editor_ui_create_browser_filter :: proc(
 	layout, value := theme_input(theme)
 	layout.size = {2000, 34}
 	layout.padding = {7, 7, 6, 7}
+	layout.margin = {2, 4, 2, 4}
 	layout.fixed_in_fill = true
-	layout.corner_radius = 0
 	entity_index := editor_ui_create_box(world, name, parent, role, layout, slot)
-	value.prefix = "FILTER"
+	value.prefix = "Filter"
 	value.prefix_width = 48
 	editor_ui_add_input(world, entity_index, value)
 	return entity_index
@@ -939,9 +939,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			size = {1280, EDITOR_TOP_BAR_HEIGHT},
 			fixed_in_fill = true,
 			padding = {11, 14, 11, 14},
-			background = void,
+			background = theme.palette.region,
 			border_color = rule,
-			border_width = 1,
+			border_width = 0,
 		},
 	)
 	editor_ui_add_hstack(world, top, {gap = 16})
@@ -1043,9 +1043,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 				EDITOR_SIDEBAR_PADDING,
 				EDITOR_SIDEBAR_PADDING,
 			},
-			background = void,
-			border_color = rule,
-			border_width = 1,
+			background = theme.palette.region,
 		},
 	)
 	editor_ui_add_scroll(world, left)
@@ -1321,7 +1319,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_VIEWPORT_NAME,
 		EDITOR_UI_WORKSPACE_NAME,
 		.Viewport,
-		{size = {660, 638}, border_color = rule, border_width = 1},
+		{size = {660, 638}, border_color = rule, border_width = 0},
 	)
 	gizmo_toolbar := editor_ui_create_box(
 		world,
@@ -1332,10 +1330,10 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			position = {10, 10},
 			size = {126, 34},
 			padding = {2, 2, 2, 2},
-			background = {0.006, 0.008, 0.012, 0.94},
-			border_color = rule,
-			border_width = 1,
-			corner_radius = 5,
+			background = theme.palette.overlay,
+			border_color = theme.palette.border_strong,
+			border_width = 0,
+			corner_radius = theme.metrics.radius,
 			hidden = true,
 		},
 	)
@@ -1370,9 +1368,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 				EDITOR_SIDEBAR_PADDING,
 				EDITOR_SIDEBAR_PADDING,
 			},
-			background = void,
-			border_color = rule,
-			border_width = 1,
+			background = theme.palette.region,
 		},
 	)
 	editor_ui_add_scroll(world, right)
@@ -1487,9 +1483,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			size = {1280, EDITOR_STATUS_BAR_HEIGHT},
 			fixed_in_fill = true,
 			padding = {6, 14, 6, 14},
-			background = void,
+			background = theme.palette.region,
 			border_color = rule,
-			border_width = 1,
+			border_width = 0,
 		},
 	)
 	editor_ui_add_hstack(world, status, {gap = 8})
@@ -1508,6 +1504,7 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 	disclosure, disclosure_found := editor_ui_entity(world, .Browser_Row_Disclosure, slot)
 	label, label_found := editor_ui_entity(world, .Browser_Row_Label, slot)
 	if row_found && disclosure_found && label_found { return row, disclosure, label }
+	theme := reduced_dark_theme()
 	row_name := fmt.tprintf("__scrapbot_editor_row_%d", slot)
 	disclosure_name := fmt.tprintf("__scrapbot_editor_row_disclosure_%d", slot)
 	label_name := fmt.tprintf("__scrapbot_editor_row_label_%d", slot)
@@ -1534,9 +1531,9 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 	disclosure_button.icon = .Chevron_Down
 	disclosure_button.icon_inset = 6
 	disclosure_button.icon_stroke = 1.5
-	disclosure_button.color = {0.65, 0.68, 0.74, 1}
-	disclosure_button.hover_background = {0.09, 0.11, 0.14, 1}
-	disclosure_button.active_background = {0.13, 0.15, 0.19, 1}
+	disclosure_button.color = theme.palette.text_secondary
+	disclosure_button.hover_background = theme.palette.hover
+	disclosure_button.active_background = theme.palette.active
 	_ = ecs.set_ui_button(world, disclosure, disclosure_button)
 	label = editor_ui_create_box(
 		world,
@@ -1546,7 +1543,7 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 		{position = {26, 0}, size = {1874, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
 		slot,
 	)
-	editor_ui_add_text(world, label, "", {0.82, 0.84, 0.88, 1}, EDITOR_TEXT_SIZE)
+	editor_ui_add_text(world, label, "", theme.palette.text, EDITOR_TEXT_SIZE)
 	return row, disclosure, label
 }
 
@@ -1556,6 +1553,7 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 	if row_found && label_found {
 		return row, label
 	}
+	theme := reduced_dark_theme()
 	row_name := fmt.tprintf("__scrapbot_editor_resource_row_%d", slot)
 	label_name := fmt.tprintf("__scrapbot_editor_resource_row_label_%d", slot)
 	row = editor_ui_create_box(
@@ -1574,7 +1572,7 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 		{position = {11, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
 		slot,
 	)
-	editor_ui_add_text(world, label, "", {0.82, 0.84, 0.88, 1}, EDITOR_TEXT_SIZE)
+	editor_ui_add_text(world, label, "", theme.palette.text, EDITOR_TEXT_SIZE)
 	return row, label
 }
 
@@ -1600,6 +1598,7 @@ editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, 
 	if row_found && name_found && time_found {
 		return name_cell, time_cell
 	}
+	theme := reduced_dark_theme()
 	row_name := fmt.tprintf("__scrapbot_editor_system_row_%d", slot)
 	name := fmt.tprintf("__scrapbot_editor_system_name_%d", slot)
 	timing := fmt.tprintf("__scrapbot_editor_system_time_%d", slot)
@@ -1631,7 +1630,7 @@ editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, 
 		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 3, 3, 16}},
 		slot,
 	)
-	editor_ui_add_text(world, name_cell, "", {0.82, 0.85, 0.90, 1}, EDITOR_TEXT_SIZE)
+	editor_ui_add_text(world, name_cell, "", theme.palette.text, EDITOR_TEXT_SIZE)
 	origin_name := fmt.tprintf("__scrapbot_editor_system_origin_%d", slot)
 	_ = editor_ui_create_box(
 		world,
@@ -1654,7 +1653,7 @@ editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, 
 		{size = {55, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 1, 3, 1}, fixed_in_fill = true},
 		slot,
 	)
-	editor_ui_add_text(world, time_cell, "--", {0.42, 0.45, 0.51, 1}, EDITOR_TEXT_SIZE)
+	editor_ui_add_text(world, time_cell, "--", theme.palette.text_muted, EDITOR_TEXT_SIZE)
 	world.ui_texts[world.entities[time_cell].ui_text_index].alignment = .Right
 	return name_cell, time_cell
 }
@@ -1739,15 +1738,20 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		shared.entity_uuid_from_engine_name(EDITOR_UI_TOP_NAME),
 	); found {
 		layout := &world.ui_layouts[world.entities[top].ui_layout_index]
-		layout.background = theme.palette.canvas
+		layout.background = theme.palette.region
 		layout.border_color = theme.palette.border
+		layout.border_width = 0
+		if playback {
+			layout.background = theme.palette.warning_subtle
+		}
 	}
 	if viewport, found := editor_ui_entity(world, .Viewport); found {
 		layout := &world.ui_layouts[world.entities[viewport].ui_layout_index]
 		layout.border_color = theme.palette.border
-		layout.border_width = 1
+		layout.border_width = 0
 		if playback {
-			layout.border_color = theme.palette.warning
+			layout.border_color = theme.palette.warning_soft
+			layout.border_width = 2
 		}
 	}
 	if status_bar, found := ecs.entity_index_by_uuid(
@@ -1755,8 +1759,9 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		shared.entity_uuid_from_engine_name(EDITOR_UI_STATUS_NAME),
 	); found {
 		layout := &world.ui_layouts[world.entities[status_bar].ui_layout_index]
-		layout.background = theme.palette.canvas
+		layout.background = theme.palette.region
 		layout.border_color = theme.palette.border
+		layout.border_width = 0
 		if playback {
 			layout.background = theme.palette.warning_soft
 			layout.border_color = theme.palette.warning
@@ -1786,9 +1791,10 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			component.role == .Transport_Stop && state.editor_simulation_stopped
 		layout := &world.ui_layouts[entity.ui_layout_index]
 		button := &world.ui_buttons[entity.ui_button_index]
-		base_layout, base_button := theme_button(theme)
+		base_layout, base_button := theme_button(theme, .Quiet)
 		layout.background = base_layout.background
 		layout.border_color = base_layout.border_color
+		layout.border_width = base_layout.border_width
 		button.color = base_button.color
 		button.hover_background = base_button.hover_background
 		button.active_background = base_button.active_background
@@ -1818,15 +1824,17 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		if component.role == .Transport_Save && state.editor_scene_dirty {
 			layout.background = theme.palette.warning_soft
 			layout.border_color = theme.palette.warning
+			layout.border_width = theme.metrics.border_width
 			button.color = {1.0, 0.82, 0.52, 1}
-			button.hover_background = {0.145, 0.090, 0.030, 1}
-			button.active_background = {0.075, 0.045, 0.014, 1}
+			button.hover_background = {0.125, 0.070, 0.020, 1}
+			button.active_background = {0.060, 0.032, 0.008, 1}
 			continue
 		}
 		if component.role == .Transport_Revert && state.editor_scene_dirty {
 			destructive_layout, destructive_button := theme_button(theme, .Destructive)
 			layout.background = destructive_layout.background
 			layout.border_color = destructive_layout.border_color
+			layout.border_width = destructive_layout.border_width
 			button.color = destructive_button.color
 			button.hover_background = destructive_button.hover_background
 			button.active_background = destructive_button.active_background
@@ -1836,6 +1844,7 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			primary_layout, primary_button := theme_button(theme, .Primary)
 			layout.background = primary_layout.background
 			layout.border_color = primary_layout.border_color
+			layout.border_width = primary_layout.border_width
 			button.color = primary_button.color
 			button.hover_background = primary_button.hover_background
 			button.active_background = primary_button.active_background
@@ -1899,14 +1908,16 @@ editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
 			component.role == .Gizmo_Space_Local && state.editor_gizmo_space == .Local
 		layout := &world.ui_layouts[entity.ui_layout_index]
 		button := &world.ui_buttons[entity.ui_button_index]
-		base_layout, base_button := theme_button(theme)
+		base_layout, base_button := theme_button(theme, .Quiet)
 		layout.background = base_layout.background
 		layout.border_color = base_layout.border_color
+		layout.border_width = base_layout.border_width
 		button.color = base_button.color
 		if selected {
 			selected_layout, selected_button := theme_button(theme, .Primary)
 			layout.background = selected_layout.background
 			layout.border_color = selected_layout.border_color
+			layout.border_width = selected_layout.border_width
 			button.color = selected_button.color
 		}
 	}
@@ -2065,6 +2076,7 @@ editor_ui_ensure_inspector_cell :: proc(
 	parent: string,
 	value_cell: bool,
 ) -> int {
+	theme := reduced_dark_theme()
 	if cell, found := editor_ui_entity(world, .Inspector_Cell, slot); found {
 		editor_ui_set_parent(world, cell, parent)
 		entity := &world.entities[cell]
@@ -2085,7 +2097,7 @@ editor_ui_ensure_inspector_cell :: proc(
 				ecs.remove_ui_component(world, cell, "scrapbot.ui_hstack")
 			}
 			if entity.ui_text_index < 0 {
-				editor_ui_add_text(world, cell, "", {0.46, 0.49, 0.55, 1}, EDITOR_TEXT_SIZE)
+				editor_ui_add_text(world, cell, "", theme.palette.text_muted, EDITOR_TEXT_SIZE)
 			}
 		}
 		return cell
@@ -2105,7 +2117,7 @@ editor_ui_ensure_inspector_cell :: proc(
 		layout.padding = INSPECTOR_VALUE_CELL_PADDING
 		editor_ui_add_hstack(world, cell, {gap = 6, fill = true})
 	} else {
-		editor_ui_add_text(world, cell, "", {0.46, 0.49, 0.55, 1}, EDITOR_TEXT_SIZE)
+		editor_ui_add_text(world, cell, "", theme.palette.text_muted, EDITOR_TEXT_SIZE)
 	}
 	return cell
 }
@@ -2175,7 +2187,7 @@ editor_ui_ensure_inspector_color :: proc(
 			size = {280, 232},
 			background = theme.palette.panel,
 			border_color = theme.palette.border_strong,
-			border_width = 1,
+			border_width = 0,
 			corner_radius = 6,
 			popup = true,
 			popup_close_on_selection = false,
@@ -2194,7 +2206,7 @@ editor_ui_ensure_inspector_color :: proc(
 		{
 			size = {1, INSPECTOR_CONTROL_HEIGHT},
 			border_color = theme.palette.border_strong,
-			border_width = 1,
+			border_width = 0,
 			corner_radius = 4,
 		},
 		slot,
@@ -2241,8 +2253,8 @@ editor_ui_ensure_choice_menu_button :: proc(
 		value.hover_color = value.color
 		value.active_color = value.color
 	} else {
-		value.hover_background = theme.palette.accent_soft
-		value.active_background = {0.018, 0.065, 0.057, 1}
+		value.hover_background = theme.palette.hover
+		value.active_background = theme.palette.active
 		value.hover_color = theme.palette.accent_text
 		value.active_color = theme.palette.accent_text
 	}
@@ -2275,6 +2287,7 @@ editor_ui_ensure_enum_menu :: proc(world: ^shared.World) -> (int, int) {
 	if menu_found && content_found {
 		return menu, content
 	}
+	theme := reduced_dark_theme()
 	menu = editor_ui_create_box(
 		world,
 		EDITOR_UI_ENUM_MENU_NAME,
@@ -2283,10 +2296,10 @@ editor_ui_ensure_enum_menu :: proc(world: ^shared.World) -> (int, int) {
 		{
 			size = {220, 120},
 			padding = {5, 5, 5, 5},
-			background = {0.009, 0.012, 0.017, 1},
-			border_color = {0.11, 0.14, 0.18, 1},
-			border_width = 1,
-			corner_radius = 5,
+			background = theme.palette.overlay,
+			border_color = theme.palette.border_strong,
+			border_width = 0,
+			corner_radius = theme.metrics.radius_large,
 			popup = true,
 			popup_close_on_selection = true,
 			popup_gap = 4,
@@ -2304,16 +2317,9 @@ editor_ui_ensure_enum_menu :: proc(world: ^shared.World) -> (int, int) {
 		.Inspector_Enum_Menu_Content,
 		{size = {210, 1}, fill_width = true},
 	)
-	editor_ui_add_list(
-		world,
-		content,
-		{
-			gap = 1,
-			selection_background = {0.030, 0.105, 0.092, 1},
-			hover_background = {0.030, 0.105, 0.092, 1},
-			active_background = {0.018, 0.065, 0.057, 1},
-		},
-	)
+	list := theme_list(theme)
+	list.gap = 1
+	editor_ui_add_list(world, content, list)
 	editor_ui_add_scroll(world, content)
 	return menu, content
 }
@@ -2324,6 +2330,7 @@ editor_ui_ensure_choice_menu_item :: proc(
 	slot: int,
 	name, parent, label: string,
 ) -> int {
+	theme := reduced_dark_theme()
 	item, found := editor_ui_entity(world, role, slot)
 	if !found {
 		item = editor_ui_create_box(
@@ -2342,9 +2349,9 @@ editor_ui_ensure_choice_menu_item :: proc(
 	value.text = label
 	value.size = EDITOR_TEXT_SIZE
 	value.alignment = .Left
-	value.color = {0.82, 0.85, 0.90, 1}
-	value.hover_background = {0.030, 0.105, 0.092, 1}
-	value.active_background = {0.018, 0.065, 0.057, 1}
+	value.color = theme.palette.text
+	value.hover_background = theme.palette.hover
+	value.active_background = theme.palette.active
 	_ = ecs.set_ui_button(world, item, value)
 	return item
 }
@@ -2471,6 +2478,7 @@ editor_ui_ensure_entity_menu :: proc(world: ^shared.World) -> (menu, filter, con
 	if menu_found && filter_found && content_found {
 		return
 	}
+	theme := reduced_dark_theme()
 	menu = editor_ui_create_box(
 		world,
 		EDITOR_UI_ENTITY_MENU_NAME,
@@ -2479,10 +2487,10 @@ editor_ui_ensure_entity_menu :: proc(world: ^shared.World) -> (menu, filter, con
 		{
 			size = {340, 320},
 			padding = {5, 5, 5, 5},
-			background = {0.009, 0.012, 0.017, 1},
-			border_color = {0.11, 0.14, 0.18, 1},
-			border_width = 1,
-			corner_radius = 5,
+			background = theme.palette.overlay,
+			border_color = theme.palette.border_strong,
+			border_width = 0,
+			corner_radius = theme.metrics.radius_large,
 			popup = true,
 			popup_close_on_selection = true,
 			popup_gap = 4,
@@ -2513,20 +2521,13 @@ editor_ui_ensure_entity_menu :: proc(world: ^shared.World) -> (menu, filter, con
 		.Inspector_Entity_Menu_Content,
 		{size = {330, 271}, fill_width = true, fill_height = true},
 	)
-	editor_ui_add_list(
-		world,
-		content,
-		{
-			filter_input = world.entities[filter].uuid,
-			gap = 1,
-			selection_background = {0.030, 0.105, 0.092, 1},
-			hover_background = {0.030, 0.105, 0.092, 1},
-			active_background = {0.018, 0.065, 0.057, 1},
-			virtualized = true,
-			item_height = 30,
-			overscan = 3,
-		},
-	)
+	list := theme_list(theme)
+	list.filter_input = world.entities[filter].uuid
+	list.gap = 1
+	list.virtualized = true
+	list.item_height = 30
+	list.overscan = 3
+	editor_ui_add_list(world, content, list)
 	editor_ui_add_scroll(world, content)
 	return
 }
@@ -2703,22 +2704,19 @@ editor_ui_ensure_resource_menu_button :: proc(
 	parent, label: string,
 	enabled: bool,
 ) -> int {
+	theme := reduced_dark_theme()
 	button, found := editor_ui_entity(world, .Inspector_Resource_Menu_Button)
 	if !found {
+		layout, _ := theme_button(theme)
+		layout.size = {1, INSPECTOR_CONTROL_HEIGHT}
+		layout.padding = {5, 8, 4, 8}
+		layout.fill_width = true
 		button = editor_ui_create_box(
 			world,
 			"__scrapbot_editor_resource_menu_button",
 			parent,
 			.Inspector_Resource_Menu_Button,
-			{
-				size = {1, INSPECTOR_CONTROL_HEIGHT},
-				padding = {5, 8, 4, 8},
-				background = {0.013, 0.018, 0.025, 1},
-				border_color = {0.075, 0.090, 0.115, 1},
-				border_width = 1,
-				corner_radius = 4,
-				fill_width = true,
-			},
+			layout,
 		)
 		editor_ui_add_button(world, button)
 	} else {
@@ -2735,9 +2733,9 @@ editor_ui_ensure_resource_menu_button :: proc(
 	}
 	value.size = EDITOR_TEXT_SIZE
 	value.alignment = .Left
-	value.color = {0.82, 0.84, 0.88, 1}
-	value.hover_background = {0.030, 0.105, 0.092, 1}
-	value.active_background = {0.018, 0.065, 0.057, 1}
+	value.color = theme.palette.text
+	value.hover_background = theme.palette.hover
+	value.active_background = theme.palette.active
 	_ = ecs.set_ui_button(world, button, value)
 	return button
 }
@@ -2748,6 +2746,7 @@ editor_ui_ensure_resource_menu :: proc(world: ^shared.World) -> (int, int) {
 	if menu_found && content_found {
 		return menu, content
 	}
+	theme := reduced_dark_theme()
 	menu = editor_ui_create_box(
 		world,
 		EDITOR_UI_RESOURCE_MENU_NAME,
@@ -2756,10 +2755,10 @@ editor_ui_ensure_resource_menu :: proc(world: ^shared.World) -> (int, int) {
 		{
 			size = {320, 240},
 			padding = {5, 5, 5, 5},
-			background = {0.009, 0.012, 0.017, 1},
-			border_color = {0.11, 0.14, 0.18, 1},
-			border_width = 1,
-			corner_radius = 5,
+			background = theme.palette.overlay,
+			border_color = theme.palette.border_strong,
+			border_width = 0,
+			corner_radius = theme.metrics.radius_large,
 			popup = true,
 			popup_close_on_selection = true,
 			popup_gap = 4,
@@ -2777,7 +2776,9 @@ editor_ui_ensure_resource_menu :: proc(world: ^shared.World) -> (int, int) {
 		.Inspector_Resource_Menu_Content,
 		{size = {310, 1}, fill_width = true},
 	)
-	editor_ui_add_list(world, content, {gap = 1})
+	list := theme_list(theme)
+	list.gap = 1
+	editor_ui_add_list(world, content, list)
 	return menu, content
 }
 
@@ -2787,6 +2788,7 @@ editor_ui_ensure_resource_menu_item :: proc(
 	parent, label: string,
 	resource_id: shared.Resource_UUID,
 ) -> int {
+	theme := reduced_dark_theme()
 	item, found := editor_ui_entity(world, .Inspector_Resource_Menu_Item, slot)
 	if !found {
 		item = editor_ui_create_box(
@@ -2805,9 +2807,9 @@ editor_ui_ensure_resource_menu_item :: proc(
 	value.text = label
 	value.size = EDITOR_TEXT_SIZE
 	value.alignment = .Left
-	value.color = {0.82, 0.85, 0.90, 1}
-	value.hover_background = {0.030, 0.105, 0.092, 1}
-	value.active_background = {0.018, 0.065, 0.057, 1}
+	value.color = theme.palette.text
+	value.hover_background = theme.palette.hover
+	value.active_background = theme.palette.active
 	_ = ecs.set_ui_button(world, item, value)
 	role := &world.editor_uis[world.entities[item].editor_ui_index]
 	role.resource_id = resource_id
@@ -2895,23 +2897,20 @@ editor_ui_build_resource_menu :: proc(state: ^State, world: ^shared.World) {
 }
 
 editor_ui_ensure_component_menu_button :: proc(world: ^shared.World, parent: string) -> int {
+	theme := reduced_dark_theme()
 	button, found := editor_ui_entity(world, .Inspector_Component_Menu_Button)
 	if found {
 		editor_ui_set_parent(world, button, parent)
 	} else {
+		layout, _ := theme_button(theme)
+		layout.size = {1, 30}
+		layout.fill_width = true
 		button = editor_ui_create_box(
 			world,
 			"__scrapbot_editor_component_menu_button",
 			parent,
 			.Inspector_Component_Menu_Button,
-			{
-				size = {1, 30},
-				background = {0.022, 0.029, 0.039, 1},
-				border_color = {0.075, 0.090, 0.115, 1},
-				border_width = 1,
-				corner_radius = 4,
-				fill_width = true,
-			},
+			layout,
 		)
 		editor_ui_add_button(world, button)
 	}
@@ -2920,12 +2919,12 @@ editor_ui_ensure_component_menu_button :: proc(world: ^shared.World, parent: str
 	value.text = "Add Component"
 	value.popup = world.entities[menu].uuid
 	value.size = EDITOR_TEXT_SIZE
-	value.color = {0.70, 0.73, 0.78, 1}
+	value.color = theme.palette.text_secondary
 	value.alignment = .Center
-	value.hover_background = {0.030, 0.105, 0.092, 1}
-	value.active_background = {0.018, 0.065, 0.057, 1}
-	value.hover_color = {0.70, 0.95, 0.89, 1}
-	value.active_color = {0.82, 1.00, 0.96, 1}
+	value.hover_background = theme.palette.hover
+	value.active_background = theme.palette.active
+	value.hover_color = theme.palette.accent_text
+	value.active_color = theme.palette.accent_text
 	_ = ecs.set_ui_button(world, button, value)
 	return button
 }
@@ -2936,6 +2935,7 @@ editor_ui_ensure_component_menu :: proc(world: ^shared.World) -> (int, int) {
 	if menu_found && content_found {
 		return menu, content
 	}
+	theme := reduced_dark_theme()
 	menu = editor_ui_create_box(
 		world,
 		EDITOR_UI_COMPONENT_MENU_NAME,
@@ -2944,10 +2944,10 @@ editor_ui_ensure_component_menu :: proc(world: ^shared.World) -> (int, int) {
 		{
 			size = {320, 320},
 			padding = {5, 5, 5, 5},
-			background = {0.009, 0.012, 0.017, 1},
-			border_color = {0.11, 0.14, 0.18, 1},
-			border_width = 1,
-			corner_radius = 5,
+			background = theme.palette.overlay,
+			border_color = theme.palette.border_strong,
+			border_width = 0,
+			corner_radius = theme.metrics.radius_large,
 			popup = true,
 			popup_gap = 4,
 			popup_min_width = 220,
@@ -2970,7 +2970,10 @@ editor_ui_ensure_component_menu :: proc(world: ^shared.World) -> (int, int) {
 		.Inspector_Component_Menu_Content,
 		{size = {310, 276}, fill_width = true},
 	)
-	editor_ui_add_list(world, content, {filter_input = world.entities[filter].uuid, gap = 1})
+	list := theme_list(theme)
+	list.filter_input = world.entities[filter].uuid
+	list.gap = 1
+	editor_ui_add_list(world, content, list)
 	editor_ui_add_scroll(world, content)
 	return menu, content
 }
@@ -2988,6 +2991,7 @@ editor_ui_ensure_component_menu_group :: proc(
 		return group
 	}
 	name := fmt.tprintf("__scrapbot_editor_component_menu_group_%d", slot)
+	theme := reduced_dark_theme()
 	group := editor_ui_create_box(
 		world,
 		name,
@@ -2996,7 +3000,7 @@ editor_ui_ensure_component_menu_group :: proc(
 		{size = {1, 24}, padding = {5, 0, 5, f32(10 + depth * 12)}, fill_width = true},
 		slot,
 	)
-	editor_ui_add_text(world, group, label, {0.42, 0.45, 0.51, 1}, EDITOR_TEXT_SIZE)
+	editor_ui_add_text(world, group, label, theme.palette.text_muted, EDITOR_TEXT_SIZE)
 	return group
 }
 
@@ -3005,6 +3009,7 @@ editor_ui_ensure_component_menu_item :: proc(
 	definition_index, depth: int,
 	parent, label: string,
 ) -> int {
+	theme := reduced_dark_theme()
 	item, found := editor_ui_entity(world, .Inspector_Component_Menu_Item, definition_index)
 	if !found {
 		name := fmt.tprintf("__scrapbot_editor_component_menu_item_%d", definition_index)
@@ -3031,11 +3036,11 @@ editor_ui_ensure_component_menu_item :: proc(
 	value.text = label
 	value.size = EDITOR_TEXT_SIZE
 	value.alignment = .Left
-	value.color = {0.82, 0.85, 0.90, 1}
-	value.hover_background = {0.030, 0.105, 0.092, 1}
-	value.active_background = {0.018, 0.065, 0.057, 1}
-	value.hover_color = {0.70, 0.95, 0.89, 1}
-	value.active_color = {0.82, 1.00, 0.96, 1}
+	value.color = theme.palette.text
+	value.hover_background = theme.palette.hover
+	value.active_background = theme.palette.active
+	value.hover_color = theme.palette.accent_text
+	value.active_color = theme.palette.accent_text
 	_ = ecs.set_ui_button(world, item, value)
 	return item
 }
@@ -3263,7 +3268,7 @@ editor_ui_inspector_field_values :: proc(
 		layout.size.y = INSPECTOR_CELL_HEIGHT
 	}
 	label_text := &builder.world.ui_texts[builder.world.entities[label_cell].ui_text_index]
-	label_text.color = {0.46, 0.49, 0.55, 1}
+	label_text.color = reduced_dark_theme().palette.text_muted
 	editor_ui_set_text(builder.world, label_cell, label)
 	value_parent := builder.world.entities[value_cell].name
 	for value, value_index in values {
@@ -3411,7 +3416,7 @@ editor_ui_inspector_bool :: proc(
 		layout.size.y = INSPECTOR_CELL_HEIGHT
 	}
 	label_text := &builder.world.ui_texts[builder.world.entities[label_cell].ui_text_index]
-	label_text.color = {0.46, 0.49, 0.55, 1}
+	label_text.color = reduced_dark_theme().palette.text_muted
 	editor_ui_set_text(builder.world, label_cell, label)
 	checkbox_entity := editor_ui_ensure_inspector_checkbox(
 		builder.world,
@@ -3623,9 +3628,10 @@ editor_ui_inspector_container :: proc(
 	}
 	value.icon_inset = 6
 	value.icon_stroke = 1.5
-	value.color = {0.60, 0.64, 0.71, 1}
-	value.hover_background = {0.030, 0.105, 0.092, 1}
-	value.active_background = {0.018, 0.065, 0.057, 1}
+	theme := reduced_dark_theme()
+	value.color = theme.palette.text_secondary
+	value.hover_background = theme.palette.hover
+	value.active_background = theme.palette.active
 	_ = ecs.set_ui_button(builder.world, button, value)
 	builder.row_count += 1
 	return binding.expanded
@@ -4729,7 +4735,7 @@ editor_ui_inspector_preview_surface :: proc(
 				size = {2000, 220},
 				margin = {8, 12, 4, 12},
 				border_color = theme.palette.border,
-				border_width = 1,
+				border_width = 0,
 				corner_radius = 4,
 				fill_width = true,
 			},
@@ -4773,25 +4779,20 @@ editor_ui_inspector_preview_surface :: proc(
 	toolbar_name := builder.world.entities[toolbar].name
 	reset, reset_found := editor_ui_entity(builder.world, .Inspector_Preview_Reset, panel_slot)
 	if !reset_found {
+		reset_layout, reset_button := theme_button(theme, .Quiet)
+		reset_layout.size = {64, 28}
+		reset_layout.fixed_in_fill = true
 		reset = editor_ui_create_box(
 			builder.world,
 			fmt.tprintf("__scrapbot_editor_asset_preview_reset_%d", panel_slot),
 			toolbar_name,
 			.Inspector_Preview_Reset,
-			{
-				size = {64, 28},
-				background = {0.017, 0.022, 0.030, 1},
-				border_color = {0.055, 0.067, 0.088, 1},
-				border_width = 1,
-				corner_radius = 4,
-				fixed_in_fill = true,
-			},
+			reset_layout,
 			panel_slot,
 		)
-		editor_ui_add_button(builder.world, reset)
-		button := builder.world.ui_buttons[builder.world.entities[reset].ui_button_index]
+		button := reset_button
 		button.text = "RESET"
-		button.color = {0.46, 0.49, 0.55, 1}
+		button.color = theme.palette.text_muted
 		button.size = EDITOR_TEXT_SIZE
 		_ = ecs.set_ui_button(builder.world, reset, button)
 	} else {
@@ -4812,7 +4813,7 @@ editor_ui_inspector_preview_surface :: proc(
 			builder.world,
 			hint,
 			"DRAG TO ORBIT  /  SCROLL TO ZOOM",
-			{0.46, 0.49, 0.55, 1},
+			theme.palette.text_muted,
 			EDITOR_TEXT_SIZE,
 		)
 	} else {

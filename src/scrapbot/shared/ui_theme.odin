@@ -76,6 +76,7 @@ UI_Theme_Palette :: struct {
 	selection: Vec4,
 	focus: Vec4,
 	warning: Vec4,
+	warning_subtle: Vec4,
 	warning_soft: Vec4,
 	danger: Vec4,
 	danger_soft: Vec4,
@@ -210,39 +211,40 @@ ui_theme_builtin :: proc "contextless" (name: UI_Theme_Name) -> UI_Theme {
 ui_theme_reduced_dark :: proc "contextless" () -> UI_Theme {
 	return {
 		palette = {
-			canvas = {0.005, 0.007, 0.010, 1},
-			region = {0.009, 0.012, 0.017, 1},
-			panel = {0.015, 0.019, 0.026, 1},
-			raised = {0.022, 0.028, 0.037, 1},
-			control = {0.018, 0.023, 0.031, 1},
-			overlay = {0.006, 0.009, 0.013, 0.94},
-			border = {0.050, 0.060, 0.076, 1},
-			border_strong = {0.085, 0.100, 0.126, 1},
-			text = {0.86, 0.88, 0.92, 1},
-			text_secondary = {0.64, 0.67, 0.73, 1},
-			text_muted = {0.40, 0.43, 0.49, 1},
-			accent = {0.30, 0.88, 0.75, 1},
-			accent_text = {0.82, 1.00, 0.95, 1},
-			accent_soft = {0.030, 0.105, 0.092, 1},
-			hover = {0.028, 0.036, 0.048, 1},
-			active = {0.042, 0.053, 0.070, 1},
-			selection = {0.040, 0.105, 0.098, 1},
-			focus = {0.20, 0.82, 0.70, 1},
-			warning = {0.94, 0.58, 0.22, 1},
-			warning_soft = {0.090, 0.050, 0.018, 1},
-			danger = {0.94, 0.29, 0.34, 1},
-			danger_soft = {0.120, 0.030, 0.040, 1},
+			canvas = {0.006, 0.007, 0.009, 1},
+			region = {0.009, 0.011, 0.014, 1},
+			panel = {0.013, 0.016, 0.021, 1},
+			raised = {0.020, 0.025, 0.032, 1},
+			control = {0.016, 0.021, 0.028, 1},
+			overlay = {0.008, 0.010, 0.014, 0.97},
+			border = {0.030, 0.035, 0.044, 1},
+			border_strong = {0.055, 0.065, 0.082, 1},
+			text = {0.82, 0.85, 0.90, 1},
+			text_secondary = {0.57, 0.61, 0.68, 1},
+			text_muted = {0.34, 0.38, 0.45, 1},
+			accent = {0.20, 0.78, 0.66, 1},
+			accent_text = {0.80, 1.00, 0.94, 1},
+			accent_soft = {0.018, 0.085, 0.074, 1},
+			hover = {0.032, 0.041, 0.055, 1},
+			active = {0.045, 0.057, 0.076, 1},
+			selection = {0.027, 0.120, 0.103, 1},
+			focus = {0.16, 0.72, 0.61, 1},
+			warning = {0.92, 0.55, 0.20, 1},
+			warning_subtle = {0.018, 0.012, 0.006, 1},
+			warning_soft = {0.075, 0.038, 0.010, 1},
+			danger = {0.92, 0.27, 0.32, 1},
+			danger_soft = {0.095, 0.022, 0.032, 1},
 		},
 		metrics = {
 			text_size = 13,
-			small_text_size = 11,
+			small_text_size = 12,
 			control_height = 30,
 			row_height = 32,
 			title_height = 32,
-			radius_small = 3,
-			radius = 5,
-			radius_large = 8,
-			border_width = 1,
+			radius_small = 4,
+			radius = 6,
+			radius_large = 10,
+			border_width = 0,
 			gap_small = 4,
 			gap = 8,
 			gap_large = 12,
@@ -335,7 +337,7 @@ ui_theme_button :: proc "contextless" (
 	layout.padding = theme.metrics.padding_control
 	layout.corner_radius = theme.metrics.radius
 	layout.border_color = theme.palette.border
-	layout.border_width = theme.metrics.border_width
+	layout.border_width = 0
 	button = ui_button_default()
 	button.size = theme.metrics.text_size
 	button.color = theme.palette.text_secondary
@@ -351,14 +353,14 @@ ui_theme_button :: proc "contextless" (
 			layout.background = theme.palette.accent_soft
 			layout.border_color = theme.palette.accent
 			button.color = theme.palette.accent_text
-			button.hover_background = {0.045, 0.155, 0.133, 1}
-			button.active_background = {0.025, 0.085, 0.074, 1}
+			button.hover_background = theme.palette.selection
+			button.active_background = {0.020, 0.070, 0.061, 1}
 		case .Destructive:
 			layout.background = theme.palette.danger_soft
 			layout.border_color = theme.palette.danger
 			button.color = {1.00, 0.78, 0.80, 1}
-			button.hover_background = {0.20, 0.045, 0.060, 1}
-			button.active_background = {0.10, 0.020, 0.030, 1}
+			button.hover_background = {0.16, 0.035, 0.048, 1}
+			button.active_background = {0.080, 0.016, 0.025, 1}
 	}
 	return
 }
@@ -374,7 +376,7 @@ ui_theme_input :: proc "contextless" (
 	layout.padding = theme.metrics.padding_control
 	layout.background = theme.palette.control
 	layout.border_color = theme.palette.border
-	layout.border_width = theme.metrics.border_width
+	layout.border_width = 0
 	layout.corner_radius = theme.metrics.radius_small
 	input = ui_input_default()
 	input.color = theme.palette.text
@@ -383,6 +385,7 @@ ui_theme_input :: proc "contextless" (
 	input.size = theme.metrics.text_size
 	input.selection_background = theme.palette.selection
 	input.focus_border_color = theme.palette.focus
+	input.focus_border_width = 1.5
 	input.invalid_border_color = theme.palette.danger
 	return
 }
@@ -400,9 +403,9 @@ ui_theme_panel :: proc "contextless" (
 	layout.border_color = theme.palette.border
 	layout.corner_radius = theme.metrics.radius
 	panel = ui_panel_default()
-	panel.title_color = theme.palette.text
+	panel.title_color = theme.palette.text_secondary
 	panel.title_background = theme.palette.raised
-	panel.title_size = theme.metrics.text_size
+	panel.title_size = theme.metrics.small_text_size
 	panel.title_height = theme.metrics.title_height
 	panel.disclosure_corner_radius = theme.metrics.radius_small
 	return
@@ -433,9 +436,10 @@ ui_theme_checkbox :: proc "contextless" (theme: UI_Theme) -> UI_Checkbox_Compone
 	result.checked_background = theme.palette.accent_soft
 	result.border_color = theme.palette.border_strong
 	result.check_color = theme.palette.accent_text
-	result.hover_background = {0.045, 0.155, 0.133, 1}
-	result.active_background = {0.025, 0.085, 0.074, 1}
+	result.hover_background = theme.palette.selection
+	result.active_background = {0.020, 0.070, 0.061, 1}
 	result.corner_radius = theme.metrics.radius_small
+	result.border_width = 0
 	return result
 }
 
