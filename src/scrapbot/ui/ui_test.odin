@@ -3453,7 +3453,7 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 	state.editor_visible = true
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 
-	systems := find_editor_role_node(state, .Systems_Scroll)
+	systems := find_editor_name_node(state, &world, EDITOR_UI_SYSTEMS_NAME)
 	scene_panel := find_editor_name_node(state, &world, EDITOR_UI_SCENE_NAME)
 	inspector := find_editor_name_node(state, &world, EDITOR_UI_INSPECTOR_HEADER_NAME)
 	diagnostics := find_editor_role_node(state, .Diagnostics_Panel)
@@ -6058,15 +6058,30 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
 	systems, found := editor_ui_entity(&world, .Systems_Scroll)
 	testing.expect(t, found)
-	if found {
+	filter, filter_found := editor_ui_entity(&world, .Browser_Filter, 2)
+	testing.expect(t, filter_found)
+	panel, panel_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_SYSTEMS_NAME),
+	)
+	testing.expect(t, panel_found)
+	if found && filter_found && panel_found {
 		entity := world.entities[systems]
-		testing.expect(t, entity.ui_panel_index >= 0)
+		panel_entity := world.entities[panel]
+		testing.expect(t, entity.ui_panel_index < 0)
 		testing.expect(t, entity.ui_list_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
-		testing.expect(t, world.ui_panels[entity.ui_panel_index].title == "SYSTEMS / 3")
+		testing.expect(t, panel_entity.ui_panel_index >= 0)
+		testing.expect(t, panel_entity.ui_vstack_index >= 0)
+		testing.expect(t, world.ui_panels[panel_entity.ui_panel_index].title == "SYSTEMS / 3")
+		list := world.ui_lists[entity.ui_list_index]
+		testing.expect_value(t, list.filter_input, world.entities[filter].uuid)
+		testing.expect(t, list.virtualized)
+		testing.expect_value(t, list.item_height, SYSTEM_PROFILE_CELL_HEIGHT)
+		testing.expect_value(t, list.overscan, 2)
+		testing.expect_value(t, world.ui_layouts[entity.ui_layout_index].parent, panel_entity.uuid)
 		layout := world.ui_layouts[entity.ui_layout_index]
 		testing.expect(t, layout.padding == (shared.Vec4{}))
-		testing.expect(t, layout.background == EDITOR_LIST_BACKGROUND)
 	}
 	first_row, first_row_found := editor_ui_entity(&world, .Systems_Row, 0)
 	name_cell, name_found := editor_ui_entity(&world, .Systems_Name, 0)
@@ -6108,7 +6123,7 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 	}
 	if found && first_row_found && name_found {
 		row_layout := world.ui_layouts[world.entities[first_row].ui_layout_index]
-		testing.expect(t, row_layout.padding.y == 8 && row_layout.padding.w == 8)
+		testing.expect(t, row_layout.padding.y == 4 && row_layout.padding.w == 4)
 		name_layout := world.ui_layouts[world.entities[name_cell].ui_layout_index]
 		testing.expect(t, name_layout.padding.w == 16)
 		systems_node := find_node_by_entity_index(state, systems)
@@ -6147,6 +6162,28 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 			list := world.ui_lists[world.entities[systems].ui_list_index]
 			testing.expect(t, list.selected == world.entities[first_row].uuid)
 		}
+	}
+	if found && filter_found {
+		testing.expect(t, ecs.set_ui_input_value(&world, filter, "orbit"))
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
+		laid_out_system_rows := 0
+		for binding in world.editor_uis {
+			if binding.role != .Systems_Row || binding.entity_index < 0 {
+				continue
+			}
+			node_index := find_node_by_entity_index(state, binding.entity_index)
+			if node_index >= 0 && state.nodes[node_index].laid_out {
+				laid_out_system_rows += 1
+			}
+		}
+		testing.expect_value(t, laid_out_system_rows, 1)
+		systems_node := find_node_by_entity_index(state, systems)
+		testing.expect(t, systems_node >= 0)
+		if systems_node >= 0 {
+			testing.expect_value(t, state.nodes[systems_node].list_flow_count, 1)
+		}
+		testing.expect(t, ecs.set_ui_input_value(&world, filter, ""))
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 0, 0, 0) == "")
 	}
 	project_origin, project_origin_found := editor_ui_entity(&world, .Systems_Origin, 0)
 	luau_origin, luau_origin_found := editor_ui_entity(&world, .Systems_Origin, 1)

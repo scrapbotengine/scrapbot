@@ -17,6 +17,8 @@ EDITOR_UI_LEFT_NAME :: "__scrapbot_editor_left"
 EDITOR_UI_LEFT_CONTENT_NAME :: "__scrapbot_editor_left_content"
 EDITOR_UI_DIAGNOSTICS_NAME :: "__scrapbot_editor_diagnostics"
 EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
+EDITOR_UI_SYSTEMS_FILTER_NAME :: "__scrapbot_editor_systems_filter"
+EDITOR_UI_SYSTEMS_LIST_NAME :: "__scrapbot_editor_systems_list"
 EDITOR_UI_SCENE_NAME :: "__scrapbot_editor_scene"
 EDITOR_UI_SCENE_FILTER_NAME :: "__scrapbot_editor_scene_filter"
 EDITOR_UI_SCENE_LIST_NAME :: "__scrapbot_editor_scene_list"
@@ -843,7 +845,7 @@ editor_ui_create_browser_filter :: proc(
 	value.color = {0.82, 0.84, 0.88, 1}
 	value.size = EDITOR_TEXT_SIZE
 	value.prefix = "FILTER"
-	value.prefix_width = 42
+	value.prefix_width = 48
 	value.prefix_color = {0.46, 0.49, 0.55, 1}
 	value.prefix_background = {0.024, 0.031, 0.041, 1}
 	value.selection_background = {0.08, 0.48, 0.40, 0.48}
@@ -1089,21 +1091,39 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		EDITOR_UI_SYSTEMS_NAME,
 		EDITOR_UI_LEFT_CONTENT_NAME,
-		.Systems_Scroll,
+		.None,
 		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 178}),
 	)
 	editor_ui_add_section_panel(world, systems, "SYSTEMS / 0")
+	editor_ui_add_vstack(world, systems, {fill = true})
+	systems_filter := editor_ui_create_browser_filter(
+		world,
+		EDITOR_UI_SYSTEMS_FILTER_NAME,
+		EDITOR_UI_SYSTEMS_NAME,
+		2,
+	)
+	systems_list := editor_ui_create_box(
+		world,
+		EDITOR_UI_SYSTEMS_LIST_NAME,
+		EDITOR_UI_SYSTEMS_NAME,
+		.Systems_Scroll,
+		{size = {2000, 110}, fill_width = true},
+	)
 	editor_ui_add_list(
 		world,
-		systems,
+		systems_list,
 		{
+			filter_input = world.entities[systems_filter].uuid,
 			gap = 2,
 			selection_background = {0.040, 0.088, 0.098, 1},
 			hover_background = {0.028, 0.038, 0.050, 1},
 			active_background = {0.050, 0.067, 0.088, 1},
+			virtualized = true,
+			item_height = SYSTEM_PROFILE_CELL_HEIGHT,
+			overscan = 2,
 		},
 	)
-	editor_ui_add_scroll(world, systems)
+	editor_ui_add_scroll(world, systems_list)
 	scene := editor_ui_create_box(
 		world,
 		EDITOR_UI_SCENE_NAME,
@@ -1588,12 +1608,12 @@ editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, 
 	row = editor_ui_create_box(
 		world,
 		row_name,
-		EDITOR_UI_SYSTEMS_NAME,
+		EDITOR_UI_SYSTEMS_LIST_NAME,
 		.Systems_Row,
-		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {0, 8, 0, 8}},
+		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {0, 4, 0, 4}},
 		slot,
 	)
-	editor_ui_add_hstack(world, row, {gap = 8, fill = true})
+	editor_ui_add_hstack(world, row, {gap = 4, fill = true})
 	_ = ecs.set_ui_progress(
 		world,
 		row,
@@ -1633,7 +1653,7 @@ editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, 
 		timing,
 		row_name,
 		.Systems_Time,
-		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 3, 3, 3}},
+		{size = {55, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 1, 3, 1}, fixed_in_fill = true},
 		slot,
 	)
 	editor_ui_add_text(world, time_cell, "--", {0.42, 0.45, 0.51, 1}, EDITOR_TEXT_SIZE)
@@ -1944,7 +1964,10 @@ editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, component.entity_index, true)
 		}
 	}
-	if systems, found := editor_ui_entity(world, .Systems_Scroll); found {
+	if systems, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_SYSTEMS_NAME),
+	); found {
 		editor_ui_set_panel_title(world, systems, fmt.tprintf("SYSTEMS / %d", entry_count))
 	}
 	if state.system_profile != nil {
