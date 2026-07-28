@@ -6329,6 +6329,132 @@ test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history ::
 }
 
 @(test)
+test_reflected_entity_reference_inspector_uses_searchable_public_popup_and_history :: proc(
+	t: ^testing.T,
+) {
+	parent_id := ui_test_id("Entity Reference Parent")
+	child_id := ui_test_id("Entity Reference Child")
+	descendant_id := ui_test_id("Entity Reference Descendant")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Reference Parent",
+			has_transform = true,
+			transform = {position = {3, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Reference Child",
+			has_transform = true,
+			transform = {position = {1, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = descendant_id,
+			name = "Reference Descendant",
+			has_transform = true,
+			transform = {parent = child_id, position = {2, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	transform_definition, definition_found := component.find_definition(
+		&registry,
+		"scrapbot.transform",
+	)
+	testing.expect(t, definition_found)
+	if !definition_found {
+		return
+	}
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	state.editor_selected_entity = world.entities[1].id
+	state.editor_has_selection = true
+
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	entity_button := -1
+	for binding in world.editor_uis {
+		if binding.role == .Inspector_Entity_Menu_Button &&
+		   binding.reflected_component_id == transform_definition.id {
+			entity_button = binding.entity_index
+			break
+		}
+	}
+	testing.expect(t, entity_button >= 0)
+	if entity_button < 0 {
+		return
+	}
+	for binding in world.editor_uis {
+		testing.expect(t, binding.role != .Inspector_Entity_Menu_Item)
+	}
+	button_entity := world.entities[entity_button]
+	testing.expect_value(t, world.ui_buttons[button_entity.ui_button_index].text, "None")
+	testing.expect(t, handle_popup_press(state, &world, button_entity.id))
+	editor_ui_handle_activation(state, &world, button_entity.id, {})
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	menu, menu_found := editor_ui_entity(&world, .Inspector_Entity_Menu)
+	filter, filter_found := editor_ui_entity(&world, .Inspector_Entity_Menu_Filter)
+	content, content_found := editor_ui_entity(&world, .Inspector_Entity_Menu_Content)
+	testing.expect(t, menu_found && filter_found && content_found)
+	if !menu_found || !filter_found || !content_found {
+		return
+	}
+	testing.expect(t, world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
+	testing.expect(t, world.entities[filter].ui_input_index >= 0)
+	testing.expect(t, world.entities[content].ui_list_index >= 0)
+	testing.expect(t, world.entities[content].ui_scroll_area_index >= 0)
+	list := world.ui_lists[world.entities[content].ui_list_index]
+	testing.expect_value(t, list.filter_input, world.entities[filter].uuid)
+	testing.expect(t, list.virtualized)
+	parent_item := -1
+	child_listed := false
+	descendant_listed := false
+	for binding in world.editor_uis {
+		if binding.role != .Inspector_Entity_Menu_Item {
+			continue
+		}
+		if binding.entity_reference == parent_id {
+			parent_item = binding.entity_index
+		}
+		if binding.entity_reference == child_id {
+			child_listed = true
+		}
+		if binding.entity_reference == descendant_id {
+			descendant_listed = true
+		}
+	}
+	testing.expect(t, parent_item >= 0)
+	testing.expect(t, !child_listed)
+	testing.expect(t, !descendant_listed)
+	if parent_item < 0 {
+		return
+	}
+	testing.expect(t, handle_list_press(&world, world.entities[parent_item].id))
+	testing.expect(t, close_selection_popup(state, &world, world.entities[parent_item].id))
+	editor_ui_handle_activation(state, &world, world.entities[parent_item].id, {})
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].parent, parent_id)
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[1].transform_index].parent,
+		shared.Entity_UUID{},
+	)
+	testing.expect(t, editor_redo(state, &world))
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].parent, parent_id)
+}
+
+@(test)
 test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
 	append(

@@ -36,6 +36,9 @@ EDITOR_UI_INSPECTOR_HEADER_NAME :: "__scrapbot_editor_inspector_header"
 EDITOR_UI_STATUS_NAME :: "__scrapbot_editor_status"
 EDITOR_UI_ENUM_MENU_NAME :: "__scrapbot_editor_enum_menu"
 EDITOR_UI_ENUM_MENU_CONTENT_NAME :: "__scrapbot_editor_enum_menu_content"
+EDITOR_UI_ENTITY_MENU_NAME :: "__scrapbot_editor_entity_menu"
+EDITOR_UI_ENTITY_MENU_FILTER_NAME :: "__scrapbot_editor_entity_menu_filter"
+EDITOR_UI_ENTITY_MENU_CONTENT_NAME :: "__scrapbot_editor_entity_menu_content"
 EDITOR_UI_COMPONENT_MENU_NAME :: "__scrapbot_editor_component_menu"
 EDITOR_UI_COMPONENT_MENU_FILTER_NAME :: "__scrapbot_editor_component_menu_filter"
 EDITOR_UI_COMPONENT_MENU_CONTENT_NAME :: "__scrapbot_editor_component_menu_content"
@@ -238,6 +241,27 @@ editor_ui_handle_activation :: proc(
 						_ = editor_reflected_apply_text(state, world, binding, name)
 					}
 					return
+				case .Inspector_Entity_Menu_Button:
+					if binding.read_only {
+						return
+					}
+					if menu, found := editor_ui_entity(world, .Inspector_Entity_Menu); found {
+						layout := world.ui_layouts[world.entities[menu].ui_layout_index]
+						if layout.popup_open {
+							editor_ui_build_entity_menu(state, world, binding)
+						}
+					}
+					return
+				case .Inspector_Entity_Menu_Item:
+					if !binding.read_only {
+						_ = editor_reflected_apply_entity_reference(
+							state,
+							world,
+							binding,
+							binding.entity_reference,
+						)
+					}
+					return
 				case .Inspector_Component_Menu_Button:
 					if menu, found := editor_ui_entity(world, .Inspector_Component_Menu); found {
 						layout := world.ui_layouts[world.entities[menu].ui_layout_index]
@@ -367,6 +391,9 @@ editor_ui_handle_activation :: proc(
 				     .Inspector_Color_Picker,
 				     .Inspector_Enum_Menu,
 				     .Inspector_Enum_Menu_Content,
+				     .Inspector_Entity_Menu,
+				     .Inspector_Entity_Menu_Filter,
+				     .Inspector_Entity_Menu_Content,
 				     .Inspector_Component_Menu,
 				     .Inspector_Component_Menu_Content,
 				     .Inspector_Component_Menu_Group,
@@ -883,12 +910,13 @@ editor_ui_create_browser_filter :: proc(
 	world: ^shared.World,
 	name, parent: string,
 	slot: int,
+	role: shared.Editor_UI_Role = .Browser_Filter,
 ) -> int {
 	entity_index := editor_ui_create_box(
 		world,
 		name,
 		parent,
-		.Browser_Filter,
+		role,
 		{
 			size = {2000, 34},
 			padding = {7, 7, 6, 7},
@@ -2285,21 +2313,21 @@ editor_ui_ensure_inspector_color :: proc(
 	return
 }
 
-editor_ui_ensure_inspector_enum_button :: proc(
+editor_ui_ensure_choice_menu_button :: proc(
 	world: ^shared.World,
+	role: shared.Editor_UI_Role,
 	slot: int,
-	parent, label: string,
+	name, parent, label: string,
 	popup: shared.Entity_UUID,
 	read_only: bool,
 ) -> int {
-	button, found := editor_ui_entity(world, .Inspector_Enum_Menu_Button, slot)
+	button, found := editor_ui_entity(world, role, slot)
 	if !found {
-		name := fmt.tprintf("__scrapbot_editor_inspector_enum_%d", slot)
 		button = editor_ui_create_box(
 			world,
 			name,
 			parent,
-			.Inspector_Enum_Menu_Button,
+			role,
 			{
 				size = {1, INSPECTOR_CONTROL_HEIGHT},
 				padding = {5, 8, 4, 8},
@@ -2333,6 +2361,25 @@ editor_ui_ensure_inspector_enum_button :: proc(
 	}
 	_ = ecs.set_ui_button(world, button, value)
 	return button
+}
+
+editor_ui_ensure_inspector_enum_button :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent, label: string,
+	popup: shared.Entity_UUID,
+	read_only: bool,
+) -> int {
+	return editor_ui_ensure_choice_menu_button(
+		world,
+		.Inspector_Enum_Menu_Button,
+		slot,
+		fmt.tprintf("__scrapbot_editor_inspector_enum_%d", slot),
+		parent,
+		label,
+		popup,
+		read_only,
+	)
 }
 
 editor_ui_ensure_enum_menu :: proc(world: ^shared.World) -> (int, int) {
@@ -2384,20 +2431,19 @@ editor_ui_ensure_enum_menu :: proc(world: ^shared.World) -> (int, int) {
 	return menu, content
 }
 
-editor_ui_ensure_enum_menu_item :: proc(
+editor_ui_ensure_choice_menu_item :: proc(
 	world: ^shared.World,
+	role: shared.Editor_UI_Role,
 	slot: int,
-	parent, label: string,
-	binding: shared.Editor_UI_Component,
+	name, parent, label: string,
 ) -> int {
-	item, found := editor_ui_entity(world, .Inspector_Enum_Menu_Item, slot)
+	item, found := editor_ui_entity(world, role, slot)
 	if !found {
-		name := fmt.tprintf("__scrapbot_editor_enum_menu_item_%d", slot)
 		item = editor_ui_create_box(
 			world,
 			name,
 			parent,
-			.Inspector_Enum_Menu_Item,
+			role,
 			{size = {1, 30}, padding = {5, 10, 5, 10}, corner_radius = 3, fill_width = true},
 			slot,
 		)
@@ -2413,6 +2459,23 @@ editor_ui_ensure_enum_menu_item :: proc(
 	value.hover_background = {0.030, 0.105, 0.092, 1}
 	value.active_background = {0.018, 0.065, 0.057, 1}
 	_ = ecs.set_ui_button(world, item, value)
+	return item
+}
+
+editor_ui_ensure_enum_menu_item :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent, label: string,
+	binding: shared.Editor_UI_Component,
+) -> int {
+	item := editor_ui_ensure_choice_menu_item(
+		world,
+		.Inspector_Enum_Menu_Item,
+		slot,
+		fmt.tprintf("__scrapbot_editor_enum_menu_item_%d", slot),
+		parent,
+		label,
+	)
 	role := &world.editor_uis[world.entities[item].editor_ui_index]
 	role.target = binding.target
 	role.reflected_component_id = binding.reflected_component_id
@@ -2490,6 +2553,236 @@ editor_ui_build_enum_menu :: proc(
 	_ = ecs.set_ui_list(world, content, list)
 }
 
+editor_ui_ensure_entity_menu_button :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent, label: string,
+	popup: shared.Entity_UUID,
+	read_only: bool,
+) -> int {
+	return editor_ui_ensure_choice_menu_button(
+		world,
+		.Inspector_Entity_Menu_Button,
+		slot,
+		fmt.tprintf("__scrapbot_editor_inspector_entity_%d", slot),
+		parent,
+		label,
+		popup,
+		read_only,
+	)
+}
+
+editor_ui_ensure_entity_menu :: proc(world: ^shared.World) -> (menu, filter, content: int) {
+	menu_found, filter_found, content_found: bool
+	menu, menu_found = editor_ui_entity(world, .Inspector_Entity_Menu)
+	filter, filter_found = editor_ui_entity(world, .Inspector_Entity_Menu_Filter)
+	content, content_found = editor_ui_entity(world, .Inspector_Entity_Menu_Content)
+	if menu_found && filter_found && content_found {
+		return
+	}
+	menu = editor_ui_create_box(
+		world,
+		EDITOR_UI_ENTITY_MENU_NAME,
+		"",
+		.Inspector_Entity_Menu,
+		{
+			size = {340, 320},
+			padding = {5, 5, 5, 5},
+			background = {0.009, 0.012, 0.017, 1},
+			border_color = {0.11, 0.14, 0.18, 1},
+			border_width = 1,
+			corner_radius = 5,
+			popup = true,
+			popup_close_on_selection = true,
+			popup_gap = 4,
+			popup_min_width = 260,
+			popup_max_width = 460,
+			popup_max_height = 360,
+			popup_viewport_margin = 4,
+		},
+	)
+	editor_ui_add_vstack(world, menu, {gap = 5, fill = true})
+	filter = editor_ui_create_browser_filter(
+		world,
+		EDITOR_UI_ENTITY_MENU_FILTER_NAME,
+		EDITOR_UI_ENTITY_MENU_NAME,
+		0,
+		.Inspector_Entity_Menu_Filter,
+	)
+	filter_layout := &world.ui_layouts[world.entities[filter].ui_layout_index]
+	filter_layout.fill_width = true
+	filter_layout.fixed_in_fill = true
+	filter_value := world.ui_inputs[world.entities[filter].ui_input_index]
+	filter_value.prefix = "Find"
+	_ = ecs.set_ui_input(world, filter, filter_value)
+	content = editor_ui_create_box(
+		world,
+		EDITOR_UI_ENTITY_MENU_CONTENT_NAME,
+		EDITOR_UI_ENTITY_MENU_NAME,
+		.Inspector_Entity_Menu_Content,
+		{size = {330, 271}, fill_width = true, fill_height = true},
+	)
+	editor_ui_add_list(
+		world,
+		content,
+		{
+			filter_input = world.entities[filter].uuid,
+			gap = 1,
+			selection_background = {0.030, 0.105, 0.092, 1},
+			hover_background = {0.030, 0.105, 0.092, 1},
+			active_background = {0.018, 0.065, 0.057, 1},
+			virtualized = true,
+			item_height = 30,
+			overscan = 3,
+		},
+	)
+	editor_ui_add_scroll(world, content)
+	return
+}
+
+editor_ui_ensure_entity_menu_item :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent, label: string,
+	entity_reference: shared.Entity_UUID,
+	binding: shared.Editor_UI_Component,
+) -> int {
+	item := editor_ui_ensure_choice_menu_item(
+		world,
+		.Inspector_Entity_Menu_Item,
+		slot,
+		fmt.tprintf("__scrapbot_editor_entity_menu_item_%d", slot),
+		parent,
+		label,
+	)
+	role := &world.editor_uis[world.entities[item].editor_ui_index]
+	role.target = binding.target
+	role.reflected_component_id = binding.reflected_component_id
+	role.reflected_field_index = binding.reflected_field_index
+	role.entity_reference = entity_reference
+	role.read_only = false
+	return item
+}
+
+editor_entity_menu_label :: proc(world: ^shared.World, reference: shared.Entity_UUID) -> string {
+	if reference == (shared.Entity_UUID{}) {
+		return "None"
+	}
+	if index, found := ecs.entity_index_by_uuid(world, reference); found {
+		return world.entities[index].name
+	}
+	buffer: [36]u8
+	return fmt.tprintf("Missing [%s]", shared.entity_uuid_to_string(reference, buffer[:]))
+}
+
+editor_entity_menu_candidate_label :: proc(entity: shared.World_Entity) -> string {
+	buffer: [36]u8
+	uuid := shared.entity_uuid_to_string(entity.uuid, buffer[:])
+	return fmt.tprintf("%s  [%s]", entity.name, uuid[:8])
+}
+
+editor_ui_build_entity_menu :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+) {
+	menu, filter, content := editor_ui_ensure_entity_menu(world)
+	for component in world.editor_uis {
+		if component.role == .Inspector_Entity_Menu_Item {
+			editor_ui_set_hidden(world, component.entity_index, true)
+		}
+	}
+	if state == nil {
+		return
+	}
+	menu_layout := &world.ui_layouts[world.entities[menu].ui_layout_index]
+	if !menu_layout.popup_open {
+		return
+	}
+	menu_binding := &world.editor_uis[world.entities[menu].editor_ui_index]
+	menu_binding.target = binding.target
+	menu_binding.reflected_component_id = binding.reflected_component_id
+	menu_binding.reflected_field_index = binding.reflected_field_index
+	filter_value := world.ui_inputs[world.entities[filter].ui_input_index]
+	filter_value.text = ""
+	_ = ecs.set_ui_input(world, filter, filter_value)
+	parent := world.entities[content].name
+	current, current_found := editor_reflected_entity_reference(state, world, binding)
+	selected: shared.Entity_UUID
+	slot := 0
+	none_item := editor_ui_ensure_entity_menu_item(world, slot, parent, "None", {}, binding)
+	editor_ui_set_hidden(world, none_item, false)
+	if current_found && current == (shared.Entity_UUID{}) {
+		selected = world.entities[none_item].uuid
+	}
+	slot += 1
+	indices: [dynamic]int
+	defer delete(indices)
+	for entity, entity_index in world.entities {
+		if !entity.alive || entity.origin != .Scene {
+			continue
+		}
+		if !editor_reflected_entity_reference_candidate_valid(state, world, binding, entity.uuid) {
+			continue
+		}
+		append(&indices, entity_index)
+	}
+	for index in 1 ..< len(indices) {
+		value := indices[index]
+		cursor := index
+		for cursor > 0 {
+			left := world.entities[indices[cursor - 1]]
+			right := world.entities[value]
+			if left.name < right.name ||
+			   (left.name == right.name && left.scene_order <= right.scene_order) {
+				break
+			}
+			indices[cursor] = indices[cursor - 1]
+			cursor -= 1
+		}
+		indices[cursor] = value
+	}
+	for entity_index in indices {
+		entity := world.entities[entity_index]
+		item := editor_ui_ensure_entity_menu_item(
+			world,
+			slot,
+			parent,
+			editor_entity_menu_candidate_label(entity),
+			entity.uuid,
+			binding,
+		)
+		editor_ui_set_hidden(world, item, false)
+		if current_found && current == entity.uuid {
+			selected = world.entities[item].uuid
+		}
+		slot += 1
+	}
+	if current_found && current != (shared.Entity_UUID{}) && selected == (shared.Entity_UUID{}) {
+		item := editor_ui_ensure_entity_menu_item(
+			world,
+			slot,
+			parent,
+			editor_entity_menu_label(world, current),
+			current,
+			binding,
+		)
+		editor_ui_set_hidden(world, item, false)
+		selected = world.entities[item].uuid
+		slot += 1
+	}
+	content_layout := &world.ui_layouts[world.entities[content].ui_layout_index]
+	content_layout.size.y = max(f32(slot * 31), 1)
+	list := world.ui_lists[world.entities[content].ui_list_index]
+	list.selected = selected
+	_ = ecs.set_ui_list(world, content, list)
+	for component in world.editor_uis {
+		if component.role == .Inspector_Entity_Menu_Item && component.slot >= slot {
+			editor_ui_set_hidden(world, component.entity_index, true)
+		}
+	}
+}
+
 Inspector_ECS_Builder :: struct {
 	state: ^State,
 	world: ^shared.World,
@@ -2503,6 +2796,7 @@ Inspector_ECS_Builder :: struct {
 	checkbox_count: int,
 	color_count: int,
 	enum_button_count: int,
+	entity_button_count: int,
 	row_count: int,
 	component_menu_visible: bool,
 	resource_menu_visible: bool,
@@ -3248,6 +3542,53 @@ editor_ui_inspector_enum :: proc(
 	builder.row_count += 1
 }
 
+editor_ui_inspector_entity_reference :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	value: shared.Entity_UUID,
+	reflected_component_id: shared.Component_ID,
+	reflected_field_index: int,
+	read_only: bool,
+) {
+	if builder == nil || builder.table_entity < 0 {
+		return
+	}
+	parent := builder.world.entities[builder.table_entity].name
+	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, false)
+	builder.cell_count += 1
+	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, true)
+	builder.cell_count += 1
+	cells := [2]int{label_cell, value_cell}
+	for cell in cells {
+		layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
+		editor_ui_set_hidden(builder.world, cell, false)
+		layout.size.y = INSPECTOR_CELL_HEIGHT
+	}
+	editor_ui_set_text(builder.world, label_cell, label)
+	menu, _, _ := editor_ui_ensure_entity_menu(builder.world)
+	popup: shared.Entity_UUID
+	if !read_only {
+		popup = builder.world.entities[menu].uuid
+	}
+	button := editor_ui_ensure_entity_menu_button(
+		builder.world,
+		builder.entity_button_count,
+		builder.world.entities[value_cell].name,
+		editor_entity_menu_label(builder.world, value),
+		popup,
+		read_only,
+	)
+	builder.entity_button_count += 1
+	editor_ui_set_hidden(builder.world, button, false)
+	role := &builder.world.editor_uis[builder.world.entities[button].editor_ui_index]
+	role.target = builder.target
+	role.reflected_component_id = reflected_component_id
+	role.reflected_field_index = reflected_field_index
+	role.entity_reference = value
+	role.read_only = read_only
+	builder.row_count += 1
+}
+
 editor_ui_inspector_reflected_field :: proc(
 	builder: ^Inspector_ECS_Builder,
 	component_value: any,
@@ -3273,6 +3614,18 @@ editor_ui_inspector_reflected_field :: proc(
 			read_only = true
 		}
 		editor_ui_inspector_enum(builder, field.name, value, definition.id, field_index, read_only)
+		return
+	}
+	if field_value.id == typeid_of(shared.Entity_UUID) {
+		value := (cast(^shared.Entity_UUID)field_value.data)^
+		editor_ui_inspector_entity_reference(
+			builder,
+			field.name,
+			value,
+			definition.id,
+			field_index,
+			read_only,
+		)
 		return
 	}
 	if field.field_type == .Bool {
@@ -3531,6 +3884,9 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 			case .Inspector_Enum_Menu_Button:
 				if component.slot >=
 				   builder.enum_button_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
+			case .Inspector_Entity_Menu_Button:
+				if component.slot >=
+				   builder.entity_button_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case .Inspector_Component_Menu_Button:
 				editor_ui_set_hidden(
 					builder.world,
@@ -3565,6 +3921,36 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 					binding_valid =
 						anchor_binding.role == .Inspector_Enum_Menu_Button &&
 						anchor_binding.slot < builder.enum_button_count &&
+						anchor_binding.target == menu_binding.target &&
+						anchor_binding.reflected_component_id ==
+							menu_binding.reflected_component_id &&
+						anchor_binding.reflected_field_index == menu_binding.reflected_field_index
+				}
+			}
+			if !binding_valid {
+				_ = set_popup_open(builder.world, menu, false)
+			}
+		}
+	}
+	if menu, found := editor_ui_entity(builder.world, .Inspector_Entity_Menu); found {
+		menu_entity := builder.world.entities[menu]
+		layout := builder.world.ui_layouts[menu_entity.ui_layout_index]
+		if layout.popup_open {
+			binding_valid := false
+			if anchor, anchor_found := ecs.entity_index_by_uuid(
+				builder.world,
+				layout.popup_anchor,
+			); anchor_found {
+				anchor_entity := builder.world.entities[anchor]
+				if anchor_entity.editor_ui_index >= 0 &&
+				   anchor_entity.editor_ui_index < len(builder.world.editor_uis) &&
+				   menu_entity.editor_ui_index >= 0 &&
+				   menu_entity.editor_ui_index < len(builder.world.editor_uis) {
+					anchor_binding := builder.world.editor_uis[anchor_entity.editor_ui_index]
+					menu_binding := builder.world.editor_uis[menu_entity.editor_ui_index]
+					binding_valid =
+						anchor_binding.role == .Inspector_Entity_Menu_Button &&
+						anchor_binding.slot < builder.entity_button_count &&
 						anchor_binding.target == menu_binding.target &&
 						anchor_binding.reflected_component_id ==
 							menu_binding.reflected_component_id &&
@@ -4978,6 +5364,7 @@ editor_ui_input_binding :: proc(
 	   binding.role != .Inspector_Entity_Name &&
 	   binding.role != .Inspector_Resource_Name &&
 	   binding.role != .Inspector_Resource_Source &&
+	   binding.role != .Inspector_Entity_Menu_Filter &&
 	   binding.role != .Browser_Filter {
 		return {}, nil, false
 	}
@@ -5033,7 +5420,7 @@ editor_ui_consume_input_state :: proc(state: ^State, world: ^shared.World, entit
 		return
 	}
 	interaction := world.ui_states[entity.ui_state_index]
-	if binding.role == .Browser_Filter {
+	if binding.role == .Browser_Filter || binding.role == .Inspector_Entity_Menu_Filter {
 		return
 	}
 	if binding.role == .Inspector_Entity_Name {

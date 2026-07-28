@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "type", "target": {"name": "__scrapbot_editor_scene_filter", "origin": "editor"}, "text": "Pyramid"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_row_12", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_entity_0", "origin": "editor"}, "expect": "visible"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_inspector_entity_0", "origin": "editor"}},
+    {"action": "type", "target": {"name": "__scrapbot_editor_entity_menu_filter", "origin": "editor"}, "text": "Icosphere"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_entity_menu_item_5", "origin": "editor"}, "expect": "visible"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_entity_menu_item_5", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_entity_0", "origin": "editor"}, "expect": "text", "text": "Icosphere"},
+    {"action": "click", "target": {"text": "UNDO", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_entity_0", "origin": "editor"}, "expect": "text", "text": "None"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_inspector_entity_0", "origin": "editor"}},
+    {"action": "type", "target": {"name": "__scrapbot_editor_entity_menu_filter", "origin": "editor"}, "text": "Icosphere"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_entity_menu", "origin": "editor"}, "padding": 8}
+  ]
+}

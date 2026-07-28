@@ -1540,6 +1540,295 @@ editor_reflected_read_number :: proc(
 	return editor_reflected_axis_number(field_value, binding.inspector_axis)
 }
 
+editor_reflected_entity_reference :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+) -> (
+	shared.Entity_UUID,
+	bool,
+) {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return {}, false
+	}
+	_, target_index, target_ok := inspector_target(world, binding)
+	if !target_ok {
+		return {}, false
+	}
+	snapshot, captured := ecs.capture_registered_component_snapshot(
+		world,
+		target_index,
+		definition,
+	)
+	if !captured {
+		return {}, false
+	}
+	defer ecs.destroy_registered_component_snapshot(&snapshot)
+	component_value, component_found := editor_reflected_snapshot_component_value(
+		&snapshot.value,
+		definition,
+	)
+	if !component_found {
+		return {}, false
+	}
+	field_value, field_found := editor_reflected_field_value(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !field_found || field_value.id != typeid_of(shared.Entity_UUID) {
+		return {}, false
+	}
+	return (cast(^shared.Entity_UUID)field_value.data)^, true
+}
+
+editor_reflected_set_snapshot_entity_reference :: proc(
+	snapshot: ^ecs.Registered_Component_Snapshot,
+	definition: ^component.Definition,
+	field_index: int,
+	value: shared.Entity_UUID,
+) -> bool {
+	if snapshot == nil || definition == nil {
+		return false
+	}
+	component_value, found := editor_reflected_snapshot_component_value(
+		&snapshot.value,
+		definition,
+	)
+	if !found {
+		return false
+	}
+	field_value, field_found := editor_reflected_field_value(
+		component_value,
+		definition,
+		field_index,
+	)
+	if !field_found || field_value.id != typeid_of(shared.Entity_UUID) {
+		return false
+	}
+	(cast(^shared.Entity_UUID)field_value.data)^ = value
+	field, described := editor_reflected_field_definition(component_value, definition, field_index)
+	if !described {
+		return false
+	}
+	editor_reflected_normalize(&snapshot.value, definition.name, field.name)
+	return editor_reflected_component_valid(&snapshot.value, definition.name)
+}
+
+editor_reflected_ui_parent_candidate_valid :: proc(
+	world: ^shared.World,
+	target_index, candidate_index: int,
+) -> bool {
+	if !ecs.entity_is_alive(world, target_index) ||
+	   !ecs.entity_is_alive(world, candidate_index) ||
+	   target_index == candidate_index {
+		return false
+	}
+	target := world.entities[target_index]
+	candidate := world.entities[candidate_index]
+	if target.origin != candidate.origin ||
+	   candidate.ui_layout_index < 0 ||
+	   candidate.ui_layout_index >= len(world.ui_layouts) {
+		return false
+	}
+	cursor := candidate_index
+	for _ in 0 ..< len(world.entities) {
+		if cursor == target_index {
+			return false
+		}
+		layout_index := world.entities[cursor].ui_layout_index
+		if layout_index < 0 || layout_index >= len(world.ui_layouts) {
+			return false
+		}
+		parent := world.ui_layouts[layout_index].parent
+		if parent == (shared.Entity_UUID{}) {
+			return true
+		}
+		next, found := ecs.entity_index_by_uuid(world, parent)
+		if !found || world.entities[next].origin != target.origin {
+			return false
+		}
+		cursor = next
+	}
+	return false
+}
+
+editor_reflected_tree_parent_candidate_valid :: proc(
+	world: ^shared.World,
+	target_index, candidate_index: int,
+) -> bool {
+	if !ecs.entity_is_alive(world, target_index) ||
+	   !ecs.entity_is_alive(world, candidate_index) ||
+	   target_index == candidate_index {
+		return false
+	}
+	target := world.entities[target_index]
+	candidate := world.entities[candidate_index]
+	if target.origin != candidate.origin ||
+	   target.ui_layout_index < 0 ||
+	   target.ui_layout_index >= len(world.ui_layouts) ||
+	   candidate.ui_layout_index < 0 ||
+	   candidate.ui_layout_index >= len(world.ui_layouts) {
+		return false
+	}
+	target_layout := world.ui_layouts[target.ui_layout_index]
+	candidate_layout := world.ui_layouts[candidate.ui_layout_index]
+	if !target_layout.tree_item ||
+	   !candidate_layout.tree_item ||
+	   target_layout.parent != candidate_layout.parent {
+		return false
+	}
+	cursor := candidate_index
+	for _ in 0 ..< len(world.entities) {
+		if cursor == target_index {
+			return false
+		}
+		layout := world.ui_layouts[world.entities[cursor].ui_layout_index]
+		if layout.tree_parent == (shared.Entity_UUID{}) {
+			return true
+		}
+		next, found := ecs.entity_index_by_uuid(world, layout.tree_parent)
+		if !found {
+			return false
+		}
+		cursor = next
+	}
+	return false
+}
+
+editor_reflected_entity_reference_candidate_valid :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	candidate: shared.Entity_UUID,
+) -> bool {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return false
+	}
+	_, target_index, target_ok := inspector_target(world, binding)
+	if !target_ok {
+		return false
+	}
+	snapshot, captured := ecs.capture_registered_component_snapshot(
+		world,
+		target_index,
+		definition,
+	)
+	if !captured {
+		return false
+	}
+	defer ecs.destroy_registered_component_snapshot(&snapshot)
+	if !editor_reflected_set_snapshot_entity_reference(
+		&snapshot,
+		definition,
+		binding.reflected_field_index,
+		candidate,
+	) {
+		return false
+	}
+	if candidate == (shared.Entity_UUID{}) {
+		return true
+	}
+	candidate_index, candidate_found := ecs.entity_index_by_uuid(world, candidate)
+	if !candidate_found || world.entities[candidate_index].origin == .Editor {
+		return false
+	}
+	component_value, component_found := editor_reflected_snapshot_component_value(
+		&snapshot.value,
+		definition,
+	)
+	if !component_found {
+		return false
+	}
+	field, field_found := editor_reflected_field_definition(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !field_found {
+		return false
+	}
+	target := world.entities[target_index]
+	candidate_entity := world.entities[candidate_index]
+	#partial switch definition.storage_kind {
+		case .Transform:
+			return(
+				field.name != "parent" ||
+				ecs.transform_parent_is_valid(world, target_index, candidate) \
+			)
+		case .UI_Layout:
+			switch field.name {
+				case "parent":
+					return editor_reflected_ui_parent_candidate_valid(
+						world,
+						target_index,
+						candidate_index,
+					)
+				case "popup_anchor":
+					return(
+						target.origin == candidate_entity.origin &&
+						candidate_entity.ui_layout_index >= 0 &&
+						target_index != candidate_index \
+					)
+				case "tree_parent":
+					return editor_reflected_tree_parent_candidate_valid(
+						world,
+						target_index,
+						candidate_index,
+					)
+			}
+		case .UI_List:
+			switch field.name {
+				case "selected":
+					return(
+						candidate_entity.ui_layout_index >= 0 &&
+						world.ui_layouts[candidate_entity.ui_layout_index].parent == target.uuid \
+					)
+				case "filter_input":
+					return(
+						target.origin == candidate_entity.origin &&
+						candidate_entity.ui_input_index >= 0 \
+					)
+			}
+		case .UI_Viewport:
+			switch field.name {
+				case "camera":
+					return candidate_entity.camera_index >= 0
+				case "root":
+					return target.origin == candidate_entity.origin
+			}
+		case .UI_Button:
+			if field.name == "popup" {
+				return(
+					target.origin == candidate_entity.origin &&
+					candidate_entity.ui_layout_index >= 0 &&
+					world.ui_layouts[candidate_entity.ui_layout_index].popup \
+				)
+			}
+		case:
+	}
+	return target.origin == candidate_entity.origin
+}
+
+editor_reflected_apply_entity_reference :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	value: shared.Entity_UUID,
+) -> bool {
+	if !editor_reflected_entity_reference_candidate_valid(state, world, binding, value) {
+		return false
+	}
+	text := "none"
+	buffer: [36]u8
+	if value != (shared.Entity_UUID{}) {
+		text = shared.entity_uuid_to_string(value, buffer[:])
+	}
+	return editor_reflected_apply_text(state, world, binding, text)
+}
+
 editor_color_component :: proc "contextless" (value: shared.Vec4, index: int) -> f32 {
 	switch index {
 		case 0:

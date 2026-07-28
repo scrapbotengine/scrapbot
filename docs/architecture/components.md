@@ -269,7 +269,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 - **Contract:** Full-width selectable child rows with optional input-driven descendant-content filtering, uniform-row virtualization, drag/reorder/reparent, and flattened UUID tree metadata.
 - **Storage/lifecycle:** Dedicated typed UI storage plus retained gesture, compact flow-order, and scroll-window state; authored component.
-- **Producers:** Public project UI surfaces, editor entity/resource/system browsers, registry-driven component and reflected-enum pickers, and pointer interactions.
+- **Producers:** Public project UI surfaces, editor entity/resource/system browsers, registry-driven component, reflected-enum, and UUID entity-reference pickers, and pointer interactions.
 - **Consumers:** Selection, filtered tree flattening, virtual layout, drop classification/painting, editor bindings via generic `ui_state` events.
 - **Invalidation:** Membership, tree metadata, referenced filter-input text, or searchable descendant content invalidates the affected list layout. Compact row order rebuilds only on that domain's structural/layout revision; scroll-only layout reuses it and visits the visible window plus overscan. Hover/selection/drag changes target interaction/paint state and completed drops advance a revision.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_list).
