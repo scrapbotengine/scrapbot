@@ -5982,6 +5982,115 @@ test_reflected_inspector_edits_every_registry_field_shape_with_structural_undo :
 }
 
 @(test)
+test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history :: proc(
+	t: ^testing.T,
+) {
+	icon := shared.UI_Icon.Close
+	changed, parsed := editor_reflected_set_enum_value(
+		any{rawptr(&icon), typeid_of(shared.UI_Icon)},
+		"plus",
+	)
+	testing.expect(t, changed && parsed && icon == .Plus)
+	_, parsed = editor_reflected_set_enum_value(
+		any{rawptr(&icon), typeid_of(shared.UI_Icon)},
+		"missing",
+	)
+	testing.expect(t, !parsed && icon == .Plus)
+
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	text := shared.ui_text_default()
+	text.text = "Enum"
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Enum Inspector"),
+			name = "Enum Inspector",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 48}},
+			has_ui_text = true,
+			ui_text = text,
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	text_definition, definition_found := component.find_definition(&registry, "scrapbot.ui_text")
+	testing.expect(t, definition_found)
+	if !definition_found {
+		return
+	}
+	alignment_field := -1
+	for field, index in text_definition.fields[:text_definition.field_count] {
+		if field.name == "alignment" {
+			alignment_field = index
+			break
+		}
+	}
+	testing.expect(t, alignment_field >= 0)
+	if alignment_field < 0 {
+		return
+	}
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	state.editor_selected_entity = world.entities[0].id
+	state.editor_has_selection = true
+
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	enum_button := -1
+	for binding in world.editor_uis {
+		if binding.role == .Inspector_Enum_Menu_Button &&
+		   binding.reflected_component_id == text_definition.id &&
+		   binding.reflected_field_index == alignment_field {
+			enum_button = binding.entity_index
+			break
+		}
+	}
+	testing.expect(t, enum_button >= 0)
+	if enum_button < 0 {
+		return
+	}
+	button_entity := world.entities[enum_button]
+	testing.expect(t, button_entity.ui_button_index >= 0)
+	testing.expect(t, world.ui_buttons[button_entity.ui_button_index].text == "Left")
+	editor_ui_handle_activation(state, &world, button_entity.id, {})
+	testing.expect(t, state.editor_enum_menu_open)
+	menu, menu_found := editor_ui_entity(&world, .Inspector_Enum_Menu)
+	content, content_found := editor_ui_entity(&world, .Inspector_Enum_Menu_Content)
+	testing.expect(t, menu_found && content_found)
+	if menu_found && content_found {
+		testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].hidden)
+		content_entity := world.entities[content]
+		testing.expect(t, content_entity.ui_list_index >= 0)
+		testing.expect(t, content_entity.ui_scroll_area_index >= 0)
+		list := world.ui_lists[content_entity.ui_list_index]
+		left_item, left_found := editor_ui_entity(&world, .Inspector_Enum_Menu_Item, 0)
+		testing.expect(t, left_found)
+		if left_found {
+			testing.expect_value(t, list.selected, world.entities[left_item].uuid)
+		}
+	}
+	right_item, right_found := editor_ui_entity(&world, .Inspector_Enum_Menu_Item, 2)
+	testing.expect(t, right_found)
+	if !right_found {
+		return
+	}
+	editor_ui_handle_activation(state, &world, world.entities[right_item].id, {})
+	testing.expect(t, !state.editor_enum_menu_open)
+	testing.expect(t, world.ui_texts[world.entities[0].ui_text_index].alignment == .Right)
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect(t, world.ui_texts[world.entities[0].ui_text_index].alignment == .Left)
+}
+
+@(test)
 test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
 	append(

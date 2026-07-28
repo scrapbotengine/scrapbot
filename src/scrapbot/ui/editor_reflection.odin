@@ -425,6 +425,9 @@ editor_reflected_value_is_writable :: proc(value: any) -> bool {
 	if value == nil {
 		return false
 	}
+	if len(reflect.enum_field_names(value.id)) > 0 {
+		return true
+	}
 	switch value.id {
 		case typeid_of(bool),
 		     typeid_of(f32),
@@ -438,6 +441,49 @@ editor_reflected_value_is_writable :: proc(value: any) -> bool {
 			return true
 	}
 	return false
+}
+
+editor_reflected_value_is_enum :: proc(value: any) -> bool {
+	return value != nil && len(reflect.enum_field_names(value.id)) > 0
+}
+
+editor_reflected_set_enum_value :: proc(value: any, name: string) -> (bool, bool) {
+	if !editor_reflected_value_is_enum(value) {
+		return false, false
+	}
+	trimmed := strings.trim_space(name)
+	canonical := ""
+	for option in reflect.enum_field_names(value.id) {
+		if strings.equal_fold(option, trimmed) {
+			canonical = option
+			break
+		}
+	}
+	if canonical == "" {
+		return false, false
+	}
+	next, found := reflect.enum_from_name_any(value.id, canonical)
+	if !found {
+		return false, false
+	}
+	current, current_found := reflect.as_i64(value)
+	if !current_found {
+		return false, false
+	}
+	changed := current != i64(next)
+	switch type_info_of(value.id).size {
+		case 1:
+			(cast(^i8)value.data)^ = i8(next)
+		case 2:
+			(cast(^i16)value.data)^ = i16(next)
+		case 4:
+			(cast(^i32)value.data)^ = i32(next)
+		case 8:
+			(cast(^i64)value.data)^ = i64(next)
+		case:
+			return false, false
+	}
+	return changed, true
 }
 
 editor_reflected_field_value :: proc(
@@ -825,6 +871,9 @@ editor_reflected_set_text_value :: proc(value: any, text: string) -> (bool, bool
 	if value == nil {
 		return false, false
 	}
+	if editor_reflected_value_is_enum(value) {
+		return editor_reflected_set_enum_value(value, text)
+	}
 	if value.id == typeid_of(string) {
 		pointer := cast(^string)value.data
 		if pointer^ == text {
@@ -846,24 +895,6 @@ editor_reflected_set_text_value :: proc(value: any, text: string) -> (bool, bool
 			next = parsed
 		}
 		pointer := cast(^shared.Entity_UUID)value.data
-		changed := pointer^ != next
-		pointer^ = next
-		return changed, true
-	}
-	if value.id == typeid_of(shared.UI_Text_Alignment) {
-		trimmed := strings.trim_space(text)
-		next: shared.UI_Text_Alignment
-		switch trimmed {
-			case "left":
-				next = .Left
-			case "center":
-				next = .Center
-			case "right":
-				next = .Right
-			case:
-				return false, false
-		}
-		pointer := cast(^shared.UI_Text_Alignment)value.data
 		changed := pointer^ != next
 		pointer^ = next
 		return changed, true
@@ -1383,6 +1414,54 @@ editor_reflected_read_bool :: proc(
 		return false, false
 	}
 	return editor_reflected_field_bool(component_value, definition, binding.reflected_field_index)
+}
+
+editor_reflected_enum_option_name :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	option_index: int,
+) -> (
+	string,
+	bool,
+) {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return "", false
+	}
+	_, target_index, target_ok := inspector_target(world, binding)
+	if !target_ok {
+		return "", false
+	}
+	snapshot, captured := ecs.capture_registered_component_snapshot(
+		world,
+		target_index,
+		definition,
+	)
+	if !captured {
+		return "", false
+	}
+	defer ecs.destroy_registered_component_snapshot(&snapshot)
+	component_value, component_found := editor_reflected_snapshot_component_value(
+		&snapshot.value,
+		definition,
+	)
+	if !component_found {
+		return "", false
+	}
+	field_value, field_found := editor_reflected_field_value(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !field_found || !editor_reflected_value_is_enum(field_value) {
+		return "", false
+	}
+	names := reflect.enum_field_names(field_value.id)
+	if option_index < 0 || option_index >= len(names) {
+		return "", false
+	}
+	return names[option_index], true
 }
 
 editor_reflected_read_number :: proc(

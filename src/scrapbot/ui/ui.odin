@@ -367,6 +367,8 @@ State :: struct {
 	editor_inspector_snapshot_resource_version: u32,
 	editor_inspector_snapshot_stopped: bool,
 	editor_inspector_snapshot_refresh_count: u64,
+	editor_enum_menu_open: bool,
+	editor_enum_menu_button_slot: int,
 	editor_component_menu_open: bool,
 	editor_resource_menu_open: bool,
 	editor_layout_invalidated: bool,
@@ -1067,6 +1069,7 @@ reconcile :: proc(
 	editor_height := surface_height / editor_scale
 	reconcile_editor_ui_world(state, world)
 	if err := sync_ui_structure(state, world); err != "" { return err }
+	editor_ui_anchor_enum_menu(state, world, editor_width, editor_height)
 	editor_ui_anchor_component_menu(state, world, editor_width, editor_height)
 	editor_ui_anchor_resource_menu(state, world, editor_width, editor_height)
 	project_layout := Rect{0, 0, width, height}
@@ -1162,6 +1165,7 @@ reconcile :: proc(
 	project_pressed, project_pressed_ok := update_interaction(state, project_pointer, false)
 	component_menu_was_open := state.editor_component_menu_open
 	resource_menu_was_open := state.editor_resource_menu_open
+	enum_menu_was_open := state.editor_enum_menu_open
 	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
 	if project_press_started && project_pressed_ok {
 		list_drag_begin(state, world, project_pressed, project_pointer.position, false)
@@ -1205,6 +1209,16 @@ reconcile :: proc(
 	   editor_press_started &&
 	   (!pressed_ok || !editor_ui_component_menu_contains(world, pressed)) {
 		editor_ui_close_component_menu(state, world)
+		panel_changed = true
+	}
+	if enum_menu_was_open &&
+	   editor_press_started &&
+	   (!pressed_ok || !editor_ui_enum_menu_contains(state, world, pressed)) {
+		editor_ui_close_enum_menu(state, world)
+		panel_changed = true
+	}
+	if state.editor_enum_menu_open && keyboard.escape {
+		editor_ui_close_enum_menu(state, world)
 		panel_changed = true
 	}
 	if state.editor_component_menu_open && keyboard.escape {
