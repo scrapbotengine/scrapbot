@@ -34,6 +34,7 @@ EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
 EDITOR_UI_INSPECTOR_HEADER_NAME :: "__scrapbot_editor_inspector_header"
 EDITOR_UI_STATUS_NAME :: "__scrapbot_editor_status"
 EDITOR_UI_COMPONENT_MENU_NAME :: "__scrapbot_editor_component_menu"
+EDITOR_UI_COMPONENT_MENU_FILTER_NAME :: "__scrapbot_editor_component_menu_filter"
 EDITOR_UI_COMPONENT_MENU_CONTENT_NAME :: "__scrapbot_editor_component_menu_content"
 EDITOR_UI_RESOURCE_MENU_NAME :: "__scrapbot_editor_resource_menu"
 EDITOR_UI_RESOURCE_MENU_CONTENT_NAME :: "__scrapbot_editor_resource_menu_content"
@@ -2412,15 +2413,22 @@ editor_ui_ensure_component_menu :: proc(world: ^shared.World) -> (int, int) {
 			hidden = true,
 		},
 	)
-	editor_ui_add_scroll(world, menu)
+	editor_ui_add_vstack(world, menu, {fill = true})
+	filter := editor_ui_create_browser_filter(
+		world,
+		EDITOR_UI_COMPONENT_MENU_FILTER_NAME,
+		EDITOR_UI_COMPONENT_MENU_NAME,
+		3,
+	)
 	content = editor_ui_create_box(
 		world,
 		EDITOR_UI_COMPONENT_MENU_CONTENT_NAME,
 		EDITOR_UI_COMPONENT_MENU_NAME,
 		.Inspector_Component_Menu_Content,
-		{size = {310, 1}, fill_width = true},
+		{size = {310, 276}, fill_width = true},
 	)
-	editor_ui_add_vstack(world, content, {gap = 1})
+	editor_ui_add_list(world, content, {filter_input = world.entities[filter].uuid, gap = 1})
+	editor_ui_add_scroll(world, content)
 	return menu, content
 }
 
@@ -3129,7 +3137,6 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 	registry := state.component_registry
 	editor_ui_refresh_component_menu_cache(state)
 	group_slot := 0
-	row_count := 0
 	project_group_emitted := false
 	previous_tokens: [16]string
 	previous_count := 0
@@ -3151,7 +3158,6 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 					"PROJECT",
 				)
 				group_slot += 1
-				row_count += 1
 				editor_ui_set_hidden(world, group, false)
 				project_group_emitted = true
 			}
@@ -3172,7 +3178,6 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 					label,
 				)
 				group_slot += 1
-				row_count += 1
 				editor_ui_set_hidden(world, group, false)
 			}
 			previous_count = min(len(tokens) - 1, len(previous_tokens))
@@ -3189,10 +3194,7 @@ editor_ui_build_component_menu :: proc(state: ^State, world: ^shared.World, enti
 			label,
 		)
 		editor_ui_set_hidden(world, item, false)
-		row_count += 1
 	}
-	content_layout := &world.ui_layouts[world.entities[content].ui_layout_index]
-	content_layout.size.y = max(f32(row_count * 30), 1)
 }
 
 editor_entity_has_registered_component :: proc(

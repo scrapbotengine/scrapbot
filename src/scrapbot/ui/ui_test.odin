@@ -3837,6 +3837,46 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	state.editor_snapshot_valid = false
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	testing.expect(t, !world.ui_layouts[world.entities[menu].ui_layout_index].hidden)
+	filter, filter_found := editor_ui_entity(&world, .Browser_Filter, 3)
+	content, content_found := editor_ui_entity(&world, .Inspector_Component_Menu_Content)
+	testing.expect(t, filter_found && content_found)
+	if filter_found && content_found {
+		menu_entity := world.entities[menu]
+		content_entity := world.entities[content]
+		testing.expect(t, menu_entity.ui_vstack_index >= 0)
+		testing.expect(t, menu_entity.ui_scroll_area_index < 0)
+		testing.expect(t, content_entity.ui_list_index >= 0)
+		testing.expect(t, content_entity.ui_scroll_area_index >= 0)
+		list := world.ui_lists[content_entity.ui_list_index]
+		testing.expect_value(t, list.filter_input, world.entities[filter].uuid)
+		testing.expect(t, !list.virtualized)
+		testing.expect_value(
+			t,
+			world.ui_layouts[content_entity.ui_layout_index].parent,
+			menu_entity.uuid,
+		)
+
+		testing.expect(t, ecs.set_ui_input_value(&world, filter, "camera"))
+		testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+		laid_out_menu_items := 0
+		for binding in world.editor_uis {
+			if binding.role != .Inspector_Component_Menu_Item || binding.entity_index < 0 {
+				continue
+			}
+			node_index := find_node_by_entity_index(state, binding.entity_index)
+			if node_index >= 0 && state.nodes[node_index].laid_out {
+				laid_out_menu_items += 1
+			}
+		}
+		testing.expect_value(t, laid_out_menu_items, 1)
+		content_node := find_node_by_entity_index(state, content)
+		testing.expect(t, content_node >= 0)
+		if content_node >= 0 {
+			testing.expect_value(t, state.nodes[content_node].list_flow_count, 1)
+		}
+		testing.expect(t, ecs.set_ui_input_value(&world, filter, ""))
+		testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	}
 	project_group_found := false
 	engine_group_found := false
 	for binding in world.editor_uis {
