@@ -126,7 +126,7 @@ These visualizers are editor-only. The separate fly camera is never shown as pro
 
 ## Browse and inspect entities
 
-The top-left Systems panel lists every system participating in the frame. Engine rows cover the editor camera, transform gizmo, ECS UI, picking, render preparation, and granular render phases. Registered project-Odin and Luau systems follow them. Selecting a system retains the selection for future debugger details but currently takes no action.
+The top-left Systems panel lists every system participating in the frame. Type in its filter to match system row content case-insensitively; the public virtualized list lays out only visible matches plus bounded overscan. Engine rows cover the editor camera, transform gizmo, ECS UI, picking, render preparation, and granular render phases. Registered project-Odin and Luau systems follow them. Selecting a system retains the selection for future debugger details but currently takes no action.
 
 Each row shows:
 
