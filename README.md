@@ -260,7 +260,7 @@ trends; they are not portable performance thresholds.
   - [x] ECS-built material resource browser with selection and inline inspection
   - [ ] Specialized enum, color, entity-reference, array, and nested-value editors
   - [x] Searchable Scene, resource, and system browsers using reusable filtered/virtualized ECS lists
-  - [ ] Searchable component browser
+  - [x] Searchable registry-driven component picker using the public filtered-list contract
   - [x] Expandable UUID-backed spatial hierarchy with drag-to-reparent
 - Editing
   - [x] Live transform, camera, light, and custom Number/Vec2/Vec3/Vec4/Color inspector editing

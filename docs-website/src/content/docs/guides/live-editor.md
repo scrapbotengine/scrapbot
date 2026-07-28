@@ -191,7 +191,7 @@ Click **Reimport** to force only the selected importer, update its live registry
 
 Discovered Bool, String, Number, Vec2, Vec3, Vec4, and Color values select the same reusable checkbox and input controls available to project UI. Vector rows provide one input per axis, while scalar and string rows use one full-width input. UUID references and text alignment are validated text for now. Color fields are semantically distinct, default to bounded RGBA channel controls, and are ready for a future reusable color picker. Engine-derived state and unsupported or opaque values remain read-only until they gain an honest public editing contract. A complete stopped-mode reflected edit records only that component's before/after snapshot as one authoring transaction, so Undo, Redo, Save, and Revert work without field-specific editor history code.
 
-Click **Add Component** to open a floating, independently scrollable picker. Its entries come from the live component registry:
+Click **Add Component** to open a floating, independently scrollable picker. Type in its public filter input to match generated group or component names case-insensitively. Its entries come from the live component registry:
 
 - single-token project components appear under **Project**;
 - dotted engine and library names are nested by namespace token;
