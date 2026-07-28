@@ -60,6 +60,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_button` | UI content | Activatable text and/or SDF-icon button with an optional popup target. |
 | `scrapbot.ui_input` | UI content | Single-line text or numeric input. |
 | `scrapbot.ui_checkbox` | UI content | Boolean control. |
+| `scrapbot.ui_color_picker` | UI content | Linear RGBA picker with optional HDR exposure and alpha controls. |
 <!-- inventory:public-engine-components:end -->
 
 The engine also registers two internal derived components. Render reconciliation adds or removes `scrapbot.internal.render_instance` when an entity's Transform, geometry, and material references become renderable. Editor selection reconciliation adds or removes `scrapbot.internal.editor_transform_gizmo` when the selected entity can be manipulated. Both may appear as collapsed, read-only cards in the runtime type-inspected editor, but are intentionally unavailable to scene files, project Luau, native extensions, component membership actions, and persistence.
@@ -423,6 +424,21 @@ Numeric values and enabled bounds must be finite, the number must remain inside 
 | `border_width` | `1` |
 
 Box size must be positive. Automatic geometry fields accept `-1`; explicit values and border width must be non-negative.
+
+### `scrapbot.ui_color_picker`
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `value` | `[1, 1, 1, 1]` | Canonical direct linear RGBA color. RGB channels are finite and non-negative; alpha is in `[0, 1]`. |
+| `hdr` | `true` | Enables RGB values above `1` and shows the exposure track. When false, RGB is bounded to `[0, 1]` and exposure must be zero. |
+| `show_alpha` | `true` | Shows the checker-backed alpha track. |
+| `read_only` | `false` | Paints the control without accepting pointer edits. |
+| `exposure`, `maximum_exposure` | `0`, `16` | Current and maximum EV presentation values. Both are finite, non-negative, and at most `32`; exposure cannot exceed the maximum. |
+| `track_height`, `gap`, `thumb_radius` | `14`, `8`, `6` | Positive track/thumb geometry with a non-negative gap. |
+| `thumb_color`, `thumb_border_color`, `thumb_border_width` | White, near-black, `2` | Shared pad/track marker style. Border width is non-negative. |
+| `checker_light`, `checker_dark` | Light gray, dark gray | Alpha-track checker colors. |
+
+Dragging writes `value` directly in linear space and advances `ui_state.change_revision`; releasing advances `submit_revision` once. HDR is not an encoded display-space color: the EV control changes direct RGB magnitude, while painting uses a bounded preview. Compose the picker directly or place it in a public popup targeted by an ordinary `ui_button`.
 
 ## Related references
 

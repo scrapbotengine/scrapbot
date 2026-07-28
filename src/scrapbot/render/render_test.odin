@@ -1352,6 +1352,24 @@ test_project_ui_vertices_preserve_pixel_aspect_inside_editor_viewport :: proc(t:
 }
 
 @(test)
+test_wgpu_ui_vertices_preserve_per_corner_gradient_colors :: proc(t: ^testing.T) {
+	vertices: [dynamic]WGPU_UI_Vertex
+	defer delete(vertices)
+	command := ui.Paint_Command {
+		kind = .Panel,
+		rect = {0, 0, 100, 50},
+		gradient = true,
+		corner_colors = {{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}, {1, 1, 1, 1}},
+	}
+	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 0, {}, 100, 50)
+	testing.expect_value(t, len(vertices), 6)
+	testing.expect_value(t, vertices[0].color, [4]f32{1, 0, 0, 1})
+	testing.expect_value(t, vertices[1].color, [4]f32{0, 1, 0, 1})
+	testing.expect_value(t, vertices[2].color, [4]f32{0, 0, 1, 1})
+	testing.expect_value(t, vertices[5].color, [4]f32{1, 1, 1, 1})
+}
+
+@(test)
 test_wgpu_empty_ui_vertex_upload_is_a_successful_no_op :: proc(t: ^testing.T) {
 	testing.expect(t, wgpu_upload_ui_vertices(nil, nil, nil, nil, "empty UI"))
 }

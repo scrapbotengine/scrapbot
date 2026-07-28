@@ -500,6 +500,11 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	input.minimum = -100
 	checkbox := shared.ui_checkbox_default()
 	checkbox.checked = true
+	color_picker := shared.ui_color_picker_default()
+	color_picker.value = {4, 0.25, 1.5, 0.75}
+	color_picker.hdr = true
+	color_picker.exposure = 2
+	color_picker.maximum_exposure = 8
 	append(
 		&loaded.scene.entities,
 		shared.Scene_Entity {
@@ -520,6 +525,7 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	button_id := shared.entity_uuid_from_engine_name("persistence-schema-button")
 	input_id := shared.entity_uuid_from_engine_name("persistence-schema-input")
 	checkbox_id := shared.entity_uuid_from_engine_name("persistence-schema-checkbox")
+	color_picker_id := shared.entity_uuid_from_engine_name("persistence-schema-color-picker")
 	append(
 		&loaded.scene.entities,
 		shared.Scene_Entity {
@@ -545,6 +551,14 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 			ui_layout = {parent = controls_id, size = {40, 40}},
 			has_ui_checkbox = true,
 			ui_checkbox = checkbox,
+		},
+		shared.Scene_Entity {
+			id = color_picker_id,
+			name = "Schema HDR Color Picker",
+			has_ui_layout = true,
+			ui_layout = {parent = controls_id, size = {240, 180}},
+			has_ui_color_picker = true,
+			ui_color_picker = color_picker,
 		},
 	)
 	container_ids: [4]shared.Entity_UUID
@@ -599,13 +613,14 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	world := ecs.build_world(&loaded.scene)
 	project.destroy_scene_load_result(&loaded)
 	defer ecs.destroy_world(&world)
-	dirty := [10]shared.Entity_UUID {
+	dirty := [11]shared.Entity_UUID {
 		root_id,
 		transform_child_id,
 		controls_id,
 		button_id,
 		input_id,
 		checkbox_id,
+		color_picker_id,
 		container_ids[0],
 		container_ids[1],
 		container_ids[2],

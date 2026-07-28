@@ -149,6 +149,7 @@ Layout backgrounds, borders, and corner radii are SDF shapes. Controls expose th
 - Scrollbar track/thumb geometry and colors.
 - Panel title, disclosure-arrow, and trailing-action geometry and colors.
 - Button hover/active backgrounds and text colors.
+- Direct linear RGBA color picking with optional alpha and HDR exposure tracks.
 - Input prefix, selection, focus/invalid border, and caret styling.
 - Checkbox box, border, checkmark, hover, and active styling.
 - Progress track/fill, inset, radius, and direction.

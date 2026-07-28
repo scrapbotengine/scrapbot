@@ -375,6 +375,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 	if entity.has_ui_button { write_scene_button(builder, entity.ui_button) }
 	if entity.has_ui_input { write_scene_input(builder, entity.ui_input) }
 	if entity.has_ui_checkbox { write_scene_checkbox(builder, entity.ui_checkbox) }
+	if entity.has_ui_color_picker { write_scene_color_picker(builder, entity.ui_color_picker) }
 }
 
 write_scene_stack :: proc(
@@ -470,6 +471,27 @@ write_scene_checkbox :: proc(builder: ^strings.Builder, value: shared.UI_Checkbo
 	write_scene_value(builder, "check_inset", scene_f32(value.check_inset))
 	write_scene_value(builder, "check_corner_radius", scene_f32(value.check_corner_radius))
 	write_scene_value(builder, "read_only", scene_bool(value.read_only))
+}
+
+write_scene_color_picker :: proc(
+	builder: ^strings.Builder,
+	value: shared.UI_Color_Picker_Component,
+) {
+	write_scene_section(builder, "ui_color_picker")
+	write_scene_value(builder, "value", scene_vec4(value.value))
+	write_scene_value(builder, "hdr", scene_bool(value.hdr))
+	write_scene_value(builder, "show_alpha", scene_bool(value.show_alpha))
+	write_scene_value(builder, "read_only", scene_bool(value.read_only))
+	write_scene_value(builder, "exposure", scene_f32(value.exposure))
+	write_scene_value(builder, "maximum_exposure", scene_f32(value.maximum_exposure))
+	write_scene_value(builder, "track_height", scene_f32(value.track_height))
+	write_scene_value(builder, "gap", scene_f32(value.gap))
+	write_scene_value(builder, "thumb_radius", scene_f32(value.thumb_radius))
+	write_scene_value(builder, "thumb_color", scene_vec4(value.thumb_color))
+	write_scene_value(builder, "thumb_border_color", scene_vec4(value.thumb_border_color))
+	write_scene_value(builder, "thumb_border_width", scene_f32(value.thumb_border_width))
+	write_scene_value(builder, "checker_light", scene_vec4(value.checker_light))
+	write_scene_value(builder, "checker_dark", scene_vec4(value.checker_dark))
 }
 
 write_scene_section :: proc(builder: ^strings.Builder, name: string) {

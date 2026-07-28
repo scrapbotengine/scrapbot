@@ -320,6 +320,9 @@ write_missing_scene_fields :: proc(
 		case "ui_checkbox":
 			keys[0], keys[1] = "checked", "read_only"
 			key_count = 2
+		case "ui_color_picker":
+			keys[0], keys[1], keys[2] = "value", "exposure", "read_only"
+			key_count = 3
 		case:
 			return
 	}
@@ -602,6 +605,20 @@ scene_world_field_value :: proc(
 				value := world.ui_checkboxes[entity.ui_checkbox_index]
 				if key == "checked" {
 					return scene_bool(value.checked), true
+				}
+				if key == "read_only" {
+					return scene_bool(value.read_only), true
+				}
+			}
+		case "ui_color_picker":
+			if entity.ui_color_picker_index >= 0 &&
+			   entity.ui_color_picker_index < len(world.ui_color_pickers) {
+				value := world.ui_color_pickers[entity.ui_color_picker_index]
+				if key == "value" {
+					return scene_vec4(value.value), true
+				}
+				if key == "exposure" {
+					return scene_f32(value.exposure), true
 				}
 				if key == "read_only" {
 					return scene_bool(value.read_only), true

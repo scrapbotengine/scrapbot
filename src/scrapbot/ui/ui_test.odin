@@ -2054,6 +2054,54 @@ test_numeric_input_only_scrubs_when_draggable_is_enabled :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_color_picker_edits_direct_linear_hdr_rgba_and_submits_once :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "HDR Color",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 10}, size = {200, 180}},
+			has_ui_color_picker = true,
+			ui_color_picker = shared.ui_color_picker_default(),
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+
+	press := Pointer_Input {
+		position = {110, 180},
+		primary_down = true,
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &world, 240, 220, press) == "")
+	picker := &world.ui_color_pickers[world.entities[0].ui_color_picker_index]
+	interaction := &world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, math.abs(picker.exposure - 8) < 0.001)
+	testing.expect(t, math.abs(picker.value.x - 256) < 0.01)
+	testing.expect(t, picker.value == shared.Vec4{256, 256, 256, 1})
+	testing.expect(t, interaction.changed && interaction.change_revision == 1)
+
+	release := press
+	release.primary_down = false
+	testing.expect(t, reconcile(state, &world, 240, 220, release) == "")
+	testing.expect(t, interaction.submitted && interaction.submit_revision == 1)
+
+	testing.expect(t, reconcile(state, &world, 240, 220, {}) == "")
+	stable_revision := world.ui_editor_paint_revision + world.ui_project_paint_revision
+	testing.expect(t, reconcile(state, &world, 240, 220, {}) == "")
+	testing.expect(
+		t,
+		world.ui_editor_paint_revision + world.ui_project_paint_revision == stable_revision,
+	)
+}
+
+@(test)
 test_fill_stack_allocates_available_space_and_drags_between_adjacent_panes :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
 	append(
@@ -3730,6 +3778,54 @@ test_editor_structural_authoring_is_uuid_addressed_and_undoable :: proc(t: ^test
 	testing.expect(t, duplicate_found)
 	testing.expect(t, state.editor_scene_dirty)
 	testing.expect(t, len(state.editor_dirty_entities) == 2)
+}
+
+@(test)
+test_reflected_color_picker_preview_finishes_as_one_undoable_transaction :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Color History"),
+			name = "Color History",
+			has_ambient_light = true,
+			ambient_light = {color = {1, 1, 1}, intensity = 1},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	definition, found := component.find_definition(&registry, "scrapbot.ambient_light")
+	testing.expect(t, found)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	binding := shared.Editor_UI_Component {
+		target = world.entities[0].id,
+		reflected_component_id = definition.id,
+		reflected_field_index = 0,
+	}
+	before, component_count, read := editor_reflected_read_color(state, &world, binding)
+	testing.expect(t, read && component_count == 3)
+	after := shared.Vec4{0.2, 0.4, 0.6, 1}
+	testing.expect(
+		t,
+		editor_reflected_preview_color(state, &world, binding, after, component_count),
+	)
+	testing.expect_value(t, world.ambient_lights[0].color, shared.Vec3{0.2, 0.4, 0.6})
+	testing.expect(
+		t,
+		editor_reflected_finish_color(state, &world, binding, before, after, component_count),
+	)
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect_value(t, world.ambient_lights[0].color, shared.Vec3{1, 1, 1})
 }
 
 @(test)

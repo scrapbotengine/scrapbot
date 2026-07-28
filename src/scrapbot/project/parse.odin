@@ -657,7 +657,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.ui_text]" ||
 		   line == "[entities.ui_button]" ||
 		   line == "[entities.ui_input]" ||
-		   line == "[entities.ui_checkbox]" {
+		   line == "[entities.ui_checkbox]" ||
+		   line == "[entities.ui_color_picker]" {
 			if current == nil {
 				return scene, fail(
 					.Invalid_Syntax,
@@ -713,6 +714,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if section == "ui_checkbox" {
 				current.has_ui_checkbox = true
 				current.ui_checkbox = shared.ui_checkbox_default()
+			}
+			if section == "ui_color_picker" {
+				current.has_ui_color_picker = true
+				current.ui_color_picker = shared.ui_color_picker_default()
 			}
 			current_component = nil
 			continue
@@ -1467,6 +1472,49 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						)
 				}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_checkbox.%s", key)) }
+			case "ui_color_picker":
+				current.has_ui_color_picker = true
+				switch key {
+					case "value":
+						current.ui_color_picker.value, found = parse_vec4(value)
+					case "hdr":
+						current.ui_color_picker.hdr, found = parse_bool(value)
+					case "show_alpha":
+						current.ui_color_picker.show_alpha, found = parse_bool(value)
+					case "read_only":
+						current.ui_color_picker.read_only, found = parse_bool(value)
+					case "exposure":
+						current.ui_color_picker.exposure, found = parse_f32(value)
+					case "maximum_exposure":
+						current.ui_color_picker.maximum_exposure, found = parse_f32(value)
+					case "track_height":
+						current.ui_color_picker.track_height, found = parse_f32(value)
+					case "gap":
+						current.ui_color_picker.gap, found = parse_f32(value)
+					case "thumb_radius":
+						current.ui_color_picker.thumb_radius, found = parse_f32(value)
+					case "thumb_color":
+						current.ui_color_picker.thumb_color, found = parse_vec4(value)
+					case "thumb_border_color":
+						current.ui_color_picker.thumb_border_color, found = parse_vec4(value)
+					case "thumb_border_width":
+						current.ui_color_picker.thumb_border_width, found = parse_f32(value)
+					case "checker_light":
+						current.ui_color_picker.checker_light, found = parse_vec4(value)
+					case "checker_dark":
+						current.ui_color_picker.checker_dark, found = parse_vec4(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_color_picker field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(
+						.Invalid_Field,
+						fmt.tprintf("invalid ui_color_picker.%s", key),
+					)
+				}
 			case "component":
 				if current_component == nil {
 					return scene, fail(
@@ -1601,7 +1649,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   entity.has_ui_progress ||
 			   entity.has_ui_viewport ||
 			   entity.has_ui_input ||
-			   entity.has_ui_checkbox) &&
+			   entity.has_ui_checkbox ||
+			   entity.has_ui_color_picker) &&
 		   !entity.has_ui_layout { return scene, fail(.Invalid_Field, fmt.tprintf("UI component on '%s' requires ui_layout", entity.name)) }
 		if entity.has_ui_layout && !shared.ui_layout_is_valid(entity.ui_layout) {
 			return scene, fail(
@@ -1694,8 +1743,9 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		if entity.has_ui_button { content_count += 1 }
 		if entity.has_ui_input { content_count += 1 }
 		if entity.has_ui_checkbox { content_count += 1 }
+		if entity.has_ui_color_picker { content_count += 1 }
 		if content_count >
-		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, ui_input, or ui_checkbox", entity.name)) }
+		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, ui_input, ui_checkbox, or ui_color_picker", entity.name)) }
 		if entity.has_ui_text &&
 		   (entity.ui_text.text == "" ||
 				   entity.ui_text.size <=
@@ -1719,6 +1769,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf("UI checkbox entity '%s' requires positive box_size", entity.name),
+			)
+		}
+		if entity.has_ui_color_picker && !shared.ui_color_picker_is_valid(entity.ui_color_picker) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI color picker entity '%s' is invalid", entity.name),
 			)
 		}
 	}

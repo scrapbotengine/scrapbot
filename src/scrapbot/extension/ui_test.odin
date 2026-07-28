@@ -97,6 +97,14 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	checkbox_payload := ui_checkbox(checkbox_style)
 	testing.expect(t, checkbox_payload.checkbox.corner_radius == 0)
 	testing.expect(t, checkbox_payload.checkbox.border_width == 2)
+	color_style := ui_color_picker_default()
+	color_style.value = {4, 2, 1, 0.5}
+	color_style.exposure = 2
+	color_payload := ui_color_picker(color_style)
+	testing.expect(t, color_payload.component == UI_COLOR_PICKER)
+	testing.expect(t, color_payload.color_picker.value.x == 4)
+	testing.expect(t, color_payload.color_picker.exposure == 2)
+	testing.expect(t, color_payload.color_picker.hdr != 0)
 
 	host: UI_Test_Host
 	ctx := System_Context {

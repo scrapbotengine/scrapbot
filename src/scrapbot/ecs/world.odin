@@ -50,6 +50,7 @@ UI_Text_Component :: shared.UI_Text_Component
 UI_Button_Component :: shared.UI_Button_Component
 UI_Input_Component :: shared.UI_Input_Component
 UI_Checkbox_Component :: shared.UI_Checkbox_Component
+UI_Color_Picker_Component :: shared.UI_Color_Picker_Component
 
 INVALID_COMPONENT_INDEX :: -1
 MAX_QUERY_TERMS :: 8
@@ -98,6 +99,7 @@ init_world_entity :: proc(
 		ui_button_index = INVALID_COMPONENT_INDEX,
 		ui_input_index = INVALID_COMPONENT_INDEX,
 		ui_checkbox_index = INVALID_COMPONENT_INDEX,
+		ui_color_picker_index = INVALID_COMPONENT_INDEX,
 		editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 		editor_ui_index = INVALID_COMPONENT_INDEX,
 	}
@@ -288,6 +290,7 @@ World_Storage_Stats :: struct {
 	ui_button_slots: int,
 	ui_input_slots: int,
 	ui_checkbox_slots: int,
+	ui_color_picker_slots: int,
 	editor_transform_gizmo_slots: int,
 	editor_scene_camera_slots: int,
 	editor_ui_slots: int,
@@ -385,6 +388,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_buttons)
 	delete(world.ui_inputs)
 	delete(world.ui_checkboxes)
+	delete(world.ui_color_pickers)
 	delete(world.free_ui_layout_indices)
 	delete(world.free_ui_hstack_indices)
 	delete(world.free_ui_vstack_indices)
@@ -399,6 +403,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.free_ui_button_indices)
 	delete(world.free_ui_input_indices)
 	delete(world.free_ui_checkbox_indices)
+	delete(world.free_ui_color_picker_indices)
 	delete(world.editor_transform_gizmos)
 	delete(world.editor_scene_cameras)
 	delete(world.editor_uis)
@@ -491,6 +496,10 @@ build_world :: proc(scene: ^Scene) -> World {
 			append(&world.ui_inputs, input)
 		}
 		if entity.has_ui_checkbox { world_entity.ui_checkbox_index = len(world.ui_checkboxes); append(&world.ui_checkboxes, entity.ui_checkbox) }
+		if entity.has_ui_color_picker {
+			world_entity.ui_color_picker_index = len(world.ui_color_pickers)
+			append(&world.ui_color_pickers, entity.ui_color_picker)
+		}
 		if entity.has_mesh {
 			world_entity.mesh_index = len(world.meshes)
 			mesh := entity.mesh
@@ -1757,6 +1766,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		ui_button_slots = len(world.ui_buttons),
 		ui_input_slots = len(world.ui_inputs),
 		ui_checkbox_slots = len(world.ui_checkboxes),
+		ui_color_picker_slots = len(world.ui_color_pickers),
 		editor_transform_gizmo_slots = len(world.editor_transform_gizmos),
 		editor_scene_camera_slots = len(world.editor_scene_cameras),
 		editor_ui_slots = len(world.editor_uis),
@@ -1788,6 +1798,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		stats.ui_button_slots +
 		stats.ui_input_slots +
 		stats.ui_checkbox_slots +
+		stats.ui_color_picker_slots +
 		stats.editor_transform_gizmo_slots +
 		stats.editor_scene_camera_slots +
 		stats.editor_ui_slots +
@@ -1822,6 +1833,7 @@ world_storage_stats_max :: proc "c" (a, b: World_Storage_Stats) -> World_Storage
 		ui_button_slots = max(a.ui_button_slots, b.ui_button_slots),
 		ui_input_slots = max(a.ui_input_slots, b.ui_input_slots),
 		ui_checkbox_slots = max(a.ui_checkbox_slots, b.ui_checkbox_slots),
+		ui_color_picker_slots = max(a.ui_color_picker_slots, b.ui_color_picker_slots),
 		editor_transform_gizmo_slots = max(
 			a.editor_transform_gizmo_slots,
 			b.editor_transform_gizmo_slots,
@@ -2828,6 +2840,11 @@ entity_has_component :: proc "c" (
 			return(
 				entity.ui_checkbox_index >= 0 &&
 				entity.ui_checkbox_index < len(world.ui_checkboxes) \
+			)
+		case "scrapbot.ui_color_picker":
+			return(
+				entity.ui_color_picker_index >= 0 &&
+				entity.ui_color_picker_index < len(world.ui_color_pickers) \
 			)
 		case "scrapbot.mesh":
 			return entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes)

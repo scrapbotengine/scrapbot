@@ -50,6 +50,7 @@ export type Scrapbot = {
 	ui_button: ScrapbotUiButtonComponent,
 	ui_input: ScrapbotUiInputComponent,
 	ui_checkbox: ScrapbotUiCheckboxComponent,
+	ui_color_picker: ScrapbotUiColorPickerComponent,
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,

@@ -342,6 +342,23 @@ UI_Checkbox_Payload :: struct {
 	read_only: c.int,
 }
 
+UI_Color_Picker_Payload :: struct {
+	value: Vec4,
+	hdr: c.int,
+	show_alpha: c.int,
+	read_only: c.int,
+	exposure: f32,
+	maximum_exposure: f32,
+	track_height: f32,
+	gap: f32,
+	thumb_radius: f32,
+	thumb_color: Vec4,
+	thumb_border_color: Vec4,
+	thumb_border_width: f32,
+	checker_light: Vec4,
+	checker_dark: Vec4,
+}
+
 UI_State_Payload :: struct {
 	hovered: c.int,
 	active: c.int,
@@ -376,6 +393,7 @@ UI_Component_Payload :: struct {
 	button: UI_Button_Payload,
 	input: UI_Input_Payload,
 	checkbox: UI_Checkbox_Payload,
+	color_picker: UI_Color_Picker_Payload,
 	state: UI_State_Payload,
 	text_bytes: [MAX_UI_TEXT_BYTES]u8,
 	text_len: c.int,

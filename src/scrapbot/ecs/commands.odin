@@ -71,6 +71,7 @@ UI_Component_Command_Kind :: enum {
 	Button,
 	Input,
 	Checkbox,
+	Color_Picker,
 }
 
 UI_Component_Command :: struct {
@@ -87,6 +88,7 @@ UI_Component_Command :: struct {
 	button: UI_Button_Component,
 	input: UI_Input_Component,
 	checkbox: UI_Checkbox_Component,
+	color_picker: UI_Color_Picker_Component,
 	text_bytes: [MAX_UI_COMMAND_TEXT_BYTES]u8,
 	text_len: int,
 	font_bytes: [MAX_UI_COMMAND_FONT_BYTES]u8,
@@ -412,6 +414,8 @@ ui_component_command_kind :: proc "contextless" (name: string) -> UI_Component_C
 			return .Input
 		case "scrapbot.ui_checkbox":
 			return .Checkbox
+		case "scrapbot.ui_color_picker":
+			return .Color_Picker
 	}
 	return .None
 }
@@ -1148,6 +1152,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 		"scrapbot.ui_button",
 		"scrapbot.ui_input",
 		"scrapbot.ui_checkbox",
+		"scrapbot.ui_color_picker",
 	}
 	for component_name in ui_component_names {
 		remove_ui_component(world, entity_index, component_name)
@@ -1302,6 +1307,8 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			set_ui_input(world, entity_index, value)
 		case .Checkbox:
 			set_ui_checkbox(world, entity_index, command.checkbox)
+		case .Color_Picker:
+			set_ui_color_picker(world, entity_index, command.color_picker)
 		case .None:
 			return
 	}

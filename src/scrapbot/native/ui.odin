@@ -278,6 +278,28 @@ system_get_ui_component :: proc "c" (
 				check_corner_radius = value.check_corner_radius,
 				read_only = bool_to_c_int(value.read_only),
 			}
+		case "scrapbot.ui_color_picker":
+			if world_entity.ui_color_picker_index < 0 ||
+			   world_entity.ui_color_picker_index >= len(step.world.ui_color_pickers) {
+				return 0
+			}
+			value := step.world.ui_color_pickers[world_entity.ui_color_picker_index]
+			payload.color_picker = {
+				value = api_vec4_from_shared(value.value),
+				hdr = bool_to_c_int(value.hdr),
+				show_alpha = bool_to_c_int(value.show_alpha),
+				read_only = bool_to_c_int(value.read_only),
+				exposure = value.exposure,
+				maximum_exposure = value.maximum_exposure,
+				track_height = value.track_height,
+				gap = value.gap,
+				thumb_radius = value.thumb_radius,
+				thumb_color = api_vec4_from_shared(value.thumb_color),
+				thumb_border_color = api_vec4_from_shared(value.thumb_border_color),
+				thumb_border_width = value.thumb_border_width,
+				checker_light = api_vec4_from_shared(value.checker_light),
+				checker_dark = api_vec4_from_shared(value.checker_dark),
+			}
 		case:
 			return 0
 	}
@@ -598,6 +620,28 @@ ui_command_from_api_payload :: proc "c" (
 			}
 			command.checkbox = value
 			return ecs.init_ui_component_command(command, .Checkbox)
+		case "scrapbot.ui_color_picker":
+			value := shared.UI_Color_Picker_Component {
+				value = shared_vec4_from_api(payload.color_picker.value),
+				hdr = payload.color_picker.hdr != 0,
+				show_alpha = payload.color_picker.show_alpha != 0,
+				read_only = payload.color_picker.read_only != 0,
+				exposure = payload.color_picker.exposure,
+				maximum_exposure = payload.color_picker.maximum_exposure,
+				track_height = payload.color_picker.track_height,
+				gap = payload.color_picker.gap,
+				thumb_radius = payload.color_picker.thumb_radius,
+				thumb_color = shared_vec4_from_api(payload.color_picker.thumb_color),
+				thumb_border_color = shared_vec4_from_api(payload.color_picker.thumb_border_color),
+				thumb_border_width = payload.color_picker.thumb_border_width,
+				checker_light = shared_vec4_from_api(payload.color_picker.checker_light),
+				checker_dark = shared_vec4_from_api(payload.color_picker.checker_dark),
+			}
+			if !shared.ui_color_picker_is_valid(value) {
+				return "native ui_color_picker payload is invalid"
+			}
+			command.color_picker = value
+			return ecs.init_ui_component_command(command, .Color_Picker)
 	}
 	return "native UI component is not supported"
 }

@@ -539,6 +539,9 @@ push_query_component_table :: proc "c" (
 		case "scrapbot.ui_checkbox":
 			push_ui_checkbox_table(L, world.ui_checkboxes[entity.ui_checkbox_index])
 			return
+		case "scrapbot.ui_color_picker":
+			push_ui_color_picker_table(L, world.ui_color_pickers[entity.ui_color_picker_index])
+			return
 		case "scrapbot.mesh":
 			lua_createtable(L, 0, 0)
 			return
@@ -876,6 +879,24 @@ push_ui_checkbox_table :: proc "c" (L: Lua_State, value: shared.UI_Checkbox_Comp
 	push_number_field(L, "check_inset", value.check_inset)
 	push_number_field(L, "check_corner_radius", value.check_corner_radius)
 	push_bool_field(L, "read_only", value.read_only)
+}
+
+push_ui_color_picker_table :: proc "c" (L: Lua_State, value: shared.UI_Color_Picker_Component) {
+	lua_createtable(L, 0, 14)
+	push_vec4_field(L, "value", value.value)
+	push_bool_field(L, "hdr", value.hdr)
+	push_bool_field(L, "show_alpha", value.show_alpha)
+	push_bool_field(L, "read_only", value.read_only)
+	push_number_field(L, "exposure", value.exposure)
+	push_number_field(L, "maximum_exposure", value.maximum_exposure)
+	push_number_field(L, "track_height", value.track_height)
+	push_number_field(L, "gap", value.gap)
+	push_number_field(L, "thumb_radius", value.thumb_radius)
+	push_vec4_field(L, "thumb_color", value.thumb_color)
+	push_vec4_field(L, "thumb_border_color", value.thumb_border_color)
+	push_number_field(L, "thumb_border_width", value.thumb_border_width)
+	push_vec4_field(L, "checker_light", value.checker_light)
+	push_vec4_field(L, "checker_dark", value.checker_dark)
 }
 
 require_system_access :: proc "c" (

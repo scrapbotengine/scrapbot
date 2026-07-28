@@ -45,6 +45,7 @@ export type Scrapbot = {
 	ui_button: ScrapbotUiButtonComponent,
 	ui_input: ScrapbotUiInputComponent,
 	ui_checkbox: ScrapbotUiCheckboxComponent,
+	ui_color_picker: ScrapbotUiColorPickerComponent,
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
 	material_component: ScrapbotMaterialComponent,
@@ -958,6 +959,42 @@ export type ReadonlyScrapbotUiCheckbox = {
 }
 
 export type ScrapbotUiCheckboxComponent = ScrapbotComponent<ScrapbotUiCheckbox, ReadonlyScrapbotUiCheckbox>
+
+export type ScrapbotUiColorPicker = {
+	value: Vec4?,
+	hdr: boolean?,
+	show_alpha: boolean?,
+	read_only: boolean?,
+	exposure: number?,
+	maximum_exposure: number?,
+	track_height: number?,
+	gap: number?,
+	thumb_radius: number?,
+	thumb_color: Vec4?,
+	thumb_border_color: Vec4?,
+	thumb_border_width: number?,
+	checker_light: Vec4?,
+	checker_dark: Vec4?,
+}
+
+export type ReadonlyScrapbotUiColorPicker = {
+	read value: ReadonlyVec4,
+	read hdr: boolean,
+	read show_alpha: boolean,
+	read read_only: boolean,
+	read exposure: number,
+	read maximum_exposure: number,
+	read track_height: number,
+	read gap: number,
+	read thumb_radius: number,
+	read thumb_color: ReadonlyVec4,
+	read thumb_border_color: ReadonlyVec4,
+	read thumb_border_width: number,
+	read checker_light: ReadonlyVec4,
+	read checker_dark: ReadonlyVec4,
+}
+
+export type ScrapbotUiColorPickerComponent = ScrapbotComponent<ScrapbotUiColorPicker, ReadonlyScrapbotUiColorPicker>
 
 export type ScrapbotInternalRenderInstance = {
 }

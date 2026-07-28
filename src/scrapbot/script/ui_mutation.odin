@@ -685,6 +685,53 @@ read_ui_component_command_from_luau :: proc "c" (
 			) { return "ui_checkbox requires a positive box_size" }
 			command.checkbox = value
 			return ecs.init_ui_component_command(command, .Checkbox)
+		case "scrapbot.ui_color_picker":
+			value := current_ui_color_picker(world, entity_index, base)
+			if err := read_ui_vec4_field(L, payload_index, "value", &value.value);
+			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "hdr", &value.hdr);
+			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "show_alpha", &value.show_alpha);
+			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "read_only", &value.read_only);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "exposure", &value.exposure);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"maximum_exposure",
+				&value.maximum_exposure,
+			); err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "track_height", &value.track_height);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "gap", &value.gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "thumb_radius", &value.thumb_radius);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "thumb_color", &value.thumb_color);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"thumb_border_color",
+				&value.thumb_border_color,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"thumb_border_width",
+				&value.thumb_border_width,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "checker_light", &value.checker_light);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "checker_dark", &value.checker_dark);
+			   err != "" { return err }
+			if !shared.ui_color_picker_is_valid(value) {
+				return "ui_color_picker payload is invalid"
+			}
+			command.color_picker = value
+			return ecs.init_ui_component_command(command, .Color_Picker)
 		case:
 			return "unsupported UI component"
 	}
@@ -872,6 +919,23 @@ current_ui_checkbox :: proc(
 		if index >= 0 && index < len(world.ui_checkboxes) { return world.ui_checkboxes[index] }
 	}
 	return shared.ui_checkbox_default()
+}
+
+current_ui_color_picker :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Color_Picker_Component {
+	if base != nil && base.kind == .Color_Picker {
+		return base.color_picker
+	}
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_color_picker_index
+		if index >= 0 && index < len(world.ui_color_pickers) {
+			return world.ui_color_pickers[index]
+		}
+	}
+	return shared.ui_color_picker_default()
 }
 
 ui_text_alignment_name :: proc "contextless" (alignment: shared.UI_Text_Alignment) -> string {

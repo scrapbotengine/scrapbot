@@ -57,6 +57,7 @@ Built-in handles:
 - `scrapbot.ui_button`
 - `scrapbot.ui_input`
 - `scrapbot.ui_checkbox`
+- `scrapbot.ui_color_picker`
 
 See the [Engine Component Reference](/reference/components/) for the complete field inventory, defaults, constraints, scene names, and native Odin descriptors. Camera query payloads expose projection, exposure, and render-feature settings. Mesh, geometry, and material remain membership handles with opaque resource-backed query payloads.
 

@@ -363,6 +363,8 @@ editor_ui_handle_activation :: proc(
 				     .Inspector_Preview_Hint,
 				     .Inspector_Input,
 				     .Inspector_Checkbox,
+				     .Inspector_Color_Button,
+				     .Inspector_Color_Picker,
 				     .Inspector_Enum_Menu,
 				     .Inspector_Enum_Menu_Content,
 				     .Inspector_Component_Menu,
@@ -492,9 +494,108 @@ editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
 				}
 		}
 	}
+	for &binding in world.editor_uis {
+		if binding.role != .Inspector_Color_Picker {
+			continue
+		}
+		editor_ui_consume_color_picker_state(state, world, &binding)
+	}
 	layout_changed = state.editor_layout_invalidated || layout_changed
 	state.editor_layout_invalidated = false
 	return layout_changed
+}
+
+editor_ui_consume_color_picker_state :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: ^shared.Editor_UI_Component,
+) {
+	if state == nil ||
+	   world == nil ||
+	   binding == nil ||
+	   binding.entity_index < 0 ||
+	   binding.entity_index >= len(world.entities) {
+		return
+	}
+	entity := world.entities[binding.entity_index]
+	if !entity.alive ||
+	   entity.ui_color_picker_index < 0 ||
+	   entity.ui_color_picker_index >= len(world.ui_color_pickers) ||
+	   entity.ui_state_index < 0 ||
+	   entity.ui_state_index >= len(world.ui_states) {
+		return
+	}
+	interaction := world.ui_states[entity.ui_state_index]
+	if !interaction.changed && !interaction.submitted && !interaction.cancelled {
+		return
+	}
+	picker := world.ui_color_pickers[entity.ui_color_picker_index]
+	if interaction.changed && !binding.color_has_original {
+		original: shared.Vec4
+		component_count := binding.color_component_count
+		found := false
+		if binding.resource_id != (shared.Resource_UUID{}) {
+			original, component_count, found = editor_resource_color(state, binding^)
+		} else if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
+			original, component_count, found = editor_reflected_read_color(state, world, binding^)
+		}
+		if found {
+			binding.color_original = original
+			binding.color_component_count = component_count
+			binding.color_has_original = true
+		}
+	}
+	if interaction.changed {
+		if binding.resource_id != (shared.Resource_UUID{}) {
+			_ = editor_resource_write_color(state, binding^, picker.value)
+		} else if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
+			_ = editor_reflected_preview_color(
+				state,
+				world,
+				binding^,
+				picker.value,
+				binding.color_component_count,
+			)
+		}
+	}
+	if interaction.cancelled && binding.color_has_original {
+		if binding.resource_id != (shared.Resource_UUID{}) {
+			_ = editor_resource_write_color(state, binding^, binding.color_original)
+		} else if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
+			_ = editor_reflected_preview_color(
+				state,
+				world,
+				binding^,
+				binding.color_original,
+				binding.color_component_count,
+			)
+		}
+		editor_recompute_scene_dirty(state)
+		binding.color_has_original = false
+	}
+	if interaction.submitted {
+		if binding.color_has_original {
+			if binding.resource_id != (shared.Resource_UUID{}) {
+				editor_history_push_resource_color(
+					state,
+					binding^,
+					binding.color_original,
+					picker.value,
+					binding.color_component_count,
+				)
+			} else if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
+				_ = editor_reflected_finish_color(
+					state,
+					world,
+					binding^,
+					binding.color_original,
+					picker.value,
+					binding.color_component_count,
+				)
+			}
+		}
+		binding.color_has_original = false
+	}
 }
 
 editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
@@ -687,6 +788,14 @@ editor_ui_add_checkbox :: proc(
 	value: shared.UI_Checkbox_Component,
 ) {
 	_ = ecs.set_ui_checkbox(world, entity_index, value)
+}
+
+editor_ui_add_color_picker :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	value: shared.UI_Color_Picker_Component,
+) {
+	_ = ecs.set_ui_color_picker(world, entity_index, value)
 }
 
 editor_ui_add_hstack :: proc(
@@ -2117,6 +2226,65 @@ editor_ui_ensure_inspector_checkbox :: proc(
 	return checkbox
 }
 
+editor_ui_ensure_inspector_color :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent: string,
+) -> (
+	button, picker: int,
+) {
+	if existing_button, button_found := editor_ui_entity(world, .Inspector_Color_Button, slot);
+	   button_found {
+		existing_picker, picker_found := editor_ui_entity(world, .Inspector_Color_Picker, slot)
+		if picker_found {
+			editor_ui_set_parent(world, existing_button, parent)
+			return existing_button, existing_picker
+		}
+	}
+	picker_name := fmt.tprintf("__scrapbot_editor_inspector_color_picker_%d", slot)
+	picker = editor_ui_create_box(
+		world,
+		picker_name,
+		"",
+		.Inspector_Color_Picker,
+		{
+			size = {280, 232},
+			background = {0.013, 0.018, 0.025, 1},
+			border_color = {0.075, 0.090, 0.115, 1},
+			border_width = 1,
+			corner_radius = 6,
+			popup = true,
+			popup_close_on_selection = false,
+			popup_gap = 6,
+			popup_viewport_margin = 8,
+		},
+		slot,
+	)
+	editor_ui_add_color_picker(world, picker, shared.ui_color_picker_default())
+	button_name := fmt.tprintf("__scrapbot_editor_inspector_color_button_%d", slot)
+	button = editor_ui_create_box(
+		world,
+		button_name,
+		parent,
+		.Inspector_Color_Button,
+		{
+			size = {1, INSPECTOR_CONTROL_HEIGHT},
+			border_color = {0.075, 0.090, 0.115, 1},
+			border_width = 1,
+			corner_radius = 4,
+		},
+		slot,
+	)
+	value := shared.ui_button_default()
+	value.text = " "
+	value.size = 1
+	value.popup = world.entities[picker].uuid
+	value.hover_background = {1, 1, 1, 0.08}
+	value.active_background = {0, 0, 0, 0.12}
+	_ = ecs.set_ui_button(world, button, value)
+	return
+}
+
 editor_ui_ensure_inspector_enum_button :: proc(
 	world: ^shared.World,
 	slot: int,
@@ -2333,6 +2501,7 @@ Inspector_ECS_Builder :: struct {
 	cell_count: int,
 	input_count: int,
 	checkbox_count: int,
+	color_count: int,
 	enum_button_count: int,
 	row_count: int,
 	component_menu_visible: bool,
@@ -3121,6 +3290,34 @@ editor_ui_inspector_reflected_field :: proc(
 		}
 		return
 	}
+	if field.field_type == .Color || field.editor.color {
+		binding := shared.Editor_UI_Component {
+			target = builder.target,
+			reflected_component_id = definition.id,
+			reflected_field_index = field_index,
+		}
+		value, component_count, color_found := editor_reflected_read_color(
+			builder.state,
+			builder.world,
+			binding,
+		)
+		if color_found {
+			hdr := !field.editor.has_maximum || field.editor.maximum > 1
+			editor_ui_inspector_color(
+				builder,
+				field.name,
+				value,
+				component_count,
+				hdr,
+				definition.id,
+				field_index,
+				{},
+				.None,
+				read_only,
+			)
+		}
+		return
+	}
 	values: [4]string
 	uuid_buffer: [36]u8
 	count: int
@@ -3148,6 +3345,79 @@ editor_ui_inspector_reflected_field :: proc(
 		field.editor,
 		read_only,
 	)
+}
+
+editor_ui_inspector_color :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	value: shared.Vec4,
+	component_count: int,
+	hdr: bool,
+	reflected_component_id: shared.Component_ID = shared.INVALID_COMPONENT_ID,
+	reflected_field_index: int = -1,
+	resource_id: shared.Resource_UUID = {},
+	field: shared.Editor_Inspector_Field = .None,
+	read_only: bool = false,
+) {
+	if builder == nil || builder.table_entity < 0 {
+		return
+	}
+	parent := builder.world.entities[builder.table_entity].name
+	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, false)
+	builder.cell_count += 1
+	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, true)
+	builder.cell_count += 1
+	cells := [2]int{label_cell, value_cell}
+	for cell in cells {
+		layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
+		editor_ui_set_hidden(builder.world, cell, false)
+		layout.size.y = INSPECTOR_CELL_HEIGHT
+	}
+	editor_ui_set_text(builder.world, label_cell, label)
+	button, picker_entity := editor_ui_ensure_inspector_color(
+		builder.world,
+		builder.color_count,
+		builder.world.entities[value_cell].name,
+	)
+	builder.color_count += 1
+	editor_ui_set_hidden(builder.world, button, false)
+	editor_ui_set_hidden(builder.world, picker_entity, false)
+	display := color_picker_display_color({value.x, value.y, value.z})
+	display.w = value.w
+	button_layout := &builder.world.ui_layouts[builder.world.entities[button].ui_layout_index]
+	button_layout.background = display
+	picker_index := builder.world.entities[picker_entity].ui_color_picker_index
+	picker := builder.world.ui_color_pickers[picker_index]
+	binding := &builder.world.editor_uis[builder.world.entities[picker_entity].editor_ui_index]
+	same_open_binding :=
+		binding.target == builder.target &&
+		binding.inspector_field == field &&
+		binding.reflected_component_id == reflected_component_id &&
+		binding.reflected_field_index == reflected_field_index &&
+		binding.resource_id == resource_id &&
+		builder.world.ui_layouts[builder.world.entities[picker_entity].ui_layout_index].popup_open
+	picker.value = value
+	picker.hdr = hdr
+	picker.show_alpha = component_count == 4
+	picker.read_only = read_only
+	if !hdr {
+		picker.exposure = 0
+	} else if !same_open_binding {
+		maximum := max(value.x, max(value.y, value.z))
+		picker.exposure = 0
+		if maximum > 1 {
+			picker.exposure = clamp(math.log2(maximum), f32(0), picker.maximum_exposure)
+		}
+	}
+	_ = ecs.set_ui_color_picker(builder.world, picker_entity, picker)
+	binding.target = builder.target
+	binding.inspector_field = field
+	binding.reflected_component_id = reflected_component_id
+	binding.reflected_field_index = reflected_field_index
+	binding.resource_id = resource_id
+	binding.color_component_count = component_count
+	binding.read_only = read_only
+	builder.row_count += 1
 }
 
 editor_ui_inspector_vec3 :: proc(
@@ -3255,6 +3525,9 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 			case .Inspector_Checkbox:
 				if component.slot >=
 				   builder.checkbox_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
+			case .Inspector_Color_Button, .Inspector_Color_Picker:
+				if component.slot >=
+				   builder.color_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case .Inspector_Enum_Menu_Button:
 				if component.slot >=
 				   builder.enum_button_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
@@ -3825,30 +4098,27 @@ editor_ui_build_resource_inspector_panels :: proc(
 	}
 	editor_ui_inspector_preview_surface(&builder, material.id)
 	editor_ui_begin_inspector_component(&builder, "MATERIAL")
-	base_values := [4]string {
-		fmt.tprintf("%.2f", material.desc.base_color.x),
-		fmt.tprintf("%.2f", material.desc.base_color.y),
-		fmt.tprintf("%.2f", material.desc.base_color.z),
-		fmt.tprintf("%.2f", material.desc.base_color.w),
-	}
-	editor_ui_inspector_resource_values(
+	editor_ui_inspector_color(
 		&builder,
 		"base color",
-		base_values[:],
-		.Material_Base_Color,
+		shared.Vec4(material.desc.base_color),
+		4,
+		false,
+		shared.INVALID_COMPONENT_ID,
+		-1,
 		material.id,
+		.Material_Base_Color,
 	)
-	emissive_values := [3]string {
-		fmt.tprintf("%.2f", material.desc.emissive.x),
-		fmt.tprintf("%.2f", material.desc.emissive.y),
-		fmt.tprintf("%.2f", material.desc.emissive.z),
-	}
-	editor_ui_inspector_resource_values(
+	editor_ui_inspector_color(
 		&builder,
 		"emissive",
-		emissive_values[:],
-		.Material_Emissive,
+		{material.desc.emissive.x, material.desc.emissive.y, material.desc.emissive.z, 1},
+		3,
+		true,
+		shared.INVALID_COMPONENT_ID,
+		-1,
 		material.id,
+		.Material_Emissive,
 	)
 	editor_ui_inspector_resource_values(
 		&builder,

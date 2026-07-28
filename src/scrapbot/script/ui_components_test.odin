@@ -2,6 +2,7 @@ package script
 
 import ecs "../ecs"
 import project "../project"
+import shared "../shared"
 import "core:testing"
 
 @(test)
@@ -85,6 +86,15 @@ corner_radius = 0
 border_width = 2
 check_inset = 5
 check_corner_radius = 0
+[[entities]]
+id = "aa000000-0000-4000-8000-000000000003"
+name = "HDR Color"
+[entities.ui_layout]
+size = [240, 180]
+[entities.ui_color_picker]
+value = [4, 2, 1, 0.5]
+exposure = 2
+maximum_exposure = 12
 `,
 	)
 	defer project.destroy_scene(&scene)
@@ -120,6 +130,7 @@ assert(scrapbot.ui_table.id > 0)
 assert(scrapbot.ui_input.id > 0)
 assert(scrapbot.ui_progress.id > 0)
 assert(scrapbot.ui_checkbox.id > 0)
+assert(scrapbot.ui_color_picker.id > 0)
 assert(scrapbot.ui_state.id > 0)
 
 scrapbot.system(function()
@@ -208,6 +219,14 @@ scrapbot.system(function()
 		checkbox_count += 1
 	end)
 	assert(checkbox_count == 1)
+	local color_count = 0
+	scrapbot.query(scrapbot.ui_color_picker):each(function(entity, color)
+		assert(color.value.x == 4 and color.value.w == 0.5)
+		assert(color.hdr == true and color.exposure == 2 and color.maximum_exposure == 12)
+		scrapbot.add_component(entity, scrapbot.ui_color_picker, {value = {x = 8, y = 4, z = 2, w = 0.75}, exposure = 3})
+		color_count += 1
+	end)
+	assert(color_count == 1)
 	scrapbot.query(scrapbot.ui_input):each(function(entity)
 		scrapbot.add_component(entity, scrapbot.ui_input, {text = "84"})
 		scrapbot.add_component(entity, scrapbot.ui_input, {size = 18})
@@ -271,6 +290,9 @@ end)
 		testing.expect(t, world.ui_buttons[button_index].icon == .Close)
 		testing.expect(t, world.ui_buttons[button_index].panel_action)
 	}
+	color_picker := world.ui_color_pickers[world.entities[2].ui_color_picker_index]
+	testing.expect(t, color_picker.value == shared.Vec4{8, 4, 2, 0.75})
+	testing.expect(t, color_picker.exposure == 3)
 	spawned_index := len(world.entities) - 2
 	testing.expect(t, spawned_index >= 0 && world.entities[spawned_index].name == "Runtime UI")
 	if spawned_index >= 0 {

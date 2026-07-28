@@ -114,6 +114,7 @@ scene_entity_structure_differs :: proc(
 	   baseline.has_ui_button != current.has_ui_button ||
 	   baseline.has_ui_input != current.has_ui_input ||
 	   baseline.has_ui_checkbox != current.has_ui_checkbox ||
+	   baseline.has_ui_color_picker != current.has_ui_color_picker ||
 	   len(baseline.custom_components) != len(current.custom_components) {
 		return true
 	}

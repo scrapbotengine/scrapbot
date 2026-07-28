@@ -197,6 +197,10 @@ test_ui_component_churn_reclaims_all_storage_slots :: proc(t: ^testing.T) {
 		testing.expect(t, set_ui_button(&world, entity_index, button))
 		testing.expect(t, set_ui_input(&world, entity_index, shared.ui_input_default()))
 		testing.expect(t, set_ui_checkbox(&world, entity_index, shared.ui_checkbox_default()))
+		testing.expect(
+			t,
+			set_ui_color_picker(&world, entity_index, shared.ui_color_picker_default()),
+		)
 		testing.expect(t, ensure_ui_state(&world, entity_index) != nil)
 		despawn_entity(&world, entity_index, world.entities[entity_index].id.generation)
 	}
@@ -215,4 +219,5 @@ test_ui_component_churn_reclaims_all_storage_slots :: proc(t: ^testing.T) {
 	testing.expect(t, len(world.ui_buttons) == 1)
 	testing.expect(t, len(world.ui_inputs) == 1)
 	testing.expect(t, len(world.ui_checkboxes) == 1)
+	testing.expect(t, len(world.ui_color_pickers) == 1)
 }

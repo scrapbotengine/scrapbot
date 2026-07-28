@@ -17,6 +17,7 @@ UI_TEXT :: "scrapbot.ui_text"
 UI_BUTTON :: "scrapbot.ui_button"
 UI_INPUT :: "scrapbot.ui_input"
 UI_CHECKBOX :: "scrapbot.ui_checkbox"
+UI_COLOR_PICKER :: "scrapbot.ui_color_picker"
 
 UUID :: raw.UUID
 UI_Text_Alignment :: raw.UI_Text_Alignment
@@ -33,6 +34,7 @@ UI_Button :: raw.UI_Button_Payload
 UI_Icon :: raw.UI_Icon
 UI_Input :: raw.UI_Input_Payload
 UI_Checkbox :: raw.UI_Checkbox_Payload
+UI_Color_Picker :: raw.UI_Color_Picker_Payload
 UI_State :: raw.UI_State_Payload
 UI_Component_Payload :: raw.UI_Component_Payload
 
@@ -77,6 +79,9 @@ UI_Input_Component :: Component {
 }
 UI_Checkbox_Component :: Component {
 	name = UI_CHECKBOX,
+}
+UI_Color_Picker_Component :: Component {
+	name = UI_COLOR_PICKER,
 }
 
 ui_layout_default :: proc "contextless" () -> UI_Layout {
@@ -195,6 +200,23 @@ ui_checkbox_default :: proc "contextless" () -> UI_Checkbox {
 	}
 }
 
+ui_color_picker_default :: proc "contextless" () -> UI_Color_Picker {
+	return {
+		value = {1, 1, 1, 1},
+		hdr = 1,
+		show_alpha = 1,
+		maximum_exposure = 16,
+		track_height = 14,
+		gap = 8,
+		thumb_radius = 6,
+		thumb_color = {1, 1, 1, 1},
+		thumb_border_color = {0.02, 0.025, 0.035, 1},
+		thumb_border_width = 2,
+		checker_light = {0.62, 0.64, 0.68, 1},
+		checker_dark = {0.34, 0.36, 0.40, 1},
+	}
+}
+
 ui_layout :: proc "contextless" (value: UI_Layout) -> UI_Component_Payload {
 	return {component = UI_LAYOUT, layout = value}
 }
@@ -290,6 +312,10 @@ ui_input :: proc "contextless" (
 
 ui_checkbox :: proc "contextless" (value: UI_Checkbox) -> UI_Component_Payload {
 	return {component = UI_CHECKBOX, checkbox = value}
+}
+
+ui_color_picker :: proc "contextless" (value: UI_Color_Picker) -> UI_Component_Payload {
+	return {component = UI_COLOR_PICKER, color_picker = value}
 }
 
 ui_payload_set_strings :: proc "contextless" (

@@ -89,6 +89,7 @@ Diagnostic_Node_Dump :: struct {
 	has_button: bool,
 	has_input: bool,
 	has_checkbox: bool,
+	has_color_picker: bool,
 }
 
 Diagnostic_Tree_Dump :: struct {
@@ -896,6 +897,7 @@ diagnostic_driver_write_dump :: proc(
 				has_button = node.button_index >= 0,
 				has_input = node.input_index >= 0,
 				has_checkbox = node.checkbox_index >= 0,
+				has_color_picker = node.color_picker_index >= 0,
 			},
 		)
 	}

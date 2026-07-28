@@ -114,6 +114,114 @@ editor_resource_write_number :: proc(
 	return written
 }
 
+editor_resource_color :: proc(
+	state: ^State,
+	binding: shared.Editor_UI_Component,
+) -> (
+	shared.Vec4,
+	int,
+	bool,
+) {
+	if state == nil || state.resource_registry == nil {
+		return {}, 0, false
+	}
+	handle, found := resources.material_by_uuid(state.resource_registry, binding.resource_id)
+	if !found {
+		return {}, 0, false
+	}
+	material, alive := resources.get_material(state.resource_registry, handle)
+	if !alive {
+		return {}, 0, false
+	}
+	#partial switch binding.inspector_field {
+		case .Material_Base_Color:
+			return shared.Vec4(material.desc.base_color), 4, true
+		case .Material_Emissive:
+			return {
+					material.desc.emissive.x,
+					material.desc.emissive.y,
+					material.desc.emissive.z,
+					1,
+				},
+				3,
+				true
+		case:
+			return {}, 0, false
+	}
+}
+
+editor_resource_write_color :: proc(
+	state: ^State,
+	binding: shared.Editor_UI_Component,
+	value: shared.Vec4,
+) -> bool {
+	if state == nil || state.resource_registry == nil {
+		return false
+	}
+	handle, found := resources.material_by_uuid(state.resource_registry, binding.resource_id)
+	if !found {
+		return false
+	}
+	material, alive := resources.get_material(state.resource_registry, handle)
+	if !alive || !material.authored {
+		return false
+	}
+	#partial switch binding.inspector_field {
+		case .Material_Base_Color:
+			if value.x < 0 ||
+			   value.x > 1 ||
+			   value.y < 0 ||
+			   value.y > 1 ||
+			   value.z < 0 ||
+			   value.z > 1 ||
+			   value.w < 0 ||
+			   value.w > 1 {
+				return false
+			}
+			material.desc.base_color = resources.Vec4(value)
+		case .Material_Emissive:
+			if value.x < 0 || value.y < 0 || value.z < 0 {
+				return false
+			}
+			material.desc.emissive = {value.x, value.y, value.z}
+		case:
+			return false
+	}
+	_ = resources.touch_material(state.resource_registry, handle)
+	editor_mark_resource_dirty(state, binding.resource_id)
+	return true
+}
+
+editor_history_push_resource_color :: proc(
+	state: ^State,
+	binding: shared.Editor_UI_Component,
+	before, after: shared.Vec4,
+	component_count: int,
+) {
+	if state == nil || before == after {
+		editor_recompute_scene_dirty(state)
+		return
+	}
+	transaction: Editor_Edit_Transaction
+	axes := [4]shared.Editor_Inspector_Axis{.X, .Y, .Z, .W}
+	for axis, index in axes[:component_count] {
+		before_number := editor_color_component(before, index)
+		after_number := editor_color_component(after, index)
+		if before_number == after_number {
+			continue
+		}
+		transaction.resource_changes[transaction.resource_change_count] = {
+			resource_id = binding.resource_id,
+			field = binding.inspector_field,
+			axis = axis,
+			before_number = before_number,
+			after_number = after_number,
+		}
+		transaction.resource_change_count += 1
+	}
+	editor_history_push_transaction(state, transaction)
+}
+
 editor_mark_resource_dirty :: proc(state: ^State, id: shared.Resource_UUID) {
 	if state == nil || !state.editor_simulation_stopped || id == (shared.Resource_UUID{}) {
 		return

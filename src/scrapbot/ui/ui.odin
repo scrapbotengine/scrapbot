@@ -83,6 +83,8 @@ Paint_Command :: struct {
 	font_layer: f32,
 	clip: Rect,
 	has_clip: bool,
+	gradient: bool,
+	corner_colors: [4]shared.Vec4,
 }
 Editor_Gizmo_Handle :: enum {
 	None,
@@ -122,7 +124,7 @@ Node :: struct {
 	entity: shared.Entity,
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
-	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, text_index, button_index, input_index, checkbox_index, parent_entity_index: int,
+	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
 	parent_node_index, first_child_node, next_sibling_node: int,
 	rect, clip: Rect,
 	resolved_size: shared.Vec2,
@@ -167,6 +169,13 @@ UI_Event :: struct {
 	target: shared.Entity,
 	drop_placement: shared.UI_Drop_Placement,
 	position: shared.Vec2,
+}
+Color_Picker_Part :: enum {
+	None,
+	Saturation_Value,
+	Hue,
+	Alpha,
+	Exposure,
 }
 List_Drag_Interaction :: struct {
 	list: shared.Entity,
@@ -428,6 +437,10 @@ State :: struct {
 	editor_gizmo_drag_pixels: f32,
 	editor_gizmo_drag_world_scale: f32,
 	err: string,
+	color_picker_drag_entity: shared.Entity,
+	color_picker_drag_part: Color_Picker_Part,
+	color_picker_drag_editor: bool,
+	color_picker_drag_active: bool,
 }
 
 append_ui_event :: proc(state: ^State, event: UI_Event) {
@@ -921,6 +934,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		node.button_index = entity.ui_button_index
 		node.input_index = entity.ui_input_index
 		node.checkbox_index = entity.ui_checkbox_index
+		node.color_picker_index = entity.ui_color_picker_index
 		parent_entity_index := find_parent_entity(
 			world,
 			world.ui_layouts[entity.ui_layout_index].parent,
@@ -1165,6 +1179,24 @@ reconcile :: proc(
 	}
 	list_drag_update(state, world, project_pointer, project_press_released, false)
 	list_drag_update(state, world, editor_pointer, editor_press_released, true)
+	update_color_picker_interaction(
+		state,
+		world,
+		project_pointer,
+		project_pressed,
+		project_press_started,
+		project_press_released,
+		false,
+	)
+	update_color_picker_interaction(
+		state,
+		world,
+		editor_pointer,
+		pressed,
+		editor_press_started,
+		editor_press_released,
+		true,
+	)
 	if state.pointer_cursor == .Default {
 		state.pointer_cursor = numeric_input_pointer_cursor(state, world)
 	}
@@ -3296,6 +3328,225 @@ update_viewport_interaction :: proc(
 	return wheel_consumed
 }
 
+color_picker_rgb_to_hsv :: proc(rgb: shared.Vec3) -> shared.Vec3 {
+	maximum := max(rgb.x, max(rgb.y, rgb.z))
+	minimum := min(rgb.x, min(rgb.y, rgb.z))
+	delta := maximum - minimum
+	hue := f32(0)
+	if delta > 0.000001 {
+		if maximum == rgb.x {
+			hue = (rgb.y - rgb.z) / delta
+			if hue < 0 {
+				hue += 6
+			}
+		} else if maximum == rgb.y {
+			hue = (rgb.z - rgb.x) / delta + 2
+		} else {
+			hue = (rgb.x - rgb.y) / delta + 4
+		}
+		hue /= 6
+	}
+	saturation := f32(0)
+	if maximum > 0 {
+		saturation = delta / maximum
+	}
+	return {hue, saturation, maximum}
+}
+
+color_picker_hsv_to_rgb :: proc(hsv: shared.Vec3) -> shared.Vec3 {
+	hue := hsv.x - math.floor(hsv.x)
+	sector := hue * 6
+	index := int(math.floor(sector))
+	fraction := sector - f32(index)
+	p := hsv.z * (1 - hsv.y)
+	q := hsv.z * (1 - hsv.y * fraction)
+	t := hsv.z * (1 - hsv.y * (1 - fraction))
+	switch index % 6 {
+		case 0:
+			return {hsv.z, t, p}
+		case 1:
+			return {q, hsv.z, p}
+		case 2:
+			return {p, hsv.z, t}
+		case 3:
+			return {p, q, hsv.z}
+		case 4:
+			return {t, p, hsv.z}
+		case:
+			return {hsv.z, p, q}
+	}
+}
+
+color_picker_rects :: proc(
+	rect: Rect,
+	picker: shared.UI_Color_Picker_Component,
+) -> (
+	sv, hue, alpha, exposure: Rect,
+) {
+	track_count := 1
+	if picker.show_alpha {
+		track_count += 1
+	}
+	if picker.hdr && picker.maximum_exposure > 0 {
+		track_count += 1
+	}
+	tracks_height := f32(track_count) * picker.track_height
+	gaps_height := f32(track_count) * picker.gap
+	sv_height := max(rect.height - tracks_height - gaps_height, picker.track_height)
+	sv = {rect.x, rect.y, rect.width, sv_height}
+	y := sv.y + sv.height + picker.gap
+	hue = {rect.x, y, rect.width, picker.track_height}
+	y += picker.track_height + picker.gap
+	if picker.show_alpha {
+		alpha = {rect.x, y, rect.width, picker.track_height}
+		y += picker.track_height + picker.gap
+	}
+	if picker.hdr && picker.maximum_exposure > 0 {
+		exposure = {rect.x, y, rect.width, picker.track_height}
+	}
+	return
+}
+
+color_picker_part_at :: proc(
+	rect: Rect,
+	picker: shared.UI_Color_Picker_Component,
+	position: shared.Vec2,
+) -> Color_Picker_Part {
+	sv, hue, alpha, exposure := color_picker_rects(rect, picker)
+	if rect_contains(sv, position) {
+		return .Saturation_Value
+	}
+	if rect_contains(hue, position) {
+		return .Hue
+	}
+	if picker.show_alpha && rect_contains(alpha, position) {
+		return .Alpha
+	}
+	if picker.hdr && picker.maximum_exposure > 0 && rect_contains(exposure, position) {
+		return .Exposure
+	}
+	return .None
+}
+
+update_color_picker_value :: proc(
+	world: ^shared.World,
+	node: ^Node,
+	part: Color_Picker_Part,
+	position: shared.Vec2,
+) -> bool {
+	if node == nil ||
+	   node.color_picker_index < 0 ||
+	   node.color_picker_index >= len(world.ui_color_pickers) {
+		return false
+	}
+	picker := world.ui_color_pickers[node.color_picker_index]
+	if picker.read_only {
+		return false
+	}
+	sv, hue_rect, alpha_rect, exposure_rect := color_picker_rects(node.rect, picker)
+	scale := math.pow(f32(2), picker.exposure)
+	base := shared.Vec3{picker.value.x / scale, picker.value.y / scale, picker.value.z / scale}
+	hsv := color_picker_rgb_to_hsv(base)
+	switch part {
+		case .Saturation_Value:
+			hsv.y = clamp((position.x - sv.x) / max(sv.width, 1), f32(0), f32(1))
+			hsv.z = 1 - clamp((position.y - sv.y) / max(sv.height, 1), f32(0), f32(1))
+		case .Hue:
+			hsv.x = clamp(
+				(position.x - hue_rect.x) / max(hue_rect.width, 1),
+				f32(0),
+				f32(0.999999),
+			)
+		case .Alpha:
+			picker.value.w = clamp(
+				(position.x - alpha_rect.x) / max(alpha_rect.width, 1),
+				f32(0),
+				f32(1),
+			)
+		case .Exposure:
+			picker.exposure =
+				clamp(
+					(position.x - exposure_rect.x) / max(exposure_rect.width, 1),
+					f32(0),
+					f32(1),
+				) *
+				picker.maximum_exposure
+			scale = math.pow(f32(2), picker.exposure)
+		case .None:
+			return false
+	}
+	if part == .Saturation_Value || part == .Hue || part == .Exposure {
+		rgb := color_picker_hsv_to_rgb(hsv)
+		picker.value.x = rgb.x * scale
+		picker.value.y = rgb.y * scale
+		picker.value.z = rgb.z * scale
+	}
+	if picker == world.ui_color_pickers[node.color_picker_index] {
+		return false
+	}
+	entity_index := int(node.entity.index)
+	if !ecs.set_ui_color_picker(world, entity_index, picker) {
+		return false
+	}
+	_ = ecs.mark_ui_changed(world, entity_index)
+	return true
+}
+
+update_color_picker_interaction :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pointer: Pointer_Input,
+	pressed: shared.Entity,
+	press_started, press_released, editor: bool,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	if press_started && pressed != (shared.Entity{}) {
+		node_index := find_node(state, pressed)
+		if node_index >= 0 {
+			node := &state.nodes[node_index]
+			if node.color_picker_index >= 0 &&
+			   node.color_picker_index < len(world.ui_color_pickers) {
+				picker := world.ui_color_pickers[node.color_picker_index]
+				part := color_picker_part_at(node.rect, picker, pointer.position)
+				if !picker.read_only && part != .None {
+					state.color_picker_drag_entity = pressed
+					state.color_picker_drag_part = part
+					state.color_picker_drag_editor = editor
+					state.color_picker_drag_active = true
+				}
+			}
+		}
+	}
+	if !state.color_picker_drag_active || state.color_picker_drag_editor != editor {
+		return
+	}
+	node_index := find_node(state, state.color_picker_drag_entity)
+	if node_index < 0 || !pointer.available {
+		state.color_picker_drag_active = false
+		state.color_picker_drag_entity = {}
+		state.color_picker_drag_part = .None
+		return
+	}
+	if pointer.primary_down {
+		if update_color_picker_value(
+			world,
+			&state.nodes[node_index],
+			state.color_picker_drag_part,
+			pointer.position,
+		) {
+			append_ui_event(state, {kind = .Changed, entity = state.color_picker_drag_entity})
+		}
+	}
+	if press_released {
+		_ = ecs.mark_ui_submitted(world, int(state.color_picker_drag_entity.index))
+		state.color_picker_drag_active = false
+		state.color_picker_drag_entity = {}
+		state.color_picker_drag_part = .None
+	}
+}
+
 has_text_focus :: proc(state: ^State) -> bool {
 	return state != nil && state.has_focused_input
 }
@@ -4547,6 +4798,206 @@ handle_checkbox_press :: proc(
 	return true
 }
 
+append_ui_gradient :: proc(
+	state: ^State,
+	rect: Rect,
+	top_left, top_right, bottom_right, bottom_left: shared.Vec4,
+	corner_radius: f32 = 0,
+) -> string {
+	return append_paint(
+		state,
+		{
+			kind = .Panel,
+			rect = rect,
+			color = top_left,
+			corner_radius = corner_radius,
+			gradient = true,
+			corner_colors = {top_left, top_right, bottom_right, bottom_left},
+		},
+	)
+}
+
+color_picker_display_color :: proc(value: shared.Vec3) -> shared.Vec4 {
+	return {value.x / (1 + value.x), value.y / (1 + value.y), value.z / (1 + value.z), 1}
+}
+
+append_color_picker_thumb :: proc(
+	state: ^State,
+	center: shared.Vec2,
+	picker: shared.UI_Color_Picker_Component,
+) -> string {
+	radius := picker.thumb_radius
+	return append_paint(
+		state,
+		{
+			kind = .Panel,
+			rect = {center.x - radius, center.y - radius, radius * 2, radius * 2},
+			color = picker.thumb_color,
+			corner_radius = radius,
+			border_color = picker.thumb_border_color,
+			border_width = picker.thumb_border_width,
+		},
+	)
+}
+
+paint_color_picker :: proc(
+	state: ^State,
+	node: Node,
+	picker: shared.UI_Color_Picker_Component,
+) -> string {
+	sv, hue_rect, alpha_rect, exposure_rect := color_picker_rects(node.rect, picker)
+	scale := math.pow(f32(2), picker.exposure)
+	base := shared.Vec3{picker.value.x / scale, picker.value.y / scale, picker.value.z / scale}
+	hsv := color_picker_rgb_to_hsv(base)
+	hue_rgb := color_picker_hsv_to_rgb({hsv.x, 1, 1})
+	hue_color := shared.Vec4{hue_rgb.x, hue_rgb.y, hue_rgb.z, 1}
+	if err := append_ui_gradient(state, sv, {1, 1, 1, 1}, hue_color, hue_color, {1, 1, 1, 1});
+	   err != "" {
+		return err
+	}
+	if err := append_ui_gradient(
+		state,
+		sv,
+		{0, 0, 0, 0},
+		{0, 0, 0, 0},
+		{0, 0, 0, 1},
+		{0, 0, 0, 1},
+	); err != "" {
+		return err
+	}
+	hue_colors := [7]shared.Vec4 {
+		{1, 0, 0, 1},
+		{1, 1, 0, 1},
+		{0, 1, 0, 1},
+		{0, 1, 1, 1},
+		{0, 0, 1, 1},
+		{1, 0, 1, 1},
+		{1, 0, 0, 1},
+	}
+	for index in 0 ..< 6 {
+		x0 := hue_rect.x + hue_rect.width * f32(index) / 6
+		x1 := hue_rect.x + hue_rect.width * f32(index + 1) / 6
+		if err := append_ui_gradient(
+			state,
+			{x0, hue_rect.y, x1 - x0, hue_rect.height},
+			hue_colors[index],
+			hue_colors[index + 1],
+			hue_colors[index + 1],
+			hue_colors[index],
+		); err != "" {
+			return err
+		}
+	}
+	if picker.show_alpha {
+		cell := max(alpha_rect.height * 0.5, f32(2))
+		column_count := int(math.ceil(alpha_rect.width / cell))
+		for column in 0 ..< column_count {
+			for row in 0 ..< 2 {
+				color := picker.checker_light
+				if (column + row) % 2 != 0 {
+					color = picker.checker_dark
+				}
+				x := alpha_rect.x + f32(column) * cell
+				y := alpha_rect.y + f32(row) * cell
+				if err := append_paint(
+					state,
+					{
+						kind = .Panel,
+						rect = {
+							x,
+							y,
+							min(cell, alpha_rect.x + alpha_rect.width - x),
+							min(cell, alpha_rect.y + alpha_rect.height - y),
+						},
+						color = color,
+					},
+				); err != "" {
+					return err
+				}
+			}
+		}
+		display := color_picker_display_color({picker.value.x, picker.value.y, picker.value.z})
+		transparent := display
+		transparent.w = 0
+		if err := append_ui_gradient(
+			state,
+			alpha_rect,
+			transparent,
+			display,
+			display,
+			transparent,
+		); err != "" {
+			return err
+		}
+	}
+	if picker.hdr && picker.maximum_exposure > 0 {
+		segments := 8
+		for index in 0 ..< segments {
+			x0 := exposure_rect.x + exposure_rect.width * f32(index) / f32(segments)
+			x1 := exposure_rect.x + exposure_rect.width * f32(index + 1) / f32(segments)
+			exposure0 := picker.maximum_exposure * f32(index) / f32(segments)
+			exposure1 := picker.maximum_exposure * f32(index + 1) / f32(segments)
+			rgb0 := color_picker_hsv_to_rgb({hsv.x, hsv.y, hsv.z})
+			rgb1 := rgb0
+			scale0 := math.pow(f32(2), exposure0)
+			scale1 := math.pow(f32(2), exposure1)
+			left := color_picker_display_color({rgb0.x * scale0, rgb0.y * scale0, rgb0.z * scale0})
+			right := color_picker_display_color(
+				{rgb1.x * scale1, rgb1.y * scale1, rgb1.z * scale1},
+			)
+			if err := append_ui_gradient(
+				state,
+				{x0, exposure_rect.y, x1 - x0, exposure_rect.height},
+				left,
+				right,
+				right,
+				left,
+			); err != "" {
+				return err
+			}
+		}
+	}
+	if err := append_color_picker_thumb(
+		state,
+		{sv.x + hsv.y * sv.width, sv.y + (1 - hsv.z) * sv.height},
+		picker,
+	); err != "" {
+		return err
+	}
+	if err := append_color_picker_thumb(
+		state,
+		{hue_rect.x + hsv.x * hue_rect.width, hue_rect.y + hue_rect.height * 0.5},
+		picker,
+	); err != "" {
+		return err
+	}
+	if picker.show_alpha {
+		if err := append_color_picker_thumb(
+			state,
+			{
+				alpha_rect.x + picker.value.w * alpha_rect.width,
+				alpha_rect.y + alpha_rect.height * 0.5,
+			},
+			picker,
+		); err != "" {
+			return err
+		}
+	}
+	if picker.hdr && picker.maximum_exposure > 0 {
+		if err := append_color_picker_thumb(
+			state,
+			{
+				exposure_rect.x + picker.exposure / picker.maximum_exposure * exposure_rect.width,
+				exposure_rect.y + exposure_rect.height * 0.5,
+			},
+			picker,
+		); err != "" {
+			return err
+		}
+	}
+	return ""
+}
+
 paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) -> string {
 	if depth > MAX_NODES { return "UI hierarchy contains a cycle" }
 	when ODIN_TEST {
@@ -4804,6 +5255,15 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 					corner_radius = check_corner_radius,
 				},
 			); err != "" { return err }
+		}
+	}
+	if node.color_picker_index >= 0 && node.color_picker_index < len(world.ui_color_pickers) {
+		if err := paint_color_picker(
+			state,
+			node^,
+			world.ui_color_pickers[node.color_picker_index],
+		); err != "" {
+			return err
 		}
 	}
 	if node.button_index >= 0 && node.button_index < len(world.ui_buttons) {
@@ -5308,6 +5768,7 @@ entity_component_count :: proc(world: ^shared.World, entity_index: int) -> int {
 	if entity.ui_button_index >= 0 { count += 1 }
 	if entity.ui_input_index >= 0 { count += 1 }
 	if entity.ui_checkbox_index >= 0 { count += 1 }
+	if entity.ui_color_picker_index >= 0 { count += 1 }
 	if entity.editor_transform_gizmo_index >= 0 &&
 	   entity.editor_transform_gizmo_index < len(world.editor_transform_gizmos) &&
 	   world.editor_transform_gizmos[entity.editor_transform_gizmo_index].entity_index ==

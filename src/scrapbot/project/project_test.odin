@@ -1668,6 +1668,34 @@ read_only = false
 }
 
 @(test)
+test_scene_parses_hdr_ui_color_picker :: proc(t: ^testing.T) {
+	source := `
+[[entities]]
+id = "70000000-0000-4000-8000-000000000001"
+name = "HDR picker"
+
+[entities.ui_layout]
+size = [280, 232]
+
+[entities.ui_color_picker]
+value = [4, 2, 1, 0.75]
+hdr = true
+show_alpha = true
+exposure = 2
+maximum_exposure = 12
+`
+	scene, result := parse_scene(source)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	testing.expect_value(t, len(scene.entities), 1)
+	entity := scene.entities[0]
+	testing.expect(t, entity.has_ui_color_picker)
+	testing.expect_value(t, entity.ui_color_picker.value, Vec4{4, 2, 1, 0.75})
+	testing.expect(t, entity.ui_color_picker.exposure == 2)
+	testing.expect(t, entity.ui_color_picker.maximum_exposure == 12)
+}
+
+@(test)
 test_scene_parses_all_custom_numeric_field_shapes :: proc(t: ^testing.T) {
 	scene, result := parse_scene(
 		`[[entities]]

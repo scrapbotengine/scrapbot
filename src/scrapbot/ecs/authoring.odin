@@ -185,6 +185,9 @@ capture_registered_component_snapshot :: proc(
 		case .UI_Checkbox:
 			value.has_ui_checkbox = true
 			value.ui_checkbox = world.ui_checkboxes[entity.ui_checkbox_index]
+		case .UI_Color_Picker:
+			value.has_ui_color_picker = true
+			value.ui_color_picker = world.ui_color_pickers[entity.ui_color_picker_index]
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -353,6 +356,8 @@ apply_registered_component_snapshot :: proc(
 			_ = set_ui_input(world, entity_index, value.ui_input)
 		case .UI_Checkbox:
 			_ = set_ui_checkbox(world, entity_index, value.ui_checkbox)
+		case .UI_Color_Picker:
+			_ = set_ui_color_picker(world, entity_index, value.ui_color_picker)
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -791,6 +796,13 @@ set_registered_component_membership :: proc(
 			} else {
 				_ = remove_ui_component(world, entity_index, definition.name)
 			}
+		case .UI_Color_Picker:
+			if present {
+				_ = set_ui_color_picker(world, entity_index, shared.ui_color_picker_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -1000,6 +1012,11 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.has_ui_checkbox = true
 		entity.ui_checkbox = world.ui_checkboxes[source.ui_checkbox_index]
 	}
+	if source.ui_color_picker_index >= 0 &&
+	   source.ui_color_picker_index < len(world.ui_color_pickers) {
+		entity.has_ui_color_picker = true
+		entity.ui_color_picker = world.ui_color_pickers[source.ui_color_picker_index]
+	}
 }
 
 set_optional_transform :: proc(
@@ -1195,6 +1212,7 @@ apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene
 	if value.has_ui_button { _ = set_ui_button(world, entity_index, value.ui_button) } else { remove_ui_component(world, entity_index, "scrapbot.ui_button") }
 	if value.has_ui_input { _ = set_ui_input(world, entity_index, value.ui_input) } else { remove_ui_component(world, entity_index, "scrapbot.ui_input") }
 	if value.has_ui_checkbox { _ = set_ui_checkbox(world, entity_index, value.ui_checkbox) } else { remove_ui_component(world, entity_index, "scrapbot.ui_checkbox") }
+	if value.has_ui_color_picker { _ = set_ui_color_picker(world, entity_index, value.ui_color_picker) } else { remove_ui_component(world, entity_index, "scrapbot.ui_color_picker") }
 }
 
 replace_custom_components :: proc(

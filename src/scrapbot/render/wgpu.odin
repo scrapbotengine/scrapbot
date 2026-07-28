@@ -1360,7 +1360,17 @@ wgpu_append_ui_vertices :: proc(
 			u1 = 1
 			v1 = 1
 		}
-		color := [4]f32{command.color.x, command.color.y, command.color.z, command.color.w}
+		colors := [4][4]f32 {
+			{command.color.x, command.color.y, command.color.z, command.color.w},
+			{command.color.x, command.color.y, command.color.z, command.color.w},
+			{command.color.x, command.color.y, command.color.z, command.color.w},
+			{command.color.x, command.color.y, command.color.z, command.color.w},
+		}
+		if command.gradient {
+			for corner, index in command.corner_colors {
+				colors[index] = {corner.x, corner.y, corner.z, corner.w}
+			}
+		}
 		border_color := [4]f32 {
 			command.border_color.x,
 			command.border_color.y,
@@ -1377,7 +1387,7 @@ wgpu_append_ui_vertices :: proc(
 			WGPU_UI_Vertex {
 				position = positions[0],
 				uv = {u0, v0},
-				color = color,
+				color = colors[0],
 				kind = kind,
 				size_radius = params,
 				clip = clip,
@@ -1388,7 +1398,7 @@ wgpu_append_ui_vertices :: proc(
 			WGPU_UI_Vertex {
 				position = positions[1],
 				uv = {u1, v0},
-				color = color,
+				color = colors[1],
 				kind = kind,
 				size_radius = params,
 				clip = clip,
@@ -1399,7 +1409,7 @@ wgpu_append_ui_vertices :: proc(
 			WGPU_UI_Vertex {
 				position = positions[2],
 				uv = {u1, v1},
-				color = color,
+				color = colors[2],
 				kind = kind,
 				size_radius = params,
 				clip = clip,
@@ -1410,7 +1420,7 @@ wgpu_append_ui_vertices :: proc(
 			WGPU_UI_Vertex {
 				position = positions[0],
 				uv = {u0, v0},
-				color = color,
+				color = colors[0],
 				kind = kind,
 				size_radius = params,
 				clip = clip,
@@ -1421,7 +1431,7 @@ wgpu_append_ui_vertices :: proc(
 			WGPU_UI_Vertex {
 				position = positions[2],
 				uv = {u1, v1},
-				color = color,
+				color = colors[2],
 				kind = kind,
 				size_radius = params,
 				clip = clip,
@@ -1432,7 +1442,7 @@ wgpu_append_ui_vertices :: proc(
 			WGPU_UI_Vertex {
 				position = positions[3],
 				uv = {u0, v1},
-				color = color,
+				color = colors[3],
 				kind = kind,
 				size_radius = params,
 				clip = clip,

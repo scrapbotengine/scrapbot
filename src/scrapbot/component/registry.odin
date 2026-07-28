@@ -27,6 +27,7 @@ Field_Type :: enum {
 }
 
 Field_Editor_Options :: struct {
+	color: bool,
 	draggable: bool,
 	step: f32,
 	has_minimum: bool,
@@ -62,6 +63,7 @@ Storage_Kind :: enum {
 	UI_Button,
 	UI_Input,
 	UI_Checkbox,
+	UI_Color_Picker,
 	UI_State,
 	Keyboard_Input,
 	Pointer_Input,
@@ -239,8 +241,8 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "background_rotation", field_type = .Number},
 			Field_Definition{name = "background_exposure", field_type = .Number},
 			Field_Definition{name = "background_blur", field_type = .Number},
-			Field_Definition{name = "sky_tint", field_type = .Vec3},
-			Field_Definition{name = "ground_color", field_type = .Vec3},
+			Field_Definition{name = "sky_tint", field_type = .Vec3, editor = {color = true}},
+			Field_Definition{name = "ground_color", field_type = .Vec3, editor = {color = true}},
 			Field_Definition {
 				name = "turbidity",
 				field_type = .Number,
@@ -278,7 +280,7 @@ init_registry :: proc(registry: ^Registry) {
 				},
 			},
 			Field_Definition{name = "sun_direction", field_type = .Vec3},
-			Field_Definition{name = "sun_color", field_type = .Vec3},
+			Field_Definition{name = "sun_color", field_type = .Vec3, editor = {color = true}},
 			Field_Definition {
 				name = "sun_intensity",
 				field_type = .Number,
@@ -417,7 +419,17 @@ init_registry :: proc(registry: ^Registry) {
 		registry,
 		"scrapbot.ambient_light",
 		{
-			Field_Definition{name = "color", field_type = .Vec3},
+			Field_Definition {
+				name = "color",
+				field_type = .Vec3,
+				editor = {
+					color = true,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition{name = "intensity", field_type = .Number},
 		},
 	)
@@ -426,7 +438,17 @@ init_registry :: proc(registry: ^Registry) {
 		"scrapbot.directional_light",
 		{
 			Field_Definition{name = "direction", field_type = .Vec3},
-			Field_Definition{name = "color", field_type = .Vec3},
+			Field_Definition {
+				name = "color",
+				field_type = .Vec3,
+				editor = {
+					color = true,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition{name = "intensity", field_type = .Number},
 		},
 	)
@@ -434,7 +456,17 @@ init_registry :: proc(registry: ^Registry) {
 		registry,
 		"scrapbot.point_light",
 		{
-			Field_Definition{name = "color", field_type = .Vec3},
+			Field_Definition {
+				name = "color",
+				field_type = .Vec3,
+				editor = {
+					color = true,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition{name = "intensity", field_type = .Number},
 			Field_Definition{name = "range", field_type = .Number},
 		},
@@ -691,6 +723,26 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "read_only", field_type = .Bool},
 		},
 	)
+	register_engine_component(
+		registry,
+		"scrapbot.ui_color_picker",
+		{
+			Field_Definition{name = "value", field_type = .Color},
+			Field_Definition{name = "hdr", field_type = .Bool},
+			Field_Definition{name = "show_alpha", field_type = .Bool},
+			Field_Definition{name = "read_only", field_type = .Bool},
+			Field_Definition{name = "exposure", field_type = .Number},
+			Field_Definition{name = "maximum_exposure", field_type = .Number},
+			Field_Definition{name = "track_height", field_type = .Number},
+			Field_Definition{name = "gap", field_type = .Number},
+			Field_Definition{name = "thumb_radius", field_type = .Number},
+			Field_Definition{name = "thumb_color", field_type = .Vec4},
+			Field_Definition{name = "thumb_border_color", field_type = .Vec4},
+			Field_Definition{name = "thumb_border_width", field_type = .Number},
+			Field_Definition{name = "checker_light", field_type = .Vec4},
+			Field_Definition{name = "checker_dark", field_type = .Vec4},
+		},
+	)
 	register_engine_component(registry, "scrapbot.internal.render_instance", {})
 	register_engine_component(registry, "scrapbot.internal.editor_transform_gizmo", {})
 }
@@ -808,6 +860,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .UI_Input, .Authored
 		case "scrapbot.ui_checkbox":
 			return .UI_Checkbox, .Authored
+		case "scrapbot.ui_color_picker":
+			return .UI_Color_Picker, .Authored
 		case "scrapbot.ui_state":
 			return .UI_State, .Derived
 		case "scrapbot.internal.render_instance":

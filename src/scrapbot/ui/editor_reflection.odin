@@ -167,6 +167,14 @@ editor_reflected_snapshot_component_value :: proc(
 				return any{rawptr(&entity.ui_checkbox), typeid_of(shared.UI_Checkbox_Component)},
 					true
 			}
+		case .UI_Color_Picker:
+			if entity.has_ui_color_picker {
+				return any {
+						rawptr(&entity.ui_color_picker),
+						typeid_of(shared.UI_Color_Picker_Component),
+					},
+					true
+			}
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -329,6 +337,12 @@ editor_reflected_live_component_value :: proc(
 			return any {
 					rawptr(&world.ui_checkboxes[entity.ui_checkbox_index]),
 					typeid_of(shared.UI_Checkbox_Component),
+				},
+				true
+		case .UI_Color_Picker:
+			return any {
+					rawptr(&world.ui_color_pickers[entity.ui_color_picker_index]),
+					typeid_of(shared.UI_Color_Picker_Component),
 				},
 				true
 		case .Render_Instance:
@@ -1090,6 +1104,8 @@ editor_reflected_component_valid :: proc(
 			return shared.ui_input_is_valid(entity.ui_input)
 		case "scrapbot.ui_checkbox":
 			return shared.ui_checkbox_is_valid(entity.ui_checkbox)
+		case "scrapbot.ui_color_picker":
+			return shared.ui_color_picker_is_valid(entity.ui_color_picker)
 	}
 	return true
 }
@@ -1522,4 +1538,216 @@ editor_reflected_read_number :: proc(
 		return 0, false
 	}
 	return editor_reflected_axis_number(field_value, binding.inspector_axis)
+}
+
+editor_color_component :: proc "contextless" (value: shared.Vec4, index: int) -> f32 {
+	switch index {
+		case 0:
+			return value.x
+		case 1:
+			return value.y
+		case 2:
+			return value.z
+		case:
+			return value.w
+	}
+}
+
+editor_color_set_component :: proc(value: ^shared.Vec4, index: int, number: f32) {
+	if value == nil {
+		return
+	}
+	switch index {
+		case 0:
+			value.x = number
+		case 1:
+			value.y = number
+		case 2:
+			value.z = number
+		case 3:
+			value.w = number
+	}
+}
+
+editor_reflected_read_color :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+) -> (
+	shared.Vec4,
+	int,
+	bool,
+) {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return {}, 0, false
+	}
+	_, target_index, target_ok := inspector_target(world, binding)
+	if !target_ok {
+		return {}, 0, false
+	}
+	snapshot, captured := ecs.capture_registered_component_snapshot(
+		world,
+		target_index,
+		definition,
+	)
+	if !captured {
+		return {}, 0, false
+	}
+	defer ecs.destroy_registered_component_snapshot(&snapshot)
+	component_value, component_found := editor_reflected_snapshot_component_value(
+		&snapshot.value,
+		definition,
+	)
+	if !component_found {
+		return {}, 0, false
+	}
+	field_value, field_found := editor_reflected_field_value(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !field_found {
+		return {}, 0, false
+	}
+	result := shared.Vec4{0, 0, 0, 1}
+	axes := [4]shared.Editor_Inspector_Axis{.X, .Y, .Z, .W}
+	count := 0
+	for axis, index in axes {
+		number, available := editor_reflected_axis_number(field_value, axis)
+		if !available {
+			break
+		}
+		editor_color_set_component(&result, index, number)
+		count += 1
+	}
+	return result, count, count == 3 || count == 4
+}
+
+editor_reflected_set_snapshot_color :: proc(
+	snapshot: ^ecs.Registered_Component_Snapshot,
+	definition: ^component.Definition,
+	field_index: int,
+	value: shared.Vec4,
+	component_count: int,
+) -> bool {
+	if snapshot == nil || definition == nil || component_count < 3 || component_count > 4 {
+		return false
+	}
+	component_value, found := editor_reflected_snapshot_component_value(
+		&snapshot.value,
+		definition,
+	)
+	if !found {
+		return false
+	}
+	field_value, field_found := editor_reflected_field_value(
+		component_value,
+		definition,
+		field_index,
+	)
+	if !field_found {
+		return false
+	}
+	axes := [4]shared.Editor_Inspector_Axis{.X, .Y, .Z, .W}
+	for axis, index in axes[:component_count] {
+		_, parsed := editor_reflected_set_number(
+			field_value,
+			axis,
+			editor_color_component(value, index),
+		)
+		if !parsed {
+			return false
+		}
+	}
+	return true
+}
+
+editor_reflected_preview_color :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	value: shared.Vec4,
+	component_count: int,
+) -> bool {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return false
+	}
+	_, target_index, target_ok := inspector_target(world, binding)
+	if !target_ok {
+		return false
+	}
+	snapshot, captured := ecs.capture_registered_component_snapshot(
+		world,
+		target_index,
+		definition,
+	)
+	if !captured {
+		return false
+	}
+	defer ecs.destroy_registered_component_snapshot(&snapshot)
+	if !editor_reflected_set_snapshot_color(
+		&snapshot,
+		definition,
+		binding.reflected_field_index,
+		value,
+		component_count,
+	) {
+		return false
+	}
+	if !ecs.apply_registered_component_snapshot(world, target_index, &snapshot) {
+		return false
+	}
+	if ecs.entity_is_alive(world, target_index) {
+		editor_mark_scene_dirty(state, &world.entities[target_index])
+	}
+	return true
+}
+
+editor_reflected_finish_color :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	before_value, after_value: shared.Vec4,
+	component_count: int,
+) -> bool {
+	if before_value == after_value {
+		editor_recompute_scene_dirty(state)
+		return true
+	}
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return false
+	}
+	_, target_index, target_ok := inspector_target(world, binding)
+	if !target_ok {
+		return false
+	}
+	before := capture_component_snapshot_pointer(world, target_index, definition)
+	after := capture_component_snapshot_pointer(world, target_index, definition)
+	if before == nil || after == nil {
+		destroy_component_snapshot_pointer(before)
+		destroy_component_snapshot_pointer(after)
+		return false
+	}
+	if !editor_reflected_set_snapshot_color(
+		before,
+		definition,
+		binding.reflected_field_index,
+		before_value,
+		component_count,
+	) {
+		destroy_component_snapshot_pointer(before)
+		destroy_component_snapshot_pointer(after)
+		return false
+	}
+	if state.editor_simulation_stopped && world.entities[target_index].origin == .Scene {
+		push_component_structural_change(state, world.entities[target_index].uuid, before, after)
+	} else {
+		destroy_component_snapshot_pointer(before)
+		destroy_component_snapshot_pointer(after)
+		state.editor_snapshot_valid = false
+	}
+	return true
 }

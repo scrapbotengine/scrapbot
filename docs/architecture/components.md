@@ -45,6 +45,7 @@ Lifecycle meanings:
 | `scrapbot.ui_button` | UI control | Authored | Yes | Text or SDF-icon activation control with an optional popup target UUID. |
 | `scrapbot.ui_input` | UI control | Authored | Yes | Single-line text/numeric input with focus, selection, validation, stepping, and opt-in scrubbing. |
 | `scrapbot.ui_checkbox` | UI control | Authored | Yes | Reusable SDF boolean control with read-only mode. |
+| `scrapbot.ui_color_picker` | UI control | Authored | Yes | Linear RGBA color control with optional HDR exposure and alpha tracks. |
 | `scrapbot.internal.render_instance` | Rendering | Derived | No | Engine-owned stable render slot derived from renderable component membership. |
 | `scrapbot.internal.editor_transform_gizmo` | Editor tooling | Derived | No | Transient selected-entity gizmo ownership and active manipulation mode. |
 <!-- inventory:engine-components:end -->
@@ -333,6 +334,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Checked/style changes dirty paint; activation targets the control's interaction/change revision.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_checkbox).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`, `ui/editor_inspector_binding.odin`; `ui/ui_test.odin`, `ecs/ui_components_test.odin`.
+
+### `scrapbot.ui_color_picker`
+
+- **Contract:** Direct linear RGBA color editor with a saturation/value pad, hue track, optional alpha track, and optional HDR exposure track. `value` remains the canonical color; `exposure` is picker presentation state.
+- **Storage/lifecycle:** Dedicated typed UI storage plus retained active gesture state; authored component.
+- **Producers:** Public project UI surfaces, editor semantic Color/resource bindings, pointer interaction, Luau, and native extensions.
+- **Consumers:** Retained hit testing, gradient/checker/thumb painting, `ui_state` change/submission revisions, editor preview/history, and scene persistence.
+- **Invalidation:** Value/style mutation dirties only the picker paint stream; active drags update the exact component and advance change revisions, release advances submission once, and stable frames reuse unchanged paint/GPU streams.
+- **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, projects, and the editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_color_picker).
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`, `ui/editor_reflection.odin`; `ui/ui_test.odin`, `project/project_test.odin`, `render/render_test.odin`.
 
 ### `scrapbot.ui_state`
 

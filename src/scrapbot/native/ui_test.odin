@@ -85,6 +85,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	checkbox.check_inset = 5
 	checkbox.check_corner_radius = 0
 	testing.expect(t, ecs.set_ui_checkbox(&world, entity_index, checkbox))
+	color_picker := shared.ui_color_picker_default()
+	color_picker.value = {4, 2, 1, 0.5}
+	color_picker.exposure = 2
+	testing.expect(t, ecs.set_ui_color_picker(&world, entity_index, color_picker))
 	table := shared.ui_table_default()
 	table.columns = 2
 	table.proportional_columns = true
@@ -169,6 +173,14 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, checkbox_payload.checkbox.corner_radius == 0)
 	testing.expect(t, checkbox_payload.checkbox.border_width == 2)
+	color_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_color_picker", &color_payload) != 0,
+	)
+	testing.expect(t, color_payload.color_picker.value.x == 4)
+	testing.expect(t, color_payload.color_picker.exposure == 2)
+	testing.expect(t, color_payload.color_picker.hdr != 0)
 
 	progress_payload: api.UI_Component_Payload
 	testing.expect(

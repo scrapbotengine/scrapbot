@@ -83,7 +83,7 @@ size = [212, 48]
 padding = [13, 16, 10, 16]
 
 [entities.ui_text]
-text = "25 UI ENTITIES"
+text = "26 UI ENTITIES"
 color = [1, 0.82, 0.28, 1]
 size = 18
 
@@ -173,7 +173,7 @@ name = "Feature Pane"
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-00000000000a"
-size = [484, 360]
+size = [484, 580]
 
 [entities.ui_vstack]
 gap = 8
@@ -355,6 +355,25 @@ padding = [7, 6, 4, 6]
 text = "ROW MAJOR"
 color = [0.28, 0.88, 0.76, 1]
 size = 10
+
+[[entities]]
+id = "30000000-0000-4000-8000-000000000020"
+name = "HDR Color Picker"
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-00000000000b"
+size = [470, 204]
+background = [0.035, 0.045, 0.055, 1]
+border_color = [0.12, 0.15, 0.18, 1]
+border_width = 1
+corner_radius = 8
+
+[entities.ui_color_picker]
+value = [4, 1.5, 0.25, 0.8]
+hdr = true
+show_alpha = true
+exposure = 2
+maximum_exposure = 12
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000018"

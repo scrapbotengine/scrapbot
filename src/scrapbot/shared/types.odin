@@ -217,6 +217,8 @@ Scene_Entity :: struct {
 	ui_input: UI_Input_Component,
 	has_ui_checkbox: bool,
 	ui_checkbox: UI_Checkbox_Component,
+	has_ui_color_picker: bool,
+	ui_color_picker: UI_Color_Picker_Component,
 	custom_components: [dynamic]Custom_Component,
 }
 
@@ -659,6 +661,23 @@ UI_Checkbox_Component :: struct {
 	read_only: bool,
 }
 
+UI_Color_Picker_Component :: struct {
+	value: Vec4,
+	hdr: bool,
+	show_alpha: bool,
+	read_only: bool,
+	exposure: f32,
+	maximum_exposure: f32,
+	track_height: f32,
+	gap: f32,
+	thumb_radius: f32,
+	thumb_color: Vec4,
+	thumb_border_color: Vec4,
+	thumb_border_width: f32,
+	checker_light: Vec4,
+	checker_dark: Vec4,
+}
+
 ui_layout_default :: proc "contextless" () -> UI_Layout_Component {
 	return {}
 }
@@ -772,6 +791,23 @@ ui_checkbox_default :: proc "contextless" () -> UI_Checkbox_Component {
 		border_width = 1,
 		check_inset = -1,
 		check_corner_radius = -1,
+	}
+}
+
+ui_color_picker_default :: proc "contextless" () -> UI_Color_Picker_Component {
+	return {
+		value = {1, 1, 1, 1},
+		hdr = true,
+		show_alpha = true,
+		maximum_exposure = 16,
+		track_height = 14,
+		gap = 8,
+		thumb_radius = 6,
+		thumb_color = {1, 1, 1, 1},
+		thumb_border_color = {0.02, 0.025, 0.035, 1},
+		thumb_border_width = 2,
+		checker_light = {0.62, 0.64, 0.68, 1},
+		checker_dark = {0.34, 0.36, 0.40, 1},
 	}
 }
 
@@ -931,6 +967,42 @@ ui_checkbox_is_valid :: proc "contextless" (value: UI_Checkbox_Component) -> boo
 		value.border_width >= 0 &&
 		value.check_inset >= -1 &&
 		value.check_corner_radius >= -1 \
+	)
+}
+
+ui_color_picker_is_valid :: proc "contextless" (value: UI_Color_Picker_Component) -> bool {
+	if math.is_nan(value.value.x) ||
+	   math.is_inf(value.value.x) ||
+	   math.is_nan(value.value.y) ||
+	   math.is_inf(value.value.y) ||
+	   math.is_nan(value.value.z) ||
+	   math.is_inf(value.value.z) ||
+	   math.is_nan(value.value.w) ||
+	   math.is_inf(value.value.w) ||
+	   value.value.x < 0 ||
+	   value.value.y < 0 ||
+	   value.value.z < 0 ||
+	   value.value.w < 0 ||
+	   value.value.w > 1 {
+		return false
+	}
+	if !value.hdr && (value.value.x > 1 || value.value.y > 1 || value.value.z > 1) {
+		return false
+	}
+	return(
+		!math.is_nan(value.maximum_exposure) &&
+		!math.is_inf(value.maximum_exposure) &&
+		!math.is_nan(value.exposure) &&
+		!math.is_inf(value.exposure) &&
+		value.exposure >= 0 &&
+		value.exposure <= value.maximum_exposure &&
+		(value.hdr || value.exposure == 0) &&
+		value.maximum_exposure >= 0 &&
+		value.maximum_exposure <= 32 &&
+		value.track_height > 0 &&
+		value.gap >= 0 &&
+		value.thumb_radius > 0 &&
+		value.thumb_border_width >= 0 \
 	)
 }
 
@@ -1096,6 +1168,8 @@ Editor_UI_Role :: enum {
 	Inspector_Preview_Hint,
 	Inspector_Input,
 	Inspector_Checkbox,
+	Inspector_Color_Button,
+	Inspector_Color_Picker,
 	Inspector_Enum_Menu_Button,
 	Inspector_Enum_Menu,
 	Inspector_Enum_Menu_Content,
@@ -1128,6 +1202,9 @@ Editor_UI_Component :: struct {
 	input_original_number: f32,
 	input_has_original_number: bool,
 	input_was_scrubbed: bool,
+	color_original: Vec4,
+	color_component_count: int,
+	color_has_original: bool,
 }
 
 Editor_UI_Lookup_Key :: struct {
@@ -1244,6 +1321,7 @@ World_Entity :: struct {
 	ui_button_index: int,
 	ui_input_index: int,
 	ui_checkbox_index: int,
+	ui_color_picker_index: int,
 	editor_transform_gizmo_index: int,
 	editor_ui_index: int,
 	geometry_resource: string,
@@ -1385,6 +1463,7 @@ World :: struct {
 	ui_buttons: [dynamic]UI_Button_Component,
 	ui_inputs: [dynamic]UI_Input_Component,
 	ui_checkboxes: [dynamic]UI_Checkbox_Component,
+	ui_color_pickers: [dynamic]UI_Color_Picker_Component,
 	free_ui_layout_indices: [dynamic]int,
 	free_ui_hstack_indices: [dynamic]int,
 	free_ui_vstack_indices: [dynamic]int,
@@ -1399,6 +1478,7 @@ World :: struct {
 	free_ui_button_indices: [dynamic]int,
 	free_ui_input_indices: [dynamic]int,
 	free_ui_checkbox_indices: [dynamic]int,
+	free_ui_color_picker_indices: [dynamic]int,
 	editor_transform_gizmos: [dynamic]Editor_Transform_Gizmo_Component,
 	editor_scene_cameras: [dynamic]Editor_Scene_Camera_Component,
 	editor_uis: [dynamic]Editor_UI_Component,

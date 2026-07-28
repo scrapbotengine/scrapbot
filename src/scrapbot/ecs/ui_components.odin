@@ -231,6 +231,11 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			world.ui_checkboxes[entity.ui_checkbox_index] = {}
 			append(&world.free_ui_checkbox_indices, entity.ui_checkbox_index)
 			entity.ui_checkbox_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_color_picker":
+			if entity.ui_color_picker_index < 0 { return false }
+			world.ui_color_pickers[entity.ui_color_picker_index] = {}
+			append(&world.free_ui_color_picker_indices, entity.ui_color_picker_index)
+			entity.ui_color_picker_index = INVALID_COMPONENT_INDEX
 		case:
 			return false
 	}
@@ -681,6 +686,49 @@ set_ui_checkbox :: proc(world: ^World, entity_index: int, value: UI_Checkbox_Com
 	}
 	mark_ui_entity_dirty(world, entity_index)
 	return true
+}
+
+set_ui_color_picker :: proc(
+	world: ^World,
+	entity_index: int,
+	value: UI_Color_Picker_Component,
+) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) || !shared.ui_color_picker_is_valid(value) {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.ui_color_picker_index >= 0 &&
+	   entity.ui_color_picker_index < len(world.ui_color_pickers) {
+		if world.ui_color_pickers[entity.ui_color_picker_index] == value {
+			return true
+		}
+		world.ui_color_pickers[entity.ui_color_picker_index] = value
+		mark_ui_paint_changed(world, entity_index)
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_color_picker_indices); found {
+		entity.ui_color_picker_index = index
+		world.ui_color_pickers[index] = value
+	} else {
+		entity.ui_color_picker_index = len(world.ui_color_pickers)
+		append(&world.ui_color_pickers, value)
+	}
+	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
+set_ui_color_picker_value :: proc(world: ^World, entity_index: int, value: shared.Vec4) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) {
+		return false
+	}
+	entity := world.entities[entity_index]
+	if entity.ui_color_picker_index < 0 ||
+	   entity.ui_color_picker_index >= len(world.ui_color_pickers) {
+		return false
+	}
+	next := world.ui_color_pickers[entity.ui_color_picker_index]
+	next.value = value
+	return set_ui_color_picker(world, entity_index, next)
 }
 
 set_ui_parent :: proc(world: ^World, entity_index: int, parent: shared.Entity_UUID) -> bool {
