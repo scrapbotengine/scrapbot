@@ -416,7 +416,7 @@ editor_reflected_field_definition :: proc(
 	switch field_value.id {
 		case typeid_of(bool):
 			result.field_type = .Bool
-		case typeid_of(f32), typeid_of(int), typeid_of(u64):
+		case typeid_of(f32), typeid_of(int), typeid_of(u32), typeid_of(u64):
 			result.field_type = .Number
 		case typeid_of(shared.Vec2):
 			result.field_type = .Vec2
@@ -446,6 +446,7 @@ editor_reflected_value_is_writable :: proc(value: any) -> bool {
 		case typeid_of(bool),
 		     typeid_of(f32),
 		     typeid_of(int),
+		     typeid_of(u32),
 		     typeid_of(string),
 		     typeid_of(shared.Entity_UUID),
 		     typeid_of(shared.Vec2),
@@ -562,6 +563,125 @@ editor_reflected_field_value :: proc(
 	return field_value, field_value != nil
 }
 
+editor_reflected_container_count :: proc(value: any) -> (int, bool) {
+	if value == nil {
+		return 0, false
+	}
+	if count := reflect.struct_field_count(value.id); count > 0 {
+		return count, true
+	}
+	info := reflect.type_info_base(type_info_of(value.id))
+	#partial switch container in info.variant {
+		case reflect.Type_Info_Array:
+			return container.count, true
+	}
+	return 0, false
+}
+
+editor_reflected_container_child :: proc(value: any, index: int) -> (any, bool) {
+	if value == nil || index < 0 {
+		return nil, false
+	}
+	if count := reflect.struct_field_count(value.id); count > 0 {
+		if index >= count {
+			return nil, false
+		}
+		field := reflect.struct_field_at(value.id, index)
+		child := reflect.struct_field_value(value, field)
+		return child, child != nil
+	}
+	iterator := 0
+	for child, child_index in reflect.iterate_array(value, &iterator) {
+		if child_index == index {
+			return child, true
+		}
+	}
+	return nil, false
+}
+
+editor_reflected_container_child_name :: proc(value: any, index: int) -> (string, bool) {
+	if value == nil || index < 0 {
+		return "", false
+	}
+	if count := reflect.struct_field_count(value.id); count > 0 {
+		if index >= count {
+			return "", false
+		}
+		field := reflect.struct_field_at(value.id, index)
+		return field.name, field.name != ""
+	}
+	if count, found := editor_reflected_container_count(value); found && index < count {
+		return fmt.tprintf("[%d]", index), true
+	}
+	return "", false
+}
+
+editor_reflected_nested_value :: proc(value: any, path: [8]int, path_count: int) -> (any, bool) {
+	if value == nil || path_count < 0 || path_count > len(path) {
+		return nil, false
+	}
+	path_value := path
+	current := value
+	for index in path_value[:path_count] {
+		next, found := editor_reflected_container_child(current, index)
+		if !found {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+editor_reflected_binding_value :: proc(
+	component_value: any,
+	definition: ^component.Definition,
+	binding: shared.Editor_UI_Component,
+) -> (
+	any,
+	bool,
+) {
+	value, found := editor_reflected_field_value(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !found {
+		return nil, false
+	}
+	return editor_reflected_nested_value(
+		value,
+		binding.reflected_path,
+		binding.reflected_path_count,
+	)
+}
+
+editor_reflected_value_field_type :: proc(value: any) -> (component.Field_Type, bool) {
+	if value == nil {
+		return .String, false
+	}
+	if editor_reflected_value_is_enum(value) {
+		return .String, true
+	}
+	switch value.id {
+		case typeid_of(bool):
+			return .Bool, true
+		case typeid_of(f32), typeid_of(int), typeid_of(u32), typeid_of(u64):
+			return .Number, true
+		case typeid_of(string),
+		     typeid_of(shared.Entity_UUID),
+		     typeid_of(shared.Resource_UUID),
+		     typeid_of(shared.UI_Text_Alignment):
+			return .String, true
+		case typeid_of(shared.Vec2):
+			return .Vec2, true
+		case typeid_of(shared.Vec3):
+			return .Vec3, true
+		case typeid_of(shared.Vec4):
+			return .Vec4, true
+	}
+	return .String, false
+}
+
 editor_reflected_axis_number :: proc(
 	value: any,
 	axis: shared.Editor_Inspector_Axis,
@@ -577,6 +697,9 @@ editor_reflected_axis_number :: proc(
 	}
 	if value.id == typeid_of(int) {
 		return f32((cast(^int)value.data)^), axis == .None
+	}
+	if value.id == typeid_of(u32) {
+		return f32((cast(^u32)value.data)^), axis == .None
 	}
 	if value.id == typeid_of(shared.Vec2) {
 		vector := (cast(^shared.Vec2)value.data)^
@@ -695,6 +818,89 @@ editor_reflected_field_texts :: proc(
 			for axis, index in axes[:count] {
 				number, number_ok := editor_reflected_axis_number(field_value, axis)
 				if !number_ok {
+					return 0, false
+				}
+				values[index] = fmt.tprintf("%.2f", number)
+			}
+			return count, true
+	}
+	return 0, false
+}
+
+editor_reflected_value_texts :: proc(
+	value: any,
+	field_type: component.Field_Type,
+	uuid_buffer: []u8,
+	values: ^[4]string,
+) -> (
+	int,
+	bool,
+) {
+	if value == nil || values == nil {
+		return 0, false
+	}
+	if editor_reflected_value_is_enum(value) {
+		name, found := editor_reflected_enum_display_name(value)
+		values[0] = name
+		return 1, found
+	}
+	switch field_type {
+		case .Bool:
+			if value.id == typeid_of(bool) {
+				values[0] = fmt.tprintf("%v", (cast(^bool)value.data)^)
+				return 1, true
+			}
+		case .Number:
+			if value.id == typeid_of(u64) {
+				values[0] = fmt.tprintf("%d", (cast(^u64)value.data)^)
+				return 1, true
+			}
+			if value.id == typeid_of(u32) {
+				values[0] = fmt.tprintf("%d", (cast(^u32)value.data)^)
+				return 1, true
+			}
+			if value.id == typeid_of(int) {
+				values[0] = fmt.tprintf("%d", (cast(^int)value.data)^)
+				return 1, true
+			}
+			if number, found := editor_reflected_axis_number(value, .None); found {
+				values[0] = fmt.tprintf("%.2f", number)
+				return 1, true
+			}
+		case .String:
+			if value.id == typeid_of(string) {
+				values[0] = (cast(^string)value.data)^
+				return 1, true
+			}
+			if value.id == typeid_of(shared.Entity_UUID) {
+				id := (cast(^shared.Entity_UUID)value.data)^
+				values[0] = "none"
+				if id != (shared.Entity_UUID{}) {
+					values[0] = shared.entity_uuid_to_string(id, uuid_buffer)
+				}
+				return 1, true
+			}
+			if value.id == typeid_of(shared.Resource_UUID) {
+				id := (cast(^shared.Resource_UUID)value.data)^
+				values[0] = "none"
+				if id != (shared.Resource_UUID{}) {
+					values[0] = shared.resource_uuid_to_string(id, uuid_buffer)
+				}
+				return 1, true
+			}
+			values[0] = fmt.tprintf("%v", value)
+			return 1, true
+		case .Vec2, .Vec3, .Vec4, .Color:
+			axes := [4]shared.Editor_Inspector_Axis{.X, .Y, .Z, .W}
+			count := 2
+			if field_type == .Vec3 {
+				count = 3
+			} else if field_type == .Vec4 || field_type == .Color {
+				count = 4
+			}
+			for axis, index in axes[:count] {
+				number, found := editor_reflected_axis_number(value, axis)
+				if !found {
 					return 0, false
 				}
 				values[index] = fmt.tprintf("%.2f", number)
@@ -833,6 +1039,16 @@ editor_reflected_set_number :: proc(
 			return false, false
 		}
 		pointer := cast(^int)value.data
+		changed := pointer^ != integer
+		pointer^ = integer
+		return changed, true
+	}
+	if value.id == typeid_of(u32) && axis == .None {
+		integer := u32(number)
+		if number < 0 || f32(integer) != number {
+			return false, false
+		}
+		pointer := cast(^u32)value.data
 		changed := pointer^ != integer
 		pointer^ = integer
 		return changed, true
@@ -1190,6 +1406,118 @@ editor_reflected_set_field_bool :: proc(
 	return changed, editor_reflected_component_valid(entity, definition.name)
 }
 
+editor_reflected_set_binding_text :: proc(
+	entity: ^shared.Scene_Entity,
+	definition: ^component.Definition,
+	binding: shared.Editor_UI_Component,
+	text: string,
+) -> (
+	bool,
+	bool,
+) {
+	if binding.reflected_path_count == 0 {
+		return editor_reflected_set_field_text(
+			entity,
+			definition,
+			binding.reflected_field_index,
+			binding.inspector_axis,
+			text,
+		)
+	}
+	component_value, component_found := editor_reflected_snapshot_component_value(
+		entity,
+		definition,
+	)
+	if !component_found {
+		return false, false
+	}
+	value, found := editor_reflected_binding_value(component_value, definition, binding)
+	if !found {
+		return false, false
+	}
+	field_type, described := editor_reflected_value_field_type(value)
+	if !described {
+		return false, false
+	}
+	changed, parsed := false, false
+	if editor_reflected_value_is_enum(value) {
+		changed, parsed = editor_reflected_set_enum_value(value, text)
+	} else {
+		switch field_type {
+			case .Number, .Vec2, .Vec3, .Vec4, .Color:
+				number, ok := strconv.parse_f32(strings.trim_space(text))
+				if !ok {
+					return false, false
+				}
+				changed, parsed = editor_reflected_set_number(
+					value,
+					binding.inspector_axis,
+					number,
+				)
+			case .String:
+				changed, parsed = editor_reflected_set_text_value(value, text)
+			case .Bool:
+				return false, false
+		}
+	}
+	if !parsed {
+		return false, false
+	}
+	top_field, top_found := editor_reflected_field_definition(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !top_found {
+		return false, false
+	}
+	editor_reflected_normalize(entity, definition.name, top_field.name)
+	return changed, editor_reflected_component_valid(entity, definition.name)
+}
+
+editor_reflected_set_binding_bool :: proc(
+	entity: ^shared.Scene_Entity,
+	definition: ^component.Definition,
+	binding: shared.Editor_UI_Component,
+	checked: bool,
+) -> (
+	bool,
+	bool,
+) {
+	if binding.reflected_path_count == 0 {
+		return editor_reflected_set_field_bool(
+			entity,
+			definition,
+			binding.reflected_field_index,
+			checked,
+		)
+	}
+	component_value, component_found := editor_reflected_snapshot_component_value(
+		entity,
+		definition,
+	)
+	if !component_found {
+		return false, false
+	}
+	value, found := editor_reflected_binding_value(component_value, definition, binding)
+	if !found || value.id != typeid_of(bool) {
+		return false, false
+	}
+	pointer := cast(^bool)value.data
+	changed := pointer^ != checked
+	pointer^ = checked
+	top_field, top_found := editor_reflected_field_definition(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
+	if !top_found {
+		return false, false
+	}
+	editor_reflected_normalize(entity, definition.name, top_field.name)
+	return changed, editor_reflected_component_valid(entity, definition.name)
+}
+
 editor_reflected_input_valid :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -1209,13 +1537,7 @@ editor_reflected_input_valid :: proc(
 		return false
 	}
 	defer ecs.destroy_entity_snapshot(&snapshot)
-	_, valid := editor_reflected_set_field_text(
-		&snapshot.entity,
-		definition,
-		binding.reflected_field_index,
-		binding.inspector_axis,
-		text,
-	)
+	_, valid := editor_reflected_set_binding_text(&snapshot.entity, definition, binding, text)
 	return valid && target.uuid == snapshot.entity.id
 }
 
@@ -1274,11 +1596,10 @@ editor_reflected_preview_number :: proc(
 		return false
 	}
 	defer ecs.destroy_registered_component_snapshot(&snapshot)
-	changed, valid := editor_reflected_set_field_text(
+	changed, valid := editor_reflected_set_binding_text(
 		&snapshot.value,
 		definition,
-		binding.reflected_field_index,
-		binding.inspector_axis,
+		binding,
 		fmt.tprintf("%.9g", number),
 	)
 	if !valid || !changed {
@@ -1324,11 +1645,10 @@ editor_reflected_finish_number_scrub :: proc(
 		destroy_component_snapshot_pointer(after)
 		return false
 	}
-	changed, valid := editor_reflected_set_field_text(
+	changed, valid := editor_reflected_set_binding_text(
 		&before.value,
 		definition,
-		binding.reflected_field_index,
-		binding.inspector_axis,
+		binding,
 		fmt.tprintf("%.9g", before_number),
 	)
 	if !valid || !changed {
@@ -1368,13 +1688,7 @@ editor_reflected_apply_text :: proc(
 		destroy_component_snapshot_pointer(after)
 		return false
 	}
-	changed, valid := editor_reflected_set_field_text(
-		&after.value,
-		definition,
-		binding.reflected_field_index,
-		binding.inspector_axis,
-		text,
-	)
+	changed, valid := editor_reflected_set_binding_text(&after.value, definition, binding, text)
 	if !valid || !changed {
 		destroy_component_snapshot_pointer(before)
 		destroy_component_snapshot_pointer(after)
@@ -1404,12 +1718,7 @@ editor_reflected_apply_bool :: proc(
 		destroy_component_snapshot_pointer(after)
 		return false
 	}
-	changed, valid := editor_reflected_set_field_bool(
-		&after.value,
-		definition,
-		binding.reflected_field_index,
-		checked,
-	)
+	changed, valid := editor_reflected_set_binding_bool(&after.value, definition, binding, checked)
 	if !valid || !changed {
 		destroy_component_snapshot_pointer(before)
 		destroy_component_snapshot_pointer(after)
@@ -1446,7 +1755,15 @@ editor_reflected_read_bool :: proc(
 	if !component_found {
 		return false, false
 	}
-	return editor_reflected_field_bool(component_value, definition, binding.reflected_field_index)
+	field_value, field_found := editor_reflected_binding_value(
+		component_value,
+		definition,
+		binding,
+	)
+	if !field_found || field_value.id != typeid_of(bool) {
+		return false, false
+	}
+	return (cast(^bool)field_value.data)^, true
 }
 
 editor_reflected_enum_option_name :: proc(
@@ -1482,10 +1799,10 @@ editor_reflected_enum_option_name :: proc(
 	if !component_found {
 		return "", false
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		binding.reflected_field_index,
+		binding,
 	)
 	if !field_found || !editor_reflected_value_is_enum(field_value) {
 		return "", false
@@ -1529,10 +1846,10 @@ editor_reflected_read_number :: proc(
 	if !component_found {
 		return 0, false
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		binding.reflected_field_index,
+		binding,
 	)
 	if !field_found {
 		return 0, false
@@ -1572,10 +1889,10 @@ editor_reflected_entity_reference :: proc(
 	if !component_found {
 		return {}, false
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		binding.reflected_field_index,
+		binding,
 	)
 	if !field_found || field_value.id != typeid_of(shared.Entity_UUID) {
 		return {}, false
@@ -1586,7 +1903,7 @@ editor_reflected_entity_reference :: proc(
 editor_reflected_set_snapshot_entity_reference :: proc(
 	snapshot: ^ecs.Registered_Component_Snapshot,
 	definition: ^component.Definition,
-	field_index: int,
+	binding: shared.Editor_UI_Component,
 	value: shared.Entity_UUID,
 ) -> bool {
 	if snapshot == nil || definition == nil {
@@ -1599,16 +1916,20 @@ editor_reflected_set_snapshot_entity_reference :: proc(
 	if !found {
 		return false
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		field_index,
+		binding,
 	)
 	if !field_found || field_value.id != typeid_of(shared.Entity_UUID) {
 		return false
 	}
 	(cast(^shared.Entity_UUID)field_value.data)^ = value
-	field, described := editor_reflected_field_definition(component_value, definition, field_index)
+	field, described := editor_reflected_field_definition(
+		component_value,
+		definition,
+		binding.reflected_field_index,
+	)
 	if !described {
 		return false
 	}
@@ -1720,12 +2041,7 @@ editor_reflected_entity_reference_candidate_valid :: proc(
 		return false
 	}
 	defer ecs.destroy_registered_component_snapshot(&snapshot)
-	if !editor_reflected_set_snapshot_entity_reference(
-		&snapshot,
-		definition,
-		binding.reflected_field_index,
-		candidate,
-	) {
+	if !editor_reflected_set_snapshot_entity_reference(&snapshot, definition, binding, candidate) {
 		return false
 	}
 	if candidate == (shared.Entity_UUID{}) {
@@ -1891,10 +2207,10 @@ editor_reflected_read_color :: proc(
 	if !component_found {
 		return {}, 0, false
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		binding.reflected_field_index,
+		binding,
 	)
 	if !field_found {
 		return {}, 0, false
@@ -1916,7 +2232,7 @@ editor_reflected_read_color :: proc(
 editor_reflected_set_snapshot_color :: proc(
 	snapshot: ^ecs.Registered_Component_Snapshot,
 	definition: ^component.Definition,
-	field_index: int,
+	binding: shared.Editor_UI_Component,
 	value: shared.Vec4,
 	component_count: int,
 ) -> bool {
@@ -1930,10 +2246,10 @@ editor_reflected_set_snapshot_color :: proc(
 	if !found {
 		return false
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		field_index,
+		binding,
 	)
 	if !field_found {
 		return false
@@ -1979,7 +2295,7 @@ editor_reflected_preview_color :: proc(
 	if !editor_reflected_set_snapshot_color(
 		&snapshot,
 		definition,
-		binding.reflected_field_index,
+		binding,
 		value,
 		component_count,
 	) {
@@ -2023,7 +2339,7 @@ editor_reflected_finish_color :: proc(
 	if !editor_reflected_set_snapshot_color(
 		before,
 		definition,
-		binding.reflected_field_index,
+		binding,
 		before_value,
 		component_count,
 	) {

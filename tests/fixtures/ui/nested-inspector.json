@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "type", "target": {"name": "__scrapbot_editor_scene_filter", "origin": "editor"}, "text": "Pyramid"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_row_12", "origin": "editor"}},
+    {"action": "click", "target": {"text": "GEOMETRY", "origin": "editor"}},
+    {"action": "click", "target": {"text": "MATERIAL", "origin": "editor"}},
+    {"action": "click", "target": {"text": "SHOWCASE / SPIN", "origin": "editor"}},
+    {"action": "click", "target": {"text": "INTERNAL / RENDER INSTANCE", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_container_0", "origin": "editor"}, "expect": "visible"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_inspector_container_0", "origin": "editor"}},
+    {"action": "scroll", "target": {"name": "__scrapbot_editor_right", "origin": "editor"}, "wheel_y": -8},
+    {"action": "expect", "target": {"text": "  index", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"text": "  index", "origin": "editor"}, "padding": 96}
+  ]
+}

@@ -259,7 +259,8 @@ trends; they are not portable performance thresholds.
   - [x] Material resource-reference picker and inline resource fields
   - [x] ECS-built material resource browser with selection and inline inspection
   - [x] Runtime-reflected enum editor using reusable public choice-popup composition
-  - [ ] Specialized array and nested-value editors
+  - [x] Recursive nested-record and fixed-array inspectors using public disclosure composition
+  - [ ] Resizable dynamic-array schemas with add, remove, and reorder controls
   - [x] Searchable Scene, resource, and system browsers using reusable filtered/virtualized ECS lists
   - [x] Searchable registry-driven component picker using the public filtered-list contract
   - [x] Expandable UUID-backed spatial hierarchy with drag-to-reparent

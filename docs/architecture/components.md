@@ -309,8 +309,8 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 - **Contract:** Text and/or reusable SDF-icon activation control consuming generic pointer/focus state, with an optional public popup-root target UUID.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
-- **Producers:** Public project UI surfaces and editor composition.
-- **Consumers:** Measurement, hit testing, hover/active painting, activation bindings, panel title actions, and generic popup toggling.
+- **Producers:** Public project UI surfaces and editor composition, including reflected-container disclosures.
+- **Consumers:** Measurement, hit testing, hover/active painting, activation bindings, inspector disclosures, panel title actions, and generic popup toggling.
 - **Invalidation:** Content/style changes dirty layout/paint; pointer/keyboard edges target interaction state and activation revision.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_button).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ui/ui_test.odin`, `ui/diagnostic_driver_test.odin`.

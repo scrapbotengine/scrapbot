@@ -6454,6 +6454,137 @@ test_reflected_entity_reference_inspector_uses_searchable_public_popup_and_histo
 	testing.expect_value(t, world.transforms[world.entities[1].transform_index].parent, parent_id)
 }
 
+Reflected_Collection_Test_Value :: struct {
+	weights: [3]f32,
+}
+
+@(test)
+test_reflected_container_path_traverses_and_mutates_fixed_array_leaves :: proc(t: ^testing.T) {
+	value := Reflected_Collection_Test_Value {
+		weights = {1, 2, 3},
+	}
+	root := any{rawptr(&value), typeid_of(Reflected_Collection_Test_Value)}
+	weights, weights_found := editor_reflected_container_child(root, 0)
+	testing.expect(t, weights_found)
+	count, count_found := editor_reflected_container_count(weights)
+	testing.expect(t, count_found)
+	testing.expect_value(t, count, 3)
+	path: [8]int
+	path[1] = 1
+	leaf, leaf_found := editor_reflected_nested_value(root, path, 2)
+	testing.expect(t, leaf_found)
+	if !leaf_found {
+		return
+	}
+	changed, parsed := editor_reflected_set_number(leaf, .None, 7.5)
+	testing.expect(t, changed && parsed)
+	testing.expect_value(t, value.weights[1], f32(7.5))
+}
+
+@(test)
+test_reflected_resource_uuid_remains_a_leaf_value :: proc(t: ^testing.T) {
+	value := shared.Resource_UUID{}
+	field_type, found := editor_reflected_value_field_type(
+		any{rawptr(&value), typeid_of(shared.Resource_UUID)},
+	)
+	testing.expect(t, found)
+	testing.expect_value(t, field_type, component.Field_Type.String)
+}
+
+@(test)
+test_reflected_nested_inspector_composes_public_disclosures_and_leaf_inputs :: proc(
+	t: ^testing.T,
+) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(&scene.entities, shared.Scene_Entity{name = "Nested Inspector"})
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	append(
+		&world.render_instances,
+		shared.Render_Instance_Component {
+			geometry = {index = 7, generation = 3},
+			material = {index = 11, generation = 5},
+		},
+	)
+	world.entities[0].render_instance_index = 0
+	registry: component.Registry
+	component.init_registry(&registry)
+	definition, definition_found := component.find_definition(
+		&registry,
+		"scrapbot.internal.render_instance",
+	)
+	testing.expect(t, definition_found)
+	if !definition_found {
+		return
+	}
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 720))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	panel_entity := -1
+	for binding in world.editor_uis {
+		if binding.role == .Inspector_Panel && binding.reflected_component_id == definition.id {
+			panel_entity = binding.entity_index
+			break
+		}
+	}
+	testing.expect(t, panel_entity >= 0)
+	if panel_entity < 0 {
+		return
+	}
+	panel_index := world.entities[panel_entity].ui_panel_index
+	world.ui_panels[panel_index].collapsed = false
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	disclosure := -1
+	for binding in world.editor_uis {
+		testing.expect(
+			t,
+			binding.role != .Inspector_Input || binding.reflected_component_id != definition.id,
+		)
+		if binding.role == .Inspector_Container_Disclosure &&
+		   binding.reflected_component_id == definition.id &&
+		   binding.reflected_field_index == 0 &&
+		   binding.reflected_path_count == 0 {
+			disclosure = binding.entity_index
+			break
+		}
+	}
+	testing.expect(t, disclosure >= 0)
+	if disclosure < 0 {
+		return
+	}
+	editor_ui_handle_activation(state, &world, world.entities[disclosure].id, {})
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	found_index := false
+	found_generation := false
+	for binding in world.editor_uis {
+		if binding.role != .Inspector_Input ||
+		   binding.reflected_component_id != definition.id ||
+		   binding.reflected_field_index != 0 ||
+		   binding.reflected_path_count != 1 {
+			continue
+		}
+		entity := world.entities[binding.entity_index]
+		input := world.ui_inputs[entity.ui_input_index]
+		testing.expect(t, input.read_only)
+		if binding.reflected_path[0] == 0 && input.text == "7" {
+			found_index = true
+		}
+		if binding.reflected_path[0] == 1 && input.text == "3" {
+			found_generation = true
+		}
+	}
+	testing.expect(t, found_index)
+	testing.expect(t, found_generation)
+}
+
 @(test)
 test_editor_entity_snapshots_and_running_values_refresh_at_five_hz :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)

@@ -33,7 +33,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 ## Editor
 
 - [ ] Add an opt-in runtime-entity browser policy on top of bounded, virtualized list rows.
-- [ ] Add specialized array and nested-value inspectors.
+- [ ] Add resizable dynamic-array schemas with inspector add, remove, and reorder controls.
 - [ ] Extend project/native component schemas with enum choices so dynamic fields can use the reflected enum picker.
 - [ ] Add transform snapping and multi-selection editing.
 - [ ] Add a scalable picking broad phase or GPU identity pass before exact triangle tests.

@@ -262,6 +262,11 @@ editor_ui_handle_activation :: proc(
 						)
 					}
 					return
+				case .Inspector_Container_Disclosure:
+					role := &world.editor_uis[entity.editor_ui_index]
+					role.expanded = !role.expanded
+					state.editor_snapshot_valid = false
+					return
 				case .Inspector_Component_Menu_Button:
 					if menu, found := editor_ui_entity(world, .Inspector_Component_Menu); found {
 						layout := world.ui_layouts[world.entities[menu].ui_layout_index]
@@ -2480,6 +2485,8 @@ editor_ui_ensure_enum_menu_item :: proc(
 	role.target = binding.target
 	role.reflected_component_id = binding.reflected_component_id
 	role.reflected_field_index = binding.reflected_field_index
+	role.reflected_path = binding.reflected_path
+	role.reflected_path_count = binding.reflected_path_count
 	return item
 }
 
@@ -2505,6 +2512,8 @@ editor_ui_build_enum_menu :: proc(
 	menu_binding.target = binding.target
 	menu_binding.reflected_component_id = binding.reflected_component_id
 	menu_binding.reflected_field_index = binding.reflected_field_index
+	menu_binding.reflected_path = binding.reflected_path
+	menu_binding.reflected_path_count = binding.reflected_path_count
 	definition, definition_found := editor_reflected_definition(state, binding)
 	_, target_index, target_found := inspector_target(world, binding)
 	if !definition_found || !target_found {
@@ -2526,10 +2535,10 @@ editor_ui_build_enum_menu :: proc(
 	if !component_found {
 		return
 	}
-	field_value, field_found := editor_reflected_field_value(
+	field_value, field_found := editor_reflected_binding_value(
 		component_value,
 		definition,
-		binding.reflected_field_index,
+		binding,
 	)
 	if !field_found || !editor_reflected_value_is_enum(field_value) {
 		return
@@ -2659,6 +2668,8 @@ editor_ui_ensure_entity_menu_item :: proc(
 	role.target = binding.target
 	role.reflected_component_id = binding.reflected_component_id
 	role.reflected_field_index = binding.reflected_field_index
+	role.reflected_path = binding.reflected_path
+	role.reflected_path_count = binding.reflected_path_count
 	role.entity_reference = entity_reference
 	role.read_only = false
 	return item
@@ -2703,6 +2714,8 @@ editor_ui_build_entity_menu :: proc(
 	menu_binding.target = binding.target
 	menu_binding.reflected_component_id = binding.reflected_component_id
 	menu_binding.reflected_field_index = binding.reflected_field_index
+	menu_binding.reflected_path = binding.reflected_path
+	menu_binding.reflected_path_count = binding.reflected_path_count
 	filter_value := world.ui_inputs[world.entities[filter].ui_input_index]
 	filter_value.text = ""
 	_ = ecs.set_ui_input(world, filter, filter_value)
@@ -2797,6 +2810,7 @@ Inspector_ECS_Builder :: struct {
 	color_count: int,
 	enum_button_count: int,
 	entity_button_count: int,
+	container_disclosure_count: int,
 	row_count: int,
 	component_menu_visible: bool,
 	resource_menu_visible: bool,
@@ -3303,6 +3317,42 @@ editor_ui_begin_inspector_component :: proc(
 	editor_ui_set_panel_title(builder.world, panel, title)
 }
 
+editor_ui_set_reflected_path :: proc(binding: ^shared.Editor_UI_Component, path: []int) {
+	if binding == nil {
+		return
+	}
+	binding.reflected_path = {}
+	binding.reflected_path_count = min(len(path), len(binding.reflected_path))
+	copy(
+		binding.reflected_path[:binding.reflected_path_count],
+		path[:binding.reflected_path_count],
+	)
+}
+
+editor_ui_reflected_path_equal :: proc(binding: ^shared.Editor_UI_Component, path: []int) -> bool {
+	if binding == nil || binding.reflected_path_count != len(path) {
+		return false
+	}
+	for value, index in path {
+		if binding.reflected_path[index] != value {
+			return false
+		}
+	}
+	return true
+}
+
+editor_ui_reflected_bindings_same_path :: proc(a, b: shared.Editor_UI_Component) -> bool {
+	if a.reflected_path_count != b.reflected_path_count {
+		return false
+	}
+	for index in 0 ..< a.reflected_path_count {
+		if a.reflected_path[index] != b.reflected_path[index] {
+			return false
+		}
+	}
+	return true
+}
+
 editor_ui_inspector_field_values :: proc(
 	builder: ^Inspector_ECS_Builder,
 	label: string,
@@ -3316,6 +3366,7 @@ editor_ui_inspector_field_values :: proc(
 	resource_id: shared.Resource_UUID = {},
 	custom_editor: component.Field_Editor_Options = {},
 	read_only: bool = false,
+	reflected_path: []int = nil,
 ) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
@@ -3355,6 +3406,7 @@ editor_ui_inspector_field_values :: proc(
 		   (role.target != builder.target ||
 				   role.reflected_component_id != reflected_component_id ||
 				   role.reflected_field_index != reflected_field_index ||
+				   !editor_ui_reflected_path_equal(role, reflected_path) ||
 				   role.inspector_axis != next_axis) {
 			clear_input_focus(builder.state)
 		}
@@ -3375,6 +3427,7 @@ editor_ui_inspector_field_values :: proc(
 		role.custom_field_index = custom_field_index
 		role.reflected_component_id = reflected_component_id
 		role.reflected_field_index = reflected_field_index
+		editor_ui_set_reflected_path(role, reflected_path)
 		role.resource_id = resource_id
 		editor_ui_set_numeric_metadata(value_input, field)
 		if reflected_component_id != shared.INVALID_COMPONENT_ID {
@@ -3461,6 +3514,7 @@ editor_ui_inspector_bool :: proc(
 	reflected_component_id: shared.Component_ID = shared.INVALID_COMPONENT_ID,
 	reflected_field_index: int = -1,
 	read_only: bool = false,
+	reflected_path: []int = nil,
 ) {
 	if builder.table_entity < 0 { return }
 	parent := builder.world.entities[builder.table_entity].name
@@ -3494,6 +3548,7 @@ editor_ui_inspector_bool :: proc(
 	role.inspector_axis = .None
 	role.reflected_component_id = reflected_component_id
 	role.reflected_field_index = reflected_field_index
+	editor_ui_set_reflected_path(role, reflected_path)
 	builder.row_count += 1
 }
 
@@ -3503,6 +3558,7 @@ editor_ui_inspector_enum :: proc(
 	reflected_component_id: shared.Component_ID,
 	reflected_field_index: int,
 	read_only: bool,
+	reflected_path: []int = nil,
 ) {
 	if builder == nil || builder.table_entity < 0 {
 		return
@@ -3538,6 +3594,7 @@ editor_ui_inspector_enum :: proc(
 	role.target = builder.target
 	role.reflected_component_id = reflected_component_id
 	role.reflected_field_index = reflected_field_index
+	editor_ui_set_reflected_path(role, reflected_path)
 	role.read_only = read_only
 	builder.row_count += 1
 }
@@ -3549,6 +3606,7 @@ editor_ui_inspector_entity_reference :: proc(
 	reflected_component_id: shared.Component_ID,
 	reflected_field_index: int,
 	read_only: bool,
+	reflected_path: []int = nil,
 ) {
 	if builder == nil || builder.table_entity < 0 {
 		return
@@ -3584,9 +3642,274 @@ editor_ui_inspector_entity_reference :: proc(
 	role.target = builder.target
 	role.reflected_component_id = reflected_component_id
 	role.reflected_field_index = reflected_field_index
+	editor_ui_set_reflected_path(role, reflected_path)
 	role.entity_reference = value
 	role.read_only = read_only
 	builder.row_count += 1
+}
+
+editor_ui_nested_label :: proc(label: string, depth: int) -> string {
+	indent := "                "
+	count := min(max(depth, 0) * 2, len(indent))
+	return fmt.tprintf("%s%s", indent[:count], label)
+}
+
+editor_ui_ensure_container_disclosure :: proc(
+	world: ^shared.World,
+	slot: int,
+	parent: string,
+) -> int {
+	button, found := editor_ui_entity(world, .Inspector_Container_Disclosure, slot)
+	if !found {
+		button = editor_ui_create_box(
+			world,
+			fmt.tprintf("__scrapbot_editor_inspector_container_%d", slot),
+			parent,
+			.Inspector_Container_Disclosure,
+			{size = {INSPECTOR_CONTROL_HEIGHT, INSPECTOR_CONTROL_HEIGHT}, corner_radius = 3},
+			slot,
+		)
+		editor_ui_add_button(world, button)
+	} else {
+		editor_ui_set_parent(world, button, parent)
+	}
+	layout := &world.ui_layouts[world.entities[button].ui_layout_index]
+	layout.size = {INSPECTOR_CONTROL_HEIGHT, INSPECTOR_CONTROL_HEIGHT}
+	layout.fill_width = false
+	layout.fixed_in_fill = true
+	return button
+}
+
+editor_ui_inspector_container :: proc(
+	builder: ^Inspector_ECS_Builder,
+	label: string,
+	item_count: int,
+	is_array: bool,
+	reflected_component_id: shared.Component_ID,
+	reflected_field_index: int,
+	reflected_path: []int,
+	depth: int,
+) -> bool {
+	if builder == nil || builder.table_entity < 0 {
+		return false
+	}
+	parent := builder.world.entities[builder.table_entity].name
+	label_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, false)
+	builder.cell_count += 1
+	value_cell := editor_ui_ensure_inspector_cell(builder.world, builder.cell_count, parent, true)
+	builder.cell_count += 1
+	cells := [2]int{label_cell, value_cell}
+	for cell in cells {
+		layout := &builder.world.ui_layouts[builder.world.entities[cell].ui_layout_index]
+		editor_ui_set_hidden(builder.world, cell, false)
+		layout.size.y = INSPECTOR_CELL_HEIGHT
+	}
+	kind := "fields"
+	if is_array {
+		kind = "items"
+	}
+	editor_ui_set_text(
+		builder.world,
+		label_cell,
+		fmt.tprintf("%s (%d %s)", editor_ui_nested_label(label, depth), item_count, kind),
+	)
+	button := editor_ui_ensure_container_disclosure(
+		builder.world,
+		builder.container_disclosure_count,
+		builder.world.entities[value_cell].name,
+	)
+	builder.container_disclosure_count += 1
+	editor_ui_set_hidden(builder.world, button, false)
+	binding := &builder.world.editor_uis[builder.world.entities[button].editor_ui_index]
+	same_binding :=
+		binding.target == builder.target &&
+		binding.reflected_component_id == reflected_component_id &&
+		binding.reflected_field_index == reflected_field_index &&
+		editor_ui_reflected_path_equal(binding, reflected_path)
+	if !same_binding {
+		binding.expanded = false
+	}
+	binding.target = builder.target
+	binding.reflected_component_id = reflected_component_id
+	binding.reflected_field_index = reflected_field_index
+	editor_ui_set_reflected_path(binding, reflected_path)
+	value := builder.world.ui_buttons[builder.world.entities[button].ui_button_index]
+	value.text = " "
+	value.icon = .Chevron_Right
+	if binding.expanded {
+		value.icon = .Chevron_Down
+	}
+	value.icon_inset = 6
+	value.icon_stroke = 1.5
+	value.color = {0.60, 0.64, 0.71, 1}
+	value.hover_background = {0.030, 0.105, 0.092, 1}
+	value.active_background = {0.018, 0.065, 0.057, 1}
+	_ = ecs.set_ui_button(builder.world, button, value)
+	builder.row_count += 1
+	return binding.expanded
+}
+
+editor_ui_inspector_reflected_value :: proc(
+	builder: ^Inspector_ECS_Builder,
+	definition: ^component.Definition,
+	label: string,
+	value: any,
+	field: component.Field_Definition,
+	field_index: int,
+	path: [8]int,
+	path_count: int,
+	depth: int,
+) {
+	if builder == nil || definition == nil || value == nil {
+		return
+	}
+	display_label := editor_ui_nested_label(label, depth)
+	read_only := definition.lifecycle != .Authored || !editor_reflected_value_is_writable(value)
+	path_value := path
+	path_slice := path_value[:path_count]
+	if editor_reflected_value_is_enum(value) {
+		display, valid := editor_reflected_enum_display_name(value)
+		editor_ui_inspector_enum(
+			builder,
+			display_label,
+			display,
+			definition.id,
+			field_index,
+			read_only || !valid,
+			path_slice,
+		)
+		return
+	}
+	if value.id == typeid_of(shared.Entity_UUID) {
+		editor_ui_inspector_entity_reference(
+			builder,
+			display_label,
+			(cast(^shared.Entity_UUID)value.data)^,
+			definition.id,
+			field_index,
+			read_only,
+			path_slice,
+		)
+		return
+	}
+	field_type, leaf := editor_reflected_value_field_type(value)
+	if path_count == 0 {
+		field_type = field.field_type
+	}
+	if !leaf {
+		item_count, container := editor_reflected_container_count(value)
+		if container {
+			info := reflect.type_info_base(type_info_of(value.id))
+			_, is_array := info.variant.(reflect.Type_Info_Array)
+			if !editor_ui_inspector_container(
+				builder,
+				label,
+				item_count,
+				is_array,
+				definition.id,
+				field_index,
+				path_slice,
+				depth,
+			) {
+				return
+			}
+			if path_count >= len(path) {
+				return
+			}
+			for child_index in 0 ..< item_count {
+				child, child_found := editor_reflected_container_child(value, child_index)
+				child_name, name_found := editor_reflected_container_child_name(value, child_index)
+				if !child_found || !name_found {
+					continue
+				}
+				child_path := path
+				child_path[path_count] = child_index
+				child_field := component.Field_Definition {
+					name = child_name,
+					field_type = .String,
+				}
+				if child_type, described := editor_reflected_value_field_type(child); described {
+					child_field.field_type = child_type
+				}
+				editor_ui_inspector_reflected_value(
+					builder,
+					definition,
+					child_name,
+					child,
+					child_field,
+					field_index,
+					child_path,
+					path_count + 1,
+					depth + 1,
+				)
+			}
+			return
+		}
+	}
+	if field_type == .Bool {
+		editor_ui_inspector_bool(
+			builder,
+			display_label,
+			(cast(^bool)value.data)^,
+			.None,
+			definition.id,
+			field_index,
+			read_only,
+			path_slice,
+		)
+		return
+	}
+	if field_type == .Color || field.editor.color {
+		result := shared.Vec4{0, 0, 0, 1}
+		axes := [4]shared.Editor_Inspector_Axis{.X, .Y, .Z, .W}
+		component_count := 0
+		for axis, axis_index in axes {
+			number, found := editor_reflected_axis_number(value, axis)
+			if !found {
+				break
+			}
+			editor_color_set_component(&result, axis_index, number)
+			component_count += 1
+		}
+		if component_count == 3 || component_count == 4 {
+			hdr := !field.editor.has_maximum || field.editor.maximum > 1
+			editor_ui_inspector_color(
+				builder,
+				display_label,
+				result,
+				component_count,
+				hdr,
+				definition.id,
+				field_index,
+				{},
+				.None,
+				read_only,
+				path_slice,
+			)
+		}
+		return
+	}
+	values: [4]string
+	uuid_buffer: [36]u8
+	count, found := editor_reflected_value_texts(value, field_type, uuid_buffer[:], &values)
+	if !found {
+		return
+	}
+	editor_ui_inspector_field_values(
+		builder,
+		display_label,
+		values[:count],
+		.None,
+		-1,
+		-1,
+		definition.id,
+		field_index,
+		field_type,
+		{},
+		field.editor,
+		read_only,
+		path_slice,
+	)
 }
 
 editor_ui_inspector_reflected_field :: proc(
@@ -3606,97 +3929,16 @@ editor_ui_inspector_reflected_field :: proc(
 	if !found {
 		return
 	}
-	read_only :=
-		definition.lifecycle != .Authored || !editor_reflected_value_is_writable(field_value)
-	if editor_reflected_value_is_enum(field_value) {
-		value, value_found := editor_reflected_enum_display_name(field_value)
-		if !value_found {
-			read_only = true
-		}
-		editor_ui_inspector_enum(builder, field.name, value, definition.id, field_index, read_only)
-		return
-	}
-	if field_value.id == typeid_of(shared.Entity_UUID) {
-		value := (cast(^shared.Entity_UUID)field_value.data)^
-		editor_ui_inspector_entity_reference(
-			builder,
-			field.name,
-			value,
-			definition.id,
-			field_index,
-			read_only,
-		)
-		return
-	}
-	if field.field_type == .Bool {
-		value, found := editor_reflected_field_bool(component_value, definition, field_index)
-		if found {
-			editor_ui_inspector_bool(
-				builder,
-				field.name,
-				value,
-				.None,
-				definition.id,
-				field_index,
-				read_only,
-			)
-		}
-		return
-	}
-	if field.field_type == .Color || field.editor.color {
-		binding := shared.Editor_UI_Component {
-			target = builder.target,
-			reflected_component_id = definition.id,
-			reflected_field_index = field_index,
-		}
-		value, component_count, color_found := editor_reflected_read_color(
-			builder.state,
-			builder.world,
-			binding,
-		)
-		if color_found {
-			hdr := !field.editor.has_maximum || field.editor.maximum > 1
-			editor_ui_inspector_color(
-				builder,
-				field.name,
-				value,
-				component_count,
-				hdr,
-				definition.id,
-				field_index,
-				{},
-				.None,
-				read_only,
-			)
-		}
-		return
-	}
-	values: [4]string
-	uuid_buffer: [36]u8
-	count: int
-	count, found = editor_reflected_field_texts(
-		component_value,
-		definition,
-		field_index,
-		uuid_buffer[:],
-		&values,
-	)
-	if !found {
-		return
-	}
-	editor_ui_inspector_field_values(
+	editor_ui_inspector_reflected_value(
 		builder,
+		definition,
 		field.name,
-		values[:count],
-		.None,
-		-1,
-		-1,
-		definition.id,
+		field_value,
+		field,
 		field_index,
-		field.field_type,
 		{},
-		field.editor,
-		read_only,
+		0,
+		0,
 	)
 }
 
@@ -3711,6 +3953,7 @@ editor_ui_inspector_color :: proc(
 	resource_id: shared.Resource_UUID = {},
 	field: shared.Editor_Inspector_Field = .None,
 	read_only: bool = false,
+	reflected_path: []int = nil,
 ) {
 	if builder == nil || builder.table_entity < 0 {
 		return
@@ -3747,6 +3990,7 @@ editor_ui_inspector_color :: proc(
 		binding.inspector_field == field &&
 		binding.reflected_component_id == reflected_component_id &&
 		binding.reflected_field_index == reflected_field_index &&
+		editor_ui_reflected_path_equal(binding, reflected_path) &&
 		binding.resource_id == resource_id &&
 		builder.world.ui_layouts[builder.world.entities[picker_entity].ui_layout_index].popup_open
 	picker.value = value
@@ -3767,6 +4011,7 @@ editor_ui_inspector_color :: proc(
 	binding.inspector_field = field
 	binding.reflected_component_id = reflected_component_id
 	binding.reflected_field_index = reflected_field_index
+	editor_ui_set_reflected_path(binding, reflected_path)
 	binding.resource_id = resource_id
 	binding.color_component_count = component_count
 	binding.read_only = read_only
@@ -3887,6 +4132,9 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 			case .Inspector_Entity_Menu_Button:
 				if component.slot >=
 				   builder.entity_button_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
+			case .Inspector_Container_Disclosure:
+				if component.slot >=
+				   builder.container_disclosure_count { editor_ui_set_hidden(builder.world, component.entity_index, true) }
 			case .Inspector_Component_Menu_Button:
 				editor_ui_set_hidden(
 					builder.world,
@@ -3924,7 +4172,9 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 						anchor_binding.target == menu_binding.target &&
 						anchor_binding.reflected_component_id ==
 							menu_binding.reflected_component_id &&
-						anchor_binding.reflected_field_index == menu_binding.reflected_field_index
+						anchor_binding.reflected_field_index ==
+							menu_binding.reflected_field_index &&
+						editor_ui_reflected_bindings_same_path(anchor_binding, menu_binding)
 				}
 			}
 			if !binding_valid {
@@ -3954,7 +4204,9 @@ editor_ui_finish_inspector :: proc(builder: ^Inspector_ECS_Builder) {
 						anchor_binding.target == menu_binding.target &&
 						anchor_binding.reflected_component_id ==
 							menu_binding.reflected_component_id &&
-						anchor_binding.reflected_field_index == menu_binding.reflected_field_index
+						anchor_binding.reflected_field_index ==
+							menu_binding.reflected_field_index &&
+						editor_ui_reflected_bindings_same_path(anchor_binding, menu_binding)
 				}
 			}
 			if !binding_valid {

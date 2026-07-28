@@ -1179,6 +1179,7 @@ Editor_UI_Role :: enum {
 	Inspector_Entity_Menu_Filter,
 	Inspector_Entity_Menu_Content,
 	Inspector_Entity_Menu_Item,
+	Inspector_Container_Disclosure,
 	Inspector_Component_Menu_Button,
 	Inspector_Component_Menu,
 	Inspector_Component_Menu_Content,
@@ -1202,6 +1203,8 @@ Editor_UI_Component :: struct {
 	custom_field_index: int,
 	reflected_component_id: Component_ID,
 	reflected_field_index: int,
+	reflected_path: [8]int,
+	reflected_path_count: int,
 	entity_reference: Entity_UUID,
 	resource_id: Resource_UUID,
 	read_only: bool,
@@ -1211,6 +1214,7 @@ Editor_UI_Component :: struct {
 	color_original: Vec4,
 	color_component_count: int,
 	color_has_original: bool,
+	expanded: bool,
 }
 
 Editor_UI_Lookup_Key :: struct {

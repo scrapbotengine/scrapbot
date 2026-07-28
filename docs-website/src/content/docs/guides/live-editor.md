@@ -195,6 +195,8 @@ Runtime-reflected Odin enums use a choice button targeting a public popup-layout
 
 Entity UUIDs use a searchable popup composed from the same public button, input, virtualized list, and scroll-area components. `None` clears the reference. Candidate rows show entity names and UUID prefixes, omit incompatible targets and hierarchy cycles, and retain a missing current UUID so it can be diagnosed and repaired. The picker enumerates scene candidates only when opened; it does no candidate work on stable closed frames.
 
+Nested records and fixed arrays appear as expandable rows showing their field or item count. Their children recurse through the same runtime type inspection and reuse the ordinary leaf controls, so writable nested leaves keep validation and component-scoped Undo/Redo while engine-derived values stay read-only. Collapsed containers do not materialize descendant controls. Resizable dynamic-array schemas and add/remove/reorder actions are not supported yet.
+
 Shared UI owns popup anchoring, viewport clamping, filtering, scrolling, outside/Escape dismissal, and close-on-selection. Choosing an enum, color, or entity value commits the same component-scoped transaction as another reflected edit. Engine-derived state and unsupported or opaque values remain read-only until they gain an honest public editing contract. A complete stopped-mode reflected edit records only that component's before/after snapshot as one authoring transaction, so Undo, Redo, Save, and Revert work without field-specific editor history code.
 
 Click **Add Component** to open a floating, independently scrollable picker. Type in its public filter input to match generated group or component names case-insensitively. Its entries come from the live component registry:

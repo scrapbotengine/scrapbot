@@ -1042,7 +1042,8 @@ validate_focused_editor_input :: proc(state: ^State, world: ^shared.World) {
 			binding.custom_storage_index == focused.custom_storage_index &&
 			binding.custom_field_index == focused.custom_field_index &&
 			binding.reflected_component_id == focused.reflected_component_id &&
-			binding.reflected_field_index == focused.reflected_field_index
+			binding.reflected_field_index == focused.reflected_field_index &&
+			editor_ui_reflected_bindings_same_path(binding, focused)
 	}
 	if available && binding.role == .Inspector_Input {
 		if binding.resource_id != (shared.Resource_UUID{}) {
