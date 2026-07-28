@@ -10,6 +10,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 ## Behavior
 
 - Every UI entity describes a rectangular box with an explicit size, optional minimum size, per-axis fill and fit-to-content policies, optional position, per-edge margin and padding, background color, SDF border color and width, corner radius, and hidden state.
+- Themes are explicit composition-time palettes, metrics, and control recipes that resolve into those ordinary component fields. Applying a theme never creates renderer-owned cascading style state, and every resolved value remains individually overridable.
 - A hidden box removes its complete descendant subtree from retained layout, painting, and pointer interaction without despawning any entities.
 - UI entities form a parent-by-UUID hierarchy validated when the scene loads. Entity names remain editable labels.
 - Horizontal and vertical stack components arrange child boxes in scene order with a configurable gap; boxes without a stack component overlay their children. Fill stacks treat child sizes as proportions, fill the cross-axis, and can expose draggable separators with minimum pane sizes. Hovering or dragging a separator selects the matching horizontal- or vertical-resize system cursor.
@@ -121,9 +122,15 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 **Why:** Project shaders, materials, scene persistence, Luau, native extensions, and editor bindings all receive the same color quantity. HDR survives authoring without an encoded HSV/display-space payload or an editor-private widget path.
 **Tradeoff:** The first picker uses HSV plus EV and a bounded tone-mapped preview. It does not yet provide color-space selection, temperature/tint, numeric channel fields, eyedropper sampling, palettes, or negative RGB.
 
+### 13. Resolve themes before ECS storage
+
+**Decision:** Let UI composition apply an explicit theme recipe to canonical public component defaults, then apply entity-specific overrides and store the complete result in ECS. The retained hierarchy and renderer consume only those resolved component values, following ADR-040.
+**Why:** Applications need coherent palettes, typography, spacing, radii, and control states without turning the editor's appearance into UI mechanics or hiding effective state behind a cascade.
+**Tradeoff:** Existing entities do not automatically restyle when a recipe changes. Text-first scenes still spell out resolved values until a project-facing recipe surface can preserve the same explicit-state contract.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-037
+- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-037, ADR-040
 - **FDRs:** FDR-002, FDR-003, FDR-005, FDR-008
 
 ## Open Questions

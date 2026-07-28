@@ -21,6 +21,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 - [ ] Emit reusable button activation and other UI command events.
 - [ ] Add canvas scaling and richer sizing and alignment policies.
+- [ ] Expose explicit theme-recipe helpers to project Luau, native Odin, and text-first authoring without adding a renderer cascade. See [ADR-040](adr/ADR-040-resolve-ui-themes-into-component-values.md).
 
 ## Project Runtime And Scripting
 

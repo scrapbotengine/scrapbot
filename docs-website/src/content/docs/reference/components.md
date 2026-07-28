@@ -239,6 +239,8 @@ Light query payloads expose the listed data fields. Shadow components are empty 
 
 Every UI entity requires `scrapbot.ui_layout`. An entity may have at most one flow component—HStack, VStack, table, or list—and at most one content control—text, button, input, or checkbox. Panel, scroll-area, and progress components compose with those roles. The renderer attaches `scrapbot.ui_state`; projects never author or write it.
 
+Themes are optional composition-time recipes, not renderer state. They resolve palette, metric, and control-role choices into the same fields listed below, after which per-entity values can override any result. See [UI theming](../../guides/ui-theming/) for the resolution order and contrasting examples.
+
 Vectors use `{x, y}`, `{x, y, z}`, or `{x, y, z, w}` in Luau and fixed arrays in TOML. Insets use `[top, right, bottom, left]`. Colors are RGBA Vec4 values. Unless a non-zero default is listed below, omitted UI fields begin empty, zero, or false.
 
 ### `scrapbot.ui_layout`

@@ -19,6 +19,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Each complete sidebar is a smooth scroll viewport with a contrasting 10-pixel frame around a minimum-height content pane, so the dock inset remains visually clear and short windows can reach every tool section. Systems, Scene, Inspector identity, and component sections use the same titled, collapsible ECS panel treatment: one title height, disclosure icon, charcoal title/body colors, border, and radius. The Scene panel removes inner padding so its selectable rows fill the panel from edge to edge. Separate Systems and Scene sections use a six-pixel gutter. Nested Systems, Scene, and inspector scroll areas receive wheel input when hovered; hovering sidebar padding or non-scrollable chrome addresses the outer sidebar.
 - Authoring chrome uses neutral near-black and charcoal surfaces, gray-to-white text, quiet gray selection, and restrained mint accents for a dense professional tool aesthetic. Disposable playback is the deliberate amber exception.
 - Header bands, inspector surfaces, viewport seams, and selection use the shared ECS box border fields; pooled browser rows use hidden subtrees rather than leaving the ECS lifecycle. The default desktop density uses 13-pixel text, 32-pixel scene rows, 32-pixel inspector rows around 28-pixel controls, and a 420-pixel inspector pane so labels and three-axis controls remain comfortable without becoming oversized.
+- Editor composition applies the UI system's reduced dark theme recipe before writing ordinary public component values. The renderer has no editor-theme path, and editor bindings add project meaning without owning visual mechanics.
 - The running project's world and project-authored UI always share the complete available viewport. With the editor closed that is the full window; with the editor open it is the remaining center workspace.
 - Editor chrome and the project viewport follow the current drawable size when the window is resized. The camera derives its aspect ratio from the live viewport instead of enforcing a fixed ratio.
 - The derived project viewport is intersected with the physical render target. Extremely small or high-density diagnostic targets may clip editor chrome, but no world, postprocess, or UI pass may emit a viewport or scissor beyond the target.
@@ -107,9 +108,9 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 9. Reserve color for identity and state
 
-**Decision:** Build editor hierarchy from neutral dark surfaces and legible gray text, using Scrapbot mint as a thin identity and authoring-status signal rather than a panel tint. Reserve amber chrome tinting for the disposable playback warning. Use one 13-pixel text size throughout editor chrome and tooling; express hierarchy only through normal or bold weight and full-strength or faded color. Give every sidebar section the same collapsible titled-card tokens instead of styling Systems, Scene, identity, and component panels independently. Pair those invariants with modestly padded controls and enough default inspector width for three-axis editing.
+**Decision:** Apply the UI system's reduced dark recipe to editor composition, then use only small semantic overrides for playback, authoring state, provenance, gizmo axes, and validation. Build hierarchy from neutral dark surfaces and legible gray text, use Scrapbot mint as a thin identity and authoring-status signal, and reserve amber for the local disposable-playback frame/status treatment. Use one 13-pixel text size throughout editor chrome and tooling. Give every sidebar section the same collapsible titled-card recipe instead of styling Systems, Scene, identity, and component panels independently.
 **Why:** Low-chroma chrome keeps attention on live project content and dense inspection data while retaining a recognizable Scrapbot accent.
-**Tradeoff:** Playback, provenance, and gizmo colors remain intentionally saturated semantic exceptions and must continue to meet contrast requirements.
+**Tradeoff:** The editor deliberately uses only a restrained subset of the public style space. Playback, provenance, validation, and gizmo colors remain intentionally saturated semantic exceptions and must continue to meet contrast requirements.
 
 ### 10. Snapshot inspection data at tool cadence
 
@@ -209,7 +210,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-040
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions

@@ -19,6 +19,39 @@ UI_Test_I16_Enum :: enum i16 {
 }
 
 @(test)
+test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing.T) {
+	theme := reduced_dark_theme()
+	layout, button := theme_button(theme, .Primary)
+	button.text = "Launch"
+	layout.size.x = 240
+	testing.expect_value(t, button.text, "Launch")
+	testing.expect_value(t, layout.size.x, f32(240))
+	testing.expect(t, button.color == theme.palette.accent_text)
+	testing.expect(t, layout.background == theme.palette.accent_soft)
+	testing.expect(t, shared.ui_layout_is_valid(layout))
+	testing.expect(t, shared.ui_button_is_valid(button))
+
+	parent := ui_test_id("Theme Parent")
+	custom := theme
+	custom.palette.panel = {0.72, 0.08, 0.64, 1}
+	custom.metrics.radius = 0
+	surface := shared.UI_Layout_Component {
+		parent = parent,
+		position = {12, 18},
+		size = {320, 180},
+		fill_width = true,
+	}
+	theme_apply_surface(&surface, custom, .Panel, true)
+	testing.expect_value(t, surface.parent, parent)
+	testing.expect_value(t, surface.position, shared.Vec2{12, 18})
+	testing.expect_value(t, surface.size, shared.Vec2{320, 180})
+	testing.expect(t, surface.fill_width)
+	testing.expect(t, surface.background == custom.palette.panel)
+	testing.expect_value(t, surface.corner_radius, f32(0))
+	testing.expect_value(t, surface.border_width, custom.metrics.border_width)
+}
+
+@(test)
 test_project_material_edits_use_resource_history_and_dirty_tracking :: proc(t: ^testing.T) {
 	scene: shared.Scene
 	world := ecs.build_world(&scene)
@@ -2972,23 +3005,24 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		shared.entity_uuid_from_engine_name(EDITOR_UI_STATUS_NAME),
 	)
 	viewport_entity_index := int(state.nodes[viewport].entity.index)
+	theme := reduced_dark_theme()
 	testing.expect(t, top_found && status_bar_found)
 	if top_found && status_bar_found {
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
-			EDITOR_PLAYBACK_TOP_BACKGROUND,
+			theme.palette.canvas,
 		)
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[status_bar_index].ui_layout_index].background ==
-			EDITOR_PLAYBACK_STATUS_BACKGROUND,
+			theme.palette.warning_soft,
 		)
 	}
 	testing.expect(
 		t,
 		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_color ==
-		EDITOR_PLAYBACK_BORDER,
+		theme.palette.warning,
 	)
 
 	press := proc(state: ^State, world: ^shared.World, node_index: int) {
@@ -3050,18 +3084,18 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
-			EDITOR_CHROME_BACKGROUND,
+			theme.palette.canvas,
 		)
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[status_bar_index].ui_layout_index].background ==
-			EDITOR_CHROME_BACKGROUND,
+			theme.palette.canvas,
 		)
 	}
 	testing.expect(
 		t,
 		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_color ==
-		EDITOR_CHROME_BORDER,
+		theme.palette.border,
 	)
 	testing.expect(t, consume_playback_stop_request(state))
 	testing.expect(t, !consume_playback_stop_request(state))
@@ -3455,12 +3489,13 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 	inspector := find_editor_name_node(state, &world, EDITOR_UI_INSPECTOR_HEADER_NAME)
 	diagnostics := find_editor_role_node(state, .Diagnostics_Panel)
 	sections := [4]int{diagnostics, systems, scene_panel, inspector}
+	theme := reduced_dark_theme()
 	expected_titles := [4]string{"PERFORMANCE", "SYSTEMS / 0", "SCENE", "INSPECTOR"}
 	expected_backgrounds := [4]shared.Vec4 {
-		EDITOR_SECTION_BACKGROUND,
-		EDITOR_LIST_BACKGROUND,
-		EDITOR_LIST_BACKGROUND,
-		EDITOR_SECTION_BACKGROUND,
+		theme.palette.panel,
+		theme.palette.region,
+		theme.palette.region,
+		theme.palette.panel,
 	}
 	for node_index, section_index in sections {
 		testing.expect(t, node_index >= 0)
@@ -3473,11 +3508,11 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 		testing.expect(t, panel.title == expected_titles[section_index])
 		testing.expect(t, panel.collapsible)
 		testing.expect(t, panel.title_height == EDITOR_SECTION_TITLE_HEIGHT)
-		testing.expect(t, panel.title_color == EDITOR_SECTION_TITLE_COLOR)
-		testing.expect(t, panel.title_background == EDITOR_SECTION_TITLE_BACKGROUND)
+		testing.expect(t, panel.title_color == theme.palette.text)
+		testing.expect(t, panel.title_background == theme.palette.raised)
 		testing.expect(t, layout.background == expected_backgrounds[section_index])
-		testing.expect(t, layout.border_color == EDITOR_SECTION_BORDER)
-		testing.expect(t, layout.corner_radius == EDITOR_SECTION_RADIUS)
+		testing.expect(t, layout.border_color == theme.palette.border)
+		testing.expect(t, layout.corner_radius == theme.metrics.radius)
 	}
 
 	if scene_panel >= 0 {
@@ -4485,8 +4520,9 @@ test_editor_browser_uses_name_color_instead_of_provenance_labels :: proc(t: ^tes
 	testing.expect(t, editor_select_entity(state, &world, world.entities[1].id, 720))
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 
-	scene_color := shared.Vec4{0.82, 0.85, 0.90, 1}
-	runtime_color := EDITOR_RUNTIME_ENTITY_COLOR
+	theme := reduced_dark_theme()
+	scene_color := theme.palette.text
+	runtime_color := theme.palette.text_muted
 	scene_label, runtime_label := -1, -1
 	for component in world.editor_uis {
 		if component.role != .Browser_Row_Label { continue }
@@ -4976,6 +5012,7 @@ test_advanced_inspector_components_start_collapsed_and_remember_expansion :: pro
 @(test)
 test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t: ^testing.T) {
 	scene := shared.Scene{}; defer delete(scene.entities)
+	theme := reduced_dark_theme()
 	append(
 		&scene.entities,
 		shared.Scene_Entity {
@@ -5128,7 +5165,11 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					t,
 					world.ui_layouts[entity.ui_layout_index].size.y == INSPECTOR_CONTROL_HEIGHT,
 				)
-				testing.expect(t, world.ui_layouts[entity.ui_layout_index].corner_radius == 4)
+				testing.expect(
+					t,
+					world.ui_layouts[entity.ui_layout_index].corner_radius ==
+					theme.metrics.radius_small,
+				)
 				testing.expect(t, world.ui_inputs[entity.ui_input_index].size == EDITOR_TEXT_SIZE)
 				if entity.ui_input_index >= 0 &&
 				   entity.ui_input_index < len(world.ui_inputs) &&

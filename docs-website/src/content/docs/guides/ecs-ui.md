@@ -7,6 +7,8 @@ Scrapbot UI is ordinary ECS data. Scene TOML, Luau systems, native Odin extensio
 
 The editor is the first large consumer of this API, not a separate widget toolkit. A panel, list, input, checkbox, or scroll area improved for the editor is available to projects through the same component fields.
 
+Themes are explicit composition-time recipes that resolve into those same fields. See [UI theming](/guides/ui-theming/) for the resolution order, override rules, and contrasting examples.
+
 Appearing, disappearing, reparented, and hidden elements update a retained hierarchy through structural dirty notifications. Ordinary value changes on already-attached components increment the affected project or editor paint revision without rebuilding that hierarchy. Runtime-authored parent cycles are rejected during synchronization. Unchanged frames do not rebuild an element inventory, hash the complete UI component set, run layout, or regenerate paint commands; changed layout and paint walk retained parent/child/sibling links in linear time.
 
 ## Component model
@@ -156,7 +158,7 @@ Layout backgrounds, borders, and corner radii are SDF shapes. Controls expose th
 
 Set a supported corner radius to `0` for square geometry. Omit `font` to use embedded Inter, or reference a project font declared in `project.toml`.
 
-Scrapbot does not have a shared theme resource yet. Reuse style values in your scene-generation or project code when several entities should match.
+Scrapbot's reduced editor theme is one reusable engine-composition recipe, not a renderer mode. Scene TOML currently stores resolved style values rather than a named theme resource. Reuse values in scene-generation or project code, override any field per entity, or ignore the editor recipe entirely. See [UI theming](/guides/ui-theming/).
 
 ## React through `ui_state`
 

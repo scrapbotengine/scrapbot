@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-07-25
+**Last verified:** 2026-07-28
 
 ## Project load and world bootstrap
 
@@ -200,9 +200,11 @@ Post-run tools consume the artifact without engine access. The analyzer ranks GP
 ## ECS UI and editor
 
 ```text
+theme recipe + entity overrides (optional composition input)
+                         │
 scene TOML / Luau / native Odin / editor composition
                          │
-                  public ui_* components
+           fully resolved public ui_* components
                          │
        structural queue + project/editor revisions
                          │
@@ -212,6 +214,8 @@ scene TOML / Luau / native Odin / editor composition
                          │
  read-only ui_state + independent GPU vertex streams
 ```
+
+Theme recipes are consumed only while composing or explicitly restyling entities. They preserve hierarchy and behavior fields, write presentation through ordinary typed component values, and leave no retained theme dependency. The editor applies the reduced dark recipe before adding small semantic overrides.
 
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 
