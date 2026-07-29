@@ -147,12 +147,9 @@ UI_Text_Alignment :: enum c.int {
 	Right  = 2,
 }
 
-UI_Icon :: enum c.int {
-	None          = 0,
-	Close         = 1,
-	Plus          = 2,
-	Chevron_Right = 3,
-	Chevron_Down  = 4,
+UI_Icon_Position :: enum c.int {
+	Leading  = 0,
+	Trailing = 1,
 }
 
 UI_Layout_Payload :: struct {
@@ -214,7 +211,7 @@ UI_Panel_Payload :: struct {
 	disclosure_size: f32,
 	disclosure_margin: f32,
 	disclosure_gap: f32,
-	disclosure_corner_radius: f32,
+	disclosure_inset: f32,
 	collapsible: c.int,
 	collapsed: c.int,
 }
@@ -298,9 +295,11 @@ UI_Button_Payload :: struct {
 	active_background: Vec4,
 	hover_color: Vec4,
 	active_color: Vec4,
-	icon: UI_Icon,
+	icon_set: UUID,
+	icon_position: UI_Icon_Position,
+	icon_size: f32,
+	icon_gap: f32,
 	icon_inset: f32,
-	icon_stroke: f32,
 	panel_action: c.int,
 }
 

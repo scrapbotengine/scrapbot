@@ -856,3 +856,17 @@ test_project_icon_set_preserves_handle_and_versions_content :: proc(t: ^testing.
 	}
 	testing.expect(t, registry.icon_set_revision > revision)
 }
+@(test)
+test_builtin_icon_set_is_registered_with_public_symbols :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	defer destroy_registry(&registry)
+	handle, found := icon_set_handle_by_uuid(&registry, shared.builtin_icon_set_uuid())
+	testing.expect(t, found)
+	icon_set, alive := get_icon_set(&registry, handle)
+	testing.expect(t, alive)
+	symbol, symbol_found := icon_symbol(icon_set, "play")
+	testing.expect(t, symbol_found)
+	testing.expect(t, symbol.name == "play")
+	testing.expect(t, symbol.plane[2] > symbol.plane[0])
+}

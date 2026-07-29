@@ -33,7 +33,7 @@ UI_Viewport :: raw.UI_Viewport_Payload
 UI_Icon_Component_Value :: raw.UI_Icon_Payload
 UI_Text :: raw.UI_Text_Payload
 UI_Button :: raw.UI_Button_Payload
-UI_Icon :: raw.UI_Icon
+UI_Icon_Position :: raw.UI_Icon_Position
 UI_Input :: raw.UI_Input_Payload
 UI_Checkbox :: raw.UI_Checkbox_Payload
 UI_Color_Picker :: raw.UI_Color_Picker_Payload
@@ -43,6 +43,29 @@ UI_Theme_Name :: raw.UI_Theme_Name
 UI_Theme_Recipe :: raw.UI_Theme_Recipe
 
 UI_THEME_PAYLOAD_CAPACITY :: 9
+
+ui_builtin_icon_set :: proc "contextless" () -> UUID {
+	return {
+		bytes = {
+			0xa1,
+			0x1c,
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x40,
+			0x00,
+			0x80,
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x01,
+		},
+	}
+}
 
 UI_Layout_Component :: Component {
 	name = UI_LAYOUT,
@@ -123,7 +146,7 @@ ui_panel_default :: proc "contextless" () -> UI_Panel {
 		disclosure_size = 10,
 		disclosure_margin = 10,
 		disclosure_gap = 8,
-		disclosure_corner_radius = 1.35,
+		disclosure_inset = 0,
 	}
 }
 
@@ -169,13 +192,7 @@ ui_text_default :: proc "contextless" () -> UI_Text {
 }
 
 ui_button_default :: proc "contextless" () -> UI_Button {
-	return {
-		color = {1, 1, 1, 1},
-		size = 16,
-		alignment = .Center,
-		icon_inset = 6,
-		icon_stroke = 1.5,
-	}
+	return {color = {1, 1, 1, 1}, size = 16, alignment = .Center, icon_gap = 6, icon_inset = 6}
 }
 
 ui_input_default :: proc "contextless" () -> UI_Input {
@@ -326,7 +343,7 @@ ui_icon :: proc "contextless" (
 		component = UI_ICON,
 		icon_component = value,
 	}
-	return payload, ui_payload_set_strings(&payload, icon)
+	return payload, ui_payload_set_strings(&payload, icon, "")
 }
 
 ui_text :: proc "contextless" (
@@ -348,6 +365,7 @@ ui_button :: proc "contextless" (
 	value: UI_Button,
 	text: string,
 	font: string = "",
+	icon: string = "",
 ) -> (
 	UI_Component_Payload,
 	bool,
@@ -356,7 +374,7 @@ ui_button :: proc "contextless" (
 		component = UI_BUTTON,
 		button = value,
 	}
-	return payload, ui_payload_set_strings(&payload, text, font)
+	return payload, ui_payload_set_strings(&payload, text, font, icon)
 }
 
 ui_input :: proc "contextless" (

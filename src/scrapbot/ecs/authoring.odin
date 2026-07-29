@@ -180,6 +180,7 @@ capture_registered_component_snapshot :: proc(
 			value.ui_button = world.ui_buttons[entity.ui_button_index]
 			value.ui_button.text = clone_snapshot_string(value.ui_button.text)
 			value.ui_button.font = clone_snapshot_string(value.ui_button.font)
+			value.ui_button.icon = clone_snapshot_string(value.ui_button.icon)
 		case .UI_Input:
 			value.has_ui_input = true
 			value.ui_input = world.ui_inputs[entity.ui_input_index]
@@ -508,6 +509,7 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.ui_icon.icon)
 	delete(entity.ui_button.text)
 	delete(entity.ui_button.font)
+	delete(entity.ui_button.icon)
 	delete(entity.ui_input.text)
 	delete(entity.ui_input.font)
 	delete(entity.ui_input.prefix)
@@ -1019,6 +1021,7 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.ui_button = world.ui_buttons[source.ui_button_index]
 		entity.ui_button.text = clone_snapshot_string(entity.ui_button.text)
 		entity.ui_button.font = clone_snapshot_string(entity.ui_button.font)
+		entity.ui_button.icon = clone_snapshot_string(entity.ui_button.icon)
 	}
 	if source.ui_input_index >= 0 && source.ui_input_index < len(world.ui_inputs) {
 		entity.has_ui_input = true

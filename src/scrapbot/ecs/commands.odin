@@ -1307,6 +1307,7 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			value := command.button
 			value.text = text
 			value.font = font
+			value.icon = prefix
 			set_ui_button(world, entity_index, value)
 		case .Input:
 			value := command.input

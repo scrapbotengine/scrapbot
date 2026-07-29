@@ -53,6 +53,7 @@ export type Scrapbot = {
 	ui_checkbox: ScrapbotUiCheckboxComponent,
 	ui_color_picker: ScrapbotUiColorPickerComponent,
 	ui: {
+		builtin_icon_set: string,
 		resolve: (theme: ScrapbotUiThemeName, recipes: {ScrapbotUiThemeRecipe}) -> {[string]: any},
 	},
 	mesh: ScrapbotMeshComponent,

@@ -4,6 +4,13 @@ import "core:crypto"
 import "core:encoding/uuid"
 
 Resource_UUID :: distinct uuid.Identifier
+BUILTIN_ICON_SET_UUID :: "a11c0000-0000-4000-8000-000000000001"
+
+builtin_icon_set_uuid :: proc() -> Resource_UUID {
+	value, ok := resource_uuid_parse(BUILTIN_ICON_SET_UUID)
+	assert(ok)
+	return value
+}
 
 resource_uuid_parse :: proc(value: string) -> (Resource_UUID, bool) {
 	id, err := uuid.read(value)

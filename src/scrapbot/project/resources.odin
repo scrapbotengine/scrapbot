@@ -195,6 +195,9 @@ validate_scene_resource_references :: proc(
 	defer delete(known_textures)
 	known_models := make(map[shared.Resource_UUID]bool)
 	defer delete(known_models)
+	known_icon_sets := make(map[shared.Resource_UUID]bool)
+	defer delete(known_icon_sets)
+	known_icon_sets[shared.builtin_icon_set_uuid()] = true
 	for resource in resources {
 		if resource.kind == .Material {
 			known_materials[resource.id] = true
@@ -204,6 +207,8 @@ validate_scene_resource_references :: proc(
 			known_textures[resource.id] = true
 		} else if resource.kind == .Model {
 			known_models[resource.id] = true
+		} else if resource.kind == .Icon_Set {
+			known_icon_sets[resource.id] = true
 		}
 	}
 	for resource in resources {
@@ -219,6 +224,20 @@ validate_scene_resource_references :: proc(
 		}
 	}
 	for entity in scene.entities {
+		icon_set := shared.Resource_UUID{}
+		if entity.has_ui_icon {
+			icon_set = entity.ui_icon.icon_set
+		} else if entity.has_ui_button && entity.ui_button.icon != "" {
+			icon_set = entity.ui_button.icon_set
+		}
+		if icon_set != (shared.Resource_UUID{}) && !known_icon_sets[icon_set] {
+			id_buffer: [36]u8
+			return fmt.tprintf(
+				"scene entity '%s' references unknown icon-set resource '%s'",
+				entity.name,
+				shared.resource_uuid_to_string(icon_set, id_buffer[:]),
+			)
+		}
 		if entity.has_model {
 			resource_id, valid := shared.resource_uuid_parse(entity.model_resource)
 			if !valid || !known_models[resource_id] {

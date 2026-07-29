@@ -520,7 +520,7 @@ WGPU_Renderer :: struct {
 	ui_viewport_redraw_count: u64,
 	ui_viewport_cache_hit_count: u64,
 	ui_font_versions: [shared.MAX_PROJECT_FONTS]u32,
-	ui_icon_set_versions: [shared.MAX_PROJECT_ICON_SETS]u32,
+	ui_icon_set_versions: [shared.MAX_ICON_SETS]u32,
 	ui_project_vertices: [dynamic]WGPU_UI_Vertex,
 	ui_project_vertex_buffer: wgpu.Buffer,
 	ui_project_vertex_capacity: int,
@@ -2655,7 +2655,7 @@ wgpu_sync_ui_fonts :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Regist
 		)
 		renderer.ui_font_versions[index] = font.version
 	}
-	icon_set_count := min(len(registry.icon_sets), shared.MAX_PROJECT_ICON_SETS)
+	icon_set_count := min(len(registry.icon_sets), shared.MAX_ICON_SETS)
 	for index in 0 ..< icon_set_count {
 		icon_set := &registry.icon_sets[index]
 		if !icon_set.alive || renderer.ui_icon_set_versions[index] == icon_set.version {

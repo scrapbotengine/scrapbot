@@ -41,12 +41,14 @@ export type Scrapbot = {
 	ui_progress: ScrapbotUiProgressComponent,
 	ui_viewport: ScrapbotUiViewportComponent,
 	ui_state: ScrapbotUiStateComponent,
+	ui_icon: ScrapbotUiIconComponent,
 	ui_text: ScrapbotUiTextComponent,
 	ui_button: ScrapbotUiButtonComponent,
 	ui_input: ScrapbotUiInputComponent,
 	ui_checkbox: ScrapbotUiCheckboxComponent,
 	ui_color_picker: ScrapbotUiColorPickerComponent,
 	ui: {
+		builtin_icon_set: string,
 		resolve: (theme: ScrapbotUiThemeName, recipes: {ScrapbotUiThemeRecipe}) -> {[string]: any},
 	},
 	mesh: ScrapbotMeshComponent,
@@ -641,7 +643,7 @@ export type ScrapbotUiPanel = {
 	disclosure_size: number?,
 	disclosure_margin: number?,
 	disclosure_gap: number?,
-	disclosure_corner_radius: number?,
+	disclosure_inset: number?,
 	collapsible: boolean?,
 	collapsed: boolean?,
 }
@@ -656,7 +658,7 @@ export type ReadonlyScrapbotUiPanel = {
 	read disclosure_size: number,
 	read disclosure_margin: number,
 	read disclosure_gap: number,
-	read disclosure_corner_radius: number,
+	read disclosure_inset: number,
 	read collapsible: boolean,
 	read collapsed: boolean,
 }
@@ -746,6 +748,22 @@ export type ReadonlyScrapbotUiText = {
 }
 
 export type ScrapbotUiTextComponent = ScrapbotComponent<ScrapbotUiText, ReadonlyScrapbotUiText>
+
+export type ScrapbotUiIcon = {
+	icon_set: string?,
+	icon: string?,
+	color: Vec4?,
+	inset: number?,
+}
+
+export type ReadonlyScrapbotUiIcon = {
+	read icon_set: string,
+	read icon: string,
+	read color: ReadonlyVec4,
+	read inset: number,
+}
+
+export type ScrapbotUiIconComponent = ScrapbotComponent<ScrapbotUiIcon, ReadonlyScrapbotUiIcon>
 
 export type ScrapbotUiProgress = {
 	value: number?,
@@ -844,9 +862,12 @@ export type ScrapbotUiButton = {
 	active_background: Vec4?,
 	hover_color: Vec4?,
 	active_color: Vec4?,
+	icon_set: string?,
 	icon: string?,
+	icon_position: string?,
+	icon_size: number?,
+	icon_gap: number?,
 	icon_inset: number?,
-	icon_stroke: number?,
 	panel_action: boolean?,
 }
 
@@ -861,9 +882,12 @@ export type ReadonlyScrapbotUiButton = {
 	read active_background: ReadonlyVec4,
 	read hover_color: ReadonlyVec4,
 	read active_color: ReadonlyVec4,
+	read icon_set: string,
 	read icon: string,
+	read icon_position: string,
+	read icon_size: number,
+	read icon_gap: number,
 	read icon_inset: number,
-	read icon_stroke: number,
 	read panel_action: boolean,
 }
 

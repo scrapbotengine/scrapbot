@@ -1244,8 +1244,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_panel.disclosure_margin, found = parse_f32(value)
 					case "disclosure_gap":
 						current.ui_panel.disclosure_gap, found = parse_f32(value)
-					case "disclosure_corner_radius":
-						current.ui_panel.disclosure_corner_radius, found = parse_f32(value)
+					case "disclosure_inset":
+						current.ui_panel.disclosure_inset, found = parse_f32(value)
 					case "collapsible":
 						current.ui_panel.collapsible, found = parse_bool(value)
 					case "collapsed":
@@ -1468,12 +1468,25 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_button.hover_color, found = parse_vec4(
 							value,
 						); case "active_color":
-						current.ui_button.active_color, found = parse_vec4(value); case "icon":
-						current.ui_button.icon, found = parse_ui_icon(value); case "icon_inset":
-						current.ui_button.icon_inset, found = parse_f32(value); case "icon_stroke":
-						current.ui_button.icon_stroke, found = parse_f32(
-							value,
-						); case "panel_action":
+						current.ui_button.active_color, found = parse_vec4(value)
+					case "icon_set":
+						raw, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_button.icon_set, found = shared.resource_uuid_parse(raw)
+						} else {
+							found = false
+						}
+					case "icon":
+						current.ui_button.icon, found = parse_basic_string(value)
+					case "icon_position":
+						current.ui_button.icon_position, found = parse_ui_icon_position(value)
+					case "icon_size":
+						current.ui_button.icon_size, found = parse_f32(value)
+					case "icon_gap":
+						current.ui_button.icon_gap, found = parse_f32(value)
+					case "icon_inset":
+						current.ui_button.icon_inset, found = parse_f32(value)
+					case "panel_action":
 						current.ui_button.panel_action, found = parse_bool(value); case:
 						return scene, fail(
 							.Invalid_Field,
@@ -2197,24 +2210,18 @@ parse_ui_text_alignment :: proc(value: string) -> (out: shared.UI_Text_Alignment
 	}
 }
 
-parse_ui_icon :: proc(value: string) -> (out: shared.UI_Icon, ok: bool) {
+parse_ui_icon_position :: proc(value: string) -> (out: shared.UI_Icon_Position, ok: bool) {
 	text, parsed := parse_basic_string(value)
 	if !parsed {
-		return .None, false
+		return .Leading, false
 	}
 	switch text {
-		case "", "none":
-			return .None, true
-		case "close":
-			return .Close, true
-		case "plus":
-			return .Plus, true
-		case "chevron_right":
-			return .Chevron_Right, true
-		case "chevron_down":
-			return .Chevron_Down, true
+		case "", "leading":
+			return .Leading, true
+		case "trailing":
+			return .Trailing, true
 	}
-	return .None, false
+	return .Leading, false
 }
 
 is_basic_string_body :: proc(body: string) -> bool {

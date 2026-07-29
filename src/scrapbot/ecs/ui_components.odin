@@ -221,6 +221,7 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			button := &world.ui_buttons[entity.ui_button_index]
 			delete_world_string(world, button.text)
 			delete_world_string(world, button.font)
+			delete_world_string(world, button.icon)
 			button^ = {}
 			append(&world.free_ui_button_indices, entity.ui_button_index)
 			entity.ui_button_index = INVALID_COMPONENT_INDEX
@@ -612,6 +613,7 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 	button := value
 	button.text = clone_world_string(world, value.text)
 	button.font = clone_world_string(world, value.font)
+	button.icon = clone_world_string(world, value.icon)
 	entity := &world.entities[entity_index]
 	if entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons) {
 		current := &world.ui_buttons[entity.ui_button_index]
@@ -622,10 +624,15 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 			current.font != value.font ||
 			current.size != value.size ||
 			current.alignment != value.alignment ||
+			current.icon_set != value.icon_set ||
 			current.icon != value.icon ||
+			current.icon_position != value.icon_position ||
+			current.icon_size != value.icon_size ||
+			current.icon_gap != value.icon_gap ||
 			current.icon_inset != value.icon_inset
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
+		delete_world_string(world, current.icon)
 		current^ = button
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)

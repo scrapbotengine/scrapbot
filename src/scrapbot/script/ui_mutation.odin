@@ -236,8 +236,8 @@ read_ui_component_command_from_luau :: proc "c" (
 			if err := read_ui_number_field(
 				L,
 				payload_index,
-				"disclosure_corner_radius",
-				&value.disclosure_corner_radius,
+				"disclosure_inset",
+				&value.disclosure_inset,
 			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "collapsible", &value.collapsible);
 			   err != "" { return err }
@@ -519,29 +519,26 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_vec4_field(L, payload_index, "active_color", &value.active_color);
 			   err != "" { return err }
-			icon := ui_icon_name(value.icon)
-			if err := read_ui_string_field(L, payload_index, "icon", &icon); err != "" {
-				return err
-			}
-			switch icon {
-				case "", "none":
-					value.icon = .None
-				case "close":
-					value.icon = .Close
-				case "plus":
-					value.icon = .Plus
-				case "chevron_right":
-					value.icon = .Chevron_Right
-				case "chevron_down":
-					value.icon = .Chevron_Down
-				case:
-					return(
-						"ui_button.icon must be none, close, plus, chevron_right, or chevron_down" \
-					)
-			}
-			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
+			if err := read_ui_resource_uuid_field(L, payload_index, "icon_set", &value.icon_set);
 			   err != "" { return err }
-			if err := read_ui_number_field(L, payload_index, "icon_stroke", &value.icon_stroke);
+			if err := read_ui_string_field(L, payload_index, "icon", &value.icon);
+			   err != "" { return err }
+			icon_position := ui_icon_position_name(value.icon_position)
+			if err := read_ui_string_field(L, payload_index, "icon_position", &icon_position);
+			   err != "" { return err }
+			switch icon_position {
+				case "", "leading":
+					value.icon_position = .Leading
+				case "trailing":
+					value.icon_position = .Trailing
+				case:
+					return "ui_button.icon_position must be leading or trailing"
+			}
+			if err := read_ui_number_field(L, payload_index, "icon_size", &value.icon_size);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_gap", &value.icon_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "panel_action", &value.panel_action);
 			   err != "" { return err }
@@ -551,7 +548,14 @@ read_ui_component_command_from_luau :: proc "c" (
 			command.button = value
 			command.button.text = ""
 			command.button.font = ""
-			return ecs.init_ui_component_command(command, .Button, value.text, value.font)
+			command.button.icon = ""
+			return ecs.init_ui_component_command(
+				command,
+				.Button,
+				value.text,
+				value.font,
+				value.icon,
+			)
 		case "scrapbot.ui_input":
 			value := current_ui_input(world, entity_index, base)
 			if err := read_ui_string_field(L, payload_index, "text", &value.text);
@@ -900,6 +904,7 @@ current_ui_button :: proc(
 		value := base.button
 		value.text = ecs.ui_component_command_text(base)
 		value.font = ecs.ui_component_command_font(base)
+		value.icon = ecs.ui_component_command_prefix(base)
 		return value
 	}
 	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
@@ -995,20 +1000,14 @@ ui_text_alignment_name :: proc "contextless" (alignment: shared.UI_Text_Alignmen
 	return "left"
 }
 
-ui_icon_name :: proc "contextless" (icon: shared.UI_Icon) -> string {
-	switch icon {
-		case .Close:
-			return "close"
-		case .Plus:
-			return "plus"
-		case .Chevron_Right:
-			return "chevron_right"
-		case .Chevron_Down:
-			return "chevron_down"
-		case .None:
-			return "none"
+ui_icon_position_name :: proc "contextless" (position: shared.UI_Icon_Position) -> string {
+	switch position {
+		case .Leading:
+			return "leading"
+		case .Trailing:
+			return "trailing"
 	}
-	return "none"
+	return "leading"
 }
 
 read_ui_bool_field :: proc "c" (L: Lua_State, index: c.int, name: cstring, out: ^bool) -> string {

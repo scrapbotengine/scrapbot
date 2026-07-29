@@ -50,6 +50,7 @@ EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
 EDITOR_SECTION_TITLE_HEIGHT :: f32(32)
 EDITOR_BROWSER_FILTER_HEIGHT :: f32(34)
 EDITOR_BROWSER_TEXT_INSET :: f32(20)
+EDITOR_BROWSER_FILTER_TEXT_INSET :: f32(34)
 
 editor_ui_entity :: proc(
 	world: ^shared.World,
@@ -771,12 +772,23 @@ editor_ui_create_transport_button :: proc(
 	world: ^shared.World,
 	name, parent, label: string,
 	role: shared.Editor_UI_Role,
+	icon: string = "",
 ) -> int {
 	theme := reduced_dark_theme()
 	layout, value := theme_button(theme, .Quiet)
 	layout.size = {58, theme.metrics.control_height}
+	if icon != "" {
+		layout.size.x = 74
+	}
 	button := editor_ui_create_box(world, name, parent, role, layout)
 	value.text = label
+	if icon != "" {
+		value.icon_set = shared.builtin_icon_set_uuid()
+		value.icon = icon
+		value.icon_size = 16
+		value.icon_gap = 5
+		value.icon_inset = 1
+	}
 	_ = ecs.set_ui_button(world, button, value)
 	return button
 }
@@ -886,7 +898,7 @@ editor_ui_create_browser_filter :: proc(
 	theme := reduced_dark_theme()
 	layout, value := theme_input(theme)
 	layout.size = {1, EDITOR_BROWSER_FILTER_HEIGHT}
-	layout.padding.w = EDITOR_BROWSER_TEXT_INSET
+	layout.padding.w = EDITOR_BROWSER_FILTER_TEXT_INSET
 	layout.margin = {2, 0, 2, 0}
 	layout.fill_width = true
 	layout.fixed_in_fill = true
@@ -894,6 +906,24 @@ editor_ui_create_browser_filter :: proc(
 	value.prefix = ""
 	value.prefix_width = 0
 	editor_ui_add_input(world, entity_index, value)
+	icon_name := fmt.tprintf("%s_icon", name)
+	icon_entity := editor_ui_create_box(
+		world,
+		icon_name,
+		name,
+		.None,
+		{position = {9, 8}, size = {14, 14}},
+		slot,
+	)
+	_ = ecs.set_ui_icon(
+		world,
+		icon_entity,
+		{
+			icon_set = shared.builtin_icon_set_uuid(),
+			icon = "magnifying-glass",
+			color = theme.palette.text_muted,
+		},
+	)
 	return entity_index
 }
 
@@ -950,7 +980,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{size = {502, 30}},
+		{size = {566, 30}},
 	)
 	editor_ui_add_hstack(world, transport, {gap = 4})
 	_ = editor_ui_create_transport_button(
@@ -959,6 +989,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		"PLAY",
 		.Transport_Play,
+		"play",
 	)
 	_ = editor_ui_create_transport_button(
 		world,
@@ -966,6 +997,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		"PAUSE",
 		.Transport_Pause,
+		"pause",
 	)
 	_ = editor_ui_create_transport_button(
 		world,
@@ -973,6 +1005,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		"STOP",
 		.Transport_Stop,
+		"stop",
 	)
 	_ = editor_ui_create_transport_button(
 		world,
@@ -980,6 +1013,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		"STEP",
 		.Transport_Step,
+		"skip-forward",
 	)
 	_ = editor_ui_create_transport_button(
 		world,
@@ -1517,9 +1551,9 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 	disclosure_button := shared.ui_button_default()
 	disclosure_button.text = " "
 	disclosure_button.size = 1
-	disclosure_button.icon = .Chevron_Down
+	disclosure_button.icon_set = shared.builtin_icon_set_uuid()
+	disclosure_button.icon = "caret-down"
 	disclosure_button.icon_inset = 6
-	disclosure_button.icon_stroke = 1.5
 	disclosure_button.color = theme.palette.text_secondary
 	disclosure_button.hover_background = theme.palette.hover
 	disclosure_button.active_background = theme.palette.active
@@ -2058,14 +2092,14 @@ editor_ui_ensure_inspector_panel_action :: proc(
 	layout.margin = {5, 5, 5, 5}
 	layout.fixed_in_fill = true
 	action := editor_ui_create_box(world, name, parent, .Inspector_Panel_Action, layout, slot)
-	button.icon = .Close
+	button.icon_set = shared.builtin_icon_set_uuid()
+	button.icon = "x"
 	button.panel_action = true
 	button.color = theme.palette.text_secondary
 	_, destructive_button := theme_button(theme, .Destructive)
 	button.hover_background = theme.palette.danger_soft
 	button.active_background = destructive_button.active_background
 	button.icon_inset = 6
-	button.icon_stroke = 1.5
 	_ = ecs.set_ui_button(world, action, button)
 	return action
 }
@@ -3623,12 +3657,12 @@ editor_ui_inspector_container :: proc(
 	editor_ui_set_reflected_path(binding, reflected_path)
 	value := builder.world.ui_buttons[builder.world.entities[button].ui_button_index]
 	value.text = " "
-	value.icon = .Chevron_Right
+	value.icon_set = shared.builtin_icon_set_uuid()
+	value.icon = "caret-right"
 	if binding.expanded {
-		value.icon = .Chevron_Down
+		value.icon = "caret-down"
 	}
 	value.icon_inset = 6
-	value.icon_stroke = 1.5
 	theme := reduced_dark_theme()
 	value.color = theme.palette.text_secondary
 	value.hover_background = theme.palette.hover
@@ -4613,6 +4647,45 @@ editor_ui_build_resource_inspector_panels :: proc(
 			return
 		}
 	}
+	if icon_set_handle, icon_set_found := resources.icon_set_handle_by_uuid(
+		state.resource_registry,
+		id,
+	); icon_set_found {
+		icon_set, alive := resources.get_icon_set(state.resource_registry, icon_set_handle)
+		if alive && icon_set.authored {
+			editor_ui_begin_inspector_component(&builder, "ICON SET")
+			editor_ui_inspector_field(&builder, "source directory", icon_set.asset_source)
+			editor_ui_inspector_field(
+				&builder,
+				"symbols",
+				fmt.tprintf("%d", len(icon_set.desc.symbols)),
+			)
+			editor_ui_inspector_field(
+				&builder,
+				"atlas",
+				fmt.tprintf("%d x %d", icon_set.desc.width, icon_set.desc.height),
+			)
+			editor_ui_begin_inspector_component(&builder, "IMPORT")
+			editor_ui_inspector_field(&builder, "status", editor_resource_import_status(state, id))
+			editor_ui_inspector_field(&builder, "dependency", icon_set.asset_source)
+			editor_ui_inspector_field(&builder, "product", "RGBA8 MTSDF atlas + symbol metadata")
+			editor_ui_inspector_field(
+				&builder,
+				"product size",
+				editor_format_byte_count(icon_set.import_byte_count),
+			)
+			editor_ui_inspector_field(&builder, "warnings", "None")
+			if editor_resource_import_failed(state, id) {
+				editor_ui_inspector_field(
+					&builder,
+					"error",
+					state.editor_resource_reimport_message,
+				)
+			}
+			editor_ui_finish_inspector(&builder)
+			return
+		}
+	}
 	handle, found := resources.material_by_uuid(state.resource_registry, id)
 	if !found {
 		editor_ui_finish_inspector(&builder)
@@ -5039,10 +5112,16 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			label_layout := &world.ui_layouts[world.entities[label].ui_layout_index]
 			label_layout.position.x = 26
 			button := &world.ui_buttons[world.entities[disclosure].ui_button_index]
-			button.icon = .Chevron_Down
+			icon := "caret-down"
 			if state.editor_collapsed_entities != nil &&
 			   state.editor_collapsed_entities[entity.uuid] {
-				button.icon = .Chevron_Right
+				icon = "caret-right"
+			}
+			if button.icon != icon {
+				value := button^
+				value.icon_set = shared.builtin_icon_set_uuid()
+				value.icon = icon
+				_ = ecs.set_ui_button(world, disclosure, value)
 			}
 			editor_ui_set_text(world, label, entity.name)
 		}
@@ -5145,6 +5224,24 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_text(world, label, model.name)
 			resource_count += 1
 		}
+		for icon_set in state.resource_registry.icon_sets {
+			if !icon_set.alive || !icon_set.authored {
+				continue
+			}
+			row, label := editor_ui_ensure_resource_row(world, resource_count)
+			world.entities[row].alive = true
+			world.entities[label].alive = true
+			editor_ui_set_hidden(world, row, false)
+			editor_ui_set_hidden(world, label, false)
+			world.editor_uis[world.entities[row].editor_ui_index].resource_id = icon_set.id
+			world.editor_uis[world.entities[label].editor_ui_index].resource_id = icon_set.id
+			if state.editor_has_resource_selection &&
+			   state.editor_selected_resource == icon_set.id {
+				selected_resource_row = world.entities[row].uuid
+			}
+			editor_ui_set_text(world, label, icon_set.name)
+			resource_count += 1
+		}
 	}
 	for component in world.editor_uis {
 		if (component.role == .Project_Resource_Row ||
@@ -5232,6 +5329,14 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			if environment, alive := resources.get_environment(state.resource_registry, handle);
 			   alive {
 				selected_resource_version = environment.version
+			}
+		}
+		if handle, found := resources.icon_set_handle_by_uuid(
+			state.resource_registry,
+			state.editor_selected_resource,
+		); found {
+			if icon_set, alive := resources.get_icon_set(state.resource_registry, handle); alive {
+				selected_resource_version = icon_set.version
 			}
 		}
 	}
@@ -5334,7 +5439,11 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 					state.resource_registry,
 					state.editor_selected_resource,
 				)
-				importable = texture_found || model_found || environment_found
+				_, icon_set_found := resources.icon_set_handle_by_uuid(
+					state.resource_registry,
+					state.editor_selected_resource,
+				)
+				importable = texture_found || model_found || environment_found || icon_set_found
 			}
 			editor_ui_set_hidden(world, reimport, !importable)
 		}
@@ -5409,6 +5518,25 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 				if alive {
 					inputs := [2]int{resource_name, resource_source}
 					values := [2]string{environment.name, environment.source}
+					for input_entity, input_index in inputs {
+						input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
+						input.read_only = true
+						if !state.has_focused_input ||
+						   state.focused_input != world.entities[input_entity].id {
+							_ = ecs.set_ui_input_value(world, input_entity, values[input_index])
+						}
+					}
+				} else {
+					state.editor_has_resource_selection = false
+				}
+			} else if icon_set_handle, icon_set_found := resources.icon_set_handle_by_uuid(
+				state.resource_registry,
+				state.editor_selected_resource,
+			); icon_set_found {
+				icon_set, alive := resources.get_icon_set(state.resource_registry, icon_set_handle)
+				if alive && icon_set.authored {
+					inputs := [2]int{resource_name, resource_source}
+					values := [2]string{icon_set.name, icon_set.source}
 					for input_entity, input_index in inputs {
 						input := &world.ui_inputs[world.entities[input_entity].ui_input_index]
 						input.read_only = true

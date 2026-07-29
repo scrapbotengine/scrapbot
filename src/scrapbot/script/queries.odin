@@ -635,6 +635,15 @@ push_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared.Entity_U
 	push_string_field(L, name, shared.entity_uuid_to_string(value, buffer[:]))
 }
 
+push_resource_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared.Resource_UUID) {
+	if value == (shared.Resource_UUID{}) {
+		push_string_field(L, name, "")
+		return
+	}
+	buffer: [36]u8
+	push_string_field(L, name, shared.resource_uuid_to_string(value, buffer[:]))
+}
+
 push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Component) {
 	lua_createtable(L, 0, 29)
 	push_uuid_field(L, "parent", value.parent)
@@ -700,7 +709,7 @@ push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component)
 	push_number_field(L, "disclosure_size", value.disclosure_size)
 	push_number_field(L, "disclosure_margin", value.disclosure_margin)
 	push_number_field(L, "disclosure_gap", value.disclosure_gap)
-	push_number_field(L, "disclosure_corner_radius", value.disclosure_corner_radius)
+	push_number_field(L, "disclosure_inset", value.disclosure_inset)
 	push_bool_field(L, "collapsible", value.collapsible)
 	push_bool_field(L, "collapsed", value.collapsed)
 }
@@ -754,12 +763,7 @@ push_ui_viewport_table :: proc "c" (L: Lua_State, value: shared.UI_Viewport_Comp
 	lua_createtable(L, 0, 7)
 	push_uuid_field(L, "camera", value.camera)
 	push_uuid_field(L, "root", value.root)
-	resource_buffer: [36]u8
-	push_string_field(
-		L,
-		"resource",
-		shared.resource_uuid_to_string(value.resource, resource_buffer[:]),
-	)
+	push_resource_uuid_field(L, "resource", value.resource)
 	push_vec2_field(L, "orbit", value.orbit)
 	push_number_field(L, "distance", value.distance)
 	push_vec4_field(L, "clear_color", value.clear_color)
@@ -804,12 +808,7 @@ push_ui_state_table :: proc "c" (L: Lua_State, value: shared.UI_State_Component)
 
 push_ui_icon_table :: proc "c" (L: Lua_State, value: shared.UI_Icon_Component) {
 	lua_createtable(L, 0, 4)
-	icon_set_buffer: [36]u8
-	push_string_field(
-		L,
-		"icon_set",
-		shared.resource_uuid_to_string(value.icon_set, icon_set_buffer[:]),
-	)
+	push_resource_uuid_field(L, "icon_set", value.icon_set)
 	push_string_field(L, "icon", value.icon)
 	push_vec4_field(L, "color", value.color)
 	push_number_field(L, "inset", value.inset)
@@ -842,9 +841,12 @@ push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Componen
 	push_vec4_field(L, "active_background", value.active_background)
 	push_vec4_field(L, "hover_color", value.hover_color)
 	push_vec4_field(L, "active_color", value.active_color)
-	push_string_field(L, "icon", ui_icon_name(value.icon))
+	push_resource_uuid_field(L, "icon_set", value.icon_set)
+	push_string_field(L, "icon", value.icon)
+	push_string_field(L, "icon_position", ui_icon_position_name(value.icon_position))
+	push_number_field(L, "icon_size", value.icon_size)
+	push_number_field(L, "icon_gap", value.icon_gap)
 	push_number_field(L, "icon_inset", value.icon_inset)
-	push_number_field(L, "icon_stroke", value.icon_stroke)
 	push_bool_field(L, "panel_action", value.panel_action)
 }
 

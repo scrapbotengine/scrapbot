@@ -710,6 +710,12 @@ init_render_resources :: proc(
 	config: ^shared.Project_Config = nil,
 	project_resources: []shared.Project_Resource = nil,
 ) -> string {
+	if registry == nil {
+		return "render resource registry is not available"
+	}
+	if registry.allocator.procedure == nil {
+		resources.init_registry(registry)
+	}
 	imports := asset_import.ensure_project_imports(root, project_resources)
 	defer asset_import.destroy_report(&imports)
 	if imports.err != "" {

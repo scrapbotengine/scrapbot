@@ -110,6 +110,9 @@ register_project_icon_set :: proc(
 	ensure_allocator(registry)
 	if index, found := icon_set_index_by_uuid_any(registry, declaration.id); found {
 		icon_set := &registry.icon_sets[index]
+		if !icon_set.authored {
+			return {}, "project icon-set UUID is reserved by a built-in resource"
+		}
 		replacement, clone_err := make_project_icon_set(
 			declaration,
 			desc,
@@ -269,7 +272,7 @@ icon_set_index_by_uuid_any :: proc(registry: ^Registry, id: shared.Resource_UUID
 		return -1, false
 	}
 	for icon_set, index in registry.icon_sets {
-		if icon_set.authored && icon_set.id == id {
+		if icon_set.id == id {
 			return index, true
 		}
 	}

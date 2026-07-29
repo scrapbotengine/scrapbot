@@ -316,7 +316,11 @@ destroy_world :: proc(world: ^World) {
 	for panel in world.ui_panels { delete_world_string(world, panel.title); delete_world_string(world, panel.font) }
 	for icon in world.ui_icons { delete_world_string(world, icon.icon) }
 	for text in world.ui_texts { delete_world_string(world, text.text); delete_world_string(world, text.font) }
-	for button in world.ui_buttons { delete_world_string(world, button.text); delete_world_string(world, button.font) }
+	for button in world.ui_buttons {
+		delete_world_string(world, button.text)
+		delete_world_string(world, button.font)
+		delete_world_string(world, button.icon)
+	}
 	for input in world.ui_inputs {
 		delete_world_string(world, input.text)
 		delete_world_string(world, input.font)
@@ -498,7 +502,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			append(&world.ui_icons, icon)
 		}
 		if entity.has_ui_text { world_entity.ui_text_index = len(world.ui_texts); text := entity.ui_text; text.text = clone_world_string(&world, text.text); text.font = clone_world_string(&world, text.font); append(&world.ui_texts, text) }
-		if entity.has_ui_button { world_entity.ui_button_index = len(world.ui_buttons); button := entity.ui_button; button.text = clone_world_string(&world, button.text); button.font = clone_world_string(&world, button.font); append(&world.ui_buttons, button) }
+		if entity.has_ui_button { world_entity.ui_button_index = len(world.ui_buttons); button := entity.ui_button; button.text = clone_world_string(&world, button.text); button.font = clone_world_string(&world, button.font); button.icon = clone_world_string(&world, button.icon); append(&world.ui_buttons, button) }
 		if entity.has_ui_input {
 			world_entity.ui_input_index = len(world.ui_inputs)
 			input := entity.ui_input

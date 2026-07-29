@@ -470,7 +470,7 @@ ui_theme_panel :: proc "contextless" (
 	panel.title_background = theme.palette.raised
 	panel.title_size = theme.metrics.small_text_size
 	panel.title_height = theme.metrics.title_height
-	panel.disclosure_corner_radius = theme.metrics.radius_small
+	panel.disclosure_inset = 0
 	return
 }
 

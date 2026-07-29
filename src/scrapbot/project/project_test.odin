@@ -1372,7 +1372,7 @@ title_height = 28
 disclosure_size = 9
 disclosure_margin = 7
 disclosure_gap = 6
-disclosure_corner_radius = 0
+disclosure_inset = 0
 collapsible = true
 collapsed = true
 [entities.ui_scroll_area]
@@ -1430,7 +1430,7 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_panel.title_size == 11)
 	testing.expect(t, scene.entities[0].ui_panel.title_height == 28)
 	testing.expect(t, scene.entities[0].ui_panel.disclosure_size == 9)
-	testing.expect(t, scene.entities[0].ui_panel.disclosure_corner_radius == 0)
+	testing.expect(t, scene.entities[0].ui_panel.disclosure_inset == 0)
 	testing.expect(t, scene.entities[0].ui_panel.collapsible)
 	testing.expect(t, scene.entities[0].ui_panel.collapsed)
 	testing.expect(t, scene.entities[0].ui_layout.border_color == Vec4{0.4, 0.5, 0.6, 1})
@@ -1710,9 +1710,12 @@ name = "Close"
 parent = "a6000000-0000-4000-8000-000000000012"
 size = [22, 22]
 [entities.ui_button]
-icon = "close"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "x"
+icon_position = "trailing"
+icon_size = 16
+icon_gap = 4
 icon_inset = 5
-icon_stroke = 2
 panel_action = true
 `,
 	)
@@ -1720,9 +1723,12 @@ panel_action = true
 	testing.expectf(t, result.err == .None, "%s", result.message)
 	testing.expect(t, len(scene.entities) == 2)
 	testing.expect(t, scene.entities[1].has_ui_button)
-	testing.expect(t, scene.entities[1].ui_button.icon == .Close)
+	testing.expect(t, scene.entities[1].ui_button.icon_set == shared.builtin_icon_set_uuid())
+	testing.expect(t, scene.entities[1].ui_button.icon == "x")
+	testing.expect(t, scene.entities[1].ui_button.icon_position == .Trailing)
+	testing.expect(t, scene.entities[1].ui_button.icon_size == 16)
+	testing.expect(t, scene.entities[1].ui_button.icon_gap == 4)
 	testing.expect(t, scene.entities[1].ui_button.icon_inset == 5)
-	testing.expect(t, scene.entities[1].ui_button.icon_stroke == 2)
 	testing.expect(t, scene.entities[1].ui_button.panel_action)
 }
 

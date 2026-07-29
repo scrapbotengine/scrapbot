@@ -17,6 +17,7 @@ FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 512
 MAX_PROJECT_FONTS :: 15
 MAX_PROJECT_ICON_SETS :: 16
+MAX_ICON_SETS :: MAX_PROJECT_ICON_SETS + 1
 MAX_GEOMETRY_LODS :: 4
 PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
 PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
@@ -515,7 +516,7 @@ UI_Panel_Component :: struct {
 	disclosure_size: f32,
 	disclosure_margin: f32,
 	disclosure_gap: f32,
-	disclosure_corner_radius: f32,
+	disclosure_inset: f32,
 	collapsible: bool,
 	collapsed: bool,
 }
@@ -596,12 +597,9 @@ UI_Text_Alignment :: enum {
 	Center,
 	Right,
 }
-UI_Icon :: enum {
-	None,
-	Close,
-	Plus,
-	Chevron_Right,
-	Chevron_Down,
+UI_Icon_Position :: enum {
+	Leading,
+	Trailing,
 }
 UI_Icon_Component :: struct {
 	icon_set: Resource_UUID,
@@ -627,9 +625,12 @@ UI_Button_Component :: struct {
 	active_background: Vec4,
 	hover_color: Vec4,
 	active_color: Vec4,
-	icon: UI_Icon,
+	icon_set: Resource_UUID,
+	icon: string,
+	icon_position: UI_Icon_Position,
+	icon_size: f32,
+	icon_gap: f32,
 	icon_inset: f32,
-	icon_stroke: f32,
 	panel_action: bool,
 }
 UI_Input_Component :: struct {
@@ -731,7 +732,7 @@ ui_panel_default :: proc "contextless" () -> UI_Panel_Component {
 		disclosure_size = 10,
 		disclosure_margin = 10,
 		disclosure_gap = 8,
-		disclosure_corner_radius = 1.35,
+		disclosure_inset = 0,
 	}
 }
 
@@ -777,13 +778,7 @@ ui_icon_default :: proc "contextless" () -> UI_Icon_Component {
 }
 
 ui_button_default :: proc "contextless" () -> UI_Button_Component {
-	return {
-		color = {1, 1, 1, 1},
-		size = 16,
-		alignment = .Center,
-		icon_inset = 6,
-		icon_stroke = 1.5,
-	}
+	return {color = {1, 1, 1, 1}, size = 16, alignment = .Center, icon_gap = 6, icon_inset = 6}
 }
 
 ui_input_default :: proc "contextless" () -> UI_Input_Component {
@@ -885,7 +880,7 @@ ui_panel_is_valid :: proc "contextless" (value: UI_Panel_Component) -> bool {
 	if value.disclosure_size < 0 ||
 	   value.disclosure_margin < 0 ||
 	   value.disclosure_gap < 0 ||
-	   value.disclosure_corner_radius < 0 {
+	   value.disclosure_inset < 0 {
 		return false
 	}
 	return !value.collapsed || value.collapsible
@@ -959,10 +954,17 @@ ui_icon_is_valid :: proc "contextless" (value: UI_Icon_Component) -> bool {
 
 ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
 	return(
-		(value.text != "" || value.icon != .None) &&
+		(value.text != "" || (value.icon_set != (Resource_UUID{}) && value.icon != "")) &&
 		value.size > 0 &&
+		value.icon_size >= 0 &&
+		value.icon_gap >= 0 &&
 		value.icon_inset >= 0 &&
-		value.icon_stroke >= 0 \
+		!math.is_nan(value.icon_size) &&
+		!math.is_inf(value.icon_size) &&
+		!math.is_nan(value.icon_gap) &&
+		!math.is_inf(value.icon_gap) &&
+		!math.is_nan(value.icon_inset) &&
+		!math.is_inf(value.icon_inset) \
 	)
 }
 

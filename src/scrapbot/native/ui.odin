@@ -178,7 +178,7 @@ api_ui_theme_panel :: proc "contextless" (
 		disclosure_size = value.disclosure_size,
 		disclosure_margin = value.disclosure_margin,
 		disclosure_gap = value.disclosure_gap,
-		disclosure_corner_radius = value.disclosure_corner_radius,
+		disclosure_inset = value.disclosure_inset,
 		collapsible = bool_to_c_int(value.collapsible),
 		collapsed = bool_to_c_int(value.collapsed),
 	}
@@ -228,9 +228,11 @@ api_ui_theme_button :: proc "contextless" (
 		active_background = api_vec4_from_shared(value.active_background),
 		hover_color = api_vec4_from_shared(value.hover_color),
 		active_color = api_vec4_from_shared(value.active_color),
-		icon = api_icon_from_shared(value.icon),
+		icon_set = api_resource_uuid_from_shared(value.icon_set),
+		icon_position = api_icon_position_from_shared(value.icon_position),
+		icon_size = value.icon_size,
+		icon_gap = value.icon_gap,
 		icon_inset = value.icon_inset,
-		icon_stroke = value.icon_stroke,
 		panel_action = bool_to_c_int(value.panel_action),
 	}
 }
@@ -406,7 +408,7 @@ system_get_ui_component :: proc "c" (
 				disclosure_size = value.disclosure_size,
 				disclosure_margin = value.disclosure_margin,
 				disclosure_gap = value.disclosure_gap,
-				disclosure_corner_radius = value.disclosure_corner_radius,
+				disclosure_inset = value.disclosure_inset,
 				collapsible = bool_to_c_int(value.collapsible),
 				collapsed = bool_to_c_int(value.collapsed),
 			}
@@ -530,12 +532,19 @@ system_get_ui_component :: proc "c" (
 				active_background = api_vec4_from_shared(value.active_background),
 				hover_color = api_vec4_from_shared(value.hover_color),
 				active_color = api_vec4_from_shared(value.active_color),
-				icon = api_icon_from_shared(value.icon),
+				icon_set = api_resource_uuid_from_shared(value.icon_set),
+				icon_position = api_icon_position_from_shared(value.icon_position),
+				icon_size = value.icon_size,
+				icon_gap = value.icon_gap,
 				icon_inset = value.icon_inset,
-				icon_stroke = value.icon_stroke,
 				panel_action = bool_to_c_int(value.panel_action),
 			}
-			if !api_ui_payload_set_strings(payload, value.text, value.font) { return 0 }
+			if !api_ui_payload_set_strings(
+				payload,
+				value.text,
+				value.font,
+				value.icon,
+			) { return 0 }
 		case "scrapbot.ui_input":
 			if world_entity.ui_input_index < 0 ||
 			   world_entity.ui_input_index >= len(step.world.ui_inputs) { return 0 }
@@ -756,7 +765,7 @@ ui_command_from_api_payload :: proc "c" (
 				disclosure_size = payload.panel.disclosure_size,
 				disclosure_margin = payload.panel.disclosure_margin,
 				disclosure_gap = payload.panel.disclosure_gap,
-				disclosure_corner_radius = payload.panel.disclosure_corner_radius,
+				disclosure_inset = payload.panel.disclosure_inset,
 				collapsible = payload.panel.collapsible != 0,
 				collapsed = payload.panel.collapsed != 0,
 			}
@@ -869,6 +878,10 @@ ui_command_from_api_payload :: proc "c" (
 		case "scrapbot.ui_button":
 			alignment, alignment_ok := shared_text_alignment_from_api(payload.button.alignment)
 			if !alignment_ok { return "native ui_button alignment is invalid" }
+			icon_position, icon_position_ok := shared_icon_position_from_api(
+				payload.button.icon_position,
+			)
+			if !icon_position_ok { return "native ui_button icon position is invalid" }
 			value := shared.UI_Button_Component {
 				text = text,
 				font = font,
@@ -880,16 +893,20 @@ ui_command_from_api_payload :: proc "c" (
 				active_background = shared_vec4_from_api(payload.button.active_background),
 				hover_color = shared_vec4_from_api(payload.button.hover_color),
 				active_color = shared_vec4_from_api(payload.button.active_color),
-				icon = shared_icon_from_api(payload.button.icon),
+				icon_set = shared_resource_uuid_from_api(payload.button.icon_set),
+				icon = prefix,
+				icon_position = icon_position,
+				icon_size = payload.button.icon_size,
+				icon_gap = payload.button.icon_gap,
 				icon_inset = payload.button.icon_inset,
-				icon_stroke = payload.button.icon_stroke,
 				panel_action = payload.button.panel_action != 0,
 			}
 			if !shared.ui_button_is_valid(value) { return "native ui_button payload is invalid" }
 			command.button = value
 			command.button.text = ""
 			command.button.font = ""
-			return ecs.init_ui_component_command(command, .Button, text, font)
+			command.button.icon = ""
+			return ecs.init_ui_component_command(command, .Button, text, font, prefix)
 		case "scrapbot.ui_input":
 			value := shared.UI_Input_Component {
 				text = text,
@@ -1097,36 +1114,31 @@ api_text_alignment_from_shared :: proc "contextless" (
 	return .Left
 }
 
-api_icon_from_shared :: proc "contextless" (value: shared.UI_Icon) -> api.UI_Icon {
+api_icon_position_from_shared :: proc "contextless" (
+	value: shared.UI_Icon_Position,
+) -> api.UI_Icon_Position {
 	switch value {
-		case .Close:
-			return .Close
-		case .Plus:
-			return .Plus
-		case .Chevron_Right:
-			return .Chevron_Right
-		case .Chevron_Down:
-			return .Chevron_Down
-		case .None:
-			return .None
+		case .Leading:
+			return .Leading
+		case .Trailing:
+			return .Trailing
 	}
-	return .None
+	return .Leading
 }
 
-shared_icon_from_api :: proc "contextless" (value: api.UI_Icon) -> shared.UI_Icon {
+shared_icon_position_from_api :: proc "contextless" (
+	value: api.UI_Icon_Position,
+) -> (
+	shared.UI_Icon_Position,
+	bool,
+) {
 	switch value {
-		case .Close:
-			return .Close
-		case .Plus:
-			return .Plus
-		case .Chevron_Right:
-			return .Chevron_Right
-		case .Chevron_Down:
-			return .Chevron_Down
-		case .None:
-			return .None
+		case .Leading:
+			return .Leading, true
+		case .Trailing:
+			return .Trailing, true
 	}
-	return .None
+	return .Leading, false
 }
 
 shared_text_alignment_from_api :: proc "contextless" (

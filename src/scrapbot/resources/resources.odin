@@ -295,6 +295,9 @@ init_registry :: proc(registry: ^Registry, allocator := context.allocator) {
 	registry.atmosphere_sun_size = defaults.sun_size
 	registry.atmosphere_sun_glow = defaults.sun_glow
 	ensure_allocator(registry)
+	if err := register_builtin_icon_set(registry); err != "" {
+		panic(err)
+	}
 }
 
 destroy_registry :: proc(registry: ^Registry) {
@@ -452,6 +455,9 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		append(&destination.environments, cloned)
 	}
 	for icon_set in source.icon_sets {
+		if !icon_set.authored {
+			continue
+		}
 		cloned, clone_err := clone_icon_set(icon_set, allocator)
 		if clone_err != "" {
 			destroy_registry(destination)

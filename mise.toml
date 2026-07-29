@@ -69,6 +69,20 @@ mkdir -p bin
 ln -sfn ../tools/scrapbot-iconc bin/scrapbot-iconc
 '''
 
+[tasks.builtin-icons]
+description = "Regenerate the embedded built-in icon atlas and symbol metadata"
+depends = ["icon-tools"]
+sources = [
+  "tools/generate_builtin_icons.py",
+  "tools/compile_icon_set.py",
+  "src/scrapbot/resources/assets/builtin-icons/**/*.svg",
+]
+outputs = [
+  "src/scrapbot/resources/assets/builtin_icons_mtsdf.bin",
+  "src/scrapbot/resources/builtin_icon_data.odin",
+]
+run = "python tools/generate_builtin_icons.py"
+
 [tasks.setup-assets]
 description = "Download and verify pinned external development fixtures"
 run = "node tools/setup_external_assets.mjs"
@@ -260,6 +274,7 @@ description = "Run all local checks and smoke tests"
 depends = ["build"]
 run = '''
 python tools/test_icon_compiler.py
+python tools/generate_builtin_icons.py --check
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)
