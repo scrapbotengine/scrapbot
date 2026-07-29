@@ -225,6 +225,16 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 		}
 	}
 	testing.expect_value(t, resource_rows, 3)
+	resource_label, resource_label_found := editor_ui_entity(
+		&world,
+		.Project_Resource_Row_Label,
+		0,
+	)
+	testing.expect(t, resource_label_found)
+	if resource_label_found {
+		resource_label_layout := world.ui_layouts[world.entities[resource_label].ui_layout_index]
+		testing.expect_value(t, resource_label_layout.position.x, EDITOR_BROWSER_TEXT_INSET)
+	}
 	browser, browser_found := editor_ui_entity(&world, .Project_Resources_Scroll)
 	testing.expect(t, browser_found)
 	filter, filter_found := editor_ui_entity(&world, .Browser_Filter, 1)
@@ -237,6 +247,7 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 	if browser_found && filter_found && panel_found {
 		browser_entity := world.entities[browser]
 		panel_entity := world.entities[panel]
+		filter_entity := world.entities[filter]
 		testing.expect(t, browser_entity.ui_list_index >= 0)
 		testing.expect(t, browser_entity.ui_scroll_area_index >= 0)
 		testing.expect(t, browser_entity.ui_panel_index < 0)
@@ -249,6 +260,13 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 		testing.expect_value(t, list.overscan, 2)
 		browser_layout := world.ui_layouts[browser_entity.ui_layout_index]
 		testing.expect_value(t, browser_layout.parent, panel_entity.uuid)
+		filter_layout := world.ui_layouts[filter_entity.ui_layout_index]
+		filter_value := world.ui_inputs[filter_entity.ui_input_index]
+		testing.expect(t, filter_layout.margin == shared.Vec4{2, 0, 2, 0})
+		testing.expect(t, filter_layout.fill_width)
+		testing.expect_value(t, filter_layout.padding.w, EDITOR_BROWSER_TEXT_INSET)
+		testing.expect_value(t, filter_value.prefix, "")
+		testing.expect_value(t, filter_value.prefix_width, 0)
 
 		testing.expect(t, ecs.set_ui_input_value(&world, filter, "renamed"))
 		testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
@@ -6780,6 +6798,7 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 	if found && filter_found && panel_found {
 		entity := world.entities[systems]
 		panel_entity := world.entities[panel]
+		filter_entity := world.entities[filter]
 		testing.expect(t, entity.ui_panel_index < 0)
 		testing.expect(t, entity.ui_list_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
@@ -6794,6 +6813,27 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 		testing.expect_value(t, world.ui_layouts[entity.ui_layout_index].parent, panel_entity.uuid)
 		layout := world.ui_layouts[entity.ui_layout_index]
 		testing.expect(t, layout.padding == (shared.Vec4{}))
+		filter_layout := world.ui_layouts[filter_entity.ui_layout_index]
+		filter_value := world.ui_inputs[filter_entity.ui_input_index]
+		testing.expect(t, filter_layout.margin == shared.Vec4{2, 0, 2, 0})
+		testing.expect(t, filter_layout.fill_width)
+		testing.expect_value(t, filter_layout.padding.w, EDITOR_BROWSER_TEXT_INSET)
+		testing.expect_value(t, filter_value.prefix, "")
+		testing.expect_value(t, filter_value.prefix_width, 0)
+		filter_node := find_node_by_entity_index(state, filter)
+		list_node := find_node_by_entity_index(state, systems)
+		testing.expect(t, filter_node >= 0 && list_node >= 0)
+		if filter_node >= 0 && list_node >= 0 {
+			testing.expect(
+				t,
+				math.abs(state.nodes[filter_node].rect.x - state.nodes[list_node].rect.x) < 0.01,
+			)
+			testing.expect(
+				t,
+				math.abs(state.nodes[filter_node].rect.width - state.nodes[list_node].rect.width) <
+				0.01,
+			)
+		}
 	}
 	first_row, first_row_found := editor_ui_entity(&world, .Systems_Row, 0)
 	name_cell, name_found := editor_ui_entity(&world, .Systems_Name, 0)
@@ -6837,7 +6877,10 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 		row_layout := world.ui_layouts[world.entities[first_row].ui_layout_index]
 		testing.expect(t, row_layout.padding.y == 4 && row_layout.padding.w == 4)
 		name_layout := world.ui_layouts[world.entities[name_cell].ui_layout_index]
-		testing.expect(t, name_layout.padding.w == 16)
+		testing.expect(
+			t,
+			row_layout.padding.w + name_layout.padding.w == EDITOR_BROWSER_TEXT_INSET,
+		)
 		systems_node := find_node_by_entity_index(state, systems)
 		row_node := find_node_by_entity_index(state, first_row)
 		testing.expect(t, systems_node >= 0 && row_node >= 0)

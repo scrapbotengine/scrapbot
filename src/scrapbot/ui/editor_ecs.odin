@@ -48,6 +48,8 @@ EDITOR_SIDEBAR_PADDING :: f32(10)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
 EDITOR_SECTION_TITLE_HEIGHT :: f32(32)
+EDITOR_BROWSER_FILTER_HEIGHT :: f32(34)
+EDITOR_BROWSER_TEXT_INSET :: f32(20)
 
 editor_ui_entity :: proc(
 	world: ^shared.World,
@@ -883,13 +885,14 @@ editor_ui_create_browser_filter :: proc(
 ) -> int {
 	theme := reduced_dark_theme()
 	layout, value := theme_input(theme)
-	layout.size = {2000, 34}
-	layout.padding = {7, 7, 6, 7}
-	layout.margin = {2, 4, 2, 4}
+	layout.size = {1, EDITOR_BROWSER_FILTER_HEIGHT}
+	layout.padding.w = EDITOR_BROWSER_TEXT_INSET
+	layout.margin = {2, 0, 2, 0}
+	layout.fill_width = true
 	layout.fixed_in_fill = true
 	entity_index := editor_ui_create_box(world, name, parent, role, layout, slot)
-	value.prefix = "Filter"
-	value.prefix_width = 48
+	value.prefix = ""
+	value.prefix_width = 0
 	editor_ui_add_input(world, entity_index, value)
 	return entity_index
 }
@@ -1555,7 +1558,11 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 		label_name,
 		row_name,
 		.Project_Resource_Row_Label,
-		{position = {11, 0}, size = {1900, EDITOR_ENTITY_ROW_HEIGHT}, padding = {8, 0, 6, 0}},
+		{
+			position = {EDITOR_BROWSER_TEXT_INSET, 0},
+			size = {1900, EDITOR_ENTITY_ROW_HEIGHT},
+			padding = {8, 0, 6, 0},
+		},
 		slot,
 	)
 	editor_ui_add_text(world, label, "", theme.palette.text, EDITOR_TEXT_SIZE)
@@ -1614,7 +1621,10 @@ editor_ui_ensure_system_cells :: proc(world: ^shared.World, slot: int) -> (int, 
 		name,
 		row_name,
 		.Systems_Name,
-		{size = {100, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {5, 3, 3, 16}},
+		{
+			size = {100, SYSTEM_PROFILE_CELL_HEIGHT},
+			padding = {5, 3, 3, EDITOR_BROWSER_TEXT_INSET - 4},
+		},
 		slot,
 	)
 	editor_ui_add_text(world, name_cell, "", theme.palette.text, EDITOR_TEXT_SIZE)

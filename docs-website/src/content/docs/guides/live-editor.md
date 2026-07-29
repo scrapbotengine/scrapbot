@@ -32,6 +32,8 @@ The editor workspace is responsive:
 
 Each complete sidebar has a contrasting 10-pixel frame around its smooth scroll viewport and a small gutter between tool sections. Systems, Scene, Inspector, and component sections use the same titled card, colors, disclosure arrow, and collapse behavior. Click a title band to fold its section.
 
+Browser filters are badge-free and share their outer edges with the selectable rows beneath them. Their entered text uses the same primary-content inset as ordinary browser rows.
+
 Scrolling follows the pane under the pointer. A wheel event over Systems, the scene browser, or an inspector pane scrolls that pane. A wheel event over sidebar padding or non-scrollable chrome scrolls the complete sidebar.
 
 The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / CHANGES ARE TEMPORARY`; amber top and status bars plus an amber viewport frame keep that warning visible across the workspace. Pausing preserves the play-mode treatment because edits remain disposable. Stop returns the editor to neutral authoring chrome.
