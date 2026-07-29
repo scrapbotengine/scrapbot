@@ -345,7 +345,7 @@ ui_icon :: proc "contextless" (
 		component = UI_ICON,
 		icon_component = value,
 	}
-	return payload, ui_payload_set_strings(&payload, icon, "")
+	return payload, ui_payload_set_strings(&payload, "", "", "", icon)
 }
 
 ui_text :: proc "contextless" (

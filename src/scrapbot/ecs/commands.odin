@@ -1310,7 +1310,7 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			set_ui_viewport(world, entity_index, command.viewport)
 		case .Icon:
 			value := command.icon
-			value.icon = text
+			value.icon = icon
 			set_ui_icon(world, entity_index, value)
 		case .Text:
 			value := command.text

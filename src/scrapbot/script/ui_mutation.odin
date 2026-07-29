@@ -447,7 +447,7 @@ read_ui_component_command_from_luau :: proc "c" (
 			}
 			command.icon = value
 			command.icon.icon = ""
-			return ecs.init_ui_component_command(command, .Icon, value.icon)
+			return ecs.init_ui_component_command(command, .Icon, "", "", "", value.icon)
 		case "scrapbot.ui_text":
 			value := current_ui_text(world, entity_index, base)
 			if err := read_ui_string_field(L, payload_index, "text", &value.text);
@@ -893,7 +893,7 @@ current_ui_icon :: proc(
 ) -> shared.UI_Icon_Component {
 	if base != nil && base.kind == .Icon {
 		value := base.icon
-		value.icon = ecs.ui_component_command_text(base)
+		value.icon = ecs.ui_component_command_icon(base)
 		return value
 	}
 	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {

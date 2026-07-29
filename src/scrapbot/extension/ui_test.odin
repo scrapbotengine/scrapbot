@@ -128,6 +128,12 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, ui_payload_text(&text_payload) == "Shared UI")
 	testing.expect(t, ui_payload_font(&text_payload) == "Inter")
 	testing.expect(t, text_payload.text.alignment == .Right)
+	icon_style := ui_icon_default()
+	icon_style.icon_set = ui_builtin_icon_set()
+	icon_payload, icon_ok := ui_icon(icon_style, "play")
+	testing.expect(t, icon_ok)
+	testing.expect(t, ui_payload_icon(&icon_payload) == "play")
+	testing.expect(t, ui_payload_text(&icon_payload) == "")
 	button_style := ui_button_default()
 	testing.expect(t, button_style.alignment == .Center)
 	button_style.alignment = .Right

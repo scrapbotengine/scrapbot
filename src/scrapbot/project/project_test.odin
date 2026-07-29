@@ -425,6 +425,21 @@ test_scene_material_references_require_known_resource_uuids :: proc(t: ^testing.
 }
 
 @(test)
+test_scene_input_icons_require_known_icon_set_uuids :: proc(t: ^testing.T) {
+	icon_set, valid := shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000099")
+	testing.expect(t, valid)
+	input := shared.ui_input_default()
+	input.icon_set = icon_set
+	input.icon = "search"
+	scene := Scene{}
+	defer destroy_scene(&scene)
+	append(&scene.entities, Scene_Entity{name = "Search", has_ui_input = true, ui_input = input})
+	testing.expect(t, validate_scene_resource_references(&scene, nil) != "")
+	resources := []shared.Project_Resource{{id = icon_set, kind = .Icon_Set}}
+	testing.expect(t, validate_scene_resource_references(&scene, resources) == "")
+}
+
+@(test)
 test_project_config_requires_safe_scene_path :: proc(t: ^testing.T) {
 	config, result := parse_project_config(
 		`name = "Demo"

@@ -229,6 +229,8 @@ validate_scene_resource_references :: proc(
 			icon_set = entity.ui_icon.icon_set
 		} else if entity.has_ui_button && entity.ui_button.icon != "" {
 			icon_set = entity.ui_button.icon_set
+		} else if entity.has_ui_input && entity.ui_input.icon != "" {
+			icon_set = entity.ui_input.icon_set
 		}
 		if icon_set != (shared.Resource_UUID{}) && !known_icon_sets[icon_set] {
 			id_buffer: [36]u8

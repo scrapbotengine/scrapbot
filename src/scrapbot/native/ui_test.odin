@@ -127,6 +127,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	text.font = "Inter"
 	text.alignment = .Right
 	testing.expect(t, ecs.set_ui_text(&world, entity_index, text))
+	icon_component := shared.ui_icon_default()
+	icon_component.icon_set = shared.builtin_icon_set_uuid()
+	icon_component.icon = "play"
+	testing.expect(t, ecs.set_ui_icon(&world, entity_index, icon_component))
 	state := ecs.ensure_ui_state(&world, entity_index)
 	state.hovered = true
 	state.activation_revision = 9
@@ -224,6 +228,16 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, api_payload_font(&text_payload) == "Inter")
 	testing.expect(t, text_payload.text.size == 16)
 	testing.expect(t, text_payload.text.alignment == .Right)
+
+	icon_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_icon", &icon_payload) != 0,
+	)
+	icon_symbol, icon_symbol_ok := api_ui_payload_icon(&icon_payload)
+	testing.expect(t, icon_symbol_ok && icon_symbol == "play")
+	icon_text, _, icon_text_ok := api_ui_payload_strings(&icon_payload)
+	testing.expect(t, icon_text_ok && icon_text == "")
 
 	state_payload: api.UI_Component_Payload
 	testing.expect(
