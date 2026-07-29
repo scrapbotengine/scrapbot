@@ -187,6 +187,7 @@ capture_registered_component_snapshot :: proc(
 			value.ui_input.text = clone_snapshot_string(value.ui_input.text)
 			value.ui_input.font = clone_snapshot_string(value.ui_input.font)
 			value.ui_input.prefix = clone_snapshot_string(value.ui_input.prefix)
+			value.ui_input.icon = clone_snapshot_string(value.ui_input.icon)
 		case .UI_Checkbox:
 			value.has_ui_checkbox = true
 			value.ui_checkbox = world.ui_checkboxes[entity.ui_checkbox_index]
@@ -513,6 +514,7 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.ui_input.text)
 	delete(entity.ui_input.font)
 	delete(entity.ui_input.prefix)
+	delete(entity.ui_input.icon)
 	for &component in entity.custom_components {
 		delete(component.name)
 		for field in component.number_fields {
@@ -1029,6 +1031,7 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.ui_input.text = clone_snapshot_string(entity.ui_input.text)
 		entity.ui_input.font = clone_snapshot_string(entity.ui_input.font)
 		entity.ui_input.prefix = clone_snapshot_string(entity.ui_input.prefix)
+		entity.ui_input.icon = clone_snapshot_string(entity.ui_input.icon)
 	}
 	if source.ui_checkbox_index >= 0 && source.ui_checkbox_index < len(world.ui_checkboxes) {
 		entity.has_ui_checkbox = true

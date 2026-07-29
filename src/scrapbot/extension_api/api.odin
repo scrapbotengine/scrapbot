@@ -10,6 +10,7 @@ MAX_QUERY_CHUNK_BINDINGS :: 16
 MAX_UI_TEXT_BYTES :: 1024
 MAX_UI_FONT_BYTES :: 256
 MAX_UI_PREFIX_BYTES :: 64
+MAX_UI_ICON_BYTES :: 64
 
 Field_Type :: enum c.int {
 	Vec3 = 1,
@@ -304,10 +305,16 @@ UI_Button_Payload :: struct {
 }
 
 UI_Input_Payload :: struct {
+	icon_set: UUID,
+	icon_position: UI_Icon_Position,
 	color: Vec4,
+	icon_color: Vec4,
 	prefix_color: Vec4,
 	prefix_background: Vec4,
 	size: f32,
+	icon_size: f32,
+	icon_gap: f32,
+	icon_inset: f32,
 	prefix_width: f32,
 	selection_background: Vec4,
 	focus_border_color: Vec4,
@@ -408,6 +415,8 @@ UI_Component_Payload :: struct {
 	font_len: c.int,
 	prefix_bytes: [MAX_UI_PREFIX_BYTES]u8,
 	prefix_len: c.int,
+	icon_bytes: [MAX_UI_ICON_BYTES]u8,
+	icon_len: c.int,
 }
 
 UI_Theme_Name :: enum u32 {

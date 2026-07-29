@@ -335,6 +335,12 @@ border_width = 1
 corner_radius = 3
 [entities.ui_input]
 text = "EDIT ME"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "magnifying-glass"
+icon_position = "leading"
+icon_color = [0.48, 0.53, 0.61, 1]
+icon_size = 12
+icon_gap = 4
 color = [0.82, 0.85, 0.90, 1]
 size = 10
 selection_background = [0.08, 0.48, 0.40, 0.48]

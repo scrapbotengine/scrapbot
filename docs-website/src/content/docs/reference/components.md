@@ -418,6 +418,10 @@ Same-domain pointer presses outside a popup and Escape close it through shared U
 | Fields | Defaults and rules |
 | --- | --- |
 | `text`, `font`, `prefix` | Empty. Empty font selects Inter. |
+| `icon_set`, `icon` | Empty. Optional icon-set UUID plus symbol; both must be set together. |
+| `icon_position` | `leading`. The prefix badge, when present, remains outside a leading icon. |
+| `icon_color` | White. HDR tint for the monochrome icon mask. |
+| `icon_size`, `icon_gap`, `icon_inset` | `0`, `6`, `0`. Zero size derives a box from the input text/content height; geometry must be non-negative. |
 | `color`, `size` | White, `16`; size must be positive. |
 | `prefix_color`, `prefix_background`, `prefix_width` | White, transparent, `0`. |
 | `selection_background`, `selection_corner_radius` | `[0.15, 0.45, 0.40, 0.55]`, `2`. |
@@ -428,7 +432,7 @@ Same-domain pointer presses outside a popup and Escape close it through shared U
 | `number`, `step`, `minimum`, `maximum` | `0`, `1`, `0`, `0`. Step must be positive in numeric mode. |
 | `read_only`, `numeric`, `draggable`, `has_minimum`, `has_maximum` | `false`. Bounds apply only when their matching flag is true. `draggable` opts a writable numeric input into horizontal pointer scrubbing and its resize cursor. |
 
-Numeric values and enabled bounds must be finite, the number must remain inside enabled bounds, and minimum cannot exceed maximum. Prefix, selection, border, caret, and radius geometry is non-negative.
+Numeric values and enabled bounds must be finite, the number must remain inside enabled bounds, and minimum cannot exceed maximum. Icon, prefix, selection, border, caret, and radius geometry is non-negative. The icon stays fixed while long editable text scrolls within the remaining clipped content.
 
 ### `scrapbot.ui_checkbox`
 

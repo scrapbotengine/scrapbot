@@ -256,7 +256,7 @@ if err != nil {
 _ = uuid // stable project-wide identity, also usable as a UI parent
 ```
 
-Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`) and optional prefix badges. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions are stable edge counters for native systems that react less frequently than rendering; `valid` exposes numeric validation.
+Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions are stable edge counters for native systems that react less frequently than rendering; `valid` exposes numeric validation.
 
 Standalone icons and buttons use the same UUID-backed catalog:
 
@@ -272,7 +272,7 @@ if !icon_ok {
 
 Project icon sets use the exact same payload with their resource UUID. `scrapbot.ui_button` accepts the symbol as its fourth argument and carries the set UUID, leading/trailing placement, explicit or automatic size, gap, and inset in its value.
 
-The raw ABI stores text and icon symbols, font names, and input prefixes in fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_button`, `ui_input`, `ui_payload_text`, `ui_payload_font`, and `ui_payload_prefix`.
+The raw ABI stores text, icon symbols, font names, and input prefixes in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_button`, `ui_input`, `ui_payload_text`, `ui_payload_font`, `ui_payload_prefix`, and `ui_payload_icon`.
 
 ## Queue lifecycle commands
 

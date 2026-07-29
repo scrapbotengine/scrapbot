@@ -1743,10 +1743,17 @@ size = [240, 32]
 [entities.ui_input]
 text = "Scrapbot"
 prefix = "X"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "magnifying-glass"
+icon_position = "trailing"
 color = [0.9, 0.9, 0.9, 1]
+icon_color = [0.6, 0.7, 0.8, 1]
 prefix_color = [0.9, 0.3, 0.3, 1]
 prefix_background = [0.9, 0.3, 0.3, 0.12]
 size = 13
+icon_size = 14
+icon_gap = 5
+icon_inset = 1
 prefix_width = 14
 selection_background = [0.1, 0.5, 0.4, 0.5]
 focus_border_color = [0.1, 0.8, 0.7, 1]
@@ -1778,7 +1785,12 @@ read_only = false
 	testing.expect(t, scene.entities[0].has_ui_input)
 	testing.expect(t, input.text == "Scrapbot")
 	testing.expect(t, input.prefix == "X")
+	testing.expect(t, input.icon_set == shared.builtin_icon_set_uuid())
+	testing.expect(t, input.icon == "magnifying-glass")
+	testing.expect(t, input.icon_position == .Trailing)
+	testing.expect(t, input.icon_color == Vec4{0.6, 0.7, 0.8, 1})
 	testing.expect(t, input.size == 13)
+	testing.expect(t, input.icon_size == 14 && input.icon_gap == 5 && input.icon_inset == 1)
 	testing.expect(t, input.prefix_width == 14)
 	testing.expect(t, input.number == 42 && input.step == 0.5)
 	testing.expect(t, input.minimum == 0 && input.maximum == 100)

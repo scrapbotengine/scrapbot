@@ -399,6 +399,12 @@ corner_radius = 6
 
 [entities.ui_input]
 text = "SCRAPBOT"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "magnifying-glass"
+icon_position = "leading"
+icon_color = [0.65, 0.68, 0.74, 1]
+icon_size = 14
+icon_gap = 6
 color = [0.92, 0.93, 0.95, 1]
 size = 16
 selection_background = [0.15, 0.45, 0.40, 0.55]

@@ -198,9 +198,11 @@ ui_button_default :: proc "contextless" () -> UI_Button {
 ui_input_default :: proc "contextless" () -> UI_Input {
 	return {
 		color = {1, 1, 1, 1},
+		icon_color = {1, 1, 1, 1},
 		prefix_color = {1, 1, 1, 1},
 		size = 16,
 		step = 1,
+		icon_gap = 6,
 		prefix_gap = 3,
 		prefix_corner_radius = 2,
 		prefix_text_padding = 3,
@@ -374,7 +376,7 @@ ui_button :: proc "contextless" (
 		component = UI_BUTTON,
 		button = value,
 	}
-	return payload, ui_payload_set_strings(&payload, text, font, icon)
+	return payload, ui_payload_set_strings(&payload, text, font, "", icon)
 }
 
 ui_input :: proc "contextless" (
@@ -382,6 +384,7 @@ ui_input :: proc "contextless" (
 	text: string = "",
 	font: string = "",
 	prefix: string = "",
+	icon: string = "",
 ) -> (
 	UI_Component_Payload,
 	bool,
@@ -390,7 +393,7 @@ ui_input :: proc "contextless" (
 		component = UI_INPUT,
 		input = value,
 	}
-	return payload, ui_payload_set_strings(&payload, text, font, prefix)
+	return payload, ui_payload_set_strings(&payload, text, font, prefix, icon)
 }
 
 ui_checkbox :: proc "contextless" (value: UI_Checkbox) -> UI_Component_Payload {
@@ -406,16 +409,19 @@ ui_payload_set_strings :: proc "contextless" (
 	text: string,
 	font: string,
 	prefix: string = "",
+	icon: string = "",
 ) -> bool {
 	if payload == nil ||
 	   len(text) >= len(payload.text_bytes) ||
 	   len(font) >= len(payload.font_bytes) ||
-	   len(prefix) >= len(payload.prefix_bytes) {
+	   len(prefix) >= len(payload.prefix_bytes) ||
+	   len(icon) >= len(payload.icon_bytes) {
 		return false
 	}
 	payload.text_len = c.int(len(text))
 	payload.font_len = c.int(len(font))
 	payload.prefix_len = c.int(len(prefix))
+	payload.icon_len = c.int(len(icon))
 	for byte, index in transmute([]u8)text {
 		payload.text_bytes[index] = byte
 	}
@@ -424,6 +430,9 @@ ui_payload_set_strings :: proc "contextless" (
 	}
 	for byte, index in transmute([]u8)prefix {
 		payload.prefix_bytes[index] = byte
+	}
+	for byte, index in transmute([]u8)icon {
+		payload.icon_bytes[index] = byte
 	}
 	return true
 }
@@ -449,6 +458,13 @@ ui_payload_prefix :: proc "contextless" (payload: ^UI_Component_Payload) -> stri
 		return ""
 	}
 	return string(payload.prefix_bytes[:int(payload.prefix_len)])
+}
+
+ui_payload_icon :: proc "contextless" (payload: ^UI_Component_Payload) -> string {
+	if payload == nil || payload.icon_len < 0 || int(payload.icon_len) > len(payload.icon_bytes) {
+		return ""
+	}
+	return string(payload.icon_bytes[:int(payload.icon_len)])
 }
 
 get_ui :: proc "contextless" (

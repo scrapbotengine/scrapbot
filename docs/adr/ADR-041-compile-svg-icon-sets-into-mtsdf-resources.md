@@ -45,9 +45,10 @@ atlas layers.
 Expose icons through a standalone public `scrapbot.ui_icon` ECS component.
 Layout owns its rectangle; the icon component selects an icon-set UUID, symbol,
 HDR tint, and inset. Paint preserves the compiled plane aspect and centers it
-inside the available padded rectangle. Buttons and future controls compose the
-same icon reference and resolver rather than owning an icon enum or private
-paint implementation.
+inside the available padded rectangle. Buttons and inputs compose the same icon
+reference and resolver rather than owning an icon enum or private paint
+implementation. Controls reserve a leading or trailing icon box inside their
+own padded content, keeping the icon fixed while editable input text scrolls.
 
 Ship a curated monochrome built-in catalog as an embedded icon-set product with
 a reserved stable UUID. The catalog enters the same registry, lookup,

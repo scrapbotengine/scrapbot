@@ -851,14 +851,21 @@ push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Componen
 }
 
 push_ui_input_table :: proc "c" (L: Lua_State, value: shared.UI_Input_Component) {
-	lua_createtable(L, 0, 30)
+	lua_createtable(L, 0, 37)
 	push_string_field(L, "text", value.text)
 	push_string_field(L, "font", value.font)
 	push_string_field(L, "prefix", value.prefix)
+	push_resource_uuid_field(L, "icon_set", value.icon_set)
+	push_string_field(L, "icon", value.icon)
+	push_string_field(L, "icon_position", ui_icon_position_name(value.icon_position))
 	push_vec4_field(L, "color", value.color)
+	push_vec4_field(L, "icon_color", value.icon_color)
 	push_vec4_field(L, "prefix_color", value.prefix_color)
 	push_vec4_field(L, "prefix_background", value.prefix_background)
 	push_number_field(L, "size", value.size)
+	push_number_field(L, "icon_size", value.icon_size)
+	push_number_field(L, "icon_gap", value.icon_gap)
+	push_number_field(L, "icon_inset", value.icon_inset)
 	push_number_field(L, "prefix_width", value.prefix_width)
 	push_vec4_field(L, "selection_background", value.selection_background)
 	push_vec4_field(L, "focus_border_color", value.focus_border_color)

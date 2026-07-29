@@ -1502,14 +1502,33 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_input.font, found = parse_basic_string(value)
 					case "prefix":
 						current.ui_input.prefix, found = parse_basic_string(value)
+					case "icon_set":
+						raw, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_input.icon_set, found = shared.resource_uuid_parse(raw)
+						} else {
+							found = false
+						}
+					case "icon":
+						current.ui_input.icon, found = parse_basic_string(value)
+					case "icon_position":
+						current.ui_input.icon_position, found = parse_ui_icon_position(value)
 					case "color":
 						current.ui_input.color, found = parse_vec4(value)
+					case "icon_color":
+						current.ui_input.icon_color, found = parse_vec4(value)
 					case "prefix_color":
 						current.ui_input.prefix_color, found = parse_vec4(value)
 					case "prefix_background":
 						current.ui_input.prefix_background, found = parse_vec4(value)
 					case "size":
 						current.ui_input.size, found = parse_f32(value)
+					case "icon_size":
+						current.ui_input.icon_size, found = parse_f32(value)
+					case "icon_gap":
+						current.ui_input.icon_gap, found = parse_f32(value)
+					case "icon_inset":
+						current.ui_input.icon_inset, found = parse_f32(value)
 					case "prefix_width":
 						current.ui_input.prefix_width, found = parse_f32(value)
 					case "selection_background":
@@ -1904,10 +1923,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				),
 			)
 		}
-		if entity.has_ui_input && entity.ui_input.size <= 0 {
+		if entity.has_ui_input && !shared.ui_input_is_valid(entity.ui_input) {
 			return scene, fail(
 				.Invalid_Field,
-				fmt.tprintf("UI input entity '%s' requires positive size", entity.name),
+				fmt.tprintf("UI input entity '%s' has invalid content or sizing", entity.name),
 			)
 		}
 		if entity.has_ui_checkbox && entity.ui_checkbox.box_size <= 0 {

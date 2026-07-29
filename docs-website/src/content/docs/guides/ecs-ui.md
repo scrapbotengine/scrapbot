@@ -123,6 +123,22 @@ icon_gap = 7
 icon_inset = 2
 ```
 
+Inputs can reserve the same scalable icon inside their own padded content:
+
+```toml
+[entities.ui_input]
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "magnifying-glass"
+icon_position = "leading"
+icon_color = [0.65, 0.68, 0.74, 1]
+icon_size = 14
+icon_gap = 6
+icon_inset = 0
+```
+
+The input owns the icon's layout and clipping. A leading prefix badge remains
+outermost, and editable text scrolls without moving the icon.
+
 The built-in catalog also contains `x`, `plus`, `caret-right`, `caret-down`, `magnifying-glass`, `pause`, `stop`, and `skip-forward`. Luau can use `scrapbot.ui.builtin_icon_set`; native Odin can use `scrapbot.ui_builtin_icon_set()`. Projects may use the built-in set, compile wholly different art, or combine both. The editor is only another consumer of this API.
 
 Scrapbot compiles supported SVG geometry into a cached 512×512 MTSDF atlas. The runtime never parses SVG, stable frames do not rebuild icon data, and reimport uploads only the changed icon-set layer. Icons are monochrome masks by design; use their HDR `color` tint for presentation.

@@ -10,6 +10,7 @@ MAX_COMMAND_FIELDS :: 16
 MAX_UI_COMMAND_TEXT_BYTES :: 1024
 MAX_UI_COMMAND_FONT_BYTES :: 256
 MAX_UI_COMMAND_PREFIX_BYTES :: 64
+MAX_UI_COMMAND_ICON_BYTES :: 64
 
 Command_Kind :: enum {
 	Spawn,
@@ -97,6 +98,8 @@ UI_Component_Command :: struct {
 	font_len: int,
 	prefix_bytes: [MAX_UI_COMMAND_PREFIX_BYTES]u8,
 	prefix_len: int,
+	icon_bytes: [MAX_UI_COMMAND_ICON_BYTES]u8,
+	icon_len: int,
 }
 
 Command_Mesh :: struct {
@@ -364,6 +367,7 @@ init_ui_component_command :: proc "contextless" (
 	text: string = "",
 	font: string = "",
 	prefix: string = "",
+	icon: string = "",
 ) -> string {
 	if command == nil {
 		return "UI component command is not available"
@@ -383,6 +387,10 @@ init_ui_component_command :: proc "contextless" (
 		prefix,
 		"UI input prefix",
 	); err != "" {
+		return err
+	}
+	if err := copy_command_string(command.icon_bytes[:], &command.icon_len, icon, "UI icon");
+	   err != "" {
 		return err
 	}
 	return ""
@@ -471,6 +479,11 @@ ui_component_command_font :: proc "contextless" (command: ^UI_Component_Command)
 ui_component_command_prefix :: proc "contextless" (command: ^UI_Component_Command) -> string {
 	if command == nil { return "" }
 	return string(command.prefix_bytes[:command.prefix_len])
+}
+
+ui_component_command_icon :: proc "contextless" (command: ^UI_Component_Command) -> string {
+	if command == nil { return "" }
+	return string(command.icon_bytes[:command.icon_len])
 }
 
 spawn_add_ui_component :: proc "contextless" (
@@ -1272,6 +1285,7 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 	text := string(command.text_bytes[:command.text_len])
 	font := string(command.font_bytes[:command.font_len])
 	prefix := string(command.prefix_bytes[:command.prefix_len])
+	icon := string(command.icon_bytes[:command.icon_len])
 	switch command.kind {
 		case .Layout:
 			set_ui_layout(world, entity_index, command.layout)
@@ -1307,13 +1321,14 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			value := command.button
 			value.text = text
 			value.font = font
-			value.icon = prefix
+			value.icon = icon
 			set_ui_button(world, entity_index, value)
 		case .Input:
 			value := command.input
 			value.text = text
 			value.font = font
 			value.prefix = prefix
+			value.icon = icon
 			set_ui_input(world, entity_index, value)
 		case .Checkbox:
 			set_ui_checkbox(world, entity_index, command.checkbox)

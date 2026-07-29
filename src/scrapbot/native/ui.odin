@@ -241,10 +241,16 @@ api_ui_theme_input :: proc "contextless" (
 	value: shared.UI_Input_Component,
 ) -> api.UI_Input_Payload {
 	return {
+		icon_set = api_resource_uuid_from_shared(value.icon_set),
+		icon_position = api_icon_position_from_shared(value.icon_position),
 		color = api_vec4_from_shared(value.color),
+		icon_color = api_vec4_from_shared(value.icon_color),
 		prefix_color = api_vec4_from_shared(value.prefix_color),
 		prefix_background = api_vec4_from_shared(value.prefix_background),
 		size = value.size,
+		icon_size = value.icon_size,
+		icon_gap = value.icon_gap,
+		icon_inset = value.icon_inset,
 		prefix_width = value.prefix_width,
 		selection_background = api_vec4_from_shared(value.selection_background),
 		focus_border_color = api_vec4_from_shared(value.focus_border_color),
@@ -543,6 +549,7 @@ system_get_ui_component :: proc "c" (
 				payload,
 				value.text,
 				value.font,
+				"",
 				value.icon,
 			) { return 0 }
 		case "scrapbot.ui_input":
@@ -550,10 +557,16 @@ system_get_ui_component :: proc "c" (
 			   world_entity.ui_input_index >= len(step.world.ui_inputs) { return 0 }
 			value := step.world.ui_inputs[world_entity.ui_input_index]
 			payload.input = {
+				icon_set = api_resource_uuid_from_shared(value.icon_set),
+				icon_position = api_icon_position_from_shared(value.icon_position),
 				color = api_vec4_from_shared(value.color),
+				icon_color = api_vec4_from_shared(value.icon_color),
 				prefix_color = api_vec4_from_shared(value.prefix_color),
 				prefix_background = api_vec4_from_shared(value.prefix_background),
 				size = value.size,
+				icon_size = value.icon_size,
+				icon_gap = value.icon_gap,
+				icon_inset = value.icon_inset,
 				prefix_width = value.prefix_width,
 				selection_background = api_vec4_from_shared(value.selection_background),
 				focus_border_color = api_vec4_from_shared(value.focus_border_color),
@@ -582,6 +595,7 @@ system_get_ui_component :: proc "c" (
 				value.text,
 				value.font,
 				value.prefix,
+				value.icon,
 			) { return 0 }
 		case "scrapbot.ui_checkbox":
 			if world_entity.ui_checkbox_index < 0 ||
@@ -678,6 +692,10 @@ ui_command_from_api_payload :: proc "c" (
 	prefix, prefix_ok := api_ui_payload_prefix(payload)
 	if !prefix_ok {
 		return "native UI input prefix length is invalid"
+	}
+	icon, icon_ok := api_ui_payload_icon(payload)
+	if !icon_ok {
+		return "native UI icon length is invalid"
 	}
 	name := string(payload.component)
 	command^ = {}
@@ -894,7 +912,7 @@ ui_command_from_api_payload :: proc "c" (
 				hover_color = shared_vec4_from_api(payload.button.hover_color),
 				active_color = shared_vec4_from_api(payload.button.active_color),
 				icon_set = shared_resource_uuid_from_api(payload.button.icon_set),
-				icon = prefix,
+				icon = icon,
 				icon_position = icon_position,
 				icon_size = payload.button.icon_size,
 				icon_gap = payload.button.icon_gap,
@@ -906,16 +924,27 @@ ui_command_from_api_payload :: proc "c" (
 			command.button.text = ""
 			command.button.font = ""
 			command.button.icon = ""
-			return ecs.init_ui_component_command(command, .Button, text, font, prefix)
+			return ecs.init_ui_component_command(command, .Button, text, font, "", icon)
 		case "scrapbot.ui_input":
+			icon_position, icon_position_ok := shared_icon_position_from_api(
+				payload.input.icon_position,
+			)
+			if !icon_position_ok { return "native ui_input icon position is invalid" }
 			value := shared.UI_Input_Component {
 				text = text,
 				font = font,
 				prefix = prefix,
+				icon_set = shared_resource_uuid_from_api(payload.input.icon_set),
+				icon = icon,
+				icon_position = icon_position,
 				color = shared_vec4_from_api(payload.input.color),
+				icon_color = shared_vec4_from_api(payload.input.icon_color),
 				prefix_color = shared_vec4_from_api(payload.input.prefix_color),
 				prefix_background = shared_vec4_from_api(payload.input.prefix_background),
 				size = payload.input.size,
+				icon_size = payload.input.icon_size,
+				icon_gap = payload.input.icon_gap,
+				icon_inset = payload.input.icon_inset,
 				prefix_width = payload.input.prefix_width,
 				selection_background = shared_vec4_from_api(payload.input.selection_background),
 				focus_border_color = shared_vec4_from_api(payload.input.focus_border_color),
@@ -944,7 +973,8 @@ ui_command_from_api_payload :: proc "c" (
 			command.input.text = ""
 			command.input.font = ""
 			command.input.prefix = ""
-			return ecs.init_ui_component_command(command, .Input, text, font, prefix)
+			command.input.icon = ""
+			return ecs.init_ui_component_command(command, .Input, text, font, prefix, icon)
 		case "scrapbot.ui_checkbox":
 			value := shared.UI_Checkbox_Component {
 				checked = payload.checkbox.checked != 0,
@@ -1008,20 +1038,36 @@ api_ui_payload_set_strings :: proc "contextless" (
 	text: string,
 	font: string,
 	prefix: string = "",
+	icon: string = "",
 ) -> bool {
 	if payload == nil ||
 	   len(text) >= len(payload.text_bytes) ||
 	   len(font) >= len(payload.font_bytes) ||
-	   len(prefix) >= len(payload.prefix_bytes) {
+	   len(prefix) >= len(payload.prefix_bytes) ||
+	   len(icon) >= len(payload.icon_bytes) {
 		return false
 	}
 	payload.text_len = c.int(len(text))
 	payload.font_len = c.int(len(font))
 	payload.prefix_len = c.int(len(prefix))
+	payload.icon_len = c.int(len(icon))
 	for byte, index in transmute([]u8)text { payload.text_bytes[index] = byte }
 	for byte, index in transmute([]u8)font { payload.font_bytes[index] = byte }
 	for byte, index in transmute([]u8)prefix { payload.prefix_bytes[index] = byte }
+	for byte, index in transmute([]u8)icon { payload.icon_bytes[index] = byte }
 	return true
+}
+
+api_ui_payload_icon :: proc "contextless" (
+	payload: ^api.UI_Component_Payload,
+) -> (
+	icon: string,
+	ok: bool,
+) {
+	if payload == nil || payload.icon_len < 0 || int(payload.icon_len) >= len(payload.icon_bytes) {
+		return "", false
+	}
+	return string(payload.icon_bytes[:int(payload.icon_len)]), true
 }
 
 api_ui_payload_prefix :: proc "contextless" (

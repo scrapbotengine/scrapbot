@@ -325,6 +325,7 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, input.text)
 		delete_world_string(world, input.font)
 		delete_world_string(world, input.prefix)
+		delete_world_string(world, input.icon)
 	}
 	for &storage in world.custom_components {
 		delete_world_string(world, storage.name)
@@ -509,6 +510,7 @@ build_world :: proc(scene: ^Scene) -> World {
 			input.text = clone_world_string(&world, input.text)
 			input.font = clone_world_string(&world, input.font)
 			input.prefix = clone_world_string(&world, input.prefix)
+			input.icon = clone_world_string(&world, input.icon)
 			append(&world.ui_inputs, input)
 		}
 		if entity.has_ui_checkbox { world_entity.ui_checkbox_index = len(world.ui_checkboxes); append(&world.ui_checkboxes, entity.ui_checkbox) }

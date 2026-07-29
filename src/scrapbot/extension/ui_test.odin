@@ -141,6 +141,12 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, list_payload.list.highlight_corner_radius == 8)
 	input_style := ui_input_default()
 	input_style.prefix_width = 13
+	input_style.icon_set = ui_builtin_icon_set()
+	input_style.icon_position = .Trailing
+	input_style.icon_color = {0.4, 0.5, 0.6, 1}
+	input_style.icon_size = 14
+	input_style.icon_gap = 5
+	input_style.icon_inset = 1
 	input_style.number = 42
 	input_style.step = 0.5
 	input_style.minimum = 0
@@ -151,10 +157,12 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	input_style.prefix_gap = 4
 	input_style.prefix_corner_radius = 0
 	input_style.invalid_border_width = 3
-	input_payload, input_ok := ui_input(input_style, "42", "Inter", "X")
+	input_payload, input_ok := ui_input(input_style, "42", "Inter", "X", "magnifying-glass")
 	testing.expect(t, input_ok)
 	testing.expect(t, ui_payload_text(&input_payload) == "42")
 	testing.expect(t, ui_payload_prefix(&input_payload) == "X")
+	testing.expect(t, ui_payload_icon(&input_payload) == "magnifying-glass")
+	testing.expect(t, input_payload.input.icon_position == .Trailing)
 	testing.expect(t, input_payload.input.number == 42 && input_payload.input.step == 0.5)
 	testing.expect(t, input_payload.input.prefix_gap == 4)
 	testing.expect(t, input_payload.input.prefix_corner_radius == 0)

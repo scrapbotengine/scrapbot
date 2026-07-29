@@ -231,6 +231,7 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			delete_world_string(world, input.text)
 			delete_world_string(world, input.font)
 			delete_world_string(world, input.prefix)
+			delete_world_string(world, input.icon)
 			input^ = {}
 			append(&world.free_ui_input_indices, entity.ui_input_index)
 			entity.ui_input_index = INVALID_COMPONENT_INDEX
@@ -664,6 +665,7 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 	input.text = clone_world_string(world, value.text)
 	input.font = clone_world_string(world, value.font)
 	input.prefix = clone_world_string(world, value.prefix)
+	input.icon = clone_world_string(world, value.icon)
 	entity := &world.entities[entity_index]
 	if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
 		current := &world.ui_inputs[entity.ui_input_index]
@@ -673,12 +675,19 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 			current.text != value.text ||
 			current.font != value.font ||
 			current.prefix != value.prefix ||
+			current.icon_set != value.icon_set ||
+			current.icon != value.icon ||
+			current.icon_position != value.icon_position ||
 			current.size != value.size ||
+			current.icon_size != value.icon_size ||
+			current.icon_gap != value.icon_gap ||
+			current.icon_inset != value.icon_inset ||
 			current.prefix_width != value.prefix_width ||
 			current.prefix_gap != value.prefix_gap
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		delete_world_string(world, current.prefix)
+		delete_world_string(world, current.icon)
 		current^ = input
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)

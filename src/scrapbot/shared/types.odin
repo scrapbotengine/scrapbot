@@ -637,10 +637,17 @@ UI_Input_Component :: struct {
 	text: string,
 	font: string,
 	prefix: string,
+	icon_set: Resource_UUID,
+	icon: string,
+	icon_position: UI_Icon_Position,
 	color: Vec4,
+	icon_color: Vec4,
 	prefix_color: Vec4,
 	prefix_background: Vec4,
 	size: f32,
+	icon_size: f32,
+	icon_gap: f32,
+	icon_inset: f32,
 	prefix_width: f32,
 	selection_background: Vec4,
 	focus_border_color: Vec4,
@@ -784,9 +791,11 @@ ui_button_default :: proc "contextless" () -> UI_Button_Component {
 ui_input_default :: proc "contextless" () -> UI_Input_Component {
 	return {
 		color = {1, 1, 1, 1},
+		icon_color = {1, 1, 1, 1},
 		prefix_color = {1, 1, 1, 1},
 		size = 16,
 		step = 1,
+		icon_gap = 6,
 		prefix_gap = 3,
 		prefix_corner_radius = 2,
 		prefix_text_padding = 3,
@@ -972,7 +981,15 @@ ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
 }
 
 ui_input_is_valid :: proc "contextless" (value: UI_Input_Component) -> bool {
+	has_icon_set := value.icon_set != (Resource_UUID{})
+	has_icon_name := value.icon != ""
+	if has_icon_set != has_icon_name {
+		return false
+	}
 	if value.size <= 0 ||
+	   value.icon_size < 0 ||
+	   value.icon_gap < 0 ||
+	   value.icon_inset < 0 ||
 	   value.prefix_width < 0 ||
 	   value.prefix_gap < 0 ||
 	   value.prefix_corner_radius < 0 ||
@@ -982,6 +999,15 @@ ui_input_is_valid :: proc "contextless" (value: UI_Input_Component) -> bool {
 	   value.invalid_border_width < 0 ||
 	   value.caret_width < 0 ||
 	   value.caret_inset < 0 {
+		return false
+	}
+	if math.is_nan(value.icon_size) ||
+	   math.is_inf(value.icon_size) ||
+	   math.is_nan(value.icon_gap) ||
+	   math.is_inf(value.icon_gap) ||
+	   math.is_nan(value.icon_inset) ||
+	   math.is_inf(value.icon_inset) ||
+	   !ui_vec4_is_finite(value.icon_color) {
 		return false
 	}
 	if !value.numeric {

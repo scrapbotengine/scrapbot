@@ -6010,6 +6010,28 @@ append_input :: proc(
 		content.x += prefix_width + input.prefix_gap
 		content.width = max(content.width - prefix_width - input.prefix_gap, 0)
 	}
+	has_icon := input.icon_set != (shared.Resource_UUID{}) && input.icon != ""
+	icon_rect: Rect
+	if has_icon && content.width > 0 {
+		icon_size := input.icon_size
+		if icon_size <= 0 {
+			icon_size = min(input.size * 1.25, min(content.width, content.height))
+		}
+		icon_size = min(icon_size, min(content.width, content.height))
+		icon_gap := min(input.icon_gap, max(content.width - icon_size, 0))
+		icon_rect = {
+			content.x,
+			content.y + (content.height - icon_size) * 0.5,
+			icon_size,
+			icon_size,
+		}
+		if input.icon_position == .Leading {
+			content.x += icon_size + icon_gap
+		} else {
+			icon_rect.x = content.x + content.width - icon_size
+		}
+		content.width = max(content.width - icon_size - icon_gap, 0)
+	}
 	focused := state.has_focused_input && state.focused_input == node.entity
 	cursor := len(input.text)
 	anchor := cursor
@@ -6051,6 +6073,23 @@ append_input :: proc(
 	prefix_clip := prefix_content
 	if node.has_clip { prefix_clip = rect_intersection(prefix_clip, node.clip) }
 	apply_paint_clip(state, prefix_start, state.paint_count, prefix_clip, true)
+	icon_start := state.paint_count
+	if has_icon && icon_rect.width > 0 {
+		if err := append_icon(
+			state,
+			{
+				icon_set = input.icon_set,
+				icon = input.icon,
+				color = input.icon_color,
+				inset = input.icon_inset,
+			},
+			icon_rect,
+			{},
+		); err != "" { return err }
+	}
+	icon_clip := icon_rect
+	if node.has_clip { icon_clip = rect_intersection(icon_clip, node.clip) }
+	apply_paint_clip(state, icon_start, state.paint_count, icon_clip, true)
 	clip := content
 	if node.has_clip { clip = rect_intersection(clip, node.clip) }
 	start := state.paint_count

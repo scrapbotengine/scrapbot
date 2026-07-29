@@ -50,7 +50,6 @@ EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
 EDITOR_SECTION_TITLE_HEIGHT :: f32(32)
 EDITOR_BROWSER_FILTER_HEIGHT :: f32(34)
 EDITOR_BROWSER_TEXT_INSET :: f32(20)
-EDITOR_BROWSER_FILTER_TEXT_INSET :: f32(34)
 
 editor_ui_entity :: proc(
 	world: ^shared.World,
@@ -898,32 +897,17 @@ editor_ui_create_browser_filter :: proc(
 	theme := reduced_dark_theme()
 	layout, value := theme_input(theme)
 	layout.size = {1, EDITOR_BROWSER_FILTER_HEIGHT}
-	layout.padding.w = EDITOR_BROWSER_FILTER_TEXT_INSET
 	layout.margin = {2, 0, 2, 0}
 	layout.fill_width = true
 	layout.fixed_in_fill = true
 	entity_index := editor_ui_create_box(world, name, parent, role, layout, slot)
 	value.prefix = ""
 	value.prefix_width = 0
+	value.icon_set = shared.builtin_icon_set_uuid()
+	value.icon = "magnifying-glass"
+	value.icon_size = 14
+	value.icon_inset = 0
 	editor_ui_add_input(world, entity_index, value)
-	icon_name := fmt.tprintf("%s_icon", name)
-	icon_entity := editor_ui_create_box(
-		world,
-		icon_name,
-		name,
-		.None,
-		{position = {9, 8}, size = {14, 14}},
-		slot,
-	)
-	_ = ecs.set_ui_icon(
-		world,
-		icon_entity,
-		{
-			icon_set = shared.builtin_icon_set_uuid(),
-			icon = "magnifying-glass",
-			color = theme.palette.text_muted,
-		},
-	)
 	return entity_index
 }
 

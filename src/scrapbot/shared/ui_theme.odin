@@ -443,6 +443,7 @@ ui_theme_input :: proc "contextless" (
 	layout.corner_radius = theme.metrics.radius_small
 	input = ui_input_default()
 	input.color = theme.palette.text
+	input.icon_color = theme.palette.text_muted
 	input.prefix_color = theme.palette.text_muted
 	input.prefix_background = theme.palette.raised
 	input.size = theme.metrics.text_size

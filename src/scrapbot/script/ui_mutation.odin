@@ -554,6 +554,7 @@ read_ui_component_command_from_luau :: proc "c" (
 				.Button,
 				value.text,
 				value.font,
+				"",
 				value.icon,
 			)
 		case "scrapbot.ui_input":
@@ -564,7 +565,24 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_string_field(L, payload_index, "prefix", &value.prefix);
 			   err != "" { return err }
+			if err := read_ui_resource_uuid_field(L, payload_index, "icon_set", &value.icon_set);
+			   err != "" { return err }
+			if err := read_ui_string_field(L, payload_index, "icon", &value.icon);
+			   err != "" { return err }
+			icon_position := ui_icon_position_name(value.icon_position)
+			if err := read_ui_string_field(L, payload_index, "icon_position", &icon_position);
+			   err != "" { return err }
+			switch icon_position {
+				case "", "leading":
+					value.icon_position = .Leading
+				case "trailing":
+					value.icon_position = .Trailing
+				case:
+					return "ui_input.icon_position must be leading or trailing"
+			}
 			if err := read_ui_vec4_field(L, payload_index, "color", &value.color);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "icon_color", &value.icon_color);
 			   err != "" { return err }
 			if err := read_ui_vec4_field(L, payload_index, "prefix_color", &value.prefix_color);
 			   err != "" { return err }
@@ -575,6 +593,12 @@ read_ui_component_command_from_luau :: proc "c" (
 				&value.prefix_background,
 			); err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "size", &value.size);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_size", &value.icon_size);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_gap", &value.icon_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "prefix_width", &value.prefix_width);
 			   err != "" { return err }
@@ -657,12 +681,14 @@ read_ui_component_command_from_luau :: proc "c" (
 			command.input.text = ""
 			command.input.font = ""
 			command.input.prefix = ""
+			command.input.icon = ""
 			return ecs.init_ui_component_command(
 				command,
 				.Input,
 				value.text,
 				value.font,
 				value.prefix,
+				value.icon,
 			)
 		case "scrapbot.ui_checkbox":
 			value := current_ui_checkbox(world, entity_index, base)
@@ -904,7 +930,7 @@ current_ui_button :: proc(
 		value := base.button
 		value.text = ecs.ui_component_command_text(base)
 		value.font = ecs.ui_component_command_font(base)
-		value.icon = ecs.ui_component_command_prefix(base)
+		value.icon = ecs.ui_component_command_icon(base)
 		return value
 	}
 	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
@@ -949,6 +975,8 @@ current_ui_input :: proc(
 		value := base.input
 		value.text = ecs.ui_component_command_text(base)
 		value.font = ecs.ui_component_command_font(base)
+		value.prefix = ecs.ui_component_command_prefix(base)
+		value.icon = ecs.ui_component_command_icon(base)
 		return value
 	}
 	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
