@@ -66,6 +66,30 @@ read_ui_component_command_from_luau :: proc "c" (
 			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "fixed_in_fill", &value.fixed_in_fill);
 			   err != "" { return err }
+			horizontal_alignment := ui_alignment_name(value.horizontal_alignment)
+			if err := read_ui_string_field(
+				L,
+				payload_index,
+				"horizontal_alignment",
+				&horizontal_alignment,
+			); err != "" { return err }
+			if parsed, ok := ui_alignment_from_name(horizontal_alignment); ok {
+				value.horizontal_alignment = parsed
+			} else {
+				return "ui_layout.horizontal_alignment must be start, center, end, or stretch"
+			}
+			vertical_alignment := ui_alignment_name(value.vertical_alignment)
+			if err := read_ui_string_field(
+				L,
+				payload_index,
+				"vertical_alignment",
+				&vertical_alignment,
+			); err != "" { return err }
+			if parsed, ok := ui_alignment_from_name(vertical_alignment); ok {
+				value.vertical_alignment = parsed
+			} else {
+				return "ui_layout.vertical_alignment must be start, center, end, or stretch"
+			}
 			if err := read_ui_bool_field(L, payload_index, "tree_item", &value.tree_item);
 			   err != "" { return err }
 			if err := read_ui_uuid_field(L, payload_index, "tree_parent", &value.tree_parent);
@@ -127,6 +151,61 @@ read_ui_component_command_from_luau :: proc "c" (
 			) { return "ui_layout requires positive size and non-negative box metrics" }
 			command.layout = value
 			return ecs.init_ui_component_command(command, .Layout)
+		case "scrapbot.ui_canvas":
+			value := current_ui_canvas(world, entity_index, base)
+			if err := read_ui_vec2_field(
+				L,
+				payload_index,
+				"reference_size",
+				&value.reference_size,
+			); err != "" { return err }
+			scale_mode := ui_canvas_scale_mode_name(value.scale_mode)
+			if err := read_ui_string_field(L, payload_index, "scale_mode", &scale_mode);
+			   err != "" { return err }
+			if parsed, ok := ui_canvas_scale_mode_from_name(scale_mode); ok {
+				value.scale_mode = parsed
+			} else {
+				return(
+					"ui_canvas.scale_mode must be fit, fill, expand, stretch, pixel_perfect, or none" \
+				)
+			}
+			horizontal_alignment := ui_canvas_alignment_name(value.horizontal_alignment)
+			if err := read_ui_string_field(
+				L,
+				payload_index,
+				"horizontal_alignment",
+				&horizontal_alignment,
+			); err != "" { return err }
+			if parsed, ok := ui_canvas_alignment_from_name(horizontal_alignment); ok {
+				value.horizontal_alignment = parsed
+			} else {
+				return "ui_canvas.horizontal_alignment must be start, center, or end"
+			}
+			vertical_alignment := ui_canvas_alignment_name(value.vertical_alignment)
+			if err := read_ui_string_field(
+				L,
+				payload_index,
+				"vertical_alignment",
+				&vertical_alignment,
+			); err != "" { return err }
+			if parsed, ok := ui_canvas_alignment_from_name(vertical_alignment); ok {
+				value.vertical_alignment = parsed
+			} else {
+				return "ui_canvas.vertical_alignment must be start, center, or end"
+			}
+			if err := read_ui_vec4_field(L, payload_index, "safe_area", &value.safe_area);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "min_scale", &value.min_scale);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "max_scale", &value.max_scale);
+			   err != "" { return err }
+			if !shared.ui_canvas_is_valid(value) {
+				return(
+					"ui_canvas requires a positive reference size, valid scaling, and bounded safe area" \
+				)
+			}
+			command.canvas = value
+			return ecs.init_ui_component_command(command, .Canvas)
 		case "scrapbot.ui_hstack", "scrapbot.ui_vstack":
 			value := current_ui_stack(world, entity_index, name, base)
 			if err := read_ui_number_field(L, payload_index, "gap", &value.gap);
@@ -827,6 +906,19 @@ current_ui_layout :: proc(
 	return shared.ui_layout_default()
 }
 
+current_ui_canvas :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Canvas_Component {
+	if base != nil && base.kind == .Canvas { return base.canvas }
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_canvas_index
+		if index >= 0 && index < len(world.ui_canvases) { return world.ui_canvases[index] }
+	}
+	return shared.ui_canvas_default()
+}
+
 current_ui_stack :: proc(
 	world: ^shared.World,
 	entity_index: int,
@@ -1064,6 +1156,107 @@ ui_text_alignment_name :: proc "contextless" (alignment: shared.UI_Text_Alignmen
 			return "left"
 	}
 	return "left"
+}
+
+ui_alignment_name :: proc "contextless" (alignment: shared.UI_Alignment) -> string {
+	switch alignment {
+		case .Start:
+			return "start"
+		case .Center:
+			return "center"
+		case .End:
+			return "end"
+		case .Stretch:
+			return "stretch"
+	}
+	return "start"
+}
+
+ui_alignment_from_name :: proc "contextless" (name: string) -> (shared.UI_Alignment, bool) {
+	switch name {
+		case "", "start":
+			return .Start, true
+		case "center":
+			return .Center, true
+		case "end":
+			return .End, true
+		case "stretch":
+			return .Stretch, true
+		case:
+			return .Start, false
+	}
+}
+
+ui_canvas_scale_mode_name :: proc "contextless" (mode: shared.UI_Canvas_Scale_Mode) -> string {
+	switch mode {
+		case .Fit:
+			return "fit"
+		case .Fill:
+			return "fill"
+		case .Expand:
+			return "expand"
+		case .Stretch:
+			return "stretch"
+		case .Pixel_Perfect:
+			return "pixel_perfect"
+		case .None:
+			return "none"
+	}
+	return "fit"
+}
+
+ui_canvas_alignment_name :: proc "contextless" (alignment: shared.UI_Canvas_Alignment) -> string {
+	switch alignment {
+		case .Start:
+			return "start"
+		case .Center:
+			return "center"
+		case .End:
+			return "end"
+	}
+	return "start"
+}
+
+ui_canvas_alignment_from_name :: proc "contextless" (
+	name: string,
+) -> (
+	shared.UI_Canvas_Alignment,
+	bool,
+) {
+	switch name {
+		case "", "start":
+			return .Start, true
+		case "center":
+			return .Center, true
+		case "end":
+			return .End, true
+		case:
+			return .Start, false
+	}
+}
+
+ui_canvas_scale_mode_from_name :: proc "contextless" (
+	name: string,
+) -> (
+	shared.UI_Canvas_Scale_Mode,
+	bool,
+) {
+	switch name {
+		case "fit":
+			return .Fit, true
+		case "fill":
+			return .Fill, true
+		case "expand":
+			return .Expand, true
+		case "stretch":
+			return .Stretch, true
+		case "pixel_perfect":
+			return .Pixel_Perfect, true
+		case "none":
+			return .None, true
+		case:
+			return .Fit, false
+	}
 }
 
 ui_icon_position_name :: proc "contextless" (position: shared.UI_Icon_Position) -> string {

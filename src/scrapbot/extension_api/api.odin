@@ -157,6 +157,28 @@ UI_Icon_Position :: enum c.int {
 	Trailing = 1,
 }
 
+UI_Alignment :: enum c.int {
+	Start   = 0,
+	Center  = 1,
+	End     = 2,
+	Stretch = 3,
+}
+
+UI_Canvas_Alignment :: enum c.int {
+	Start  = 0,
+	Center = 1,
+	End    = 2,
+}
+
+UI_Canvas_Scale_Mode :: enum c.int {
+	Fit           = 0,
+	Fill          = 1,
+	Expand        = 2,
+	Stretch       = 3,
+	Pixel_Perfect = 4,
+	None          = 5,
+}
+
 UI_Layout_Payload :: struct {
 	parent: UUID,
 	popup_anchor: UUID,
@@ -175,6 +197,8 @@ UI_Layout_Payload :: struct {
 	fit_content_width: c.int,
 	fit_content_height: c.int,
 	fixed_in_fill: c.int,
+	horizontal_alignment: UI_Alignment,
+	vertical_alignment: UI_Alignment,
 	tree_item: c.int,
 	tree_parent: UUID,
 	tree_order: c.int,
@@ -187,6 +211,16 @@ UI_Layout_Payload :: struct {
 	popup_max_width: f32,
 	popup_max_height: f32,
 	popup_viewport_margin: f32,
+}
+
+UI_Canvas_Payload :: struct {
+	reference_size: Vec2,
+	scale_mode: UI_Canvas_Scale_Mode,
+	horizontal_alignment: UI_Canvas_Alignment,
+	vertical_alignment: UI_Canvas_Alignment,
+	safe_area: Vec4,
+	min_scale: f32,
+	max_scale: f32,
 }
 
 UI_Stack_Payload :: struct {
@@ -429,6 +463,7 @@ UI_State_Payload :: struct {
 UI_Component_Payload :: struct {
 	component: cstring,
 	layout: UI_Layout_Payload,
+	canvas: UI_Canvas_Payload,
 	stack: UI_Stack_Payload,
 	scroll_area: UI_Scroll_Area_Payload,
 	panel: UI_Panel_Payload,

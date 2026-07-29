@@ -306,8 +306,18 @@ write_missing_scene_fields :: proc(
 			keys[0], keys[1], keys[2] = "color", "intensity", "range"
 			key_count = 3
 		case "ui_layout":
-			keys[0] = "hidden"
-			key_count = 1
+			keys[0], keys[1], keys[2] = "hidden", "horizontal_alignment", "vertical_alignment"
+			key_count = 3
+		case "ui_canvas":
+			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5], keys[6] =
+				"reference_size",
+				"scale_mode",
+				"horizontal_alignment",
+				"vertical_alignment",
+				"safe_area",
+				"min_scale",
+				"max_scale"
+			key_count = 7
 		case "ui_hstack", "ui_vstack":
 			keys[0], keys[1] = "fill", "draggable"
 			key_count = 2
@@ -561,10 +571,47 @@ scene_world_field_value :: proc(
 					return scene_f32(value.range), true
 			}
 		case "ui_layout":
-			if key == "hidden" &&
-			   entity.ui_layout_index >= 0 &&
-			   entity.ui_layout_index < len(world.ui_layouts) {
-				return scene_bool(world.ui_layouts[entity.ui_layout_index].hidden), true
+			if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
+				value := world.ui_layouts[entity.ui_layout_index]
+				switch key {
+					case "hidden":
+						return scene_bool(value.hidden), true
+					case "horizontal_alignment":
+						return fmt.tprintf("%q", scene_ui_alignment(value.horizontal_alignment)),
+							true
+					case "vertical_alignment":
+						return fmt.tprintf("%q", scene_ui_alignment(value.vertical_alignment)),
+							true
+				}
+			}
+		case "ui_canvas":
+			if entity.ui_canvas_index >= 0 && entity.ui_canvas_index < len(world.ui_canvases) {
+				value := world.ui_canvases[entity.ui_canvas_index]
+				switch key {
+					case "reference_size":
+						return scene_vec2(value.reference_size), true
+					case "scale_mode":
+						return fmt.tprintf("%q", scene_ui_canvas_scale_mode(value.scale_mode)),
+							true
+					case "horizontal_alignment":
+						return fmt.tprintf(
+								"%q",
+								scene_ui_canvas_alignment(value.horizontal_alignment),
+							),
+							true
+					case "vertical_alignment":
+						return fmt.tprintf(
+								"%q",
+								scene_ui_canvas_alignment(value.vertical_alignment),
+							),
+							true
+					case "safe_area":
+						return scene_vec4(value.safe_area), true
+					case "min_scale":
+						return scene_f32(value.min_scale), true
+					case "max_scale":
+						return scene_f32(value.max_scale), true
+				}
 			}
 		case "ui_hstack":
 			if entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks) {

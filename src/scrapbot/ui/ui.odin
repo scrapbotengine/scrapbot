@@ -127,7 +127,7 @@ Node :: struct {
 	entity: shared.Entity,
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
-	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, icon_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
+	layout_index, canvas_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, icon_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
 	parent_node_index, first_child_node, next_sibling_node: int,
 	rect, clip: Rect,
 	resolved_size: shared.Vec2,
@@ -291,6 +291,9 @@ State :: struct {
 	ui_structure_synced: bool,
 	ui_project_layout_revision: u64,
 	ui_editor_layout_revision: u64,
+	project_canvas_entity_index: int,
+	project_canvas: shared.UI_Canvas_Component,
+	project_canvas_valid: bool,
 	ui_project_paint_revision: u64,
 	ui_editor_paint_revision: u64,
 	viewport_surfaces: [MAX_EMBEDDED_VIEWPORTS]Viewport_Surface,
@@ -542,6 +545,7 @@ init :: proc(state: ^State) -> string {
 	state.editor_simulation_playing = true
 	state.editor_history_clean_valid = true
 	state.active_split_handle = -1
+	state.project_canvas_entity_index = -1
 	state.font.glyphs = &FONT_GLYPHS
 	state.font.ascender = FONT_ASCENDER
 	state.font.layer = 0
@@ -952,6 +956,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 	dirty_cursor := 0
 	hierarchy_changed := world_changed
 	viewport_membership_changed := world_changed
+	canvas_membership_changed := world_changed
 	for dirty_cursor < len(world.ui_dirty_entities) {
 		entity_index := world.ui_dirty_entities[dirty_cursor]
 		dirty_cursor += 1
@@ -969,6 +974,9 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 			!ui_entity_or_ancestor_hidden(world, entity_index)
 		if !eligible {
 			if node_index >= 0 {
+				if state.nodes[node_index].canvas_index >= 0 {
+					canvas_membership_changed = true
+				}
 				remove_ui_node(state, node_index)
 				hierarchy_changed = true
 			}
@@ -989,6 +997,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		_ = ecs.ensure_ui_state(world, entity_index)
 		node := &state.nodes[node_index]
 		had_viewport := node.entity == entity.id && node.viewport_index >= 0
+		had_canvas := node.entity == entity.id && node.canvas_index >= 0
 		node.viewport_layer = -1
 		node.entity = entity.id
 		node.origin = entity.origin
@@ -997,6 +1006,10 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 			node.editor_role = world.editor_uis[entity.editor_ui_index].role
 		}
 		node.layout_index = entity.ui_layout_index
+		node.canvas_index = entity.ui_canvas_index
+		if had_canvas != (node.canvas_index >= 0) {
+			canvas_membership_changed = true
+		}
 		node.hstack_index = entity.ui_hstack_index
 		node.vstack_index = entity.ui_vstack_index
 		node.scroll_area_index = entity.ui_scroll_area_index
@@ -1031,6 +1044,21 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 	}
 	if hierarchy_changed || viewport_membership_changed {
 		rebuild_viewport_node_indices(state)
+	}
+	if hierarchy_changed || canvas_membership_changed {
+		state.project_canvas_entity_index = -1
+		state.project_canvas_valid = false
+		for node in state.nodes[:state.node_count] {
+			if node.origin == .Editor ||
+			   node.canvas_index < 0 ||
+			   node.canvas_index >= len(world.ui_canvases) {
+				continue
+			}
+			state.project_canvas_entity_index = int(node.entity.index)
+			state.project_canvas = world.ui_canvases[node.canvas_index]
+			state.project_canvas_valid = true
+			break
+		}
 	}
 	clear(&world.ui_dirty_entities)
 	state.ui_structure_revision = world.ui_structure_revision
@@ -1165,7 +1193,26 @@ reconcile :: proc(
 	editor_height := surface_height / editor_scale
 	reconcile_editor_ui_world(state, world)
 	if err := sync_ui_structure(state, world); err != "" { return err }
-	project_layout := Rect{0, 0, width, height}
+	if state.project_canvas_valid {
+		entity_index := state.project_canvas_entity_index
+		if entity_index >= 0 && entity_index < len(world.entities) {
+			canvas_index := world.entities[entity_index].ui_canvas_index
+			if canvas_index >= 0 && canvas_index < len(world.ui_canvases) {
+				state.project_canvas = world.ui_canvases[canvas_index]
+			} else {
+				state.project_canvas_valid = false
+				state.project_canvas_entity_index = -1
+			}
+		}
+	}
+	project_transform := project_canvas_transform(
+		state,
+		surface_width,
+		surface_height,
+		width,
+		height,
+	)
+	project_layout := project_transform.logical_viewport
 	editor_layout := Rect{0, 0, editor_width, editor_height}
 	fresh_pointer_press :=
 		pointer.available &&
@@ -1563,6 +1610,7 @@ collect_viewport_surfaces :: proc(
 		}
 		rect := node.rect
 		clip := node.clip
+		has_clip := node.has_clip
 		if node.origin == .Editor {
 			rect = {
 				rect.x * editor_scale,
@@ -1578,19 +1626,25 @@ collect_viewport_surfaces :: proc(
 			}
 		} else {
 			rect = {
-				project_transform.viewport.x + rect.x * project_transform.scale,
-				project_transform.viewport.y + rect.y * project_transform.scale,
-				rect.width * project_transform.scale,
-				rect.height * project_transform.scale,
+				project_transform.viewport.x + rect.x * project_transform.scale.x,
+				project_transform.viewport.y + rect.y * project_transform.scale.y,
+				rect.width * project_transform.scale.x,
+				rect.height * project_transform.scale.y,
 			}
 			clip = {
-				project_transform.viewport.x + clip.x * project_transform.scale,
-				project_transform.viewport.y + clip.y * project_transform.scale,
-				clip.width * project_transform.scale,
-				clip.height * project_transform.scale,
+				project_transform.viewport.x + clip.x * project_transform.scale.x,
+				project_transform.viewport.y + clip.y * project_transform.scale.y,
+				clip.width * project_transform.scale.x,
+				clip.height * project_transform.scale.y,
+			}
+			if has_clip {
+				clip = rect_intersection(clip, project_transform.clip)
+			} else {
+				clip = project_transform.clip
+				has_clip = true
 			}
 		}
-		if node.has_clip {
+		if has_clip {
 			rect = rect_intersection(rect, clip)
 		}
 		if rect.width <= 0 || rect.height <= 0 {
@@ -1600,7 +1654,7 @@ collect_viewport_surfaces :: proc(
 			entity = node.entity,
 			rect = rect,
 			clip = clip,
-			has_clip = node.has_clip,
+			has_clip = has_clip,
 			component = world.ui_viewports[node.viewport_index],
 			editor = node.origin == .Editor,
 		}
@@ -1639,7 +1693,9 @@ editor_viewport :: proc(
 
 Project_Canvas_Transform :: struct {
 	viewport: Rect,
-	scale: f32,
+	clip: Rect,
+	logical_viewport: Rect,
+	scale: shared.Vec2,
 }
 
 project_canvas_scale :: proc(
@@ -1657,15 +1713,118 @@ project_canvas_scale :: proc(
 	return scale
 }
 
+ui_alignment_offset :: proc "contextless" (available: f32, alignment: shared.UI_Alignment) -> f32 {
+	switch alignment {
+		case .Center:
+			return available * 0.5
+		case .End:
+			return available
+		case .Start, .Stretch:
+			return 0
+	}
+	return 0
+}
+
+ui_canvas_alignment_offset :: proc "contextless" (
+	available: f32,
+	alignment: shared.UI_Canvas_Alignment,
+) -> f32 {
+	switch alignment {
+		case .Center:
+			return available * 0.5
+		case .End:
+			return available
+		case .Start:
+			return 0
+	}
+	return 0
+}
+
+clamp_canvas_scale :: proc "contextless" (scale, minimum, maximum: f32) -> f32 {
+	result := scale
+	if minimum > 0 {
+		result = max(result, minimum)
+	}
+	if maximum > 0 {
+		result = min(result, maximum)
+	}
+	return max(result, 0.0001)
+}
+
 project_canvas_transform :: proc(
 	state: ^State,
 	drawable_width, drawable_height: f32,
 	project_width: f32 = 1280,
 	project_height: f32 = 720,
 ) -> Project_Canvas_Transform {
-	viewport := editor_viewport(state, drawable_width, drawable_height)
-	scale := project_canvas_scale(drawable_width, drawable_height, project_width, project_height)
-	return {viewport = viewport, scale = scale}
+	host := editor_viewport(state, drawable_width, drawable_height)
+	return project_canvas_transform_in_host(state, host, project_width, project_height)
+}
+
+project_canvas_transform_in_host :: proc(
+	state: ^State,
+	host: Rect,
+	project_width: f32 = 1280,
+	project_height: f32 = 720,
+) -> Project_Canvas_Transform {
+	canvas := shared.UI_Canvas_Component {
+		reference_size = {project_width, project_height},
+		scale_mode = .Fit,
+	}
+	if state != nil && state.project_canvas_valid {
+		canvas = state.project_canvas
+	}
+	reference := canvas.reference_size
+	if reference.x <= 0 || reference.y <= 0 {
+		reference = {max(project_width, 1), max(project_height, 1)}
+	}
+	scale := shared.Vec2{1, 1}
+	logical_size := reference
+	switch canvas.scale_mode {
+		case .Fit, .Expand:
+			uniform := min(host.width / reference.x, host.height / reference.y)
+			uniform = clamp_canvas_scale(uniform, canvas.min_scale, canvas.max_scale)
+			scale = {uniform, uniform}
+			if canvas.scale_mode == .Expand {
+				logical_size = {host.width / uniform, host.height / uniform}
+			}
+		case .Fill:
+			uniform := max(host.width / reference.x, host.height / reference.y)
+			uniform = clamp_canvas_scale(uniform, canvas.min_scale, canvas.max_scale)
+			scale = {uniform, uniform}
+		case .Stretch:
+			scale = {
+				clamp_canvas_scale(host.width / reference.x, canvas.min_scale, canvas.max_scale),
+				clamp_canvas_scale(host.height / reference.y, canvas.min_scale, canvas.max_scale),
+			}
+		case .Pixel_Perfect:
+			fit := min(host.width / reference.x, host.height / reference.y)
+			uniform := fit
+			if fit >= 1 {
+				uniform = max(math.floor(fit), 1)
+			}
+			uniform = clamp_canvas_scale(uniform, canvas.min_scale, canvas.max_scale)
+			scale = {uniform, uniform}
+		case .None:
+			density := f32(1)
+			if state != nil {
+				density = max(state.editor_pixel_density, 1)
+			}
+			density = clamp_canvas_scale(density, canvas.min_scale, canvas.max_scale)
+			scale = {density, density}
+			logical_size = {host.width / density, host.height / density}
+	}
+	output_size := shared.Vec2{logical_size.x * scale.x, logical_size.y * scale.y}
+	offset := shared.Vec2 {
+		ui_canvas_alignment_offset(host.width - output_size.x, canvas.horizontal_alignment),
+		ui_canvas_alignment_offset(host.height - output_size.y, canvas.vertical_alignment),
+	}
+	return {
+		viewport = {host.x + offset.x, host.y + offset.y, output_size.x, output_size.y},
+		clip = host,
+		logical_viewport = {0, 0, logical_size.x, logical_size.y},
+		scale = scale,
+	}
 }
 
 editor_viewport_for_scale :: proc(
@@ -1708,12 +1867,11 @@ project_pointer_input :: proc(
 	surface_width := drawable_width; if surface_width <= 0 { surface_width = width }
 	surface_height := drawable_height; if surface_height <= 0 { surface_height = height }
 	transform := project_canvas_transform(state, surface_width, surface_height, width, height)
-	viewport := transform.viewport
-	if !rect_contains(viewport, pointer.position) { return {} }
+	if !rect_contains(transform.clip, pointer.position) { return {} }
 	return {
 		position = {
-			(pointer.position.x - viewport.x) / transform.scale,
-			(pointer.position.y - viewport.y) / transform.scale,
+			(pointer.position.x - transform.viewport.x) / transform.scale.x,
+			(pointer.position.y - transform.viewport.y) / transform.scale.y,
 		},
 		wheel_y = pointer.wheel_y,
 		primary_down = pointer.primary_down,
@@ -2583,6 +2741,32 @@ rebuild_list_flow_cache :: proc(state: ^State, world: ^shared.World, editor: boo
 	}
 }
 
+resolve_aligned_axis :: proc "contextless" (
+	parent_start, parent_extent, authored_size, minimum_size, authored_position: f32,
+	margin_start, margin_end: f32,
+	alignment: shared.UI_Alignment,
+	fill: bool,
+) -> (
+	position, size: f32,
+) {
+	available := max(parent_extent - margin_start - margin_end, 0)
+	size = max(authored_size, minimum_size)
+	if fill || alignment == .Stretch {
+		size = max(available - max(authored_position, 0), minimum_size)
+		position = parent_start + margin_start + authored_position
+		return
+	}
+	switch alignment {
+		case .Start, .Stretch:
+			position = parent_start + margin_start + authored_position
+		case .Center:
+			position = parent_start + margin_start + (available - size) * 0.5 + authored_position
+		case .End:
+			position = parent_start + parent_extent - margin_end - size - authored_position
+	}
+	return
+}
+
 layout_node :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -2610,24 +2794,29 @@ layout_node :: proc(
 		}
 		node.rect = {flow_position.x, flow_position.y, size.x, size.y}
 	} else if node.parent_entity_index < 0 {
-		if layout.fill_width {
-			layout_size.x = max(
-				parent.width - layout.position.x - layout.margin.w - layout.margin.y,
-				layout.min_size.x,
-			)
-		}
-		if layout.fill_height {
-			layout_size.y = max(
-				parent.height - layout.position.y - layout.margin.x - layout.margin.z,
-				layout.min_size.y,
-			)
-		}
-		node.rect = {
-			layout.position.x + layout.margin.w,
-			layout.position.y + layout.margin.x,
+		x, resolved_width := resolve_aligned_axis(
+			parent.x,
+			parent.width,
 			layout_size.x,
+			layout.min_size.x,
+			layout.position.x,
+			layout.margin.w,
+			layout.margin.y,
+			layout.horizontal_alignment,
+			layout.fill_width,
+		)
+		y, resolved_height := resolve_aligned_axis(
+			parent.y,
+			parent.height,
 			layout_size.y,
-		}
+			layout.min_size.y,
+			layout.position.y,
+			layout.margin.x,
+			layout.margin.z,
+			layout.vertical_alignment,
+			layout.fill_height,
+		)
+		node.rect = {x, y, resolved_width, resolved_height}
 	} else if flowed {
 		size := layout_size
 		if has_flow_size { size = flow_size }
@@ -2640,12 +2829,46 @@ layout_node :: proc(
 		   parent_entity.ui_layout_index < len(world.ui_layouts) {
 			parent_padding = world.ui_layouts[parent_entity.ui_layout_index].padding
 		}
-		node.rect = {
-			parent.x + parent_padding.w + layout.position.x + layout.margin.w,
-			parent.y + parent_padding.x + layout.position.y + layout.margin.x,
-			layout_size.x,
-			layout_size.y,
+		if node.origin != .Editor &&
+		   state.project_canvas_valid &&
+		   node.parent_entity_index == state.project_canvas_entity_index {
+			safe_area := state.project_canvas.safe_area
+			parent_padding = {
+				parent_padding.x + safe_area.x,
+				parent_padding.y + safe_area.y,
+				parent_padding.z + safe_area.z,
+				parent_padding.w + safe_area.w,
+			}
 		}
+		content_parent := Rect {
+			parent.x + parent_padding.w,
+			parent.y + parent_padding.x,
+			max(parent.width - parent_padding.w - parent_padding.y, 0),
+			max(parent.height - parent_padding.x - parent_padding.z, 0),
+		}
+		x, resolved_width := resolve_aligned_axis(
+			content_parent.x,
+			content_parent.width,
+			layout_size.x,
+			layout.min_size.x,
+			layout.position.x,
+			layout.margin.w,
+			layout.margin.y,
+			layout.horizontal_alignment,
+			layout.fill_width,
+		)
+		y, resolved_height := resolve_aligned_axis(
+			content_parent.y,
+			content_parent.height,
+			layout_size.y,
+			layout.min_size.y,
+			layout.position.y,
+			layout.margin.x,
+			layout.margin.z,
+			layout.vertical_alignment,
+			layout.fill_height,
+		)
+		node.rect = {x, y, resolved_width, resolved_height}
 	}
 	node.paint_order = state.next_paint_order; state.next_paint_order += 1
 	node.clip = inherited_clip; node.has_clip = has_inherited_clip
@@ -2671,6 +2894,15 @@ layout_node :: proc(
 		node.rect.y + layout.padding.x,
 		max(node.rect.width - layout.padding.w - layout.padding.y, 0),
 		max(node.rect.height - layout.padding.x - layout.padding.z, 0),
+	}
+	if node.origin != .Editor &&
+	   state.project_canvas_valid &&
+	   int(node.entity.index) == state.project_canvas_entity_index {
+		safe_area := state.project_canvas.safe_area
+		content.x += safe_area.w
+		content.y += safe_area.x
+		content.width = max(content.width - safe_area.w - safe_area.y, 0)
+		content.height = max(content.height - safe_area.x - safe_area.z, 0)
 	}
 	child_parent_rect := node.rect
 	if layout.tree_item && node.parent_node_index >= 0 {
@@ -2965,8 +3197,29 @@ layout_node :: proc(
 			}
 			has_child_size = true
 		}
-		if (is_hstack || is_vstack) &&
-		   stack.fill { main_size := child_main_sizes[child_ordinal]; if is_hstack { child_size = {main_size, max(content.height - child_layout.margin.x - child_layout.margin.z, 0)} } else { child_size = {max(content.width - child_layout.margin.w - child_layout.margin.y, 0), main_size} }; has_child_size = true }
+		if (is_hstack || is_vstack) && stack.fill {
+			main_size := child_main_sizes[child_ordinal]
+			if is_hstack {
+				child_size.x = main_size
+				if child_layout.vertical_alignment == .Start ||
+				   child_layout.vertical_alignment == .Stretch {
+					child_size.y = max(
+						content.height - child_layout.margin.x - child_layout.margin.z,
+						0,
+					)
+				}
+			} else {
+				child_size.y = main_size
+				if child_layout.horizontal_alignment == .Start ||
+				   child_layout.horizontal_alignment == .Stretch {
+					child_size.x = max(
+						content.width - child_layout.margin.w - child_layout.margin.y,
+						0,
+					)
+				}
+			}
+			has_child_size = true
+		}
 		if is_table {
 			column := child_ordinal % table_columns
 			if column == 0 && child_ordinal > 0 {
@@ -3031,21 +3284,77 @@ layout_node :: proc(
 			}
 			has_child_size = true
 			child_flowed = true
-		} else if is_hstack {position = {content.x + cursor + child_layout.margin.w, content.y + child_layout.margin.x}; cursor += child_layout.margin.w + child_size.x + child_layout.margin.y; if stack.draggable && child_ordinal < child_count - 1 && state.split_handle_count < MAX_NODES {handle_rect := Rect{content.x + cursor, content.y, max(gap, 8), content.height}; handle_rect.x += (gap - handle_rect.width) * 0.5; state.split_handles[state.split_handle_count] = {
+		} else if is_hstack {
+			y, resolved_height := resolve_aligned_axis(
+				content.y,
+				content.height,
+				child_size.y,
+				child_layout.min_size.y,
+				child_layout.position.y,
+				child_layout.margin.x,
+				child_layout.margin.z,
+				child_layout.vertical_alignment,
+				child_layout.fill_height ||
+				(stack.fill &&
+						(child_layout.vertical_alignment == .Start ||
+								child_layout.vertical_alignment == .Stretch)),
+			)
+			child_size.y = resolved_height
+			position = {content.x + cursor + child_layout.margin.w, y}
+			cursor += child_layout.margin.w + child_size.x + child_layout.margin.y
+			if stack.draggable &&
+			   child_ordinal < child_count - 1 &&
+			   state.split_handle_count < MAX_NODES {
+				handle_rect := Rect{content.x + cursor, content.y, max(gap, 8), content.height}
+				handle_rect.x += (gap - handle_rect.width) * 0.5
+				state.split_handles[state.split_handle_count] = {
 					rect = handle_rect,
 					before_node = child_index,
 					after_node = children[child_ordinal + 1],
 					horizontal = true,
 					editor = node.origin == .Editor,
 					min_size = stack.min_size,
-				}; state.split_handle_count += 1}; cursor += gap; child_flowed = true} else if is_vstack {position = {content.x + child_layout.margin.w, content.y + cursor + child_layout.margin.x}; cursor += child_layout.margin.x + child_size.y + child_layout.margin.z; if stack.draggable && child_ordinal < child_count - 1 && state.split_handle_count < MAX_NODES {handle_rect := Rect{content.x, content.y + cursor, content.width, max(gap, 8)}; handle_rect.y += (gap - handle_rect.height) * 0.5; state.split_handles[state.split_handle_count] = {
+				}
+				state.split_handle_count += 1
+			}
+			cursor += gap
+			child_flowed = true
+		} else if is_vstack {
+			x, resolved_width := resolve_aligned_axis(
+				content.x,
+				content.width,
+				child_size.x,
+				child_layout.min_size.x,
+				child_layout.position.x,
+				child_layout.margin.w,
+				child_layout.margin.y,
+				child_layout.horizontal_alignment,
+				child_layout.fill_width ||
+				(stack.fill &&
+						(child_layout.horizontal_alignment == .Start ||
+								child_layout.horizontal_alignment == .Stretch)),
+			)
+			child_size.x = resolved_width
+			position = {x, content.y + cursor + child_layout.margin.x}
+			cursor += child_layout.margin.x + child_size.y + child_layout.margin.z
+			if stack.draggable &&
+			   child_ordinal < child_count - 1 &&
+			   state.split_handle_count < MAX_NODES {
+				handle_rect := Rect{content.x, content.y + cursor, content.width, max(gap, 8)}
+				handle_rect.y += (gap - handle_rect.height) * 0.5
+				state.split_handles[state.split_handle_count] = {
 					rect = handle_rect,
 					before_node = child_index,
 					after_node = children[child_ordinal + 1],
 					horizontal = false,
 					editor = node.origin == .Editor,
 					min_size = stack.min_size,
-				}; state.split_handle_count += 1}; cursor += gap; child_flowed = true}
+				}
+				state.split_handle_count += 1
+			}
+			cursor += gap
+			child_flowed = true
+		}
 		if is_scroll_area { position = {position.x, position.y - scroll_offset}; if !child_flowed { position = {node.rect.x + layout.padding.w + child_layout.position.x + child_layout.margin.w, content.y + child_layout.position.y + child_layout.margin.x - scroll_offset}; child_flowed = true } }
 		err := layout_node(
 			state,

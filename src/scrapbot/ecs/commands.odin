@@ -62,6 +62,7 @@ Command_Vec4_Field :: struct {
 UI_Component_Command_Kind :: enum {
 	None,
 	Layout,
+	Canvas,
 	HStack,
 	VStack,
 	Scroll_Area,
@@ -82,6 +83,7 @@ UI_Component_Command_Kind :: enum {
 UI_Component_Command :: struct {
 	kind: UI_Component_Command_Kind,
 	layout: UI_Layout_Component,
+	canvas: UI_Canvas_Component,
 	stack: UI_Stack_Component,
 	scroll_area: UI_Scroll_Area_Component,
 	panel: UI_Panel_Component,
@@ -426,6 +428,8 @@ ui_component_command_kind :: proc "contextless" (name: string) -> UI_Component_C
 	switch name {
 		case "scrapbot.ui_layout":
 			return .Layout
+		case "scrapbot.ui_canvas":
+			return .Canvas
 		case "scrapbot.ui_hstack":
 			return .HStack
 		case "scrapbot.ui_vstack":
@@ -1197,6 +1201,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 	entity.model_resource = ""
 	ui_component_names := [?]string {
 		"scrapbot.ui_layout",
+		"scrapbot.ui_canvas",
 		"scrapbot.ui_hstack",
 		"scrapbot.ui_vstack",
 		"scrapbot.ui_scroll_area",
@@ -1332,6 +1337,8 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 	switch command.kind {
 		case .Layout:
 			set_ui_layout(world, entity_index, command.layout)
+		case .Canvas:
+			set_ui_canvas(world, entity_index, command.canvas)
 		case .HStack:
 			set_ui_hstack(world, entity_index, command.stack)
 		case .VStack:

@@ -42,6 +42,7 @@ World_Component_Kind :: enum {
 	Material,
 	Render_Instance,
 	UI_Layout,
+	UI_Canvas,
 	UI_HStack,
 	UI_VStack,
 	UI_Scroll_Area,
@@ -124,7 +125,7 @@ format_world_integrity_failure :: proc(failure: World_Integrity_Failure) -> stri
 world_entity_component_slots :: proc(
 	world: ^World,
 	entity: World_Entity,
-) -> [29]World_Component_Slot {
+) -> [30]World_Component_Slot {
 	return {
 		{.Transform, entity.transform_index, len(world.transforms)},
 		{.Camera, entity.camera_index, len(world.cameras)},
@@ -137,6 +138,7 @@ world_entity_component_slots :: proc(
 		{.Material, entity.material_index, len(world.materials)},
 		{.Render_Instance, entity.render_instance_index, len(world.render_instances)},
 		{.UI_Layout, entity.ui_layout_index, len(world.ui_layouts)},
+		{.UI_Canvas, entity.ui_canvas_index, len(world.ui_canvases)},
 		{.UI_HStack, entity.ui_hstack_index, len(world.ui_hstacks)},
 		{.UI_VStack, entity.ui_vstack_index, len(world.ui_vstacks)},
 		{.UI_Scroll_Area, entity.ui_scroll_area_index, len(world.ui_scroll_areas)},
@@ -717,6 +719,7 @@ validate_world_integrity :: proc(
 		{world.free_material_indices[:], len(world.materials), .Material},
 		{world.free_render_instance_indices[:], len(world.render_instances), .Render_Instance},
 		{world.free_ui_layout_indices[:], len(world.ui_layouts), .UI_Layout},
+		{world.free_ui_canvas_indices[:], len(world.ui_canvases), .UI_Canvas},
 		{world.free_ui_hstack_indices[:], len(world.ui_hstacks), .UI_HStack},
 		{world.free_ui_vstack_indices[:], len(world.ui_vstacks), .UI_VStack},
 		{world.free_ui_scroll_area_indices[:], len(world.ui_scroll_areas), .UI_Scroll_Area},

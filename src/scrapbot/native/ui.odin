@@ -362,6 +362,8 @@ system_get_ui_component :: proc "c" (
 				fit_content_width = bool_to_c_int(value.fit_content_width),
 				fit_content_height = bool_to_c_int(value.fit_content_height),
 				fixed_in_fill = bool_to_c_int(value.fixed_in_fill),
+				horizontal_alignment = api_ui_alignment_from_shared(value.horizontal_alignment),
+				vertical_alignment = api_ui_alignment_from_shared(value.vertical_alignment),
 				tree_item = bool_to_c_int(value.tree_item),
 				tree_parent = api_uuid_from_shared(value.tree_parent),
 				tree_order = c.int(value.tree_order),
@@ -374,6 +376,21 @@ system_get_ui_component :: proc "c" (
 				popup_max_width = value.popup_max_width,
 				popup_max_height = value.popup_max_height,
 				popup_viewport_margin = value.popup_viewport_margin,
+			}
+		case "scrapbot.ui_canvas":
+			if world_entity.ui_canvas_index < 0 ||
+			   world_entity.ui_canvas_index >= len(step.world.ui_canvases) { return 0 }
+			value := step.world.ui_canvases[world_entity.ui_canvas_index]
+			payload.canvas = {
+				reference_size = api_vec2_from_shared(value.reference_size),
+				scale_mode = api_ui_canvas_scale_mode_from_shared(value.scale_mode),
+				horizontal_alignment = api_ui_canvas_alignment_from_shared(
+					value.horizontal_alignment,
+				),
+				vertical_alignment = api_ui_canvas_alignment_from_shared(value.vertical_alignment),
+				safe_area = api_vec4_from_shared(value.safe_area),
+				min_scale = value.min_scale,
+				max_scale = value.max_scale,
 			}
 		case "scrapbot.ui_hstack":
 			if world_entity.ui_hstack_index < 0 ||
@@ -710,6 +727,15 @@ ui_command_from_api_payload :: proc "c" (
 	command^ = {}
 	switch name {
 		case "scrapbot.ui_layout":
+			horizontal_alignment, horizontal_ok := shared_ui_alignment_from_api(
+				payload.layout.horizontal_alignment,
+			)
+			vertical_alignment, vertical_ok := shared_ui_alignment_from_api(
+				payload.layout.vertical_alignment,
+			)
+			if !horizontal_ok || !vertical_ok {
+				return "native ui_layout alignment is invalid"
+			}
 			value := shared.UI_Layout_Component {
 				parent = shared_uuid_from_api(payload.layout.parent),
 				popup_anchor = shared_uuid_from_api(payload.layout.popup_anchor),
@@ -728,6 +754,8 @@ ui_command_from_api_payload :: proc "c" (
 				fit_content_width = payload.layout.fit_content_width != 0,
 				fit_content_height = payload.layout.fit_content_height != 0,
 				fixed_in_fill = payload.layout.fixed_in_fill != 0,
+				horizontal_alignment = horizontal_alignment,
+				vertical_alignment = vertical_alignment,
 				tree_item = payload.layout.tree_item != 0,
 				tree_parent = shared_uuid_from_api(payload.layout.tree_parent),
 				tree_order = int(payload.layout.tree_order),
@@ -746,6 +774,33 @@ ui_command_from_api_payload :: proc "c" (
 			}
 			command.layout = value
 			return ecs.init_ui_component_command(command, .Layout)
+		case "scrapbot.ui_canvas":
+			scale_mode, scale_mode_ok := shared_ui_canvas_scale_mode_from_api(
+				payload.canvas.scale_mode,
+			)
+			horizontal_alignment, horizontal_ok := shared_ui_canvas_alignment_from_api(
+				payload.canvas.horizontal_alignment,
+			)
+			vertical_alignment, vertical_ok := shared_ui_canvas_alignment_from_api(
+				payload.canvas.vertical_alignment,
+			)
+			if !scale_mode_ok || !horizontal_ok || !vertical_ok {
+				return "native ui_canvas enum payload is invalid"
+			}
+			value := shared.UI_Canvas_Component {
+				reference_size = shared_vec2_from_api(payload.canvas.reference_size),
+				scale_mode = scale_mode,
+				horizontal_alignment = horizontal_alignment,
+				vertical_alignment = vertical_alignment,
+				safe_area = shared_vec4_from_api(payload.canvas.safe_area),
+				min_scale = payload.canvas.min_scale,
+				max_scale = payload.canvas.max_scale,
+			}
+			if !shared.ui_canvas_is_valid(value) {
+				return "native ui_canvas payload is invalid"
+			}
+			command.canvas = value
+			return ecs.init_ui_component_command(command, .Canvas)
 		case "scrapbot.ui_hstack", "scrapbot.ui_vstack":
 			value := shared.UI_Stack_Component {
 				gap = payload.stack.gap,
@@ -1269,4 +1324,113 @@ shared_text_alignment_from_api :: proc "contextless" (
 			return .Right, true
 	}
 	return .Left, false
+}
+
+api_ui_alignment_from_shared :: proc "contextless" (
+	value: shared.UI_Alignment,
+) -> api.UI_Alignment {
+	switch value {
+		case .Start:
+			return .Start
+		case .Center:
+			return .Center
+		case .End:
+			return .End
+		case .Stretch:
+			return .Stretch
+	}
+	return .Start
+}
+
+shared_ui_alignment_from_api :: proc "contextless" (
+	value: api.UI_Alignment,
+) -> (
+	shared.UI_Alignment,
+	bool,
+) {
+	#partial switch value {
+		case .Start:
+			return .Start, true
+		case .Center:
+			return .Center, true
+		case .End:
+			return .End, true
+		case .Stretch:
+			return .Stretch, true
+	}
+	return .Start, false
+}
+
+api_ui_canvas_alignment_from_shared :: proc "contextless" (
+	value: shared.UI_Canvas_Alignment,
+) -> api.UI_Canvas_Alignment {
+	switch value {
+		case .Start:
+			return .Start
+		case .Center:
+			return .Center
+		case .End:
+			return .End
+	}
+	return .Start
+}
+
+shared_ui_canvas_alignment_from_api :: proc "contextless" (
+	value: api.UI_Canvas_Alignment,
+) -> (
+	shared.UI_Canvas_Alignment,
+	bool,
+) {
+	#partial switch value {
+		case .Start:
+			return .Start, true
+		case .Center:
+			return .Center, true
+		case .End:
+			return .End, true
+	}
+	return .Start, false
+}
+
+api_ui_canvas_scale_mode_from_shared :: proc "contextless" (
+	value: shared.UI_Canvas_Scale_Mode,
+) -> api.UI_Canvas_Scale_Mode {
+	switch value {
+		case .Fit:
+			return .Fit
+		case .Fill:
+			return .Fill
+		case .Expand:
+			return .Expand
+		case .Stretch:
+			return .Stretch
+		case .Pixel_Perfect:
+			return .Pixel_Perfect
+		case .None:
+			return .None
+	}
+	return .Fit
+}
+
+shared_ui_canvas_scale_mode_from_api :: proc "contextless" (
+	value: api.UI_Canvas_Scale_Mode,
+) -> (
+	shared.UI_Canvas_Scale_Mode,
+	bool,
+) {
+	#partial switch value {
+		case .Fit:
+			return .Fit, true
+		case .Fill:
+			return .Fill, true
+		case .Expand:
+			return .Expand, true
+		case .Stretch:
+			return .Stretch, true
+		case .Pixel_Perfect:
+			return .Pixel_Perfect, true
+		case .None:
+			return .None, true
+	}
+	return .Fit, false
 }

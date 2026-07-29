@@ -397,6 +397,8 @@ run = '''
 COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-compute.png"
 CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cpu.png"
 UI_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-ui.png"
+RESPONSIVE_UI_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-responsive-ui.png"
+RESPONSIVE_UI_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-responsive-ui.json"
 OVERLAY_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-editor-overlay.png"
 OVERLAY_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-editor-overlay.json"
 ATMOSPHERE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment.png"
@@ -415,10 +417,11 @@ CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
 CLUSTER_PAUSED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-paused.png"
 CLUSTER_STOPPED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-stopped.png"
 CLUSTER_RESTART_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-restart.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
+RESPONSIVE_UI_JSON="$(bin/scrapbot run examples/ui-showcase --headless --no-hot-reload --frames 90 --ui-script tests/fixtures/ui/responsive-canvas-showcase.json --ui-dump "$RESPONSIVE_UI_DUMP" --framegrab "$RESPONSIVE_UI_FRAME" --json)"
 OVERLAY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/editor-overlay-lifecycle.json --ui-dump "$OVERLAY_DUMP" --framegrab "$OVERLAY_FRAME" --json)"
 ATMOSPHERE_BASELINE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 80 --ui-script tests/fixtures/ui/world-environment-baseline.json --framegrab "$ATMOSPHERE_BASELINE_FRAME" --json)"
 ATMOSPHERE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 80 --ui-script tests/fixtures/ui/world-environment.json --ui-dump "$ATMOSPHERE_DUMP" --framegrab "$ATMOSPHERE_FRAME" --json)"
@@ -435,6 +438,19 @@ CLUSTER_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor -
 CLUSTER_PAUSED_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 40 --ui-script tests/fixtures/ui/clustered-lights-paused.json --framegrab "$CLUSTER_PAUSED_FRAME" --json)"
 CLUSTER_STOPPED_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 20 --ui-script tests/fixtures/ui/clustered-lights-stopped.json --framegrab "$CLUSTER_STOPPED_FRAME" --json)"
 CLUSTER_RESTART_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 30 --ui-script tests/fixtures/ui/clustered-lights-restart.json --framegrab "$CLUSTER_RESTART_FRAME" --json)"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const dump = JSON.parse(require("node:fs").readFileSync(process.argv[2], "utf8"));
+const hud = dump.nodes?.find((node) => node.name === "HUD");
+const arcade = dump.nodes?.find((node) => node.name === "Arcade Theme");
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    result.result?.render_stats?.ui_project_vertex_rebuilds < 1 ||
+    hud?.screen_rect?.x !== 28 || hud?.screen_rect?.y !== 60 ||
+    arcade?.screen_rect?.x !== 662 || arcade?.screen_rect?.y !== 60) {
+  console.error("responsive UI canvas smoke failed");
+  process.exit(1);
+}
+' "$RESPONSIVE_UI_JSON" "$RESPONSIVE_UI_DUMP"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);

@@ -112,6 +112,10 @@ editor_reflected_snapshot_component_value :: proc(
 			if entity.has_ui_layout {
 				return any{rawptr(&entity.ui_layout), typeid_of(shared.UI_Layout_Component)}, true
 			}
+		case .UI_Canvas:
+			if entity.has_ui_canvas {
+				return any{rawptr(&entity.ui_canvas), typeid_of(shared.UI_Canvas_Component)}, true
+			}
 		case .UI_HStack:
 			if entity.has_ui_hstack {
 				return any{rawptr(&entity.ui_hstack), typeid_of(shared.UI_Stack_Component)}, true
@@ -267,6 +271,12 @@ editor_reflected_live_component_value :: proc(
 			return any {
 					rawptr(&world.ui_layouts[entity.ui_layout_index]),
 					typeid_of(shared.UI_Layout_Component),
+				},
+				true
+		case .UI_Canvas:
+			return any {
+					rawptr(&world.ui_canvases[entity.ui_canvas_index]),
+					typeid_of(shared.UI_Canvas_Component),
 				},
 				true
 		case .UI_HStack:

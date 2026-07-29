@@ -48,7 +48,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 ### Retained UI
 
-- ECS-first retained UI: responsive box model, fixed/proportional stacks, overlays, draggable separators, hidden subtrees, smooth clipped scroll areas, selectable lists, progress indicators, collapsible panels, equal/proportional tables, buttons, checkboxes, numeric controls, and keyboard-focused text inputs with Tab traversal.
+- ECS-first retained UI: authored fit/fill/expand/stretch/pixel-perfect canvases, safe areas, per-axis alignment, responsive box model, fixed/proportional stacks, overlays, draggable separators, hidden subtrees, smooth clipped scroll areas, selectable lists, progress indicators, collapsible panels, equal/proportional tables, buttons, checkboxes, numeric controls, and keyboard-focused text inputs with Tab traversal.
 - MTSDF text with auto-atlased project fonts (embedded Inter fallback), UUID-backed project SVG icon catalogs plus an embedded control catalog, and SDF-rounded styling for backgrounds, borders, and controls.
 - One public component contract: scene TOML, Luau systems, native Odin extensions, and the editor all construct and mutate the same typed UI values; reusable semantic actions publish ordered immutable events to independent project/editor readers.
 - Revision-driven paint with independent project, editor, and world-overlay GPU streams — unchanged domains skip reconciliation, layout, paint, and uploads entirely.
@@ -226,7 +226,7 @@ trends; they are not portable performance thresholds.
   - [x] Collapsible titled panels
   - [x] Equal or proportional tables with draggable column separators
   - [x] Selectable lists and progress indicators
-  - [ ] Canvas scaling
+  - [x] Responsive canvas scaling, safe areas, and per-axis alignment
   - [x] Built-in scalable UI text
   - [x] MTSDF-based font rendering
   - [x] Auto-atlased project TTF/OTF fonts with embedded Inter fallback

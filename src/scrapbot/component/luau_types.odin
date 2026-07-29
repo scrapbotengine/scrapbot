@@ -37,6 +37,7 @@ export type Scrapbot = {
 	shadow_caster: ScrapbotShadowCasterComponent,
 	shadow_receiver: ScrapbotShadowReceiverComponent,
 	ui_layout: ScrapbotUiLayoutComponent,
+	ui_canvas: ScrapbotUiCanvasComponent,
 	ui_hstack: ScrapbotUiHstackComponent,
 	ui_vstack: ScrapbotUiVstackComponent,
 	ui_scroll_area: ScrapbotUiScrollAreaComponent,

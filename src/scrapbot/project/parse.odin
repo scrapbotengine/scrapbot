@@ -677,6 +677,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.shadow_caster]" ||
 		   line == "[entities.shadow_receiver]" ||
 		   line == "[entities.ui_layout]" ||
+		   line == "[entities.ui_canvas]" ||
 		   line == "[entities.ui_hstack]" ||
 		   line == "[entities.ui_vstack]" ||
 		   line == "[entities.ui_scroll_area]" ||
@@ -706,6 +707,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			}
 			if section == "shadow_receiver" { current.has_shadow_receiver = true }
 			if section == "ui_layout" { current.has_ui_layout = true }
+			if section == "ui_canvas" {
+				current.has_ui_canvas = true
+				current.ui_canvas = shared.ui_canvas_default()
+			}
 			if section == "ui_hstack" { current.has_ui_hstack = true }
 			if section == "ui_vstack" { current.has_ui_vstack = true }
 			if section == "ui_scroll_area" {
@@ -1141,6 +1146,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_layout.fit_content_height, found = parse_bool(value)
 					case "fixed_in_fill":
 						current.ui_layout.fixed_in_fill, found = parse_bool(value)
+					case "horizontal_alignment":
+						current.ui_layout.horizontal_alignment, found = parse_ui_alignment(value)
+					case "vertical_alignment":
+						current.ui_layout.vertical_alignment, found = parse_ui_alignment(value)
 					case "tree_item":
 						current.ui_layout.tree_item, found = parse_bool(value)
 					case "tree_parent":
@@ -1179,6 +1188,36 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						)
 				}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_layout.%s", key)) }
+			case "ui_canvas":
+				current.has_ui_canvas = true
+				switch key {
+					case "reference_size":
+						current.ui_canvas.reference_size, found = parse_vec2(value)
+					case "scale_mode":
+						current.ui_canvas.scale_mode, found = parse_ui_canvas_scale_mode(value)
+					case "horizontal_alignment":
+						current.ui_canvas.horizontal_alignment, found = parse_ui_canvas_alignment(
+							value,
+						)
+					case "vertical_alignment":
+						current.ui_canvas.vertical_alignment, found = parse_ui_canvas_alignment(
+							value,
+						)
+					case "safe_area":
+						current.ui_canvas.safe_area, found = parse_vec4(value)
+					case "min_scale":
+						current.ui_canvas.min_scale, found = parse_f32(value)
+					case "max_scale":
+						current.ui_canvas.max_scale, found = parse_f32(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_canvas field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_canvas.%s", key))
+				}
 			case "ui_hstack":
 				current.has_ui_hstack = true
 				switch key {case "gap":
@@ -1737,6 +1776,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 	}
 	entity_indices := make(map[shared.Entity_UUID]int, len(scene.entities))
 	defer delete(entity_indices)
+	canvas_count := 0
 	for entity, index in scene.entities {
 		if entity.id == (shared.Entity_UUID{}) {
 			return scene, fail(.Missing_Field, fmt.tprintf("entity %d is missing id", index))
@@ -1828,7 +1868,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   entity.has_ui_input ||
 			   entity.has_ui_checkbox ||
 			   entity.has_ui_color_picker ||
-			   entity.has_ui_action) &&
+			   entity.has_ui_action ||
+			   entity.has_ui_canvas) &&
 		   !entity.has_ui_layout { return scene, fail(.Invalid_Field, fmt.tprintf("UI component on '%s' requires ui_layout", entity.name)) }
 		if entity.has_ui_layout && !shared.ui_layout_is_valid(entity.ui_layout) {
 			return scene, fail(
@@ -1838,6 +1879,27 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 					entity.name,
 				),
 			)
+		}
+		if entity.has_ui_canvas {
+			canvas_count += 1
+			if canvas_count > 1 {
+				return scene, fail(.Invalid_Field, "a scene may declare only one ui_canvas")
+			}
+			if entity.ui_layout.parent != (shared.Entity_UUID{}) {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf("UI canvas entity '%s' must be a layout root", entity.name),
+				)
+			}
+			if !shared.ui_canvas_is_valid(entity.ui_canvas) {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf(
+						"UI canvas entity '%s' has invalid scaling or safe-area values",
+						entity.name,
+					),
+				)
+			}
 		}
 		container_count := 0
 		if entity.has_ui_hstack { container_count += 1 }
@@ -2261,6 +2323,65 @@ parse_ui_text_alignment :: proc(value: string) -> (out: shared.UI_Text_Alignment
 			return .Right, true
 		case:
 			return .Left, false
+	}
+}
+
+parse_ui_alignment :: proc(value: string) -> (out: shared.UI_Alignment, ok: bool) {
+	text, parsed := parse_basic_string(value)
+	if !parsed {
+		return .Start, false
+	}
+	switch text {
+		case "", "start":
+			return .Start, true
+		case "center":
+			return .Center, true
+		case "end":
+			return .End, true
+		case "stretch":
+			return .Stretch, true
+		case:
+			return .Start, false
+	}
+}
+
+parse_ui_canvas_scale_mode :: proc(value: string) -> (out: shared.UI_Canvas_Scale_Mode, ok: bool) {
+	text, parsed := parse_basic_string(value)
+	if !parsed {
+		return .Fit, false
+	}
+	switch text {
+		case "fit":
+			return .Fit, true
+		case "fill":
+			return .Fill, true
+		case "expand":
+			return .Expand, true
+		case "stretch":
+			return .Stretch, true
+		case "pixel_perfect":
+			return .Pixel_Perfect, true
+		case "none":
+			return .None, true
+		case:
+			return .Fit, false
+	}
+}
+
+parse_ui_canvas_alignment :: proc(value: string) -> (out: shared.UI_Canvas_Alignment, ok: bool) {
+	text, parsed := parse_basic_string(value)
+	if !parsed {
+		return .Start, false
+	}
+	switch text {
+		case "", "start":
+			return .Start, true
+		case "center":
+			return .Center, true
+		case "end":
+			return .End, true
+		case:
+			return .Start, false
 	}
 }
 

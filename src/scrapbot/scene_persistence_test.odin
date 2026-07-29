@@ -441,7 +441,17 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 		has_shadow_caster = true,
 		has_shadow_receiver = true,
 		has_ui_layout = true,
-		ui_layout = {size = {800, 600}},
+		ui_layout = {size = {800, 600}, horizontal_alignment = .Center, vertical_alignment = .End},
+		has_ui_canvas = true,
+		ui_canvas = {
+			reference_size = {1600, 900},
+			scale_mode = .Expand,
+			horizontal_alignment = .Center,
+			vertical_alignment = .Center,
+			safe_area = {24, 32, 40, 48},
+			min_scale = 0.5,
+			max_scale = 3,
+		},
 	}
 	append(&root.custom_components, custom)
 	append(&loaded.scene.entities, root)

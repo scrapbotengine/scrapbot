@@ -162,6 +162,11 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			world.ui_layouts[entity.ui_layout_index] = {}
 			append(&world.free_ui_layout_indices, entity.ui_layout_index)
 			entity.ui_layout_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_canvas":
+			if entity.ui_canvas_index < 0 { return false }
+			world.ui_canvases[entity.ui_canvas_index] = {}
+			append(&world.free_ui_canvas_indices, entity.ui_canvas_index)
+			entity.ui_canvas_index = INVALID_COMPONENT_INDEX
 		case "scrapbot.ui_hstack":
 			if entity.ui_hstack_index < 0 { return false }
 			world.ui_hstacks[entity.ui_hstack_index] = {}
@@ -285,6 +290,9 @@ set_ui_layout :: proc(world: ^World, entity_index: int, value: UI_Layout_Compone
 		return false
 	}
 	entity := &world.entities[entity_index]
+	if entity.ui_canvas_index >= 0 && value.parent != (shared.Entity_UUID{}) {
+		return false
+	}
 	if entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts) {
 		current := &world.ui_layouts[entity.ui_layout_index]
 		hierarchy_changed := current.parent != value.parent || current.hidden != value.hidden
@@ -301,6 +309,8 @@ set_ui_layout :: proc(world: ^World, entity_index: int, value: UI_Layout_Compone
 			current.fit_content_width != value.fit_content_width ||
 			current.fit_content_height != value.fit_content_height ||
 			current.fixed_in_fill != value.fixed_in_fill ||
+			current.horizontal_alignment != value.horizontal_alignment ||
+			current.vertical_alignment != value.vertical_alignment ||
 			current.tree_item != value.tree_item ||
 			current.tree_parent != value.tree_parent ||
 			current.tree_order != value.tree_order ||
@@ -332,6 +342,47 @@ set_ui_layout :: proc(world: ^World, entity_index: int, value: UI_Layout_Compone
 		append(&world.ui_layouts, value)
 	}
 	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
+set_ui_canvas :: proc(world: ^World, entity_index: int, value: UI_Canvas_Component) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) || !shared.ui_canvas_is_valid(value) {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.ui_layout_index < 0 ||
+	   entity.ui_layout_index >= len(world.ui_layouts) ||
+	   world.ui_layouts[entity.ui_layout_index].parent != (shared.Entity_UUID{}) {
+		return false
+	}
+	if entity.ui_canvas_index >= 0 && entity.ui_canvas_index < len(world.ui_canvases) {
+		if world.ui_canvases[entity.ui_canvas_index] == value {
+			return true
+		}
+		world.ui_canvases[entity.ui_canvas_index] = value
+		mark_ui_layout_changed(world, entity_index)
+		bump_component_revision(world, entity_index)
+		return true
+	}
+	for other, other_index in world.entities {
+		if other_index == entity_index ||
+		   !other.alive ||
+		   ((other.origin == .Editor) != (entity.origin == .Editor)) ||
+		   other.ui_canvas_index < 0 ||
+		   other.ui_canvas_index >= len(world.ui_canvases) {
+			continue
+		}
+		return false
+	}
+	if index, found := take_free_slot(&world.free_ui_canvas_indices); found {
+		entity.ui_canvas_index = index
+		world.ui_canvases[index] = value
+	} else {
+		entity.ui_canvas_index = len(world.ui_canvases)
+		append(&world.ui_canvases, value)
+	}
+	mark_ui_entity_dirty(world, entity_index)
+	bump_component_revision(world, entity_index)
 	return true
 }
 

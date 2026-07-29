@@ -32,6 +32,7 @@ Lifecycle meanings:
 | `scrapbot.shadow_caster` | Rendering | Authored | Yes | Marker enabling participation in shadow rendering. |
 | `scrapbot.shadow_receiver` | Rendering | Authored | Yes | Marker enabling shadow reception. |
 | `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent/popup anchor, responsive sizing, visibility, and tree-row metadata. |
+| `scrapbot.ui_canvas` | UI layout | Authored | Yes | Singleton project-origin root policy for logical reference size, output scaling/alignment, safe area, and scale bounds. |
 | `scrapbot.ui_hstack` | UI layout | Authored | Yes | Horizontal flow, proportional fill, and optional draggable gaps. |
 | `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical flow, proportional fill, and optional draggable gaps. |
 | `scrapbot.ui_scroll_area` | UI container | Authored | Yes | Retained smooth vertical scrolling, clipping, and scrollbar styling. |
@@ -209,13 +210,23 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_layout`
 
-- **Contract:** Required UI geometry/hierarchy box containing UUID parent, sizing, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
+- **Contract:** Required UI geometry/hierarchy box containing UUID parent, sizing, per-axis alignment, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Scene TOML, Luau/native UI APIs, editor composition, generic UI setters.
 - **Consumers:** Retained hierarchy, layout, clipping, interaction hit testing, painting, tree/list mechanics, and generic popup placement/dismissal.
 - **Invalidation:** Attach/remove/parent changes enqueue structural work; layout-affecting setters advance layout revision and visual setters advance paint revision. Popup open/anchor/constraint changes target the affected domain; stable closed or unchanged popups do no derived work.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_layout).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ecs/ui_components_test.odin`, `ui/ui_retained_test.odin`.
+
+### `scrapbot.ui_canvas`
+
+- **Contract:** Optional singleton root policy per entity-origin domain selecting a logical reference size, fit/fill/expand/stretch/pixel-perfect/native-density scaling, host alignment, safe-area insets, and scale bounds.
+- **Storage/lifecycle:** Dedicated typed UI storage; authored, root-only, and dependent on `ui_layout`.
+- **Producers:** Scene TOML, Luau/native UI APIs, editor inspection/history, and generic UI setters.
+- **Consumers:** Retained root layout, WGPU project UI vertices/clips, embedded viewport sizing, pointer inversion, and semantic diagnostic screen rectangles.
+- **Invalidation:** Attach/remove changes exact retained membership; value changes advance only the matching project/editor layout domain. The reconciler caches the active slot by origin, so stable frames perform no canvas search or derived work.
+- **Surfaces:** Shared public UI contract across scene TOML, Luau, generated declarations, native Odin, persistence, and editor inspection; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_canvas).
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`, `render/wgpu.odin`; `ecs/ui_components_test.odin`, `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`.
 
 ### `scrapbot.ui_hstack`
 

@@ -32,6 +32,7 @@ export type Scrapbot = {
 	shadow_caster: ScrapbotShadowCasterComponent,
 	shadow_receiver: ScrapbotShadowReceiverComponent,
 	ui_layout: ScrapbotUiLayoutComponent,
+	ui_canvas: ScrapbotUiCanvasComponent,
 	ui_hstack: ScrapbotUiHstackComponent,
 	ui_vstack: ScrapbotUiVstackComponent,
 	ui_scroll_area: ScrapbotUiScrollAreaComponent,
@@ -557,6 +558,8 @@ export type ScrapbotUiLayout = {
 	fit_content_width: boolean?,
 	fit_content_height: boolean?,
 	fixed_in_fill: boolean?,
+	horizontal_alignment: string?,
+	vertical_alignment: string?,
 	tree_item: boolean?,
 	tree_parent: string?,
 	tree_order: number?,
@@ -589,6 +592,8 @@ export type ReadonlyScrapbotUiLayout = {
 	read fit_content_width: boolean,
 	read fit_content_height: boolean,
 	read fixed_in_fill: boolean,
+	read horizontal_alignment: string,
+	read vertical_alignment: string,
 	read tree_item: boolean,
 	read tree_parent: string,
 	read tree_order: number,
@@ -604,6 +609,28 @@ export type ReadonlyScrapbotUiLayout = {
 }
 
 export type ScrapbotUiLayoutComponent = ScrapbotComponent<ScrapbotUiLayout, ReadonlyScrapbotUiLayout>
+
+export type ScrapbotUiCanvas = {
+	reference_size: Vec2?,
+	scale_mode: string?,
+	horizontal_alignment: string?,
+	vertical_alignment: string?,
+	safe_area: Vec4?,
+	min_scale: number?,
+	max_scale: number?,
+}
+
+export type ReadonlyScrapbotUiCanvas = {
+	read reference_size: ReadonlyVec2,
+	read scale_mode: string,
+	read horizontal_alignment: string,
+	read vertical_alignment: string,
+	read safe_area: ReadonlyVec4,
+	read min_scale: number,
+	read max_scale: number,
+}
+
+export type ScrapbotUiCanvasComponent = ScrapbotComponent<ScrapbotUiCanvas, ReadonlyScrapbotUiCanvas>
 
 export type ScrapbotUiHstack = {
 	gap: number?,

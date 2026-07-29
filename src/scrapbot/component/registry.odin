@@ -51,6 +51,7 @@ Storage_Kind :: enum u8 {
 	Shadow_Caster,
 	Shadow_Receiver,
 	UI_Layout,
+	UI_Canvas,
 	UI_HStack,
 	UI_VStack,
 	UI_Scroll_Area,
@@ -500,6 +501,8 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "fit_content_width", field_type = .Bool},
 			Field_Definition{name = "fit_content_height", field_type = .Bool},
 			Field_Definition{name = "fixed_in_fill", field_type = .Bool},
+			Field_Definition{name = "horizontal_alignment", field_type = .String},
+			Field_Definition{name = "vertical_alignment", field_type = .String},
 			Field_Definition{name = "tree_item", field_type = .Bool},
 			Field_Definition{name = "tree_parent", field_type = .String},
 			Field_Definition{name = "tree_order", field_type = .Number},
@@ -512,6 +515,19 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "popup_max_width", field_type = .Number},
 			Field_Definition{name = "popup_max_height", field_type = .Number},
 			Field_Definition{name = "popup_viewport_margin", field_type = .Number},
+		},
+	)
+	register_engine_component(
+		registry,
+		"scrapbot.ui_canvas",
+		{
+			Field_Definition{name = "reference_size", field_type = .Vec2},
+			Field_Definition{name = "scale_mode", field_type = .String},
+			Field_Definition{name = "horizontal_alignment", field_type = .String},
+			Field_Definition{name = "vertical_alignment", field_type = .String},
+			Field_Definition{name = "safe_area", field_type = .Vec4},
+			Field_Definition{name = "min_scale", field_type = .Number},
+			Field_Definition{name = "max_scale", field_type = .Number},
 		},
 	)
 	stack_fields := [?]Field_Definition {
@@ -867,6 +883,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .Shadow_Receiver, .Authored
 		case "scrapbot.ui_layout":
 			return .UI_Layout, .Authored
+		case "scrapbot.ui_canvas":
+			return .UI_Canvas, .Authored
 		case "scrapbot.ui_hstack":
 			return .UI_HStack, .Authored
 		case "scrapbot.ui_vstack":

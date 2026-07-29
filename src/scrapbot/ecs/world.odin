@@ -38,6 +38,7 @@ Directional_Light_Component :: shared.Directional_Light_Component
 Point_Light_Component :: shared.Point_Light_Component
 World_Environment_Component :: shared.World_Environment_Component
 UI_Layout_Component :: shared.UI_Layout_Component
+UI_Canvas_Component :: shared.UI_Canvas_Component
 UI_Stack_Component :: shared.UI_Stack_Component
 UI_Scroll_Area_Component :: shared.UI_Scroll_Area_Component
 UI_Panel_Component :: shared.UI_Panel_Component
@@ -88,6 +89,7 @@ init_world_entity :: proc(
 		render_directional_light_active_index = INVALID_COMPONENT_INDEX,
 		render_point_light_active_index = INVALID_COMPONENT_INDEX,
 		ui_layout_index = INVALID_COMPONENT_INDEX,
+		ui_canvas_index = INVALID_COMPONENT_INDEX,
 		ui_hstack_index = INVALID_COMPONENT_INDEX,
 		ui_vstack_index = INVALID_COMPONENT_INDEX,
 		ui_scroll_area_index = INVALID_COMPONENT_INDEX,
@@ -282,6 +284,7 @@ World_Storage_Stats :: struct {
 	material_slots: int,
 	render_instance_slots: int,
 	ui_layout_slots: int,
+	ui_canvas_slots: int,
 	ui_hstack_slots: int,
 	ui_vstack_slots: int,
 	ui_scroll_area_slots: int,
@@ -390,6 +393,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.free_material_indices)
 	delete(world.free_render_instance_indices)
 	delete(world.ui_layouts)
+	delete(world.ui_canvases)
 	delete(world.ui_hstacks)
 	delete(world.ui_vstacks)
 	delete(world.ui_scroll_areas)
@@ -408,6 +412,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_color_pickers)
 	delete(world.ui_actions)
 	delete(world.free_ui_layout_indices)
+	delete(world.free_ui_canvas_indices)
 	delete(world.free_ui_hstack_indices)
 	delete(world.free_ui_vstack_indices)
 	delete(world.free_ui_scroll_area_indices)
@@ -487,6 +492,10 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_layout {
 			world_entity.ui_layout_index = len(world.ui_layouts)
 			append(&world.ui_layouts, entity.ui_layout)
+		}
+		if entity.has_ui_canvas {
+			world_entity.ui_canvas_index = len(world.ui_canvases)
+			append(&world.ui_canvases, entity.ui_canvas)
 		}
 		if entity.has_ui_hstack { world_entity.ui_hstack_index = len(world.ui_hstacks); append(&world.ui_hstacks, entity.ui_hstack) }
 		if entity.has_ui_vstack { world_entity.ui_vstack_index = len(world.ui_vstacks); append(&world.ui_vstacks, entity.ui_vstack) }
@@ -1788,6 +1797,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		material_slots = len(world.materials),
 		render_instance_slots = len(world.render_instances),
 		ui_layout_slots = len(world.ui_layouts),
+		ui_canvas_slots = len(world.ui_canvases),
 		ui_hstack_slots = len(world.ui_hstacks),
 		ui_vstack_slots = len(world.ui_vstacks),
 		ui_scroll_area_slots = len(world.ui_scroll_areas),
@@ -1821,6 +1831,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		stats.material_slots +
 		stats.render_instance_slots +
 		stats.ui_layout_slots +
+		stats.ui_canvas_slots +
 		stats.ui_hstack_slots +
 		stats.ui_vstack_slots +
 		stats.ui_scroll_area_slots +
@@ -1857,6 +1868,7 @@ world_storage_stats_max :: proc "c" (a, b: World_Storage_Stats) -> World_Storage
 		material_slots = max(a.material_slots, b.material_slots),
 		render_instance_slots = max(a.render_instance_slots, b.render_instance_slots),
 		ui_layout_slots = max(a.ui_layout_slots, b.ui_layout_slots),
+		ui_canvas_slots = max(a.ui_canvas_slots, b.ui_canvas_slots),
 		ui_hstack_slots = max(a.ui_hstack_slots, b.ui_hstack_slots),
 		ui_vstack_slots = max(a.ui_vstack_slots, b.ui_vstack_slots),
 		ui_scroll_area_slots = max(a.ui_scroll_area_slots, b.ui_scroll_area_slots),
@@ -2844,6 +2856,8 @@ entity_has_component :: proc "c" (
 			return entity.has_shadow_receiver
 		case "scrapbot.ui_layout":
 			return entity.ui_layout_index >= 0 && entity.ui_layout_index < len(world.ui_layouts)
+		case "scrapbot.ui_canvas":
+			return entity.ui_canvas_index >= 0 && entity.ui_canvas_index < len(world.ui_canvases)
 		case "scrapbot.ui_hstack":
 			return entity.ui_hstack_index >= 0 && entity.ui_hstack_index < len(world.ui_hstacks)
 		case "scrapbot.ui_vstack":

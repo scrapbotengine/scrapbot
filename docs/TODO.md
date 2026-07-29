@@ -19,7 +19,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## ECS UI
 
-- [ ] Add canvas scaling and richer sizing and alignment policies.
 - [ ] Add project-defined named theme resources only if they can resolve explicitly without renderer state or stable-frame traversal. See [ADR-040](adr/ADR-040-resolve-ui-themes-into-component-values.md).
 
 ## Project Runtime And Scripting

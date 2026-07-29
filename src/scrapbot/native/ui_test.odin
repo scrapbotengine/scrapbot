@@ -104,6 +104,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	layout.fill_width = true
 	layout.fit_content_height = true
 	layout.fixed_in_fill = true
+	layout.horizontal_alignment = .Center
+	layout.vertical_alignment = .End
 	layout.tree_item = true
 	layout.tree_parent = shared.entity_uuid_from_engine_name("Native Tree Parent")
 	layout.tree_order = 6
@@ -118,6 +120,13 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	layout.popup_max_height = 160
 	layout.popup_viewport_margin = 6
 	testing.expect(t, ecs.set_ui_layout(&world, entity_index, layout))
+	canvas := shared.ui_canvas_default()
+	canvas.reference_size = {1600, 900}
+	canvas.scale_mode = .Expand
+	canvas.safe_area = {12, 20, 28, 36}
+	canvas.min_scale = 0.5
+	canvas.max_scale = 3
+	testing.expect(t, ecs.set_ui_canvas(&world, entity_index, canvas))
 	button := shared.ui_button_default()
 	button.text = "Popup"
 	button.popup = world.entities[entity_index].uuid
@@ -313,6 +322,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, layout_payload.layout.fill_width != 0)
 	testing.expect(t, layout_payload.layout.fit_content_height != 0)
 	testing.expect(t, layout_payload.layout.fixed_in_fill != 0)
+	testing.expect(t, layout_payload.layout.horizontal_alignment == .Center)
+	testing.expect(t, layout_payload.layout.vertical_alignment == .End)
 	testing.expect(t, layout_payload.layout.tree_item != 0)
 	testing.expect(
 		t,
@@ -328,6 +339,17 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, layout_payload.layout.popup_open != 0)
 	testing.expect(t, layout_payload.layout.popup_close_on_selection != 0)
 	testing.expect(t, layout_payload.layout.popup_gap == 4)
+	canvas_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_canvas", &canvas_payload) != 0,
+	)
+	testing.expect(t, canvas_payload.canvas.reference_size == (api.Vec2{1600, 900}))
+	testing.expect(t, canvas_payload.canvas.scale_mode == .Expand)
+	testing.expect(t, canvas_payload.canvas.horizontal_alignment == .Center)
+	testing.expect(t, canvas_payload.canvas.safe_area == (api.Vec4{12, 20, 28, 36}))
+	testing.expect(t, canvas_payload.canvas.min_scale == 0.5)
+	testing.expect(t, canvas_payload.canvas.max_scale == 3)
 	testing.expect(t, layout_payload.layout.popup_min_width == 180)
 	testing.expect(t, layout_payload.layout.popup_max_width == 320)
 	testing.expect(t, layout_payload.layout.popup_max_height == 160)

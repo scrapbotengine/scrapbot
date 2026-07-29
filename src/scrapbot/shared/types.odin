@@ -205,6 +205,8 @@ Scene_Entity :: struct {
 	ui_theme_recipe_count: int,
 	has_ui_layout: bool,
 	ui_layout: UI_Layout_Component,
+	has_ui_canvas: bool,
+	ui_canvas: UI_Canvas_Component,
 	has_ui_hstack: bool,
 	ui_hstack: UI_Stack_Component,
 	has_ui_vstack: bool,
@@ -479,6 +481,8 @@ UI_Layout_Component :: struct {
 	fit_content_width: bool,
 	fit_content_height: bool,
 	fixed_in_fill: bool,
+	horizontal_alignment: UI_Alignment,
+	vertical_alignment: UI_Alignment,
 	tree_item: bool,
 	tree_parent: Entity_UUID,
 	tree_order: int,
@@ -491,6 +495,34 @@ UI_Layout_Component :: struct {
 	popup_max_width: f32,
 	popup_max_height: f32,
 	popup_viewport_margin: f32,
+}
+UI_Alignment :: enum {
+	Start,
+	Center,
+	End,
+	Stretch,
+}
+UI_Canvas_Scale_Mode :: enum {
+	Fit,
+	Fill,
+	Expand,
+	Stretch,
+	Pixel_Perfect,
+	None,
+}
+UI_Canvas_Alignment :: enum {
+	Start,
+	Center,
+	End,
+}
+UI_Canvas_Component :: struct {
+	reference_size: Vec2,
+	scale_mode: UI_Canvas_Scale_Mode,
+	horizontal_alignment: UI_Canvas_Alignment,
+	vertical_alignment: UI_Canvas_Alignment,
+	safe_area: Vec4,
+	min_scale: f32,
+	max_scale: f32,
 }
 UI_Stack_Component :: struct {
 	gap: f32,
@@ -756,6 +788,15 @@ ui_layout_default :: proc "contextless" () -> UI_Layout_Component {
 	return {}
 }
 
+ui_canvas_default :: proc "contextless" () -> UI_Canvas_Component {
+	return {
+		reference_size = {1280, 720},
+		scale_mode = .Expand,
+		horizontal_alignment = .Center,
+		vertical_alignment = .Center,
+	}
+}
+
 ui_stack_default :: proc "contextless" () -> UI_Stack_Component {
 	return {}
 }
@@ -907,6 +948,28 @@ ui_layout_is_valid :: proc "contextless" (value: UI_Layout_Component) -> bool {
 		(!value.popup || value.parent == (Entity_UUID{})) &&
 		ui_vec4_is_non_negative(value.margin) &&
 		ui_vec4_is_non_negative(value.padding) \
+	)
+}
+
+ui_canvas_is_valid :: proc "contextless" (value: UI_Canvas_Component) -> bool {
+	return(
+		!math.is_nan(value.reference_size.x) &&
+		!math.is_inf(value.reference_size.x) &&
+		!math.is_nan(value.reference_size.y) &&
+		!math.is_inf(value.reference_size.y) &&
+		value.reference_size.x > 0 &&
+		value.reference_size.y > 0 &&
+		ui_vec4_is_finite(value.safe_area) &&
+		ui_vec4_is_non_negative(value.safe_area) &&
+		value.safe_area.w + value.safe_area.y < value.reference_size.x &&
+		value.safe_area.x + value.safe_area.z < value.reference_size.y &&
+		!math.is_nan(value.min_scale) &&
+		!math.is_inf(value.min_scale) &&
+		!math.is_nan(value.max_scale) &&
+		!math.is_inf(value.max_scale) &&
+		value.min_scale >= 0 &&
+		value.max_scale >= 0 &&
+		(value.max_scale == 0 || value.max_scale >= value.min_scale) \
 	)
 }
 
@@ -1457,6 +1520,7 @@ World_Entity :: struct {
 	has_shadow_caster: bool,
 	has_shadow_receiver: bool,
 	ui_layout_index: int,
+	ui_canvas_index: int,
 	ui_hstack_index: int,
 	ui_vstack_index: int,
 	ui_scroll_area_index: int,
@@ -1601,6 +1665,7 @@ World :: struct {
 	free_material_indices: [dynamic]int,
 	free_render_instance_indices: [dynamic]int,
 	ui_layouts: [dynamic]UI_Layout_Component,
+	ui_canvases: [dynamic]UI_Canvas_Component,
 	ui_hstacks: [dynamic]UI_Stack_Component,
 	ui_vstacks: [dynamic]UI_Stack_Component,
 	ui_scroll_areas: [dynamic]UI_Scroll_Area_Component,
@@ -1619,6 +1684,7 @@ World :: struct {
 	ui_color_pickers: [dynamic]UI_Color_Picker_Component,
 	ui_actions: [dynamic]UI_Action_Component,
 	free_ui_layout_indices: [dynamic]int,
+	free_ui_canvas_indices: [dynamic]int,
 	free_ui_hstack_indices: [dynamic]int,
 	free_ui_vstack_indices: [dynamic]int,
 	free_ui_scroll_area_indices: [dynamic]int,

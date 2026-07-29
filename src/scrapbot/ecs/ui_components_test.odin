@@ -5,6 +5,54 @@ import "core:strings"
 import "core:testing"
 
 @(test)
+test_ui_canvas_is_one_root_per_origin_and_reuses_storage :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	first_index, first_created := create_world_entity(&world, "First Canvas")
+	second_index, second_created := create_world_entity(&world, "Second Canvas")
+	editor_index, editor_created := create_world_entity(&world, "Editor Canvas", {}, .Editor)
+	toplevel := shared.UI_Layout_Component {
+		size = {1280, 720},
+	}
+	toplevel.horizontal_alignment = .Center
+	toplevel.vertical_alignment = .Stretch
+	toplevel_child := toplevel
+	toplevel_child.parent = shared.entity_uuid_from_engine_name("Parent")
+	toplevel_child.horizontal_alignment = .Start
+	toplevel_child.vertical_alignment = .Start
+	toplevel_child.size = {100, 100}
+
+	testing.expect(t, first_created && second_created && editor_created)
+	testing.expect(t, set_ui_layout(&world, first_index, toplevel))
+	testing.expect(t, set_ui_layout(&world, second_index, toplevel))
+	testing.expect(t, set_ui_layout(&world, editor_index, toplevel))
+	canvas := shared.ui_canvas_default()
+	testing.expect(t, set_ui_canvas(&world, first_index, canvas))
+	first_slot := world.entities[first_index].ui_canvas_index
+	testing.expect(t, first_slot >= 0)
+	testing.expect(t, !set_ui_canvas(&world, second_index, canvas))
+	testing.expect(t, set_ui_canvas(&world, editor_index, canvas))
+	runtime_index, runtime_created := create_world_entity(&world, "Runtime Canvas", {}, .Runtime)
+	testing.expect(t, runtime_created)
+	testing.expect(t, set_ui_layout(&world, runtime_index, toplevel))
+	testing.expect(t, !set_ui_canvas(&world, runtime_index, canvas))
+	testing.expect(t, !set_ui_layout(&world, first_index, toplevel_child))
+
+	canvas.safe_area = {8, 16, 24, 32}
+	revision := world.ui_project_layout_revision
+	testing.expect(t, set_ui_canvas(&world, first_index, canvas))
+	testing.expect(t, world.entities[first_index].ui_canvas_index == first_slot)
+	testing.expect(t, world.ui_project_layout_revision > revision)
+	revision = world.ui_project_layout_revision
+	testing.expect(t, set_ui_canvas(&world, first_index, canvas))
+	testing.expect(t, world.ui_project_layout_revision == revision)
+
+	testing.expect(t, remove_ui_component(&world, first_index, "scrapbot.ui_canvas"))
+	testing.expect(t, set_ui_canvas(&world, second_index, shared.ui_canvas_default()))
+	testing.expect(t, world.entities[second_index].ui_canvas_index == first_slot)
+}
+
+@(test)
 test_ui_input_icon_survives_authoring_snapshot_replacement :: proc(t: ^testing.T) {
 	world: World
 	defer destroy_world(&world)
@@ -203,6 +251,7 @@ test_ui_component_churn_reclaims_all_storage_slots :: proc(t: ^testing.T) {
 		entity_index, created := create_world_entity(&world, "Transient UI")
 		testing.expect(t, created)
 		testing.expect(t, set_ui_layout(&world, entity_index, {size = {100, 24}}))
+		testing.expect(t, set_ui_canvas(&world, entity_index, shared.ui_canvas_default()))
 		testing.expect(t, set_ui_hstack(&world, entity_index, {}))
 		testing.expect(t, set_ui_vstack(&world, entity_index, {}))
 		testing.expect(
@@ -231,6 +280,7 @@ test_ui_component_churn_reclaims_all_storage_slots :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, len(world.entities) == 1)
 	testing.expect(t, len(world.ui_layouts) == 1)
+	testing.expect(t, len(world.ui_canvases) == 1)
 	testing.expect(t, len(world.ui_hstacks) == 1)
 	testing.expect(t, len(world.ui_vstacks) == 1)
 	testing.expect(t, len(world.ui_scroll_areas) == 1)

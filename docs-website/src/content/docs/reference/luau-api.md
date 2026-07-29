@@ -46,6 +46,7 @@ Built-in handles:
 - `scrapbot.keyboard_input` (derived singleton; access declarations only)
 - `scrapbot.pointer_input` (derived singleton; access declarations only)
 - `scrapbot.ui_layout`
+- `scrapbot.ui_canvas`
 - `scrapbot.ui_hstack`
 - `scrapbot.ui_vstack`
 - `scrapbot.ui_panel`
@@ -88,6 +89,11 @@ scrapbot.spawn({
 ```
 
 The generated types constrain built-in theme and recipe names. Resolution itself does not require component access, but spawning or attaching the returned components requires the same declared writes as hand-authored payloads. See [UI theming](/guides/ui-theming/) for the complete recipe vocabulary and override rules.
+
+`scrapbot.ui_canvas` is a singleton root component whose reference size,
+scaling mode, per-axis alignment, safe area, and scale bounds drive layout,
+painting, pointer inversion, and diagnostics. Layout payloads also expose
+independent `horizontal_alignment` and `vertical_alignment`.
 
 UI query payloads expose the same complete layout, value, and style fields used by the editor. `scrapbot.ui_icon` selects an icon-set UUID plus symbol and supports HDR tint/inset; use `scrapbot.ui.builtin_icon_set` for the embedded catalog. Buttons carry the same icon reference plus leading/trailing position, size, gap, and inset. Layout payloads include `min_size`, per-axis `fill_width`/`fill_height`, per-axis `fit_content_width`/`fit_content_height`, and `fixed_in_fill` for fixed bars or headers inside a fill stack. Tree rows additionally expose `tree_item`, semantic `tree_parent`, sibling-local `tree_order`, and `tree_collapsed`. `scrapbot.ui_table` exposes proportional and resizable column policies plus a minimum column width; the first row's authored cell widths supply the proportions. `scrapbot.ui_list` can opt into direct-child dragging with configurable edge zones, insertion lines, and into-row tint, or enable shared nested-tree flattening and mutation with `tree_enabled` and `tree_indent`. `scrapbot.ui_progress` provides a reusable value/maximum indicator with track, fill, inset, corner, and direction styling. `scrapbot.ui_viewport` exposes Texture/Model/Material/World targets, optional camera/root UUIDs, orbit, distance, clear color, and shared interaction policy. Scrollbars, panel disclosures, button icons/title placement, input prefixes/selections/borders/carets, and checkbox boxes/checkmarks expose their geometry, colors, borders, and corner radii as ordinary mutable fields. A direct child button with `panel_action = true` occupies its parent panel's title band and advances its own ordinary activation revision. `scrapbot.ui_input` also exposes reusable numeric values, bounds, stepping, and scrubbing. Every laid-out element receives a renderer-owned, read-only `scrapbot.ui_state` payload with hover/active/focus, activation/change, validity, submit/cancel edges, draggable-list source/target UUIDs, `drop_placement` (`none`, `before`, `into`, or `after`), and monotonic revision counters including `drop_revision`. Transient booleans describe the most recent UI pass; revision counters let systems detect edges reliably.
 

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 90,
+  "actions": [
+    {
+      "action": "click",
+      "target": {
+        "name": "Arcade Primary",
+        "origin": "scene"
+      }
+    },
+    {
+      "action": "wait",
+      "frames": 2
+    },
+    {
+      "action": "expect",
+      "target": {
+        "name": "Arcade Status",
+        "origin": "scene"
+      },
+      "expect": "text",
+      "text": "BOOST ARMED"
+    },
+    {
+      "action": "capture",
+      "target": {
+        "name": "Responsive Canvas",
+        "origin": "scene"
+      }
+    }
+  ]
+}

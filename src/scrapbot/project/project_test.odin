@@ -1373,6 +1373,16 @@ fill_height = true
 fit_content_width = true
 fit_content_height = true
 fixed_in_fill = true
+horizontal_alignment = "center"
+vertical_alignment = "end"
+[entities.ui_canvas]
+reference_size = [1600, 900]
+scale_mode = "expand"
+horizontal_alignment = "center"
+vertical_alignment = "end"
+safe_area = [24, 32, 40, 48]
+min_scale = 0.5
+max_scale = 3
 [entities.ui_vstack]
 gap = 8
 fill = true
@@ -1458,6 +1468,16 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_layout.fit_content_width)
 	testing.expect(t, scene.entities[0].ui_layout.fit_content_height)
 	testing.expect(t, scene.entities[0].ui_layout.fixed_in_fill)
+	testing.expect(t, scene.entities[0].ui_layout.horizontal_alignment == .Center)
+	testing.expect(t, scene.entities[0].ui_layout.vertical_alignment == .End)
+	testing.expect(t, scene.entities[0].has_ui_canvas)
+	testing.expect(t, scene.entities[0].ui_canvas.reference_size == Vec2{1600, 900})
+	testing.expect(t, scene.entities[0].ui_canvas.scale_mode == .Expand)
+	testing.expect(t, scene.entities[0].ui_canvas.horizontal_alignment == .Center)
+	testing.expect(t, scene.entities[0].ui_canvas.vertical_alignment == .End)
+	testing.expect(t, scene.entities[0].ui_canvas.safe_area == Vec4{24, 32, 40, 48})
+	testing.expect_value(t, scene.entities[0].ui_canvas.min_scale, f32(0.5))
+	testing.expect_value(t, scene.entities[0].ui_canvas.max_scale, f32(3))
 	hud_id, hud_id_ok := shared.entity_uuid_parse("a6000000-0000-4000-8000-00000000000a")
 	testing.expect(t, hud_id_ok && scene.entities[1].ui_layout.parent == hud_id)
 	testing.expect(t, scene.entities[1].ui_text.text == "HELLO")

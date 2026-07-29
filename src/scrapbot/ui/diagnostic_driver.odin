@@ -583,10 +583,10 @@ diagnostic_rect_to_screen :: proc(
 	}
 	transform := project_canvas_transform(state, drawable_width, drawable_height)
 	return {
-		transform.viewport.x + rect.x * transform.scale,
-		transform.viewport.y + rect.y * transform.scale,
-		rect.width * transform.scale,
-		rect.height * transform.scale,
+		transform.viewport.x + rect.x * transform.scale.x,
+		transform.viewport.y + rect.y * transform.scale.y,
+		rect.width * transform.scale.x,
+		rect.height * transform.scale.y,
 	}
 }
 

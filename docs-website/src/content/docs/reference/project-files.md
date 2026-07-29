@@ -193,6 +193,33 @@ payload = "campaign"
 
 `action` is required and limited to 64 UTF-8 bytes; `payload` is optional and limited to 256 bytes. The interaction pass inherits the nearest action from the exact control or its UI ancestors and publishes it through the Luau/native immutable event API.
 
+Responsive project UI can define one root canvas:
+
+```toml
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000010"
+name = "Game UI"
+
+[entities.ui_layout]
+size = [1280, 720]
+fill_width = true
+fill_height = true
+
+[entities.ui_canvas]
+reference_size = [1280, 720]
+scale_mode = "expand"
+horizontal_alignment = "center"
+vertical_alignment = "center"
+safe_area = [24, 32, 24, 32]
+min_scale = 0
+max_scale = 0
+```
+
+`scale_mode` accepts `fit`, `fill`, `expand`, `stretch`, `pixel_perfect`, or
+`none`. Canvas alignment accepts `start`, `center`, or `end`; safe-area order is
+top, right, bottom, left. The canvas requires a root `ui_layout`, only one may
+exist in the scene origin, and zero scale bounds mean unbounded.
+
 ## Built-in component sections
 
 For a complete inventory of public engine components, reflected fields, defaults, constraints, and cross-surface names, see the [Engine Component Reference](/reference/components/).

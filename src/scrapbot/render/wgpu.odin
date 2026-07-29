@@ -1221,10 +1221,11 @@ wgpu_append_ui_vertices :: proc(
 	vertices: ^[dynamic]WGPU_UI_Vertex,
 	commands: []ui.Paint_Command,
 	editor_paint_start: int,
+	ui_state: ^ui.State,
 	viewport: ui.Rect,
 	drawable_width, drawable_height: f32,
 ) {
-	project_scale := ui.project_canvas_scale(drawable_width, drawable_height)
+	project_transform := ui.project_canvas_transform_in_host(ui_state, viewport)
 	for command, command_index in commands {
 		rect := command.rect
 		radius := command.corner_radius
@@ -1232,18 +1233,31 @@ wgpu_append_ui_vertices :: proc(
 		project_command := command_index < editor_paint_start
 		if project_command {
 			rect = {
-				viewport.x + rect.x * project_scale,
-				viewport.y + rect.y * project_scale,
-				rect.width * project_scale,
-				rect.height * project_scale,
+				project_transform.viewport.x + rect.x * project_transform.scale.x,
+				project_transform.viewport.y + rect.y * project_transform.scale.y,
+				rect.width * project_transform.scale.x,
+				rect.height * project_transform.scale.y,
 			}
-			radius *= project_scale
+			radius *= min(project_transform.scale.x, project_transform.scale.y)
+			clip = {
+				project_transform.clip.x,
+				project_transform.clip.y,
+				project_transform.clip.x + project_transform.clip.width,
+				project_transform.clip.y + project_transform.clip.height,
+			}
 			if command.has_clip {
+				command_clip := ui.Rect {
+					project_transform.viewport.x + command.clip.x * project_transform.scale.x,
+					project_transform.viewport.y + command.clip.y * project_transform.scale.y,
+					command.clip.width * project_transform.scale.x,
+					command.clip.height * project_transform.scale.y,
+				}
+				command_clip = ui.rect_intersection(command_clip, project_transform.clip)
 				clip = {
-					viewport.x + command.clip.x * project_scale,
-					viewport.y + command.clip.y * project_scale,
-					viewport.x + (command.clip.x + command.clip.width) * project_scale,
-					viewport.y + (command.clip.y + command.clip.height) * project_scale,
+					command_clip.x,
+					command_clip.y,
+					command_clip.x + command_clip.width,
+					command_clip.y + command_clip.height,
 				}
 			}
 		} else if command.has_clip {
@@ -1261,14 +1275,14 @@ wgpu_append_ui_vertices :: proc(
 			line_thickness := command.line_thickness
 			if project_command {
 				line_start = {
-					viewport.x + line_start.x * project_scale,
-					viewport.y + line_start.y * project_scale,
+					project_transform.viewport.x + line_start.x * project_transform.scale.x,
+					project_transform.viewport.y + line_start.y * project_transform.scale.y,
 				}
 				line_end = {
-					viewport.x + line_end.x * project_scale,
-					viewport.y + line_end.y * project_scale,
+					project_transform.viewport.x + line_end.x * project_transform.scale.x,
+					project_transform.viewport.y + line_end.y * project_transform.scale.y,
 				}
-				line_thickness *= project_scale
+				line_thickness *= min(project_transform.scale.x, project_transform.scale.y)
 			}
 			dx := line_end.x - line_start.x
 			dy := line_end.y - line_start.y
@@ -1380,7 +1394,7 @@ wgpu_append_ui_vertices :: proc(
 		}
 		border_width := command.border_width
 		if project_command {
-			border_width *= project_scale
+			border_width *= min(project_transform.scale.x, project_transform.scale.y)
 		}
 		params := [3]f32{shape_width, shape_height, radius}
 		append(
@@ -1506,6 +1520,7 @@ wgpu_rebuild_ui_vertex_stream :: proc(
 	vertices: ^[dynamic]WGPU_UI_Vertex,
 	commands: []ui.Paint_Command,
 	project: bool,
+	ui_state: ^ui.State,
 	viewport: ui.Rect,
 	drawable_width, drawable_height: f32,
 	vertex_buffer: ^wgpu.Buffer,
@@ -1521,6 +1536,7 @@ wgpu_rebuild_ui_vertex_stream :: proc(
 		vertices,
 		commands,
 		project_command_count,
+		ui_state,
 		viewport,
 		drawable_width,
 		drawable_height,
@@ -2372,6 +2388,7 @@ wgpu_encode_render_pass :: proc(
 				&renderer.ui_project_vertices,
 				ui_state.paint[:project_command_count],
 				true,
+				ui_state,
 				viewport,
 				drawable_width,
 				drawable_height,
@@ -2401,6 +2418,7 @@ wgpu_encode_render_pass :: proc(
 				&renderer.ui_editor_vertices,
 				ui_state.paint[project_command_count:editor_command_end],
 				false,
+				ui_state,
 				viewport,
 				drawable_width,
 				drawable_height,
@@ -2430,6 +2448,7 @@ wgpu_encode_render_pass :: proc(
 				&renderer.ui_overlay_vertices,
 				ui_state.editor_overlay_paint[:ui_state.editor_overlay_paint_count],
 				false,
+				ui_state,
 				viewport,
 				drawable_width,
 				drawable_height,

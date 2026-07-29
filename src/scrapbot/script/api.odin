@@ -94,6 +94,10 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	); lua_setfield(L, -2, "ui_layout")
 	push_registered_component_handle_by_name(
 		L,
+		"scrapbot.ui_canvas",
+	); lua_setfield(L, -2, "ui_canvas")
+	push_registered_component_handle_by_name(
+		L,
 		"scrapbot.ui_hstack",
 	); lua_setfield(L, -2, "ui_hstack")
 	push_registered_component_handle_by_name(

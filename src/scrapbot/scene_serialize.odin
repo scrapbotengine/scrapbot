@@ -211,6 +211,16 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "fit_content_width", scene_bool(value.fit_content_width))
 		write_scene_value(builder, "fit_content_height", scene_bool(value.fit_content_height))
 		write_scene_value(builder, "fixed_in_fill", scene_bool(value.fixed_in_fill))
+		write_scene_string(
+			builder,
+			"horizontal_alignment",
+			scene_ui_alignment(value.horizontal_alignment),
+		)
+		write_scene_string(
+			builder,
+			"vertical_alignment",
+			scene_ui_alignment(value.vertical_alignment),
+		)
 		write_scene_value(builder, "tree_item", scene_bool(value.tree_item))
 		if value.tree_parent != (shared.Entity_UUID{}) {
 			write_scene_string(builder, "tree_parent", scene_uuid(value.tree_parent))
@@ -247,6 +257,25 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 				"popup_viewport_margin",
 				scene_f32(value.popup_viewport_margin),
 			)
+		}
+		if entity.has_ui_canvas {
+			value := entity.ui_canvas
+			write_scene_section(builder, "ui_canvas")
+			write_scene_value(builder, "reference_size", scene_vec2(value.reference_size))
+			write_scene_string(builder, "scale_mode", scene_ui_canvas_scale_mode(value.scale_mode))
+			write_scene_string(
+				builder,
+				"horizontal_alignment",
+				scene_ui_canvas_alignment(value.horizontal_alignment),
+			)
+			write_scene_string(
+				builder,
+				"vertical_alignment",
+				scene_ui_canvas_alignment(value.vertical_alignment),
+			)
+			write_scene_value(builder, "safe_area", scene_vec4(value.safe_area))
+			write_scene_value(builder, "min_scale", scene_f32(value.min_scale))
+			write_scene_value(builder, "max_scale", scene_f32(value.max_scale))
 		}
 	}
 	if entity.has_ui_hstack { write_scene_stack(builder, "ui_hstack", entity.ui_hstack) }
@@ -578,6 +607,50 @@ scene_alignment :: proc(value: shared.UI_Text_Alignment) -> string {
 			return "right"
 	}
 	return "left"
+}
+
+scene_ui_alignment :: proc(value: shared.UI_Alignment) -> string {
+	switch value {
+		case .Start:
+			return "start"
+		case .Center:
+			return "center"
+		case .End:
+			return "end"
+		case .Stretch:
+			return "stretch"
+	}
+	return "start"
+}
+
+scene_ui_canvas_scale_mode :: proc(value: shared.UI_Canvas_Scale_Mode) -> string {
+	switch value {
+		case .Fit:
+			return "fit"
+		case .Fill:
+			return "fill"
+		case .Expand:
+			return "expand"
+		case .Stretch:
+			return "stretch"
+		case .Pixel_Perfect:
+			return "pixel_perfect"
+		case .None:
+			return "none"
+	}
+	return "fit"
+}
+
+scene_ui_canvas_alignment :: proc(value: shared.UI_Canvas_Alignment) -> string {
+	switch value {
+		case .Start:
+			return "start"
+		case .Center:
+			return "center"
+		case .End:
+			return "end"
+	}
+	return "start"
 }
 
 scene_icon_position :: proc(value: shared.UI_Icon_Position) -> string {

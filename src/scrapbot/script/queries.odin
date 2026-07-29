@@ -500,6 +500,9 @@ push_query_component_table :: proc "c" (
 		case "scrapbot.ui_layout":
 			push_ui_layout_table(L, world.ui_layouts[entity.ui_layout_index])
 			return
+		case "scrapbot.ui_canvas":
+			push_ui_canvas_table(L, world.ui_canvases[entity.ui_canvas_index])
+			return
 		case "scrapbot.ui_hstack":
 			push_ui_stack_table(L, world.ui_hstacks[entity.ui_hstack_index])
 			return
@@ -648,7 +651,7 @@ push_resource_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared
 }
 
 push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Component) {
-	lua_createtable(L, 0, 29)
+	lua_createtable(L, 0, 31)
 	push_uuid_field(L, "parent", value.parent)
 	push_uuid_field(L, "popup_anchor", value.popup_anchor)
 	push_vec2_field(L, "position", value.position)
@@ -666,6 +669,8 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_bool_field(L, "fit_content_width", value.fit_content_width)
 	push_bool_field(L, "fit_content_height", value.fit_content_height)
 	push_bool_field(L, "fixed_in_fill", value.fixed_in_fill)
+	push_string_field(L, "horizontal_alignment", ui_alignment_name(value.horizontal_alignment))
+	push_string_field(L, "vertical_alignment", ui_alignment_name(value.vertical_alignment))
 	push_bool_field(L, "tree_item", value.tree_item)
 	push_uuid_field(L, "tree_parent", value.tree_parent)
 	push_number_field(L, "tree_order", f32(value.tree_order))
@@ -678,6 +683,21 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_number_field(L, "popup_max_width", value.popup_max_width)
 	push_number_field(L, "popup_max_height", value.popup_max_height)
 	push_number_field(L, "popup_viewport_margin", value.popup_viewport_margin)
+}
+
+push_ui_canvas_table :: proc "c" (L: Lua_State, value: shared.UI_Canvas_Component) {
+	lua_createtable(L, 0, 7)
+	push_vec2_field(L, "reference_size", value.reference_size)
+	push_string_field(L, "scale_mode", ui_canvas_scale_mode_name(value.scale_mode))
+	push_string_field(
+		L,
+		"horizontal_alignment",
+		ui_canvas_alignment_name(value.horizontal_alignment),
+	)
+	push_string_field(L, "vertical_alignment", ui_canvas_alignment_name(value.vertical_alignment))
+	push_vec4_field(L, "safe_area", value.safe_area)
+	push_number_field(L, "min_scale", value.min_scale)
+	push_number_field(L, "max_scale", value.max_scale)
 }
 
 push_ui_stack_table :: proc "c" (L: Lua_State, value: shared.UI_Stack_Component) {

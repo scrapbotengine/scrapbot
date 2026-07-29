@@ -1,15 +1,33 @@
 [[entities]]
+id = "30000000-0000-4000-8000-000000000030"
+name = "Responsive Canvas"
+
+[entities.ui_layout]
+size = [1280, 720]
+fill_width = true
+fill_height = true
+
+[entities.ui_canvas]
+reference_size = [1280, 720]
+scale_mode = "expand"
+horizontal_alignment = "center"
+vertical_alignment = "center"
+safe_area = [28, 28, 28, 28]
+
+[[entities]]
 id = "30000000-0000-4000-8000-000000000001"
 name = "HUD"
 
 [entities.ui_layout]
-position = [40, 40]
+parent = "30000000-0000-4000-8000-000000000030"
 size = [560, 600]
 padding = [28, 28, 28, 28]
 background = [0.05, 0.055, 0.065, 0.99]
 border_color = [0.18, 0.20, 0.24, 1]
 border_width = 2
 corner_radius = 24
+horizontal_alignment = "start"
+vertical_alignment = "center"
 
 [entities.ui_vstack]
 gap = 16
@@ -439,13 +457,15 @@ id = "30000000-0000-4000-8000-000000000021"
 name = "Arcade Theme"
 
 [entities.ui_layout]
-position = [650, 40]
+parent = "30000000-0000-4000-8000-000000000030"
 size = [590, 600]
 padding = [38, 42, 38, 42]
 background = [0.10, 0.015, 0.18, 0.98]
 border_color = [0.98, 0.18, 0.72, 1]
 border_width = 4
 corner_radius = 40
+horizontal_alignment = "end"
+vertical_alignment = "center"
 
 [entities.ui_vstack]
 gap = 22

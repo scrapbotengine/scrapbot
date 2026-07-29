@@ -120,6 +120,15 @@ The context includes:
 - full indexed geometry and shared material registration;
 - linear HDR emission through the material descriptor's `emissive` vector;
 
+The typed UI union includes `UI_Layout_Payload` with per-axis
+`UI_Alignment` (`Start`, `Center`, `End`, or `Stretch`) and
+`UI_Canvas_Payload`. A canvas carries the logical reference size,
+`UI_Canvas_Scale_Mode`, non-stretching `UI_Canvas_Alignment`, safe-area insets,
+and optional scale bounds. The idiomatic wrapper exports `UI_CANVAS`,
+`UI_Canvas`, `UI_Canvas_Scale_Mode`, `UI_Canvas_Alignment`, and
+`ui_canvas_default()`. Canvas attachment is root-only and singleton per
+entity-origin domain.
+
 Registered geometry vertices contain position, normal, UV, and an optional tangent:
 
 ```odin

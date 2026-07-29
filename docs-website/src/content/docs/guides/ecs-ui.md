@@ -18,6 +18,7 @@ Every visible element starts with `scrapbot.ui_layout`. Add at most one flow con
 | Role | Components |
 | --- | --- |
 | Box | `ui_layout` |
+| Root policy | Optional singleton `ui_canvas` |
 | Flow | `ui_hstack`, `ui_vstack`, `ui_table`, or `ui_list` |
 | Viewport | `ui_scroll_area` |
 | Framing | `ui_panel` |
@@ -83,7 +84,7 @@ hover_background = [0.12, 0.15, 0.20, 1]
 active_background = [0.06, 0.08, 0.11, 1]
 ```
 
-Positions and sizes use top-left screen pixels. Margin, padding, and inset values use `[top, right, bottom, left]`. Parent cycles and incompatible container/content combinations fail project validation.
+Positions and sizes use logical pixels. Margin, padding, and inset values use `[top, right, bottom, left]`. Parent cycles and incompatible container/content combinations fail project validation.
 
 See the [Project File Reference](/reference/project-files/#built-in-component-sections) for every field and validation rule.
 The [Engine Component Reference](/reference/components/#ui-composition-rules) is the compact field/default inventory for every `scrapbot.ui_*` component.
@@ -146,7 +147,43 @@ Scrapbot compiles supported SVG geometry into a cached 512×512 MTSDF atlas. The
 
 ## Make layout responsive
 
-Use layout policy instead of repairing rectangles after layout:
+Put `scrapbot.ui_canvas` on one root layout to define how logical UI reaches the
+window or editor game viewport:
+
+```toml
+[entities.ui_layout]
+size = [1280, 720]
+fill_width = true
+fill_height = true
+
+[entities.ui_canvas]
+reference_size = [1280, 720]
+scale_mode = "expand"
+horizontal_alignment = "center"
+vertical_alignment = "center"
+safe_area = [24, 32, 24, 32]
+```
+
+Choose `expand` for a resolution-independent HUD that preserves scale and
+reveals more logical space on wider or taller displays. Use `fit` to letterbox,
+`fill` to crop while preserving aspect, `stretch` only when distortion is
+intentional, `pixel_perfect` for whole-number presentation, or `none` to follow
+the output pixel density. Optional `min_scale` and `max_scale` clamp the result;
+zero leaves a bound open.
+
+Canvas safe-area insets apply to its children. Combine them with each child's
+`horizontal_alignment` and `vertical_alignment` (`start`, `center`, `end`, or
+`stretch`) to anchor HUD regions without resize scripts:
+
+```toml
+[entities.ui_layout]
+parent = "d4000000-0000-4000-8000-000000000100"
+size = [320, 96]
+horizontal_alignment = "end"
+vertical_alignment = "start"
+```
+
+Then compose the rest from ordinary layout policy:
 
 - `fill_width` / `fill_height` consume available parent space.
 - `fit_content_width` / `fit_content_height` size around visible descendants.
@@ -161,7 +198,10 @@ Use layout policy instead of repairing rectangles after layout:
 
 Use `ui_scroll_area` when content can exceed its viewport. Its content moves by continuous pixel offsets, including fractional trackpad deltas, and nested scroll areas consume wheel input from the deepest hovered viewport.
 
-Project UI uses one uniform canvas scale when Scrapbot embeds it in the editor's free-aspect game viewport. The engine translates and clips the result rather than stretching horizontal and vertical dimensions independently, so text and rounded controls preserve their proportions. Pointer hit testing uses the inverse of the same transform.
+Project layout, painting, embedded viewports, pointer hit testing, and semantic
+diagnostics all use the exact authored canvas transform. The editor is only a
+host for that public policy. Projects without a canvas retain the legacy
+top-left 1280×720 fit.
 
 ## Compose a popup
 

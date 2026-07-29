@@ -4,6 +4,7 @@ import c "core:c"
 import raw "scrapbot:extension_api"
 
 UI_LAYOUT :: "scrapbot.ui_layout"
+UI_CANVAS :: "scrapbot.ui_canvas"
 UI_HSTACK :: "scrapbot.ui_hstack"
 UI_VSTACK :: "scrapbot.ui_vstack"
 UI_SCROLL_AREA :: "scrapbot.ui_scroll_area"
@@ -23,7 +24,11 @@ UI_ACTION :: "scrapbot.ui_action"
 
 UUID :: raw.UUID
 UI_Text_Alignment :: raw.UI_Text_Alignment
+UI_Alignment :: raw.UI_Alignment
+UI_Canvas_Alignment :: raw.UI_Canvas_Alignment
+UI_Canvas_Scale_Mode :: raw.UI_Canvas_Scale_Mode
 UI_Layout :: raw.UI_Layout_Payload
+UI_Canvas :: raw.UI_Canvas_Payload
 UI_Stack :: raw.UI_Stack_Payload
 UI_Scroll_Area :: raw.UI_Scroll_Area_Payload
 UI_Panel :: raw.UI_Panel_Payload
@@ -82,6 +87,9 @@ ui_builtin_icon_set :: proc "contextless" () -> UUID {
 UI_Layout_Component :: Component {
 	name = UI_LAYOUT,
 }
+UI_Canvas_Component :: Component {
+	name = UI_CANVAS,
+}
 UI_HStack_Component :: Component {
 	name = UI_HSTACK,
 }
@@ -133,6 +141,15 @@ UI_Action_Component :: Component {
 
 ui_layout_default :: proc "contextless" () -> UI_Layout {
 	return {}
+}
+
+ui_canvas_default :: proc "contextless" () -> UI_Canvas {
+	return {
+		reference_size = {1280, 720},
+		scale_mode = .Expand,
+		horizontal_alignment = .Center,
+		vertical_alignment = .Center,
+	}
 }
 
 ui_stack_default :: proc "contextless" () -> UI_Stack {
@@ -304,6 +321,10 @@ ui_theme_resolve :: proc "contextless" (
 
 ui_layout :: proc "contextless" (value: UI_Layout) -> UI_Component_Payload {
 	return {component = UI_LAYOUT, layout = value}
+}
+
+ui_canvas :: proc "contextless" (value: UI_Canvas) -> UI_Component_Payload {
+	return {component = UI_CANVAS, canvas = value}
 }
 
 ui_hstack :: proc "contextless" (value: UI_Stack) -> UI_Component_Payload {

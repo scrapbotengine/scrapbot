@@ -47,6 +47,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.keyboard_input` | Derived singleton | Read-only keyboard held/pressed/released frame snapshot. |
 | `scrapbot.pointer_input` | Derived singleton | Read-only pointer position/delta/wheel/button frame snapshot. |
 | `scrapbot.ui_layout` | UI box | Required geometry, hierarchy, sizing, SDF box style, and optional popup-root behavior. |
+| `scrapbot.ui_canvas` | UI canvas | Optional singleton root policy for logical size, output scaling/alignment, safe area, and scale bounds. |
 | `scrapbot.ui_hstack` | UI flow | Horizontal child layout. |
 | `scrapbot.ui_vstack` | UI flow | Vertical child layout. |
 | `scrapbot.ui_scroll_area` | UI viewport | Clipping, smooth pixel scrolling, and scrollbar style. |
@@ -239,7 +240,7 @@ Light query payloads expose the listed data fields. Shadow components are empty 
 
 ## UI composition rules
 
-Every UI entity requires `scrapbot.ui_layout`. An entity may have at most one flow component—HStack, VStack, table, or list—and at most one content control—text, button, input, or checkbox. Panel, scroll-area, and progress components compose with those roles. The renderer attaches `scrapbot.ui_state`; projects never author or write it.
+Every UI entity requires `scrapbot.ui_layout`. An entity may have at most one flow component—HStack, VStack, table, or list—and at most one content control—text, button, input, or checkbox. Panel, scroll-area, and progress components compose with those roles. One root per entity-origin domain may additionally carry `scrapbot.ui_canvas`. The renderer attaches `scrapbot.ui_state`; projects never author or write it.
 
 Themes are optional composition-time recipes, not renderer state. They resolve palette, metric, and control-role choices into the same fields listed below, after which per-entity values can override any result. See [UI theming](../../guides/ui-theming/) for the resolution order and contrasting examples.
 
@@ -256,9 +257,32 @@ Vectors use `{x, y}`, `{x, y, z}`, or `{x, y, z, w}` in Luau and fixed arrays in
 | `fill_width: bool`, `fill_height: bool` | Consume available parent space on each axis. |
 | `fit_content_width: bool`, `fit_content_height: bool` | Size around visible descendants on each axis. |
 | `fixed_in_fill: bool` | Preserve authored main-axis size while flexible stack siblings divide remaining space. |
+| `horizontal_alignment`, `vertical_alignment: string` | Independently place the box at `start`, `center`, or `end`, or `stretch` it through the available parent axis. |
 | `tree_item: bool`, `tree_parent: string`, `tree_order: number`, `tree_collapsed: bool` | Opt a direct child of a tree-enabled list into its semantic hierarchy. Parent is another row UUID, order is sibling-local, and collapse omits descendants without despawning them. |
 | `popup: bool`, `popup_anchor: string`, `popup_open: bool`, `popup_close_on_selection: bool` | Make this root a floating popup anchored to another UI UUID. Closed popups leave layout/paint/interaction; selection dismissal applies to descendant lists. Popup roots cannot have a parent. |
 | `popup_gap: number`, `popup_min_width: number`, `popup_max_width: number`, `popup_max_height: number`, `popup_viewport_margin: number` | Non-negative placement constraints. Zero maximums mean unbounded. A non-zero maximum width must be at least the minimum width. Placement prefers below the anchor, flips above when needed, and clamps to the UI viewport without overwriting authored geometry. |
+
+### `scrapbot.ui_canvas`
+
+The canvas must share an entity with a root `ui_layout`. Only one canvas may
+exist in the project/scene origin and one in the editor origin. Its safe area
+constrains the canvas root's children but leaves the root background at the
+complete logical viewport.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `reference_size: Vec2` | `{1280, 720}` | Positive logical design size. |
+| `scale_mode: string` | `expand` | `fit`, `fill`, `expand`, `stretch`, `pixel_perfect`, or `none`. |
+| `horizontal_alignment`, `vertical_alignment: string` | `center` | Place scaled output at `start`, `center`, or `end` when it does not match the host. |
+| `safe_area: Vec4` | `{0, 0, 0, 0}` | Non-negative logical `[top, right, bottom, left]` child insets smaller than the reference size. |
+| `min_scale`, `max_scale: number` | `0`, `0` | Optional non-negative bounds; zero is unbounded and a non-zero maximum must be at least the minimum. |
+
+`fit` preserves the reference aspect and may letterbox. `fill` preserves aspect
+and may crop. `expand` uses the fit scale but reveals additional logical space
+on the host's longer axis. `stretch` scales each axis independently.
+`pixel_perfect` chooses a fitting whole-number scale at or above one when
+possible. `none` follows output pixel density and exposes the host in logical
+units. Without a canvas, project UI retains the legacy top-left 1280×720 fit.
 
 ### `scrapbot.ui_hstack` and `scrapbot.ui_vstack`
 

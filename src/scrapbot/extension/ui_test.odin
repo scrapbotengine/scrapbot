@@ -86,6 +86,15 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, layout_payload.component == UI_LAYOUT)
 	testing.expect(t, layout_payload.layout.corner_radius == 9)
 	testing.expect(t, layout_payload.layout.background.w == 1)
+	canvas := ui_canvas_default()
+	canvas.reference_size = {1920, 1080}
+	canvas.scale_mode = .Expand
+	canvas.safe_area = {24, 24, 24, 24}
+	canvas_payload := ui_canvas(canvas)
+	testing.expect(t, canvas_payload.component == UI_CANVAS)
+	testing.expect(t, canvas_payload.canvas.reference_size == Vec2{1920, 1080})
+	testing.expect(t, canvas_payload.canvas.scale_mode == .Expand)
+	testing.expect(t, canvas_payload.canvas.safe_area.x == 24)
 	progress_style := ui_progress_default()
 	progress_style.value = 4
 	progress_style.maximum = 10

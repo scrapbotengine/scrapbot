@@ -40,7 +40,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - Generated Luau queries expose the complete value and styling payload of every public UI component. `add_component` updates or attaches those same components to live entities, while `remove_component` removes them through the structural dirty path.
 - Luau UI additions, removals, and runtime spawns are deferred with other structural ECS commands. Partial UI payloads merge with current values, runtime spawn returns the entity's stable UUID for parent references, and removed/despawned UI component slots are reclaimed.
 - Native extensions expose the same complete public UI values, styles, actions, immutable event snapshots, state revisions, deferred mutation, removal, and runtime spawning through fixed-layout typed payloads. Bounded inline text, font, action, and payload buffers keep allocator-owned Odin strings from crossing the extension ABI; UI state remains renderer-owned and read-only.
-- WGPU paints retained UI after world geometry, including in headless framegrabs. Project UI, editor chrome, and dynamic editor-world camera/gizmo primitives use independent revision-driven command, CPU-vertex, and GPU-buffer streams. Project UI keeps one uniform canvas-to-window scale when embedded in the free-aspect editor viewport; it is translated and clipped to the available rectangle without independently stretching either axis. Pointer input and semantic diagnostics use the inverse of that exact transform. Changing one stream does not hash, regenerate, or upload the others.
+- WGPU paints retained UI after world geometry, including in headless framegrabs. Project UI, editor chrome, and dynamic editor-world camera/gizmo primitives use independent revision-driven command, CPU-vertex, and GPU-buffer streams. One optional root `scrapbot.ui_canvas` selects the project reference size, fit/fill/expand/stretch/pixel-perfect/native-density scaling, canvas alignment, safe area, and scale bounds. Layout, painting, embedded viewports, pointer inversion, and semantic diagnostics use that exact transform inside the window or free-aspect editor viewport. A project without a canvas retains the legacy top-left 1280×720 fit. Changing one stream does not hash, regenerate, or upload the others.
 - Bounded runs can replay versioned semantic UI diagnostic scripts against the same reconciled tree used for live interaction. Actions target laid-out entities by stable UUID, name, or visible text; clicks and offset or target-anchored drags include real press/move/release phases, clipped targets are revealed through ancestor scroll areas, expectations fail the run, and capture actions select a tight 1:1 framegrab region without hard-coded coordinates. Optional JSON tree dumps expose raw and visible screen rectangles, clipping, hierarchy, control kinds, text, paint order, and interaction state even when a run fails.
 - UI rendering does not require a world camera or renderable geometry.
 - The built-in Inter font is embedded and redistributed under the SIL Open Font License 1.1.
@@ -61,11 +61,11 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 **Why:** Renderers need ordered, resolved rectangles and glyphs rather than repeated ECS queries or project-owned GPU handles.
 **Tradeoff:** The implementation has fixed node/paint limits. Stable project and editor domains use monotonic paint revisions plus compact focus/font state; unchanged domains retain their paint-command ranges and skip both traversal and glyph emission. WGPU consumes monotonic output revisions for independent project, editor, and world-overlay buffers, so unchanged frames perform no paint-array hash, vertex rebuild, or upload. Every visual, structural, layout, scrolling, or interaction mutation must increment the correct retained-domain revision through the typed ownership path so both cache layers remain correct. The same reconciler maintains distinct project and transient editor UI coordinate and interaction domains. See ADR-024.
 
-### 3. Use explicit pixels with opt-in proportional fill
+### 3. Resolve explicit logical pixels through an authored canvas
 
-**Decision:** Use top-left pixel coordinates and explicit sizes with overlay, horizontal-stack, and vertical-stack flow. A stack can opt into fill layout, where authored child sizes seed proportional weights and each child fills the cross-axis. A child can set `fixed_in_fill` to keep its authored main-axis extent while siblings divide the remainder. Fill stacks may make their gaps draggable and enforce a shared minimum pane size. Individual boxes can independently fill either available axis, fit either axis to visible children, and clamp the result to an authored minimum size.
-**Why:** Fixed boxes remain deterministic, while an explicit fill policy supports responsive application and editor layouts without introducing a complete constraint language.
-**Tradeoff:** There is no percentage syntax, general box alignment, weighted per-child grow policy outside fill stacks, or horizontal scrolling yet. Split weights and resolved fit-to-content sizes are retained runtime state rather than scene data.
+**Decision:** Author deterministic logical-pixel boxes and resolve them through an optional root canvas policy. Canvas modes can fit, crop-fill, expand the logical viewport, stretch, preserve whole-number pixels, or follow output density; canvas alignment and safe-area insets place its content. Every layout box independently selects start, center, end, or stretch alignment on each axis. Overlay, horizontal-stack, and vertical-stack flow continue to support fill, fit-content, minimum sizes, fixed-in-fill children, draggable gaps, and proportional distribution.
+**Why:** One public transform keeps visual output, interaction, diagnostics, editor embedding, and HiDPI behavior identical while projects choose whether aspect-ratio changes reveal space, crop, letterbox, or distort.
+**Tradeoff:** Explicit stretch may distort content and fill may crop it. There is no percentage syntax, breakpoint/wrapping system, weighted per-child grow policy outside fill stacks, or horizontal scrolling yet. Split weights and resolved fit-to-content sizes are retained runtime state rather than scene data.
 
 ### 4. Compose controls from a shared box model
 
@@ -133,7 +133,7 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-030, ADR-036, ADR-037, ADR-040, ADR-041
+- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-030, ADR-036, ADR-037, ADR-040, ADR-041, ADR-043
 - **FDRs:** FDR-002, FDR-003, FDR-005, FDR-008
 
 ## Open Questions

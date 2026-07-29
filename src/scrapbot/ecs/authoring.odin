@@ -140,6 +140,9 @@ capture_registered_component_snapshot :: proc(
 		case .UI_Layout:
 			value.has_ui_layout = true
 			value.ui_layout = world.ui_layouts[entity.ui_layout_index]
+		case .UI_Canvas:
+			value.has_ui_canvas = true
+			value.ui_canvas = world.ui_canvases[entity.ui_canvas_index]
 		case .UI_HStack:
 			value.has_ui_hstack = true
 			value.ui_hstack = world.ui_hstacks[entity.ui_hstack_index]
@@ -343,6 +346,8 @@ apply_registered_component_snapshot :: proc(
 			mark_render_entity_dirty(world, entity_index)
 		case .UI_Layout:
 			_ = set_ui_layout(world, entity_index, value.ui_layout)
+		case .UI_Canvas:
+			_ = set_ui_canvas(world, entity_index, value.ui_canvas)
 		case .UI_HStack:
 			_ = set_ui_hstack(world, entity_index, value.ui_hstack)
 		case .UI_VStack:
@@ -732,6 +737,12 @@ set_registered_component_membership :: proc(
 			} else {
 				_ = remove_ui_component(world, entity_index, definition.name)
 			}
+		case .UI_Canvas:
+			if present {
+				_ = set_ui_canvas(world, entity_index, shared.ui_canvas_default())
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
 		case .UI_HStack:
 			if present {
 				_ = set_ui_hstack(world, entity_index, shared.ui_stack_default())
@@ -988,6 +999,10 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 	if source.ui_layout_index >= 0 && source.ui_layout_index < len(world.ui_layouts) {
 		entity.has_ui_layout = true
 		entity.ui_layout = world.ui_layouts[source.ui_layout_index]
+	}
+	if source.ui_canvas_index >= 0 && source.ui_canvas_index < len(world.ui_canvases) {
+		entity.has_ui_canvas = true
+		entity.ui_canvas = world.ui_canvases[source.ui_canvas_index]
 	}
 	if source.ui_hstack_index >= 0 && source.ui_hstack_index < len(world.ui_hstacks) {
 		entity.has_ui_hstack = true
@@ -1248,6 +1263,7 @@ set_entity_model_resource :: proc(world: ^World, entity_index: int, value: strin
 
 apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene_Entity) {
 	if value.has_ui_layout { _ = set_ui_layout(world, entity_index, value.ui_layout) } else { remove_ui_component(world, entity_index, "scrapbot.ui_layout") }
+	if value.has_ui_canvas { _ = set_ui_canvas(world, entity_index, value.ui_canvas) } else { remove_ui_component(world, entity_index, "scrapbot.ui_canvas") }
 	if value.has_ui_hstack { _ = set_ui_hstack(world, entity_index, value.ui_hstack) } else { remove_ui_component(world, entity_index, "scrapbot.ui_hstack") }
 	if value.has_ui_vstack { _ = set_ui_vstack(world, entity_index, value.ui_vstack) } else { remove_ui_component(world, entity_index, "scrapbot.ui_vstack") }
 	if value.has_ui_scroll_area { _ = set_ui_scroll_area(world, entity_index, value.ui_scroll_area) } else { remove_ui_component(world, entity_index, "scrapbot.ui_scroll_area") }

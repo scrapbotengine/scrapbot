@@ -102,6 +102,7 @@ scene_entity_structure_differs :: proc(
 	   baseline.has_shadow_caster != current.has_shadow_caster ||
 	   baseline.has_shadow_receiver != current.has_shadow_receiver ||
 	   baseline.has_ui_layout != current.has_ui_layout ||
+	   baseline.has_ui_canvas != current.has_ui_canvas ||
 	   baseline.has_ui_hstack != current.has_ui_hstack ||
 	   baseline.has_ui_vstack != current.has_ui_vstack ||
 	   baseline.has_ui_scroll_area != current.has_ui_scroll_area ||

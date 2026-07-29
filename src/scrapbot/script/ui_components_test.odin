@@ -17,10 +17,20 @@ min_size = [120, 24]
 fill_width = true
 fit_content_height = true
 fixed_in_fill = true
+horizontal_alignment = "center"
+vertical_alignment = "end"
 tree_item = true
 tree_parent = "aa000000-0000-4000-8000-000000000002"
 tree_order = 4
 tree_collapsed = true
+[entities.ui_canvas]
+reference_size = [1600, 900]
+scale_mode = "expand"
+horizontal_alignment = "center"
+vertical_alignment = "end"
+safe_area = [20, 28, 36, 44]
+min_scale = 0.5
+max_scale = 3
 [entities.ui_panel]
 title = "FIELD"
 disclosure_size = 9
@@ -129,6 +139,7 @@ maximum_exposure = 12
 		&runtime,
 		`
 assert(scrapbot.ui_panel.id > 0)
+assert(scrapbot.ui_canvas.id > 0)
 assert(scrapbot.ui_scroll_area.id > 0)
 assert(scrapbot.ui_table.id > 0)
 assert(scrapbot.ui_input.id > 0)
@@ -146,6 +157,8 @@ scrapbot.system(function()
 		assert(layout.fill_width == true)
 		assert(layout.fit_content_height == true)
 		assert(layout.fixed_in_fill == true)
+		assert(layout.horizontal_alignment == "center")
+		assert(layout.vertical_alignment == "end")
 		assert(layout.tree_item == true)
 		assert(layout.tree_parent == "aa000000-0000-4000-8000-000000000002")
 		assert(layout.tree_order == 4)
@@ -164,6 +177,21 @@ scrapbot.system(function()
 		count += 1
 	end)
 	assert(count == 1)
+	local canvas_count = 0
+	scrapbot.query(scrapbot.ui_canvas):each(function(entity, canvas)
+		assert(canvas.reference_size.x == 1600 and canvas.reference_size.y == 900)
+		assert(canvas.scale_mode == "expand")
+		assert(canvas.horizontal_alignment == "center")
+		assert(canvas.vertical_alignment == "end")
+		assert(canvas.safe_area.x == 20 and canvas.safe_area.w == 44)
+		assert(canvas.min_scale == 0.5 and canvas.max_scale == 3)
+		scrapbot.add_component(entity, scrapbot.ui_canvas, {
+			scale_mode = "fit",
+			safe_area = {x = 24, y = 32, z = 40, w = 48},
+		})
+		canvas_count += 1
+	end)
+	assert(canvas_count == 1)
 	scrapbot.query(scrapbot.ui_layout, scrapbot.ui_list):each(function(entity, layout, list)
 		assert(layout.popup == true)
 		assert(layout.popup_anchor == "aa000000-0000-4000-8000-000000000001")
@@ -305,6 +333,9 @@ end)
 	testing.expect(t, table.min_column_width == 60)
 	panel := world.ui_panels[world.entities[0].ui_panel_index]
 	testing.expect(t, panel.collapsible && panel.collapsed)
+	canvas := world.ui_canvases[world.entities[0].ui_canvas_index]
+	testing.expect(t, canvas.scale_mode == .Fit)
+	testing.expect(t, canvas.safe_area == shared.Vec4{24, 32, 40, 48})
 	list := world.ui_lists[world.entities[1].ui_list_index]
 	testing.expect(t, list.filter_input == world.entities[1].uuid)
 	testing.expect(t, list.highlight_corner_radius == 9)

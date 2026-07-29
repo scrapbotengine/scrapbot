@@ -1339,14 +1339,16 @@ test_project_ui_vertices_preserve_pixel_aspect_inside_editor_viewport :: proc(t:
 		corner_radius = 12,
 		border_width = 2,
 	}
-	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 1, viewport, 1280, 720)
+	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 1, nil, viewport, 1280, 720)
 	testing.expect_value(t, len(vertices), 6)
-	testing.expect(t, math.abs(vertices[0].size_radius[0] - 430) < 0.001)
-	testing.expect(t, math.abs(vertices[0].size_radius[1] - 90) < 0.001)
-	testing.expect(t, math.abs(vertices[0].size_radius[2] - 12) < 0.001)
-	testing.expect(t, math.abs(vertices[0].border_width - 2) < 0.001)
-	expected_x := (viewport.x + 20) / 1280 * 2 - 1
-	expected_y := 1 - (viewport.y + 20) / 720 * 2
+	scale := min(viewport.width / 1280, viewport.height / 720)
+	canvas_y := viewport.y
+	testing.expect(t, math.abs(vertices[0].size_radius[0] - 430 * scale) < 0.001)
+	testing.expect(t, math.abs(vertices[0].size_radius[1] - 90 * scale) < 0.001)
+	testing.expect(t, math.abs(vertices[0].size_radius[2] - 12 * scale) < 0.001)
+	testing.expect(t, math.abs(vertices[0].border_width - 2 * scale) < 0.001)
+	expected_x := (viewport.x + 20 * scale) / 1280 * 2 - 1
+	expected_y := 1 - (canvas_y + 20 * scale) / 720 * 2
 	testing.expect(t, math.abs(vertices[0].position[0] - expected_x) < 0.001)
 	testing.expect(t, math.abs(vertices[0].position[1] - expected_y) < 0.001)
 }
@@ -1361,7 +1363,7 @@ test_wgpu_ui_vertices_preserve_per_corner_gradient_colors :: proc(t: ^testing.T)
 		gradient = true,
 		corner_colors = {{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}, {1, 1, 1, 1}},
 	}
-	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 0, {}, 100, 50)
+	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 0, nil, {}, 100, 50)
 	testing.expect_value(t, len(vertices), 6)
 	testing.expect_value(t, vertices[0].color, [4]f32{1, 0, 0, 1})
 	testing.expect_value(t, vertices[1].color, [4]f32{0, 1, 0, 1})

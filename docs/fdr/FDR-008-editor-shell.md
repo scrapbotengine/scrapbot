@@ -72,9 +72,9 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 3. Use all available game space
 
-**Decision:** Use the entire available rectangle for world projection, project UI, clipping, and pointer remapping, whether editor chrome is visible or not.
-**Why:** The game should adapt to the actual window or workspace aspect ratio rather than wasting space through letterboxing.
-**Tradeoff:** Until project UI gains responsive anchors and sizing policies, its 1280×720 logical coordinates scale to the live viewport dimensions.
+**Decision:** Use the entire available rectangle for world projection and give that same host rectangle to the project's public `scrapbot.ui_canvas` transform for project UI, clipping, pointer remapping, and semantic diagnostics, whether editor chrome is visible or not.
+**Why:** The game should adapt to the actual window or workspace aspect ratio while each project explicitly chooses whether its UI expands, letterboxes, crops, stretches, or preserves integer pixels.
+**Tradeoff:** Project UI may intentionally leave bars or crop when its authored canvas policy differs from the free-aspect world viewport. Projects without a canvas retain the legacy top-left 1280×720 fit.
 
 ### 4. Keep runtime churn out of the default entity browser
 

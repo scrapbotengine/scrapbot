@@ -19,6 +19,122 @@ UI_Test_I16_Enum :: enum i16 {
 }
 
 @(test)
+test_project_canvas_modes_resolve_logical_viewports_and_exact_inverse_pointer_mapping :: proc(
+	t: ^testing.T,
+) {
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	state.project_canvas_valid = true
+	state.project_canvas = shared.ui_canvas_default()
+	state.project_canvas.reference_size = {1280, 720}
+	state.project_canvas.scale_mode = .Expand
+
+	expanded := project_canvas_transform(state, 1920, 720)
+	testing.expect_value(t, expanded.scale, shared.Vec2{1, 1})
+	testing.expect_value(t, expanded.logical_viewport, Rect{0, 0, 1920, 720})
+	pointer := project_pointer_input(
+		state,
+		{position = {1500, 360}, available = true},
+		1280,
+		720,
+		1920,
+		720,
+	)
+	testing.expect_value(t, pointer.position, shared.Vec2{1500, 360})
+
+	state.project_canvas.scale_mode = .Fit
+	state.project_canvas.reference_size = {1000, 500}
+	fitted := project_canvas_transform(state, 1000, 1000)
+	testing.expect_value(t, fitted.scale, shared.Vec2{1, 1})
+	testing.expect_value(t, fitted.viewport, Rect{0, 250, 1000, 500})
+	pointer = project_pointer_input(
+		state,
+		{position = {500, 500}, available = true},
+		1280,
+		720,
+		1000,
+		1000,
+	)
+	testing.expect_value(t, pointer.position, shared.Vec2{500, 250})
+
+	state.project_canvas.scale_mode = .Stretch
+	stretched := project_canvas_transform(state, 2000, 500)
+	testing.expect_value(t, stretched.scale, shared.Vec2{2, 1})
+	testing.expect_value(t, stretched.viewport, Rect{0, 0, 2000, 500})
+
+	state.project_canvas.scale_mode = .Pixel_Perfect
+	pixel_perfect := project_canvas_transform(state, 2500, 1500)
+	testing.expect_value(t, pixel_perfect.scale, shared.Vec2{2, 2})
+	testing.expect_value(t, pixel_perfect.viewport, Rect{250, 250, 2000, 1000})
+}
+
+@(test)
+test_canvas_safe_area_and_per_axis_alignment_share_generic_layout :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Responsive Canvas")
+	centered_id := ui_test_id("Centered Control")
+	stretched_id := ui_test_id("Safe Stretch")
+	scene: shared.Scene
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Responsive Canvas",
+			has_ui_layout = true,
+			ui_layout = {size = {800, 600}, fill_width = true, fill_height = true},
+			has_ui_canvas = true,
+			ui_canvas = {
+				reference_size = {800, 600},
+				scale_mode = .Expand,
+				horizontal_alignment = .Center,
+				vertical_alignment = .Center,
+				safe_area = {20, 30, 40, 10},
+			},
+		},
+		shared.Scene_Entity {
+			id = centered_id,
+			name = "Centered Control",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = root_id,
+				size = {100, 50},
+				horizontal_alignment = .Center,
+				vertical_alignment = .End,
+			},
+		},
+		shared.Scene_Entity {
+			id = stretched_id,
+			name = "Safe Stretch",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = root_id,
+				size = {1, 1},
+				horizontal_alignment = .Stretch,
+				vertical_alignment = .Stretch,
+			},
+		},
+	)
+	defer delete(scene.entities)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 800, 600) == "")
+
+	centered_index := find_node_by_entity_index(state, int(world.entities[1].id.index))
+	stretched_index := find_node_by_entity_index(state, int(world.entities[2].id.index))
+	testing.expect(t, centered_index >= 0)
+	testing.expect(t, stretched_index >= 0)
+	if centered_index >= 0 {
+		testing.expect_value(t, state.nodes[centered_index].rect, Rect{340, 510, 100, 50})
+	}
+	if stretched_index >= 0 {
+		testing.expect_value(t, state.nodes[stretched_index].rect, Rect{10, 20, 760, 540})
+	}
+}
+
+@(test)
 test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing.T) {
 	theme := reduced_dark_theme()
 	layout, button := theme_button(theme, .Primary)
@@ -2966,8 +3082,8 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 	testing.expect(
 		t,
 		pointer.available &&
-		math.abs(pointer.position.x - viewport.width * 0.5 / project_transform.scale) < 0.01 &&
-		math.abs(pointer.position.y - viewport.height * 0.5 / project_transform.scale) < 0.01,
+		math.abs(pointer.position.x - viewport.width * 0.5 / project_transform.scale.x) < 0.01 &&
+		math.abs(pointer.position.y - viewport.height * 0.5 / project_transform.scale.y) < 0.01,
 	)
 	testing.expect(
 		t,
@@ -2996,8 +3112,8 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 	testing.expect(
 		t,
 		pointer.available &&
-		math.abs(pointer.position.x - viewport.width * 0.5 / project_transform.scale) < 0.01 &&
-		math.abs(pointer.position.y - viewport.height * 0.5 / project_transform.scale) < 0.01,
+		math.abs(pointer.position.x - viewport.width * 0.5 / project_transform.scale.x) < 0.01 &&
+		math.abs(pointer.position.y - viewport.height * 0.5 / project_transform.scale.y) < 0.01,
 	)
 	testing.expect(
 		t,
@@ -4567,8 +4683,8 @@ test_resized_play_view_maps_pointer_back_to_project_canvas :: proc(t: ^testing.T
 	testing.expect(
 		t,
 		pointer.available &&
-		math.abs(pointer.position.x - 1024 / transform.scale) < 0.001 &&
-		math.abs(pointer.position.y - 548 / transform.scale) < 0.001,
+		math.abs(pointer.position.x - 1024 / transform.scale.x) < 0.001 &&
+		math.abs(pointer.position.y - 548 / transform.scale.y) < 0.001,
 	)
 }
 
