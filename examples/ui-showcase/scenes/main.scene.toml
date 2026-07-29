@@ -122,6 +122,10 @@ hover_background = [0.39, 0.33, 0.96, 1]
 active_background = [0.22, 0.18, 0.68, 1]
 active_color = [0.82, 0.84, 1, 1]
 
+[entities.ui_action]
+action = "showcase.launch"
+payload = "editor-side"
+
 [[entities]]
 id = "30000000-0000-4000-8000-000000000009"
 name = "Cancel Button"
@@ -137,6 +141,10 @@ size = [126, 52]
 text = "CANCEL"
 size = 16
 
+[entities.ui_action]
+action = "showcase.cancel"
+payload = "editor-side"
+
 [[entities]]
 id = "30000000-0000-4000-8000-000000000019"
 name = "Enabled Checkbox"
@@ -151,6 +159,10 @@ padding = [0, 0, 0, 14]
 [entities.ui_checkbox]
 checked = true
 box_size = 22
+
+[entities.ui_action]
+action = "showcase.enabled"
+payload = "editor-side"
 
 [[entities]]
 id = "30000000-0000-4000-8000-00000000001a"
@@ -346,6 +358,10 @@ size = 10
 selection_background = [0.08, 0.48, 0.40, 0.48]
 focus_border_color = [0.12, 0.78, 0.66, 1]
 
+[entities.ui_action]
+action = "showcase.filter"
+payload = "component-table"
+
 [[entities]]
 id = "30000000-0000-4000-8000-000000000015"
 name = "ECS Cell"
@@ -400,6 +416,10 @@ hdr = true
 show_alpha = true
 exposure = 2
 maximum_exposure = 12
+
+[entities.ui_action]
+action = "showcase.hdr"
+payload = "emissive-accent"
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000018"
@@ -504,6 +524,10 @@ size = 24
 hover_background = [1, 0.24, 0.52, 1]
 active_background = [0.72, 0.04, 0.24, 1]
 
+[entities.ui_action]
+action = "arcade.boost"
+payload = "player-one"
+
 [[entities]]
 id = "30000000-0000-4000-8000-000000000027"
 name = "Arcade Secondary"
@@ -523,6 +547,10 @@ color = [0.02, 0.04, 0.12, 1]
 size = 22
 hover_background = [0.20, 0.88, 1, 1]
 active_background = [0.02, 0.38, 0.70, 1]
+
+[entities.ui_action]
+action = "arcade.drift"
+payload = "player-one"
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000028"
@@ -546,3 +574,25 @@ hover_background = [0.25, 0.92, 1, 1]
 active_background = [1, 0.82, 0.05, 1]
 corner_radius = 12
 border_width = 3
+
+[entities.ui_action]
+action = "arcade.overdrive"
+payload = "player-one"
+
+[[entities]]
+id = "30000000-0000-4000-8000-000000000029"
+name = "Arcade Event Monitor"
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-000000000021"
+size = [506, 64]
+padding = [18, 20, 14, 20]
+background = [0.055, 0.01, 0.11, 1]
+border_color = [0.35, 1, 0.22, 0.34]
+border_width = 3
+corner_radius = 18
+
+[entities.ui_text]
+text = "EVENT BUS  /  AWAITING INPUT"
+color = [0.35, 1, 0.22, 1]
+size = 14

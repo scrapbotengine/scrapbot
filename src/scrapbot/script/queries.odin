@@ -545,6 +545,9 @@ push_query_component_table :: proc "c" (
 		case "scrapbot.ui_color_picker":
 			push_ui_color_picker_table(L, world.ui_color_pickers[entity.ui_color_picker_index])
 			return
+		case "scrapbot.ui_action":
+			push_ui_action_table(L, world.ui_actions[entity.ui_action_index])
+			return
 		case "scrapbot.mesh":
 			lua_createtable(L, 0, 0)
 			return
@@ -923,6 +926,12 @@ push_ui_color_picker_table :: proc "c" (L: Lua_State, value: shared.UI_Color_Pic
 	push_number_field(L, "thumb_border_width", value.thumb_border_width)
 	push_vec4_field(L, "checker_light", value.checker_light)
 	push_vec4_field(L, "checker_dark", value.checker_dark)
+}
+
+push_ui_action_table :: proc "c" (L: Lua_State, value: shared.UI_Action_Component) {
+	lua_createtable(L, 0, 2)
+	push_string_field(L, "action", value.action)
+	push_string_field(L, "payload", value.payload)
 }
 
 require_system_access :: proc "c" (

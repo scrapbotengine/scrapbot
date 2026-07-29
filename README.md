@@ -50,7 +50,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 - ECS-first retained UI: responsive box model, fixed/proportional stacks, overlays, draggable separators, hidden subtrees, smooth clipped scroll areas, selectable lists, progress indicators, collapsible panels, equal/proportional tables, buttons, checkboxes, numeric controls, and keyboard-focused text inputs with Tab traversal.
 - MTSDF text with auto-atlased project fonts (embedded Inter fallback), UUID-backed project SVG icon catalogs plus an embedded control catalog, and SDF-rounded styling for backgrounds, borders, and controls.
-- One public component contract: scene TOML, Luau systems, native Odin extensions, and the editor all construct and mutate the same typed UI values; the renderer publishes read-only interaction state.
+- One public component contract: scene TOML, Luau systems, native Odin extensions, and the editor all construct and mutate the same typed UI values; reusable semantic actions publish ordered immutable events to independent project/editor readers.
 - Revision-driven paint with independent project, editor, and world-overlay GPU streams — unchanged domains skip reconciliation, layout, paint, and uploads entirely.
 
 ### Editor
@@ -221,7 +221,7 @@ trends; they are not portable performance thresholds.
   - [x] Retained UI primitives
   - [x] Box-model layout with horizontal, vertical, and overlay composition
   - [x] Element hover and active hit-testing state
-  - [ ] UI command events
+  - [x] Ordered immutable UI command events with inheritable semantic actions
   - [x] Smooth clipped vertical scroll areas
   - [x] Collapsible titled panels
   - [x] Equal or proportional tables with draggable column separators

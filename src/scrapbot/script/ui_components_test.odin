@@ -59,6 +59,9 @@ fill_color = [0.1, 0.8, 0.6, 1]
 inset = [2, 3, 4, 5]
 corner_radius = 2
 right_to_left = true
+[entities.ui_action]
+action = "inspector.commit"
+payload = "position"
 [[entities]]
 id = "aa000000-0000-4000-8000-000000000002"
 name = "Checkbox"
@@ -132,6 +135,7 @@ assert(scrapbot.ui_input.id > 0)
 assert(scrapbot.ui_progress.id > 0)
 assert(scrapbot.ui_checkbox.id > 0)
 assert(scrapbot.ui_color_picker.id > 0)
+assert(scrapbot.ui_action.id > 0)
 assert(scrapbot.ui_state.id > 0)
 
 scrapbot.system(function()
@@ -207,6 +211,16 @@ scrapbot.system(function()
 		progress_count += 1
 	end)
 	assert(progress_count == 1)
+	local action_count = 0
+	scrapbot.query(scrapbot.ui_action):each(function(entity, action)
+		assert(action.action == "inspector.commit" and action.payload == "position")
+		scrapbot.add_component(entity, scrapbot.ui_action, {
+			action = "inspector.apply",
+			payload = "rotation",
+		})
+		action_count += 1
+	end)
+	assert(action_count == 1)
 	local state_count = 0
 	scrapbot.query(scrapbot.ui_state):each(function(_, state)
 		assert(state.hovered == true)
@@ -284,6 +298,8 @@ end)
 	progress := world.ui_progresses[world.entities[0].ui_progress_index]
 	testing.expect(t, progress.value == 6 && progress.maximum == 10)
 	testing.expect(t, progress.right_to_left)
+	action := world.ui_actions[world.entities[0].ui_action_index]
+	testing.expect(t, action.action == "inspector.apply" && action.payload == "rotation")
 	table := world.ui_tables[world.entities[0].ui_table_index]
 	testing.expect(t, table.proportional_columns && table.resizable_columns)
 	testing.expect(t, table.min_column_width == 60)
@@ -332,6 +348,81 @@ end)
 		parent := world.ui_layouts[child.ui_layout_index].parent
 		testing.expect(t, parent == world.entities[spawned_index].uuid)
 	}
+}
+
+@(test)
+test_luau_ui_events_are_immutable_cursor_snapshots :: proc(t: ^testing.T) {
+	scene, parse_result := project.parse_scene(
+		`[[entities]]
+id = "ab000000-0000-4000-8000-000000000001"
+name = "Action"
+[entities.ui_layout]
+size = [120, 32]
+[entities.ui_button]
+text = "Launch"
+[entities.ui_action]
+action = "flight.launch"
+payload = "alpha"
+`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, parse_result.err == .None)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	ecs.append_ui_event(
+		&world,
+		{
+			kind = .Activated,
+			origin = .Scene,
+			entity = scene.entities[0].id,
+			action_entity = scene.entities[0].id,
+			action = "flight.launch",
+			payload = "alpha",
+			position = {12, 18},
+		},
+	)
+	ecs.append_ui_event(
+		&world,
+		{
+			kind = .Changed,
+			origin = .Editor,
+			entity = scene.entities[0].id,
+			action = "editor.private",
+		},
+	)
+
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`
+scrapbot.system(function()
+	local first = scrapbot.ui.events(0)
+	assert(first.latest_sequence == 2)
+	assert(first.oldest_sequence == 1)
+	assert(first.overflowed == false)
+	assert(#first.events == 1)
+	local event = first.events[1]
+	assert(event.sequence == 1 and event.frame_index == 0)
+	assert(event.kind == "activated" and event.part == "control")
+	assert(event.entity == "ab000000-0000-4000-8000-000000000001")
+	assert(event.action_entity == event.entity)
+	assert(event.action == "flight.launch" and event.payload == "alpha")
+	assert(event.position.x == 12 and event.position.y == 18)
+
+	local same = scrapbot.ui.events(0)
+	assert(#same.events == 1 and same.events[1].sequence == event.sequence)
+	local consumed = scrapbot.ui.events(first.latest_sequence)
+	assert(#consumed.events == 0)
+end)
+`,
+		"=test",
+		&world,
+	)
+	testing.expect(t, result.err == "")
+	testing.expect(t, result.ran)
+	step_err := step_runtime(&runtime, &world, 0)
+	testing.expectf(t, step_err == "", "UI event system step failed: %s", step_err)
 }
 
 @(test)

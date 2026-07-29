@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 90,
+  "actions": [
+    {
+      "action": "click",
+      "target": {
+        "name": "Arcade Primary",
+        "origin": "scene"
+      }
+    },
+    {
+      "action": "wait",
+      "frames": 2
+    },
+    {
+      "action": "expect",
+      "target": {
+        "name": "Arcade Status",
+        "origin": "scene"
+      },
+      "expect": "text",
+      "text": "BOOST ARMED"
+    },
+    {
+      "action": "expect",
+      "target": {
+        "name": "Arcade Event Monitor",
+        "origin": "scene"
+      },
+      "expect": "text",
+      "text": "EVENT 001  /  ACTIVATED  /  ARCADE.BOOST  /  PLAYER-ONE"
+    },
+    {
+      "action": "capture",
+      "target": {
+        "name": "Arcade Theme",
+        "origin": "scene"
+      },
+      "padding": 8
+    }
+  ]
+}

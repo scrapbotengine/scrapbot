@@ -690,7 +690,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.ui_button]" ||
 		   line == "[entities.ui_input]" ||
 		   line == "[entities.ui_checkbox]" ||
-		   line == "[entities.ui_color_picker]" {
+		   line == "[entities.ui_color_picker]" ||
+		   line == "[entities.ui_action]" {
 			if current == nil {
 				return scene, fail(
 					.Invalid_Syntax,
@@ -772,6 +773,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 					current.ui_color_picker = shared.ui_color_picker_default()
 				}
 				current.has_ui_color_picker = true
+			}
+			if section == "ui_action" {
+				if !current.has_ui_action {
+					current.ui_action = shared.ui_action_default()
+				}
+				current.has_ui_action = true
 			}
 			current_component = nil
 			continue
@@ -1659,6 +1666,22 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						fmt.tprintf("invalid ui_color_picker.%s", key),
 					)
 				}
+			case "ui_action":
+				current.has_ui_action = true
+				switch key {
+					case "action":
+						current.ui_action.action, found = parse_basic_string(value)
+					case "payload":
+						current.ui_action.payload, found = parse_basic_string(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_action field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_action.%s", key))
+				}
 			case "component":
 				if current_component == nil {
 					return scene, fail(
@@ -1804,7 +1827,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			   entity.has_ui_viewport ||
 			   entity.has_ui_input ||
 			   entity.has_ui_checkbox ||
-			   entity.has_ui_color_picker) &&
+			   entity.has_ui_color_picker ||
+			   entity.has_ui_action) &&
 		   !entity.has_ui_layout { return scene, fail(.Invalid_Field, fmt.tprintf("UI component on '%s' requires ui_layout", entity.name)) }
 		if entity.has_ui_layout && !shared.ui_layout_is_valid(entity.ui_layout) {
 			return scene, fail(
@@ -1939,6 +1963,17 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf("UI color picker entity '%s' is invalid", entity.name),
+			)
+		}
+		if entity.has_ui_action && !shared.ui_action_is_valid(entity.ui_action) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"UI action entity '%s' requires a non-empty action of at most %d bytes and a payload of at most %d bytes",
+					entity.name,
+					shared.UI_ACTION_MAX_BYTES,
+					shared.UI_ACTION_PAYLOAD_MAX_BYTES,
+				),
 			)
 		}
 	}

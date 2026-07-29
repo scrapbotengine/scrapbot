@@ -62,6 +62,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_input` | UI content | Single-line text or numeric input. |
 | `scrapbot.ui_checkbox` | UI content | Boolean control. |
 | `scrapbot.ui_color_picker` | UI content | Linear RGBA picker with optional HDR exposure and alpha controls. |
+| `scrapbot.ui_action` | UI semantics | Inheritable semantic action and optional event payload. |
 <!-- inventory:public-engine-components:end -->
 
 The engine also registers two internal derived components. Render reconciliation adds or removes `scrapbot.internal.render_instance` when an entity's Transform, geometry, and material references become renderable. Editor selection reconciliation adds or removes `scrapbot.internal.editor_transform_gizmo` when the selected entity can be manipulated. Both may appear as collapsed, read-only cards in the runtime type-inspected editor, but are intentionally unavailable to scene files, project Luau, native extensions, component membership actions, and persistence.
@@ -462,6 +463,17 @@ Box size must be positive. Automatic geometry fields accept `-1`; explicit value
 | `checker_light`, `checker_dark` | Light gray, dark gray | Alpha-track checker colors. |
 
 Dragging writes `value` directly in linear space and advances `ui_state.change_revision`; releasing advances `submit_revision` once. HDR is not an encoded display-space color: the EV control changes direct RGB magnitude, while painting uses a bounded preview. Compose the picker directly or place it in a public popup targeted by an ordinary `ui_button`.
+
+### `scrapbot.ui_action`
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `action` | Required | Non-empty semantic action name, at most 64 UTF-8 bytes. |
+| `payload` | Empty | Optional opaque project payload, at most 256 UTF-8 bytes. |
+
+Attach `ui_action` to an interactive control or any of its UI layout ancestors. When the control activates, changes, submits, cancels, or completes a drop, the published event copies the nearest action and payload while retaining the exact interacted entity UUID.
+
+`ui_action` does not make an entity interactive and does not affect layout or paint. It adds project meaning to existing reusable controls.
 
 ## Related references
 

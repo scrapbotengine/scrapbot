@@ -201,6 +201,11 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	list.item_height = 28
 	list.overscan = 4
 	testing.expect(t, ecs.set_ui_list(&world, entity_index, list))
+	action := shared.UI_Action_Component {
+		action = "native.launch",
+		payload = "alpha",
+	}
+	testing.expect(t, ecs.set_ui_action(&world, entity_index, action))
 
 	commands: ecs.Command_Buffer
 	ecs.init_command_buffer(&commands)
@@ -367,6 +372,16 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, api_payload_text(&panel_payload) == "Native Panel")
 	testing.expect(t, panel_payload.panel.collapsible != 0)
+	action_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_action", &action_payload) != 0,
+	)
+	native_action, native_action_payload, action_ok := api_ui_payload_action(&action_payload)
+	testing.expect(t, action_ok)
+	testing.expect(t, native_action == "native.launch" && native_action_payload == "alpha")
+	testing.expect(t, api_ui_payload_set_action(&action_payload, "native.commit", "beta"))
+	testing.expect(t, system_set_ui_component(&ctx, entity, &action_payload) == nil)
 	panel_payload.panel.collapsed = 1
 	testing.expect(t, system_set_ui_component(&ctx, entity, &panel_payload) == nil)
 	list_payload.list.highlight_corner_radius = 9
@@ -380,6 +395,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, stored_panel.collapsed)
 	stored_list := world.ui_lists[world.entities[entity_index].ui_list_index]
 	testing.expect(t, stored_list.highlight_corner_radius == 9)
+	stored_action := world.ui_actions[world.entities[entity_index].ui_action_index]
+	testing.expect(t, stored_action.action == "native.commit" && stored_action.payload == "beta")
 
 	text_payload.text.size = 20
 	testing.expect(t, api_payload_set_strings(&text_payload, "After", "Project Font"))
@@ -430,6 +447,64 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 		testing.expect(t, world.ui_buttons[spawned.ui_button_index].text == "Native Spawn")
 		testing.expect(t, world.ui_buttons[spawned.ui_button_index].alignment == .Right)
 	}
+}
+
+@(test)
+test_native_ui_events_filter_editor_events_and_preserve_cursor_metadata :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	entity_index, created := ecs.create_world_entity(&world, "Native Event")
+	testing.expect(t, created)
+	entity_uuid := world.entities[entity_index].uuid
+	ecs.append_ui_event(
+		&world,
+		{
+			kind = .Submitted,
+			origin = .Scene,
+			entity = entity_uuid,
+			action_entity = entity_uuid,
+			action = "native.submit",
+			payload = "gamma",
+			position = {9, 11},
+		},
+	)
+	ecs.append_ui_event(
+		&world,
+		{kind = .Activated, origin = .Editor, entity = entity_uuid, action = "editor.private"},
+	)
+	system: Native_System
+	step := Step_Context {
+		world = &world,
+		system = &system,
+	}
+	ctx := api.System_Context {
+		host = &step,
+	}
+	events: [api.MAX_UI_EVENTS]api.UI_Event
+	event_count: c.int
+	latest, oldest: u64
+	overflowed: c.int
+	err := system_ui_events(
+		&ctx,
+		0,
+		raw_data(events[:]),
+		c.int(len(events)),
+		&event_count,
+		&latest,
+		&oldest,
+		&overflowed,
+	)
+	testing.expect(t, err == nil)
+	testing.expect(t, event_count == 1)
+	testing.expect(t, latest == 2 && oldest == 1 && overflowed == 0)
+	testing.expect(t, events[0].kind == .Submitted)
+	testing.expect(t, events[0].entity == api_uuid_from_shared(entity_uuid))
+	testing.expect(t, events[0].position == api.Vec2{9, 11})
+	testing.expect(
+		t,
+		string(events[0].action_bytes[:int(events[0].action_len)]) == "native.submit",
+	)
+	testing.expect(t, string(events[0].payload_bytes[:int(events[0].payload_len)]) == "gamma")
 }
 
 api_payload_set_strings :: proc(

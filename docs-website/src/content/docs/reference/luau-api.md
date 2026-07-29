@@ -13,6 +13,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the most precise API ref
 | `scrapbot.entity_count()` | Return alive entity count. |
 | `scrapbot.renderable_count()` | Return renderable count. |
 | `scrapbot.ui.resolve(theme, recipes)` | Resolve a built-in UI theme and ordered recipe array into a mutable component map suitable for `scrapbot.spawn`. |
+| `scrapbot.ui.events(after_sequence?)` | Read an immutable UI event snapshot without consuming it. |
 
 ## Components
 
@@ -60,6 +61,7 @@ Built-in handles:
 - `scrapbot.ui_input`
 - `scrapbot.ui_checkbox`
 - `scrapbot.ui_color_picker`
+- `scrapbot.ui_action`
 
 See the [Engine Component Reference](/reference/components/) for the complete field inventory, defaults, constraints, scene names, and native Odin descriptors. Camera query payloads expose projection, exposure, and render-feature settings. Mesh, geometry, and material remain membership handles with opaque resource-backed query payloads.
 
@@ -88,6 +90,31 @@ scrapbot.spawn({
 The generated types constrain built-in theme and recipe names. Resolution itself does not require component access, but spawning or attaching the returned components requires the same declared writes as hand-authored payloads. See [UI theming](/guides/ui-theming/) for the complete recipe vocabulary and override rules.
 
 UI query payloads expose the same complete layout, value, and style fields used by the editor. `scrapbot.ui_icon` selects an icon-set UUID plus symbol and supports HDR tint/inset; use `scrapbot.ui.builtin_icon_set` for the embedded catalog. Buttons carry the same icon reference plus leading/trailing position, size, gap, and inset. Layout payloads include `min_size`, per-axis `fill_width`/`fill_height`, per-axis `fit_content_width`/`fit_content_height`, and `fixed_in_fill` for fixed bars or headers inside a fill stack. Tree rows additionally expose `tree_item`, semantic `tree_parent`, sibling-local `tree_order`, and `tree_collapsed`. `scrapbot.ui_table` exposes proportional and resizable column policies plus a minimum column width; the first row's authored cell widths supply the proportions. `scrapbot.ui_list` can opt into direct-child dragging with configurable edge zones, insertion lines, and into-row tint, or enable shared nested-tree flattening and mutation with `tree_enabled` and `tree_indent`. `scrapbot.ui_progress` provides a reusable value/maximum indicator with track, fill, inset, corner, and direction styling. `scrapbot.ui_viewport` exposes Texture/Model/Material/World targets, optional camera/root UUIDs, orbit, distance, clear color, and shared interaction policy. Scrollbars, panel disclosures, button icons/title placement, input prefixes/selections/borders/carets, and checkbox boxes/checkmarks expose their geometry, colors, borders, and corner radii as ordinary mutable fields. A direct child button with `panel_action = true` occupies its parent panel's title band and advances its own ordinary activation revision. `scrapbot.ui_input` also exposes reusable numeric values, bounds, stepping, and scrubbing. Every laid-out element receives a renderer-owned, read-only `scrapbot.ui_state` payload with hover/active/focus, activation/change, validity, submit/cancel edges, draggable-list source/target UUIDs, `drop_placement` (`none`, `before`, `into`, or `after`), and monotonic revision counters including `drop_revision`. Transient booleans describe the most recent UI pass; revision counters let systems detect edges reliably.
+
+## UI events
+
+Attach `scrapbot.ui_action` to a control or UI ancestor, then read generic interaction events from a system:
+
+```lua
+local cursor = 0
+
+scrapbot.system(function()
+	local snapshot = scrapbot.ui.events(cursor)
+	cursor = snapshot.latest_sequence
+	if snapshot.overflowed then
+		-- Rebuild any derived project state before processing retained events.
+	end
+	for _, event in snapshot.events do
+		if event.action == "menu.launch" and event.kind == "activated" then
+			launch_game(event.payload)
+		end
+	end
+end)
+```
+
+Events are ordered and immutable. Every reader keeps its own cursor; reading does not drain the history for another system. Calling `scrapbot.ui.events()` without a cursor returns the latest completed UI interaction pass. Passing a cursor returns every retained project-origin event after it and reports `latest_sequence`, `oldest_sequence`, and `overflowed`.
+
+Kinds are `activated`, `changed`, `submitted`, `cancelled`, and `dropped`. Each event includes the exact `entity`, inherited `action_entity`, `action`, `payload`, `frame_index`, `part`, pointer `position`, and drag/drop UUIDs and placement. The history retains 256 events and resets with World replacement. Editor-origin events are never exposed to project scripts.
 
 Inputs also carry the same icon-set UUID and symbol contract as buttons, with
 leading/trailing position, independent HDR `icon_color`, size, gap, and inset.

@@ -183,6 +183,16 @@ text = "BOOST"
 
 `ui_theme` and `ui_recipes` must appear together in the entity table. Recipes create the relevant ordinary `ui_*` component values in array order; component sections then override any field. An entity may compose up to 16 recipes. The supported theme and recipe names are listed in [UI theming](/guides/ui-theming/).
 
+Reusable controls can carry semantic project meaning without changing their visual or interaction components:
+
+```toml
+[entities.ui_action]
+action = "menu.launch"
+payload = "campaign"
+```
+
+`action` is required and limited to 64 UTF-8 bytes; `payload` is optional and limited to 256 bytes. The interaction pass inherits the nearest action from the exact control or its UI ancestors and publishes it through the Luau/native immutable event API.
+
 ## Built-in component sections
 
 For a complete inventory of public engine components, reflected fields, defaults, constraints, and cross-surface names, see the [Engine Component Reference](/reference/components/).

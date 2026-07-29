@@ -19,6 +19,7 @@ UI_BUTTON :: "scrapbot.ui_button"
 UI_INPUT :: "scrapbot.ui_input"
 UI_CHECKBOX :: "scrapbot.ui_checkbox"
 UI_COLOR_PICKER :: "scrapbot.ui_color_picker"
+UI_ACTION :: "scrapbot.ui_action"
 
 UUID :: raw.UUID
 UI_Text_Alignment :: raw.UI_Text_Alignment
@@ -37,12 +38,23 @@ UI_Icon_Position :: raw.UI_Icon_Position
 UI_Input :: raw.UI_Input_Payload
 UI_Checkbox :: raw.UI_Checkbox_Payload
 UI_Color_Picker :: raw.UI_Color_Picker_Payload
+UI_Event :: raw.UI_Event
+UI_Event_Kind :: raw.UI_Event_Kind
+UI_Event_Part :: raw.UI_Event_Part
 UI_State :: raw.UI_State_Payload
 UI_Component_Payload :: raw.UI_Component_Payload
 UI_Theme_Name :: raw.UI_Theme_Name
 UI_Theme_Recipe :: raw.UI_Theme_Recipe
 
 UI_THEME_PAYLOAD_CAPACITY :: 9
+UI_EVENT_CAPACITY :: raw.MAX_UI_EVENTS
+
+UI_Event_Batch :: struct {
+	count: int,
+	latest_sequence: u64,
+	oldest_sequence: u64,
+	overflowed: bool,
+}
 
 ui_builtin_icon_set :: proc "contextless" () -> UUID {
 	return {
@@ -114,6 +126,9 @@ UI_Checkbox_Component :: Component {
 }
 UI_Color_Picker_Component :: Component {
 	name = UI_COLOR_PICKER,
+}
+UI_Action_Component :: Component {
+	name = UI_ACTION,
 }
 
 ui_layout_default :: proc "contextless" () -> UI_Layout {
@@ -404,6 +419,19 @@ ui_color_picker :: proc "contextless" (value: UI_Color_Picker) -> UI_Component_P
 	return {component = UI_COLOR_PICKER, color_picker = value}
 }
 
+ui_action :: proc "contextless" (
+	action: string,
+	payload: string = "",
+) -> (
+	UI_Component_Payload,
+	bool,
+) {
+	value := UI_Component_Payload {
+		component = UI_ACTION,
+	}
+	return value, ui_payload_set_action(&value, action, payload)
+}
+
 ui_payload_set_strings :: proc "contextless" (
 	payload: ^UI_Component_Payload,
 	text: string,
@@ -465,6 +493,92 @@ ui_payload_icon :: proc "contextless" (payload: ^UI_Component_Payload) -> string
 		return ""
 	}
 	return string(payload.icon_bytes[:int(payload.icon_len)])
+}
+
+ui_payload_set_action :: proc "contextless" (
+	payload: ^UI_Component_Payload,
+	action, action_payload: string,
+) -> bool {
+	if payload == nil ||
+	   len(action) == 0 ||
+	   len(action) > len(payload.action_bytes) ||
+	   len(action_payload) > len(payload.action_payload_bytes) {
+		return false
+	}
+	payload.action_len = c.int(len(action))
+	payload.action_payload_len = c.int(len(action_payload))
+	for byte, index in transmute([]u8)action {
+		payload.action_bytes[index] = byte
+	}
+	for byte, index in transmute([]u8)action_payload {
+		payload.action_payload_bytes[index] = byte
+	}
+	return true
+}
+
+ui_payload_action :: proc "contextless" (payload: ^UI_Component_Payload) -> string {
+	if payload == nil ||
+	   payload.action_len <= 0 ||
+	   int(payload.action_len) > len(payload.action_bytes) {
+		return ""
+	}
+	return string(payload.action_bytes[:int(payload.action_len)])
+}
+
+ui_payload_action_payload :: proc "contextless" (payload: ^UI_Component_Payload) -> string {
+	if payload == nil ||
+	   payload.action_payload_len < 0 ||
+	   int(payload.action_payload_len) > len(payload.action_payload_bytes) {
+		return ""
+	}
+	return string(payload.action_payload_bytes[:int(payload.action_payload_len)])
+}
+
+ui_event_action :: proc "contextless" (event: ^UI_Event) -> string {
+	if event == nil || event.action_len < 0 || int(event.action_len) > len(event.action_bytes) {
+		return ""
+	}
+	return string(event.action_bytes[:int(event.action_len)])
+}
+
+ui_event_payload :: proc "contextless" (event: ^UI_Event) -> string {
+	if event == nil || event.payload_len < 0 || int(event.payload_len) > len(event.payload_bytes) {
+		return ""
+	}
+	return string(event.payload_bytes[:int(event.payload_len)])
+}
+
+ui_events :: proc "contextless" (
+	ctx: ^System_Context,
+	buffer: []UI_Event,
+	after_sequence: u64 = raw.UI_EVENTS_LATEST_PASS,
+) -> (
+	UI_Event_Batch,
+	cstring,
+) {
+	batch: UI_Event_Batch
+	if ctx == nil || ctx.ui_events == nil {
+		return batch, "Scrapbot UI event API is not available"
+	}
+	count: c.int
+	overflowed: c.int
+	events: [^]UI_Event
+	if len(buffer) > 0 {
+		events = raw_data(buffer)
+	}
+	err := ctx.ui_events(
+		ctx,
+		after_sequence,
+		events,
+		c.int(len(buffer)),
+		&count,
+		&batch.latest_sequence,
+		&batch.oldest_sequence,
+		&overflowed,
+	)
+	batch.count = int(count)
+	batch.overflowed = overflowed != 0
+	return batch, err
 }
 
 get_ui :: proc "contextless" (

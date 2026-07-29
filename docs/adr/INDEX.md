@@ -43,3 +43,4 @@
 | [ADR-039](ADR-039-keep-clustered-lighting-and-shadow-cascades-backend-owned.md) | Keep clustered lighting and shadow cascades backend-owned | 2026-07-22 |
 | [ADR-040](ADR-040-resolve-ui-themes-into-component-values.md) | Resolve UI themes into explicit component values | 2026-07-28 |
 | [ADR-041](ADR-041-compile-svg-icon-sets-into-mtsdf-resources.md) | Compile SVG icon sets into MTSDF resources | 2026-07-29 |
+| [ADR-042](ADR-042-publish-ui-interactions-as-immutable-events.md) | Publish UI interactions as immutable events | 2026-07-29 |

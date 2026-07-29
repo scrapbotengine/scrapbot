@@ -323,6 +323,9 @@ write_missing_scene_fields :: proc(
 		case "ui_color_picker":
 			keys[0], keys[1], keys[2] = "value", "exposure", "read_only"
 			key_count = 3
+		case "ui_action":
+			keys[0], keys[1] = "action", "payload"
+			key_count = 2
 		case:
 			return
 	}
@@ -622,6 +625,16 @@ scene_world_field_value :: proc(
 				}
 				if key == "read_only" {
 					return scene_bool(value.read_only), true
+				}
+			}
+		case "ui_action":
+			if entity.ui_action_index >= 0 && entity.ui_action_index < len(world.ui_actions) {
+				value := world.ui_actions[entity.ui_action_index]
+				if key == "action" {
+					return fmt.tprintf("%q", value.action), true
+				}
+				if key == "payload" {
+					return fmt.tprintf("%q", value.payload), true
 				}
 			}
 		case "component":

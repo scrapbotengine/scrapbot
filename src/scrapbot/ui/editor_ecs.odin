@@ -436,43 +436,70 @@ editor_hierarchy_binding_target :: proc(
 	return {}, false
 }
 
-editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
+editor_ui_consume_events :: proc(
+	state: ^State,
+	world: ^shared.World,
+	after_sequence: u64,
+) -> bool {
 	if state == nil || world == nil {
 		return false
 	}
 	layout_changed := false
-	for event in ui_events(state) {
+	event_count := ecs.ui_event_count_after(world, after_sequence)
+	for event_index in 0 ..< event_count {
+		event, found := ecs.ui_event_after_at(world, after_sequence, event_index)
+		if !found || event.origin != .Editor {
+			continue
+		}
+		entity_index, entity_found := ecs.entity_index_by_uuid(world, event.entity)
+		if !entity_found {
+			continue
+		}
+		entity := world.entities[entity_index].id
 		switch event.kind {
 			case .Activated:
-				editor_ui_handle_activation(state, world, event.entity, event.position)
+				editor_ui_handle_activation(state, world, entity, event.position)
 			case .Changed:
 				if event.part == .Panel_Title {
-					editor_ui_handle_panel_change(state, world, event.entity)
+					editor_ui_handle_panel_change(state, world, entity)
 				} else {
-					editor_ui_handle_checkbox_change(state, world, event.entity)
+					editor_ui_handle_checkbox_change(state, world, entity)
 				}
 			case .Dropped:
-				list_index := int(event.entity.index)
+				list_index := entity_index
 				if !ecs.entity_is_alive(world, list_index) ||
-				   world.entities[list_index].id != event.entity ||
 				   world.entities[list_index].editor_ui_index < 0 ||
 				   world.entities[list_index].editor_ui_index >= len(world.editor_uis) ||
 				   world.editor_uis[world.entities[list_index].editor_ui_index].role !=
 					   .Browser_Scroll {
 					continue
 				}
-				source, source_found := editor_hierarchy_binding_target(world, event.source)
+				source_ui_index, source_uuid_found := ecs.entity_index_by_uuid(
+					world,
+					event.drag_source,
+				)
+				if !source_uuid_found {
+					continue
+				}
+				source, source_found := editor_hierarchy_binding_target(
+					world,
+					world.entities[source_ui_index].id,
+				)
 				if !source_found {
 					continue
 				}
 				source_index := int(source.index)
 				if event.drop_placement == .Before || event.drop_placement == .After {
-					if event.target == (shared.Entity{}) {
+					target_ui_index, target_uuid_found := ecs.entity_index_by_uuid(
+						world,
+						event.drop_target,
+					)
+					if !target_uuid_found {
 						continue
 					}
 					target, target_found := editor_hierarchy_binding_target(
 						world,
-						event.target,
+						world.entities[target_ui_index].id,
 						true,
 					)
 					if !target_found {
@@ -494,10 +521,17 @@ editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
 					continue
 				}
 				parent: shared.Entity_UUID
-				if event.target != (shared.Entity{}) {
+				if event.drop_target != (shared.Entity_UUID{}) {
+					target_ui_index, target_uuid_found := ecs.entity_index_by_uuid(
+						world,
+						event.drop_target,
+					)
+					if !target_uuid_found {
+						continue
+					}
 					target, target_found := editor_hierarchy_binding_target(
 						world,
-						event.target,
+						world.entities[target_ui_index].id,
 						true,
 					)
 					if !target_found {
@@ -513,6 +547,8 @@ editor_ui_consume_events :: proc(state: ^State, world: ^shared.World) -> bool {
 				if editor_reparent_entity(state, world, source_index, parent) {
 					layout_changed = true
 				}
+			case .Submitted, .Cancelled:
+				editor_ui_consume_input_state(state, world, entity_index)
 		}
 	}
 	for &binding in world.editor_uis {

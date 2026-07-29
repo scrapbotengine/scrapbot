@@ -4179,7 +4179,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		project_group_found = project_group_found || label == "PROJECT"
 		engine_group_found = engine_group_found || label == "scrapbot"
 		if !group_selection_checked {
-			testing.expect(t, handle_list_press(&world, entity.id))
+			testing.expect(t, handle_list_press(state, &world, entity.id))
 			testing.expect(t, !close_selection_popup(state, &world, entity.id))
 			testing.expect(t, world.ui_layouts[world.entities[menu].ui_layout_index].popup_open)
 			group_selection_checked = true
@@ -4267,7 +4267,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 	if !item_found {
 		return
 	}
-	testing.expect(t, handle_list_press(&world, world.entities[item].id))
+	testing.expect(t, handle_list_press(state, &world, world.entities[item].id))
 	testing.expect(t, !close_selection_popup(state, &world, world.entities[item].id))
 	editor_ui_handle_activation(state, &world, world.entities[item].id, {})
 	testing.expect(
@@ -4795,6 +4795,7 @@ test_editor_browser_builds_collapsible_transform_tree_and_reparents_with_history
 	browser, browser_found := editor_ui_entity(&world, .Browser_Scroll, 0)
 	testing.expect(t, browser_found)
 	if browser_found {
+		event_cursor := ecs.ui_event_latest_sequence(&world)
 		state.events[0] = {
 			kind = .Dropped,
 			entity = world.entities[browser].id,
@@ -4803,7 +4804,8 @@ test_editor_browser_builds_collapsible_transform_tree_and_reparents_with_history
 			drop_placement = .After,
 		}
 		state.event_count = 1
-		testing.expect(t, editor_ui_consume_events(state, &world))
+		publish_ui_events(state, &world)
+		testing.expect(t, editor_ui_consume_events(state, &world, event_cursor))
 		testing.expect_value(t, editor_entity_parent_uuid(&world, 0), shared.Entity_UUID{})
 		testing.expect_value(t, editor_entity_parent_uuid(&world, 1), parent_id)
 		indices, depths: [MAX_NODES]int
@@ -4830,7 +4832,9 @@ test_editor_browser_builds_collapsible_transform_tree_and_reparents_with_history
 			drop_placement = .Before,
 		}
 		state.event_count = 1
-		testing.expect(t, editor_ui_consume_events(state, &world))
+		event_cursor = ecs.ui_event_latest_sequence(&world)
+		publish_ui_events(state, &world)
+		testing.expect(t, editor_ui_consume_events(state, &world, event_cursor))
 		testing.expect_value(t, state.editor_history_count, 1)
 		testing.expect_value(t, state.editor_history_cursor, 1)
 		testing.expect_value(t, editor_entity_parent_uuid(&world, 1), shared.Entity_UUID{})
@@ -6391,7 +6395,7 @@ test_public_popup_anchors_clamps_scrolls_and_closes_generically :: proc(t: ^test
 	testing.expect(t, state.nodes[content_node].scroll_max > 0)
 
 	selected_index := 4 + 15
-	testing.expect(t, handle_list_press(&world, world.entities[selected_index].id))
+	testing.expect(t, handle_list_press(state, &world, world.entities[selected_index].id))
 	testing.expect(t, close_selection_popup(state, &world, world.entities[selected_index].id))
 	testing.expect_value(
 		t,
@@ -6556,7 +6560,7 @@ test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history ::
 	if !right_found {
 		return
 	}
-	testing.expect(t, handle_list_press(&world, world.entities[right_item].id))
+	testing.expect(t, handle_list_press(state, &world, world.entities[right_item].id))
 	testing.expect(t, close_selection_popup(state, &world, world.entities[right_item].id))
 	editor_ui_handle_activation(state, &world, world.entities[right_item].id, {})
 	if menu_found {
@@ -6687,7 +6691,7 @@ test_reflected_entity_reference_inspector_uses_searchable_public_popup_and_histo
 	if parent_item < 0 {
 		return
 	}
-	testing.expect(t, handle_list_press(&world, world.entities[parent_item].id))
+	testing.expect(t, handle_list_press(state, &world, world.entities[parent_item].id))
 	testing.expect(t, close_selection_popup(state, &world, world.entities[parent_item].id))
 	editor_ui_handle_activation(state, &world, world.entities[parent_item].id, {})
 	testing.expect_value(t, world.transforms[world.entities[1].transform_index].parent, parent_id)

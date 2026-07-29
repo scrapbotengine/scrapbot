@@ -233,6 +233,8 @@ Scene_Entity :: struct {
 	ui_checkbox: UI_Checkbox_Component,
 	has_ui_color_picker: bool,
 	ui_color_picker: UI_Color_Picker_Component,
+	has_ui_action: bool,
+	ui_action: UI_Action_Component,
 	custom_components: [dynamic]Custom_Component,
 }
 
@@ -592,6 +594,41 @@ UI_State_Component :: struct {
 	cancel_revision: u64,
 	drop_revision: u64,
 }
+UI_Event_Kind :: enum u8 {
+	Activated,
+	Changed,
+	Submitted,
+	Cancelled,
+	Dropped,
+}
+UI_Event_Part :: enum u8 {
+	Control,
+	Panel_Title,
+}
+UI_Event :: struct {
+	sequence: u64,
+	frame_index: u64,
+	kind: UI_Event_Kind,
+	part: UI_Event_Part,
+	origin: Entity_Origin,
+	entity: Entity_UUID,
+	action_entity: Entity_UUID,
+	action: string,
+	payload: string,
+	drag_source: Entity_UUID,
+	drop_target: Entity_UUID,
+	drop_placement: UI_Drop_Placement,
+	position: Vec2,
+}
+MAX_UI_EVENTS :: 256
+UI_Event_Stream :: struct {
+	events: [MAX_UI_EVENTS]UI_Event,
+	start: int,
+	count: int,
+	next_sequence: u64,
+	latest_pass_after_sequence: u64,
+	revision: u64,
+}
 UI_Text_Alignment :: enum {
 	Left,
 	Center,
@@ -708,6 +745,12 @@ UI_Color_Picker_Component :: struct {
 	checker_light: Vec4,
 	checker_dark: Vec4,
 }
+UI_Action_Component :: struct {
+	action: string,
+	payload: string,
+}
+UI_ACTION_MAX_BYTES :: 64
+UI_ACTION_PAYLOAD_MAX_BYTES :: 256
 
 ui_layout_default :: proc "contextless" () -> UI_Layout_Component {
 	return {}
@@ -841,6 +884,10 @@ ui_color_picker_default :: proc "contextless" () -> UI_Color_Picker_Component {
 		checker_light = {0.62, 0.64, 0.68, 1},
 		checker_dark = {0.34, 0.36, 0.40, 1},
 	}
+}
+
+ui_action_default :: proc "contextless" () -> UI_Action_Component {
+	return {}
 }
 
 ui_layout_is_valid :: proc "contextless" (value: UI_Layout_Component) -> bool {
@@ -1074,6 +1121,14 @@ ui_color_picker_is_valid :: proc "contextless" (value: UI_Color_Picker_Component
 		value.gap >= 0 &&
 		value.thumb_radius > 0 &&
 		value.thumb_border_width >= 0 \
+	)
+}
+
+ui_action_is_valid :: proc "contextless" (value: UI_Action_Component) -> bool {
+	return(
+		value.action != "" &&
+		len(value.action) <= UI_ACTION_MAX_BYTES &&
+		len(value.payload) <= UI_ACTION_PAYLOAD_MAX_BYTES \
 	)
 }
 
@@ -1417,6 +1472,7 @@ World_Entity :: struct {
 	ui_input_index: int,
 	ui_checkbox_index: int,
 	ui_color_picker_index: int,
+	ui_action_index: int,
 	editor_transform_gizmo_index: int,
 	editor_ui_index: int,
 	geometry_resource: string,
@@ -1496,6 +1552,7 @@ World :: struct {
 	input_initialized: bool,
 	keyboard_input: Keyboard_Input_Component,
 	pointer_input: Pointer_Input_Component,
+	ui_events: UI_Event_Stream,
 	entities: [dynamic]World_Entity,
 	free_entity_indices: [dynamic]int,
 	entity_by_uuid: map[Entity_UUID]int,
@@ -1560,6 +1617,7 @@ World :: struct {
 	ui_inputs: [dynamic]UI_Input_Component,
 	ui_checkboxes: [dynamic]UI_Checkbox_Component,
 	ui_color_pickers: [dynamic]UI_Color_Picker_Component,
+	ui_actions: [dynamic]UI_Action_Component,
 	free_ui_layout_indices: [dynamic]int,
 	free_ui_hstack_indices: [dynamic]int,
 	free_ui_vstack_indices: [dynamic]int,
@@ -1576,6 +1634,7 @@ World :: struct {
 	free_ui_input_indices: [dynamic]int,
 	free_ui_checkbox_indices: [dynamic]int,
 	free_ui_color_picker_indices: [dynamic]int,
+	free_ui_action_indices: [dynamic]int,
 	editor_transform_gizmos: [dynamic]Editor_Transform_Gizmo_Component,
 	editor_scene_cameras: [dynamic]Editor_Scene_Camera_Component,
 	editor_uis: [dynamic]Editor_UI_Component,

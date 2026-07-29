@@ -194,6 +194,11 @@ capture_registered_component_snapshot :: proc(
 		case .UI_Color_Picker:
 			value.has_ui_color_picker = true
 			value.ui_color_picker = world.ui_color_pickers[entity.ui_color_picker_index]
+		case .UI_Action:
+			value.has_ui_action = true
+			value.ui_action = world.ui_actions[entity.ui_action_index]
+			value.ui_action.action = clone_snapshot_string(value.ui_action.action)
+			value.ui_action.payload = clone_snapshot_string(value.ui_action.payload)
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -366,6 +371,8 @@ apply_registered_component_snapshot :: proc(
 			_ = set_ui_checkbox(world, entity_index, value.ui_checkbox)
 		case .UI_Color_Picker:
 			_ = set_ui_color_picker(world, entity_index, value.ui_color_picker)
+		case .UI_Action:
+			_ = set_ui_action(world, entity_index, value.ui_action)
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -515,6 +522,8 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.ui_input.font)
 	delete(entity.ui_input.prefix)
 	delete(entity.ui_input.icon)
+	delete(entity.ui_action.action)
+	delete(entity.ui_action.payload)
 	for &component in entity.custom_components {
 		delete(component.name)
 		for field in component.number_fields {
@@ -821,6 +830,14 @@ set_registered_component_membership :: proc(
 			} else {
 				_ = remove_ui_component(world, entity_index, definition.name)
 			}
+		case .UI_Action:
+			if present {
+				value := shared.ui_action_default()
+				value.action = "action"
+				_ = set_ui_action(world, entity_index, value)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -1042,6 +1059,12 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.has_ui_color_picker = true
 		entity.ui_color_picker = world.ui_color_pickers[source.ui_color_picker_index]
 	}
+	if source.ui_action_index >= 0 && source.ui_action_index < len(world.ui_actions) {
+		entity.has_ui_action = true
+		entity.ui_action = world.ui_actions[source.ui_action_index]
+		entity.ui_action.action = clone_snapshot_string(entity.ui_action.action)
+		entity.ui_action.payload = clone_snapshot_string(entity.ui_action.payload)
+	}
 }
 
 set_optional_transform :: proc(
@@ -1239,6 +1262,7 @@ apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene
 	if value.has_ui_input { _ = set_ui_input(world, entity_index, value.ui_input) } else { remove_ui_component(world, entity_index, "scrapbot.ui_input") }
 	if value.has_ui_checkbox { _ = set_ui_checkbox(world, entity_index, value.ui_checkbox) } else { remove_ui_component(world, entity_index, "scrapbot.ui_checkbox") }
 	if value.has_ui_color_picker { _ = set_ui_color_picker(world, entity_index, value.ui_color_picker) } else { remove_ui_component(world, entity_index, "scrapbot.ui_color_picker") }
+	if value.has_ui_action { _ = set_ui_action(world, entity_index, value.ui_action) } else { remove_ui_component(world, entity_index, "scrapbot.ui_action") }
 }
 
 replace_custom_components :: proc(

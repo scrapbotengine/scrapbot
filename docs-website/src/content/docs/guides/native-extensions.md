@@ -256,7 +256,30 @@ if err != nil {
 _ = uuid // stable project-wide identity, also usable as a UI parent
 ```
 
-Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions are stable edge counters for native systems that react less frequently than rendering; `valid` exposes numeric validation.
+Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; semantic `scrapbot.ui_action` strings; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions expose current per-entity state; `valid` exposes numeric validation.
+
+For ordered semantic commands, keep an independent sequence cursor and read the immutable event history:
+
+```odin
+events: [scrapbot.UI_EVENT_CAPACITY]scrapbot.UI_Event
+cursor: u64
+
+batch, err := scrapbot.ui_events(ctx, events[:], cursor)
+if err != nil {
+	return err
+}
+cursor = batch.latest_sequence
+if batch.overflowed {
+	// Rebuild derived extension state before applying retained events.
+}
+for &event in events[:batch.count] {
+	if event.kind == .Activated && scrapbot.ui_event_action(&event) == "menu.launch" {
+		launch(scrapbot.ui_event_payload(&event))
+	}
+}
+```
+
+Omit the cursor argument to read only the latest completed UI interaction pass. Explicit cursors catch up through the retained 256-event history and report overflow. Project extensions never receive editor-origin events.
 
 Standalone icons and buttons use the same UUID-backed catalog:
 
@@ -272,7 +295,7 @@ if !icon_ok {
 
 Project icon sets use the exact same payload with their resource UUID. `scrapbot.ui_button` accepts the symbol as its fourth argument and carries the set UUID, leading/trailing placement, explicit or automatic size, gap, and inset in its value.
 
-The raw ABI stores text, icon symbols, font names, and input prefixes in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_button`, `ui_input`, `ui_payload_text`, `ui_payload_font`, `ui_payload_prefix`, and `ui_payload_icon`.
+The raw ABI stores text, icon symbols, font names, input prefixes, semantic actions, and event payloads in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_button`, `ui_input`, `ui_action`, the `ui_payload_*` accessors, and `ui_event_action`/`ui_event_payload`.
 
 ## Queue lifecycle commands
 

@@ -43,6 +43,7 @@ Lifecycle meanings:
 | `scrapbot.ui_progress` | UI content | Authored | Yes | Reusable bounded progress visualization. |
 | `scrapbot.ui_viewport` | UI content | Authored | Yes | Interactive renderer-backed Texture, Model, Material, or World surface composited through ordinary UI paint. |
 | `scrapbot.ui_state` | UI interaction | Derived | Read-only | Renderer-owned hover/focus/activation/change/drop state and monotonic revisions. |
+| `scrapbot.ui_action` | UI semantics | Authored | Yes | Inheritable semantic action and payload copied into immutable UI events. |
 | `scrapbot.ui_button` | UI control | Authored | Yes | Text or SDF-icon activation control with an optional popup target UUID. |
 | `scrapbot.ui_input` | UI control | Authored | Yes | Single-line text/numeric input with optional icon, focus, selection, validation, stepping, and opt-in scrubbing. |
 | `scrapbot.ui_checkbox` | UI control | Authored | Yes | Reusable SDF boolean control with read-only mode. |
@@ -355,6 +356,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Value/style mutation dirties only the picker paint stream; active drags update the exact component and advance change revisions, release advances submission once, and stable frames reuse unchanged paint/GPU streams.
 - **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, projects, and the editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_color_picker).
 - **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`, `ui/editor_reflection.odin`; `ui/ui_test.odin`, `project/project_test.odin`, `render/render_test.odin`.
+
+### `scrapbot.ui_action`
+
+- **Contract:** A non-empty bounded semantic action plus optional bounded payload inherited from the interacted entity through its UI layout ancestors.
+- **Storage/lifecycle:** Dedicated typed UI storage; authored. World-owned strings are cloned on attachment and reclaimed on removal, despawn, or world destruction.
+- **Producers:** Scene TOML, Luau/native deferred UI mutation, project composition, and editor composition where reusable controls need semantic meaning.
+- **Consumers:** UI interaction publishing resolves the nearest ancestor action and copies it into the World-owned immutable event history. Luau, native extensions, and editor orchestration read that history independently.
+- **Invalidation:** Adding or changing the component performs no retained hierarchy or paint work. Event strings allocate only when an interaction is published; stable frames do no action lookup or event append.
+- **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, projects, and editor composition; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_action).
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ecs/ui_events.odin`, `ui/ui.odin`; `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`.
 
 ### `scrapbot.ui_state`
 

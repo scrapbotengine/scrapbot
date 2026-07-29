@@ -98,7 +98,7 @@ mark_ui_state_transient :: proc(world: ^World, entity_index: int) {
 	}
 }
 
-mark_ui_submitted :: proc(world: ^World, entity_index: int) -> bool {
+mark_ui_submitted :: proc(world: ^World, entity_index: int, paint_changed: bool = true) -> bool {
 	state := ensure_ui_state(world, entity_index)
 	if state == nil {
 		return false
@@ -106,7 +106,9 @@ mark_ui_submitted :: proc(world: ^World, entity_index: int) -> bool {
 	state.submitted = true
 	state.submit_revision += 1
 	mark_ui_state_transient(world, entity_index)
-	mark_ui_paint_changed(world, entity_index)
+	if paint_changed {
+		mark_ui_paint_changed(world, entity_index)
+	}
 	return true
 }
 
@@ -134,7 +136,7 @@ mark_ui_activated :: proc(world: ^World, entity_index: int) -> bool {
 	return true
 }
 
-mark_ui_changed :: proc(world: ^World, entity_index: int) -> bool {
+mark_ui_changed :: proc(world: ^World, entity_index: int, paint_changed: bool = true) -> bool {
 	state := ensure_ui_state(world, entity_index)
 	if state == nil {
 		return false
@@ -142,7 +144,9 @@ mark_ui_changed :: proc(world: ^World, entity_index: int) -> bool {
 	state.changed = true
 	state.change_revision += 1
 	mark_ui_state_transient(world, entity_index)
-	mark_ui_paint_changed(world, entity_index)
+	if paint_changed {
+		mark_ui_paint_changed(world, entity_index)
+	}
 	return true
 }
 
@@ -245,10 +249,18 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			world.ui_color_pickers[entity.ui_color_picker_index] = {}
 			append(&world.free_ui_color_picker_indices, entity.ui_color_picker_index)
 			entity.ui_color_picker_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_action":
+			if entity.ui_action_index < 0 { return false }
+			action := &world.ui_actions[entity.ui_action_index]
+			delete_world_string(world, action.action)
+			delete_world_string(world, action.payload)
+			action^ = {}
+			append(&world.free_ui_action_indices, entity.ui_action_index)
+			entity.ui_action_index = INVALID_COMPONENT_INDEX
 		case:
 			return false
 	}
-	if name != "scrapbot.ui_layout" {
+	if name != "scrapbot.ui_layout" && name != "scrapbot.ui_action" {
 		mark_ui_entity_dirty(world, entity_index)
 	}
 	bump_component_revision(world, entity_index)
@@ -765,6 +777,39 @@ set_ui_color_picker :: proc(
 		append(&world.ui_color_pickers, value)
 	}
 	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
+set_ui_action :: proc(world: ^World, entity_index: int, value: UI_Action_Component) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) || !shared.ui_action_is_valid(value) {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.ui_action_index >= 0 && entity.ui_action_index < len(world.ui_actions) {
+		current := &world.ui_actions[entity.ui_action_index]
+		if current^ == value {
+			return true
+		}
+		action := value
+		action.action = clone_world_string(world, value.action)
+		action.payload = clone_world_string(world, value.payload)
+		delete_world_string(world, current.action)
+		delete_world_string(world, current.payload)
+		current^ = action
+		bump_component_revision(world, entity_index)
+		return true
+	}
+	action := value
+	action.action = clone_world_string(world, value.action)
+	action.payload = clone_world_string(world, value.payload)
+	if index, found := take_free_slot(&world.free_ui_action_indices); found {
+		entity.ui_action_index = index
+		world.ui_actions[index] = action
+	} else {
+		entity.ui_action_index = len(world.ui_actions)
+		append(&world.ui_actions, action)
+	}
+	bump_component_revision(world, entity_index)
 	return true
 }
 

@@ -790,6 +790,24 @@ read_ui_component_command_from_luau :: proc "c" (
 			}
 			command.color_picker = value
 			return ecs.init_ui_component_command(command, .Color_Picker)
+		case "scrapbot.ui_action":
+			value := current_ui_action(world, entity_index, base)
+			if err := read_ui_string_field(L, payload_index, "action", &value.action);
+			   err != "" { return err }
+			if err := read_ui_string_field(L, payload_index, "payload", &value.payload);
+			   err != "" { return err }
+			if !shared.ui_action_is_valid(value) {
+				return "ui_action requires a non-empty bounded action and bounded payload"
+			}
+			command.action = value
+			command.action.action = ""
+			command.action.payload = ""
+			return ecs.init_ui_component_command(
+				command,
+				.Action,
+				action = value.action,
+				action_payload = value.payload,
+			)
 		case:
 			return "unsupported UI component"
 	}
@@ -1014,6 +1032,26 @@ current_ui_color_picker :: proc(
 		}
 	}
 	return shared.ui_color_picker_default()
+}
+
+current_ui_action :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Action_Component {
+	if base != nil && base.kind == .Action {
+		value := base.action
+		value.action = ecs.ui_component_command_action(base)
+		value.payload = ecs.ui_component_command_action_payload(base)
+		return value
+	}
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_action_index
+		if index >= 0 && index < len(world.ui_actions) {
+			return world.ui_actions[index]
+		}
+	}
+	return shared.ui_action_default()
 }
 
 ui_text_alignment_name :: proc "contextless" (alignment: shared.UI_Text_Alignment) -> string {

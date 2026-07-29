@@ -52,6 +52,7 @@ UI_Button_Component :: shared.UI_Button_Component
 UI_Input_Component :: shared.UI_Input_Component
 UI_Checkbox_Component :: shared.UI_Checkbox_Component
 UI_Color_Picker_Component :: shared.UI_Color_Picker_Component
+UI_Action_Component :: shared.UI_Action_Component
 
 INVALID_COMPONENT_INDEX :: -1
 MAX_QUERY_TERMS :: 8
@@ -102,6 +103,7 @@ init_world_entity :: proc(
 		ui_input_index = INVALID_COMPONENT_INDEX,
 		ui_checkbox_index = INVALID_COMPONENT_INDEX,
 		ui_color_picker_index = INVALID_COMPONENT_INDEX,
+		ui_action_index = INVALID_COMPONENT_INDEX,
 		editor_transform_gizmo_index = INVALID_COMPONENT_INDEX,
 		editor_ui_index = INVALID_COMPONENT_INDEX,
 	}
@@ -327,6 +329,11 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, input.prefix)
 		delete_world_string(world, input.icon)
 	}
+	for action in world.ui_actions {
+		delete_world_string(world, action.action)
+		delete_world_string(world, action.payload)
+	}
+	ui_event_stream_destroy(world)
 	for &storage in world.custom_components {
 		delete_world_string(world, storage.name)
 		for &component in storage.components {
@@ -399,6 +406,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_inputs)
 	delete(world.ui_checkboxes)
 	delete(world.ui_color_pickers)
+	delete(world.ui_actions)
 	delete(world.free_ui_layout_indices)
 	delete(world.free_ui_hstack_indices)
 	delete(world.free_ui_vstack_indices)
@@ -415,6 +423,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.free_ui_input_indices)
 	delete(world.free_ui_checkbox_indices)
 	delete(world.free_ui_color_picker_indices)
+	delete(world.free_ui_action_indices)
 	delete(world.editor_transform_gizmos)
 	delete(world.editor_scene_cameras)
 	delete(world.editor_uis)
@@ -517,6 +526,13 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_color_picker {
 			world_entity.ui_color_picker_index = len(world.ui_color_pickers)
 			append(&world.ui_color_pickers, entity.ui_color_picker)
+		}
+		if entity.has_ui_action {
+			world_entity.ui_action_index = len(world.ui_actions)
+			action := entity.ui_action
+			action.action = clone_world_string(&world, action.action)
+			action.payload = clone_world_string(&world, action.payload)
+			append(&world.ui_actions, action)
 		}
 		if entity.has_mesh {
 			world_entity.mesh_index = len(world.meshes)
@@ -2868,6 +2884,8 @@ entity_has_component :: proc "c" (
 				entity.ui_color_picker_index >= 0 &&
 				entity.ui_color_picker_index < len(world.ui_color_pickers) \
 			)
+		case "scrapbot.ui_action":
+			return entity.ui_action_index >= 0 && entity.ui_action_index < len(world.ui_actions)
 		case "scrapbot.mesh":
 			return entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes)
 		case "scrapbot.geometry":

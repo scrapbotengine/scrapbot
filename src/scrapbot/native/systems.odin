@@ -250,12 +250,116 @@ step_system :: proc(
 		remove_component = system_remove_component,
 		input_key_state = system_input_key_state,
 		input_pointer = system_input_pointer,
+		ui_events = system_ui_events,
 	}
 
 	if err := system.callback(&ctx); err != nil {
 		return fmt.tprintf("native system %s: %s", system.name, string(err))
 	}
 	return ""
+}
+
+system_ui_events :: proc "c" (
+	ctx: ^api.System_Context,
+	after_sequence: u64,
+	events: [^]api.UI_Event,
+	event_capacity: c.int,
+	out_event_count: ^c.int,
+	out_latest_sequence: ^u64,
+	out_oldest_sequence: ^u64,
+	out_overflowed: ^c.int,
+) -> cstring {
+	step, ok := system_step_context(ctx)
+	if !ok ||
+	   out_event_count == nil ||
+	   out_latest_sequence == nil ||
+	   out_oldest_sequence == nil ||
+	   out_overflowed == nil {
+		return "native UI event output is not available"
+	}
+	world := step.world
+	cursor := after_sequence
+	if cursor == api.UI_EVENTS_LATEST_PASS {
+		cursor = world.ui_events.latest_pass_after_sequence
+	}
+	out_event_count^ = 0
+	out_latest_sequence^ = ecs.ui_event_latest_sequence(world)
+	out_oldest_sequence^ = ecs.ui_event_oldest_sequence(world)
+	out_overflowed^ = bool_to_c_int(ecs.ui_event_history_overflowed(world, cursor))
+
+	required := 0
+	retained_count := ecs.ui_event_count_after(world, cursor)
+	for retained_index in 0 ..< retained_count {
+		event, found := ecs.ui_event_after_at(world, cursor, retained_index)
+		if found && event.origin != .Editor {
+			required += 1
+		}
+	}
+	out_event_count^ = c.int(required)
+	if required == 0 {
+		return nil
+	}
+	if events == nil || event_capacity < c.int(required) {
+		return "native UI event buffer is too small"
+	}
+
+	written := 0
+	for retained_index in 0 ..< retained_count {
+		event, found := ecs.ui_event_after_at(world, cursor, retained_index)
+		if !found || event.origin == .Editor {
+			continue
+		}
+		api_event := api.UI_Event {
+			sequence = event.sequence,
+			frame_index = event.frame_index,
+			kind = api_ui_event_kind(event.kind),
+			part = api_ui_event_part(event.part),
+			entity = api_uuid_from_shared(event.entity),
+			action_entity = api_uuid_from_shared(event.action_entity),
+			drag_source = api_uuid_from_shared(event.drag_source),
+			drop_target = api_uuid_from_shared(event.drop_target),
+			drop_placement = api.UI_Drop_Placement(event.drop_placement),
+			position = api_vec2_from_shared(event.position),
+			action_len = c.int(len(event.action)),
+			payload_len = c.int(len(event.payload)),
+		}
+		for byte, index in transmute([]u8)event.action {
+			api_event.action_bytes[index] = byte
+		}
+		for byte, index in transmute([]u8)event.payload {
+			api_event.payload_bytes[index] = byte
+		}
+		events[written] = api_event
+		written += 1
+	}
+	out_event_count^ = c.int(written)
+	return nil
+}
+
+api_ui_event_kind :: proc "contextless" (kind: shared.UI_Event_Kind) -> api.UI_Event_Kind {
+	switch kind {
+		case .Activated:
+			return .Activated
+		case .Changed:
+			return .Changed
+		case .Submitted:
+			return .Submitted
+		case .Cancelled:
+			return .Cancelled
+		case .Dropped:
+			return .Dropped
+	}
+	return .Activated
+}
+
+api_ui_event_part :: proc "contextless" (part: shared.UI_Event_Part) -> api.UI_Event_Part {
+	switch part {
+		case .Control:
+			return .Control
+		case .Panel_Title:
+			return .Panel_Title
+	}
+	return .Control
 }
 
 system_input_key_state :: proc "c" (

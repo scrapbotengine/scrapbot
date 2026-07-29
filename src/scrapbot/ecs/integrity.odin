@@ -57,6 +57,7 @@ World_Component_Kind :: enum {
 	UI_Input,
 	UI_Checkbox,
 	UI_Color_Picker,
+	UI_Action,
 	Editor_Transform_Gizmo,
 	Editor_UI,
 }
@@ -123,7 +124,7 @@ format_world_integrity_failure :: proc(failure: World_Integrity_Failure) -> stri
 world_entity_component_slots :: proc(
 	world: ^World,
 	entity: World_Entity,
-) -> [28]World_Component_Slot {
+) -> [29]World_Component_Slot {
 	return {
 		{.Transform, entity.transform_index, len(world.transforms)},
 		{.Camera, entity.camera_index, len(world.cameras)},
@@ -151,6 +152,7 @@ world_entity_component_slots :: proc(
 		{.UI_Input, entity.ui_input_index, len(world.ui_inputs)},
 		{.UI_Checkbox, entity.ui_checkbox_index, len(world.ui_checkboxes)},
 		{.UI_Color_Picker, entity.ui_color_picker_index, len(world.ui_color_pickers)},
+		{.UI_Action, entity.ui_action_index, len(world.ui_actions)},
 		{
 			.Editor_Transform_Gizmo,
 			entity.editor_transform_gizmo_index,
@@ -730,6 +732,7 @@ validate_world_integrity :: proc(
 		{world.free_ui_input_indices[:], len(world.ui_inputs), .UI_Input},
 		{world.free_ui_checkbox_indices[:], len(world.ui_checkboxes), .UI_Checkbox},
 		{world.free_ui_color_picker_indices[:], len(world.ui_color_pickers), .UI_Color_Picker},
+		{world.free_ui_action_indices[:], len(world.ui_actions), .UI_Action},
 	}
 	for free_set in free_sets {
 		if failure, ok := validate_world_free_slots(

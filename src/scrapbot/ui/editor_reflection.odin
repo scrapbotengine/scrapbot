@@ -179,6 +179,10 @@ editor_reflected_snapshot_component_value :: proc(
 					},
 					true
 			}
+		case .UI_Action:
+			if entity.has_ui_action {
+				return any{rawptr(&entity.ui_action), typeid_of(shared.UI_Action_Component)}, true
+			}
 		case .UI_State,
 		     .Keyboard_Input,
 		     .Pointer_Input,
@@ -353,6 +357,12 @@ editor_reflected_live_component_value :: proc(
 			return any {
 					rawptr(&world.ui_color_pickers[entity.ui_color_picker_index]),
 					typeid_of(shared.UI_Color_Picker_Component),
+				},
+				true
+		case .UI_Action:
+			return any {
+					rawptr(&world.ui_actions[entity.ui_action_index]),
+					typeid_of(shared.UI_Action_Component),
 				},
 				true
 		case .Render_Instance:

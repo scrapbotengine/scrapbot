@@ -23,6 +23,7 @@ Every visible element starts with `scrapbot.ui_layout`. Add at most one flow con
 | Framing | `ui_panel` |
 | Content | `ui_icon`, `ui_text`, `ui_button`, `ui_input`, `ui_checkbox`, or `ui_color_picker` |
 | Indicator | `ui_progress` |
+| Semantics | Optional inheritable `ui_action` |
 | Interaction | Renderer-owned, read-only `ui_state` |
 
 Panels, scroll areas, and progress indicators compose with flow/content components rather than replacing them. For example, one entity can be a titled panel, a scroll viewport, and a selectable list.
@@ -217,13 +218,27 @@ Set a supported corner radius to `0` for square geometry. Omit `font` to use emb
 
 Scrapbot's reduced editor theme is one reusable composition recipe, not a renderer mode. Scene TOML, Luau, and native Odin can resolve the same named recipes into ordinary components, override any field per entity, or ignore the recipe system entirely. See [UI theming](/guides/ui-theming/).
 
-## React through `ui_state`
+## React through semantic events
+
+Use `ui_action` to bind project meaning without teaching buttons, inputs, lists, or the renderer about gameplay commands:
+
+```toml
+[entities.ui_action]
+action = "menu.launch"
+payload = "campaign"
+```
+
+The action may live on the exact control or a UI ancestor shared by a composite subtree. `scrapbot.ui.events(cursor)` returns ordered activation, change, submission, cancellation, and drop events to Luau; native extensions use the same cursor model. Reads are immutable, so multiple systems can independently observe the same interaction.
+
+The `ui-showcase` example uses this contract to drive a live neon event monitor from ordinary buttons, a checkbox, an input, and the HDR color picker.
+
+## Inspect current state through `ui_state`
 
 The renderer attaches a read-only `scrapbot.ui_state` to laid-out elements. It reports hover, active, and focus state plus activation, change, validation, submit, cancel, and draggable-list drop edges. A draggable list publishes `dragging`, direct-child `drag_source`/`drop_target` UUIDs, `drop_placement` (`before`, `into`, or `after`), and a monotonic `drop_revision`; an empty target with `into` means the list background rather than another row.
 
 For a reusable nested tree, set `tree_enabled = true` on the list and `tree_item = true` on each row's layout. Rows remain ordinary direct children of the list for composition and selection. Their `tree_parent` points to another row UUID, `tree_order` is sibling-local, and `tree_collapsed` hides the descendant branch. The shared list lays rows out depth-first, applies `tree_indent` to row contents while retaining edge-to-edge selection chrome, rejects cyclic drops, and updates parent/order metadata atomically for `before`, `into`, and `after`. A normal child button can paint a disclosure icon and toggle its row's `tree_collapsed` field; no editor-only tree widget is involved.
 
-Transient booleans describe the latest UI pass. Use revision counters when a system must not miss an edge between its own updates:
+Transient booleans describe the latest UI pass. Use revision counters when a system needs per-entity current state. Prefer the ordered event history for semantic commands spanning multiple controls:
 
 ```lua
 local Buttons = scrapbot.query(scrapbot.ui_button, scrapbot.ui_state)

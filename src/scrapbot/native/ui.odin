@@ -638,6 +638,15 @@ system_get_ui_component :: proc "c" (
 				checker_light = api_vec4_from_shared(value.checker_light),
 				checker_dark = api_vec4_from_shared(value.checker_dark),
 			}
+		case "scrapbot.ui_action":
+			if world_entity.ui_action_index < 0 ||
+			   world_entity.ui_action_index >= len(step.world.ui_actions) {
+				return 0
+			}
+			value := step.world.ui_actions[world_entity.ui_action_index]
+			if !api_ui_payload_set_action(payload, value.action, value.payload) {
+				return 0
+			}
 		case:
 			return 0
 	}
@@ -1018,6 +1027,27 @@ ui_command_from_api_payload :: proc "c" (
 			}
 			command.color_picker = value
 			return ecs.init_ui_component_command(command, .Color_Picker)
+		case "scrapbot.ui_action":
+			action, action_payload, valid := api_ui_payload_action(payload)
+			if !valid {
+				return "native ui_action string length is invalid"
+			}
+			value := shared.UI_Action_Component {
+				action = action,
+				payload = action_payload,
+			}
+			if !shared.ui_action_is_valid(value) {
+				return "native ui_action payload is invalid"
+			}
+			command.action = value
+			command.action.action = ""
+			command.action.payload = ""
+			return ecs.init_ui_component_command(
+				command,
+				.Action,
+				action = action,
+				action_payload = action_payload,
+			)
 	}
 	return "native UI component is not supported"
 }
@@ -1056,6 +1086,43 @@ api_ui_payload_set_strings :: proc "contextless" (
 	for byte, index in transmute([]u8)prefix { payload.prefix_bytes[index] = byte }
 	for byte, index in transmute([]u8)icon { payload.icon_bytes[index] = byte }
 	return true
+}
+
+api_ui_payload_set_action :: proc "contextless" (
+	payload: ^api.UI_Component_Payload,
+	action, action_payload: string,
+) -> bool {
+	if payload == nil ||
+	   len(action) == 0 ||
+	   len(action) > len(payload.action_bytes) ||
+	   len(action_payload) > len(payload.action_payload_bytes) {
+		return false
+	}
+	payload.action_len = c.int(len(action))
+	payload.action_payload_len = c.int(len(action_payload))
+	for byte, index in transmute([]u8)action { payload.action_bytes[index] = byte }
+	for byte, index in transmute([]u8)action_payload {
+		payload.action_payload_bytes[index] = byte
+	}
+	return true
+}
+
+api_ui_payload_action :: proc "contextless" (
+	payload: ^api.UI_Component_Payload,
+) -> (
+	action, action_payload: string,
+	ok: bool,
+) {
+	if payload == nil ||
+	   payload.action_len <= 0 ||
+	   int(payload.action_len) > len(payload.action_bytes) ||
+	   payload.action_payload_len < 0 ||
+	   int(payload.action_payload_len) > len(payload.action_payload_bytes) {
+		return "", "", false
+	}
+	return string(payload.action_bytes[:int(payload.action_len)]),
+		string(payload.action_payload_bytes[:int(payload.action_payload_len)]),
+		true
 }
 
 api_ui_payload_icon :: proc "contextless" (

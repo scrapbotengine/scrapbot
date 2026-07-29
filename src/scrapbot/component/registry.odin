@@ -65,6 +65,7 @@ Storage_Kind :: enum u8 {
 	UI_Input,
 	UI_Checkbox,
 	UI_Color_Picker,
+	UI_Action,
 	UI_State,
 	Keyboard_Input,
 	Pointer_Input,
@@ -663,6 +664,14 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(
 		registry,
+		"scrapbot.ui_action",
+		{
+			Field_Definition{name = "action", field_type = .String},
+			Field_Definition{name = "payload", field_type = .String},
+		},
+	)
+	register_engine_component(
+		registry,
 		"scrapbot.ui_button",
 		{
 			Field_Definition{name = "text", field_type = .String},
@@ -888,6 +897,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .UI_Color_Picker, .Authored
 		case "scrapbot.ui_state":
 			return .UI_State, .Derived
+		case "scrapbot.ui_action":
+			return .UI_Action, .Authored
 		case "scrapbot.internal.render_instance":
 			return .Render_Instance, .Derived
 		case "scrapbot.internal.editor_transform_gizmo":

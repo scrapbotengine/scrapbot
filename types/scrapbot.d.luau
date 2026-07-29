@@ -47,9 +47,11 @@ export type Scrapbot = {
 	ui_input: ScrapbotUiInputComponent,
 	ui_checkbox: ScrapbotUiCheckboxComponent,
 	ui_color_picker: ScrapbotUiColorPickerComponent,
+	ui_action: ScrapbotUiActionComponent,
 	ui: {
 		builtin_icon_set: string,
 		resolve: (theme: ScrapbotUiThemeName, recipes: {ScrapbotUiThemeRecipe}) -> {[string]: any},
+		events: (after_sequence: number?) -> ScrapbotUiEventSnapshot,
 	},
 	mesh: ScrapbotMeshComponent,
 	geometry_component: ScrapbotGeometryComponent,
@@ -110,6 +112,34 @@ export type ScrapbotMaterialResource = {kind: "material", index: number, generat
 export type ScrapbotUiThemeName = "reduced_dark"
 
 export type ScrapbotUiThemeRecipe = "canvas" | "region" | "panel_surface" | "raised" | "control" | "overlay" | "primary_text" | "secondary_text" | "muted_text" | "accent_text" | "warning_text" | "danger_text" | "quiet_button" | "standard_button" | "primary_button" | "destructive_button" | "input" | "panel" | "list" | "scroll_area" | "checkbox" | "color_picker" | "chrome_bar" | "selected_button" | "warning_button" | "warning_frame"
+
+export type ScrapbotUiEventKind = "activated" | "changed" | "submitted" | "cancelled" | "dropped"
+
+export type ScrapbotUiEventPart = "control" | "panel_title"
+
+export type ScrapbotUiDropPlacement = "none" | "before" | "into" | "after"
+
+export type ScrapbotUiEvent = {
+	read sequence: number,
+	read frame_index: number,
+	read kind: ScrapbotUiEventKind,
+	read part: ScrapbotUiEventPart,
+	read entity: string,
+	read action_entity: string,
+	read action: string,
+	read payload: string,
+	read drag_source: string,
+	read drop_target: string,
+	read drop_placement: ScrapbotUiDropPlacement,
+	read position: ReadonlyVec2,
+}
+
+export type ScrapbotUiEventSnapshot = {
+	read events: {ScrapbotUiEvent},
+	read latest_sequence: number,
+	read oldest_sequence: number,
+	read overflowed: boolean,
+}
 
 export type ScrapbotGeometryVertex = {position: Vec3, normal: Vec3, uv: {x: number, y: number}, tangent: Vec4?}
 
@@ -850,6 +880,18 @@ export type ReadonlyScrapbotUiState = {
 }
 
 export type ScrapbotUiStateComponent = ScrapbotComponent<never, ReadonlyScrapbotUiState>
+
+export type ScrapbotUiAction = {
+	action: string?,
+	payload: string?,
+}
+
+export type ReadonlyScrapbotUiAction = {
+	read action: string,
+	read payload: string,
+}
+
+export type ScrapbotUiActionComponent = ScrapbotComponent<ScrapbotUiAction, ReadonlyScrapbotUiAction>
 
 export type ScrapbotUiButton = {
 	text: string?,

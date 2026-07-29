@@ -11,6 +11,10 @@ MAX_UI_TEXT_BYTES :: 1024
 MAX_UI_FONT_BYTES :: 256
 MAX_UI_PREFIX_BYTES :: 64
 MAX_UI_ICON_BYTES :: 64
+MAX_UI_ACTION_BYTES :: 64
+MAX_UI_ACTION_PAYLOAD_BYTES :: 256
+MAX_UI_EVENTS :: 256
+UI_EVENTS_LATEST_PASS :: max(u64)
 
 Field_Type :: enum c.int {
 	Vec3 = 1,
@@ -372,6 +376,36 @@ UI_Color_Picker_Payload :: struct {
 	checker_dark: Vec4,
 }
 
+UI_Event_Kind :: enum c.int {
+	Activated = 1,
+	Changed,
+	Submitted,
+	Cancelled,
+	Dropped,
+}
+
+UI_Event_Part :: enum c.int {
+	Control = 1,
+	Panel_Title,
+}
+
+UI_Event :: struct {
+	sequence: u64,
+	frame_index: u64,
+	kind: UI_Event_Kind,
+	part: UI_Event_Part,
+	entity: UUID,
+	action_entity: UUID,
+	drag_source: UUID,
+	drop_target: UUID,
+	drop_placement: UI_Drop_Placement,
+	position: Vec2,
+	action_bytes: [MAX_UI_ACTION_BYTES]u8,
+	action_len: c.int,
+	payload_bytes: [MAX_UI_ACTION_PAYLOAD_BYTES]u8,
+	payload_len: c.int,
+}
+
 UI_State_Payload :: struct {
 	hovered: c.int,
 	active: c.int,
@@ -417,6 +451,10 @@ UI_Component_Payload :: struct {
 	prefix_len: c.int,
 	icon_bytes: [MAX_UI_ICON_BYTES]u8,
 	icon_len: c.int,
+	action_bytes: [MAX_UI_ACTION_BYTES]u8,
+	action_len: c.int,
+	action_payload_bytes: [MAX_UI_ACTION_PAYLOAD_BYTES]u8,
+	action_payload_len: c.int,
 }
 
 UI_Theme_Name :: enum u32 {
@@ -548,6 +586,7 @@ System_Context :: struct {
 	remove_component: Remove_Component_Proc,
 	input_key_state: Input_Key_State_Proc,
 	input_pointer: Input_Pointer_Proc,
+	ui_events: UI_Events_Proc,
 }
 
 System_Proc :: #type proc "c" (ctx: ^System_Context) -> cstring
@@ -672,6 +711,17 @@ Set_UI_Component_Proc :: #type proc "c" (
 	ctx: ^System_Context,
 	entity: Entity,
 	payload: ^UI_Component_Payload,
+) -> cstring
+
+UI_Events_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	after_sequence: u64,
+	events: [^]UI_Event,
+	event_capacity: c.int,
+	out_event_count: ^c.int,
+	out_latest_sequence: ^u64,
+	out_oldest_sequence: ^u64,
+	out_overflowed: ^c.int,
 ) -> cstring
 
 Resolve_UI_Theme_Proc :: #type proc "c" (

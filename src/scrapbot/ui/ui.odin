@@ -154,10 +154,12 @@ Viewport_Surface :: struct {
 	editor: bool,
 }
 EDITOR_HISTORY_CAPACITY :: 128
-MAX_UI_EVENTS :: 256
+MAX_UI_EVENTS :: shared.MAX_UI_EVENTS
 UI_Event_Kind :: enum {
 	Activated,
 	Changed,
+	Submitted,
+	Cancelled,
 	Dropped,
 }
 UI_Event_Part :: enum {
@@ -454,11 +456,84 @@ append_ui_event :: proc(state: ^State, event: UI_Event) {
 	state.event_count += 1
 }
 
+mark_ui_event :: proc(
+	state: ^State,
+	world: ^shared.World,
+	kind: UI_Event_Kind,
+	entity: shared.Entity,
+	position: shared.Vec2 = {},
+	part: UI_Event_Part = .Control,
+	paint_changed: bool = true,
+) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	entity_index := int(entity.index)
+	marked := false
+	switch kind {
+		case .Activated:
+			marked = ecs.mark_ui_activated(world, entity_index)
+		case .Changed:
+			marked = ecs.mark_ui_changed(world, entity_index, paint_changed)
+		case .Submitted:
+			marked = ecs.mark_ui_submitted(world, entity_index, paint_changed)
+		case .Cancelled:
+			marked = ecs.mark_ui_cancelled(world, entity_index)
+		case .Dropped:
+			return false
+	}
+	if marked {
+		append_ui_event(state, {kind = kind, part = part, entity = entity, position = position})
+	}
+	return marked
+}
+
 ui_events :: proc(state: ^State) -> []UI_Event {
 	if state == nil {
 		return nil
 	}
 	return state.events[:state.event_count]
+}
+
+publish_ui_events :: proc(state: ^State, world: ^shared.World, start_index: int = 0) {
+	if state == nil || world == nil {
+		return
+	}
+	events := ui_events(state)
+	if start_index < 0 || start_index > len(events) {
+		return
+	}
+	for event in events[start_index:] {
+		entity_index := int(event.entity.index)
+		if !ecs.entity_is_alive(world, entity_index) ||
+		   world.entities[entity_index].id != event.entity {
+			continue
+		}
+		entity := world.entities[entity_index]
+		action_entity, action, payload := ecs.ui_action_for_entity(world, entity_index)
+		public_event := shared.UI_Event {
+			kind = shared.UI_Event_Kind(event.kind),
+			part = shared.UI_Event_Part(event.part),
+			origin = entity.origin,
+			entity = entity.uuid,
+			action_entity = action_entity,
+			action = action,
+			payload = payload,
+			drop_placement = event.drop_placement,
+			position = event.position,
+		}
+		source_index := int(event.source.index)
+		if ecs.entity_is_alive(world, source_index) &&
+		   world.entities[source_index].id == event.source {
+			public_event.drag_source = world.entities[source_index].uuid
+		}
+		target_index := int(event.target.index)
+		if ecs.entity_is_alive(world, target_index) &&
+		   world.entities[target_index].id == event.target {
+			public_event.drop_target = world.entities[target_index].uuid
+		}
+		ecs.append_ui_event(world, public_event)
+	}
 }
 
 init :: proc(state: ^State) -> string {
@@ -1053,6 +1128,7 @@ reconcile :: proc(
 ) -> string {
 	if state == nil || world == nil { return "UI state or world is unavailable" }
 	state.event_count = 0
+	world.ui_events.latest_pass_after_sequence = ecs.ui_event_latest_sequence(world)
 	editor_ui_handle_shortcuts(state, keyboard)
 	when ODIN_TEST {
 		state.layout_node_visit_count = 0
@@ -1233,22 +1309,15 @@ reconcile :: proc(
 	sync_ui_interaction_states(state, world)
 	panel_changed := false
 	if pressed_ok {
-		_ = ecs.mark_ui_activated(world, int(pressed.index))
-		append_ui_event(
-			state,
-			{kind = .Activated, entity = pressed, position = editor_pointer.position},
-		)
+		_ = mark_ui_event(state, world, .Activated, pressed, editor_pointer.position)
 		panel_changed = handle_popup_press(state, world, pressed) || panel_changed
-		list_changed := handle_list_press(world, pressed)
+		list_changed := handle_list_press(state, world, pressed)
 		if list_changed {
 			panel_changed = close_selection_popup(state, world, pressed) || panel_changed
 		}
 		editor_ui_prepare_input_focus(state, world, int(pressed.index))
 		handle_input_press(state, world, pressed, editor_pointer.position)
 		checkbox_changed := handle_checkbox_press(state, world, pressed)
-		if checkbox_changed {
-			append_ui_event(state, {kind = .Changed, entity = pressed})
-		}
 		panel_changed = checkbox_changed || panel_changed
 		panel_title_changed := handle_panel_title_press(
 			state,
@@ -1256,27 +1325,17 @@ reconcile :: proc(
 			pressed,
 			editor_pointer.position,
 		)
-		if panel_title_changed {
-			append_ui_event(state, {kind = .Changed, part = .Panel_Title, entity = pressed})
-		}
 		panel_changed = panel_title_changed || panel_changed
 	}
 	if project_pressed_ok {
-		_ = ecs.mark_ui_activated(world, int(project_pressed.index))
-		append_ui_event(
-			state,
-			{kind = .Activated, entity = project_pressed, position = project_pointer.position},
-		)
+		_ = mark_ui_event(state, world, .Activated, project_pressed, project_pointer.position)
 		panel_changed = handle_popup_press(state, world, project_pressed) || panel_changed
-		list_changed := handle_list_press(world, project_pressed)
+		list_changed := handle_list_press(state, world, project_pressed)
 		if list_changed {
 			panel_changed = close_selection_popup(state, world, project_pressed) || panel_changed
 		}
 		handle_input_press(state, world, project_pressed, project_pointer.position)
 		checkbox_changed := handle_checkbox_press(state, world, project_pressed)
-		if checkbox_changed {
-			append_ui_event(state, {kind = .Changed, entity = project_pressed})
-		}
 		panel_changed = checkbox_changed || panel_changed
 		panel_title_changed := handle_panel_title_press(
 			state,
@@ -1284,12 +1343,6 @@ reconcile :: proc(
 			project_pressed,
 			project_pointer.position,
 		)
-		if panel_title_changed {
-			append_ui_event(
-				state,
-				{kind = .Changed, part = .Panel_Title, entity = project_pressed},
-			)
-		}
 		panel_changed = panel_title_changed || panel_changed
 	}
 	if editor_press_started && !pressed_ok {
@@ -1304,7 +1357,11 @@ reconcile :: proc(
 	if keyboard.editor_toggle {
 		panel_changed = close_popups_on_escape(state, world, true, false) || panel_changed
 	}
-	panel_changed = editor_ui_consume_events(state, world) || panel_changed
+	publish_ui_events(state, world)
+	published_event_count := state.event_count
+	panel_changed =
+		editor_ui_consume_events(state, world, world.ui_events.latest_pass_after_sequence) ||
+		panel_changed
 	sync_ui_interaction_states(state, world)
 	if panel_changed {
 		if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err }
@@ -1473,6 +1530,7 @@ reconcile :: proc(
 			}
 		}
 	}
+	publish_ui_events(state, world, published_event_count)
 	return ""
 }
 
@@ -3362,6 +3420,22 @@ update_viewport_interaction :: proc(
 		component.distance *= math.exp(pointer.wheel_y * -0.12)
 		component.distance = clamp(component.distance, f32(1.1), f32(20))
 		_ = ecs.set_ui_viewport(world, int(node.entity.index), component)
+		_ = mark_ui_event(
+			state,
+			world,
+			.Changed,
+			node.entity,
+			pointer.position,
+			paint_changed = false,
+		)
+		_ = mark_ui_event(
+			state,
+			world,
+			.Submitted,
+			node.entity,
+			pointer.position,
+			paint_changed = false,
+		)
 	}
 	if pointer.available && pointer.primary_down && !previous_down && hit >= 0 {
 		node := state.nodes[hit]
@@ -3372,6 +3446,14 @@ update_viewport_interaction :: proc(
 	}
 	if state.viewport_drag_active && state.viewport_drag_editor == editor {
 		if !pointer.available || !pointer.primary_down {
+			_ = mark_ui_event(
+				state,
+				world,
+				.Submitted,
+				state.viewport_drag_entity,
+				pointer.position,
+				paint_changed = false,
+			)
 			state.viewport_drag_active = false
 			state.viewport_drag_entity = {}
 		} else {
@@ -3395,6 +3477,14 @@ update_viewport_interaction :: proc(
 						)
 						component.orbit.y += delta.x * 0.012
 						_ = ecs.set_ui_viewport(world, int(node.entity.index), component)
+						_ = mark_ui_event(
+							state,
+							world,
+							.Changed,
+							node.entity,
+							pointer.position,
+							paint_changed = false,
+						)
 					}
 					state.viewport_drag_position = pointer.position
 				}
@@ -3616,7 +3706,13 @@ update_color_picker_interaction :: proc(
 		}
 	}
 	if press_released {
-		_ = ecs.mark_ui_submitted(world, int(state.color_picker_drag_entity.index))
+		_ = mark_ui_event(
+			state,
+			world,
+			.Submitted,
+			state.color_picker_drag_entity,
+			pointer.position,
+		)
 		state.color_picker_drag_active = false
 		state.color_picker_drag_entity = {}
 		state.color_picker_drag_part = .None
@@ -3859,7 +3955,7 @@ finish_input_edit :: proc(state: ^State, world: ^shared.World) -> bool {
 		changed := !state.input_has_original_number || number != state.input_original_number
 		input.number = number
 		if changed && !state.input_scrubbing {
-			_ = ecs.mark_ui_changed(world, entity_index)
+			_ = mark_ui_event(state, world, .Changed, entity.id)
 		}
 		state.input_original_number = number
 		state.input_has_original_number = true
@@ -3913,7 +4009,7 @@ finish_input_edit :: proc(state: ^State, world: ^shared.World) -> bool {
 			}
 		}
 	}
-	_ = ecs.mark_ui_submitted(world, entity_index)
+	_ = mark_ui_event(state, world, .Submitted, entity.id)
 	delete(state.input_original_text)
 	state.input_original_text, _ = strings.clone(input.text)
 	state.input_valid = true
@@ -3941,7 +4037,7 @@ cancel_input_edit :: proc(state: ^State, world: ^shared.World) {
 		state.input_cursor = len(input.text)
 		state.input_anchor = 0
 	}
-	_ = ecs.mark_ui_cancelled(world, entity_index)
+	_ = mark_ui_event(state, world, .Cancelled, entity.id)
 	state.input_valid = true
 	if interaction := ecs.ensure_ui_state(world, entity_index); interaction != nil {
 		interaction.valid = true
@@ -4087,7 +4183,7 @@ update_focused_input :: proc(
 			if numeric {
 				state.input_valid = numeric_input_text_valid(input^)
 			} else {
-				_ = ecs.mark_ui_changed(world, entity_index)
+				_ = mark_ui_event(state, world, .Changed, entity.id)
 				state.input_valid = true
 			}
 		}
@@ -4152,7 +4248,7 @@ update_input_scrub :: proc(
 	if input.has_minimum { next = max(next, input.minimum) }
 	if input.has_maximum { next = min(next, input.maximum) }
 	set_numeric_input_text(state, world, entity_index, input, next)
-	_ = ecs.mark_ui_changed(world, entity_index)
+	_ = mark_ui_event(state, world, .Changed, entity.id, pointer.position)
 	state.input_valid = apply_numeric_input(state, world, entity_index)
 }
 
@@ -4657,7 +4753,19 @@ set_popup_open :: proc(world: ^shared.World, entity_index: int, open: bool) -> b
 	if !ecs.set_ui_layout(world, entity_index, layout) {
 		return false
 	}
-	_ = ecs.mark_ui_changed(world, entity_index)
+	return true
+}
+
+set_popup_open_from_interaction :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	open: bool,
+) -> bool {
+	if !set_popup_open(world, entity_index, open) {
+		return false
+	}
+	_ = mark_ui_event(state, world, .Changed, world.entities[entity_index].id)
 	return true
 }
 
@@ -4704,7 +4812,9 @@ handle_popup_press :: proc(state: ^State, world: ^shared.World, pressed: shared.
 			continue
 		}
 		if layout.popup_open && !popup_contains_node(state, node_index, pressed_node_index) {
-			changed = set_popup_open(world, int(node.entity.index), false) || changed
+			changed =
+				set_popup_open_from_interaction(state, world, int(node.entity.index), false) ||
+				changed
 		}
 	}
 	if toggle_node_index >= 0 {
@@ -4714,7 +4824,14 @@ handle_popup_press :: proc(state: ^State, world: ^shared.World, pressed: shared.
 			layout.popup_anchor = pressed_entity.uuid
 			_ = ecs.set_ui_layout(world, int(node.entity.index), layout)
 		}
-		changed = set_popup_open(world, int(node.entity.index), !layout.popup_open) || changed
+		changed =
+			set_popup_open_from_interaction(
+				state,
+				world,
+				int(node.entity.index),
+				!layout.popup_open,
+			) ||
+			changed
 	}
 	return changed
 }
@@ -4733,7 +4850,7 @@ close_selection_popup :: proc(
 		node := state.nodes[node_index]
 		layout := world.ui_layouts[node.layout_index]
 		if ui_layout_is_popup(layout) && layout.popup_open && layout.popup_close_on_selection {
-			return set_popup_open(world, int(node.entity.index), false)
+			return set_popup_open_from_interaction(state, world, int(node.entity.index), false)
 		}
 	}
 	return false
@@ -4758,14 +4875,16 @@ close_popups_on_escape :: proc(
 		}
 		layout := world.ui_layouts[node.layout_index]
 		if ui_layout_is_popup(layout) && layout.popup_open {
-			changed = set_popup_open(world, int(node.entity.index), false) || changed
+			changed =
+				set_popup_open_from_interaction(state, world, int(node.entity.index), false) ||
+				changed
 		}
 	}
 	return changed
 }
 
-handle_list_press :: proc(world: ^shared.World, pressed: shared.Entity) -> bool {
-	if world == nil { return false }
+handle_list_press :: proc(state: ^State, world: ^shared.World, pressed: shared.Entity) -> bool {
+	if state == nil || world == nil { return false }
 	item_index := int(pressed.index)
 	for item_index >= 0 && item_index < len(world.entities) {
 		item := world.entities[item_index]
@@ -4784,7 +4903,7 @@ handle_list_press :: proc(world: ^shared.World, pressed: shared.Entity) -> bool 
 			if list.selected == item.uuid { return false }
 			list.selected = item.uuid
 			_ = ecs.set_ui_list(world, parent_index, list)
-			_ = ecs.mark_ui_changed(world, parent_index)
+			_ = mark_ui_event(state, world, .Changed, parent.id)
 			return true
 		}
 		item_index = parent_index
@@ -4866,7 +4985,7 @@ handle_panel_title_press :: proc(
 	   node.has_clip && !rect_contains(node.clip, position) { return false }
 	panel.collapsed = !panel.collapsed
 	_ = ecs.set_ui_panel(world, int(node.entity.index), panel)
-	_ = ecs.mark_ui_changed(world, int(node.entity.index))
+	_ = mark_ui_event(state, world, .Changed, node.entity, position, .Panel_Title)
 	return true
 }
 
@@ -4887,7 +5006,7 @@ handle_checkbox_press :: proc(
 	entity_index := int(node.entity.index)
 	checkbox.checked = !checkbox.checked
 	if !ecs.set_ui_checkbox(world, entity_index, checkbox) { return false }
-	_ = ecs.mark_ui_changed(world, entity_index)
+	_ = mark_ui_event(state, world, .Changed, node.entity)
 	return true
 }
 

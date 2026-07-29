@@ -378,6 +378,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 	if entity.has_ui_input { write_scene_input(builder, entity.ui_input) }
 	if entity.has_ui_checkbox { write_scene_checkbox(builder, entity.ui_checkbox) }
 	if entity.has_ui_color_picker { write_scene_color_picker(builder, entity.ui_color_picker) }
+	if entity.has_ui_action { write_scene_action(builder, entity.ui_action) }
 }
 
 write_scene_stack :: proc(
@@ -516,6 +517,14 @@ write_scene_color_picker :: proc(
 	write_scene_value(builder, "thumb_border_width", scene_f32(value.thumb_border_width))
 	write_scene_value(builder, "checker_light", scene_vec4(value.checker_light))
 	write_scene_value(builder, "checker_dark", scene_vec4(value.checker_dark))
+}
+
+write_scene_action :: proc(builder: ^strings.Builder, value: shared.UI_Action_Component) {
+	write_scene_section(builder, "ui_action")
+	write_scene_string(builder, "action", value.action)
+	if value.payload != "" {
+		write_scene_string(builder, "payload", value.payload)
+	}
 }
 
 write_scene_section :: proc(builder: ^strings.Builder, name: string) {

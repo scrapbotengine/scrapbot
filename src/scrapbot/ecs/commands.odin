@@ -11,6 +11,8 @@ MAX_UI_COMMAND_TEXT_BYTES :: 1024
 MAX_UI_COMMAND_FONT_BYTES :: 256
 MAX_UI_COMMAND_PREFIX_BYTES :: 64
 MAX_UI_COMMAND_ICON_BYTES :: 64
+MAX_UI_COMMAND_ACTION_BYTES :: shared.UI_ACTION_MAX_BYTES
+MAX_UI_COMMAND_ACTION_PAYLOAD_BYTES :: shared.UI_ACTION_PAYLOAD_MAX_BYTES
 
 Command_Kind :: enum {
 	Spawn,
@@ -74,6 +76,7 @@ UI_Component_Command_Kind :: enum {
 	Input,
 	Checkbox,
 	Color_Picker,
+	Action,
 }
 
 UI_Component_Command :: struct {
@@ -92,6 +95,7 @@ UI_Component_Command :: struct {
 	input: UI_Input_Component,
 	checkbox: UI_Checkbox_Component,
 	color_picker: UI_Color_Picker_Component,
+	action: UI_Action_Component,
 	text_bytes: [MAX_UI_COMMAND_TEXT_BYTES]u8,
 	text_len: int,
 	font_bytes: [MAX_UI_COMMAND_FONT_BYTES]u8,
@@ -100,6 +104,10 @@ UI_Component_Command :: struct {
 	prefix_len: int,
 	icon_bytes: [MAX_UI_COMMAND_ICON_BYTES]u8,
 	icon_len: int,
+	action_bytes: [MAX_UI_COMMAND_ACTION_BYTES]u8,
+	action_len: int,
+	action_payload_bytes: [MAX_UI_COMMAND_ACTION_PAYLOAD_BYTES]u8,
+	action_payload_len: int,
 }
 
 Command_Mesh :: struct {
@@ -368,6 +376,8 @@ init_ui_component_command :: proc "contextless" (
 	font: string = "",
 	prefix: string = "",
 	icon: string = "",
+	action: string = "",
+	action_payload: string = "",
 ) -> string {
 	if command == nil {
 		return "UI component command is not available"
@@ -391,6 +401,22 @@ init_ui_component_command :: proc "contextless" (
 	}
 	if err := copy_command_string(command.icon_bytes[:], &command.icon_len, icon, "UI icon");
 	   err != "" {
+		return err
+	}
+	if err := copy_command_string(
+		command.action_bytes[:],
+		&command.action_len,
+		action,
+		"UI action",
+	); err != "" {
+		return err
+	}
+	if err := copy_command_string(
+		command.action_payload_bytes[:],
+		&command.action_payload_len,
+		action_payload,
+		"UI action payload",
+	); err != "" {
 		return err
 	}
 	return ""
@@ -428,6 +454,8 @@ ui_component_command_kind :: proc "contextless" (name: string) -> UI_Component_C
 			return .Checkbox
 		case "scrapbot.ui_color_picker":
 			return .Color_Picker
+		case "scrapbot.ui_action":
+			return .Action
 	}
 	return .None
 }
@@ -484,6 +512,18 @@ ui_component_command_prefix :: proc "contextless" (command: ^UI_Component_Comman
 ui_component_command_icon :: proc "contextless" (command: ^UI_Component_Command) -> string {
 	if command == nil { return "" }
 	return string(command.icon_bytes[:command.icon_len])
+}
+
+ui_component_command_action :: proc "contextless" (command: ^UI_Component_Command) -> string {
+	if command == nil { return "" }
+	return string(command.action_bytes[:command.action_len])
+}
+
+ui_component_command_action_payload :: proc "contextless" (
+	command: ^UI_Component_Command,
+) -> string {
+	if command == nil { return "" }
+	return string(command.action_payload_bytes[:command.action_payload_len])
 }
 
 spawn_add_ui_component :: proc "contextless" (
@@ -1171,6 +1211,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 		"scrapbot.ui_input",
 		"scrapbot.ui_checkbox",
 		"scrapbot.ui_color_picker",
+		"scrapbot.ui_action",
 	}
 	for component_name in ui_component_names {
 		remove_ui_component(world, entity_index, component_name)
@@ -1286,6 +1327,8 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 	font := string(command.font_bytes[:command.font_len])
 	prefix := string(command.prefix_bytes[:command.prefix_len])
 	icon := string(command.icon_bytes[:command.icon_len])
+	action := string(command.action_bytes[:command.action_len])
+	action_payload := string(command.action_payload_bytes[:command.action_payload_len])
 	switch command.kind {
 		case .Layout:
 			set_ui_layout(world, entity_index, command.layout)
@@ -1334,6 +1377,11 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			set_ui_checkbox(world, entity_index, command.checkbox)
 		case .Color_Picker:
 			set_ui_color_picker(world, entity_index, command.color_picker)
+		case .Action:
+			value := command.action
+			value.action = action
+			value.payload = action_payload
+			set_ui_action(world, entity_index, value)
 		case .None:
 			return
 	}

@@ -42,6 +42,12 @@ mise scrapbot check examples/minimal
 
 `check` also refreshes `.scrapbot/types/scrapbot.d.luau` from the project's Luau component schemas.
 
+Compare the restrained built-in theme with a neon arcade UI and watch semantic control events drive project Luau:
+
+```sh
+mise scrapbot run examples/ui-showcase
+```
+
 For a visual high-churn workload driven by retained native query chunks and SIMD systems:
 
 ```sh
