@@ -75,8 +75,14 @@ depends = ["build"]
 run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot-sponza.png"'
 
 [tasks.build]
-description = "Build the Scrapbot CLI"
+description = "Build the Scrapbot CLI when its optimized binary is stale"
 depends = ["luau", "cgltf", "wgpu"]
+sources = [
+  "mise.toml",
+  "src/**/*",
+  "third_party/luau/build/release/*.a",
+]
+outputs = ["bin/scrapbot"]
 run = '''
 mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
@@ -96,8 +102,14 @@ odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUA
 '''
 
 [tasks.build-dev]
-description = "Build the Scrapbot CLI for fast development iteration"
+description = "Build the Scrapbot CLI for fast development iteration when stale"
 depends = ["luau", "cgltf", "wgpu"]
+sources = [
+  "mise.toml",
+  "src/**/*",
+  "third_party/luau/build/release/*.a",
+]
+outputs = ["bin/scrapbot-dev"]
 run = '''
 mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
