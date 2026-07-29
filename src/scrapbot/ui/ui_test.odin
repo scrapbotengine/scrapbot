@@ -6312,6 +6312,7 @@ test_public_popup_anchors_clamps_scrolls_and_closes_generically :: proc(t: ^test
 	testing.expect(t, ecs.set_ui_button(&world, 0, anchor_button))
 	testing.expect(t, !handle_popup_press(state, &world, world.entities[0].id))
 	testing.expect(t, !world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+	anchor_button = world.ui_buttons[world.entities[0].ui_button_index]
 	anchor_button.popup = popup_id
 	testing.expect(t, ecs.set_ui_button(&world, 0, anchor_button))
 
