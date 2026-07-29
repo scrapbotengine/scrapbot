@@ -1,0 +1,6 @@
+id = "71c10000-0000-4000-8000-000000000001"
+type = "scrapbot.icon_set"
+name = "Showcase Icons"
+
+[icon_set]
+source = "assets/icons"

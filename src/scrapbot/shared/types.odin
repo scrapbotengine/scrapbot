@@ -16,6 +16,8 @@ FONT_FIRST_CHAR :: 32
 FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 512
 MAX_PROJECT_FONTS :: 15
+MAX_PROJECT_ICON_SETS :: 16
+MAX_ICON_SETS :: MAX_PROJECT_ICON_SETS + 1
 MAX_GEOMETRY_LODS :: 4
 PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
 PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
@@ -80,6 +82,7 @@ Project_Resource_Kind :: enum {
 	Texture,
 	Model,
 	Environment,
+	Icon_Set,
 	Material,
 	Geometry_LOD,
 }
@@ -134,6 +137,10 @@ Project_Environment_Resource :: struct {
 	source: string,
 }
 
+Project_Icon_Set_Resource :: struct {
+	source: string,
+}
+
 Project_Material_Resource :: struct {
 	base_color: Vec4,
 	emissive: Vec3,
@@ -157,6 +164,7 @@ Project_Resource :: struct {
 	texture: Project_Texture_Resource,
 	model: Project_Model_Resource,
 	environment: Project_Environment_Resource,
+	icon_set: Project_Icon_Set_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
 }
@@ -213,6 +221,8 @@ Scene_Entity :: struct {
 	ui_progress: UI_Progress_Component,
 	has_ui_viewport: bool,
 	ui_viewport: UI_Viewport_Component,
+	has_ui_icon: bool,
+	ui_icon: UI_Icon_Component,
 	has_ui_text: bool,
 	ui_text: UI_Text_Component,
 	has_ui_button: bool,
@@ -247,6 +257,9 @@ Texture_Handle :: struct {
 	index, generation: u32,
 }
 Environment_Handle :: struct {
+	index, generation: u32,
+}
+Icon_Set_Handle :: struct {
 	index, generation: u32,
 }
 Model_Handle :: struct {
@@ -503,7 +516,7 @@ UI_Panel_Component :: struct {
 	disclosure_size: f32,
 	disclosure_margin: f32,
 	disclosure_gap: f32,
-	disclosure_corner_radius: f32,
+	disclosure_inset: f32,
 	collapsible: bool,
 	collapsed: bool,
 }
@@ -584,12 +597,15 @@ UI_Text_Alignment :: enum {
 	Center,
 	Right,
 }
-UI_Icon :: enum {
-	None,
-	Close,
-	Plus,
-	Chevron_Right,
-	Chevron_Down,
+UI_Icon_Position :: enum {
+	Leading,
+	Trailing,
+}
+UI_Icon_Component :: struct {
+	icon_set: Resource_UUID,
+	icon: string,
+	color: Vec4,
+	inset: f32,
 }
 UI_Text_Component :: struct {
 	text: string,
@@ -609,19 +625,29 @@ UI_Button_Component :: struct {
 	active_background: Vec4,
 	hover_color: Vec4,
 	active_color: Vec4,
-	icon: UI_Icon,
+	icon_set: Resource_UUID,
+	icon: string,
+	icon_position: UI_Icon_Position,
+	icon_size: f32,
+	icon_gap: f32,
 	icon_inset: f32,
-	icon_stroke: f32,
 	panel_action: bool,
 }
 UI_Input_Component :: struct {
 	text: string,
 	font: string,
 	prefix: string,
+	icon_set: Resource_UUID,
+	icon: string,
+	icon_position: UI_Icon_Position,
 	color: Vec4,
+	icon_color: Vec4,
 	prefix_color: Vec4,
 	prefix_background: Vec4,
 	size: f32,
+	icon_size: f32,
+	icon_gap: f32,
+	icon_inset: f32,
 	prefix_width: f32,
 	selection_background: Vec4,
 	focus_border_color: Vec4,
@@ -713,7 +739,7 @@ ui_panel_default :: proc "contextless" () -> UI_Panel_Component {
 		disclosure_size = 10,
 		disclosure_margin = 10,
 		disclosure_gap = 8,
-		disclosure_corner_radius = 1.35,
+		disclosure_inset = 0,
 	}
 }
 
@@ -754,22 +780,22 @@ ui_text_default :: proc "contextless" () -> UI_Text_Component {
 	return {color = {1, 1, 1, 1}, size = 16}
 }
 
+ui_icon_default :: proc "contextless" () -> UI_Icon_Component {
+	return {color = {1, 1, 1, 1}}
+}
+
 ui_button_default :: proc "contextless" () -> UI_Button_Component {
-	return {
-		color = {1, 1, 1, 1},
-		size = 16,
-		alignment = .Center,
-		icon_inset = 6,
-		icon_stroke = 1.5,
-	}
+	return {color = {1, 1, 1, 1}, size = 16, alignment = .Center, icon_gap = 6, icon_inset = 6}
 }
 
 ui_input_default :: proc "contextless" () -> UI_Input_Component {
 	return {
 		color = {1, 1, 1, 1},
+		icon_color = {1, 1, 1, 1},
 		prefix_color = {1, 1, 1, 1},
 		size = 16,
 		step = 1,
+		icon_gap = 6,
 		prefix_gap = 3,
 		prefix_corner_radius = 2,
 		prefix_text_padding = 3,
@@ -863,7 +889,7 @@ ui_panel_is_valid :: proc "contextless" (value: UI_Panel_Component) -> bool {
 	if value.disclosure_size < 0 ||
 	   value.disclosure_margin < 0 ||
 	   value.disclosure_gap < 0 ||
-	   value.disclosure_corner_radius < 0 {
+	   value.disclosure_inset < 0 {
 		return false
 	}
 	return !value.collapsed || value.collapsible
@@ -924,17 +950,46 @@ ui_text_is_valid :: proc "contextless" (value: UI_Text_Component) -> bool {
 	return value.text != "" && value.size > 0
 }
 
-ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
+ui_icon_is_valid :: proc "contextless" (value: UI_Icon_Component) -> bool {
 	return(
-		(value.text != "" || value.icon != .None) &&
+		value.icon_set != (Resource_UUID{}) &&
+		value.icon != "" &&
+		value.inset >= 0 &&
+		!math.is_nan(value.inset) &&
+		!math.is_inf(value.inset) &&
+		ui_vec4_is_finite(value.color) \
+	)
+}
+
+ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
+	has_icon_set := value.icon_set != (Resource_UUID{})
+	has_icon_name := value.icon != ""
+	return(
+		has_icon_set == has_icon_name &&
+		(value.text != "" || has_icon_set) &&
 		value.size > 0 &&
+		value.icon_size >= 0 &&
+		value.icon_gap >= 0 &&
 		value.icon_inset >= 0 &&
-		value.icon_stroke >= 0 \
+		!math.is_nan(value.icon_size) &&
+		!math.is_inf(value.icon_size) &&
+		!math.is_nan(value.icon_gap) &&
+		!math.is_inf(value.icon_gap) &&
+		!math.is_nan(value.icon_inset) &&
+		!math.is_inf(value.icon_inset) \
 	)
 }
 
 ui_input_is_valid :: proc "contextless" (value: UI_Input_Component) -> bool {
+	has_icon_set := value.icon_set != (Resource_UUID{})
+	has_icon_name := value.icon != ""
+	if has_icon_set != has_icon_name {
+		return false
+	}
 	if value.size <= 0 ||
+	   value.icon_size < 0 ||
+	   value.icon_gap < 0 ||
+	   value.icon_inset < 0 ||
 	   value.prefix_width < 0 ||
 	   value.prefix_gap < 0 ||
 	   value.prefix_corner_radius < 0 ||
@@ -944,6 +999,15 @@ ui_input_is_valid :: proc "contextless" (value: UI_Input_Component) -> bool {
 	   value.invalid_border_width < 0 ||
 	   value.caret_width < 0 ||
 	   value.caret_inset < 0 {
+		return false
+	}
+	if math.is_nan(value.icon_size) ||
+	   math.is_inf(value.icon_size) ||
+	   math.is_nan(value.icon_gap) ||
+	   math.is_inf(value.icon_gap) ||
+	   math.is_nan(value.icon_inset) ||
+	   math.is_inf(value.icon_inset) ||
+	   !ui_vec4_is_finite(value.icon_color) {
 		return false
 	}
 	if !value.numeric {
@@ -1010,6 +1074,19 @@ ui_color_picker_is_valid :: proc "contextless" (value: UI_Color_Picker_Component
 		value.gap >= 0 &&
 		value.thumb_radius > 0 &&
 		value.thumb_border_width >= 0 \
+	)
+}
+
+ui_vec4_is_finite :: proc "contextless" (value: Vec4) -> bool {
+	return(
+		!math.is_nan(value.x) &&
+		!math.is_inf(value.x) &&
+		!math.is_nan(value.y) &&
+		!math.is_inf(value.y) &&
+		!math.is_nan(value.z) &&
+		!math.is_inf(value.z) &&
+		!math.is_nan(value.w) &&
+		!math.is_inf(value.w) \
 	)
 }
 
@@ -1334,6 +1411,7 @@ World_Entity :: struct {
 	ui_progress_index: int,
 	ui_viewport_index: int,
 	ui_state_index: int,
+	ui_icon_index: int,
 	ui_text_index: int,
 	ui_button_index: int,
 	ui_input_index: int,
@@ -1476,6 +1554,7 @@ World :: struct {
 	ui_viewports: [dynamic]UI_Viewport_Component,
 	ui_states: [dynamic]UI_State_Component,
 	ui_transient_state_entities: [dynamic]Entity,
+	ui_icons: [dynamic]UI_Icon_Component,
 	ui_texts: [dynamic]UI_Text_Component,
 	ui_buttons: [dynamic]UI_Button_Component,
 	ui_inputs: [dynamic]UI_Input_Component,
@@ -1491,6 +1570,7 @@ World :: struct {
 	free_ui_progress_indices: [dynamic]int,
 	free_ui_viewport_indices: [dynamic]int,
 	free_ui_state_indices: [dynamic]int,
+	free_ui_icon_indices: [dynamic]int,
 	free_ui_text_indices: [dynamic]int,
 	free_ui_button_indices: [dynamic]int,
 	free_ui_input_indices: [dynamic]int,

@@ -1,16 +1,17 @@
 # FDR-009: Project resources
 
 **Status:** Active
-**Last reviewed:** 2026-07-27
+**Last reviewed:** 2026-07-29
 
 ## Overview
 
-Project resources are reusable, typed bags of authored data stored outside the ECS. The first supported resource type is `scrapbot.material`.
+Project resources are reusable, typed bags of authored data stored outside the ECS. Supported types include renderer resources and compiled UI icon sets.
 
 ## Behavior
 
 - Scrapbot discovers `resources/**/*.resource.toml` recursively.
 - Every resource declares a unique non-zero UUID, type, and editable display name.
+- An icon-set resource names a safe source directory under `assets/`. Each SVG filename defines a symbolic monochrome icon; runtime UI references the resource UUID plus that symbol rather than a mutable resource name.
 - A material resource stores base color, HDR emissive color, metallic and roughness factors, and an optional Texture resource reference.
 - Scene material components reference a resource UUID, never its name or source path.
 - Project loading rejects malformed resources, duplicate UUIDs, unsafe paths, invalid material data, and unresolved scene material references.
@@ -56,7 +57,7 @@ Project resources are reusable, typed bags of authored data stored outside the E
 
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036
+- **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036, ADR-041
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-011
 
 ## Open Questions

@@ -998,7 +998,7 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 			size = {
 				width = ui.FONT_ATLAS_SIZE,
 				height = ui.FONT_ATLAS_SIZE,
-				depthOrArrayLayers = shared.MAX_PROJECT_FONTS + 1,
+				depthOrArrayLayers = shared.MAX_PROJECT_FONTS + shared.MAX_ICON_SETS + 1,
 			},
 			format = .RGBA8Unorm,
 			mipLevelCount = 1,
@@ -1028,7 +1028,7 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 			baseMipLevel = 0,
 			mipLevelCount = 1,
 			baseArrayLayer = 0,
-			arrayLayerCount = shared.MAX_PROJECT_FONTS + 1,
+			arrayLayerCount = shared.MAX_PROJECT_FONTS + shared.MAX_ICON_SETS + 1,
 			aspect = .All,
 			usage = {.TextureBinding},
 		},

@@ -8,6 +8,7 @@ odin = { version = "dev-2026-07", exe = "odin" }
 ols = { version = "dev-2026-05", rename_exe = "ols" }
 odinfmt = { version = "dev-2026-05", rename_exe = "odinfmt" }
 pnpm = "10"
+python = "3.13"
 
 [tasks.fmt]
 description = "Format all Odin source files"
@@ -40,11 +41,59 @@ run = "node tools/check_staged_odin_format.mjs"
 description = "Install project tools, source dependencies, external fixtures, and Git hooks"
 run = '''
 mise install
+mise run icon-tools
 mise run wgpu
 git submodule update --init --recursive
 node tools/setup_external_assets.mjs
 git config --local core.hooksPath .githooks
 '''
+
+[tasks.icon-tools]
+description = "Install the pinned SVG normalizer and validate msdf-atlas-gen 1.4.0"
+sources = [
+  "tools/compile_icon_set.py",
+  "tools/icon_compiler_requirements.txt",
+  "tools/scrapbot-iconc",
+]
+outputs = [
+  ".scrapbot/tools/icon-compiler/.scrapbot-ready",
+  "bin/scrapbot-iconc",
+]
+run = '''
+ICON_ENV=".scrapbot/tools/icon-compiler"
+python -m venv "$ICON_ENV"
+"$ICON_ENV/bin/python" -m pip install --disable-pip-version-check \
+  --requirement tools/icon_compiler_requirements.txt
+touch "$ICON_ENV/.scrapbot-ready"
+mkdir -p bin
+ln -sfn ../tools/scrapbot-iconc bin/scrapbot-iconc
+MSDF_ATLAS_GEN="${SCRAPBOT_MSDF_ATLAS_GEN:-msdf-atlas-gen}"
+if ! command -v "$MSDF_ATLAS_GEN" >/dev/null 2>&1; then
+  echo "msdf-atlas-gen 1.4.0 is required; install it or set SCRAPBOT_MSDF_ATLAS_GEN" >&2
+  exit 1
+fi
+case "$("$MSDF_ATLAS_GEN" -version 2>&1 | head -n 1)" in
+  "MSDF-Atlas-Gen v1.4.0") ;;
+  *)
+    echo "msdf-atlas-gen 1.4.0 is required" >&2
+    exit 1
+    ;;
+esac
+'''
+
+[tasks.builtin-icons]
+description = "Regenerate the embedded built-in icon atlas and symbol metadata"
+depends = ["icon-tools"]
+sources = [
+  "tools/generate_builtin_icons.py",
+  "tools/compile_icon_set.py",
+  "src/scrapbot/resources/assets/builtin-icons/**/*.svg",
+]
+outputs = [
+  "src/scrapbot/resources/assets/builtin_icons_mtsdf.bin",
+  "src/scrapbot/resources/builtin_icon_data.odin",
+]
+run = "python tools/generate_builtin_icons.py"
 
 [tasks.setup-assets]
 description = "Download and verify pinned external development fixtures"
@@ -76,7 +125,7 @@ run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot
 
 [tasks.build]
 description = "Build the Scrapbot CLI when its optimized binary is stale"
-depends = ["luau", "cgltf", "wgpu"]
+depends = ["luau", "cgltf", "wgpu", "icon-tools"]
 sources = [
   "mise.toml",
   "src/**/*",
@@ -103,7 +152,7 @@ odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUA
 
 [tasks.build-dev]
 description = "Build the Scrapbot CLI for fast development iteration when stale"
-depends = ["luau", "cgltf", "wgpu"]
+depends = ["luau", "cgltf", "wgpu", "icon-tools"]
 sources = [
   "mise.toml",
   "src/**/*",
@@ -236,6 +285,8 @@ node tools/generate_workspace_luau_types.mjs
 description = "Run all local checks and smoke tests"
 depends = ["build"]
 run = '''
+python tools/test_icon_compiler.py
+python tools/generate_builtin_icons.py --check
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)

@@ -10,6 +10,7 @@ MAX_QUERY_CHUNK_BINDINGS :: 16
 MAX_UI_TEXT_BYTES :: 1024
 MAX_UI_FONT_BYTES :: 256
 MAX_UI_PREFIX_BYTES :: 64
+MAX_UI_ICON_BYTES :: 64
 
 Field_Type :: enum c.int {
 	Vec3 = 1,
@@ -147,12 +148,9 @@ UI_Text_Alignment :: enum c.int {
 	Right  = 2,
 }
 
-UI_Icon :: enum c.int {
-	None          = 0,
-	Close         = 1,
-	Plus          = 2,
-	Chevron_Right = 3,
-	Chevron_Down  = 4,
+UI_Icon_Position :: enum c.int {
+	Leading  = 0,
+	Trailing = 1,
 }
 
 UI_Layout_Payload :: struct {
@@ -214,7 +212,7 @@ UI_Panel_Payload :: struct {
 	disclosure_size: f32,
 	disclosure_margin: f32,
 	disclosure_gap: f32,
-	disclosure_corner_radius: f32,
+	disclosure_inset: f32,
 	collapsible: c.int,
 	collapsed: c.int,
 }
@@ -277,6 +275,12 @@ UI_Viewport_Payload :: struct {
 	interactive: c.int,
 }
 
+UI_Icon_Payload :: struct {
+	icon_set: UUID,
+	color: Vec4,
+	inset: f32,
+}
+
 UI_Text_Payload :: struct {
 	color: Vec4,
 	size: f32,
@@ -292,17 +296,25 @@ UI_Button_Payload :: struct {
 	active_background: Vec4,
 	hover_color: Vec4,
 	active_color: Vec4,
-	icon: UI_Icon,
+	icon_set: UUID,
+	icon_position: UI_Icon_Position,
+	icon_size: f32,
+	icon_gap: f32,
 	icon_inset: f32,
-	icon_stroke: f32,
 	panel_action: c.int,
 }
 
 UI_Input_Payload :: struct {
+	icon_set: UUID,
+	icon_position: UI_Icon_Position,
 	color: Vec4,
+	icon_color: Vec4,
 	prefix_color: Vec4,
 	prefix_background: Vec4,
 	size: f32,
+	icon_size: f32,
+	icon_gap: f32,
+	icon_inset: f32,
 	prefix_width: f32,
 	selection_background: Vec4,
 	focus_border_color: Vec4,
@@ -390,6 +402,7 @@ UI_Component_Payload :: struct {
 	list: UI_List_Payload,
 	progress: UI_Progress_Payload,
 	viewport: UI_Viewport_Payload,
+	icon_component: UI_Icon_Payload,
 	text: UI_Text_Payload,
 	button: UI_Button_Payload,
 	input: UI_Input_Payload,
@@ -402,6 +415,8 @@ UI_Component_Payload :: struct {
 	font_len: c.int,
 	prefix_bytes: [MAX_UI_PREFIX_BYTES]u8,
 	prefix_len: c.int,
+	icon_bytes: [MAX_UI_ICON_BYTES]u8,
+	icon_len: c.int,
 }
 
 UI_Theme_Name :: enum u32 {

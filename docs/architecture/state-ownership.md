@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-07-28
+**Last verified:** 2026-07-29
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -13,8 +13,8 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Compiled native chunk plans | Each `native.Native_System` | Derived query/storage/field resolution | Bounded cache keyed by chunk terms and bindings; invalidated by World UUID, component-registry revision, newly appearing storage families, or extension-set replacement. Ordinary component membership churn retains the plan. |
 | Entity identity and component values | `shared.World` / `ecs` | Active runtime authority | Typed ECS mutation, deferred command application, playback restore, or world replacement. |
 | Frame time | `world.time` | Current runtime resource | Advanced once per permitted simulation step. |
-| Geometry/material/environment descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. See [Resource render state](#resource-render-state). |
-| Texture/Model imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content fingerprints reuse unchanged products, atomic writes preserve last-good files, and model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
+| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. See [Resource render state](#resource-render-state). |
+| Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content fingerprints reuse unchanged products, atomic writes preserve last-good files, icon compilation runs only on invalidation, and model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
 | Authoring history and dirty UUID candidates | Editor UI state | In-memory authoring authority until Save/Revert | One transaction per completed gesture or structural operation; playback mutations remain disposable. |
 | UI theme palettes, metrics, and named recipes | Shared UI composition contract | Ephemeral composition input, not runtime authority | Scene parsing, Luau resolution, the native host callback, and editor composition consume the same engine-owned recipe vocabulary before typed ECS attachment or update. The resolved `ui_*` values are authoritative for layout and paint; no theme identity, ancestry cascade, stable-frame traversal, or renderer-side style store remains. |
 | Retained UI hierarchy, popup rectangles, control gestures, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components | Structural dirty queue plus independent project/editor layout and paint revisions. Popup placement derives from the live anchor/viewport only after affected ECS open, anchor, or constraint changes. Color-picker gestures retain only the active entity/part; canonical linear RGBA and EV presentation state stay in `ui_color_picker`. |

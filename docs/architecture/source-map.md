@@ -1,6 +1,6 @@
 # Source Map
 
-**Last verified:** 2026-07-28
+**Last verified:** 2026-07-29
 
 | Path | Responsibility | Important boundaries |
 | --- | --- | --- |
@@ -10,8 +10,8 @@
 | `src/scrapbot/component/` | Component registry and generated Luau declarations. | Canonical component names, ownership, storage kind, lifecycle, and field schemas. |
 | `src/scrapbot/ecs/` | World storage, typed mutation, commands, authoring snapshots, hierarchy, integrity, UI storage. | All mutation must preserve indexes and publish structural/render/UI invalidation. |
 | `src/scrapbot/project/` | Project/scene parsing, UI theme authoring resolution, resource discovery, fonts, configuration, recoverable save transaction. | Persistent source identity and validation. Theme directives are consumed before explicit component fields. |
-| `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, texture mips, static glTF decoding, and HDR-to-IBL preprocessing. | Source/dependency fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
-| `src/scrapbot/resources/` | Runtime geometry/texture/environment/model/material/font registries and generational handles. | Shared descriptions outside ECS; backend caches consume versions. |
+| `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, SVG-to-MTSDF icon compilation, texture mips, static glTF decoding, and HDR-to-IBL preprocessing. | Source/dependency fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
+| `src/scrapbot/resources/` | Runtime geometry/texture/environment/icon-set/model/material/font registries and generational handles. | Shared descriptions outside ECS; UI and backend caches consume versions. |
 | `src/scrapbot/schedule/` | Access-derived plan and native worker executor. | Native parallel batches, conflicts, and serial barriers. |
 | `src/scrapbot/script/` | Luau VM, public APIs, schemas, queries, write-back, UI theme/component composition, generated-type integration. | Theme resolution returns mutable ordinary component maps; deferred lifecycle and declared-write enforcement remain at attachment. |
 | `src/scrapbot/extension_api/` | Raw C-compatible native extension ABI. | Fixed layouts and callbacks only, including host-owned UI theme resolution into caller buffers. |

@@ -46,7 +46,7 @@ The legacy optional `[render]` environment fields remain accepted as a compatibi
 
 Visible windows preserve the requested aspect ratio but scale down when necessary to fit within 90% of the primary display's usable area. High-pixel-density displays may provide a larger physical-pixel framebuffer than this logical size. Headless framegrabs remain fixed at 1280×720 unless cropped.
 
-Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
+Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` 1.4.0 so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. `mise setup` validates that exact generator version. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
 
 Embedded Inter is always available as the default and runtime fallback. The current font slice supports printable ASCII only; unsupported characters render as `?`, and shaping, kerning, variable-font axes, and Unicode fallback chains are not implemented yet.
 
@@ -81,6 +81,21 @@ source = "assets/studio.hdr"
 ```
 
 `source` must be a safe 2:1 Radiance `.hdr` path under `assets/`. Importing preserves the source-resolution panorama and derives a 32×32 diffuse irradiance cube plus an eight-level 128×128 roughness-prefiltered specular cube in linear RGBA16F. A scene's `scrapbot.world_environment` component selects image-based lighting independently from presentation. The visible background may select another Environment or use the built-in procedural haze sky. Background intensity, rotation, exposure compensation, and blur are independent. The runtime uploads changed panoramas and cubes only when their resource versions or environment settings change. Local reflection probes are not implemented yet.
+
+Icon-set resources compile directories of project-authored SVG symbols:
+
+```toml
+id = "b1000000-0000-4000-8000-000000000005"
+type = "scrapbot.icon_set"
+name = "Game Icons"
+
+[icon_set]
+source = "assets/icons"
+```
+
+`source` must be a safe project-relative directory under `assets/`. Scrapbot discovers `.svg` files recursively in deterministic path order; each filename stem becomes its symbol name. Sets support up to 256 unique monochrome symbols. The compiler normalizes supported primitives, groups, transforms, strokes, and compound paths, then writes a 512×512 linear RGBA8 MTSDF atlas plus versioned symbol metadata under `.scrapbot/imported/`.
+
+Animation, external references, filters, masks, embedded raster images, gradients, and multicolor paint are rejected with resource-specific diagnostics. Symbol paths are at most 63 ASCII bytes so every public scene, Luau, and native button transport can represent them. A cache miss requires the validated `msdf-atlas-gen` 1.4.0 tool; its exact version is part of the importer schema and changing it invalidates cached products. The packaged runtime contains only compiled products and never parses SVG. The embedded catalog UUID is `a11c0000-0000-4000-8000-000000000001`.
 
 Material resources store shared surface data and reference Texture UUIDs:
 
@@ -384,6 +399,12 @@ corner_radius = 6
 
 [entities.ui_input]
 text = "SCRAPBOT"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "magnifying-glass"
+icon_position = "leading"
+icon_color = [0.65, 0.68, 0.74, 1]
+icon_size = 14
+icon_gap = 6
 color = [0.92, 0.93, 0.95, 1]
 size = 16
 selection_background = [0.15, 0.45, 0.40, 0.55]
@@ -444,7 +465,7 @@ Positions and sizes are screen pixels from the top-left. `margin` and `padding` 
 
 Set `popup = true` on a root layout to make it a floating popup. `popup_anchor` identifies the UI element it follows, while a `ui_button.popup` target assigns that button as the anchor and toggles `popup_open`. `popup_gap`, `popup_min_width`, `popup_max_width`, `popup_max_height`, and `popup_viewport_margin` constrain derived placement; all are non-negative, zero maximums are unbounded, and a non-zero maximum width cannot be smaller than the minimum. Shared UI prefers placement below the anchor, flips above when needed, clamps to the viewport, and never overwrites authored geometry. Same-domain outside presses and Escape close an open popup; `popup_close_on_selection = true` also closes it after a descendant-list selection. Popup roots cannot have a parent, and scene UUID references must resolve to valid UI entities.
 
-Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set stack `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Set a child's layout `fixed_in_fill = true` to preserve its authored main-axis size while flexible siblings divide the remainder. Add `draggable = true` to turn the gaps into pointer-draggable separators; stack `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable separators show the matching horizontal- or vertical-resize system cursor while hovered or dragged. Draggable stacks must also enable fill. A `ui_text` can set `alignment` to `"left"`, `"center"`, or `"right"` within its padded content box. Backgrounds, borders, corner radii, progress bars, checkbox boxes, and checkbox marks are rendered with signed-distance shapes. Parent UUIDs must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine multiple flow containers (`ui_hstack`, `ui_vstack`, `ui_table`, or `ui_list`) or more than one of `ui_text`, `ui_button`, `ui_input`, and `ui_checkbox`.
+Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set stack `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Set a child's layout `fixed_in_fill = true` to preserve its authored main-axis size while flexible siblings divide the remainder. Add `draggable = true` to turn the gaps into pointer-draggable separators; stack `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable separators show the matching horizontal- or vertical-resize system cursor while hovered or dragged. Draggable stacks must also enable fill. A `ui_text` can set `alignment` to `"left"`, `"center"`, or `"right"` within its padded content box. Backgrounds, borders, corner radii, progress bars, checkbox boxes, and checkbox marks are rendered with signed-distance shapes. Parent UUIDs must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine multiple flow containers (`ui_hstack`, `ui_vstack`, `ui_table`, or `ui_list`) or more than one of `ui_icon`, `ui_text`, `ui_button`, `ui_input`, `ui_checkbox`, and `ui_color_picker`.
 
 A `ui_progress` component paints an optional track and a clamped fill inside its ordinary layout box. `inset` uses `[top, right, bottom, left]`; `right_to_left` anchors the fill to the opposite edge. A zero-alpha `background_color` omits the track:
 
@@ -489,7 +510,9 @@ Viewport surfaces obey normal ancestor clipping, scrolling, and paint order. WGP
 
 The renderer automatically attaches a read-only `ui_state` component to every laid-out element. Project systems can query it for hover, active, focus, activation, change, validation, submission, cancellation, and draggable-list drop state. Transient booleans describe the most recent UI pass; the matching revision counters are monotonic counters for reliable edge detection. Projects do not author or mutate `ui_state`.
 
-Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release and advances its public activation revision. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button labels use `alignment = "left"`, `"center"`, or `"right"` inside the padded box and default to centered. A button may instead set `icon = "close"`, `"plus"`, `"chevron_right"`, or `"chevron_down"`; `icon_inset` and `icon_stroke` control its SDF geometry, and text is optional when an icon is present.
+Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release and advances its public activation revision. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button labels use `alignment = "left"`, `"center"`, or `"right"` inside the padded box and default to centered.
+
+A standalone `ui_icon` or icon-bearing button references `icon_set` by UUID and `icon` by symbol name. Buttons may place the icon `"leading"` or `"trailing"`, derive its size from the content height or set `icon_size`, and control `icon_gap` plus `icon_inset`. Text remains optional when a complete icon reference is present. Project loading rejects unknown icon-set UUIDs.
 
 Set `font` on `ui_text`, `ui_button`, `ui_input`, or `ui_panel` to a name declared in `project.toml`; omit it to use Inter. A panel's selection applies to its title, while child controls select their own fonts independently.
 
@@ -497,7 +520,7 @@ Clicking a `ui_input` focuses it and selects all its text. Focused inputs suppor
 
 Set `numeric = true` to give an input a numeric `number`, positive `step`, optional `minimum`/`maximum`, Up/Down stepping, and validation through `ui_state.valid`. Add `draggable = true` to opt a writable numeric input into horizontal pointer scrubbing across the complete control surface. `prefix`, `prefix_width`, `prefix_color`, and `prefix_background` provide a reusable leading badge such as the inspector's X/Y/Z controls, but are not required for scrubbing. Set `read_only = true` to retain focus, selection, and traversal without allowing mutation. Clipboard operations, IME composition, Unicode shaping, and multiline editing are not implemented yet.
 
-Control chrome is authored rather than editor-private. Scroll areas expose scrollbar width, right margin, vertical inset, minimum thumb size, track/thumb colors, and corner radius. Panels expose disclosure geometry plus trailing-action size, margin, icon inset, radius, and state colors. Inputs expose prefix gap/padding/radius, selection radius, focus and invalid borders, and caret color/width/inset. Checkboxes expose box and check radii, border width, and check inset. Set any corner radius to `0` for square corners; checkbox radii and check inset use `-1` as the automatic size-relative default.
+Control chrome is authored rather than editor-private. Scroll areas expose scrollbar width, right margin, vertical inset, minimum thumb size, track/thumb colors, and corner radius. Panels expose built-in disclosure icon size, margin, gap, and inset. Inputs expose prefix gap/padding/radius, selection radius, focus and invalid borders, and caret color/width/inset. Checkboxes expose box and check radii, border width, and check inset. Set any corner radius to `0` for square corners; checkbox radii and check inset use `-1` as the automatic size-relative default.
 
 A `ui_checkbox` stores its current boolean in `checked` and toggles on primary-button press. `box_size` controls the square inside the element's layout box; the remaining fields style its unchecked, checked, hover, active, border, and SDF checkmark colors. Set `read_only = true` to display state without accepting pointer changes. A successful toggle advances the element's public `ui_state.change_revision`.
 
@@ -529,7 +552,7 @@ smoothness = 14
 
 Each direct child supplies its own row height and may use an overlay or another flow container for its contents. A list cannot share its entity with another flow container.
 
-Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit ordinary descendants from layout, paint, focus traversal, and pointer interaction. A small SDF disclosure chevron shows the current state. To add title actions, create ordinary direct child buttons with `panel_action = true`; they may use text or the reusable `close` and `plus` SDF icons, activate independently, remain available while collapsed, and lay out from right to left. Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row; for example, widths `1` and `2` create a one-third/two-thirds split. `resizable_columns = true` turns column gaps into draggable separators and requires proportional columns; `min_column_width` limits adjacent-column shrinking. Resized proportions remain local to the current UI session. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
+Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit ordinary descendants from layout, paint, focus traversal, and pointer interaction. The disclosure uses `caret-right` or `caret-down` from the ordinary built-in icon set. To add title actions, create ordinary direct child buttons with `panel_action = true`; they may use text or any public icon reference, activate independently, remain available while collapsed, and lay out from right to left. Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row; for example, widths `1` and `2` create a one-third/two-thirds split. `resizable_columns = true` turns column gaps into draggable separators and requires proportional columns; `min_column_width` limits adjacent-column shrinking. Resized proportions remain local to the current UI session. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
 
 ```toml
 [[entities]]

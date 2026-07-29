@@ -4,19 +4,19 @@ import shared "../shared"
 import "core:fmt"
 
 MAX_COMPONENTS :: 128
-MAX_COMPONENT_FIELDS :: 32
+MAX_COMPONENT_FIELDS :: 40
 MAX_COMPONENT_NAME_TOKENS :: 16
 
 Custom_Component :: shared.Custom_Component
 Component_ID :: shared.Component_ID
 
-Owner :: enum {
+Owner :: enum u8 {
 	Engine,
 	Library,
 	Project,
 }
 
-Field_Type :: enum {
+Field_Type :: enum u8 {
 	Bool,
 	String,
 	Vec2,
@@ -27,16 +27,16 @@ Field_Type :: enum {
 }
 
 Field_Editor_Options :: struct {
+	step: f32,
+	minimum: f32,
+	maximum: f32,
 	color: bool,
 	draggable: bool,
-	step: f32,
 	has_minimum: bool,
-	minimum: f32,
 	has_maximum: bool,
-	maximum: f32,
 }
 
-Storage_Kind :: enum {
+Storage_Kind :: enum u8 {
 	Custom,
 	Transform,
 	Camera,
@@ -59,6 +59,7 @@ Storage_Kind :: enum {
 	UI_List,
 	UI_Progress,
 	UI_Viewport,
+	UI_Icon,
 	UI_Text,
 	UI_Button,
 	UI_Input,
@@ -72,7 +73,7 @@ Storage_Kind :: enum {
 	Derived,
 }
 
-Lifecycle :: enum {
+Lifecycle :: enum u8 {
 	Authored,
 	Derived,
 }
@@ -548,7 +549,7 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "disclosure_size", field_type = .Number},
 			Field_Definition{name = "disclosure_margin", field_type = .Number},
 			Field_Definition{name = "disclosure_gap", field_type = .Number},
-			Field_Definition{name = "disclosure_corner_radius", field_type = .Number},
+			Field_Definition{name = "disclosure_inset", field_type = .Number},
 			Field_Definition{name = "collapsible", field_type = .Bool},
 			Field_Definition{name = "collapsed", field_type = .Bool},
 		},
@@ -599,6 +600,16 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "color", field_type = .Vec4},
 			Field_Definition{name = "size", field_type = .Number},
 			Field_Definition{name = "alignment", field_type = .String},
+		},
+	)
+	register_engine_component(
+		registry,
+		"scrapbot.ui_icon",
+		{
+			Field_Definition{name = "icon_set", field_type = .String},
+			Field_Definition{name = "icon", field_type = .String},
+			Field_Definition{name = "color", field_type = .Vec4},
+			Field_Definition{name = "inset", field_type = .Number},
 		},
 	)
 	register_engine_component(
@@ -664,9 +675,12 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "active_background", field_type = .Vec4},
 			Field_Definition{name = "hover_color", field_type = .Vec4},
 			Field_Definition{name = "active_color", field_type = .Vec4},
+			Field_Definition{name = "icon_set", field_type = .String},
 			Field_Definition{name = "icon", field_type = .String},
+			Field_Definition{name = "icon_position", field_type = .String},
+			Field_Definition{name = "icon_size", field_type = .Number},
+			Field_Definition{name = "icon_gap", field_type = .Number},
 			Field_Definition{name = "icon_inset", field_type = .Number},
-			Field_Definition{name = "icon_stroke", field_type = .Number},
 			Field_Definition{name = "panel_action", field_type = .Bool},
 		},
 	)
@@ -677,10 +691,17 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "text", field_type = .String},
 			Field_Definition{name = "font", field_type = .String},
 			Field_Definition{name = "prefix", field_type = .String},
+			Field_Definition{name = "icon_set", field_type = .String},
+			Field_Definition{name = "icon", field_type = .String},
+			Field_Definition{name = "icon_position", field_type = .String},
 			Field_Definition{name = "color", field_type = .Vec4},
+			Field_Definition{name = "icon_color", field_type = .Vec4},
 			Field_Definition{name = "prefix_color", field_type = .Vec4},
 			Field_Definition{name = "prefix_background", field_type = .Vec4},
 			Field_Definition{name = "size", field_type = .Number},
+			Field_Definition{name = "icon_size", field_type = .Number},
+			Field_Definition{name = "icon_gap", field_type = .Number},
+			Field_Definition{name = "icon_inset", field_type = .Number},
 			Field_Definition{name = "prefix_width", field_type = .Number},
 			Field_Definition{name = "selection_background", field_type = .Vec4},
 			Field_Definition{name = "focus_border_color", field_type = .Vec4},
@@ -855,6 +876,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .UI_Viewport, .Authored
 		case "scrapbot.ui_text":
 			return .UI_Text, .Authored
+		case "scrapbot.ui_icon":
+			return .UI_Icon, .Authored
 		case "scrapbot.ui_button":
 			return .UI_Button, .Authored
 		case "scrapbot.ui_input":

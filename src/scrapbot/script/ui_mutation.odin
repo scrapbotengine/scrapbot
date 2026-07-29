@@ -236,8 +236,8 @@ read_ui_component_command_from_luau :: proc "c" (
 			if err := read_ui_number_field(
 				L,
 				payload_index,
-				"disclosure_corner_radius",
-				&value.disclosure_corner_radius,
+				"disclosure_inset",
+				&value.disclosure_inset,
 			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "collapsible", &value.collapsible);
 			   err != "" { return err }
@@ -430,6 +430,24 @@ read_ui_component_command_from_luau :: proc "c" (
 			}
 			command.viewport = value
 			return ecs.init_ui_component_command(command, .Viewport)
+		case "scrapbot.ui_icon":
+			value := current_ui_icon(world, entity_index, base)
+			if err := read_ui_resource_uuid_field(L, payload_index, "icon_set", &value.icon_set);
+			   err != "" { return err }
+			if err := read_ui_string_field(L, payload_index, "icon", &value.icon);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "color", &value.color);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "inset", &value.inset);
+			   err != "" { return err }
+			if !shared.ui_icon_is_valid(value) {
+				return(
+					"ui_icon requires an icon set UUID, symbol name, finite color, and non-negative inset" \
+				)
+			}
+			command.icon = value
+			command.icon.icon = ""
+			return ecs.init_ui_component_command(command, .Icon, "", "", "", value.icon)
 		case "scrapbot.ui_text":
 			value := current_ui_text(world, entity_index, base)
 			if err := read_ui_string_field(L, payload_index, "text", &value.text);
@@ -501,29 +519,26 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_vec4_field(L, payload_index, "active_color", &value.active_color);
 			   err != "" { return err }
-			icon := ui_icon_name(value.icon)
-			if err := read_ui_string_field(L, payload_index, "icon", &icon); err != "" {
-				return err
-			}
-			switch icon {
-				case "", "none":
-					value.icon = .None
-				case "close":
-					value.icon = .Close
-				case "plus":
-					value.icon = .Plus
-				case "chevron_right":
-					value.icon = .Chevron_Right
-				case "chevron_down":
-					value.icon = .Chevron_Down
-				case:
-					return(
-						"ui_button.icon must be none, close, plus, chevron_right, or chevron_down" \
-					)
-			}
-			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
+			if err := read_ui_resource_uuid_field(L, payload_index, "icon_set", &value.icon_set);
 			   err != "" { return err }
-			if err := read_ui_number_field(L, payload_index, "icon_stroke", &value.icon_stroke);
+			if err := read_ui_string_field(L, payload_index, "icon", &value.icon);
+			   err != "" { return err }
+			icon_position := ui_icon_position_name(value.icon_position)
+			if err := read_ui_string_field(L, payload_index, "icon_position", &icon_position);
+			   err != "" { return err }
+			switch icon_position {
+				case "", "leading":
+					value.icon_position = .Leading
+				case "trailing":
+					value.icon_position = .Trailing
+				case:
+					return "ui_button.icon_position must be leading or trailing"
+			}
+			if err := read_ui_number_field(L, payload_index, "icon_size", &value.icon_size);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_gap", &value.icon_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "panel_action", &value.panel_action);
 			   err != "" { return err }
@@ -533,7 +548,15 @@ read_ui_component_command_from_luau :: proc "c" (
 			command.button = value
 			command.button.text = ""
 			command.button.font = ""
-			return ecs.init_ui_component_command(command, .Button, value.text, value.font)
+			command.button.icon = ""
+			return ecs.init_ui_component_command(
+				command,
+				.Button,
+				value.text,
+				value.font,
+				"",
+				value.icon,
+			)
 		case "scrapbot.ui_input":
 			value := current_ui_input(world, entity_index, base)
 			if err := read_ui_string_field(L, payload_index, "text", &value.text);
@@ -542,7 +565,24 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_string_field(L, payload_index, "prefix", &value.prefix);
 			   err != "" { return err }
+			if err := read_ui_resource_uuid_field(L, payload_index, "icon_set", &value.icon_set);
+			   err != "" { return err }
+			if err := read_ui_string_field(L, payload_index, "icon", &value.icon);
+			   err != "" { return err }
+			icon_position := ui_icon_position_name(value.icon_position)
+			if err := read_ui_string_field(L, payload_index, "icon_position", &icon_position);
+			   err != "" { return err }
+			switch icon_position {
+				case "", "leading":
+					value.icon_position = .Leading
+				case "trailing":
+					value.icon_position = .Trailing
+				case:
+					return "ui_input.icon_position must be leading or trailing"
+			}
 			if err := read_ui_vec4_field(L, payload_index, "color", &value.color);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "icon_color", &value.icon_color);
 			   err != "" { return err }
 			if err := read_ui_vec4_field(L, payload_index, "prefix_color", &value.prefix_color);
 			   err != "" { return err }
@@ -553,6 +593,12 @@ read_ui_component_command_from_luau :: proc "c" (
 				&value.prefix_background,
 			); err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "size", &value.size);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_size", &value.icon_size);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_gap", &value.icon_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "icon_inset", &value.icon_inset);
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "prefix_width", &value.prefix_width);
 			   err != "" { return err }
@@ -635,12 +681,14 @@ read_ui_component_command_from_luau :: proc "c" (
 			command.input.text = ""
 			command.input.font = ""
 			command.input.prefix = ""
+			command.input.icon = ""
 			return ecs.init_ui_component_command(
 				command,
 				.Input,
 				value.text,
 				value.font,
 				value.prefix,
+				value.icon,
 			)
 		case "scrapbot.ui_checkbox":
 			value := current_ui_checkbox(world, entity_index, base)
@@ -838,6 +886,23 @@ current_ui_list :: proc(
 	return shared.ui_list_default()
 }
 
+current_ui_icon :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Icon_Component {
+	if base != nil && base.kind == .Icon {
+		value := base.icon
+		value.icon = ecs.ui_component_command_icon(base)
+		return value
+	}
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_icon_index
+		if index >= 0 && index < len(world.ui_icons) { return world.ui_icons[index] }
+	}
+	return shared.ui_icon_default()
+}
+
 current_ui_text :: proc(
 	world: ^shared.World,
 	entity_index: int,
@@ -865,6 +930,7 @@ current_ui_button :: proc(
 		value := base.button
 		value.text = ecs.ui_component_command_text(base)
 		value.font = ecs.ui_component_command_font(base)
+		value.icon = ecs.ui_component_command_icon(base)
 		return value
 	}
 	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
@@ -909,6 +975,8 @@ current_ui_input :: proc(
 		value := base.input
 		value.text = ecs.ui_component_command_text(base)
 		value.font = ecs.ui_component_command_font(base)
+		value.prefix = ecs.ui_component_command_prefix(base)
+		value.icon = ecs.ui_component_command_icon(base)
 		return value
 	}
 	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
@@ -960,20 +1028,14 @@ ui_text_alignment_name :: proc "contextless" (alignment: shared.UI_Text_Alignmen
 	return "left"
 }
 
-ui_icon_name :: proc "contextless" (icon: shared.UI_Icon) -> string {
-	switch icon {
-		case .Close:
-			return "close"
-		case .Plus:
-			return "plus"
-		case .Chevron_Right:
-			return "chevron_right"
-		case .Chevron_Down:
-			return "chevron_down"
-		case .None:
-			return "none"
+ui_icon_position_name :: proc "contextless" (position: shared.UI_Icon_Position) -> string {
+	switch position {
+		case .Leading:
+			return "leading"
+		case .Trailing:
+			return "trailing"
 	}
-	return "none"
+	return "leading"
 }
 
 read_ui_bool_field :: proc "c" (L: Lua_State, index: c.int, name: cstring, out: ^bool) -> string {

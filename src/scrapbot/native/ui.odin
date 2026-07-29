@@ -178,7 +178,7 @@ api_ui_theme_panel :: proc "contextless" (
 		disclosure_size = value.disclosure_size,
 		disclosure_margin = value.disclosure_margin,
 		disclosure_gap = value.disclosure_gap,
-		disclosure_corner_radius = value.disclosure_corner_radius,
+		disclosure_inset = value.disclosure_inset,
 		collapsible = bool_to_c_int(value.collapsible),
 		collapsed = bool_to_c_int(value.collapsed),
 	}
@@ -228,9 +228,11 @@ api_ui_theme_button :: proc "contextless" (
 		active_background = api_vec4_from_shared(value.active_background),
 		hover_color = api_vec4_from_shared(value.hover_color),
 		active_color = api_vec4_from_shared(value.active_color),
-		icon = api_icon_from_shared(value.icon),
+		icon_set = api_resource_uuid_from_shared(value.icon_set),
+		icon_position = api_icon_position_from_shared(value.icon_position),
+		icon_size = value.icon_size,
+		icon_gap = value.icon_gap,
 		icon_inset = value.icon_inset,
-		icon_stroke = value.icon_stroke,
 		panel_action = bool_to_c_int(value.panel_action),
 	}
 }
@@ -239,10 +241,16 @@ api_ui_theme_input :: proc "contextless" (
 	value: shared.UI_Input_Component,
 ) -> api.UI_Input_Payload {
 	return {
+		icon_set = api_resource_uuid_from_shared(value.icon_set),
+		icon_position = api_icon_position_from_shared(value.icon_position),
 		color = api_vec4_from_shared(value.color),
+		icon_color = api_vec4_from_shared(value.icon_color),
 		prefix_color = api_vec4_from_shared(value.prefix_color),
 		prefix_background = api_vec4_from_shared(value.prefix_background),
 		size = value.size,
+		icon_size = value.icon_size,
+		icon_gap = value.icon_gap,
+		icon_inset = value.icon_inset,
 		prefix_width = value.prefix_width,
 		selection_background = api_vec4_from_shared(value.selection_background),
 		focus_border_color = api_vec4_from_shared(value.focus_border_color),
@@ -406,7 +414,7 @@ system_get_ui_component :: proc "c" (
 				disclosure_size = value.disclosure_size,
 				disclosure_margin = value.disclosure_margin,
 				disclosure_gap = value.disclosure_gap,
-				disclosure_corner_radius = value.disclosure_corner_radius,
+				disclosure_inset = value.disclosure_inset,
 				collapsible = bool_to_c_int(value.collapsible),
 				collapsed = bool_to_c_int(value.collapsed),
 			}
@@ -497,6 +505,16 @@ system_get_ui_component :: proc "c" (
 				cancel_revision = value.cancel_revision,
 				drop_revision = value.drop_revision,
 			}
+		case "scrapbot.ui_icon":
+			if world_entity.ui_icon_index < 0 ||
+			   world_entity.ui_icon_index >= len(step.world.ui_icons) { return 0 }
+			value := step.world.ui_icons[world_entity.ui_icon_index]
+			payload.icon_component = {
+				icon_set = api_resource_uuid_from_shared(value.icon_set),
+				color = api_vec4_from_shared(value.color),
+				inset = value.inset,
+			}
+			if !api_ui_payload_set_strings(payload, "", "", "", value.icon) { return 0 }
 		case "scrapbot.ui_text":
 			if world_entity.ui_text_index < 0 ||
 			   world_entity.ui_text_index >= len(step.world.ui_texts) { return 0 }
@@ -520,21 +538,35 @@ system_get_ui_component :: proc "c" (
 				active_background = api_vec4_from_shared(value.active_background),
 				hover_color = api_vec4_from_shared(value.hover_color),
 				active_color = api_vec4_from_shared(value.active_color),
-				icon = api_icon_from_shared(value.icon),
+				icon_set = api_resource_uuid_from_shared(value.icon_set),
+				icon_position = api_icon_position_from_shared(value.icon_position),
+				icon_size = value.icon_size,
+				icon_gap = value.icon_gap,
 				icon_inset = value.icon_inset,
-				icon_stroke = value.icon_stroke,
 				panel_action = bool_to_c_int(value.panel_action),
 			}
-			if !api_ui_payload_set_strings(payload, value.text, value.font) { return 0 }
+			if !api_ui_payload_set_strings(
+				payload,
+				value.text,
+				value.font,
+				"",
+				value.icon,
+			) { return 0 }
 		case "scrapbot.ui_input":
 			if world_entity.ui_input_index < 0 ||
 			   world_entity.ui_input_index >= len(step.world.ui_inputs) { return 0 }
 			value := step.world.ui_inputs[world_entity.ui_input_index]
 			payload.input = {
+				icon_set = api_resource_uuid_from_shared(value.icon_set),
+				icon_position = api_icon_position_from_shared(value.icon_position),
 				color = api_vec4_from_shared(value.color),
+				icon_color = api_vec4_from_shared(value.icon_color),
 				prefix_color = api_vec4_from_shared(value.prefix_color),
 				prefix_background = api_vec4_from_shared(value.prefix_background),
 				size = value.size,
+				icon_size = value.icon_size,
+				icon_gap = value.icon_gap,
+				icon_inset = value.icon_inset,
 				prefix_width = value.prefix_width,
 				selection_background = api_vec4_from_shared(value.selection_background),
 				focus_border_color = api_vec4_from_shared(value.focus_border_color),
@@ -563,6 +595,7 @@ system_get_ui_component :: proc "c" (
 				value.text,
 				value.font,
 				value.prefix,
+				value.icon,
 			) { return 0 }
 		case "scrapbot.ui_checkbox":
 			if world_entity.ui_checkbox_index < 0 ||
@@ -660,6 +693,10 @@ ui_command_from_api_payload :: proc "c" (
 	if !prefix_ok {
 		return "native UI input prefix length is invalid"
 	}
+	icon, icon_ok := api_ui_payload_icon(payload)
+	if !icon_ok {
+		return "native UI icon length is invalid"
+	}
 	name := string(payload.component)
 	command^ = {}
 	switch name {
@@ -746,7 +783,7 @@ ui_command_from_api_payload :: proc "c" (
 				disclosure_size = payload.panel.disclosure_size,
 				disclosure_margin = payload.panel.disclosure_margin,
 				disclosure_gap = payload.panel.disclosure_gap,
-				disclosure_corner_radius = payload.panel.disclosure_corner_radius,
+				disclosure_inset = payload.panel.disclosure_inset,
 				collapsible = payload.panel.collapsible != 0,
 				collapsed = payload.panel.collapsed != 0,
 			}
@@ -828,6 +865,19 @@ ui_command_from_api_payload :: proc "c" (
 			}
 			command.viewport = value
 			return ecs.init_ui_component_command(command, .Viewport)
+		case "scrapbot.ui_icon":
+			value := shared.UI_Icon_Component {
+				icon_set = shared_resource_uuid_from_api(payload.icon_component.icon_set),
+				icon = icon,
+				color = shared_vec4_from_api(payload.icon_component.color),
+				inset = payload.icon_component.inset,
+			}
+			if !shared.ui_icon_is_valid(value) {
+				return "native ui_icon payload is invalid"
+			}
+			command.icon = value
+			command.icon.icon = ""
+			return ecs.init_ui_component_command(command, .Icon, "", "", "", icon)
 		case "scrapbot.ui_text":
 			alignment, alignment_ok := shared_text_alignment_from_api(payload.text.alignment)
 			if !alignment_ok { return "native ui_text alignment is invalid" }
@@ -846,6 +896,10 @@ ui_command_from_api_payload :: proc "c" (
 		case "scrapbot.ui_button":
 			alignment, alignment_ok := shared_text_alignment_from_api(payload.button.alignment)
 			if !alignment_ok { return "native ui_button alignment is invalid" }
+			icon_position, icon_position_ok := shared_icon_position_from_api(
+				payload.button.icon_position,
+			)
+			if !icon_position_ok { return "native ui_button icon position is invalid" }
 			value := shared.UI_Button_Component {
 				text = text,
 				font = font,
@@ -857,25 +911,40 @@ ui_command_from_api_payload :: proc "c" (
 				active_background = shared_vec4_from_api(payload.button.active_background),
 				hover_color = shared_vec4_from_api(payload.button.hover_color),
 				active_color = shared_vec4_from_api(payload.button.active_color),
-				icon = shared_icon_from_api(payload.button.icon),
+				icon_set = shared_resource_uuid_from_api(payload.button.icon_set),
+				icon = icon,
+				icon_position = icon_position,
+				icon_size = payload.button.icon_size,
+				icon_gap = payload.button.icon_gap,
 				icon_inset = payload.button.icon_inset,
-				icon_stroke = payload.button.icon_stroke,
 				panel_action = payload.button.panel_action != 0,
 			}
 			if !shared.ui_button_is_valid(value) { return "native ui_button payload is invalid" }
 			command.button = value
 			command.button.text = ""
 			command.button.font = ""
-			return ecs.init_ui_component_command(command, .Button, text, font)
+			command.button.icon = ""
+			return ecs.init_ui_component_command(command, .Button, text, font, "", icon)
 		case "scrapbot.ui_input":
+			icon_position, icon_position_ok := shared_icon_position_from_api(
+				payload.input.icon_position,
+			)
+			if !icon_position_ok { return "native ui_input icon position is invalid" }
 			value := shared.UI_Input_Component {
 				text = text,
 				font = font,
 				prefix = prefix,
+				icon_set = shared_resource_uuid_from_api(payload.input.icon_set),
+				icon = icon,
+				icon_position = icon_position,
 				color = shared_vec4_from_api(payload.input.color),
+				icon_color = shared_vec4_from_api(payload.input.icon_color),
 				prefix_color = shared_vec4_from_api(payload.input.prefix_color),
 				prefix_background = shared_vec4_from_api(payload.input.prefix_background),
 				size = payload.input.size,
+				icon_size = payload.input.icon_size,
+				icon_gap = payload.input.icon_gap,
+				icon_inset = payload.input.icon_inset,
 				prefix_width = payload.input.prefix_width,
 				selection_background = shared_vec4_from_api(payload.input.selection_background),
 				focus_border_color = shared_vec4_from_api(payload.input.focus_border_color),
@@ -904,7 +973,8 @@ ui_command_from_api_payload :: proc "c" (
 			command.input.text = ""
 			command.input.font = ""
 			command.input.prefix = ""
-			return ecs.init_ui_component_command(command, .Input, text, font, prefix)
+			command.input.icon = ""
+			return ecs.init_ui_component_command(command, .Input, text, font, prefix, icon)
 		case "scrapbot.ui_checkbox":
 			value := shared.UI_Checkbox_Component {
 				checked = payload.checkbox.checked != 0,
@@ -968,20 +1038,36 @@ api_ui_payload_set_strings :: proc "contextless" (
 	text: string,
 	font: string,
 	prefix: string = "",
+	icon: string = "",
 ) -> bool {
 	if payload == nil ||
 	   len(text) >= len(payload.text_bytes) ||
 	   len(font) >= len(payload.font_bytes) ||
-	   len(prefix) >= len(payload.prefix_bytes) {
+	   len(prefix) >= len(payload.prefix_bytes) ||
+	   len(icon) >= len(payload.icon_bytes) {
 		return false
 	}
 	payload.text_len = c.int(len(text))
 	payload.font_len = c.int(len(font))
 	payload.prefix_len = c.int(len(prefix))
+	payload.icon_len = c.int(len(icon))
 	for byte, index in transmute([]u8)text { payload.text_bytes[index] = byte }
 	for byte, index in transmute([]u8)font { payload.font_bytes[index] = byte }
 	for byte, index in transmute([]u8)prefix { payload.prefix_bytes[index] = byte }
+	for byte, index in transmute([]u8)icon { payload.icon_bytes[index] = byte }
 	return true
+}
+
+api_ui_payload_icon :: proc "contextless" (
+	payload: ^api.UI_Component_Payload,
+) -> (
+	icon: string,
+	ok: bool,
+) {
+	if payload == nil || payload.icon_len < 0 || int(payload.icon_len) >= len(payload.icon_bytes) {
+		return "", false
+	}
+	return string(payload.icon_bytes[:int(payload.icon_len)]), true
 }
 
 api_ui_payload_prefix :: proc "contextless" (
@@ -1074,36 +1160,31 @@ api_text_alignment_from_shared :: proc "contextless" (
 	return .Left
 }
 
-api_icon_from_shared :: proc "contextless" (value: shared.UI_Icon) -> api.UI_Icon {
+api_icon_position_from_shared :: proc "contextless" (
+	value: shared.UI_Icon_Position,
+) -> api.UI_Icon_Position {
 	switch value {
-		case .Close:
-			return .Close
-		case .Plus:
-			return .Plus
-		case .Chevron_Right:
-			return .Chevron_Right
-		case .Chevron_Down:
-			return .Chevron_Down
-		case .None:
-			return .None
+		case .Leading:
+			return .Leading
+		case .Trailing:
+			return .Trailing
 	}
-	return .None
+	return .Leading
 }
 
-shared_icon_from_api :: proc "contextless" (value: api.UI_Icon) -> shared.UI_Icon {
+shared_icon_position_from_api :: proc "contextless" (
+	value: api.UI_Icon_Position,
+) -> (
+	shared.UI_Icon_Position,
+	bool,
+) {
 	switch value {
-		case .Close:
-			return .Close
-		case .Plus:
-			return .Plus
-		case .Chevron_Right:
-			return .Chevron_Right
-		case .Chevron_Down:
-			return .Chevron_Down
-		case .None:
-			return .None
+		case .Leading:
+			return .Leading, true
+		case .Trailing:
+			return .Trailing, true
 	}
-	return .None
+	return .Leading, false
 }
 
 shared_text_alignment_from_api :: proc "contextless" (

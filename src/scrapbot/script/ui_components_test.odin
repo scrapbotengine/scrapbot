@@ -24,7 +24,7 @@ tree_collapsed = true
 [entities.ui_panel]
 title = "FIELD"
 disclosure_size = 9
-disclosure_corner_radius = 0
+disclosure_inset = 0
 collapsible = true
 [entities.ui_scroll_area]
 scrollbar_width = 5
@@ -148,7 +148,7 @@ scrapbot.system(function()
 		assert(layout.tree_collapsed == true)
 		assert(layout.hidden == false)
 		assert(panel.title == "FIELD")
-		assert(panel.disclosure_size == 9 and panel.disclosure_corner_radius == 0)
+		assert(panel.disclosure_size == 9 and panel.disclosure_inset == 0)
 		assert(panel.collapsible == true)
 		assert(panel.collapsed == false)
 		assert(table.columns == 1)
@@ -237,11 +237,11 @@ scrapbot.system(function()
 	scrapbot.query(scrapbot.ui_input):each(function(entity)
 		scrapbot.add_component(entity, scrapbot.ui_input, {text = "84"})
 		scrapbot.add_component(entity, scrapbot.ui_input, {size = 18})
-		scrapbot.add_component(entity, scrapbot.ui_input, {prefix = "Y", number = 84})
+		scrapbot.add_component(entity, scrapbot.ui_input, {prefix = "Y", number = 84, icon_set = scrapbot.ui.builtin_icon_set, icon = "magnifying-glass", icon_position = "trailing", icon_color = {x = 0.4, y = 0.5, z = 0.6, w = 1}, icon_size = 14, icon_gap = 5, icon_inset = 1})
 	end)
 	scrapbot.query(scrapbot.ui_checkbox):each(function(entity)
 		scrapbot.remove_component(entity, scrapbot.ui_checkbox)
-		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", popup = "aa000000-0000-4000-8000-000000000002", size = 14, alignment = "right", icon = "close", icon_inset = 4, icon_stroke = 2, panel_action = true})
+		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", popup = "aa000000-0000-4000-8000-000000000002", size = 14, alignment = "right", icon_set = scrapbot.ui.builtin_icon_set, icon = "x", icon_position = "trailing", icon_inset = 4, panel_action = true})
 	end)
 	local root_id = scrapbot.spawn({
 		name = "Runtime UI",
@@ -270,6 +270,10 @@ end)
 	input := world.ui_inputs[world.entities[0].ui_input_index]
 	testing.expect(t, input.text == "84" && input.size == 18)
 	testing.expect(t, input.prefix == "Y" && input.number == 84)
+	testing.expect(t, input.icon_set == shared.builtin_icon_set_uuid())
+	testing.expect(t, input.icon == "magnifying-glass" && input.icon_position == .Trailing)
+	testing.expect(t, input.icon_color == shared.Vec4{0.4, 0.5, 0.6, 1})
+	testing.expect(t, input.icon_size == 14 && input.icon_gap == 5 && input.icon_inset == 1)
 	testing.expect(t, input.font == "Inter")
 	testing.expect(t, input.read_only)
 	testing.expect(t, input.selection_background.x == 0.15)
@@ -295,7 +299,12 @@ end)
 		testing.expect(t, world.ui_buttons[button_index].text == "Toggle")
 		testing.expect(t, world.ui_buttons[button_index].popup == world.entities[1].uuid)
 		testing.expect(t, world.ui_buttons[button_index].alignment == .Right)
-		testing.expect(t, world.ui_buttons[button_index].icon == .Close)
+		testing.expect(
+			t,
+			world.ui_buttons[button_index].icon_set == shared.builtin_icon_set_uuid(),
+		)
+		testing.expect(t, world.ui_buttons[button_index].icon == "x")
+		testing.expect(t, world.ui_buttons[button_index].icon_position == .Trailing)
 		testing.expect(t, world.ui_buttons[button_index].panel_action)
 	}
 	color_picker := world.ui_color_pickers[world.entities[2].ui_color_picker_index]
@@ -358,7 +367,8 @@ end)
 	)
 	testing.expectf(t, result.err == "", "script failed: %s", result.err)
 	testing.expect(t, result.ran)
-	testing.expectf(t, step_runtime(&runtime, &world, 0) == "", "themed UI spawn failed")
+	step_err := step_runtime(&runtime, &world, 0)
+	testing.expectf(t, step_err == "", "themed UI spawn failed: %s", step_err)
 	testing.expect(t, len(world.entities) == 2)
 	if len(world.entities) != 2 {
 		return

@@ -110,6 +110,7 @@ scene_entity_structure_differs :: proc(
 	   baseline.has_ui_list != current.has_ui_list ||
 	   baseline.has_ui_progress != current.has_ui_progress ||
 	   baseline.has_ui_viewport != current.has_ui_viewport ||
+	   baseline.has_ui_icon != current.has_ui_icon ||
 	   baseline.has_ui_text != current.has_ui_text ||
 	   baseline.has_ui_button != current.has_ui_button ||
 	   baseline.has_ui_input != current.has_ui_input ||

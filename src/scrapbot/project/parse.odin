@@ -55,6 +55,10 @@ parse_project_resource :: proc(
 			section = "environment"
 			continue
 		}
+		if line == "[icon_set]" {
+			section = "icon_set"
+			continue
+		}
 		if line == "[geometry_lod]" {
 			section = "geometry_lod"
 			continue
@@ -150,6 +154,27 @@ parse_project_resource :: proc(
 			}
 			continue
 		}
+		if section == "icon_set" {
+			switch key {
+				case "source":
+					resource.icon_set.source, found = parse_basic_string(value)
+					if found && !valid_resource_icon_set_path(resource.icon_set.source) {
+						return resource, fail(
+							.Invalid_Path,
+							"icon_set.source must be a safe directory path under assets/",
+						)
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown icon_set field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid icon_set.%s", key))
+			}
+			continue
+		}
 		if section == "material" {
 			switch key {
 				case "base_color":
@@ -237,6 +262,8 @@ parse_project_resource :: proc(
 			resource.kind = .Model
 		case "scrapbot.environment":
 			resource.kind = .Environment
+		case "scrapbot.icon_set":
+			resource.kind = .Icon_Set
 		case "scrapbot.material":
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
@@ -261,6 +288,10 @@ parse_project_resource :: proc(
 	} else if resource.kind == .Environment {
 		if resource.environment.source == "" {
 			return resource, fail(.Missing_Field, "environment.source is required")
+		}
+	} else if resource.kind == .Icon_Set {
+		if resource.icon_set.source == "" {
+			return resource, fail(.Missing_Field, "icon_set.source is required")
 		}
 	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
@@ -654,6 +685,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.ui_list]" ||
 		   line == "[entities.ui_progress]" ||
 		   line == "[entities.ui_viewport]" ||
+		   line == "[entities.ui_icon]" ||
 		   line == "[entities.ui_text]" ||
 		   line == "[entities.ui_button]" ||
 		   line == "[entities.ui_input]" ||
@@ -704,6 +736,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if section == "ui_viewport" {
 				current.has_ui_viewport = true
 				current.ui_viewport = shared.ui_viewport_default()
+			}
+			if section == "ui_icon" {
+				if !current.has_ui_icon {
+					current.ui_icon = shared.ui_icon_default()
+				}
+				current.has_ui_icon = true
 			}
 			if section == "ui_text" {
 				if !current.has_ui_text {
@@ -1206,8 +1244,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_panel.disclosure_margin, found = parse_f32(value)
 					case "disclosure_gap":
 						current.ui_panel.disclosure_gap, found = parse_f32(value)
-					case "disclosure_corner_radius":
-						current.ui_panel.disclosure_corner_radius, found = parse_f32(value)
+					case "disclosure_inset":
+						current.ui_panel.disclosure_inset, found = parse_f32(value)
 					case "collapsible":
 						current.ui_panel.collapsible, found = parse_bool(value)
 					case "collapsed":
@@ -1378,6 +1416,31 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 							fmt.tprintf("unknown ui_text field '%s'", key),
 						)}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_text.%s", key)) }
+			case "ui_icon":
+				current.has_ui_icon = true
+				switch key {
+					case "icon_set":
+						raw, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_icon.icon_set, found = shared.resource_uuid_parse(raw)
+						} else {
+							found = false
+						}
+					case "icon":
+						current.ui_icon.icon, found = parse_basic_string(value)
+					case "color":
+						current.ui_icon.color, found = parse_vec4(value)
+					case "inset":
+						current.ui_icon.inset, found = parse_f32(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_icon field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_icon.%s", key))
+				}
 			case "ui_button":
 				current.has_ui_button = true
 				switch key {case "text":
@@ -1405,12 +1468,25 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_button.hover_color, found = parse_vec4(
 							value,
 						); case "active_color":
-						current.ui_button.active_color, found = parse_vec4(value); case "icon":
-						current.ui_button.icon, found = parse_ui_icon(value); case "icon_inset":
-						current.ui_button.icon_inset, found = parse_f32(value); case "icon_stroke":
-						current.ui_button.icon_stroke, found = parse_f32(
-							value,
-						); case "panel_action":
+						current.ui_button.active_color, found = parse_vec4(value)
+					case "icon_set":
+						raw, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_button.icon_set, found = shared.resource_uuid_parse(raw)
+						} else {
+							found = false
+						}
+					case "icon":
+						current.ui_button.icon, found = parse_basic_string(value)
+					case "icon_position":
+						current.ui_button.icon_position, found = parse_ui_icon_position(value)
+					case "icon_size":
+						current.ui_button.icon_size, found = parse_f32(value)
+					case "icon_gap":
+						current.ui_button.icon_gap, found = parse_f32(value)
+					case "icon_inset":
+						current.ui_button.icon_inset, found = parse_f32(value)
+					case "panel_action":
 						current.ui_button.panel_action, found = parse_bool(value); case:
 						return scene, fail(
 							.Invalid_Field,
@@ -1426,14 +1502,33 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_input.font, found = parse_basic_string(value)
 					case "prefix":
 						current.ui_input.prefix, found = parse_basic_string(value)
+					case "icon_set":
+						raw, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_input.icon_set, found = shared.resource_uuid_parse(raw)
+						} else {
+							found = false
+						}
+					case "icon":
+						current.ui_input.icon, found = parse_basic_string(value)
+					case "icon_position":
+						current.ui_input.icon_position, found = parse_ui_icon_position(value)
 					case "color":
 						current.ui_input.color, found = parse_vec4(value)
+					case "icon_color":
+						current.ui_input.icon_color, found = parse_vec4(value)
 					case "prefix_color":
 						current.ui_input.prefix_color, found = parse_vec4(value)
 					case "prefix_background":
 						current.ui_input.prefix_background, found = parse_vec4(value)
 					case "size":
 						current.ui_input.size, found = parse_f32(value)
+					case "icon_size":
+						current.ui_input.icon_size, found = parse_f32(value)
+					case "icon_gap":
+						current.ui_input.icon_gap, found = parse_f32(value)
+					case "icon_inset":
+						current.ui_input.icon_inset, found = parse_f32(value)
 					case "prefix_width":
 						current.ui_input.prefix_width, found = parse_f32(value)
 					case "selection_background":
@@ -1696,7 +1791,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				)
 			}
 		}
-		if (entity.has_ui_text ||
+		if (entity.has_ui_icon ||
+			   entity.has_ui_text ||
 			   entity.has_ui_button ||
 			   entity.has_ui_hstack ||
 			   entity.has_ui_vstack ||
@@ -1797,13 +1893,23 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			)
 		}
 		content_count := 0
+		if entity.has_ui_icon { content_count += 1 }
 		if entity.has_ui_text { content_count += 1 }
 		if entity.has_ui_button { content_count += 1 }
 		if entity.has_ui_input { content_count += 1 }
 		if entity.has_ui_checkbox { content_count += 1 }
 		if entity.has_ui_color_picker { content_count += 1 }
 		if content_count >
-		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, ui_input, ui_checkbox, or ui_color_picker", entity.name)) }
+		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_icon, ui_text, ui_button, ui_input, ui_checkbox, or ui_color_picker", entity.name)) }
+		if entity.has_ui_icon && !shared.ui_icon_is_valid(entity.ui_icon) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"UI icon entity '%s' requires an icon set UUID, symbol name, finite color, and non-negative inset",
+					entity.name,
+				),
+			)
+		}
 		if entity.has_ui_text &&
 		   (entity.ui_text.text == "" ||
 				   entity.ui_text.size <=
@@ -1817,10 +1923,10 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				),
 			)
 		}
-		if entity.has_ui_input && entity.ui_input.size <= 0 {
+		if entity.has_ui_input && !shared.ui_input_is_valid(entity.ui_input) {
 			return scene, fail(
 				.Invalid_Field,
-				fmt.tprintf("UI input entity '%s' requires positive size", entity.name),
+				fmt.tprintf("UI input entity '%s' has invalid content or sizing", entity.name),
 			)
 		}
 		if entity.has_ui_checkbox && entity.ui_checkbox.box_size <= 0 {
@@ -2123,24 +2229,18 @@ parse_ui_text_alignment :: proc(value: string) -> (out: shared.UI_Text_Alignment
 	}
 }
 
-parse_ui_icon :: proc(value: string) -> (out: shared.UI_Icon, ok: bool) {
+parse_ui_icon_position :: proc(value: string) -> (out: shared.UI_Icon_Position, ok: bool) {
 	text, parsed := parse_basic_string(value)
 	if !parsed {
-		return .None, false
+		return .Leading, false
 	}
 	switch text {
-		case "", "none":
-			return .None, true
-		case "close":
-			return .Close, true
-		case "plus":
-			return .Plus, true
-		case "chevron_right":
-			return .Chevron_Right, true
-		case "chevron_down":
-			return .Chevron_Down, true
+		case "", "leading":
+			return .Leading, true
+		case "trailing":
+			return .Trailing, true
 	}
-	return .None, false
+	return .Leading, false
 }
 
 is_basic_string_body :: proc(body: string) -> bool {
@@ -2331,6 +2431,16 @@ valid_resource_environment_path :: proc(path: string) -> bool {
 		strings.has_suffix(path, ".hdr") &&
 		is_safe_relative_path(path) \
 	)
+}
+
+valid_resource_icon_set_path :: proc(path: string) -> bool {
+	if !strings.has_prefix(path, "assets/") || !is_safe_relative_path(path) {
+		return false
+	}
+	if strings.has_suffix(path, "/") {
+		return false
+	}
+	return true
 }
 
 finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {

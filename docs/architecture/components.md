@@ -39,11 +39,12 @@ Lifecycle meanings:
 | `scrapbot.ui_table` | UI container | Authored | Yes | Row-major multi-column layout with reusable proportions and separators. |
 | `scrapbot.ui_list` | UI container | Authored | Yes | Styled, filtered, and virtualized selection plus generic list/tree drag, reorder, and reparent state. |
 | `scrapbot.ui_text` | UI content | Authored | Yes | MTSDF text content and style. |
+| `scrapbot.ui_icon` | UI content | Authored | Yes | UUID-backed symbolic MTSDF icon content shared by projects, controls, themes, and editor chrome. |
 | `scrapbot.ui_progress` | UI content | Authored | Yes | Reusable bounded progress visualization. |
 | `scrapbot.ui_viewport` | UI content | Authored | Yes | Interactive renderer-backed Texture, Model, Material, or World surface composited through ordinary UI paint. |
 | `scrapbot.ui_state` | UI interaction | Derived | Read-only | Renderer-owned hover/focus/activation/change/drop state and monotonic revisions. |
 | `scrapbot.ui_button` | UI control | Authored | Yes | Text or SDF-icon activation control with an optional popup target UUID. |
-| `scrapbot.ui_input` | UI control | Authored | Yes | Single-line text/numeric input with focus, selection, validation, stepping, and opt-in scrubbing. |
+| `scrapbot.ui_input` | UI control | Authored | Yes | Single-line text/numeric input with optional icon, focus, selection, validation, stepping, and opt-in scrubbing. |
 | `scrapbot.ui_checkbox` | UI control | Authored | Yes | Reusable SDF boolean control with read-only mode. |
 | `scrapbot.ui_color_picker` | UI control | Authored | Yes | Linear RGBA color control with optional HDR exposure and alpha tracks. |
 | `scrapbot.internal.render_instance` | Rendering | Derived | No | Engine-owned stable render slot derived from renderable component membership. |
@@ -295,6 +296,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_viewport).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`, `render/wgpu_viewports.odin`; `ecs/ui_components_test.odin`, `ui/ui_retained_test.odin`, headless WGPU asset-preview diagnostics.
 
+### `scrapbot.ui_icon`
+
+- **Contract:** Resolves an icon-set resource UUID plus stable symbol name, applies a linear HDR tint, preserves the compiled plane aspect, and fits the result into the padded layout box with a non-negative inset.
+- **Storage/lifecycle:** Dedicated typed UI storage; authored. Icon strings are World-owned and reclaimed with the component slot.
+- **Producers:** Scene TOML, Luau/native UI APIs, editor composition, button and panel control composition.
+- **Consumers:** Retained measurement/paint, icon-set symbol lookup, the shared MTSDF texture array, and WGPU UI vertex conversion.
+- **Invalidation:** Component setters dirty only the affected UI domain. Icon-set registration/reimport advances a registry-wide monotonic revision; stable sets do not rebuild paint or upload atlas layers, while a changed entry uploads only its retained array layer.
+- **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_icon).
+- **Source/tests:** `ecs/ui_components.odin`, `resources/icons.odin`, `ui/ui.odin`, `render/wgpu.odin`; `resources/resources_test.odin`, `ui/ui_test.odin`, headless WGPU icon framegrabs.
+
 ### `scrapbot.ui_text`
 
 - **Contract:** Font-selected MTSDF text with color, size, and alignment.
@@ -317,11 +328,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_input`
 
-- **Contract:** Single-line text/numeric editor with selection, navigation, validation, staged Enter-to-commit numeric typing, cancel-on-focus-transfer, and opt-in live numerical scrubbing.
+- **Contract:** Single-line text/numeric editor with an optional leading/trailing icon, selection, navigation, validation, staged Enter-to-commit numeric typing, cancel-on-focus-transfer, and opt-in live numerical scrubbing. Prefix badges remain outermost; the icon stays fixed while text scrolls inside the remaining clipped content.
 - **Storage/lifecycle:** Dedicated typed UI storage plus retained caret/selection/scrub state; authored component.
 - **Producers:** Public project UI surfaces, editor reflected-field bindings, keyboard/pointer input.
-- **Consumers:** Measurement, focus/navigation order, editing/validation, paint, editor history bindings.
-- **Invalidation:** External value/style changes target layout/paint; numeric keyboard edits change only retained text/validity until submission, while live scrubbing advances change revisions and release advances submission without rebuilding unrelated UI.
+- **Consumers:** Measurement, icon-resource resolution, focus/navigation order, editing/validation, paint, editor history bindings.
+- **Invalidation:** Text/font/icon geometry changes target layout and paint; tint and other visual styles target paint. Numeric keyboard edits change only retained text/validity until submission, while live scrubbing advances change revisions and release advances submission without rebuilding unrelated UI.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_input).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`, `ui/editor_inspector_binding.odin`; `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
 

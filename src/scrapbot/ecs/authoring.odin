@@ -171,17 +171,23 @@ capture_registered_component_snapshot :: proc(
 			value.ui_text = world.ui_texts[entity.ui_text_index]
 			value.ui_text.text = clone_snapshot_string(value.ui_text.text)
 			value.ui_text.font = clone_snapshot_string(value.ui_text.font)
+		case .UI_Icon:
+			value.has_ui_icon = true
+			value.ui_icon = world.ui_icons[entity.ui_icon_index]
+			value.ui_icon.icon = clone_snapshot_string(value.ui_icon.icon)
 		case .UI_Button:
 			value.has_ui_button = true
 			value.ui_button = world.ui_buttons[entity.ui_button_index]
 			value.ui_button.text = clone_snapshot_string(value.ui_button.text)
 			value.ui_button.font = clone_snapshot_string(value.ui_button.font)
+			value.ui_button.icon = clone_snapshot_string(value.ui_button.icon)
 		case .UI_Input:
 			value.has_ui_input = true
 			value.ui_input = world.ui_inputs[entity.ui_input_index]
 			value.ui_input.text = clone_snapshot_string(value.ui_input.text)
 			value.ui_input.font = clone_snapshot_string(value.ui_input.font)
 			value.ui_input.prefix = clone_snapshot_string(value.ui_input.prefix)
+			value.ui_input.icon = clone_snapshot_string(value.ui_input.icon)
 		case .UI_Checkbox:
 			value.has_ui_checkbox = true
 			value.ui_checkbox = world.ui_checkboxes[entity.ui_checkbox_index]
@@ -350,6 +356,8 @@ apply_registered_component_snapshot :: proc(
 			_ = set_ui_viewport(world, entity_index, value.ui_viewport)
 		case .UI_Text:
 			_ = set_ui_text(world, entity_index, value.ui_text)
+		case .UI_Icon:
+			_ = set_ui_icon(world, entity_index, value.ui_icon)
 		case .UI_Button:
 			_ = set_ui_button(world, entity_index, value.ui_button)
 		case .UI_Input:
@@ -499,11 +507,14 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.ui_panel.font)
 	delete(entity.ui_text.text)
 	delete(entity.ui_text.font)
+	delete(entity.ui_icon.icon)
 	delete(entity.ui_button.text)
 	delete(entity.ui_button.font)
+	delete(entity.ui_button.icon)
 	delete(entity.ui_input.text)
 	delete(entity.ui_input.font)
 	delete(entity.ui_input.prefix)
+	delete(entity.ui_input.icon)
 	for &component in entity.custom_components {
 		delete(component.name)
 		for field in component.number_fields {
@@ -775,6 +786,13 @@ set_registered_component_membership :: proc(
 			} else {
 				_ = remove_ui_component(world, entity_index, definition.name)
 			}
+		case .UI_Icon:
+			if present {
+				_ = set_ui_icon(world, entity_index, shared.ui_icon_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
 		case .UI_Button:
 			if present {
 				_ = set_ui_button(world, entity_index, shared.ui_button_default())
@@ -995,11 +1013,17 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.ui_text.text = clone_snapshot_string(entity.ui_text.text)
 		entity.ui_text.font = clone_snapshot_string(entity.ui_text.font)
 	}
+	if source.ui_icon_index >= 0 && source.ui_icon_index < len(world.ui_icons) {
+		entity.has_ui_icon = true
+		entity.ui_icon = world.ui_icons[source.ui_icon_index]
+		entity.ui_icon.icon = clone_snapshot_string(entity.ui_icon.icon)
+	}
 	if source.ui_button_index >= 0 && source.ui_button_index < len(world.ui_buttons) {
 		entity.has_ui_button = true
 		entity.ui_button = world.ui_buttons[source.ui_button_index]
 		entity.ui_button.text = clone_snapshot_string(entity.ui_button.text)
 		entity.ui_button.font = clone_snapshot_string(entity.ui_button.font)
+		entity.ui_button.icon = clone_snapshot_string(entity.ui_button.icon)
 	}
 	if source.ui_input_index >= 0 && source.ui_input_index < len(world.ui_inputs) {
 		entity.has_ui_input = true
@@ -1007,6 +1031,7 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.ui_input.text = clone_snapshot_string(entity.ui_input.text)
 		entity.ui_input.font = clone_snapshot_string(entity.ui_input.font)
 		entity.ui_input.prefix = clone_snapshot_string(entity.ui_input.prefix)
+		entity.ui_input.icon = clone_snapshot_string(entity.ui_input.icon)
 	}
 	if source.ui_checkbox_index >= 0 && source.ui_checkbox_index < len(world.ui_checkboxes) {
 		entity.has_ui_checkbox = true
@@ -1209,6 +1234,7 @@ apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene
 	if value.has_ui_progress { _ = set_ui_progress(world, entity_index, value.ui_progress) } else { remove_ui_component(world, entity_index, "scrapbot.ui_progress") }
 	if value.has_ui_viewport { _ = set_ui_viewport(world, entity_index, value.ui_viewport) } else { remove_ui_component(world, entity_index, "scrapbot.ui_viewport") }
 	if value.has_ui_text { _ = set_ui_text(world, entity_index, value.ui_text) } else { remove_ui_component(world, entity_index, "scrapbot.ui_text") }
+	if value.has_ui_icon { _ = set_ui_icon(world, entity_index, value.ui_icon) } else { remove_ui_component(world, entity_index, "scrapbot.ui_icon") }
 	if value.has_ui_button { _ = set_ui_button(world, entity_index, value.ui_button) } else { remove_ui_component(world, entity_index, "scrapbot.ui_button") }
 	if value.has_ui_input { _ = set_ui_input(world, entity_index, value.ui_input) } else { remove_ui_component(world, entity_index, "scrapbot.ui_input") }
 	if value.has_ui_checkbox { _ = set_ui_checkbox(world, entity_index, value.ui_checkbox) } else { remove_ui_component(world, entity_index, "scrapbot.ui_checkbox") }

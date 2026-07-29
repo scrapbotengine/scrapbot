@@ -292,11 +292,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "disclosure_size", scene_f32(value.disclosure_size))
 		write_scene_value(builder, "disclosure_margin", scene_f32(value.disclosure_margin))
 		write_scene_value(builder, "disclosure_gap", scene_f32(value.disclosure_gap))
-		write_scene_value(
-			builder,
-			"disclosure_corner_radius",
-			scene_f32(value.disclosure_corner_radius),
-		)
+		write_scene_value(builder, "disclosure_inset", scene_f32(value.disclosure_inset))
 		write_scene_value(builder, "collapsible", scene_bool(value.collapsible))
 		write_scene_value(builder, "collapsed", scene_bool(value.collapsed))
 	}
@@ -376,6 +372,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "clear_color", scene_vec4(value.clear_color))
 		write_scene_value(builder, "interactive", scene_bool(value.interactive))
 	}
+	if entity.has_ui_icon { write_scene_icon(builder, entity.ui_icon) }
 	if entity.has_ui_text { write_scene_text(builder, "ui_text", entity.ui_text) }
 	if entity.has_ui_button { write_scene_button(builder, entity.ui_button) }
 	if entity.has_ui_input { write_scene_input(builder, entity.ui_input) }
@@ -393,6 +390,14 @@ write_scene_stack :: proc(
 	write_scene_value(builder, "fill", scene_bool(value.fill))
 	write_scene_value(builder, "draggable", scene_bool(value.draggable))
 	write_scene_value(builder, "min_size", scene_f32(value.min_size))
+}
+
+write_scene_icon :: proc(builder: ^strings.Builder, value: shared.UI_Icon_Component) {
+	write_scene_section(builder, "ui_icon")
+	write_scene_string(builder, "icon_set", scene_resource_uuid(value.icon_set))
+	write_scene_string(builder, "icon", value.icon)
+	write_scene_value(builder, "color", scene_vec4(value.color))
+	write_scene_value(builder, "inset", scene_f32(value.inset))
 }
 
 write_scene_text :: proc(
@@ -422,9 +427,14 @@ write_scene_button :: proc(builder: ^strings.Builder, value: shared.UI_Button_Co
 	write_scene_value(builder, "active_background", scene_vec4(value.active_background))
 	write_scene_value(builder, "hover_color", scene_vec4(value.hover_color))
 	write_scene_value(builder, "active_color", scene_vec4(value.active_color))
-	write_scene_string(builder, "icon", scene_icon(value.icon))
+	if value.icon_set != (shared.Resource_UUID{}) {
+		write_scene_string(builder, "icon_set", scene_resource_uuid(value.icon_set))
+	}
+	write_scene_string(builder, "icon", value.icon)
+	write_scene_string(builder, "icon_position", scene_icon_position(value.icon_position))
+	write_scene_value(builder, "icon_size", scene_f32(value.icon_size))
+	write_scene_value(builder, "icon_gap", scene_f32(value.icon_gap))
 	write_scene_value(builder, "icon_inset", scene_f32(value.icon_inset))
-	write_scene_value(builder, "icon_stroke", scene_f32(value.icon_stroke))
 	write_scene_value(builder, "panel_action", scene_bool(value.panel_action))
 }
 
@@ -433,10 +443,19 @@ write_scene_input :: proc(builder: ^strings.Builder, value: shared.UI_Input_Comp
 	write_scene_string(builder, "text", value.text)
 	write_scene_string(builder, "font", value.font)
 	write_scene_string(builder, "prefix", value.prefix)
+	if value.icon_set != (shared.Resource_UUID{}) {
+		write_scene_string(builder, "icon_set", scene_resource_uuid(value.icon_set))
+	}
+	write_scene_string(builder, "icon", value.icon)
+	write_scene_string(builder, "icon_position", scene_icon_position(value.icon_position))
 	write_scene_value(builder, "color", scene_vec4(value.color))
+	write_scene_value(builder, "icon_color", scene_vec4(value.icon_color))
 	write_scene_value(builder, "prefix_color", scene_vec4(value.prefix_color))
 	write_scene_value(builder, "prefix_background", scene_vec4(value.prefix_background))
 	write_scene_value(builder, "size", scene_f32(value.size))
+	write_scene_value(builder, "icon_size", scene_f32(value.icon_size))
+	write_scene_value(builder, "icon_gap", scene_f32(value.icon_gap))
+	write_scene_value(builder, "icon_inset", scene_f32(value.icon_inset))
 	write_scene_value(builder, "prefix_width", scene_f32(value.prefix_width))
 	write_scene_value(builder, "selection_background", scene_vec4(value.selection_background))
 	write_scene_value(builder, "focus_border_color", scene_vec4(value.focus_border_color))
@@ -552,18 +571,12 @@ scene_alignment :: proc(value: shared.UI_Text_Alignment) -> string {
 	return "left"
 }
 
-scene_icon :: proc(value: shared.UI_Icon) -> string {
+scene_icon_position :: proc(value: shared.UI_Icon_Position) -> string {
 	switch value {
-		case .Close:
-			return "close"
-		case .Plus:
-			return "plus"
-		case .Chevron_Right:
-			return "chevron_right"
-		case .Chevron_Down:
-			return "chevron_down"
-		case .None:
-			return "none"
+		case .Leading:
+			return "leading"
+		case .Trailing:
+			return "trailing"
 	}
-	return "none"
+	return "leading"
 }

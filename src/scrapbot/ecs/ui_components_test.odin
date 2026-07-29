@@ -5,6 +5,31 @@ import "core:strings"
 import "core:testing"
 
 @(test)
+test_ui_input_icon_survives_authoring_snapshot_replacement :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	entity_index, created := create_world_entity(
+		&world,
+		"Search",
+		shared.entity_uuid_from_engine_name("Search"),
+	)
+	testing.expect(t, created)
+	input := shared.ui_input_default()
+	input.icon_set = shared.builtin_icon_set_uuid()
+	input.icon = "magnifying-glass"
+	testing.expect(t, set_ui_input(&world, entity_index, input))
+
+	snapshot, captured := capture_entity_snapshot(&world, entity_index)
+	testing.expect(t, captured)
+	defer destroy_entity_snapshot(&snapshot)
+	testing.expect(t, snapshot.entity.ui_input.icon == "magnifying-glass")
+
+	input.icon = "x"
+	testing.expect(t, set_ui_input(&world, entity_index, input))
+	testing.expect(t, snapshot.entity.ui_input.icon == "magnifying-glass")
+}
+
+@(test)
 test_world_entity_and_ui_component_api_is_shared_and_updates_in_place :: proc(t: ^testing.T) {
 	world: World
 	defer destroy_world(&world)

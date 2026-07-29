@@ -710,6 +710,12 @@ init_render_resources :: proc(
 	config: ^shared.Project_Config = nil,
 	project_resources: []shared.Project_Resource = nil,
 ) -> string {
+	if registry == nil {
+		return "render resource registry is not available"
+	}
+	if registry.allocator.procedure == nil {
+		resources.init_registry(registry)
+	}
 	imports := asset_import.ensure_project_imports(root, project_resources)
 	defer asset_import.destroy_report(&imports)
 	if imports.err != "" {
@@ -743,6 +749,13 @@ init_render_resources :: proc(
 		return err
 	}
 	if err := resources.register_project_environments(
+		registry,
+		project_resources,
+		imports.products[:],
+	); err != "" {
+		return err
+	}
+	if err := resources.register_project_icon_sets(
 		registry,
 		project_resources,
 		imports.products[:],
@@ -1103,6 +1116,13 @@ reimport_project_resources :: proc(
 		); err != "" {
 			return err
 		}
+		if err := resources.register_project_icon_sets(
+			registry,
+			loaded.resources[:],
+			imports.products[:],
+		); err != "" {
+			return err
+		}
 		if err := resources.register_project_models(
 			registry,
 			loaded.resources[:],
@@ -1150,6 +1170,13 @@ reimport_project_resources :: proc(
 				return err
 			}
 			return ""
+		case .Icon_Set:
+			return resources.register_project_icon_sets(
+				registry,
+				declarations,
+				imports.products[:],
+				false,
+			)
 		case:
 			return "selected resource is not importable"
 	}

@@ -154,6 +154,10 @@ editor_reflected_snapshot_component_value :: proc(
 			if entity.has_ui_text {
 				return any{rawptr(&entity.ui_text), typeid_of(shared.UI_Text_Component)}, true
 			}
+		case .UI_Icon:
+			if entity.has_ui_icon {
+				return any{rawptr(&entity.ui_icon), typeid_of(shared.UI_Icon_Component)}, true
+			}
 		case .UI_Button:
 			if entity.has_ui_button {
 				return any{rawptr(&entity.ui_button), typeid_of(shared.UI_Button_Component)}, true
@@ -319,6 +323,12 @@ editor_reflected_live_component_value :: proc(
 			return any {
 					rawptr(&world.ui_texts[entity.ui_text_index]),
 					typeid_of(shared.UI_Text_Component),
+				},
+				true
+		case .UI_Icon:
+			return any {
+					rawptr(&world.ui_icons[entity.ui_icon_index]),
+					typeid_of(shared.UI_Icon_Component),
 				},
 				true
 		case .UI_Button:

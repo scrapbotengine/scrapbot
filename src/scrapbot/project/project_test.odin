@@ -105,6 +105,32 @@ source = "assets/../ship.gltf"
 }
 
 @(test)
+test_project_icon_set_resource_parser :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000022"
+type = "scrapbot.icon_set"
+name = "Interface"
+
+[icon_set]
+source = "assets/icons/interface"
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .Icon_Set)
+	testing.expect_value(t, resource.icon_set.source, "assets/icons/interface")
+
+	_, unsafe := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000022"
+type = "scrapbot.icon_set"
+name = "Unsafe"
+[icon_set]
+source = "assets/../icons"
+`,
+	)
+	testing.expect(t, unsafe.err == .Invalid_Path)
+}
+
+@(test)
 test_project_environment_resource_and_render_config :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000021"
@@ -396,6 +422,21 @@ test_scene_material_references_require_known_resource_uuids :: proc(t: ^testing.
 	testing.expect(t, validate_scene_resource_references(&scene, resources) == "")
 	scene.entities[0].material_resource = "not-a-uuid"
 	testing.expect(t, validate_scene_resource_references(&scene, resources) != "")
+}
+
+@(test)
+test_scene_input_icons_require_known_icon_set_uuids :: proc(t: ^testing.T) {
+	icon_set, valid := shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000099")
+	testing.expect(t, valid)
+	input := shared.ui_input_default()
+	input.icon_set = icon_set
+	input.icon = "search"
+	scene := Scene{}
+	defer destroy_scene(&scene)
+	append(&scene.entities, Scene_Entity{name = "Search", has_ui_input = true, ui_input = input})
+	testing.expect(t, validate_scene_resource_references(&scene, nil) != "")
+	resources := []shared.Project_Resource{{id = icon_set, kind = .Icon_Set}}
+	testing.expect(t, validate_scene_resource_references(&scene, resources) == "")
 }
 
 @(test)
@@ -1346,7 +1387,7 @@ title_height = 28
 disclosure_size = 9
 disclosure_margin = 7
 disclosure_gap = 6
-disclosure_corner_radius = 0
+disclosure_inset = 0
 collapsible = true
 collapsed = true
 [entities.ui_scroll_area]
@@ -1404,7 +1445,7 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_panel.title_size == 11)
 	testing.expect(t, scene.entities[0].ui_panel.title_height == 28)
 	testing.expect(t, scene.entities[0].ui_panel.disclosure_size == 9)
-	testing.expect(t, scene.entities[0].ui_panel.disclosure_corner_radius == 0)
+	testing.expect(t, scene.entities[0].ui_panel.disclosure_inset == 0)
 	testing.expect(t, scene.entities[0].ui_panel.collapsible)
 	testing.expect(t, scene.entities[0].ui_panel.collapsed)
 	testing.expect(t, scene.entities[0].ui_layout.border_color == Vec4{0.4, 0.5, 0.6, 1})
@@ -1684,9 +1725,12 @@ name = "Close"
 parent = "a6000000-0000-4000-8000-000000000012"
 size = [22, 22]
 [entities.ui_button]
-icon = "close"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "x"
+icon_position = "trailing"
+icon_size = 16
+icon_gap = 4
 icon_inset = 5
-icon_stroke = 2
 panel_action = true
 `,
 	)
@@ -1694,9 +1738,12 @@ panel_action = true
 	testing.expectf(t, result.err == .None, "%s", result.message)
 	testing.expect(t, len(scene.entities) == 2)
 	testing.expect(t, scene.entities[1].has_ui_button)
-	testing.expect(t, scene.entities[1].ui_button.icon == .Close)
+	testing.expect(t, scene.entities[1].ui_button.icon_set == shared.builtin_icon_set_uuid())
+	testing.expect(t, scene.entities[1].ui_button.icon == "x")
+	testing.expect(t, scene.entities[1].ui_button.icon_position == .Trailing)
+	testing.expect(t, scene.entities[1].ui_button.icon_size == 16)
+	testing.expect(t, scene.entities[1].ui_button.icon_gap == 4)
 	testing.expect(t, scene.entities[1].ui_button.icon_inset == 5)
-	testing.expect(t, scene.entities[1].ui_button.icon_stroke == 2)
 	testing.expect(t, scene.entities[1].ui_button.panel_action)
 }
 
@@ -1711,10 +1758,17 @@ size = [240, 32]
 [entities.ui_input]
 text = "Scrapbot"
 prefix = "X"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "magnifying-glass"
+icon_position = "trailing"
 color = [0.9, 0.9, 0.9, 1]
+icon_color = [0.6, 0.7, 0.8, 1]
 prefix_color = [0.9, 0.3, 0.3, 1]
 prefix_background = [0.9, 0.3, 0.3, 0.12]
 size = 13
+icon_size = 14
+icon_gap = 5
+icon_inset = 1
 prefix_width = 14
 selection_background = [0.1, 0.5, 0.4, 0.5]
 focus_border_color = [0.1, 0.8, 0.7, 1]
@@ -1746,7 +1800,12 @@ read_only = false
 	testing.expect(t, scene.entities[0].has_ui_input)
 	testing.expect(t, input.text == "Scrapbot")
 	testing.expect(t, input.prefix == "X")
+	testing.expect(t, input.icon_set == shared.builtin_icon_set_uuid())
+	testing.expect(t, input.icon == "magnifying-glass")
+	testing.expect(t, input.icon_position == .Trailing)
+	testing.expect(t, input.icon_color == Vec4{0.6, 0.7, 0.8, 1})
 	testing.expect(t, input.size == 13)
+	testing.expect(t, input.icon_size == 14 && input.icon_gap == 5 && input.icon_inset == 1)
 	testing.expect(t, input.prefix_width == 14)
 	testing.expect(t, input.number == 42 && input.step == 0.5)
 	testing.expect(t, input.minimum == 0 && input.maximum == 100)

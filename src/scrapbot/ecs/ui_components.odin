@@ -201,6 +201,13 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			world.ui_viewports[entity.ui_viewport_index] = {}
 			append(&world.free_ui_viewport_indices, entity.ui_viewport_index)
 			entity.ui_viewport_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_icon":
+			if entity.ui_icon_index < 0 { return false }
+			icon := &world.ui_icons[entity.ui_icon_index]
+			delete_world_string(world, icon.icon)
+			icon^ = {}
+			append(&world.free_ui_icon_indices, entity.ui_icon_index)
+			entity.ui_icon_index = INVALID_COMPONENT_INDEX
 		case "scrapbot.ui_text":
 			if entity.ui_text_index < 0 { return false }
 			text := &world.ui_texts[entity.ui_text_index]
@@ -214,6 +221,7 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			button := &world.ui_buttons[entity.ui_button_index]
 			delete_world_string(world, button.text)
 			delete_world_string(world, button.font)
+			delete_world_string(world, button.icon)
 			button^ = {}
 			append(&world.free_ui_button_indices, entity.ui_button_index)
 			entity.ui_button_index = INVALID_COMPONENT_INDEX
@@ -223,6 +231,7 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			delete_world_string(world, input.text)
 			delete_world_string(world, input.font)
 			delete_world_string(world, input.prefix)
+			delete_world_string(world, input.icon)
 			input^ = {}
 			append(&world.free_ui_input_indices, entity.ui_input_index)
 			entity.ui_input_index = INVALID_COMPONENT_INDEX
@@ -570,6 +579,34 @@ set_ui_text :: proc(world: ^World, entity_index: int, value: UI_Text_Component) 
 	return true
 }
 
+set_ui_icon :: proc(world: ^World, entity_index: int, value: UI_Icon_Component) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) {
+		return false
+	}
+	icon := value
+	icon.icon = clone_world_string(world, value.icon)
+	entity := &world.entities[entity_index]
+	if entity.ui_icon_index >= 0 && entity.ui_icon_index < len(world.ui_icons) {
+		current := &world.ui_icons[entity.ui_icon_index]
+		paint_changed := current^ != value
+		delete_world_string(world, current.icon)
+		current^ = icon
+		if paint_changed {
+			mark_ui_paint_changed(world, entity_index)
+		}
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_icon_indices); found {
+		entity.ui_icon_index = index
+		world.ui_icons[index] = icon
+	} else {
+		entity.ui_icon_index = len(world.ui_icons)
+		append(&world.ui_icons, icon)
+	}
+	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
 set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Component) -> bool {
 	if !ui_entity_is_mutable(world, entity_index) {
 		return false
@@ -577,6 +614,7 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 	button := value
 	button.text = clone_world_string(world, value.text)
 	button.font = clone_world_string(world, value.font)
+	button.icon = clone_world_string(world, value.icon)
 	entity := &world.entities[entity_index]
 	if entity.ui_button_index >= 0 && entity.ui_button_index < len(world.ui_buttons) {
 		current := &world.ui_buttons[entity.ui_button_index]
@@ -587,10 +625,15 @@ set_ui_button :: proc(world: ^World, entity_index: int, value: UI_Button_Compone
 			current.font != value.font ||
 			current.size != value.size ||
 			current.alignment != value.alignment ||
+			current.icon_set != value.icon_set ||
 			current.icon != value.icon ||
+			current.icon_position != value.icon_position ||
+			current.icon_size != value.icon_size ||
+			current.icon_gap != value.icon_gap ||
 			current.icon_inset != value.icon_inset
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
+		delete_world_string(world, current.icon)
 		current^ = button
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)
@@ -622,6 +665,7 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 	input.text = clone_world_string(world, value.text)
 	input.font = clone_world_string(world, value.font)
 	input.prefix = clone_world_string(world, value.prefix)
+	input.icon = clone_world_string(world, value.icon)
 	entity := &world.entities[entity_index]
 	if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
 		current := &world.ui_inputs[entity.ui_input_index]
@@ -631,12 +675,19 @@ set_ui_input :: proc(world: ^World, entity_index: int, value: UI_Input_Component
 			current.text != value.text ||
 			current.font != value.font ||
 			current.prefix != value.prefix ||
+			current.icon_set != value.icon_set ||
+			current.icon != value.icon ||
+			current.icon_position != value.icon_position ||
 			current.size != value.size ||
+			current.icon_size != value.icon_size ||
+			current.icon_gap != value.icon_gap ||
+			current.icon_inset != value.icon_inset ||
 			current.prefix_width != value.prefix_width ||
 			current.prefix_gap != value.prefix_gap
 		delete_world_string(world, current.text)
 		delete_world_string(world, current.font)
 		delete_world_string(world, current.prefix)
+		delete_world_string(world, current.icon)
 		current^ = input
 		if intrinsic_changed {
 			mark_ui_intrinsic_layout_changed(world, entity_index)

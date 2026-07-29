@@ -1432,12 +1432,23 @@ test_wgpu_gpu_uniforms_upload_only_after_value_changes :: proc(t: ^testing.T) {
 @(test)
 test_wgpu_gpu_timing_marks_only_encoded_passes_for_the_sample :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_supported = true
+	renderer.gpu_timestamp_query_set = wgpu.QuerySet(rawptr(uintptr(1)))
 	renderer.gpu_timestamp_active_slot = 2
 	_, enabled := wgpu_gpu_pass_timestamps(&renderer, .World)
 	testing.expect(t, enabled)
 	readback := renderer.gpu_timestamp_readbacks[2]
 	testing.expect(t, readback.phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.World)) != 0)
 	testing.expect(t, readback.phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.UI)) == 0)
+}
+
+@(test)
+test_wgpu_gpu_timing_never_encodes_from_zero_initialized_state :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	_, enabled := wgpu_gpu_pass_timestamps(&renderer, .World)
+	testing.expect(t, !enabled)
+	wgpu_gpu_timing_begin_frame(&renderer)
+	testing.expect_value(t, renderer.gpu_timestamp_active_slot, -1)
 }
 
 @(test)
@@ -1600,6 +1611,8 @@ test_wgpu_post_timing_includes_camera_post_effects :: proc(t: ^testing.T) {
 @(test)
 test_wgpu_gpu_shadow_timing_uses_distinct_queries_for_every_cascade :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_supported = true
+	renderer.gpu_timestamp_query_set = wgpu.QuerySet(rawptr(uintptr(1)))
 	renderer.gpu_timestamp_active_slot = 1
 	first, first_enabled := wgpu_gpu_shadow_pass_timestamps(&renderer, 0)
 	second, second_enabled := wgpu_gpu_shadow_pass_timestamps(&renderer, 1)

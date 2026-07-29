@@ -45,9 +45,16 @@ function readSettings(settingsPath) {
 }
 
 const rootSettingsPath = path.join(root, ".vscode", "settings.json");
-const rootSettings = readSettings(rootSettingsPath);
-if (rootSettings["luau-lsp.types.definitionFiles"]?.scrapbot !== "types/scrapbot.d.luau") {
-  throw new Error(`${path.relative(root, rootSettingsPath)} does not load workspace Luau declarations`);
+// Root editor settings are intentionally ignored because they commonly contain
+// developer-local tool paths. Validate the Scrapbot declaration path when a
+// checkout has opted into those settings, but keep clean clones supported.
+if (fs.existsSync(rootSettingsPath)) {
+  const rootSettings = readSettings(rootSettingsPath);
+  if (rootSettings["luau-lsp.types.definitionFiles"]?.scrapbot !== "types/scrapbot.d.luau") {
+    throw new Error(
+      `${path.relative(root, rootSettingsPath)} does not load workspace Luau declarations`,
+    );
+  }
 }
 
 for (const projectRoot of allProjectRoots) {

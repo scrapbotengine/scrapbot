@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+python="$repository_root/.scrapbot/tools/icon-compiler/bin/python"
+
+if [ ! -x "$python" ]; then
+  echo "scrapbot-iconc: compiler environment is missing; run 'mise run icon-tools'" >&2
+  exit 1
+fi
+
+exec "$python" "$repository_root/tools/compile_icon_set.py" "$@"

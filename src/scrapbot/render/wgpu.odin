@@ -520,6 +520,7 @@ WGPU_Renderer :: struct {
 	ui_viewport_redraw_count: u64,
 	ui_viewport_cache_hit_count: u64,
 	ui_font_versions: [shared.MAX_PROJECT_FONTS]u32,
+	ui_icon_set_versions: [shared.MAX_ICON_SETS]u32,
 	ui_project_vertices: [dynamic]WGPU_UI_Vertex,
 	ui_project_vertex_buffer: wgpu.Buffer,
 	ui_project_vertex_capacity: int,
@@ -853,7 +854,7 @@ wgpu_dynamic_resolution_scale :: proc(
 		}
 	}
 	renderer.gpu_timestamp_resolution_sample_count = 0
-	if renderer.gpu_timestamp_active_slot >= 0 {
+	if wgpu_gpu_timing_active(renderer) {
 		readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
 		readback.dynamic_resolution_generation = renderer.dynamic_resolution.generation
 	}
@@ -1333,7 +1334,7 @@ wgpu_append_ui_vertices :: proc(
 		}
 		u0, v0, u1, v1 := command.uv.x, command.uv.y, command.uv.z, command.uv.w
 		kind := f32(0)
-		if command.kind == .Glyph {
+		if command.kind == .Glyph || command.kind == .Icon {
 			kind = 1
 		} else if command.kind == .Triangle {
 			kind = 2
@@ -2653,6 +2654,38 @@ wgpu_sync_ui_fonts :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Regist
 			},
 		)
 		renderer.ui_font_versions[index] = font.version
+	}
+	icon_set_count := min(len(registry.icon_sets), shared.MAX_ICON_SETS)
+	for index in 0 ..< icon_set_count {
+		icon_set := &registry.icon_sets[index]
+		if !icon_set.alive || renderer.ui_icon_set_versions[index] == icon_set.version {
+			continue
+		}
+		if icon_set.desc.width != ui.FONT_ATLAS_SIZE ||
+		   icon_set.desc.height != ui.FONT_ATLAS_SIZE ||
+		   len(icon_set.desc.pixels) != ui.FONT_ATLAS_SIZE * ui.FONT_ATLAS_SIZE * 4 {
+			return fmt.tprintf("icon set %q has an invalid UI atlas", icon_set.name)
+		}
+		wgpu.QueueWriteTexture(
+			renderer.queue,
+			&wgpu.TexelCopyTextureInfo {
+				texture = renderer.ui_font_texture,
+				origin = {z = u32(shared.MAX_PROJECT_FONTS + 1 + index)},
+				aspect = .All,
+			},
+			raw_data(icon_set.desc.pixels),
+			uint(len(icon_set.desc.pixels)),
+			&wgpu.TexelCopyBufferLayout {
+				bytesPerRow = ui.FONT_ATLAS_SIZE * 4,
+				rowsPerImage = ui.FONT_ATLAS_SIZE,
+			},
+			&wgpu.Extent3D {
+				width = ui.FONT_ATLAS_SIZE,
+				height = ui.FONT_ATLAS_SIZE,
+				depthOrArrayLayers = 1,
+			},
+		)
+		renderer.ui_icon_set_versions[index] = icon_set.version
 	}
 	return ""
 }

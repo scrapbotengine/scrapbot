@@ -127,6 +127,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	text.font = "Inter"
 	text.alignment = .Right
 	testing.expect(t, ecs.set_ui_text(&world, entity_index, text))
+	icon_component := shared.ui_icon_default()
+	icon_component.icon_set = shared.builtin_icon_set_uuid()
+	icon_component.icon = "play"
+	testing.expect(t, ecs.set_ui_icon(&world, entity_index, icon_component))
 	state := ecs.ensure_ui_state(&world, entity_index)
 	state.hovered = true
 	state.activation_revision = 9
@@ -148,6 +152,13 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	input.text = "42"
 	input.font = "Inter"
 	input.prefix = "X"
+	input.icon_set = shared.builtin_icon_set_uuid()
+	input.icon = "magnifying-glass"
+	input.icon_position = .Trailing
+	input.icon_color = {0.4, 0.5, 0.6, 1}
+	input.icon_size = 14
+	input.icon_gap = 5
+	input.icon_inset = 1
 	input.prefix_width = 13
 	input.number = 42
 	input.step = 0.5
@@ -218,6 +229,16 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, text_payload.text.size == 16)
 	testing.expect(t, text_payload.text.alignment == .Right)
 
+	icon_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_icon", &icon_payload) != 0,
+	)
+	icon_symbol, icon_symbol_ok := api_ui_payload_icon(&icon_payload)
+	testing.expect(t, icon_symbol_ok && icon_symbol == "play")
+	icon_text, _, icon_text_ok := api_ui_payload_strings(&icon_payload)
+	testing.expect(t, icon_text_ok && icon_text == "")
+
 	state_payload: api.UI_Component_Payload
 	testing.expect(
 		t,
@@ -235,6 +256,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	prefix, prefix_ok := api_ui_payload_prefix(&input_payload)
 	testing.expect(t, prefix_ok && prefix == "X")
+	icon, icon_ok := api_ui_payload_icon(&input_payload)
+	testing.expect(t, icon_ok && icon == "magnifying-glass")
+	testing.expect(t, input_payload.input.icon_position == .Trailing)
+	testing.expect(t, input_payload.input.icon_size == 14)
 	testing.expect(t, input_payload.input.prefix_width == 13)
 	testing.expect(t, input_payload.input.number == 42 && input_payload.input.step == 0.5)
 	testing.expect(t, input_payload.input.numeric != 0)

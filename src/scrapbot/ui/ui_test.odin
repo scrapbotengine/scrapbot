@@ -30,6 +30,12 @@ test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing
 	testing.expect(t, layout.background == theme.palette.accent_soft)
 	testing.expect(t, shared.ui_layout_is_valid(layout))
 	testing.expect(t, shared.ui_button_is_valid(button))
+	incomplete_icon := button
+	incomplete_icon.icon = "play"
+	testing.expect(t, !shared.ui_button_is_valid(incomplete_icon))
+	incomplete_icon = button
+	incomplete_icon.icon_set = shared.builtin_icon_set_uuid()
+	testing.expect(t, !shared.ui_button_is_valid(incomplete_icon))
 
 	parent := ui_test_id("Theme Parent")
 	custom := theme
@@ -264,9 +270,16 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 		filter_value := world.ui_inputs[filter_entity.ui_input_index]
 		testing.expect(t, filter_layout.margin == shared.Vec4{2, 0, 2, 0})
 		testing.expect(t, filter_layout.fill_width)
-		testing.expect_value(t, filter_layout.padding.w, EDITOR_BROWSER_TEXT_INSET)
+		testing.expect_value(
+			t,
+			filter_layout.padding.w,
+			reduced_dark_theme().metrics.padding_control.w,
+		)
 		testing.expect_value(t, filter_value.prefix, "")
 		testing.expect_value(t, filter_value.prefix_width, 0)
+		testing.expect_value(t, filter_value.icon_set, shared.builtin_icon_set_uuid())
+		testing.expect_value(t, filter_value.icon, "magnifying-glass")
+		testing.expect_value(t, filter_value.icon_size, f32(14))
 
 		testing.expect(t, ecs.set_ui_input_value(&world, filter, "renamed"))
 		testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
@@ -1713,7 +1726,7 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 	panel_style.title_size = 10
 	panel_style.title_height = 24
 	panel_style.disclosure_size = 9
-	panel_style.disclosure_corner_radius = 0
+	panel_style.disclosure_inset = 0
 	panel_style.collapsible = true
 	scene := shared.Scene{}
 	defer delete(scene.entities)
@@ -1751,11 +1764,14 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 	)
 	world := ecs.build_world(&scene)
 	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
 	state := new(State)
 	defer free(state)
 	testing.expect(t, init(state) == "")
 	defer destroy(state)
-	testing.expect(t, reconcile(state, &world, 240, 200) == "")
+	testing.expect(t, reconcile(state, &world, 240, 200, resource_registry = &registry) == "")
 	panel_node := find_node_by_entity_index(state, 1)
 	child_node := find_node_by_entity_index(state, 2)
 	sibling_node := find_node_by_entity_index(state, 3)
@@ -1770,7 +1786,10 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 		primary_down = true,
 		available = true,
 	}
-	testing.expect(t, reconcile(state, &world, 240, 200, press) == "")
+	testing.expect(
+		t,
+		reconcile(state, &world, 240, 200, press, resource_registry = &registry) == "",
+	)
 	testing.expect(t, world.ui_panels[0].collapsed)
 	testing.expect(t, state.nodes[panel_node].rect.height == 24)
 	testing.expect(t, !state.nodes[child_node].laid_out)
@@ -1778,10 +1797,9 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 	testing.expect(t, state.nodes[sibling_node].rect.height == 176)
 	found_collapsed_disclosure := false
 	for command in state.paint[:state.paint_count] {
-		if command.kind == .Disclosure &&
-		   !command.disclosure_expanded &&
-		   command.rect.width == 9 &&
-		   command.corner_radius == 0 {
+		if command.kind == .Icon &&
+		   command.rect.height == 9 &&
+		   command.font_layer == shared.MAX_PROJECT_FONTS + 1 {
 			found_collapsed_disclosure = true
 			break
 		}
@@ -1792,8 +1810,14 @@ test_collapsible_panel_title_toggles_content_layout_and_disclosure :: proc(t: ^t
 		position = {5, 5},
 		available = true,
 	}
-	testing.expect(t, reconcile(state, &world, 240, 200, release) == "")
-	testing.expect(t, reconcile(state, &world, 240, 200, press) == "")
+	testing.expect(
+		t,
+		reconcile(state, &world, 240, 200, release, resource_registry = &registry) == "",
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 240, 200, press, resource_registry = &registry) == "",
+	)
 	testing.expect(t, !world.ui_panels[0].collapsed)
 	testing.expect(t, state.nodes[panel_node].rect.height == 100)
 	testing.expect(t, state.nodes[child_node].laid_out)
@@ -1807,7 +1831,8 @@ test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
 	panel.title = "COMPOSABLE"
 	panel.collapsible = true
 	button := shared.ui_button_default()
-	button.icon = .Close
+	button.icon_set = shared.builtin_icon_set_uuid()
+	button.icon = "x"
 	button.panel_action = true
 	button.hover_background = {0.2, 0.3, 0.4, 1}
 	scene: shared.Scene
@@ -1833,11 +1858,14 @@ test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
 	)
 	world := ecs.build_world(&scene)
 	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
 	state := new(State)
 	defer free(state)
 	testing.expect(t, init(state) == "")
 	defer destroy(state)
-	testing.expect(t, reconcile(state, &world, 240, 100) == "")
+	testing.expect(t, reconcile(state, &world, 240, 100, resource_registry = &registry) == "")
 	action_node := find_node_by_entity_index(state, 1)
 	testing.expect(t, action_node >= 0)
 	if action_node < 0 {
@@ -1856,7 +1884,10 @@ test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
 		primary_down = true,
 		available = true,
 	}
-	testing.expect(t, reconcile(state, &world, 240, 100, pointer) == "")
+	testing.expect(
+		t,
+		reconcile(state, &world, 240, 100, pointer, resource_registry = &registry) == "",
+	)
 	testing.expect(t, !world.ui_panels[0].collapsed)
 	testing.expect(t, world.ui_states[world.entities[1].ui_state_index].activated)
 	events := ui_events(state)
@@ -1865,13 +1896,16 @@ test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
 		testing.expect(t, events[0].kind == .Activated)
 		testing.expect(t, events[0].entity == world.entities[1].id)
 	}
-	line_count := 0
+	icon_count := 0
 	for command in state.paint[:state.paint_count] {
-		if command.kind == .Line && command.color == button.color {
-			line_count += 1
+		if command.kind == .Icon &&
+		   command.color == button.color &&
+		   command.rect.x >= action_rect.x &&
+		   command.rect.x + command.rect.width <= action_rect.x + action_rect.width {
+			icon_count += 1
 		}
 	}
-	testing.expect(t, line_count == 2)
+	testing.expect(t, icon_count == 1)
 }
 
 @(test)
@@ -2390,6 +2424,124 @@ test_ui_button_alignment_uses_the_padded_content_edge :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, math.abs(rightmost_ink - 103) < 0.001)
+}
+
+@(test)
+test_ui_icon_uses_the_builtin_catalog_layer :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Play",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 10}, size = {32, 32}},
+			has_ui_icon = true,
+			ui_icon = {
+				icon_set = shared.builtin_icon_set_uuid(),
+				icon = "play",
+				color = {1, 1, 1, 1},
+				inset = 2,
+			},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 64, 64, resource_registry = &registry) == "")
+	found := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind != .Icon {
+			continue
+		}
+		found = true
+		testing.expect(t, command.font_layer == shared.MAX_PROJECT_FONTS + 1)
+		testing.expect(t, command.rect.width > 0 && command.rect.height > 0)
+	}
+	testing.expect(t, found)
+}
+
+@(test)
+test_ui_input_icons_reserve_content_on_either_edge :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Leading",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 10}, size = {120, 30}, padding = {5, 8, 5, 8}},
+			has_ui_input = true,
+			ui_input = {
+				text = "find",
+				icon_set = shared.builtin_icon_set_uuid(),
+				icon = "magnifying-glass",
+				icon_position = .Leading,
+				color = {1, 1, 1, 1},
+				icon_color = {0.5, 0.6, 0.7, 1},
+				size = 12,
+				icon_size = 14,
+				icon_gap = 5,
+			},
+		},
+		shared.Scene_Entity {
+			name = "Trailing",
+			has_ui_layout = true,
+			ui_layout = {position = {10, 50}, size = {120, 30}, padding = {5, 8, 5, 8}},
+			has_ui_input = true,
+			ui_input = {
+				text = "find",
+				icon_set = shared.builtin_icon_set_uuid(),
+				icon = "magnifying-glass",
+				icon_position = .Trailing,
+				color = {1, 1, 1, 1},
+				icon_color = {0.5, 0.6, 0.7, 1},
+				size = 12,
+				icon_size = 14,
+				icon_gap = 5,
+			},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 160, 100, resource_registry = &registry) == "")
+
+	leading_icon_x, trailing_icon_x := f32(-1), f32(-1)
+	leading_glyph_x, trailing_glyph_x := f32(-1), f32(-1)
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Icon {
+			if command.rect.y < 40 {
+				leading_icon_x = command.rect.x
+			} else {
+				trailing_icon_x = command.rect.x
+			}
+		}
+		if command.kind == .Glyph {
+			if command.rect.y < 40 && leading_glyph_x < 0 {
+				leading_glyph_x = command.rect.x
+			}
+			if command.rect.y >= 40 && trailing_glyph_x < 0 {
+				trailing_glyph_x = command.rect.x
+			}
+		}
+	}
+	testing.expect(t, leading_icon_x >= 18 && leading_icon_x < 32)
+	testing.expect(t, leading_glyph_x > leading_icon_x + 10)
+	testing.expect(t, trailing_glyph_x < trailing_icon_x)
+	testing.expect(t, trailing_icon_x > 100 && trailing_icon_x < 122)
 }
 
 @(test)
@@ -4131,7 +4283,7 @@ test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: p
 		if action_node_index >= 0 {
 			action_rect := state.nodes[action_node_index].rect
 			button := world.ui_buttons[world.entities[component_action].ui_button_index]
-			testing.expect(t, button.panel_action && button.icon == .Close)
+			testing.expect(t, button.panel_action && button.icon == "x")
 			if action_rect.width > 0 && action_rect.height > 0 {
 				action_pointer := Pointer_Input {
 					position = {
@@ -6244,6 +6396,7 @@ test_public_popup_anchors_clamps_scrolls_and_closes_generically :: proc(t: ^test
 	testing.expect(t, ecs.set_ui_button(&world, 0, anchor_button))
 	testing.expect(t, !handle_popup_press(state, &world, world.entities[0].id))
 	testing.expect(t, !world.ui_layouts[world.entities[1].ui_layout_index].popup_open)
+	anchor_button = world.ui_buttons[world.entities[0].ui_button_index]
 	anchor_button.popup = popup_id
 	testing.expect(t, ecs.set_ui_button(&world, 0, anchor_button))
 
@@ -6271,17 +6424,17 @@ test_public_popup_anchors_clamps_scrolls_and_closes_generically :: proc(t: ^test
 test_reflected_enum_inspector_uses_public_choice_popup_and_structural_history :: proc(
 	t: ^testing.T,
 ) {
-	icon := shared.UI_Icon.Close
+	icon := shared.UI_Icon_Position.Leading
 	changed, parsed := editor_reflected_set_enum_value(
-		any{rawptr(&icon), typeid_of(shared.UI_Icon)},
-		"plus",
+		any{rawptr(&icon), typeid_of(shared.UI_Icon_Position)},
+		"Trailing",
 	)
-	testing.expect(t, changed && parsed && icon == .Plus)
+	testing.expect(t, changed && parsed && icon == .Trailing)
 	_, parsed = editor_reflected_set_enum_value(
-		any{rawptr(&icon), typeid_of(shared.UI_Icon)},
+		any{rawptr(&icon), typeid_of(shared.UI_Icon_Position)},
 		"missing",
 	)
-	testing.expect(t, !parsed && icon == .Plus)
+	testing.expect(t, !parsed && icon == .Trailing)
 	small := UI_Test_U8_Enum.Low
 	changed, parsed = editor_reflected_set_enum_value(
 		any{rawptr(&small), typeid_of(UI_Test_U8_Enum)},
@@ -6817,9 +6970,16 @@ test_editor_system_profile_uses_selectable_list_panel_and_scroll_components :: p
 		filter_value := world.ui_inputs[filter_entity.ui_input_index]
 		testing.expect(t, filter_layout.margin == shared.Vec4{2, 0, 2, 0})
 		testing.expect(t, filter_layout.fill_width)
-		testing.expect_value(t, filter_layout.padding.w, EDITOR_BROWSER_TEXT_INSET)
+		testing.expect_value(
+			t,
+			filter_layout.padding.w,
+			reduced_dark_theme().metrics.padding_control.w,
+		)
 		testing.expect_value(t, filter_value.prefix, "")
 		testing.expect_value(t, filter_value.prefix_width, 0)
+		testing.expect_value(t, filter_value.icon_set, shared.builtin_icon_set_uuid())
+		testing.expect_value(t, filter_value.icon, "magnifying-glass")
+		testing.expect_value(t, filter_value.icon_size, f32(14))
 		filter_node := find_node_by_entity_index(state, filter)
 		list_node := find_node_by_entity_index(state, systems)
 		testing.expect(t, filter_node >= 0 && list_node >= 0)

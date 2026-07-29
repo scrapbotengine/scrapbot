@@ -24,6 +24,7 @@ Vec4 :: struct {
 Geometry_Handle :: shared.Geometry_Handle
 Texture_Handle :: shared.Texture_Handle
 Environment_Handle :: shared.Environment_Handle
+Icon_Set_Handle :: shared.Icon_Set_Handle
 Model_Handle :: shared.Model_Handle
 Material_Handle :: shared.Material_Handle
 Font_Handle :: shared.Font_Handle
@@ -98,6 +99,18 @@ Font_Desc :: struct {
 	glyphs: [shared.FONT_CHAR_COUNT]shared.Font_Glyph,
 }
 
+Icon_Symbol :: struct {
+	name: string,
+	uv: [4]f32,
+	plane: [4]f32,
+}
+
+Icon_Set_Desc :: struct {
+	pixels: []u8,
+	width, height: u32,
+	symbols: [dynamic]Icon_Symbol,
+}
+
 Geometry :: struct {
 	id: shared.Resource_UUID,
 	name: string,
@@ -153,6 +166,19 @@ Environment :: struct {
 	alive: bool,
 }
 
+Icon_Set :: struct {
+	id: shared.Resource_UUID,
+	name: string,
+	source: string,
+	asset_source: string,
+	import_byte_count: int,
+	authored: bool,
+	desc: Icon_Set_Desc,
+	generation: u32,
+	version: u32,
+	alive: bool,
+}
+
 Project_Material_Snapshot :: struct {
 	id: shared.Resource_UUID,
 	name: string,
@@ -179,12 +205,14 @@ Registry :: struct {
 	geometries: [dynamic]Geometry,
 	textures: [dynamic]Texture,
 	environments: [dynamic]Environment,
+	icon_sets: [dynamic]Icon_Set,
 	models: [dynamic]Model,
 	materials: [dynamic]Material,
 	fonts: [dynamic]Font,
 	geometry_topology_revision: u64,
 	texture_revision: u64,
 	environment_revision: u64,
+	icon_set_revision: u64,
 	model_revision: u64,
 	material_revision: u64,
 	active_environment: Environment_Handle,
@@ -244,6 +272,9 @@ ensure_allocator :: proc(registry: ^Registry) {
 	if registry.environments == nil {
 		registry.environments = make([dynamic]Environment, registry.allocator)
 	}
+	if registry.icon_sets == nil {
+		registry.icon_sets = make([dynamic]Icon_Set, registry.allocator)
+	}
 	if registry.models == nil {
 		registry.models = make([dynamic]Model, registry.allocator)
 	}
@@ -264,6 +295,9 @@ init_registry :: proc(registry: ^Registry, allocator := context.allocator) {
 	registry.atmosphere_sun_size = defaults.sun_size
 	registry.atmosphere_sun_glow = defaults.sun_glow
 	ensure_allocator(registry)
+	if err := register_builtin_icon_set(registry); err != "" {
+		panic(err)
+	}
 }
 
 destroy_registry :: proc(registry: ^Registry) {
@@ -296,6 +330,9 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(environment.desc.irradiance_pixels, allocator)
 		delete(environment.desc.specular_pixels, allocator)
 	}
+	for &icon_set in registry.icon_sets {
+		destroy_icon_set(&icon_set, allocator)
+	}
 	for &model in registry.models {
 		destroy_model(&model, allocator)
 	}
@@ -304,6 +341,7 @@ destroy_registry :: proc(registry: ^Registry) {
 	delete(registry.materials)
 	delete(registry.textures)
 	delete(registry.environments)
+	delete(registry.icon_sets)
 	delete(registry.models)
 	delete(registry.fonts)
 	registry^ = {}
@@ -322,6 +360,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.material_revision = source.material_revision
 	destination.texture_revision = source.texture_revision
 	destination.environment_revision = source.environment_revision
+	destination.icon_set_revision = source.icon_set_revision
 	destination.model_revision = source.model_revision
 	destination.active_environment = source.active_environment
 	destination.environment_intensity = source.environment_intensity
@@ -414,6 +453,17 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 			return "failed to clone environment metadata"
 		}
 		append(&destination.environments, cloned)
+	}
+	for icon_set in source.icon_sets {
+		if !icon_set.authored {
+			continue
+		}
+		cloned, clone_err := clone_icon_set(icon_set, allocator)
+		if clone_err != "" {
+			destroy_registry(destination)
+			return clone_err
+		}
+		append(&destination.icon_sets, cloned)
 	}
 	for model in source.models {
 		cloned, clone_err := clone_model(model, allocator)

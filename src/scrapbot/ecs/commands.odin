@@ -10,6 +10,7 @@ MAX_COMMAND_FIELDS :: 16
 MAX_UI_COMMAND_TEXT_BYTES :: 1024
 MAX_UI_COMMAND_FONT_BYTES :: 256
 MAX_UI_COMMAND_PREFIX_BYTES :: 64
+MAX_UI_COMMAND_ICON_BYTES :: 64
 
 Command_Kind :: enum {
 	Spawn,
@@ -67,6 +68,7 @@ UI_Component_Command_Kind :: enum {
 	List,
 	Progress,
 	Viewport,
+	Icon,
 	Text,
 	Button,
 	Input,
@@ -84,6 +86,7 @@ UI_Component_Command :: struct {
 	list: UI_List_Component,
 	progress: UI_Progress_Component,
 	viewport: UI_Viewport_Component,
+	icon: UI_Icon_Component,
 	text: UI_Text_Component,
 	button: UI_Button_Component,
 	input: UI_Input_Component,
@@ -95,6 +98,8 @@ UI_Component_Command :: struct {
 	font_len: int,
 	prefix_bytes: [MAX_UI_COMMAND_PREFIX_BYTES]u8,
 	prefix_len: int,
+	icon_bytes: [MAX_UI_COMMAND_ICON_BYTES]u8,
+	icon_len: int,
 }
 
 Command_Mesh :: struct {
@@ -362,6 +367,7 @@ init_ui_component_command :: proc "contextless" (
 	text: string = "",
 	font: string = "",
 	prefix: string = "",
+	icon: string = "",
 ) -> string {
 	if command == nil {
 		return "UI component command is not available"
@@ -381,6 +387,10 @@ init_ui_component_command :: proc "contextless" (
 		prefix,
 		"UI input prefix",
 	); err != "" {
+		return err
+	}
+	if err := copy_command_string(command.icon_bytes[:], &command.icon_len, icon, "UI icon");
+	   err != "" {
 		return err
 	}
 	return ""
@@ -406,6 +416,8 @@ ui_component_command_kind :: proc "contextless" (name: string) -> UI_Component_C
 			return .Progress
 		case "scrapbot.ui_viewport":
 			return .Viewport
+		case "scrapbot.ui_icon":
+			return .Icon
 		case "scrapbot.ui_text":
 			return .Text
 		case "scrapbot.ui_button":
@@ -467,6 +479,11 @@ ui_component_command_font :: proc "contextless" (command: ^UI_Component_Command)
 ui_component_command_prefix :: proc "contextless" (command: ^UI_Component_Command) -> string {
 	if command == nil { return "" }
 	return string(command.prefix_bytes[:command.prefix_len])
+}
+
+ui_component_command_icon :: proc "contextless" (command: ^UI_Component_Command) -> string {
+	if command == nil { return "" }
+	return string(command.icon_bytes[:command.icon_len])
 }
 
 spawn_add_ui_component :: proc "contextless" (
@@ -1148,6 +1165,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 		"scrapbot.ui_list",
 		"scrapbot.ui_progress",
 		"scrapbot.ui_viewport",
+		"scrapbot.ui_icon",
 		"scrapbot.ui_text",
 		"scrapbot.ui_button",
 		"scrapbot.ui_input",
@@ -1267,6 +1285,7 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 	text := string(command.text_bytes[:command.text_len])
 	font := string(command.font_bytes[:command.font_len])
 	prefix := string(command.prefix_bytes[:command.prefix_len])
+	icon := string(command.icon_bytes[:command.icon_len])
 	switch command.kind {
 		case .Layout:
 			set_ui_layout(world, entity_index, command.layout)
@@ -1289,6 +1308,10 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			set_ui_progress(world, entity_index, command.progress)
 		case .Viewport:
 			set_ui_viewport(world, entity_index, command.viewport)
+		case .Icon:
+			value := command.icon
+			value.icon = icon
+			set_ui_icon(world, entity_index, value)
 		case .Text:
 			value := command.text
 			value.text = text
@@ -1298,12 +1321,14 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			value := command.button
 			value.text = text
 			value.font = font
+			value.icon = icon
 			set_ui_button(world, entity_index, value)
 		case .Input:
 			value := command.input
 			value.text = text
 			value.font = font
 			value.prefix = prefix
+			value.icon = icon
 			set_ui_input(world, entity_index, value)
 		case .Checkbox:
 			set_ui_checkbox(world, entity_index, command.checkbox)

@@ -59,6 +59,7 @@ Keyboard_Input :: struct {
 Paint_Kind :: enum {
 	Panel,
 	Glyph,
+	Icon,
 	Line,
 	Triangle,
 	Ring,
@@ -124,7 +125,7 @@ Node :: struct {
 	entity: shared.Entity,
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
-	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
+	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, icon_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
 	parent_node_index, first_child_node, next_sibling_node: int,
 	rect, clip: Rect,
 	resolved_size: shared.Vec2,
@@ -930,6 +931,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		if had_viewport != (node.viewport_index >= 0) {
 			viewport_membership_changed = true
 		}
+		node.icon_index = entity.ui_icon_index
 		node.text_index = entity.ui_text_index
 		node.button_index = entity.ui_button_index
 		node.input_index = entity.ui_input_index
@@ -1018,6 +1020,12 @@ ui_paint_input_signature :: proc(state: ^State, world: ^shared.World, editor: bo
 	}
 	signature := hash.fnv64a((cast([^]byte)&key)[:size_of(key)])
 	if state.resource_registry != nil {
+		icon_set_revision := state.resource_registry.icon_set_revision
+		signature = ui_paint_signature_add_memory(
+			signature,
+			&icon_set_revision,
+			size_of(icon_set_revision),
+		)
 		for &font in state.resource_registry.fonts {
 			alive := u32(0)
 			if font.alive {
@@ -3633,15 +3641,31 @@ handle_input_press :: proc(
 	pressed: shared.Entity,
 	position: shared.Vec2,
 ) {
+	input_entity := pressed
 	index := int(pressed.index)
 	if index < 0 || index >= len(world.entities) { return }
 	entity := world.entities[index]
-	if !entity.alive || entity.id != pressed || entity.ui_input_index < 0 {
+	if !entity.alive || entity.id != pressed {
 		blur_input_edit(state, world)
 		return
 	}
+	for entity.ui_input_index < 0 {
+		if entity.ui_layout_index < 0 || entity.ui_layout_index >= len(world.ui_layouts) {
+			blur_input_edit(state, world)
+			return
+		}
+		parent := world.ui_layouts[entity.ui_layout_index].parent
+		parent_index := find_parent_entity(world, parent, entity.origin)
+		if parent_index < 0 || parent_index >= len(world.entities) {
+			blur_input_edit(state, world)
+			return
+		}
+		index = parent_index
+		entity = world.entities[index]
+		input_entity = entity.id
+	}
 	if state.has_focused_input {
-		if state.focused_input == pressed {
+		if state.focused_input == input_entity {
 			state.input_anchor = 0
 			state.input_cursor = len(world.ui_inputs[entity.ui_input_index].text)
 			input := world.ui_inputs[entity.ui_input_index]
@@ -5121,16 +5145,15 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 					disclosure_size,
 					disclosure_size,
 				}
-				if err := append_paint(
-					state,
-					{
-						kind = .Disclosure,
-						rect = disclosure_rect,
-						color = panel.title_color,
-						corner_radius = panel.disclosure_corner_radius,
-						disclosure_expanded = !panel.collapsed,
-					},
-				); err != "" { return err }
+				disclosure_icon := shared.UI_Icon_Component {
+					icon_set = shared.builtin_icon_set_uuid(),
+					icon = panel.collapsed ? "caret-right" : "caret-down",
+					color = panel.title_color,
+					inset = panel.disclosure_inset,
+				}
+				if err := append_icon(state, disclosure_icon, disclosure_rect, {}); err != "" {
+					return err
+				}
 				text_left = panel.disclosure_margin + disclosure_size + panel.disclosure_gap
 			}
 			text_right := f32(10)
@@ -5188,6 +5211,10 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				); err != "" { return err }
 			}
 		}
+	}
+	if node.icon_index >= 0 && node.icon_index < len(world.ui_icons) {
+		if err := append_icon(state, world.ui_icons[node.icon_index], node.rect, layout.padding);
+		   err != "" { return err }
 	}
 	if node.text_index >= 0 &&
 	   node.text_index <
@@ -5280,75 +5307,8 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 		} else if node.hovered && button.hover_color.w > 0 {
 			color = button.hover_color
 		}
-		if button.icon != .None {
-			inset := min(button.icon_inset, min(node.rect.width, node.rect.height) * 0.5)
-			icon := Rect {
-				node.rect.x + inset,
-				node.rect.y + inset,
-				max(node.rect.width - inset * 2, 0),
-				max(node.rect.height - inset * 2, 0),
-			}
-			painted_disclosure := false
-			if button.icon == .Chevron_Right || button.icon == .Chevron_Down {
-				if err := append_paint(
-					state,
-					{
-						kind = .Disclosure,
-						rect = icon,
-						color = color,
-						disclosure_expanded = button.icon == .Chevron_Down,
-						corner_radius = 0,
-					},
-				); err != "" {
-					return err
-				}
-				painted_disclosure = true
-			}
-			if !painted_disclosure {
-				lines: [2][2]shared.Vec2
-				switch button.icon {
-					case .Close:
-						lines = {
-							{{icon.x, icon.y}, {icon.x + icon.width, icon.y + icon.height}},
-							{{icon.x + icon.width, icon.y}, {icon.x, icon.y + icon.height}},
-						}
-					case .Plus:
-						lines = {
-							{
-								{icon.x, icon.y + icon.height * 0.5},
-								{icon.x + icon.width, icon.y + icon.height * 0.5},
-							},
-							{
-								{icon.x + icon.width * 0.5, icon.y},
-								{icon.x + icon.width * 0.5, icon.y + icon.height},
-							},
-						}
-					case .None, .Chevron_Right, .Chevron_Down:
-				}
-				for line in lines {
-					if err := append_paint(
-						state,
-						{
-							kind = .Line,
-							color = color,
-							line_start = line[0],
-							line_end = line[1],
-							line_thickness = button.icon_stroke,
-						},
-					); err != "" {
-						return err
-					}
-				}
-			}
-		} else if err := append_centered_text(
-			state,
-			button.text,
-			color,
-			button.size,
-			node.rect,
-			layout.padding,
-			button.alignment,
-		); err != "" {
+		if err := append_button_content(state, button, color, node.rect, layout.padding);
+		   err != "" {
 			return err
 		}
 	}
@@ -5741,13 +5701,154 @@ append_gizmo_center :: proc(state: ^State, origin: shared.Vec2, scale: f32) -> s
 	)
 }
 
+append_button_content :: proc(
+	state: ^State,
+	button: shared.UI_Button_Component,
+	color: shared.Vec4,
+	rect: Rect,
+	padding: shared.Vec4,
+) -> string {
+	has_icon := button.icon_set != (shared.Resource_UUID{}) && button.icon != ""
+	if !has_icon {
+		return append_centered_text(
+			state,
+			button.text,
+			color,
+			button.size,
+			rect,
+			padding,
+			button.alignment,
+		)
+	}
+	content := Rect {
+		rect.x + padding.w,
+		rect.y + padding.x,
+		max(rect.width - padding.w - padding.y, 0),
+		max(rect.height - padding.x - padding.z, 0),
+	}
+	icon_size := button.icon_size
+	if icon_size <= 0 {
+		icon_size = min(button.size * 1.25, min(content.width, content.height))
+	}
+	icon_size = min(icon_size, min(content.width, content.height))
+	icon_rect := Rect {
+		content.x + (content.width - icon_size) * 0.5,
+		content.y + (content.height - icon_size) * 0.5,
+		icon_size,
+		icon_size,
+	}
+	if button.text == "" {
+		return append_icon(
+			state,
+			{
+				icon_set = button.icon_set,
+				icon = button.icon,
+				color = color,
+				inset = button.icon_inset,
+			},
+			icon_rect,
+			{},
+		)
+	}
+	text_bounds, has_text_ink := measure_text_ink(state, button.text, button.size)
+	text_width := text_bounds.width
+	if !has_text_ink {
+		text_width = 0
+	}
+	total_width := min(icon_size + button.icon_gap + text_width, content.width)
+	group_x := content.x
+	switch button.alignment {
+		case .Center:
+			group_x += (content.width - total_width) * 0.5
+		case .Right:
+			group_x += content.width - total_width
+		case .Left:
+	}
+	text_rect := Rect {
+		group_x,
+		content.y,
+		max(total_width - icon_size - button.icon_gap, 0),
+		content.height,
+	}
+	if button.icon_position == .Leading {
+		icon_rect.x = group_x
+		text_rect.x = group_x + icon_size + button.icon_gap
+	} else {
+		text_rect.x = group_x
+		icon_rect.x = group_x + text_rect.width + button.icon_gap
+	}
+	if err := append_icon(
+		state,
+		{icon_set = button.icon_set, icon = button.icon, color = color, inset = button.icon_inset},
+		icon_rect,
+		{},
+	); err != "" { return err }
+	return append_centered_text(state, button.text, color, button.size, text_rect, {}, .Center)
+}
+
+append_icon :: proc(
+	state: ^State,
+	value: shared.UI_Icon_Component,
+	rect: Rect,
+	padding: shared.Vec4,
+) -> string {
+	if state == nil || state.resource_registry == nil || value.color.w <= 0 {
+		return ""
+	}
+	handle, found := resources.icon_set_handle_by_uuid(state.resource_registry, value.icon_set)
+	if !found || handle.index >= shared.MAX_ICON_SETS {
+		return ""
+	}
+	icon_set, alive := resources.get_icon_set(state.resource_registry, handle)
+	if !alive {
+		return ""
+	}
+	symbol, symbol_found := resources.icon_symbol(icon_set, value.icon)
+	if !symbol_found {
+		return ""
+	}
+	content := Rect {
+		rect.x + padding.w + value.inset,
+		rect.y + padding.x + value.inset,
+		max(rect.width - padding.w - padding.y - value.inset * 2, 0),
+		max(rect.height - padding.x - padding.z - value.inset * 2, 0),
+	}
+	size := min(content.width, content.height)
+	if size <= 0 {
+		return ""
+	}
+	plane_width := math.abs(symbol.plane[2] - symbol.plane[0])
+	plane_height := math.abs(symbol.plane[1] - symbol.plane[3])
+	plane_extent := max(plane_width, plane_height)
+	if plane_extent <= 0 {
+		return ""
+	}
+	icon_width := size * plane_width / plane_extent
+	icon_height := size * plane_height / plane_extent
+	return append_paint(
+		state,
+		{
+			kind = .Icon,
+			rect = {
+				content.x + (content.width - icon_width) * 0.5,
+				content.y + (content.height - icon_height) * 0.5,
+				icon_width,
+				icon_height,
+			},
+			color = value.color,
+			uv = {symbol.uv[0], symbol.uv[1], symbol.uv[2], symbol.uv[3]},
+			font_layer = f32(shared.MAX_PROJECT_FONTS + 1 + int(handle.index)),
+		},
+	)
+}
+
 entity_component_count :: proc(world: ^shared.World, entity_index: int) -> int {
 	if entity_index < 0 || entity_index >= len(world.entities) {
 		return 0
 	}
 	entity := world.entities[entity_index]
 	count := 0
-	indices := [16]int {
+	indices := [17]int {
 		entity.transform_index,
 		entity.camera_index,
 		entity.ambient_light_index,
@@ -5763,6 +5864,7 @@ entity_component_count :: proc(world: ^shared.World, entity_index: int) -> int {
 		entity.ui_table_index,
 		entity.ui_list_index,
 		entity.ui_progress_index,
+		entity.ui_icon_index,
 		entity.ui_text_index,
 	}
 	for index in indices {
@@ -5908,6 +6010,28 @@ append_input :: proc(
 		content.x += prefix_width + input.prefix_gap
 		content.width = max(content.width - prefix_width - input.prefix_gap, 0)
 	}
+	has_icon := input.icon_set != (shared.Resource_UUID{}) && input.icon != ""
+	icon_rect: Rect
+	if has_icon && content.width > 0 {
+		icon_size := input.icon_size
+		if icon_size <= 0 {
+			icon_size = min(input.size * 1.25, min(content.width, content.height))
+		}
+		icon_size = min(icon_size, min(content.width, content.height))
+		icon_gap := min(input.icon_gap, max(content.width - icon_size, 0))
+		icon_rect = {
+			content.x,
+			content.y + (content.height - icon_size) * 0.5,
+			icon_size,
+			icon_size,
+		}
+		if input.icon_position == .Leading {
+			content.x += icon_size + icon_gap
+		} else {
+			icon_rect.x = content.x + content.width - icon_size
+		}
+		content.width = max(content.width - icon_size - icon_gap, 0)
+	}
 	focused := state.has_focused_input && state.focused_input == node.entity
 	cursor := len(input.text)
 	anchor := cursor
@@ -5949,6 +6073,23 @@ append_input :: proc(
 	prefix_clip := prefix_content
 	if node.has_clip { prefix_clip = rect_intersection(prefix_clip, node.clip) }
 	apply_paint_clip(state, prefix_start, state.paint_count, prefix_clip, true)
+	icon_start := state.paint_count
+	if has_icon && icon_rect.width > 0 {
+		if err := append_icon(
+			state,
+			{
+				icon_set = input.icon_set,
+				icon = input.icon,
+				color = input.icon_color,
+				inset = input.icon_inset,
+			},
+			icon_rect,
+			{},
+		); err != "" { return err }
+	}
+	icon_clip := icon_rect
+	if node.has_clip { icon_clip = rect_intersection(icon_clip, node.clip) }
+	apply_paint_clip(state, icon_start, state.paint_count, icon_clip, true)
 	clip := content
 	if node.has_clip { clip = rect_intersection(clip, node.clip) }
 	start := state.paint_count

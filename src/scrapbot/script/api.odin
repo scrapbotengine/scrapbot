@@ -120,6 +120,8 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_setfield(L, -2, "ui_viewport")
 	push_registered_component_handle_by_name(L, "scrapbot.ui_state")
 	lua_setfield(L, -2, "ui_state")
+	push_registered_component_handle_by_name(L, "scrapbot.ui_icon")
+	lua_setfield(L, -2, "ui_icon")
 	push_registered_component_handle_by_name(L, "scrapbot.ui_text"); lua_setfield(L, -2, "ui_text")
 	push_registered_component_handle_by_name(
 		L,
@@ -138,9 +140,16 @@ register_scrapbot_api :: proc(L: Lua_State) {
 		"scrapbot.ui_color_picker",
 	); lua_setfield(L, -2, "ui_color_picker")
 
-	lua_createtable(L, 0, 1)
+	lua_createtable(L, 0, 2)
 	lua_pushcclosurek(L, scrapbot_ui_theme_resolve, "scrapbot.ui.resolve", 0, nil)
 	lua_setfield(L, -2, "resolve")
+	builtin_icon_set_uuid := shared.BUILTIN_ICON_SET_UUID
+	lua_pushlstring(
+		L,
+		cstring(raw_data(builtin_icon_set_uuid)),
+		c.size_t(len(builtin_icon_set_uuid)),
+	)
+	lua_setfield(L, -2, "builtin_icon_set")
 	lua_setfield(L, -2, "ui")
 
 	push_registered_component_handle_by_name(L, "scrapbot.mesh")

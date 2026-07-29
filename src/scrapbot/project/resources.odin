@@ -134,18 +134,32 @@ clone_project_resource_strings :: proc(
 		}
 		environment_source = environment_source_value
 	}
+	icon_set_source := ""
+	if resource.icon_set.source != "" {
+		icon_set_source_value, icon_set_source_err := strings.clone(resource.icon_set.source)
+		if icon_set_source_err != nil {
+			delete(name)
+			delete(texture_source)
+			delete(model_source)
+			delete(environment_source)
+			return "failed to allocate project icon-set source path"
+		}
+		icon_set_source = icon_set_source_value
+	}
 	source_value, source_err := strings.clone(source)
 	if source_err != nil {
 		delete(name)
 		delete(texture_source)
 		delete(model_source)
 		delete(environment_source)
+		delete(icon_set_source)
 		return "failed to allocate project resource source path"
 	}
 	resource.name = name
 	resource.texture.source = texture_source
 	resource.model.source = model_source
 	resource.environment.source = environment_source
+	resource.icon_set.source = icon_set_source
 	resource.source = source_value
 	return ""
 }
@@ -160,6 +174,7 @@ destroy_project_resources :: proc(resources: ^[dynamic]shared.Project_Resource) 
 		delete(resource.texture.source)
 		delete(resource.model.source)
 		delete(resource.environment.source)
+		delete(resource.icon_set.source)
 	}
 	delete(resources^)
 	resources^ = nil
@@ -180,6 +195,9 @@ validate_scene_resource_references :: proc(
 	defer delete(known_textures)
 	known_models := make(map[shared.Resource_UUID]bool)
 	defer delete(known_models)
+	known_icon_sets := make(map[shared.Resource_UUID]bool)
+	defer delete(known_icon_sets)
+	known_icon_sets[shared.builtin_icon_set_uuid()] = true
 	for resource in resources {
 		if resource.kind == .Material {
 			known_materials[resource.id] = true
@@ -189,6 +207,8 @@ validate_scene_resource_references :: proc(
 			known_textures[resource.id] = true
 		} else if resource.kind == .Model {
 			known_models[resource.id] = true
+		} else if resource.kind == .Icon_Set {
+			known_icon_sets[resource.id] = true
 		}
 	}
 	for resource in resources {
@@ -204,6 +224,22 @@ validate_scene_resource_references :: proc(
 		}
 	}
 	for entity in scene.entities {
+		icon_set := shared.Resource_UUID{}
+		if entity.has_ui_icon {
+			icon_set = entity.ui_icon.icon_set
+		} else if entity.has_ui_button && entity.ui_button.icon != "" {
+			icon_set = entity.ui_button.icon_set
+		} else if entity.has_ui_input && entity.ui_input.icon != "" {
+			icon_set = entity.ui_input.icon_set
+		}
+		if icon_set != (shared.Resource_UUID{}) && !known_icon_sets[icon_set] {
+			id_buffer: [36]u8
+			return fmt.tprintf(
+				"scene entity '%s' references unknown icon-set resource '%s'",
+				entity.name,
+				shared.resource_uuid_to_string(icon_set, id_buffer[:]),
+			)
+		}
 		if entity.has_model {
 			resource_id, valid := shared.resource_uuid_parse(entity.model_resource)
 			if !valid || !known_models[resource_id] {

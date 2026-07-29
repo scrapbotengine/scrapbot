@@ -16,6 +16,7 @@ Product_Kind :: enum {
 	Texture,
 	Model,
 	Environment,
+	Icon_Set,
 }
 
 Product :: struct {
@@ -23,6 +24,7 @@ Product :: struct {
 	kind: Product_Kind,
 	source: string,
 	artifact_path: string,
+	metadata_path: string,
 	width, height: u32,
 	mip_count: u32,
 	byte_count: int,
@@ -30,6 +32,7 @@ Product :: struct {
 	node_count, mesh_count, primitive_count: int,
 	vertex_count, index_count, material_count, texture_count: int,
 	ignored_texture_count: int,
+	symbol_count: int,
 }
 
 Report :: struct {
@@ -57,6 +60,7 @@ destroy_report :: proc(report: ^Report) {
 	for &product in report.products {
 		delete(product.source)
 		delete(product.artifact_path)
+		delete(product.metadata_path)
 	}
 	delete(report.products)
 	delete(report.err)
@@ -85,7 +89,8 @@ ensure_project_imports :: proc(
 		}
 		if declaration.kind == .Texture ||
 		   declaration.kind == .Model ||
-		   declaration.kind == .Environment {
+		   declaration.kind == .Environment ||
+		   declaration.kind == .Icon_Set {
 			has_imports = true
 			break
 		}
@@ -129,6 +134,13 @@ ensure_project_imports :: proc(
 				)
 			case .Environment:
 				product, imported, import_err = ensure_environment_import(
+					root,
+					build_dir,
+					declaration,
+					force,
+				)
+			case .Icon_Set:
+				product, imported, import_err = ensure_icon_set_import(
 					root,
 					build_dir,
 					declaration,

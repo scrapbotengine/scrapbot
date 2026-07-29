@@ -443,6 +443,7 @@ ui_theme_input :: proc "contextless" (
 	layout.corner_radius = theme.metrics.radius_small
 	input = ui_input_default()
 	input.color = theme.palette.text
+	input.icon_color = theme.palette.text_muted
 	input.prefix_color = theme.palette.text_muted
 	input.prefix_background = theme.palette.raised
 	input.size = theme.metrics.text_size
@@ -470,7 +471,7 @@ ui_theme_panel :: proc "contextless" (
 	panel.title_background = theme.palette.raised
 	panel.title_size = theme.metrics.small_text_size
 	panel.title_height = theme.metrics.title_height
-	panel.disclosure_corner_radius = theme.metrics.radius_small
+	panel.disclosure_inset = 0
 	return
 }
 

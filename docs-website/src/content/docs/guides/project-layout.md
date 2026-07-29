@@ -89,7 +89,7 @@ Custom components use `[entities.components.<name>]`. Single-token names such as
 
 Scene entities can also compose the complete public `scrapbot.ui_*` component set. UI parents reference stable entity UUIDs, and the same component values can be queried, spawned, or updated from Luau and native Odin. See [ECS UI](/guides/ecs-ui/) for the component model and [Project File Reference](/reference/project-files/#built-in-component-sections) for every TOML field.
 
-Standalone resources use stable project UUIDs. Textures, HDR environments, and static glTF models compile source files under `assets/` into ignored products; materials reference Texture UUIDs; the scene's `scrapbot.world_environment` component selects Environment UUIDs; `scrapbot.geometry_lod` resources generate an icosphere level chain and screen-radius thresholds for GPU selection. See [Project resources](/reference/project-files/#project-resources) for the schemas.
+Standalone resources use stable project UUIDs. Textures, HDR environments, static glTF models, and SVG icon sets compile source files under `assets/` into ignored products; materials reference Texture UUIDs; the scene's `scrapbot.world_environment` component selects Environment UUIDs; UI icons reference Icon Set UUIDs plus stable symbol names; `scrapbot.geometry_lod` resources generate an icosphere level chain and screen-radius thresholds for GPU selection. See [Project resources](/reference/project-files/#project-resources) for the schemas.
 
 ## Scripts
 
