@@ -4,15 +4,17 @@ import "vendor:wgpu"
 
 wgpu_timestamp_required_features :: proc(
 	timestamp_query_supported: bool,
+	timestamp_query_inside_encoders_supported: bool,
 ) -> (
-	features: [1]wgpu.FeatureName,
+	features: [2]wgpu.FeatureName,
 	count: int,
 ) {
-	if !timestamp_query_supported {
+	if !timestamp_query_supported || !timestamp_query_inside_encoders_supported {
 		return
 	}
 	features[0] = .TimestampQuery
-	count = 1
+	features[1] = .TimestampQueryInsideEncoders
+	count = 2
 	return
 }
 
@@ -62,7 +64,8 @@ wgpu_create_gpu_timing :: proc(renderer: ^WGPU_Renderer) {
 	if renderer == nil || renderer.device == nil || renderer.queue == nil {
 		return
 	}
-	if !bool(wgpu.DeviceHasFeature(renderer.device, .TimestampQuery)) || renderer.queue == nil {
+	if !bool(wgpu.DeviceHasFeature(renderer.device, .TimestampQuery)) ||
+	   !bool(wgpu.DeviceHasFeature(renderer.device, .TimestampQueryInsideEncoders)) {
 		return
 	}
 	query_set := wgpu.DeviceCreateQuerySet(

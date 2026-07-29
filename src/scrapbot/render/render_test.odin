@@ -1441,13 +1441,16 @@ test_wgpu_gpu_timing_marks_only_encoded_passes_for_the_sample :: proc(t: ^testin
 }
 
 @(test)
-test_wgpu_gpu_timing_requests_pass_timestamp_feature :: proc(t: ^testing.T) {
-	features, count := wgpu_timestamp_required_features(true)
-	testing.expect_value(t, count, 1)
+test_wgpu_gpu_timing_requests_every_used_timestamp_feature :: proc(t: ^testing.T) {
+	features, count := wgpu_timestamp_required_features(true, true)
+	testing.expect_value(t, count, 2)
 	testing.expect_value(t, features[0], wgpu.FeatureName.TimestampQuery)
+	testing.expect_value(t, features[1], wgpu.FeatureName.TimestampQueryInsideEncoders)
 
-	_, unsupported_count := wgpu_timestamp_required_features(false)
-	testing.expect_value(t, unsupported_count, 0)
+	_, missing_query_count := wgpu_timestamp_required_features(false, true)
+	testing.expect_value(t, missing_query_count, 0)
+	_, missing_encoder_count := wgpu_timestamp_required_features(true, false)
+	testing.expect_value(t, missing_encoder_count, 0)
 }
 
 @(test)
