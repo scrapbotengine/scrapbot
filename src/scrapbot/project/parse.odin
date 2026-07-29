@@ -1268,6 +1268,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						current.ui_list.hover_background, found = parse_vec4(value)
 					case "active_background":
 						current.ui_list.active_background, found = parse_vec4(value)
+					case "highlight_corner_radius":
+						current.ui_list.highlight_corner_radius, found = parse_f32(value)
 					case "draggable":
 						current.ui_list.draggable, found = parse_bool(value)
 					case "drag_threshold":

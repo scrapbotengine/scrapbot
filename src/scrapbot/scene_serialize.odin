@@ -322,6 +322,11 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "selection_background", scene_vec4(value.selection_background))
 		write_scene_value(builder, "hover_background", scene_vec4(value.hover_background))
 		write_scene_value(builder, "active_background", scene_vec4(value.active_background))
+		write_scene_value(
+			builder,
+			"highlight_corner_radius",
+			scene_f32(value.highlight_corner_radius),
+		)
 		write_scene_value(builder, "draggable", scene_bool(value.draggable))
 		write_scene_value(builder, "drag_threshold", scene_f32(value.drag_threshold))
 		write_scene_value(builder, "drop_edge_fraction", scene_f32(value.drop_edge_fraction))

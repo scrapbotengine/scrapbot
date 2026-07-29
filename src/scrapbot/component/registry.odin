@@ -575,6 +575,7 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "selection_background", field_type = .Vec4},
 			Field_Definition{name = "hover_background", field_type = .Vec4},
 			Field_Definition{name = "active_background", field_type = .Vec4},
+			Field_Definition{name = "highlight_corner_radius", field_type = .Number},
 			Field_Definition{name = "draggable", field_type = .Bool},
 			Field_Definition{name = "drag_threshold", field_type = .Number},
 			Field_Definition{name = "drop_edge_fraction", field_type = .Number},

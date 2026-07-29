@@ -149,7 +149,7 @@ Recipes can combine canonical defaults with theme values for:
 - Edge-to-edge application bars and semantic warning frames.
 - Text and numeric inputs.
 - Panel frames and title bands.
-- Selectable lists and drag/drop feedback.
+- Selectable lists with rounded highlight states and drag/drop feedback.
 - Scrollbar geometry and color.
 - Checkbox states.
 - HDR color-picker chrome.

@@ -5011,6 +5011,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	}
 	paint_start := state.paint_count
 	background := layout.background
+	background_corner_radius := layout.corner_radius
 	border_color := layout.border_color
 	border_width := layout.border_width
 	if node.viewport_index >= 0 && node.viewport_index < len(world.ui_viewports) {
@@ -5023,12 +5024,15 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			selected := list.selected == world.entities[int(node.entity.index)].uuid
 			if selected && list.selection_background.w > 0 {
 				background = list.selection_background
+				background_corner_radius = list.highlight_corner_radius
 			}
 			if !selected && node.hovered && list.hover_background.w > 0 {
 				background = list.hover_background
+				background_corner_radius = list.highlight_corner_radius
 			}
 			if node.active && list.active_background.w > 0 {
 				background = list.active_background
+				background_corner_radius = list.highlight_corner_radius
 			}
 			if parent.ui_state_index >= 0 && parent.ui_state_index < len(world.ui_states) {
 				interaction := world.ui_states[parent.ui_state_index]
@@ -5037,6 +5041,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				   interaction.drop_target == world.entities[int(node.entity.index)].uuid &&
 				   list.drop_target_background.w > 0 {
 					background = list.drop_target_background
+					background_corner_radius = list.highlight_corner_radius
 				}
 			}
 		}
@@ -5067,7 +5072,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				kind = .Panel,
 				rect = node.rect,
 				color = background,
-				corner_radius = layout.corner_radius,
+				corner_radius = background_corner_radius,
 				border_color = border_color,
 				border_width = border_width,
 			},

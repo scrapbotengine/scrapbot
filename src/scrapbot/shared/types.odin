@@ -522,6 +522,7 @@ UI_List_Component :: struct {
 	selection_background: Vec4,
 	hover_background: Vec4,
 	active_background: Vec4,
+	highlight_corner_radius: f32,
 	draggable: bool,
 	drag_threshold: f32,
 	drop_edge_fraction: f32,
@@ -725,6 +726,7 @@ ui_list_default :: proc "contextless" () -> UI_List_Component {
 		selection_background = {0.045, 0.095, 0.105, 1},
 		hover_background = {0.028, 0.038, 0.050, 1},
 		active_background = {0.040, 0.055, 0.072, 1},
+		highlight_corner_radius = 4,
 		drag_threshold = 5,
 		drop_edge_fraction = 0.25,
 		drop_target_background = {0.055, 0.12, 0.13, 1},
@@ -881,6 +883,7 @@ ui_table_is_valid :: proc "contextless" (value: UI_Table_Component) -> bool {
 ui_list_is_valid :: proc "contextless" (value: UI_List_Component) -> bool {
 	return(
 		value.gap >= 0 &&
+		value.highlight_corner_radius >= 0 &&
 		value.drag_threshold >= 0 &&
 		value.drop_edge_fraction >= 0 &&
 		value.drop_edge_fraction <= 0.5 &&

@@ -480,6 +480,7 @@ ui_theme_list :: proc "contextless" (theme: UI_Theme) -> UI_List_Component {
 	result.selection_background = theme.palette.selection
 	result.hover_background = theme.palette.hover
 	result.active_background = theme.palette.active
+	result.highlight_corner_radius = theme.metrics.radius_small
 	result.drop_target_background = theme.palette.accent_soft
 	result.drop_indicator_color = theme.palette.accent
 	return result

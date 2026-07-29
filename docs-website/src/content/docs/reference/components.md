@@ -313,6 +313,7 @@ Panels do not own a special close/remove control. Any direct child `ui_button` w
 | `selection_background` | `[0.045, 0.095, 0.105, 1]` |
 | `hover_background` | `[0.028, 0.038, 0.050, 1]` |
 | `active_background` | `[0.040, 0.055, 0.072, 1]` |
+| `highlight_corner_radius` | `4` |
 | `draggable` | `false` |
 | `drag_threshold` | `5` |
 | `drop_edge_fraction` | `0.25` |
@@ -326,7 +327,7 @@ Panels do not own a special close/remove control. Any direct child `ui_button` w
 | `item_height` | `0` |
 | `overscan` | `0` |
 
-Direct children become full-width selectable rows. Clicking a row or descendant stores the direct child's UUID in `selected`. With `draggable = true`, dragging resolves source and target to direct children. The top and bottom `drop_edge_fraction` of a row classify as `before` and `after` and paint a clipped lander line; its middle classifies as `into` and paints `drop_target_background`. The placement is published through the list's `ui_state`. Threshold, indicator thickness, and inset must be non-negative; the edge fraction must be between 0 and 0.5.
+Direct children become full-width selectable rows. Clicking a row or descendant stores the direct child's UUID in `selected`. `highlight_corner_radius` applies to selection, hover, active, and `into` drop-target backgrounds; set it to `0` for square highlights. With `draggable = true`, dragging resolves source and target to direct children. The top and bottom `drop_edge_fraction` of a row classify as `before` and `after` and paint a clipped lander line; its middle classifies as `into` and paints `drop_target_background`. The placement is published through the list's `ui_state`. Radius, threshold, indicator thickness, and inset must be non-negative; the edge fraction must be between 0 and 0.5.
 
 With `tree_enabled = true`, direct children whose layout has `tree_item = true` are flattened depth-first after ordinary direct children. `tree_parent` references another tree row UUID, `tree_order` orders siblings, `tree_indent` offsets row contents without narrowing the full-width selection box, and `tree_collapsed` suppresses descendants. Invalid or cyclic metadata is rendered safely and deterministically. A successful drop mutates the source row's public `tree_parent` and normalizes the affected sibling orders: `into` reparents beneath the target, while `before`/`after` adopts the target's parent and inserts beside it. Descendants follow their row automatically. Disclosure controls remain ordinary composable buttons whose project system toggles `tree_collapsed`.
 

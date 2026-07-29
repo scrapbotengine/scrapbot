@@ -134,6 +134,11 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	button_payload, button_ok := ui_button(button_style, "Aligned", "Inter")
 	testing.expect(t, button_ok)
 	testing.expect(t, button_payload.button.alignment == .Right)
+	list_style := ui_list_default()
+	testing.expect(t, list_style.highlight_corner_radius == 4)
+	list_style.highlight_corner_radius = 8
+	list_payload := ui_list(list_style)
+	testing.expect(t, list_payload.list.highlight_corner_radius == 8)
 	input_style := ui_input_default()
 	input_style.prefix_width = 13
 	input_style.number = 42

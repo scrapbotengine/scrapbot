@@ -247,6 +247,7 @@ UI_List_Payload :: struct {
 	virtualized: c.int,
 	item_height: f32,
 	overscan: c.int,
+	highlight_corner_radius: f32,
 }
 
 UI_Drop_Placement :: enum c.int {

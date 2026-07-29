@@ -75,6 +75,7 @@ popup_max_height = 160
 popup_viewport_margin = 6
 [entities.ui_list]
 filter_input = "aa000000-0000-4000-8000-000000000002"
+highlight_corner_radius = 6
 tree_enabled = true
 tree_indent = 18
 virtualized = true
@@ -168,8 +169,14 @@ scrapbot.system(function()
 		assert(layout.popup_viewport_margin == 6)
 		assert(list.tree_enabled == true and list.tree_indent == 18)
 		assert(list.filter_input == "aa000000-0000-4000-8000-000000000002")
+		assert(list.highlight_corner_radius == 6)
 		assert(list.virtualized == true and list.item_height == 32 and list.overscan == 3)
-		scrapbot.add_component(entity, scrapbot.ui_list, {tree_indent = 20, item_height = 36, overscan = 5})
+		scrapbot.add_component(entity, scrapbot.ui_list, {
+			highlight_corner_radius = 9,
+			tree_indent = 20,
+			item_height = 36,
+			overscan = 5,
+		})
 	end)
 	scrapbot.query(scrapbot.ui_scroll_area):each(function(entity, scroll)
 		assert(scroll.scrollbar_width == 5 and scroll.scrollbar_corner_radius == 0)
@@ -280,6 +287,7 @@ end)
 	testing.expect(t, panel.collapsible && panel.collapsed)
 	list := world.ui_lists[world.entities[1].ui_list_index]
 	testing.expect(t, list.filter_input == world.entities[1].uuid)
+	testing.expect(t, list.highlight_corner_radius == 9)
 	testing.expect(t, list.virtualized && list.item_height == 36 && list.overscan == 5)
 	button_index := world.entities[1].ui_button_index
 	testing.expect(t, button_index >= 0 && button_index < len(world.ui_buttons))

@@ -311,6 +311,14 @@ read_ui_component_command_from_luau :: proc "c" (
 				"active_background",
 				&value.active_background,
 			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"highlight_corner_radius",
+				&value.highlight_corner_radius,
+			); err != "" {
+				return err
+			}
 			if err := read_ui_bool_field(L, payload_index, "draggable", &value.draggable);
 			   err != "" { return err }
 			if err := read_ui_number_field(
@@ -363,9 +371,11 @@ read_ui_component_command_from_luau :: proc "c" (
 			if err := read_ui_number_field(L, payload_index, "overscan", &overscan);
 			   err != "" { return err }
 			value.overscan = int(overscan)
-			if !shared.ui_list_is_valid(
-				value,
-			) { return "ui_list requires valid drag, tree, filter, and virtualization values" }
+			if !shared.ui_list_is_valid(value) {
+				return(
+					"ui_list requires valid highlight, drag, tree, filter, and virtualization values" \
+				)
+			}
 			command.list = value
 			return ecs.init_ui_component_command(command, .List)
 		case "scrapbot.ui_progress":

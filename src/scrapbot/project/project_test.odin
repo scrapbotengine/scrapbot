@@ -1447,6 +1447,7 @@ gap = 3
 selection_background = [0.1, 0.5, 0.4, 1]
 hover_background = [0.2, 0.3, 0.4, 1]
 active_background = [0.3, 0.4, 0.5, 1]
+highlight_corner_radius = 6
 draggable = true
 drag_threshold = 7
 drop_edge_fraction = 0.2
@@ -1482,6 +1483,7 @@ size = 14
 	testing.expect(t, list.selection_background == Vec4{0.1, 0.5, 0.4, 1})
 	testing.expect(t, list.hover_background == Vec4{0.2, 0.3, 0.4, 1})
 	testing.expect(t, list.active_background == Vec4{0.3, 0.4, 0.5, 1})
+	testing.expect(t, list.highlight_corner_radius == 6)
 	testing.expect(t, list.draggable)
 	testing.expect(t, list.drag_threshold == 7)
 	testing.expect(t, list.drop_edge_fraction == 0.2)
@@ -1495,6 +1497,19 @@ size = 14
 	testing.expect(t, scene.entities[1].ui_layout.tree_parent == selected_id)
 	testing.expect(t, scene.entities[1].ui_layout.tree_order == 7)
 	testing.expect(t, scene.entities[1].ui_layout.tree_collapsed)
+
+	invalid, invalid_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000032"
+name = "Invalid List Radius"
+[entities.ui_layout]
+size = [240, 160]
+[entities.ui_list]
+highlight_corner_radius = -1
+`,
+	)
+	defer destroy_scene(&invalid)
+	testing.expect(t, invalid_result.err == .Invalid_Field)
 }
 
 @(test)

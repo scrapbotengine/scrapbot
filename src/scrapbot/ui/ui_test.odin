@@ -68,6 +68,8 @@ test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing
 	warning_layout, warning_button := theme_button(theme, .Warning)
 	testing.expect(t, warning_layout.background == theme.palette.warning_soft)
 	testing.expect(t, warning_button.color == theme.palette.warning)
+	list := theme_list(theme)
+	testing.expect(t, list.highlight_corner_radius == theme.metrics.radius_small)
 }
 
 @(test)
@@ -694,6 +696,7 @@ test_selectable_list_lays_out_full_width_rows_and_selects_direct_child :: proc(t
 				selection_background = selection_color,
 				hover_background = {0.2, 0.2, 0.2, 1},
 				active_background = {0.3, 0.3, 0.3, 1},
+				highlight_corner_radius = 7,
 			},
 		},
 		shared.Scene_Entity {
@@ -753,7 +756,8 @@ test_selectable_list_lays_out_full_width_rows_and_selects_direct_child :: proc(t
 	for command in state.paint[:state.paint_count] {
 		if command.kind == .Panel &&
 		   command.rect == state.nodes[second_node].rect &&
-		   command.color == selection_color {
+		   command.color == selection_color &&
+		   command.corner_radius == 7 {
 			selected_painted = true
 		}
 	}

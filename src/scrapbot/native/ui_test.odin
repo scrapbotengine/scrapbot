@@ -67,6 +67,28 @@ test_native_ui_theme_api_composes_chrome_and_semantic_frame_recipes :: proc(t: ^
 }
 
 @(test)
+test_native_ui_theme_api_resolves_list_highlight_radius :: proc(t: ^testing.T) {
+	ctx := api.System_Context{}
+	recipes := [?]api.UI_Theme_Recipe{.List}
+	payloads: [1]api.UI_Component_Payload
+	payload_count: c.int
+	err := system_resolve_ui_theme(
+		&ctx,
+		.Reduced_Dark,
+		raw_data(recipes[:]),
+		c.int(len(recipes)),
+		raw_data(payloads[:]),
+		c.int(len(payloads)),
+		&payload_count,
+	)
+	testing.expect(t, err == nil)
+	testing.expect(t, payload_count == 1)
+	theme := shared.ui_theme_reduced_dark()
+	testing.expect(t, string(payloads[0].component) == "scrapbot.ui_list")
+	testing.expect(t, payloads[0].list.highlight_corner_radius == theme.metrics.radius_small)
+}
+
+@(test)
 test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: proc(
 	t: ^testing.T,
 ) {
@@ -161,6 +183,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, ecs.set_ui_panel(&world, entity_index, panel))
 	list := shared.ui_list_default()
 	list.filter_input = world.entities[entity_index].uuid
+	list.highlight_corner_radius = 7
 	list.tree_enabled = true
 	list.tree_indent = 19
 	list.virtualized = true
@@ -294,6 +317,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 		system_get_ui_component(&ctx, entity, "scrapbot.ui_list", &list_payload) != 0,
 	)
 	testing.expect(t, list_payload.list.tree_enabled != 0)
+	testing.expect(t, list_payload.list.highlight_corner_radius == 7)
 	testing.expect(t, list_payload.list.tree_indent == 19)
 	testing.expect(
 		t,
@@ -320,6 +344,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, panel_payload.panel.collapsible != 0)
 	panel_payload.panel.collapsed = 1
 	testing.expect(t, system_set_ui_component(&ctx, entity, &panel_payload) == nil)
+	list_payload.list.highlight_corner_radius = 9
+	testing.expect(t, system_set_ui_component(&ctx, entity, &list_payload) == nil)
 	table_payload.table.min_column_width = 72
 	testing.expect(t, system_set_ui_component(&ctx, entity, &table_payload) == nil)
 	testing.expect(t, ecs.apply_commands(&world, &commands) == "")
@@ -327,6 +353,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, stored_table.min_column_width == 72)
 	stored_panel := world.ui_panels[world.entities[entity_index].ui_panel_index]
 	testing.expect(t, stored_panel.collapsed)
+	stored_list := world.ui_lists[world.entities[entity_index].ui_list_index]
+	testing.expect(t, stored_list.highlight_corner_radius == 9)
 
 	text_payload.text.size = 20
 	testing.expect(t, api_payload_set_strings(&text_payload, "After", "Project Font"))

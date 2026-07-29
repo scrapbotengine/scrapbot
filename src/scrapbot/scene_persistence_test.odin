@@ -604,6 +604,7 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 				entity.ui_list.selected = controls_id
 				entity.ui_list.filter_input = controls_id
 				entity.ui_list.gap = 3
+				entity.ui_list.highlight_corner_radius = 7
 				entity.ui_list.virtualized = true
 				entity.ui_list.item_height = 30
 				entity.ui_list.overscan = 3

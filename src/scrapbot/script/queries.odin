@@ -714,13 +714,14 @@ push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component)
 }
 
 push_ui_list_table :: proc "c" (L: Lua_State, value: shared.UI_List_Component) {
-	lua_createtable(L, 0, 18)
+	lua_createtable(L, 0, 19)
 	push_uuid_field(L, "selected", value.selected)
 	push_uuid_field(L, "filter_input", value.filter_input)
 	push_number_field(L, "gap", value.gap)
 	push_vec4_field(L, "selection_background", value.selection_background)
 	push_vec4_field(L, "hover_background", value.hover_background)
 	push_vec4_field(L, "active_background", value.active_background)
+	push_number_field(L, "highlight_corner_radius", value.highlight_corner_radius)
 	push_bool_field(L, "draggable", value.draggable)
 	push_number_field(L, "drag_threshold", value.drag_threshold)
 	push_number_field(L, "drop_edge_fraction", value.drop_edge_fraction)

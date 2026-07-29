@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-28
+**Last verified:** 2026-07-29
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -37,7 +37,7 @@ Lifecycle meanings:
 | `scrapbot.ui_scroll_area` | UI container | Authored | Yes | Retained smooth vertical scrolling, clipping, and scrollbar styling. |
 | `scrapbot.ui_panel` | UI container | Authored | Yes | Titled/collapsible decoration with reusable title-band actions. |
 | `scrapbot.ui_table` | UI container | Authored | Yes | Row-major multi-column layout with reusable proportions and separators. |
-| `scrapbot.ui_list` | UI container | Authored | Yes | Filtered/virtualized selection plus generic list/tree drag, reorder, and reparent state. |
+| `scrapbot.ui_list` | UI container | Authored | Yes | Styled, filtered, and virtualized selection plus generic list/tree drag, reorder, and reparent state. |
 | `scrapbot.ui_text` | UI content | Authored | Yes | MTSDF text content and style. |
 | `scrapbot.ui_progress` | UI content | Authored | Yes | Reusable bounded progress visualization. |
 | `scrapbot.ui_viewport` | UI content | Authored | Yes | Interactive renderer-backed Texture, Model, Material, or World surface composited through ordinary UI paint. |
@@ -267,7 +267,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_list`
 
-- **Contract:** Full-width selectable child rows with optional input-driven descendant-content filtering, uniform-row virtualization, drag/reorder/reparent, and flattened UUID tree metadata.
+- **Contract:** Full-width selectable child rows with shared rounded highlight styling, optional input-driven descendant-content filtering, uniform-row virtualization, drag/reorder/reparent, and flattened UUID tree metadata.
 - **Storage/lifecycle:** Dedicated typed UI storage plus retained gesture, compact flow-order, and scroll-window state; authored component.
 - **Producers:** Public project UI surfaces, editor entity/resource/system browsers, registry-driven component, reflected-enum, and UUID entity-reference pickers, and pointer interactions.
 - **Consumers:** Selection, filtered tree flattening, virtual layout, drop classification/painting, editor bindings via generic `ui_state` events.
