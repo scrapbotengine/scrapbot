@@ -80,6 +80,7 @@ Project_Resource_Kind :: enum {
 	Texture,
 	Model,
 	Environment,
+	Icon_Set,
 	Material,
 	Geometry_LOD,
 }
@@ -134,6 +135,10 @@ Project_Environment_Resource :: struct {
 	source: string,
 }
 
+Project_Icon_Set_Resource :: struct {
+	source: string,
+}
+
 Project_Material_Resource :: struct {
 	base_color: Vec4,
 	emissive: Vec3,
@@ -157,6 +162,7 @@ Project_Resource :: struct {
 	texture: Project_Texture_Resource,
 	model: Project_Model_Resource,
 	environment: Project_Environment_Resource,
+	icon_set: Project_Icon_Set_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
 }
@@ -247,6 +253,9 @@ Texture_Handle :: struct {
 	index, generation: u32,
 }
 Environment_Handle :: struct {
+	index, generation: u32,
+}
+Icon_Set_Handle :: struct {
 	index, generation: u32,
 }
 Model_Handle :: struct {

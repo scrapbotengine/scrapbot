@@ -1,6 +1,6 @@
 # Architecture Inventory
 
-**Last verified:** 2026-07-28
+**Last verified:** 2026-07-29
 
 This directory is the source-oriented map of Scrapbot's current architecture. It answers what exists, where it lives, who owns it, and how it changes. It does not replace ADRs, which explain durable decisions, FDRs, which describe feature behavior and rationale, or the public documentation website.
 

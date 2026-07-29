@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-24
+**Last verified:** 2026-07-29
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -25,11 +25,12 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | `Texture` | `scrapbot.texture` | Texture | Material Texture handle | Incrementally imported and inspectable; source/settings remain text-authored |
 | `Model` | `scrapbot.model` | Model bundle plus generated Geometry/Material entries | `scrapbot.model` root reconciles derived ECS children | Incrementally imported and inspectable; source remains text-authored |
 | `Environment` | `scrapbot.environment` | Environment | `scrapbot.world_environment` references lighting/background UUIDs | Incrementally imported and inspectable; source/settings remain text-authored |
+| `Icon_Set` | `scrapbot.icon_set` | Icon Set | `scrapbot.ui_icon` and icon-bearing controls reference set UUID plus symbol | Incrementally imported and inspectable; source directory remains text-authored |
 | `Material` | `scrapbot.material` | Material | `scrapbot.material` | Create, duplicate, rename/move, edit, delete, Undo/Redo, Save/Revert |
 | `Geometry_LOD` | `scrapbot.geometry_lod` | Geometry plus internal LOD Geometry entries | `scrapbot.geometry` | Loaded/hot-reloaded and referenceable; full inline authoring is not yet symmetric with materials |
 <!-- inventory:project-resource-kinds:end -->
 
-The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, authored Geometry, and World Environment UUID references; materials validate Texture UUIDs. Resource file paths are relative to `resources/`; Texture, Model, and Environment import sources are safe paths under `assets/`.
+The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, authored Geometry, World Environment, and UI icon-set UUID references; materials validate Texture UUIDs. Resource file paths are relative to `resources/`; Texture, Model, Environment, and Icon Set import sources are safe paths under `assets/`.
 
 ## Runtime registry families
 
@@ -39,6 +40,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 | `Geometry` | Optional UUID/source when authored; name for transient/built-in registration | `Geometry_Handle`, generation, entry version, registry-wide geometry topology revision | Render-instance extraction, bounds/picking, LOD selection, GPU geometry and draw caches |
 | `Texture` | UUID/source when authored | `Texture_Handle`, generation, entry version | Material registry and shared WGPU texture cache |
 | `Environment` | UUID/source when authored | `Environment_Handle`, generation, entry version, registry-wide environment revision | Global WGPU IBL binding and isolated material/model previews |
+| `Icon_Set` | UUID/source directory when authored; reserved UUID for the embedded catalog | `Icon_Set_Handle`, generation, entry version, registry-wide icon-set revision | UI icon resolution, MTSDF atlas layers, standalone icons and icon-bearing controls |
 | `Model` | UUID/source when authored | `Model_Handle`, generation, entry version | Model-root reconciliation into derived node/primitive ECS entities |
 | `Material` | Optional UUID/source when authored; name for transient/built-in registration | `Material_Handle`, generation, entry version | Render-instance extraction, material/texture GPU cache, world shading and bloom |
 | `Font` | Project-config font name/source; generated atlas is derived | `Font_Handle`, generation, entry version | UI measurement, glyph lookup, MTSDF atlas upload and UI rendering |
@@ -66,10 +68,11 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 
 ### Font
 
-### Texture, Model, and Environment imports
+### Texture, Model, Environment, and Icon Set imports
 
 - `asset_import.ensure_project_imports` fingerprints source/dependency bytes plus an importer schema and writes products atomically under `.scrapbot/imported/`.
 - Texture products contain validated RGBA8 mip chains.
+- Icon Set products contain a deterministic linear RGBA8 MTSDF atlas plus symbolic names and normalized UV rectangles. The importer fingerprints every recursively discovered SVG, normalizes supported monochrome geometry through the pinned compiler, and atomically retains the last valid atlas on failure.
 - Environment products contain:
   - the source-resolution 2:1 Radiance HDR panorama in linear RGBA16F;
   - a diffuse irradiance cube;
@@ -78,17 +81,17 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Model products contain static triangles with optional authored tangent frames, TRS nodes, metallic-roughness factors, alpha/culling state, and decoded PBR image mip chains. Sources may be GLB buffer views, data URIs, or safe external relative files parsed through pinned `cgltf`.
 - Model compilation walks only the selected glTF scene closure and remaps its reachable node, mesh, and material references into a compact product. Nodes, meshes, primitives, and materials carry semantic keys; generated Geometry/Material names and derived model-instance ECS UUIDs are keyed from those values rather than glTF array positions. Reordering source arrays therefore reuses live handles, while removed semantic outputs are retired normally.
 - Every glTF image contributes to the model source fingerprint. Generated Material entries own cloned image payloads with explicit sRGB or linear color-space meaning and per-slot min/mag/mipmap/wrap sampler policy. The WGPU material cache uploads only a changed Material version, owns its generated texture/view/sampler set and factor/alpha uniform, and releases that complete set together. Batch rendering selects cached opaque/masked and single/double-sided pipeline variants; masked depth and shadow passes bind the same generated base-color texture and cutoff as world rendering.
-- Texture, Model, and Environment declarations retain UUID-backed handles and entry versions.
+- Texture, Model, Environment, and Icon Set declarations retain UUID-backed handles and entry versions.
 - The singleton `scrapbot.world_environment` owns lighting selection, independent diffuse/specular environment strength, visible-background presentation, and procedural-atmosphere art direction. The fixed environment phase resolves UUIDs and copies bounded sky/ground/haze/sun values into a retained registry cache.
 - A handle, version, or presentation change bumps one environment revision consumed by WGPU. A visible empty background reuses imported lighting, or selects the procedural atmosphere when both UUIDs are empty.
 - Active-camera exposure remains a separate multiplier. Backend-neutral extraction derives an above-horizon sun into the first directional-light slot without mutating ECS light entities.
 - Imported backgrounds use the panorama at zero blur and the prefiltered cube for intentional blur. Imported lighting uses compact irradiance/specular cubes.
 - Imported models publish ordinary Geometry and Material handles for every primitive.
-- Editor Reimport addresses one authored UUID, forces only that Texture, Model, or Environment importer, updates the existing registry slot, and then reconciles model instances when relevant. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
+- Editor Reimport addresses one authored UUID, forces only that Texture, Model, Environment, or Icon Set importer, updates the existing registry slot, and then reconciles model instances when relevant. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
 - A replaced or removed Model retires generated Geometry and Material outputs absent from the replacement by marking their slots dead and incrementing generation/version. Stable/reused products retain their handles.
 - Texture, Model, and Material inspection target the public `scrapbot.ui_viewport` component at the resource UUID. WGPU resolves the UUID by registry family, assigns an independently sized pooled target, and renders either an aspect-preserving Texture pass or an isolated Model/Material preview scene with its own camera, lighting, environment, and renderer-owned presentation geometry. Stable targets cache by component, target size/aspect, exact resource version, and relevant registry revisions. Import state, dependency path, product type/size, and the last explicit failure remain editor presentation over registry/import state rather than new resource authority.
 - `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Generated primitives inherit the root's `scrapbot.shadow_caster` and `scrapbot.shadow_receiver` membership during that reconciliation. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material/shadow-marker entities without model scans.
-- Source/tests: `asset_import/imports.odin`, `asset_import/environments.odin`, `asset_import/models.odin`, `resources/textures.odin`, `resources/models.odin`, `scrapbot.odin`; importer, environment-filtering, registry, model-instance, and Sponza WGPU tests.
+- Source/tests: `asset_import/imports.odin`, `asset_import/icons.odin`, `asset_import/environments.odin`, `asset_import/models.odin`, `resources/textures.odin`, `resources/icons.odin`, `resources/models.odin`, `scrapbot.odin`; importer, icon compiler, registry, environment-filtering, model-instance, and WGPU tests.
 
 ### Font
 
@@ -128,6 +131,6 @@ resources.Registry slot ── {index, generation} ──> ECS component
 - **Play** captures authored Material base color, emissive, metallic, and roughness values in the in-memory playback baseline alongside authored scene entities.
 - **Stop** restores those captured surface values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
 - **Explicit Reimport** forces one UUID (or all imported resources), mutates live registry entries, retires stale generated model outputs, and reconciles Model roots without reloading the world, Luau, or native extensions.
-- **Hot reload** ensures imports and re-registers fonts, textures, environments, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
+- **Hot reload** ensures imports and re-registers fonts, textures, environments, icon sets, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
 
 See [Lifecycle matrix](lifecycle.md), [State ownership](state-ownership.md), [FDR-009](../fdr/FDR-009-project-resources.md), and [ADR-030](../adr/ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md).

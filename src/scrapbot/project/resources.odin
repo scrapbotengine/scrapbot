@@ -134,18 +134,32 @@ clone_project_resource_strings :: proc(
 		}
 		environment_source = environment_source_value
 	}
+	icon_set_source := ""
+	if resource.icon_set.source != "" {
+		icon_set_source_value, icon_set_source_err := strings.clone(resource.icon_set.source)
+		if icon_set_source_err != nil {
+			delete(name)
+			delete(texture_source)
+			delete(model_source)
+			delete(environment_source)
+			return "failed to allocate project icon-set source path"
+		}
+		icon_set_source = icon_set_source_value
+	}
 	source_value, source_err := strings.clone(source)
 	if source_err != nil {
 		delete(name)
 		delete(texture_source)
 		delete(model_source)
 		delete(environment_source)
+		delete(icon_set_source)
 		return "failed to allocate project resource source path"
 	}
 	resource.name = name
 	resource.texture.source = texture_source
 	resource.model.source = model_source
 	resource.environment.source = environment_source
+	resource.icon_set.source = icon_set_source
 	resource.source = source_value
 	return ""
 }
@@ -160,6 +174,7 @@ destroy_project_resources :: proc(resources: ^[dynamic]shared.Project_Resource) 
 		delete(resource.texture.source)
 		delete(resource.model.source)
 		delete(resource.environment.source)
+		delete(resource.icon_set.source)
 	}
 	delete(resources^)
 	resources^ = nil

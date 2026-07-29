@@ -7,7 +7,7 @@
 ```text
 project.toml + scene/resource files + source assets
         │
-        ├─ fingerprint/import ──> versioned Texture/Model products ─┐
+        ├─ fingerprint/import ──> versioned Texture/Model/Environment/Icon products ─┐
         ├─ build/load native extensions ─┐
         └─ execute Luau registration ────┴─> component registry
                                                 │

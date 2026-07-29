@@ -105,6 +105,32 @@ source = "assets/../ship.gltf"
 }
 
 @(test)
+test_project_icon_set_resource_parser :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000022"
+type = "scrapbot.icon_set"
+name = "Interface"
+
+[icon_set]
+source = "assets/icons/interface"
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .Icon_Set)
+	testing.expect_value(t, resource.icon_set.source, "assets/icons/interface")
+
+	_, unsafe := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000022"
+type = "scrapbot.icon_set"
+name = "Unsafe"
+[icon_set]
+source = "assets/../icons"
+`,
+	)
+	testing.expect(t, unsafe.err == .Invalid_Path)
+}
+
+@(test)
 test_project_environment_resource_and_render_config :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000021"

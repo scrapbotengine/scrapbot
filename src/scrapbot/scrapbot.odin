@@ -749,6 +749,13 @@ init_render_resources :: proc(
 	); err != "" {
 		return err
 	}
+	if err := resources.register_project_icon_sets(
+		registry,
+		project_resources,
+		imports.products[:],
+	); err != "" {
+		return err
+	}
 	if err := resources.register_project_models(registry, project_resources, imports.products[:]);
 	   err != "" {
 		return err
@@ -1103,6 +1110,13 @@ reimport_project_resources :: proc(
 		); err != "" {
 			return err
 		}
+		if err := resources.register_project_icon_sets(
+			registry,
+			loaded.resources[:],
+			imports.products[:],
+		); err != "" {
+			return err
+		}
 		if err := resources.register_project_models(
 			registry,
 			loaded.resources[:],
@@ -1150,6 +1164,13 @@ reimport_project_resources :: proc(
 				return err
 			}
 			return ""
+		case .Icon_Set:
+			return resources.register_project_icon_sets(
+				registry,
+				declarations,
+				imports.products[:],
+				false,
+			)
 		case:
 			return "selected resource is not importable"
 	}

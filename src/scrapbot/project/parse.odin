@@ -55,6 +55,10 @@ parse_project_resource :: proc(
 			section = "environment"
 			continue
 		}
+		if line == "[icon_set]" {
+			section = "icon_set"
+			continue
+		}
 		if line == "[geometry_lod]" {
 			section = "geometry_lod"
 			continue
@@ -150,6 +154,27 @@ parse_project_resource :: proc(
 			}
 			continue
 		}
+		if section == "icon_set" {
+			switch key {
+				case "source":
+					resource.icon_set.source, found = parse_basic_string(value)
+					if found && !valid_resource_icon_set_path(resource.icon_set.source) {
+						return resource, fail(
+							.Invalid_Path,
+							"icon_set.source must be a safe directory path under assets/",
+						)
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown icon_set field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid icon_set.%s", key))
+			}
+			continue
+		}
 		if section == "material" {
 			switch key {
 				case "base_color":
@@ -237,6 +262,8 @@ parse_project_resource :: proc(
 			resource.kind = .Model
 		case "scrapbot.environment":
 			resource.kind = .Environment
+		case "scrapbot.icon_set":
+			resource.kind = .Icon_Set
 		case "scrapbot.material":
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
@@ -261,6 +288,10 @@ parse_project_resource :: proc(
 	} else if resource.kind == .Environment {
 		if resource.environment.source == "" {
 			return resource, fail(.Missing_Field, "environment.source is required")
+		}
+	} else if resource.kind == .Icon_Set {
+		if resource.icon_set.source == "" {
+			return resource, fail(.Missing_Field, "icon_set.source is required")
 		}
 	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
@@ -2331,6 +2362,16 @@ valid_resource_environment_path :: proc(path: string) -> bool {
 		strings.has_suffix(path, ".hdr") &&
 		is_safe_relative_path(path) \
 	)
+}
+
+valid_resource_icon_set_path :: proc(path: string) -> bool {
+	if !strings.has_prefix(path, "assets/") || !is_safe_relative_path(path) {
+		return false
+	}
+	if strings.has_suffix(path, "/") {
+		return false
+	}
+	return true
 }
 
 finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {

@@ -1,5 +1,6 @@
 package resources
 
+import asset_import "../asset_import"
 import project "../project"
 import shared "../shared"
 import "core:os"
@@ -806,4 +807,52 @@ test_project_lod_geometry_registers_stable_base_and_alternatives :: proc(t: ^tes
 	if updated_alive {
 		testing.expect_value(t, updated_geometry.lod_screen_radii[0], f32(0.2))
 	}
+}
+
+@(test)
+test_project_icon_set_preserves_handle_and_versions_content :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, valid := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000021")
+	testing.expect(t, valid)
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .Icon_Set,
+		name = "Interface",
+		source = "interface.resource.toml",
+		icon_set = {source = "assets/icons"},
+	}
+	pixels := make([]u8, asset_import.ICON_SET_ATLAS_SIZE * asset_import.ICON_SET_ATLAS_SIZE * 4)
+	defer delete(pixels)
+	symbols := make([dynamic]Icon_Symbol)
+	defer delete(symbols)
+	append(&symbols, Icon_Symbol{name = "play", uv = {0, 0, 0.25, 0.25}})
+	append(&symbols, Icon_Symbol{name = "pause", uv = {0.25, 0, 0.5, 0.25}})
+	desc := Icon_Set_Desc {
+		pixels = pixels,
+		width = asset_import.ICON_SET_ATLAS_SIZE,
+		height = asset_import.ICON_SET_ATLAS_SIZE,
+		symbols = symbols,
+	}
+	handle, err := register_project_icon_set(&registry, declaration, desc, len(pixels))
+	testing.expect_value(t, err, "")
+	icon_set, alive := get_icon_set(&registry, handle)
+	testing.expect(t, alive)
+	if !alive {
+		return
+	}
+	testing.expect_value(t, icon_set.version, u32(1))
+	symbol, found := icon_symbol(icon_set, "pause")
+	testing.expect(t, found)
+	testing.expect_value(t, symbol.uv, [4]f32{0.25, 0, 0.5, 0.25})
+	revision := registry.icon_set_revision
+	updated, update_err := register_project_icon_set(&registry, declaration, desc, len(pixels))
+	testing.expect_value(t, update_err, "")
+	testing.expect_value(t, updated, handle)
+	updated_set, updated_alive := get_icon_set(&registry, updated)
+	testing.expect(t, updated_alive)
+	if updated_alive {
+		testing.expect_value(t, updated_set.version, u32(2))
+	}
+	testing.expect(t, registry.icon_set_revision > revision)
 }
