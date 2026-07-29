@@ -34,7 +34,7 @@ jobs:
           submodules: recursive
       - uses: jdx/mise-action@v4
       - name: Install SDL3
-        run: brew install sdl3
+        run: brew install sdl3 msdf-atlas-gen
       - name: Prepare Odin vendor libraries
         run: |
           make -C "$(odin root)/vendor/stb/src"
@@ -73,7 +73,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y ca-certificates curl git unzip xz-utils zstd build-essential clang libsdl3-dev
+          apt-get install -y ca-certificates curl git unzip xz-utils zstd build-essential clang libsdl3-dev msdf-atlas-gen
       - uses: actions/checkout@v6
         with:
           submodules: recursive
