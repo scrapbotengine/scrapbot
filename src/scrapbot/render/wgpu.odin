@@ -854,7 +854,7 @@ wgpu_dynamic_resolution_scale :: proc(
 		}
 	}
 	renderer.gpu_timestamp_resolution_sample_count = 0
-	if renderer.gpu_timestamp_active_slot >= 0 {
+	if wgpu_gpu_timing_active(renderer) {
 		readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
 		readback.dynamic_resolution_generation = renderer.dynamic_resolution.generation
 	}

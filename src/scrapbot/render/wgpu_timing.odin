@@ -4,17 +4,15 @@ import "vendor:wgpu"
 
 wgpu_timestamp_required_features :: proc(
 	timestamp_query_supported: bool,
-	timestamp_query_inside_encoders_supported: bool,
 ) -> (
-	features: [2]wgpu.FeatureName,
+	features: [1]wgpu.FeatureName,
 	count: int,
 ) {
-	if !timestamp_query_supported || !timestamp_query_inside_encoders_supported {
+	if !timestamp_query_supported {
 		return
 	}
 	features[0] = .TimestampQuery
-	features[1] = .TimestampQueryInsideEncoders
-	count = 2
+	count = 1
 	return
 }
 
@@ -61,11 +59,15 @@ wgpu_gpu_timestamp_resolve_ranges :: proc(
 }
 
 wgpu_create_gpu_timing :: proc(renderer: ^WGPU_Renderer) {
-	if renderer == nil || renderer.device == nil || renderer.queue == nil {
+	if renderer == nil {
 		return
 	}
-	if !bool(wgpu.DeviceHasFeature(renderer.device, .TimestampQuery)) ||
-	   !bool(wgpu.DeviceHasFeature(renderer.device, .TimestampQueryInsideEncoders)) {
+	renderer.gpu_timestamp_active_slot = -1
+	renderer.gpu_timestamp_supported = false
+	if renderer.device == nil || renderer.queue == nil {
+		return
+	}
+	if !bool(wgpu.DeviceHasFeature(renderer.device, .TimestampQuery)) {
 		return
 	}
 	query_set := wgpu.DeviceCreateQuerySet(
@@ -138,6 +140,7 @@ wgpu_release_gpu_timing :: proc(renderer: ^WGPU_Renderer) {
 	}
 	renderer.gpu_timestamp_query_set = nil
 	renderer.gpu_timestamp_resolve_buffer = nil
+	renderer.gpu_timestamp_active_slot = -1
 	renderer.gpu_timestamp_supported = false
 }
 
@@ -238,11 +241,14 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 }
 
 wgpu_gpu_timing_begin_frame :: proc(renderer: ^WGPU_Renderer, frame_index: u64 = 0) {
-	if renderer == nil || !renderer.gpu_timestamp_supported {
+	if renderer == nil {
+		return
+	}
+	renderer.gpu_timestamp_active_slot = -1
+	if !renderer.gpu_timestamp_supported || renderer.gpu_timestamp_query_set == nil {
 		return
 	}
 	wgpu_gpu_timing_consume_readbacks(renderer)
-	renderer.gpu_timestamp_active_slot = -1
 	for offset in 0 ..< WGPU_GPU_TIMESTAMP_FRAMES {
 		index := (renderer.gpu_timestamp_next_slot + offset) % WGPU_GPU_TIMESTAMP_FRAMES
 		readback := &renderer.gpu_timestamp_readbacks[index]
@@ -265,6 +271,18 @@ wgpu_gpu_timing_drain :: proc(renderer: ^WGPU_Renderer) {
 	wgpu_gpu_timing_consume_readbacks(renderer)
 }
 
+wgpu_gpu_timing_active :: proc(renderer: ^WGPU_Renderer) -> bool {
+	if renderer == nil ||
+	   !renderer.gpu_timestamp_supported ||
+	   renderer.gpu_timestamp_query_set == nil {
+		return false
+	}
+	return(
+		renderer.gpu_timestamp_active_slot >= 0 &&
+		renderer.gpu_timestamp_active_slot < WGPU_GPU_TIMESTAMP_FRAMES \
+	)
+}
+
 wgpu_gpu_pass_timestamps :: proc(
 	renderer: ^WGPU_Renderer,
 	phase: WGPU_GPU_Timestamp_Phase,
@@ -272,7 +290,7 @@ wgpu_gpu_pass_timestamps :: proc(
 	wgpu.PassTimestampWrites,
 	bool,
 ) {
-	if renderer == nil || renderer.gpu_timestamp_active_slot < 0 {
+	if !wgpu_gpu_timing_active(renderer) {
 		return {}, false
 	}
 	readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
@@ -296,8 +314,7 @@ wgpu_gpu_shadow_pass_timestamps :: proc(
 	if cascade_index == 0 {
 		return wgpu_gpu_pass_timestamps(renderer, .Shadow)
 	}
-	if renderer == nil ||
-	   renderer.gpu_timestamp_active_slot < 0 ||
+	if !wgpu_gpu_timing_active(renderer) ||
 	   cascade_index < 0 ||
 	   cascade_index >= WGPU_SHADOW_CASCADE_COUNT {
 		return {}, false
@@ -321,10 +338,7 @@ wgpu_gpu_hiz_pass_timestamps :: proc(
 	if mip_index == 0 {
 		return wgpu_gpu_pass_timestamps(renderer, .HiZ)
 	}
-	if renderer == nil ||
-	   renderer.gpu_timestamp_active_slot < 0 ||
-	   mip_index < 0 ||
-	   mip_index >= WGPU_MAX_HIZ_LEVELS {
+	if !wgpu_gpu_timing_active(renderer) || mip_index < 0 || mip_index >= WGPU_MAX_HIZ_LEVELS {
 		return {}, false
 	}
 	query_index := u32(WGPU_GPU_HIZ_EXTRA_QUERY_BASE + (mip_index - 1) * 2)
@@ -337,7 +351,7 @@ wgpu_gpu_hiz_pass_timestamps :: proc(
 }
 
 wgpu_gpu_timing_resolve :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandEncoder) {
-	if renderer == nil || renderer.gpu_timestamp_active_slot < 0 {
+	if !wgpu_gpu_timing_active(renderer) {
 		return
 	}
 	readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
@@ -374,7 +388,7 @@ wgpu_gpu_timing_resolve :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandE
 }
 
 wgpu_gpu_timing_after_submit :: proc(renderer: ^WGPU_Renderer) {
-	if renderer == nil || renderer.gpu_timestamp_active_slot < 0 {
+	if !wgpu_gpu_timing_active(renderer) {
 		return
 	}
 	readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]

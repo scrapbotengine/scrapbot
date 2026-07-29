@@ -177,7 +177,6 @@ wgpu_init_renderer :: proc(
 
 	timestamp_features, timestamp_feature_count := wgpu_timestamp_required_features(
 		bool(wgpu.AdapterHasFeature(renderer.adapter, .TimestampQuery)),
-		bool(wgpu.AdapterHasFeature(renderer.adapter, .TimestampQueryInsideEncoders)),
 	)
 	timestamp_supported := timestamp_feature_count > 0
 	device_descriptor := wgpu.DeviceDescriptor {
