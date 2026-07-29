@@ -8,6 +8,7 @@ odin = { version = "dev-2026-07", exe = "odin" }
 ols = { version = "dev-2026-05", rename_exe = "ols" }
 odinfmt = { version = "dev-2026-05", rename_exe = "odinfmt" }
 pnpm = "10"
+python = "3.13"
 
 [tasks.fmt]
 description = "Format all Odin source files"
@@ -40,10 +41,32 @@ run = "node tools/check_staged_odin_format.mjs"
 description = "Install project tools, source dependencies, external fixtures, and Git hooks"
 run = '''
 mise install
+mise run icon-tools
 mise run wgpu
 git submodule update --init --recursive
 node tools/setup_external_assets.mjs
 git config --local core.hooksPath .githooks
+'''
+
+[tasks.icon-tools]
+description = "Install the pinned SVG icon compiler environment when stale"
+sources = [
+  "tools/compile_icon_set.py",
+  "tools/icon_compiler_requirements.txt",
+  "tools/scrapbot-iconc",
+]
+outputs = [
+  ".scrapbot/tools/icon-compiler/.scrapbot-ready",
+  "bin/scrapbot-iconc",
+]
+run = '''
+ICON_ENV=".scrapbot/tools/icon-compiler"
+python -m venv "$ICON_ENV"
+"$ICON_ENV/bin/python" -m pip install --disable-pip-version-check \
+  --requirement tools/icon_compiler_requirements.txt
+touch "$ICON_ENV/.scrapbot-ready"
+mkdir -p bin
+ln -sfn ../tools/scrapbot-iconc bin/scrapbot-iconc
 '''
 
 [tasks.setup-assets]
@@ -76,7 +99,7 @@ run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot
 
 [tasks.build]
 description = "Build the Scrapbot CLI when its optimized binary is stale"
-depends = ["luau", "cgltf", "wgpu"]
+depends = ["luau", "cgltf", "wgpu", "icon-tools"]
 sources = [
   "mise.toml",
   "src/**/*",
@@ -103,7 +126,7 @@ odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUA
 
 [tasks.build-dev]
 description = "Build the Scrapbot CLI for fast development iteration when stale"
-depends = ["luau", "cgltf", "wgpu"]
+depends = ["luau", "cgltf", "wgpu", "icon-tools"]
 sources = [
   "mise.toml",
   "src/**/*",
@@ -236,6 +259,7 @@ node tools/generate_workspace_luau_types.mjs
 description = "Run all local checks and smoke tests"
 depends = ["build"]
 run = '''
+python tools/test_icon_compiler.py
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)
