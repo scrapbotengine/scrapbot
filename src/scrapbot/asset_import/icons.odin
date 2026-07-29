@@ -469,8 +469,15 @@ validate_icon_msdf_compiler :: proc(compiler: string) -> string {
 	if version == "" {
 		version = strings.trim_space(string(stderr))
 	}
-	if !state.success || !strings.has_prefix(version, "MSDF-Atlas-Gen v1.4.0") {
-		return fmt.tprintf("icon-set compilation requires msdf-atlas-gen 1.4.0; found %q", version)
+	first_line := version
+	if newline := strings.index_byte(version, '\n'); newline >= 0 {
+		first_line = strings.trim_space(version[:newline])
+	}
+	if !state.success || first_line != "MSDF-Atlas-Gen v1.4.0" {
+		return fmt.tprintf(
+			"icon-set compilation requires msdf-atlas-gen 1.4.0; found %q",
+			first_line,
+		)
 	}
 	return ""
 }
