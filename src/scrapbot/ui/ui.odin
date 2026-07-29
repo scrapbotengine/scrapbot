@@ -46,6 +46,8 @@ Pointer_Input :: struct {
 }
 Pointer_Cursor :: enum {
 	Default,
+	Pointer,
+	Text_Edit,
 	Horizontal_Resize,
 	Vertical_Resize,
 }
@@ -1177,8 +1179,12 @@ reconcile :: proc(
 		editor_pointer.available &&
 		!editor_pointer.primary_down &&
 		state.editor_previous_primary_down
-	project_pressed, project_pressed_ok := update_interaction(state, project_pointer, false)
-	pressed, pressed_ok := update_interaction(state, editor_pointer, true)
+	project_pressed, project_pressed_ok, project_hit := update_interaction(
+		state,
+		project_pointer,
+		false,
+	)
+	pressed, pressed_ok, editor_hit := update_interaction(state, editor_pointer, true)
 	if project_press_started && project_pressed_ok {
 		list_drag_begin(state, world, project_pressed, project_pointer.position, false)
 	}
@@ -1207,6 +1213,22 @@ reconcile :: proc(
 	)
 	if state.pointer_cursor == .Default {
 		state.pointer_cursor = numeric_input_pointer_cursor(state, world)
+	}
+	if state.pointer_cursor == .Default {
+		state.pointer_cursor = control_pointer_cursor(
+			state,
+			world,
+			project_hit,
+			project_pointer.position,
+		)
+	}
+	if state.pointer_cursor == .Default {
+		state.pointer_cursor = control_pointer_cursor(
+			state,
+			world,
+			editor_hit,
+			editor_pointer.position,
+		)
 	}
 	sync_ui_interaction_states(state, world)
 	panel_changed := false
@@ -3071,25 +3093,71 @@ numeric_input_pointer_cursor :: proc(state: ^State, world: ^shared.World) -> Poi
 	if state.input_scrub_armed || state.input_scrubbing {
 		return .Horizontal_Resize
 	}
-	for node in state.nodes[:state.node_count] {
-		if !node.hovered {
-			continue
-		}
+	return .Default
+}
+
+control_pointer_cursor :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	position: shared.Vec2,
+) -> Pointer_Cursor {
+	if state == nil || world == nil {
+		return .Default
+	}
+	current := node_index
+	for current >= 0 {
+		node := state.nodes[current]
 		entity_index := int(node.entity.index)
-		if entity_index < 0 || entity_index >= len(world.entities) {
-			continue
+		if ecs.entity_is_alive(world, entity_index) &&
+		   world.entities[entity_index].id == node.entity {
+			entity := world.entities[entity_index]
+			if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
+				if !world.ui_inputs[entity.ui_input_index].read_only {
+					return .Text_Edit
+				}
+			} else if entity.ui_button_index >= 0 &&
+			   entity.ui_button_index < len(world.ui_buttons) {
+				return .Pointer
+			} else if entity.ui_checkbox_index >= 0 &&
+			   entity.ui_checkbox_index < len(world.ui_checkboxes) {
+				if !world.ui_checkboxes[entity.ui_checkbox_index].read_only {
+					return .Pointer
+				}
+			} else if entity.ui_color_picker_index >= 0 &&
+			   entity.ui_color_picker_index < len(world.ui_color_pickers) {
+				if !world.ui_color_pickers[entity.ui_color_picker_index].read_only {
+					return .Pointer
+				}
+			} else if entity.ui_viewport_index >= 0 &&
+			   entity.ui_viewport_index < len(world.ui_viewports) {
+				if world.ui_viewports[entity.ui_viewport_index].interactive {
+					return .Pointer
+				}
+			}
+			parent_node_index := node.parent_node_index
+			if parent_node_index >= 0 {
+				parent := state.nodes[parent_node_index]
+				parent_entity_index := int(parent.entity.index)
+				if ecs.entity_is_alive(world, parent_entity_index) &&
+				   world.entities[parent_entity_index].id == parent.entity {
+					parent_entity := world.entities[parent_entity_index]
+					if parent_entity.ui_list_index >= 0 &&
+					   parent_entity.ui_list_index < len(world.ui_lists) {
+						return .Pointer
+					}
+				}
+			}
+			if entity.ui_panel_index >= 0 && entity.ui_panel_index < len(world.ui_panels) {
+				panel := world.ui_panels[entity.ui_panel_index]
+				title_height := min(max(panel.title_height, 0), node.rect.height)
+				title_rect := Rect{node.rect.x, node.rect.y, node.rect.width, title_height}
+				if panel.collapsible && panel.title != "" && rect_contains(title_rect, position) {
+					return .Pointer
+				}
+			}
 		}
-		entity := world.entities[entity_index]
-		if !entity.alive ||
-		   entity.id != node.entity ||
-		   entity.ui_input_index < 0 ||
-		   entity.ui_input_index >= len(world.ui_inputs) {
-			continue
-		}
-		input := world.ui_inputs[entity.ui_input_index]
-		if input.numeric && input.draggable && !input.read_only {
-			return .Horizontal_Resize
-		}
+		current = node.parent_node_index
 	}
 	return .Default
 }
@@ -4731,6 +4799,7 @@ update_interaction :: proc(
 ) -> (
 	shared.Entity,
 	bool,
+	int,
 ) {
 	for &node in state.nodes[:state.node_count] { if (node.origin == .Editor) == editor { node.hovered = false; node.active = false } }
 	previous_down := state.previous_primary_down
@@ -4739,7 +4808,7 @@ update_interaction :: proc(
 	if editor { previous_down = state.editor_previous_primary_down; has_active = state.editor_ui_has_active_entity; active_entity = state.editor_ui_active_entity }
 	if !pointer.available {
 		if editor { state.editor_ui_has_active_entity = false; state.editor_previous_primary_down = false } else { state.has_active_entity = false; state.previous_primary_down = false }
-		return {}, false
+		return {}, false, -1
 	}
 	hit := -1
 	highest_order := -1
@@ -4762,7 +4831,7 @@ update_interaction :: proc(
 		   0 { mark_interaction_chain(state, active_index, true) } else { has_active = false }
 	} else if !pointer.primary_down { has_active = false }
 	if editor { state.editor_ui_has_active_entity = has_active; state.editor_ui_active_entity = active_entity; state.editor_previous_primary_down = pointer.primary_down } else { state.has_active_entity = has_active; state.active_entity = active_entity; state.previous_primary_down = pointer.primary_down }
-	return pressed, pressed_ok
+	return pressed, pressed_ok, hit
 }
 
 node_pointer_contains :: proc(node: Node, point: shared.Vec2) -> bool {return(

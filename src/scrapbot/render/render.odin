@@ -957,6 +957,10 @@ run_frame_system_unmeasured :: proc(
 		cursor: platform.Runtime_Pointer_Cursor
 		switch ui.current_pointer_cursor(config.ui_state) {
 			case .Default:
+			case .Pointer:
+				cursor = .Pointer
+			case .Text_Edit:
+				cursor = .Text_Edit
 			case .Horizontal_Resize:
 				cursor = .Horizontal_Resize
 			case .Vertical_Resize:

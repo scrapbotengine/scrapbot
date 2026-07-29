@@ -5,8 +5,10 @@ import "core:testing"
 import sdl "vendor:sdl3"
 
 @(test)
-test_runtime_pointer_cursor_maps_resize_directions_to_sdl :: proc(t: ^testing.T) {
+test_runtime_pointer_cursor_maps_ui_intents_to_sdl :: proc(t: ^testing.T) {
 	testing.expect(t, runtime_pointer_system_cursor(.Default) == .DEFAULT)
+	testing.expect(t, runtime_pointer_system_cursor(.Pointer) == .POINTER)
+	testing.expect(t, runtime_pointer_system_cursor(.Text_Edit) == .TEXT)
 	testing.expect(t, runtime_pointer_system_cursor(.Horizontal_Resize) == .EW_RESIZE)
 	testing.expect(t, runtime_pointer_system_cursor(.Vertical_Resize) == .NS_RESIZE)
 }

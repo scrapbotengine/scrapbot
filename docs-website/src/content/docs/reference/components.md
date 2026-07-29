@@ -430,7 +430,7 @@ Same-domain pointer presses outside a popup and Escape close it through shared U
 | `caret_color`, `caret_width`, `caret_inset` | Transparent, `1`, `2`. Transparent caret color falls back to text color. |
 | `prefix_gap`, `prefix_corner_radius`, `prefix_text_padding` | `3`, `2`, `3`. |
 | `number`, `step`, `minimum`, `maximum` | `0`, `1`, `0`, `0`. Step must be positive in numeric mode. |
-| `read_only`, `numeric`, `draggable`, `has_minimum`, `has_maximum` | `false`. Bounds apply only when their matching flag is true. `draggable` opts a writable numeric input into horizontal pointer scrubbing and its resize cursor. |
+| `read_only`, `numeric`, `draggable`, `has_minimum`, `has_maximum` | `false`. Bounds apply only when their matching flag is true. Writable inputs use the text-edit cursor; `draggable` opts a numeric input into horizontal pointer scrubbing and switches to its resize cursor while armed or active. |
 
 Numeric values and enabled bounds must be finite, the number must remain inside enabled bounds, and minimum cannot exceed maximum. Icon, prefix, selection, border, caret, and radius geometry is non-negative. The icon stays fixed while long editable text scrolls within the remaining clipped content.
 
