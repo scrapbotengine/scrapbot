@@ -52,6 +52,7 @@ World_Component_Kind :: enum {
 	UI_Viewport,
 	UI_State,
 	UI_Text,
+	UI_Icon,
 	UI_Button,
 	UI_Input,
 	UI_Checkbox,
@@ -122,7 +123,7 @@ format_world_integrity_failure :: proc(failure: World_Integrity_Failure) -> stri
 world_entity_component_slots :: proc(
 	world: ^World,
 	entity: World_Entity,
-) -> [27]World_Component_Slot {
+) -> [28]World_Component_Slot {
 	return {
 		{.Transform, entity.transform_index, len(world.transforms)},
 		{.Camera, entity.camera_index, len(world.cameras)},
@@ -145,6 +146,7 @@ world_entity_component_slots :: proc(
 		{.UI_Viewport, entity.ui_viewport_index, len(world.ui_viewports)},
 		{.UI_State, entity.ui_state_index, len(world.ui_states)},
 		{.UI_Text, entity.ui_text_index, len(world.ui_texts)},
+		{.UI_Icon, entity.ui_icon_index, len(world.ui_icons)},
 		{.UI_Button, entity.ui_button_index, len(world.ui_buttons)},
 		{.UI_Input, entity.ui_input_index, len(world.ui_inputs)},
 		{.UI_Checkbox, entity.ui_checkbox_index, len(world.ui_checkboxes)},
@@ -723,6 +725,7 @@ validate_world_integrity :: proc(
 		{world.free_ui_viewport_indices[:], len(world.ui_viewports), .UI_Viewport},
 		{world.free_ui_state_indices[:], len(world.ui_states), .UI_State},
 		{world.free_ui_text_indices[:], len(world.ui_texts), .UI_Text},
+		{world.free_ui_icon_indices[:], len(world.ui_icons), .UI_Icon},
 		{world.free_ui_button_indices[:], len(world.ui_buttons), .UI_Button},
 		{world.free_ui_input_indices[:], len(world.ui_inputs), .UI_Input},
 		{world.free_ui_checkbox_indices[:], len(world.ui_checkboxes), .UI_Checkbox},

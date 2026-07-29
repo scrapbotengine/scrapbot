@@ -59,6 +59,7 @@ Keyboard_Input :: struct {
 Paint_Kind :: enum {
 	Panel,
 	Glyph,
+	Icon,
 	Line,
 	Triangle,
 	Ring,
@@ -124,7 +125,7 @@ Node :: struct {
 	entity: shared.Entity,
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
-	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
+	layout_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, icon_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
 	parent_node_index, first_child_node, next_sibling_node: int,
 	rect, clip: Rect,
 	resolved_size: shared.Vec2,
@@ -930,6 +931,7 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		if had_viewport != (node.viewport_index >= 0) {
 			viewport_membership_changed = true
 		}
+		node.icon_index = entity.ui_icon_index
 		node.text_index = entity.ui_text_index
 		node.button_index = entity.ui_button_index
 		node.input_index = entity.ui_input_index
@@ -1018,6 +1020,12 @@ ui_paint_input_signature :: proc(state: ^State, world: ^shared.World, editor: bo
 	}
 	signature := hash.fnv64a((cast([^]byte)&key)[:size_of(key)])
 	if state.resource_registry != nil {
+		icon_set_revision := state.resource_registry.icon_set_revision
+		signature = ui_paint_signature_add_memory(
+			signature,
+			&icon_set_revision,
+			size_of(icon_set_revision),
+		)
 		for &font in state.resource_registry.fonts {
 			alive := u32(0)
 			if font.alive {
@@ -5189,6 +5197,10 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			}
 		}
 	}
+	if node.icon_index >= 0 && node.icon_index < len(world.ui_icons) {
+		if err := append_icon(state, world.ui_icons[node.icon_index], node.rect, layout.padding);
+		   err != "" { return err }
+	}
 	if node.text_index >= 0 &&
 	   node.text_index <
 		   len(
@@ -5741,13 +5753,69 @@ append_gizmo_center :: proc(state: ^State, origin: shared.Vec2, scale: f32) -> s
 	)
 }
 
+append_icon :: proc(
+	state: ^State,
+	value: shared.UI_Icon_Component,
+	rect: Rect,
+	padding: shared.Vec4,
+) -> string {
+	if state == nil || state.resource_registry == nil || value.color.w <= 0 {
+		return ""
+	}
+	handle, found := resources.icon_set_handle_by_uuid(state.resource_registry, value.icon_set)
+	if !found || handle.index >= shared.MAX_PROJECT_ICON_SETS {
+		return ""
+	}
+	icon_set, alive := resources.get_icon_set(state.resource_registry, handle)
+	if !alive {
+		return ""
+	}
+	symbol, symbol_found := resources.icon_symbol(icon_set, value.icon)
+	if !symbol_found {
+		return ""
+	}
+	content := Rect {
+		rect.x + padding.w + value.inset,
+		rect.y + padding.x + value.inset,
+		max(rect.width - padding.w - padding.y - value.inset * 2, 0),
+		max(rect.height - padding.x - padding.z - value.inset * 2, 0),
+	}
+	size := min(content.width, content.height)
+	if size <= 0 {
+		return ""
+	}
+	plane_width := math.abs(symbol.plane[2] - symbol.plane[0])
+	plane_height := math.abs(symbol.plane[1] - symbol.plane[3])
+	plane_extent := max(plane_width, plane_height)
+	if plane_extent <= 0 {
+		return ""
+	}
+	icon_width := size * plane_width / plane_extent
+	icon_height := size * plane_height / plane_extent
+	return append_paint(
+		state,
+		{
+			kind = .Icon,
+			rect = {
+				content.x + (content.width - icon_width) * 0.5,
+				content.y + (content.height - icon_height) * 0.5,
+				icon_width,
+				icon_height,
+			},
+			color = value.color,
+			uv = {symbol.uv[0], symbol.uv[1], symbol.uv[2], symbol.uv[3]},
+			font_layer = f32(shared.MAX_PROJECT_FONTS + 1 + int(handle.index)),
+		},
+	)
+}
+
 entity_component_count :: proc(world: ^shared.World, entity_index: int) -> int {
 	if entity_index < 0 || entity_index >= len(world.entities) {
 		return 0
 	}
 	entity := world.entities[entity_index]
 	count := 0
-	indices := [16]int {
+	indices := [17]int {
 		entity.transform_index,
 		entity.camera_index,
 		entity.ambient_light_index,
@@ -5763,6 +5831,7 @@ entity_component_count :: proc(world: ^shared.World, entity_index: int) -> int {
 		entity.ui_table_index,
 		entity.ui_list_index,
 		entity.ui_progress_index,
+		entity.ui_icon_index,
 		entity.ui_text_index,
 	}
 	for index in indices {

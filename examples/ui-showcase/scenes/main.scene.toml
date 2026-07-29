@@ -148,6 +148,22 @@ checked = true
 box_size = 22
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000001a"
+name = "Orbit Icon"
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-000000000007"
+size = [52, 52]
+background = [0.12, 0.13, 0.15, 1]
+corner_radius = 12
+
+[entities.ui_icon]
+icon_set = "71c10000-0000-4000-8000-000000000001"
+icon = "orbit"
+color = [0.15, 0.95, 0.82, 1]
+inset = 12
+
+[[entities]]
 id = "30000000-0000-4000-8000-00000000000a"
 name = "Feature Scroll"
 ui_theme = "reduced_dark"

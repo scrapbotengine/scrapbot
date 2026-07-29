@@ -46,6 +46,7 @@ export type Scrapbot = {
 	ui_progress: ScrapbotUiProgressComponent,
 	ui_viewport: ScrapbotUiViewportComponent,
 	ui_state: ScrapbotUiStateComponent,
+	ui_icon: ScrapbotUiIconComponent,
 	ui_text: ScrapbotUiTextComponent,
 	ui_button: ScrapbotUiButtonComponent,
 	ui_input: ScrapbotUiInputComponent,

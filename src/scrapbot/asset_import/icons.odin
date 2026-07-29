@@ -9,7 +9,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 
-ICON_SET_IMPORTER_SCHEMA :: "scrapbot.icon-set.v1.mtsdf-512-96-8"
+ICON_SET_IMPORTER_SCHEMA :: "scrapbot.icon-set.v2.mtsdf-512-96-8"
 ICON_SET_ATLAS_SIZE :: 512
 ICON_SET_EM_SIZE :: 96
 ICON_SET_DISTANCE_RANGE :: 8
@@ -24,6 +24,7 @@ Icon_Symbol_Metadata :: struct {
 	name: string,
 	codepoint: int,
 	uv: [4]f32,
+	plane: [4]f32,
 }
 
 Icon_Set_Metadata :: struct {
@@ -53,6 +54,7 @@ Icon_Atlas_Bounds :: struct {
 Icon_Atlas_Glyph :: struct {
 	unicode: int,
 	atlas_bounds: Icon_Atlas_Bounds `json:"atlasBounds"`,
+	plane_bounds: Icon_Atlas_Bounds `json:"planeBounds"`,
 }
 
 Icon_Atlas_Description :: struct {
@@ -409,6 +411,12 @@ compile_icon_set_product :: proc(
 					glyph.atlas_bounds.top / ICON_SET_ATLAS_SIZE,
 					glyph.atlas_bounds.right / ICON_SET_ATLAS_SIZE,
 					glyph.atlas_bounds.bottom / ICON_SET_ATLAS_SIZE,
+				},
+				plane = {
+					glyph.plane_bounds.left,
+					glyph.plane_bounds.top,
+					glyph.plane_bounds.right,
+					glyph.plane_bounds.bottom,
 				},
 			},
 		)

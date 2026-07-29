@@ -685,6 +685,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 		   line == "[entities.ui_list]" ||
 		   line == "[entities.ui_progress]" ||
 		   line == "[entities.ui_viewport]" ||
+		   line == "[entities.ui_icon]" ||
 		   line == "[entities.ui_text]" ||
 		   line == "[entities.ui_button]" ||
 		   line == "[entities.ui_input]" ||
@@ -735,6 +736,12 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			if section == "ui_viewport" {
 				current.has_ui_viewport = true
 				current.ui_viewport = shared.ui_viewport_default()
+			}
+			if section == "ui_icon" {
+				if !current.has_ui_icon {
+					current.ui_icon = shared.ui_icon_default()
+				}
+				current.has_ui_icon = true
 			}
 			if section == "ui_text" {
 				if !current.has_ui_text {
@@ -1409,6 +1416,31 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 							fmt.tprintf("unknown ui_text field '%s'", key),
 						)}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_text.%s", key)) }
+			case "ui_icon":
+				current.has_ui_icon = true
+				switch key {
+					case "icon_set":
+						raw, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_icon.icon_set, found = shared.resource_uuid_parse(raw)
+						} else {
+							found = false
+						}
+					case "icon":
+						current.ui_icon.icon, found = parse_basic_string(value)
+					case "color":
+						current.ui_icon.color, found = parse_vec4(value)
+					case "inset":
+						current.ui_icon.inset, found = parse_f32(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_icon field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_icon.%s", key))
+				}
 			case "ui_button":
 				current.has_ui_button = true
 				switch key {case "text":
@@ -1727,7 +1759,8 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 				)
 			}
 		}
-		if (entity.has_ui_text ||
+		if (entity.has_ui_icon ||
+			   entity.has_ui_text ||
 			   entity.has_ui_button ||
 			   entity.has_ui_hstack ||
 			   entity.has_ui_vstack ||
@@ -1828,13 +1861,23 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 			)
 		}
 		content_count := 0
+		if entity.has_ui_icon { content_count += 1 }
 		if entity.has_ui_text { content_count += 1 }
 		if entity.has_ui_button { content_count += 1 }
 		if entity.has_ui_input { content_count += 1 }
 		if entity.has_ui_checkbox { content_count += 1 }
 		if entity.has_ui_color_picker { content_count += 1 }
 		if content_count >
-		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_text, ui_button, ui_input, ui_checkbox, or ui_color_picker", entity.name)) }
+		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_icon, ui_text, ui_button, ui_input, ui_checkbox, or ui_color_picker", entity.name)) }
+		if entity.has_ui_icon && !shared.ui_icon_is_valid(entity.ui_icon) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"UI icon entity '%s' requires an icon set UUID, symbol name, finite color, and non-negative inset",
+					entity.name,
+				),
+			)
+		}
 		if entity.has_ui_text &&
 		   (entity.ui_text.text == "" ||
 				   entity.ui_text.size <=

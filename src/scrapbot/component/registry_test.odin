@@ -121,6 +121,7 @@ test_public_ui_registry_fields_exactly_match_component_structs :: proc(t: ^testi
 		{"scrapbot.ui_list", shared.UI_List_Component},
 		{"scrapbot.ui_progress", shared.UI_Progress_Component},
 		{"scrapbot.ui_state", shared.UI_State_Component},
+		{"scrapbot.ui_icon", shared.UI_Icon_Component},
 		{"scrapbot.ui_text", shared.UI_Text_Component},
 		{"scrapbot.ui_button", shared.UI_Button_Component},
 		{"scrapbot.ui_input", shared.UI_Input_Component},

@@ -201,6 +201,13 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			world.ui_viewports[entity.ui_viewport_index] = {}
 			append(&world.free_ui_viewport_indices, entity.ui_viewport_index)
 			entity.ui_viewport_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_icon":
+			if entity.ui_icon_index < 0 { return false }
+			icon := &world.ui_icons[entity.ui_icon_index]
+			delete_world_string(world, icon.icon)
+			icon^ = {}
+			append(&world.free_ui_icon_indices, entity.ui_icon_index)
+			entity.ui_icon_index = INVALID_COMPONENT_INDEX
 		case "scrapbot.ui_text":
 			if entity.ui_text_index < 0 { return false }
 			text := &world.ui_texts[entity.ui_text_index]
@@ -565,6 +572,34 @@ set_ui_text :: proc(world: ^World, entity_index: int, value: UI_Text_Component) 
 	} else {
 		entity.ui_text_index = len(world.ui_texts)
 		append(&world.ui_texts, text)
+	}
+	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
+set_ui_icon :: proc(world: ^World, entity_index: int, value: UI_Icon_Component) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) {
+		return false
+	}
+	icon := value
+	icon.icon = clone_world_string(world, value.icon)
+	entity := &world.entities[entity_index]
+	if entity.ui_icon_index >= 0 && entity.ui_icon_index < len(world.ui_icons) {
+		current := &world.ui_icons[entity.ui_icon_index]
+		paint_changed := current^ != value
+		delete_world_string(world, current.icon)
+		current^ = icon
+		if paint_changed {
+			mark_ui_paint_changed(world, entity_index)
+		}
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_icon_indices); found {
+		entity.ui_icon_index = index
+		world.ui_icons[index] = icon
+	} else {
+		entity.ui_icon_index = len(world.ui_icons)
+		append(&world.ui_icons, icon)
 	}
 	mark_ui_entity_dirty(world, entity_index)
 	return true

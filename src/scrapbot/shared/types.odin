@@ -16,6 +16,7 @@ FONT_FIRST_CHAR :: 32
 FONT_CHAR_COUNT :: 95
 FONT_ATLAS_SIZE :: 512
 MAX_PROJECT_FONTS :: 15
+MAX_PROJECT_ICON_SETS :: 16
 MAX_GEOMETRY_LODS :: 4
 PROJECT_FONT_BUILD_DIR :: ".scrapbot/cache/fonts"
 PROJECT_EXTENSION_BUILD_DIR :: ".scrapbot/cache/extensions"
@@ -219,6 +220,8 @@ Scene_Entity :: struct {
 	ui_progress: UI_Progress_Component,
 	has_ui_viewport: bool,
 	ui_viewport: UI_Viewport_Component,
+	has_ui_icon: bool,
+	ui_icon: UI_Icon_Component,
 	has_ui_text: bool,
 	ui_text: UI_Text_Component,
 	has_ui_button: bool,
@@ -600,6 +603,12 @@ UI_Icon :: enum {
 	Chevron_Right,
 	Chevron_Down,
 }
+UI_Icon_Component :: struct {
+	icon_set: Resource_UUID,
+	icon: string,
+	color: Vec4,
+	inset: f32,
+}
 UI_Text_Component :: struct {
 	text: string,
 	font: string,
@@ -761,6 +770,10 @@ ui_viewport_default :: proc "contextless" () -> UI_Viewport_Component {
 
 ui_text_default :: proc "contextless" () -> UI_Text_Component {
 	return {color = {1, 1, 1, 1}, size = 16}
+}
+
+ui_icon_default :: proc "contextless" () -> UI_Icon_Component {
+	return {color = {1, 1, 1, 1}}
 }
 
 ui_button_default :: proc "contextless" () -> UI_Button_Component {
@@ -933,6 +946,17 @@ ui_text_is_valid :: proc "contextless" (value: UI_Text_Component) -> bool {
 	return value.text != "" && value.size > 0
 }
 
+ui_icon_is_valid :: proc "contextless" (value: UI_Icon_Component) -> bool {
+	return(
+		value.icon_set != (Resource_UUID{}) &&
+		value.icon != "" &&
+		value.inset >= 0 &&
+		!math.is_nan(value.inset) &&
+		!math.is_inf(value.inset) &&
+		ui_vec4_is_finite(value.color) \
+	)
+}
+
 ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
 	return(
 		(value.text != "" || value.icon != .None) &&
@@ -1019,6 +1043,19 @@ ui_color_picker_is_valid :: proc "contextless" (value: UI_Color_Picker_Component
 		value.gap >= 0 &&
 		value.thumb_radius > 0 &&
 		value.thumb_border_width >= 0 \
+	)
+}
+
+ui_vec4_is_finite :: proc "contextless" (value: Vec4) -> bool {
+	return(
+		!math.is_nan(value.x) &&
+		!math.is_inf(value.x) &&
+		!math.is_nan(value.y) &&
+		!math.is_inf(value.y) &&
+		!math.is_nan(value.z) &&
+		!math.is_inf(value.z) &&
+		!math.is_nan(value.w) &&
+		!math.is_inf(value.w) \
 	)
 }
 
@@ -1343,6 +1380,7 @@ World_Entity :: struct {
 	ui_progress_index: int,
 	ui_viewport_index: int,
 	ui_state_index: int,
+	ui_icon_index: int,
 	ui_text_index: int,
 	ui_button_index: int,
 	ui_input_index: int,
@@ -1485,6 +1523,7 @@ World :: struct {
 	ui_viewports: [dynamic]UI_Viewport_Component,
 	ui_states: [dynamic]UI_State_Component,
 	ui_transient_state_entities: [dynamic]Entity,
+	ui_icons: [dynamic]UI_Icon_Component,
 	ui_texts: [dynamic]UI_Text_Component,
 	ui_buttons: [dynamic]UI_Button_Component,
 	ui_inputs: [dynamic]UI_Input_Component,
@@ -1500,6 +1539,7 @@ World :: struct {
 	free_ui_progress_indices: [dynamic]int,
 	free_ui_viewport_indices: [dynamic]int,
 	free_ui_state_indices: [dynamic]int,
+	free_ui_icon_indices: [dynamic]int,
 	free_ui_text_indices: [dynamic]int,
 	free_ui_button_indices: [dynamic]int,
 	free_ui_input_indices: [dynamic]int,

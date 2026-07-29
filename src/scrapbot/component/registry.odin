@@ -59,6 +59,7 @@ Storage_Kind :: enum {
 	UI_List,
 	UI_Progress,
 	UI_Viewport,
+	UI_Icon,
 	UI_Text,
 	UI_Button,
 	UI_Input,
@@ -603,6 +604,16 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(
 		registry,
+		"scrapbot.ui_icon",
+		{
+			Field_Definition{name = "icon_set", field_type = .String},
+			Field_Definition{name = "icon", field_type = .String},
+			Field_Definition{name = "color", field_type = .Vec4},
+			Field_Definition{name = "inset", field_type = .Number},
+		},
+	)
+	register_engine_component(
+		registry,
 		"scrapbot.ui_progress",
 		{
 			Field_Definition{name = "value", field_type = .Number},
@@ -855,6 +866,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .UI_Viewport, .Authored
 		case "scrapbot.ui_text":
 			return .UI_Text, .Authored
+		case "scrapbot.ui_icon":
+			return .UI_Icon, .Authored
 		case "scrapbot.ui_button":
 			return .UI_Button, .Authored
 		case "scrapbot.ui_input":

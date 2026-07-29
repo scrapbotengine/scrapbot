@@ -430,6 +430,24 @@ read_ui_component_command_from_luau :: proc "c" (
 			}
 			command.viewport = value
 			return ecs.init_ui_component_command(command, .Viewport)
+		case "scrapbot.ui_icon":
+			value := current_ui_icon(world, entity_index, base)
+			if err := read_ui_resource_uuid_field(L, payload_index, "icon_set", &value.icon_set);
+			   err != "" { return err }
+			if err := read_ui_string_field(L, payload_index, "icon", &value.icon);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "color", &value.color);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "inset", &value.inset);
+			   err != "" { return err }
+			if !shared.ui_icon_is_valid(value) {
+				return(
+					"ui_icon requires an icon set UUID, symbol name, finite color, and non-negative inset" \
+				)
+			}
+			command.icon = value
+			command.icon.icon = ""
+			return ecs.init_ui_component_command(command, .Icon, value.icon)
 		case "scrapbot.ui_text":
 			value := current_ui_text(world, entity_index, base)
 			if err := read_ui_string_field(L, payload_index, "text", &value.text);
@@ -836,6 +854,23 @@ current_ui_list :: proc(
 		if index >= 0 && index < len(world.ui_lists) { return world.ui_lists[index] }
 	}
 	return shared.ui_list_default()
+}
+
+current_ui_icon :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Icon_Component {
+	if base != nil && base.kind == .Icon {
+		value := base.icon
+		value.icon = ecs.ui_component_command_text(base)
+		return value
+	}
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_icon_index
+		if index >= 0 && index < len(world.ui_icons) { return world.ui_icons[index] }
+	}
+	return shared.ui_icon_default()
 }
 
 current_ui_text :: proc(

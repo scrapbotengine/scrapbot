@@ -277,6 +277,12 @@ UI_Viewport_Payload :: struct {
 	interactive: c.int,
 }
 
+UI_Icon_Payload :: struct {
+	icon_set: UUID,
+	color: Vec4,
+	inset: f32,
+}
+
 UI_Text_Payload :: struct {
 	color: Vec4,
 	size: f32,
@@ -390,6 +396,7 @@ UI_Component_Payload :: struct {
 	list: UI_List_Payload,
 	progress: UI_Progress_Payload,
 	viewport: UI_Viewport_Payload,
+	icon_component: UI_Icon_Payload,
 	text: UI_Text_Payload,
 	button: UI_Button_Payload,
 	input: UI_Input_Payload,

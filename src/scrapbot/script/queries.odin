@@ -527,6 +527,9 @@ push_query_component_table :: proc "c" (
 		case "scrapbot.ui_state":
 			push_ui_state_table(L, world.ui_states[entity.ui_state_index])
 			return
+		case "scrapbot.ui_icon":
+			push_ui_icon_table(L, world.ui_icons[entity.ui_icon_index])
+			return
 		case "scrapbot.ui_text":
 			push_ui_text_table(L, world.ui_texts[entity.ui_text_index])
 			return
@@ -797,6 +800,19 @@ push_ui_state_table :: proc "c" (L: Lua_State, value: shared.UI_State_Component)
 	lua_setfield(L, -2, "cancel_revision")
 	lua_pushnumber(L, f64(value.drop_revision))
 	lua_setfield(L, -2, "drop_revision")
+}
+
+push_ui_icon_table :: proc "c" (L: Lua_State, value: shared.UI_Icon_Component) {
+	lua_createtable(L, 0, 4)
+	icon_set_buffer: [36]u8
+	push_string_field(
+		L,
+		"icon_set",
+		shared.resource_uuid_to_string(value.icon_set, icon_set_buffer[:]),
+	)
+	push_string_field(L, "icon", value.icon)
+	push_vec4_field(L, "color", value.color)
+	push_number_field(L, "inset", value.inset)
 }
 
 push_ui_text_table :: proc "c" (L: Lua_State, value: shared.UI_Text_Component) {

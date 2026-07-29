@@ -102,6 +102,7 @@ Font_Desc :: struct {
 Icon_Symbol :: struct {
 	name: string,
 	uv: [4]f32,
+	plane: [4]f32,
 }
 
 Icon_Set_Desc :: struct {

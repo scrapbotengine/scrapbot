@@ -13,6 +13,7 @@ UI_LIST :: "scrapbot.ui_list"
 UI_PROGRESS :: "scrapbot.ui_progress"
 UI_VIEWPORT :: "scrapbot.ui_viewport"
 UI_STATE :: "scrapbot.ui_state"
+UI_ICON :: "scrapbot.ui_icon"
 UI_TEXT :: "scrapbot.ui_text"
 UI_BUTTON :: "scrapbot.ui_button"
 UI_INPUT :: "scrapbot.ui_input"
@@ -29,6 +30,7 @@ UI_Table :: raw.UI_Table_Payload
 UI_List :: raw.UI_List_Payload
 UI_Progress :: raw.UI_Progress_Payload
 UI_Viewport :: raw.UI_Viewport_Payload
+UI_Icon_Component_Value :: raw.UI_Icon_Payload
 UI_Text :: raw.UI_Text_Payload
 UI_Button :: raw.UI_Button_Payload
 UI_Icon :: raw.UI_Icon
@@ -71,6 +73,9 @@ UI_Viewport_Component :: Component {
 }
 UI_State_Component :: Component {
 	name = UI_STATE,
+}
+UI_Icon_Component :: Component {
+	name = UI_ICON,
 }
 UI_Text_Component :: Component {
 	name = UI_TEXT,
@@ -153,6 +158,10 @@ ui_viewport_default :: proc "contextless" () -> UI_Viewport {
 		clear_color = {0.012, 0.017, 0.024, 1},
 		interactive = 1,
 	}
+}
+
+ui_icon_default :: proc "contextless" () -> UI_Icon_Component_Value {
+	return {color = {1, 1, 1, 1}}
 }
 
 ui_text_default :: proc "contextless" () -> UI_Text {
@@ -304,6 +313,20 @@ ui_progress :: proc "contextless" (value: UI_Progress) -> UI_Component_Payload {
 
 ui_viewport :: proc "contextless" (value: UI_Viewport) -> UI_Component_Payload {
 	return {component = UI_VIEWPORT, viewport = value}
+}
+
+ui_icon :: proc "contextless" (
+	value: UI_Icon_Component_Value,
+	icon: string,
+) -> (
+	UI_Component_Payload,
+	bool,
+) {
+	payload := UI_Component_Payload {
+		component = UI_ICON,
+		icon_component = value,
+	}
+	return payload, ui_payload_set_strings(&payload, icon)
 }
 
 ui_text :: proc "contextless" (

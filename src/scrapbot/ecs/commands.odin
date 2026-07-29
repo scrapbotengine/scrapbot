@@ -67,6 +67,7 @@ UI_Component_Command_Kind :: enum {
 	List,
 	Progress,
 	Viewport,
+	Icon,
 	Text,
 	Button,
 	Input,
@@ -84,6 +85,7 @@ UI_Component_Command :: struct {
 	list: UI_List_Component,
 	progress: UI_Progress_Component,
 	viewport: UI_Viewport_Component,
+	icon: UI_Icon_Component,
 	text: UI_Text_Component,
 	button: UI_Button_Component,
 	input: UI_Input_Component,
@@ -406,6 +408,8 @@ ui_component_command_kind :: proc "contextless" (name: string) -> UI_Component_C
 			return .Progress
 		case "scrapbot.ui_viewport":
 			return .Viewport
+		case "scrapbot.ui_icon":
+			return .Icon
 		case "scrapbot.ui_text":
 			return .Text
 		case "scrapbot.ui_button":
@@ -1148,6 +1152,7 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 		"scrapbot.ui_list",
 		"scrapbot.ui_progress",
 		"scrapbot.ui_viewport",
+		"scrapbot.ui_icon",
 		"scrapbot.ui_text",
 		"scrapbot.ui_button",
 		"scrapbot.ui_input",
@@ -1289,6 +1294,10 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			set_ui_progress(world, entity_index, command.progress)
 		case .Viewport:
 			set_ui_viewport(world, entity_index, command.viewport)
+		case .Icon:
+			value := command.icon
+			value.icon = text
+			set_ui_icon(world, entity_index, value)
 		case .Text:
 			value := command.text
 			value.text = text

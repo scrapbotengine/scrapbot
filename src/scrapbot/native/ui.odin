@@ -497,6 +497,16 @@ system_get_ui_component :: proc "c" (
 				cancel_revision = value.cancel_revision,
 				drop_revision = value.drop_revision,
 			}
+		case "scrapbot.ui_icon":
+			if world_entity.ui_icon_index < 0 ||
+			   world_entity.ui_icon_index >= len(step.world.ui_icons) { return 0 }
+			value := step.world.ui_icons[world_entity.ui_icon_index]
+			payload.icon_component = {
+				icon_set = api_resource_uuid_from_shared(value.icon_set),
+				color = api_vec4_from_shared(value.color),
+				inset = value.inset,
+			}
+			if !api_ui_payload_set_strings(payload, value.icon, "") { return 0 }
 		case "scrapbot.ui_text":
 			if world_entity.ui_text_index < 0 ||
 			   world_entity.ui_text_index >= len(step.world.ui_texts) { return 0 }
@@ -828,6 +838,19 @@ ui_command_from_api_payload :: proc "c" (
 			}
 			command.viewport = value
 			return ecs.init_ui_component_command(command, .Viewport)
+		case "scrapbot.ui_icon":
+			value := shared.UI_Icon_Component {
+				icon_set = shared_resource_uuid_from_api(payload.icon_component.icon_set),
+				icon = text,
+				color = shared_vec4_from_api(payload.icon_component.color),
+				inset = payload.icon_component.inset,
+			}
+			if !shared.ui_icon_is_valid(value) {
+				return "native ui_icon payload is invalid"
+			}
+			command.icon = value
+			command.icon.icon = ""
+			return ecs.init_ui_component_command(command, .Icon, text)
 		case "scrapbot.ui_text":
 			alignment, alignment_ok := shared_text_alignment_from_api(payload.text.alignment)
 			if !alignment_ok { return "native ui_text alignment is invalid" }

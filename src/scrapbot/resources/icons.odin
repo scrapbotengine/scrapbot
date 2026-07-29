@@ -50,7 +50,7 @@ register_project_icon_sets :: proc(
 		}
 		symbols := make([dynamic]Icon_Symbol, 0, product.symbol_count, context.temp_allocator)
 		for symbol in metadata.symbols {
-			append(&symbols, Icon_Symbol{name = symbol.name, uv = symbol.uv})
+			append(&symbols, Icon_Symbol{name = symbol.name, uv = symbol.uv, plane = symbol.plane})
 		}
 		if _, register_err := register_project_icon_set(
 			registry,
@@ -191,7 +191,7 @@ clone_icon_set_desc :: proc(desc: Icon_Set_Desc, allocator: mem.Allocator) -> Ic
 			delete(result.pixels, allocator)
 			return {}
 		}
-		append(&result.symbols, Icon_Symbol{name = name, uv = symbol.uv})
+		append(&result.symbols, Icon_Symbol{name = name, uv = symbol.uv, plane = symbol.plane})
 	}
 	return result
 }

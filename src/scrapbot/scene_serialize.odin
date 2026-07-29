@@ -376,6 +376,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "clear_color", scene_vec4(value.clear_color))
 		write_scene_value(builder, "interactive", scene_bool(value.interactive))
 	}
+	if entity.has_ui_icon { write_scene_icon(builder, entity.ui_icon) }
 	if entity.has_ui_text { write_scene_text(builder, "ui_text", entity.ui_text) }
 	if entity.has_ui_button { write_scene_button(builder, entity.ui_button) }
 	if entity.has_ui_input { write_scene_input(builder, entity.ui_input) }
@@ -393,6 +394,14 @@ write_scene_stack :: proc(
 	write_scene_value(builder, "fill", scene_bool(value.fill))
 	write_scene_value(builder, "draggable", scene_bool(value.draggable))
 	write_scene_value(builder, "min_size", scene_f32(value.min_size))
+}
+
+write_scene_icon :: proc(builder: ^strings.Builder, value: shared.UI_Icon_Component) {
+	write_scene_section(builder, "ui_icon")
+	write_scene_string(builder, "icon_set", scene_resource_uuid(value.icon_set))
+	write_scene_string(builder, "icon", value.icon)
+	write_scene_value(builder, "color", scene_vec4(value.color))
+	write_scene_value(builder, "inset", scene_f32(value.inset))
 }
 
 write_scene_text :: proc(

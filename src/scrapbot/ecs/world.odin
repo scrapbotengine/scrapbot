@@ -46,6 +46,7 @@ UI_List_Component :: shared.UI_List_Component
 UI_Progress_Component :: shared.UI_Progress_Component
 UI_Viewport_Component :: shared.UI_Viewport_Component
 UI_State_Component :: shared.UI_State_Component
+UI_Icon_Component :: shared.UI_Icon_Component
 UI_Text_Component :: shared.UI_Text_Component
 UI_Button_Component :: shared.UI_Button_Component
 UI_Input_Component :: shared.UI_Input_Component
@@ -95,6 +96,7 @@ init_world_entity :: proc(
 		ui_progress_index = INVALID_COMPONENT_INDEX,
 		ui_viewport_index = INVALID_COMPONENT_INDEX,
 		ui_state_index = INVALID_COMPONENT_INDEX,
+		ui_icon_index = INVALID_COMPONENT_INDEX,
 		ui_text_index = INVALID_COMPONENT_INDEX,
 		ui_button_index = INVALID_COMPONENT_INDEX,
 		ui_input_index = INVALID_COMPONENT_INDEX,
@@ -286,6 +288,7 @@ World_Storage_Stats :: struct {
 	ui_list_slots: int,
 	ui_progress_slots: int,
 	ui_state_slots: int,
+	ui_icon_slots: int,
 	ui_text_slots: int,
 	ui_button_slots: int,
 	ui_input_slots: int,
@@ -311,6 +314,7 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, mesh.primitive)
 	}
 	for panel in world.ui_panels { delete_world_string(world, panel.title); delete_world_string(world, panel.font) }
+	for icon in world.ui_icons { delete_world_string(world, icon.icon) }
 	for text in world.ui_texts { delete_world_string(world, text.text); delete_world_string(world, text.font) }
 	for button in world.ui_buttons { delete_world_string(world, button.text); delete_world_string(world, button.font) }
 	for input in world.ui_inputs {
@@ -384,6 +388,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_viewports)
 	delete(world.ui_states)
 	delete(world.ui_transient_state_entities)
+	delete(world.ui_icons)
 	delete(world.ui_texts)
 	delete(world.ui_buttons)
 	delete(world.ui_inputs)
@@ -399,6 +404,7 @@ destroy_world :: proc(world: ^World) {
 	delete(world.free_ui_progress_indices)
 	delete(world.free_ui_viewport_indices)
 	delete(world.free_ui_state_indices)
+	delete(world.free_ui_icon_indices)
 	delete(world.free_ui_text_indices)
 	delete(world.free_ui_button_indices)
 	delete(world.free_ui_input_indices)
@@ -484,6 +490,12 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_viewport {
 			world_entity.ui_viewport_index = len(world.ui_viewports)
 			append(&world.ui_viewports, entity.ui_viewport)
+		}
+		if entity.has_ui_icon {
+			world_entity.ui_icon_index = len(world.ui_icons)
+			icon := entity.ui_icon
+			icon.icon = clone_world_string(&world, icon.icon)
+			append(&world.ui_icons, icon)
 		}
 		if entity.has_ui_text { world_entity.ui_text_index = len(world.ui_texts); text := entity.ui_text; text.text = clone_world_string(&world, text.text); text.font = clone_world_string(&world, text.font); append(&world.ui_texts, text) }
 		if entity.has_ui_button { world_entity.ui_button_index = len(world.ui_buttons); button := entity.ui_button; button.text = clone_world_string(&world, button.text); button.font = clone_world_string(&world, button.font); append(&world.ui_buttons, button) }
@@ -1762,6 +1774,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		ui_list_slots = len(world.ui_lists),
 		ui_progress_slots = len(world.ui_progresses),
 		ui_state_slots = len(world.ui_states),
+		ui_icon_slots = len(world.ui_icons),
 		ui_text_slots = len(world.ui_texts),
 		ui_button_slots = len(world.ui_buttons),
 		ui_input_slots = len(world.ui_inputs),
@@ -1794,6 +1807,7 @@ world_storage_stats :: proc "c" (world: ^World) -> World_Storage_Stats {
 		stats.ui_list_slots +
 		stats.ui_progress_slots +
 		stats.ui_state_slots +
+		stats.ui_icon_slots +
 		stats.ui_text_slots +
 		stats.ui_button_slots +
 		stats.ui_input_slots +
@@ -2830,6 +2844,8 @@ entity_has_component :: proc "c" (
 			)
 		case "scrapbot.ui_state":
 			return entity.ui_state_index >= 0 && entity.ui_state_index < len(world.ui_states)
+		case "scrapbot.ui_icon":
+			return entity.ui_icon_index >= 0 && entity.ui_icon_index < len(world.ui_icons)
 		case "scrapbot.ui_text":
 			return entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts)
 		case "scrapbot.ui_button":
