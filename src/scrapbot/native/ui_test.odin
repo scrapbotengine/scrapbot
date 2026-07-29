@@ -40,6 +40,33 @@ test_native_ui_theme_api_resolves_shared_recipes_into_abi_payloads :: proc(t: ^t
 }
 
 @(test)
+test_native_ui_theme_api_composes_chrome_and_semantic_frame_recipes :: proc(t: ^testing.T) {
+	ctx := api.System_Context{}
+	recipes := [?]api.UI_Theme_Recipe{.Chrome_Bar, .Warning_Frame}
+	payloads: [1]api.UI_Component_Payload
+	payload_count: c.int
+	err := system_resolve_ui_theme(
+		&ctx,
+		.Reduced_Dark,
+		raw_data(recipes[:]),
+		c.int(len(recipes)),
+		raw_data(payloads[:]),
+		c.int(len(payloads)),
+		&payload_count,
+	)
+	testing.expect(t, err == nil)
+	testing.expect(t, payload_count == 1)
+	theme := shared.ui_theme_reduced_dark()
+	testing.expect(t, string(payloads[0].component) == "scrapbot.ui_layout")
+	testing.expect(t, payloads[0].layout.background == api_vec4_from_shared(theme.palette.region))
+	testing.expect(
+		t,
+		payloads[0].layout.border_color == api_vec4_from_shared(theme.palette.warning_soft),
+	)
+	testing.expect_value(t, payloads[0].layout.border_width, f32(2))
+}
+
+@(test)
 test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: proc(
 	t: ^testing.T,
 ) {

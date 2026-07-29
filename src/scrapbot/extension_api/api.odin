@@ -430,6 +430,10 @@ UI_Theme_Recipe :: enum u32 {
 	Scroll_Area,
 	Checkbox,
 	Color_Picker,
+	Chrome_Bar,
+	Selected_Button,
+	Warning_Button,
+	Warning_Frame,
 }
 
 Spawn_Options :: struct {

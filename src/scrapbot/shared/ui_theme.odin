@@ -26,6 +26,8 @@ UI_Theme_Button_Role :: enum {
 	Quiet,
 	Standard,
 	Primary,
+	Selected,
+	Warning,
 	Destructive,
 }
 
@@ -52,6 +54,10 @@ UI_Theme_Recipe :: enum {
 	Scroll_Area,
 	Checkbox,
 	Color_Picker,
+	Chrome_Bar,
+	Selected_Button,
+	Warning_Button,
+	Warning_Frame,
 }
 
 UI_THEME_RECIPE_CAPACITY :: 16
@@ -76,10 +82,18 @@ UI_Theme_Palette :: struct {
 	selection: Vec4,
 	focus: Vec4,
 	warning: Vec4,
-	warning_subtle: Vec4,
 	warning_soft: Vec4,
 	danger: Vec4,
 	danger_soft: Vec4,
+	data_engine: Vec4,
+	data_native: Vec4,
+	data_script: Vec4,
+	axis_x: Vec4,
+	axis_y: Vec4,
+	axis_z: Vec4,
+	axis_w: Vec4,
+	light_overlay: Vec4,
+	dark_overlay: Vec4,
 }
 
 UI_Theme_Metrics :: struct {
@@ -187,6 +201,14 @@ ui_theme_recipe_name :: proc "contextless" (value: UI_Theme_Recipe) -> string {
 			return "checkbox"
 		case .Color_Picker:
 			return "color_picker"
+		case .Chrome_Bar:
+			return "chrome_bar"
+		case .Selected_Button:
+			return "selected_button"
+		case .Warning_Button:
+			return "warning_button"
+		case .Warning_Frame:
+			return "warning_frame"
 	}
 	return ""
 }
@@ -230,10 +252,18 @@ ui_theme_reduced_dark :: proc "contextless" () -> UI_Theme {
 			selection = {0.027, 0.120, 0.103, 1},
 			focus = {0.16, 0.72, 0.61, 1},
 			warning = {0.92, 0.55, 0.20, 1},
-			warning_subtle = {0.018, 0.012, 0.006, 1},
 			warning_soft = {0.075, 0.038, 0.010, 1},
 			danger = {0.92, 0.27, 0.32, 1},
 			danger_soft = {0.095, 0.022, 0.032, 1},
+			data_engine = {0.22, 0.78, 0.69, 1},
+			data_native = {0.35, 0.62, 0.94, 1},
+			data_script = {0.91, 0.61, 0.24, 1},
+			axis_x = {0.92, 0.30, 0.32, 1},
+			axis_y = {0.34, 0.82, 0.42, 1},
+			axis_z = {0.34, 0.55, 0.96, 1},
+			axis_w = {0.84, 0.65, 0.30, 1},
+			light_overlay = {1, 1, 1, 0.08},
+			dark_overlay = {0, 0, 0, 0.12},
 		},
 		metrics = {
 			text_size = 13,
@@ -355,6 +385,18 @@ ui_theme_button :: proc "contextless" (
 			button.color = theme.palette.accent_text
 			button.hover_background = theme.palette.selection
 			button.active_background = {0.020, 0.070, 0.061, 1}
+		case .Selected:
+			layout.background = theme.palette.raised
+			layout.border_color = theme.palette.border_strong
+			button.color = theme.palette.text
+			button.hover_background = theme.palette.hover
+			button.active_background = theme.palette.active
+		case .Warning:
+			layout.background = theme.palette.warning_soft
+			layout.border_color = theme.palette.warning
+			button.color = theme.palette.warning
+			button.hover_background = {0.125, 0.070, 0.020, 1}
+			button.active_background = {0.060, 0.032, 0.008, 1}
 		case .Destructive:
 			layout.background = theme.palette.danger_soft
 			layout.border_color = theme.palette.danger
@@ -363,6 +405,27 @@ ui_theme_button :: proc "contextless" (
 			button.active_background = {0.080, 0.016, 0.025, 1}
 	}
 	return
+}
+
+ui_theme_chrome_bar :: proc "contextless" (theme: UI_Theme) -> UI_Layout_Component {
+	result := ui_layout_default()
+	ui_theme_apply_surface(&result, theme, .Region)
+	result.corner_radius = 0
+	return result
+}
+
+ui_theme_warning_frame :: proc "contextless" (theme: UI_Theme) -> UI_Layout_Component {
+	result := ui_layout_default()
+	ui_theme_apply_warning_frame(&result, theme)
+	return result
+}
+
+ui_theme_apply_warning_frame :: proc "contextless" (value: ^UI_Layout_Component, theme: UI_Theme) {
+	if value == nil {
+		return
+	}
+	value.border_color = theme.palette.warning_soft
+	value.border_width = 2
 }
 
 ui_theme_input :: proc "contextless" (
@@ -495,13 +558,22 @@ ui_theme_apply_recipe :: proc "contextless" (
 		case .Danger_Text:
 			resolved.has_text = true
 			resolved.text = ui_theme_text(theme, "", .Danger)
-		case .Quiet_Button, .Standard_Button, .Primary_Button, .Destructive_Button:
+		case .Quiet_Button,
+		     .Standard_Button,
+		     .Primary_Button,
+		     .Selected_Button,
+		     .Warning_Button,
+		     .Destructive_Button:
 			role := UI_Theme_Button_Role.Standard
 			#partial switch recipe {
 				case .Quiet_Button:
 					role = .Quiet
 				case .Primary_Button:
 					role = .Primary
+				case .Selected_Button:
+					role = .Selected
+				case .Warning_Button:
+					role = .Warning
 				case .Destructive_Button:
 					role = .Destructive
 			}
@@ -528,6 +600,12 @@ ui_theme_apply_recipe :: proc "contextless" (
 		case .Color_Picker:
 			resolved.color_picker = ui_theme_color_picker(theme)
 			resolved.has_color_picker = true
+		case .Chrome_Bar:
+			resolved.layout = ui_theme_chrome_bar(theme)
+			resolved.has_layout = true
+		case .Warning_Frame:
+			ui_theme_apply_warning_frame(&resolved.layout, theme)
+			resolved.has_layout = true
 	}
 }
 

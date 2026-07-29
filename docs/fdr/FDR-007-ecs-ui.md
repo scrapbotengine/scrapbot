@@ -1,7 +1,7 @@
 # FDR-007: ECS UI
 
 **Status:** Active
-**Last reviewed:** 2026-07-28
+**Last reviewed:** 2026-07-29
 
 ## Overview
 
@@ -10,7 +10,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 ## Behavior
 
 - Every UI entity describes a rectangular box with an explicit size, optional minimum size, per-axis fill and fit-to-content policies, optional position, per-edge margin and padding, background color, SDF border color and width, corner radius, and hidden state.
-- Themes are explicit composition-time palettes, metrics, and composable named recipes that resolve into those ordinary component fields. Scene entities use `ui_theme` plus ordered `ui_recipes`; Luau resolves a mutable spawn-component map; native Odin resolves bounded typed payloads through the host. Applying a theme never creates renderer-owned cascading style state, and every resolved value remains individually overridable.
+- Themes are explicit composition-time palettes, metrics, semantic tokens, and composable named recipes that resolve into those ordinary component fields. Surface, text, button, control, container, edge-to-edge chrome-bar, and semantic-frame recipes share one vocabulary across editor and project composition. Scene entities use `ui_theme` plus ordered `ui_recipes`; Luau resolves a mutable spawn-component map; native Odin resolves bounded typed payloads through the host. Applying a theme never creates renderer-owned cascading style state, and every resolved value remains individually overridable.
 - A hidden box removes its complete descendant subtree from retained layout, painting, and pointer interaction without despawning any entities.
 - UI entities form a parent-by-UUID hierarchy validated when the scene loads. Entity names remain editable labels.
 - Horizontal and vertical stack components arrange child boxes in scene order with a configurable gap; boxes without a stack component overlay their children. Fill stacks treat child sizes as proportions, fill the cross-axis, and can expose draggable separators with minimum pane sizes. Hovering or dragging a separator selects the matching horizontal- or vertical-resize system cursor.
@@ -124,7 +124,7 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 
 ### 13. Resolve themes before ECS storage
 
-**Decision:** Let UI composition apply ordered named recipes to canonical public component defaults, then apply entity-specific overrides and store the complete result in ECS. Give scene TOML, Luau, native Odin, and editor composition the same recipe vocabulary and engine-owned resolver. The retained hierarchy and renderer consume only those resolved component values, following ADR-040.
+**Decision:** Let UI composition apply ordered named recipes to canonical public component defaults, then apply entity-specific overrides and store the complete result in ECS. Give scene TOML, Luau, native Odin, and editor composition the same recipe vocabulary and engine-owned resolver. Keep application chrome, selection, warnings, and semantic frames in that public vocabulary, and keep first-party semantic colors in the engine-owned theme palette instead of local consumer constants. The retained hierarchy and renderer consume only those resolved component values, following ADR-040.
 **Why:** Applications need coherent palettes, typography, spacing, radii, and control states without turning the editor's appearance into UI mechanics or hiding effective state behind a cascade.
 **Tradeoff:** Existing entities do not automatically restyle when a recipe changes. The current public resolver offers the built-in reduced-dark theme; projects create unrelated looks through ordinary explicit overrides while project-defined named theme resources remain future work.
 

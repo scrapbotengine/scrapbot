@@ -920,8 +920,6 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	text := theme.palette.text
 	muted := theme.palette.text_muted
 	mint := theme.palette.accent
-	void := theme.palette.canvas
-	rule := theme.palette.border
 	root := editor_ui_create_box(
 		world,
 		EDITOR_UI_ROOT_NAME,
@@ -930,20 +928,11 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		{size = {1280, 720}, fill_width = true, fill_height = true},
 	)
 	editor_ui_add_vstack(world, root, {fill = true})
-	top := editor_ui_create_box(
-		world,
-		EDITOR_UI_TOP_NAME,
-		EDITOR_UI_ROOT_NAME,
-		.None,
-		{
-			size = {1280, EDITOR_TOP_BAR_HEIGHT},
-			fixed_in_fill = true,
-			padding = {11, 14, 11, 14},
-			background = theme.palette.region,
-			border_color = rule,
-			border_width = 0,
-		},
-	)
+	top_layout := theme_chrome_bar(theme)
+	top_layout.size = {1280, EDITOR_TOP_BAR_HEIGHT}
+	top_layout.fixed_in_fill = true
+	top_layout.padding = {11, 14, 11, 14}
+	top := editor_ui_create_box(world, EDITOR_UI_TOP_NAME, EDITOR_UI_ROOT_NAME, .None, top_layout)
 	editor_ui_add_hstack(world, top, {gap = 16})
 	brand := editor_ui_create_box(
 		world,
@@ -1319,7 +1308,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_VIEWPORT_NAME,
 		EDITOR_UI_WORKSPACE_NAME,
 		.Viewport,
-		{size = {660, 638}, border_color = rule, border_width = 0},
+		{size = {660, 638}},
 	)
 	gizmo_toolbar := editor_ui_create_box(
 		world,
@@ -1474,19 +1463,16 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_TEXT_SIZE,
 	)
 
+	status_layout := theme_chrome_bar(theme)
+	status_layout.size = {1280, EDITOR_STATUS_BAR_HEIGHT}
+	status_layout.fixed_in_fill = true
+	status_layout.padding = {6, 14, 6, 14}
 	status := editor_ui_create_box(
 		world,
 		EDITOR_UI_STATUS_NAME,
 		EDITOR_UI_ROOT_NAME,
 		.None,
-		{
-			size = {1280, EDITOR_STATUS_BAR_HEIGHT},
-			fixed_in_fill = true,
-			padding = {6, 14, 6, 14},
-			background = theme.palette.region,
-			border_color = rule,
-			border_width = 0,
-		},
+		status_layout,
 	)
 	editor_ui_add_hstack(world, status, {gap = 8})
 	status_text := editor_ui_create_box(
@@ -1580,13 +1566,14 @@ SYSTEM_PROFILE_CELL_HEIGHT :: f32(26)
 SYSTEM_PROFILE_BAR_MAX_NANOSECONDS :: f64(10_000_000)
 
 system_profile_origin_color :: proc(kind: shared.System_Profile_Kind) -> shared.Vec4 {
+	theme := reduced_dark_theme()
 	switch kind {
 		case .Engine:
-			return {0.22, 0.78, 0.69, 1}
+			return theme.palette.data_engine
 		case .Project_Odin:
-			return {0.35, 0.62, 0.94, 1}
+			return theme.palette.data_native
 		case .Luau:
-			return {0.91, 0.61, 0.24, 1}
+			return theme.palette.data_script
 	}
 	return {}
 }
@@ -1733,25 +1720,25 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 	state.editor_transport_visual_valid = true
 	playback := !state.editor_simulation_stopped
 	theme := reduced_dark_theme()
+	chrome := theme_chrome_bar(theme)
 	if top, found := ecs.entity_index_by_uuid(
 		world,
 		shared.entity_uuid_from_engine_name(EDITOR_UI_TOP_NAME),
 	); found {
 		layout := &world.ui_layouts[world.entities[top].ui_layout_index]
-		layout.background = theme.palette.region
-		layout.border_color = theme.palette.border
-		layout.border_width = 0
-		if playback {
-			layout.background = theme.palette.warning_subtle
-		}
+		layout.background = chrome.background
+		layout.border_color = chrome.border_color
+		layout.border_width = chrome.border_width
+		layout.corner_radius = chrome.corner_radius
 	}
 	if viewport, found := editor_ui_entity(world, .Viewport); found {
 		layout := &world.ui_layouts[world.entities[viewport].ui_layout_index]
-		layout.border_color = theme.palette.border
+		layout.border_color = {}
 		layout.border_width = 0
 		if playback {
-			layout.border_color = theme.palette.warning_soft
-			layout.border_width = 2
+			frame := theme_warning_frame(theme)
+			layout.border_color = frame.border_color
+			layout.border_width = frame.border_width
 		}
 	}
 	if status_bar, found := ecs.entity_index_by_uuid(
@@ -1759,13 +1746,10 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		shared.entity_uuid_from_engine_name(EDITOR_UI_STATUS_NAME),
 	); found {
 		layout := &world.ui_layouts[world.entities[status_bar].ui_layout_index]
-		layout.background = theme.palette.region
-		layout.border_color = theme.palette.border
-		layout.border_width = 0
-		if playback {
-			layout.background = theme.palette.warning_soft
-			layout.border_color = theme.palette.warning
-		}
+		layout.background = chrome.background
+		layout.border_color = chrome.border_color
+		layout.border_width = chrome.border_width
+		layout.corner_radius = chrome.corner_radius
 	}
 	for component in world.editor_uis {
 		if component.role != .Transport_Play &&
@@ -1822,12 +1806,13 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			continue
 		}
 		if component.role == .Transport_Save && state.editor_scene_dirty {
-			layout.background = theme.palette.warning_soft
-			layout.border_color = theme.palette.warning
-			layout.border_width = theme.metrics.border_width
-			button.color = {1.0, 0.82, 0.52, 1}
-			button.hover_background = {0.125, 0.070, 0.020, 1}
-			button.active_background = {0.060, 0.032, 0.008, 1}
+			warning_layout, warning_button := theme_button(theme, .Warning)
+			layout.background = warning_layout.background
+			layout.border_color = warning_layout.border_color
+			layout.border_width = warning_layout.border_width
+			button.color = warning_button.color
+			button.hover_background = warning_button.hover_background
+			button.active_background = warning_button.active_background
 			continue
 		}
 		if component.role == .Transport_Revert && state.editor_scene_dirty {
@@ -1849,9 +1834,13 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			button.hover_background = primary_button.hover_background
 			button.active_background = primary_button.active_background
 		} else if selected {
-			layout.background = theme.palette.raised
-			layout.border_color = theme.palette.border_strong
-			button.color = theme.palette.text
+			selected_layout, selected_button := theme_button(theme, .Selected)
+			layout.background = selected_layout.background
+			layout.border_color = selected_layout.border_color
+			layout.border_width = selected_layout.border_width
+			button.color = selected_button.color
+			button.hover_background = selected_button.hover_background
+			button.active_background = selected_button.active_background
 		}
 	}
 	if status, found := editor_ui_entity(world, .Status); found {
@@ -2062,8 +2051,9 @@ editor_ui_ensure_inspector_panel_action :: proc(
 	button.icon = .Close
 	button.panel_action = true
 	button.color = theme.palette.text_secondary
+	_, destructive_button := theme_button(theme, .Destructive)
 	button.hover_background = theme.palette.danger_soft
-	button.active_background = {0.20, 0.045, 0.060, 1}
+	button.active_background = destructive_button.active_background
 	button.icon_inset = 6
 	button.icon_stroke = 1.5
 	_ = ecs.set_ui_button(world, action, button)
@@ -2215,8 +2205,8 @@ editor_ui_ensure_inspector_color :: proc(
 	value.text = " "
 	value.size = 1
 	value.popup = world.entities[picker].uuid
-	value.hover_background = {1, 1, 1, 0.08}
-	value.active_background = {0, 0, 0, 0.12}
+	value.hover_background = theme.palette.light_overlay
+	value.active_background = theme.palette.dark_overlay
 	_ = ecs.set_ui_button(world, button, value)
 	return
 }
@@ -3332,16 +3322,17 @@ editor_ui_inspector_field_values :: proc(
 		if role.inspector_axis != .None {
 			value_input.prefix_width = UI_INPUT_PREFIX_WIDTH
 			prefix := "X"
-			value_input.prefix_color = {0.92, 0.30, 0.32, 1}
+			theme := reduced_dark_theme()
+			value_input.prefix_color = theme.palette.axis_x
 			if role.inspector_axis == .Y {
 				prefix = "Y"
-				value_input.prefix_color = {0.34, 0.82, 0.42, 1}
+				value_input.prefix_color = theme.palette.axis_y
 			} else if role.inspector_axis == .Z {
 				prefix = "Z"
-				value_input.prefix_color = {0.34, 0.55, 0.96, 1}
+				value_input.prefix_color = theme.palette.axis_z
 			} else if role.inspector_axis == .W {
 				prefix = "W"
-				value_input.prefix_color = {0.84, 0.65, 0.30, 1}
+				value_input.prefix_color = theme.palette.axis_w
 			}
 			_ = ecs.set_ui_input_prefix(builder.world, input_entity, prefix)
 			value_input.prefix_background = {

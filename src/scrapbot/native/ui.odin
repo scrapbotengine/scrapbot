@@ -27,7 +27,7 @@ system_resolve_ui_theme :: proc "c" (
 	shared_recipes: [shared.UI_THEME_RECIPE_CAPACITY]shared.UI_Theme_Recipe
 	for index in 0 ..< int(recipe_count) {
 		raw_recipe := u32(recipes[index])
-		if raw_recipe > u32(api.UI_Theme_Recipe.Color_Picker) {
+		if raw_recipe > u32(api.UI_Theme_Recipe.Warning_Frame) {
 			return "native UI theme recipe is not supported"
 		}
 		shared_recipes[index] = shared.UI_Theme_Recipe(raw_recipe)

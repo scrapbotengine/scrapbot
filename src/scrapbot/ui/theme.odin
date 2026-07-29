@@ -49,6 +49,14 @@ theme_button :: proc "contextless" (
 	return shared.ui_theme_button(theme, role)
 }
 
+theme_chrome_bar :: proc "contextless" (theme: Theme) -> shared.UI_Layout_Component {
+	return shared.ui_theme_chrome_bar(theme)
+}
+
+theme_warning_frame :: proc "contextless" (theme: Theme) -> shared.UI_Layout_Component {
+	return shared.ui_theme_warning_frame(theme)
+}
+
 theme_input :: proc "contextless" (
 	theme: Theme,
 ) -> (

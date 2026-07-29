@@ -49,6 +49,25 @@ test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing
 	testing.expect(t, surface.background == custom.palette.panel)
 	testing.expect_value(t, surface.corner_radius, f32(0))
 	testing.expect_value(t, surface.border_width, custom.metrics.border_width)
+
+	chrome_recipes := [?]shared.UI_Theme_Recipe{.Chrome_Bar, .Warning_Frame}
+	chrome := shared.ui_theme_resolve(.Reduced_Dark, chrome_recipes[:])
+	testing.expect(t, chrome.has_layout)
+	testing.expect(t, chrome.layout.background == theme.palette.region)
+	testing.expect(t, chrome.layout.border_color == theme.palette.warning_soft)
+	testing.expect_value(t, chrome.layout.border_width, f32(2))
+	testing.expect_value(t, chrome.layout.corner_radius, f32(0))
+	parsed_chrome, parsed_chrome_ok := shared.ui_theme_recipe_parse("chrome_bar")
+	testing.expect(t, parsed_chrome_ok && parsed_chrome == .Chrome_Bar)
+	parsed_warning, parsed_warning_ok := shared.ui_theme_recipe_parse("warning_button")
+	testing.expect(t, parsed_warning_ok && parsed_warning == .Warning_Button)
+
+	selected_layout, selected_button := theme_button(theme, .Selected)
+	testing.expect(t, selected_layout.background == theme.palette.raised)
+	testing.expect(t, selected_button.color == theme.palette.text)
+	warning_layout, warning_button := theme_button(theme, .Warning)
+	testing.expect(t, warning_layout.background == theme.palette.warning_soft)
+	testing.expect(t, warning_button.color == theme.palette.warning)
 }
 
 @(test)
@@ -3011,12 +3030,12 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[top_index].ui_layout_index].background ==
-			theme.palette.warning_subtle,
+			theme.palette.region,
 		)
 		testing.expect(
 			t,
 			world.ui_layouts[world.entities[status_bar_index].ui_layout_index].background ==
-			theme.palette.warning_soft,
+			theme.palette.region,
 		)
 	}
 	playback_viewport := world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
@@ -3093,7 +3112,11 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(
 		t,
 		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_color ==
-		theme.palette.border,
+		(shared.Vec4{}),
+	)
+	testing.expect(
+		t,
+		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_width == 0,
 	)
 	testing.expect(t, consume_playback_stop_request(state))
 	testing.expect(t, !consume_playback_stop_request(state))

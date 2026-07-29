@@ -23,8 +23,9 @@ Recipes are composable and applied in order:
 | Group | Recipes | Components produced |
 | --- | --- | --- |
 | Surfaces | `canvas`, `region`, `panel_surface`, `raised`, `control`, `overlay` | `ui_layout` |
+| Application chrome | `chrome_bar`, `warning_frame` | `ui_layout` |
 | Text | `primary_text`, `secondary_text`, `muted_text`, `accent_text`, `warning_text`, `danger_text` | `ui_text` |
-| Buttons | `quiet_button`, `standard_button`, `primary_button`, `destructive_button` | `ui_layout`, `ui_button` |
+| Buttons | `quiet_button`, `standard_button`, `primary_button`, `selected_button`, `warning_button`, `destructive_button` | `ui_layout`, `ui_button` |
 | Controls | `input`, `checkbox`, `color_picker` | The matching control; `input` also produces `ui_layout` |
 | Containers | `panel`, `list`, `scroll_area` | The matching container; `panel` also produces `ui_layout` |
 
@@ -54,6 +55,8 @@ Scrapbot's editor uses the UI system's reduced dark recipe:
 - Mint for identity, focus, selection, and positive authoring state.
 - Amber for temporary playback state.
 - Red for invalid or destructive state.
+
+The editor does not keep a second palette beside this theme. Its app bars, selected and warning controls, viewport emphasis, profiler provenance, vector axes, and overlays all select shared recipes or named theme tokens. Editor code contributes content, geometry, and meaning; it does not invent local colors.
 
 Those choices are editor presentation, not widget behavior. `scrapbot.ui_button` does not imply a dark rectangle, mint focus, a particular radius, or compact dimensions. The editor merely supplies those resolved fields when it creates the button.
 
@@ -142,7 +145,8 @@ Individual layouts remain free to override every metric. A theme scale is a cons
 
 Recipes can combine canonical defaults with theme values for:
 
-- Quiet, standard, primary, and destructive buttons.
+- Quiet, standard, primary, selected, warning, and destructive buttons.
+- Edge-to-edge application bars and semantic warning frames.
 - Text and numeric inputs.
 - Panel frames and title bands.
 - Selectable lists and drag/drop feedback.
