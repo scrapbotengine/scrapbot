@@ -693,6 +693,7 @@ test_checkbox_paints_sdf_mark_and_toggles_unless_read_only :: proc(t: ^testing.T
 		available = true,
 	}
 	testing.expect(t, reconcile(state, &world, 200, 120, pointer) == "")
+	testing.expect(t, current_pointer_cursor(state) == .Pointer)
 	testing.expect(t, !world.ui_checkboxes[0].checked)
 	testing.expect(t, checkbox_state.changed && checkbox_state.change_revision == 1)
 	testing.expect_value(t, len(world.ui_transient_state_entities), 1)
@@ -783,6 +784,7 @@ test_selectable_list_lays_out_full_width_rows_and_selects_direct_child :: proc(t
 		t,
 		reconcile(state, &world, 200, 100, {position = point, available = true}) == "",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Pointer)
 	selected_painted := false
 	for command in state.paint[:state.paint_count] {
 		if command.kind == .Panel &&
@@ -2115,11 +2117,16 @@ test_numeric_input_exposes_reusable_validation_submit_cancel_and_scrub_state :: 
 		primary_down = true,
 		available = true,
 	}
+	hover := drag_start
+	hover.primary_down = false
+	testing.expect(t, reconcile(state, &world, 200, 80, hover) == "")
+	testing.expect(t, current_pointer_cursor(state) == .Text_Edit)
 	testing.expect(t, reconcile(state, &world, 200, 80, drag_start) == "")
-	testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
+	testing.expect(t, current_pointer_cursor(state) == .Text_Edit)
 	drag := drag_start
 	drag.position.x += 8
 	testing.expect(t, reconcile(state, &world, 200, 80, drag) == "")
+	testing.expect(t, current_pointer_cursor(state) == .Horizontal_Resize)
 	testing.expect(t, input.number == 2 && input.text == "2")
 	drag.primary_down = false
 	testing.expect(t, reconcile(state, &world, 200, 80, drag) == "")
@@ -2153,7 +2160,7 @@ test_numeric_input_only_scrubs_when_draggable_is_enabled :: proc(t: ^testing.T) 
 		available = true,
 	}
 	testing.expect(t, reconcile(state, &world, 200, 80, press) == "")
-	testing.expect(t, current_pointer_cursor(state) != .Horizontal_Resize)
+	testing.expect(t, current_pointer_cursor(state) == .Text_Edit)
 	drag := press
 	drag.position.x += 20
 	testing.expect(t, reconcile(state, &world, 200, 80, drag) == "")
@@ -2188,6 +2195,7 @@ test_color_picker_edits_direct_linear_hdr_rgba_and_submits_once :: proc(t: ^test
 		available = true,
 	}
 	testing.expect(t, reconcile(state, &world, 240, 220, press) == "")
+	testing.expect(t, current_pointer_cursor(state) == .Pointer)
 	picker := &world.ui_color_pickers[world.entities[0].ui_color_picker_index]
 	interaction := &world.ui_states[world.entities[0].ui_state_index]
 	testing.expect(t, math.abs(picker.exposure - 8) < 0.001)
@@ -2712,6 +2720,7 @@ test_pointer_states_belong_to_elements_and_buttons_consume_them :: proc(t: ^test
 		t,
 		reconcile(state, &world, 1280, 720, {position = {30, 30}, available = true}) == "",
 	)
+	testing.expect(t, current_pointer_cursor(state) == .Pointer)
 	testing.expect(t, state.nodes[button].hovered && !state.nodes[button].active)
 	button_state := &world.ui_states[world.entities[button].ui_state_index]
 	testing.expect(t, button_state.hovered && !button_state.active && !button_state.activated)

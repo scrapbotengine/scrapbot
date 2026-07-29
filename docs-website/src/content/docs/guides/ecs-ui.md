@@ -240,6 +240,8 @@ end)
 
 Buttons advance activation state. Checkboxes own a mutable `checked` value and advance change state. Inputs support focus, selection, cursor movement, Tab traversal, submission/cancellation, and numeric bounds and stepping. Typed numeric text is staged locally: Enter validates and commits it, while Escape, focus loss, and Tab navigation restore the previously committed value. Set `draggable = true` on a writable numeric input to opt into live horizontal scrubbing from its complete control surface; releasing the pointer submits that scrub. Prefix badges are presentation rather than an interaction requirement.
 
+Windowed runs use the platform's pointer cursor over buttons, selectable list rows, writable checkboxes and color pickers, interactive viewports, and collapsible panel titles. Writable text and numeric inputs use the text-edit cursor. A draggable numeric input switches to the horizontal-resize cursor while a scrub is armed or active, and draggable layout separators keep their directional resize cursor.
+
 ## Create and update UI from Luau
 
 Luau lifecycle changes are issued from scheduled systems and deferred until the system step completes. `scrapbot.spawn` returns the new stable UUID immediately so children can reference a parent queued in the same command batch:

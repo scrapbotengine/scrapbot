@@ -512,6 +512,8 @@ The renderer automatically attaches a read-only `ui_state` component to every la
 
 Pointer hit testing gives the topmost element under the pointer hover state. Pressing the primary button captures active state on that element until release and advances its public activation revision. Buttons can consume those generic states through `hover_background`, `active_background`, `hover_color`, and `active_color`; a zero-alpha state color falls back to the normal layout background or button text color. Button labels use `alignment = "left"`, `"center"`, or `"right"` inside the padded box and default to centered.
 
+Windowed runs use the system pointer cursor over buttons, selectable list rows, writable checkboxes and color pickers, interactive viewports, and collapsible panel titles. Writable inputs use the text-edit cursor. Draggable numeric inputs switch to the horizontal-resize cursor while scrubbing is armed or active; draggable stack and table separators keep their directional resize cursors.
+
 A standalone `ui_icon` or icon-bearing button references `icon_set` by UUID and `icon` by symbol name. Buttons may place the icon `"leading"` or `"trailing"`, derive its size from the content height or set `icon_size`, and control `icon_gap` plus `icon_inset`. Text remains optional when a complete icon reference is present. Project loading rejects unknown icon-set UUIDs.
 
 Set `font` on `ui_text`, `ui_button`, `ui_input`, or `ui_panel` to a name declared in `project.toml`; omit it to use Inter. A panel's selection applies to its title, while child controls select their own fonts independently.

@@ -24,6 +24,8 @@ runtime_input_sampled_generation: u64
 runtime_scene_camera_look_active: bool
 runtime_scene_camera_capture_warmup: int
 runtime_pointer_cursor: Runtime_Pointer_Cursor
+runtime_pointer_hand_cursor: ^sdl.Cursor
+runtime_text_edit_cursor: ^sdl.Cursor
 runtime_horizontal_resize_cursor: ^sdl.Cursor
 runtime_vertical_resize_cursor: ^sdl.Cursor
 runtime_text_bytes: [512]u8
@@ -56,6 +58,8 @@ Runtime_Text_Input :: struct {
 
 Runtime_Pointer_Cursor :: enum {
 	Default,
+	Pointer,
+	Text_Edit,
 	Horizontal_Resize,
 	Vertical_Resize,
 }
@@ -224,6 +228,14 @@ close_runtime_window :: proc() {
 		if runtime_pointer_cursor != .Default {
 			_ = sdl.SetCursor(sdl.GetDefaultCursor())
 		}
+		if runtime_pointer_hand_cursor != nil {
+			sdl.DestroyCursor(runtime_pointer_hand_cursor)
+			runtime_pointer_hand_cursor = nil
+		}
+		if runtime_text_edit_cursor != nil {
+			sdl.DestroyCursor(runtime_text_edit_cursor)
+			runtime_text_edit_cursor = nil
+		}
 		if runtime_horizontal_resize_cursor != nil {
 			sdl.DestroyCursor(runtime_horizontal_resize_cursor)
 			runtime_horizontal_resize_cursor = nil
@@ -262,6 +274,10 @@ runtime_pointer_system_cursor :: proc(cursor: Runtime_Pointer_Cursor) -> sdl.Sys
 	switch cursor {
 		case .Default:
 			return .DEFAULT
+		case .Pointer:
+			return .POINTER
+		case .Text_Edit:
+			return .TEXT
 		case .Horizontal_Resize:
 			return .EW_RESIZE
 		case .Vertical_Resize:
@@ -278,6 +294,20 @@ set_runtime_pointer_cursor :: proc(cursor: Runtime_Pointer_Cursor) {
 	switch cursor {
 		case .Default:
 			system_cursor = sdl.GetDefaultCursor()
+		case .Pointer:
+			if runtime_pointer_hand_cursor == nil {
+				runtime_pointer_hand_cursor = sdl.CreateSystemCursor(
+					runtime_pointer_system_cursor(cursor),
+				)
+			}
+			system_cursor = runtime_pointer_hand_cursor
+		case .Text_Edit:
+			if runtime_text_edit_cursor == nil {
+				runtime_text_edit_cursor = sdl.CreateSystemCursor(
+					runtime_pointer_system_cursor(cursor),
+				)
+			}
+			system_cursor = runtime_text_edit_cursor
 		case .Horizontal_Resize:
 			if runtime_horizontal_resize_cursor == nil {
 				runtime_horizontal_resize_cursor = sdl.CreateSystemCursor(

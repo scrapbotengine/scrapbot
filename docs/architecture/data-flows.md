@@ -217,7 +217,7 @@ scene TOML          Luau component map   native host callback
                          │
  uniform project-canvas/editor-viewport mapping
                          │
- read-only ui_state + independent GPU vertex streams
+ read-only ui_state + system cursor intent + independent GPU vertex streams
 ```
 
 Theme recipes are consumed only while loading, composing, or explicitly restyling entities. Scene directives create typed component defaults before component sections override fields. Luau returns a mutable component map; native Odin delegates to a host callback that fills caller-owned ABI payloads. All paths share the engine-owned recipe vocabulary, preserve hierarchy and behavior fields, and leave no retained theme dependency. The editor selects reduced-dark surface, chrome-bar, control-state, semantic-frame, and named semantic-color tokens from that same contract; it adds geometry, content, and project meaning but owns no separate visual constants.
@@ -225,6 +225,8 @@ Theme recipes are consumed only while loading, composing, or explicitly restylin
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 
 The editor adds transient editor-origin entities but uses the same components and mechanics as project UI. Editor-only code binds selection, history, project meaning, and commands to generic UI interaction. The project canvas keeps a uniform window-density scale inside the free-aspect game viewport; rendering, pointer inversion, and semantic diagnostic rectangles share that transform so embedded UI cannot be distorted or become spatially detached from interaction.
+
+The retained interaction pass derives a backend-neutral cursor intent from the topmost reusable control after applying project-canvas pointer inversion. The windowed renderer maps that intent to cached SDL system cursors; headless runs retain the same UI interaction behavior without initializing the platform cursor boundary.
 
 ## Authoring persistence
 
