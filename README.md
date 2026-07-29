@@ -44,12 +44,12 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - GPU-driven pipeline: persistent slot-addressed instance storage, dirty-only transform uploads, a growing retained draw database, compute camera/shadow frustum culling, depth prepass with adaptive Hi-Z occlusion, screen-radius LOD selection, and indexed indirect draws with asynchronous GPU timing readback.
 - HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, imported image-based lighting with independent diffuse/specular strength or roughness-aware analytic environment lighting from a procedural haze sky via one `scrapbot.world_environment` component, authored global height/distance fog with shadowed directional scattering, half-resolution thickness-aware visibility-bitmask ambient occlusion over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
 - Per-camera render policy: a bounded manual world-resolution scale, optional GPU-budgeted dynamic resolution, TAA, fast AA, AO, SSR, and bloom are authored on `scrapbot.camera`; UI stays native-resolution, AO and SSR have bounded quality tiers, and disabled effects skip their GPU work.
-- UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, generated LOD chains) with hot reload, targeted reimport, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
+- UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains) with hot reload, targeted reimport, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
 
 ### Retained UI
 
 - ECS-first retained UI: responsive box model, fixed/proportional stacks, overlays, draggable separators, hidden subtrees, smooth clipped scroll areas, selectable lists, progress indicators, collapsible panels, equal/proportional tables, buttons, checkboxes, numeric controls, and keyboard-focused text inputs with Tab traversal.
-- MTSDF text with auto-atlased project fonts (embedded Inter fallback) and SDF-rounded styling for backgrounds, borders, and controls.
+- MTSDF text with auto-atlased project fonts (embedded Inter fallback), UUID-backed project SVG icon catalogs plus an embedded control catalog, and SDF-rounded styling for backgrounds, borders, and controls.
 - One public component contract: scene TOML, Luau systems, native Odin extensions, and the editor all construct and mutate the same typed UI values; the renderer publishes read-only interaction state.
 - Revision-driven paint with independent project, editor, and world-overlay GPU streams — unchanged domains skip reconciliation, layout, paint, and uploads entirely.
 
@@ -205,6 +205,7 @@ trends; they are not portable performance thresholds.
   - [x] Targeted live Reimport, import diagnostics, texture thumbnails, and stale model-product retirement
   - [x] UUID-backed material resources
   - [x] UUID-backed generated geometry LOD resources
+  - [x] Compiled UUID-backed SVG icon-set resources and embedded control catalog
 - Tooling
   - [x] Resource hot reload
   - [ ] Hi-Z, visibility, and LOD debug views
@@ -229,6 +230,7 @@ trends; they are not portable performance thresholds.
   - [x] Built-in scalable UI text
   - [x] MTSDF-based font rendering
   - [x] Auto-atlased project TTF/OTF fonts with embedded Inter fallback
+  - [x] Standalone and icon-bearing controls backed by compiled MTSDF icon sets
   - [x] UI gallery
   - [x] Semantic headless UI replay, assertions, tree dumps, and target framegrabs
 - Controls

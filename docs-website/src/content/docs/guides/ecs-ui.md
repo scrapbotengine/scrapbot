@@ -21,7 +21,7 @@ Every visible element starts with `scrapbot.ui_layout`. Add at most one flow con
 | Flow | `ui_hstack`, `ui_vstack`, `ui_table`, or `ui_list` |
 | Viewport | `ui_scroll_area` |
 | Framing | `ui_panel` |
-| Content | `ui_text`, `ui_button`, `ui_input`, or `ui_checkbox` |
+| Content | `ui_icon`, `ui_text`, `ui_button`, `ui_input`, `ui_checkbox`, or `ui_color_picker` |
 | Indicator | `ui_progress` |
 | Interaction | Renderer-owned, read-only `ui_state` |
 
@@ -86,6 +86,46 @@ Positions and sizes use top-left screen pixels. Margin, padding, and inset value
 
 See the [Project File Reference](/reference/project-files/#built-in-component-sections) for every field and validation rule.
 The [Engine Component Reference](/reference/components/#ui-composition-rules) is the compact field/default inventory for every `scrapbot.ui_*` component.
+
+## Use scalable icons
+
+Declare a `scrapbot.icon_set` resource whose source is a directory of monochrome SVG files. Each filename stem becomes a stable symbol:
+
+```toml
+id = "a1000000-0000-4000-8000-000000000001"
+type = "scrapbot.icon_set"
+name = "Game Icons"
+
+[icon_set]
+source = "assets/icons"
+```
+
+Use that UUID and a symbol on a standalone icon:
+
+```toml
+[entities.ui_icon]
+icon_set = "a1000000-0000-4000-8000-000000000001"
+icon = "inventory"
+color = [0.7, 1.2, 1.8, 1]
+inset = 2
+```
+
+Buttons use the same reference and resolver:
+
+```toml
+[entities.ui_button]
+text = "PLAY"
+icon_set = "a11c0000-0000-4000-8000-000000000001"
+icon = "play"
+icon_position = "leading"
+icon_size = 18
+icon_gap = 7
+icon_inset = 2
+```
+
+The built-in catalog also contains `x`, `plus`, `caret-right`, `caret-down`, `magnifying-glass`, `pause`, `stop`, and `skip-forward`. Luau can use `scrapbot.ui.builtin_icon_set`; native Odin can use `scrapbot.ui_builtin_icon_set()`. Projects may use the built-in set, compile wholly different art, or combine both. The editor is only another consumer of this API.
+
+Scrapbot compiles supported SVG geometry into a cached 512×512 MTSDF atlas. The runtime never parses SVG, stable frames do not rebuild icon data, and reimport uploads only the changed icon-set layer. Icons are monochrome masks by design; use their HDR `color` tint for presentation.
 
 ## Make layout responsive
 

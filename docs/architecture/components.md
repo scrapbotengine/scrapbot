@@ -39,6 +39,7 @@ Lifecycle meanings:
 | `scrapbot.ui_table` | UI container | Authored | Yes | Row-major multi-column layout with reusable proportions and separators. |
 | `scrapbot.ui_list` | UI container | Authored | Yes | Styled, filtered, and virtualized selection plus generic list/tree drag, reorder, and reparent state. |
 | `scrapbot.ui_text` | UI content | Authored | Yes | MTSDF text content and style. |
+| `scrapbot.ui_icon` | UI content | Authored | Yes | UUID-backed symbolic MTSDF icon content shared by projects, controls, themes, and editor chrome. |
 | `scrapbot.ui_progress` | UI content | Authored | Yes | Reusable bounded progress visualization. |
 | `scrapbot.ui_viewport` | UI content | Authored | Yes | Interactive renderer-backed Texture, Model, Material, or World surface composited through ordinary UI paint. |
 | `scrapbot.ui_state` | UI interaction | Derived | Read-only | Renderer-owned hover/focus/activation/change/drop state and monotonic revisions. |
@@ -294,6 +295,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Membership follows structural dirty queues; value changes update the bounded active viewport set without rebuilding UI paint. Target dimensions resize only when the quantized laid-out size changes. Static Texture/Model/Material previews redraw only when component, target shape, exact resource version, or relevant registry revisions change; World targets consume the retained render list.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_viewport).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`, `render/wgpu_viewports.odin`; `ecs/ui_components_test.odin`, `ui/ui_retained_test.odin`, headless WGPU asset-preview diagnostics.
+
+### `scrapbot.ui_icon`
+
+- **Contract:** Resolves an icon-set resource UUID plus stable symbol name, applies a linear HDR tint, preserves the compiled plane aspect, and fits the result into the padded layout box with a non-negative inset.
+- **Storage/lifecycle:** Dedicated typed UI storage; authored. Icon strings are World-owned and reclaimed with the component slot.
+- **Producers:** Scene TOML, Luau/native UI APIs, editor composition, button and panel control composition.
+- **Consumers:** Retained measurement/paint, icon-set symbol lookup, the shared MTSDF texture array, and WGPU UI vertex conversion.
+- **Invalidation:** Component setters dirty only the affected UI domain. Icon-set registration/reimport advances a registry-wide monotonic revision; stable sets do not rebuild paint or upload atlas layers, while a changed entry uploads only its retained array layer.
+- **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_icon).
+- **Source/tests:** `ecs/ui_components.odin`, `resources/icons.odin`, `ui/ui.odin`, `render/wgpu.odin`; `resources/resources_test.odin`, `ui/ui_test.odin`, headless WGPU icon framegrabs.
 
 ### `scrapbot.ui_text`
 

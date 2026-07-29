@@ -56,6 +56,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_progress` | UI indicator | Track and clamped progress fill. |
 | `scrapbot.ui_viewport` | UI content | Interactive renderer-backed Texture, Model, Material, or World view. |
 | `scrapbot.ui_state` | UI interaction | Renderer-owned interaction values and edge revisions. |
+| `scrapbot.ui_icon` | UI content | UUID-backed symbolic MTSDF icon with an HDR tint. |
 | `scrapbot.ui_text` | UI content | Text label. |
 | `scrapbot.ui_button` | UI content | Activatable text and/or SDF-icon button with an optional popup target. |
 | `scrapbot.ui_input` | UI content | Single-line text or numeric input. |
@@ -288,7 +289,7 @@ Speed and smoothness must be positive; scrollbar geometry is non-negative. Desce
 | `title: string`, `font: string` | Empty by default. A collapsible panel requires a title. |
 | `title_color: Vec4`, `title_background: Vec4` | White title text and transparent background by default. |
 | `title_size: number`, `title_height: number` | `12`, `32`; both must be positive when a title is present. |
-| `disclosure_size`, `disclosure_margin`, `disclosure_gap`, `disclosure_corner_radius` | `10`, `10`, `8`, `1.35`; all non-negative. |
+| `disclosure_size`, `disclosure_margin`, `disclosure_gap`, `disclosure_inset` | `10`, `10`, `8`, `0`; all non-negative. The disclosure uses the built-in icon catalog. |
 | `collapsible: bool`, `collapsed: bool` | A collapsed panel must be collapsible. |
 
 Panels do not own a special close/remove control. Any direct child `ui_button` with `panel_action = true` is placed in the trailing title band and remains interactive while the panel is collapsed. Multiple actions lay out from right to left.
@@ -374,6 +375,19 @@ WGPU pools eight independently sized targets. Each visible viewport is quantized
 
 This component is renderer-owned and read-only. It is queryable from Luau and native systems but invalid in scene TOML, spawn payloads, and component writes.
 
+### `scrapbot.ui_icon`
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `icon_set` | Empty UUID | Required UUID of a project `scrapbot.icon_set` resource or the built-in catalog. |
+| `icon` | Empty | Required SVG filename stem/symbol name in the selected set. |
+| `color` | White | Finite, non-negative linear RGBA tint. RGB may exceed `1` for HDR UI. |
+| `inset` | `0` | Non-negative inset inside the layout's padded content box. |
+
+The renderer preserves the compiled icon plane aspect and centers it in the available rectangle. Icon resources use the same change-driven registry and MTSDF texture-array path whether they come from a project, a theme, a control, or editor chrome.
+
+The embedded catalog has UUID `a11c0000-0000-4000-8000-000000000001` and symbols `x`, `plus`, `caret-right`, `caret-down`, `magnifying-glass`, `play`, `pause`, `stop`, and `skip-forward`. Luau exposes the UUID as `scrapbot.ui.builtin_icon_set`; native Odin exposes `scrapbot.ui_builtin_icon_set()`.
+
 ### `scrapbot.ui_text`
 
 | Field | Default | Meaning |
@@ -390,8 +404,10 @@ This component is renderer-owned and read-only. It is queryable from Luau and na
 | `color`, `size`, `alignment` | White, `16`, `center` | Normal label style. |
 | `hover_background`, `active_background` | Transparent | State-specific layout background overrides. |
 | `hover_color`, `active_color` | Transparent | State-specific text colors; transparent falls back to normal color. |
-| `icon` | `none` | `none`, `close`, `plus`, `chevron_right`, or `chevron_down`; an icon-only button needs no text. |
-| `icon_inset`, `icon_stroke` | `6`, `1.5` | Non-negative SDF icon geometry. Twice the inset cannot exceed the button's layout width or height. |
+| `icon_set`, `icon` | Empty | Optional icon-set UUID plus symbol name. Text is optional when both are present. |
+| `icon_position` | `leading` | `leading` or `trailing` relative to text. |
+| `icon_size` | `0` | Icon box size in pixels; `0` derives it from the button content height. |
+| `icon_gap`, `icon_inset` | `6`, `6` | Non-negative spacing between icon/text and inset inside the icon box. |
 | `panel_action` | `false` | Place this direct child button in its parent's panel title band. |
 | `popup` | Empty UUID | Target a popup-layout root. Activation assigns this button as its anchor, toggles it, and closes another open popup in the same UI domain. |
 
