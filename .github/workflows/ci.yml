@@ -73,7 +73,19 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y ca-certificates curl git unzip xz-utils zstd build-essential clang libsdl3-dev msdf-atlas-gen
+          apt-get install -y ca-certificates curl git unzip xz-utils zstd build-essential clang cmake ninja-build pkg-config libfreetype-dev libpng-dev libsdl3-dev
+      - name: Install msdf-atlas-gen 1.4.0
+        run: |
+          git clone --filter=blob:none https://github.com/Chlumsky/msdf-atlas-gen.git /tmp/msdf-atlas-gen
+          git -C /tmp/msdf-atlas-gen checkout 2ede254314a2512252a225fa6c975948d6af559a
+          git -C /tmp/msdf-atlas-gen submodule update --init --recursive --depth 1
+          cmake -S /tmp/msdf-atlas-gen -B /tmp/msdf-atlas-gen-build -G Ninja \
+            -DMSDF_ATLAS_USE_VCPKG=OFF \
+            -DMSDF_ATLAS_USE_SKIA=OFF \
+            -DMSDF_ATLAS_NO_ARTERY_FONT=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/msdf-atlas-gen-build
+          install /tmp/msdf-atlas-gen-build/bin/msdf-atlas-gen /usr/local/bin/msdf-atlas-gen
       - uses: actions/checkout@v6
         with:
           submodules: recursive
