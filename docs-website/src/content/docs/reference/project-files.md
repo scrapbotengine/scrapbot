@@ -46,7 +46,7 @@ The legacy optional `[render]` environment fields remain accepted as a compatibi
 
 Visible windows preserve the requested aspect ratio but scale down when necessary to fit within 90% of the primary display's usable area. High-pixel-density displays may provide a larger physical-pixel framebuffer than this logical size. Headless framegrabs remain fixed at 1280×720 unless cropped.
 
-Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
+Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` 1.4.0 so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. `mise setup` validates that exact generator version. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
 
 Embedded Inter is always available as the default and runtime fallback. The current font slice supports printable ASCII only; unsupported characters render as `?`, and shaping, kerning, variable-font axes, and Unicode fallback chains are not implemented yet.
 
@@ -95,7 +95,7 @@ source = "assets/icons"
 
 `source` must be a safe project-relative directory under `assets/`. Scrapbot discovers `.svg` files recursively in deterministic path order; each filename stem becomes its symbol name. Sets support up to 256 unique monochrome symbols. The compiler normalizes supported primitives, groups, transforms, strokes, and compound paths, then writes a 512×512 linear RGBA8 MTSDF atlas plus versioned symbol metadata under `.scrapbot/imported/`.
 
-Animation, external references, filters, masks, embedded raster images, gradients, and multicolor paint are rejected with resource-specific diagnostics. A cache miss requires `msdf-atlas-gen`; the packaged runtime contains only compiled products and never parses SVG. The embedded catalog UUID is `a11c0000-0000-4000-8000-000000000001`.
+Animation, external references, filters, masks, embedded raster images, gradients, and multicolor paint are rejected with resource-specific diagnostics. Symbol paths are at most 63 ASCII bytes so every public scene, Luau, and native button transport can represent them. A cache miss requires the validated `msdf-atlas-gen` 1.4.0 tool; its exact version is part of the importer schema and changing it invalidates cached products. The packaged runtime contains only compiled products and never parses SVG. The embedded catalog UUID is `a11c0000-0000-4000-8000-000000000001`.
 
 Material resources store shared surface data and reference Texture UUIDs:
 

@@ -30,6 +30,12 @@ test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing
 	testing.expect(t, layout.background == theme.palette.accent_soft)
 	testing.expect(t, shared.ui_layout_is_valid(layout))
 	testing.expect(t, shared.ui_button_is_valid(button))
+	incomplete_icon := button
+	incomplete_icon.icon = "play"
+	testing.expect(t, !shared.ui_button_is_valid(incomplete_icon))
+	incomplete_icon = button
+	incomplete_icon.icon_set = shared.builtin_icon_set_uuid()
+	testing.expect(t, !shared.ui_button_is_valid(incomplete_icon))
 
 	parent := ui_test_id("Theme Parent")
 	custom := theme

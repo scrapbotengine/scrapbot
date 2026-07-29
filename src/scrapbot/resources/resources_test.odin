@@ -853,8 +853,27 @@ test_project_icon_set_preserves_handle_and_versions_content :: proc(t: ^testing.
 	testing.expect(t, updated_alive)
 	if updated_alive {
 		testing.expect_value(t, updated_set.version, u32(2))
+		updated_set.alive = false
+		updated_set.generation += 1
+		updated_set.version += 1
 	}
 	testing.expect(t, registry.icon_set_revision > revision)
+	replacement_id, replacement_valid := shared.resource_uuid_parse(
+		"a2000000-0000-4000-8000-000000000022",
+	)
+	testing.expect(t, replacement_valid)
+	declaration.id = replacement_id
+	replacement, replacement_err := register_project_icon_set(
+		&registry,
+		declaration,
+		desc,
+		len(pixels),
+	)
+	testing.expect_value(t, replacement_err, "")
+	testing.expect_value(t, replacement.index, handle.index)
+	testing.expect(t, replacement.generation > handle.generation)
+	_, stale_alive := get_icon_set(&registry, handle)
+	testing.expect(t, !stale_alive)
 }
 @(test)
 test_builtin_icon_set_is_registered_with_public_symbols :: proc(t: ^testing.T) {

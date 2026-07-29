@@ -29,6 +29,7 @@ UNITS_PER_EM = 1000
 GLYPH_INSET = 50
 FIRST_CODEPOINT = 0xE000
 MAX_SYMBOLS = 256
+MAX_SYMBOL_BYTES = 63
 SYMBOL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._/-]*[a-z0-9])?$")
 ALLOWED_FILLS = {"black", "#000", "#000000", "currentcolor", "rgb(0,0,0)"}
 
@@ -56,6 +57,10 @@ def discover(source: Path) -> list[tuple[str, Path]]:
             raise CompileError(
                 f"{path}: symbol '{symbol}' must use lowercase ASCII letters, "
                 "digits, '.', '_', '-', or '/'"
+            )
+        if len(symbol.encode("ascii")) > MAX_SYMBOL_BYTES:
+            raise CompileError(
+                f"{path}: symbol '{symbol}' exceeds {MAX_SYMBOL_BYTES} ASCII bytes"
             )
         icons.append((symbol, path))
     if not icons:

@@ -953,8 +953,11 @@ ui_icon_is_valid :: proc "contextless" (value: UI_Icon_Component) -> bool {
 }
 
 ui_button_is_valid :: proc "contextless" (value: UI_Button_Component) -> bool {
+	has_icon_set := value.icon_set != (Resource_UUID{})
+	has_icon_name := value.icon != ""
 	return(
-		(value.text != "" || (value.icon_set != (Resource_UUID{}) && value.icon != "")) &&
+		has_icon_set == has_icon_name &&
+		(value.text != "" || has_icon_set) &&
 		value.size > 0 &&
 		value.icon_size >= 0 &&
 		value.icon_gap >= 0 &&

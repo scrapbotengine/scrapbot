@@ -140,6 +140,22 @@ register_project_icon_set :: proc(
 	if clone_err != "" {
 		return {}, clone_err
 	}
+	for &retired, index in registry.icon_sets {
+		if retired.authored && !retired.alive {
+			generation := retired.generation + 1
+			version := retired.version + 1
+			destroy_icon_set(&retired, registry.allocator)
+			retired = icon_set
+			retired.generation = generation
+			retired.version = version
+			bump_icon_set_revision(registry)
+			return {u32(index), generation}, ""
+		}
+	}
+	if len(registry.icon_sets) >= shared.MAX_ICON_SETS {
+		destroy_icon_set(&icon_set, registry.allocator)
+		return {}, "project icon-set capacity is exhausted"
+	}
 	icon_set.generation = 1
 	icon_set.version = 1
 	append(&registry.icon_sets, icon_set)

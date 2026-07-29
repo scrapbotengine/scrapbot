@@ -28,9 +28,11 @@ groups, transforms, strokes, and compound paths into filled monochrome
 outlines before distance-field generation. Reject unsupported animation,
 external references, filters, masks, embedded raster images, gradients, and
 multicolor paint with resource- and symbol-specific diagnostics. Cache keys
-include source and dependency contents, normalized settings, compiler schema,
-and symbol ordering. Product writes are atomic and unchanged inputs reuse the
-last valid product.
+include source and dependency contents, normalized settings, the exact
+`msdf-atlas-gen` 1.4.0 contract, compiler schema, and symbol ordering. Cache
+misses reject another generator version rather than producing host-dependent
+bytes. Product writes are atomic and unchanged inputs reuse the last valid
+product.
 
 Load icon sets into a type-specific runtime registry. Authored references use
 the icon-set UUID plus symbol name; resolved runtime state uses a generational
@@ -42,7 +44,8 @@ atlas layers.
 
 Expose icons through a standalone public `scrapbot.ui_icon` ECS component.
 Layout owns its rectangle; the icon component selects an icon-set UUID, symbol,
-HDR tint, fit policy, and alignment. Buttons and future controls compose the
+HDR tint, and inset. Paint preserves the compiled plane aspect and centers it
+inside the available padded rectangle. Buttons and future controls compose the
 same icon reference and resolver rather than owning an icon enum or private
 paint implementation.
 

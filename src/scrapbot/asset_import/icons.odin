@@ -9,7 +9,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 
-ICON_SET_IMPORTER_SCHEMA :: "scrapbot.icon-set.v2.mtsdf-512-96-8"
+ICON_SET_IMPORTER_SCHEMA :: "scrapbot.icon-set.v3.msdf-atlas-gen-1.4.0.mtsdf-512-96-8"
 ICON_SET_ATLAS_SIZE :: 512
 ICON_SET_EM_SIZE :: 96
 ICON_SET_DISTANCE_RANGE :: 8
@@ -334,6 +334,9 @@ compile_icon_set_product :: proc(
 	if msdf_compiler == "" {
 		msdf_compiler = "msdf-atlas-gen"
 	}
+	if version_err := validate_icon_msdf_compiler(msdf_compiler); version_err != "" {
+		return {}, version_err
+	}
 	if process_err := run_icon_process(
 		[]string {
 			msdf_compiler,
@@ -448,6 +451,28 @@ run_icon_process :: proc(command: []string, stage: string) -> string {
 		output = fmt.tprintf("exit code %d", state.exit_code)
 	}
 	return fmt.tprintf("icon-set %s failed: %s", stage, output)
+}
+
+validate_icon_msdf_compiler :: proc(compiler: string) -> string {
+	state, stdout, stderr, exec_err := os.process_exec(
+		os.Process_Desc{command = []string{compiler, "-version"}},
+		context.allocator,
+	)
+	defer delete(stdout)
+	defer delete(stderr)
+	if exec_err != nil {
+		return(
+			"icon-set MTSDF generation tool is unavailable; run 'mise setup' or set SCRAPBOT_MSDF_ATLAS_GEN" \
+		)
+	}
+	version := strings.trim_space(string(stdout))
+	if version == "" {
+		version = strings.trim_space(string(stderr))
+	}
+	if !state.success || !strings.has_prefix(version, "MSDF-Atlas-Gen v1.4.0") {
+		return fmt.tprintf("icon-set compilation requires msdf-atlas-gen 1.4.0; found %q", version)
+	}
+	return ""
 }
 
 icon_atlas_glyph :: proc(glyphs: []Icon_Atlas_Glyph, codepoint: int) -> (Icon_Atlas_Glyph, bool) {

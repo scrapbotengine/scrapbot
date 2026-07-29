@@ -49,7 +49,7 @@ git config --local core.hooksPath .githooks
 '''
 
 [tasks.icon-tools]
-description = "Install the pinned SVG icon compiler environment when stale"
+description = "Install the pinned SVG normalizer and validate msdf-atlas-gen 1.4.0"
 sources = [
   "tools/compile_icon_set.py",
   "tools/icon_compiler_requirements.txt",
@@ -67,6 +67,18 @@ python -m venv "$ICON_ENV"
 touch "$ICON_ENV/.scrapbot-ready"
 mkdir -p bin
 ln -sfn ../tools/scrapbot-iconc bin/scrapbot-iconc
+MSDF_ATLAS_GEN="${SCRAPBOT_MSDF_ATLAS_GEN:-msdf-atlas-gen}"
+if ! command -v "$MSDF_ATLAS_GEN" >/dev/null 2>&1; then
+  echo "msdf-atlas-gen 1.4.0 is required; install it or set SCRAPBOT_MSDF_ATLAS_GEN" >&2
+  exit 1
+fi
+case "$("$MSDF_ATLAS_GEN" -version 2>&1 | head -n 1)" in
+  "MSDF-Atlas-Gen v1.4.0") ;;
+  *)
+    echo "msdf-atlas-gen 1.4.0 is required" >&2
+    exit 1
+    ;;
+esac
 '''
 
 [tasks.builtin-icons]

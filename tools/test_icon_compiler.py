@@ -75,6 +75,15 @@ def main() -> int:
         rejected_result = run(source, rejected)
         assert rejected_result.returncode != 0
         assert "unsupported SVG feature" in rejected_result.stderr
+
+        (source / ("x" * 64 + ".svg")).write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+            '<path d="M0 0H24V24H0Z"/></svg>',
+            encoding="utf-8",
+        )
+        oversized_result = run(source, rejected)
+        assert oversized_result.returncode != 0
+        assert "exceeds 63 ASCII bytes" in oversized_result.stderr
     return 0
 
 
