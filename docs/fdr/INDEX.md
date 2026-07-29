@@ -10,7 +10,7 @@
 | [FDR-006](FDR-006-native-extensions.md) | Native extensions | Active | 2026-07-16 |
 | [FDR-007](FDR-007-ecs-ui.md) | ECS UI | Active | 2026-07-28 |
 | [FDR-008](FDR-008-editor-shell.md) | Editor shell | Active | 2026-07-28 |
-| [FDR-009](FDR-009-project-resources.md) | Project resources | Active | 2026-07-17 |
+| [FDR-009](FDR-009-project-resources.md) | Project resources | Active | 2026-07-29 |
 | [FDR-010](FDR-010-runtime-input.md) | Runtime input | Active | 2026-07-21 |
-| [FDR-011](FDR-011-asset-imports.md) | Asset imports | In Progress | 2026-07-22 |
+| [FDR-011](FDR-011-asset-imports.md) | Asset imports | In Progress | 2026-07-29 |
 | [FDR-012](FDR-012-render-profiling.md) | Render profiling | Active | 2026-07-24 |
