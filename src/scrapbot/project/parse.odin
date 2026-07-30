@@ -1145,6 +1145,8 @@ parse_scene :: proc(
 						}
 					case "debug_hiz_mip":
 						current.camera.debug_hiz_mip, found = parse_f32(value)
+					case "debug_occlusion_freeze":
+						current.camera.debug_occlusion_freeze, found = parse_bool(value)
 					case "resolution_scale":
 						current.camera.resolution_scale, found = parse_f32(value)
 					case "dynamic_resolution":

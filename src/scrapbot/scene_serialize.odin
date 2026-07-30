@@ -72,6 +72,11 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		)
 		write_scene_value(
 			builder,
+			"debug_occlusion_freeze",
+			scene_bool(entity.camera.debug_occlusion_freeze),
+		)
+		write_scene_value(
+			builder,
 			"resolution_scale",
 			scene_f32(shared.camera_resolution_scale(entity.camera)),
 		)

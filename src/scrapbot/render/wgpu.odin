@@ -327,8 +327,10 @@ WGPU_GPU_Cull_Uniform :: struct {
 	meshlet_enabled: u32,
 	meshlet_shadow_visible_stride: u32,
 	meshlet_debug_record_offset: u32,
+	debug_view: u32,
+	_padding: [3]u32,
 }
-#assert(size_of(WGPU_GPU_Cull_Uniform) == 672)
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 688)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -349,12 +351,14 @@ WGPU_Draw_Indirect :: struct {
 
 WGPU_GPU_Meshlet_Debug_Record :: struct {
 	bounds: [4]f32,
+	query_rect: [4]f32,
+	query_depths: [4]f32,
 	classification: u32,
 	lod_level: u32,
 	meshlet_identity: u32,
 	_padding: u32,
 }
-#assert(size_of(WGPU_GPU_Meshlet_Debug_Record) == 32)
+#assert(size_of(WGPU_GPU_Meshlet_Debug_Record) == 64)
 
 WGPU_GPU_Batch_Info :: struct {
 	visible_offset: u32,
@@ -647,6 +651,7 @@ WGPU_Renderer :: struct {
 	gpu_hiz_mip_count: int,
 	gpu_hiz_valid: bool,
 	gpu_hiz_occlusion_enabled: bool,
+	gpu_hiz_occlusion_status: shared.HiZ_Occlusion_Status,
 	gpu_hiz_requested: bool,
 	gpu_previous_view_projection: Mat4,
 	gpu_current_view_projection: Mat4,
@@ -663,6 +668,8 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_visible_buffer: wgpu.Buffer,
 	gpu_meshlet_identity_buffer: wgpu.Buffer,
 	gpu_meshlet_debug_indirect_buffer: wgpu.Buffer,
+	gpu_occlusion_debug_evidence_valid: bool,
+	gpu_occlusion_debug_record_count: u32,
 	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_buffer: wgpu.Buffer,
@@ -894,6 +901,10 @@ wgpu_apply_render_debug_override :: proc(render_list: ^Render_List, ui_state: ^u
 	)
 	render_list.camera.camera.debug_hiz_mip = f32(
 		ui.effective_render_debug_hiz_mip(ui_state, render_list.camera.camera),
+	)
+	render_list.camera.camera.debug_occlusion_freeze = ui.effective_render_debug_occlusion_freeze(
+		ui_state,
+		render_list.camera.camera,
 	)
 }
 
@@ -3085,6 +3096,7 @@ wgpu_draw_frame :: proc(
 	}
 	if config.cpu_culling {
 		renderer.gpu_hiz_occlusion_enabled = false
+		renderer.gpu_hiz_occlusion_status = .Unavailable
 		renderer.gpu_hiz_requested = false
 		wgpu_prepare_cpu_culling(
 			renderer,
@@ -3338,6 +3350,7 @@ wgpu_render_offscreen_frame :: proc(
 	}
 	if config.cpu_culling {
 		renderer.gpu_hiz_occlusion_enabled = false
+		renderer.gpu_hiz_occlusion_status = .Unavailable
 		renderer.gpu_hiz_requested = false
 		wgpu_prepare_cpu_culling(
 			renderer,

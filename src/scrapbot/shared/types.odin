@@ -316,6 +316,16 @@ Render_Debug_View :: enum u32 {
 	LOD,
 	Meshlet_Visibility,
 	HiZ,
+	Occlusion_Queries,
+}
+
+HiZ_Occlusion_Status :: enum u32 {
+	Unavailable,
+	Below_Threshold,
+	Scene_Changed,
+	Camera_Changed,
+	Warming_Up,
+	Active,
 }
 
 Camera_Component :: struct {
@@ -324,6 +334,7 @@ Camera_Component :: struct {
 	far: f32,
 	debug_view: Render_Debug_View,
 	debug_hiz_mip: f32,
+	debug_occlusion_freeze: bool,
 	resolution_scale: f32,
 	dynamic_resolution: bool,
 	dynamic_resolution_min_scale: f32,
@@ -1477,6 +1488,9 @@ Performance_Diagnostics :: struct {
 	frustum_culled_instances: u32,
 	visible_instances: u32,
 	occlusion_culled_instances: u32,
+	occlusion_culled_meshlets: u32,
+	hiz_occlusion_status: HiZ_Occlusion_Status,
+	hiz_instance_threshold: int,
 	sample_frames: int,
 	revision: u64,
 }
@@ -1496,6 +1510,7 @@ Editor_UI_Role :: enum {
 	Debug_HiZ_Mip_Decrease,
 	Debug_HiZ_Mip_Label,
 	Debug_HiZ_Mip_Increase,
+	Debug_Occlusion_Freeze,
 	Transport_Play,
 	Transport_Pause,
 	Transport_Stop,

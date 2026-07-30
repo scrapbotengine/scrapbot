@@ -59,6 +59,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	camera.far = 100
 	camera.debug_view = .World_Normals
 	camera.debug_hiz_mip = 4
+	camera.debug_occlusion_freeze = true
 	camera.exposure = 1.5
 	camera.automatic_exposure = true
 	camera.dynamic_resolution = true
@@ -85,6 +86,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	testing.expect(t, strings.contains(serialized, "exposure = 1.5"))
 	testing.expect(t, strings.contains(serialized, `debug_view = "world_normals"`))
 	testing.expect(t, strings.contains(serialized, "debug_hiz_mip = 4"))
+	testing.expect(t, strings.contains(serialized, "debug_occlusion_freeze = true"))
 	testing.expect(t, strings.contains(serialized, "automatic_exposure = true"))
 	testing.expect(t, strings.contains(serialized, "dynamic_resolution = true"))
 	testing.expect(t, strings.contains(serialized, "dynamic_resolution_min_scale = 0.65"))

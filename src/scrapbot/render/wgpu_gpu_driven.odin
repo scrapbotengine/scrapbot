@@ -13,6 +13,9 @@ WGPU_INITIAL_MESHLET_DRAW_CAPACITY :: 256
 WGPU_INITIAL_MESHLET_VISIBLE_CAPACITY :: 4096
 WGPU_MAX_MESHLET_VISIBLE_ENTRIES :: 1_048_576
 WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT :: u32(144)
+WGPU_OCCLUSION_DEBUG_RECT_VERTEX_COUNT :: u32(8)
+WGPU_MESHLET_DEBUG_VERTEX_COUNT ::
+	WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT + WGPU_OCCLUSION_DEBUG_RECT_VERTEX_COUNT
 
 wgpu_meshlet_visible_buffer_bytes :: proc "contextless" (capacity: int) -> u64 {
 	return u64(capacity) * (u64(size_of(u32)) + u64(size_of(WGPU_GPU_Meshlet_Debug_Record)))
@@ -22,13 +25,21 @@ wgpu_meshlet_debug_record_offset :: proc "contextless" (
 	camera: shared.Camera_Component,
 	meshlet_submission_active: bool,
 	visible_capacity: int,
+	occlusion_evidence_valid: bool,
 ) -> u32 {
-	if camera.debug_view != .Meshlet_Visibility ||
-	   !meshlet_submission_active ||
-	   visible_capacity <= 0 {
+	if !meshlet_submission_active || visible_capacity <= 0 {
 		return 0
 	}
-	return u32(visible_capacity)
+	#partial switch camera.debug_view {
+		case .Meshlet_Visibility:
+			return u32(visible_capacity)
+		case .Occlusion_Queries:
+			if !camera.debug_occlusion_freeze || !occlusion_evidence_valid {
+				return u32(visible_capacity)
+			}
+		case:
+	}
+	return 0
 }
 
 wgpu_expand_meshlet_indices :: proc(
@@ -2353,6 +2364,26 @@ wgpu_hiz_build_requested :: proc(slot_count: int, instance_data_changed: bool) -
 	return slot_count >= WGPU_HIZ_MIN_INSTANCES && !instance_data_changed
 }
 
+wgpu_hiz_occlusion_status :: proc(
+	forced, valid, instance_data_changed: bool,
+	slot_count: int,
+	previous_view_projection, current_view_projection: Mat4,
+) -> shared.HiZ_Occlusion_Status {
+	if !forced && slot_count < WGPU_HIZ_MIN_INSTANCES {
+		return .Below_Threshold
+	}
+	if instance_data_changed {
+		return .Scene_Changed
+	}
+	if !valid {
+		return .Warming_Up
+	}
+	if previous_view_projection != current_view_projection {
+		return .Camera_Changed
+	}
+	return .Active
+}
+
 wgpu_hiz_sphere_projection_safe :: proc(bounds: [4]f32, camera_position: Vec3) -> bool {
 	offset := Vec3 {
 		bounds[0] - camera_position.x,
@@ -2576,11 +2607,15 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	if render_list.has_camera {
 		camera = render_list.camera.camera
 	}
+	if camera.debug_view != .Occlusion_Queries {
+		renderer.gpu_occlusion_debug_evidence_valid = false
+		renderer.gpu_occlusion_debug_record_count = 0
+	}
 	uniform.debug = {
 		u32(camera.debug_view),
 		1 if renderer.gpu_meshlet_submission_active else 0,
 		min(shared.camera_debug_hiz_mip(camera), u32(max(renderer.gpu_hiz_mip_count - 1, 0))),
-		0,
+		1 if camera.debug_occlusion_freeze else 0,
 	}
 	uniform.camera_clip = {camera.near, camera.far, 0, 0}
 	uniform.ambient = {render_list.ambient.x, render_list.ambient.y, render_list.ambient.z, 1}
@@ -2796,8 +2831,17 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	wgpu_upload_dirty_instance_ranges(renderer, renderer.gpu_dirty_indices[:])
 	wgpu_upload_transform_updates(renderer)
 	renderer.gpu_slot_count = slot_count
+	hiz_forced := camera.debug_view == .HiZ || camera.debug_view == .Occlusion_Queries
 	renderer.gpu_hiz_requested =
-		camera.debug_view == .HiZ || wgpu_hiz_build_requested(slot_count, instance_data_changed)
+		hiz_forced || wgpu_hiz_build_requested(slot_count, instance_data_changed)
+	renderer.gpu_hiz_occlusion_status = wgpu_hiz_occlusion_status(
+		hiz_forced,
+		renderer.gpu_hiz_valid,
+		instance_data_changed,
+		slot_count,
+		renderer.gpu_previous_view_projection,
+		view_projection,
+	)
 	hiz_reusable := wgpu_hiz_reuse_allowed(
 		renderer.gpu_hiz_requested,
 		renderer.gpu_hiz_valid,
@@ -2824,7 +2868,9 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			camera,
 			renderer.gpu_meshlet_submission_active,
 			renderer.gpu_meshlet_visible_buffer_capacity,
+			renderer.gpu_occlusion_debug_evidence_valid,
 		),
+		debug_view = u32(camera.debug_view),
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.shadow_planes[cascade_index] = wgpu_extract_frustum_planes(
@@ -2886,10 +2932,14 @@ wgpu_encode_gpu_culling :: proc(
 		renderer.gpu_visibility_counters = {}
 		return ""
 	}
-	if renderer.gpu_render_uniform.debug.x == u32(shared.Render_Debug_View.Meshlet_Visibility) &&
-	   renderer.gpu_meshlet_submission_active {
+	debug_view := shared.Render_Debug_View(renderer.gpu_render_uniform.debug.x)
+	capture_debug_evidence :=
+		(debug_view == .Meshlet_Visibility || debug_view == .Occlusion_Queries) &&
+		renderer.gpu_meshlet_submission_active &&
+		renderer.gpu_cull_uniform.meshlet_debug_record_offset > 0
+	if capture_debug_evidence {
 		debug_draw := WGPU_Draw_Indirect {
-			vertex_count = WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT,
+			vertex_count = WGPU_MESHLET_DEBUG_VERTEX_COUNT,
 		}
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
@@ -2976,8 +3026,7 @@ wgpu_encode_gpu_culling :: proc(
 	workgroups := u32((renderer.gpu_slot_count + 63) / 64)
 	wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, WGPU_SHADOW_CASCADE_COUNT, 1)
 	wgpu.ComputePassEncoderEnd(pass)
-	if renderer.gpu_render_uniform.debug.x == u32(shared.Render_Debug_View.Meshlet_Visibility) &&
-	   renderer.gpu_meshlet_submission_active {
+	if capture_debug_evidence {
 		wgpu.CommandEncoderCopyBufferToBuffer(
 			encoder,
 			renderer.gpu_visibility_counter_buffer,
@@ -2986,6 +3035,9 @@ wgpu_encode_gpu_culling :: proc(
 			u64(offset_of(WGPU_Draw_Indirect, instance_count)),
 			u64(size_of(u32)),
 		)
+		if debug_view == .Occlusion_Queries {
+			renderer.gpu_occlusion_debug_evidence_valid = true
+		}
 	}
 	return ""
 }
@@ -2995,9 +3047,14 @@ wgpu_encode_meshlet_debug_overlay :: proc(
 	encoder: wgpu.CommandEncoder,
 	viewport: ui.Rect,
 ) -> string {
-	if renderer == nil ||
-	   renderer.gpu_render_uniform.debug.x != u32(shared.Render_Debug_View.Meshlet_Visibility) ||
-	   !renderer.gpu_meshlet_submission_active {
+	if renderer == nil || !renderer.gpu_meshlet_submission_active {
+		return ""
+	}
+	debug_view := shared.Render_Debug_View(renderer.gpu_render_uniform.debug.x)
+	if debug_view != .Meshlet_Visibility && debug_view != .Occlusion_Queries {
+		return ""
+	}
+	if debug_view == .Occlusion_Queries && !renderer.gpu_occlusion_debug_evidence_valid {
 		return ""
 	}
 	attachment := wgpu.RenderPassColorAttachment {

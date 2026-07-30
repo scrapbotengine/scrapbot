@@ -24,6 +24,8 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "meshlet_visibility"
 		case .HiZ:
 			return "hiz"
+		case .Occlusion_Queries:
+			return "occlusion_queries"
 	}
 	return "lit"
 }
@@ -50,6 +52,8 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .Meshlet_Visibility, true
 		case "hiz":
 			return .HiZ, true
+		case "occlusion_queries":
+			return .Occlusion_Queries, true
 	}
 	return .Lit, false
 }
@@ -85,6 +89,7 @@ camera_copy_render_features :: proc "contextless" (
 	destination.resolution_scale = source.resolution_scale
 	destination.debug_view = source.debug_view
 	destination.debug_hiz_mip = source.debug_hiz_mip
+	destination.debug_occlusion_freeze = source.debug_occlusion_freeze
 	destination.dynamic_resolution = source.dynamic_resolution
 	destination.dynamic_resolution_min_scale = source.dynamic_resolution_min_scale
 	destination.dynamic_resolution_target_ms = source.dynamic_resolution_target_ms
@@ -107,6 +112,23 @@ camera_debug_hiz_mip :: proc "contextless" (camera: Camera_Component) -> u32 {
 		return 0
 	}
 	return u32(math.floor(clamp(camera.debug_hiz_mip, 0, 15)))
+}
+
+hiz_occlusion_status_name :: proc "contextless" (status: HiZ_Occlusion_Status) -> string {
+	switch status {
+		case .Below_Threshold:
+			return "BELOW THRESHOLD"
+		case .Scene_Changed:
+			return "SCENE CHANGED"
+		case .Camera_Changed:
+			return "CAMERA MOVED"
+		case .Warming_Up:
+			return "WARMING UP"
+		case .Active:
+			return "ACTIVE"
+		case .Unavailable:
+	}
+	return "UNAVAILABLE"
 }
 
 camera_resolution_scale :: proc "contextless" (camera: Camera_Component) -> f32 {

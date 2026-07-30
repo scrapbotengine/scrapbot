@@ -56,6 +56,9 @@ wgpu_visibility_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 		)
 		if mapped != nil {
 			renderer.gpu_visibility_counters = mapped^
+			if renderer.gpu_occlusion_debug_evidence_valid && mapped.meshlet_debug_records > 0 {
+				renderer.gpu_occlusion_debug_record_count = mapped.meshlet_debug_records
+			}
 		}
 		wgpu.BufferUnmap(readback.buffer)
 	}
@@ -146,4 +149,7 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.cone_culled_meshlets = renderer.gpu_visibility_counters.cone_culled_meshlets
 	stats.occlusion_culled_meshlets = renderer.gpu_visibility_counters.occlusion_culled_meshlets
 	stats.meshlet_debug_records = renderer.gpu_visibility_counters.meshlet_debug_records
+	if renderer.gpu_occlusion_debug_evidence_valid && stats.meshlet_debug_records == 0 {
+		stats.meshlet_debug_records = renderer.gpu_occlusion_debug_record_count
+	}
 }

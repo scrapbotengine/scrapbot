@@ -4378,8 +4378,14 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		int(shared.Render_Debug_View.Meshlet_Visibility),
 	)
 	hiz, hiz_found := editor_ui_entity(&world, .Debug_View_Item, int(shared.Render_Debug_View.HiZ))
+	occlusion, occlusion_found := editor_ui_entity(
+		&world,
+		.Debug_View_Item,
+		int(shared.Render_Debug_View.Occlusion_Queries),
+	)
 	hiz_increase, hiz_increase_found := editor_ui_entity(&world, .Debug_HiZ_Mip_Increase)
 	hiz_label, hiz_label_found := editor_ui_entity(&world, .Debug_HiZ_Mip_Label)
+	freeze, freeze_found := editor_ui_entity(&world, .Debug_Occlusion_Freeze)
 	camera_item, camera_item_found := editor_ui_entity(&world, .Debug_View_Item, -1)
 	testing.expect(
 		t,
@@ -4388,8 +4394,10 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		meshlets_found &&
 		visibility_found &&
 		hiz_found &&
+		occlusion_found &&
 		hiz_increase_found &&
 		hiz_label_found &&
+		freeze_found &&
 		camera_item_found,
 	)
 	if !button_found ||
@@ -4397,8 +4405,10 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	   !meshlets_found ||
 	   !visibility_found ||
 	   !hiz_found ||
+	   !occlusion_found ||
 	   !hiz_increase_found ||
 	   !hiz_label_found ||
+	   !freeze_found ||
 	   !camera_item_found {
 		return
 	}
@@ -4413,8 +4423,10 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	project_camera := world.cameras[0]
 	project_camera.debug_view = .Depth
 	project_camera.debug_hiz_mip = 3
+	project_camera.debug_occlusion_freeze = true
 	testing.expect(t, effective_render_debug_view(state, project_camera) == .Depth)
 	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(3))
+	testing.expect(t, effective_render_debug_occlusion_freeze(state, project_camera))
 
 	editor_ui_handle_activation(state, &world, world.entities[meshlets].id, {})
 	testing.expect(t, state.editor_render_debug_view_override)
@@ -4443,11 +4455,26 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(2))
 	testing.expect_value(t, world.ui_texts[world.entities[hiz_label].ui_text_index].text, "MIP 2")
 
+	editor_ui_handle_activation(state, &world, world.entities[occlusion].id, {})
+	testing.expect(t, state.editor_render_debug_view == .Occlusion_Queries)
+	testing.expect(t, world.ui_layouts[world.entities[hiz_label].ui_layout_index].hidden)
+	testing.expect(t, !world.ui_layouts[world.entities[freeze].ui_layout_index].hidden)
+	testing.expect(t, !effective_render_debug_occlusion_freeze(state, project_camera))
+	editor_ui_handle_activation(state, &world, world.entities[freeze].id, {})
+	testing.expect(t, effective_render_debug_occlusion_freeze(state, project_camera))
+	testing.expect_value(
+		t,
+		world.ui_buttons[world.entities[freeze].ui_button_index].text,
+		"FROZEN",
+	)
+
 	editor_ui_handle_activation(state, &world, world.entities[camera_item].id, {})
 	testing.expect(t, !state.editor_render_debug_view_override)
 	testing.expect(t, effective_render_debug_view(state, project_camera) == .Depth)
 	testing.expect(t, world.ui_layouts[world.entities[hiz_label].ui_layout_index].hidden)
+	testing.expect(t, world.ui_layouts[world.entities[freeze].ui_layout_index].hidden)
 	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(3))
+	testing.expect(t, effective_render_debug_occlusion_freeze(state, project_camera))
 }
 
 @(test)
@@ -6602,6 +6629,13 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	shadow_definition, _ := component.find_definition(&registry, "scrapbot.shadow_caster")
 	button_definition, _ := component.find_definition(&registry, "scrapbot.ui_button")
 	layout_definition, _ := component.find_definition(&registry, "scrapbot.ui_layout")
+	camera_exposure_field := -1
+	for field, index in camera_definition.fields[:camera_definition.field_count] {
+		if field.name == "exposure" {
+			camera_exposure_field = index
+			break
+		}
+	}
 	layout_hidden_field := -1
 	for field, index in layout_definition.fields[:layout_definition.field_count] {
 		if field.name == "hidden" {
@@ -6752,7 +6786,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 					shadow_field_control_count += 1
 				}
 				if component.reflected_component_id == camera_definition.id &&
-				   component.reflected_field_index == 7 {
+				   component.reflected_field_index == camera_exposure_field {
 					exposure_input = component.entity_index
 				}
 				if component.reflected_component_id == transform_definition.id &&
@@ -6786,7 +6820,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, checkbox_count >= 2)
 	testing.expect(t, found_bound_checkbox)
-	testing.expect(t, camera_definition.field_count == 21)
+	testing.expect(t, camera_definition.field_count == 22)
+	testing.expect(t, camera_exposure_field >= 0)
 	testing.expect(t, camera_input_count == 13)
 	testing.expect(t, found_transform && found_button && found_shadow)
 	testing.expect(t, shadow_field_control_count == 0)
@@ -8559,6 +8594,9 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		draw_batches = 7,
 		frustum_culled_instances = 9,
 		occlusion_culled_instances = 13,
+		occlusion_culled_meshlets = 17,
+		hiz_occlusion_status = .Active,
+		hiz_instance_threshold = 256,
 		sample_frames = 50,
 		revision = 1,
 	}
@@ -8584,7 +8622,18 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_table_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
 	}
-	expected_values := [8]string{"59.9", "16.69 ms", "2.25 ms", "75%", "42", "7", "9", "13"}
+	expected_values := [10]string {
+		"59.9",
+		"16.69 ms",
+		"2.25 ms",
+		"75%",
+		"42",
+		"7",
+		"ACTIVE",
+		"9",
+		"13",
+		"17",
+	}
 	for expected, slot in expected_values {
 		cell, found := editor_ui_entity(&world, .Diagnostics_Value, slot)
 		testing.expect(t, found)

@@ -11,7 +11,8 @@
     {"action": "wait", "frames": 8},
     {"action": "expect", "target": {"text": "DRAW BATCHES", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "FRUSTUM CULLED", "origin": "editor"}, "expect": "visible"},
-    {"action": "expect", "target": {"text": "OCCLUSION CULLED", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "OBJECT OCCLUSION", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "MESHLET OCCLUSION", "origin": "editor"}, "expect": "visible"},
     {"action": "capture", "target": {"name": "__scrapbot_editor_diagnostics", "origin": "editor"}, "padding": 4}
   ]
 }

@@ -696,6 +696,9 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 		frustum_culled_instances = 4,
 		visible_instances = 8,
 		occlusion_culled_instances = 3,
+		occlusion_culled_meshlets = 5,
+		hiz_occlusion_status = .Active,
+		hiz_instance_threshold = WGPU_HIZ_MIN_INSTANCES,
 	}
 	accumulator: Performance_Diagnostics_Accumulator
 	for index in 0 ..< PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES {
@@ -719,6 +722,9 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, snapshot.frustum_culled_instances == 4)
 	testing.expect(t, snapshot.visible_instances == 8)
 	testing.expect(t, snapshot.occlusion_culled_instances == 3)
+	testing.expect(t, snapshot.occlusion_culled_meshlets == 5)
+	testing.expect(t, snapshot.hiz_occlusion_status == .Active)
+	testing.expect(t, snapshot.hiz_instance_threshold == WGPU_HIZ_MIN_INSTANCES)
 	ecs.despawn_entity(&world, runtime_index, world.entities[runtime_index].id.generation)
 	for _ in 0 ..< PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES {
 		performance_diagnostics_commit_frame(&accumulator, &stats, &world, 0.02, 0.006)
@@ -1284,6 +1290,73 @@ test_wgpu_hiz_build_waits_for_stable_instance_data :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_hiz_status_explains_every_reuse_gate :: proc(t: ^testing.T) {
+	view_projection := mat4_identity()
+	moved_camera := view_projection
+	moved_camera[12] = 1
+	testing.expect(
+		t,
+		wgpu_hiz_occlusion_status(
+			false,
+			true,
+			false,
+			WGPU_HIZ_MIN_INSTANCES - 1,
+			view_projection,
+			view_projection,
+		) ==
+		.Below_Threshold,
+	)
+	testing.expect(
+		t,
+		wgpu_hiz_occlusion_status(
+			true,
+			true,
+			true,
+			WGPU_HIZ_MIN_INSTANCES,
+			view_projection,
+			view_projection,
+		) ==
+		.Scene_Changed,
+	)
+	testing.expect(
+		t,
+		wgpu_hiz_occlusion_status(
+			true,
+			false,
+			false,
+			WGPU_HIZ_MIN_INSTANCES,
+			view_projection,
+			view_projection,
+		) ==
+		.Warming_Up,
+	)
+	testing.expect(
+		t,
+		wgpu_hiz_occlusion_status(
+			true,
+			true,
+			false,
+			WGPU_HIZ_MIN_INSTANCES,
+			view_projection,
+			moved_camera,
+		) ==
+		.Camera_Changed,
+	)
+	testing.expect(
+		t,
+		wgpu_hiz_occlusion_status(
+			true,
+			true,
+			false,
+			WGPU_HIZ_MIN_INSTANCES,
+			view_projection,
+			view_projection,
+		) ==
+		.Active,
+	)
+}
+
+@(test)
 test_wgpu_hiz_rejects_unsafe_large_sphere_projections :: proc(t: ^testing.T) {
 	camera := Vec3{0, 3.9, 14}
 	testing.expect(t, !wgpu_hiz_sphere_projection_safe({0, 8.35, -19, 23.38}, camera))
@@ -1525,10 +1598,15 @@ test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing
 	testing.expect(t, !ok)
 
 	camera := shared.camera_defaults()
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096), u32(0))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(0))
 	camera.debug_view = .Meshlet_Visibility
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, false, 4096), u32(0))
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096), u32(4096))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, false, 4096, false), u32(0))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(4096))
+	camera.debug_view = .Occlusion_Queries
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(4096))
+	camera.debug_occlusion_freeze = true
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(4096))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, true), u32(0))
 }
 
 @(test)

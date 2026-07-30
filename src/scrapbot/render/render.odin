@@ -90,6 +90,8 @@ Render_Stats :: struct {
 	gpu_depth_ms: f64,
 	gpu_hiz_ms: f64,
 	hiz_occlusion: bool,
+	hiz_occlusion_status: shared.HiZ_Occlusion_Status,
+	hiz_instance_threshold: int,
 	hiz_valid: bool,
 	hiz_mip_count: int,
 	visible_instances: u32,
@@ -460,6 +462,9 @@ performance_diagnostics_commit_frame :: proc(
 	snapshot.frustum_culled_instances = stats.frustum_culled_instances
 	snapshot.visible_instances = stats.visible_instances
 	snapshot.occlusion_culled_instances = stats.occlusion_culled_instances
+	snapshot.occlusion_culled_meshlets = stats.occlusion_culled_meshlets
+	snapshot.hiz_occlusion_status = stats.hiz_occlusion_status
+	snapshot.hiz_instance_threshold = stats.hiz_instance_threshold
 	snapshot.sample_frames = accumulator.sample_count
 	snapshot.revision += 1
 	accumulator.frames_since_publish = 0

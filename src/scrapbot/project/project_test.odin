@@ -749,8 +749,9 @@ id = "a6000000-0000-4000-8000-000000000093"
 name = "Camera"
 
 [entities.camera]
-debug_view = "hiz"
+debug_view = "occlusion_queries"
 debug_hiz_mip = 5
+debug_occlusion_freeze = true
 resolution_scale = 0.75
 dynamic_resolution = true
 dynamic_resolution_min_scale = 0.6
@@ -770,8 +771,9 @@ bloom = false
 	)
 	defer destroy_scene(&configured)
 	testing.expect(t, configured_result.err == .None)
-	testing.expect(t, configured.entities[0].camera.debug_view == .HiZ)
+	testing.expect(t, configured.entities[0].camera.debug_view == .Occlusion_Queries)
 	testing.expect_value(t, configured.entities[0].camera.debug_hiz_mip, f32(5))
+	testing.expect(t, configured.entities[0].camera.debug_occlusion_freeze)
 	testing.expect_value(t, configured.entities[0].camera.resolution_scale, f32(0.75))
 	testing.expect(t, configured.entities[0].camera.dynamic_resolution)
 	testing.expect_value(t, configured.entities[0].camera.dynamic_resolution_min_scale, f32(0.6))

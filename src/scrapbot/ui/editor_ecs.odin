@@ -41,6 +41,7 @@ EDITOR_UI_DEBUG_VIEW_MENU_CONTENT_NAME :: "__scrapbot_editor_debug_view_menu_con
 EDITOR_UI_DEBUG_HIZ_MIP_DECREASE_NAME :: "__scrapbot_editor_debug_hiz_mip_decrease"
 EDITOR_UI_DEBUG_HIZ_MIP_LABEL_NAME :: "__scrapbot_editor_debug_hiz_mip_label"
 EDITOR_UI_DEBUG_HIZ_MIP_INCREASE_NAME :: "__scrapbot_editor_debug_hiz_mip_increase"
+EDITOR_UI_DEBUG_OCCLUSION_FREEZE_NAME :: "__scrapbot_editor_debug_occlusion_freeze"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
 EDITOR_UI_RIGHT_DOCK_ITEM_NAME :: "__scrapbot_editor_right_dock_item"
 EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
@@ -208,7 +209,7 @@ editor_ui_handle_activation :: proc(
 				case .Debug_View_Item:
 					if binding.slot < 0 {
 						state.editor_render_debug_view_override = false
-					} else if binding.slot <= int(shared.Render_Debug_View.HiZ) {
+					} else if binding.slot <= int(shared.Render_Debug_View.Occlusion_Queries) {
 						state.editor_render_debug_view_override = true
 						state.editor_render_debug_view = shared.Render_Debug_View(binding.slot)
 					}
@@ -225,6 +226,10 @@ editor_ui_handle_activation :: proc(
 						state.editor_render_debug_hiz_mip + 1,
 						15,
 					)
+					editor_ui_update_debug_view_button(state, world)
+					return
+				case .Debug_Occlusion_Freeze:
+					state.editor_render_debug_occlusion_frozen = !state.editor_render_debug_occlusion_frozen
 					editor_ui_update_debug_view_button(state, world)
 					return
 				case .Entity_Create:
@@ -1307,8 +1312,10 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"RENDER SCALE",
 		"ENTITIES",
 		"DRAW BATCHES",
+		"HI-Z CULLING",
 		"FRUSTUM CULLED",
-		"OCCLUSION CULLED",
+		"OBJECT OCCLUSION",
+		"MESHLET OCCLUSION",
 	}
 	for label_text, slot in diagnostic_labels {
 		label_name := fmt.tprintf("__scrapbot_editor_diagnostics_label_%d", slot)
@@ -1627,16 +1634,16 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"",
 		.Debug_View_Menu,
 		{
-			size = {190, 266},
+			size = {220, 294},
 			padding = {5, 5, 5, 5},
 			background = theme.palette.overlay,
 			corner_radius = theme.metrics.radius_large,
 			popup = true,
 			popup_close_on_selection = true,
 			popup_gap = 4,
-			popup_min_width = 190,
-			popup_max_width = 240,
-			popup_max_height = 280,
+			popup_min_width = 220,
+			popup_max_width = 260,
+			popup_max_height = 310,
 			popup_viewport_margin = 8,
 		},
 	)
@@ -1664,6 +1671,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"LOD",
 		"MESHLET VISIBILITY",
 		"HI-Z",
+		"OCCLUSION QUERIES",
 	}
 	for label, index in debug_view_names {
 		slot := index - 1
@@ -1754,6 +1762,18 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		layout.fixed_in_fill = true
 		layout.hidden = true
 	}
+	occlusion_freeze := editor_ui_create_transport_button(
+		world,
+		EDITOR_UI_DEBUG_OCCLUSION_FREEZE_NAME,
+		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
+		"FREEZE",
+		.Debug_Occlusion_Freeze,
+	)
+	occlusion_freeze_layout := &world.ui_layouts[world.entities[occlusion_freeze].ui_layout_index]
+	occlusion_freeze_layout.size.x = 68
+	occlusion_freeze_layout.fill_width = false
+	occlusion_freeze_layout.fixed_in_fill = true
+	occlusion_freeze_layout.hidden = true
 	editor_ui_add_hstack(world, gizmo_toolbar, {gap = 2})
 	world_button := editor_ui_create_transport_button(
 		world,
@@ -2144,15 +2164,21 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 		return
 	}
 	diagnostics := state.performance_diagnostics
-	values := [8]string {
+	hiz_status := shared.hiz_occlusion_status_name(diagnostics.hiz_occlusion_status)
+	if diagnostics.hiz_occlusion_status == .Below_Threshold {
+		hiz_status = fmt.tprintf("BELOW %d", diagnostics.hiz_instance_threshold)
+	}
+	values := [10]string {
 		fmt.tprintf("%.1f", diagnostics.fps),
 		fmt.tprintf("%.2f ms", diagnostics.frame_ms),
 		"--",
 		fmt.tprintf("%.0f%%", diagnostics.render_scale * 100),
 		fmt.tprintf("%d", diagnostics.entity_count),
 		fmt.tprintf("%d", diagnostics.draw_batches),
+		hiz_status,
 		fmt.tprintf("%d", diagnostics.frustum_culled_instances),
 		fmt.tprintf("%d", diagnostics.occlusion_culled_instances),
+		fmt.tprintf("%d", diagnostics.occlusion_culled_meshlets),
 	}
 	if diagnostics.gpu_timestamps_valid {
 		values[2] = fmt.tprintf("%.2f ms", diagnostics.gpu_frame_ms)
@@ -2416,6 +2442,8 @@ editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) 
 				label = "MESHLET VISIBILITY"
 			case .HiZ:
 				label = "HI-Z"
+			case .Occlusion_Queries:
+				label = "OCCLUSION QUERIES"
 		}
 	}
 	value := world.ui_buttons[entity.ui_button_index]
@@ -2449,6 +2477,24 @@ editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) 
 				text.text = next_mip_text
 				_ = ecs.set_ui_text(world, mip_label, text)
 			}
+		}
+	}
+	show_occlusion_freeze :=
+		state.editor_render_debug_view_override &&
+		state.editor_render_debug_view == .Occlusion_Queries
+	if freeze_button, ok := editor_ui_entity(world, .Debug_Occlusion_Freeze); ok {
+		layout := world.ui_layouts[world.entities[freeze_button].ui_layout_index]
+		if layout.hidden == show_occlusion_freeze {
+			layout.hidden = !show_occlusion_freeze
+		}
+		layout.background =
+			reduced_dark_theme().palette.active if state.editor_render_debug_occlusion_frozen else {}
+		_ = ecs.set_ui_layout(world, freeze_button, layout)
+		button := world.ui_buttons[world.entities[freeze_button].ui_button_index]
+		next_freeze_text := "FROZEN" if state.editor_render_debug_occlusion_frozen else "FREEZE"
+		if button.text != next_freeze_text {
+			button.text = next_freeze_text
+			_ = ecs.set_ui_button(world, freeze_button, button)
 		}
 	}
 }

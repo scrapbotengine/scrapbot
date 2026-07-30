@@ -750,6 +750,18 @@ fn fs_main(
 					);
 				}
 			}
+			case 10u: {
+				if (render.debug.y != 0u) {
+					debug_color = base_color * 0.22 + vec3<f32>(0.018, 0.022, 0.03);
+				} else {
+					let checker = u32(input.position.x / 12.0) ^ u32(input.position.y / 12.0);
+					debug_color = select(
+						vec3<f32>(0.08, 0.09, 0.11),
+						vec3<f32>(0.48, 0.12, 0.24),
+						(checker & 1u) != 0u,
+					);
+				}
+			}
 			default: {}
 		}
 		var output: Fragment_Output;
@@ -960,6 +972,10 @@ struct Cull_Uniform {
 	meshlet_enabled: u32,
 	meshlet_shadow_visible_stride: u32,
 	meshlet_debug_record_offset: u32,
+	debug_view: u32,
+	padding_0: u32,
+	padding_1: u32,
+	padding_2: u32,
 };
 
 struct Visibility_Counters {
@@ -988,6 +1004,10 @@ struct Visibility_Counters {
 @group(0) @binding(7) var hiz_depth: texture_2d<f32>;
 @group(0) @binding(8) var<storage, read_write> counters: Visibility_Counters;
 @group(0) @binding(9) var<storage, read> meshlets: array<Meshlet_Info>;
+
+fn render_debug_is_occlusion_queries() -> bool {
+	return cull.debug_view == 10u;
+}
 
 fn world_meshlet_bounds(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec4<f32> {
 	let center = instance.model * vec4<f32>(meshlet.bounds.xyz, 1.0);
@@ -1035,18 +1055,28 @@ fn shadow_sphere_visible(bounds: vec4<f32>, cascade_index: u32) -> bool {
 	return true;
 }
 
-fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
+struct Occlusion_Result {
+	occluded: u32,
+	tested: u32,
+	mip: u32,
+	padding: u32,
+	query_rect: vec4<f32>,
+	depths: vec4<f32>,
+};
+
+fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
+	var result: Occlusion_Result;
 	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u) {
-		return false;
+		return result;
 	}
 	let camera_offset = bounds.xyz - cull.camera_position.xyz;
 	let conservative_distance = bounds.w * 4.0;
 	if (dot(camera_offset, camera_offset) <= conservative_distance * conservative_distance) {
-		return false;
+		return result;
 	}
 	let clip = cull.hiz_view_projection * vec4<f32>(bounds.xyz, 1.0);
 	if (clip.w <= 0.0001) {
-		return false;
+		return result;
 	}
 	let ndc = clip.xyz / clip.w;
 	let radius_ndc = vec2<f32>(
@@ -1075,10 +1105,22 @@ fn camera_sphere_occluded(bounds: vec4<f32>) -> bool {
 		cull.hiz_view_projection *
 		vec4<f32>(bounds.xyz + toward_camera * bounds.w, 1.0);
 	if (nearest_clip.w <= 0.0001) {
-		return false;
+		return result;
 	}
 	let nearest_depth = nearest_clip.z / nearest_clip.w;
-	return nearest_depth > farthest_occluder + 0.0015;
+	let low_px = vec2<f32>(low) * scale;
+	let high_px = (vec2<f32>(high) + vec2<f32>(1.0)) * scale;
+	result.tested = 1u;
+	result.mip = mip;
+	result.query_rect = vec4<f32>(
+		(low_px.x - cull.viewport.x) / cull.viewport.z * 2.0 - 1.0,
+		1.0 - (low_px.y - cull.viewport.y) / cull.viewport.w * 2.0,
+		(high_px.x - cull.viewport.x) / cull.viewport.z * 2.0 - 1.0,
+		1.0 - (high_px.y - cull.viewport.y) / cull.viewport.w * 2.0,
+	);
+	result.depths = vec4<f32>(nearest_depth, farthest_occluder, f32(mip), 0.0);
+	result.occluded = select(0u, 1u, nearest_depth > farthest_occluder + 0.0015);
+	return result;
 }
 
 fn select_lod(instance: GPU_Instance) -> u32 {
@@ -1099,8 +1141,10 @@ fn select_lod(instance: GPU_Instance) -> u32 {
 	return level;
 }
 
-fn append_meshlet_debug(
+fn append_debug_record(
 	bounds: vec4<f32>,
+	query_rect: vec4<f32>,
+	query_depths: vec4<f32>,
 	classification: u32,
 	lod_level: u32,
 	meshlet_identity: u32,
@@ -1109,17 +1153,60 @@ fn append_meshlet_debug(
 		return;
 	}
 	let record_index = atomicAdd(&counters.meshlet_debug_records, 1u);
-	let base = cull.meshlet_debug_record_offset + record_index * 8u;
-	if (base + 7u < arrayLength(&visible_instances)) {
+	let base = cull.meshlet_debug_record_offset + record_index * 16u;
+	if (base + 15u < arrayLength(&visible_instances)) {
 		visible_instances[base] = bitcast<u32>(bounds.x);
 		visible_instances[base + 1u] = bitcast<u32>(bounds.y);
 		visible_instances[base + 2u] = bitcast<u32>(bounds.z);
 		visible_instances[base + 3u] = bitcast<u32>(bounds.w);
-		visible_instances[base + 4u] = classification;
-		visible_instances[base + 5u] = lod_level;
-		visible_instances[base + 6u] = meshlet_identity;
-		visible_instances[base + 7u] = 0u;
+		visible_instances[base + 4u] = bitcast<u32>(query_rect.x);
+		visible_instances[base + 5u] = bitcast<u32>(query_rect.y);
+		visible_instances[base + 6u] = bitcast<u32>(query_rect.z);
+		visible_instances[base + 7u] = bitcast<u32>(query_rect.w);
+		visible_instances[base + 8u] = bitcast<u32>(query_depths.x);
+		visible_instances[base + 9u] = bitcast<u32>(query_depths.y);
+		visible_instances[base + 10u] = bitcast<u32>(query_depths.z);
+		visible_instances[base + 11u] = bitcast<u32>(query_depths.w);
+		visible_instances[base + 12u] = classification;
+		visible_instances[base + 13u] = lod_level;
+		visible_instances[base + 14u] = meshlet_identity;
+		visible_instances[base + 15u] = 0u;
 	}
+}
+
+fn append_meshlet_debug(
+	bounds: vec4<f32>,
+	classification: u32,
+	lod_level: u32,
+	meshlet_identity: u32,
+) {
+	append_debug_record(
+		bounds,
+		vec4<f32>(0.0),
+		vec4<f32>(0.0),
+		classification,
+		lod_level,
+		meshlet_identity,
+	);
+}
+
+fn append_occlusion_debug(
+	bounds: vec4<f32>,
+	result: Occlusion_Result,
+	lod_level: u32,
+	meshlet_identity: u32,
+) {
+	if (result.tested == 0u) {
+		return;
+	}
+	append_debug_record(
+		bounds,
+		result.query_rect,
+		result.depths,
+		select(7u, 8u, result.occluded != 0u),
+		lod_level,
+		meshlet_identity,
+	);
 }
 
 fn append_batch_meshlet_debug(
@@ -1162,9 +1249,14 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let batch = batches[batch_index];
 	if (cascade_index == 0u && camera_sphere_visible(instance.bounds)) {
 		atomicAdd(&counters.frustum_candidates, 1u);
-		if (camera_sphere_occluded(instance.bounds)) {
+		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
+		if (instance_occlusion.occluded != 0u) {
 			atomicAdd(&counters.occlusion_culled_instances, 1u);
-			append_batch_meshlet_debug(instance, batch, 3u, lod_level);
+			if (render_debug_is_occlusion_queries()) {
+				append_occlusion_debug(instance.bounds, instance_occlusion, lod_level, 0u);
+			} else {
+				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
+			}
 		} else if (cull.meshlet_enabled != 0u) {
 			for (
 				var local_meshlet = 0u;
@@ -1184,9 +1276,20 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 					append_meshlet_debug(bounds, 5u, lod_level, meshlet_index + 1u);
 					continue;
 				}
-				if (camera_sphere_occluded(bounds)) {
+				let meshlet_occlusion = camera_sphere_occlusion(bounds);
+				if (render_debug_is_occlusion_queries()) {
+					append_occlusion_debug(
+						bounds,
+						meshlet_occlusion,
+						lod_level,
+						meshlet_index + 1u,
+					);
+				}
+				if (meshlet_occlusion.occluded != 0u) {
 					atomicAdd(&counters.occlusion_culled_meshlets, 1u);
-					append_meshlet_debug(bounds, 6u, lod_level, meshlet_index + 1u);
+					if (!render_debug_is_occlusion_queries()) {
+						append_meshlet_debug(bounds, 6u, lod_level, meshlet_index + 1u);
+					}
 					continue;
 				}
 				let local_index =
@@ -1369,6 +1472,8 @@ struct Render_Uniform {
 
 struct Meshlet_Debug_Record {
 	bounds: vec4<f32>,
+	query_rect: vec4<f32>,
+	query_depths: vec4<f32>,
 	classification: u32,
 	lod_level: u32,
 	meshlet_identity: u32,
@@ -1389,6 +1494,25 @@ fn debug_vs(
 	@builtin(instance_index) instance_index: u32,
 ) -> Vertex_Output {
 	let record = records[instance_index];
+	var output: Vertex_Output;
+	output.classification = record.classification;
+	if (render.debug.x == 10u) {
+		if (vertex_index < 144u) {
+			output.position = vec4<f32>(-2.0, -2.0, 0.0, 1.0);
+			return output;
+		}
+		let rectangle_vertex = vertex_index - 144u;
+		let corner_indices = array<u32, 8>(0u, 1u, 1u, 2u, 2u, 3u, 3u, 0u);
+		let corner = corner_indices[rectangle_vertex];
+		let x = select(record.query_rect.x, record.query_rect.z, corner == 1u || corner == 2u);
+		let y = select(record.query_rect.y, record.query_rect.w, corner >= 2u);
+		output.position = vec4<f32>(x, y, 0.0, 1.0);
+		return output;
+	}
+	if (vertex_index >= 144u) {
+		output.position = vec4<f32>(-2.0, -2.0, 0.0, 1.0);
+		return output;
+	}
 	let circle_vertex = vertex_index % 48u;
 	let circle = vertex_index / 48u;
 	let segment = circle_vertex / 2u;
@@ -1402,10 +1526,8 @@ fn debug_vs(
 	} else if (circle == 2u) {
 		unit = vec3<f32>(0.0, cosine, sine);
 	}
-	var output: Vertex_Output;
 	output.position = render.view_projection *
 		vec4<f32>(record.bounds.xyz + unit * record.bounds.w, 1.0);
-	output.classification = record.classification;
 	return output;
 }
 
@@ -1427,6 +1549,12 @@ fn debug_fs(input: Vertex_Output) -> @location(0) vec4<f32> {
 		}
 		case 6u: {
 			color = vec3<f32>(1.0, 0.18, 0.68);
+		}
+		case 7u: {
+			color = vec3<f32>(0.24, 0.95, 0.68);
+		}
+		case 8u: {
+			color = vec3<f32>(1.0, 0.18, 0.58);
 		}
 		default: {}
 	}

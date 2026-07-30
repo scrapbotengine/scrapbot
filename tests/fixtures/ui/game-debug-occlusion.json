@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
+    {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
+    {"action": "click", "target": {"text": "OCCLUSION QUERIES", "origin": "editor"}},
+    {"action": "wait", "frames": 8},
+    {"action": "expect", "target": {"text": "VIEW / OCCLUSION QUERIES", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "FREEZE", "origin": "editor"}, "expect": "visible"},
+    {"action": "click", "target": {"text": "FREEZE", "origin": "editor"}},
+    {"action": "expect", "target": {"text": "FROZEN", "origin": "editor"}, "expect": "visible"},
+    {"action": "wait", "frames": 2},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 4}
+  ]
+}

@@ -470,6 +470,8 @@ wgpu_publish_gpu_timing :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		stats.gpu_composite_ms
 	stats.gpu_ui_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.UI)]
 	stats.hiz_occlusion = renderer.gpu_hiz_occlusion_enabled
+	stats.hiz_occlusion_status = renderer.gpu_hiz_occlusion_status
+	stats.hiz_instance_threshold = WGPU_HIZ_MIN_INSTANCES
 	stats.hiz_valid = renderer.gpu_hiz_valid
 	stats.hiz_mip_count = renderer.gpu_hiz_mip_count
 }

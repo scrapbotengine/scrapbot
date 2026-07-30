@@ -159,6 +159,7 @@ init_registry :: proc(registry: ^Registry) {
 					maximum = 15,
 				},
 			},
+			Field_Definition{name = "debug_occlusion_freeze", field_type = .Bool},
 			Field_Definition {
 				name = "resolution_scale",
 				field_type = .Number,

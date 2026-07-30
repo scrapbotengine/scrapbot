@@ -257,6 +257,7 @@ wgpu_release_hiz_targets :: proc(renderer: ^WGPU_Renderer) {
 	renderer.gpu_hiz_mip_count = 0
 	renderer.gpu_hiz_valid = false
 	renderer.gpu_hiz_occlusion_enabled = false
+	renderer.gpu_hiz_occlusion_status = .Unavailable
 }
 
 wgpu_release_hiz :: proc(renderer: ^WGPU_Renderer) {

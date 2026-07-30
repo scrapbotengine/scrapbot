@@ -520,6 +520,14 @@ read_full_camera_table :: proc "c" (
 	   err != "" {
 		return
 	}
+	if err = read_ui_bool_field(
+		L,
+		payload_index,
+		"debug_occlusion_freeze",
+		&value.debug_occlusion_freeze,
+	); err != "" {
+		return
+	}
 	if err = read_ui_number_field(L, payload_index, "resolution_scale", &value.resolution_scale);
 	   err != "" {
 		return

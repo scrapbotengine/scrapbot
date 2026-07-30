@@ -463,6 +463,7 @@ State :: struct {
 	editor_render_debug_view_override: bool,
 	editor_render_debug_view: shared.Render_Debug_View,
 	editor_render_debug_hiz_mip: u32,
+	editor_render_debug_occlusion_frozen: bool,
 	editor_gizmo_origin: shared.Vec2,
 	editor_gizmo_endpoints: [3]shared.Vec2,
 	editor_gizmo_plane_points: [3][4]shared.Vec2,
@@ -502,6 +503,19 @@ effective_render_debug_hiz_mip :: proc "contextless" (
 		return state.editor_render_debug_hiz_mip
 	}
 	return shared.camera_debug_hiz_mip(camera)
+}
+
+effective_render_debug_occlusion_freeze :: proc "contextless" (
+	state: ^State,
+	camera: shared.Camera_Component,
+) -> bool {
+	if state != nil &&
+	   state.editor_visible &&
+	   state.editor_render_debug_view_override &&
+	   state.editor_render_debug_view == .Occlusion_Queries {
+		return state.editor_render_debug_occlusion_frozen
+	}
+	return camera.debug_occlusion_freeze
 }
 
 effective_render_debug_view :: proc "contextless" (
