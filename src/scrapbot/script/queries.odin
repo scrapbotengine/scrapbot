@@ -376,13 +376,16 @@ push_query_component_table :: proc "c" (
 		case "scrapbot.camera":
 			if entity.camera_index >= 0 && entity.camera_index < len(world.cameras) {
 				value := world.cameras[entity.camera_index]
-				lua_createtable(L, 0, 19)
+				lua_createtable(L, 0, 20)
 				lua_pushnumber(L, f64(value.fov))
 				lua_setfield(L, -2, "fov")
 				lua_pushnumber(L, f64(value.near))
 				lua_setfield(L, -2, "near")
 				lua_pushnumber(L, f64(value.far))
 				lua_setfield(L, -2, "far")
+				debug_view := shared.render_debug_view_name(value.debug_view)
+				lua_pushlstring(L, cstring(raw_data(debug_view)), c.size_t(len(debug_view)))
+				lua_setfield(L, -2, "debug_view")
 				lua_pushnumber(L, f64(shared.camera_resolution_scale(value)))
 				lua_setfield(L, -2, "resolution_scale")
 				lua_pushboolean(L, 1 if value.dynamic_resolution else 0)

@@ -101,6 +101,15 @@ Unpromoted runtime and editor-owned entities are never written. Changes made whi
 
 The editor creates an editor-owned scene-camera entity whose initial view matches the project camera. Moving it does not change the project's camera.
 
+Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inputs:
+
+- Lit shows the ordinary HDR result.
+- Base Color, World Normals, Roughness, and Metallic isolate material inputs.
+- Depth maps the camera's near-to-far range logarithmically from white to black.
+- Meshlets colors the actual retained clusters submitted by capable adapters.
+
+`Camera` follows the project camera's authored `debug_view`. Choosing another item is a transient editor override: it changes neither the project camera nor authoring history. Non-lit views bypass temporal jitter and presentation effects so the displayed values remain stable and direct. Meshlets shows a red/slate checker when the current adapter or `--cpu-culling` run uses whole-primitive submission.
+
 | Input | Action |
 | --- | --- |
 | Hold right mouse button | Capture scene-camera input |

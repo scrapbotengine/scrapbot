@@ -301,6 +301,11 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Fragment},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Cluster_Uniform))},
 		},
+		{
+			binding = 10,
+			visibility = {.Vertex},
+			buffer = {type = .ReadOnlyStorage, minBindingSize = 4},
+		},
 	}
 	renderer.gpu_driven_world_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -717,6 +722,12 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{.Storage, .CopyDst},
 		meshlet_visible_bytes,
 	)
+	renderer.gpu_meshlet_identity_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Meshlet Identities",
+		{.Storage, .CopyDst},
+		meshlet_visible_bytes,
+	)
 	renderer.gpu_meshlet_shadow_visible_buffer = wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Meshlet Shadow Visible Instances",
@@ -790,6 +801,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_shadow_indirect_buffer == nil ||
 	   renderer.gpu_meshlet_info_buffer == nil ||
 	   renderer.gpu_meshlet_visible_buffer == nil ||
+	   renderer.gpu_meshlet_identity_buffer == nil ||
 	   renderer.gpu_meshlet_shadow_visible_buffer == nil ||
 	   renderer.gpu_meshlet_indirect_template_buffer == nil ||
 	   renderer.gpu_meshlet_indirect_buffer == nil ||
@@ -1095,6 +1107,12 @@ wgpu_ensure_gpu_meshlet_buffers :: proc(
 		{.Storage, .CopyDst},
 		visible_bytes,
 	)
+	identity_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Meshlet Identities",
+		{.Storage, .CopyDst},
+		visible_bytes,
+	)
 	shadow_visible_buffer := wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Meshlet Shadow Visible Instances",
@@ -1122,6 +1140,7 @@ wgpu_ensure_gpu_meshlet_buffers :: proc(
 	new_buffers := [?]wgpu.Buffer {
 		info_buffer,
 		visible_buffer,
+		identity_buffer,
 		shadow_visible_buffer,
 		template_buffer,
 		indirect_buffer,
@@ -1141,6 +1160,7 @@ wgpu_ensure_gpu_meshlet_buffers :: proc(
 	old_buffers := [?]wgpu.Buffer {
 		renderer.gpu_meshlet_info_buffer,
 		renderer.gpu_meshlet_visible_buffer,
+		renderer.gpu_meshlet_identity_buffer,
 		renderer.gpu_meshlet_shadow_visible_buffer,
 		renderer.gpu_meshlet_indirect_template_buffer,
 		renderer.gpu_meshlet_indirect_buffer,
@@ -1150,6 +1170,7 @@ wgpu_ensure_gpu_meshlet_buffers :: proc(
 	old_visible_capacity := renderer.gpu_meshlet_visible_buffer_capacity
 	renderer.gpu_meshlet_info_buffer = info_buffer
 	renderer.gpu_meshlet_visible_buffer = visible_buffer
+	renderer.gpu_meshlet_identity_buffer = identity_buffer
 	renderer.gpu_meshlet_shadow_visible_buffer = shadow_visible_buffer
 	renderer.gpu_meshlet_indirect_template_buffer = template_buffer
 	renderer.gpu_meshlet_indirect_buffer = indirect_buffer
@@ -1159,10 +1180,11 @@ wgpu_ensure_gpu_meshlet_buffers :: proc(
 	if err := wgpu_rebuild_cull_bind_group(renderer); err != "" {
 		renderer.gpu_meshlet_info_buffer = old_buffers[0]
 		renderer.gpu_meshlet_visible_buffer = old_buffers[1]
-		renderer.gpu_meshlet_shadow_visible_buffer = old_buffers[2]
-		renderer.gpu_meshlet_indirect_template_buffer = old_buffers[3]
-		renderer.gpu_meshlet_indirect_buffer = old_buffers[4]
-		renderer.gpu_meshlet_shadow_indirect_buffer = old_buffers[5]
+		renderer.gpu_meshlet_identity_buffer = old_buffers[2]
+		renderer.gpu_meshlet_shadow_visible_buffer = old_buffers[3]
+		renderer.gpu_meshlet_indirect_template_buffer = old_buffers[4]
+		renderer.gpu_meshlet_indirect_buffer = old_buffers[5]
+		renderer.gpu_meshlet_shadow_indirect_buffer = old_buffers[6]
 		renderer.gpu_meshlet_draw_capacity = old_draw_capacity
 		renderer.gpu_meshlet_visible_buffer_capacity = old_visible_capacity
 		for buffer in new_buffers {
@@ -1216,6 +1238,7 @@ wgpu_make_batch_bind_group :: proc(
 	shadow: bool = false,
 	shadow_cascade_index: int = 0,
 	shadow_visible_stride: int = 0,
+	meshlet_identity: bool = false,
 ) -> wgpu.BindGroup {
 	if shadow {
 		visible_stride := shadow_visible_stride
@@ -1295,6 +1318,12 @@ wgpu_make_batch_bind_group :: proc(
 			binding = 8,
 			buffer = renderer.gpu_cluster_uniform_buffer,
 			size = u64(size_of(WGPU_Cluster_Uniform)),
+		},
+		{
+			binding = 10,
+			buffer = renderer.gpu_meshlet_identity_buffer,
+			offset = u64(visible_offset if meshlet_identity else 0) * u64(size_of(u32)),
+			size = u64(visible_capacity if meshlet_identity else 1) * u64(size_of(u32)),
 		},
 	}
 	return wgpu.DeviceCreateBindGroup(
@@ -1391,6 +1420,12 @@ wgpu_refresh_gpu_batch_layout :: proc(
 	}
 	batch_info := make([]WGPU_GPU_Batch_Info, cache.batch_count)
 	defer delete(batch_info)
+	meshlet_identity_count := 1
+	if renderer.gpu_meshlet_layout_valid {
+		meshlet_identity_count = int(meshlet_visible_offset)
+	}
+	meshlet_identities := make([]u32, meshlet_identity_count)
+	defer delete(meshlet_identities)
 	resize(&renderer.gpu_meshlet_infos, int(meshlet_draw_offset))
 	resize(&renderer.gpu_meshlet_indirect_templates, int(meshlet_draw_offset))
 	for batch_index in 0 ..< cache.batch_count {
@@ -1430,6 +1465,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 				batch.meshlet_visible_offset,
 				batch.meshlet_visible_capacity,
 				"Scrapbot GPU Meshlet Batch Bind Group",
+				meshlet_identity = true,
 			)
 			for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 				batch.meshlet_shadow_bind_groups[cascade_index] = wgpu_make_batch_bind_group(
@@ -1487,6 +1523,12 @@ wgpu_refresh_gpu_batch_layout :: proc(
 				first_index = first_index,
 				first_instance = local_visible_offset,
 			}
+			if renderer.gpu_meshlet_layout_valid {
+				for identity_index in 0 ..< int(per_meshlet_capacity) {
+					meshlet_identities[int(batch.meshlet_visible_offset + local_visible_offset) + identity_index] =
+						u32(meshlet_index + 1)
+				}
+			}
 			first_index += meshlet.triangle_count * 3
 		}
 	}
@@ -1501,6 +1543,13 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		uint(len(batch_info) * size_of(WGPU_GPU_Batch_Info)),
 	)
 	if renderer.gpu_meshlet_layout_valid && renderer.gpu_meshlet_draw_count > 0 {
+		wgpu.QueueWriteBuffer(
+			renderer.queue,
+			renderer.gpu_meshlet_identity_buffer,
+			0,
+			raw_data(meshlet_identities),
+			uint(len(meshlet_identities) * size_of(u32)),
+		)
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
 			renderer.gpu_meshlet_info_buffer,
@@ -1542,9 +1591,9 @@ wgpu_update_indirect_template_cache :: proc(
 			return false, "GPU draw batch references unavailable geometry"
 		}
 		template := WGPU_Draw_Indexed_Indirect {
-			index_count = u32(len(geometry.indices)),
-			first_instance = 0,
-		}
+				index_count = u32(len(geometry.indices)),
+				first_instance = 0,
+			}
 		if renderer.gpu_indirect_templates[batch_index] != template {
 			renderer.gpu_indirect_templates[batch_index] = template
 			changed = true
@@ -2314,7 +2363,9 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	renderer.temporal_camera = temporal_camera
 	renderer.temporal_camera_valid = true
 	jitter: Vec2
-	if render_list.has_camera && render_list.camera.camera.temporal_antialiasing {
+	if render_list.has_camera &&
+	   render_list.camera.camera.debug_view == .Lit &&
+	   render_list.camera.camera.temporal_antialiasing {
 		jitter = wgpu_temporal_jitter(
 			renderer.temporal_sample_index,
 			u32(viewport.width),
@@ -2360,6 +2411,17 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		camera_position = render_list.camera.transform.position
 	}
 	uniform.camera_position = {camera_position.x, camera_position.y, camera_position.z, 1}
+	camera := shared.camera_defaults()
+	if render_list.has_camera {
+		camera = render_list.camera.camera
+	}
+	uniform.debug = {
+		u32(camera.debug_view),
+		1 if renderer.gpu_meshlet_submission_active else 0,
+		0,
+		0,
+	}
+	uniform.camera_clip = {camera.near, camera.far, 0, 0}
 	uniform.ambient = {render_list.ambient.x, render_list.ambient.y, render_list.ambient.z, 1}
 	uniform.light_counts = {
 		u32(render_list.directional_light_count),

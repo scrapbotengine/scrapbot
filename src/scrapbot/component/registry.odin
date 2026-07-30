@@ -146,6 +146,7 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "fov", field_type = .Number},
 			Field_Definition{name = "near", field_type = .Number},
 			Field_Definition{name = "far", field_type = .Number},
+			Field_Definition{name = "debug_view", field_type = .String},
 			Field_Definition {
 				name = "resolution_scale",
 				field_type = .Number,

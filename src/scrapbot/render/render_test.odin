@@ -317,6 +317,14 @@ test_wgpu_temporal_camera_continuity_rejects_cuts :: proc(t: ^testing.T) {
 @(test)
 test_camera_render_feature_defaults_preserve_current_renderer_policy :: proc(t: ^testing.T) {
 	camera := shared.camera_defaults()
+	testing.expect(t, camera.debug_view == .Lit)
+	for view in shared.Render_Debug_View {
+		name := shared.render_debug_view_name(view)
+		parsed, ok := shared.render_debug_view_from_name(name)
+		testing.expect(t, ok && parsed == view)
+	}
+	_, invalid_debug_view := shared.render_debug_view_from_name("triangles")
+	testing.expect(t, !invalid_debug_view)
 	testing.expect(t, !camera.automatic_exposure)
 	testing.expect_value(t, camera.automatic_exposure_min, f32(0.125))
 	testing.expect_value(t, camera.automatic_exposure_max, f32(8))
@@ -1420,6 +1428,8 @@ test_wgpu_gpu_uniforms_upload_only_after_value_changes :: proc(t: ^testing.T) {
 	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
 	testing.expect(t, !wgpu_retain_render_uniform(&renderer, render_uniform))
 	render_uniform.ambient.x = 0.25
+	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
+	render_uniform.debug.x = u32(shared.Render_Debug_View.Meshlets)
 	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
 
 	cull_uniform: WGPU_GPU_Cull_Uniform

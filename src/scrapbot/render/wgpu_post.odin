@@ -1544,6 +1544,15 @@ wgpu_encode_bloom_and_composite :: proc(
 		resolved_camera = shared.camera_defaults()
 	}
 	resolved_camera = apply_render_feature_overrides(resolved_camera, render_feature_overrides)
+	debug_view := resolved_camera.debug_view != .Lit
+	if debug_view {
+		resolved_camera.automatic_exposure = false
+		resolved_camera.temporal_antialiasing = false
+		resolved_camera.fast_antialiasing = false
+		resolved_camera.ambient_occlusion = false
+		resolved_camera.screen_space_reflections = false
+		resolved_camera.bloom = false
+	}
 	temporal_output_index := renderer.temporal_output_index
 	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
 	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
@@ -1692,7 +1701,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		},
 	}
 	fog := wgpu_volumetric_fog_settings(world)
-	if render_feature_overrides.disable_volumetric_fog {
+	if render_feature_overrides.disable_volumetric_fog || debug_view {
 		fog.density = 0
 	}
 	temporal_uniform.fog_color_density = {fog.color.x, fog.color.y, fog.color.z, fog.density}
@@ -1835,9 +1844,12 @@ wgpu_encode_bloom_and_composite :: proc(
 		wgpu.ComputePassEncoderRelease(automatic_exposure_pass)
 		renderer.automatic_exposure_valid = true
 		renderer.automatic_exposure_enabled = true
-	} else if renderer.automatic_exposure_enabled || !renderer.automatic_exposure_valid {
+		renderer.automatic_exposure_debug_view = false
+	} else if renderer.automatic_exposure_enabled ||
+	   !renderer.automatic_exposure_valid ||
+	   renderer.automatic_exposure_debug_view != debug_view {
 		manual_exposure := WGPU_Automatic_Exposure_State {
-			values = {1, 1, 1, 1},
+			values = {1, 1, 1, 2 if debug_view else 1},
 		}
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
@@ -1848,6 +1860,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		)
 		renderer.automatic_exposure_valid = true
 		renderer.automatic_exposure_enabled = false
+		renderer.automatic_exposure_debug_view = debug_view
 	}
 
 	if resolved_camera.bloom {

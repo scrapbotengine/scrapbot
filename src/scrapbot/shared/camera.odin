@@ -2,6 +2,46 @@ package shared
 
 import "core:math"
 
+render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string {
+	switch view {
+		case .Lit:
+			return "lit"
+		case .Base_Color:
+			return "base_color"
+		case .World_Normals:
+			return "world_normals"
+		case .Roughness:
+			return "roughness"
+		case .Metallic:
+			return "metallic"
+		case .Depth:
+			return "depth"
+		case .Meshlets:
+			return "meshlets"
+	}
+	return "lit"
+}
+
+render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debug_View, bool) {
+	switch name {
+		case "lit":
+			return .Lit, true
+		case "base_color":
+			return .Base_Color, true
+		case "world_normals":
+			return .World_Normals, true
+		case "roughness":
+			return .Roughness, true
+		case "metallic":
+			return .Metallic, true
+		case "depth":
+			return .Depth, true
+		case "meshlets":
+			return .Meshlets, true
+	}
+	return .Lit, false
+}
+
 camera_defaults :: proc "contextless" () -> Camera_Component {
 	return {
 		fov = 60,
@@ -31,6 +71,7 @@ camera_copy_render_features :: proc "contextless" (
 		return
 	}
 	destination.resolution_scale = source.resolution_scale
+	destination.debug_view = source.debug_view
 	destination.dynamic_resolution = source.dynamic_resolution
 	destination.dynamic_resolution_min_scale = source.dynamic_resolution_min_scale
 	destination.dynamic_resolution_target_ms = source.dynamic_resolution_target_ms

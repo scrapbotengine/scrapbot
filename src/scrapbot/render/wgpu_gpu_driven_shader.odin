@@ -119,6 +119,8 @@ struct Render_Uniform {
 	camera_position: vec4<f32>,
 	shadow_cascade_splits: vec4<f32>,
 	shadow_cascade_texel_sizes: vec4<f32>,
+	debug: vec4<u32>,
+	camera_clip: vec4<f32>,
 };
 
 struct Point_Light {
@@ -192,6 +194,7 @@ struct GPU_Instance {
 @group(0) @binding(7) var<storage, read> cluster_light_indices: array<u32>;
 @group(0) @binding(8) var<uniform> cluster: Cluster_Uniform;
 @group(0) @binding(9) var<uniform> shadow_cascade: Shadow_Cascade_Uniform;
+@group(0) @binding(10) var<storage, read> meshlet_identities: array<u32>;
 @group(1) @binding(0) var base_color_texture: texture_2d<f32>;
 @group(1) @binding(1) var base_color_sampler: sampler;
 @group(1) @binding(2) var metallic_roughness_texture: texture_2d<f32>;
@@ -225,6 +228,7 @@ struct Vertex_Output {
 	@location(5) uv: vec2<f32>,
 	@location(6) emissive: vec3<f32>,
 	@location(7) world_tangent: vec4<f32>,
+	@location(8) @interpolate(flat) meshlet_identity: u32,
 };
 
 @vertex
@@ -244,6 +248,10 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	output.view_depth = -(render.view * instance.model * local_position).z;
 	output.shadow_receiver = instance.shadow_flags.y;
 	output.uv = input.uv;
+	output.meshlet_identity = 0u;
+	if (render.debug.x == 6u && render.debug.y != 0u) {
+		output.meshlet_identity = meshlet_identities[visible_index];
+	}
 	return output;
 }
 
@@ -623,6 +631,16 @@ fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 	return encoded;
 }
 
+fn meshlet_debug_color(identity: u32) -> vec3<f32> {
+	var value = identity * 747796405u + 2891336453u;
+	value = ((value >> ((value >> 28u) + 4u)) ^ value) * 277803737u;
+	value = (value >> 22u) ^ value;
+	let hue = f32(value & 1023u) / 1023.0;
+	return 0.42 + 0.58 * cos(
+		6.28318530718 * (hue + vec3<f32>(0.0, 0.67, 0.33)),
+	);
+}
+
 @fragment
 fn fs_main(
 	input: Vertex_Output,
@@ -646,6 +664,57 @@ fn fs_main(
 	);
 	let occlusion_sample = textureSample(occlusion_texture, occlusion_sampler, input.uv).r;
 	let occlusion = mix(1.0, occlusion_sample, material.pbr_factors.w);
+	if (render.debug.x != 0u) {
+		var debug_color = vec3<f32>(0.0);
+		switch render.debug.x {
+			case 1u: {
+				debug_color = base_color;
+			}
+			case 2u: {
+				debug_color = normal * 0.5 + vec3<f32>(0.5);
+			}
+			case 3u: {
+				debug_color = vec3<f32>(roughness);
+			}
+			case 4u: {
+				debug_color = vec3<f32>(metallic);
+			}
+			case 5u: {
+				let near_plane = max(render.camera_clip.x, 0.0001);
+				let far_plane = max(render.camera_clip.y, near_plane + 0.0001);
+				let normalized_depth = clamp(
+					log2(max(input.view_depth / near_plane, 1.0)) /
+						max(log2(far_plane / near_plane), 0.0001),
+					0.0,
+					1.0,
+				);
+				debug_color = vec3<f32>(1.0 - normalized_depth);
+			}
+			case 6u: {
+				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
+					debug_color = meshlet_debug_color(input.meshlet_identity);
+				} else {
+					let checker = u32(input.position.x / 12.0) ^ u32(input.position.y / 12.0);
+					debug_color = select(
+						vec3<f32>(0.08, 0.09, 0.11),
+						vec3<f32>(0.48, 0.12, 0.24),
+						(checker & 1u) != 0u,
+					);
+				}
+			}
+			default: {}
+		}
+		var output: Fragment_Output;
+		output.color = vec4<f32>(debug_color, 1.0);
+		output.indirect_diffuse = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+		let view_normal = normalize((render.view * vec4<f32>(normal, 0.0)).xyz);
+		output.surface = vec4<f32>(
+			octahedral_encode(view_normal) * 0.5 + vec2<f32>(0.5),
+			roughness,
+			metallic,
+		);
+		return output;
+	}
 	let f0 = mix(vec3<f32>(0.04), base_color, metallic);
 	var color = vec3<f32>(0.0);
 	var indirect_diffuse = vec3<f32>(0.0);

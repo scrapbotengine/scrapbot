@@ -139,8 +139,10 @@ WGPU_GPU_Render_Uniform :: struct {
 	camera_position: [4]f32,
 	shadow_cascade_splits: [4]f32,
 	shadow_cascade_texel_sizes: [4]f32,
+	debug: [4]u32,
+	camera_clip: [4]f32,
 }
-#assert(size_of(WGPU_GPU_Render_Uniform) == 592)
+#assert(size_of(WGPU_GPU_Render_Uniform) == 624)
 
 WGPU_GPU_Point_Light :: struct {
 	position_range: [4]f32,
@@ -631,6 +633,7 @@ WGPU_Renderer :: struct {
 	gpu_shadow_indirect_buffer: wgpu.Buffer,
 	gpu_meshlet_info_buffer: wgpu.Buffer,
 	gpu_meshlet_visible_buffer: wgpu.Buffer,
+	gpu_meshlet_identity_buffer: wgpu.Buffer,
 	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_buffer: wgpu.Buffer,
@@ -762,6 +765,7 @@ WGPU_Renderer :: struct {
 	automatic_exposure_bind_groups: [2]wgpu.BindGroup,
 	automatic_exposure_valid: bool,
 	automatic_exposure_enabled: bool,
+	automatic_exposure_debug_view: bool,
 	ambient_occlusion_bind_group_layout: wgpu.BindGroupLayout,
 	ambient_occlusion_pipeline_layout: wgpu.PipelineLayout,
 	ambient_occlusion_pipeline: wgpu.ComputePipeline,
@@ -849,6 +853,16 @@ WGPU_Render_Target_Layout :: struct {
 	output_viewport: ui.Rect,
 	render_viewport: ui.Rect,
 	resolution_scale: f32,
+}
+
+wgpu_apply_render_debug_override :: proc(render_list: ^Render_List, ui_state: ^ui.State) {
+	if render_list == nil || !render_list.has_camera {
+		return
+	}
+	render_list.camera.camera.debug_view = ui.effective_render_debug_view(
+		ui_state,
+		render_list.camera.camera,
+	)
 }
 
 wgpu_dynamic_resolution_scale :: proc(
@@ -2995,6 +3009,7 @@ wgpu_draw_frame :: proc(
 		&renderer.render_list,
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
+	wgpu_apply_render_debug_override(&renderer.render_list, config.ui_state)
 	profile_frame_index := renderer.profile_frame_index
 	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	viewport := ui.editor_viewport(config.ui_state, f32(renderer.width), f32(renderer.height))
@@ -3247,6 +3262,7 @@ wgpu_render_offscreen_frame :: proc(
 		&renderer.render_list,
 		config.ui_state != nil && config.ui_state.editor_visible,
 	)
+	wgpu_apply_render_debug_override(&renderer.render_list, config.ui_state)
 	profile_frame_index := renderer.profile_frame_index
 	wgpu_gpu_timing_begin_frame(renderer, profile_frame_index)
 	viewport := ui.editor_viewport(config.ui_state, f32(width), f32(height))

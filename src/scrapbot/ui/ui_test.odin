@@ -4344,6 +4344,68 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 }
 
 @(test)
+test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Camera",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+			has_camera = true,
+			camera = shared.camera_defaults(),
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	button, button_found := editor_ui_entity(&world, .Debug_View_Button)
+	menu, menu_found := editor_ui_entity(&world, .Debug_View_Menu)
+	meshlets, meshlets_found := editor_ui_entity(
+		&world,
+		.Debug_View_Item,
+		int(shared.Render_Debug_View.Meshlets),
+	)
+	camera_item, camera_item_found := editor_ui_entity(&world, .Debug_View_Item, -1)
+	testing.expect(t, button_found && menu_found && meshlets_found && camera_item_found)
+	if !button_found || !menu_found || !meshlets_found || !camera_item_found {
+		return
+	}
+	testing.expect(t, world.entities[button].ui_button_index >= 0)
+	testing.expect(t, world.entities[menu].ui_layout_index >= 0)
+	testing.expect(
+		t,
+		world.ui_buttons[world.entities[button].ui_button_index].popup ==
+		world.entities[menu].uuid,
+	)
+	testing.expect(t, !state.editor_render_debug_view_override)
+	project_camera := world.cameras[0]
+	project_camera.debug_view = .Depth
+	testing.expect(t, effective_render_debug_view(state, project_camera) == .Depth)
+
+	editor_ui_handle_activation(state, &world, world.entities[meshlets].id, {})
+	testing.expect(t, state.editor_render_debug_view_override)
+	testing.expect(t, state.editor_render_debug_view == .Meshlets)
+	testing.expect(t, effective_render_debug_view(state, project_camera) == .Meshlets)
+	testing.expect_value(
+		t,
+		world.ui_buttons[world.entities[button].ui_button_index].text,
+		"VIEW / MESHLETS",
+	)
+	testing.expect(t, world.cameras[0].debug_view == .Lit)
+
+	editor_ui_handle_activation(state, &world, world.entities[camera_item].id, {})
+	testing.expect(t, !state.editor_render_debug_view_override)
+	testing.expect(t, effective_render_debug_view(state, project_camera) == .Depth)
+}
+
+@(test)
 test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)
@@ -6679,7 +6741,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, checkbox_count >= 2)
 	testing.expect(t, found_bound_checkbox)
-	testing.expect(t, camera_definition.field_count == 19)
+	testing.expect(t, camera_definition.field_count == 20)
 	testing.expect(t, camera_input_count == 12)
 	testing.expect(t, found_transform && found_button && found_shadow)
 	testing.expect(t, shadow_field_control_count == 0)

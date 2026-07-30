@@ -195,6 +195,7 @@ trends; they are not portable performance thresholds.
   - [x] Depth prepass and adaptive Hi-Z occlusion culling
   - [x] GPU screen-radius LOD selection
   - [x] Feature-gated GPU meshlet culling and native multi-draw submission
+  - [x] Camera and transient editor Game-view diagnostics for base color, normals, roughness, metallic, depth, and meshlets
   - [x] Asynchronous per-pass GPU timestamps and visibility/LOD counters
   - [x] Ambient, directional, and point-light rendering
 - Assets
@@ -211,7 +212,7 @@ trends; they are not portable performance thresholds.
   - [x] Compiled UUID-backed SVG icon-set resources and embedded control catalog
 - Tooling
   - [x] Resource hot reload
-  - [ ] Hi-Z, visibility, and LOD debug views
+  - [ ] Hi-Z, object/meshlet visibility classification, and LOD debug views
 
 ### Input And UI
 

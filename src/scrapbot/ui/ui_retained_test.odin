@@ -121,7 +121,7 @@ test_layout_changes_only_reflow_the_affected_ui_origin :: proc(t: ^testing.T) {
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	editor_node_count := 0
 	for node in state.nodes[:state.node_count] {
-		if node.origin == .Editor {
+		if node.origin == .Editor && node.laid_out {
 			editor_node_count += 1
 		}
 	}

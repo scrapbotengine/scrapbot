@@ -1135,6 +1135,14 @@ parse_scene :: proc(
 						current.camera.near, found = parse_f32(value)
 					case "far":
 						current.camera.far, found = parse_f32(value)
+					case "debug_view":
+						name: string
+						name, found = parse_basic_string(value)
+						if found {
+							current.camera.debug_view, found = shared.render_debug_view_from_name(
+								name,
+							)
+						}
 					case "resolution_scale":
 						current.camera.resolution_scale, found = parse_f32(value)
 					case "dynamic_resolution":

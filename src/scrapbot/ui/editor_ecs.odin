@@ -33,6 +33,10 @@ EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
+EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME :: "__scrapbot_editor_debug_view_toolbar"
+EDITOR_UI_DEBUG_VIEW_BUTTON_NAME :: "__scrapbot_editor_debug_view_button"
+EDITOR_UI_DEBUG_VIEW_MENU_NAME :: "__scrapbot_editor_debug_view_menu"
+EDITOR_UI_DEBUG_VIEW_MENU_CONTENT_NAME :: "__scrapbot_editor_debug_view_menu_content"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
 EDITOR_UI_RIGHT_DOCK_ITEM_NAME :: "__scrapbot_editor_right_dock_item"
 EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
@@ -196,6 +200,15 @@ editor_ui_handle_activation :: proc(
 					return
 				case .Gizmo_Space_Local:
 					editor_set_gizmo_space(state, .Local)
+					return
+				case .Debug_View_Item:
+					if binding.slot < 0 {
+						state.editor_render_debug_view_override = false
+					} else if binding.slot <= int(shared.Render_Debug_View.Meshlets) {
+						state.editor_render_debug_view_override = true
+						state.editor_render_debug_view = shared.Render_Debug_View(binding.slot)
+					}
+					editor_ui_update_debug_view_button(state, world)
 					return
 				case .Entity_Create:
 					_, _ = editor_authoring_create_entity(state, world)
@@ -362,6 +375,10 @@ editor_ui_handle_activation :: proc(
 				case .None,
 				     .Root,
 				     .Gizmo_Toolbar,
+				     .Debug_View_Toolbar,
+				     .Debug_View_Button,
+				     .Debug_View_Menu,
+				     .Debug_View_Menu_Content,
 				     .Diagnostics_Panel,
 				     .Diagnostics_Label,
 				     .Diagnostics_Value,
@@ -1584,6 +1601,97 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			hidden = true,
 		},
 	)
+	debug_view_menu := editor_ui_create_box(
+		world,
+		EDITOR_UI_DEBUG_VIEW_MENU_NAME,
+		"",
+		.Debug_View_Menu,
+		{
+			size = {190, 238},
+			padding = {5, 5, 5, 5},
+			background = theme.palette.overlay,
+			corner_radius = theme.metrics.radius_large,
+			popup = true,
+			popup_close_on_selection = true,
+			popup_gap = 4,
+			popup_min_width = 190,
+			popup_max_width = 240,
+			popup_max_height = 280,
+			popup_viewport_margin = 8,
+		},
+	)
+	editor_ui_add_vstack(world, debug_view_menu, {fill = true})
+	debug_view_menu_content := editor_ui_create_box(
+		world,
+		EDITOR_UI_DEBUG_VIEW_MENU_CONTENT_NAME,
+		EDITOR_UI_DEBUG_VIEW_MENU_NAME,
+		.Debug_View_Menu_Content,
+		{size = {180, 1}, fill_width = true},
+	)
+	debug_view_list := theme_list(theme)
+	debug_view_list.gap = 1
+	editor_ui_add_list(world, debug_view_menu_content, debug_view_list)
+	editor_ui_add_scroll(world, debug_view_menu_content)
+	debug_view_names := [?]string {
+		"CAMERA",
+		"LIT",
+		"BASE COLOR",
+		"WORLD NORMALS",
+		"ROUGHNESS",
+		"METALLIC",
+		"DEPTH",
+		"MESHLETS",
+	}
+	for label, index in debug_view_names {
+		slot := index - 1
+		item := editor_ui_create_box(
+			world,
+			fmt.tprintf("__scrapbot_editor_debug_view_item_%d", index),
+			EDITOR_UI_DEBUG_VIEW_MENU_CONTENT_NAME,
+			.Debug_View_Item,
+			{size = {1, 28}, padding = {4, 9, 4, 9}, corner_radius = 3, fill_width = true},
+			slot,
+		)
+		item_button := shared.ui_button_default()
+		item_button.text = label
+		item_button.size = EDITOR_TEXT_SIZE
+		item_button.alignment = .Left
+		item_button.color = theme.palette.text
+		item_button.hover_background = theme.palette.hover
+		item_button.active_background = theme.palette.active
+		_ = ecs.set_ui_button(world, item, item_button)
+	}
+	debug_view_toolbar := editor_ui_create_box(
+		world,
+		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
+		EDITOR_UI_VIEWPORT_NAME,
+		.Debug_View_Toolbar,
+		{position = {0, 10}, size = {1, 34}, padding = {2, 10, 2, 10}, fill_width = true},
+	)
+	editor_ui_add_hstack(world, debug_view_toolbar, {fill = true})
+	world.ui_layouts[world.entities[debug_view_toolbar].ui_layout_index].horizontal_alignment = .End
+	debug_view_button := editor_ui_create_box(
+		world,
+		EDITOR_UI_DEBUG_VIEW_BUTTON_NAME,
+		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
+		.Debug_View_Button,
+		{
+			size = {148, 30},
+			padding = {4, 10, 4, 10},
+			background = theme.palette.overlay,
+			corner_radius = theme.metrics.radius,
+			fixed_in_fill = true,
+		},
+	)
+	debug_button := shared.ui_button_default()
+	debug_button.text = "VIEW / CAMERA"
+	debug_button.size = EDITOR_TEXT_SIZE
+	debug_button.alignment = .Left
+	debug_button.color = theme.palette.text
+	debug_button.hover_background = theme.palette.hover
+	debug_button.active_background = theme.palette.active
+	debug_button.popup = world.entities[debug_view_menu].uuid
+	_ = ecs.set_ui_button(world, debug_view_button, debug_button)
 	editor_ui_add_hstack(world, gizmo_toolbar, {gap = 2})
 	world_button := editor_ui_create_transport_button(
 		world,
@@ -2209,6 +2317,46 @@ editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
 	if root, found := editor_ui_entity(world, .Root); found {
 		ecs.mark_ui_paint_changed(world, root)
 	}
+}
+
+editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	button_index, found := editor_ui_entity(world, .Debug_View_Button)
+	if !found {
+		return
+	}
+	entity := world.entities[button_index]
+	if entity.ui_button_index < 0 || entity.ui_button_index >= len(world.ui_buttons) {
+		return
+	}
+	label := "CAMERA"
+	if state.editor_render_debug_view_override {
+		switch state.editor_render_debug_view {
+			case .Lit:
+				label = "LIT"
+			case .Base_Color:
+				label = "BASE COLOR"
+			case .World_Normals:
+				label = "WORLD NORMALS"
+			case .Roughness:
+				label = "ROUGHNESS"
+			case .Metallic:
+				label = "METALLIC"
+			case .Depth:
+				label = "DEPTH"
+			case .Meshlets:
+				label = "MESHLETS"
+		}
+	}
+	value := world.ui_buttons[entity.ui_button_index]
+	next_text := fmt.tprintf("VIEW / %s", label)
+	if value.text == next_text {
+		return
+	}
+	value.text = next_text
+	_ = ecs.set_ui_button(world, button_index, value)
 }
 
 editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {

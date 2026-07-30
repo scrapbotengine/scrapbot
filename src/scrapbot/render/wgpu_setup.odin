@@ -470,6 +470,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_shadow_indirect_buffer,
 		renderer.gpu_meshlet_info_buffer,
 		renderer.gpu_meshlet_visible_buffer,
+		renderer.gpu_meshlet_identity_buffer,
 		renderer.gpu_meshlet_shadow_visible_buffer,
 		renderer.gpu_meshlet_indirect_template_buffer,
 		renderer.gpu_meshlet_indirect_buffer,

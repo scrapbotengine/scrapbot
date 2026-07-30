@@ -103,7 +103,7 @@ typed ECS/resource mutation
                                       │
              persistent WGPU instance/primitive/meshlet draw databases
                                       │
- object/meshlet compute cull + shadow + depth/sky/world + camera-selected postprocessing
+ object/meshlet compute cull + shadow + depth/sky/world + camera-selected debug/postprocessing
                                       │
                          retained UI streams
                            ┌──────────┴──────────┐

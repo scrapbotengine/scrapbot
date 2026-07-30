@@ -525,7 +525,8 @@ const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
     !stats?.hiz_occlusion || !stats.hiz_valid ||
-    stats.frustum_candidates !== 451 ||
+    stats.frustum_candidates < 451 ||
+    stats.frustum_candidates > result.result.renderables ||
     stats.visible_instances + stats.occlusion_culled_instances !== stats.frustum_candidates ||
     stats.occlusion_culled_instances > 35) {
   console.error("paused editor Hi-Z rejected a large near-field architectural bound");

@@ -506,6 +506,16 @@ read_full_camera_table :: proc "c" (
 	if err = read_ui_number_field(L, payload_index, "far", &value.far); err != "" {
 		return
 	}
+	debug_view_name := shared.render_debug_view_name(value.debug_view)
+	if err = read_ui_string_field(L, payload_index, "debug_view", &debug_view_name); err != "" {
+		return
+	}
+	debug_view, debug_view_ok := shared.render_debug_view_from_name(debug_view_name)
+	if !debug_view_ok {
+		err = "scrapbot.camera.debug_view must name a supported render debug view"
+		return
+	}
+	value.debug_view = debug_view
 	if err = read_ui_number_field(L, payload_index, "resolution_scale", &value.resolution_scale);
 	   err != "" {
 		return

@@ -1842,6 +1842,12 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	bloom += textureSample(bloom_3, linear_sampler, input.uv).rgb * 0.13;
 	bloom += textureSample(bloom_4, linear_sampler, input.uv).rgb * 0.07;
 	let resolved = textureSample(hdr_texture, linear_sampler, input.uv);
+	if (automatic_exposure.values.w > 1.5) {
+		return vec4<f32>(
+			presentation_dither(clamp(resolved.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), input.position.xy),
+			1.0,
+		);
+	}
 	let hdr =
 		resolved.rgb * automatic_exposure.values.x +
 		bloom * (0.8 * resolved.a);

@@ -460,6 +460,8 @@ State :: struct {
 	editor_gizmo_visible: bool,
 	editor_gizmo_mode: shared.Editor_Gizmo_Mode,
 	editor_gizmo_space: shared.Editor_Gizmo_Space,
+	editor_render_debug_view_override: bool,
+	editor_render_debug_view: shared.Render_Debug_View,
 	editor_gizmo_origin: shared.Vec2,
 	editor_gizmo_endpoints: [3]shared.Vec2,
 	editor_gizmo_plane_points: [3][4]shared.Vec2,
@@ -486,6 +488,16 @@ State :: struct {
 	color_picker_drag_part: Color_Picker_Part,
 	color_picker_drag_editor: bool,
 	color_picker_drag_active: bool,
+}
+
+effective_render_debug_view :: proc "contextless" (
+	state: ^State,
+	camera: shared.Camera_Component,
+) -> shared.Render_Debug_View {
+	if state != nil && state.editor_visible && state.editor_render_debug_view_override {
+		return state.editor_render_debug_view
+	}
+	return camera.debug_view
 }
 
 append_ui_event :: proc(state: ^State, event: UI_Event) {

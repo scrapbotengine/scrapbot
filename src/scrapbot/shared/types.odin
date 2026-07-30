@@ -305,10 +305,21 @@ Transform_Component :: struct {
 	parent: Entity_UUID,
 }
 
+Render_Debug_View :: enum u32 {
+	Lit,
+	Base_Color,
+	World_Normals,
+	Roughness,
+	Metallic,
+	Depth,
+	Meshlets,
+}
+
 Camera_Component :: struct {
 	fov: f32,
 	near: f32,
 	far: f32,
+	debug_view: Render_Debug_View,
 	resolution_scale: f32,
 	dynamic_resolution: bool,
 	dynamic_resolution_min_scale: f32,
@@ -1473,6 +1484,11 @@ Editor_UI_Role :: enum {
 	Gizmo_Toolbar,
 	Gizmo_Space_World,
 	Gizmo_Space_Local,
+	Debug_View_Toolbar,
+	Debug_View_Button,
+	Debug_View_Menu,
+	Debug_View_Menu_Content,
+	Debug_View_Item,
 	Transport_Play,
 	Transport_Pause,
 	Transport_Stop,

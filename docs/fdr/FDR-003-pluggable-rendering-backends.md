@@ -30,6 +30,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
 - Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Compute culls camera meshlets by sphere, normal cone, and Hi-Z and shadow meshlets by cascade sphere, then world, depth, and shadow issue one native fixed multi-draw per retained batch. Unsupported adapters, `--cpu-culling`, and layouts above the bounded visibility capacity use the whole-primitive path.
+- The active camera selects a backend-neutral debug view: lit output, base color, mapped world normals, perceptual roughness, metallic, logarithmic camera depth, or retained meshlet identity. Non-lit views skip temporal jitter, AO, SSR, volumetric fog, automatic exposure, bloom, tone mapping, and temporal/fast AA so diagnostics remain direct and stable. Meshlet identity is topology-owned and uploaded only when retained meshlet layout changes; an explicit diagnostic pattern reports when the active backend is using whole-primitive submission.
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Hi-Z queries cover the complete coarse-mip footprint; camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
@@ -167,7 +168,27 @@ culling rather than duplicating the GPU cluster implementation. WGPU requests na
 count when present; without it, wgpu-native may emulate the fixed multi-draw call as individual
 indirect draws while preserving the meshlet raster-work reduction.
 
-### 15. Compose the imported environment as the HDR sky and support camera exposure
+### 15. Make render debug views part of the camera contract
+
+**Decision:** Store a backend-neutral debug-view enum on the public Camera component. WGPU renders
+material inputs, mapped world normals, logarithmic camera depth, or retained meshlet identity
+directly and bypasses presentation effects that would alter those values. Meshlet layout owns a
+parallel identity stream aligned with its visible-instance slices; topology rebuilds upload it,
+while stable frames only read it. Whole-primitive fallback renders an unmistakable unavailable
+pattern instead of mislabeling triangles as meshlets.
+
+The editor composes its Game-view selector from ordinary public layout, button, popup, list, and
+scroll components. Its choice temporarily overrides the extracted camera copy and never mutates
+the authored project camera. Choosing `Camera` returns control to the authored value.
+
+**Why:** Projects, tools, automated framegrabs, and the editor need the same view semantics.
+Diagnostics must describe actual retained renderer data, and inspecting a scene must not dirty it.
+
+**Tradeoff:** The first slice visualizes submitted meshlet identity, not rejected meshlet bounds or
+rejection reasons. Meshlet mode requires active meshlet submission; Hi-Z, visibility
+classification, and selected-LOD views remain follow-up work.
+
+### 16. Compose the imported environment as the HDR sky and support camera exposure
 
 **Decision:** Keep environment lighting and visible backgrounds independent.
 
