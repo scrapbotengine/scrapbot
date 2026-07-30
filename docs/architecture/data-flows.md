@@ -214,7 +214,7 @@ scene TOML            Luau component map   native host callback
                          │
        structural queue + project/editor revisions
                          │
-     retained hierarchy → intrinsic/flex layout → interaction → paint
+     retained hierarchy → intrinsic/flex/dock layout → interaction → paint
                          │
         immutable World event history
           ┌──────────────┼──────────────┐
@@ -232,6 +232,13 @@ active font, packs optional wrapped stack lines from child basis and outer
 size, and resolves each line's grow or shrink factors before descendant layout.
 Text paint consumes the same deterministic line breaks. All scratch storage is
 bounded; an unchanged domain repeats none of this work.
+
+A dock space measures one tab for each direct public dock-item child and lays
+out only the active child below that strip. Cross-group drag completion changes
+the item's ordinary UUID parent and destination active UUID, then emits the
+same drop state and immutable event contract used by other project UI. Region
+splitting remains ordinary HStack/VStack layout. The editor's Browse, Game, and
+Inspect regions are consumers of this exact path.
 
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 

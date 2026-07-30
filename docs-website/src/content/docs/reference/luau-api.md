@@ -56,6 +56,8 @@ Built-in handles:
 - `scrapbot.ui_viewport`
 - `scrapbot.ui_state`
 - `scrapbot.ui_scroll_area`
+- `scrapbot.ui_dock_space`
+- `scrapbot.ui_dock_item`
 - `scrapbot.ui_icon`
 - `scrapbot.ui_text`
 - `scrapbot.ui_button`
@@ -101,7 +103,7 @@ UI query payloads expose the same complete layout, value, and style fields used 
 
 Layout payloads include `min_size`, per-axis fill and fit-content policy, `fixed_in_fill`, and per-child `basis`, `grow`, and `shrink`. Stack payloads expose wrapping and line gaps; text payloads expose word wrapping and explicit line height. Tree rows additionally expose their semantic parent, sibling-local order, and collapse state.
 
-Tables expose proportional and resizable columns plus a minimum width. Lists expose filtering, virtualization, dragging, and nested-tree flow. Progress and viewport payloads expose the same reusable value and presentation policies described in the component reference. Scrollbars, panel disclosures, button icons/title placement, input chrome, and checkbox shapes remain ordinary mutable fields.
+Tables expose proportional and resizable columns plus a minimum width. Lists expose filtering, virtualization, dragging, and nested-tree flow. Dock spaces expose active child identity, complete tab/drop styling, and transfer policy; dock items expose title and movement policy. Progress and viewport payloads expose the same reusable value and presentation policies described in the component reference. Scrollbars, panel disclosures, docking tabs, button icons/title placement, input chrome, and checkbox shapes remain ordinary mutable fields.
 
 Every laid-out element receives a renderer-owned, read-only `scrapbot.ui_state` payload with hover/active/focus, activation/change, validity, submit/cancel edges, draggable-list source/target UUIDs, drop placement, and monotonic revisions. Transient booleans describe the most recent UI pass; revision counters let systems detect edges reliably.
 

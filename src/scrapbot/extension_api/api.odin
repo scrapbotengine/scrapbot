@@ -260,6 +260,28 @@ UI_Panel_Payload :: struct {
 	collapsed: c.int,
 }
 
+UI_Dock_Space_Payload :: struct {
+	active: UUID,
+	tab_height: f32,
+	tab_min_width: f32,
+	tab_max_width: f32,
+	tab_gap: f32,
+	tab_padding: f32,
+	tab_size: f32,
+	tab_corner_radius: f32,
+	tab_color: Vec4,
+	tab_active_color: Vec4,
+	tab_background: Vec4,
+	tab_hover_background: Vec4,
+	tab_active_background: Vec4,
+	drop_background: Vec4,
+	draggable: c.int,
+}
+
+UI_Dock_Item_Payload :: struct {
+	movable: c.int,
+}
+
 UI_Table_Payload :: struct {
 	columns: c.int,
 	column_gap: f32,
@@ -474,6 +496,8 @@ UI_Component_Payload :: struct {
 	stack: UI_Stack_Payload,
 	scroll_area: UI_Scroll_Area_Payload,
 	panel: UI_Panel_Payload,
+	dock_space: UI_Dock_Space_Payload,
+	dock_item: UI_Dock_Item_Payload,
 	table: UI_Table_Payload,
 	list: UI_List_Payload,
 	progress: UI_Progress_Payload,
@@ -489,6 +513,10 @@ UI_Component_Payload :: struct {
 	text_len: c.int,
 	font_bytes: [MAX_UI_FONT_BYTES]u8,
 	font_len: c.int,
+	dock_title_bytes: [MAX_UI_TEXT_BYTES]u8,
+	dock_title_len: c.int,
+	dock_font_bytes: [MAX_UI_FONT_BYTES]u8,
+	dock_font_len: c.int,
 	prefix_bytes: [MAX_UI_PREFIX_BYTES]u8,
 	prefix_len: c.int,
 	icon_bytes: [MAX_UI_ICON_BYTES]u8,

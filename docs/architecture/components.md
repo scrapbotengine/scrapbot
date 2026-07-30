@@ -37,6 +37,8 @@ Lifecycle meanings:
 | `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical fixed, proportional, or wrapping flex flow. |
 | `scrapbot.ui_scroll_area` | UI container | Authored | Yes | Retained smooth vertical scrolling, clipping, and scrollbar styling. |
 | `scrapbot.ui_panel` | UI container | Authored | Yes | Titled/collapsible decoration with reusable title-band actions. |
+| `scrapbot.ui_dock_space` | UI container | Authored | Yes | Styled tab group whose direct dock-item children can transfer between compatible groups. |
+| `scrapbot.ui_dock_item` | UI layout | Authored | Yes | Direct dock-space child carrying reusable tab identity and movement policy. |
 | `scrapbot.ui_table` | UI container | Authored | Yes | Row-major multi-column layout with reusable proportions and separators. |
 | `scrapbot.ui_list` | UI container | Authored | Yes | Styled, filtered, and virtualized selection plus generic list/tree drag, reorder, and reparent state. |
 | `scrapbot.ui_text` | UI content | Authored | Yes | Intrinsically measured, optionally wrapped MTSDF text. |
@@ -267,6 +269,26 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Title/collapse/geometry mutations invalidate affected layout and paint; collapsed descendants remain ECS members but leave visible traversal.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_panel).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
+
+### `scrapbot.ui_dock_space`
+
+- **Contract:** Styled tab strip over direct dock-item children with a stable active UUID and opt-in cross-group transfer target.
+- **Storage/lifecycle:** Dedicated typed UI storage plus bounded reconciler-owned tab hit/gesture state; authored component.
+- **Producers:** Scene TOML, Luau/native mutation, project UI composition, and editor workspace composition.
+- **Consumers:** Retained layout, tab measurement/paint, pointer selection, UUID reparenting, generic drop state, and immutable UI events.
+- **Invalidation:** Membership, active UUID, tab metrics, title/font, or item-parent changes invalidate only the affected UI domain. Hover/drag changes paint state; a completed transfer uses ordinary `ui_layout` structural invalidation. Stable frames do no tab discovery or paint rebuild.
+- **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_dock_space).
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/diagnostic_driver_test.odin`.
+
+### `scrapbot.ui_dock_item`
+
+- **Contract:** Titled direct child of one dock space whose complete content becomes one selectable and optionally movable tab.
+- **Storage/lifecycle:** Dedicated typed UI storage; authored component paired with ordinary public layout parenting.
+- **Producers:** Scene TOML, Luau/native mutation, project UI composition, and editor workspace composition.
+- **Consumers:** Parent dock-space tab measurement, active-child layout, transfer eligibility, reflection, and persistence.
+- **Invalidation:** Title/movement changes invalidate targeted layout or paint; reparenting follows the canonical layout structural queue.
+- **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_dock_item).
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `scene_persistence_test.odin`.
 
 ### `scrapbot.ui_table`
 

@@ -505,6 +505,40 @@ system_get_ui_component :: proc "c" (
 				collapsed = bool_to_c_int(value.collapsed),
 			}
 			if !api_ui_payload_set_strings(payload, value.title, value.font) { return 0 }
+		case "scrapbot.ui_dock_space":
+			if world_entity.ui_dock_space_index < 0 ||
+			   world_entity.ui_dock_space_index >= len(step.world.ui_dock_spaces) {
+				return 0
+			}
+			value := step.world.ui_dock_spaces[world_entity.ui_dock_space_index]
+			payload.dock_space = {
+				active = api_uuid_from_shared(value.active),
+				tab_height = value.tab_height,
+				tab_min_width = value.tab_min_width,
+				tab_max_width = value.tab_max_width,
+				tab_gap = value.tab_gap,
+				tab_padding = value.tab_padding,
+				tab_size = value.tab_size,
+				tab_corner_radius = value.tab_corner_radius,
+				tab_color = api_vec4_from_shared(value.tab_color),
+				tab_active_color = api_vec4_from_shared(value.tab_active_color),
+				tab_background = api_vec4_from_shared(value.tab_background),
+				tab_hover_background = api_vec4_from_shared(value.tab_hover_background),
+				tab_active_background = api_vec4_from_shared(value.tab_active_background),
+				drop_background = api_vec4_from_shared(value.drop_background),
+				draggable = bool_to_c_int(value.draggable),
+			}
+			if !api_ui_payload_set_dock_strings(payload, "", value.font) { return 0 }
+		case "scrapbot.ui_dock_item":
+			if world_entity.ui_dock_item_index < 0 ||
+			   world_entity.ui_dock_item_index >= len(step.world.ui_dock_items) {
+				return 0
+			}
+			value := step.world.ui_dock_items[world_entity.ui_dock_item_index]
+			payload.dock_item = {
+				movable = bool_to_c_int(value.movable),
+			}
+			if !api_ui_payload_set_dock_strings(payload, value.title, "") { return 0 }
 		case "scrapbot.ui_table":
 			if world_entity.ui_table_index < 0 ||
 			   world_entity.ui_table_index >= len(step.world.ui_tables) { return 0 }
@@ -786,6 +820,10 @@ ui_command_from_api_payload :: proc "c" (
 	if !strings_ok {
 		return "native UI component string length is invalid"
 	}
+	dock_title, dock_font, dock_strings_ok := api_ui_payload_dock_strings(payload)
+	if !dock_strings_ok {
+		return "native UI dock string length is invalid"
+	}
 	prefix, prefix_ok := api_ui_payload_prefix(payload)
 	if !prefix_ok {
 		return "native UI input prefix length is invalid"
@@ -934,6 +972,46 @@ ui_command_from_api_payload :: proc "c" (
 			command.panel.title = ""
 			command.panel.font = ""
 			return ecs.init_ui_component_command(command, .Panel, text, font)
+		case "scrapbot.ui_dock_space":
+			value := shared.UI_Dock_Space_Component {
+				active = shared_uuid_from_api(payload.dock_space.active),
+				font = dock_font,
+				tab_height = payload.dock_space.tab_height,
+				tab_min_width = payload.dock_space.tab_min_width,
+				tab_max_width = payload.dock_space.tab_max_width,
+				tab_gap = payload.dock_space.tab_gap,
+				tab_padding = payload.dock_space.tab_padding,
+				tab_size = payload.dock_space.tab_size,
+				tab_corner_radius = payload.dock_space.tab_corner_radius,
+				tab_color = shared_vec4_from_api(payload.dock_space.tab_color),
+				tab_active_color = shared_vec4_from_api(payload.dock_space.tab_active_color),
+				tab_background = shared_vec4_from_api(payload.dock_space.tab_background),
+				tab_hover_background = shared_vec4_from_api(
+					payload.dock_space.tab_hover_background,
+				),
+				tab_active_background = shared_vec4_from_api(
+					payload.dock_space.tab_active_background,
+				),
+				drop_background = shared_vec4_from_api(payload.dock_space.drop_background),
+				draggable = payload.dock_space.draggable != 0,
+			}
+			if !shared.ui_dock_space_is_valid(value) {
+				return "native ui_dock_space payload is invalid"
+			}
+			command.dock_space = value
+			command.dock_space.font = ""
+			return ecs.init_ui_component_command(command, .Dock_Space, font = dock_font)
+		case "scrapbot.ui_dock_item":
+			value := shared.UI_Dock_Item_Component {
+				title = dock_title,
+				movable = payload.dock_item.movable != 0,
+			}
+			if !shared.ui_dock_item_is_valid(value) {
+				return "native ui_dock_item payload is invalid"
+			}
+			command.dock_item = value
+			command.dock_item.title = ""
+			return ecs.init_ui_component_command(command, .Dock_Item, dock_title)
 		case "scrapbot.ui_table":
 			value := shared.UI_Table_Component {
 				columns = int(payload.table.columns),
@@ -1221,6 +1299,44 @@ api_ui_payload_set_strings :: proc "contextless" (
 	for byte, index in transmute([]u8)prefix { payload.prefix_bytes[index] = byte }
 	for byte, index in transmute([]u8)icon { payload.icon_bytes[index] = byte }
 	return true
+}
+
+api_ui_payload_set_dock_strings :: proc "contextless" (
+	payload: ^api.UI_Component_Payload,
+	title, font: string,
+) -> bool {
+	if payload == nil ||
+	   len(title) >= len(payload.dock_title_bytes) ||
+	   len(font) >= len(payload.dock_font_bytes) {
+		return false
+	}
+	payload.dock_title_len = c.int(len(title))
+	payload.dock_font_len = c.int(len(font))
+	for byte, index in transmute([]u8)title {
+		payload.dock_title_bytes[index] = byte
+	}
+	for byte, index in transmute([]u8)font {
+		payload.dock_font_bytes[index] = byte
+	}
+	return true
+}
+
+api_ui_payload_dock_strings :: proc "contextless" (
+	payload: ^api.UI_Component_Payload,
+) -> (
+	title, font: string,
+	ok: bool,
+) {
+	if payload == nil ||
+	   payload.dock_title_len < 0 ||
+	   int(payload.dock_title_len) > len(payload.dock_title_bytes) ||
+	   payload.dock_font_len < 0 ||
+	   int(payload.dock_font_len) > len(payload.dock_font_bytes) {
+		return "", "", false
+	}
+	return string(payload.dock_title_bytes[:int(payload.dock_title_len)]),
+		string(payload.dock_font_bytes[:int(payload.dock_font_len)]),
+		true
 }
 
 api_ui_payload_set_action :: proc "contextless" (

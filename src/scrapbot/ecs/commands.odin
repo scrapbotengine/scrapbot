@@ -67,6 +67,8 @@ UI_Component_Command_Kind :: enum {
 	VStack,
 	Scroll_Area,
 	Panel,
+	Dock_Space,
+	Dock_Item,
 	Table,
 	List,
 	Progress,
@@ -87,6 +89,8 @@ UI_Component_Command :: struct {
 	stack: UI_Stack_Component,
 	scroll_area: UI_Scroll_Area_Component,
 	panel: UI_Panel_Component,
+	dock_space: UI_Dock_Space_Component,
+	dock_item: UI_Dock_Item_Component,
 	table: UI_Table_Component,
 	list: UI_List_Component,
 	progress: UI_Progress_Component,
@@ -438,6 +442,10 @@ ui_component_command_kind :: proc "contextless" (name: string) -> UI_Component_C
 			return .Scroll_Area
 		case "scrapbot.ui_panel":
 			return .Panel
+		case "scrapbot.ui_dock_space":
+			return .Dock_Space
+		case "scrapbot.ui_dock_item":
+			return .Dock_Item
 		case "scrapbot.ui_table":
 			return .Table
 		case "scrapbot.ui_list":
@@ -1206,6 +1214,8 @@ despawn_entity :: proc(world: ^World, entity_index: int, generation: u32) {
 		"scrapbot.ui_vstack",
 		"scrapbot.ui_scroll_area",
 		"scrapbot.ui_panel",
+		"scrapbot.ui_dock_space",
+		"scrapbot.ui_dock_item",
 		"scrapbot.ui_table",
 		"scrapbot.ui_list",
 		"scrapbot.ui_progress",
@@ -1350,6 +1360,14 @@ apply_ui_component :: proc(world: ^World, entity_index: int, command: ^UI_Compon
 			value.title = text
 			value.font = font
 			set_ui_panel(world, entity_index, value)
+		case .Dock_Space:
+			value := command.dock_space
+			value.font = font
+			set_ui_dock_space(world, entity_index, value)
+		case .Dock_Item:
+			value := command.dock_item
+			value.title = text
+			set_ui_dock_item(world, entity_index, value)
 		case .Table:
 			set_ui_table(world, entity_index, command.table)
 		case .List:

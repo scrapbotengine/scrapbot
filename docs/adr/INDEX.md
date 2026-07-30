@@ -46,3 +46,4 @@
 | [ADR-042](ADR-042-publish-ui-interactions-as-immutable-events.md) | Publish UI interactions as immutable events | 2026-07-29 |
 | [ADR-043](ADR-043-model-responsive-ui-as-an-authored-canvas-transform.md) | Model responsive UI as an authored canvas transform | 2026-07-29 |
 | [ADR-044](ADR-044-resolve-intrinsic-and-flex-ui-layout-in-retained-passes.md) | Resolve intrinsic and flex UI layout in retained passes | 2026-07-30 |
+| [ADR-045](ADR-045-compose-docking-from-public-groups-and-layout.md) | Compose docking from public groups and layout | 2026-07-30 |

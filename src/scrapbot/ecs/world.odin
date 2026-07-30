@@ -42,6 +42,10 @@ UI_Canvas_Component :: shared.UI_Canvas_Component
 UI_Stack_Component :: shared.UI_Stack_Component
 UI_Scroll_Area_Component :: shared.UI_Scroll_Area_Component
 UI_Panel_Component :: shared.UI_Panel_Component
+UI_Dock_Space_Component :: shared.UI_Dock_Space_Component
+UI_Dock_Item_Component :: shared.UI_Dock_Item_Component
+ui_dock_space_is_valid :: shared.ui_dock_space_is_valid
+ui_dock_item_is_valid :: shared.ui_dock_item_is_valid
 UI_Table_Component :: shared.UI_Table_Component
 UI_List_Component :: shared.UI_List_Component
 UI_Progress_Component :: shared.UI_Progress_Component
@@ -94,6 +98,8 @@ init_world_entity :: proc(
 		ui_vstack_index = INVALID_COMPONENT_INDEX,
 		ui_scroll_area_index = INVALID_COMPONENT_INDEX,
 		ui_panel_index = INVALID_COMPONENT_INDEX,
+		ui_dock_space_index = INVALID_COMPONENT_INDEX,
+		ui_dock_item_index = INVALID_COMPONENT_INDEX,
 		ui_table_index = INVALID_COMPONENT_INDEX,
 		ui_list_index = INVALID_COMPONENT_INDEX,
 		ui_progress_index = INVALID_COMPONENT_INDEX,
@@ -319,6 +325,8 @@ destroy_world :: proc(world: ^World) {
 		delete_world_string(world, mesh.primitive)
 	}
 	for panel in world.ui_panels { delete_world_string(world, panel.title); delete_world_string(world, panel.font) }
+	for dock_space in world.ui_dock_spaces { delete_world_string(world, dock_space.font) }
+	for dock_item in world.ui_dock_items { delete_world_string(world, dock_item.title) }
 	for icon in world.ui_icons { delete_world_string(world, icon.icon) }
 	for text in world.ui_texts { delete_world_string(world, text.text); delete_world_string(world, text.font) }
 	for button in world.ui_buttons {
@@ -398,6 +406,8 @@ destroy_world :: proc(world: ^World) {
 	delete(world.ui_vstacks)
 	delete(world.ui_scroll_areas)
 	delete(world.ui_panels)
+	delete(world.ui_dock_spaces)
+	delete(world.ui_dock_items)
 	delete(world.ui_tables)
 	delete(world.ui_lists)
 	delete(world.ui_progresses)
@@ -417,6 +427,8 @@ destroy_world :: proc(world: ^World) {
 	delete(world.free_ui_vstack_indices)
 	delete(world.free_ui_scroll_area_indices)
 	delete(world.free_ui_panel_indices)
+	delete(world.free_ui_dock_space_indices)
+	delete(world.free_ui_dock_item_indices)
 	delete(world.free_ui_table_indices)
 	delete(world.free_ui_list_indices)
 	delete(world.free_ui_progress_indices)
@@ -501,6 +513,8 @@ build_world :: proc(scene: ^Scene) -> World {
 		if entity.has_ui_vstack { world_entity.ui_vstack_index = len(world.ui_vstacks); append(&world.ui_vstacks, entity.ui_vstack) }
 		if entity.has_ui_scroll_area { world_entity.ui_scroll_area_index = len(world.ui_scroll_areas); append(&world.ui_scroll_areas, entity.ui_scroll_area) }
 		if entity.has_ui_panel { world_entity.ui_panel_index = len(world.ui_panels); panel := entity.ui_panel; panel.title = clone_world_string(&world, panel.title); panel.font = clone_world_string(&world, panel.font); append(&world.ui_panels, panel) }
+		if entity.has_ui_dock_space { world_entity.ui_dock_space_index = len(world.ui_dock_spaces); dock_space := entity.ui_dock_space; dock_space.font = clone_world_string(&world, dock_space.font); append(&world.ui_dock_spaces, dock_space) }
+		if entity.has_ui_dock_item { world_entity.ui_dock_item_index = len(world.ui_dock_items); dock_item := entity.ui_dock_item; dock_item.title = clone_world_string(&world, dock_item.title); append(&world.ui_dock_items, dock_item) }
 		if entity.has_ui_table { world_entity.ui_table_index = len(world.ui_tables); append(&world.ui_tables, entity.ui_table) }
 		if entity.has_ui_list {
 			world_entity.ui_list_index = len(world.ui_lists)
@@ -2869,6 +2883,16 @@ entity_has_component :: proc "c" (
 			)
 		case "scrapbot.ui_panel":
 			return entity.ui_panel_index >= 0 && entity.ui_panel_index < len(world.ui_panels)
+		case "scrapbot.ui_dock_space":
+			return(
+				entity.ui_dock_space_index >= 0 &&
+				entity.ui_dock_space_index < len(world.ui_dock_spaces) \
+			)
+		case "scrapbot.ui_dock_item":
+			return(
+				entity.ui_dock_item_index >= 0 &&
+				entity.ui_dock_item_index < len(world.ui_dock_items) \
+			)
 		case "scrapbot.ui_table":
 			return entity.ui_table_index >= 0 && entity.ui_table_index < len(world.ui_tables)
 		case "scrapbot.ui_list":

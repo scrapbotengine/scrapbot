@@ -662,10 +662,39 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 		}
 		append(&loaded.scene.entities, entity)
 	}
+	dock_id := shared.entity_uuid_from_engine_name("persistence-schema-dock")
+	dock_item_id := shared.entity_uuid_from_engine_name("persistence-schema-dock-item")
+	dock_space := shared.ui_dock_space_default()
+	dock_space.active = dock_item_id
+	dock_space.font = "Inter"
+	dock_space.tab_height = 36
+	dock_space.tab_active_color = {1.4, 1.1, 0.9, 1}
+	dock_item := shared.ui_dock_item_default()
+	dock_item.title = "SCENE"
+	dock_item.movable = false
+	append(
+		&loaded.scene.entities,
+		shared.Scene_Entity {
+			id = dock_id,
+			name = "Schema Dock",
+			has_ui_layout = true,
+			ui_layout = {parent = controls_id, size = {480, 320}},
+			has_ui_dock_space = true,
+			ui_dock_space = dock_space,
+		},
+		shared.Scene_Entity {
+			id = dock_item_id,
+			name = "Schema Dock Item",
+			has_ui_layout = true,
+			ui_layout = {parent = dock_id, size = {480, 284}},
+			has_ui_dock_item = true,
+			ui_dock_item = dock_item,
+		},
+	)
 	world := ecs.build_world(&loaded.scene)
 	project.destroy_scene_load_result(&loaded)
 	defer ecs.destroy_world(&world)
-	dirty := [11]shared.Entity_UUID {
+	dirty := [13]shared.Entity_UUID {
 		root_id,
 		transform_child_id,
 		controls_id,
@@ -677,6 +706,8 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 		container_ids[1],
 		container_ids[2],
 		container_ids[3],
+		dock_id,
+		dock_item_id,
 	}
 	save_err := save_scene_world(scene_path, &world, dirty[:])
 	testing.expectf(t, save_err == "", "complete component schema save failed: %s", save_err)

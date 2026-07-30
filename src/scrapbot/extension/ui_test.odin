@@ -178,6 +178,20 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	panel_payload, panel_ok := ui_panel(panel_style, "Collapsible", "Inter")
 	testing.expect(t, panel_ok)
 	testing.expect(t, panel_payload.panel.collapsible != 0)
+	dock_space_style := ui_dock_space_default()
+	dock_space_style.tab_height = 36
+	dock_space_payload, dock_space_ok := ui_dock_space(dock_space_style, "Inter")
+	testing.expect(t, dock_space_ok)
+	testing.expect(t, dock_space_payload.component == UI_DOCK_SPACE)
+	testing.expect(t, dock_space_payload.dock_space.tab_height == 36)
+	testing.expect(t, ui_payload_dock_font(&dock_space_payload) == "Inter")
+	dock_item_style := ui_dock_item_default()
+	dock_item_style.movable = 0
+	dock_item_payload, dock_item_ok := ui_dock_item(dock_item_style, "SCENE")
+	testing.expect(t, dock_item_ok)
+	testing.expect(t, dock_item_payload.component == UI_DOCK_ITEM)
+	testing.expect(t, dock_item_payload.dock_item.movable == 0)
+	testing.expect(t, ui_payload_dock_title(&dock_item_payload) == "SCENE")
 
 	text_style := ui_text_default()
 	text_style.size = 13

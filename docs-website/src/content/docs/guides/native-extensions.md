@@ -315,7 +315,7 @@ if !icon_ok {
 
 Project icon sets use the exact same payload with their resource UUID. `scrapbot.ui_button` accepts the symbol as its fourth argument and carries the set UUID, leading/trailing placement, explicit or automatic size, gap, and inset in its value.
 
-The raw ABI stores text, icon symbols, font names, input prefixes, semantic actions, and event payloads in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_button`, `ui_input`, `ui_action`, the `ui_payload_*` accessors, and `ui_event_action`/`ui_event_payload`.
+The raw ABI stores text, dock titles, dock fonts, icon symbols, ordinary font names, input prefixes, semantic actions, and event payloads in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_dock_space`, `ui_dock_item`, `ui_button`, `ui_input`, `ui_action`, the `ui_payload_*` accessors, and `ui_event_action`/`ui_event_payload`.
 
 ## Queue lifecycle commands
 

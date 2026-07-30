@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"name": "Arcade Telemetry Dock Item", "origin": "scene", "part": "dock_tab"}},
+    {"action": "wait", "frames": 1},
+    {"action": "expect", "target": {"name": "Arcade Telemetry Dock Item", "origin": "scene"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "Arcade Dock Space", "origin": "scene"}, "padding": 8}
+  ]
+}

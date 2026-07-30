@@ -515,6 +515,12 @@ push_query_component_table :: proc "c" (
 		case "scrapbot.ui_panel":
 			push_ui_panel_table(L, world.ui_panels[entity.ui_panel_index])
 			return
+		case "scrapbot.ui_dock_space":
+			push_ui_dock_space_table(L, world.ui_dock_spaces[entity.ui_dock_space_index])
+			return
+		case "scrapbot.ui_dock_item":
+			push_ui_dock_item_table(L, world.ui_dock_items[entity.ui_dock_item_index])
+			return
 		case "scrapbot.ui_table":
 			push_ui_table_table(L, world.ui_tables[entity.ui_table_index])
 			return
@@ -740,6 +746,32 @@ push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component)
 	push_number_field(L, "disclosure_inset", value.disclosure_inset)
 	push_bool_field(L, "collapsible", value.collapsible)
 	push_bool_field(L, "collapsed", value.collapsed)
+}
+
+push_ui_dock_space_table :: proc "c" (L: Lua_State, value: shared.UI_Dock_Space_Component) {
+	lua_createtable(L, 0, 16)
+	push_uuid_field(L, "active", value.active)
+	push_string_field(L, "font", value.font)
+	push_number_field(L, "tab_height", value.tab_height)
+	push_number_field(L, "tab_min_width", value.tab_min_width)
+	push_number_field(L, "tab_max_width", value.tab_max_width)
+	push_number_field(L, "tab_gap", value.tab_gap)
+	push_number_field(L, "tab_padding", value.tab_padding)
+	push_number_field(L, "tab_size", value.tab_size)
+	push_number_field(L, "tab_corner_radius", value.tab_corner_radius)
+	push_vec4_field(L, "tab_color", value.tab_color)
+	push_vec4_field(L, "tab_active_color", value.tab_active_color)
+	push_vec4_field(L, "tab_background", value.tab_background)
+	push_vec4_field(L, "tab_hover_background", value.tab_hover_background)
+	push_vec4_field(L, "tab_active_background", value.tab_active_background)
+	push_vec4_field(L, "drop_background", value.drop_background)
+	push_bool_field(L, "draggable", value.draggable)
+}
+
+push_ui_dock_item_table :: proc "c" (L: Lua_State, value: shared.UI_Dock_Item_Component) {
+	lua_createtable(L, 0, 2)
+	push_string_field(L, "title", value.title)
+	push_bool_field(L, "movable", value.movable)
 }
 
 push_ui_table_table :: proc "c" (L: Lua_State, value: shared.UI_Table_Component) {

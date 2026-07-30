@@ -19,9 +19,9 @@ Every visible element starts with `scrapbot.ui_layout`. Add at most one flow con
 | --- | --- |
 | Box | `ui_layout` |
 | Root policy | Optional singleton `ui_canvas` |
-| Flow | `ui_hstack`, `ui_vstack`, `ui_table`, or `ui_list` |
+| Flow | `ui_hstack`, `ui_vstack`, `ui_table`, `ui_list`, or `ui_dock_space` |
 | Viewport | `ui_scroll_area` |
-| Framing | `ui_panel` |
+| Framing | `ui_panel`; `ui_dock_item` on a direct dock-space child |
 | Content | `ui_icon`, `ui_text`, `ui_button`, `ui_input`, `ui_checkbox`, or `ui_color_picker` |
 | Indicator | `ui_progress` |
 | Semantics | Optional inheritable `ui_action` |
@@ -205,6 +205,65 @@ Project layout, painting, embedded viewports, pointer hit testing, and semantic
 diagnostics all use the exact authored canvas transform. The editor is only a
 host for that public policy. Projects without a canvas retain the legacy
 top-left 1280×720 fit.
+
+## Compose a docked workspace
+
+Docking is a public group-and-item contract, not an editor workspace object.
+Put dock spaces inside ordinary draggable fill stacks to define the available
+regions:
+
+```toml
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000130"
+name = "Workspace"
+
+[entities.ui_layout]
+size = [1280, 720]
+
+[entities.ui_hstack]
+fill = true
+draggable = true
+min_size = 180
+gap = 4
+
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000131"
+name = "Left Dock"
+
+[entities.ui_layout]
+parent = "d4000000-0000-4000-8000-000000000130"
+size = [320, 720]
+fill_height = true
+
+[entities.ui_dock_space]
+active = "d4000000-0000-4000-8000-000000000132"
+font = "Inter"
+
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000132"
+name = "Inventory Tab"
+
+[entities.ui_layout]
+parent = "d4000000-0000-4000-8000-000000000131"
+size = [320, 688]
+fill_width = true
+fill_height = true
+
+[entities.ui_dock_item]
+title = "INVENTORY"
+movable = true
+```
+
+Every direct dock-item child contributes one tab. Clicking selects it. Dragging
+a movable tab onto another draggable dock space reparents the item by stable
+UUID, selects it in the destination, and emits the ordinary public drop state
+and immutable `dropped` event. Set an item's `movable` field or a destination's
+`draggable` field to `false` for fixed application regions.
+
+The dock space owns only tabs and active-child presentation. Nested stacks,
+tables, lists, scroll areas, and viewports remain normal components inside the
+dock item. This is the same framework consumed by Scrapbot's Browse, Game, and
+Inspect editor regions.
 
 ## Compose a popup
 

@@ -52,6 +52,8 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ui_vstack` | UI flow | Vertical child layout. |
 | `scrapbot.ui_scroll_area` | UI viewport | Clipping, smooth pixel scrolling, and scrollbar style. |
 | `scrapbot.ui_panel` | UI framing | Optional title band and collapsible disclosure. |
+| `scrapbot.ui_dock_space` | UI flow | Styled direct-child tab group and cross-group transfer target. |
+| `scrapbot.ui_dock_item` | UI framing | Titled, optionally movable direct dock-space child. |
 | `scrapbot.ui_table` | UI flow | Row-major multi-column layout. |
 | `scrapbot.ui_list` | UI flow | Filterable, virtualizable selectable direct-child rows and trees. |
 | `scrapbot.ui_progress` | UI indicator | Track and clamped progress fill. |
@@ -240,7 +242,7 @@ Light query payloads expose the listed data fields. Shadow components are empty 
 
 ## UI composition rules
 
-Every UI entity requires `scrapbot.ui_layout`. An entity may have at most one flow component—HStack, VStack, table, or list—and at most one content control—text, button, input, or checkbox. Panel, scroll-area, and progress components compose with those roles. One root per entity-origin domain may additionally carry `scrapbot.ui_canvas`. The renderer attaches `scrapbot.ui_state`; projects never author or write it.
+Every UI entity requires `scrapbot.ui_layout`. An entity may have at most one flow component—HStack, VStack, table, list, or dock space—and at most one content control—icon, text, button, input, checkbox, or color picker. Panel, scroll-area, dock-item, and progress components compose with those roles. One root per entity-origin domain may additionally carry `scrapbot.ui_canvas`. The renderer attaches `scrapbot.ui_state`; projects never author or write it.
 
 Themes are optional composition-time recipes, not renderer state. They resolve palette, metric, and control-role choices into the same fields listed below, after which per-entity values can override any result. See [UI theming](../../guides/ui-theming/) for the resolution order and contrasting examples.
 
@@ -321,6 +323,49 @@ Speed and smoothness must be positive; scrollbar geometry is non-negative. Desce
 | `collapsible: bool`, `collapsed: bool` | A collapsed panel must be collapsible. |
 
 Panels do not own a special close/remove control. Any direct child `ui_button` with `panel_action = true` is placed in the trailing title band and remains interactive while the panel is collapsed. Multiple actions lay out from right to left.
+
+### `scrapbot.ui_dock_space`
+
+A dock space turns each direct child carrying `ui_dock_item` into one tab. Only
+the active item participates in descendant layout, paint, focus, and pointer
+interaction. If `active` is empty or no longer names an eligible child, the
+first direct dock item is displayed without rewriting authored data.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `active: string` | Empty UUID | Direct dock-item child UUID selected for display. Authored non-empty references must resolve to one of this space's direct children. |
+| `font: string` | Embedded Inter | Font used to measure and paint tab titles. |
+| `tab_height` | `32` | Positive height reserved above the active item. |
+| `tab_min_width`, `tab_max_width` | `72`, `180` | Positive title-width bounds; maximum must be at least minimum. |
+| `tab_gap`, `tab_padding` | `2`, `12` | Non-negative spacing between tabs and horizontal title inset. |
+| `tab_size`, `tab_corner_radius` | `12`, `4` | Positive title size and non-negative SDF corner radius. |
+| `tab_color` | `[0.68, 0.70, 0.76, 1]` | Inactive title color. |
+| `tab_active_color` | `[0.94, 0.95, 0.98, 1]` | Active title color. |
+| `tab_background` | `[0.055, 0.060, 0.072, 1]` | Inactive tab background. |
+| `tab_hover_background` | `[0.075, 0.082, 0.098, 1]` | Hovered tab background. |
+| `tab_active_background` | `[0.105, 0.115, 0.135, 1]` | Active tab background. |
+| `drop_background` | `[0.12, 0.72, 0.64, 0.22]` | Destination overlay while a movable tab is dragged over this group. |
+| `draggable` | `true` | Accept movable dock items from another draggable dock space. |
+
+RGB style channels are linear and may exceed `1` for HDR presentation; every
+color component must remain finite. Dock regions themselves are ordinary
+layout: place dock spaces inside draggable fill HStacks or VStacks to build a
+resizable workspace.
+
+### `scrapbot.ui_dock_item`
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `title: string` | Required | Non-empty tab title. |
+| `movable` | `true` | Allow this item to transfer to another draggable dock space. |
+
+A dock item must be a direct child of a dock space. Dragging its tab across the
+five-pixel gesture threshold and releasing over another compatible space
+changes the item's public `ui_layout.parent`, activates it in the destination,
+updates the destination's read-only drop state, and publishes a `dropped` UI
+event. The initial contract transfers complete items between existing groups;
+same-group ordering, edge-created splits, floating windows, and persisted
+workspace layouts are not yet provided.
 
 ### `scrapbot.ui_table`
 

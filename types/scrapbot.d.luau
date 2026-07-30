@@ -37,6 +37,8 @@ export type Scrapbot = {
 	ui_vstack: ScrapbotUiVstackComponent,
 	ui_scroll_area: ScrapbotUiScrollAreaComponent,
 	ui_panel: ScrapbotUiPanelComponent,
+	ui_dock_space: ScrapbotUiDockSpaceComponent,
+	ui_dock_item: ScrapbotUiDockItemComponent,
 	ui_table: ScrapbotUiTableComponent,
 	ui_list: ScrapbotUiListComponent,
 	ui_progress: ScrapbotUiProgressComponent,
@@ -737,6 +739,58 @@ export type ReadonlyScrapbotUiPanel = {
 }
 
 export type ScrapbotUiPanelComponent = ScrapbotComponent<ScrapbotUiPanel, ReadonlyScrapbotUiPanel>
+
+export type ScrapbotUiDockSpace = {
+	active: string?,
+	font: string?,
+	tab_height: number?,
+	tab_min_width: number?,
+	tab_max_width: number?,
+	tab_gap: number?,
+	tab_padding: number?,
+	tab_size: number?,
+	tab_corner_radius: number?,
+	tab_color: Vec4?,
+	tab_active_color: Vec4?,
+	tab_background: Vec4?,
+	tab_hover_background: Vec4?,
+	tab_active_background: Vec4?,
+	drop_background: Vec4?,
+	draggable: boolean?,
+}
+
+export type ReadonlyScrapbotUiDockSpace = {
+	read active: string,
+	read font: string,
+	read tab_height: number,
+	read tab_min_width: number,
+	read tab_max_width: number,
+	read tab_gap: number,
+	read tab_padding: number,
+	read tab_size: number,
+	read tab_corner_radius: number,
+	read tab_color: ReadonlyVec4,
+	read tab_active_color: ReadonlyVec4,
+	read tab_background: ReadonlyVec4,
+	read tab_hover_background: ReadonlyVec4,
+	read tab_active_background: ReadonlyVec4,
+	read drop_background: ReadonlyVec4,
+	read draggable: boolean,
+}
+
+export type ScrapbotUiDockSpaceComponent = ScrapbotComponent<ScrapbotUiDockSpace, ReadonlyScrapbotUiDockSpace>
+
+export type ScrapbotUiDockItem = {
+	title: string?,
+	movable: boolean?,
+}
+
+export type ReadonlyScrapbotUiDockItem = {
+	read title: string,
+	read movable: boolean,
+}
+
+export type ScrapbotUiDockItemComponent = ScrapbotComponent<ScrapbotUiDockItem, ReadonlyScrapbotUiDockItem>
 
 export type ScrapbotUiTable = {
 	columns: number?,

@@ -114,6 +114,14 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	); lua_setfield(L, -2, "ui_panel")
 	push_registered_component_handle_by_name(
 		L,
+		"scrapbot.ui_dock_space",
+	); lua_setfield(L, -2, "ui_dock_space")
+	push_registered_component_handle_by_name(
+		L,
+		"scrapbot.ui_dock_item",
+	); lua_setfield(L, -2, "ui_dock_item")
+	push_registered_component_handle_by_name(
+		L,
 		"scrapbot.ui_table",
 	); lua_setfield(L, -2, "ui_table")
 	push_registered_component_handle_by_name(L, "scrapbot.ui_list")

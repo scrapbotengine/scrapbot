@@ -117,6 +117,8 @@ test_public_ui_registry_fields_exactly_match_component_structs :: proc(t: ^testi
 		{"scrapbot.ui_vstack", shared.UI_Stack_Component},
 		{"scrapbot.ui_scroll_area", shared.UI_Scroll_Area_Component},
 		{"scrapbot.ui_panel", shared.UI_Panel_Component},
+		{"scrapbot.ui_dock_space", shared.UI_Dock_Space_Component},
+		{"scrapbot.ui_dock_item", shared.UI_Dock_Item_Component},
 		{"scrapbot.ui_table", shared.UI_Table_Component},
 		{"scrapbot.ui_list", shared.UI_List_Component},
 		{"scrapbot.ui_progress", shared.UI_Progress_Component},

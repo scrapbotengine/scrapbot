@@ -877,6 +877,8 @@ parse_scene :: proc(
 		   line == "[entities.ui_vstack]" ||
 		   line == "[entities.ui_scroll_area]" ||
 		   line == "[entities.ui_panel]" ||
+		   line == "[entities.ui_dock_space]" ||
+		   line == "[entities.ui_dock_item]" ||
 		   line == "[entities.ui_table]" ||
 		   line == "[entities.ui_list]" ||
 		   line == "[entities.ui_progress]" ||
@@ -919,6 +921,14 @@ parse_scene :: proc(
 					current.ui_panel = shared.ui_panel_default()
 				}
 				current.has_ui_panel = true
+			}
+			if section == "ui_dock_space" {
+				current.has_ui_dock_space = true
+				current.ui_dock_space = shared.ui_dock_space_default()
+			}
+			if section == "ui_dock_item" {
+				current.has_ui_dock_item = true
+				current.ui_dock_item = shared.ui_dock_item_default()
 			}
 			if section == "ui_table" {
 				current.has_ui_table = true
@@ -1519,6 +1529,76 @@ parse_scene :: proc(
 						)
 				}
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_panel.%s", key)) }
+			case "ui_dock_space":
+				current.has_ui_dock_space = true
+				switch key {
+					case "active":
+						raw_active, string_ok := parse_basic_string(value)
+						if string_ok {
+							current.ui_dock_space.active, found = shared.entity_uuid_parse(
+								raw_active,
+							)
+						} else {
+							found = false
+						}
+					case "font":
+						current.ui_dock_space.font, found = parse_basic_string(value)
+					case "tab_height":
+						current.ui_dock_space.tab_height, found = parse_f32(value)
+					case "tab_min_width":
+						current.ui_dock_space.tab_min_width, found = parse_f32(value)
+					case "tab_max_width":
+						current.ui_dock_space.tab_max_width, found = parse_f32(value)
+					case "tab_gap":
+						current.ui_dock_space.tab_gap, found = parse_f32(value)
+					case "tab_padding":
+						current.ui_dock_space.tab_padding, found = parse_f32(value)
+					case "tab_size":
+						current.ui_dock_space.tab_size, found = parse_f32(value)
+					case "tab_corner_radius":
+						current.ui_dock_space.tab_corner_radius, found = parse_f32(value)
+					case "tab_color":
+						current.ui_dock_space.tab_color, found = parse_vec4(value)
+					case "tab_active_color":
+						current.ui_dock_space.tab_active_color, found = parse_vec4(value)
+					case "tab_background":
+						current.ui_dock_space.tab_background, found = parse_vec4(value)
+					case "tab_hover_background":
+						current.ui_dock_space.tab_hover_background, found = parse_vec4(value)
+					case "tab_active_background":
+						current.ui_dock_space.tab_active_background, found = parse_vec4(value)
+					case "drop_background":
+						current.ui_dock_space.drop_background, found = parse_vec4(value)
+					case "draggable":
+						current.ui_dock_space.draggable, found = parse_bool(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_dock_space field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(
+						.Invalid_Field,
+						fmt.tprintf("invalid ui_dock_space.%s", key),
+					)
+				}
+			case "ui_dock_item":
+				current.has_ui_dock_item = true
+				switch key {
+					case "title":
+						current.ui_dock_item.title, found = parse_basic_string(value)
+					case "movable":
+						current.ui_dock_item.movable, found = parse_bool(value)
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown ui_dock_item field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid ui_dock_item.%s", key))
+				}
 			case "ui_table":
 				current.has_ui_table = true
 				switch key {
@@ -2081,6 +2161,8 @@ parse_scene :: proc(
 			   entity.has_ui_vstack ||
 			   entity.has_ui_scroll_area ||
 			   entity.has_ui_panel ||
+			   entity.has_ui_dock_space ||
+			   entity.has_ui_dock_item ||
 			   entity.has_ui_table ||
 			   entity.has_ui_list ||
 			   entity.has_ui_progress ||
@@ -2126,8 +2208,9 @@ parse_scene :: proc(
 		if entity.has_ui_vstack { container_count += 1 }
 		if entity.has_ui_table { container_count += 1 }
 		if entity.has_ui_list { container_count += 1 }
+		if entity.has_ui_dock_space { container_count += 1 }
 		if container_count >
-		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_hstack, ui_vstack, ui_table, or ui_list", entity.name)) }
+		   1 { return scene, fail(.Invalid_Field, fmt.tprintf("UI entity '%s' can only use one of ui_hstack, ui_vstack, ui_table, ui_list, or ui_dock_space", entity.name)) }
 		if (entity.has_ui_hstack && !shared.ui_stack_is_valid(entity.ui_hstack)) ||
 		   (entity.has_ui_vstack && !shared.ui_stack_is_valid(entity.ui_vstack)) {
 			return scene, fail(
@@ -2163,6 +2246,18 @@ parse_scene :: proc(
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf("UI panel '%s' has invalid title-action geometry", entity.name),
+			)
+		}
+		if entity.has_ui_dock_space && !shared.ui_dock_space_is_valid(entity.ui_dock_space) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI dock space '%s' has invalid tab geometry", entity.name),
+			)
+		}
+		if entity.has_ui_dock_item && !shared.ui_dock_item_is_valid(entity.ui_dock_item) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf("UI dock item '%s' requires a title", entity.name),
 			)
 		}
 		if entity.has_ui_table && !shared.ui_table_is_valid(entity.ui_table) {
@@ -2320,7 +2415,19 @@ parse_scene :: proc(
 		}
 	}
 	for entity in scene.entities {
-		if !entity.has_ui_layout || entity.ui_layout.parent == (shared.Entity_UUID{}) {
+		if !entity.has_ui_layout {
+			continue
+		}
+		if entity.ui_layout.parent == (shared.Entity_UUID{}) {
+			if entity.has_ui_dock_item {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf(
+						"UI dock item '%s' must be a direct child of a ui_dock_space",
+						entity.name,
+					),
+				)
+			}
 			continue
 		}
 		found_parent := false
@@ -2340,6 +2447,36 @@ parse_scene :: proc(
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf("UI entity '%s' cannot parent itself", entity.name),
+			)
+		}
+		if entity.has_ui_dock_item {
+			parent_index := entity_indices[entity.ui_layout.parent]
+			if !scene.entities[parent_index].has_ui_dock_space {
+				return scene, fail(
+					.Invalid_Field,
+					fmt.tprintf(
+						"UI dock item '%s' must be a direct child of a ui_dock_space",
+						entity.name,
+					),
+				)
+			}
+		}
+	}
+	for entity in scene.entities {
+		if !entity.has_ui_dock_space || entity.ui_dock_space.active == (shared.Entity_UUID{}) {
+			continue
+		}
+		active_index, found_active := entity_indices[entity.ui_dock_space.active]
+		if !found_active ||
+		   !scene.entities[active_index].has_ui_dock_item ||
+		   !scene.entities[active_index].has_ui_layout ||
+		   scene.entities[active_index].ui_layout.parent != entity.id {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"UI dock space '%s' active item must name one of its direct dock-item children",
+					entity.name,
+				),
 			)
 		}
 	}

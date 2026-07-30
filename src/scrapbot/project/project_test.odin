@@ -1602,6 +1602,85 @@ min_column_width = 48
 }
 
 @(test)
+test_scene_parses_dock_spaces_and_validates_item_references :: proc(t: ^testing.T) {
+	scene, result := parse_scene(
+		`[[entities]]
+id = "a6100000-0000-4000-8000-000000000001"
+name = "Dock"
+[entities.ui_layout]
+size = [640, 480]
+[entities.ui_dock_space]
+active = "a6100000-0000-4000-8000-000000000002"
+font = "Inter"
+tab_height = 36
+tab_min_width = 80
+tab_max_width = 200
+tab_gap = 4
+tab_padding = 14
+tab_size = 13
+tab_corner_radius = 6
+tab_color = [0.6, 0.7, 0.8, 1]
+tab_active_color = [1.2, 1.1, 1.0, 1]
+tab_background = [0.02, 0.03, 0.04, 1]
+tab_hover_background = [0.08, 0.09, 0.10, 1]
+tab_active_background = [0.12, 0.13, 0.14, 1]
+drop_background = [0.1, 1.4, 0.8, 0.25]
+draggable = false
+[[entities]]
+id = "a6100000-0000-4000-8000-000000000002"
+name = "Scene"
+[entities.ui_layout]
+parent = "a6100000-0000-4000-8000-000000000001"
+size = [640, 444]
+[entities.ui_dock_item]
+title = "SCENE"
+movable = false
+`,
+	)
+	defer destroy_scene(&scene)
+	testing.expectf(t, result.err == .None, "parse failed: %s", result.message)
+	testing.expect(t, scene.entities[0].has_ui_dock_space)
+	testing.expect(t, scene.entities[0].ui_dock_space.active == scene.entities[1].id)
+	testing.expect(t, scene.entities[0].ui_dock_space.font == "Inter")
+	testing.expect(t, scene.entities[0].ui_dock_space.tab_height == 36)
+	testing.expect(t, scene.entities[0].ui_dock_space.tab_active_color.x == 1.2)
+	testing.expect(t, !scene.entities[0].ui_dock_space.draggable)
+	testing.expect(t, scene.entities[1].has_ui_dock_item)
+	testing.expect(t, scene.entities[1].ui_dock_item.title == "SCENE")
+	testing.expect(t, !scene.entities[1].ui_dock_item.movable)
+
+	invalid_sources := [2]string {
+		`[[entities]]
+id = "a6200000-0000-4000-8000-000000000001"
+name = "Dock"
+[entities.ui_layout]
+size = [640, 480]
+[entities.ui_dock_space]
+active = "a6200000-0000-4000-8000-000000000099"
+`,
+		`[[entities]]
+id = "a6300000-0000-4000-8000-000000000001"
+name = "Plain Parent"
+[entities.ui_layout]
+size = [640, 480]
+[[entities]]
+id = "a6300000-0000-4000-8000-000000000002"
+name = "Orphan Tab"
+[entities.ui_layout]
+parent = "a6300000-0000-4000-8000-000000000001"
+size = [640, 444]
+[entities.ui_dock_item]
+title = "ORPHAN"
+`,
+	}
+	for source in invalid_sources {
+		invalid_scene, invalid_result := parse_scene(source)
+		destroy_scene(&invalid_scene)
+		testing.expect(t, invalid_result.err == .Invalid_Field)
+	}
+}
+
+@(test)
 test_scene_rejects_invalid_responsive_ui_metrics_and_stack_modes :: proc(t: ^testing.T) {
 	sources := [3]string {
 		`[[entities]]

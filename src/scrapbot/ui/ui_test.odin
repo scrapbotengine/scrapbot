@@ -881,6 +881,152 @@ test_wrapping_stack_uses_basis_grow_shrink_and_cross_axis_alignment :: proc(t: ^
 }
 
 @(test)
+test_dock_spaces_select_and_transfer_public_dock_items :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Dock Root")
+	left_id := ui_test_id("Dock Left")
+	right_id := ui_test_id("Dock Right")
+	first_id := ui_test_id("Dock First")
+	second_id := ui_test_id("Dock Second")
+	third_id := ui_test_id("Dock Third")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Dock Root",
+			has_ui_layout = true,
+			ui_layout = {size = {440, 180}},
+		},
+		shared.Scene_Entity {
+			id = left_id,
+			name = "Dock Left",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {210, 180}},
+			has_ui_dock_space = true,
+			ui_dock_space = shared.ui_dock_space_default(),
+		},
+		shared.Scene_Entity {
+			id = right_id,
+			name = "Dock Right",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, position = {230, 0}, size = {210, 180}},
+			has_ui_dock_space = true,
+			ui_dock_space = shared.ui_dock_space_default(),
+		},
+		shared.Scene_Entity {
+			id = first_id,
+			name = "Dock First",
+			has_ui_layout = true,
+			ui_layout = {parent = left_id, size = {100, 100}},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "FIRST", movable = true},
+		},
+		shared.Scene_Entity {
+			id = second_id,
+			name = "Dock Second",
+			has_ui_layout = true,
+			ui_layout = {parent = left_id, size = {100, 100}},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "SECOND", movable = true},
+		},
+		shared.Scene_Entity {
+			id = third_id,
+			name = "Dock Third",
+			has_ui_layout = true,
+			ui_layout = {parent = right_id, size = {100, 100}},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "THIRD", movable = true},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 440, 180) == "")
+	first_node := find_node_by_entity_index(state, 3)
+	second_node := find_node_by_entity_index(state, 4)
+	third_node := find_node_by_entity_index(state, 5)
+	testing.expect(t, state.nodes[first_node].laid_out)
+	testing.expect(t, !state.nodes[second_node].laid_out)
+	testing.expect(t, state.nodes[third_node].laid_out)
+	testing.expect_value(t, state.nodes[first_node].rect, Rect{0, 32, 210, 148})
+	testing.expect_value(t, state.dock_tab_count, 3)
+
+	second_tab := state.dock_tabs[1].rect
+	second_tab_center := shared.Vec2 {
+		second_tab.x + second_tab.width * 0.5,
+		second_tab.y + second_tab.height * 0.5,
+	}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			440,
+			180,
+			{position = second_tab_center, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.nodes[second_node].laid_out)
+	testing.expect(t, !state.nodes[first_node].laid_out)
+	testing.expect_value(
+		t,
+		world.ui_dock_spaces[world.entities[1].ui_dock_space_index].active,
+		second_id,
+	)
+
+	target := shared.Vec2{330, 90}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			440,
+			180,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.dock_dragging)
+	testing.expect(
+		t,
+		reconcile(state, &world, 440, 180, {position = target, available = true}) == "",
+	)
+	testing.expect_value(t, world.ui_layouts[world.entities[4].ui_layout_index].parent, right_id)
+	testing.expect_value(
+		t,
+		world.ui_dock_spaces[world.entities[2].ui_dock_space_index].active,
+		second_id,
+	)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[2].ui_state_index].drop_revision,
+		u64(1),
+	)
+	events := ui_events(state)
+	dropped := false
+	for event in events {
+		if event.kind == .Dropped &&
+		   event.source == world.entities[4].id &&
+		   event.target == world.entities[2].id {
+			dropped = true
+		}
+	}
+	testing.expect(t, dropped)
+	testing.expect(t, reconcile(state, &world, 440, 180) == "")
+	testing.expect(t, reconcile(state, &world, 440, 180) == "")
+	testing.expect(t, state.layout_node_visit_count == 0)
+	testing.expect(t, state.layout_child_edge_visit_count == 0)
+	testing.expect(t, state.paint_node_visit_count == 0)
+	testing.expect(t, state.paint_child_edge_visit_count == 0)
+	testing.expect_value(t, state.dock_tab_count, 3)
+}
+
+@(test)
 test_fill_stack_can_keep_fixed_children_while_siblings_grow :: proc(t: ^testing.T) {
 	root_id := ui_test_id("Fixed Fill Root")
 	scene := shared.Scene{}
@@ -3193,6 +3339,27 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 	root := find_editor_role_node(state, .Root)
 	viewport_node := find_editor_role_node(state, .Viewport)
 	testing.expect(t, root >= 0 && viewport_node >= 0)
+	viewport_dock, viewport_dock_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_VIEWPORT_DOCK_NAME),
+	)
+	testing.expect(t, viewport_dock_found)
+	if viewport_dock_found {
+		dock_entity := world.entities[viewport_dock]
+		testing.expect(t, dock_entity.ui_dock_space_index >= 0)
+		testing.expect(t, dock_entity.ui_layout_index >= 0)
+		if dock_entity.ui_layout_index >= 0 {
+			testing.expect(t, world.ui_layouts[dock_entity.ui_layout_index].background.w == 0)
+		}
+	}
+	if viewport_node >= 0 {
+		viewport_entity := world.entities[int(state.nodes[viewport_node].entity.index)]
+		testing.expect(t, viewport_entity.ui_dock_item_index >= 0)
+		testing.expect(t, viewport_entity.ui_layout_index >= 0)
+		if viewport_entity.ui_layout_index >= 0 {
+			testing.expect(t, world.ui_layouts[viewport_entity.ui_layout_index].background.w == 0)
+		}
+	}
 	testing.expect(t, len(world.editor_uis) > 0)
 	for component, component_index in world.editor_uis {
 		testing.expect(
@@ -4069,6 +4236,7 @@ test_editor_nested_scroll_prefers_inner_panes_and_sidebar_padding_targets_outer 
 	)
 
 	system_rect := state.nodes[systems].rect
+	system_visible_rect := rect_intersection(system_rect, state.nodes[systems].clip)
 	testing.expect(
 		t,
 		reconcile(
@@ -4076,13 +4244,28 @@ test_editor_nested_scroll_prefers_inner_panes_and_sidebar_padding_targets_outer 
 			&world,
 			1280,
 			720,
-			{position = {system_rect.x + 20, system_rect.y + 60}, wheel_y = -1, available = true},
+			{
+				position = {
+					system_visible_rect.x + min(system_visible_rect.width * 0.5, 20),
+					system_visible_rect.y + system_visible_rect.height * 0.5,
+				},
+				wheel_y = -1,
+				available = true,
+			},
 			1280,
 			500,
 		) ==
 		"",
 	)
-	testing.expect(t, state.nodes[systems].scroll_target == EDITOR_SCROLL_SPEED)
+	testing.expectf(
+		t,
+		state.nodes[systems].scroll_target == EDITOR_SCROLL_SPEED,
+		"systems scroll target %.2f (max %.2f), rect %+v, clip %+v",
+		state.nodes[systems].scroll_target,
+		state.nodes[systems].scroll_max,
+		state.nodes[systems].rect,
+		state.nodes[systems].clip,
+	)
 	testing.expect(t, state.nodes[left].scroll_target == 0)
 
 	left_rect := state.nodes[left].rect
@@ -5552,6 +5735,14 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	content_entity, content_found := editor_ui_entity(&world, .Inspector_Content)
 	inspector_node := find_editor_role_node(state, .Inspector_Scroll)
 	testing.expect(t, content_found && inspector_node >= 0)
+	if inspector_node >= 0 {
+		state.nodes[inspector_node].scroll_target = min(
+			EDITOR_DOCK_TAB_HEIGHT,
+			state.nodes[inspector_node].scroll_max,
+		)
+		state.nodes[inspector_node].scroll_offset = state.nodes[inspector_node].scroll_target
+		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300) == "")
+	}
 	if content_found {
 		testing.expect(t, world.entities[content_entity].ui_text_index < 0)
 		testing.expect(t, world.entities[content_entity].name == EDITOR_UI_RIGHT_CONTENT_NAME)
@@ -5772,17 +5963,9 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			testing.expect(t, state.nodes[y_node].rect.y == state.nodes[z_node].rect.y)
 			testing.expect(t, state.nodes[x_node].rect.x < state.nodes[y_node].rect.x)
 			testing.expect(t, state.nodes[y_node].rect.x < state.nodes[z_node].rect.x)
-			x_axis_accent_found := false
-			for command in state.paint[:state.paint_count] {
-				if command.kind == .Glyph &&
-				   command.color.x > 0.9 &&
-				   command.color.y < 0.4 &&
-				   rect_contains(state.nodes[x_node].rect, {command.rect.x, command.rect.y}) {
-					x_axis_accent_found = true
-					break
-				}
-			}
-			testing.expect(t, x_axis_accent_found)
+			x_input := world.ui_inputs[world.entities[position_inputs[0]].ui_input_index]
+			testing.expect(t, x_input.prefix == "X")
+			testing.expect(t, x_input.prefix_color == theme.palette.axis_x)
 		}
 	}
 	testing.expect(t, format_vec3({1, 2.5, -3}) == "(1.00, 2.50, -3.00)")

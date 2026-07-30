@@ -128,11 +128,17 @@ Split_Handle :: struct {
 	editor: bool,
 	hovered, active: bool,
 }
+Dock_Tab :: struct {
+	rect: Rect,
+	space_node, item_node: int,
+	editor: bool,
+	hovered, active, drop_target: bool,
+}
 Node :: struct {
 	entity: shared.Entity,
 	origin: shared.Entity_Origin,
 	editor_role: shared.Editor_UI_Role,
-	layout_index, canvas_index, hstack_index, vstack_index, scroll_area_index, panel_index, table_index, list_index, progress_index, viewport_index, icon_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
+	layout_index, canvas_index, hstack_index, vstack_index, scroll_area_index, panel_index, dock_space_index, dock_item_index, table_index, list_index, progress_index, viewport_index, icon_index, text_index, button_index, input_index, checkbox_index, color_picker_index, parent_entity_index: int,
 	parent_node_index, first_child_node, next_sibling_node: int,
 	rect, clip: Rect,
 	resolved_size: shared.Vec2,
@@ -343,6 +349,13 @@ State :: struct {
 	editor_split_previous_primary_down: bool,
 	active_split_editor: bool,
 	split_drag_pointer: f32,
+	dock_tabs: [MAX_NODES]Dock_Tab,
+	dock_tab_count, active_dock_tab: int,
+	dock_previous_primary_down, editor_dock_previous_primary_down: bool,
+	active_dock_editor: bool,
+	dock_drag_start: shared.Vec2,
+	dock_dragging: bool,
+	dock_drop_space_node: int,
 	pointer_cursor: Pointer_Cursor,
 	editor_visible: bool,
 	editor_simulation_playing: bool,
@@ -550,6 +563,8 @@ init :: proc(state: ^State) -> string {
 	state.editor_simulation_playing = true
 	state.editor_history_clean_valid = true
 	state.active_split_handle = -1
+	state.active_dock_tab = -1
+	state.dock_drop_space_node = -1
 	state.project_canvas_entity_index = -1
 	state.font.glyphs = &FONT_GLYPHS
 	state.font.ascender = FONT_ASCENDER
@@ -925,6 +940,11 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		state.active_split_handle = -1
 		state.split_previous_primary_down = false
 		state.editor_split_previous_primary_down = false
+		state.active_dock_tab = -1
+		state.dock_previous_primary_down = false
+		state.editor_dock_previous_primary_down = false
+		state.dock_dragging = false
+		state.dock_drop_space_node = -1
 		for entity, entity_index in world.entities {
 			if entity.alive && entity.ui_layout_index >= 0 {
 				ecs.mark_ui_entity_dirty(world, entity_index)
@@ -1019,6 +1039,8 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		node.vstack_index = entity.ui_vstack_index
 		node.scroll_area_index = entity.ui_scroll_area_index
 		node.panel_index = entity.ui_panel_index
+		node.dock_space_index = entity.ui_dock_space_index
+		node.dock_item_index = entity.ui_dock_item_index
 		node.table_index = entity.ui_table_index
 		node.list_index = entity.ui_list_index
 		node.progress_index = entity.ui_progress_index
@@ -1260,6 +1282,34 @@ reconcile :: proc(
 			return err
 		}
 	}
+	project_dock_changed, project_dock_captured := update_dock_interaction(
+		state,
+		world,
+		project_pointer,
+		false,
+	)
+	if project_dock_changed {
+		if err := layout_all(state, world, project_layout, editor_layout); err != "" {
+			return err
+		}
+	}
+	editor_dock_changed, editor_dock_captured := update_dock_interaction(
+		state,
+		world,
+		editor_pointer,
+		true,
+	)
+	if editor_dock_changed {
+		if err := layout_all(state, world, project_layout, editor_layout); err != "" {
+			return err
+		}
+	}
+	if project_dock_captured {
+		project_pointer = {}
+	}
+	if editor_dock_captured {
+		editor_pointer = {}
+	}
 	if update_split_interaction(
 		state,
 		project_pointer,
@@ -1270,6 +1320,17 @@ reconcile :: proc(
 		_ = update_split_interaction(state, editor_pointer, true)
 	}
 	state.pointer_cursor = split_pointer_cursor(state)
+	if state.pointer_cursor == .Default {
+		for tab in state.dock_tabs[:state.dock_tab_count] {
+			if tab.hovered ||
+			   state.active_dock_tab >= 0 &&
+				   state.active_dock_tab < state.dock_tab_count &&
+				   state.dock_tabs[state.active_dock_tab].item_node == tab.item_node {
+				state.pointer_cursor = .Pointer
+				break
+			}
+		}
+	}
 	if state.active_split_handle >= 0 { project_pointer = {}; editor_pointer = {} }
 	project_viewport_wheel := update_viewport_interaction(state, world, project_pointer, false)
 	editor_viewport_wheel := update_viewport_interaction(state, world, editor_pointer, true)
@@ -2163,6 +2224,14 @@ layout_all :: proc(
 			}
 		}
 		state.split_handle_count = preserved_handle_count
+		preserved_dock_tab_count := 0
+		for tab in state.dock_tabs[:state.dock_tab_count] {
+			if (tab.editor && !layout_editor) || (!tab.editor && !layout_project) {
+				state.dock_tabs[preserved_dock_tab_count] = tab
+				preserved_dock_tab_count += 1
+			}
+		}
+		state.dock_tab_count = preserved_dock_tab_count
 		state.layout_size_changed = false
 		for &node in state.nodes[:state.node_count] {
 			if (node.origin == .Editor && !layout_editor) ||
@@ -2936,12 +3005,16 @@ layout_node :: proc(
 	is_scroll_area :=
 		node.scroll_area_index >= 0 && node.scroll_area_index < len(world.ui_scroll_areas)
 	is_panel := node.panel_index >= 0 && node.panel_index < len(world.ui_panels)
+	is_dock_space :=
+		node.dock_space_index >= 0 && node.dock_space_index < len(world.ui_dock_spaces)
 	is_table := node.table_index >= 0 && node.table_index < len(world.ui_tables)
 	is_list := node.list_index >= 0 && node.list_index < len(world.ui_lists)
 	panel: shared.UI_Panel_Component
+	dock_space: shared.UI_Dock_Space_Component
 	table: shared.UI_Table_Component
 	list: shared.UI_List_Component
 	if is_panel { panel = world.ui_panels[node.panel_index] }
+	if is_dock_space { dock_space = world.ui_dock_spaces[node.dock_space_index] }
 	if is_table { table = world.ui_tables[node.table_index] }
 	if is_list { list = world.ui_lists[node.list_index] }
 	if is_hstack { stack = world.ui_hstacks[node.hstack_index]; gap = stack.gap }
@@ -2960,6 +3033,63 @@ layout_node :: proc(
 		content.y += safe_area.x
 		content.width = max(content.width - safe_area.w - safe_area.y, 0)
 		content.height = max(content.height - safe_area.x - safe_area.z, 0)
+	}
+	dock_active_node := -1
+	if is_dock_space {
+		first_item_node := -1
+		child_index := node.first_child_node
+		for child_index >= 0 {
+			child := &state.nodes[child_index]
+			child_layout := world.ui_layouts[child.layout_index]
+			if !child_layout.hidden &&
+			   child.dock_item_index >= 0 &&
+			   child.dock_item_index < len(world.ui_dock_items) {
+				if first_item_node < 0 {
+					first_item_node = child_index
+				}
+				if world.entities[int(child.entity.index)].uuid == dock_space.active {
+					dock_active_node = child_index
+				}
+			}
+			child_index = child.next_sibling_node
+		}
+		if dock_active_node < 0 {
+			dock_active_node = first_item_node
+		}
+		select_font(state, dock_space.font)
+		tab_x := content.x
+		child_index = node.first_child_node
+		for child_index >= 0 && state.dock_tab_count < MAX_NODES {
+			child := &state.nodes[child_index]
+			child_layout := world.ui_layouts[child.layout_index]
+			if !child_layout.hidden &&
+			   child.dock_item_index >= 0 &&
+			   child.dock_item_index < len(world.ui_dock_items) {
+				item := world.ui_dock_items[child.dock_item_index]
+				text_bounds, has_ink := measure_text_ink(state, item.title, dock_space.tab_size)
+				text_width := f32(0)
+				if has_ink {
+					text_width = text_bounds.width
+				}
+				tab_width := clamp(
+					text_width + dock_space.tab_padding * 2,
+					dock_space.tab_min_width,
+					dock_space.tab_max_width,
+				)
+				state.dock_tabs[state.dock_tab_count] = {
+					rect = {tab_x, content.y, tab_width, dock_space.tab_height},
+					space_node = node_index,
+					item_node = child_index,
+					editor = node.origin == .Editor,
+					active = child_index == dock_active_node,
+				}
+				state.dock_tab_count += 1
+				tab_x += tab_width + dock_space.tab_gap
+			}
+			child_index = child.next_sibling_node
+		}
+		content.y += dock_space.tab_height
+		content.height = max(content.height - dock_space.tab_height, 0)
 	}
 	child_parent_rect := node.rect
 	if layout.tree_item && node.parent_node_index >= 0 {
@@ -3429,7 +3559,9 @@ layout_node :: proc(
 			list_flow_ordinal += 1
 		}
 		child_layout := world.ui_layouts[child.layout_index]
-		if child_layout.hidden || is_panel && node_is_panel_action(world, child) {
+		if child_layout.hidden ||
+		   is_panel && node_is_panel_action(world, child) ||
+		   is_dock_space && child.dock_item_index >= 0 && child_index != dock_active_node {
 			child_index = next_child_index
 			continue
 		}
@@ -3461,7 +3593,27 @@ layout_node :: proc(
 			}
 			has_child_size = true
 		}
-		if (is_hstack || is_vstack) && stack.fill {
+		if is_dock_space && child.dock_item_index >= 0 && child_index == dock_active_node {
+			child_size = {
+				max(
+					content.width - child_layout.margin.w - child_layout.margin.y,
+					child_layout.min_size.x,
+				),
+				max(
+					content.height - child_layout.margin.x - child_layout.margin.z,
+					child_layout.min_size.y,
+				),
+			}
+			if child_layout.fit_content_width && child.resolved_width_valid {
+				child_size.x = max(child_size.x, child.resolved_size.x)
+			}
+			if child_layout.fit_content_height && child.resolved_height_valid {
+				child_size.y = max(child_size.y, child.resolved_size.y)
+			}
+			position = {content.x + child_layout.margin.w, content.y + child_layout.margin.x}
+			has_child_size = true
+			child_flowed = true
+		} else if (is_hstack || is_vstack) && stack.fill {
 			main_size := child_main_sizes[child_ordinal]
 			if is_hstack {
 				child_size.x = main_size
@@ -3639,15 +3791,16 @@ layout_node :: proc(
 			depth + 1,
 		)
 		if err != "" { return err }
+		resolved_child_size := node_layout_size(world, state.nodes[child_index], child_layout)
 		unscrolled_bottom :=
 			state.nodes[child_index].rect.y +
-			state.nodes[child_index].rect.height +
+			max(state.nodes[child_index].rect.height, resolved_child_size.y) +
 			child_layout.margin.z
 		if is_scroll_area { unscrolled_bottom += scroll_offset }
 		content_bottom = max(content_bottom, unscrolled_bottom - content.y)
 		unscrolled_right :=
 			state.nodes[child_index].rect.x +
-			state.nodes[child_index].rect.width +
+			max(state.nodes[child_index].rect.width, resolved_child_size.x) +
 			child_layout.margin.y
 		content_right = max(content_right, unscrolled_right - content.x)
 		child_ordinal += 1
@@ -3801,6 +3954,224 @@ control_pointer_cursor :: proc(
 current_pointer_cursor :: proc(state: ^State) -> Pointer_Cursor {
 	if state == nil { return .Default }
 	return state.pointer_cursor
+}
+
+dock_tab_visual_signature :: proc(state: ^State, editor: bool) -> u64 {
+	signature := u64(14695981039346656037)
+	for tab, index in state.dock_tabs[:state.dock_tab_count] {
+		if tab.editor != editor {
+			continue
+		}
+		value := u64(index + 1) << 3
+		if tab.hovered {
+			value |= 1
+		}
+		if tab.active {
+			value |= 2
+		}
+		if tab.drop_target {
+			value |= 4
+		}
+		signature = hash.fnv64a((cast([^]byte)&value)[:size_of(value)], signature)
+	}
+	if state.dock_drop_space_node >= 0 &&
+	   state.dock_drop_space_node < state.node_count &&
+	   (state.nodes[state.dock_drop_space_node].origin == .Editor) == editor {
+		value := u64(state.dock_drop_space_node + 1)
+		signature = hash.fnv64a((cast([^]byte)&value)[:size_of(value)], signature)
+	}
+	return signature
+}
+
+update_dock_paint_revision :: proc(state: ^State, editor: bool, previous_signature: u64) {
+	if dock_tab_visual_signature(state, editor) == previous_signature {
+		return
+	}
+	revision := &state.ui_project_paint_revision
+	if editor {
+		revision = &state.ui_editor_paint_revision
+	}
+	revision^ += 1
+	if revision^ == 0 {
+		revision^ = 1
+	}
+}
+
+update_dock_interaction :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pointer: Pointer_Input,
+	editor: bool,
+) -> (
+	layout_changed, captured: bool,
+) {
+	previous_signature := dock_tab_visual_signature(state, editor)
+	for &tab in state.dock_tabs[:state.dock_tab_count] {
+		if tab.editor == editor {
+			tab.hovered = false
+			tab.drop_target = false
+		}
+	}
+	previous_down := state.dock_previous_primary_down
+	if editor {
+		previous_down = state.editor_dock_previous_primary_down
+	}
+	if !pointer.available {
+		if state.active_dock_tab >= 0 && state.active_dock_editor == editor {
+			state.active_dock_tab = -1
+			state.dock_dragging = false
+			state.dock_drop_space_node = -1
+		}
+		if editor {
+			state.editor_dock_previous_primary_down = false
+		} else {
+			state.dock_previous_primary_down = false
+		}
+		update_dock_paint_revision(state, editor, previous_signature)
+		return
+	}
+	hit := -1
+	for tab, index in state.dock_tabs[:state.dock_tab_count] {
+		if tab.editor == editor && rect_contains(tab.rect, pointer.position) {
+			hit = index
+		}
+	}
+	if hit >= 0 {
+		state.dock_tabs[hit].hovered = true
+	}
+	just_pressed := pointer.primary_down && !previous_down
+	if just_pressed && hit >= 0 {
+		tab := state.dock_tabs[hit]
+		space := &state.nodes[tab.space_node]
+		item := state.nodes[tab.item_node]
+		if space.dock_space_index >= 0 && space.dock_space_index < len(world.ui_dock_spaces) {
+			value := world.ui_dock_spaces[space.dock_space_index]
+			item_index := int(item.entity.index)
+			if item_index >= 0 && item_index < len(world.entities) {
+				item_uuid := world.entities[item_index].uuid
+				if value.active != item_uuid {
+					value.active = item_uuid
+					layout_changed = ecs.set_ui_dock_space(world, int(space.entity.index), value)
+				}
+				_ = mark_ui_event(state, world, .Activated, item.entity, pointer.position)
+			}
+		}
+		state.active_dock_tab = hit
+		state.active_dock_editor = editor
+		state.dock_drag_start = pointer.position
+		state.dock_dragging = false
+		captured = true
+	}
+	if pointer.primary_down &&
+	   state.active_dock_editor == editor &&
+	   state.active_dock_tab >= 0 &&
+	   state.active_dock_tab < state.dock_tab_count {
+		active_tab := &state.dock_tabs[state.active_dock_tab]
+		active_tab.hovered = true
+		item := state.nodes[active_tab.item_node]
+		movable :=
+			item.dock_item_index >= 0 &&
+			item.dock_item_index < len(world.ui_dock_items) &&
+			world.ui_dock_items[item.dock_item_index].movable
+		delta := shared.Vec2 {
+			pointer.position.x - state.dock_drag_start.x,
+			pointer.position.y - state.dock_drag_start.y,
+		}
+		if movable && delta.x * delta.x + delta.y * delta.y >= 25 {
+			state.dock_dragging = true
+		}
+		if state.dock_dragging {
+			target_space := -1
+			target_paint_order := -1
+			for &candidate, candidate_index in state.nodes[:state.node_count] {
+				if (candidate.origin == .Editor) != editor ||
+				   candidate.dock_space_index < 0 ||
+				   candidate.dock_space_index >= len(world.ui_dock_spaces) ||
+				   !world.ui_dock_spaces[candidate.dock_space_index].draggable ||
+				   !candidate.laid_out ||
+				   !rect_contains(candidate.rect, pointer.position) ||
+				   candidate.paint_order < target_paint_order {
+					continue
+				}
+				target_space = candidate_index
+				target_paint_order = candidate.paint_order
+			}
+			state.dock_drop_space_node = target_space
+			if target_space >= 0 {
+				for &tab in state.dock_tabs[:state.dock_tab_count] {
+					if tab.space_node == target_space {
+						tab.drop_target = true
+					}
+				}
+			}
+		}
+		captured = true
+	} else if !pointer.primary_down &&
+	   state.active_dock_editor == editor &&
+	   state.active_dock_tab >= 0 &&
+	   state.active_dock_tab < state.dock_tab_count {
+		active_tab := state.dock_tabs[state.active_dock_tab]
+		if state.dock_dragging && state.dock_drop_space_node >= 0 {
+			source_space := state.nodes[active_tab.space_node]
+			target_space := state.nodes[state.dock_drop_space_node]
+			item := state.nodes[active_tab.item_node]
+			if target_space.entity != source_space.entity {
+				item_entity_index := int(item.entity.index)
+				target_entity_index := int(target_space.entity.index)
+				source_entity_index := int(source_space.entity.index)
+				if item_entity_index >= 0 &&
+				   item_entity_index < len(world.entities) &&
+				   target_entity_index >= 0 &&
+				   target_entity_index < len(world.entities) {
+					item_uuid := world.entities[item_entity_index].uuid
+					layout := world.ui_layouts[item.layout_index]
+					layout.parent = world.entities[target_entity_index].uuid
+					if ecs.set_ui_layout(world, item_entity_index, layout) {
+						target_value := world.ui_dock_spaces[target_space.dock_space_index]
+						target_value.active = item_uuid
+						_ = ecs.set_ui_dock_space(world, target_entity_index, target_value)
+						if source_entity_index >= 0 && source_entity_index < len(world.entities) {
+							source_value := world.ui_dock_spaces[source_space.dock_space_index]
+							source_value.active = {}
+							_ = ecs.set_ui_dock_space(world, source_entity_index, source_value)
+						}
+						interaction := ecs.ensure_ui_state(world, target_entity_index)
+						if interaction != nil {
+							interaction.changed = true
+							interaction.change_revision += 1
+							interaction.drag_source = item_uuid
+							interaction.drop_target = world.entities[target_entity_index].uuid
+							interaction.drop_placement = .Into
+							interaction.drop_revision += 1
+							ecs.mark_ui_state_transient(world, target_entity_index)
+						}
+						append_ui_event(
+							state,
+							{
+								kind = .Dropped,
+								entity = target_space.entity,
+								source = item.entity,
+								target = target_space.entity,
+								drop_placement = .Into,
+								position = pointer.position,
+							},
+						)
+					}
+				}
+			}
+		}
+		state.active_dock_tab = -1
+		state.dock_dragging = false
+		state.dock_drop_space_node = -1
+		captured = true
+	}
+	if editor {
+		state.editor_dock_previous_primary_down = pointer.primary_down
+	} else {
+		state.dock_previous_primary_down = pointer.primary_down
+	}
+	update_dock_paint_revision(state, editor, previous_signature)
+	return
 }
 
 update_split_interaction :: proc(state: ^State, pointer: Pointer_Input, editor: bool) -> bool {
@@ -6089,6 +6460,72 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			return err
 		}
 		child_index = next_child_index
+	}
+	if node.dock_space_index >= 0 && node.dock_space_index < len(world.ui_dock_spaces) {
+		dock_space := world.ui_dock_spaces[node.dock_space_index]
+		select_font(state, dock_space.font)
+		if state.dock_drop_space_node == node_index && dock_space.drop_background.w > 0 {
+			drop_rect := node.rect
+			drop_rect.y += dock_space.tab_height
+			drop_rect.height = max(drop_rect.height - dock_space.tab_height, 0)
+			if err := append_paint(
+				state,
+				{
+					kind = .Panel,
+					rect = drop_rect,
+					color = dock_space.drop_background,
+					corner_radius = dock_space.tab_corner_radius,
+				},
+			); err != "" {
+				return err
+			}
+		}
+		for tab in state.dock_tabs[:state.dock_tab_count] {
+			if tab.space_node != node_index {
+				continue
+			}
+			item_node := state.nodes[tab.item_node]
+			if item_node.dock_item_index < 0 ||
+			   item_node.dock_item_index >= len(world.ui_dock_items) {
+				continue
+			}
+			item := world.ui_dock_items[item_node.dock_item_index]
+			background := dock_space.tab_background
+			color := dock_space.tab_color
+			if tab.active {
+				background = dock_space.tab_active_background
+				color = dock_space.tab_active_color
+			} else if tab.hovered {
+				background = dock_space.tab_hover_background
+			}
+			if tab.drop_target {
+				background = dock_space.drop_background
+			}
+			if background.w > 0 {
+				if err := append_paint(
+					state,
+					{
+						kind = .Panel,
+						rect = tab.rect,
+						color = background,
+						corner_radius = dock_space.tab_corner_radius,
+					},
+				); err != "" {
+					return err
+				}
+			}
+			if err := append_centered_text(
+				state,
+				item.title,
+				color,
+				dock_space.tab_size,
+				tab.rect,
+				{},
+				.Center,
+			); err != "" {
+				return err
+			}
+		}
 	}
 	if node.parent_entity_index >= 0 && node.parent_entity_index < len(world.entities) {
 		parent := world.entities[node.parent_entity_index]

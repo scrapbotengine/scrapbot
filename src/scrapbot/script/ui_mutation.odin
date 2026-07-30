@@ -341,6 +341,90 @@ read_ui_component_command_from_luau :: proc "c" (
 			command.panel.title = ""
 			command.panel.font = ""
 			return ecs.init_ui_component_command(command, .Panel, value.title, value.font)
+		case "scrapbot.ui_dock_space":
+			value := current_ui_dock_space(world, entity_index, base)
+			if err := read_ui_uuid_field(L, payload_index, "active", &value.active);
+			   err != "" { return err }
+			if err := read_ui_string_field(L, payload_index, "font", &value.font);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "tab_height", &value.tab_height);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"tab_min_width",
+				&value.tab_min_width,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"tab_max_width",
+				&value.tab_max_width,
+			); err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "tab_gap", &value.tab_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "tab_padding", &value.tab_padding);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "tab_size", &value.tab_size);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"tab_corner_radius",
+				&value.tab_corner_radius,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(L, payload_index, "tab_color", &value.tab_color);
+			   err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"tab_active_color",
+				&value.tab_active_color,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"tab_background",
+				&value.tab_background,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"tab_hover_background",
+				&value.tab_hover_background,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"tab_active_background",
+				&value.tab_active_background,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"drop_background",
+				&value.drop_background,
+			); err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "draggable", &value.draggable);
+			   err != "" { return err }
+			if !shared.ui_dock_space_is_valid(value) {
+				return "ui_dock_space tab geometry is invalid"
+			}
+			command.dock_space = value
+			command.dock_space.font = ""
+			return ecs.init_ui_component_command(command, .Dock_Space, font = value.font)
+		case "scrapbot.ui_dock_item":
+			value := current_ui_dock_item(world, entity_index, base)
+			if err := read_ui_string_field(L, payload_index, "title", &value.title);
+			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "movable", &value.movable);
+			   err != "" { return err }
+			if !shared.ui_dock_item_is_valid(value) {
+				return "ui_dock_item requires a title"
+			}
+			command.dock_item = value
+			command.dock_item.title = ""
+			return ecs.init_ui_component_command(command, .Dock_Item, value.title)
 		case "scrapbot.ui_table":
 			value := current_ui_table(world, entity_index, base)
 			columns := f32(value.columns)
@@ -984,6 +1068,44 @@ current_ui_panel :: proc(
 		if index >= 0 && index < len(world.ui_panels) { return world.ui_panels[index] }
 	}
 	return shared.ui_panel_default()
+}
+
+current_ui_dock_space :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Dock_Space_Component {
+	if base != nil && base.kind == .Dock_Space {
+		value := base.dock_space
+		value.font = ecs.ui_component_command_font(base)
+		return value
+	}
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_dock_space_index
+		if index >= 0 && index < len(world.ui_dock_spaces) {
+			return world.ui_dock_spaces[index]
+		}
+	}
+	return shared.ui_dock_space_default()
+}
+
+current_ui_dock_item :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	base: ^ecs.UI_Component_Command,
+) -> shared.UI_Dock_Item_Component {
+	if base != nil && base.kind == .Dock_Item {
+		value := base.dock_item
+		value.title = ecs.ui_component_command_text(base)
+		return value
+	}
+	if world != nil && entity_index >= 0 && entity_index < len(world.entities) {
+		index := world.entities[entity_index].ui_dock_item_index
+		if index >= 0 && index < len(world.ui_dock_items) {
+			return world.ui_dock_items[index]
+		}
+	}
+	return shared.ui_dock_item_default()
 }
 
 current_ui_table :: proc(

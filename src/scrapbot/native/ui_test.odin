@@ -256,6 +256,16 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	panel.title = "Native Panel"
 	panel.collapsible = true
 	testing.expect(t, ecs.set_ui_panel(&world, entity_index, panel))
+	dock_space := shared.ui_dock_space_default()
+	dock_space.active = world.entities[entity_index].uuid
+	dock_space.font = "Inter"
+	dock_space.tab_height = 38
+	dock_space.tab_active_color = {1.5, 1.2, 1, 1}
+	testing.expect(t, ecs.set_ui_dock_space(&world, entity_index, dock_space))
+	dock_item := shared.ui_dock_item_default()
+	dock_item.title = "NATIVE"
+	dock_item.movable = false
+	testing.expect(t, ecs.set_ui_dock_item(&world, entity_index, dock_item))
 	list := shared.ui_list_default()
 	list.filter_input = world.entities[entity_index].uuid
 	list.highlight_corner_radius = 7
@@ -463,6 +473,23 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, api_payload_text(&panel_payload) == "Native Panel")
 	testing.expect(t, panel_payload.panel.collapsible != 0)
+	dock_space_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_dock_space", &dock_space_payload) != 0,
+	)
+	_, dock_font, dock_space_strings_ok := api_ui_payload_dock_strings(&dock_space_payload)
+	testing.expect(t, dock_space_strings_ok && dock_font == "Inter")
+	testing.expect(t, dock_space_payload.dock_space.tab_height == 38)
+	testing.expect(t, dock_space_payload.dock_space.tab_active_color.x == 1.5)
+	dock_item_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_dock_item", &dock_item_payload) != 0,
+	)
+	dock_title, _, dock_item_strings_ok := api_ui_payload_dock_strings(&dock_item_payload)
+	testing.expect(t, dock_item_strings_ok && dock_title == "NATIVE")
+	testing.expect(t, dock_item_payload.dock_item.movable == 0)
 	action_payload: api.UI_Component_Payload
 	testing.expect(
 		t,
@@ -479,6 +506,11 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, system_set_ui_component(&ctx, entity, &list_payload) == nil)
 	table_payload.table.min_column_width = 72
 	testing.expect(t, system_set_ui_component(&ctx, entity, &table_payload) == nil)
+	dock_space_payload.dock_space.tab_height = 42
+	testing.expect(t, system_set_ui_component(&ctx, entity, &dock_space_payload) == nil)
+	testing.expect(t, api_ui_payload_set_dock_strings(&dock_item_payload, "UPDATED", ""))
+	dock_item_payload.dock_item.movable = 1
+	testing.expect(t, system_set_ui_component(&ctx, entity, &dock_item_payload) == nil)
 	testing.expect(t, ecs.apply_commands(&world, &commands) == "")
 	stored_table := world.ui_tables[world.entities[entity_index].ui_table_index]
 	testing.expect(t, stored_table.min_column_width == 72)
@@ -486,6 +518,12 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, stored_panel.collapsed)
 	stored_list := world.ui_lists[world.entities[entity_index].ui_list_index]
 	testing.expect(t, stored_list.highlight_corner_radius == 9)
+	stored_dock_space := world.ui_dock_spaces[world.entities[entity_index].ui_dock_space_index]
+	testing.expect(t, stored_dock_space.tab_height == 42)
+	testing.expect(t, stored_dock_space.font == "Inter")
+	stored_dock_item := world.ui_dock_items[world.entities[entity_index].ui_dock_item_index]
+	testing.expect(t, stored_dock_item.title == "UPDATED")
+	testing.expect(t, stored_dock_item.movable)
 	stored_action := world.ui_actions[world.entities[entity_index].ui_action_index]
 	testing.expect(t, stored_action.action == "native.commit" && stored_action.payload == "beta")
 

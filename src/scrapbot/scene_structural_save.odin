@@ -107,6 +107,8 @@ scene_entity_structure_differs :: proc(
 	   baseline.has_ui_vstack != current.has_ui_vstack ||
 	   baseline.has_ui_scroll_area != current.has_ui_scroll_area ||
 	   baseline.has_ui_panel != current.has_ui_panel ||
+	   baseline.has_ui_dock_space != current.has_ui_dock_space ||
+	   baseline.has_ui_dock_item != current.has_ui_dock_item ||
 	   baseline.has_ui_table != current.has_ui_table ||
 	   baseline.has_ui_list != current.has_ui_list ||
 	   baseline.has_ui_progress != current.has_ui_progress ||

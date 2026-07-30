@@ -79,6 +79,8 @@ Diagnostic_Node_Dump :: struct {
 	has_hstack: bool,
 	has_vstack: bool,
 	has_scroll_area: bool,
+	scroll_offset: f32,
+	scroll_max: f32,
 	has_panel: bool,
 	has_table: bool,
 	has_list: bool,
@@ -213,7 +215,7 @@ diagnostic_target_is_valid :: proc(target: Diagnostic_Target) -> bool {
 	   target.origin != "editor" {
 		return false
 	}
-	if target.part != "" && target.part != "panel_action" {
+	if target.part != "" && target.part != "panel_action" && target.part != "dock_tab" {
 		return false
 	}
 	if target.uuid != "" {
@@ -512,7 +514,9 @@ diagnostic_find_target :: proc(
 			continue
 		}
 		entity := world.entities[entity_index]
-		if !entity.alive || entity.id != node.entity || !node.laid_out {
+		if !entity.alive ||
+		   entity.id != node.entity ||
+		   (!node.laid_out && target.part != "dock_tab") {
 			continue
 		}
 		if has_uuid && entity.uuid != wanted_uuid {
@@ -619,6 +623,14 @@ diagnostic_target_rect :: proc(
 			}
 			rect := diagnostic_node_visible_rect(child)
 			return rect, true
+		}
+		return {}, false
+	}
+	if target.part == "dock_tab" {
+		for tab in state.dock_tabs[:state.dock_tab_count] {
+			if tab.item_node == node_index {
+				return tab.rect, true
+			}
 		}
 		return {}, false
 	}
@@ -886,6 +898,8 @@ diagnostic_driver_write_dump :: proc(
 				has_hstack = node.hstack_index >= 0,
 				has_vstack = node.vstack_index >= 0,
 				has_scroll_area = node.scroll_area_index >= 0,
+				scroll_offset = node.scroll_offset,
+				scroll_max = node.scroll_max,
 				has_panel = node.panel_index >= 0,
 				has_table = node.table_index >= 0,
 				has_list = node.list_index >= 0,

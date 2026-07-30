@@ -338,6 +338,9 @@ write_missing_scene_fields :: proc(
 		case "ui_panel":
 			keys[0], keys[1] = "collapsible", "collapsed"
 			key_count = 2
+		case "ui_dock_space":
+			keys[0] = "active"
+			key_count = 1
 		case "ui_input":
 			keys[0] = "read_only"
 			key_count = 1
@@ -683,6 +686,14 @@ scene_world_field_value :: proc(
 				}
 				if key == "collapsed" {
 					return scene_bool(value.collapsed), true
+				}
+			}
+		case "ui_dock_space":
+			if entity.ui_dock_space_index >= 0 &&
+			   entity.ui_dock_space_index < len(world.ui_dock_spaces) {
+				value := world.ui_dock_spaces[entity.ui_dock_space_index]
+				if key == "active" {
+					return fmt.tprintf("\"%s\"", scene_uuid(value.active)), true
 				}
 			}
 		case "ui_input":

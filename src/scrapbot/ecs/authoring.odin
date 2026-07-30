@@ -157,6 +157,14 @@ capture_registered_component_snapshot :: proc(
 			value.ui_panel = world.ui_panels[entity.ui_panel_index]
 			value.ui_panel.title = clone_snapshot_string(value.ui_panel.title)
 			value.ui_panel.font = clone_snapshot_string(value.ui_panel.font)
+		case .UI_Dock_Space:
+			value.has_ui_dock_space = true
+			value.ui_dock_space = world.ui_dock_spaces[entity.ui_dock_space_index]
+			value.ui_dock_space.font = clone_snapshot_string(value.ui_dock_space.font)
+		case .UI_Dock_Item:
+			value.has_ui_dock_item = true
+			value.ui_dock_item = world.ui_dock_items[entity.ui_dock_item_index]
+			value.ui_dock_item.title = clone_snapshot_string(value.ui_dock_item.title)
 		case .UI_Table:
 			value.has_ui_table = true
 			value.ui_table = world.ui_tables[entity.ui_table_index]
@@ -356,6 +364,10 @@ apply_registered_component_snapshot :: proc(
 			_ = set_ui_scroll_area(world, entity_index, value.ui_scroll_area)
 		case .UI_Panel:
 			_ = set_ui_panel(world, entity_index, value.ui_panel)
+		case .UI_Dock_Space:
+			_ = set_ui_dock_space(world, entity_index, value.ui_dock_space)
+		case .UI_Dock_Item:
+			_ = set_ui_dock_item(world, entity_index, value.ui_dock_item)
 		case .UI_Table:
 			_ = set_ui_table(world, entity_index, value.ui_table)
 		case .UI_List:
@@ -517,6 +529,8 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	delete(entity.world_environment.background)
 	delete(entity.ui_panel.title)
 	delete(entity.ui_panel.font)
+	delete(entity.ui_dock_space.font)
+	delete(entity.ui_dock_item.title)
 	delete(entity.ui_text.text)
 	delete(entity.ui_text.font)
 	delete(entity.ui_icon.icon)
@@ -767,6 +781,22 @@ set_registered_component_membership :: proc(
 		case .UI_Panel:
 			if present {
 				_ = set_ui_panel(world, entity_index, shared.ui_panel_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Dock_Space:
+			if present {
+				_ = set_ui_dock_space(world, entity_index, shared.ui_dock_space_default())
+				bump_component_revision(world, entity_index)
+			} else {
+				_ = remove_ui_component(world, entity_index, definition.name)
+			}
+		case .UI_Dock_Item:
+			if present {
+				value := shared.ui_dock_item_default()
+				value.title = "Dock Item"
+				_ = set_ui_dock_item(world, entity_index, value)
 				bump_component_revision(world, entity_index)
 			} else {
 				_ = remove_ui_component(world, entity_index, definition.name)
@@ -1023,6 +1053,16 @@ capture_ui_components :: proc(world: ^World, source: World_Entity, entity: ^shar
 		entity.ui_panel.title = clone_snapshot_string(entity.ui_panel.title)
 		entity.ui_panel.font = clone_snapshot_string(entity.ui_panel.font)
 	}
+	if source.ui_dock_space_index >= 0 && source.ui_dock_space_index < len(world.ui_dock_spaces) {
+		entity.has_ui_dock_space = true
+		entity.ui_dock_space = world.ui_dock_spaces[source.ui_dock_space_index]
+		entity.ui_dock_space.font = clone_snapshot_string(entity.ui_dock_space.font)
+	}
+	if source.ui_dock_item_index >= 0 && source.ui_dock_item_index < len(world.ui_dock_items) {
+		entity.has_ui_dock_item = true
+		entity.ui_dock_item = world.ui_dock_items[source.ui_dock_item_index]
+		entity.ui_dock_item.title = clone_snapshot_string(entity.ui_dock_item.title)
+	}
 	if source.ui_table_index >= 0 && source.ui_table_index < len(world.ui_tables) {
 		entity.has_ui_table = true
 		entity.ui_table = world.ui_tables[source.ui_table_index]
@@ -1268,6 +1308,8 @@ apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene
 	if value.has_ui_vstack { _ = set_ui_vstack(world, entity_index, value.ui_vstack) } else { remove_ui_component(world, entity_index, "scrapbot.ui_vstack") }
 	if value.has_ui_scroll_area { _ = set_ui_scroll_area(world, entity_index, value.ui_scroll_area) } else { remove_ui_component(world, entity_index, "scrapbot.ui_scroll_area") }
 	if value.has_ui_panel { _ = set_ui_panel(world, entity_index, value.ui_panel) } else { remove_ui_component(world, entity_index, "scrapbot.ui_panel") }
+	if value.has_ui_dock_space { _ = set_ui_dock_space(world, entity_index, value.ui_dock_space) } else { remove_ui_component(world, entity_index, "scrapbot.ui_dock_space") }
+	if value.has_ui_dock_item { _ = set_ui_dock_item(world, entity_index, value.ui_dock_item) } else { remove_ui_component(world, entity_index, "scrapbot.ui_dock_item") }
 	if value.has_ui_table { _ = set_ui_table(world, entity_index, value.ui_table) } else { remove_ui_component(world, entity_index, "scrapbot.ui_table") }
 	if value.has_ui_list { _ = set_ui_list(world, entity_index, value.ui_list) } else { remove_ui_component(world, entity_index, "scrapbot.ui_list") }
 	if value.has_ui_progress { _ = set_ui_progress(world, entity_index, value.ui_progress) } else { remove_ui_component(world, entity_index, "scrapbot.ui_progress") }

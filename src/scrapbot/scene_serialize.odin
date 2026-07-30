@@ -351,6 +351,38 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "collapsible", scene_bool(value.collapsible))
 		write_scene_value(builder, "collapsed", scene_bool(value.collapsed))
 	}
+	if entity.has_ui_dock_space {
+		value := entity.ui_dock_space
+		write_scene_section(builder, "ui_dock_space")
+		if value.active != (shared.Entity_UUID{}) {
+			write_scene_string(builder, "active", scene_uuid(value.active))
+		}
+		write_scene_string(builder, "font", value.font)
+		write_scene_value(builder, "tab_height", scene_f32(value.tab_height))
+		write_scene_value(builder, "tab_min_width", scene_f32(value.tab_min_width))
+		write_scene_value(builder, "tab_max_width", scene_f32(value.tab_max_width))
+		write_scene_value(builder, "tab_gap", scene_f32(value.tab_gap))
+		write_scene_value(builder, "tab_padding", scene_f32(value.tab_padding))
+		write_scene_value(builder, "tab_size", scene_f32(value.tab_size))
+		write_scene_value(builder, "tab_corner_radius", scene_f32(value.tab_corner_radius))
+		write_scene_value(builder, "tab_color", scene_vec4(value.tab_color))
+		write_scene_value(builder, "tab_active_color", scene_vec4(value.tab_active_color))
+		write_scene_value(builder, "tab_background", scene_vec4(value.tab_background))
+		write_scene_value(builder, "tab_hover_background", scene_vec4(value.tab_hover_background))
+		write_scene_value(
+			builder,
+			"tab_active_background",
+			scene_vec4(value.tab_active_background),
+		)
+		write_scene_value(builder, "drop_background", scene_vec4(value.drop_background))
+		write_scene_value(builder, "draggable", scene_bool(value.draggable))
+	}
+	if entity.has_ui_dock_item {
+		value := entity.ui_dock_item
+		write_scene_section(builder, "ui_dock_item")
+		write_scene_string(builder, "title", value.title)
+		write_scene_value(builder, "movable", scene_bool(value.movable))
+	}
 	if entity.has_ui_table {
 		value := entity.ui_table
 		write_scene_section(builder, "ui_table")

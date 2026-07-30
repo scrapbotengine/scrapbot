@@ -540,7 +540,7 @@ For responsive flow, set a child's non-negative `basis`, `grow`, and `shrink`. Z
 
 A `ui_text` can set `alignment` to `"left"`, `"center"`, or `"right"` within its padded content box. `wrap = true` breaks text at whitespace to fit that width and falls back to glyph boundaries for a word wider than one line. Explicit newlines always break. `line_height = 0` uses the text size; a positive value supplies an explicit line advance. Wrapped intrinsic height uses the same selected-font metrics and line boundaries as paint.
 
-Backgrounds, borders, corner radii, progress bars, checkbox boxes, and checkbox marks are rendered with signed-distance shapes. Parent UUIDs must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine multiple flow containers (`ui_hstack`, `ui_vstack`, `ui_table`, or `ui_list`) or more than one of `ui_icon`, `ui_text`, `ui_button`, `ui_input`, `ui_checkbox`, and `ui_color_picker`.
+Backgrounds, borders, corner radii, progress bars, checkbox boxes, and checkbox marks are rendered with signed-distance shapes. Parent UUIDs must resolve to another UI layout entity, cycles are rejected, and one entity cannot combine multiple flow containers (`ui_hstack`, `ui_vstack`, `ui_table`, `ui_list`, or `ui_dock_space`) or more than one of `ui_icon`, `ui_text`, `ui_button`, `ui_input`, `ui_checkbox`, and `ui_color_picker`.
 
 A `ui_progress` component paints an optional track and a clamped fill inside its ordinary layout box. `inset` uses `[top, right, bottom, left]`; `right_to_left` anchors the fill to the opposite edge. A zero-alpha `background_color` omits the track:
 
@@ -591,7 +591,7 @@ Windowed runs use the system pointer cursor over buttons, selectable list rows, 
 
 A standalone `ui_icon` or icon-bearing button references `icon_set` by UUID and `icon` by symbol name. Buttons may place the icon `"leading"` or `"trailing"`, derive its size from the content height or set `icon_size`, and control `icon_gap` plus `icon_inset`. Text remains optional when a complete icon reference is present. Project loading rejects unknown icon-set UUIDs.
 
-Set `font` on `ui_text`, `ui_button`, `ui_input`, or `ui_panel` to a name declared in `project.toml`; omit it to use Inter. A panel's selection applies to its title, while child controls select their own fonts independently.
+Set `font` on `ui_text`, `ui_button`, `ui_input`, `ui_panel`, or `ui_dock_space` to a name declared in `project.toml`; omit it to use Inter. A panel or dock-space selection applies to its title chrome, while child controls select their own fonts independently.
 
 Clicking a `ui_input` focuses it and selects all its text. Focused inputs support typed single-line ASCII text, Left/Right/Home/End movement, Shift selection, Backspace/Delete, Select All, and paint-order Tab/Shift+Tab traversal. Enter submits the current value and removes focus; Escape restores the value present when focus began. The component's `text` field changes during editing, while `ui_state.changed`, `submitted`, and `cancelled` plus their revision counters expose reusable interaction edges.
 
@@ -672,7 +672,22 @@ resizable_columns = true
 min_column_width = 48
 ```
 
-Each child of `Stats Table` occupies the next table cell. Give the first three child layouts the desired width weights; subsequent rows reuse them. A table is a flow container and therefore cannot share an entity with `ui_hstack`, `ui_vstack`, or `ui_list`; a panel is decoration and may share an entity with any flow container.
+Each child of `Stats Table` occupies the next table cell. Give the first three child layouts the desired width weights; subsequent rows reuse them. A table is a flow container and therefore cannot share an entity with `ui_hstack`, `ui_vstack`, `ui_list`, or `ui_dock_space`; a panel is decoration and may share an entity with any flow container.
+
+A `ui_dock_space` is the flow container for a tab group. Every direct child
+carrying `ui_dock_item` contributes its required non-empty `title`. The dock
+space's `active` UUID must be empty or identify one of those direct children.
+It reserves `tab_height` above the active item, measures titles with its
+selected `font`, clamps them between `tab_min_width` and `tab_max_width`, and
+uses the public tab and drop HDR colors for interaction. Inactive items remain
+authored but leave layout, paint, focus, and pointer interaction.
+
+Set an item's `movable = false` to lock it. Set a space's `draggable = false`
+to reject transfers. Otherwise, dragging a tab into another dock space changes
+the item's ordinary `ui_layout.parent` UUID and activates it in the
+destination. Build resize topology by placing dock spaces inside the same
+draggable fill stacks described above; the docking component does not own a
+second split tree.
 
 ## Custom component sections
 

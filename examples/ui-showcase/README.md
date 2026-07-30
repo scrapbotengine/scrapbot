@@ -18,10 +18,18 @@ from the public retained layout system rather than showcase-specific code.
 
 Buttons, the checkbox, input, and HDR color picker carry ordinary `scrapbot.ui_action` components. `scripts/main.luau` reads the immutable public event history with its own sequence cursor and updates the neon event monitor. Nothing in the example uses editor-only controls or callbacks.
 
+The neon event monitor is also a public dock space. Its **EVENT BUS** and
+**TELEMETRY** children are ordinary dock items with saturated HDR tab styling.
+Click either tab to switch the active content. The same dock-space and
+dock-item components power the Scrapbot editor workspace; the showcase merely
+chooses a wholly different theme.
+
 Run it with:
 
 ```sh
 mise scrapbot run examples/ui-showcase
 ```
 
-Try **BOOST**, **DRIFT**, the overdrive checkbox, the small editable field, and the HDR picker. Each produces the same generic ordered event contract with different semantic actions.
+Try **BOOST**, **DRIFT**, the overdrive checkbox, the small editable field, the
+HDR picker, and both dock tabs. Controls produce the same generic ordered event
+contract with different semantic actions.

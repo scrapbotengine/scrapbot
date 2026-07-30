@@ -113,6 +113,25 @@ size = [240, 180]
 value = [4, 2, 1, 0.5]
 exposure = 2
 maximum_exposure = 12
+[[entities]]
+id = "aa000000-0000-4000-8000-000000000004"
+name = "Dock"
+[entities.ui_layout]
+size = [480, 320]
+[entities.ui_dock_space]
+active = "aa000000-0000-4000-8000-000000000005"
+font = "Inter"
+tab_height = 36
+tab_active_color = [1.5, 1.2, 1, 1]
+[[entities]]
+id = "aa000000-0000-4000-8000-000000000005"
+name = "Dock Item"
+[entities.ui_layout]
+parent = "aa000000-0000-4000-8000-000000000004"
+size = [480, 284]
+[entities.ui_dock_item]
+title = "SCENE"
+movable = false
 `,
 	)
 	defer project.destroy_scene(&scene)
@@ -143,6 +162,8 @@ maximum_exposure = 12
 		&runtime,
 		`
 assert(scrapbot.ui_panel.id > 0)
+assert(scrapbot.ui_dock_space.id > 0)
+assert(scrapbot.ui_dock_item.id > 0)
 assert(scrapbot.ui_canvas.id > 0)
 assert(scrapbot.ui_scroll_area.id > 0)
 assert(scrapbot.ui_table.id > 0)
@@ -182,6 +203,28 @@ scrapbot.system(function()
 		count += 1
 	end)
 	assert(count == 1)
+	local dock_count = 0
+	scrapbot.query(scrapbot.ui_dock_space):each(function(entity, dock)
+		assert(dock.active == "aa000000-0000-4000-8000-000000000005")
+		assert(dock.font == "Inter" and dock.tab_height == 36)
+		assert(math.abs(dock.tab_active_color.x - 1.5) < 0.0001)
+		scrapbot.add_component(entity, scrapbot.ui_dock_space, {
+			tab_height = 40,
+			draggable = false,
+		})
+		dock_count += 1
+	end)
+	assert(dock_count == 1)
+	local dock_item_count = 0
+	scrapbot.query(scrapbot.ui_dock_item):each(function(entity, item)
+		assert(item.title == "SCENE" and item.movable == false)
+		scrapbot.add_component(entity, scrapbot.ui_dock_item, {
+			title = "GAME",
+			movable = true,
+		})
+		dock_item_count += 1
+	end)
+	assert(dock_item_count == 1)
 	local canvas_count = 0
 	scrapbot.query(scrapbot.ui_canvas):each(function(entity, canvas)
 		assert(canvas.reference_size.x == 1600 and canvas.reference_size.y == 900)
@@ -290,6 +333,20 @@ scrapbot.system(function()
 		scrapbot.remove_component(entity, scrapbot.ui_checkbox)
 		scrapbot.add_component(entity, scrapbot.ui_button, {text = "Toggle", popup = "aa000000-0000-4000-8000-000000000002", size = 14, alignment = "right", icon_set = scrapbot.ui.builtin_icon_set, icon = "x", icon_position = "trailing", icon_inset = 4, panel_action = true})
 	end)
+	local dock_root_id = scrapbot.spawn({
+		name = "Runtime Dock",
+		components = {
+			["scrapbot.ui_layout"] = {size = {x = 320, y = 180}},
+			["scrapbot.ui_dock_space"] = {tab_height = 34, font = "Inter"},
+		},
+	})
+	scrapbot.spawn({
+		name = "Runtime Dock Item",
+		components = {
+			["scrapbot.ui_layout"] = {parent = dock_root_id, size = {x = 320, y = 146}},
+			["scrapbot.ui_dock_item"] = {title = "RUNTIME", movable = true},
+		},
+	})
 	local root_id = scrapbot.spawn({
 		name = "Runtime UI",
 		components = {
@@ -346,6 +403,12 @@ end)
 	testing.expect(t, list.filter_input == world.entities[1].uuid)
 	testing.expect(t, list.highlight_corner_radius == 9)
 	testing.expect(t, list.virtualized && list.item_height == 36 && list.overscan == 5)
+	dock_space := world.ui_dock_spaces[world.entities[3].ui_dock_space_index]
+	testing.expect(t, dock_space.active == world.entities[4].uuid)
+	testing.expect(t, dock_space.font == "Inter" && dock_space.tab_height == 40)
+	testing.expect(t, !dock_space.draggable)
+	dock_item := world.ui_dock_items[world.entities[4].ui_dock_item_index]
+	testing.expect(t, dock_item.title == "GAME" && dock_item.movable)
 	button_index := world.entities[1].ui_button_index
 	testing.expect(t, button_index >= 0 && button_index < len(world.ui_buttons))
 	if button_index >= 0 && button_index < len(world.ui_buttons) {
@@ -363,6 +426,31 @@ end)
 	color_picker := world.ui_color_pickers[world.entities[2].ui_color_picker_index]
 	testing.expect(t, color_picker.value == shared.Vec4{8, 4, 2, 0.75})
 	testing.expect(t, color_picker.exposure == 3)
+	runtime_dock_index := -1
+	runtime_dock_item_index := -1
+	for entity, entity_index in world.entities {
+		if entity.name == "Runtime Dock" {
+			runtime_dock_index = entity_index
+		} else if entity.name == "Runtime Dock Item" {
+			runtime_dock_item_index = entity_index
+		}
+	}
+	testing.expect(t, runtime_dock_index >= 0 && runtime_dock_item_index >= 0)
+	if runtime_dock_index >= 0 && runtime_dock_item_index >= 0 {
+		runtime_dock := world.entities[runtime_dock_index]
+		runtime_dock_item := world.entities[runtime_dock_item_index]
+		testing.expect(t, runtime_dock.ui_dock_space_index >= 0)
+		testing.expect(t, runtime_dock_item.ui_dock_item_index >= 0)
+		testing.expect(
+			t,
+			world.ui_layouts[runtime_dock_item.ui_layout_index].parent == runtime_dock.uuid,
+		)
+		testing.expect(t, world.ui_dock_spaces[runtime_dock.ui_dock_space_index].tab_height == 34)
+		testing.expect(
+			t,
+			world.ui_dock_items[runtime_dock_item.ui_dock_item_index].title == "RUNTIME",
+		)
+	}
 	spawned_index := len(world.entities) - 2
 	testing.expect(t, spawned_index >= 0 && world.entities[spawned_index].name == "Runtime UI")
 	if spawned_index >= 0 {

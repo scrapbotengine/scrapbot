@@ -15,6 +15,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - A hidden box removes its complete descendant subtree from retained layout, painting, and pointer interaction without despawning any entities.
 - UI entities form a parent-by-UUID hierarchy validated when the scene loads. Entity names remain editable labels.
 - Horizontal and vertical stack components arrange child boxes in scene order with a configurable gap; boxes without a stack component overlay their children. Fill stacks treat child sizes as proportions, fill the cross-axis, and can expose draggable separators with minimum pane sizes. Responsive stacks can instead wrap preferred child sizes across lines and resolve positive or negative line space through per-child grow and shrink factors. Hovering or dragging a separator selects the matching horizontal- or vertical-resize system cursor.
+- Dock-space containers turn direct dock-item children into a styled tab group. The active item fills the remaining content rectangle while inactive items leave layout, paint, focus, and pointer interaction without leaving ECS storage. Clicking a tab changes the public active UUID. Dragging a movable tab into another draggable dock space reparents its public layout UUID, activates it in the destination, and emits ordinary drop state plus an immutable UI event. Dock spaces compose inside ordinary split stacks; docking does not own a parallel workspace tree.
 - Table containers arrange children in row-major order across 1–64 equal-width columns, with independent column and row gaps. A partial final row remains left aligned.
 - Selectable-list containers arrange direct children vertically as full-width rows, store the selected child by stable UUID, and provide shared selected, hover, active, and drop-target backgrounds with one configurable non-negative highlight corner radius. Lists compose with panels and scroll areas; clicking nested row content selects its direct row ancestor. A list may reference any same-origin public input UUID as its filter source. Its text performs an ASCII case-insensitive substring match over descendant text, button, and input content.
 - Tree-enabled lists flatten direct rows from semantic parent/order metadata on their public layout components, indent row contents while preserving full-width interaction chrome, omit collapsed or hidden branches, and apply cycle-safe subtree reparent/reorder drops. An active filter retains matching rows and their ancestors and temporarily traverses collapsed branches without mutating authored collapse state.
@@ -131,9 +132,15 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 **Why:** Applications need coherent palettes, typography, spacing, radii, and control states without turning the editor's appearance into UI mechanics or hiding effective state behind a cascade.
 **Tradeoff:** Existing entities do not automatically restyle when a recipe or project resource changes. Whole-project reload explicitly recomposes the replacement scene and script-created UI; targeted live restyling remains the caller's responsibility. Project theme resources currently inherit the one built-in baseline and are text-authored rather than edited inline.
 
+### 14. Compose docking from public groups and layout
+
+**Decision:** Let `ui_dock_space` derive tabs from direct `ui_dock_item` children, keep active identity and every tab/drop style in authored ECS data, and implement cross-group movement by changing the item's ordinary `ui_layout.parent` UUID. Compose the regions themselves from existing boxes and draggable fill stacks, following ADR-045.
+**Why:** Projects and the editor need one reusable application-workspace primitive without duplicating split sizing, hierarchy, interaction state, events, theming, or persistence in an editor-only model.
+**Tradeoff:** The first contract transfers complete items between existing groups. It does not yet reorder tabs within one group, create splits from edge drops, float native windows, or persist the resulting workspace arrangement.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-030, ADR-036, ADR-037, ADR-040, ADR-041, ADR-043, ADR-044
+- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-030, ADR-036, ADR-037, ADR-040, ADR-041, ADR-043, ADR-044, ADR-045
 - **FDRs:** FDR-002, FDR-003, FDR-005, FDR-008
 
 ## Open Questions

@@ -136,6 +136,19 @@ editor_reflected_snapshot_component_value :: proc(
 			if entity.has_ui_panel {
 				return any{rawptr(&entity.ui_panel), typeid_of(shared.UI_Panel_Component)}, true
 			}
+		case .UI_Dock_Space:
+			if entity.has_ui_dock_space {
+				return any {
+						rawptr(&entity.ui_dock_space),
+						typeid_of(shared.UI_Dock_Space_Component),
+					},
+					true
+			}
+		case .UI_Dock_Item:
+			if entity.has_ui_dock_item {
+				return any{rawptr(&entity.ui_dock_item), typeid_of(shared.UI_Dock_Item_Component)},
+					true
+			}
 		case .UI_Table:
 			if entity.has_ui_table {
 				return any{rawptr(&entity.ui_table), typeid_of(shared.UI_Table_Component)}, true
@@ -301,6 +314,18 @@ editor_reflected_live_component_value :: proc(
 			return any {
 					rawptr(&world.ui_panels[entity.ui_panel_index]),
 					typeid_of(shared.UI_Panel_Component),
+				},
+				true
+		case .UI_Dock_Space:
+			return any {
+					rawptr(&world.ui_dock_spaces[entity.ui_dock_space_index]),
+					typeid_of(shared.UI_Dock_Space_Component),
+				},
+				true
+		case .UI_Dock_Item:
+			return any {
+					rawptr(&world.ui_dock_items[entity.ui_dock_item_index]),
+					typeid_of(shared.UI_Dock_Item_Component),
 				},
 				true
 		case .UI_Table:

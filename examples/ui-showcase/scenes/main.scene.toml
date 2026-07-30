@@ -624,19 +624,64 @@ payload = "player-one"
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000029"
-name = "Arcade Event Monitor"
-ui_theme = "71c20000-0000-4000-8000-000000000001"
-ui_recipes = ["overlay", "accent_text"]
+name = "Arcade Dock Space"
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
 size = [506, 52]
-padding = [14, 20, 10, 20]
+background = [0.08, 0.02, 0.13, 0.88]
 border_width = 3
+border_color = [1.4, 0.18, 1.1, 1]
 corner_radius = 18
+
+[entities.ui_dock_space]
+active = "30000000-0000-4000-8000-00000000002b"
+tab_height = 24
+tab_min_width = 110
+tab_max_width = 160
+tab_gap = 4
+tab_padding = 10
+tab_size = 11
+tab_corner_radius = 10
+tab_color = [0.3, 1.2, 1.3, 1]
+tab_active_color = [1.2, 2.0, 0.4, 1]
+tab_background = [0.06, 0.015, 0.10, 1]
+tab_hover_background = [0.20, 0.04, 0.28, 1]
+tab_active_background = [0.16, 0.03, 0.24, 1]
+drop_background = [0.2, 1.4, 1.6, 0.28]
+
+[[entities]]
+id = "30000000-0000-4000-8000-00000000002b"
+name = "Arcade Event Dock Item"
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-000000000029"
+size = [506, 28]
+padding = [5, 18, 3, 18]
+
+[entities.ui_dock_item]
+title = "EVENT BUS"
+movable = true
 
 [entities.ui_text]
 text = "EVENT BUS  /  AWAITING INPUT"
-size = 14
-wrap = true
-line_height = 18
+color = [0.4, 2.0, 0.65, 1]
+size = 11
+
+[[entities]]
+id = "30000000-0000-4000-8000-00000000002c"
+name = "Arcade Telemetry Dock Item"
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-000000000029"
+size = [506, 28]
+padding = [5, 18, 3, 18]
+
+[entities.ui_dock_item]
+title = "TELEMETRY"
+movable = true
+
+[entities.ui_text]
+text = "BOOST PRESSURE  /  128%"
+color = [2.2, 0.35, 1.2, 1]
+size = 11

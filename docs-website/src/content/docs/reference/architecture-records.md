@@ -50,6 +50,14 @@ Current decisions:
 | ADR-035 | Model runtime input as ECS singletons |
 | ADR-036 | Compile source assets into versioned resource products |
 | ADR-037 | Compose embedded worlds through ECS UI viewports |
+| ADR-038 | Author scene environments as ECS components |
+| ADR-039 | Keep clustered lighting and shadow cascades backend-owned |
+| ADR-040 | Resolve UI themes into explicit component values |
+| ADR-041 | Compile SVG icon sets into MTSDF resources |
+| ADR-042 | Publish UI interactions as immutable events |
+| ADR-043 | Model responsive UI as an authored canvas transform |
+| ADR-044 | Resolve intrinsic and flex UI layout in retained passes |
+| ADR-045 | Compose docking from public groups and layout |
 
 ## FDRs
 

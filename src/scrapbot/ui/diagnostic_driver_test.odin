@@ -312,3 +312,49 @@ test_diagnostic_driver_reveals_targets_inside_scroll_areas :: proc(t: ^testing.T
 	after := diagnostic_node_visible_rect(state.nodes[target_node])
 	testing.expect(t, after.height > 0)
 }
+
+@(test)
+test_diagnostic_driver_targets_public_dock_tabs :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Driver Dock"),
+			name = "Driver Dock",
+			has_ui_layout = true,
+			ui_layout = {size = {320, 180}},
+			has_ui_dock_space = true,
+			ui_dock_space = shared.ui_dock_space_default(),
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Driver Dock Item"),
+			name = "Driver Dock Item",
+			has_ui_layout = true,
+			ui_layout = {parent = ui_test_id("Driver Dock"), size = {320, 148}},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "SCENE", movable = true},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	item_node := find_node(state, world.entities[1].id)
+	testing.expect(t, item_node >= 0)
+	if item_node < 0 {
+		return
+	}
+	tab_rect, found := diagnostic_target_rect(
+		state,
+		&world,
+		item_node,
+		{name = "Driver Dock Item", part = "dock_tab"},
+	)
+	testing.expect(t, found)
+	testing.expect(t, tab_rect.height == world.ui_dock_spaces[0].tab_height)
+	testing.expect(t, tab_rect.width >= world.ui_dock_spaces[0].tab_min_width)
+}

@@ -15,6 +15,7 @@ EDITOR_UI_TOP_NAME :: "__scrapbot_editor_top"
 EDITOR_UI_TRANSPORT_NAME :: "__scrapbot_editor_transport"
 EDITOR_UI_WORKSPACE_NAME :: "__scrapbot_editor_workspace"
 EDITOR_UI_LEFT_NAME :: "__scrapbot_editor_left"
+EDITOR_UI_LEFT_DOCK_ITEM_NAME :: "__scrapbot_editor_left_dock_item"
 EDITOR_UI_LEFT_CONTENT_NAME :: "__scrapbot_editor_left_content"
 EDITOR_UI_DIAGNOSTICS_NAME :: "__scrapbot_editor_diagnostics"
 EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
@@ -29,8 +30,10 @@ EDITOR_UI_RESOURCES_FILTER_NAME :: "__scrapbot_editor_resources_filter"
 EDITOR_UI_RESOURCES_LIST_NAME :: "__scrapbot_editor_resources_list"
 EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
+EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
+EDITOR_UI_RIGHT_DOCK_ITEM_NAME :: "__scrapbot_editor_right_dock_item"
 EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
 EDITOR_UI_INSPECTOR_HEADER_NAME :: "__scrapbot_editor_inspector_header"
 EDITOR_UI_STATUS_NAME :: "__scrapbot_editor_status"
@@ -47,6 +50,8 @@ EDITOR_UI_RESOURCE_MENU_CONTENT_NAME :: "__scrapbot_editor_resource_menu_content
 EDITOR_SIDEBAR_PADDING :: f32(10)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
+EDITOR_DOCK_TAB_HEIGHT :: f32(32)
+EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT :: EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT - EDITOR_DOCK_TAB_HEIGHT
 EDITOR_SECTION_TITLE_HEIGHT :: f32(32)
 EDITOR_BROWSER_FILTER_HEIGHT :: f32(34)
 EDITOR_BROWSER_TEXT_INSET :: f32(20)
@@ -883,6 +888,48 @@ editor_ui_add_panel :: proc(
 	_ = ecs.set_ui_panel(world, entity_index, value)
 }
 
+editor_ui_add_dock_space :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	theme: shared.UI_Theme,
+	draggable: bool = true,
+) {
+	value := shared.ui_dock_space_default()
+	value.font = theme.font
+	value.tab_height = EDITOR_DOCK_TAB_HEIGHT
+	value.tab_min_width = 84
+	value.tab_max_width = 180
+	value.tab_gap = 4
+	value.tab_padding = 12
+	value.tab_size = theme.metrics.small_text_size
+	value.tab_corner_radius = theme.metrics.radius
+	value.tab_color = theme.palette.text_secondary
+	value.tab_active_color = theme.palette.text
+	value.tab_background = theme.palette.region
+	value.tab_hover_background = theme.palette.hover
+	value.tab_active_background = theme.palette.panel
+	value.drop_background = {
+		theme.palette.accent.x,
+		theme.palette.accent.y,
+		theme.palette.accent.z,
+		0.22,
+	}
+	value.draggable = draggable
+	_ = ecs.set_ui_dock_space(world, entity_index, value)
+}
+
+editor_ui_add_dock_item :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	title: string,
+	movable: bool = true,
+) {
+	value := shared.ui_dock_item_default()
+	value.title = title
+	value.movable = movable
+	_ = ecs.set_ui_dock_item(world, entity_index, value)
+}
+
 editor_ui_section_layout :: proc(size: shared.Vec2) -> shared.UI_Layout_Component {
 	theme := reduced_dark_theme()
 	layout, _ := theme_panel(theme)
@@ -1092,18 +1139,37 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			background = theme.palette.region,
 		},
 	)
+	editor_ui_add_dock_space(world, left, theme)
 	editor_ui_add_scroll(world, left)
-	left_content := editor_ui_create_box(
+	left_dock_item := editor_ui_create_box(
 		world,
-		EDITOR_UI_LEFT_CONTENT_NAME,
+		EDITOR_UI_LEFT_DOCK_ITEM_NAME,
 		EDITOR_UI_LEFT_NAME,
 		.None,
 		{
 			size = {
 				EDITOR_LEFT_SIDEBAR_WIDTH - EDITOR_SIDEBAR_PADDING * 2,
-				EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT,
+				EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT,
 			},
-			min_size = {1, EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT},
+			min_size = {1, EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT},
+			fill_width = true,
+			fill_height = true,
+			fit_content_height = true,
+			background = theme.palette.region,
+		},
+	)
+	editor_ui_add_dock_item(world, left_dock_item, "BROWSE")
+	left_content := editor_ui_create_box(
+		world,
+		EDITOR_UI_LEFT_CONTENT_NAME,
+		EDITOR_UI_LEFT_DOCK_ITEM_NAME,
+		.None,
+		{
+			size = {
+				EDITOR_LEFT_SIDEBAR_WIDTH - EDITOR_SIDEBAR_PADDING * 2,
+				EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT,
+			},
+			min_size = {1, EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT},
 			fill_width = true,
 			fill_height = true,
 		},
@@ -1360,13 +1426,22 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	world.ui_layouts[world.entities[resource_reimport_all].ui_layout_index].size.x = 112
 
-	_ = editor_ui_create_box(
+	viewport_dock := editor_ui_create_box(
 		world,
-		EDITOR_UI_VIEWPORT_NAME,
+		EDITOR_UI_VIEWPORT_DOCK_NAME,
 		EDITOR_UI_WORKSPACE_NAME,
-		.Viewport,
+		.None,
 		{size = {660, 638}},
 	)
+	editor_ui_add_dock_space(world, viewport_dock, theme, false)
+	viewport := editor_ui_create_box(
+		world,
+		EDITOR_UI_VIEWPORT_NAME,
+		EDITOR_UI_VIEWPORT_DOCK_NAME,
+		.Viewport,
+		{size = {660, 606}},
+	)
+	editor_ui_add_dock_item(world, viewport, "GAME", false)
 	gizmo_toolbar := editor_ui_create_box(
 		world,
 		EDITOR_UI_GIZMO_TOOLBAR_NAME,
@@ -1417,18 +1492,37 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			background = theme.palette.region,
 		},
 	)
+	editor_ui_add_dock_space(world, right, theme)
 	editor_ui_add_scroll(world, right)
+	right_dock_item := editor_ui_create_box(
+		world,
+		EDITOR_UI_RIGHT_DOCK_ITEM_NAME,
+		EDITOR_UI_RIGHT_NAME,
+		.None,
+		{
+			size = {
+				EDITOR_RIGHT_SIDEBAR_WIDTH - EDITOR_SIDEBAR_PADDING * 2,
+				EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT,
+			},
+			min_size = {1, EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT},
+			fill_width = true,
+			fill_height = true,
+			fit_content_height = true,
+			background = theme.palette.region,
+		},
+	)
+	editor_ui_add_dock_item(world, right_dock_item, "INSPECT")
 	right_content := editor_ui_create_box(
 		world,
 		EDITOR_UI_RIGHT_CONTENT_NAME,
-		EDITOR_UI_RIGHT_NAME,
+		EDITOR_UI_RIGHT_DOCK_ITEM_NAME,
 		.Inspector_Content,
 		{
 			size = {
 				EDITOR_RIGHT_SIDEBAR_WIDTH - EDITOR_SIDEBAR_PADDING * 2,
-				EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT,
+				EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT,
 			},
-			min_size = {1, EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT},
+			min_size = {1, EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT},
 			fill_width = true,
 			fill_height = true,
 			fit_content_height = true,

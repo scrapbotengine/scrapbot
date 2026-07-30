@@ -9,6 +9,8 @@ UI_HSTACK :: "scrapbot.ui_hstack"
 UI_VSTACK :: "scrapbot.ui_vstack"
 UI_SCROLL_AREA :: "scrapbot.ui_scroll_area"
 UI_PANEL :: "scrapbot.ui_panel"
+UI_DOCK_SPACE :: "scrapbot.ui_dock_space"
+UI_DOCK_ITEM :: "scrapbot.ui_dock_item"
 UI_TABLE :: "scrapbot.ui_table"
 UI_LIST :: "scrapbot.ui_list"
 UI_PROGRESS :: "scrapbot.ui_progress"
@@ -32,6 +34,8 @@ UI_Canvas :: raw.UI_Canvas_Payload
 UI_Stack :: raw.UI_Stack_Payload
 UI_Scroll_Area :: raw.UI_Scroll_Area_Payload
 UI_Panel :: raw.UI_Panel_Payload
+UI_Dock_Space :: raw.UI_Dock_Space_Payload
+UI_Dock_Item :: raw.UI_Dock_Item_Payload
 UI_Table :: raw.UI_Table_Payload
 UI_List :: raw.UI_List_Payload
 UI_Progress :: raw.UI_Progress_Payload
@@ -101,6 +105,12 @@ UI_Scroll_Area_Component :: Component {
 }
 UI_Panel_Component :: Component {
 	name = UI_PANEL,
+}
+UI_Dock_Space_Component :: Component {
+	name = UI_DOCK_SPACE,
+}
+UI_Dock_Item_Component :: Component {
+	name = UI_DOCK_ITEM,
 }
 UI_Table_Component :: Component {
 	name = UI_TABLE,
@@ -180,6 +190,29 @@ ui_panel_default :: proc "contextless" () -> UI_Panel {
 		disclosure_gap = 8,
 		disclosure_inset = 0,
 	}
+}
+
+ui_dock_space_default :: proc "contextless" () -> UI_Dock_Space {
+	return {
+		tab_height = 32,
+		tab_min_width = 72,
+		tab_max_width = 180,
+		tab_gap = 2,
+		tab_padding = 12,
+		tab_size = 12,
+		tab_corner_radius = 4,
+		tab_color = {0.68, 0.70, 0.76, 1},
+		tab_active_color = {0.94, 0.95, 0.98, 1},
+		tab_background = {0.055, 0.060, 0.072, 1},
+		tab_hover_background = {0.075, 0.082, 0.098, 1},
+		tab_active_background = {0.105, 0.115, 0.135, 1},
+		drop_background = {0.12, 0.72, 0.64, 0.22},
+		draggable = 1,
+	}
+}
+
+ui_dock_item_default :: proc "contextless" () -> UI_Dock_Item {
+	return {movable = 1}
 }
 
 ui_table_default :: proc "contextless" () -> UI_Table {
@@ -391,6 +424,44 @@ ui_panel :: proc "contextless" (
 	return payload, ui_payload_set_strings(&payload, title, font)
 }
 
+ui_dock_space :: proc "contextless" (
+	value: UI_Dock_Space,
+	font: string = "",
+) -> (
+	UI_Component_Payload,
+	bool,
+) {
+	payload := UI_Component_Payload {
+		component = UI_DOCK_SPACE,
+		dock_space = value,
+	}
+	if len(font) >= len(payload.dock_font_bytes) {
+		return payload, false
+	}
+	copy(payload.dock_font_bytes[:], transmute([]u8)font)
+	payload.dock_font_len = c.int(len(font))
+	return payload, true
+}
+
+ui_dock_item :: proc "contextless" (
+	value: UI_Dock_Item,
+	title: string,
+) -> (
+	UI_Component_Payload,
+	bool,
+) {
+	payload := UI_Component_Payload {
+		component = UI_DOCK_ITEM,
+		dock_item = value,
+	}
+	if len(title) >= len(payload.dock_title_bytes) {
+		return payload, false
+	}
+	copy(payload.dock_title_bytes[:], transmute([]u8)title)
+	payload.dock_title_len = c.int(len(title))
+	return payload, true
+}
+
 ui_table :: proc "contextless" (value: UI_Table) -> UI_Component_Payload {
 	return {component = UI_TABLE, table = value}
 }
@@ -535,6 +606,24 @@ ui_payload_font :: proc "contextless" (payload: ^UI_Component_Payload) -> string
 		return ""
 	}
 	return string(payload.font_bytes[:int(payload.font_len)])
+}
+
+ui_payload_dock_title :: proc "contextless" (payload: ^UI_Component_Payload) -> string {
+	if payload == nil ||
+	   payload.dock_title_len < 0 ||
+	   int(payload.dock_title_len) > len(payload.dock_title_bytes) {
+		return ""
+	}
+	return string(payload.dock_title_bytes[:int(payload.dock_title_len)])
+}
+
+ui_payload_dock_font :: proc "contextless" (payload: ^UI_Component_Payload) -> string {
+	if payload == nil ||
+	   payload.dock_font_len < 0 ||
+	   int(payload.dock_font_len) > len(payload.dock_font_bytes) {
+		return ""
+	}
+	return string(payload.dock_font_bytes[:int(payload.dock_font_len)])
 }
 
 ui_payload_prefix :: proc "contextless" (payload: ^UI_Component_Payload) -> string {

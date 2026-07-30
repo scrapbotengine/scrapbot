@@ -27,6 +27,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Editor
 
+- [ ] Extend public dock spaces with same-group tab ordering, edge-created splits, floating windows, and persisted workspace layouts. See [ADR-045](adr/ADR-045-compose-docking-from-public-groups-and-layout.md).
 - [ ] Add an opt-in runtime-entity browser policy on top of bounded, virtualized list rows.
 - [ ] Add resizable dynamic-array schemas with inspector add, remove, and reorder controls.
 - [ ] Extend project/native component schemas with enum choices so dynamic fields can use the reflected enum picker.

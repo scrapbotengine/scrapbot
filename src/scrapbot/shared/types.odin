@@ -223,6 +223,10 @@ Scene_Entity :: struct {
 	ui_scroll_area: UI_Scroll_Area_Component,
 	has_ui_panel: bool,
 	ui_panel: UI_Panel_Component,
+	has_ui_dock_space: bool,
+	ui_dock_space: UI_Dock_Space_Component,
+	has_ui_dock_item: bool,
+	ui_dock_item: UI_Dock_Item_Component,
 	has_ui_table: bool,
 	ui_table: UI_Table_Component,
 	has_ui_list: bool,
@@ -570,6 +574,28 @@ UI_Panel_Component :: struct {
 	collapsible: bool,
 	collapsed: bool,
 }
+UI_Dock_Space_Component :: struct {
+	active: Entity_UUID,
+	font: string,
+	tab_height: f32,
+	tab_min_width: f32,
+	tab_max_width: f32,
+	tab_gap: f32,
+	tab_padding: f32,
+	tab_size: f32,
+	tab_corner_radius: f32,
+	tab_color: Vec4,
+	tab_active_color: Vec4,
+	tab_background: Vec4,
+	tab_hover_background: Vec4,
+	tab_active_background: Vec4,
+	drop_background: Vec4,
+	draggable: bool,
+}
+UI_Dock_Item_Component :: struct {
+	title: string,
+	movable: bool,
+}
 UI_Table_Component :: struct {
 	columns: int,
 	column_gap: f32,
@@ -845,6 +871,29 @@ ui_panel_default :: proc "contextless" () -> UI_Panel_Component {
 	}
 }
 
+ui_dock_space_default :: proc "contextless" () -> UI_Dock_Space_Component {
+	return {
+		tab_height = 32,
+		tab_min_width = 72,
+		tab_max_width = 180,
+		tab_gap = 2,
+		tab_padding = 12,
+		tab_size = 12,
+		tab_corner_radius = 4,
+		tab_color = {0.68, 0.70, 0.76, 1},
+		tab_active_color = {0.94, 0.95, 0.98, 1},
+		tab_background = {0.055, 0.060, 0.072, 1},
+		tab_hover_background = {0.075, 0.082, 0.098, 1},
+		tab_active_background = {0.105, 0.115, 0.135, 1},
+		drop_background = {0.12, 0.72, 0.64, 0.22},
+		draggable = true,
+	}
+}
+
+ui_dock_item_default :: proc "contextless" () -> UI_Dock_Item_Component {
+	return {movable = true}
+}
+
 ui_table_default :: proc "contextless" () -> UI_Table_Component {
 	return {columns = 1, min_column_width = 32}
 }
@@ -1030,6 +1079,28 @@ ui_panel_is_valid :: proc "contextless" (value: UI_Panel_Component) -> bool {
 		return false
 	}
 	return !value.collapsed || value.collapsible
+}
+
+ui_dock_space_is_valid :: proc "contextless" (value: UI_Dock_Space_Component) -> bool {
+	return(
+		value.tab_height > 0 &&
+		value.tab_min_width > 0 &&
+		value.tab_max_width >= value.tab_min_width &&
+		value.tab_gap >= 0 &&
+		value.tab_padding >= 0 &&
+		value.tab_size > 0 &&
+		value.tab_corner_radius >= 0 &&
+		ui_vec4_is_finite(value.tab_color) &&
+		ui_vec4_is_finite(value.tab_active_color) &&
+		ui_vec4_is_finite(value.tab_background) &&
+		ui_vec4_is_finite(value.tab_hover_background) &&
+		ui_vec4_is_finite(value.tab_active_background) &&
+		ui_vec4_is_finite(value.drop_background) \
+	)
+}
+
+ui_dock_item_is_valid :: proc "contextless" (value: UI_Dock_Item_Component) -> bool {
+	return value.title != ""
 }
 
 ui_table_is_valid :: proc "contextless" (value: UI_Table_Component) -> bool {
@@ -1552,6 +1623,8 @@ World_Entity :: struct {
 	ui_vstack_index: int,
 	ui_scroll_area_index: int,
 	ui_panel_index: int,
+	ui_dock_space_index: int,
+	ui_dock_item_index: int,
 	ui_table_index: int,
 	ui_list_index: int,
 	ui_progress_index: int,
@@ -1697,6 +1770,8 @@ World :: struct {
 	ui_vstacks: [dynamic]UI_Stack_Component,
 	ui_scroll_areas: [dynamic]UI_Scroll_Area_Component,
 	ui_panels: [dynamic]UI_Panel_Component,
+	ui_dock_spaces: [dynamic]UI_Dock_Space_Component,
+	ui_dock_items: [dynamic]UI_Dock_Item_Component,
 	ui_tables: [dynamic]UI_Table_Component,
 	ui_lists: [dynamic]UI_List_Component,
 	ui_progresses: [dynamic]UI_Progress_Component,
@@ -1716,6 +1791,8 @@ World :: struct {
 	free_ui_vstack_indices: [dynamic]int,
 	free_ui_scroll_area_indices: [dynamic]int,
 	free_ui_panel_indices: [dynamic]int,
+	free_ui_dock_space_indices: [dynamic]int,
+	free_ui_dock_item_indices: [dynamic]int,
 	free_ui_table_indices: [dynamic]int,
 	free_ui_list_indices: [dynamic]int,
 	free_ui_progress_indices: [dynamic]int,

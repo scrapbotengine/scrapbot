@@ -190,6 +190,20 @@ remove_ui_component :: proc(world: ^World, entity_index: int, name: string) -> b
 			panel^ = {}
 			append(&world.free_ui_panel_indices, entity.ui_panel_index)
 			entity.ui_panel_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_dock_space":
+			if entity.ui_dock_space_index < 0 { return false }
+			dock_space := &world.ui_dock_spaces[entity.ui_dock_space_index]
+			delete_world_string(world, dock_space.font)
+			dock_space^ = {}
+			append(&world.free_ui_dock_space_indices, entity.ui_dock_space_index)
+			entity.ui_dock_space_index = INVALID_COMPONENT_INDEX
+		case "scrapbot.ui_dock_item":
+			if entity.ui_dock_item_index < 0 { return false }
+			dock_item := &world.ui_dock_items[entity.ui_dock_item_index]
+			delete_world_string(world, dock_item.title)
+			dock_item^ = {}
+			append(&world.free_ui_dock_item_indices, entity.ui_dock_item_index)
+			entity.ui_dock_item_index = INVALID_COMPONENT_INDEX
 		case "scrapbot.ui_table":
 			if entity.ui_table_index < 0 { return false }
 			world.ui_tables[entity.ui_table_index] = {}
@@ -497,6 +511,77 @@ set_ui_panel :: proc(world: ^World, entity_index: int, value: UI_Panel_Component
 	} else {
 		entity.ui_panel_index = len(world.ui_panels)
 		append(&world.ui_panels, panel)
+	}
+	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
+set_ui_dock_space :: proc(
+	world: ^World,
+	entity_index: int,
+	value: UI_Dock_Space_Component,
+) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) || !ui_dock_space_is_valid(value) {
+		return false
+	}
+	dock_space := value
+	dock_space.font = clone_world_string(world, value.font)
+	entity := &world.entities[entity_index]
+	if entity.ui_dock_space_index >= 0 && entity.ui_dock_space_index < len(world.ui_dock_spaces) {
+		current := &world.ui_dock_spaces[entity.ui_dock_space_index]
+		layout_changed :=
+			current.active != value.active ||
+			current.font != value.font ||
+			current.tab_height != value.tab_height ||
+			current.tab_min_width != value.tab_min_width ||
+			current.tab_max_width != value.tab_max_width ||
+			current.tab_gap != value.tab_gap ||
+			current.tab_padding != value.tab_padding ||
+			current.tab_size != value.tab_size
+		paint_changed := current^ != value
+		delete_world_string(world, current.font)
+		current^ = dock_space
+		if layout_changed {
+			mark_ui_layout_changed(world, entity_index)
+		} else if paint_changed {
+			mark_ui_paint_changed(world, entity_index)
+		}
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_dock_space_indices); found {
+		entity.ui_dock_space_index = index
+		world.ui_dock_spaces[index] = dock_space
+	} else {
+		entity.ui_dock_space_index = len(world.ui_dock_spaces)
+		append(&world.ui_dock_spaces, dock_space)
+	}
+	mark_ui_entity_dirty(world, entity_index)
+	return true
+}
+
+set_ui_dock_item :: proc(world: ^World, entity_index: int, value: UI_Dock_Item_Component) -> bool {
+	if !ui_entity_is_mutable(world, entity_index) || !ui_dock_item_is_valid(value) {
+		return false
+	}
+	dock_item := value
+	dock_item.title = clone_world_string(world, value.title)
+	entity := &world.entities[entity_index]
+	if entity.ui_dock_item_index >= 0 && entity.ui_dock_item_index < len(world.ui_dock_items) {
+		current := &world.ui_dock_items[entity.ui_dock_item_index]
+		changed := current^ != value
+		delete_world_string(world, current.title)
+		current^ = dock_item
+		if changed {
+			mark_ui_layout_changed(world, entity_index)
+		}
+		return true
+	}
+	if index, found := take_free_slot(&world.free_ui_dock_item_indices); found {
+		entity.ui_dock_item_index = index
+		world.ui_dock_items[index] = dock_item
+	} else {
+		entity.ui_dock_item_index = len(world.ui_dock_items)
+		append(&world.ui_dock_items, dock_item)
 	}
 	mark_ui_entity_dirty(world, entity_index)
 	return true

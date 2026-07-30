@@ -25,7 +25,7 @@
     {
       "action": "expect",
       "target": {
-        "name": "Arcade Event Monitor",
+        "name": "Arcade Event Dock Item",
         "origin": "scene"
       },
       "expect": "text",

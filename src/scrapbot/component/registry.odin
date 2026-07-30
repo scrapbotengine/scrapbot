@@ -56,6 +56,8 @@ Storage_Kind :: enum u8 {
 	UI_VStack,
 	UI_Scroll_Area,
 	UI_Panel,
+	UI_Dock_Space,
+	UI_Dock_Item,
 	UI_Table,
 	UI_List,
 	UI_Progress,
@@ -578,6 +580,36 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(
 		registry,
+		"scrapbot.ui_dock_space",
+		{
+			Field_Definition{name = "active", field_type = .String},
+			Field_Definition{name = "font", field_type = .String},
+			Field_Definition{name = "tab_height", field_type = .Number},
+			Field_Definition{name = "tab_min_width", field_type = .Number},
+			Field_Definition{name = "tab_max_width", field_type = .Number},
+			Field_Definition{name = "tab_gap", field_type = .Number},
+			Field_Definition{name = "tab_padding", field_type = .Number},
+			Field_Definition{name = "tab_size", field_type = .Number},
+			Field_Definition{name = "tab_corner_radius", field_type = .Number},
+			Field_Definition{name = "tab_color", field_type = .Vec4},
+			Field_Definition{name = "tab_active_color", field_type = .Vec4},
+			Field_Definition{name = "tab_background", field_type = .Vec4},
+			Field_Definition{name = "tab_hover_background", field_type = .Vec4},
+			Field_Definition{name = "tab_active_background", field_type = .Vec4},
+			Field_Definition{name = "drop_background", field_type = .Vec4},
+			Field_Definition{name = "draggable", field_type = .Bool},
+		},
+	)
+	register_engine_component(
+		registry,
+		"scrapbot.ui_dock_item",
+		{
+			Field_Definition{name = "title", field_type = .String},
+			Field_Definition{name = "movable", field_type = .Bool},
+		},
+	)
+	register_engine_component(
+		registry,
 		"scrapbot.ui_table",
 		{
 			Field_Definition{name = "columns", field_type = .Number},
@@ -900,6 +932,10 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .UI_Scroll_Area, .Authored
 		case "scrapbot.ui_panel":
 			return .UI_Panel, .Authored
+		case "scrapbot.ui_dock_space":
+			return .UI_Dock_Space, .Authored
+		case "scrapbot.ui_dock_item":
+			return .UI_Dock_Item, .Authored
 		case "scrapbot.ui_table":
 			return .UI_Table, .Authored
 		case "scrapbot.ui_list":
