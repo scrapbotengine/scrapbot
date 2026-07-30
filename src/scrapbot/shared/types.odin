@@ -591,6 +591,12 @@ UI_Dock_Space_Component :: struct {
 	tab_padding: f32,
 	tab_size: f32,
 	tab_corner_radius: f32,
+	tab_connection_height: f32,
+	tab_content_overlap: f32,
+	tab_strip_background: Vec4,
+	content_background: Vec4,
+	content_corner_radius: f32,
+	content_padding: Vec4,
 	tab_color: Vec4,
 	tab_active_color: Vec4,
 	tab_background: Vec4,
@@ -902,6 +908,11 @@ ui_dock_space_default :: proc "contextless" () -> UI_Dock_Space_Component {
 		tab_padding = 12,
 		tab_size = 12,
 		tab_corner_radius = 4,
+		tab_connection_height = 4,
+		tab_content_overlap = 2,
+		tab_strip_background = {0, 0, 0, 0},
+		content_background = {0.105, 0.115, 0.135, 1},
+		content_corner_radius = 4,
 		tab_color = {0.68, 0.70, 0.76, 1},
 		tab_active_color = {0.94, 0.95, 0.98, 1},
 		tab_background = {0.055, 0.060, 0.072, 1},
@@ -1122,6 +1133,12 @@ ui_dock_space_is_valid :: proc "contextless" (value: UI_Dock_Space_Component) ->
 		value.tab_padding >= 0 &&
 		value.tab_size > 0 &&
 		value.tab_corner_radius >= 0 &&
+		value.tab_connection_height >= 0 &&
+		value.tab_content_overlap >= 0 &&
+		ui_vec4_is_finite(value.tab_strip_background) &&
+		ui_vec4_is_finite(value.content_background) &&
+		value.content_corner_radius >= 0 &&
+		ui_vec4_is_non_negative(value.content_padding) &&
 		ui_vec4_is_finite(value.tab_color) &&
 		ui_vec4_is_finite(value.tab_active_color) &&
 		ui_vec4_is_finite(value.tab_background) &&

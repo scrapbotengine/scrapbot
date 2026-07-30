@@ -405,6 +405,42 @@ read_ui_component_command_from_luau :: proc "c" (
 				"tab_corner_radius",
 				&value.tab_corner_radius,
 			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"tab_connection_height",
+				&value.tab_connection_height,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"tab_content_overlap",
+				&value.tab_content_overlap,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"tab_strip_background",
+				&value.tab_strip_background,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"content_background",
+				&value.content_background,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"content_corner_radius",
+				&value.content_corner_radius,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"content_padding",
+				&value.content_padding,
+			); err != "" { return err }
 			if err := read_ui_vec4_field(L, payload_index, "tab_color", &value.tab_color);
 			   err != "" { return err }
 			if err := read_ui_vec4_field(

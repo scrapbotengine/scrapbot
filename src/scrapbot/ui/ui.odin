@@ -3190,6 +3190,16 @@ layout_node :: proc(
 		}
 		content.y += dock_space.tab_height
 		content.height = max(content.height - dock_space.tab_height, 0)
+		content.x += dock_space.content_padding.w
+		content.y += dock_space.content_padding.x
+		content.width = max(
+			content.width - dock_space.content_padding.w - dock_space.content_padding.y,
+			0,
+		)
+		content.height = max(
+			content.height - dock_space.content_padding.x - dock_space.content_padding.z,
+			0,
+		)
 	}
 	child_parent_rect := node.rect
 	if layout.tree_item && node.parent_node_index >= 0 {
@@ -4156,6 +4166,32 @@ dock_space_content_rect :: proc "contextless" (
 		node.rect.y + value.tab_height,
 		node.rect.width,
 		max(node.rect.height - value.tab_height, 0),
+	}
+}
+
+dock_space_sheet_rect :: proc "contextless" (
+	node: Node,
+	layout: shared.UI_Layout_Component,
+	value: shared.UI_Dock_Space_Component,
+) -> Rect {
+	return {
+		node.rect.x + layout.padding.w,
+		node.rect.y + layout.padding.x + value.tab_height,
+		max(node.rect.width - layout.padding.w - layout.padding.y, 0),
+		max(node.rect.height - layout.padding.x - layout.padding.z - value.tab_height, 0),
+	}
+}
+
+dock_space_tab_strip_rect :: proc "contextless" (
+	node: Node,
+	layout: shared.UI_Layout_Component,
+	value: shared.UI_Dock_Space_Component,
+) -> Rect {
+	return {
+		node.rect.x + layout.padding.w,
+		node.rect.y + layout.padding.x,
+		max(node.rect.width - layout.padding.w - layout.padding.y, 0),
+		min(value.tab_height, max(node.rect.height - layout.padding.x - layout.padding.z, 0)),
 	}
 }
 
@@ -7684,6 +7720,34 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			return err
 		}
 	}
+	if node.dock_space_index >= 0 && node.dock_space_index < len(world.ui_dock_spaces) {
+		dock_space := world.ui_dock_spaces[node.dock_space_index]
+		if dock_space.tab_strip_background.w > 0 {
+			if err := append_paint(
+				state,
+				{
+					kind = .Panel,
+					rect = dock_space_tab_strip_rect(node^, layout, dock_space),
+					color = dock_space.tab_strip_background,
+				},
+			); err != "" {
+				return err
+			}
+		}
+		if dock_space.content_background.w > 0 {
+			if err := append_paint(
+				state,
+				{
+					kind = .Panel,
+					rect = dock_space_sheet_rect(node^, layout, dock_space),
+					color = dock_space.content_background,
+					corner_radius = dock_space.content_corner_radius,
+				},
+			); err != "" {
+				return err
+			}
+		}
+	}
 	apply_paint_clip(state, paint_start, state.paint_count, node.clip, node.has_clip)
 	child_index := node.first_child_node
 	for child_index >= 0 {
@@ -7759,6 +7823,24 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 					},
 				); err != "" {
 					return err
+				}
+				if tab.active && dock_space.tab_connection_height > 0 {
+					connection_height := min(dock_space.tab_connection_height, tab.rect.height)
+					if err := append_paint(
+						state,
+						{
+							kind = .Panel,
+							rect = {
+								tab.rect.x,
+								tab.rect.y + tab.rect.height - connection_height,
+								tab.rect.width,
+								connection_height + dock_space.tab_content_overlap,
+							},
+							color = background,
+						},
+					); err != "" {
+						return err
+					}
 				}
 			}
 			if err := append_centered_text(

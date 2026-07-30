@@ -1591,6 +1591,18 @@ parse_scene :: proc(
 						current.ui_dock_space.tab_size, found = parse_f32(value)
 					case "tab_corner_radius":
 						current.ui_dock_space.tab_corner_radius, found = parse_f32(value)
+					case "tab_connection_height":
+						current.ui_dock_space.tab_connection_height, found = parse_f32(value)
+					case "tab_content_overlap":
+						current.ui_dock_space.tab_content_overlap, found = parse_f32(value)
+					case "tab_strip_background":
+						current.ui_dock_space.tab_strip_background, found = parse_vec4(value)
+					case "content_background":
+						current.ui_dock_space.content_background, found = parse_vec4(value)
+					case "content_corner_radius":
+						current.ui_dock_space.content_corner_radius, found = parse_f32(value)
+					case "content_padding":
+						current.ui_dock_space.content_padding, found = parse_vec4(value)
 					case "tab_color":
 						current.ui_dock_space.tab_color, found = parse_vec4(value)
 					case "tab_active_color":

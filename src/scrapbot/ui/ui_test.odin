@@ -939,6 +939,8 @@ test_dock_spaces_select_and_transfer_public_dock_items :: proc(t: ^testing.T) {
 			ui_dock_item = {title = "THIRD", movable = true},
 		},
 	)
+	scene.entities[1].ui_dock_space.tab_strip_background = {0.03, 0.04, 0.05, 1}
+	scene.entities[2].ui_dock_space.tab_strip_background = {0.03, 0.04, 0.05, 1}
 	world := ecs.build_world(&scene)
 	defer ecs.destroy_world(&world)
 	state := new(State)
@@ -954,6 +956,37 @@ test_dock_spaces_select_and_transfer_public_dock_items :: proc(t: ^testing.T) {
 	testing.expect(t, state.nodes[third_node].laid_out)
 	testing.expect_value(t, state.nodes[first_node].rect, Rect{0, 32, 210, 148})
 	testing.expect_value(t, state.dock_tab_count, 3)
+	active_connections := 0
+	dock_style := shared.ui_dock_space_default()
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel &&
+		   command.color == dock_style.tab_active_background &&
+		   command.corner_radius == 0 &&
+		   command.rect.height ==
+			   dock_style.tab_connection_height + dock_style.tab_content_overlap {
+			active_connections += 1
+		}
+	}
+	testing.expect_value(t, active_connections, 2)
+	content_sheets := 0
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel &&
+		   command.color == dock_style.content_background &&
+		   command.corner_radius == dock_style.content_corner_radius &&
+		   command.rect.height == 148 {
+			content_sheets += 1
+		}
+	}
+	testing.expect_value(t, content_sheets, 2)
+	tab_strips := 0
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel &&
+		   command.color == (shared.Vec4{0.03, 0.04, 0.05, 1}) &&
+		   command.rect.height == dock_style.tab_height {
+			tab_strips += 1
+		}
+	}
+	testing.expect_value(t, tab_strips, 2)
 
 	second_tab := state.dock_tabs[1].rect
 	second_tab_center := shared.Vec2 {
@@ -4050,6 +4083,17 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 		if dock_entity.ui_layout_index >= 0 {
 			testing.expect(t, world.ui_layouts[dock_entity.ui_layout_index].background.w == 0)
 		}
+		if dock_entity.ui_dock_space_index >= 0 {
+			dock_space := world.ui_dock_spaces[dock_entity.ui_dock_space_index]
+			testing.expect(t, dock_space.content_background.w == 0)
+			testing.expect(t, dock_space.tab_active_background.w > 0)
+			testing.expect_value(
+				t,
+				dock_space.tab_active_background,
+				reduced_dark_theme().palette.panel,
+			)
+			testing.expect_value(t, dock_space.content_padding, shared.Vec4{4, 4, 4, 4})
+		}
 	}
 	if viewport_node >= 0 {
 		viewport_entity := world.entities[int(state.nodes[viewport_node].entity.index)]
@@ -4143,7 +4187,7 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 	viewport = editor_viewport(state, 2048, 1096)
 	viewport_node = find_editor_role_node(state, .Viewport)
 	testing.expect(t, viewport_node >= 0 && viewport == state.nodes[viewport_node].rect)
-	testing.expect(t, viewport.width > 1000 && viewport.height > 900)
+	testing.expect(t, viewport.width > 980 && viewport.height > 900)
 	testing.expect(t, state.paint[state.editor_paint_start].rect.width == 2048)
 	pointer = project_pointer_input(
 		state,
@@ -4860,10 +4904,10 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 	theme := reduced_dark_theme()
 	expected_titles := [4]string{"PERFORMANCE", "SYSTEMS / 0", "SCENE", "INSPECTOR"}
 	expected_backgrounds := [4]shared.Vec4 {
-		theme.palette.panel,
 		theme.palette.region,
 		theme.palette.region,
-		theme.palette.panel,
+		theme.palette.region,
+		theme.palette.region,
 	}
 	for node_index, section_index in sections {
 		testing.expect(t, node_index >= 0)
@@ -4877,10 +4921,10 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 		testing.expect(t, panel.collapsible)
 		testing.expect(t, panel.title_height == EDITOR_SECTION_TITLE_HEIGHT)
 		testing.expect(t, panel.title_color == theme.palette.text_secondary)
-		testing.expect(t, panel.title_background == theme.palette.raised)
+		testing.expect(t, panel.title_background == theme.palette.control)
 		testing.expect(t, layout.background == expected_backgrounds[section_index])
 		testing.expect(t, layout.border_color == theme.palette.border)
-		testing.expect(t, layout.corner_radius == theme.metrics.radius)
+		testing.expect(t, layout.corner_radius == theme.metrics.radius_small)
 	}
 
 	if scene_panel >= 0 {
@@ -5774,13 +5818,23 @@ test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection 
 	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300) == "")
 	left_sidebar := find_editor_name_node(state, &world, EDITOR_UI_LEFT_NAME)
 	testing.expect(t, left_sidebar >= 0 && state.nodes[left_sidebar].scroll_max > 0)
-	if left_sidebar >= 0 {
-		state.nodes[left_sidebar].scroll_target = state.nodes[left_sidebar].scroll_max
+	browser_index := find_editor_role_node(state, .Browser_Scroll)
+	testing.expect(t, browser_index >= 0)
+	if left_sidebar >= 0 && browser_index >= 0 {
+		browser_offset :=
+			state.nodes[browser_index].rect.y -
+			state.nodes[left_sidebar].rect.y +
+			state.nodes[left_sidebar].scroll_offset
+		state.nodes[left_sidebar].scroll_target = clamp(
+			browser_offset,
+			0,
+			state.nodes[left_sidebar].scroll_max,
+		)
 	}
 	for _ in 0 ..< 60 {
 		testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300) == "")
 	}
-	browser_index := find_editor_role_node(state, .Browser_Scroll)
+	browser_index = find_editor_role_node(state, .Browser_Scroll)
 	testing.expect(t, browser_index >= 0)
 	browser_rect := state.nodes[browser_index].rect
 	browser_visible := rect_intersection(browser_rect, state.nodes[browser_index].clip)
@@ -6879,15 +6933,64 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		testing.expect(t, math.abs(stepped - 1.099) < 0.001)
 
 		// Dragging the X axis label scrubs, commits on release, and participates in undo/redo.
+		inspector_node = find_editor_role_node(state, .Inspector_Scroll)
 		x_node = find_node_by_entity_index(state, position_inputs[0])
+		for _ in 0 ..< 8 {
+			if x_node < 0 || inspector_node < 0 {
+				break
+			}
+			input := state.nodes[x_node]
+			if rect_intersection(input.rect, input.clip).height > 0 {
+				break
+			}
+			wheel_y := f32(-1)
+			if input.rect.y < input.clip.y {
+				wheel_y = 1
+			}
+			inspector := state.nodes[inspector_node]
+			point := shared.Vec2 {
+				inspector.rect.x + inspector.rect.width * 0.5,
+				inspector.rect.y + inspector.rect.height * 0.5,
+			}
+			testing.expect(
+				t,
+				reconcile(
+					state,
+					&world,
+					1280,
+					720,
+					{position = point, wheel_y = wheel_y, available = true},
+					1280,
+					300,
+					1.0 / 60.0,
+				) ==
+				"",
+			)
+			for _ in 0 ..< 12 {
+				testing.expect(
+					t,
+					reconcile(state, &world, 1280, 720, {}, 1280, 300, 1.0 / 60.0) == "",
+				)
+			}
+			x_node = find_node_by_entity_index(state, position_inputs[0])
+		}
 		if x_node >= 0 {
 			state.editor_snapshot_elapsed = 0
 			state.editor_snapshot_valid = true
 			scrub_refresh_count := state.editor_snapshot_refresh_count
-			start := shared.Vec2 {
-				state.nodes[x_node].rect.x + 7,
-				state.nodes[x_node].rect.y + state.nodes[x_node].rect.height * 0.5,
-			}
+			visible := rect_intersection(state.nodes[x_node].rect, state.nodes[x_node].clip)
+			start := shared.Vec2{state.nodes[x_node].rect.x + 7, visible.y + visible.height * 0.5}
+			testing.expectf(
+				t,
+				visible.height > 0,
+				"scrub input rect=%v clip=%v visible=%v inspector=%v scroll=%.2f/%.2f",
+				state.nodes[x_node].rect,
+				state.nodes[x_node].clip,
+				visible,
+				state.nodes[inspector_node].rect,
+				state.nodes[inspector_node].scroll_offset,
+				state.nodes[inspector_node].scroll_max,
+			)
 			testing.expect(
 				t,
 				reconcile(

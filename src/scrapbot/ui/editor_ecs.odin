@@ -48,13 +48,13 @@ EDITOR_UI_COMPONENT_MENU_FILTER_NAME :: "__scrapbot_editor_component_menu_filter
 EDITOR_UI_COMPONENT_MENU_CONTENT_NAME :: "__scrapbot_editor_component_menu_content"
 EDITOR_UI_RESOURCE_MENU_NAME :: "__scrapbot_editor_resource_menu"
 EDITOR_UI_RESOURCE_MENU_CONTENT_NAME :: "__scrapbot_editor_resource_menu_content"
-EDITOR_SIDEBAR_PADDING :: f32(10)
-EDITOR_SIDEBAR_SECTION_GAP :: f32(6)
+EDITOR_SIDEBAR_PADDING :: f32(8)
+EDITOR_SIDEBAR_SECTION_GAP :: f32(4)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
-EDITOR_DOCK_TAB_HEIGHT :: f32(32)
+EDITOR_DOCK_TAB_HEIGHT :: f32(28)
 EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT :: EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT - EDITOR_DOCK_TAB_HEIGHT
-EDITOR_SECTION_TITLE_HEIGHT :: f32(32)
-EDITOR_BROWSER_FILTER_HEIGHT :: f32(34)
+EDITOR_SECTION_TITLE_HEIGHT :: f32(28)
+EDITOR_BROWSER_FILTER_HEIGHT :: f32(32)
 EDITOR_BROWSER_TEXT_INSET :: f32(20)
 
 editor_ui_entity :: proc(
@@ -896,19 +896,39 @@ editor_ui_add_dock_space :: proc(
 	draggable: bool = true,
 	split_horizontal: bool = false,
 	split_vertical: bool = false,
+	content_sheet: bool = true,
 ) {
 	value := shared.ui_dock_space_default()
 	value.font = theme.font
 	value.tab_height = EDITOR_DOCK_TAB_HEIGHT
 	value.tab_min_width = 84
 	value.tab_max_width = 180
-	value.tab_gap = 4
-	value.tab_padding = 12
+	value.tab_gap = 2
+	value.tab_padding = 10
 	value.tab_size = theme.metrics.small_text_size
-	value.tab_corner_radius = theme.metrics.radius
+	value.tab_corner_radius = theme.metrics.radius_small
+	value.tab_connection_height = 4
+	value.tab_content_overlap = 1
+	value.tab_strip_background = theme.palette.region
+	value.content_background = theme.palette.panel
+	if !content_sheet {
+		value.content_background.w = 0
+	}
+	value.content_corner_radius = theme.metrics.radius_small
+	value.content_padding = {
+		theme.metrics.gap_small,
+		theme.metrics.gap_small,
+		theme.metrics.gap_small,
+		theme.metrics.gap_small,
+	}
 	value.tab_color = theme.palette.text_secondary
 	value.tab_active_color = theme.palette.text
-	value.tab_background = theme.palette.region
+	value.tab_background = {
+		theme.palette.region.x,
+		theme.palette.region.y,
+		theme.palette.region.z,
+		0,
+	}
 	value.tab_hover_background = theme.palette.hover
 	value.tab_active_background = theme.palette.panel
 	value.drop_background = {
@@ -942,6 +962,8 @@ editor_ui_section_layout :: proc(size: shared.Vec2) -> shared.UI_Layout_Componen
 	layout, _ := theme_panel(theme)
 	layout.size = size
 	layout.fill_width = true
+	layout.background = theme.palette.region
+	layout.corner_radius = theme.metrics.radius_small
 	return layout
 }
 
@@ -950,8 +972,10 @@ editor_ui_list_section_layout :: proc(size: shared.Vec2) -> shared.UI_Layout_Com
 	layout := shared.UI_Layout_Component {
 		size = size,
 		fill_width = true,
+		background = theme.palette.region,
+		border_color = theme.palette.border,
+		corner_radius = theme.metrics.radius_small,
 	}
-	theme_apply_surface(&layout, theme, .Region)
 	return layout
 }
 
@@ -961,8 +985,11 @@ editor_ui_add_section_panel :: proc(
 	title: string,
 	movable: bool = false,
 ) {
-	_, value := theme_panel(reduced_dark_theme())
+	theme := reduced_dark_theme()
+	_, value := theme_panel(theme)
 	value.title = title
+	value.title_background = theme.palette.control
+	value.title_height = EDITOR_SECTION_TITLE_HEIGHT
 	value.collapsible = true
 	value.movable = movable
 	editor_ui_add_panel(world, entity_index, value)
@@ -1503,6 +1530,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		theme,
 		split_horizontal = true,
 		split_vertical = true,
+		content_sheet = false,
 	)
 	viewport_tab := editor_ui_create_box(
 		world,
@@ -2250,7 +2278,7 @@ INSPECTOR_PANEL_TITLE_HEIGHT :: EDITOR_SECTION_TITLE_HEIGHT
 INSPECTOR_CELL_HEIGHT :: f32(32)
 INSPECTOR_CONTROL_HEIGHT :: f32(28)
 INSPECTOR_TABLE_ROW_GAP :: f32(3)
-INSPECTOR_PANEL_GAP :: f32(10)
+INSPECTOR_PANEL_GAP :: f32(4)
 INSPECTOR_PANEL_PADDING :: shared.Vec4{}
 INSPECTOR_LABEL_CELL_PADDING :: shared.Vec4{10, 8, 9, 12}
 INSPECTOR_VALUE_CELL_PADDING :: shared.Vec4{2, 12, 2, 8}

@@ -180,6 +180,12 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, panel_payload.panel.collapsible != 0)
 	dock_space_style := ui_dock_space_default()
 	dock_space_style.tab_height = 36
+	dock_space_style.tab_connection_height = 5
+	dock_space_style.tab_content_overlap = 3
+	dock_space_style.tab_strip_background = {0.03, 0.04, 0.05, 1}
+	dock_space_style.content_background = {0.11, 0.12, 0.13, 1}
+	dock_space_style.content_corner_radius = 7
+	dock_space_style.content_padding = {2, 3, 4, 5}
 	dock_space_style.split_horizontal = 1
 	dock_space_style.split_ratio = 0.4
 	dock_space_style.split_gap = 6
@@ -187,6 +193,12 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, dock_space_ok)
 	testing.expect(t, dock_space_payload.component == UI_DOCK_SPACE)
 	testing.expect(t, dock_space_payload.dock_space.tab_height == 36)
+	testing.expect(t, dock_space_payload.dock_space.tab_connection_height == 5)
+	testing.expect(t, dock_space_payload.dock_space.tab_content_overlap == 3)
+	testing.expect(t, dock_space_payload.dock_space.tab_strip_background.z == 0.05)
+	testing.expect(t, dock_space_payload.dock_space.content_background.x == 0.11)
+	testing.expect(t, dock_space_payload.dock_space.content_corner_radius == 7)
+	testing.expect(t, dock_space_payload.dock_space.content_padding.w == 5)
 	testing.expect(t, dock_space_payload.dock_space.split_horizontal != 0)
 	testing.expect(t, dock_space_payload.dock_space.split_ratio == 0.4)
 	testing.expect(t, dock_space_payload.dock_space.split_gap == 6)

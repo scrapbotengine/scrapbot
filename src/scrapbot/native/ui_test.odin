@@ -265,6 +265,12 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	dock_space.active = world.entities[entity_index].uuid
 	dock_space.font = "Inter"
 	dock_space.tab_height = 38
+	dock_space.tab_connection_height = 5
+	dock_space.tab_content_overlap = 3
+	dock_space.tab_strip_background = {0.03, 0.04, 0.05, 1}
+	dock_space.content_background = {0.11, 0.12, 0.13, 1}
+	dock_space.content_corner_radius = 7
+	dock_space.content_padding = {2, 3, 4, 5}
 	dock_space.tab_active_color = {1.5, 1.2, 1, 1}
 	dock_space.split_horizontal = true
 	dock_space.split_ratio = 0.4
@@ -494,6 +500,12 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	_, dock_font, dock_space_strings_ok := api_ui_payload_dock_strings(&dock_space_payload)
 	testing.expect(t, dock_space_strings_ok && dock_font == "Inter")
 	testing.expect(t, dock_space_payload.dock_space.tab_height == 38)
+	testing.expect(t, dock_space_payload.dock_space.tab_connection_height == 5)
+	testing.expect(t, dock_space_payload.dock_space.tab_content_overlap == 3)
+	testing.expect(t, dock_space_payload.dock_space.tab_strip_background.z == 0.05)
+	testing.expect(t, dock_space_payload.dock_space.content_background.x == 0.11)
+	testing.expect(t, dock_space_payload.dock_space.content_corner_radius == 7)
+	testing.expect(t, dock_space_payload.dock_space.content_padding.w == 5)
 	testing.expect(t, dock_space_payload.dock_space.tab_active_color.x == 1.5)
 	testing.expect(t, dock_space_payload.dock_space.split_horizontal != 0)
 	testing.expect(t, dock_space_payload.dock_space.split_ratio == 0.4)

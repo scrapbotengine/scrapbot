@@ -1633,6 +1633,12 @@ tab_gap = 4
 tab_padding = 14
 tab_size = 13
 tab_corner_radius = 6
+tab_connection_height = 5
+tab_content_overlap = 3
+tab_strip_background = [0.03, 0.04, 0.05, 1]
+content_background = [0.11, 0.12, 0.13, 1]
+content_corner_radius = 7
+content_padding = [2, 3, 4, 5]
 tab_color = [0.6, 0.7, 0.8, 1]
 tab_active_color = [1.2, 1.1, 1.0, 1]
 tab_background = [0.02, 0.03, 0.04, 1]
@@ -1663,6 +1669,12 @@ movable = false
 	testing.expect(t, scene.entities[0].ui_dock_space.active == scene.entities[1].id)
 	testing.expect(t, scene.entities[0].ui_dock_space.font == "Inter")
 	testing.expect(t, scene.entities[0].ui_dock_space.tab_height == 36)
+	testing.expect(t, scene.entities[0].ui_dock_space.tab_connection_height == 5)
+	testing.expect(t, scene.entities[0].ui_dock_space.tab_content_overlap == 3)
+	testing.expect(t, scene.entities[0].ui_dock_space.tab_strip_background.z == 0.05)
+	testing.expect(t, scene.entities[0].ui_dock_space.content_background.x == 0.11)
+	testing.expect(t, scene.entities[0].ui_dock_space.content_corner_radius == 7)
+	testing.expect(t, scene.entities[0].ui_dock_space.content_padding.w == 5)
 	testing.expect(t, scene.entities[0].ui_dock_space.tab_active_color.x == 1.2)
 	testing.expect(t, !scene.entities[0].ui_dock_space.draggable)
 	testing.expect(t, scene.entities[0].ui_dock_space.split_horizontal)

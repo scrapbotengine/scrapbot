@@ -124,6 +124,12 @@ size = [480, 320]
 active = "aa000000-0000-4000-8000-000000000005"
 font = "Inter"
 tab_height = 36
+tab_connection_height = 5
+tab_content_overlap = 3
+tab_strip_background = [0.03, 0.04, 0.05, 1]
+content_background = [0.11, 0.12, 0.13, 1]
+content_corner_radius = 7
+content_padding = [2, 3, 4, 5]
 tab_active_color = [1.5, 1.2, 1, 1]
 split_horizontal = true
 split_ratio = 0.4
@@ -215,12 +221,22 @@ scrapbot.system(function()
 	scrapbot.query(scrapbot.ui_dock_space):each(function(entity, dock)
 		assert(dock.active == "aa000000-0000-4000-8000-000000000005")
 		assert(dock.font == "Inter" and dock.tab_height == 36)
+		assert(dock.tab_connection_height == 5)
+		assert(dock.tab_content_overlap == 3)
+		assert(math.abs(dock.tab_strip_background.z - 0.05) < 0.0001)
+		assert(math.abs(dock.content_background.x - 0.11) < 0.0001)
+		assert(dock.content_corner_radius == 7)
+		assert(dock.content_padding.w == 5)
 		assert(math.abs(dock.tab_active_color.x - 1.5) < 0.0001)
 		assert(dock.split_horizontal == true)
 		assert(math.abs(dock.split_ratio - 0.4) < 0.0001)
 		assert(dock.split_gap == 6)
 		scrapbot.add_component(entity, scrapbot.ui_dock_space, {
 			tab_height = 40,
+			tab_connection_height = 7,
+			tab_content_overlap = 4,
+			tab_strip_background = {0.04, 0.05, 0.06, 1},
+			content_padding = {3, 3, 3, 3},
 			draggable = false,
 			split_vertical = true,
 			split_min_size = 144,
