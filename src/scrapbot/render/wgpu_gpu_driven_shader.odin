@@ -807,7 +807,17 @@ struct GPU_Instance {
 struct Batch_Info {
 	visible_offset: u32,
 	visible_capacity: u32,
-	padding: vec2<u32>,
+	meshlet_offset: u32,
+	meshlet_count: u32,
+};
+
+struct Meshlet_Info {
+	bounds: vec4<f32>,
+	cone_axis_cutoff: vec4<f32>,
+	visible_offset: u32,
+	visible_capacity: u32,
+	flags: u32,
+	padding: u32,
 };
 
 struct Draw_Indexed_Indirect {
@@ -830,9 +840,9 @@ struct Cull_Uniform {
 	hiz_mip_count: u32,
 	hiz_enabled: u32,
 	shadow_visible_stride: u32,
+	meshlet_enabled: u32,
+	meshlet_shadow_visible_stride: u32,
 	padding_0: u32,
-	padding_1: u32,
-	padding_2: u32,
 };
 
 struct Visibility_Counters {
@@ -842,6 +852,12 @@ struct Visibility_Counters {
 	frustum_culled_instances: atomic<u32>,
 	occlusion_culled_instances: atomic<u32>,
 	lod_visible_instances: array<atomic<u32>, 4>,
+	visible_meshlets: atomic<u32>,
+	shadow_visible_meshlets: atomic<u32>,
+	frustum_culled_meshlets: atomic<u32>,
+	cone_culled_meshlets: atomic<u32>,
+	occlusion_culled_meshlets: atomic<u32>,
+	padding: array<u32, 3>,
 };
 
 @group(0) @binding(0) var<storage, read> instances: array<GPU_Instance>;
@@ -853,6 +869,33 @@ struct Visibility_Counters {
 @group(0) @binding(6) var<uniform> cull: Cull_Uniform;
 @group(0) @binding(7) var hiz_depth: texture_2d<f32>;
 @group(0) @binding(8) var<storage, read_write> counters: Visibility_Counters;
+@group(0) @binding(9) var<storage, read> meshlets: array<Meshlet_Info>;
+
+fn world_meshlet_bounds(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec4<f32> {
+	let center = instance.model * vec4<f32>(meshlet.bounds.xyz, 1.0);
+	let scale = max(
+		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
+		length(instance.model[2].xyz),
+	);
+	return vec4<f32>(center.xyz, meshlet.bounds.w * scale);
+}
+
+fn meshlet_cone_culled(
+	instance: GPU_Instance,
+	meshlet: Meshlet_Info,
+	bounds: vec4<f32>,
+) -> bool {
+	if ((meshlet.flags & 1u) != 0u || meshlet.cone_axis_cutoff.w >= 1.0) {
+		return false;
+	}
+	let axis = normalize(
+		(instance.normal_model * vec4<f32>(meshlet.cone_axis_cutoff.xyz, 0.0)).xyz,
+	);
+	let camera_offset = bounds.xyz - cull.camera_position.xyz;
+	let distance = length(camera_offset);
+	return dot(camera_offset, axis) >=
+		meshlet.cone_axis_cutoff.w * distance + bounds.w;
+}
 
 fn camera_sphere_visible(bounds: vec4<f32>) -> bool {
 	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
@@ -956,6 +999,36 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		atomicAdd(&counters.frustum_candidates, 1u);
 		if (camera_sphere_occluded(instance.bounds)) {
 			atomicAdd(&counters.occlusion_culled_instances, 1u);
+		} else if (cull.meshlet_enabled != 0u) {
+			for (
+				var local_meshlet = 0u;
+				local_meshlet < batch.meshlet_count;
+				local_meshlet = local_meshlet + 1u
+			) {
+				let meshlet_index = batch.meshlet_offset + local_meshlet;
+				let meshlet = meshlets[meshlet_index];
+				let bounds = world_meshlet_bounds(instance, meshlet);
+				if (!camera_sphere_visible(bounds)) {
+					atomicAdd(&counters.frustum_culled_meshlets, 1u);
+					continue;
+				}
+				if (meshlet_cone_culled(instance, meshlet, bounds)) {
+					atomicAdd(&counters.cone_culled_meshlets, 1u);
+					continue;
+				}
+				if (camera_sphere_occluded(bounds)) {
+					atomicAdd(&counters.occlusion_culled_meshlets, 1u);
+					continue;
+				}
+				let local_index =
+					atomicAdd(&indirect[meshlet_index].instance_count, 1u);
+				if (local_index < meshlet.visible_capacity) {
+					visible_instances[meshlet.visible_offset + local_index] = slot;
+					atomicAdd(&counters.visible_meshlets, 1u);
+				}
+			}
+			atomicAdd(&counters.visible_instances, 1u);
+			atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
 		} else {
 			let local_index = atomicAdd(&indirect[batch_index].instance_count, 1u);
 			if (local_index < batch.visible_capacity) {
@@ -968,13 +1041,41 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		atomicAdd(&counters.frustum_culled_instances, 1u);
 	}
 	if (instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
-		let indirect_index = cascade_index * cull.batch_count + batch_index;
-		let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
-		if (local_index < batch.visible_capacity) {
-			shadow_visible_instances[
-				cascade_index * cull.shadow_visible_stride + batch.visible_offset + local_index
-			] = slot;
+		if (cull.meshlet_enabled != 0u) {
+			for (
+				var local_meshlet = 0u;
+				local_meshlet < batch.meshlet_count;
+				local_meshlet = local_meshlet + 1u
+			) {
+				let meshlet_index = batch.meshlet_offset + local_meshlet;
+				let meshlet = meshlets[meshlet_index];
+				let bounds = world_meshlet_bounds(instance, meshlet);
+				if (!shadow_sphere_visible(bounds, cascade_index)) {
+					continue;
+				}
+				let indirect_index =
+					cascade_index * arrayLength(&meshlets) + meshlet_index;
+				let local_index =
+					atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
+				if (local_index < meshlet.visible_capacity) {
+					shadow_visible_instances[
+						cascade_index * cull.meshlet_shadow_visible_stride +
+						meshlet.visible_offset +
+						local_index
+					] = slot;
+					atomicAdd(&counters.shadow_visible_meshlets, 1u);
+				}
+			}
 			atomicAdd(&counters.shadow_visible_instances, 1u);
+		} else {
+			let indirect_index = cascade_index * cull.batch_count + batch_index;
+			let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
+			if (local_index < batch.visible_capacity) {
+				shadow_visible_instances[
+					cascade_index * cull.shadow_visible_stride + batch.visible_offset + local_index
+				] = slot;
+				atomicAdd(&counters.shadow_visible_instances, 1u);
+			}
 		}
 	}
 }

@@ -31,10 +31,28 @@ The source vertices and full index buffer remain canonical. ECS components conti
 one generational Geometry handle, LOD selection continues to resolve Geometry handles, and no
 meshlet identity enters scene files, Luau payloads, or the native extension ABI.
 
-Keep the current whole-primitive indexed-indirect renderer as the active baseline until the GPU
-path can consume meshlet bounds and submit the resulting commands end to end. A capable WGPU path
-may use feature-gated indirect-first-instance and native multi-draw-count submission. Unsupported
-adapters must retain the existing geometry-batch path with the same visual result.
+On adapters that expose `indirect-first-instance`, WGPU expands the local triangle streams into one
+meshlet-ordered index buffer per Geometry version. It retains meshlet metadata, visibility slices,
+and indexed-indirect templates beside the existing whole-primitive draw database.
+WGPU also requests native multi-draw-count when available, which guarantees fixed multi-draw is
+not emulated internally; adapters without it retain correct fixed multi-draw semantics.
+
+The compute pass first rejects the complete instance and selects its LOD. It then tests that
+Geometry's meshlets:
+
+- camera visibility uses the meshlet sphere, normal cone for single-sided materials, and Hi-Z;
+- shadow visibility uses each cascade's frustum and the meshlet sphere;
+- one atomic instance count and compact visible-instance slice are retained per meshlet.
+
+World, depth, and shadow passes bind the meshlet-ordered index buffer and issue one native fixed
+multi-draw per retained geometry/material/LOD batch. Fixed multi-draw is intentional: meshlet
+topology and command count are already known at the resource-version boundary, while compute
+writes zero or nonzero instance counts into those retained commands. A GPU-authored command-count
+buffer would add state and synchronization without compacting any information the renderer needs.
+
+Adapters without `indirect-first-instance`, `--cpu-culling`, empty meshlet layouts, or layouts that
+would exceed the bounded visibility allocation retain the existing whole-primitive indexed-
+indirect path with the same visual result.
 
 Meshlet construction is allowed only at explicit geometry creation or replacement boundaries.
 Stable frames never rebuild, scan, hash, or upload unchanged meshlet data.
@@ -48,6 +66,12 @@ bounds without inventing an importer-only model representation or a second rende
 Geometry registration does additional CPU work and retains extra cluster arrays. Scrapbot also
 gains a pinned C++ source dependency and must build/link meshoptimizer on every supported host.
 
-This decision does not by itself claim meshlet GPU culling or reduced raster work. Until the
-feature-gated submission path lands, rendering still uses the canonical whole-primitive index
-buffer and one indexed-indirect call per retained batch.
+Capable native adapters now reject invisible clusters before rasterization and submit the retained
+cluster commands with one multi-draw call per batch. This reduces triangle work for large,
+partially visible primitives without exposing cluster identity outside the backend.
+
+Each meshlet reserves an aligned visible-instance slice sized to its batch membership. The backend
+caps the total at 1,048,576 entries and falls back rather than allocating unbounded storage.
+Meshlet metadata, templates, bind groups, and expanded index buffers rebuild only after Geometry
+version/topology, batch-capacity, or dependent GPU-buffer changes. Stable frames only reset/copy
+the retained indirect templates and run current-frame compute and render commands.

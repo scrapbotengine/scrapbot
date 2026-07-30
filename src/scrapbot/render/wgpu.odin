@@ -97,6 +97,12 @@ WGPU_GPU_Visibility_Counters :: struct {
 	frustum_culled_instances: u32,
 	occlusion_culled_instances: u32,
 	lod_visible_instances: [shared.MAX_GEOMETRY_LODS]u32,
+	visible_meshlets: u32,
+	shadow_visible_meshlets: u32,
+	frustum_culled_meshlets: u32,
+	cone_culled_meshlets: u32,
+	occlusion_culled_meshlets: u32,
+	_padding: [3]u32,
 }
 
 WGPU_GPU_Visibility_Readback :: struct {
@@ -258,8 +264,14 @@ WGPU_Draw_Batch :: struct {
 	instance_count: u32,
 	visible_offset: u32,
 	visible_capacity: u32,
+	meshlet_draw_offset: u32,
+	meshlet_draw_count: u32,
+	meshlet_visible_offset: u32,
+	meshlet_visible_capacity: u32,
 	world_bind_group: wgpu.BindGroup,
 	shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
+	meshlet_world_bind_group: wgpu.BindGroup,
+	meshlet_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
 }
 
 WGPU_Draw_Batch_Cache :: struct {
@@ -309,7 +321,9 @@ WGPU_GPU_Cull_Uniform :: struct {
 	hiz_mip_count: u32,
 	hiz_enabled: u32,
 	shadow_visible_stride: u32,
-	_padding: [3]u32,
+	meshlet_enabled: u32,
+	meshlet_shadow_visible_stride: u32,
+	_padding: u32,
 }
 #assert(size_of(WGPU_GPU_Cull_Uniform) == 672)
 
@@ -325,8 +339,19 @@ WGPU_Draw_Indexed_Indirect :: struct {
 WGPU_GPU_Batch_Info :: struct {
 	visible_offset: u32,
 	visible_capacity: u32,
-	_padding: [2]u32,
+	meshlet_offset: u32,
+	meshlet_count: u32,
 }
+
+WGPU_GPU_Meshlet_Info :: struct {
+	bounds: [4]f32,
+	cone_axis_cutoff: [4]f32,
+	visible_offset: u32,
+	visible_capacity: u32,
+	flags: u32,
+	_padding: u32,
+}
+#assert(size_of(WGPU_GPU_Meshlet_Info) == 48)
 
 WGPU_Instance_Source_State :: struct {
 	geometry: shared.Geometry_Handle,
@@ -345,6 +370,7 @@ WGPU_Geometry_Cache :: struct {
 	version: u32,
 	vertex_buffer: wgpu.Buffer,
 	index_buffer: wgpu.Buffer,
+	meshlet_index_buffer: wgpu.Buffer,
 	index_count: u32,
 	valid: bool,
 }
@@ -567,6 +593,7 @@ WGPU_Renderer :: struct {
 	gpu_cull_pipeline_layout: wgpu.PipelineLayout,
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
+	gpu_meshlet_cull_bind_group: wgpu.BindGroup,
 	gpu_transform_shader: wgpu.ShaderModule,
 	gpu_transform_pipeline: wgpu.ComputePipeline,
 	gpu_transform_pipeline_layout: wgpu.PipelineLayout,
@@ -602,6 +629,12 @@ WGPU_Renderer :: struct {
 	gpu_indirect_template_buffer: wgpu.Buffer,
 	gpu_indirect_buffer: wgpu.Buffer,
 	gpu_shadow_indirect_buffer: wgpu.Buffer,
+	gpu_meshlet_info_buffer: wgpu.Buffer,
+	gpu_meshlet_visible_buffer: wgpu.Buffer,
+	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
+	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
+	gpu_meshlet_indirect_buffer: wgpu.Buffer,
+	gpu_meshlet_shadow_indirect_buffer: wgpu.Buffer,
 	gpu_cull_uniform_buffer: wgpu.Buffer,
 	gpu_render_uniform_buffer: wgpu.Buffer,
 	gpu_point_light_buffer: wgpu.Buffer,
@@ -640,8 +673,18 @@ WGPU_Renderer :: struct {
 	gpu_cpu_visible: [dynamic]u32,
 	gpu_cpu_shadow_visible: [dynamic]u32,
 	gpu_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
+	gpu_meshlet_infos: [dynamic]WGPU_GPU_Meshlet_Info,
+	gpu_meshlet_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
 	gpu_draw_capacity: int,
 	gpu_visible_buffer_capacity: int,
+	gpu_meshlet_draw_capacity: int,
+	gpu_meshlet_visible_buffer_capacity: int,
+	gpu_meshlet_draw_count: int,
+	gpu_meshlet_visible_capacity: int,
+	gpu_meshlet_supported: bool,
+	gpu_meshlet_native_multi_draw: bool,
+	gpu_meshlet_layout_valid: bool,
+	gpu_meshlet_submission_active: bool,
 	gpu_draw_database_rebuild_count: u64,
 	gpu_slot_count: int,
 	gpu_visible_capacity: int,
@@ -1016,10 +1059,15 @@ wgpu_profile_workload :: proc(
 	viewport_width := u32(max(viewport.width, 0))
 	viewport_height := u32(max(viewport.height, 0))
 	batches := u64(0)
+	geometry_draws := u64(0)
 	visible_instances := u64(0)
 	shadow_instances := u64(0)
 	if stats != nil {
 		batches = u64(max(stats.draw_batches, 0))
+		geometry_draws = batches
+		if stats.meshlet_culling {
+			geometry_draws = u64(max(stats.meshlet_draws, 0))
+		}
 		visible_instances = u64(stats.visible_instances)
 		shadow_instances = u64(stats.shadow_visible_instances)
 	}
@@ -1065,7 +1113,7 @@ wgpu_profile_workload :: proc(
 			width = WGPU_SHADOW_MAP_SIZE,
 			height = WGPU_SHADOW_MAP_SIZE,
 			passes = shadow_cascades,
-			draws = batches * u64(shadow_cascades),
+			draws = geometry_draws * u64(shadow_cascades),
 			instances = shadow_instances,
 		}
 	}
@@ -1138,7 +1186,7 @@ wgpu_profile_workload :: proc(
 			width = viewport_width,
 			height = viewport_height,
 			passes = 1,
-			draws = batches,
+			draws = geometry_draws,
 			instances = visible_instances,
 		},
 		world = {
@@ -1146,7 +1194,7 @@ wgpu_profile_workload :: proc(
 			width = viewport_width,
 			height = viewport_height,
 			passes = 1,
-			draws = batches,
+			draws = geometry_draws,
 			instances = visible_instances,
 		},
 		hiz = hiz,
@@ -2137,6 +2185,7 @@ wgpu_geometry_cache :: proc(
 	}
 	if cached.vertex_buffer != nil { wgpu.BufferRelease(cached.vertex_buffer) }
 	if cached.index_buffer != nil { wgpu.BufferRelease(cached.index_buffer) }
+	if cached.meshlet_index_buffer != nil { wgpu.BufferRelease(cached.meshlet_index_buffer) }
 	cached^ = {
 		handle = handle,
 		version = geometry.version,
@@ -2152,8 +2201,25 @@ wgpu_geometry_cache :: proc(
 		&wgpu.BufferWithDataDescriptor{label = "Scrapbot Geometry Indices", usage = {.Index}},
 		geometry.indices,
 	)
+	if renderer.gpu_meshlet_supported {
+		meshlet_indices, meshlet_err := wgpu_expand_meshlet_indices(geometry)
+		if meshlet_err != "" {
+			return nil, meshlet_err
+		}
+		cached.meshlet_index_buffer = wgpu.DeviceCreateBufferWithData(
+			renderer.device,
+			&wgpu.BufferWithDataDescriptor {
+				label = "Scrapbot Geometry Meshlet Indices",
+				usage = {.Index},
+			},
+			meshlet_indices,
+		)
+	}
 	if cached.vertex_buffer == nil ||
-	   cached.index_buffer == nil { return nil, "failed to upload geometry buffers" }
+	   cached.index_buffer == nil ||
+	   (renderer.gpu_meshlet_supported && cached.meshlet_index_buffer == nil) {
+		return nil, "failed to upload geometry buffers"
+	}
 	cached.valid = true
 	return cached, ""
 }
@@ -2272,7 +2338,13 @@ wgpu_encode_render_pass :: proc(
 				pipeline = renderer.gpu_driven_double_sided_pipeline
 			}
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, batch.world_bind_group)
+			world_bind_group := batch.world_bind_group
+			index_buffer := cached.index_buffer
+			if renderer.gpu_meshlet_submission_active {
+				world_bind_group = batch.meshlet_world_bind_group
+				index_buffer = cached.meshlet_index_buffer
+			}
+			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, world_bind_group)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, material_cached.bind_group)
 			wgpu.RenderPassEncoderSetVertexBuffer(
 				render_pass,
@@ -2283,16 +2355,25 @@ wgpu_encode_render_pass :: proc(
 			)
 			wgpu.RenderPassEncoderSetIndexBuffer(
 				render_pass,
-				cached.index_buffer,
+				index_buffer,
 				.Uint32,
 				0,
 				wgpu.WHOLE_SIZE,
 			)
-			wgpu.RenderPassEncoderDrawIndexedIndirect(
-				render_pass,
-				renderer.gpu_indirect_buffer,
-				u64(batch_index * size_of(WGPU_Draw_Indexed_Indirect)),
-			)
+			if renderer.gpu_meshlet_submission_active {
+				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
+					render_pass,
+					renderer.gpu_meshlet_indirect_buffer,
+					u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					batch.meshlet_draw_count,
+				)
+			} else {
+				wgpu.RenderPassEncoderDrawIndexedIndirect(
+					render_pass,
+					renderer.gpu_indirect_buffer,
+					u64(batch_index * size_of(WGPU_Draw_Indexed_Indirect)),
+				)
+			}
 		}
 	}
 	wgpu.RenderPassEncoderEnd(render_pass)
@@ -2612,7 +2693,13 @@ wgpu_encode_depth_prepass :: proc(
 			}
 		}
 		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-		wgpu.RenderPassEncoderSetBindGroup(pass, 0, batch.world_bind_group)
+		world_bind_group := batch.world_bind_group
+		index_buffer := cached.index_buffer
+		if renderer.gpu_meshlet_submission_active {
+			world_bind_group = batch.meshlet_world_bind_group
+			index_buffer = cached.meshlet_index_buffer
+		}
+		wgpu.RenderPassEncoderSetBindGroup(pass, 0, world_bind_group)
 		if masked {
 			material_cached, material_err := wgpu_material_cache(
 				renderer,
@@ -2625,18 +2712,21 @@ wgpu_encode_depth_prepass :: proc(
 			wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
 		}
 		wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, cached.vertex_buffer, 0, wgpu.WHOLE_SIZE)
-		wgpu.RenderPassEncoderSetIndexBuffer(
-			pass,
-			cached.index_buffer,
-			.Uint32,
-			0,
-			wgpu.WHOLE_SIZE,
-		)
-		wgpu.RenderPassEncoderDrawIndexedIndirect(
-			pass,
-			renderer.gpu_indirect_buffer,
-			u64(batch_index * size_of(WGPU_Draw_Indexed_Indirect)),
-		)
+		wgpu.RenderPassEncoderSetIndexBuffer(pass, index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
+		if renderer.gpu_meshlet_submission_active {
+			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
+				pass,
+				renderer.gpu_meshlet_indirect_buffer,
+				u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+				batch.meshlet_draw_count,
+			)
+		} else {
+			wgpu.RenderPassEncoderDrawIndexedIndirect(
+				pass,
+				renderer.gpu_indirect_buffer,
+				u64(batch_index * size_of(WGPU_Draw_Indexed_Indirect)),
+			)
+		}
 	}
 	wgpu.RenderPassEncoderEnd(pass)
 	return ""
@@ -2782,7 +2872,13 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				}
 			}
 			wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-			wgpu.RenderPassEncoderSetBindGroup(pass, 0, batch.shadow_bind_groups[cascade_index])
+			shadow_bind_group := batch.shadow_bind_groups[cascade_index]
+			index_buffer := cached.index_buffer
+			if renderer.gpu_meshlet_submission_active {
+				shadow_bind_group = batch.meshlet_shadow_bind_groups[cascade_index]
+				index_buffer = cached.meshlet_index_buffer
+			}
+			wgpu.RenderPassEncoderSetBindGroup(pass, 0, shadow_bind_group)
 			if masked {
 				material_cached, material_err := wgpu_material_cache(
 					renderer,
@@ -2801,21 +2897,28 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				0,
 				wgpu.WHOLE_SIZE,
 			)
-			wgpu.RenderPassEncoderSetIndexBuffer(
-				pass,
-				cached.index_buffer,
-				.Uint32,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			wgpu.RenderPassEncoderDrawIndexedIndirect(
-				pass,
-				renderer.gpu_shadow_indirect_buffer,
-				u64(
-					(cascade_index * renderer.draw_batch_cache.batch_count + batch_index) *
-					size_of(WGPU_Draw_Indexed_Indirect),
-				),
-			)
+			wgpu.RenderPassEncoderSetIndexBuffer(pass, index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
+			if renderer.gpu_meshlet_submission_active {
+				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
+					pass,
+					renderer.gpu_meshlet_shadow_indirect_buffer,
+					u64(
+						cascade_index * renderer.gpu_meshlet_draw_capacity +
+						int(batch.meshlet_draw_offset),
+					) *
+					u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					batch.meshlet_draw_count,
+				)
+			} else {
+				wgpu.RenderPassEncoderDrawIndexedIndirect(
+					pass,
+					renderer.gpu_shadow_indirect_buffer,
+					u64(
+						(cascade_index * renderer.draw_batch_cache.batch_count + batch_index) *
+						size_of(WGPU_Draw_Indexed_Indirect),
+					),
+				)
+			}
 		}
 	}
 	wgpu.RenderPassEncoderEnd(pass)
@@ -2946,6 +3049,12 @@ wgpu_draw_frame :: proc(
 		config.stats.dynamic_resolution_filtered_gpu_ms =
 			renderer.dynamic_resolution.filtered_gpu_ms
 		config.stats.compute_culling = !config.cpu_culling
+		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
+		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
+		config.stats.meshlet_native_multi_draw =
+			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
+		config.stats.meshlet_draws = renderer.gpu_meshlet_draw_count
+		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
@@ -3192,6 +3301,12 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.dynamic_resolution_filtered_gpu_ms =
 			renderer.dynamic_resolution.filtered_gpu_ms
 		config.stats.compute_culling = !config.cpu_culling
+		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
+		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
+		config.stats.meshlet_native_multi_draw =
+			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
+		config.stats.meshlet_draws = renderer.gpu_meshlet_draw_count
+		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0

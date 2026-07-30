@@ -1464,6 +1464,57 @@ test_wgpu_gpu_timing_requests_pass_timestamp_feature :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_renderer_requests_meshlet_first_instance_feature_when_available :: proc(t: ^testing.T) {
+	features, count := wgpu_renderer_required_features(true, true, true)
+	testing.expect_value(t, count, 3)
+	testing.expect_value(t, features[0], wgpu.FeatureName.TimestampQuery)
+	testing.expect_value(t, features[1], wgpu.FeatureName.IndirectFirstInstance)
+	testing.expect_value(t, features[2], wgpu.FeatureName.MultiDrawIndirectCount)
+
+	features, count = wgpu_renderer_required_features(false, true, false)
+	testing.expect_value(t, count, 1)
+	testing.expect_value(t, features[0], wgpu.FeatureName.IndirectFirstInstance)
+
+	_, count = wgpu_renderer_required_features(false, false, false)
+	testing.expect_value(t, count, 0)
+}
+
+@(test)
+test_wgpu_expands_meshlet_local_indices_for_indexed_submission :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		meshlets = []resources.Meshlet {
+			{vertex_offset = 0, triangle_offset = 0, vertex_count = 3, triangle_count = 1},
+			{vertex_offset = 3, triangle_offset = 3, vertex_count = 3, triangle_count = 1},
+		},
+		meshlet_vertices = []u32{8, 3, 5, 1, 4, 7},
+		meshlet_triangles = []u8{0, 2, 1, 2, 1, 0},
+	}
+	indices, err := wgpu_expand_meshlet_indices(&geometry)
+	testing.expect_value(t, err, "")
+	expected := [?]u32{8, 5, 3, 7, 4, 1}
+	testing.expect_value(t, len(indices), len(expected))
+	for value, index in expected {
+		testing.expect_value(t, indices[index], value)
+	}
+}
+
+@(test)
+test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing.T) {
+	capacity, ok := wgpu_meshlet_batch_visible_capacity(3, 65)
+	testing.expect(t, ok)
+	testing.expect_value(t, capacity, u32(384))
+
+	_, ok = wgpu_meshlet_batch_visible_capacity(u32(WGPU_MAX_MESHLET_VISIBLE_ENTRIES), 2)
+	testing.expect(t, !ok)
+}
+
+@(test)
+test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: ^testing.T) {
+	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "var<storage"), 8)
+	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "@binding(10)"))
+}
+
+@(test)
 test_wgpu_gpu_timing_resolves_only_queries_written_by_the_frame :: proc(t: ^testing.T) {
 	testing.expect_value(
 		t,

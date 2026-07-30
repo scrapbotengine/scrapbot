@@ -41,11 +41,11 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 ### Rendering
 
 - Pluggable backends: a deterministic `null` backend for simulation smoke tests, and a full `wgpu` backend with independent surface and offscreen execution.
-- GPU-driven pipeline: persistent slot-addressed instance storage, dirty-only transform uploads, a growing retained draw database, compute camera/shadow frustum culling, depth prepass with adaptive Hi-Z occlusion, screen-radius LOD selection, and indexed indirect draws with asynchronous GPU timing readback.
+- GPU-driven pipeline: persistent slot-addressed instance storage, dirty-only transform uploads, a growing retained draw database, compute camera/shadow frustum culling, depth prepass with adaptive Hi-Z occlusion, screen-radius LOD selection, and indexed indirect draws with asynchronous GPU timing readback. Native adapters with indirect-first-instance support additionally cull resource-owned meshlets and submit one fixed multi-draw per retained batch.
 - HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, imported image-based lighting with independent diffuse/specular strength or roughness-aware analytic environment lighting from a procedural haze sky via one `scrapbot.world_environment` component, authored global height/distance fog with shadowed directional scattering, half-resolution thickness-aware visibility-bitmask ambient occlusion over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
 - Per-camera render policy: a bounded manual world-resolution scale, optional GPU-budgeted dynamic resolution, TAA, fast AA, AO, SSR, and bloom are authored on `scrapbot.camera`; UI stays native-resolution, AO and SSR have bounded quality tiers, and disabled effects skip their GPU work.
 - UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains, and composition-time UI themes) with hot reload, targeted reimport where applicable, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
-- Every registered geometry owns deterministic meshoptimizer-built meshlets with bounded local vertex/triangle streams, conservative sphere bounds, and normal cones. The current renderer still submits whole primitives while feature-gated GPU meshlet culling and richer indirect submission are completed.
+- Every registered geometry owns deterministic meshoptimizer-built meshlets with bounded local vertex/triangle streams, conservative sphere bounds, and normal cones. Capable WGPU adapters cull those clusters by frustum, normal cone, and Hi-Z, then reuse the resulting indirect counts across world, depth, and shadow multi-draw submission. Unsupported adapters and `--cpu-culling` retain whole-primitive indexed draws.
 
 ### Retained UI
 
@@ -194,6 +194,7 @@ trends; they are not portable performance thresholds.
   - [x] Dirty-only retained render extraction and incremental existing-batch membership
   - [x] Depth prepass and adaptive Hi-Z occlusion culling
   - [x] GPU screen-radius LOD selection
+  - [x] Feature-gated GPU meshlet culling and native multi-draw submission
   - [x] Asynchronous per-pass GPU timestamps and visibility/LOD counters
   - [x] Ambient, directional, and point-light rendering
 - Assets

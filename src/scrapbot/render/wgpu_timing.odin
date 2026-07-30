@@ -16,6 +16,29 @@ wgpu_timestamp_required_features :: proc(
 	return
 }
 
+wgpu_renderer_required_features :: proc(
+	timestamp_query_supported,
+	indirect_first_instance_supported,
+	multi_draw_indirect_count_supported: bool,
+) -> (
+	features: [3]wgpu.FeatureName,
+	count: int,
+) {
+	if timestamp_query_supported {
+		features[count] = .TimestampQuery
+		count += 1
+	}
+	if indirect_first_instance_supported {
+		features[count] = .IndirectFirstInstance
+		count += 1
+	}
+	if multi_draw_indirect_count_supported {
+		features[count] = .MultiDrawIndirectCount
+		count += 1
+	}
+	return
+}
+
 wgpu_gpu_timestamp_bytes :: proc() -> u64 {
 	return u64(WGPU_GPU_TIMESTAMP_QUERY_COUNT) * u64(size_of(u64))
 }

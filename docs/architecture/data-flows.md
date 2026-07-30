@@ -27,6 +27,9 @@ At bootstrap or reload, Model roots reconcile imported nodes and primitives into
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
 registration derives bounded meshlet streams and local culling bounds once from canonical indexed
 triangles; the arrays remain owned and versioned with the Geometry entry.
+WGPU consumes a changed Geometry version into canonical and meshlet-ordered index buffers. Capable
+adapters retain cluster metadata and indirect templates; unsupported adapters ignore that derived
+cache and keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.
 
@@ -98,9 +101,9 @@ typed ECS/resource mutation
                                       │
                   dirty-only GPU transform expansion
                                       │
-                      persistent WGPU instance/draw database
+             persistent WGPU instance/primitive/meshlet draw databases
                                       │
-       compute cull + shadow + depth/sky/world + camera-selected postprocessing
+ object/meshlet compute cull + shadow + depth/sky/world + camera-selected postprocessing
                                       │
                          retained UI streams
                            ┌──────────┴──────────┐

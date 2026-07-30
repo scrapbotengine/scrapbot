@@ -140,4 +140,9 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.lod1_visible_instances = renderer.gpu_visibility_counters.lod_visible_instances[1]
 	stats.lod2_visible_instances = renderer.gpu_visibility_counters.lod_visible_instances[2]
 	stats.lod3_visible_instances = renderer.gpu_visibility_counters.lod_visible_instances[3]
+	stats.visible_meshlets = renderer.gpu_visibility_counters.visible_meshlets
+	stats.shadow_visible_meshlets = renderer.gpu_visibility_counters.shadow_visible_meshlets
+	stats.frustum_culled_meshlets = renderer.gpu_visibility_counters.frustum_culled_meshlets
+	stats.cone_culled_meshlets = renderer.gpu_visibility_counters.cone_culled_meshlets
+	stats.occlusion_culled_meshlets = renderer.gpu_visibility_counters.occlusion_culled_meshlets
 }

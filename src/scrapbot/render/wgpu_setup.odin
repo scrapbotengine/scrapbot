@@ -175,16 +175,25 @@ wgpu_init_renderer :: proc(
 	}
 	renderer.adapter = adapter_state.adapter
 
-	timestamp_features, timestamp_feature_count := wgpu_timestamp_required_features(
+	features, feature_count := wgpu_renderer_required_features(
 		bool(wgpu.AdapterHasFeature(renderer.adapter, .TimestampQuery)),
+		bool(wgpu.AdapterHasFeature(renderer.adapter, .IndirectFirstInstance)),
+		bool(wgpu.AdapterHasFeature(renderer.adapter, .MultiDrawIndirectCount)),
 	)
-	timestamp_supported := timestamp_feature_count > 0
+	indirect_first_instance_supported := false
+	multi_draw_indirect_count_supported := false
+	for feature in features[:feature_count] {
+		indirect_first_instance_supported =
+			indirect_first_instance_supported || feature == .IndirectFirstInstance
+		multi_draw_indirect_count_supported =
+			multi_draw_indirect_count_supported || feature == .MultiDrawIndirectCount
+	}
 	device_descriptor := wgpu.DeviceDescriptor {
 		label = "Scrapbot Device",
 	}
-	if timestamp_supported {
-		device_descriptor.requiredFeatureCount = uint(timestamp_feature_count)
-		device_descriptor.requiredFeatures = raw_data(timestamp_features[:timestamp_feature_count])
+	if feature_count > 0 {
+		device_descriptor.requiredFeatureCount = uint(feature_count)
+		device_descriptor.requiredFeatures = raw_data(features[:feature_count])
 	}
 	device_state: WGPU_Request_Device_State
 	wgpu.AdapterRequestDevice(
@@ -204,6 +213,8 @@ wgpu_init_renderer :: proc(
 		return renderer, fmt.tprintf("failed to request wgpu device: %s", message)
 	}
 	renderer.device = device_state.device
+	renderer.gpu_meshlet_supported = indirect_first_instance_supported
+	renderer.gpu_meshlet_native_multi_draw = multi_draw_indirect_count_supported
 
 	renderer.queue = wgpu.DeviceGetQueue(renderer.device)
 	if renderer.queue == nil {
@@ -340,11 +351,16 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.gpu_cpu_visible)
 	delete(renderer.gpu_cpu_shadow_visible)
 	delete(renderer.gpu_indirect_templates)
+	delete(renderer.gpu_meshlet_infos)
+	delete(renderer.gpu_meshlet_indirect_templates)
 	delete(renderer.gpu_point_lights)
 	wgpu_release_visibility_readbacks(renderer)
 	ecs.destroy_render_list(&renderer.render_list)
 	if renderer.gpu_cull_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_cull_bind_group)
+	}
+	if renderer.gpu_meshlet_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_meshlet_cull_bind_group)
 	}
 	if renderer.gpu_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_cull_pipeline)
@@ -452,6 +468,12 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_indirect_template_buffer,
 		renderer.gpu_indirect_buffer,
 		renderer.gpu_shadow_indirect_buffer,
+		renderer.gpu_meshlet_info_buffer,
+		renderer.gpu_meshlet_visible_buffer,
+		renderer.gpu_meshlet_shadow_visible_buffer,
+		renderer.gpu_meshlet_indirect_template_buffer,
+		renderer.gpu_meshlet_indirect_buffer,
+		renderer.gpu_meshlet_shadow_indirect_buffer,
 		renderer.gpu_cull_uniform_buffer,
 		renderer.gpu_render_uniform_buffer,
 		renderer.gpu_point_light_buffer,
@@ -486,6 +508,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	for &cached in renderer.geometry_cache {
 		if cached.vertex_buffer != nil { wgpu.BufferRelease(cached.vertex_buffer) }
 		if cached.index_buffer != nil { wgpu.BufferRelease(cached.index_buffer) }
+		if cached.meshlet_index_buffer != nil {
+			wgpu.BufferRelease(cached.meshlet_index_buffer)
+		}
 	}
 	delete(renderer.geometry_cache)
 	for &cached in renderer.texture_cache {
