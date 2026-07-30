@@ -201,6 +201,7 @@ api_ui_theme_layout :: proc "contextless" (
 		tree_parent = api_uuid_from_shared(value.tree_parent),
 		tree_order = c.int(value.tree_order),
 		tree_collapsed = bool_to_c_int(value.tree_collapsed),
+		stack_order = c.int(value.stack_order),
 		popup = bool_to_c_int(value.popup),
 		popup_open = bool_to_c_int(value.popup_open),
 		popup_close_on_selection = bool_to_c_int(value.popup_close_on_selection),
@@ -245,6 +246,7 @@ api_ui_theme_panel :: proc "contextless" (
 		disclosure_inset = value.disclosure_inset,
 		collapsible = bool_to_c_int(value.collapsible),
 		collapsed = bool_to_c_int(value.collapsed),
+		movable = bool_to_c_int(value.movable),
 	}
 }
 
@@ -437,6 +439,7 @@ system_get_ui_component :: proc "c" (
 				tree_parent = api_uuid_from_shared(value.tree_parent),
 				tree_order = c.int(value.tree_order),
 				tree_collapsed = bool_to_c_int(value.tree_collapsed),
+				stack_order = c.int(value.stack_order),
 				popup = bool_to_c_int(value.popup),
 				popup_open = bool_to_c_int(value.popup_open),
 				popup_close_on_selection = bool_to_c_int(value.popup_close_on_selection),
@@ -503,6 +506,7 @@ system_get_ui_component :: proc "c" (
 				disclosure_inset = value.disclosure_inset,
 				collapsible = bool_to_c_int(value.collapsible),
 				collapsed = bool_to_c_int(value.collapsed),
+				movable = bool_to_c_int(value.movable),
 			}
 			if !api_ui_payload_set_strings(payload, value.title, value.font) { return 0 }
 		case "scrapbot.ui_dock_space":
@@ -527,6 +531,12 @@ system_get_ui_component :: proc "c" (
 				tab_active_background = api_vec4_from_shared(value.tab_active_background),
 				drop_background = api_vec4_from_shared(value.drop_background),
 				draggable = bool_to_c_int(value.draggable),
+				split_horizontal = bool_to_c_int(value.split_horizontal),
+				split_vertical = bool_to_c_int(value.split_vertical),
+				split_ratio = value.split_ratio,
+				split_edge_fraction = value.split_edge_fraction,
+				split_gap = value.split_gap,
+				split_min_size = value.split_min_size,
 			}
 			if !api_ui_payload_set_dock_strings(payload, "", value.font) { return 0 }
 		case "scrapbot.ui_dock_item":
@@ -872,6 +882,7 @@ ui_command_from_api_payload :: proc "c" (
 				tree_parent = shared_uuid_from_api(payload.layout.tree_parent),
 				tree_order = int(payload.layout.tree_order),
 				tree_collapsed = payload.layout.tree_collapsed != 0,
+				stack_order = int(payload.layout.stack_order),
 				popup = payload.layout.popup != 0,
 				popup_open = payload.layout.popup_open != 0,
 				popup_close_on_selection = payload.layout.popup_close_on_selection != 0,
@@ -919,6 +930,11 @@ ui_command_from_api_payload :: proc "c" (
 				fill = payload.stack.fill != 0,
 				draggable = payload.stack.draggable != 0,
 				min_size = payload.stack.min_size,
+				reorderable = payload.stack.reorderable != 0,
+				drag_threshold = payload.stack.drag_threshold,
+				drop_indicator_color = shared_vec4_from_api(payload.stack.drop_indicator_color),
+				drop_indicator_thickness = payload.stack.drop_indicator_thickness,
+				drop_indicator_inset = payload.stack.drop_indicator_inset,
 				wrap = payload.stack.wrap != 0,
 				line_gap = payload.stack.line_gap,
 			}
@@ -964,6 +980,7 @@ ui_command_from_api_payload :: proc "c" (
 				disclosure_inset = payload.panel.disclosure_inset,
 				collapsible = payload.panel.collapsible != 0,
 				collapsed = payload.panel.collapsed != 0,
+				movable = payload.panel.movable != 0,
 			}
 			if !shared.ui_panel_is_valid(value) {
 				return "native ui_panel payload is invalid"
@@ -994,6 +1011,12 @@ ui_command_from_api_payload :: proc "c" (
 				),
 				drop_background = shared_vec4_from_api(payload.dock_space.drop_background),
 				draggable = payload.dock_space.draggable != 0,
+				split_horizontal = payload.dock_space.split_horizontal != 0,
+				split_vertical = payload.dock_space.split_vertical != 0,
+				split_ratio = payload.dock_space.split_ratio,
+				split_edge_fraction = payload.dock_space.split_edge_fraction,
+				split_gap = payload.dock_space.split_gap,
+				split_min_size = payload.dock_space.split_min_size,
 			}
 			if !shared.ui_dock_space_is_valid(value) {
 				return "native ui_dock_space payload is invalid"
@@ -1271,6 +1294,11 @@ api_ui_stack_from_shared :: proc "contextless" (
 		fill = bool_to_c_int(value.fill),
 		draggable = bool_to_c_int(value.draggable),
 		min_size = value.min_size,
+		reorderable = bool_to_c_int(value.reorderable),
+		drag_threshold = value.drag_threshold,
+		drop_indicator_color = api_vec4_from_shared(value.drop_indicator_color),
+		drop_indicator_thickness = value.drop_indicator_thickness,
+		drop_indicator_inset = value.drop_indicator_inset,
 		wrap = bool_to_c_int(value.wrap),
 		line_gap = value.line_gap,
 	}

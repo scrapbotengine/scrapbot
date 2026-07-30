@@ -188,7 +188,11 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, ecs.set_ui_text(&world, entity_index, text))
 	stack := shared.ui_stack_default()
 	stack.gap = 7
-	stack.wrap = true
+	stack.reorderable = true
+	stack.drag_threshold = 6
+	stack.drop_indicator_color = {0.2, 1.4, 1.1, 1}
+	stack.drop_indicator_thickness = 3
+	stack.drop_indicator_inset = 9
 	stack.line_gap = 9
 	testing.expect(t, ecs.set_ui_hstack(&world, entity_index, stack))
 	icon_component := shared.ui_icon_default()
@@ -255,12 +259,16 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	panel := shared.ui_panel_default()
 	panel.title = "Native Panel"
 	panel.collapsible = true
+	panel.movable = true
 	testing.expect(t, ecs.set_ui_panel(&world, entity_index, panel))
 	dock_space := shared.ui_dock_space_default()
 	dock_space.active = world.entities[entity_index].uuid
 	dock_space.font = "Inter"
 	dock_space.tab_height = 38
 	dock_space.tab_active_color = {1.5, 1.2, 1, 1}
+	dock_space.split_horizontal = true
+	dock_space.split_ratio = 0.4
+	dock_space.split_gap = 6
 	testing.expect(t, ecs.set_ui_dock_space(&world, entity_index, dock_space))
 	dock_item := shared.ui_dock_item_default()
 	dock_item.title = "NATIVE"
@@ -316,7 +324,11 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 		system_get_ui_component(&ctx, entity, "scrapbot.ui_hstack", &stack_payload) != 0,
 	)
 	testing.expect(t, stack_payload.stack.gap == 7)
-	testing.expect(t, stack_payload.stack.wrap != 0)
+	testing.expect(t, stack_payload.stack.reorderable != 0)
+	testing.expect(t, stack_payload.stack.drag_threshold == 6)
+	testing.expect(t, stack_payload.stack.drop_indicator_color.y == 1.4)
+	testing.expect(t, stack_payload.stack.drop_indicator_thickness == 3)
+	testing.expect(t, stack_payload.stack.drop_indicator_inset == 9)
 	testing.expect(t, stack_payload.stack.line_gap == 9)
 
 	icon_payload: api.UI_Component_Payload
@@ -473,6 +485,7 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	)
 	testing.expect(t, api_payload_text(&panel_payload) == "Native Panel")
 	testing.expect(t, panel_payload.panel.collapsible != 0)
+	testing.expect(t, panel_payload.panel.movable != 0)
 	dock_space_payload: api.UI_Component_Payload
 	testing.expect(
 		t,
@@ -482,6 +495,9 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, dock_space_strings_ok && dock_font == "Inter")
 	testing.expect(t, dock_space_payload.dock_space.tab_height == 38)
 	testing.expect(t, dock_space_payload.dock_space.tab_active_color.x == 1.5)
+	testing.expect(t, dock_space_payload.dock_space.split_horizontal != 0)
+	testing.expect(t, dock_space_payload.dock_space.split_ratio == 0.4)
+	testing.expect(t, dock_space_payload.dock_space.split_gap == 6)
 	dock_item_payload: api.UI_Component_Payload
 	testing.expect(
 		t,
@@ -507,6 +523,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	table_payload.table.min_column_width = 72
 	testing.expect(t, system_set_ui_component(&ctx, entity, &table_payload) == nil)
 	dock_space_payload.dock_space.tab_height = 42
+	dock_space_payload.dock_space.split_vertical = 1
+	dock_space_payload.dock_space.split_min_size = 144
 	testing.expect(t, system_set_ui_component(&ctx, entity, &dock_space_payload) == nil)
 	testing.expect(t, api_ui_payload_set_dock_strings(&dock_item_payload, "UPDATED", ""))
 	dock_item_payload.dock_item.movable = 1
@@ -521,6 +539,10 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	stored_dock_space := world.ui_dock_spaces[world.entities[entity_index].ui_dock_space_index]
 	testing.expect(t, stored_dock_space.tab_height == 42)
 	testing.expect(t, stored_dock_space.font == "Inter")
+	testing.expect(t, stored_dock_space.split_horizontal && stored_dock_space.split_vertical)
+	testing.expect(t, stored_dock_space.split_ratio == 0.4)
+	testing.expect(t, stored_dock_space.split_gap == 6)
+	testing.expect(t, stored_dock_space.split_min_size == 144)
 	stored_dock_item := world.ui_dock_items[world.entities[entity_index].ui_dock_item_index]
 	testing.expect(t, stored_dock_item.title == "UPDATED")
 	testing.expect(t, stored_dock_item.movable)

@@ -163,7 +163,12 @@ ui_canvas_default :: proc "contextless" () -> UI_Canvas {
 }
 
 ui_stack_default :: proc "contextless" () -> UI_Stack {
-	return {}
+	return {
+		drag_threshold = 5,
+		drop_indicator_color = {0.42, 0.92, 0.84, 1},
+		drop_indicator_thickness = 2,
+		drop_indicator_inset = 8,
+	}
 }
 
 ui_scroll_area_default :: proc "contextless" () -> UI_Scroll_Area {
@@ -208,6 +213,10 @@ ui_dock_space_default :: proc "contextless" () -> UI_Dock_Space {
 		tab_active_background = {0.105, 0.115, 0.135, 1},
 		drop_background = {0.12, 0.72, 0.64, 0.22},
 		draggable = 1,
+		split_ratio = 0.5,
+		split_edge_fraction = 0.25,
+		split_gap = 4,
+		split_min_size = 120,
 	}
 }
 

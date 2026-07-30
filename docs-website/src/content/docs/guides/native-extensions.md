@@ -276,7 +276,7 @@ For a child in an HStack or VStack, set `layout.basis`, `layout.grow`, and
 multiline flex flow. These fixed-layout ABI fields resolve through the same
 retained path as scene TOML and Luau.
 
-Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; semantic `scrapbot.ui_action` strings; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions expose current per-entity state; `valid` exposes numeric validation.
+Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, `fit_content_height`, and `stack_order`; reorderable/resizable HStacks and VStacks; movable public panels; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; semantic `scrapbot.ui_action` strings; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, cancel, and drop revisions expose current per-entity state; `valid` exposes numeric validation.
 
 For ordered semantic commands, keep an independent sequence cursor and read the immutable event history:
 
@@ -316,6 +316,11 @@ if !icon_ok {
 Project icon sets use the exact same payload with their resource UUID. `scrapbot.ui_button` accepts the symbol as its fourth argument and carries the set UUID, leading/trailing placement, explicit or automatic size, gap, and inset in its value.
 
 The raw ABI stores text, dock titles, dock fonts, icon symbols, ordinary font names, input prefixes, semantic actions, and event payloads in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_dock_space`, `ui_dock_item`, `ui_button`, `ui_input`, `ui_action`, the `ui_payload_*` accessors, and `ui_event_action`/`ui_event_payload`.
+
+The dock-space payload also carries `split_horizontal`, `split_vertical`,
+`split_ratio`, `split_edge_fraction`, `split_gap`, and `split_min_size`.
+Directional completed drops arrive through the same native event payload as
+`Left`, `Right`, `Above`, or `Below`; center tab transfers remain `Into`.
 
 ## Queue lifecycle commands
 

@@ -31,6 +31,7 @@ EDITOR_UI_RESOURCES_LIST_NAME :: "__scrapbot_editor_resources_list"
 EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
+EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
 EDITOR_UI_RIGHT_DOCK_ITEM_NAME :: "__scrapbot_editor_right_dock_item"
@@ -893,6 +894,8 @@ editor_ui_add_dock_space :: proc(
 	entity_index: int,
 	theme: shared.UI_Theme,
 	draggable: bool = true,
+	split_horizontal: bool = false,
+	split_vertical: bool = false,
 ) {
 	value := shared.ui_dock_space_default()
 	value.font = theme.font
@@ -915,6 +918,10 @@ editor_ui_add_dock_space :: proc(
 		0.22,
 	}
 	value.draggable = draggable
+	value.split_horizontal = split_horizontal
+	value.split_vertical = split_vertical
+	value.split_gap = EDITOR_SIDEBAR_SECTION_GAP
+	value.split_min_size = 120
 	_ = ecs.set_ui_dock_space(world, entity_index, value)
 }
 
@@ -948,10 +955,16 @@ editor_ui_list_section_layout :: proc(size: shared.Vec2) -> shared.UI_Layout_Com
 	return layout
 }
 
-editor_ui_add_section_panel :: proc(world: ^shared.World, entity_index: int, title: string) {
+editor_ui_add_section_panel :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	title: string,
+	movable: bool = false,
+) {
 	_, value := theme_panel(reduced_dark_theme())
 	value.title = title
 	value.collapsible = true
+	value.movable = movable
 	editor_ui_add_panel(world, entity_index, value)
 }
 
@@ -1177,7 +1190,17 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	editor_ui_add_vstack(
 		world,
 		left_content,
-		{gap = EDITOR_SIDEBAR_SECTION_GAP, fill = true, draggable = true, min_size = 160},
+		{
+			gap = EDITOR_SIDEBAR_SECTION_GAP,
+			fill = true,
+			draggable = true,
+			min_size = 120,
+			reorderable = true,
+			drag_threshold = 5,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
 	)
 	diagnostics := editor_ui_create_box(
 		world,
@@ -1188,11 +1211,19 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	diagnostics_layout := &world.ui_layouts[world.entities[diagnostics].ui_layout_index]
 	diagnostics_layout.padding = {0, 8, 8, 8}
-	diagnostics_layout.min_size.y = 258
-	diagnostics_layout.fixed_in_fill = true
-	diagnostics_layout.fit_content_height = true
-	editor_ui_add_section_panel(world, diagnostics, "PERFORMANCE")
-	editor_ui_add_vstack(world, diagnostics, {})
+	diagnostics_layout.min_size.y = 120
+	diagnostics_layout.stack_order = 0
+	editor_ui_add_section_panel(world, diagnostics, "PERFORMANCE", true)
+	editor_ui_add_vstack(
+		world,
+		diagnostics,
+		{
+			reorderable = true,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
+	)
 	diagnostics_table := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_diagnostics_table",
@@ -1251,8 +1282,19 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.None,
 		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 178}),
 	)
-	editor_ui_add_section_panel(world, systems, "SYSTEMS / 0")
-	editor_ui_add_vstack(world, systems, {fill = true})
+	world.ui_layouts[world.entities[systems].ui_layout_index].stack_order = 1
+	editor_ui_add_section_panel(world, systems, "SYSTEMS / 0", true)
+	editor_ui_add_vstack(
+		world,
+		systems,
+		{
+			fill = true,
+			reorderable = true,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
+	)
 	systems_filter := editor_ui_create_browser_filter(
 		world,
 		EDITOR_UI_SYSTEMS_FILTER_NAME,
@@ -1281,8 +1323,19 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.None,
 		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 434}),
 	)
-	editor_ui_add_section_panel(world, scene, "SCENE")
-	editor_ui_add_vstack(world, scene, {fill = true})
+	world.ui_layouts[world.entities[scene].ui_layout_index].stack_order = 2
+	editor_ui_add_section_panel(world, scene, "SCENE", true)
+	editor_ui_add_vstack(
+		world,
+		scene,
+		{
+			fill = true,
+			reorderable = true,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
+	)
 	scene_filter := editor_ui_create_browser_filter(
 		world,
 		EDITOR_UI_SCENE_FILTER_NAME,
@@ -1358,8 +1411,19 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.None,
 		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 240}),
 	)
-	editor_ui_add_section_panel(world, resource_browser, "RESOURCES / 0")
-	editor_ui_add_vstack(world, resource_browser, {fill = true})
+	world.ui_layouts[world.entities[resource_browser].ui_layout_index].stack_order = 3
+	editor_ui_add_section_panel(world, resource_browser, "RESOURCES / 0", true)
+	editor_ui_add_vstack(
+		world,
+		resource_browser,
+		{
+			fill = true,
+			reorderable = true,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
+	)
 	resource_filter := editor_ui_create_browser_filter(
 		world,
 		EDITOR_UI_RESOURCES_FILTER_NAME,
@@ -1433,15 +1497,49 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.None,
 		{size = {660, 638}},
 	)
-	editor_ui_add_dock_space(world, viewport_dock, theme, false)
+	editor_ui_add_dock_space(
+		world,
+		viewport_dock,
+		theme,
+		split_horizontal = true,
+		split_vertical = true,
+	)
+	viewport_tab := editor_ui_create_box(
+		world,
+		EDITOR_UI_VIEWPORT_TAB_NAME,
+		EDITOR_UI_VIEWPORT_DOCK_NAME,
+		.None,
+		{size = {660, 606}, min_size = {1, 120}, fill_width = true, fill_height = true},
+	)
+	editor_ui_add_dock_item(world, viewport_tab, "GAME", false)
+	editor_ui_add_vstack(
+		world,
+		viewport_tab,
+		{
+			gap = EDITOR_SIDEBAR_SECTION_GAP,
+			fill = true,
+			draggable = true,
+			min_size = 120,
+			reorderable = true,
+			drag_threshold = 5,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
+	)
 	viewport := editor_ui_create_box(
 		world,
 		EDITOR_UI_VIEWPORT_NAME,
-		EDITOR_UI_VIEWPORT_DOCK_NAME,
+		EDITOR_UI_VIEWPORT_TAB_NAME,
 		.Viewport,
-		{size = {660, 606}},
+		{
+			size = {660, 606},
+			min_size = {1, 120},
+			fill_width = true,
+			fill_height = true,
+			stack_order = 0,
+		},
 	)
-	editor_ui_add_dock_item(world, viewport, "GAME", false)
 	gizmo_toolbar := editor_ui_create_box(
 		world,
 		EDITOR_UI_GIZMO_TOOLBAR_NAME,
@@ -1528,7 +1626,18 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			fit_content_height = true,
 		},
 	)
-	editor_ui_add_vstack(world, right_content, {gap = INSPECTOR_PANEL_GAP})
+	editor_ui_add_vstack(
+		world,
+		right_content,
+		{
+			gap = INSPECTOR_PANEL_GAP,
+			reorderable = true,
+			drag_threshold = 5,
+			drop_indicator_color = theme.palette.accent,
+			drop_indicator_thickness = 2,
+			drop_indicator_inset = 8,
+		},
+	)
 	right_header := editor_ui_create_box(
 		world,
 		EDITOR_UI_INSPECTOR_HEADER_NAME,
@@ -1536,6 +1645,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.None,
 		editor_ui_section_layout({EDITOR_RIGHT_SIDEBAR_WIDTH, 132}),
 	)
+	world.ui_layouts[world.entities[right_header].ui_layout_index].stack_order = 0
 	editor_ui_add_section_panel(world, right_header, "INSPECTOR")
 	identity_input_layout, name_value := theme_input(theme)
 	identity_input_layout.position = {10, 42}
@@ -2165,6 +2275,7 @@ editor_ui_ensure_inspector_panel :: proc(world: ^shared.World, slot: int) -> (in
 	panel_layout := &world.ui_layouts[world.entities[panel].ui_layout_index]
 	panel_layout.padding = INSPECTOR_PANEL_PADDING
 	panel_layout.fit_content_height = true
+	panel_layout.stack_order = 1000 + slot
 	editor_ui_add_section_panel(world, panel, "COMPONENT")
 	editor_ui_add_vstack(world, panel, {})
 	table = editor_ui_create_box(

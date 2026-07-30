@@ -27,6 +27,7 @@ tree_item = true
 tree_parent = "aa000000-0000-4000-8000-000000000002"
 tree_order = 4
 tree_collapsed = true
+stack_order = 7
 [entities.ui_canvas]
 reference_size = [1600, 900]
 scale_mode = "expand"
@@ -40,6 +41,7 @@ title = "FIELD"
 disclosure_size = 9
 disclosure_inset = 0
 collapsible = true
+movable = true
 [entities.ui_scroll_area]
 scrollbar_width = 5
 scrollbar_corner_radius = 0
@@ -123,6 +125,9 @@ active = "aa000000-0000-4000-8000-000000000005"
 font = "Inter"
 tab_height = 36
 tab_active_color = [1.5, 1.2, 1, 1]
+split_horizontal = true
+split_ratio = 0.4
+split_gap = 6
 [[entities]]
 id = "aa000000-0000-4000-8000-000000000005"
 name = "Dock Item"
@@ -189,17 +194,20 @@ scrapbot.system(function()
 		assert(layout.tree_parent == "aa000000-0000-4000-8000-000000000002")
 		assert(layout.tree_order == 4)
 		assert(layout.tree_collapsed == true)
+		assert(layout.stack_order == 7)
 		assert(layout.hidden == false)
 		assert(panel.title == "FIELD")
 		assert(panel.disclosure_size == 9 and panel.disclosure_inset == 0)
 		assert(panel.collapsible == true)
 		assert(panel.collapsed == false)
+		assert(panel.movable == true)
 		assert(table.columns == 1)
 		assert(table.proportional_columns == true)
 		assert(table.resizable_columns == true)
 		assert(table.min_column_width == 44)
 		scrapbot.add_component(entity, scrapbot.ui_table, {min_column_width = 60})
 		scrapbot.add_component(entity, scrapbot.ui_panel, {collapsed = true})
+		scrapbot.add_component(entity, scrapbot.ui_layout, {stack_order = 8})
 		count += 1
 	end)
 	assert(count == 1)
@@ -208,9 +216,14 @@ scrapbot.system(function()
 		assert(dock.active == "aa000000-0000-4000-8000-000000000005")
 		assert(dock.font == "Inter" and dock.tab_height == 36)
 		assert(math.abs(dock.tab_active_color.x - 1.5) < 0.0001)
+		assert(dock.split_horizontal == true)
+		assert(math.abs(dock.split_ratio - 0.4) < 0.0001)
+		assert(dock.split_gap == 6)
 		scrapbot.add_component(entity, scrapbot.ui_dock_space, {
 			tab_height = 40,
 			draggable = false,
+			split_vertical = true,
+			split_min_size = 144,
 		})
 		dock_count += 1
 	end)
@@ -396,6 +409,8 @@ end)
 	testing.expect(t, table.min_column_width == 60)
 	panel := world.ui_panels[world.entities[0].ui_panel_index]
 	testing.expect(t, panel.collapsible && panel.collapsed)
+	testing.expect(t, panel.movable)
+	testing.expect(t, world.ui_layouts[world.entities[0].ui_layout_index].stack_order == 8)
 	canvas := world.ui_canvases[world.entities[0].ui_canvas_index]
 	testing.expect(t, canvas.scale_mode == .Fit)
 	testing.expect(t, canvas.safe_area == shared.Vec4{24, 32, 40, 48})
@@ -407,6 +422,10 @@ end)
 	testing.expect(t, dock_space.active == world.entities[4].uuid)
 	testing.expect(t, dock_space.font == "Inter" && dock_space.tab_height == 40)
 	testing.expect(t, !dock_space.draggable)
+	testing.expect(t, dock_space.split_horizontal && dock_space.split_vertical)
+	testing.expect(t, dock_space.split_ratio == 0.4)
+	testing.expect(t, dock_space.split_gap == 6)
+	testing.expect(t, dock_space.split_min_size == 144)
 	dock_item := world.ui_dock_items[world.entities[4].ui_dock_item_index]
 	testing.expect(t, dock_item.title == "GAME" && dock_item.movable)
 	button_index := world.entities[1].ui_button_index

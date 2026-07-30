@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {
+      "action": "drag",
+      "target": {
+        "name": "__scrapbot_editor_diagnostics",
+        "origin": "editor",
+        "part": "panel_title"
+      },
+      "destination": {
+        "name": "__scrapbot_editor_scene",
+        "origin": "editor",
+        "part": "panel_title"
+      },
+      "destination_anchor": "bottom",
+      "frames": 6
+    },
+    {"action": "wait", "frames": 2},
+    {
+      "action": "capture",
+      "target": {"name": "__scrapbot_editor_left_content", "origin": "editor"},
+      "padding": 6
+    }
+  ]
+}

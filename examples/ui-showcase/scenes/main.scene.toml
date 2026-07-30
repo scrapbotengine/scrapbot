@@ -649,6 +649,11 @@ tab_background = [0.06, 0.015, 0.10, 1]
 tab_hover_background = [0.20, 0.04, 0.28, 1]
 tab_active_background = [0.16, 0.03, 0.24, 1]
 drop_background = [0.2, 1.4, 1.6, 0.28]
+split_horizontal = true
+split_ratio = 0.4
+split_edge_fraction = 0.22
+split_gap = 6
+split_min_size = 120
 
 [[entities]]
 id = "30000000-0000-4000-8000-00000000002b"

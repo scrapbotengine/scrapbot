@@ -1027,6 +1027,705 @@ test_dock_spaces_select_and_transfer_public_dock_items :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_dock_space_edge_drop_builds_public_resizable_split_topology :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Split Root")
+	stack_id := ui_test_id("Split Source Stack")
+	dock_id := ui_test_id("Split Target Dock")
+	game_id := ui_test_id("Split Game")
+	scene_panel_id := ui_test_id("Split Scene")
+	tail_id := ui_test_id("Split Tail")
+	dock_style := shared.ui_dock_space_default()
+	dock_style.split_horizontal = true
+	dock_style.split_ratio = 0.4
+	dock_style.split_gap = 6
+	dock_style.split_min_size = 120
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Split Root",
+			has_ui_layout = true,
+			ui_layout = {size = {760, 260}},
+			has_ui_hstack = true,
+			ui_hstack = {},
+		},
+		shared.Scene_Entity {
+			id = stack_id,
+			name = "Split Source Stack",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {180, 260}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true, drag_threshold = 5},
+		},
+		shared.Scene_Entity {
+			id = dock_id,
+			name = "Split Target Dock",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {500, 260}},
+			has_ui_dock_space = true,
+			ui_dock_space = dock_style,
+		},
+		shared.Scene_Entity {
+			id = game_id,
+			name = "Split Game",
+			has_ui_layout = true,
+			ui_layout = {parent = dock_id, size = {500, 228}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true, drag_threshold = 5},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "GAME", movable = false},
+		},
+		shared.Scene_Entity {
+			id = scene_panel_id,
+			name = "Split Scene",
+			has_ui_layout = true,
+			ui_layout = {parent = stack_id, size = {180, 260}},
+			has_ui_panel = true,
+			ui_panel = {title = "SCENE", title_height = 32, movable = true},
+		},
+		shared.Scene_Entity {
+			id = tail_id,
+			name = "Split Tail",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {80, 260}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 760, 260) == "")
+	panel_node := find_node_by_entity_index(state, 4)
+	initial_target_node := find_node_by_entity_index(state, 2)
+	initial_tail_node := find_node_by_entity_index(state, 5)
+	testing.expect(t, initial_target_node >= 0 && initial_tail_node >= 0)
+	target_preceded_tail :=
+		state.nodes[initial_target_node].rect.x < state.nodes[initial_tail_node].rect.x
+	start := shared.Vec2{state.nodes[panel_node].rect.x + 60, state.nodes[panel_node].rect.y + 16}
+	right_edge := shared.Vec2{670, 130}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			760,
+			260,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			760,
+			260,
+			{position = right_edge, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.stack_drags[0].dragging)
+	testing.expect_value(t, state.stack_drags[0].placement, shared.UI_Drop_Placement.Right)
+	preview_found := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel &&
+		   command.color == dock_style.drop_background &&
+		   command.rect.x > 470 &&
+		   command.rect.width > 190 {
+			preview_found = true
+			break
+		}
+	}
+	testing.expect(t, preview_found)
+	testing.expect(
+		t,
+		reconcile(state, &world, 760, 260, {position = right_edge, available = true}) == "",
+	)
+	testing.expect(t, len(world.entities) == 8)
+	branch_index := 6
+	new_dock_index := 7
+	testing.expect(t, world.entities[branch_index].alive)
+	testing.expect(t, world.entities[branch_index].origin == .Runtime)
+	testing.expect(t, world.entities[branch_index].ui_hstack_index >= 0)
+	testing.expect(t, world.entities[new_dock_index].ui_dock_space_index >= 0)
+	testing.expect_value(
+		t,
+		world.ui_layouts[world.entities[2].ui_layout_index].parent,
+		world.entities[branch_index].uuid,
+	)
+	testing.expect_value(
+		t,
+		world.ui_layouts[world.entities[new_dock_index].ui_layout_index].parent,
+		world.entities[branch_index].uuid,
+	)
+	testing.expect_value(
+		t,
+		world.ui_layouts[world.entities[4].ui_layout_index].parent,
+		world.entities[new_dock_index].uuid,
+	)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[2].ui_state_index].drop_placement,
+		shared.UI_Drop_Placement.Right,
+	)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[2].ui_state_index].drop_revision,
+		u64(1),
+	)
+	testing.expect(t, reconcile(state, &world, 760, 260) == "")
+	target_node := find_node_by_entity_index(state, 2)
+	new_dock_node := find_node_by_entity_index(state, new_dock_index)
+	branch_node := find_node_by_entity_index(state, branch_index)
+	tail_node := find_node_by_entity_index(state, 5)
+	testing.expect(t, target_node >= 0 && new_dock_node >= 0)
+	testing.expect(t, branch_node >= 0 && tail_node >= 0)
+	if target_node >= 0 && new_dock_node >= 0 && branch_node >= 0 && tail_node >= 0 {
+		testing.expect(t, state.nodes[target_node].rect.x < state.nodes[new_dock_node].rect.x)
+		testing.expect(
+			t,
+			state.nodes[target_node].rect.width > state.nodes[new_dock_node].rect.width,
+		)
+		testing.expectf(
+			t,
+			(state.nodes[branch_node].rect.x < state.nodes[tail_node].rect.x) ==
+			target_preceded_tail,
+			"split branch x=%v order=%v and tail x=%v order=%v must preserve the target's sibling position",
+			state.nodes[branch_node].rect.x,
+			world.ui_layouts[world.entities[branch_index].ui_layout_index].stack_order,
+			state.nodes[tail_node].rect.x,
+			world.ui_layouts[world.entities[5].ui_layout_index].stack_order,
+		)
+	}
+	testing.expect(t, state.split_handle_count >= 1)
+	testing.expect(t, reconcile(state, &world, 760, 260) == "")
+	testing.expect(t, state.layout_node_visit_count == 0)
+	testing.expect(t, state.layout_child_edge_visit_count == 0)
+	testing.expect(t, state.paint_node_visit_count == 0)
+	testing.expect(t, state.paint_child_edge_visit_count == 0)
+}
+
+@(test)
+test_reorderable_stack_moves_panels_by_title_and_keeps_stable_frames_idle :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Panel Stack")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Panel Stack",
+			has_ui_layout = true,
+			ui_layout = {size = {240, 300}},
+			has_ui_vstack = true,
+			ui_vstack = {
+				gap = 4,
+				fill = true,
+				draggable = true,
+				min_size = 40,
+				reorderable = true,
+				drag_threshold = 5,
+				drop_indicator_color = {0.2, 1.4, 1.1, 1},
+				drop_indicator_thickness = 2,
+				drop_indicator_inset = 8,
+			},
+		},
+	)
+	titles := [?]string{"ONE", "TWO", "THREE"}
+	for title, index in titles {
+		append(
+			&scene.entities,
+			shared.Scene_Entity {
+				id = ui_test_id(title),
+				name = title,
+				has_ui_layout = true,
+				ui_layout = {parent = root_id, size = {240, 96}, stack_order = index},
+				has_ui_panel = true,
+				ui_panel = {
+					title = title,
+					title_size = 12,
+					title_height = 28,
+					collapsible = true,
+					movable = true,
+				},
+			},
+		)
+	}
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 300) == "")
+	first_node := find_node_by_entity_index(state, 1)
+	third_node := find_node_by_entity_index(state, 3)
+	start := shared.Vec2{state.nodes[first_node].rect.x + 40, state.nodes[first_node].rect.y + 14}
+	target := shared.Vec2 {
+		state.nodes[third_node].rect.x + 40,
+		state.nodes[third_node].rect.y + state.nodes[third_node].rect.height * 0.75,
+	}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			240,
+			300,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			240,
+			300,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.stack_drags[0].dragging)
+	testing.expect(t, current_pointer_cursor(state) == .Move)
+	testing.expect(
+		t,
+		reconcile(state, &world, 240, 300, {position = target, available = true}) == "",
+	)
+	testing.expect_value(t, world.ui_layouts[world.entities[2].ui_layout_index].stack_order, 0)
+	testing.expect_value(t, world.ui_layouts[world.entities[3].ui_layout_index].stack_order, 1)
+	testing.expect_value(t, world.ui_layouts[world.entities[1].ui_layout_index].stack_order, 2)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[0].ui_state_index].drop_revision,
+		u64(1),
+	)
+	testing.expect(t, reconcile(state, &world, 240, 300) == "")
+	first_node = find_node_by_entity_index(state, 1)
+	third_node = find_node_by_entity_index(state, 3)
+	testing.expect(t, state.nodes[first_node].rect.y > state.nodes[third_node].rect.y)
+	testing.expect(t, reconcile(state, &world, 240, 300) == "")
+	testing.expect(t, state.layout_node_visit_count == 0)
+	testing.expect(t, state.layout_child_edge_visit_count == 0)
+	testing.expect(t, state.paint_node_visit_count == 0)
+	testing.expect(t, state.paint_child_edge_visit_count == 0)
+}
+
+@(test)
+test_panel_drag_released_without_a_destination_does_not_toggle_collapse :: proc(t: ^testing.T) {
+	stack_id := ui_test_id("Cancelled Panel Stack")
+	panel_id := ui_test_id("Cancelled Panel")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = stack_id,
+			name = "Cancelled Panel Stack",
+			has_ui_layout = true,
+			ui_layout = {size = {220, 180}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true, drag_threshold = 5},
+		},
+		shared.Scene_Entity {
+			id = panel_id,
+			name = "Cancelled Panel",
+			has_ui_layout = true,
+			ui_layout = {parent = stack_id, size = {220, 180}},
+			has_ui_panel = true,
+			ui_panel = {
+				title = "CANCEL ME",
+				title_height = 28,
+				collapsible = true,
+				movable = true,
+			},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 220, 180) == "")
+	start := shared.Vec2{40, 14}
+	outside := shared.Vec2{320, 90}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			400,
+			180,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			400,
+			180,
+			{position = outside, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.stack_drags[0].dragging)
+	testing.expect(t, current_pointer_cursor(state) == .Not_Allowed)
+	testing.expect(
+		t,
+		reconcile(state, &world, 400, 180, {position = outside, available = true}) == "",
+	)
+	panel := world.ui_panels[world.entities[1].ui_panel_index]
+	testing.expect(t, !panel.collapsed)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[0].ui_state_index].drop_revision,
+		u64(0),
+	)
+}
+
+@(test)
+test_movable_panel_transfers_between_reorderable_stack_and_dock_space :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Panel Workspace Root")
+	stack_id := ui_test_id("Panel Workspace Stack")
+	dock_id := ui_test_id("Panel Workspace Dock")
+	panel_id := ui_test_id("Panel Workspace Panel")
+	placeholder_id := ui_test_id("Panel Workspace Placeholder")
+	content_id := ui_test_id("Panel Workspace Content")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Panel Workspace Root",
+			has_ui_layout = true,
+			ui_layout = {size = {500, 240}},
+		},
+		shared.Scene_Entity {
+			id = stack_id,
+			name = "Panel Workspace Stack",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {220, 240}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true, drag_threshold = 5},
+		},
+		shared.Scene_Entity {
+			id = dock_id,
+			name = "Panel Workspace Dock",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, position = {250, 0}, size = {250, 240}},
+			has_ui_dock_space = true,
+			ui_dock_space = shared.ui_dock_space_default(),
+		},
+		shared.Scene_Entity {
+			id = panel_id,
+			name = "Panel Workspace Panel",
+			has_ui_layout = true,
+			ui_layout = {parent = stack_id, size = {220, 240}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true},
+			has_ui_panel = true,
+			ui_panel = {title = "TOOLS", title_height = 28, collapsible = true, movable = true},
+		},
+		shared.Scene_Entity {
+			id = placeholder_id,
+			name = "Panel Workspace Placeholder",
+			has_ui_layout = true,
+			ui_layout = {parent = dock_id, size = {250, 208}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "GAME", movable = false},
+		},
+		shared.Scene_Entity {
+			id = content_id,
+			name = "Panel Workspace Content",
+			has_ui_layout = true,
+			ui_layout = {parent = panel_id, size = {220, 40}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 500, 240) == "")
+	panel_node := find_node_by_entity_index(state, 3)
+	start := shared.Vec2{state.nodes[panel_node].rect.x + 40, state.nodes[panel_node].rect.y + 14}
+	dock_target := shared.Vec2{490, 16}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = dock_target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect_value(t, state.stack_drags[0].target_dock_space, world.entities[2].id)
+	testing.expect(
+		t,
+		reconcile(state, &world, 500, 240, {position = dock_target, available = true}) == "",
+	)
+	testing.expect_value(t, world.ui_layouts[world.entities[3].ui_layout_index].parent, dock_id)
+	testing.expect_value(
+		t,
+		world.ui_dock_spaces[world.entities[2].ui_dock_space_index].active,
+		panel_id,
+	)
+	testing.expect(t, reconcile(state, &world, 500, 240) == "")
+	testing.expect_value(t, state.dock_tab_count, 2)
+	panel_node = find_node_by_entity_index(state, 3)
+	content_node := find_node_by_entity_index(state, 5)
+	testing.expect_value(t, state.nodes[panel_node].rect, Rect{250, 32, 250, 208})
+	testing.expect_value(t, state.nodes[content_node].rect.y, f32(32))
+	testing.expect_value(
+		t,
+		dock_item_reorderable_stack_node(state, &world, panel_node),
+		panel_node,
+	)
+
+	panel_tab := -1
+	placeholder_tab := -1
+	for tab, index in state.dock_tabs[:state.dock_tab_count] {
+		if tab.item_node == panel_node {
+			panel_tab = index
+		}
+		if tab.item_node == find_node_by_entity_index(state, 4) {
+			placeholder_tab = index
+		}
+	}
+	testing.expect(t, panel_tab >= 0 && placeholder_tab >= 0)
+	tab_rect := state.dock_tabs[panel_tab].rect
+	tab_start := shared.Vec2{tab_rect.x + tab_rect.width * 0.5, tab_rect.y + tab_rect.height * 0.5}
+	placeholder_rect := state.dock_tabs[placeholder_tab].rect
+	placeholder_target := shared.Vec2 {
+		placeholder_rect.x + placeholder_rect.width * 0.5,
+		placeholder_rect.y + placeholder_rect.height * 0.5,
+	}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = tab_start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = placeholder_target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.dock_dragging)
+	testing.expect_value(t, state.dock_drop_stack_node, find_node_by_entity_index(state, 4))
+	testing.expect(t, state.dock_tabs[placeholder_tab].drop_target)
+	testing.expect(t, current_pointer_cursor(state) == .Move)
+	invalid_target := shared.Vec2{235, 120}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = invalid_target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, current_pointer_cursor(state) == .Not_Allowed)
+	testing.expect(
+		t,
+		reconcile(state, &world, 500, 240, {position = invalid_target, available = true}) == "",
+	)
+
+	panel_tab = -1
+	for tab, index in state.dock_tabs[:state.dock_tab_count] {
+		if tab.item_node == panel_node {
+			panel_tab = index
+			break
+		}
+	}
+	testing.expect(t, panel_tab >= 0)
+	tab_rect = state.dock_tabs[panel_tab].rect
+	tab_start = {tab_rect.x + tab_rect.width * 0.5, tab_rect.y + tab_rect.height * 0.5}
+	stack_target := shared.Vec2{110, 120}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = tab_start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = stack_target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(t, state.dock_dragging)
+	testing.expect_value(t, state.dock_drop_stack_node, find_node_by_entity_index(state, 1))
+	testing.expect(
+		t,
+		reconcile(state, &world, 500, 240, {position = stack_target, available = true}) == "",
+	)
+	testing.expect_value(t, world.ui_layouts[world.entities[3].ui_layout_index].parent, stack_id)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[1].ui_state_index].drop_revision,
+		u64(1),
+	)
+}
+
+@(test)
+test_panel_drop_on_dock_tab_routes_into_the_tabs_reorderable_stack :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Tab Stack Root")
+	source_stack_id := ui_test_id("Tab Stack Source")
+	dock_id := ui_test_id("Tab Stack Dock")
+	tab_id := ui_test_id("Tab Stack Item")
+	panel_id := ui_test_id("Tab Stack Panel")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = root_id,
+			name = "Tab Stack Root",
+			has_ui_layout = true,
+			ui_layout = {size = {500, 240}},
+		},
+		shared.Scene_Entity {
+			id = source_stack_id,
+			name = "Tab Stack Source",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, size = {220, 240}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true},
+		},
+		shared.Scene_Entity {
+			id = dock_id,
+			name = "Tab Stack Dock",
+			has_ui_layout = true,
+			ui_layout = {parent = root_id, position = {250, 0}, size = {250, 240}},
+			has_ui_dock_space = true,
+			ui_dock_space = shared.ui_dock_space_default(),
+		},
+		shared.Scene_Entity {
+			id = tab_id,
+			name = "Tab Stack Item",
+			has_ui_layout = true,
+			ui_layout = {parent = dock_id, size = {250, 208}},
+			has_ui_vstack = true,
+			ui_vstack = {fill = true, reorderable = true},
+			has_ui_dock_item = true,
+			ui_dock_item = {title = "TOOLS", movable = true},
+		},
+		shared.Scene_Entity {
+			id = panel_id,
+			name = "Tab Stack Panel",
+			has_ui_layout = true,
+			ui_layout = {parent = source_stack_id, size = {220, 240}},
+			has_ui_panel = true,
+			ui_panel = {title = "PERFORMANCE", title_height = 28, movable = true},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 500, 240) == "")
+	panel_node := find_node_by_entity_index(state, 4)
+	start := shared.Vec2{state.nodes[panel_node].rect.x + 40, state.nodes[panel_node].rect.y + 14}
+	tab := state.dock_tabs[0].rect
+	target := shared.Vec2{tab.x + tab.width * 0.5, tab.y + tab.height * 0.5}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			500,
+			240,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect_value(t, state.stack_drags[0].target_stack, world.entities[3].id)
+	testing.expect(t, state.stack_drags[0].target_dock_space == (shared.Entity{}))
+	testing.expect(t, state.dock_tabs[0].drop_target)
+	testing.expect(t, current_pointer_cursor(state) == .Move)
+	testing.expect(
+		t,
+		reconcile(state, &world, 500, 240, {position = target, available = true}) == "",
+	)
+	testing.expect_value(t, world.ui_layouts[world.entities[4].ui_layout_index].parent, tab_id)
+	testing.expect_value(
+		t,
+		world.ui_dock_spaces[world.entities[2].ui_dock_space_index].active,
+		shared.Entity_UUID{},
+	)
+	testing.expect_value(t, state.dock_tab_count, 1)
+	testing.expect_value(
+		t,
+		world.ui_states[world.entities[3].ui_state_index].drop_revision,
+		u64(1),
+	)
+}
+
+@(test)
 test_fill_stack_can_keep_fixed_children_while_siblings_grow :: proc(t: ^testing.T) {
 	root_id := ui_test_id("Fixed Fill Root")
 	scene := shared.Scene{}
@@ -3354,10 +4053,30 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 	}
 	if viewport_node >= 0 {
 		viewport_entity := world.entities[int(state.nodes[viewport_node].entity.index)]
-		testing.expect(t, viewport_entity.ui_dock_item_index >= 0)
 		testing.expect(t, viewport_entity.ui_layout_index >= 0)
 		if viewport_entity.ui_layout_index >= 0 {
 			testing.expect(t, world.ui_layouts[viewport_entity.ui_layout_index].background.w == 0)
+			testing.expect_value(
+				t,
+				world.ui_layouts[viewport_entity.ui_layout_index].parent,
+				shared.entity_uuid_from_engine_name(EDITOR_UI_VIEWPORT_TAB_NAME),
+			)
+		}
+	}
+	viewport_tab, viewport_tab_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_VIEWPORT_TAB_NAME),
+	)
+	testing.expect(t, viewport_tab_found)
+	if viewport_tab_found {
+		tab_entity := world.entities[viewport_tab]
+		testing.expect(t, tab_entity.ui_dock_item_index >= 0)
+		testing.expect(t, tab_entity.ui_vstack_index >= 0)
+		if tab_entity.ui_dock_item_index >= 0 {
+			testing.expect(t, !world.ui_dock_items[tab_entity.ui_dock_item_index].movable)
+		}
+		if tab_entity.ui_vstack_index >= 0 {
+			testing.expect(t, world.ui_vstacks[tab_entity.ui_vstack_index].reorderable)
 		}
 	}
 	testing.expect(t, len(world.editor_uis) > 0)
@@ -4177,6 +4896,10 @@ test_editor_sidebar_sections_share_collapsible_panel_styling :: proc(t: ^testing
 				{position = point, primary_down = true, available = true},
 			) ==
 			"",
+		)
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {position = point, available = true}) == "",
 		)
 		testing.expect(t, world.ui_panels[node.panel_index].collapsed)
 	}

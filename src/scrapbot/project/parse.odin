@@ -1387,6 +1387,8 @@ parse_scene :: proc(
 						current.ui_layout.tree_order, found = parse_int(value)
 					case "tree_collapsed":
 						current.ui_layout.tree_collapsed, found = parse_bool(value)
+					case "stack_order":
+						current.ui_layout.stack_order, found = parse_int(value)
 					case "popup":
 						current.ui_layout.popup, found = parse_bool(value)
 					case "popup_open":
@@ -1446,7 +1448,22 @@ parse_scene :: proc(
 						current.ui_hstack.gap, found = parse_f32(value); case "fill":
 						current.ui_hstack.fill, found = parse_bool(value); case "draggable":
 						current.ui_hstack.draggable, found = parse_bool(value); case "min_size":
-						current.ui_hstack.min_size, found = parse_f32(value); case "wrap":
+						current.ui_hstack.min_size, found = parse_f32(value); case "reorderable":
+						current.ui_hstack.reorderable, found = parse_bool(
+							value,
+						); case "drag_threshold":
+						current.ui_hstack.drag_threshold, found = parse_f32(
+							value,
+						); case "drop_indicator_color":
+						current.ui_hstack.drop_indicator_color, found = parse_vec4(
+							value,
+						); case "drop_indicator_thickness":
+						current.ui_hstack.drop_indicator_thickness, found = parse_f32(
+							value,
+						); case "drop_indicator_inset":
+						current.ui_hstack.drop_indicator_inset, found = parse_f32(
+							value,
+						); case "wrap":
 						current.ui_hstack.wrap, found = parse_bool(value); case "line_gap":
 						current.ui_hstack.line_gap, found = parse_f32(value); case:
 						return scene, fail(
@@ -1460,7 +1477,22 @@ parse_scene :: proc(
 						current.ui_vstack.gap, found = parse_f32(value); case "fill":
 						current.ui_vstack.fill, found = parse_bool(value); case "draggable":
 						current.ui_vstack.draggable, found = parse_bool(value); case "min_size":
-						current.ui_vstack.min_size, found = parse_f32(value); case "wrap":
+						current.ui_vstack.min_size, found = parse_f32(value); case "reorderable":
+						current.ui_vstack.reorderable, found = parse_bool(
+							value,
+						); case "drag_threshold":
+						current.ui_vstack.drag_threshold, found = parse_f32(
+							value,
+						); case "drop_indicator_color":
+						current.ui_vstack.drop_indicator_color, found = parse_vec4(
+							value,
+						); case "drop_indicator_thickness":
+						current.ui_vstack.drop_indicator_thickness, found = parse_f32(
+							value,
+						); case "drop_indicator_inset":
+						current.ui_vstack.drop_indicator_inset, found = parse_f32(
+							value,
+						); case "wrap":
 						current.ui_vstack.wrap, found = parse_bool(value); case "line_gap":
 						current.ui_vstack.line_gap, found = parse_f32(value); case:
 						return scene, fail(
@@ -1522,6 +1554,8 @@ parse_scene :: proc(
 						current.ui_panel.collapsible, found = parse_bool(value)
 					case "collapsed":
 						current.ui_panel.collapsed, found = parse_bool(value)
+					case "movable":
+						current.ui_panel.movable, found = parse_bool(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -1571,6 +1605,18 @@ parse_scene :: proc(
 						current.ui_dock_space.drop_background, found = parse_vec4(value)
 					case "draggable":
 						current.ui_dock_space.draggable, found = parse_bool(value)
+					case "split_horizontal":
+						current.ui_dock_space.split_horizontal, found = parse_bool(value)
+					case "split_vertical":
+						current.ui_dock_space.split_vertical, found = parse_bool(value)
+					case "split_ratio":
+						current.ui_dock_space.split_ratio, found = parse_f32(value)
+					case "split_edge_fraction":
+						current.ui_dock_space.split_edge_fraction, found = parse_f32(value)
+					case "split_gap":
+						current.ui_dock_space.split_gap, found = parse_f32(value)
+					case "split_min_size":
+						current.ui_dock_space.split_min_size, found = parse_f32(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -2467,14 +2513,17 @@ parse_scene :: proc(
 			continue
 		}
 		active_index, found_active := entity_indices[entity.ui_dock_space.active]
+		active := scene.entities[active_index] if found_active else shared.Scene_Entity{}
+		active_is_dock_item := found_active && active.has_ui_dock_item
+		active_is_panel := found_active && active.has_ui_panel && active.ui_panel.title != ""
 		if !found_active ||
-		   !scene.entities[active_index].has_ui_dock_item ||
-		   !scene.entities[active_index].has_ui_layout ||
-		   scene.entities[active_index].ui_layout.parent != entity.id {
+		   (!active_is_dock_item && !active_is_panel) ||
+		   !active.has_ui_layout ||
+		   active.ui_layout.parent != entity.id {
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf(
-					"UI dock space '%s' active item must name one of its direct dock-item children",
+					"UI dock space '%s' active item must name one of its direct dock-item or titled-panel children",
 					entity.name,
 				),
 			)

@@ -536,6 +536,8 @@ Set `popup = true` on a root layout to make it a floating popup. `popup_anchor` 
 
 Add `ui_hstack` or `ui_vstack` with a non-negative `gap` to arrange children in scene order; an element without either stack overlays its children inside the parent's padded content box. Set stack `fill = true` to treat authored child sizes as proportions along the stack axis and fill the available cross-axis. Set a child's layout `fixed_in_fill = true` to preserve its authored main-axis size while flexible siblings divide the remainder. Add `draggable = true` to turn the gaps into pointer-draggable separators; stack `min_size` sets the non-negative minimum pane extent on the stack axis. Draggable separators show the matching horizontal- or vertical-resize system cursor while hovered or dragged. Draggable stacks must also enable fill.
 
+Every HStack and VStack sorts direct children by layout `stack_order`, with stable entity order breaking ties. Set `reorderable = true` to additionally accept title-dragged panels. A direct-child `ui_panel` with `movable = true` uses an unoccupied title-band press as a click-or-drag gesture: release within `drag_threshold` retains collapse behavior, while crossing the threshold starts a workspace drag. Release without a compatible destination cancels. Reorderable stacks accept insertion transfers; draggable dock spaces accept the panel as a tab. Drop indicator color, thickness, and inset are public HDR style fields. Wrapped stacks cannot be reorderable.
+
 For responsive flow, set a child's non-negative `basis`, `grow`, and `shrink`. Zero basis uses its authored or resolved intrinsic main-axis size. Positive space is divided by grow factors; overflow is removed by shrink factors without crossing the child's `min_size`. Set stack `wrap = true` to pack preferred outer sizes into multiple lines, with `gap` between siblings and `line_gap` between lines. Each line distributes its own positive or negative space. Wrapped stacks cannot use legacy proportional fill or draggable separators.
 
 A `ui_text` can set `alignment` to `"left"`, `"center"`, or `"right"` within its padded content box. `wrap = true` breaks text at whitespace to fit that width and falls back to glyph boundaries for a word wider than one line. Explicit newlines always break. `line_height = 0` uses the text size; a positive value supplies an explicit line advance. Wrapped intrinsic height uses the same selected-font metrics and line boundaries as paint.
@@ -629,7 +631,7 @@ smoothness = 14
 
 Each direct child supplies its own row height and may use an overlay or another flow container for its contents. A list cannot share its entity with another flow container.
 
-Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit ordinary descendants from layout, paint, focus traversal, and pointer interaction. The disclosure uses `caret-right` or `caret-down` from the ordinary built-in icon set. To add title actions, create ordinary direct child buttons with `panel_action = true`; they may use text or any public icon reference, activate independently, remain available while collapsed, and lay out from right to left. Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row; for example, widths `1` and `2` create a one-third/two-thirds split. `resizable_columns = true` turns column gaps into draggable separators and requires proportional columns; `min_column_width` limits adjacent-column shrinking. Resized proportions remain local to the current UI session. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
+Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit ordinary descendants from layout, paint, focus traversal, and pointer interaction. Set `movable = true` when the same panel is a direct child of a reorderable stack; title actions remain excluded from the drag handle. The disclosure uses `caret-right` or `caret-down` from the ordinary built-in icon set. To add title actions, create ordinary direct child buttons with `panel_action = true`; they may use text or any public icon reference, activate independently, remain available while collapsed, and lay out from right to left. Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row; for example, widths `1` and `2` create a one-third/two-thirds split. `resizable_columns = true` turns column gaps into draggable separators and requires proportional columns; `min_column_width` limits adjacent-column shrinking. Resized proportions remain local to the current UI session. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
 
 ```toml
 [[entities]]
@@ -675,19 +677,32 @@ min_column_width = 48
 Each child of `Stats Table` occupies the next table cell. Give the first three child layouts the desired width weights; subsequent rows reuse them. A table is a flow container and therefore cannot share an entity with `ui_hstack`, `ui_vstack`, `ui_list`, or `ui_dock_space`; a panel is decoration and may share an entity with any flow container.
 
 A `ui_dock_space` is the flow container for a tab group. Every direct child
-carrying `ui_dock_item` contributes its required non-empty `title`. The dock
-space's `active` UUID must be empty or identify one of those direct children.
-It reserves `tab_height` above the active item, measures titles with its
-selected `font`, clamps them between `tab_min_width` and `tab_max_width`, and
-uses the public tab and drop HDR colors for interaction. Inactive items remain
-authored but leave layout, paint, focus, and pointer interaction.
+carrying `ui_dock_item` contributes its required non-empty `title`. A direct
+titled `ui_panel` also contributes its title and `movable` policy; the tab
+replaces the panel's internal title band while docked. The dock space's
+`active` UUID must be empty or identify one of those direct children. It
+reserves `tab_height` above the active item, measures titles with its selected
+`font`, clamps them between `tab_min_width` and `tab_max_width`, and uses the
+public tab and drop HDR colors for interaction. Inactive items remain authored
+but leave layout, paint, focus, and pointer interaction.
 
 Set an item's `movable = false` to lock it. Set a space's `draggable = false`
 to reject transfers. Otherwise, dragging a tab into another dock space changes
 the item's ordinary `ui_layout.parent` UUID and activates it in the
-destination. Build resize topology by placing dock spaces inside the same
-draggable fill stacks described above; the docking component does not own a
-second split tree.
+destination. A panel tab may instead enter a reorderable stack, and a movable
+stack panel may enter a dock space as a new tab. Build resize topology by
+placing dock spaces inside the same draggable fill stacks described above; the
+docking component does not own a second split tree.
+
+Set `split_horizontal = true` and/or `split_vertical = true` to let an edge
+drop build that resize topology interactively. The engine replaces the target
+in its current parent with a public fill HStack or VStack, keeps the existing
+dock on one side, creates another public dock for the dropped item, and exposes
+their separator through normal stack dragging. `split_ratio` defaults to
+`0.5`, `split_edge_fraction` to `0.25`, `split_gap` to `4`, and
+`split_min_size` to `120`. Directional targets disappear when the available
+axis cannot fit two minimum panes plus the gap; a center drop retains ordinary
+tab/stack behavior.
 
 ## Custom component sections
 

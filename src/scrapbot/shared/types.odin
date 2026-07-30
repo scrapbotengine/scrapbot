@@ -505,6 +505,7 @@ UI_Layout_Component :: struct {
 	tree_parent: Entity_UUID,
 	tree_order: int,
 	tree_collapsed: bool,
+	stack_order: int,
 	popup: bool,
 	popup_open: bool,
 	popup_close_on_selection: bool,
@@ -547,6 +548,11 @@ UI_Stack_Component :: struct {
 	fill: bool,
 	draggable: bool,
 	min_size: f32,
+	reorderable: bool,
+	drag_threshold: f32,
+	drop_indicator_color: Vec4,
+	drop_indicator_thickness: f32,
+	drop_indicator_inset: f32,
 	wrap: bool,
 	line_gap: f32,
 }
@@ -573,6 +579,7 @@ UI_Panel_Component :: struct {
 	disclosure_inset: f32,
 	collapsible: bool,
 	collapsed: bool,
+	movable: bool,
 }
 UI_Dock_Space_Component :: struct {
 	active: Entity_UUID,
@@ -591,6 +598,12 @@ UI_Dock_Space_Component :: struct {
 	tab_active_background: Vec4,
 	drop_background: Vec4,
 	draggable: bool,
+	split_horizontal: bool,
+	split_vertical: bool,
+	split_ratio: f32,
+	split_edge_fraction: f32,
+	split_gap: f32,
+	split_min_size: f32,
 }
 UI_Dock_Item_Component :: struct {
 	title: string,
@@ -630,6 +643,10 @@ UI_Drop_Placement :: enum {
 	Before,
 	Into,
 	After,
+	Left,
+	Right,
+	Above,
+	Below,
 }
 UI_Progress_Component :: struct {
 	value: f32,
@@ -842,7 +859,12 @@ ui_canvas_default :: proc "contextless" () -> UI_Canvas_Component {
 }
 
 ui_stack_default :: proc "contextless" () -> UI_Stack_Component {
-	return {}
+	return {
+		drag_threshold = 5,
+		drop_indicator_color = {0.42, 0.92, 0.84, 1},
+		drop_indicator_thickness = 2,
+		drop_indicator_inset = 8,
+	}
 }
 
 ui_scroll_area_default :: proc "contextless" () -> UI_Scroll_Area_Component {
@@ -887,6 +909,10 @@ ui_dock_space_default :: proc "contextless" () -> UI_Dock_Space_Component {
 		tab_active_background = {0.105, 0.115, 0.135, 1},
 		drop_background = {0.12, 0.72, 0.64, 0.22},
 		draggable = true,
+		split_ratio = 0.5,
+		split_edge_fraction = 0.25,
+		split_gap = 4,
+		split_min_size = 120,
 	}
 }
 
@@ -1048,8 +1074,11 @@ ui_stack_is_valid :: proc "contextless" (value: UI_Stack_Component) -> bool {
 		value.gap >= 0 &&
 		value.min_size >= 0 &&
 		value.line_gap >= 0 &&
+		value.drag_threshold >= 0 &&
+		value.drop_indicator_thickness >= 0 &&
+		value.drop_indicator_inset >= 0 &&
 		(!value.draggable || value.fill) &&
-		(!value.wrap || (!value.fill && !value.draggable)) \
+		(!value.wrap || (!value.fill && !value.draggable && !value.reorderable)) \
 	)
 }
 
@@ -1070,6 +1099,9 @@ ui_panel_is_valid :: proc "contextless" (value: UI_Panel_Component) -> bool {
 		return false
 	}
 	if value.collapsible && value.title == "" {
+		return false
+	}
+	if value.movable && value.title == "" {
 		return false
 	}
 	if value.disclosure_size < 0 ||
@@ -1095,7 +1127,13 @@ ui_dock_space_is_valid :: proc "contextless" (value: UI_Dock_Space_Component) ->
 		ui_vec4_is_finite(value.tab_background) &&
 		ui_vec4_is_finite(value.tab_hover_background) &&
 		ui_vec4_is_finite(value.tab_active_background) &&
-		ui_vec4_is_finite(value.drop_background) \
+		ui_vec4_is_finite(value.drop_background) &&
+		value.split_ratio > 0 &&
+		value.split_ratio < 1 &&
+		value.split_edge_fraction > 0 &&
+		value.split_edge_fraction <= 0.5 &&
+		value.split_gap >= 0 &&
+		value.split_min_size > 0 \
 	)
 }
 

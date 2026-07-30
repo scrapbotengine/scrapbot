@@ -31,6 +31,7 @@ Diagnostic_Action :: struct {
 	delta_x: f32,
 	delta_y: f32,
 	padding: f32,
+	hold: bool,
 }
 
 Diagnostic_Script :: struct {
@@ -187,9 +188,11 @@ diagnostic_action_is_valid :: proc(action: Diagnostic_Action) -> bool {
 				(action.destination == (Diagnostic_Target{}) ||
 						diagnostic_target_is_valid(action.destination)) &&
 				(action.destination_anchor == "" ||
+						action.destination_anchor == "left" ||
 						action.destination_anchor == "top" ||
 						action.destination_anchor == "center" ||
-						action.destination_anchor == "bottom") &&
+						action.destination_anchor == "bottom" ||
+						action.destination_anchor == "right") &&
 				action.frames >= 0 \
 			)
 		case "expect":
@@ -215,7 +218,10 @@ diagnostic_target_is_valid :: proc(target: Diagnostic_Target) -> bool {
 	   target.origin != "editor" {
 		return false
 	}
-	if target.part != "" && target.part != "panel_action" && target.part != "dock_tab" {
+	if target.part != "" &&
+	   target.part != "panel_action" &&
+	   target.part != "panel_title" &&
+	   target.part != "dock_tab" {
 		return false
 	}
 	if target.uuid != "" {
@@ -362,10 +368,14 @@ diagnostic_driver_input :: proc(
 					destination_screen.x + destination_screen.width * 0.5,
 					destination_screen.y + destination_screen.height * 0.5,
 				}
-				if action.destination_anchor == "top" {
+				if action.destination_anchor == "left" {
+					destination.x = destination_screen.x + destination_screen.width * 0.08
+				} else if action.destination_anchor == "top" {
 					destination.y = destination_screen.y + destination_screen.height * 0.08
 				} else if action.destination_anchor == "bottom" {
 					destination.y = destination_screen.y + destination_screen.height * 0.92
+				} else if action.destination_anchor == "right" {
+					destination.x = destination_screen.x + destination_screen.width * 0.92
 				}
 				remaining := max(steps - driver.wait_remaining, 1)
 				pointer.position.x += (destination.x - pointer.position.x) / f32(remaining)
@@ -383,6 +393,12 @@ diagnostic_driver_input :: proc(
 			return pointer, keyboard, ""
 		}
 		if driver.phase == 2 {
+			if action.hold {
+				pointer.primary_down = true
+				diagnostic_driver_advance(driver)
+				driver.last_pointer = pointer
+				return pointer, keyboard, ""
+			}
 			pointer.primary_down = false
 			driver.last_pointer = pointer
 			diagnostic_driver_advance(driver)
@@ -447,6 +463,7 @@ diagnostic_driver_input :: proc(
 			pointer.primary_down = true
 			driver.phase = 1
 		case "capture":
+			pointer.primary_down = driver.last_pointer.primary_down
 			driver.has_capture_target = true
 			driver.capture_target = action.target
 			driver.capture_padding = max(action.padding, 0)
@@ -625,6 +642,15 @@ diagnostic_target_rect :: proc(
 			return rect, true
 		}
 		return {}, false
+	}
+	if target.part == "panel_title" {
+		if node.panel_index < 0 || node.panel_index >= len(world.ui_panels) {
+			return {}, false
+		}
+		panel := world.ui_panels[node.panel_index]
+		rect := diagnostic_node_visible_rect(node)
+		rect.height = min(rect.height, panel.title_height)
+		return rect, rect.width > 0 && rect.height > 0
 	}
 	if target.part == "dock_tab" {
 		for tab in state.dock_tabs[:state.dock_tab_count] {

@@ -512,6 +512,7 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "tree_parent", field_type = .String},
 			Field_Definition{name = "tree_order", field_type = .Number},
 			Field_Definition{name = "tree_collapsed", field_type = .Bool},
+			Field_Definition{name = "stack_order", field_type = .Number},
 			Field_Definition{name = "popup", field_type = .Bool},
 			Field_Definition{name = "popup_open", field_type = .Bool},
 			Field_Definition{name = "popup_close_on_selection", field_type = .Bool},
@@ -540,6 +541,11 @@ init_registry :: proc(registry: ^Registry) {
 		{name = "fill", field_type = .Bool},
 		{name = "draggable", field_type = .Bool},
 		{name = "min_size", field_type = .Number},
+		{name = "reorderable", field_type = .Bool},
+		{name = "drag_threshold", field_type = .Number},
+		{name = "drop_indicator_color", field_type = .Vec4},
+		{name = "drop_indicator_thickness", field_type = .Number},
+		{name = "drop_indicator_inset", field_type = .Number},
 		{name = "wrap", field_type = .Bool},
 		{name = "line_gap", field_type = .Number},
 	}
@@ -576,6 +582,7 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "disclosure_inset", field_type = .Number},
 			Field_Definition{name = "collapsible", field_type = .Bool},
 			Field_Definition{name = "collapsed", field_type = .Bool},
+			Field_Definition{name = "movable", field_type = .Bool},
 		},
 	)
 	register_engine_component(
@@ -598,6 +605,12 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "tab_active_background", field_type = .Vec4},
 			Field_Definition{name = "drop_background", field_type = .Vec4},
 			Field_Definition{name = "draggable", field_type = .Bool},
+			Field_Definition{name = "split_horizontal", field_type = .Bool},
+			Field_Definition{name = "split_vertical", field_type = .Bool},
+			Field_Definition{name = "split_ratio", field_type = .Number},
+			Field_Definition{name = "split_edge_fraction", field_type = .Number},
+			Field_Definition{name = "split_gap", field_type = .Number},
+			Field_Definition{name = "split_min_size", field_type = .Number},
 		},
 	)
 	register_engine_component(

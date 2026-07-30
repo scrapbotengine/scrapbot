@@ -320,6 +320,7 @@ bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload 
 bin/scrapbot run examples/ui-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/enum-inspector.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/entity-reference-inspector.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/nested-inspector.json --json
+bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/editor-panel-edge-split.json --json
 bin/scrapbot run examples/asteroids --backend null --headless --no-hot-reload --frames 5
 STRESS_JSON="$(bin/scrapbot run examples/ecs-stress --backend null --headless --no-hot-reload --frames 180 --runtime-stats --json)"
 node -e '

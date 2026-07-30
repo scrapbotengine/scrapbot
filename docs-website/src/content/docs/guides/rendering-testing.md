@@ -230,7 +230,7 @@ Available actions are:
 
 A drag starts at the target center. It moves by `delta_x`/`delta_y` or towards a semantic `destination`, then releases.
 
-Use `destination_anchor` with `top`, `center` (the default), or `bottom` to distinguish insertion from an into-row drop. Semantic destinations are preferred for lists and trees because they survive layout changes. Offsets remain useful for sliders and splitters.
+Use `destination_anchor` with `left`, `top`, `center` (the default), `bottom`, or `right` to distinguish insertion and dock-split edges from an into-row or center drop. Semantic destinations are preferred for lists, trees, and dock spaces because they survive layout changes. Offsets remain useful for sliders and splitters.
 
 A positive drag `frames` value interpolates motion across multiple input frames. Omit it or use zero for a one-frame move.
 

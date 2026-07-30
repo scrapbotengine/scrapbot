@@ -2493,24 +2493,6 @@ wgpu_encode_render_pass :: proc(
 			)
 			wgpu.RenderPassEncoderDraw(ui_pass, project_vertex_count, 1, 0, 0)
 		}
-		editor_vertex_count := u32(len(renderer.ui_editor_vertices))
-		if ui_state.editor_visible && editor_vertex_count > 0 {
-			wgpu.RenderPassEncoderSetScissorRect(
-				ui_pass,
-				0,
-				0,
-				layout.output_width,
-				layout.output_height,
-			)
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				ui_pass,
-				0,
-				renderer.ui_editor_vertex_buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			wgpu.RenderPassEncoderDraw(ui_pass, editor_vertex_count, 1, 0, 0)
-		}
 		if ui_state.editor_visible {
 			if len(renderer.ui_overlay_vertices) > 0 {
 				wgpu.RenderPassEncoderSetScissorRect(
@@ -2535,6 +2517,24 @@ wgpu_encode_render_pass :: proc(
 					0,
 				)
 			}
+		}
+		editor_vertex_count := u32(len(renderer.ui_editor_vertices))
+		if ui_state.editor_visible && editor_vertex_count > 0 {
+			wgpu.RenderPassEncoderSetScissorRect(
+				ui_pass,
+				0,
+				0,
+				layout.output_width,
+				layout.output_height,
+			)
+			wgpu.RenderPassEncoderSetVertexBuffer(
+				ui_pass,
+				0,
+				renderer.ui_editor_vertex_buffer,
+				0,
+				wgpu.WHOLE_SIZE,
+			)
+			wgpu.RenderPassEncoderDraw(ui_pass, editor_vertex_count, 1, 0, 0)
 		}
 		wgpu.RenderPassEncoderEnd(ui_pass)
 	}

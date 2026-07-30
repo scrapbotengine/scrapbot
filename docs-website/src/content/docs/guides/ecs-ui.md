@@ -238,6 +238,12 @@ fill_height = true
 [entities.ui_dock_space]
 active = "d4000000-0000-4000-8000-000000000132"
 font = "Inter"
+split_horizontal = true
+split_vertical = true
+split_ratio = 0.5
+split_edge_fraction = 0.25
+split_gap = 4
+split_min_size = 120
 
 [[entities]]
 id = "d4000000-0000-4000-8000-000000000132"
@@ -254,16 +260,77 @@ title = "INVENTORY"
 movable = true
 ```
 
-Every direct dock-item child contributes one tab. Clicking selects it. Dragging
-a movable tab onto another draggable dock space reparents the item by stable
-UUID, selects it in the destination, and emits the ordinary public drop state
-and immutable `dropped` event. Set an item's `movable` field or a destination's
-`draggable` field to `false` for fixed application regions.
+Every direct dock-item child contributes one tab. A direct titled `ui_panel`
+also contributes a tab using its panel title; while docked, that tab replaces
+the panel's internal title band. Clicking selects it. Dragging a movable tab
+onto another draggable dock space reparents the item by stable UUID, selects it
+in the destination, and emits the ordinary public drop state and immutable
+`dropped` event. A panel tab may instead return to a reorderable stack. Set an
+item's `movable` field or a destination's `draggable` field to `false` for fixed
+application regions.
+
+Compose each dock item around a reorderable HStack or VStack when it should
+accept panels. Dropping on that item's tab header routes into the nearest such
+descendant stack, even when the tab is inactive. Dropping on empty dock-space
+chrome creates a sibling tab instead. The dock component discovers ordinary
+public stack composition; it does not own a second panel collection.
+
+The accepting tab header uses the dock space's `drop_background` while the
+pointer is over it. Movable titles and tabs use the platform move cursor; an
+active workspace drag uses the not-allowed cursor when no compatible
+destination is under the pointer.
+
+Enable `split_horizontal` and/or `split_vertical` when an edge drop should
+create another pane. Left/right edges create a public draggable fill HStack;
+top/bottom edges create the equivalent VStack. The target dock stays in place,
+the dropped item enters a newly created sibling dock, and `split_ratio`,
+`split_gap`, and `split_min_size` configure the initial public stack geometry.
+An edge target is offered only when both panes can satisfy the minimum size.
+Because the result is ordinary ECS UI topology, project code may query, restyle,
+resize, or persist it with the same APIs it uses for authored stacks and dock
+spaces.
+
+A panel may carry that stack itself so the tab created by docking the panel can
+accept later drops. While the panel remains nested in another stack, its own
+stack only lays out its content and the containing workspace stack remains the
+drop destination.
 
 The dock space owns only tabs and active-child presentation. Nested stacks,
 tables, lists, scroll areas, and viewports remain normal components inside the
 dock item. This is the same framework consumed by Scrapbot's Browse, Game, and
 Inspect editor regions.
+
+## Compose rearrangeable panels
+
+Use a reorderable stack when several panels should remain visible while users
+change their order. Add `fill` and `draggable` when the same gaps should resize
+adjacent panels:
+
+```toml
+[entities.ui_vstack]
+gap = 6
+fill = true
+draggable = true
+min_size = 96
+reorderable = true
+drop_indicator_color = [0.2, 1.4, 1.1, 1]
+
+[entities.ui_layout]
+stack_order = 0
+
+[entities.ui_panel]
+title = "QUEST LOG"
+collapsible = true
+movable = true
+```
+
+The panel must be a direct child of the stack. A title click toggles collapse;
+moving past `drag_threshold` switches the gesture to workspace dragging.
+Releasing without a compatible destination cancels and does not toggle
+collapse. Stack drops mutate public `stack_order` and normalize the affected
+siblings. Dock-space drops make the same panel a direct child and new tab; its
+tab can later move it back into a reorderable stack. This is the same public
+path used by the editor's Performance, Systems, Scene, and Resources panels.
 
 ## Compose a popup
 
@@ -357,7 +424,7 @@ end)
 
 Buttons advance activation state. Checkboxes own a mutable `checked` value and advance change state. Inputs support focus, selection, cursor movement, Tab traversal, submission/cancellation, and numeric bounds and stepping. Typed numeric text is staged locally: Enter validates and commits it, while Escape, focus loss, and Tab navigation restore the previously committed value. Set `draggable = true` on a writable numeric input to opt into live horizontal scrubbing from its complete control surface; releasing the pointer submits that scrub. Prefix badges are presentation rather than an interaction requirement.
 
-Windowed runs use the platform's pointer cursor over buttons, selectable list rows, writable checkboxes and color pickers, interactive viewports, and collapsible panel titles. Writable text and numeric inputs use the text-edit cursor. A draggable numeric input switches to the horizontal-resize cursor while a scrub is armed or active, and draggable layout separators keep their directional resize cursor.
+Windowed runs use the platform's pointer cursor over buttons, selectable list rows, writable checkboxes and color pickers, interactive viewports, and fixed collapsible panel titles. Movable panel titles and dock tabs use the move cursor; active workspace drags switch to not-allowed over dead space. Writable text and numeric inputs use the text-edit cursor. A draggable numeric input switches to the horizontal-resize cursor while a scrub is armed or active, and draggable layout separators keep their directional resize cursor.
 
 ## Create and update UI from Luau
 

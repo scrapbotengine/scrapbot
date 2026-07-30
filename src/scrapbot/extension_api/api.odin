@@ -203,6 +203,7 @@ UI_Layout_Payload :: struct {
 	tree_parent: UUID,
 	tree_order: c.int,
 	tree_collapsed: c.int,
+	stack_order: c.int,
 	popup: c.int,
 	popup_open: c.int,
 	popup_close_on_selection: c.int,
@@ -231,6 +232,11 @@ UI_Stack_Payload :: struct {
 	fill: c.int,
 	draggable: c.int,
 	min_size: f32,
+	reorderable: c.int,
+	drag_threshold: f32,
+	drop_indicator_color: Vec4,
+	drop_indicator_thickness: f32,
+	drop_indicator_inset: f32,
 	wrap: c.int,
 	line_gap: f32,
 }
@@ -258,6 +264,7 @@ UI_Panel_Payload :: struct {
 	disclosure_inset: f32,
 	collapsible: c.int,
 	collapsed: c.int,
+	movable: c.int,
 }
 
 UI_Dock_Space_Payload :: struct {
@@ -276,6 +283,12 @@ UI_Dock_Space_Payload :: struct {
 	tab_active_background: Vec4,
 	drop_background: Vec4,
 	draggable: c.int,
+	split_horizontal: c.int,
+	split_vertical: c.int,
+	split_ratio: f32,
+	split_edge_fraction: f32,
+	split_gap: f32,
+	split_min_size: f32,
 }
 
 UI_Dock_Item_Payload :: struct {
@@ -318,6 +331,10 @@ UI_Drop_Placement :: enum c.int {
 	Before,
 	Into,
 	After,
+	Left,
+	Right,
+	Above,
+	Below,
 }
 
 UI_Progress_Payload :: struct {

@@ -120,7 +120,7 @@ export type ScrapbotUiThemeReference = ScrapbotUiThemeName | string
 export type ScrapbotUiThemeRecipe = "canvas" | "region" | "panel_surface" | "raised" | "control" | "overlay" | "primary_text" | "secondary_text" | "muted_text" | "accent_text" | "warning_text" | "danger_text" | "quiet_button" | "standard_button" | "primary_button" | "destructive_button" | "input" | "panel" | "list" | "scroll_area" | "checkbox" | "color_picker" | "chrome_bar" | "selected_button" | "warning_button" | "warning_frame"
 export type ScrapbotUiEventKind = "activated" | "changed" | "submitted" | "cancelled" | "dropped"
 export type ScrapbotUiEventPart = "control" | "panel_title"
-export type ScrapbotUiDropPlacement = "none" | "before" | "into" | "after"
+export type ScrapbotUiDropPlacement = "none" | "before" | "into" | "after" | "left" | "right" | "above" | "below"
 export type ScrapbotUiEvent = {
 	read sequence: number,
 	read frame_index: number,

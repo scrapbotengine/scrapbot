@@ -253,6 +253,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		}
 		write_scene_value(builder, "tree_order", fmt.tprintf("%d", value.tree_order))
 		write_scene_value(builder, "tree_collapsed", scene_bool(value.tree_collapsed))
+		write_scene_value(builder, "stack_order", fmt.tprintf("%d", value.stack_order))
 		if value.popup {
 			write_scene_value(builder, "popup", scene_bool(true))
 		}
@@ -350,6 +351,7 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "disclosure_inset", scene_f32(value.disclosure_inset))
 		write_scene_value(builder, "collapsible", scene_bool(value.collapsible))
 		write_scene_value(builder, "collapsed", scene_bool(value.collapsed))
+		write_scene_value(builder, "movable", scene_bool(value.movable))
 	}
 	if entity.has_ui_dock_space {
 		value := entity.ui_dock_space
@@ -376,6 +378,12 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		)
 		write_scene_value(builder, "drop_background", scene_vec4(value.drop_background))
 		write_scene_value(builder, "draggable", scene_bool(value.draggable))
+		write_scene_value(builder, "split_horizontal", scene_bool(value.split_horizontal))
+		write_scene_value(builder, "split_vertical", scene_bool(value.split_vertical))
+		write_scene_value(builder, "split_ratio", scene_f32(value.split_ratio))
+		write_scene_value(builder, "split_edge_fraction", scene_f32(value.split_edge_fraction))
+		write_scene_value(builder, "split_gap", scene_f32(value.split_gap))
+		write_scene_value(builder, "split_min_size", scene_f32(value.split_min_size))
 	}
 	if entity.has_ui_dock_item {
 		value := entity.ui_dock_item
@@ -478,6 +486,15 @@ write_scene_stack :: proc(
 	write_scene_value(builder, "fill", scene_bool(value.fill))
 	write_scene_value(builder, "draggable", scene_bool(value.draggable))
 	write_scene_value(builder, "min_size", scene_f32(value.min_size))
+	write_scene_value(builder, "reorderable", scene_bool(value.reorderable))
+	write_scene_value(builder, "drag_threshold", scene_f32(value.drag_threshold))
+	write_scene_value(builder, "drop_indicator_color", scene_vec4(value.drop_indicator_color))
+	write_scene_value(
+		builder,
+		"drop_indicator_thickness",
+		scene_f32(value.drop_indicator_thickness),
+	)
+	write_scene_value(builder, "drop_indicator_inset", scene_f32(value.drop_indicator_inset))
 	write_scene_value(builder, "wrap", scene_bool(value.wrap))
 	write_scene_value(builder, "line_gap", scene_f32(value.line_gap))
 }

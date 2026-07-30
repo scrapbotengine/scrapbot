@@ -31,13 +31,13 @@ Lifecycle meanings:
 | `scrapbot.model` | Render membership | Authored | Yes | UUID-backed imported model root; reconciles derived node/primitive render entities. |
 | `scrapbot.shadow_caster` | Rendering | Authored | Yes | Marker enabling participation in shadow rendering. |
 | `scrapbot.shadow_receiver` | Rendering | Authored | Yes | Marker enabling shadow reception. |
-| `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent/popup anchor, responsive sizing, visibility, and tree-row metadata. |
+| `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent/popup anchor, responsive sizing, visibility, and list/stack sibling order metadata. |
 | `scrapbot.ui_canvas` | UI layout | Authored | Yes | Singleton project-origin root policy for logical reference size, output scaling/alignment, safe area, and scale bounds. |
-| `scrapbot.ui_hstack` | UI layout | Authored | Yes | Horizontal fixed, proportional, or wrapping flex flow. |
-| `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical fixed, proportional, or wrapping flex flow. |
+| `scrapbot.ui_hstack` | UI layout | Authored | Yes | Horizontal fixed, proportional, wrapping, resizable, or reorderable flow. |
+| `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical fixed, proportional, wrapping, resizable, or reorderable flow. |
 | `scrapbot.ui_scroll_area` | UI container | Authored | Yes | Retained smooth vertical scrolling, clipping, and scrollbar styling. |
-| `scrapbot.ui_panel` | UI container | Authored | Yes | Titled/collapsible decoration with reusable title-band actions. |
-| `scrapbot.ui_dock_space` | UI container | Authored | Yes | Styled tab group whose direct dock-item children can transfer between compatible groups. |
+| `scrapbot.ui_panel` | UI container | Authored | Yes | Titled/collapsible/movable decoration with reusable title-band actions. |
+| `scrapbot.ui_dock_space` | UI container | Authored | Yes | Styled tab group whose direct items transfer between groups or create public resizable split topology from enabled edges. |
 | `scrapbot.ui_dock_item` | UI layout | Authored | Yes | Direct dock-space child carrying reusable tab identity and movement policy. |
 | `scrapbot.ui_table` | UI container | Authored | Yes | Row-major multi-column layout with reusable proportions and separators. |
 | `scrapbot.ui_list` | UI container | Authored | Yes | Styled, filtered, and virtualized selection plus generic list/tree drag, reorder, and reparent state. |
@@ -212,7 +212,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_layout`
 
-- **Contract:** Required UI geometry/hierarchy box containing UUID parent, authored/minimum sizing, per-child basis/grow/shrink, per-axis alignment, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
+- **Contract:** Required UI geometry/hierarchy box containing UUID parent, authored/minimum sizing, per-child basis/grow/shrink and stack order, per-axis alignment, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Scene TOML, Luau/native UI APIs, editor composition, generic UI setters.
 - **Consumers:** Retained hierarchy, intrinsic/flex layout, clipping, interaction hit testing, painting, tree/list mechanics, and generic popup placement/dismissal.
@@ -232,21 +232,21 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_hstack`
 
-- **Contract:** Horizontal child flow with gaps, legacy proportional fill, minimum panes, optional draggable separators, and line-wrapped basis/grow/shrink resolution.
+- **Contract:** Horizontal child flow with gaps, proportional fill, minimum panes, optional draggable separators, title-drag panel ordering/transfers, and line-wrapped basis/grow/shrink resolution.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
-- **Consumers:** Retained UI layout and generic separator interaction.
-- **Invalidation:** Membership and flow-option mutations invalidate the affected hierarchy/layout domain; separator drags target pane sizes.
+- **Consumers:** Retained UI layout, generic separator interaction, and generic panel-title reorder interaction.
+- **Invalidation:** Membership, order, and flow-option mutations invalidate the affected hierarchy/layout domain; separator drags target pane sizes and completed panel drops normalize only affected public sibling orders. Stable frames perform no ordering work.
 - **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_hstack-and-scrapbotui_vstack).
 - **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
 
 ### `scrapbot.ui_vstack`
 
-- **Contract:** Vertical child flow with gaps, legacy proportional fill, minimum panes, optional draggable separators, and line-wrapped basis/grow/shrink resolution.
+- **Contract:** Vertical child flow with gaps, proportional fill, minimum panes, optional draggable separators, title-drag panel ordering/transfers, and line-wrapped basis/grow/shrink resolution.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
-- **Consumers:** Retained UI layout and generic separator interaction.
-- **Invalidation:** Membership and flow-option mutations invalidate the affected hierarchy/layout domain; separator drags target pane sizes.
+- **Consumers:** Retained UI layout, generic separator interaction, and generic panel-title reorder interaction.
+- **Invalidation:** Membership, order, and flow-option mutations invalidate the affected hierarchy/layout domain; separator drags target pane sizes and completed panel drops normalize only affected public sibling orders. Stable frames perform no ordering work.
 - **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_hstack-and-scrapbotui_vstack).
 - **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
 
@@ -262,21 +262,21 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_panel`
 
-- **Contract:** Optional titled/collapsible framing whose direct panel-action buttons occupy the title band.
+- **Contract:** Optional titled/collapsible framing whose direct panel-action buttons occupy the title band and whose unoccupied title band can opt into stack reordering or dock transfer.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
-- **Consumers:** Layout, disclosure interaction, title/action placement, SDF painting.
-- **Invalidation:** Title/collapse/geometry mutations invalidate affected layout and paint; collapsed descendants remain ECS members but leave visible traversal.
+- **Consumers:** Layout, disclosure and thresholded workspace interaction, dock-tab derivation, title/action placement, SDF painting.
+- **Invalidation:** Title/collapse/geometry mutations invalidate affected layout and paint; drag visuals repaint only during the active gesture, completed drops mutate public parent/order and synchronously refresh retained parent links before relayout, and collapsed descendants remain ECS members but leave visible traversal.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_panel).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
 
 ### `scrapbot.ui_dock_space`
 
-- **Contract:** Styled tab strip over direct dock-item children with a stable active UUID and opt-in cross-group transfer target.
-- **Storage/lifecycle:** Dedicated typed UI storage plus bounded reconciler-owned tab hit/gesture state; authored component.
+- **Contract:** Styled tab strip over direct dock-item or titled-panel children with a stable active UUID, opt-in cross-container transfer target, and opt-in horizontal/vertical edge splitting.
+- **Storage/lifecycle:** Dedicated typed UI storage plus bounded reconciler-owned tab hit/gesture state; authored component. Completed edge drops create runtime-origin project or editor-origin public layout, stack, and dock-space entities.
 - **Producers:** Scene TOML, Luau/native mutation, project UI composition, and editor workspace composition.
-- **Consumers:** Retained layout, tab measurement/paint, pointer selection, UUID reparenting, generic drop state, and immutable UI events.
-- **Invalidation:** Membership, active UUID, tab metrics, title/font, or item-parent changes invalidate only the affected UI domain. Hover/drag changes paint state; a completed transfer uses ordinary `ui_layout` structural invalidation. Stable frames do no tab discovery or paint rebuild.
+- **Consumers:** Retained layout, tab measurement/paint, pointer selection, UUID reparenting, public split-topology construction, generic drop state, and immutable UI events.
+- **Invalidation:** Membership, active UUID, tab/split metrics, title/font, or item-parent changes invalidate only the affected UI domain. Hover/drag changes paint state; a completed transfer or split uses ordinary `ui_layout` structural invalidation. Stable frames do no tab discovery, split construction, or paint rebuild.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_dock_space).
 - **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/diagnostic_driver_test.odin`.
 

@@ -965,6 +965,10 @@ run_frame_system_unmeasured :: proc(
 				cursor = .Horizontal_Resize
 			case .Vertical_Resize:
 				cursor = .Vertical_Resize
+			case .Move:
+				cursor = .Move
+			case .Not_Allowed:
+				cursor = .Not_Allowed
 		}
 		platform.set_runtime_pointer_cursor(cursor)
 		picking_system_start := time.tick_now()

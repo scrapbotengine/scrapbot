@@ -106,6 +106,14 @@ ui_drop_placement_name :: proc "contextless" (placement: shared.UI_Drop_Placemen
 			return "into"
 		case .After:
 			return "after"
+		case .Left:
+			return "left"
+		case .Right:
+			return "right"
+		case .Above:
+			return "above"
+		case .Below:
+			return "below"
 	}
 	return ""
 }

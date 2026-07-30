@@ -262,6 +262,7 @@ Vectors use `{x, y}`, `{x, y, z}`, or `{x, y, z, w}` in Luau and fixed arrays in
 | `basis`, `grow`, `shrink: number` | Non-negative flex sizing. Zero basis uses authored/intrinsic size; grow distributes positive space and shrink removes overflow without crossing `min_size`. |
 | `horizontal_alignment`, `vertical_alignment: string` | Independently place the box at `start`, `center`, or `end`, or `stretch` it through the available parent axis. |
 | `tree_item: bool`, `tree_parent: string`, `tree_order: number`, `tree_collapsed: bool` | Opt a direct child of a tree-enabled list into its semantic hierarchy. Parent is another row UUID, order is sibling-local, and collapse omits descendants without despawning them. |
+| `stack_order: number` | Sibling-local order under any HStack or VStack. Equal values retain stable entity order; drops normalize affected siblings to consecutive values. |
 | `popup: bool`, `popup_anchor: string`, `popup_open: bool`, `popup_close_on_selection: bool` | Make this root a floating popup anchored to another UI UUID. Closed popups leave layout/paint/interaction; selection dismissal applies to descendant lists. Popup roots cannot have a parent. |
 | `popup_gap: number`, `popup_min_width: number`, `popup_max_width: number`, `popup_max_height: number`, `popup_viewport_margin: number` | Non-negative placement constraints. Zero maximums mean unbounded. A non-zero maximum width must be at least the minimum width. Placement prefers below the anchor, flips above when needed, and clamps to the UI viewport without overwriting authored geometry. |
 
@@ -297,7 +298,11 @@ Both use the same payload:
 | `fill` | `false` | Treat authored main-axis sizes as proportions and fill available space. |
 | `draggable` | `false` | Turn gaps into resize separators; requires `fill`. |
 | `min_size` | `0` | Minimum pane extent along the stack axis. |
-| `wrap` | `false` | Pack children into additional lines when their preferred outer sizes exceed the main axis. Cannot be combined with legacy `fill` or draggable separators. |
+| `reorderable` | `false` | Allow movable direct-child panels to reorder or transfer through title dragging. |
+| `drag_threshold` | `5` | Non-negative pointer distance before title interaction becomes a drag instead of a collapse click. |
+| `drop_indicator_color` | `[0.42, 0.92, 0.84, 1]` | HDR insertion-line color. |
+| `drop_indicator_thickness`, `drop_indicator_inset` | `2`, `8` | Non-negative insertion-line geometry. |
+| `wrap` | `false` | Pack children into additional lines when their preferred outer sizes exceed the main axis. Cannot be combined with legacy `fill`, resize separators, or reordering. |
 | `line_gap` | `0` | Non-negative spacing between wrapped lines; `gap` remains spacing between children on one line. |
 
 ### `scrapbot.ui_scroll_area`
@@ -321,15 +326,29 @@ Speed and smoothness must be positive; scrollbar geometry is non-negative. Desce
 | `title_size: number`, `title_height: number` | `12`, `32`; both must be positive when a title is present. |
 | `disclosure_size`, `disclosure_margin`, `disclosure_gap`, `disclosure_inset` | `10`, `10`, `8`, `0`; all non-negative. The disclosure uses the built-in icon catalog. |
 | `collapsible: bool`, `collapsed: bool` | A collapsed panel must be collapsible. |
+| `movable: bool` | `false`. A movable panel requires a title and becomes a drag source in a reorderable stack or compatible dock space. |
 
 Panels do not own a special close/remove control. Any direct child `ui_button` with `panel_action = true` is placed in the trailing title band and remains interactive while the panel is collapsed. Multiple actions lay out from right to left.
 
+For a movable panel, pressing the unoccupied title band arms both familiar
+behaviors: release inside the drag threshold toggles collapse, while movement
+past the threshold starts a workspace drag. Releasing that drag without a valid
+destination cancels without toggling collapse. Compatible reorderable stacks
+accept insertion transfers, and compatible dock spaces accept the panel as a
+new tab by changing its ordinary UUID parent. While docked, the tab uses the
+panel title and replaces the internal title band; dragging that tab can return
+the panel to a stack. The destination publishes `ui_state` drop metadata and an
+immutable UI event. Separators remain independently controlled by the parent
+stack's `fill`, `draggable`, and `min_size` fields.
+
 ### `scrapbot.ui_dock_space`
 
-A dock space turns each direct child carrying `ui_dock_item` into one tab. Only
-the active item participates in descendant layout, paint, focus, and pointer
-interaction. If `active` is empty or no longer names an eligible child, the
-first direct dock item is displayed without rewriting authored data.
+A dock space turns each direct child carrying `ui_dock_item`, or each direct
+titled `ui_panel`, into one tab. Panels derive the tab title and movement policy
+from `ui_panel`; explicit dock items use `ui_dock_item`. Only the active item
+participates in descendant layout, paint, focus, and pointer interaction. If
+`active` is empty or no longer names an eligible child, the first direct item is
+displayed without rewriting authored data.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -345,12 +364,37 @@ first direct dock item is displayed without rewriting authored data.
 | `tab_hover_background` | `[0.075, 0.082, 0.098, 1]` | Hovered tab background. |
 | `tab_active_background` | `[0.105, 0.115, 0.135, 1]` | Active tab background. |
 | `drop_background` | `[0.12, 0.72, 0.64, 0.22]` | Destination overlay while a movable tab is dragged over this group. |
-| `draggable` | `true` | Accept movable dock items from another draggable dock space. |
+| `draggable` | `true` | Accept movable dock items or panels from another compatible container. |
+| `split_horizontal`, `split_vertical` | `false`, `false` | Allow edge drops to create left/right or above/below panes from ordinary public layout entities. |
+| `split_ratio` | `0.5` | Fraction of available split-axis space assigned to the newly dropped pane. |
+| `split_edge_fraction` | `0.25` | Fraction of each enabled content edge that activates its directional drop target. |
+| `split_gap` | `4` | Gap between the two generated panes; this becomes the draggable stack separator. |
+| `split_min_size` | `120` | Minimum split-axis size for each pane. Edge targets are disabled when both panes plus the gap cannot fit. |
 
 RGB style channels are linear and may exceed `1` for HDR presentation; every
 color component must remain finite. Dock regions themselves are ordinary
 layout: place dock spaces inside draggable fill HStacks or VStacks to build a
 resizable workspace.
+
+With either split axis enabled, dragging a movable panel or tab onto an enabled
+content edge replaces the target space in-place with an ordinary public
+`ui_hstack` or `ui_vstack`. The existing space and a newly created
+`ui_dock_space` become its fill children, and the dropped item becomes the new
+space's active child. Center drops retain the tab/stack transfer behavior. The
+generated topology uses the same public components, HDR styles, UUID parents,
+layout invalidation, and separator interaction available to project-authored
+game UI; the editor has no private dock tree.
+
+When a dock item contains a reorderable HStack or VStack, its tab header is a
+drop target for that descendant stack. The nearest matching stack wins,
+including inside an inactive retained item. Empty dock-space chrome remains the
+target for making a movable panel into a sibling tab. An accepting header uses
+`drop_background` while targeted, including when its inactive descendant cannot
+paint an insertion indicator.
+
+A panel's own reorderable stack becomes a tab-header destination when that
+panel is a direct dock-space child. While the panel is nested inside another
+stack, the containing stack remains the panel-drop destination.
 
 ### `scrapbot.ui_dock_item`
 
@@ -363,9 +407,10 @@ A dock item must be a direct child of a dock space. Dragging its tab across the
 five-pixel gesture threshold and releasing over another compatible space
 changes the item's public `ui_layout.parent`, activates it in the destination,
 updates the destination's read-only drop state, and publishes a `dropped` UI
-event. The initial contract transfers complete items between existing groups;
-same-group ordering, edge-created splits, floating windows, and persisted
-workspace layouts are not yet provided.
+event. A docked panel may also transfer into a reorderable stack. The current
+contract preserves same-group tab order; tab reordering, floating windows,
+automatic empty-branch collapse, and persisted workspace layouts are not yet
+provided.
 
 ### `scrapbot.ui_table`
 

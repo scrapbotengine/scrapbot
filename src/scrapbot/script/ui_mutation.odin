@@ -110,6 +110,10 @@ read_ui_component_command_from_luau :: proc "c" (
 				"tree_collapsed",
 				&value.tree_collapsed,
 			); err != "" { return err }
+			stack_order := f32(value.stack_order)
+			if err := read_ui_number_field(L, payload_index, "stack_order", &stack_order);
+			   err != "" { return err }
+			value.stack_order = int(stack_order)
 			if err := read_ui_bool_field(L, payload_index, "popup", &value.popup);
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "popup_open", &value.popup_open);
@@ -222,6 +226,32 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "min_size", &value.min_size);
 			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "reorderable", &value.reorderable);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drag_threshold",
+				&value.drag_threshold,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"drop_indicator_color",
+				&value.drop_indicator_color,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drop_indicator_thickness",
+				&value.drop_indicator_thickness,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drop_indicator_inset",
+				&value.drop_indicator_inset,
+			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "wrap", &value.wrap);
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "line_gap", &value.line_gap);
@@ -334,6 +364,8 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "collapsed", &value.collapsed);
 			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "movable", &value.movable);
+			   err != "" { return err }
 			if !shared.ui_panel_is_valid(
 				value,
 			) { return "ui_panel title and collapse settings are invalid" }
@@ -407,6 +439,34 @@ read_ui_component_command_from_luau :: proc "c" (
 			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "draggable", &value.draggable);
 			   err != "" { return err }
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"split_horizontal",
+				&value.split_horizontal,
+			); err != "" { return err }
+			if err := read_ui_bool_field(
+				L,
+				payload_index,
+				"split_vertical",
+				&value.split_vertical,
+			); err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "split_ratio", &value.split_ratio);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"split_edge_fraction",
+				&value.split_edge_fraction,
+			); err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "split_gap", &value.split_gap);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"split_min_size",
+				&value.split_min_size,
+			); err != "" { return err }
 			if !shared.ui_dock_space_is_valid(value) {
 				return "ui_dock_space tab geometry is invalid"
 			}

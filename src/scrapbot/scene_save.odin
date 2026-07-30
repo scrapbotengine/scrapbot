@@ -316,9 +316,15 @@ write_missing_scene_fields :: proc(
 			keys[0], keys[1], keys[2] = "color", "intensity", "range"
 			key_count = 3
 		case "ui_layout":
-			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5] =
-				"hidden", "horizontal_alignment", "vertical_alignment", "basis", "grow", "shrink"
-			key_count = 6
+			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5], keys[6] =
+				"hidden",
+				"horizontal_alignment",
+				"vertical_alignment",
+				"basis",
+				"grow",
+				"shrink",
+				"stack_order"
+			key_count = 7
 		case "ui_canvas":
 			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5], keys[6] =
 				"reference_size",
@@ -330,17 +336,25 @@ write_missing_scene_fields :: proc(
 				"max_scale"
 			key_count = 7
 		case "ui_hstack", "ui_vstack":
-			keys[0], keys[1], keys[2], keys[3] = "fill", "draggable", "wrap", "line_gap"
-			key_count = 4
+			keys[0], keys[1], keys[2], keys[3], keys[4] =
+				"fill", "draggable", "reorderable", "wrap", "line_gap"
+			key_count = 5
 		case "ui_text":
 			keys[0], keys[1] = "wrap", "line_height"
 			key_count = 2
 		case "ui_panel":
-			keys[0], keys[1] = "collapsible", "collapsed"
-			key_count = 2
+			keys[0], keys[1], keys[2] = "collapsible", "collapsed", "movable"
+			key_count = 3
 		case "ui_dock_space":
-			keys[0] = "active"
-			key_count = 1
+			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5], keys[6] =
+				"active",
+				"split_horizontal",
+				"split_vertical",
+				"split_ratio",
+				"split_edge_fraction",
+				"split_gap",
+				"split_min_size"
+			key_count = 7
 		case "ui_input":
 			keys[0] = "read_only"
 			key_count = 1
@@ -605,6 +619,8 @@ scene_world_field_value :: proc(
 						return scene_f32(value.grow), true
 					case "shrink":
 						return scene_f32(value.shrink), true
+					case "stack_order":
+						return fmt.tprintf("%d", value.stack_order), true
 				}
 			}
 		case "ui_canvas":
@@ -645,6 +661,9 @@ scene_world_field_value :: proc(
 				if key == "draggable" {
 					return scene_bool(value.draggable), true
 				}
+				if key == "reorderable" {
+					return scene_bool(value.reorderable), true
+				}
 				if key == "wrap" {
 					return scene_bool(value.wrap), true
 				}
@@ -660,6 +679,9 @@ scene_world_field_value :: proc(
 				}
 				if key == "draggable" {
 					return scene_bool(value.draggable), true
+				}
+				if key == "reorderable" {
+					return scene_bool(value.reorderable), true
 				}
 				if key == "wrap" {
 					return scene_bool(value.wrap), true
@@ -687,6 +709,9 @@ scene_world_field_value :: proc(
 				if key == "collapsed" {
 					return scene_bool(value.collapsed), true
 				}
+				if key == "movable" {
+					return scene_bool(value.movable), true
+				}
 			}
 		case "ui_dock_space":
 			if entity.ui_dock_space_index >= 0 &&
@@ -694,6 +719,24 @@ scene_world_field_value :: proc(
 				value := world.ui_dock_spaces[entity.ui_dock_space_index]
 				if key == "active" {
 					return fmt.tprintf("\"%s\"", scene_uuid(value.active)), true
+				}
+				if key == "split_horizontal" {
+					return scene_bool(value.split_horizontal), true
+				}
+				if key == "split_vertical" {
+					return scene_bool(value.split_vertical), true
+				}
+				if key == "split_ratio" {
+					return scene_f32(value.split_ratio), true
+				}
+				if key == "split_edge_fraction" {
+					return scene_f32(value.split_edge_fraction), true
+				}
+				if key == "split_gap" {
+					return scene_f32(value.split_gap), true
+				}
+				if key == "split_min_size" {
+					return scene_f32(value.split_min_size), true
 				}
 			}
 		case "ui_input":

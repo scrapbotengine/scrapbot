@@ -51,6 +51,8 @@ Pointer_Cursor :: enum {
 	Text_Edit,
 	Horizontal_Resize,
 	Vertical_Resize,
+	Move,
+	Not_Allowed,
 }
 Keyboard_Input :: struct {
 	text: string,
@@ -133,6 +135,18 @@ Dock_Tab :: struct {
 	space_node, item_node: int,
 	editor: bool,
 	hovered, active, drop_target: bool,
+}
+Stack_Drag_Interaction :: struct {
+	stack: shared.Entity,
+	source: shared.Entity,
+	target_stack: shared.Entity,
+	target_dock_space: shared.Entity,
+	target: shared.Entity,
+	start: shared.Vec2,
+	placement: shared.UI_Drop_Placement,
+	armed: bool,
+	dragging: bool,
+	title_handle: bool,
 }
 Node :: struct {
 	entity: shared.Entity,
@@ -341,6 +355,7 @@ State :: struct {
 	editor_ui_active_entity: shared.Entity,
 	editor_ui_has_active_entity: bool,
 	list_drags: [2]List_Drag_Interaction,
+	stack_drags: [2]Stack_Drag_Interaction,
 	next_paint_order: int,
 	layout_size_changed: bool,
 	split_handles: [MAX_NODES]Split_Handle,
@@ -356,6 +371,10 @@ State :: struct {
 	dock_drag_start: shared.Vec2,
 	dock_dragging: bool,
 	dock_drop_space_node: int,
+	dock_drop_space_placement: shared.UI_Drop_Placement,
+	dock_drop_stack_node: int,
+	dock_drop_stack_target: shared.Entity,
+	dock_drop_stack_placement: shared.UI_Drop_Placement,
 	pointer_cursor: Pointer_Cursor,
 	editor_visible: bool,
 	editor_simulation_playing: bool,
@@ -565,6 +584,8 @@ init :: proc(state: ^State) -> string {
 	state.active_split_handle = -1
 	state.active_dock_tab = -1
 	state.dock_drop_space_node = -1
+	state.dock_drop_space_placement = .None
+	state.dock_drop_stack_node = -1
 	state.project_canvas_entity_index = -1
 	state.font.glyphs = &FONT_GLYPHS
 	state.font.ascender = FONT_ASCENDER
@@ -945,6 +966,10 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 		state.editor_dock_previous_primary_down = false
 		state.dock_dragging = false
 		state.dock_drop_space_node = -1
+		state.dock_drop_space_placement = .None
+		state.dock_drop_stack_node = -1
+		state.dock_drop_stack_target = {}
+		state.dock_drop_stack_placement = .None
 		for entity, entity_index in world.entities {
 			if entity.alive && entity.ui_layout_index >= 0 {
 				ecs.mark_ui_entity_dirty(world, entity_index)
@@ -1289,6 +1314,9 @@ reconcile :: proc(
 		false,
 	)
 	if project_dock_changed {
+		if err := sync_ui_structure(state, world); err != "" {
+			return err
+		}
 		if err := layout_all(state, world, project_layout, editor_layout); err != "" {
 			return err
 		}
@@ -1300,6 +1328,9 @@ reconcile :: proc(
 		true,
 	)
 	if editor_dock_changed {
+		if err := sync_ui_structure(state, world); err != "" {
+			return err
+		}
 		if err := layout_all(state, world, project_layout, editor_layout); err != "" {
 			return err
 		}
@@ -1327,6 +1358,9 @@ reconcile :: proc(
 				   state.active_dock_tab < state.dock_tab_count &&
 				   state.dock_tabs[state.active_dock_tab].item_node == tab.item_node {
 				state.pointer_cursor = .Pointer
+				if dock_item_movable(world, state.nodes[tab.item_node]) {
+					state.pointer_cursor = .Move
+				}
 				break
 			}
 		}
@@ -1374,14 +1408,50 @@ reconcile :: proc(
 		false,
 	)
 	pressed, pressed_ok, editor_hit := update_interaction(state, editor_pointer, true)
+	panel_changed := false
+	project_stack_drag_armed := false
+	editor_stack_drag_armed := false
 	if project_press_started && project_pressed_ok {
 		list_drag_begin(state, world, project_pressed, project_pointer.position, false)
+		project_stack_drag_armed = stack_drag_begin(
+			state,
+			world,
+			project_pressed,
+			project_pointer.position,
+			false,
+		)
 	}
 	if editor_press_started && pressed_ok {
 		list_drag_begin(state, world, pressed, editor_pointer.position, true)
+		editor_stack_drag_armed = stack_drag_begin(
+			state,
+			world,
+			pressed,
+			editor_pointer.position,
+			true,
+		)
 	}
 	list_drag_update(state, world, project_pointer, project_press_released, false)
 	list_drag_update(state, world, editor_pointer, editor_press_released, true)
+	stack_layout_changed, stack_title_clicked := stack_drag_update(
+		state,
+		world,
+		project_pointer,
+		project_press_released,
+		false,
+	)
+	panel_changed = stack_layout_changed || stack_title_clicked || panel_changed
+	stack_layout_changed, stack_title_clicked = stack_drag_update(
+		state,
+		world,
+		editor_pointer,
+		editor_press_released,
+		true,
+	)
+	panel_changed = stack_layout_changed || stack_title_clicked || panel_changed
+	if drag_cursor := workspace_drag_pointer_cursor(state); drag_cursor != .Default {
+		state.pointer_cursor = drag_cursor
+	}
 	update_color_picker_interaction(
 		state,
 		world,
@@ -1420,7 +1490,6 @@ reconcile :: proc(
 		)
 	}
 	sync_ui_interaction_states(state, world)
-	panel_changed := false
 	if pressed_ok {
 		_ = mark_ui_event(state, world, .Activated, pressed, editor_pointer.position)
 		panel_changed = handle_popup_press(state, world, pressed) || panel_changed
@@ -1432,13 +1501,15 @@ reconcile :: proc(
 		handle_input_press(state, world, pressed, editor_pointer.position)
 		checkbox_changed := handle_checkbox_press(state, world, pressed)
 		panel_changed = checkbox_changed || panel_changed
-		panel_title_changed := handle_panel_title_press(
-			state,
-			world,
-			pressed,
-			editor_pointer.position,
-		)
-		panel_changed = panel_title_changed || panel_changed
+		if !editor_stack_drag_armed {
+			panel_title_changed := handle_panel_title_press(
+				state,
+				world,
+				pressed,
+				editor_pointer.position,
+			)
+			panel_changed = panel_title_changed || panel_changed
+		}
 	}
 	if project_pressed_ok {
 		_ = mark_ui_event(state, world, .Activated, project_pressed, project_pointer.position)
@@ -1450,13 +1521,15 @@ reconcile :: proc(
 		handle_input_press(state, world, project_pressed, project_pointer.position)
 		checkbox_changed := handle_checkbox_press(state, world, project_pressed)
 		panel_changed = checkbox_changed || panel_changed
-		panel_title_changed := handle_panel_title_press(
-			state,
-			world,
-			project_pressed,
-			project_pointer.position,
-		)
-		panel_changed = panel_title_changed || panel_changed
+		if !project_stack_drag_armed {
+			panel_title_changed := handle_panel_title_press(
+				state,
+				world,
+				project_pressed,
+				project_pointer.position,
+			)
+			panel_changed = panel_title_changed || panel_changed
+		}
 	}
 	if editor_press_started && !pressed_ok {
 		panel_changed = close_popups_on_escape(state, world, true, false) || panel_changed
@@ -1477,6 +1550,9 @@ reconcile :: proc(
 		panel_changed
 	sync_ui_interaction_states(state, world)
 	if panel_changed {
+		if err := sync_ui_structure(state, world); err != "" {
+			return err
+		}
 		if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err }
 	}
 	if editor_press_started &&
@@ -2121,9 +2197,11 @@ find_parent_entity :: proc(
 	if id == (shared.Entity_UUID{}) {
 		return -1
 	}
-	if index, found := ecs.entity_index_by_uuid(world, id);
-	   found && world.entities[index].origin == origin {
-		return index
+	if index, found := ecs.entity_index_by_uuid(world, id); found {
+		parent_origin := world.entities[index].origin
+		if parent_origin == origin || parent_origin != .Editor && origin != .Editor {
+			return index
+		}
 	}
 	return -1
 }
@@ -2396,6 +2474,31 @@ node_is_panel_action :: proc(world: ^shared.World, node: ^Node) -> bool {
 		node.button_index < len(world.ui_buttons) &&
 		world.ui_buttons[node.button_index].panel_action \
 	)
+}
+
+sort_stack_nodes :: proc(
+	state: ^State,
+	world: ^shared.World,
+	values: ^[MAX_NODES]int,
+	count: int,
+) {
+	for index in 1 ..< count {
+		value := values[index]
+		order := world.ui_layouts[state.nodes[value].layout_index].stack_order
+		cursor := index
+		for cursor > 0 {
+			previous := values[cursor - 1]
+			previous_order := world.ui_layouts[state.nodes[previous].layout_index].stack_order
+			if previous_order < order ||
+			   previous_order == order &&
+				   state.nodes[previous].entity.index < state.nodes[value].entity.index {
+				break
+			}
+			values[cursor] = previous
+			cursor -= 1
+		}
+		values[cursor] = value
+	}
 }
 
 tree_node_less :: proc(state: ^State, world: ^shared.World, left_index, right_index: int) -> bool {
@@ -3041,9 +3144,8 @@ layout_node :: proc(
 		for child_index >= 0 {
 			child := &state.nodes[child_index]
 			child_layout := world.ui_layouts[child.layout_index]
-			if !child_layout.hidden &&
-			   child.dock_item_index >= 0 &&
-			   child.dock_item_index < len(world.ui_dock_items) {
+			_, is_dock_item := dock_item_title(world, child^)
+			if !child_layout.hidden && is_dock_item {
 				if first_item_node < 0 {
 					first_item_node = child_index
 				}
@@ -3062,11 +3164,9 @@ layout_node :: proc(
 		for child_index >= 0 && state.dock_tab_count < MAX_NODES {
 			child := &state.nodes[child_index]
 			child_layout := world.ui_layouts[child.layout_index]
-			if !child_layout.hidden &&
-			   child.dock_item_index >= 0 &&
-			   child.dock_item_index < len(world.ui_dock_items) {
-				item := world.ui_dock_items[child.dock_item_index]
-				text_bounds, has_ink := measure_text_ink(state, item.title, dock_space.tab_size)
+			title, is_dock_item := dock_item_title(world, child^)
+			if !child_layout.hidden && is_dock_item {
+				text_bounds, has_ink := measure_text_ink(state, title, dock_space.tab_size)
 				text_width := f32(0)
 				if has_ink {
 					text_width = text_bounds.width
@@ -3106,7 +3206,8 @@ layout_node :: proc(
 		}
 	}
 	panel_title_height := f32(0)
-	if is_panel && panel.title != "" {
+	panel_docked := is_panel && node_is_docked_panel(state, world, node_index)
+	if is_panel && !panel_docked && panel.title != "" {
 		panel_title_height = min(max(panel.title_height, 0), content.height)
 		content.y += panel_title_height
 		content.height -= panel_title_height
@@ -3149,7 +3250,7 @@ layout_node :: proc(
 			child_index = next_child_index
 		}
 	}
-	if is_panel && panel.collapsible && panel.collapsed {
+	if is_panel && !panel_docked && panel.collapsible && panel.collapsed {
 		node.scroll_offset = 0
 		node.scroll_target = 0
 		node.scroll_max = 0
@@ -3218,6 +3319,9 @@ layout_node :: proc(
 			}
 			total_weight += child.split_weight
 			child_index = next_child_index
+		}
+		if is_hstack || is_vstack {
+			sort_stack_nodes(state, world, &children, child_count)
 		}
 	}
 	available_main := content.height; if is_hstack { available_main = content.width }
@@ -3538,6 +3642,9 @@ layout_node :: proc(
 		cursor = f32(list_flow_start) * stride
 	}
 	child_index := node.first_child_node
+	if (is_hstack || is_vstack) && child_count > 0 {
+		child_index = children[0]
+	}
 	if is_list {
 		child_index = -1
 		if list_flow_start < list_flow_end {
@@ -3551,6 +3658,12 @@ layout_node :: proc(
 		}
 		child := &state.nodes[child_index]
 		next_child_index := child.next_sibling_node
+		if is_hstack || is_vstack {
+			next_child_index = -1
+			if child_ordinal + 1 < child_count {
+				next_child_index = children[child_ordinal + 1]
+			}
+		}
 		if is_list {
 			next_child_index = -1
 			if list_flow_ordinal + 1 < list_flow_end {
@@ -3559,9 +3672,10 @@ layout_node :: proc(
 			list_flow_ordinal += 1
 		}
 		child_layout := world.ui_layouts[child.layout_index]
+		_, child_is_dock_item := dock_item_title(world, child^)
 		if child_layout.hidden ||
 		   is_panel && node_is_panel_action(world, child) ||
-		   is_dock_space && child.dock_item_index >= 0 && child_index != dock_active_node {
+		   is_dock_space && child_is_dock_item && child_index != dock_active_node {
 			child_index = next_child_index
 			continue
 		}
@@ -3593,7 +3707,7 @@ layout_node :: proc(
 			}
 			has_child_size = true
 		}
-		if is_dock_space && child.dock_item_index >= 0 && child_index == dock_active_node {
+		if is_dock_space && child_is_dock_item && child_index == dock_active_node {
 			child_size = {
 				max(
 					content.width - child_layout.margin.w - child_layout.margin.y,
@@ -3941,12 +4055,41 @@ control_pointer_cursor :: proc(
 				panel := world.ui_panels[entity.ui_panel_index]
 				title_height := min(max(panel.title_height, 0), node.rect.height)
 				title_rect := Rect{node.rect.x, node.rect.y, node.rect.width, title_height}
-				if panel.collapsible && panel.title != "" && rect_contains(title_rect, position) {
+				if panel.title != "" &&
+				   rect_contains(title_rect, position) &&
+				   (panel.movable || panel.collapsible) {
+					if panel.movable {
+						return .Move
+					}
 					return .Pointer
 				}
 			}
 		}
 		current = node.parent_node_index
+	}
+	return .Default
+}
+
+workspace_drag_pointer_cursor :: proc(state: ^State) -> Pointer_Cursor {
+	if state == nil {
+		return .Default
+	}
+	if state.dock_dragging {
+		if state.dock_drop_space_node >= 0 || state.dock_drop_stack_node >= 0 {
+			return .Move
+		}
+		return .Not_Allowed
+	}
+	for drag in state.stack_drags {
+		if !drag.armed {
+			continue
+		}
+		if !drag.dragging ||
+		   drag.target_stack != (shared.Entity{}) ||
+		   drag.target_dock_space != (shared.Entity{}) {
+			return .Move
+		}
+		return .Not_Allowed
 	}
 	return .Default
 }
@@ -3977,7 +4120,14 @@ dock_tab_visual_signature :: proc(state: ^State, editor: bool) -> u64 {
 	if state.dock_drop_space_node >= 0 &&
 	   state.dock_drop_space_node < state.node_count &&
 	   (state.nodes[state.dock_drop_space_node].origin == .Editor) == editor {
-		value := u64(state.dock_drop_space_node + 1)
+		value := u64(state.dock_drop_space_node + 1) + (u64(state.dock_drop_space_placement) << 32)
+		signature = hash.fnv64a((cast([^]byte)&value)[:size_of(value)], signature)
+	}
+	if state.dock_drop_stack_node >= 0 &&
+	   state.dock_drop_stack_node < state.node_count &&
+	   (state.nodes[state.dock_drop_stack_node].origin == .Editor) == editor {
+		value: u64 =
+			u64(state.dock_drop_stack_node + 1) + (u64(state.dock_drop_stack_placement) << 32)
 		signature = hash.fnv64a((cast([^]byte)&value)[:size_of(value)], signature)
 	}
 	return signature
@@ -3995,6 +4145,93 @@ update_dock_paint_revision :: proc(state: ^State, editor: bool, previous_signatu
 	if revision^ == 0 {
 		revision^ = 1
 	}
+}
+
+dock_space_content_rect :: proc "contextless" (
+	node: Node,
+	value: shared.UI_Dock_Space_Component,
+) -> Rect {
+	return {
+		node.rect.x,
+		node.rect.y + value.tab_height,
+		node.rect.width,
+		max(node.rect.height - value.tab_height, 0),
+	}
+}
+
+dock_space_drop_placement :: proc(
+	node: Node,
+	value: shared.UI_Dock_Space_Component,
+	position: shared.Vec2,
+) -> shared.UI_Drop_Placement {
+	content := dock_space_content_rect(node, value)
+	if !rect_contains(content, position) || content.width <= 0 || content.height <= 0 {
+		return .Into
+	}
+	best := value.split_edge_fraction + 1
+	placement := shared.UI_Drop_Placement.Into
+	if value.split_horizontal && content.width >= value.split_min_size * 2 + value.split_gap {
+		left := (position.x - content.x) / content.width
+		if left <= value.split_edge_fraction && left < best {
+			best = left
+			placement = .Left
+		}
+		right := (content.x + content.width - position.x) / content.width
+		if right <= value.split_edge_fraction && right < best {
+			best = right
+			placement = .Right
+		}
+	}
+	if value.split_vertical && content.height >= value.split_min_size * 2 + value.split_gap {
+		above := (position.y - content.y) / content.height
+		if above <= value.split_edge_fraction && above < best {
+			best = above
+			placement = .Above
+		}
+		below := (content.y + content.height - position.y) / content.height
+		if below <= value.split_edge_fraction && below < best {
+			placement = .Below
+		}
+	}
+	return placement
+}
+
+dock_space_split_preview_rect :: proc "contextless" (
+	node: Node,
+	value: shared.UI_Dock_Space_Component,
+	placement: shared.UI_Drop_Placement,
+) -> Rect {
+	content := dock_space_content_rect(node, value)
+	switch placement {
+		case .Left, .Right:
+			available := max(content.width - value.split_gap, 0)
+			extent := clamp(
+				available * value.split_ratio,
+				value.split_min_size,
+				max(available - value.split_min_size, value.split_min_size),
+			)
+			if placement == .Left {
+				content.width = extent
+			} else {
+				content.x += content.width - extent
+				content.width = extent
+			}
+		case .Above, .Below:
+			available := max(content.height - value.split_gap, 0)
+			extent := clamp(
+				available * value.split_ratio,
+				value.split_min_size,
+				max(available - value.split_min_size, value.split_min_size),
+			)
+			if placement == .Above {
+				content.height = extent
+			} else {
+				content.y += content.height - extent
+				content.height = extent
+			}
+		case .None, .Before, .Into, .After:
+	}
+	return content
 }
 
 update_dock_interaction :: proc(
@@ -4021,6 +4258,10 @@ update_dock_interaction :: proc(
 			state.active_dock_tab = -1
 			state.dock_dragging = false
 			state.dock_drop_space_node = -1
+			state.dock_drop_space_placement = .None
+			state.dock_drop_stack_node = -1
+			state.dock_drop_stack_target = {}
+			state.dock_drop_stack_placement = .None
 		}
 		if editor {
 			state.editor_dock_previous_primary_down = false
@@ -4069,10 +4310,7 @@ update_dock_interaction :: proc(
 		active_tab := &state.dock_tabs[state.active_dock_tab]
 		active_tab.hovered = true
 		item := state.nodes[active_tab.item_node]
-		movable :=
-			item.dock_item_index >= 0 &&
-			item.dock_item_index < len(world.ui_dock_items) &&
-			world.ui_dock_items[item.dock_item_index].movable
+		movable := dock_item_movable(world, item)
 		delta := shared.Vec2 {
 			pointer.position.x - state.dock_drag_start.x,
 			pointer.position.y - state.dock_drag_start.y,
@@ -4082,22 +4320,98 @@ update_dock_interaction :: proc(
 		}
 		if state.dock_dragging {
 			target_space := -1
+			target_space_placement := shared.UI_Drop_Placement.Into
+			target_stack := -1
+			target_stack_item: shared.Entity
+			target_stack_placement := shared.UI_Drop_Placement.None
 			target_paint_order := -1
 			for &candidate, candidate_index in state.nodes[:state.node_count] {
 				if (candidate.origin == .Editor) != editor ||
-				   candidate.dock_space_index < 0 ||
-				   candidate.dock_space_index >= len(world.ui_dock_spaces) ||
-				   !world.ui_dock_spaces[candidate.dock_space_index].draggable ||
 				   !candidate.laid_out ||
 				   !rect_contains(candidate.rect, pointer.position) ||
 				   candidate.paint_order < target_paint_order {
 					continue
 				}
-				target_space = candidate_index
+				if candidate.dock_space_index >= 0 &&
+				   candidate.dock_space_index < len(world.ui_dock_spaces) &&
+				   world.ui_dock_spaces[candidate.dock_space_index].draggable {
+					target_space = candidate_index
+					target_space_placement = dock_space_drop_placement(
+						candidate,
+						world.ui_dock_spaces[candidate.dock_space_index],
+						pointer.position,
+					)
+					target_stack = -1
+					target_paint_order = candidate.paint_order
+					continue
+				}
+				if item.panel_index < 0 || item.panel_index >= len(world.ui_panels) {
+					continue
+				}
+				if target_space >= 0 &&
+				   ui_dock_split_is_directional(target_space_placement) &&
+				   ui_node_descends_from(state, candidate_index, target_space) {
+					continue
+				}
+				candidate_stack, horizontal, stack_ok := stack_component_for_node(world, candidate)
+				if !stack_ok ||
+				   !candidate_stack.reorderable ||
+				   candidate.panel_index >= 0 &&
+					   !node_is_docked_panel(state, world, candidate_index) {
+					continue
+				}
+				target_space = -1
+				target_stack = candidate_index
+				target_stack_item = {}
+				target_stack_placement = .After
 				target_paint_order = candidate.paint_order
+				child := candidate.first_child_node
+				for child >= 0 {
+					stack_item := state.nodes[child]
+					if stack_item.entity != item.entity &&
+					   stack_item.laid_out &&
+					   rect_contains(stack_item.rect, pointer.position) {
+						target_stack_item = stack_item.entity
+						target_stack_placement = .Before
+						if horizontal &&
+							   pointer.position.x >=
+								   stack_item.rect.x + stack_item.rect.width * 0.5 ||
+						   !horizontal &&
+							   pointer.position.y >=
+								   stack_item.rect.y + stack_item.rect.height * 0.5 {
+							target_stack_placement = .After
+						}
+						break
+					}
+					child = stack_item.next_sibling_node
+				}
+			}
+			if target_space >= 0 &&
+			   target_space_placement == .Into &&
+			   item.panel_index >= 0 &&
+			   item.panel_index < len(world.ui_panels) {
+				tab_stack := dock_tab_reorderable_stack_at_pointer(
+					state,
+					world,
+					target_space,
+					pointer.position,
+					active_tab.item_node,
+					true,
+				)
+				if tab_stack >= 0 {
+					target_space = -1
+					target_space_placement = .None
+					target_stack = tab_stack
+					target_stack_item = {}
+					target_stack_placement = .After
+				}
 			}
 			state.dock_drop_space_node = target_space
-			if target_space >= 0 {
+			state.dock_drop_space_placement = target_space_placement
+			state.dock_drop_stack_node = target_stack
+			state.dock_drop_stack_target = target_stack_item
+			state.dock_drop_stack_placement = target_stack_placement
+			if target_space >= 0 && target_space_placement == .Into {
 				for &tab in state.dock_tabs[:state.dock_tab_count] {
 					if tab.space_node == target_space {
 						tab.drop_target = true
@@ -4111,7 +4425,27 @@ update_dock_interaction :: proc(
 	   state.active_dock_tab >= 0 &&
 	   state.active_dock_tab < state.dock_tab_count {
 		active_tab := state.dock_tabs[state.active_dock_tab]
-		if state.dock_dragging && state.dock_drop_space_node >= 0 {
+		if state.dock_dragging &&
+		   state.dock_drop_space_node >= 0 &&
+		   ui_dock_split_is_directional(state.dock_drop_space_placement) {
+			source_space := state.nodes[active_tab.space_node]
+			target_space := state.nodes[state.dock_drop_space_node]
+			item := state.nodes[active_tab.item_node]
+			layout_changed =
+				apply_dock_split_drop(
+					state,
+					world,
+					item.entity,
+					target_space.entity,
+					{},
+					source_space.entity,
+					state.dock_drop_space_placement,
+					pointer.position,
+				) ||
+				layout_changed
+		} else if state.dock_dragging &&
+		   state.dock_drop_space_node >= 0 &&
+		   state.dock_drop_space_placement == .Into {
 			source_space := state.nodes[active_tab.space_node]
 			target_space := state.nodes[state.dock_drop_space_node]
 			item := state.nodes[active_tab.item_node]
@@ -4159,10 +4493,69 @@ update_dock_interaction :: proc(
 					}
 				}
 			}
+		} else if state.dock_dragging && state.dock_drop_stack_node >= 0 {
+			source_space := state.nodes[active_tab.space_node]
+			target_stack := state.nodes[state.dock_drop_stack_node]
+			item := state.nodes[active_tab.item_node]
+			item_entity_index := int(item.entity.index)
+			target_entity_index := int(target_stack.entity.index)
+			source_entity_index := int(source_space.entity.index)
+			if item.panel_index >= 0 &&
+			   item.panel_index < len(world.ui_panels) &&
+			   item_entity_index >= 0 &&
+			   item_entity_index < len(world.entities) &&
+			   target_entity_index >= 0 &&
+			   target_entity_index < len(world.entities) {
+				item_uuid := world.entities[item_entity_index].uuid
+				layout := world.ui_layouts[item.layout_index]
+				layout.parent = world.entities[target_entity_index].uuid
+				if ecs.set_ui_layout(world, item_entity_index, layout) {
+					layout_changed =
+						normalize_stack_order(
+							state,
+							world,
+							state.dock_drop_stack_node,
+							item.entity,
+							state.dock_drop_stack_target,
+							state.dock_drop_stack_placement,
+						) ||
+						layout_changed
+					if source_entity_index >= 0 && source_entity_index < len(world.entities) {
+						source_value := world.ui_dock_spaces[source_space.dock_space_index]
+						source_value.active = {}
+						_ = ecs.set_ui_dock_space(world, source_entity_index, source_value)
+					}
+					interaction := ecs.ensure_ui_state(world, target_entity_index)
+					if interaction != nil {
+						interaction.changed = true
+						interaction.change_revision += 1
+						interaction.drag_source = item_uuid
+						interaction.drop_target = world.entities[target_entity_index].uuid
+						interaction.drop_placement = state.dock_drop_stack_placement
+						interaction.drop_revision += 1
+						ecs.mark_ui_state_transient(world, target_entity_index)
+					}
+					append_ui_event(
+						state,
+						{
+							kind = .Dropped,
+							entity = target_stack.entity,
+							source = item.entity,
+							target = state.dock_drop_stack_target,
+							drop_placement = state.dock_drop_stack_placement,
+							position = pointer.position,
+						},
+					)
+				}
+			}
 		}
 		state.active_dock_tab = -1
 		state.dock_dragging = false
 		state.dock_drop_space_node = -1
+		state.dock_drop_space_placement = .None
+		state.dock_drop_stack_node = -1
+		state.dock_drop_stack_target = {}
+		state.dock_drop_stack_placement = .None
 		captured = true
 	}
 	if editor {
@@ -5291,6 +5684,848 @@ pointer_hit_node :: proc(state: ^State, position: shared.Vec2, editor: bool) -> 
 	return hit
 }
 
+stack_for_panel_title :: proc(
+	state: ^State,
+	world: ^shared.World,
+	hit_node: int,
+	position: shared.Vec2,
+) -> (
+	stack: shared.Entity,
+	panel: shared.Entity,
+	found: bool,
+) {
+	if state == nil || world == nil || hit_node < 0 || hit_node >= state.node_count {
+		return
+	}
+	if node_is_panel_action(world, &state.nodes[hit_node]) {
+		return
+	}
+	current := hit_node
+	for current >= 0 {
+		node := &state.nodes[current]
+		if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
+			value := world.ui_panels[node.panel_index]
+			title := Rect{node.rect.x, node.rect.y, node.rect.width, value.title_height}
+			parent_index := node.parent_node_index
+			if value.movable &&
+			   value.title != "" &&
+			   rect_contains(title, position) &&
+			   parent_index >= 0 {
+				parent := state.nodes[parent_index]
+				stack_index := parent.hstack_index
+				if stack_index < 0 {
+					stack_index = parent.vstack_index
+				}
+				storage := world.ui_hstacks[:]
+				if parent.vstack_index >= 0 {
+					storage = world.ui_vstacks[:]
+				}
+				if stack_index >= 0 &&
+				   stack_index < len(storage) &&
+				   storage[stack_index].reorderable {
+					return parent.entity, node.entity, true
+				}
+			}
+		}
+		current = node.parent_node_index
+	}
+	return
+}
+
+stack_drag_begin :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pressed: shared.Entity,
+	position: shared.Vec2,
+	editor: bool,
+) -> bool {
+	node_index := find_node(state, pressed)
+	stack, panel, found := stack_for_panel_title(state, world, node_index, position)
+	if !found {
+		return false
+	}
+	slot := 0
+	if editor {
+		slot = 1
+	}
+	state.stack_drags[slot] = {
+		stack = stack,
+		source = panel,
+		start = position,
+		armed = true,
+		title_handle = true,
+	}
+	return true
+}
+
+stack_component_for_node :: proc(
+	world: ^shared.World,
+	node: Node,
+) -> (
+	shared.UI_Stack_Component,
+	bool,
+	bool,
+) {
+	if node.hstack_index >= 0 && node.hstack_index < len(world.ui_hstacks) {
+		return world.ui_hstacks[node.hstack_index], true, true
+	}
+	if node.vstack_index >= 0 && node.vstack_index < len(world.ui_vstacks) {
+		return world.ui_vstacks[node.vstack_index], false, true
+	}
+	return {}, false, false
+}
+
+dock_item_title :: proc(world: ^shared.World, node: Node) -> (string, bool) {
+	if node.dock_item_index >= 0 && node.dock_item_index < len(world.ui_dock_items) {
+		return world.ui_dock_items[node.dock_item_index].title, true
+	}
+	if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
+		panel := world.ui_panels[node.panel_index]
+		if panel.title != "" {
+			return panel.title, true
+		}
+	}
+	return "", false
+}
+
+dock_item_movable :: proc(world: ^shared.World, node: Node) -> bool {
+	if node.dock_item_index >= 0 && node.dock_item_index < len(world.ui_dock_items) {
+		return world.ui_dock_items[node.dock_item_index].movable
+	}
+	if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
+		return world.ui_panels[node.panel_index].movable
+	}
+	return false
+}
+
+dock_item_reorderable_stack_node :: proc(
+	state: ^State,
+	world: ^shared.World,
+	item_node_index: int,
+) -> int {
+	if state == nil || world == nil || item_node_index < 0 || item_node_index >= state.node_count {
+		return -1
+	}
+	queue: [MAX_NODES]int
+	queue[0] = item_node_index
+	cursor := 0
+	count := 1
+	for cursor < count {
+		node_index := queue[cursor]
+		cursor += 1
+		stack, _, is_stack := stack_component_for_node(world, state.nodes[node_index])
+		if is_stack && stack.reorderable {
+			return node_index
+		}
+		child := state.nodes[node_index].first_child_node
+		for child >= 0 && count < MAX_NODES {
+			queue[count] = child
+			count += 1
+			child = state.nodes[child].next_sibling_node
+		}
+	}
+	return -1
+}
+
+dock_tab_reorderable_stack_at_pointer :: proc(
+	state: ^State,
+	world: ^shared.World,
+	space_node_index: int,
+	position: shared.Vec2,
+	excluded_item_node: int = -1,
+	mark_drop_target: bool = false,
+) -> int {
+	if state == nil || world == nil || space_node_index < 0 {
+		return -1
+	}
+	for &tab in state.dock_tabs[:state.dock_tab_count] {
+		if tab.space_node == space_node_index &&
+		   tab.item_node != excluded_item_node &&
+		   rect_contains(tab.rect, position) {
+			stack_node := dock_item_reorderable_stack_node(state, world, tab.item_node)
+			if stack_node >= 0 && mark_drop_target {
+				tab.drop_target = true
+			}
+			return stack_node
+		}
+	}
+	return -1
+}
+
+node_is_docked_panel :: proc(state: ^State, world: ^shared.World, node_index: int) -> bool {
+	if state == nil || world == nil || node_index < 0 || node_index >= state.node_count {
+		return false
+	}
+	node := state.nodes[node_index]
+	if node.panel_index < 0 || node.panel_index >= len(world.ui_panels) {
+		return false
+	}
+	parent_index := node.parent_node_index
+	if parent_index < 0 ||
+	   parent_index >= state.node_count ||
+	   state.nodes[parent_index].dock_space_index < 0 {
+		return false
+	}
+	_, eligible := dock_item_title(world, node)
+	return eligible
+}
+
+normalize_stack_order :: proc(
+	state: ^State,
+	world: ^shared.World,
+	stack_node_index: int,
+	source: shared.Entity = {},
+	target: shared.Entity = {},
+	placement: shared.UI_Drop_Placement = .None,
+) -> bool {
+	if stack_node_index < 0 || stack_node_index >= state.node_count {
+		return false
+	}
+	nodes: [MAX_NODES]int
+	count := 0
+	child := state.nodes[stack_node_index].first_child_node
+	for child >= 0 {
+		if state.nodes[child].entity != source {
+			nodes[count] = child
+			count += 1
+		}
+		child = state.nodes[child].next_sibling_node
+	}
+	sort_stack_nodes(state, world, &nodes, count)
+	insert := count
+	if target != (shared.Entity{}) {
+		for index in 0 ..< count {
+			if state.nodes[nodes[index]].entity == target {
+				insert = index
+				if placement == .After {
+					insert += 1
+				}
+				break
+			}
+		}
+	}
+	ordered: [MAX_NODES]shared.Entity
+	ordered_count := 0
+	for index in 0 ..< insert {
+		ordered[ordered_count] = state.nodes[nodes[index]].entity
+		ordered_count += 1
+	}
+	if source != (shared.Entity{}) {
+		ordered[ordered_count] = source
+		ordered_count += 1
+	}
+	for index in insert ..< count {
+		ordered[ordered_count] = state.nodes[nodes[index]].entity
+		ordered_count += 1
+	}
+	changed := false
+	for order in 0 ..< ordered_count {
+		entity_index := int(ordered[order].index)
+		if !ecs.entity_is_alive(world, entity_index) ||
+		   world.entities[entity_index].id != ordered[order] {
+			continue
+		}
+		layout_index := world.entities[entity_index].ui_layout_index
+		if layout_index < 0 || layout_index >= len(world.ui_layouts) {
+			continue
+		}
+		value := world.ui_layouts[layout_index]
+		if value.stack_order == order {
+			continue
+		}
+		value.stack_order = order
+		changed = ecs.set_ui_layout(world, entity_index, value) || changed
+	}
+	return changed
+}
+
+apply_stack_drop :: proc(
+	state: ^State,
+	world: ^shared.World,
+	drag: Stack_Drag_Interaction,
+	position: shared.Vec2,
+) -> bool {
+	source_node := find_node(state, drag.source)
+	source_stack_node := find_node(state, drag.stack)
+	target_stack_node := find_node(state, drag.target_stack)
+	if source_node < 0 || source_stack_node < 0 || target_stack_node < 0 {
+		return false
+	}
+	source_index := int(drag.source.index)
+	target_stack_index := int(drag.target_stack.index)
+	if !ecs.entity_is_alive(world, source_index) ||
+	   !ecs.entity_is_alive(world, target_stack_index) {
+		return false
+	}
+	layout := world.ui_layouts[state.nodes[source_node].layout_index]
+	layout.parent = world.entities[target_stack_index].uuid
+	layout_changed := ecs.set_ui_layout(world, source_index, layout)
+	layout_changed =
+		normalize_stack_order(
+			state,
+			world,
+			target_stack_node,
+			drag.source,
+			drag.target,
+			drag.placement,
+		) ||
+		layout_changed
+	if drag.stack != drag.target_stack {
+		layout_changed =
+			normalize_stack_order(state, world, source_stack_node, drag.source) || layout_changed
+	}
+	interaction := ecs.ensure_ui_state(world, target_stack_index)
+	if interaction != nil {
+		interaction.changed = true
+		interaction.change_revision += 1
+		interaction.drag_source = world.entities[source_index].uuid
+		interaction.drop_target = world.entities[target_stack_index].uuid
+		interaction.drop_placement = drag.placement
+		interaction.drop_revision += 1
+		ecs.mark_ui_state_transient(world, target_stack_index)
+	}
+	append_ui_event(
+		state,
+		{
+			kind = .Dropped,
+			entity = drag.target_stack,
+			source = drag.source,
+			target = drag.target,
+			drop_placement = drag.placement,
+			position = position,
+		},
+	)
+	return layout_changed
+}
+
+ui_dock_split_is_directional :: proc "contextless" (placement: shared.UI_Drop_Placement) -> bool {
+	return placement == .Left || placement == .Right || placement == .Above || placement == .Below
+}
+
+ui_node_descends_from :: proc "contextless" (
+	state: ^State,
+	node_index, ancestor_index: int,
+) -> bool {
+	if state == nil || node_index < 0 || ancestor_index < 0 {
+		return false
+	}
+	for current := node_index; current >= 0; current = state.nodes[current].parent_node_index {
+		if current == ancestor_index {
+			return true
+		}
+	}
+	return false
+}
+
+dock_split_outer_layout :: proc "contextless" (
+	value: shared.UI_Layout_Component,
+) -> shared.UI_Layout_Component {
+	return {
+		parent = value.parent,
+		position = value.position,
+		size = value.size,
+		min_size = value.min_size,
+		margin = value.margin,
+		hidden = value.hidden,
+		fill_width = value.fill_width,
+		fill_height = value.fill_height,
+		fixed_in_fill = value.fixed_in_fill,
+		basis = value.basis,
+		grow = value.grow,
+		shrink = value.shrink,
+		horizontal_alignment = value.horizontal_alignment,
+		vertical_alignment = value.vertical_alignment,
+		stack_order = value.stack_order,
+	}
+}
+
+dock_split_child_layout :: proc "contextless" (
+	value: shared.UI_Layout_Component,
+	parent: shared.Entity_UUID,
+	size: shared.Vec2,
+	min_size: f32,
+	order: int,
+	horizontal: bool,
+) -> shared.UI_Layout_Component {
+	result := value
+	result.parent = parent
+	result.position = {}
+	result.size = size
+	result.min_size = {1, 1}
+	if horizontal {
+		result.min_size.x = min_size
+	} else {
+		result.min_size.y = min_size
+	}
+	result.margin = {}
+	result.hidden = false
+	result.fill_width = true
+	result.fill_height = true
+	result.fixed_in_fill = false
+	result.basis = 0
+	result.grow = 0
+	result.shrink = 0
+	result.horizontal_alignment = .Stretch
+	result.vertical_alignment = .Stretch
+	result.stack_order = order
+	return result
+}
+
+apply_dock_split_drop :: proc(
+	state: ^State,
+	world: ^shared.World,
+	source, target_space, source_stack, source_space: shared.Entity,
+	placement: shared.UI_Drop_Placement,
+	position: shared.Vec2,
+) -> bool {
+	if state == nil ||
+	   world == nil ||
+	   !ui_dock_split_is_directional(placement) ||
+	   state.node_count + 2 > MAX_NODES {
+		return false
+	}
+	source_node_index := find_node(state, source)
+	target_node_index := find_node(state, target_space)
+	if source_node_index < 0 || target_node_index < 0 {
+		return false
+	}
+	source_node := state.nodes[source_node_index]
+	target_node := state.nodes[target_node_index]
+	source_index := int(source.index)
+	target_index := int(target_space.index)
+	if !ecs.entity_is_alive(world, source_index) ||
+	   !ecs.entity_is_alive(world, target_index) ||
+	   world.entities[source_index].id != source ||
+	   world.entities[target_index].id != target_space ||
+	   source_node.layout_index < 0 ||
+	   source_node.layout_index >= len(world.ui_layouts) ||
+	   target_node.layout_index < 0 ||
+	   target_node.layout_index >= len(world.ui_layouts) ||
+	   target_node.dock_space_index < 0 ||
+	   target_node.dock_space_index >= len(world.ui_dock_spaces) {
+		return false
+	}
+	dock_value := world.ui_dock_spaces[target_node.dock_space_index]
+	horizontal := placement == .Left || placement == .Right
+	if horizontal && !dock_value.split_horizontal || !horizontal && !dock_value.split_vertical {
+		return false
+	}
+	content := dock_space_content_rect(target_node, dock_value)
+	main_extent := content.height
+	if horizontal {
+		main_extent = content.width
+	}
+	available := main_extent - dock_value.split_gap
+	if available < dock_value.split_min_size * 2 {
+		return false
+	}
+	new_extent := clamp(
+		available * dock_value.split_ratio,
+		dock_value.split_min_size,
+		available - dock_value.split_min_size,
+	)
+	existing_extent := available - new_extent
+	target_size := shared.Vec2{target_node.rect.width, target_node.rect.height}
+	new_size := target_size
+	if horizontal {
+		target_size.x = existing_extent
+		new_size.x = new_extent
+	} else {
+		target_size.y = existing_extent
+		new_size.y = new_extent
+	}
+	new_first := placement == .Left || placement == .Above
+	target_order := 0
+	new_order := 1
+	if new_first {
+		target_order = 1
+		new_order = 0
+	}
+
+	parent_siblings: [MAX_NODES]int
+	parent_sibling_count := 0
+	target_parent_is_stack := false
+	if target_node.parent_node_index >= 0 {
+		_, _, target_parent_is_stack = stack_component_for_node(
+			world,
+			state.nodes[target_node.parent_node_index],
+		)
+		if target_parent_is_stack {
+			for child := state.nodes[target_node.parent_node_index].first_child_node;
+			    child >= 0;
+			    child = state.nodes[child].next_sibling_node {
+				parent_siblings[parent_sibling_count] = child
+				parent_sibling_count += 1
+			}
+			sort_stack_nodes(state, world, &parent_siblings, parent_sibling_count)
+		}
+	}
+
+	origin := shared.Entity_Origin.Runtime
+	if target_node.origin == .Editor {
+		origin = .Editor
+	}
+	branch_index, branch_created := ecs.create_world_entity(world, "UI Dock Split", {}, origin)
+	if !branch_created {
+		return false
+	}
+	branch_alive := true
+	defer if branch_alive {
+		ecs.despawn_entity(world, branch_index, world.entities[branch_index].id.generation)
+	}
+	old_target_layout := world.ui_layouts[target_node.layout_index]
+	branch_layout := dock_split_outer_layout(old_target_layout)
+	if target_parent_is_stack {
+		for order in 0 ..< parent_sibling_count {
+			if parent_siblings[order] == target_node_index {
+				branch_layout.stack_order = order
+				break
+			}
+		}
+	}
+	if !ecs.set_ui_layout(world, branch_index, branch_layout) {
+		return false
+	}
+	split_stack := shared.ui_stack_default()
+	split_stack.gap = dock_value.split_gap
+	split_stack.fill = true
+	split_stack.draggable = true
+	split_stack.min_size = dock_value.split_min_size
+	stack_set := false
+	if horizontal {
+		stack_set = ecs.set_ui_hstack(world, branch_index, split_stack)
+	} else {
+		stack_set = ecs.set_ui_vstack(world, branch_index, split_stack)
+	}
+	if !stack_set {
+		return false
+	}
+
+	new_space_index, new_space_created := ecs.create_world_entity(
+		world,
+		"UI Dock Split Pane",
+		{},
+		origin,
+	)
+	if !new_space_created {
+		return false
+	}
+	new_space_alive := true
+	defer if new_space_alive {
+		ecs.despawn_entity(world, new_space_index, world.entities[new_space_index].id.generation)
+	}
+	branch_uuid := world.entities[branch_index].uuid
+	new_space_uuid := world.entities[new_space_index].uuid
+	new_layout := dock_split_child_layout(
+		old_target_layout,
+		branch_uuid,
+		new_size,
+		dock_value.split_min_size,
+		new_order,
+		horizontal,
+	)
+	if !ecs.set_ui_layout(world, new_space_index, new_layout) {
+		return false
+	}
+	new_dock_value := dock_value
+	new_dock_value.active = world.entities[source_index].uuid
+	if !ecs.set_ui_dock_space(world, new_space_index, new_dock_value) {
+		return false
+	}
+
+	target_layout := dock_split_child_layout(
+		old_target_layout,
+		branch_uuid,
+		target_size,
+		dock_value.split_min_size,
+		target_order,
+		horizontal,
+	)
+	if !ecs.set_ui_layout(world, target_index, target_layout) {
+		return false
+	}
+	old_source_layout := world.ui_layouts[source_node.layout_index]
+	source_layout := old_source_layout
+	source_layout.parent = new_space_uuid
+	if !ecs.set_ui_layout(world, source_index, source_layout) {
+		_ = ecs.set_ui_layout(world, target_index, old_target_layout)
+		return false
+	}
+	branch_alive = false
+	new_space_alive = false
+
+	layout_changed := true
+	if target_parent_is_stack {
+		for order in 0 ..< parent_sibling_count {
+			child := parent_siblings[order]
+			entity_index := branch_index
+			if child != target_node_index {
+				entity_index = int(state.nodes[child].entity.index)
+			}
+			layout_index := world.entities[entity_index].ui_layout_index
+			if layout_index < 0 || layout_index >= len(world.ui_layouts) {
+				continue
+			}
+			value := world.ui_layouts[layout_index]
+			value.stack_order = order
+			layout_changed = ecs.set_ui_layout(world, entity_index, value) || layout_changed
+		}
+	}
+	source_stack_node := find_node(state, source_stack)
+	if source_stack_node >= 0 {
+		layout_changed =
+			normalize_stack_order(state, world, source_stack_node, source) || layout_changed
+	}
+	source_space_index := int(source_space.index)
+	if source_space != (shared.Entity{}) &&
+	   ecs.entity_is_alive(world, source_space_index) &&
+	   world.entities[source_space_index].id == source_space {
+		source_space_component := world.entities[source_space_index].ui_dock_space_index
+		if source_space_component >= 0 && source_space_component < len(world.ui_dock_spaces) {
+			source_value := world.ui_dock_spaces[source_space_component]
+			source_value.active = {}
+			layout_changed =
+				ecs.set_ui_dock_space(world, source_space_index, source_value) || layout_changed
+		}
+	}
+	interaction := ecs.ensure_ui_state(world, target_index)
+	if interaction != nil {
+		interaction.changed = true
+		interaction.change_revision += 1
+		interaction.drag_source = world.entities[source_index].uuid
+		interaction.drop_target = world.entities[target_index].uuid
+		interaction.drop_placement = placement
+		interaction.drop_revision += 1
+		ecs.mark_ui_state_transient(world, target_index)
+	}
+	append_ui_event(
+		state,
+		{
+			kind = .Dropped,
+			entity = target_space,
+			source = source,
+			target = target_space,
+			drop_placement = placement,
+			position = position,
+		},
+	)
+	return layout_changed
+}
+
+apply_panel_dock_drop :: proc(
+	state: ^State,
+	world: ^shared.World,
+	drag: Stack_Drag_Interaction,
+	position: shared.Vec2,
+) -> bool {
+	source_node := find_node(state, drag.source)
+	source_stack_node := find_node(state, drag.stack)
+	target_space_node := find_node(state, drag.target_dock_space)
+	if source_node < 0 || source_stack_node < 0 || target_space_node < 0 {
+		return false
+	}
+	source_index := int(drag.source.index)
+	target_index := int(drag.target_dock_space.index)
+	if !ecs.entity_is_alive(world, source_index) || !ecs.entity_is_alive(world, target_index) {
+		return false
+	}
+	target_node := state.nodes[target_space_node]
+	if target_node.dock_space_index < 0 ||
+	   target_node.dock_space_index >= len(world.ui_dock_spaces) ||
+	   !world.ui_dock_spaces[target_node.dock_space_index].draggable {
+		return false
+	}
+	layout := world.ui_layouts[state.nodes[source_node].layout_index]
+	layout.parent = world.entities[target_index].uuid
+	layout_changed := ecs.set_ui_layout(world, source_index, layout)
+	layout_changed =
+		normalize_stack_order(state, world, source_stack_node, drag.source) || layout_changed
+	target_value := world.ui_dock_spaces[target_node.dock_space_index]
+	target_value.active = world.entities[source_index].uuid
+	layout_changed = ecs.set_ui_dock_space(world, target_index, target_value) || layout_changed
+	interaction := ecs.ensure_ui_state(world, target_index)
+	if interaction != nil {
+		interaction.changed = true
+		interaction.change_revision += 1
+		interaction.drag_source = world.entities[source_index].uuid
+		interaction.drop_target = world.entities[target_index].uuid
+		interaction.drop_placement = .Into
+		interaction.drop_revision += 1
+		ecs.mark_ui_state_transient(world, target_index)
+	}
+	append_ui_event(
+		state,
+		{
+			kind = .Dropped,
+			entity = drag.target_dock_space,
+			source = drag.source,
+			target = drag.target_dock_space,
+			drop_placement = .Into,
+			position = position,
+		},
+	)
+	return layout_changed
+}
+
+stack_drag_update :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pointer: Pointer_Input,
+	released: bool,
+	editor: bool,
+) -> (
+	layout_changed: bool,
+	title_clicked: bool,
+) {
+	slot := 0
+	if editor {
+		slot = 1
+	}
+	drag := &state.stack_drags[slot]
+	if !drag.armed {
+		return
+	}
+	if !pointer.available {
+		drag^ = {}
+		return
+	}
+	source_stack_node := find_node(state, drag.stack)
+	if source_stack_node < 0 {
+		drag^ = {}
+		return
+	}
+	stack, _, stack_ok := stack_component_for_node(world, state.nodes[source_stack_node])
+	if !stack_ok {
+		drag^ = {}
+		return
+	}
+	if pointer.primary_down {
+		delta := shared.Vec2{pointer.position.x - drag.start.x, pointer.position.y - drag.start.y}
+		if delta.x * delta.x + delta.y * delta.y >= stack.drag_threshold * stack.drag_threshold {
+			drag.dragging = true
+		}
+		if drag.dragging {
+			drag.target_stack = {}
+			drag.target_dock_space = {}
+			drag.target = {}
+			drag.placement = .None
+			best_order := -1
+			for candidate, candidate_index in state.nodes[:state.node_count] {
+				if (candidate.origin == .Editor) != editor ||
+				   !candidate.laid_out ||
+				   !rect_contains(candidate.rect, pointer.position) ||
+				   candidate.paint_order < best_order {
+					continue
+				}
+				if candidate.dock_space_index >= 0 &&
+				   candidate.dock_space_index < len(world.ui_dock_spaces) &&
+				   world.ui_dock_spaces[candidate.dock_space_index].draggable {
+					drag.target_dock_space = candidate.entity
+					best_order = candidate.paint_order
+					drag.placement = dock_space_drop_placement(
+						candidate,
+						world.ui_dock_spaces[candidate.dock_space_index],
+						pointer.position,
+					)
+					continue
+				}
+				target_dock_node := find_node(state, drag.target_dock_space)
+				if target_dock_node >= 0 &&
+				   ui_dock_split_is_directional(drag.placement) &&
+				   ui_node_descends_from(state, candidate_index, target_dock_node) {
+					continue
+				}
+				candidate_stack, horizontal, ok := stack_component_for_node(world, candidate)
+				if !ok ||
+				   !candidate_stack.reorderable ||
+				   candidate.panel_index >= 0 &&
+					   !node_is_docked_panel(state, world, candidate_index) {
+					continue
+				}
+				drag.target_dock_space = {}
+				drag.target_stack = candidate.entity
+				best_order = candidate.paint_order
+				child := candidate.first_child_node
+				for child >= 0 {
+					item := state.nodes[child]
+					if item.entity != drag.source &&
+					   item.laid_out &&
+					   rect_contains(item.rect, pointer.position) {
+						drag.target = item.entity
+						if horizontal {
+							drag.placement = .Before
+							if pointer.position.x >= item.rect.x + item.rect.width * 0.5 {
+								drag.placement = .After
+							}
+						} else {
+							drag.placement = .Before
+							if pointer.position.y >= item.rect.y + item.rect.height * 0.5 {
+								drag.placement = .After
+							}
+						}
+						break
+					}
+					child = item.next_sibling_node
+				}
+				if drag.target == (shared.Entity{}) {
+					drag.placement = .After
+				}
+			}
+			if drag.target_dock_space != (shared.Entity{}) && drag.placement == .Into {
+				target_space_node := find_node(state, drag.target_dock_space)
+				target_stack_node := dock_tab_reorderable_stack_at_pointer(
+					state,
+					world,
+					target_space_node,
+					pointer.position,
+					-1,
+					true,
+				)
+				if target_stack_node >= 0 {
+					drag.target_dock_space = {}
+					drag.target_stack = state.nodes[target_stack_node].entity
+					drag.target = {}
+					drag.placement = .After
+				}
+			}
+			ecs.mark_ui_paint_changed(world, int(drag.stack.index))
+			if drag.target_stack != (shared.Entity{}) {
+				ecs.mark_ui_paint_changed(world, int(drag.target_stack.index))
+			}
+			if drag.target_dock_space != (shared.Entity{}) {
+				ecs.mark_ui_paint_changed(world, int(drag.target_dock_space.index))
+			}
+		}
+		return
+	}
+	if released {
+		if drag.dragging && drag.target_stack != (shared.Entity{}) && drag.placement != .None {
+			layout_changed = apply_stack_drop(state, world, drag^, pointer.position)
+		} else if drag.dragging &&
+		   drag.target_dock_space != (shared.Entity{}) &&
+		   ui_dock_split_is_directional(drag.placement) {
+			layout_changed = apply_dock_split_drop(
+				state,
+				world,
+				drag.source,
+				drag.target_dock_space,
+				drag.stack,
+				{},
+				drag.placement,
+				pointer.position,
+			)
+		} else if drag.dragging &&
+		   drag.target_dock_space != (shared.Entity{}) &&
+		   drag.placement == .Into {
+			layout_changed = apply_panel_dock_drop(state, world, drag^, pointer.position)
+		} else if drag.title_handle && !drag.dragging {
+			title_clicked = handle_panel_title_press(state, world, drag.source, drag.start)
+		}
+		drag^ = {}
+	}
+	return
+}
+
 list_drag_begin :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -5441,7 +6676,7 @@ tree_list_apply_drop :: proc(
 				new_parent = target_uuid
 			case .Before, .After:
 				new_parent = target_layout.tree_parent
-			case .None:
+			case .None, .Left, .Right, .Above, .Below:
 				return false
 		}
 	} else if placement != .Into {
@@ -6255,7 +7490,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	}
 	if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
 		panel := world.ui_panels[node.panel_index]
-		if panel.title != "" {
+		if panel.title != "" && !node_is_docked_panel(state, world, node_index) {
 			select_font(state, panel.font)
 			title_height := min(max(panel.title_height, 0), node.rect.height)
 			title_rect := Rect{node.rect.x, node.rect.y, node.rect.width, title_height}
@@ -6464,10 +7699,23 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	if node.dock_space_index >= 0 && node.dock_space_index < len(world.ui_dock_spaces) {
 		dock_space := world.ui_dock_spaces[node.dock_space_index]
 		select_font(state, dock_space.font)
-		if state.dock_drop_space_node == node_index && dock_space.drop_background.w > 0 {
-			drop_rect := node.rect
-			drop_rect.y += dock_space.tab_height
-			drop_rect.height = max(drop_rect.height - dock_space.tab_height, 0)
+		panel_drag := state.stack_drags[0]
+		if node.origin == .Editor {
+			panel_drag = state.stack_drags[1]
+		}
+		drop_placement := shared.UI_Drop_Placement.None
+		if state.dock_drop_space_node == node_index {
+			drop_placement = state.dock_drop_space_placement
+		} else if panel_drag.dragging && panel_drag.target_dock_space == node.entity {
+			drop_placement = panel_drag.placement
+		}
+		if (state.dock_drop_space_node == node_index ||
+			   panel_drag.dragging && panel_drag.target_dock_space == node.entity) &&
+		   dock_space.drop_background.w > 0 {
+			drop_rect := dock_space_content_rect(node^, dock_space)
+			if ui_dock_split_is_directional(drop_placement) {
+				drop_rect = dock_space_split_preview_rect(node^, dock_space, drop_placement)
+			}
 			if err := append_paint(
 				state,
 				{
@@ -6485,11 +7733,10 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				continue
 			}
 			item_node := state.nodes[tab.item_node]
-			if item_node.dock_item_index < 0 ||
-			   item_node.dock_item_index >= len(world.ui_dock_items) {
+			title, is_dock_item := dock_item_title(world, item_node)
+			if !is_dock_item {
 				continue
 			}
-			item := world.ui_dock_items[item_node.dock_item_index]
 			background := dock_space.tab_background
 			color := dock_space.tab_color
 			if tab.active {
@@ -6516,7 +7763,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			}
 			if err := append_centered_text(
 				state,
-				item.title,
+				title,
 				color,
 				dock_space.tab_size,
 				tab.rect,
@@ -6524,6 +7771,73 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				.Center,
 			); err != "" {
 				return err
+			}
+		}
+	}
+	stack_drag := state.stack_drags[0]
+	if node.origin == .Editor {
+		stack_drag = state.stack_drags[1]
+	}
+	indicator_stack := stack_drag.target_stack
+	indicator_target := stack_drag.target
+	indicator_placement := stack_drag.placement
+	indicator_dragging := stack_drag.dragging
+	if state.dock_dragging && state.dock_drop_stack_node >= 0 {
+		indicator_stack = state.nodes[state.dock_drop_stack_node].entity
+		indicator_target = state.dock_drop_stack_target
+		indicator_placement = state.dock_drop_stack_placement
+		indicator_dragging = true
+	}
+	if indicator_dragging && indicator_stack != (shared.Entity{}) {
+		target_stack_node := find_node(state, indicator_stack)
+		if target_stack_node >= 0 {
+			target_stack, horizontal, ok := stack_component_for_node(
+				world,
+				state.nodes[target_stack_node],
+			)
+			draw_indicator :=
+				indicator_target == node.entity ||
+				indicator_target == (shared.Entity{}) && indicator_stack == node.entity
+			if ok &&
+			   draw_indicator &&
+			   target_stack.drop_indicator_color.w > 0 &&
+			   target_stack.drop_indicator_thickness > 0 {
+				indicator_rect := node.rect
+				if indicator_target == (shared.Entity{}) {
+					indicator_rect = state.nodes[target_stack_node].rect
+				}
+				start := state.paint_count
+				line_start, line_end: shared.Vec2
+				if horizontal {
+					x := indicator_rect.x
+					if indicator_placement == .After {
+						x += indicator_rect.width
+					}
+					inset := min(target_stack.drop_indicator_inset, indicator_rect.height * 0.5)
+					line_start = {x, indicator_rect.y + inset}
+					line_end = {x, indicator_rect.y + indicator_rect.height - inset}
+				} else {
+					y := indicator_rect.y
+					if indicator_placement == .After {
+						y += indicator_rect.height
+					}
+					inset := min(target_stack.drop_indicator_inset, indicator_rect.width * 0.5)
+					line_start = {indicator_rect.x + inset, y}
+					line_end = {indicator_rect.x + indicator_rect.width - inset, y}
+				}
+				if err := append_paint(
+					state,
+					{
+						kind = .Line,
+						color = target_stack.drop_indicator_color,
+						line_start = line_start,
+						line_end = line_end,
+						line_thickness = target_stack.drop_indicator_thickness,
+					},
+				); err != "" {
+					return err
+				}
+				apply_paint_clip(state, start, state.paint_count, node.clip, node.has_clip)
 			}
 		}
 	}

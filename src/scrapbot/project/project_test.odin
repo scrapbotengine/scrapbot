@@ -1474,6 +1474,7 @@ fixed_in_fill = true
 basis = 96
 grow = 2
 shrink = 3
+stack_order = 7
 horizontal_alignment = "center"
 vertical_alignment = "end"
 [entities.ui_canvas]
@@ -1489,6 +1490,11 @@ gap = 8
 fill = true
 draggable = true
 min_size = 72
+reorderable = true
+drag_threshold = 6
+drop_indicator_color = [0.2, 1.4, 1.1, 1]
+drop_indicator_thickness = 3
+drop_indicator_inset = 9
 line_gap = 5
 [entities.ui_panel]
 title = "METRICS"
@@ -1502,6 +1508,7 @@ disclosure_gap = 6
 disclosure_inset = 0
 collapsible = true
 collapsed = true
+movable = true
 [entities.ui_scroll_area]
 scroll_speed = 64
 smoothness = 12
@@ -1548,6 +1555,11 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_vstack.fill)
 	testing.expect(t, scene.entities[0].ui_vstack.draggable)
 	testing.expect(t, scene.entities[0].ui_vstack.min_size == 72)
+	testing.expect(t, scene.entities[0].ui_vstack.reorderable)
+	testing.expect(t, scene.entities[0].ui_vstack.drag_threshold == 6)
+	testing.expect(t, scene.entities[0].ui_vstack.drop_indicator_color.y == 1.4)
+	testing.expect(t, scene.entities[0].ui_vstack.drop_indicator_thickness == 3)
+	testing.expect(t, scene.entities[0].ui_vstack.drop_indicator_inset == 9)
 	testing.expect(t, scene.entities[0].ui_vstack.line_gap == 5)
 	testing.expect(t, scene.entities[0].has_ui_scroll_area)
 	testing.expect(t, scene.entities[0].ui_scroll_area.scroll_speed == 64)
@@ -1563,10 +1575,12 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_panel.disclosure_inset == 0)
 	testing.expect(t, scene.entities[0].ui_panel.collapsible)
 	testing.expect(t, scene.entities[0].ui_panel.collapsed)
+	testing.expect(t, scene.entities[0].ui_panel.movable)
 	testing.expect(t, scene.entities[0].ui_layout.border_color == Vec4{0.4, 0.5, 0.6, 1})
 	testing.expect(t, scene.entities[0].ui_layout.border_width == 2)
 	testing.expect(t, scene.entities[0].ui_layout.corner_radius == 6)
 	testing.expect(t, scene.entities[0].ui_layout.hidden)
+	testing.expect(t, scene.entities[0].ui_layout.stack_order == 7)
 	testing.expect(t, scene.entities[0].ui_layout.min_size == Vec2{320, 160})
 	testing.expect(t, scene.entities[0].ui_layout.fill_width)
 	testing.expect(t, scene.entities[0].ui_layout.fill_height)
@@ -1626,6 +1640,12 @@ tab_hover_background = [0.08, 0.09, 0.10, 1]
 tab_active_background = [0.12, 0.13, 0.14, 1]
 drop_background = [0.1, 1.4, 0.8, 0.25]
 draggable = false
+split_horizontal = true
+split_vertical = true
+split_ratio = 0.4
+split_edge_fraction = 0.2
+split_gap = 6
+split_min_size = 140
 [[entities]]
 id = "a6100000-0000-4000-8000-000000000002"
 name = "Scene"
@@ -1645,9 +1665,44 @@ movable = false
 	testing.expect(t, scene.entities[0].ui_dock_space.tab_height == 36)
 	testing.expect(t, scene.entities[0].ui_dock_space.tab_active_color.x == 1.2)
 	testing.expect(t, !scene.entities[0].ui_dock_space.draggable)
+	testing.expect(t, scene.entities[0].ui_dock_space.split_horizontal)
+	testing.expect(t, scene.entities[0].ui_dock_space.split_vertical)
+	testing.expect(t, scene.entities[0].ui_dock_space.split_ratio == 0.4)
+	testing.expect(t, scene.entities[0].ui_dock_space.split_edge_fraction == 0.2)
+	testing.expect(t, scene.entities[0].ui_dock_space.split_gap == 6)
+	testing.expect(t, scene.entities[0].ui_dock_space.split_min_size == 140)
 	testing.expect(t, scene.entities[1].has_ui_dock_item)
 	testing.expect(t, scene.entities[1].ui_dock_item.title == "SCENE")
 	testing.expect(t, !scene.entities[1].ui_dock_item.movable)
+
+	panel_scene, panel_result := parse_scene(
+		`[[entities]]
+id = "a6150000-0000-4000-8000-000000000001"
+name = "Dock"
+[entities.ui_layout]
+size = [640, 480]
+[entities.ui_dock_space]
+active = "a6150000-0000-4000-8000-000000000002"
+[[entities]]
+id = "a6150000-0000-4000-8000-000000000002"
+name = "Tools"
+[entities.ui_layout]
+parent = "a6150000-0000-4000-8000-000000000001"
+size = [640, 448]
+[entities.ui_panel]
+title = "TOOLS"
+movable = true
+`,
+	)
+	defer destroy_scene(&panel_scene)
+	testing.expectf(
+		t,
+		panel_result.err == .None,
+		"panel dock parse failed: %s",
+		panel_result.message,
+	)
+	testing.expect(t, panel_scene.entities[1].has_ui_panel)
+	testing.expect(t, panel_scene.entities[1].ui_panel.movable)
 
 	invalid_sources := [2]string {
 		`[[entities]]

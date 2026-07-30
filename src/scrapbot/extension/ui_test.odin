@@ -180,10 +180,16 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	testing.expect(t, panel_payload.panel.collapsible != 0)
 	dock_space_style := ui_dock_space_default()
 	dock_space_style.tab_height = 36
+	dock_space_style.split_horizontal = 1
+	dock_space_style.split_ratio = 0.4
+	dock_space_style.split_gap = 6
 	dock_space_payload, dock_space_ok := ui_dock_space(dock_space_style, "Inter")
 	testing.expect(t, dock_space_ok)
 	testing.expect(t, dock_space_payload.component == UI_DOCK_SPACE)
 	testing.expect(t, dock_space_payload.dock_space.tab_height == 36)
+	testing.expect(t, dock_space_payload.dock_space.split_horizontal != 0)
+	testing.expect(t, dock_space_payload.dock_space.split_ratio == 0.4)
+	testing.expect(t, dock_space_payload.dock_space.split_gap == 6)
 	testing.expect(t, ui_payload_dock_font(&dock_space_payload) == "Inter")
 	dock_item_style := ui_dock_item_default()
 	dock_item_style.movable = 0

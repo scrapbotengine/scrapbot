@@ -149,7 +149,7 @@ The active camera owns the manual world-render ceiling, optional GPU-budgeted dy
 
 Before layout, WGPU drains any completed asynchronous timestamp readbacks. Dynamic resolution processes every newly completed scalable-GPU sample exactly once, filters it, and applies asymmetric hysteresis in quantized 5% steps. Samples retain their render-policy generation, so delayed evidence from an old scale or camera cannot affect the new controller state. Native project/editor UI time is excluded. The authored `resolution_scale` remains the ceiling, the authored minimum remains the floor, and unsupported timestamps select the ceiling.
 
-WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target, then project UI, gizmos, and editor chrome render at native resolution.
+WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target. The native-resolution UI pass then paints project UI, editor-world overlays clipped to the Game viewport, and editor chrome in that order. Editor tabs and panels therefore occlude gizmos and camera visualizers when they cover the Game surface.
 
 Global volumetric fog is scene-owned rather than camera-owned. It composes before temporal resolution and bloom, stops at scene depth or its authored distance bound, and becomes a shader no-op when absent or at zero density.
 
@@ -233,12 +233,39 @@ size, and resolves each line's grow or shrink factors before descendant layout.
 Text paint consumes the same deterministic line breaks. All scratch storage is
 bounded; an unchanged domain repeats none of this work.
 
-A dock space measures one tab for each direct public dock-item child and lays
-out only the active child below that strip. Cross-group drag completion changes
-the item's ordinary UUID parent and destination active UUID, then emits the
-same drop state and immutable event contract used by other project UI. Region
-splitting remains ordinary HStack/VStack layout. The editor's Browse, Game, and
-Inspect regions are consumers of this exact path.
+A dock space measures one tab for each direct public dock-item or titled-panel
+child and lays out only the active child below that strip. A docked panel uses
+its panel title as the tab and suppresses the redundant internal title band.
+Cross-container drag completion changes the item's ordinary UUID parent and,
+when applicable, the destination active UUID and stack order. The structural
+dirty queue rebuilds retained parent links before the same-frame relayout, then
+the interaction emits the ordinary drop state and immutable event contract.
+An enabled directional edge drop replaces the destination at the same sibling
+position with a runtime/editor-origin public HStack or VStack, reparents the
+existing space into one fill child, creates a public sibling dock space for the
+dropped item, and lets the ordinary stack separator own resizing. Scene and
+runtime origins share the project UI parent domain for this generated
+topology; editor origin remains isolated. The editor's Browse, Game, Inspect,
+and movable tool panels are consumers of this exact path.
+
+Every stack resolves direct children by public `stack_order`; `reorderable`
+controls interaction rather than deterministic layout order. Movable panels
+arm from their unoccupied title band; release within the threshold keeps
+collapse-click behavior, crossing the threshold without a valid destination
+cancels, and a completed drag normalizes affected sibling orders or makes the
+panel a dock-space tab. Docked panel tabs can target reorderable stacks in the
+opposite direction. The same stack may independently expose resize separators.
+Gesture paint is transient and stable frames repeat no sorting, hit-geometry
+construction, layout, or upload work.
+
+During an active panel gesture, a dock tab hit resolves the nearest
+reorderable stack in that item's retained descendant hierarchy. That target is
+available even when the tab is inactive and its descendants are not laid out.
+The drop therefore reparents into the tab's ordinary public stack; only
+dock-space chrome outside an accepting tab targets creation of a sibling tab.
+The accepting tab header paints the dock space's public drop background when
+the inactive descendant cannot paint its insertion line. Backend-neutral move
+and not-allowed cursor intents distinguish compatible targets from dead space.
 
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 
@@ -246,7 +273,7 @@ The editor adds transient editor-origin entities but uses the same components an
 
 The interaction pass publishes activation, change, submission, cancellation, and drag/drop edges into a World-owned bounded ring. `scrapbot.ui_action` resolves from the exact control or nearest layout ancestor and supplies optional project semantics without changing control mechanics. Readers use monotonic sequences and never consume entries destructively; project Luau/native adapters filter editor-origin events, while editor orchestration reads the same history through its own cursor.
 
-The retained interaction pass derives a backend-neutral cursor intent from the topmost reusable control after applying project-canvas pointer inversion. The windowed renderer maps that intent to cached SDL system cursors; headless runs retain the same UI interaction behavior without initializing the platform cursor boundary.
+The retained interaction pass derives a backend-neutral cursor intent from the topmost reusable control and any active workspace gesture after applying project-canvas pointer inversion. The windowed renderer maps pointer, text-edit, directional-resize, move, and not-allowed intents to cached SDL system cursors; headless runs retain the same UI interaction behavior without initializing the platform cursor boundary.
 
 ## Authoring persistence
 

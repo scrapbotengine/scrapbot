@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "wait", "frames": 2},
+    {
+      "action": "click",
+      "target": {"text": "Warm Orbiting Light", "origin": "editor"}
+    },
+    {
+      "action": "expect",
+      "target": {
+        "name": "__scrapbot_editor_inspector_entity_name",
+        "origin": "editor"
+      },
+      "expect": "text",
+      "text": "Warm Orbiting Light"
+    },
+    {"action": "wait", "frames": 2},
+    {
+      "action": "drag",
+      "target": {
+        "name": "__scrapbot_editor_right_dock_item",
+        "origin": "editor",
+        "part": "dock_tab"
+      },
+      "destination": {
+        "name": "__scrapbot_editor_viewport_dock",
+        "origin": "editor"
+      },
+      "frames": 6
+    },
+    {"action": "wait", "frames": 2},
+    {
+      "action": "capture",
+      "target": {
+        "name": "__scrapbot_editor_viewport_dock",
+        "origin": "editor"
+      }
+    }
+  ]
+}

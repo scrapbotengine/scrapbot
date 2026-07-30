@@ -28,6 +28,8 @@ runtime_pointer_hand_cursor: ^sdl.Cursor
 runtime_text_edit_cursor: ^sdl.Cursor
 runtime_horizontal_resize_cursor: ^sdl.Cursor
 runtime_vertical_resize_cursor: ^sdl.Cursor
+runtime_move_cursor: ^sdl.Cursor
+runtime_not_allowed_cursor: ^sdl.Cursor
 runtime_text_bytes: [512]u8
 runtime_text_length: int
 runtime_text_navigation: Runtime_Text_Input
@@ -62,6 +64,8 @@ Runtime_Pointer_Cursor :: enum {
 	Text_Edit,
 	Horizontal_Resize,
 	Vertical_Resize,
+	Move,
+	Not_Allowed,
 }
 
 Live_Resize_Redraw_Proc :: #type proc "c" (userdata: rawptr)
@@ -244,6 +248,14 @@ close_runtime_window :: proc() {
 			sdl.DestroyCursor(runtime_vertical_resize_cursor)
 			runtime_vertical_resize_cursor = nil
 		}
+		if runtime_move_cursor != nil {
+			sdl.DestroyCursor(runtime_move_cursor)
+			runtime_move_cursor = nil
+		}
+		if runtime_not_allowed_cursor != nil {
+			sdl.DestroyCursor(runtime_not_allowed_cursor)
+			runtime_not_allowed_cursor = nil
+		}
 		_ = sdl.StopTextInput(runtime_window)
 		sdl.DestroyWindow(runtime_window)
 		runtime_window = nil
@@ -282,6 +294,10 @@ runtime_pointer_system_cursor :: proc(cursor: Runtime_Pointer_Cursor) -> sdl.Sys
 			return .EW_RESIZE
 		case .Vertical_Resize:
 			return .NS_RESIZE
+		case .Move:
+			return .MOVE
+		case .Not_Allowed:
+			return .NOT_ALLOWED
 	}
 	return .DEFAULT
 }
@@ -322,6 +338,18 @@ set_runtime_pointer_cursor :: proc(cursor: Runtime_Pointer_Cursor) {
 				)
 			}
 			system_cursor = runtime_vertical_resize_cursor
+		case .Move:
+			if runtime_move_cursor == nil {
+				runtime_move_cursor = sdl.CreateSystemCursor(runtime_pointer_system_cursor(cursor))
+			}
+			system_cursor = runtime_move_cursor
+		case .Not_Allowed:
+			if runtime_not_allowed_cursor == nil {
+				runtime_not_allowed_cursor = sdl.CreateSystemCursor(
+					runtime_pointer_system_cursor(cursor),
+				)
+			}
+			system_cursor = runtime_not_allowed_cursor
 	}
 	if system_cursor != nil && sdl.SetCursor(system_cursor) {
 		runtime_pointer_cursor = cursor

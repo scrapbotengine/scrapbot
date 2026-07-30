@@ -11,6 +11,8 @@ test_runtime_pointer_cursor_maps_ui_intents_to_sdl :: proc(t: ^testing.T) {
 	testing.expect(t, runtime_pointer_system_cursor(.Text_Edit) == .TEXT)
 	testing.expect(t, runtime_pointer_system_cursor(.Horizontal_Resize) == .EW_RESIZE)
 	testing.expect(t, runtime_pointer_system_cursor(.Vertical_Resize) == .NS_RESIZE)
+	testing.expect(t, runtime_pointer_system_cursor(.Move) == .MOVE)
+	testing.expect(t, runtime_pointer_system_cursor(.Not_Allowed) == .NOT_ALLOWED)
 }
 
 @(test)

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {
+      "action": "drag",
+      "target": {
+        "name": "__scrapbot_editor_diagnostics",
+        "origin": "editor",
+        "part": "panel_title"
+      },
+      "destination": {
+        "name": "__scrapbot_editor_right_dock_item",
+        "origin": "editor",
+        "part": "dock_tab"
+      },
+      "destination_anchor": "center",
+      "frames": 6
+    },
+    {"action": "wait", "frames": 2},
+    {
+      "action": "expect",
+      "target": {"name": "__scrapbot_editor_diagnostics", "origin": "editor"},
+      "expect": "inside_parent"
+    },
+    {
+      "action": "capture",
+      "target": {"name": "__scrapbot_editor_right", "origin": "editor"},
+      "padding": 8
+    }
+  ]
+}

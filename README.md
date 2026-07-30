@@ -48,14 +48,14 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 ### Retained UI
 
-- ECS-first retained UI: authored fit/fill/expand/stretch/pixel-perfect canvases, safe areas, per-axis alignment, intrinsic multiline text, grow/shrink/wrapping stacks, overlays, draggable separators, transferable tabbed dock groups, hidden subtrees, smooth clipped scroll areas, selectable lists, progress indicators, collapsible panels, equal/proportional tables, buttons, checkboxes, numeric controls, and keyboard-focused text inputs with Tab traversal.
+- ECS-first retained UI: authored fit/fill/expand/stretch/pixel-perfect canvases, safe areas, per-axis alignment, intrinsic multiline text, grow/shrink/wrapping stacks, overlays, draggable separators, cross-stack and dock-tab panel transfers, transferable tabbed dock groups with opt-in edge-created resizable splits, hidden subtrees, smooth clipped scroll areas, selectable lists, progress indicators, collapsible panels, equal/proportional tables, buttons, checkboxes, numeric controls, and keyboard-focused text inputs with Tab traversal.
 - MTSDF text with auto-atlased project fonts (embedded Inter fallback), UUID-backed project SVG icon catalogs plus an embedded control catalog, and SDF-rounded styling for backgrounds, borders, and controls.
 - One public component contract: scene TOML, Luau systems, native Odin extensions, and the editor all construct and mutate the same typed UI values; reusable semantic actions publish ordered immutable events to independent project/editor readers.
 - Revision-driven paint with independent project, editor, and world-overlay GPU streams — unchanged domains skip reconciliation, layout, paint, and uploads entirely.
 
 ### Editor
 
-- Toggleable ECS-built shell (`Cmd/Ctrl+E`, or `--editor` to start open) framing an aspect-correct live viewport with resizable scene and inspector panels, status bar, and scroll panes.
+- Toggleable ECS-built shell (`Cmd/Ctrl+E`, or `--editor` to start open) whose Browse, Game, and Inspect tabs each host a public panel stack around an aspect-correct live viewport, resizable tools, status bar, and scroll panes.
 - Entity browser, expandable UUID-backed hierarchy with drag-to-reparent, and runtime type-inspected component panels — no per-component UI code, everything derives from the component registry.
 - Play/Pause/Step (`Cmd/Ctrl+R`, `Cmd/Ctrl+T`) with a non-destructive in-memory authoring baseline, stopped-mode Undo/Redo, explicit project-wide Save, and scene Revert.
 - RMB-captured WASD fly camera, precise entity picking, and translation/rotation/scale gizmos with plane and center handles.
@@ -257,6 +257,8 @@ trends; they are not portable performance thresholds.
   - [x] Aspect-correct live game viewport
   - [x] Resizable panels
   - [x] Public dock groups consumed by the editor workspace
+  - [x] Public rearrangeable panel stacks with stack-to-dock transfer, consumed by editor sidebars
+  - [x] Public horizontal/vertical dock splitting from configurable edge-drop targets
 - Inspection
   - [x] System profiler
   - [x] Entity browser

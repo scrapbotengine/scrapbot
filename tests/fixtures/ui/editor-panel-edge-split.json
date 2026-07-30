@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {
+      "action": "drag",
+      "target": {
+        "name": "__scrapbot_editor_scene",
+        "origin": "editor",
+        "part": "panel_title"
+      },
+      "destination": {
+        "name": "__scrapbot_editor_viewport_dock",
+        "origin": "editor"
+      },
+      "destination_anchor": "right",
+      "frames": 8
+    },
+    {"action": "wait", "frames": 2},
+    {
+      "action": "expect",
+      "target": {"name": "__scrapbot_editor_scene", "origin": "editor"},
+      "expect": "inside_parent"
+    },
+    {
+      "action": "capture",
+      "target": {"name": "__scrapbot_editor_workspace", "origin": "editor"},
+      "padding": 8
+    }
+  ]
+}

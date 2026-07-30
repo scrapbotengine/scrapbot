@@ -684,6 +684,7 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_uuid_field(L, "tree_parent", value.tree_parent)
 	push_number_field(L, "tree_order", f32(value.tree_order))
 	push_bool_field(L, "tree_collapsed", value.tree_collapsed)
+	push_number_field(L, "stack_order", f32(value.stack_order))
 	push_bool_field(L, "popup", value.popup)
 	push_bool_field(L, "popup_open", value.popup_open)
 	push_bool_field(L, "popup_close_on_selection", value.popup_close_on_selection)
@@ -710,11 +711,16 @@ push_ui_canvas_table :: proc "c" (L: Lua_State, value: shared.UI_Canvas_Componen
 }
 
 push_ui_stack_table :: proc "c" (L: Lua_State, value: shared.UI_Stack_Component) {
-	lua_createtable(L, 0, 6)
+	lua_createtable(L, 0, 11)
 	push_number_field(L, "gap", value.gap)
 	push_bool_field(L, "fill", value.fill)
 	push_bool_field(L, "draggable", value.draggable)
 	push_number_field(L, "min_size", value.min_size)
+	push_bool_field(L, "reorderable", value.reorderable)
+	push_number_field(L, "drag_threshold", value.drag_threshold)
+	push_vec4_field(L, "drop_indicator_color", value.drop_indicator_color)
+	push_number_field(L, "drop_indicator_thickness", value.drop_indicator_thickness)
+	push_number_field(L, "drop_indicator_inset", value.drop_indicator_inset)
 	push_bool_field(L, "wrap", value.wrap)
 	push_number_field(L, "line_gap", value.line_gap)
 }
@@ -746,10 +752,11 @@ push_ui_panel_table :: proc "c" (L: Lua_State, value: shared.UI_Panel_Component)
 	push_number_field(L, "disclosure_inset", value.disclosure_inset)
 	push_bool_field(L, "collapsible", value.collapsible)
 	push_bool_field(L, "collapsed", value.collapsed)
+	push_bool_field(L, "movable", value.movable)
 }
 
 push_ui_dock_space_table :: proc "c" (L: Lua_State, value: shared.UI_Dock_Space_Component) {
-	lua_createtable(L, 0, 16)
+	lua_createtable(L, 0, 22)
 	push_uuid_field(L, "active", value.active)
 	push_string_field(L, "font", value.font)
 	push_number_field(L, "tab_height", value.tab_height)
@@ -766,6 +773,12 @@ push_ui_dock_space_table :: proc "c" (L: Lua_State, value: shared.UI_Dock_Space_
 	push_vec4_field(L, "tab_active_background", value.tab_active_background)
 	push_vec4_field(L, "drop_background", value.drop_background)
 	push_bool_field(L, "draggable", value.draggable)
+	push_bool_field(L, "split_horizontal", value.split_horizontal)
+	push_bool_field(L, "split_vertical", value.split_vertical)
+	push_number_field(L, "split_ratio", value.split_ratio)
+	push_number_field(L, "split_edge_fraction", value.split_edge_fraction)
+	push_number_field(L, "split_gap", value.split_gap)
+	push_number_field(L, "split_min_size", value.split_min_size)
 }
 
 push_ui_dock_item_table :: proc "c" (L: Lua_State, value: shared.UI_Dock_Item_Component) {
@@ -851,6 +864,14 @@ push_ui_state_table :: proc "c" (L: Lua_State, value: shared.UI_State_Component)
 			drop_placement = "into"
 		case .After:
 			drop_placement = "after"
+		case .Left:
+			drop_placement = "left"
+		case .Right:
+			drop_placement = "right"
+		case .Above:
+			drop_placement = "above"
+		case .Below:
+			drop_placement = "below"
 		case .None:
 	}
 	push_string_field(L, "drop_placement", drop_placement)

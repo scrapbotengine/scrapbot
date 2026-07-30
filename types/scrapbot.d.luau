@@ -122,7 +122,7 @@ export type ScrapbotUiEventKind = "activated" | "changed" | "submitted" | "cance
 
 export type ScrapbotUiEventPart = "control" | "panel_title"
 
-export type ScrapbotUiDropPlacement = "none" | "before" | "into" | "after"
+export type ScrapbotUiDropPlacement = "none" | "before" | "into" | "after" | "left" | "right" | "above" | "below"
 
 export type ScrapbotUiEvent = {
 	read sequence: number,
@@ -571,6 +571,7 @@ export type ScrapbotUiLayout = {
 	tree_parent: string?,
 	tree_order: number?,
 	tree_collapsed: boolean?,
+	stack_order: number?,
 	popup: boolean?,
 	popup_open: boolean?,
 	popup_close_on_selection: boolean?,
@@ -608,6 +609,7 @@ export type ReadonlyScrapbotUiLayout = {
 	read tree_parent: string,
 	read tree_order: number,
 	read tree_collapsed: boolean,
+	read stack_order: number,
 	read popup: boolean,
 	read popup_open: boolean,
 	read popup_close_on_selection: boolean,
@@ -647,6 +649,11 @@ export type ScrapbotUiHstack = {
 	fill: boolean?,
 	draggable: boolean?,
 	min_size: number?,
+	reorderable: boolean?,
+	drag_threshold: number?,
+	drop_indicator_color: Vec4?,
+	drop_indicator_thickness: number?,
+	drop_indicator_inset: number?,
 	wrap: boolean?,
 	line_gap: number?,
 }
@@ -656,6 +663,11 @@ export type ReadonlyScrapbotUiHstack = {
 	read fill: boolean,
 	read draggable: boolean,
 	read min_size: number,
+	read reorderable: boolean,
+	read drag_threshold: number,
+	read drop_indicator_color: ReadonlyVec4,
+	read drop_indicator_thickness: number,
+	read drop_indicator_inset: number,
 	read wrap: boolean,
 	read line_gap: number,
 }
@@ -667,6 +679,11 @@ export type ScrapbotUiVstack = {
 	fill: boolean?,
 	draggable: boolean?,
 	min_size: number?,
+	reorderable: boolean?,
+	drag_threshold: number?,
+	drop_indicator_color: Vec4?,
+	drop_indicator_thickness: number?,
+	drop_indicator_inset: number?,
 	wrap: boolean?,
 	line_gap: number?,
 }
@@ -676,6 +693,11 @@ export type ReadonlyScrapbotUiVstack = {
 	read fill: boolean,
 	read draggable: boolean,
 	read min_size: number,
+	read reorderable: boolean,
+	read drag_threshold: number,
+	read drop_indicator_color: ReadonlyVec4,
+	read drop_indicator_thickness: number,
+	read drop_indicator_inset: number,
 	read wrap: boolean,
 	read line_gap: number,
 }
@@ -721,6 +743,7 @@ export type ScrapbotUiPanel = {
 	disclosure_inset: number?,
 	collapsible: boolean?,
 	collapsed: boolean?,
+	movable: boolean?,
 }
 
 export type ReadonlyScrapbotUiPanel = {
@@ -736,6 +759,7 @@ export type ReadonlyScrapbotUiPanel = {
 	read disclosure_inset: number,
 	read collapsible: boolean,
 	read collapsed: boolean,
+	read movable: boolean,
 }
 
 export type ScrapbotUiPanelComponent = ScrapbotComponent<ScrapbotUiPanel, ReadonlyScrapbotUiPanel>
@@ -757,6 +781,12 @@ export type ScrapbotUiDockSpace = {
 	tab_active_background: Vec4?,
 	drop_background: Vec4?,
 	draggable: boolean?,
+	split_horizontal: boolean?,
+	split_vertical: boolean?,
+	split_ratio: number?,
+	split_edge_fraction: number?,
+	split_gap: number?,
+	split_min_size: number?,
 }
 
 export type ReadonlyScrapbotUiDockSpace = {
@@ -776,6 +806,12 @@ export type ReadonlyScrapbotUiDockSpace = {
 	read tab_active_background: ReadonlyVec4,
 	read drop_background: ReadonlyVec4,
 	read draggable: boolean,
+	read split_horizontal: boolean,
+	read split_vertical: boolean,
+	read split_ratio: number,
+	read split_edge_fraction: number,
+	read split_gap: number,
+	read split_min_size: number,
 }
 
 export type ScrapbotUiDockSpaceComponent = ScrapbotComponent<ScrapbotUiDockSpace, ReadonlyScrapbotUiDockSpace>
