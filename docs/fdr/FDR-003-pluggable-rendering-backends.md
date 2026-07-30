@@ -36,7 +36,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Hi-Z queries cover the complete coarse-mip footprint; camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
-- Structured run results include renderer counters for GPU-driven mode, meshlet capability/activation/draw/visibility state, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, explicit Hi-Z status/threshold, instance/meshlet frustum, cone, and occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
+- Structured run results include renderer counters for GPU-driven mode, retained draw batches, camera-visible batches, nonempty meshlet draws, meshlet capability/activation/visibility state, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, explicit Hi-Z status/threshold, instance/meshlet frustum, cone, and occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
 - Headless `wgpu` creates an adapter and device without SDL or an OS presentation surface, renders into an offscreen texture, and can run bounded GPU workloads without reading pixels back.
 - The offscreen path can optionally render a losslessly compressed final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
@@ -158,6 +158,12 @@ The editor fly view inherits the project camera's render policy. WGPU dynamic re
 **Decision:** Preserve stable ECS render slots and a dirty-updated retained render list while WGPU owns persistent instance storage, retained grow-only batch membership, compute frustum culling, per-batch visible-instance compaction, and indexed indirect arguments. Camera and shadow visibility use separate outputs. See ADR-034.
 **Why:** Unchanged instance data should stay resident, active renderables should not be rescanned, membership churn in an existing batch should not rebuild the draw database, and project/ECS data should remain independent from WGPU objects.
 **Tradeoff:** The path has an explicit 131,072-slot limit, uses conservative bounding spheres, and requires one previous frame with stable camera and instance data before Hi-Z rejection. Whole-primitive fallback still encodes one indirect call per CPU-retained geometry/material/LOD batch. The draw database itself grows instead of imposing a fixed batch ceiling.
+
+The retained batch count describes topology, not post-cull work. The visibility pass separately
+counts camera batches whose first object sets a fixed visibility bit and meshlet commands whose
+first instance advances an indirect count from zero. The bitset shares the existing counter buffer,
+adding no storage binding, CPU scan, or readback path. Camera culling does not describe the
+independently culled shadow cascades.
 
 ### 14. Cull resource-owned meshlets without requiring mesh shaders
 

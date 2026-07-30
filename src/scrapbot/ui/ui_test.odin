@@ -8591,7 +8591,9 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		render_scale = 0.75,
 		gpu_timestamps_valid = true,
 		entity_count = 42,
-		draw_batches = 7,
+		retained_batches = 7,
+		visible_batches = 4,
+		visible_meshlet_draws = 11,
 		frustum_culled_instances = 9,
 		occlusion_culled_instances = 13,
 		occlusion_culled_meshlets = 17,
@@ -8622,13 +8624,15 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_table_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
 	}
-	expected_values := [10]string {
+	expected_values := [12]string {
 		"59.9",
 		"16.69 ms",
 		"2.25 ms",
 		"75%",
 		"42",
 		"7",
+		"4",
+		"11",
 		"ACTIVE",
 		"9",
 		"13",

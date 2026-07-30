@@ -688,6 +688,8 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, world.runtime_entity_count == 0)
 	stats := Render_Stats {
 		draw_batches = 7,
+		visible_batches = 3,
+		visible_meshlet_draws = 6,
 		gpu_timestamps_valid = true,
 		gpu_frame_ms = 2.25,
 		render_scale = 0.75,
@@ -716,7 +718,9 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect_value(t, snapshot.render_scale, f32(0.75))
 	testing.expect(t, snapshot.gpu_timestamps_valid)
 	testing.expect(t, snapshot.entity_count == 2)
-	testing.expect(t, snapshot.draw_batches == 7)
+	testing.expect(t, snapshot.retained_batches == 7)
+	testing.expect(t, snapshot.visible_batches == 3)
+	testing.expect(t, snapshot.visible_meshlet_draws == 6)
 	testing.expect(t, snapshot.instance_count == 12)
 	testing.expect(t, snapshot.frustum_candidates == 11)
 	testing.expect(t, snapshot.frustum_culled_instances == 4)
@@ -1287,6 +1291,20 @@ test_wgpu_hiz_build_waits_for_stable_instance_data :: proc(t: ^testing.T) {
 	testing.expect(t, !wgpu_hiz_build_requested(WGPU_HIZ_MIN_INSTANCES - 1, false))
 	testing.expect(t, wgpu_hiz_build_requested(WGPU_HIZ_MIN_INSTANCES, false))
 	testing.expect(t, !wgpu_hiz_build_requested(WGPU_HIZ_MIN_INSTANCES, true))
+}
+
+@(test)
+test_wgpu_visible_batch_bitset_is_bounded_and_word_aligned :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_visible_batch_word_count(-1), 0)
+	testing.expect_value(t, wgpu_visible_batch_word_count(0), 0)
+	testing.expect_value(t, wgpu_visible_batch_word_count(1), 1)
+	testing.expect_value(t, wgpu_visible_batch_word_count(32), 1)
+	testing.expect_value(t, wgpu_visible_batch_word_count(33), 2)
+	testing.expect_value(
+		t,
+		wgpu_visible_batch_word_count(WGPU_GPU_VISIBLE_BATCH_WORD_COUNT * 32 + 1),
+		WGPU_GPU_VISIBLE_BATCH_WORD_COUNT,
+	)
 }
 
 @(test)

@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-07-30
+**Last verified:** 2026-07-31
 
 ## Project load and world bootstrap
 
@@ -191,7 +191,9 @@ spawn/despawn-maintained entity-origin counts ─────────┘    
                                                                public ECS UI panel
 ```
 
-The editor formats values only when the snapshot revision changes. GPU timestamp and visibility values are asynchronous, and draw batches describe retained GPU-driven grouping rather than every API draw command in every pass.
+The editor formats values only when the snapshot revision changes. GPU timestamp and visibility values are asynchronous.
+
+Retained batches describe geometry/material/LOD topology. Camera-visible batches count selected batches with at least one object surviving object-level visibility. Visible meshlet draws count indirect meshlet commands with at least one surviving instance. These camera counters remain separate from shadow-cascade visibility and from the number of API commands encoded across all passes.
 
 Hi-Z state is an explicit enum: unavailable, below threshold, scene changed, camera changed, warming up, or active. Object and meshlet occlusion counts remain separate so a zero can be interpreted without guessing which eligibility or safety gate applied.
 

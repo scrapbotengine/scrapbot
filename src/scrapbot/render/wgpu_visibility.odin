@@ -2,6 +2,10 @@ package render
 
 import "vendor:wgpu"
 
+wgpu_visible_batch_word_count :: proc "contextless" (batch_count: int) -> int {
+	return (clamp(batch_count, 0, WGPU_GPU_VISIBLE_BATCH_WORD_COUNT * 32) + 31) / 32
+}
+
 wgpu_create_visibility_readbacks :: proc(renderer: ^WGPU_Renderer) -> string {
 	for &readback in renderer.gpu_visibility_readbacks {
 		readback.buffer = wgpu_create_gpu_buffer(
@@ -80,18 +84,18 @@ wgpu_visibility_begin_frame :: proc(renderer: ^WGPU_Renderer) {
 	}
 }
 
-wgpu_visibility_reset :: proc(renderer: ^WGPU_Renderer) {
-	if renderer == nil {
+wgpu_visibility_reset :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+	batch_count: int,
+) {
+	if renderer == nil || encoder == nil {
 		return
 	}
-	zero: WGPU_GPU_Visibility_Counters
-	wgpu.QueueWriteBuffer(
-		renderer.queue,
-		renderer.gpu_visibility_counter_buffer,
-		0,
-		&zero,
-		uint(size_of(zero)),
-	)
+	visible_batch_words := wgpu_visible_batch_word_count(batch_count)
+	clear_size :=
+		u64(size_of(WGPU_GPU_Visibility_Counters)) + u64(visible_batch_words * size_of(u32))
+	wgpu.CommandEncoderClearBuffer(encoder, renderer.gpu_visibility_counter_buffer, 0, clear_size)
 }
 
 wgpu_visibility_resolve :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandEncoder) {
@@ -135,6 +139,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		return
 	}
 	stats.visible_instances = renderer.gpu_visibility_counters.visible_instances
+	stats.visible_batches = renderer.gpu_visibility_counters.visible_batches
+	stats.visible_meshlet_draws = renderer.gpu_visibility_counters.visible_meshlet_draws
 	stats.shadow_visible_instances = renderer.gpu_visibility_counters.shadow_visible_instances
 	stats.frustum_candidates = renderer.gpu_visibility_counters.frustum_candidates
 	stats.frustum_culled_instances = renderer.gpu_visibility_counters.frustum_culled_instances

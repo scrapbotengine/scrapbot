@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-07-30
+**Last verified:** 2026-07-31
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -27,7 +27,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Project/editor/overlay UI vertex buffers | WGPU backend | Derived from UI output streams | Independent monotonic stream revisions; stable streams retain CPU/GPU buffers. Target size, editor viewport, or authored canvas changes invalidate the project stream key. Project commands use the canvas's vector scale plus viewport translation and clipping; pointer input and diagnostics invert the same transform. The compositor paints project UI, viewport-clipped editor-world overlays, then editor chrome so docked tabs and panels occlude scene tools. |
 | Embedded UI viewport membership and targets | `ui.State` / WGPU backend | Derived from authored `scrapbot.ui_viewport`, layout, and resource/World state | Structural UI dirtiness maintains compact viewport-node membership. Layout refreshes only bounded visible surfaces. WGPU reuses eight independently sized target slots, quantized from 64–1024 pixels per axis. Static Texture/Model/Material preview scenes cache by component, target shape, exact resource version, and relevant registry revisions; World targets consume the retained render list. |
 | System profiler snapshot | Root runtime | Derived diagnostic state | Samples every frame, rolls over 50 frames, publishes every five frames. |
-| Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames; renderer and mutation-maintained world counters publish every five frames under one revision. |
+| Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames; retained topology plus asynchronous camera-visible batch, nonempty meshlet-draw, visibility, and timing counters and mutation-maintained world counters publish every five frames under one revision. |
 | Bounded render profile | CLI-owned `Profile_Collector`, populated by renderer/WGPU | Ephemeral diagnostic artifact | Explicit `scrapbot profile` lifetime only. Preallocated measured rows receive active CPU, frame-local counter, and structured pass-workload data directly and delayed GPU timing by originating frame index. Profile-only feature overrides resolve a temporary camera/fog policy after ECS extraction without mutating authored data. Finalization derives summaries; destruction releases rows and adapter metadata. Ordinary runs have no collector and perform no profile work. |
 | Live entity origin counters | ECS world | Derived from entity lifecycle | Incremented on spawn and decremented on despawn; diagnostics read them without scanning entity capacity. |
 | Editor browsers, inspector snapshots, reflected-container expansion, and UUID-picker candidate rows | Editor UI composition over component registry and canonical payloads | Derived tooling view | The entity browser contains authored entities plus an explicitly selected runtime entity. Component cards and rows are runtime type-inspected with no per-component panel catalog. Selection or explicit structural invalidation rebuilds them; the 5 Hz running-value cadence refreshes values without rematerializing browser rows. Nested records and fixed arrays retain bounded reflection paths on pooled public disclosure/leaf controls; collapsed containers do not recurse or materialize descendants. The entity-reference popup enumerates and validates scene candidates only when opened, retains a missing/current reference for repair, and delegates filtering/virtualization to public UI components. Stable closed frames do no candidate work. Stopped values remain change-driven, focused inputs retain staged text, and active scrubs defer unrelated refresh. |
@@ -59,6 +59,12 @@ meshlet command topology. Batch membership capacity defines visibility allocatio
 copy the retained templates, run object-first cluster culling, and submit fixed command ranges;
 they do not rescan resources, rebuild cluster metadata, or upload debug identities. Unsupported adapters and layouts above
 the bounded visibility capacity use the retained whole-primitive database.
+
+The retained batch count follows topology invalidation. Camera-visible batches and nonempty meshlet
+draws are frame-valued GPU counters. The first surviving object atomically sets its selected
+batch's bit in fixed counter-buffer storage. The first surviving instance for a meshlet command
+advances that indirect count from zero. CPU-reference culling derives visible batches from its
+existing per-batch counts and reports zero meshlet draws.
 
 ### Resource caches
 

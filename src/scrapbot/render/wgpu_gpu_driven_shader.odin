@@ -991,7 +991,9 @@ struct Visibility_Counters {
 	cone_culled_meshlets: atomic<u32>,
 	occlusion_culled_meshlets: atomic<u32>,
 	meshlet_debug_records: atomic<u32>,
-	padding: array<u32, 2>,
+	visible_batches: atomic<u32>,
+	visible_meshlet_draws: atomic<u32>,
+	visible_batch_words: array<atomic<u32>, 16384>,
 };
 
 @group(0) @binding(0) var<storage, read> instances: array<GPU_Instance>;
@@ -1007,6 +1009,15 @@ struct Visibility_Counters {
 
 fn render_debug_is_occlusion_queries() -> bool {
 	return cull.debug_view == 10u;
+}
+
+fn mark_visible_batch(batch_index: u32) {
+	let word_index = batch_index >> 5u;
+	let bit = 1u << (batch_index & 31u);
+	let previous = atomicOr(&counters.visible_batch_words[word_index], bit);
+	if ((previous & bit) == 0u) {
+		atomicAdd(&counters.visible_batches, 1u);
+	}
 }
 
 fn world_meshlet_bounds(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec4<f32> {
@@ -1258,6 +1269,7 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
 			}
 		} else if (cull.meshlet_enabled != 0u) {
+			mark_visible_batch(batch_index);
 			for (
 				var local_meshlet = 0u;
 				local_meshlet < batch.meshlet_count;
@@ -1294,6 +1306,9 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 				}
 				let local_index =
 					atomicAdd(&indirect[meshlet_index].instance_count, 1u);
+				if (local_index == 0u) {
+					atomicAdd(&counters.visible_meshlet_draws, 1u);
+				}
 				if (local_index < meshlet.visible_capacity) {
 					visible_instances[meshlet.visible_offset + local_index] = slot;
 					atomicAdd(&counters.visible_meshlets, 1u);
@@ -1303,6 +1318,7 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 			atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
 		} else {
 			let local_index = atomicAdd(&indirect[batch_index].instance_count, 1u);
+			mark_visible_batch(batch_index);
 			if (local_index < batch.visible_capacity) {
 				visible_instances[batch.visible_offset + local_index] = slot;
 				atomicAdd(&counters.visible_instances, 1u);

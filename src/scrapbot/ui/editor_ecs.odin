@@ -1311,7 +1311,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"GPU FRAME",
 		"RENDER SCALE",
 		"ENTITIES",
-		"DRAW BATCHES",
+		"RETAINED BATCHES",
+		"VISIBLE BATCHES",
+		"VISIBLE MESHLET DRAWS",
 		"HI-Z CULLING",
 		"FRUSTUM CULLED",
 		"OBJECT OCCLUSION",
@@ -2168,13 +2170,15 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 	if diagnostics.hiz_occlusion_status == .Below_Threshold {
 		hiz_status = fmt.tprintf("BELOW %d", diagnostics.hiz_instance_threshold)
 	}
-	values := [10]string {
+	values := [12]string {
 		fmt.tprintf("%.1f", diagnostics.fps),
 		fmt.tprintf("%.2f ms", diagnostics.frame_ms),
 		"--",
 		fmt.tprintf("%.0f%%", diagnostics.render_scale * 100),
 		fmt.tprintf("%d", diagnostics.entity_count),
-		fmt.tprintf("%d", diagnostics.draw_batches),
+		fmt.tprintf("%d", diagnostics.retained_batches),
+		fmt.tprintf("%d", diagnostics.visible_batches),
+		fmt.tprintf("%d", diagnostics.visible_meshlet_draws),
 		hiz_status,
 		fmt.tprintf("%d", diagnostics.frustum_culled_instances),
 		fmt.tprintf("%d", diagnostics.occlusion_culled_instances),

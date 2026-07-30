@@ -329,6 +329,7 @@ bin/scrapbot run examples/ui-showcase --backend null --editor --headless --no-ho
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/entity-reference-inspector.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/nested-inspector.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/editor-panel-edge-split.json --json
+bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/performance-diagnostics.json --json
 bin/scrapbot run examples/asteroids --backend null --headless --no-hot-reload --frames 5
 STRESS_JSON="$(bin/scrapbot run examples/ecs-stress --backend null --headless --no-hot-reload --frames 180 --runtime-stats --json)"
 node -e '
@@ -480,7 +481,11 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
       stats.draw_database_rebuilds < 1 || stats.instance_slots <= 64 ||
       stats.instance_uploads < 1 ||
       stats.instance_uploads - stats.instance_transform_uploads >= 10 ||
-      stats.instance_upload_bytes <= 0 || stats.frustum_culled_instances < 1) {
+      stats.instance_upload_bytes <= 0 || stats.frustum_culled_instances < 1 ||
+      stats.visible_batches < 1 || stats.visible_batches > stats.draw_batches ||
+      (expectedCompute && (stats.visible_meshlet_draws < 1 ||
+        stats.visible_meshlet_draws > stats.meshlet_draws)) ||
+      (!expectedCompute && stats.visible_meshlet_draws !== 0)) {
     console.error(`unexpected ${label} GPU renderer diagnostics`);
     process.exit(1);
   }
@@ -620,6 +625,9 @@ const rejected =
   stats?.occlusion_culled_meshlets;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
     !stats?.meshlet_culling || stats.meshlet_debug_records <= 0 ||
+    stats.visible_batches < 1 || stats.visible_batches > stats.draw_batches ||
+    stats.visible_meshlet_draws < 1 ||
+    stats.visible_meshlet_draws > stats.meshlet_draws ||
     stats.meshlet_debug_records < rejected ||
     stats.gpu_ambient_occlusion_ms !== 0 ||
     stats.gpu_screen_space_reflections_ms !== 0 ||

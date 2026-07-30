@@ -150,7 +150,7 @@ With `--runtime-stats`, JSON results include a `runtime_stats` object. It report
 JSON run results also include `render_stats`. For WGPU, the object groups together:
 
 - Active-path flags for compute culling, meshlet culling, native multi-draw acceleration, and clustered lighting.
-- Meshlet capability, retained draw count, visible capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count.
+- Meshlet capability, retained `draw_batches`, camera `visible_batches`, nonempty `visible_meshlet_draws`, visibility capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count.
 - Shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values.
 - Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.
 - Frustum candidates, explicit frustum rejections, visible instances, per-LOD visible counts, and Hi-Z validity, status, mip count, and adaptive instance threshold.

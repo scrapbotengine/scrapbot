@@ -52,6 +52,7 @@ Runtime_Reimport_Proc :: #type proc(
 ) -> string
 Render_Stats :: struct {
 	draw_batches: int,
+	visible_batches: u32,
 	draw_capacity: int,
 	draw_database_rebuilds: u64,
 	gpu_driven: bool,
@@ -60,6 +61,7 @@ Render_Stats :: struct {
 	meshlet_supported: bool,
 	meshlet_native_multi_draw: bool,
 	meshlet_draws: int,
+	visible_meshlet_draws: u32,
 	meshlet_visible_capacity: int,
 	clustered_lighting: bool,
 	shadow_cascades: int,
@@ -456,7 +458,9 @@ performance_diagnostics_commit_frame :: proc(
 	snapshot.render_scale = stats.render_scale
 	snapshot.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	snapshot.entity_count = world.scene_entity_count + world.runtime_entity_count
-	snapshot.draw_batches = stats.draw_batches
+	snapshot.retained_batches = stats.draw_batches
+	snapshot.visible_batches = stats.visible_batches
+	snapshot.visible_meshlet_draws = stats.visible_meshlet_draws
 	snapshot.instance_count = stats.instance_slots
 	snapshot.frustum_candidates = stats.frustum_candidates
 	snapshot.frustum_culled_instances = stats.frustum_culled_instances

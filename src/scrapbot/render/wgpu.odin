@@ -103,8 +103,14 @@ WGPU_GPU_Visibility_Counters :: struct {
 	cone_culled_meshlets: u32,
 	occlusion_culled_meshlets: u32,
 	meshlet_debug_records: u32,
-	_padding: [2]u32,
+	visible_batches: u32,
+	visible_meshlet_draws: u32,
 }
+WGPU_GPU_VISIBLE_BATCH_WORD_COUNT :: (WGPU_MAX_GPU_INSTANCES * shared.MAX_GEOMETRY_LODS + 31) / 32
+#assert(WGPU_GPU_VISIBLE_BATCH_WORD_COUNT == 16_384)
+WGPU_GPU_VISIBILITY_COUNTER_BUFFER_SIZE ::
+	u64(size_of(WGPU_GPU_Visibility_Counters)) +
+	u64(WGPU_GPU_VISIBLE_BATCH_WORD_COUNT * size_of(u32))
 
 WGPU_GPU_Visibility_Readback :: struct {
 	buffer: wgpu.Buffer,

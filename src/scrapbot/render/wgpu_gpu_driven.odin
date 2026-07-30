@@ -350,7 +350,7 @@ wgpu_make_cull_bind_group :: proc(
 		{
 			binding = 8,
 			buffer = renderer.gpu_visibility_counter_buffer,
-			size = u64(size_of(WGPU_GPU_Visibility_Counters)),
+			size = WGPU_GPU_VISIBILITY_COUNTER_BUFFER_SIZE,
 		},
 		{binding = 9, buffer = renderer.gpu_meshlet_info_buffer, size = meshlet_info_bytes},
 	}
@@ -945,7 +945,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		renderer,
 		"Scrapbot GPU Visibility Counters",
 		{.Storage, .CopySrc, .CopyDst},
-		u64(size_of(WGPU_GPU_Visibility_Counters)),
+		WGPU_GPU_VISIBILITY_COUNTER_BUFFER_SIZE,
 	)
 	if renderer.gpu_instance_buffer == nil ||
 	   renderer.gpu_transform_update_buffer == nil ||
@@ -2949,7 +2949,7 @@ wgpu_encode_gpu_culling :: proc(
 			uint(size_of(debug_draw)),
 		)
 	}
-	wgpu_visibility_reset(renderer)
+	wgpu_visibility_reset(renderer, encoder, batch_count)
 	copy_size := u64(batch_count) * u64(size_of(WGPU_Draw_Indexed_Indirect))
 	wgpu.CommandEncoderCopyBufferToBuffer(
 		encoder,
@@ -3165,6 +3165,9 @@ wgpu_prepare_cpu_culling :: proc(
 	renderer.gpu_visibility_counters = {}
 	for count in camera_counts {
 		renderer.gpu_visibility_counters.visible_instances += count
+		if count > 0 {
+			renderer.gpu_visibility_counters.visible_batches += 1
+		}
 	}
 	for counts in shadow_counts {
 		for count in counts {
