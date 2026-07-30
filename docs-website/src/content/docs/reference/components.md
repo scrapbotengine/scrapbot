@@ -358,6 +358,12 @@ displayed without rewriting authored data.
 | `tab_min_width`, `tab_max_width` | `72`, `180` | Positive title-width bounds; maximum must be at least minimum. |
 | `tab_gap`, `tab_padding` | `2`, `12` | Non-negative spacing between tabs and horizontal title inset. |
 | `tab_size`, `tab_corner_radius` | `12`, `4` | Positive title size and non-negative SDF corner radius. |
+| `tab_connection_height` | `4` | Non-negative active-tab bottom strip that squares its lower corners and visually joins it to the content surface. Set to `0` for a detached pill/button silhouette. |
+| `tab_content_overlap` | `2` | Non-negative distance the active tab's connection strip extends over the content sheet to remove a visible seam. |
+| `tab_strip_background` | `[0, 0, 0, 0]` | HDR background painted across the tab strip without covering the active content. |
+| `content_background` | `[0.105, 0.115, 0.135, 1]` | HDR color of the shared sheet painted behind the active pane. Set alpha to `0` for no sheet. |
+| `content_corner_radius` | `4` | Non-negative SDF corner radius of the shared content sheet. |
+| `content_padding` | `[0, 0, 0, 0]` | Non-negative top/right/bottom/left inset between the sheet edge and the active pane. |
 | `tab_color` | `[0.68, 0.70, 0.76, 1]` | Inactive title color. |
 | `tab_active_color` | `[0.94, 0.95, 0.98, 1]` | Active title color. |
 | `tab_background` | `[0.055, 0.060, 0.072, 1]` | Inactive tab background. |
@@ -384,6 +390,16 @@ space's active child. Center drops retain the tab/stack transfer behavior. The
 generated topology uses the same public components, HDR styles, UUID parents,
 layout invalidation, and separator interaction available to project-authored
 game UI; the editor has no private dock tree.
+
+The dock space paints an optional tab-strip background plus one shared sheet
+behind whichever pane is active. The strip keeps workspace chrome consistent
+without covering renderer-backed content; the sheet's background, radius, and
+inner padding do not belong to any individual tab. Active tabs paint their
+ordinary rounded background followed by a square bottom connection strip that
+overlaps this sheet. This produces a familiar top-rounded physical-tab
+silhouette without a harsh outline or seam. Transparent `tab_background` plus
+a subtle `tab_hover_background` lets inactive tabs read as labels instead of
+adjacent buttons. Every color and dimension remains independently themeable.
 
 When a dock item contains a reorderable HStack or VStack, its tab header is a
 drop target for that descendant stack. The nearest matching stack wins,

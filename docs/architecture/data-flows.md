@@ -236,6 +236,11 @@ bounded; an unchanged domain repeats none of this work.
 A dock space measures one tab for each direct public dock-item or titled-panel
 child and lays out only the active child below that strip. A docked panel uses
 its panel title as the tab and suppresses the redundant internal title band.
+The same component optionally paints a dedicated tab-rail background and one
+rounded content sheet behind that child, insets the child with public padding,
+and extends a square active-tab strip over the sheet to remove the seam.
+Alpha-zero sheet color leaves renderer-backed or otherwise self-painting
+content unobscured while retaining independently themed rail chrome.
 Cross-container drag completion changes the item's ordinary UUID parent and,
 when applicable, the destination active UUID and stack order. The structural
 dirty queue rebuilds retained parent links before the same-frame relayout, then

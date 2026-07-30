@@ -244,6 +244,12 @@ split_ratio = 0.5
 split_edge_fraction = 0.25
 split_gap = 4
 split_min_size = 120
+tab_connection_height = 4
+tab_content_overlap = 2
+tab_strip_background = [0.02, 0.025, 0.032, 1]
+content_background = [0.105, 0.115, 0.135, 1]
+content_corner_radius = 4
+content_padding = [2, 2, 2, 2]
 
 [[entities]]
 id = "d4000000-0000-4000-8000-000000000132"
@@ -289,6 +295,17 @@ An edge target is offered only when both panes can satisfy the minimum size.
 Because the result is ordinary ECS UI topology, project code may query, restyle,
 resize, or persist it with the same APIs it uses for authored stacks and dock
 spaces.
+
+Tab silhouettes and their shared pane sheet are themeable rather than
+editor-specific. `tab_strip_background` gives the tab rail its own surface
+without painting over active content. `content_background`,
+`content_corner_radius`, and `content_padding` create the physical surface that
+houses every pane in the group. A positive `tab_connection_height` squares the
+active tab's lower corners, while `tab_content_overlap` joins it cleanly over
+that sheet. A zero
+connection height retains a detached rounded control. Use a transparent
+inactive `tab_background` when inactive entries should read as tab labels
+rather than buttons.
 
 A panel may carry that stack itself so the tab created by docking the panel can
 accept later drops. While the panel remains nested in another stack, its own

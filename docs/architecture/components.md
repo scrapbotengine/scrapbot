@@ -272,11 +272,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_dock_space`
 
-- **Contract:** Styled tab strip over direct dock-item or titled-panel children with a stable active UUID, opt-in cross-container transfer target, and opt-in horizontal/vertical edge splitting.
+- **Contract:** Independently styled tab rail physically joined to a shared padded content sheet behind the active direct dock-item or titled-panel child, with a stable active UUID, opt-in cross-container transfer target, and opt-in horizontal/vertical edge splitting.
 - **Storage/lifecycle:** Dedicated typed UI storage plus bounded reconciler-owned tab hit/gesture state; authored component. Completed edge drops create runtime-origin project or editor-origin public layout, stack, and dock-space entities.
 - **Producers:** Scene TOML, Luau/native mutation, project UI composition, and editor workspace composition.
-- **Consumers:** Retained layout, tab measurement/paint, pointer selection, UUID reparenting, public split-topology construction, generic drop state, and immutable UI events.
-- **Invalidation:** Membership, active UUID, tab/split metrics, title/font, or item-parent changes invalidate only the affected UI domain. Hover/drag changes paint state; a completed transfer or split uses ordinary `ui_layout` structural invalidation. Stable frames do no tab discovery, split construction, or paint rebuild.
+- **Consumers:** Retained layout, tab and shared-sheet measurement/paint, pointer selection, UUID reparenting, public split-topology construction, generic drop state, and immutable UI events.
+- **Invalidation:** Membership, active UUID, tab/sheet/split metrics, title/font, or item-parent changes invalidate only the affected UI domain. Hover/drag changes paint state; a completed transfer or split uses ordinary `ui_layout` structural invalidation. Stable frames do no tab discovery, split construction, or paint rebuild.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_dock_space).
 - **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/diagnostic_driver_test.odin`.
 

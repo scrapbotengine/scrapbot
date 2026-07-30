@@ -686,6 +686,16 @@ reserves `tab_height` above the active item, measures titles with its selected
 public tab and drop HDR colors for interaction. Inactive items remain authored
 but leave layout, paint, focus, and pointer interaction.
 
+`tab_strip_background` paints only the tab rail, which is useful when the
+active pane is renderer-backed and must remain unobscured.
+`content_background`, `content_corner_radius`, and `content_padding` define one
+shared sheet behind the active pane. `tab_connection_height` paints a square
+strip across the bottom of the active tab, and `tab_content_overlap` extends it
+over that sheet so the two surfaces read as one physical object. Set the
+connection height to `0` for detached pills, or combine a positive value with a
+transparent `tab_background` and subtle hover background for quiet inactive
+labels.
+
 Set an item's `movable = false` to lock it. Set a space's `draggable = false`
 to reject transfers. Otherwise, dragging a tab into another dock space changes
 the item's ordinary `ui_layout.parent` UUID and activates it in the

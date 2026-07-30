@@ -317,10 +317,13 @@ Project icon sets use the exact same payload with their resource UUID. `scrapbot
 
 The raw ABI stores text, dock titles, dock fonts, icon symbols, ordinary font names, input prefixes, semantic actions, and event payloads in separate fixed inline buffers rather than passing allocator-owned Odin strings across the dynamic-library boundary. The Odin helper handles those buffers through `ui_icon`, `ui_text`, `ui_panel`, `ui_dock_space`, `ui_dock_item`, `ui_button`, `ui_input`, `ui_action`, the `ui_payload_*` accessors, and `ui_event_action`/`ui_event_payload`.
 
-The dock-space payload also carries `split_horizontal`, `split_vertical`,
-`split_ratio`, `split_edge_fraction`, `split_gap`, and `split_min_size`.
-Directional completed drops arrive through the same native event payload as
-`Left`, `Right`, `Above`, or `Below`; center tab transfers remain `Into`.
+The dock-space payload also carries the complete public tab and sheet style,
+including the active-tab connection and content background, radius, and
+padding. Its `split_horizontal`, `split_vertical`, `split_ratio`,
+`split_edge_fraction`, `split_gap`, and `split_min_size` fields opt into the
+same directional docking used by the editor. Directional completed drops
+arrive through the same native event payload as `Left`, `Right`, `Above`, or
+`Below`; center tab transfers remain `Into`.
 
 ## Queue lifecycle commands
 
