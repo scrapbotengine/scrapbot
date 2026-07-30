@@ -24,7 +24,9 @@ Native components register before Luau executes, so scripts can retrieve native 
 
 At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement increments a model-instance revision; reconciliation waits for that structural signal.
 
-Resource descriptions remain outside ECS. Components store resolved runtime handles.
+Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
+registration derives bounded meshlet streams and local culling bounds once from canonical indexed
+triangles; the arrays remain owned and versioned with the Geometry entry.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.
 

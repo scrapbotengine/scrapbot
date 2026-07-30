@@ -32,11 +32,13 @@ test_clone_registry_preserves_owned_resource_state_independently :: proc(t: ^tes
 	testing.expect(t, geometry_alive && material_alive)
 	if geometry_alive && material_alive {
 		cloned_geometry.vertices[0].position.x = 42
+		cloned_geometry.meshlet_vertices[0] = 0xffff_ffff
 		cloned_material.desc.base_color.x = 0.9
 	}
 	source_geometry, _ := get_geometry(&source, geometry)
 	source_material, _ := get_material(&source, material)
 	testing.expect(t, source_geometry.vertices[0].position.x != 42)
+	testing.expect(t, source_geometry.meshlet_vertices[0] != cloned_geometry.meshlet_vertices[0])
 	testing.expect_value(t, source_material.desc.base_color.x, f32(0.2))
 }
 
@@ -421,6 +423,52 @@ test_cube_is_full_indexed_geometry :: proc(t: ^testing.T) {
 	testing.expect(t, len(desc.indices) == 36)
 	testing.expect(t, calculate_bounds(desc.vertices).min.x == -1)
 	testing.expect(t, validate_geometry(desc) == "")
+}
+
+test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
+	registry := Registry{}
+	defer destroy_registry(&registry)
+	desc, desc_err := icosphere(1, 3)
+	testing.expect(t, desc_err == "")
+	if desc_err != "" {
+		return
+	}
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := register_geometry(&registry, "meshlet sphere", desc)
+	testing.expect(t, register_err == "")
+	geometry, alive := get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	if !alive {
+		return
+	}
+	testing.expect(t, len(geometry.meshlets) > 1)
+	total_triangles := 0
+	for meshlet in geometry.meshlets {
+		testing.expect(t, meshlet.vertex_count <= MESHLET_MAX_VERTICES)
+		testing.expect(t, meshlet.triangle_count <= MESHLET_MAX_TRIANGLES)
+		testing.expect(t, meshlet.vertex_count > 0)
+		testing.expect(t, meshlet.triangle_count > 0)
+		testing.expect(t, meshlet.bounds[3] >= 0)
+		vertex_start := int(meshlet.vertex_offset)
+		vertex_end := vertex_start + int(meshlet.vertex_count)
+		triangle_start := int(meshlet.triangle_offset)
+		triangle_end := triangle_start + int(meshlet.triangle_count * 3)
+		testing.expect(t, vertex_end <= len(geometry.meshlet_vertices))
+		testing.expect(t, triangle_end <= len(geometry.meshlet_triangles))
+		if vertex_end > len(geometry.meshlet_vertices) ||
+		   triangle_end > len(geometry.meshlet_triangles) {
+			continue
+		}
+		for vertex in geometry.meshlet_vertices[vertex_start:vertex_end] {
+			testing.expect(t, int(vertex) < len(geometry.vertices))
+		}
+		for triangle_vertex in geometry.meshlet_triangles[triangle_start:triangle_end] {
+			testing.expect(t, u32(triangle_vertex) < meshlet.vertex_count)
+		}
+		total_triangles += int(meshlet.triangle_count)
+	}
+	testing.expect_value(t, total_triangles, len(geometry.indices) / 3)
 }
 
 @(test)

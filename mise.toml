@@ -125,11 +125,12 @@ run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot
 
 [tasks.build]
 description = "Build the Scrapbot CLI when its optimized binary is stale"
-depends = ["luau", "cgltf", "wgpu", "icon-tools"]
+depends = ["luau", "cgltf", "meshoptimizer", "wgpu", "icon-tools"]
 sources = [
   "mise.toml",
   "src/**/*",
   "third_party/luau/build/release/*.a",
+  "third_party/meshoptimizer/build/release/libmeshoptimizer.a",
 ]
 outputs = ["bin/scrapbot"]
 run = '''
@@ -137,10 +138,10 @@ mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)
-    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -lc++"
+    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -Wl,-force_load,third_party/meshoptimizer/build/release/libmeshoptimizer.a -lc++"
     ;;
   Linux)
-    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a third_party/meshoptimizer/build/release/libmeshoptimizer.a -Wl,--no-whole-archive -lstdc++ -lpthread"
     ;;
   *)
     echo "unsupported Luau link platform: $(uname -s)" >&2
@@ -152,11 +153,12 @@ odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUA
 
 [tasks.build-dev]
 description = "Build the Scrapbot CLI for fast development iteration when stale"
-depends = ["luau", "cgltf", "wgpu", "icon-tools"]
+depends = ["luau", "cgltf", "meshoptimizer", "wgpu", "icon-tools"]
 sources = [
   "mise.toml",
   "src/**/*",
   "third_party/luau/build/release/*.a",
+  "third_party/meshoptimizer/build/release/libmeshoptimizer.a",
 ]
 outputs = ["bin/scrapbot-dev"]
 run = '''
@@ -164,10 +166,10 @@ mkdir -p bin
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)
-    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -lc++"
+    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -Wl,-force_load,third_party/meshoptimizer/build/release/libmeshoptimizer.a -lc++"
     ;;
   Linux)
-    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a third_party/meshoptimizer/build/release/libmeshoptimizer.a -Wl,--no-whole-archive -lstdc++ -lpthread"
     ;;
   *)
     echo "unsupported Luau link platform: $(uname -s)" >&2
@@ -234,6 +236,12 @@ if [ ! -f "$CGLTF_LIB" ]; then
 fi
 '''
 
+[tasks.meshoptimizer]
+description = "Build the pinned meshoptimizer library for offline meshlet generation"
+sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile"]
+outputs = ["third_party/meshoptimizer/build/release/libmeshoptimizer.a"]
+run = "make -C third_party/meshoptimizer config=release build/release/libmeshoptimizer.a"
+
 [tasks.wgpu]
 description = "Install Odin's pinned wgpu-native vendor library when absent"
 run = '''
@@ -290,10 +298,10 @@ python tools/generate_builtin_icons.py --check
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)
-    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -lc++"
+    LUAU_LINK_FLAGS="-Wl,-force_load,$LUAU_LIBS/libluaucompiler.a -Wl,-force_load,$LUAU_LIBS/libluauast.a -Wl,-force_load,$LUAU_LIBS/libluaubytecode.a -Wl,-force_load,$LUAU_LIBS/libluauvm.a -Wl,-force_load,$LUAU_LIBS/libluaucommon.a -Wl,-force_load,third_party/meshoptimizer/build/release/libmeshoptimizer.a -lc++"
     ;;
   Linux)
-    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a third_party/meshoptimizer/build/release/libmeshoptimizer.a -Wl,--no-whole-archive -lstdc++ -lpthread"
     ;;
   *)
     echo "unsupported Luau link platform: $(uname -s)" >&2
@@ -641,7 +649,7 @@ run = 'node tools/test_gpu_offscreen.mjs "$@"'
 
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"
-depends = ["luau", "cgltf"]
+depends = ["luau", "cgltf", "meshoptimizer"]
 run = '''
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
@@ -650,7 +658,7 @@ case "$(uname -s)" in
     exit 0
     ;;
   Linux)
-    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a -Wl,--no-whole-archive -lstdc++ -lpthread"
+    LUAU_LINK_FLAGS="-Wl,--whole-archive $LUAU_LIBS/libluaucompiler.a $LUAU_LIBS/libluauast.a $LUAU_LIBS/libluaubytecode.a $LUAU_LIBS/libluauvm.a $LUAU_LIBS/libluaucommon.a third_party/meshoptimizer/build/release/libmeshoptimizer.a -Wl,--no-whole-archive -lstdc++ -lpthread"
     ;;
   *)
     echo "unsupported sanitizer platform: $(uname -s)" >&2

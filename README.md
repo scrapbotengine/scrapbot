@@ -45,6 +45,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, imported image-based lighting with independent diffuse/specular strength or roughness-aware analytic environment lighting from a procedural haze sky via one `scrapbot.world_environment` component, authored global height/distance fog with shadowed directional scattering, half-resolution thickness-aware visibility-bitmask ambient occlusion over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
 - Per-camera render policy: a bounded manual world-resolution scale, optional GPU-budgeted dynamic resolution, TAA, fast AA, AO, SSR, and bloom are authored on `scrapbot.camera`; UI stays native-resolution, AO and SSR have bounded quality tiers, and disabled effects skip their GPU work.
 - UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains, and composition-time UI themes) with hot reload, targeted reimport where applicable, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
+- Every registered geometry owns deterministic meshoptimizer-built meshlets with bounded local vertex/triangle streams, conservative sphere bounds, and normal cones. The current renderer still submits whole primitives while feature-gated GPU meshlet culling and richer indirect submission are completed.
 
 ### Retained UI
 
@@ -205,6 +206,7 @@ trends; they are not portable performance thresholds.
   - [x] Targeted live Reimport, import diagnostics, texture thumbnails, and stale model-product retirement
   - [x] UUID-backed material resources
   - [x] UUID-backed generated geometry LOD resources
+  - [x] Resource-owned meshlet clustering and bounds for every geometry
   - [x] Compiled UUID-backed SVG icon-set resources and embedded control catalog
 - Tooling
   - [x] Resource hot reload

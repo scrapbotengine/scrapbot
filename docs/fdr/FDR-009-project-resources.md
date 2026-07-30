@@ -58,7 +58,7 @@ Project resources are reusable, typed bags of authored data stored outside the E
 
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036, ADR-041
+- **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036, ADR-041, ADR-046
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-011
 
 ## Open Questions

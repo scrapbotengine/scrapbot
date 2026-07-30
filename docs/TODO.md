@@ -10,7 +10,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add optional per-target post-processing, grids, axes, wireframe, and transparent presentation to embedded ECS viewports.
 - [ ] Generalize retained-World viewport targets into explicitly addressable concurrent ECS worlds when multi-world runtime ownership exists.
 - [ ] Replace aggregate asset polling with dependency-aware platform file watching that enqueues exact resource UUID reimports.
-- [ ] Add imported mesh LODs and evaluate meshlets and richer submission against representative scenes.
+- [ ] Add imported mesh LODs, then consume resource-owned meshlet bounds in feature-gated GPU culling and multi-draw-count submission; retain whole-primitive indirect draws as the fallback. See [ADR-046](adr/ADR-046-store-meshlets-with-geometry-resources.md).
 - [ ] Extend the camera's authored TAA/fast-AA/AO/SSR/bloom controls with ambient-occlusion radius/intensity/thickness, reflection distance/thickness/roughness, bloom threshold/intensity/scatter, and temporal history/quality; evaluate whether advanced overrides become a separate post-processing component or volume. (AO and SSR sample quality are available.)
 - [ ] Add hierarchical-Z ray marching, rough-reflection filtering, and temporal confidence accumulation to screen-space reflections; keep the current bounded linear ray march as the portable baseline.
 - [ ] Add per-object motion vectors so temporal antialiasing can reproject animated geometry exactly instead of relying on depth rejection and neighborhood clamping.

@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-29
+**Last verified:** 2026-07-30
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -55,9 +55,12 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Built-in/transient geometry registers by unique name and may be replaced in place only when it is not authored.
 - Authored `Geometry_LOD` declarations register by UUID and name. The base entry owns authored identity; additional LOD entries use internal names and handles.
 - Content replacement increments the entry version. LOD membership, addition, disappearance, or other batch-shape changes also increment `geometry_topology_revision`.
+- Registration builds deterministic meshoptimizer clusters with at most 64 vertices and 124 triangles. Geometry owns each meshlet's local vertex/triangle streams, conservative sphere, and normal cone beside the canonical indexed source.
+- Clone, replacement, generated-LOD registration, retirement, and destruction move or release meshlet arrays with the rest of the Geometry entry. Construction occurs only at explicit registration/replacement boundaries; stable frames do no cluster work.
 - Missing authored declarations mark prior entries dead, increment generation/version, and invalidate old handles without compacting registry indexes.
 - Render preparation and the WGPU backend consume exact handle/version/topology changes; stable geometry is neither re-extracted nor re-uploaded.
-- Source/tests: `resources/resources.odin`; `resources/resources_test.odin`, `render/render_test.odin`.
+- The WGPU backend does not consume meshlet bounds yet. It retains whole-primitive indexed-indirect submission until ADR-046's feature-gated GPU culling path is complete.
+- Source/tests: `resources/meshlets.odin`, `resources/resources.odin`; `resources/resources_test.odin`, `render/render_test.odin`.
 
 ### Material
 

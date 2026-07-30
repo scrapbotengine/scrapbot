@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-24
+**Last reviewed:** 2026-07-30
 
 ## Overview
 
@@ -162,11 +162,11 @@ World-environment and active-camera exposure apply to the complete HDR world.
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions
 
-- How should authored LOD evolve from generated icospheres to imported meshes, offline simplification, and meshlets?
+- How should authored LOD evolve from generated icospheres to imported meshes and offline simplification?
 - How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-07-29
+**Last reviewed:** 2026-07-30
 
 ## Overview
 
@@ -99,7 +99,7 @@ Model-root shadow markers are copied onto derived primitive entities during the 
 
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041
+- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-009
 
 ## Open Questions
