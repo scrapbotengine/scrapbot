@@ -211,6 +211,9 @@ UI_Layout_Payload :: struct {
 	popup_max_width: f32,
 	popup_max_height: f32,
 	popup_viewport_margin: f32,
+	basis: f32,
+	grow: f32,
+	shrink: f32,
 }
 
 UI_Canvas_Payload :: struct {
@@ -228,6 +231,8 @@ UI_Stack_Payload :: struct {
 	fill: c.int,
 	draggable: c.int,
 	min_size: f32,
+	wrap: c.int,
+	line_gap: f32,
 }
 
 UI_Scroll_Area_Payload :: struct {
@@ -323,6 +328,8 @@ UI_Text_Payload :: struct {
 	color: Vec4,
 	size: f32,
 	alignment: UI_Text_Alignment,
+	wrap: c.int,
+	line_height: f32,
 }
 
 UI_Button_Payload :: struct {

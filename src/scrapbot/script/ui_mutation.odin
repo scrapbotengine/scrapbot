@@ -66,6 +66,12 @@ read_ui_component_command_from_luau :: proc "c" (
 			); err != "" { return err }
 			if err := read_ui_bool_field(L, payload_index, "fixed_in_fill", &value.fixed_in_fill);
 			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "basis", &value.basis);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "grow", &value.grow);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "shrink", &value.shrink);
+			   err != "" { return err }
 			horizontal_alignment := ui_alignment_name(value.horizontal_alignment)
 			if err := read_ui_string_field(
 				L,
@@ -216,9 +222,15 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_number_field(L, payload_index, "min_size", &value.min_size);
 			   err != "" { return err }
-			if !shared.ui_stack_is_valid(
-				value,
-			) { return "UI stack requires non-negative gap/min_size and draggable requires fill" }
+			if err := read_ui_bool_field(L, payload_index, "wrap", &value.wrap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "line_gap", &value.line_gap);
+			   err != "" { return err }
+			if !shared.ui_stack_is_valid(value) {
+				return(
+					"UI stack requires non-negative gaps/min_size; draggable requires fill, while wrap excludes both" \
+				)
+			}
 			command.stack = value
 			kind := ecs.UI_Component_Command_Kind.HStack
 			if name == "scrapbot.ui_vstack" { kind = .VStack }
@@ -550,9 +562,13 @@ read_ui_component_command_from_luau :: proc "c" (
 				case:
 					return "ui_text.alignment must be left, center, or right"
 			}
+			if err := read_ui_bool_field(L, payload_index, "wrap", &value.wrap);
+			   err != "" { return err }
+			if err := read_ui_number_field(L, payload_index, "line_height", &value.line_height);
+			   err != "" { return err }
 			if !shared.ui_text_is_valid(
 				value,
-			) { return "ui_text requires text and a positive size" }
+			) { return "ui_text requires text, a positive size, and non-negative line_height" }
 			command.text = value
 			command.text.text = ""
 			command.text.font = ""

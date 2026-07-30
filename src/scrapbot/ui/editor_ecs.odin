@@ -4892,7 +4892,7 @@ editor_ui_inspector_preview_surface :: proc(
 			{size = {2000, 28}, margin = {4, 12, 12, 12}, fill_width = true},
 			panel_slot,
 		)
-		editor_ui_add_hstack(builder.world, toolbar, {gap = 8, fill = true})
+		editor_ui_add_hstack(builder.world, toolbar, {gap = 8})
 	} else {
 		editor_ui_set_parent(builder.world, toolbar, panel_name)
 		editor_ui_set_hidden(builder.world, toolbar, !interactive)
@@ -4903,7 +4903,7 @@ editor_ui_inspector_preview_surface :: proc(
 	if !reset_found {
 		reset_layout, reset_button := theme_button(theme, .Quiet)
 		reset_layout.size = {64, 28}
-		reset_layout.fixed_in_fill = true
+		reset_layout.basis = 64
 		reset = editor_ui_create_box(
 			builder.world,
 			fmt.tprintf("__scrapbot_editor_asset_preview_reset_%d", panel_slot),
@@ -4928,7 +4928,7 @@ editor_ui_inspector_preview_surface :: proc(
 			fmt.tprintf("__scrapbot_editor_asset_preview_hint_%d", panel_slot),
 			toolbar_name,
 			.Inspector_Preview_Hint,
-			{size = {1, 28}, fill_width = true},
+			{size = {200, 28}, basis = 200, grow = 1, shrink = 1},
 			panel_slot,
 		)
 		editor_ui_add_text(

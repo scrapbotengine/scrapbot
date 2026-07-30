@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-29
+**Last verified:** 2026-07-30
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -33,13 +33,13 @@ Lifecycle meanings:
 | `scrapbot.shadow_receiver` | Rendering | Authored | Yes | Marker enabling shadow reception. |
 | `scrapbot.ui_layout` | UI layout | Authored | Yes | Public box model, UUID parent/popup anchor, responsive sizing, visibility, and tree-row metadata. |
 | `scrapbot.ui_canvas` | UI layout | Authored | Yes | Singleton project-origin root policy for logical reference size, output scaling/alignment, safe area, and scale bounds. |
-| `scrapbot.ui_hstack` | UI layout | Authored | Yes | Horizontal flow, proportional fill, and optional draggable gaps. |
-| `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical flow, proportional fill, and optional draggable gaps. |
+| `scrapbot.ui_hstack` | UI layout | Authored | Yes | Horizontal fixed, proportional, or wrapping flex flow. |
+| `scrapbot.ui_vstack` | UI layout | Authored | Yes | Vertical fixed, proportional, or wrapping flex flow. |
 | `scrapbot.ui_scroll_area` | UI container | Authored | Yes | Retained smooth vertical scrolling, clipping, and scrollbar styling. |
 | `scrapbot.ui_panel` | UI container | Authored | Yes | Titled/collapsible decoration with reusable title-band actions. |
 | `scrapbot.ui_table` | UI container | Authored | Yes | Row-major multi-column layout with reusable proportions and separators. |
 | `scrapbot.ui_list` | UI container | Authored | Yes | Styled, filtered, and virtualized selection plus generic list/tree drag, reorder, and reparent state. |
-| `scrapbot.ui_text` | UI content | Authored | Yes | MTSDF text content and style. |
+| `scrapbot.ui_text` | UI content | Authored | Yes | Intrinsically measured, optionally wrapped MTSDF text. |
 | `scrapbot.ui_icon` | UI content | Authored | Yes | UUID-backed symbolic MTSDF icon content shared by projects, controls, themes, and editor chrome. |
 | `scrapbot.ui_progress` | UI content | Authored | Yes | Reusable bounded progress visualization. |
 | `scrapbot.ui_viewport` | UI content | Authored | Yes | Interactive renderer-backed Texture, Model, Material, or World surface composited through ordinary UI paint. |
@@ -210,10 +210,10 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_layout`
 
-- **Contract:** Required UI geometry/hierarchy box containing UUID parent, sizing, per-axis alignment, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
+- **Contract:** Required UI geometry/hierarchy box containing UUID parent, authored/minimum sizing, per-child basis/grow/shrink, per-axis alignment, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Scene TOML, Luau/native UI APIs, editor composition, generic UI setters.
-- **Consumers:** Retained hierarchy, layout, clipping, interaction hit testing, painting, tree/list mechanics, and generic popup placement/dismissal.
+- **Consumers:** Retained hierarchy, intrinsic/flex layout, clipping, interaction hit testing, painting, tree/list mechanics, and generic popup placement/dismissal.
 - **Invalidation:** Attach/remove/parent changes enqueue structural work; layout-affecting setters advance layout revision and visual setters advance paint revision. Popup open/anchor/constraint changes target the affected domain; stable closed or unchanged popups do no derived work.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_layout).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ecs/ui_components_test.odin`, `ui/ui_retained_test.odin`.
@@ -230,23 +230,23 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_hstack`
 
-- **Contract:** Horizontal child flow with gaps, proportional fill, minimum panes, and optional draggable separators.
+- **Contract:** Horizontal child flow with gaps, legacy proportional fill, minimum panes, optional draggable separators, and line-wrapped basis/grow/shrink resolution.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
 - **Consumers:** Retained UI layout and generic separator interaction.
 - **Invalidation:** Membership and flow-option mutations invalidate the affected hierarchy/layout domain; separator drags target pane sizes.
 - **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_hstack-and-scrapbotui_vstack).
-- **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
 
 ### `scrapbot.ui_vstack`
 
-- **Contract:** Vertical child flow with gaps, proportional fill, minimum panes, and optional draggable separators.
+- **Contract:** Vertical child flow with gaps, legacy proportional fill, minimum panes, optional draggable separators, and line-wrapped basis/grow/shrink resolution.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
 - **Consumers:** Retained UI layout and generic separator interaction.
 - **Invalidation:** Membership and flow-option mutations invalidate the affected hierarchy/layout domain; separator drags target pane sizes.
 - **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_hstack-and-scrapbotui_vstack).
-- **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
+- **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ui/ui.odin`; `project/project_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`, `ui/ui_retained_test.odin`.
 
 ### `scrapbot.ui_scroll_area`
 
@@ -320,10 +320,10 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_text`
 
-- **Contract:** Font-selected MTSDF text with color, size, and alignment.
+- **Contract:** Intrinsically measured font-selected MTSDF text with color, size, alignment, deterministic word wrapping, explicit newlines, and line height.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition.
-- **Consumers:** Text measurement, layout, glyph-atlas lookup, UI paint/vertex conversion.
+- **Consumers:** Shared line breaking and intrinsic measurement, layout, glyph-atlas lookup, UI paint/vertex conversion.
 - **Invalidation:** Text/font/size changes dirty measurement/layout and paint; color/alignment changes dirty paint or placement as applicable.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_text).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`, `project/fonts.odin`; `ui/ui_test.odin`, `ui/ui_retained_test.odin`.

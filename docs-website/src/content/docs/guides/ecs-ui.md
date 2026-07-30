@@ -191,6 +191,9 @@ Then compose the rest from ordinary layout policy:
 - `fixed_in_fill` preserves a bar or control's authored main-axis size inside a fill stack.
 - Stack `fill = true` distributes remaining space proportionally.
 - Stack `draggable = true` turns gaps into resize handles; `min_size` limits pane shrinking.
+- Layout `basis`, `grow`, and `shrink` provide per-child preferred and flexible sizing without mutating authored rectangles.
+- Stack `wrap = true` packs children into lines separated by `line_gap`; each line resolves grow and shrink independently.
+- Text `wrap = true` uses the active font's glyph metrics and optional `line_height`, so `fit_content_height` follows the rendered lines exactly.
 - Table `proportional_columns = true` treats the first row's authored widths as column weights for every row.
 - Table `resizable_columns = true` turns column gaps into resize handles; `min_column_width` limits shrinking.
 - List `tree_enabled = true` flattens direct tree rows by their public semantic parent/order metadata and indents only their contents.

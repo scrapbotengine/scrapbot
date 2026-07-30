@@ -121,10 +121,22 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	layout.border_width = 1
 	layout.border_color = {0.2, 0.24, 0.3, 1}
 	layout.corner_radius = 9
+	layout.basis = 120
+	layout.grow = 2
+	layout.shrink = 1
 	layout_payload := ui_layout(layout)
 	testing.expect(t, layout_payload.component == UI_LAYOUT)
 	testing.expect(t, layout_payload.layout.corner_radius == 9)
 	testing.expect(t, layout_payload.layout.background.w == 1)
+	testing.expect(t, layout_payload.layout.basis == 120)
+	testing.expect(t, layout_payload.layout.grow == 2)
+	testing.expect(t, layout_payload.layout.shrink == 1)
+	stack_style := ui_stack_default()
+	stack_style.wrap = 1
+	stack_style.line_gap = 8
+	stack_payload := ui_hstack(stack_style)
+	testing.expect(t, stack_payload.stack.wrap != 0)
+	testing.expect(t, stack_payload.stack.line_gap == 8)
 	canvas := ui_canvas_default()
 	canvas.reference_size = {1920, 1080}
 	canvas.scale_mode = .Expand
@@ -171,11 +183,15 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	text_style.size = 13
 	text_style.color = {0.8, 0.85, 0.9, 1}
 	text_style.alignment = .Right
+	text_style.wrap = 1
+	text_style.line_height = 18
 	text_payload, ok := ui_text(text_style, "Shared UI", "Inter")
 	testing.expect(t, ok)
 	testing.expect(t, ui_payload_text(&text_payload) == "Shared UI")
 	testing.expect(t, ui_payload_font(&text_payload) == "Inter")
 	testing.expect(t, text_payload.text.alignment == .Right)
+	testing.expect(t, text_payload.text.wrap != 0)
+	testing.expect(t, text_payload.text.line_height == 18)
 	icon_style := ui_icon_default()
 	icon_style.icon_set = ui_builtin_icon_set()
 	icon_payload, icon_ok := ui_icon(icon_style, "play")

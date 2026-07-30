@@ -468,7 +468,7 @@ horizontal_alignment = "end"
 vertical_alignment = "center"
 
 [entities.ui_vstack]
-gap = 22
+gap = 18
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000022"
@@ -478,7 +478,7 @@ ui_recipes = ["accent_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
-size = [506, 72]
+size = [506, 60]
 
 [entities.ui_text]
 text = "NEON OVERDRIVE"
@@ -492,11 +492,14 @@ ui_recipes = ["secondary_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
-size = [506, 34]
+size = [506, 54]
+fit_content_height = true
 
 [entities.ui_text]
-text = "SAME COMPONENTS. ZERO EDITOR ASSUMPTIONS."
+text = "SAME PUBLIC COMPONENTS. ZERO EDITOR ASSUMPTIONS. ONE RESPONSIVE FLOW."
 size = 16
+wrap = true
+line_height = 20
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000024"
@@ -506,8 +509,8 @@ ui_recipes = ["raised", "primary_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
-size = [506, 92]
-padding = [24, 28, 18, 28]
+size = [506, 70]
+padding = [18, 28, 14, 28]
 corner_radius = 0
 
 [entities.ui_text]
@@ -520,11 +523,12 @@ name = "Arcade Actions"
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
-size = [506, 82]
+size = [506, 138]
 
 [entities.ui_hstack]
 gap = 14
-fill = true
+wrap = true
+line_gap = 14
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000026"
@@ -534,9 +538,12 @@ ui_recipes = ["primary_button"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000025"
-size = [3, 82]
-padding = [24, 20, 18, 20]
+size = [230, 62]
+padding = [18, 20, 14, 20]
 corner_radius = 28
+basis = 230
+grow = 2
+shrink = 1
 
 [entities.ui_button]
 text = "BOOST"
@@ -554,9 +561,12 @@ ui_recipes = ["standard_button"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000025"
-size = [2, 82]
-padding = [24, 18, 18, 18]
+size = [150, 62]
+padding = [18, 18, 14, 18]
 corner_radius = 0
+basis = 150
+grow = 1
+shrink = 1
 
 [entities.ui_button]
 text = "DRIFT"
@@ -568,6 +578,29 @@ action = "arcade.drift"
 payload = "player-one"
 
 [[entities]]
+id = "30000000-0000-4000-8000-00000000002a"
+name = "Arcade Turbo"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["raised", "primary_button"]
+
+[entities.ui_layout]
+parent = "30000000-0000-4000-8000-000000000025"
+size = [150, 62]
+padding = [18, 18, 14, 18]
+corner_radius = 18
+basis = 150
+grow = 1
+shrink = 1
+
+[entities.ui_button]
+text = "TURBO MODE"
+size = 20
+
+[entities.ui_action]
+action = "arcade.turbo"
+payload = "player-one"
+
+[[entities]]
 id = "30000000-0000-4000-8000-000000000028"
 name = "Arcade Checkbox"
 ui_theme = "71c20000-0000-4000-8000-000000000001"
@@ -575,8 +608,8 @@ ui_recipes = ["control", "checkbox"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
-size = [506, 70]
-padding = [14, 16, 14, 16]
+size = [506, 60]
+padding = [10, 16, 10, 16]
 corner_radius = 18
 
 [entities.ui_checkbox]
@@ -597,11 +630,13 @@ ui_recipes = ["overlay", "accent_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
-size = [506, 64]
-padding = [18, 20, 14, 20]
+size = [506, 52]
+padding = [14, 20, 10, 20]
 border_width = 3
 corner_radius = 18
 
 [entities.ui_text]
 text = "EVENT BUS  /  AWAITING INPUT"
 size = 14
+wrap = true
+line_height = 18

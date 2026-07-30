@@ -501,6 +501,9 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "fit_content_width", field_type = .Bool},
 			Field_Definition{name = "fit_content_height", field_type = .Bool},
 			Field_Definition{name = "fixed_in_fill", field_type = .Bool},
+			Field_Definition{name = "basis", field_type = .Number},
+			Field_Definition{name = "grow", field_type = .Number},
+			Field_Definition{name = "shrink", field_type = .Number},
 			Field_Definition{name = "horizontal_alignment", field_type = .String},
 			Field_Definition{name = "vertical_alignment", field_type = .String},
 			Field_Definition{name = "tree_item", field_type = .Bool},
@@ -535,6 +538,8 @@ init_registry :: proc(registry: ^Registry) {
 		{name = "fill", field_type = .Bool},
 		{name = "draggable", field_type = .Bool},
 		{name = "min_size", field_type = .Number},
+		{name = "wrap", field_type = .Bool},
+		{name = "line_gap", field_type = .Number},
 	}
 	register_engine_component(registry, "scrapbot.ui_hstack", stack_fields[:])
 	register_engine_component(registry, "scrapbot.ui_vstack", stack_fields[:])
@@ -617,6 +622,8 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "color", field_type = .Vec4},
 			Field_Definition{name = "size", field_type = .Number},
 			Field_Definition{name = "alignment", field_type = .String},
+			Field_Definition{name = "wrap", field_type = .Bool},
+			Field_Definition{name = "line_height", field_type = .Number},
 		},
 	)
 	register_engine_component(

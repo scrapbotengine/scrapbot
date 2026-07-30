@@ -234,6 +234,9 @@ write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Sce
 		write_scene_value(builder, "fit_content_width", scene_bool(value.fit_content_width))
 		write_scene_value(builder, "fit_content_height", scene_bool(value.fit_content_height))
 		write_scene_value(builder, "fixed_in_fill", scene_bool(value.fixed_in_fill))
+		write_scene_value(builder, "basis", scene_f32(value.basis))
+		write_scene_value(builder, "grow", scene_f32(value.grow))
+		write_scene_value(builder, "shrink", scene_f32(value.shrink))
 		write_scene_string(
 			builder,
 			"horizontal_alignment",
@@ -443,6 +446,8 @@ write_scene_stack :: proc(
 	write_scene_value(builder, "fill", scene_bool(value.fill))
 	write_scene_value(builder, "draggable", scene_bool(value.draggable))
 	write_scene_value(builder, "min_size", scene_f32(value.min_size))
+	write_scene_value(builder, "wrap", scene_bool(value.wrap))
+	write_scene_value(builder, "line_gap", scene_f32(value.line_gap))
 }
 
 write_scene_icon :: proc(builder: ^strings.Builder, value: shared.UI_Icon_Component) {
@@ -464,6 +469,8 @@ write_scene_text :: proc(
 	write_scene_value(builder, "color", scene_vec4(value.color))
 	write_scene_value(builder, "size", scene_f32(value.size))
 	write_scene_string(builder, "alignment", scene_alignment(value.alignment))
+	write_scene_value(builder, "wrap", scene_bool(value.wrap))
+	write_scene_value(builder, "line_height", scene_f32(value.line_height))
 }
 
 write_scene_button :: proc(builder: ^strings.Builder, value: shared.UI_Button_Component) {

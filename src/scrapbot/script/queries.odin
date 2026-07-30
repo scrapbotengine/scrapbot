@@ -651,7 +651,7 @@ push_resource_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared
 }
 
 push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Component) {
-	lua_createtable(L, 0, 31)
+	lua_createtable(L, 0, 34)
 	push_uuid_field(L, "parent", value.parent)
 	push_uuid_field(L, "popup_anchor", value.popup_anchor)
 	push_vec2_field(L, "position", value.position)
@@ -669,6 +669,9 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_bool_field(L, "fit_content_width", value.fit_content_width)
 	push_bool_field(L, "fit_content_height", value.fit_content_height)
 	push_bool_field(L, "fixed_in_fill", value.fixed_in_fill)
+	push_number_field(L, "basis", value.basis)
+	push_number_field(L, "grow", value.grow)
+	push_number_field(L, "shrink", value.shrink)
 	push_string_field(L, "horizontal_alignment", ui_alignment_name(value.horizontal_alignment))
 	push_string_field(L, "vertical_alignment", ui_alignment_name(value.vertical_alignment))
 	push_bool_field(L, "tree_item", value.tree_item)
@@ -701,11 +704,13 @@ push_ui_canvas_table :: proc "c" (L: Lua_State, value: shared.UI_Canvas_Componen
 }
 
 push_ui_stack_table :: proc "c" (L: Lua_State, value: shared.UI_Stack_Component) {
-	lua_createtable(L, 0, 4)
+	lua_createtable(L, 0, 6)
 	push_number_field(L, "gap", value.gap)
 	push_bool_field(L, "fill", value.fill)
 	push_bool_field(L, "draggable", value.draggable)
 	push_number_field(L, "min_size", value.min_size)
+	push_bool_field(L, "wrap", value.wrap)
+	push_number_field(L, "line_gap", value.line_gap)
 }
 
 push_ui_scroll_area_table :: proc "c" (L: Lua_State, value: shared.UI_Scroll_Area_Component) {
@@ -838,7 +843,7 @@ push_ui_icon_table :: proc "c" (L: Lua_State, value: shared.UI_Icon_Component) {
 }
 
 push_ui_text_table :: proc "c" (L: Lua_State, value: shared.UI_Text_Component) {
-	lua_createtable(L, 0, 5)
+	lua_createtable(L, 0, 7)
 	push_string_field(L, "text", value.text)
 	push_string_field(L, "font", value.font)
 	push_vec4_field(L, "color", value.color)
@@ -850,6 +855,8 @@ push_ui_text_table :: proc "c" (L: Lua_State, value: shared.UI_Text_Component) {
 		alignment = "right"
 	}
 	push_string_field(L, "alignment", alignment)
+	push_bool_field(L, "wrap", value.wrap)
+	push_number_field(L, "line_height", value.line_height)
 }
 
 push_ui_button_table :: proc "c" (L: Lua_State, value: shared.UI_Button_Component) {

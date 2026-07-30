@@ -492,6 +492,9 @@ UI_Layout_Component :: struct {
 	fit_content_width: bool,
 	fit_content_height: bool,
 	fixed_in_fill: bool,
+	basis: f32,
+	grow: f32,
+	shrink: f32,
 	horizontal_alignment: UI_Alignment,
 	vertical_alignment: UI_Alignment,
 	tree_item: bool,
@@ -540,6 +543,8 @@ UI_Stack_Component :: struct {
 	fill: bool,
 	draggable: bool,
 	min_size: f32,
+	wrap: bool,
+	line_gap: f32,
 }
 UI_Scroll_Area_Component :: struct {
 	scroll_speed, smoothness: f32,
@@ -693,6 +698,8 @@ UI_Text_Component :: struct {
 	color: Vec4,
 	size: f32,
 	alignment: UI_Text_Alignment,
+	wrap: bool,
+	line_height: f32,
 }
 UI_Button_Component :: struct {
 	text: string,
@@ -950,6 +957,9 @@ ui_layout_is_valid :: proc "contextless" (value: UI_Layout_Component) -> bool {
 		value.corner_radius >= 0 &&
 		value.min_size.x >= 0 &&
 		value.min_size.y >= 0 &&
+		value.basis >= 0 &&
+		value.grow >= 0 &&
+		value.shrink >= 0 &&
 		value.popup_gap >= 0 &&
 		value.popup_min_width >= 0 &&
 		value.popup_max_width >= 0 &&
@@ -985,7 +995,13 @@ ui_canvas_is_valid :: proc "contextless" (value: UI_Canvas_Component) -> bool {
 }
 
 ui_stack_is_valid :: proc "contextless" (value: UI_Stack_Component) -> bool {
-	return value.gap >= 0 && value.min_size >= 0 && (!value.draggable || value.fill)
+	return(
+		value.gap >= 0 &&
+		value.min_size >= 0 &&
+		value.line_gap >= 0 &&
+		(!value.draggable || value.fill) &&
+		(!value.wrap || (!value.fill && !value.draggable)) \
+	)
 }
 
 ui_scroll_area_is_valid :: proc "contextless" (value: UI_Scroll_Area_Component) -> bool {
@@ -1068,7 +1084,7 @@ ui_viewport_is_valid :: proc "contextless" (value: UI_Viewport_Component) -> boo
 }
 
 ui_text_is_valid :: proc "contextless" (value: UI_Text_Component) -> bool {
-	return value.text != "" && value.size > 0
+	return value.text != "" && value.size > 0 && value.line_height >= 0
 }
 
 ui_icon_is_valid :: proc "contextless" (value: UI_Icon_Component) -> bool {

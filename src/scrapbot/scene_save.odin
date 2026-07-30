@@ -316,8 +316,9 @@ write_missing_scene_fields :: proc(
 			keys[0], keys[1], keys[2] = "color", "intensity", "range"
 			key_count = 3
 		case "ui_layout":
-			keys[0], keys[1], keys[2] = "hidden", "horizontal_alignment", "vertical_alignment"
-			key_count = 3
+			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5] =
+				"hidden", "horizontal_alignment", "vertical_alignment", "basis", "grow", "shrink"
+			key_count = 6
 		case "ui_canvas":
 			keys[0], keys[1], keys[2], keys[3], keys[4], keys[5], keys[6] =
 				"reference_size",
@@ -329,7 +330,10 @@ write_missing_scene_fields :: proc(
 				"max_scale"
 			key_count = 7
 		case "ui_hstack", "ui_vstack":
-			keys[0], keys[1] = "fill", "draggable"
+			keys[0], keys[1], keys[2], keys[3] = "fill", "draggable", "wrap", "line_gap"
+			key_count = 4
+		case "ui_text":
+			keys[0], keys[1] = "wrap", "line_height"
 			key_count = 2
 		case "ui_panel":
 			keys[0], keys[1] = "collapsible", "collapsed"
@@ -592,6 +596,12 @@ scene_world_field_value :: proc(
 					case "vertical_alignment":
 						return fmt.tprintf("%q", scene_ui_alignment(value.vertical_alignment)),
 							true
+					case "basis":
+						return scene_f32(value.basis), true
+					case "grow":
+						return scene_f32(value.grow), true
+					case "shrink":
+						return scene_f32(value.shrink), true
 				}
 			}
 		case "ui_canvas":
@@ -632,6 +642,12 @@ scene_world_field_value :: proc(
 				if key == "draggable" {
 					return scene_bool(value.draggable), true
 				}
+				if key == "wrap" {
+					return scene_bool(value.wrap), true
+				}
+				if key == "line_gap" {
+					return scene_f32(value.line_gap), true
+				}
 			}
 		case "ui_vstack":
 			if entity.ui_vstack_index >= 0 && entity.ui_vstack_index < len(world.ui_vstacks) {
@@ -641,6 +657,22 @@ scene_world_field_value :: proc(
 				}
 				if key == "draggable" {
 					return scene_bool(value.draggable), true
+				}
+				if key == "wrap" {
+					return scene_bool(value.wrap), true
+				}
+				if key == "line_gap" {
+					return scene_f32(value.line_gap), true
+				}
+			}
+		case "ui_text":
+			if entity.ui_text_index >= 0 && entity.ui_text_index < len(world.ui_texts) {
+				value := world.ui_texts[entity.ui_text_index]
+				if key == "wrap" {
+					return scene_bool(value.wrap), true
+				}
+				if key == "line_height" {
+					return scene_f32(value.line_height), true
 				}
 			}
 		case "ui_panel":

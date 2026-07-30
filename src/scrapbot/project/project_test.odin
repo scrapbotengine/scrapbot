@@ -1471,6 +1471,9 @@ fill_height = true
 fit_content_width = true
 fit_content_height = true
 fixed_in_fill = true
+basis = 96
+grow = 2
+shrink = 3
 horizontal_alignment = "center"
 vertical_alignment = "end"
 [entities.ui_canvas]
@@ -1486,6 +1489,7 @@ gap = 8
 fill = true
 draggable = true
 min_size = 72
+line_gap = 5
 [entities.ui_panel]
 title = "METRICS"
 title_color = [0.9, 0.9, 0.9, 1]
@@ -1519,6 +1523,8 @@ text = "HELLO"
 color = [1, 0.8, 0.2, 1]
 size = 24
 alignment = "right"
+wrap = true
+line_height = 30
 [[entities]]
 id = "a6000000-0000-4000-8000-00000000000c"
 name = "Stats"
@@ -1542,6 +1548,7 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_vstack.fill)
 	testing.expect(t, scene.entities[0].ui_vstack.draggable)
 	testing.expect(t, scene.entities[0].ui_vstack.min_size == 72)
+	testing.expect(t, scene.entities[0].ui_vstack.line_gap == 5)
 	testing.expect(t, scene.entities[0].has_ui_scroll_area)
 	testing.expect(t, scene.entities[0].ui_scroll_area.scroll_speed == 64)
 	testing.expect(t, scene.entities[0].ui_scroll_area.smoothness == 12)
@@ -1566,6 +1573,9 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_layout.fit_content_width)
 	testing.expect(t, scene.entities[0].ui_layout.fit_content_height)
 	testing.expect(t, scene.entities[0].ui_layout.fixed_in_fill)
+	testing.expect(t, scene.entities[0].ui_layout.basis == 96)
+	testing.expect(t, scene.entities[0].ui_layout.grow == 2)
+	testing.expect(t, scene.entities[0].ui_layout.shrink == 3)
 	testing.expect(t, scene.entities[0].ui_layout.horizontal_alignment == .Center)
 	testing.expect(t, scene.entities[0].ui_layout.vertical_alignment == .End)
 	testing.expect(t, scene.entities[0].has_ui_canvas)
@@ -1580,6 +1590,8 @@ min_column_width = 48
 	testing.expect(t, hud_id_ok && scene.entities[1].ui_layout.parent == hud_id)
 	testing.expect(t, scene.entities[1].ui_text.text == "HELLO")
 	testing.expect(t, scene.entities[1].ui_text.alignment == .Right)
+	testing.expect(t, scene.entities[1].ui_text.wrap)
+	testing.expect(t, scene.entities[1].ui_text.line_height == 30)
 	testing.expect(t, scene.entities[2].has_ui_table)
 	testing.expect(t, scene.entities[2].ui_table.columns == 3)
 	testing.expect(t, scene.entities[2].ui_table.column_gap == 6)
@@ -1587,6 +1599,42 @@ min_column_width = 48
 	testing.expect(t, scene.entities[2].ui_table.proportional_columns)
 	testing.expect(t, scene.entities[2].ui_table.resizable_columns)
 	testing.expect(t, scene.entities[2].ui_table.min_column_width == 48)
+}
+
+@(test)
+test_scene_rejects_invalid_responsive_ui_metrics_and_stack_modes :: proc(t: ^testing.T) {
+	sources := [3]string {
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000040"
+name = "Invalid Flex"
+[entities.ui_layout]
+size = [100, 40]
+grow = -1
+`,
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000041"
+name = "Invalid Wrapped Fill"
+[entities.ui_layout]
+size = [100, 40]
+[entities.ui_hstack]
+fill = true
+wrap = true
+`,
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000042"
+name = "Invalid Line Height"
+[entities.ui_layout]
+size = [100, 40]
+[entities.ui_text]
+text = "Nope"
+line_height = -1
+`,
+	}
+	for source in sources {
+		scene, result := parse_scene(source)
+		destroy_scene(&scene)
+		testing.expect(t, result.err == .Invalid_Field)
+	}
 }
 
 @(test)

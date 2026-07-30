@@ -14,6 +14,7 @@ MAX_NODES :: 4096
 MAX_PAINT_COMMANDS :: 16384
 MAX_EDITOR_OVERLAY_PAINT_COMMANDS :: 1024
 MAX_EMBEDDED_VIEWPORTS :: 8
+MAX_TEXT_LINES :: 256
 FONT_FIRST_CHAR :: shared.FONT_FIRST_CHAR
 FONT_CHAR_COUNT :: shared.FONT_CHAR_COUNT
 FONT_ATLAS_SIZE :: shared.FONT_ATLAS_SIZE
@@ -114,6 +115,10 @@ Font_Atlas :: struct {
 	ascender: f32,
 	layer: f32,
 	ready: bool,
+}
+Text_Line :: struct {
+	start, end: int,
+	advance: f32,
 }
 Split_Handle :: struct {
 	rect: Rect,
@@ -2262,6 +2267,58 @@ node_layout_size :: proc(
 	return size
 }
 
+node_intrinsic_content_size :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node: ^Node,
+	available_width: f32,
+) -> shared.Vec2 {
+	if state == nil || world == nil || node == nil {
+		return {}
+	}
+	if node.text_index >= 0 && node.text_index < len(world.ui_texts) {
+		text := world.ui_texts[node.text_index]
+		select_font(state, text.font)
+		lines: [MAX_TEXT_LINES]Text_Line
+		line_count := text_layout_lines(
+			state,
+			text.text,
+			text.size,
+			available_width,
+			text.wrap,
+			&lines,
+		)
+		width := f32(0)
+		for line in lines[:line_count] {
+			width = max(width, line.advance)
+		}
+		line_height := text.size
+		if text.line_height > 0 {
+			line_height = text.line_height
+		}
+		return {width, line_height * f32(line_count)}
+	}
+	if node.button_index >= 0 && node.button_index < len(world.ui_buttons) {
+		button := world.ui_buttons[node.button_index]
+		select_font(state, button.font)
+		width := text_advance_to(state, button.text, button.size, len(button.text))
+		height := button.size
+		if button.icon_set != (shared.Resource_UUID{}) && button.icon != "" {
+			icon_size := button.icon_size
+			if icon_size <= 0 {
+				icon_size = button.size * 1.25
+			}
+			width += icon_size
+			height = max(height, icon_size)
+			if button.text != "" {
+				width += button.icon_gap
+			}
+		}
+		return {width, height}
+	}
+	return {}
+}
+
 node_is_panel_action :: proc(world: ^shared.World, node: ^Node) -> bool {
 	return(
 		world != nil &&
@@ -2972,8 +3029,9 @@ layout_node :: proc(
 	child_clip := inherited_clip; child_has_clip := has_inherited_clip
 	if is_scroll_area { if child_has_clip { child_clip = rect_intersection(child_clip, content) } else { child_clip = content }; child_has_clip = true }
 	scroll_offset := node.scroll_offset
-	content_bottom := f32(0)
-	content_right := f32(0)
+	intrinsic_size := node_intrinsic_content_size(state, world, node, content.width)
+	content_bottom := intrinsic_size.y
+	content_right := intrinsic_size.x
 	children: [MAX_NODES]int
 	child_count := 0
 	total_margins := f32(0)
@@ -2981,7 +3039,8 @@ layout_node :: proc(
 	fixed_main_size := f32(0)
 	flex_child_count := 0
 	fixed_children: [MAX_NODES]bool
-	if ((is_hstack || is_vstack) && stack.fill) || is_table {
+	explicit_flex := false
+	if is_hstack || is_vstack || is_table {
 		child_index := node.first_child_node
 		for child_index >= 0 {
 			when ODIN_TEST {
@@ -3000,6 +3059,9 @@ layout_node :: proc(
 			if is_table {
 				child_index = next_child_index
 				continue
+			}
+			if child_layout.basis > 0 || child_layout.grow > 0 || child_layout.shrink > 0 {
+				explicit_flex = true
 			}
 			if is_hstack {
 				total_margins += child_layout.margin.w + child_layout.margin.y
@@ -3029,6 +3091,7 @@ layout_node :: proc(
 		}
 	}
 	available_main := content.height; if is_hstack { available_main = content.width }
+	flex_available_main := available_main
 	available_main = max(
 		available_main - total_margins - gap * f32(max(child_count - 1, 0)) - fixed_main_size,
 		0,
@@ -3074,6 +3137,207 @@ layout_node :: proc(
 			child_main_sizes[ordinal] = remaining_size / f32(max(remaining_count, 1))
 			if remaining_weight >
 			   0 { child_main_sizes[ordinal] = remaining_size * weight / remaining_weight }
+		}
+	}
+	use_flex_flow :=
+		(is_hstack || is_vstack) && !stack.fill && (stack.wrap || explicit_flex) && child_count > 0
+	flex_positions: [MAX_NODES]shared.Vec2
+	flex_sizes: [MAX_NODES]shared.Vec2
+	if use_flex_flow {
+		base_sizes: [MAX_NODES]shared.Vec2
+		line_starts, line_ends: [MAX_NODES]int
+		line_cross_sizes: [MAX_NODES]f32
+		line_count := 0
+		line_start := 0
+		line_main := f32(0)
+		line_cross := f32(0)
+		for ordinal in 0 ..< child_count {
+			child := state.nodes[children[ordinal]]
+			child_layout := world.ui_layouts[child.layout_index]
+			size := node_layout_size(world, child, child_layout)
+			if child_layout.basis > 0 {
+				if is_hstack {
+					size.x = child_layout.basis
+				} else {
+					size.y = child_layout.basis
+				}
+			}
+			base_sizes[ordinal] = size
+			main_margin := child_layout.margin.x + child_layout.margin.z
+			cross_margin := child_layout.margin.w + child_layout.margin.y
+			main_size := size.y
+			cross_size := size.x
+			if is_hstack {
+				main_margin = child_layout.margin.w + child_layout.margin.y
+				cross_margin = child_layout.margin.x + child_layout.margin.z
+				main_size = size.x
+				cross_size = size.y
+			}
+			next_main := main_margin + main_size
+			if ordinal > line_start {
+				next_main += stack.gap
+			}
+			if stack.wrap && ordinal > line_start && line_main + next_main > flex_available_main {
+				line_starts[line_count] = line_start
+				line_ends[line_count] = ordinal
+				line_cross_sizes[line_count] = line_cross
+				line_count += 1
+				line_start = ordinal
+				line_main = main_margin + main_size
+				line_cross = cross_margin + cross_size
+			} else {
+				line_main += next_main
+				line_cross = max(line_cross, cross_margin + cross_size)
+			}
+		}
+		line_starts[line_count] = line_start
+		line_ends[line_count] = child_count
+		line_cross_sizes[line_count] = line_cross
+		line_count += 1
+		line_cross_cursor := f32(0)
+		for line_index in 0 ..< line_count {
+			start := line_starts[line_index]
+			end := line_ends[line_index]
+			used_main := stack.gap * f32(max(end - start - 1, 0))
+			total_grow := f32(0)
+			total_shrink := f32(0)
+			for ordinal in start ..< end {
+				child := state.nodes[children[ordinal]]
+				child_layout := world.ui_layouts[child.layout_index]
+				main_size := base_sizes[ordinal].y
+				main_margin := child_layout.margin.x + child_layout.margin.z
+				if is_hstack {
+					main_size = base_sizes[ordinal].x
+					main_margin = child_layout.margin.w + child_layout.margin.y
+				}
+				used_main += main_size + main_margin
+				total_grow += child_layout.grow
+				total_shrink += child_layout.shrink * max(main_size, 1)
+			}
+			free_main := flex_available_main - used_main
+			resolved_main: [MAX_NODES]f32
+			for ordinal in start ..< end {
+				child := state.nodes[children[ordinal]]
+				child_layout := world.ui_layouts[child.layout_index]
+				main_size := base_sizes[ordinal].y
+				if is_hstack {
+					main_size = base_sizes[ordinal].x
+				}
+				if free_main > 0 && total_grow > 0 {
+					main_size += free_main * child_layout.grow / total_grow
+				}
+				resolved_main[ordinal] = main_size
+			}
+			if free_main < 0 && total_shrink > 0 {
+				shrink_resolved: [MAX_NODES]bool
+				remaining_reduction := -free_main
+				remaining_weight := total_shrink
+				for _ in start ..< end {
+					resolved_one := false
+					for ordinal in start ..< end {
+						if shrink_resolved[ordinal] {
+							continue
+						}
+						child := state.nodes[children[ordinal]]
+						child_layout := world.ui_layouts[child.layout_index]
+						main_size := resolved_main[ordinal]
+						min_main := child_layout.min_size.y
+						if is_hstack {
+							min_main = child_layout.min_size.x
+						}
+						weight := child_layout.shrink * max(main_size, 1)
+						if weight <= 0 {
+							shrink_resolved[ordinal] = true
+							resolved_one = true
+							continue
+						}
+						proposed_reduction := remaining_reduction * weight / remaining_weight
+						if main_size - proposed_reduction >= min_main {
+							continue
+						}
+						actual_reduction := max(main_size - min_main, 0)
+						resolved_main[ordinal] = min_main
+						shrink_resolved[ordinal] = true
+						remaining_reduction = max(remaining_reduction - actual_reduction, 0)
+						remaining_weight = max(remaining_weight - weight, 0)
+						resolved_one = true
+					}
+					if !resolved_one {
+						break
+					}
+				}
+				for ordinal in start ..< end {
+					if shrink_resolved[ordinal] {
+						continue
+					}
+					child := state.nodes[children[ordinal]]
+					child_layout := world.ui_layouts[child.layout_index]
+					weight := child_layout.shrink * max(resolved_main[ordinal], 1)
+					if remaining_weight > 0 {
+						resolved_main[ordinal] -= remaining_reduction * weight / remaining_weight
+					}
+				}
+			}
+			for ordinal in start ..< end {
+				main_size := resolved_main[ordinal]
+				if is_hstack {
+					base_sizes[ordinal].x = main_size
+				} else {
+					base_sizes[ordinal].y = main_size
+				}
+			}
+			cross_extent := line_cross_sizes[line_index]
+			if !stack.wrap {
+				cross_extent = content.width
+				if is_hstack {
+					cross_extent = content.height
+				}
+			}
+			main_cursor := f32(0)
+			for ordinal in start ..< end {
+				child := state.nodes[children[ordinal]]
+				child_layout := world.ui_layouts[child.layout_index]
+				size := base_sizes[ordinal]
+				if is_hstack {
+					y, height := resolve_aligned_axis(
+						content.y + line_cross_cursor,
+						cross_extent,
+						size.y,
+						child_layout.min_size.y,
+						child_layout.position.y,
+						child_layout.margin.x,
+						child_layout.margin.z,
+						child_layout.vertical_alignment,
+						child_layout.fill_height || child_layout.vertical_alignment == .Stretch,
+					)
+					size.y = height
+					flex_positions[ordinal] = {content.x + main_cursor + child_layout.margin.w, y}
+					main_cursor += child_layout.margin.w + size.x + child_layout.margin.y
+				} else {
+					x, width := resolve_aligned_axis(
+						content.x + line_cross_cursor,
+						cross_extent,
+						size.x,
+						child_layout.min_size.x,
+						child_layout.position.x,
+						child_layout.margin.w,
+						child_layout.margin.y,
+						child_layout.horizontal_alignment,
+						child_layout.fill_width || child_layout.horizontal_alignment == .Stretch,
+					)
+					size.x = width
+					flex_positions[ordinal] = {x, content.y + main_cursor + child_layout.margin.x}
+					main_cursor += child_layout.margin.x + size.y + child_layout.margin.z
+				}
+				if ordinal + 1 < end {
+					main_cursor += stack.gap
+				}
+				flex_sizes[ordinal] = size
+			}
+			line_cross_cursor += cross_extent
+			if line_index + 1 < line_count {
+				line_cross_cursor += stack.line_gap
+			}
 		}
 	}
 	child_ordinal := 0
@@ -3220,7 +3484,12 @@ layout_node :: proc(
 			}
 			has_child_size = true
 		}
-		if is_table {
+		if use_flex_flow {
+			child_size = flex_sizes[child_ordinal]
+			position = flex_positions[child_ordinal]
+			has_child_size = true
+			child_flowed = true
+		} else if is_table {
 			column := child_ordinal % table_columns
 			if column == 0 && child_ordinal > 0 {
 				table_y += table_row_height + table.row_gap
@@ -5717,7 +5986,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	   node.text_index <
 		   len(
 			   world.ui_texts,
-		   ) { text := world.ui_texts[node.text_index]; select_font(state, text.font); if err := append_text(state, text.text, text.color, text.size, node.rect, layout.padding, text.alignment); err != "" { return err } }
+		   ) { text := world.ui_texts[node.text_index]; select_font(state, text.font); if err := append_text(state, text.text, text.color, text.size, node.rect, layout.padding, text.alignment, text.wrap, text.line_height); err != "" { return err } }
 	if node.input_index >= 0 && node.input_index < len(world.ui_inputs) {
 		select_font(state, world.ui_inputs[node.input_index].font)
 		if err := append_input(
@@ -6415,19 +6684,22 @@ append_text :: proc(
 	rect: Rect,
 	padding: shared.Vec4,
 	alignment: shared.UI_Text_Alignment = .Left,
+	wrap := false,
+	authored_line_height := f32(0),
 ) -> string {
 	content_x := rect.x + padding.w
 	content_width := max(rect.width - padding.w - padding.y, 0)
 	baseline := rect.y + padding.x + state.font.ascender * size
-	line_start := 0
-	bytes := transmute([]u8)text
-	for byte, index in bytes {
-		if byte != '\n' {
-			continue
-		}
+	line_height := size
+	if authored_line_height > 0 {
+		line_height = authored_line_height
+	}
+	lines: [MAX_TEXT_LINES]Text_Line
+	line_count := text_layout_lines(state, text, size, content_width, wrap, &lines)
+	for line in lines[:line_count] {
 		if err := append_aligned_text_line(
 			state,
-			text[line_start:index],
+			text[line.start:line.end],
 			color,
 			size,
 			content_x,
@@ -6437,19 +6709,9 @@ append_text :: proc(
 		); err != "" {
 			return err
 		}
-		line_start = index + 1
-		baseline += size
+		baseline += line_height
 	}
-	return append_aligned_text_line(
-		state,
-		text[line_start:],
-		color,
-		size,
-		content_x,
-		content_width,
-		baseline,
-		alignment,
-	)
+	return ""
 }
 
 append_aligned_text_line :: proc(
@@ -6483,6 +6745,123 @@ text_advance_to :: proc(state: ^State, text: string, size: f32, byte_index: int)
 		x += state.font.glyphs^[code - FONT_FIRST_CHAR].advance * size
 	}
 	return x
+}
+
+text_layout_lines :: proc(
+	state: ^State,
+	text: string,
+	size, max_width: f32,
+	wrap: bool,
+	lines: ^[MAX_TEXT_LINES]Text_Line,
+) -> int {
+	if lines == nil {
+		return 0
+	}
+	count := 0
+	paragraph_start := 0
+	for paragraph_end := 0; paragraph_end <= len(text); paragraph_end += 1 {
+		if paragraph_end < len(text) && text[paragraph_end] != '\n' {
+			continue
+		}
+		if !wrap || max_width <= 0 {
+			if count < MAX_TEXT_LINES {
+				lines[count] = {
+					start = paragraph_start,
+					end = paragraph_end,
+					advance = text_advance_to(
+						state,
+						text[paragraph_start:paragraph_end],
+						size,
+						paragraph_end - paragraph_start,
+					),
+				}
+				count += 1
+			}
+		} else if paragraph_start == paragraph_end {
+			if count < MAX_TEXT_LINES {
+				lines[count] = {
+					start = paragraph_start,
+					end = paragraph_end,
+				}
+				count += 1
+			}
+		} else {
+			line_start := paragraph_start
+			for line_start < paragraph_end && count < MAX_TEXT_LINES {
+				for line_start < paragraph_end &&
+				    (text[line_start] == ' ' || text[line_start] == '\t') {
+					line_start += 1
+				}
+				if line_start >= paragraph_end {
+					break
+				}
+				line_end := line_start
+				last_break := -1
+				advance := f32(0)
+				advance_at_break := f32(0)
+				for cursor := line_start; cursor < paragraph_end; cursor += 1 {
+					code := int(text[cursor])
+					if code < FONT_FIRST_CHAR || code >= FONT_FIRST_CHAR + FONT_CHAR_COUNT {
+						code = int('?')
+					}
+					next_advance :=
+						advance + state.font.glyphs^[code - FONT_FIRST_CHAR].advance * size
+					if next_advance > max_width && cursor > line_start {
+						break
+					}
+					advance = next_advance
+					line_end = cursor + 1
+					if text[cursor] == ' ' || text[cursor] == '\t' {
+						last_break = cursor
+						advance_at_break =
+							advance - state.font.glyphs^[code - FONT_FIRST_CHAR].advance * size
+					}
+					if next_advance > max_width {
+						break
+					}
+				}
+				if line_end < paragraph_end && last_break >= line_start {
+					line_end = last_break
+					advance = advance_at_break
+				}
+				if line_end <= line_start {
+					line_end = min(line_start + 1, paragraph_end)
+					advance = text_advance_to(
+						state,
+						text[line_start:line_end],
+						size,
+						line_end - line_start,
+					)
+				}
+				trimmed_end := line_end
+				for trimmed_end > line_start &&
+				    (text[trimmed_end - 1] == ' ' || text[trimmed_end - 1] == '\t') {
+					trimmed_end -= 1
+				}
+				if trimmed_end != line_end {
+					advance = text_advance_to(
+						state,
+						text[line_start:trimmed_end],
+						size,
+						trimmed_end - line_start,
+					)
+				}
+				lines[count] = {
+					start = line_start,
+					end = trimmed_end,
+					advance = advance,
+				}
+				count += 1
+				line_start = line_end
+			}
+		}
+		paragraph_start = paragraph_end + 1
+	}
+	if count == 0 {
+		lines[0] = {}
+		return 1
+	}
+	return count
 }
 
 append_input :: proc(

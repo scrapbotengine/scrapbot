@@ -63,6 +63,6 @@ the public authored transform.
 `stretch` can distort content and `fill` can crop it; both remain explicit
 project choices. `pixel_perfect` below one must use a fractional fit so an
 oversized reference surface remains visible. This canvas contract does not add
-breakpoints, percentage lengths, wrapping, or arbitrary constraints; projects
-compose responsive results from the logical viewport, safe area, alignment,
-fill, fit-content, stacks, tables, lists, and scroll areas.
+breakpoints, percentage lengths, or arbitrary constraints. Intrinsic
+measurement and wrapping are the separate retained-layout policy recorded in
+ADR-044.

@@ -18,6 +18,9 @@ min_size = [120, 24]
 fill_width = true
 fit_content_height = true
 fixed_in_fill = true
+basis = 90
+grow = 2
+shrink = 3
 horizontal_alignment = "center"
 vertical_alignment = "end"
 tree_item = true
@@ -158,6 +161,7 @@ scrapbot.system(function()
 		assert(layout.fill_width == true)
 		assert(layout.fit_content_height == true)
 		assert(layout.fixed_in_fill == true)
+		assert(layout.basis == 90 and layout.grow == 2 and layout.shrink == 3)
 		assert(layout.horizontal_alignment == "center")
 		assert(layout.vertical_alignment == "end")
 		assert(layout.tree_item == true)
@@ -289,8 +293,9 @@ scrapbot.system(function()
 	local root_id = scrapbot.spawn({
 		name = "Runtime UI",
 		components = {
-			["scrapbot.ui_layout"] = {size = {x = 120, y = 24}},
-			["scrapbot.ui_text"] = {text = "Spawned"},
+			["scrapbot.ui_layout"] = {size = {x = 120, y = 24}, basis = 80, grow = 1, shrink = 2},
+			["scrapbot.ui_hstack"] = {gap = 4, wrap = true, line_gap = 6},
+			["scrapbot.ui_text"] = {text = "Spawned responsive text", wrap = true, line_height = 20},
 		},
 	})
 	assert(type(root_id) == "string" and #root_id == 36)
@@ -364,10 +369,20 @@ end)
 		spawned := world.entities[spawned_index]
 		testing.expect(t, spawned.ui_layout_index >= 0)
 		testing.expect(t, spawned.ui_text_index >= 0)
+		testing.expect(t, spawned.ui_hstack_index >= 0)
+		if spawned.ui_layout_index >= 0 {
+			layout := world.ui_layouts[spawned.ui_layout_index]
+			testing.expect(t, layout.basis == 80 && layout.grow == 1 && layout.shrink == 2)
+		}
+		if spawned.ui_hstack_index >= 0 {
+			stack := world.ui_hstacks[spawned.ui_hstack_index]
+			testing.expect(t, stack.wrap && stack.line_gap == 6)
+		}
 		if spawned.ui_text_index >= 0 {
 			text := world.ui_texts[spawned.ui_text_index]
-			testing.expect(t, text.text == "Spawned")
+			testing.expect(t, text.text == "Spawned responsive text")
 			testing.expect(t, text.size == 16)
+			testing.expect(t, text.wrap && text.line_height == 20)
 			testing.expect(
 				t,
 				text.color.x == 1 && text.color.y == 1 && text.color.z == 1 && text.color.w == 1,

@@ -560,6 +560,9 @@ export type ScrapbotUiLayout = {
 	fit_content_width: boolean?,
 	fit_content_height: boolean?,
 	fixed_in_fill: boolean?,
+	basis: number?,
+	grow: number?,
+	shrink: number?,
 	horizontal_alignment: string?,
 	vertical_alignment: string?,
 	tree_item: boolean?,
@@ -594,6 +597,9 @@ export type ReadonlyScrapbotUiLayout = {
 	read fit_content_width: boolean,
 	read fit_content_height: boolean,
 	read fixed_in_fill: boolean,
+	read basis: number,
+	read grow: number,
+	read shrink: number,
 	read horizontal_alignment: string,
 	read vertical_alignment: string,
 	read tree_item: boolean,
@@ -639,6 +645,8 @@ export type ScrapbotUiHstack = {
 	fill: boolean?,
 	draggable: boolean?,
 	min_size: number?,
+	wrap: boolean?,
+	line_gap: number?,
 }
 
 export type ReadonlyScrapbotUiHstack = {
@@ -646,6 +654,8 @@ export type ReadonlyScrapbotUiHstack = {
 	read fill: boolean,
 	read draggable: boolean,
 	read min_size: number,
+	read wrap: boolean,
+	read line_gap: number,
 }
 
 export type ScrapbotUiHstackComponent = ScrapbotComponent<ScrapbotUiHstack, ReadonlyScrapbotUiHstack>
@@ -655,6 +665,8 @@ export type ScrapbotUiVstack = {
 	fill: boolean?,
 	draggable: boolean?,
 	min_size: number?,
+	wrap: boolean?,
+	line_gap: number?,
 }
 
 export type ReadonlyScrapbotUiVstack = {
@@ -662,6 +674,8 @@ export type ReadonlyScrapbotUiVstack = {
 	read fill: boolean,
 	read draggable: boolean,
 	read min_size: number,
+	read wrap: boolean,
+	read line_gap: number,
 }
 
 export type ScrapbotUiVstackComponent = ScrapbotComponent<ScrapbotUiVstack, ReadonlyScrapbotUiVstack>
@@ -796,6 +810,8 @@ export type ScrapbotUiText = {
 	color: Vec4?,
 	size: number?,
 	alignment: string?,
+	wrap: boolean?,
+	line_height: number?,
 }
 
 export type ReadonlyScrapbotUiText = {
@@ -804,6 +820,8 @@ export type ReadonlyScrapbotUiText = {
 	read color: ReadonlyVec4,
 	read size: number,
 	read alignment: string,
+	read wrap: boolean,
+	read line_height: number,
 }
 
 export type ScrapbotUiTextComponent = ScrapbotComponent<ScrapbotUiText, ReadonlyScrapbotUiText>

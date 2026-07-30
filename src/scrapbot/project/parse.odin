@@ -1352,6 +1352,12 @@ parse_scene :: proc(
 						current.ui_layout.fit_content_height, found = parse_bool(value)
 					case "fixed_in_fill":
 						current.ui_layout.fixed_in_fill, found = parse_bool(value)
+					case "basis":
+						current.ui_layout.basis, found = parse_f32(value)
+					case "grow":
+						current.ui_layout.grow, found = parse_f32(value)
+					case "shrink":
+						current.ui_layout.shrink, found = parse_f32(value)
 					case "horizontal_alignment":
 						current.ui_layout.horizontal_alignment, found = parse_ui_alignment(value)
 					case "vertical_alignment":
@@ -1430,7 +1436,9 @@ parse_scene :: proc(
 						current.ui_hstack.gap, found = parse_f32(value); case "fill":
 						current.ui_hstack.fill, found = parse_bool(value); case "draggable":
 						current.ui_hstack.draggable, found = parse_bool(value); case "min_size":
-						current.ui_hstack.min_size, found = parse_f32(value); case:
+						current.ui_hstack.min_size, found = parse_f32(value); case "wrap":
+						current.ui_hstack.wrap, found = parse_bool(value); case "line_gap":
+						current.ui_hstack.line_gap, found = parse_f32(value); case:
 						return scene, fail(
 							.Invalid_Field,
 							fmt.tprintf("unknown ui_hstack field '%s'", key),
@@ -1442,7 +1450,9 @@ parse_scene :: proc(
 						current.ui_vstack.gap, found = parse_f32(value); case "fill":
 						current.ui_vstack.fill, found = parse_bool(value); case "draggable":
 						current.ui_vstack.draggable, found = parse_bool(value); case "min_size":
-						current.ui_vstack.min_size, found = parse_f32(value); case:
+						current.ui_vstack.min_size, found = parse_f32(value); case "wrap":
+						current.ui_vstack.wrap, found = parse_bool(value); case "line_gap":
+						current.ui_vstack.line_gap, found = parse_f32(value); case:
 						return scene, fail(
 							.Invalid_Field,
 							fmt.tprintf("unknown ui_vstack field '%s'", key),
@@ -1662,7 +1672,11 @@ parse_scene :: proc(
 						current.ui_text.font, found = parse_basic_string(value); case "color":
 						current.ui_text.color, found = parse_vec4(value); case "size":
 						current.ui_text.size, found = parse_f32(value); case "alignment":
-						current.ui_text.alignment, found = parse_ui_text_alignment(value); case:
+						current.ui_text.alignment, found = parse_ui_text_alignment(
+							value,
+						); case "wrap":
+						current.ui_text.wrap, found = parse_bool(value); case "line_height":
+						current.ui_text.line_height, found = parse_f32(value); case:
 						return scene, fail(
 							.Invalid_Field,
 							fmt.tprintf("unknown ui_text field '%s'", key),
@@ -2119,7 +2133,7 @@ parse_scene :: proc(
 			return scene, fail(
 				.Invalid_Field,
 				fmt.tprintf(
-					"UI stack '%s' requires non-negative gap/min_size and draggable requires fill",
+					"UI stack '%s' requires non-negative gaps/min_size; draggable requires fill, while wrap excludes both",
 					entity.name,
 				),
 			)
@@ -2202,10 +2216,15 @@ parse_scene :: proc(
 				),
 			)
 		}
-		if entity.has_ui_text &&
-		   (entity.ui_text.text == "" ||
-				   entity.ui_text.size <=
-					   0) { return scene, fail(.Invalid_Field, fmt.tprintf("UI text entity '%s' requires text and positive size", entity.name)) }
+		if entity.has_ui_text && !shared.ui_text_is_valid(entity.ui_text) {
+			return scene, fail(
+				.Invalid_Field,
+				fmt.tprintf(
+					"UI text entity '%s' requires text, positive size, and non-negative line_height",
+					entity.name,
+				),
+			)
+		}
 		if entity.has_ui_button && !shared.ui_button_is_valid(entity.ui_button) {
 			return scene, fail(
 				.Invalid_Field,

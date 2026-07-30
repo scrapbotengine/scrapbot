@@ -518,6 +518,9 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	layout.corner_radius = 8
 	layout.fill_width = true
 	layout.fit_content_height = true
+	layout.basis = 180
+	layout.grow = 2
+	layout.shrink = 1
 	panel := shared.ui_panel_default()
 	panel.title = "Schema Panel"
 	panel.font = "Inter"
@@ -530,6 +533,8 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 	text.text = "Schema Text"
 	text.font = "Inter"
 	text.alignment = .Right
+	text.wrap = true
+	text.line_height = 22
 	button := shared.ui_button_default()
 	button.text = "Schema Button"
 	button.font = "Inter"
@@ -631,6 +636,8 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 					gap = 7,
 					fill = false,
 					min_size = 32,
+					wrap = true,
+					line_gap = 11,
 				}
 			case 2:
 				entity.has_ui_table = true

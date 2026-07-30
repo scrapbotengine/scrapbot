@@ -149,6 +149,9 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	layout.fill_width = true
 	layout.fit_content_height = true
 	layout.fixed_in_fill = true
+	layout.basis = 96
+	layout.grow = 2
+	layout.shrink = 3
 	layout.horizontal_alignment = .Center
 	layout.vertical_alignment = .End
 	layout.tree_item = true
@@ -180,7 +183,14 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	text.text = "Before"
 	text.font = "Inter"
 	text.alignment = .Right
+	text.wrap = true
+	text.line_height = 22
 	testing.expect(t, ecs.set_ui_text(&world, entity_index, text))
+	stack := shared.ui_stack_default()
+	stack.gap = 7
+	stack.wrap = true
+	stack.line_gap = 9
+	testing.expect(t, ecs.set_ui_hstack(&world, entity_index, stack))
 	icon_component := shared.ui_icon_default()
 	icon_component.icon_set = shared.builtin_icon_set_uuid()
 	icon_component.icon = "play"
@@ -287,6 +297,17 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, api_payload_font(&text_payload) == "Inter")
 	testing.expect(t, text_payload.text.size == 16)
 	testing.expect(t, text_payload.text.alignment == .Right)
+	testing.expect(t, text_payload.text.wrap != 0)
+	testing.expect(t, text_payload.text.line_height == 22)
+
+	stack_payload: api.UI_Component_Payload
+	testing.expect(
+		t,
+		system_get_ui_component(&ctx, entity, "scrapbot.ui_hstack", &stack_payload) != 0,
+	)
+	testing.expect(t, stack_payload.stack.gap == 7)
+	testing.expect(t, stack_payload.stack.wrap != 0)
+	testing.expect(t, stack_payload.stack.line_gap == 9)
 
 	icon_payload: api.UI_Component_Payload
 	testing.expect(
@@ -367,6 +388,9 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, layout_payload.layout.fill_width != 0)
 	testing.expect(t, layout_payload.layout.fit_content_height != 0)
 	testing.expect(t, layout_payload.layout.fixed_in_fill != 0)
+	testing.expect(t, layout_payload.layout.basis == 96)
+	testing.expect(t, layout_payload.layout.grow == 2)
+	testing.expect(t, layout_payload.layout.shrink == 3)
 	testing.expect(t, layout_payload.layout.horizontal_alignment == .Center)
 	testing.expect(t, layout_payload.layout.vertical_alignment == .End)
 	testing.expect(t, layout_payload.layout.tree_item != 0)

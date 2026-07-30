@@ -252,6 +252,8 @@ layout.corner_radius = 8
 text_style := scrapbot.ui_text_default()
 text_style.size = 16
 text_style.color = {0.90, 0.92, 0.95, 1}
+text_style.wrap = 1
+text_style.line_height = 20
 text_payload, text_ok := scrapbot.ui_text(text_style, "Native ECS UI", "Inter")
 if !text_ok {
 	return "native UI text exceeds the ABI buffer"
@@ -268,6 +270,11 @@ if err != nil {
 }
 _ = uuid // stable project-wide identity, also usable as a UI parent
 ```
+
+For a child in an HStack or VStack, set `layout.basis`, `layout.grow`, and
+`layout.shrink`. Set `UI_Stack.wrap` plus `line_gap` on the parent to enable
+multiline flex flow. These fixed-layout ABI fields resolve through the same
+retained path as scene TOML and Luau.
 
 Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, and `fit_content_height`; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; semantic `scrapbot.ui_action` strings; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, and cancel revisions expose current per-entity state; `valid` exposes numeric validation.
 

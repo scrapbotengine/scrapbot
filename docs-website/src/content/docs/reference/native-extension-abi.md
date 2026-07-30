@@ -129,6 +129,12 @@ and optional scale bounds. The idiomatic wrapper exports `UI_CANVAS`,
 `ui_canvas_default()`. Canvas attachment is root-only and singleton per
 entity-origin domain.
 
+`UI_Layout_Payload` also carries non-negative `basis`, `grow`, and `shrink`
+factors for stack children. `UI_Stack_Payload` carries `wrap` and `line_gap`,
+and `UI_Text_Payload` carries `wrap` and `line_height`. These are the same
+responsive intrinsic-layout values used by scene TOML, Luau, and editor
+composition.
+
 Registered geometry vertices contain position, normal, UV, and an optional tangent:
 
 ```odin

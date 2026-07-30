@@ -209,6 +209,9 @@ api_ui_theme_layout :: proc "contextless" (
 		popup_max_width = value.popup_max_width,
 		popup_max_height = value.popup_max_height,
 		popup_viewport_margin = value.popup_viewport_margin,
+		basis = value.basis,
+		grow = value.grow,
+		shrink = value.shrink,
 	}
 }
 
@@ -274,6 +277,8 @@ api_ui_theme_text :: proc "contextless" (value: shared.UI_Text_Component) -> api
 		color = api_vec4_from_shared(value.color),
 		size = value.size,
 		alignment = api_text_alignment_from_shared(value.alignment),
+		wrap = bool_to_c_int(value.wrap),
+		line_height = value.line_height,
 	}
 }
 
@@ -423,6 +428,9 @@ system_get_ui_component :: proc "c" (
 				fit_content_width = bool_to_c_int(value.fit_content_width),
 				fit_content_height = bool_to_c_int(value.fit_content_height),
 				fixed_in_fill = bool_to_c_int(value.fixed_in_fill),
+				basis = value.basis,
+				grow = value.grow,
+				shrink = value.shrink,
 				horizontal_alignment = api_ui_alignment_from_shared(value.horizontal_alignment),
 				vertical_alignment = api_ui_alignment_from_shared(value.vertical_alignment),
 				tree_item = bool_to_c_int(value.tree_item),
@@ -601,6 +609,8 @@ system_get_ui_component :: proc "c" (
 				color = api_vec4_from_shared(value.color),
 				size = value.size,
 				alignment = api_text_alignment_from_shared(value.alignment),
+				wrap = bool_to_c_int(value.wrap),
+				line_height = value.line_height,
 			}
 			if !api_ui_payload_set_strings(payload, value.text, value.font) { return 0 }
 		case "scrapbot.ui_button":
@@ -815,6 +825,9 @@ ui_command_from_api_payload :: proc "c" (
 				fit_content_width = payload.layout.fit_content_width != 0,
 				fit_content_height = payload.layout.fit_content_height != 0,
 				fixed_in_fill = payload.layout.fixed_in_fill != 0,
+				basis = payload.layout.basis,
+				grow = payload.layout.grow,
+				shrink = payload.layout.shrink,
 				horizontal_alignment = horizontal_alignment,
 				vertical_alignment = vertical_alignment,
 				tree_item = payload.layout.tree_item != 0,
@@ -868,6 +881,8 @@ ui_command_from_api_payload :: proc "c" (
 				fill = payload.stack.fill != 0,
 				draggable = payload.stack.draggable != 0,
 				min_size = payload.stack.min_size,
+				wrap = payload.stack.wrap != 0,
+				line_gap = payload.stack.line_gap,
 			}
 			if !shared.ui_stack_is_valid(value) {
 				return "native UI stack payload is invalid"
@@ -1012,6 +1027,8 @@ ui_command_from_api_payload :: proc "c" (
 				color = shared_vec4_from_api(payload.text.color),
 				size = payload.text.size,
 				alignment = alignment,
+				wrap = payload.text.wrap != 0,
+				line_height = payload.text.line_height,
 			}
 			if !shared.ui_text_is_valid(value) { return "native ui_text payload is invalid" }
 			command.text = value
@@ -1176,6 +1193,8 @@ api_ui_stack_from_shared :: proc "contextless" (
 		fill = bool_to_c_int(value.fill),
 		draggable = bool_to_c_int(value.draggable),
 		min_size = value.min_size,
+		wrap = bool_to_c_int(value.wrap),
+		line_gap = value.line_gap,
 	}
 }
 

@@ -719,6 +719,168 @@ test_layout_fill_and_fit_content_are_reusable_and_ignore_hidden_children :: proc
 }
 
 @(test)
+test_wrapped_text_intrinsically_measures_and_paints_the_resolved_lines :: proc(t: ^testing.T) {
+	text_value := shared.UI_Text_Component {
+		text = "alpha beta gamma delta",
+		size = 12,
+		wrap = true,
+		line_height = 18,
+	}
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Wrapped Text"),
+			name = "Wrapped Text",
+			has_ui_layout = true,
+			ui_layout = {size = {72, 4}, fit_content_height = true},
+			has_ui_text = true,
+			ui_text = text_value,
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+
+	lines: [MAX_TEXT_LINES]Text_Line
+	line_count := text_layout_lines(state, text_value.text, text_value.size, 72, true, &lines)
+	testing.expect(t, line_count >= 2)
+	for line in lines[:line_count] {
+		testing.expect(t, line.advance <= 72.001)
+	}
+	testing.expect(t, reconcile(state, &world, 200, 160) == "")
+	node_index := find_node_by_entity_index(state, 0)
+	testing.expect(t, node_index >= 0)
+	testing.expectf(
+		t,
+		node_index >= 0 &&
+		math.abs(state.nodes[node_index].rect.height - f32(line_count) * 18) < 0.01,
+		"expected %d wrapped lines at 18px, got %.2fpx",
+		line_count,
+		state.nodes[node_index].rect.height,
+	)
+	min_y, max_y := f32(10000), f32(-10000)
+	for command in state.paint[:state.paint_count] {
+		if command.kind != .Glyph {
+			continue
+		}
+		min_y = min(min_y, command.rect.y)
+		max_y = max(max_y, command.rect.y)
+	}
+	testing.expect(t, max_y - min_y >= 17)
+}
+
+@(test)
+test_wrapping_stack_uses_basis_grow_shrink_and_cross_axis_alignment :: proc(t: ^testing.T) {
+	wrap_root := ui_test_id("Flex Wrap Root")
+	shrink_root := ui_test_id("Flex Shrink Root")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = wrap_root,
+			name = "Flex Wrap Root",
+			has_ui_layout = true,
+			ui_layout = {size = {200, 100}},
+			has_ui_hstack = true,
+			ui_hstack = {gap = 10, wrap = true, line_gap = 8},
+		},
+	)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Flex A"),
+			name = "A",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = wrap_root,
+				size = {10, 20},
+				basis = 120,
+				vertical_alignment = .Center,
+			},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Flex B"),
+			name = "B",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = wrap_root,
+				size = {10, 20},
+				basis = 100,
+				vertical_alignment = .Center,
+			},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Flex C"),
+			name = "C",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = wrap_root,
+				size = {10, 20},
+				basis = 60,
+				grow = 1,
+				vertical_alignment = .Center,
+			},
+		},
+	)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shrink_root,
+			name = "Flex Shrink Root",
+			has_ui_layout = true,
+			ui_layout = {position = {0, 110}, size = {150, 40}},
+			has_ui_hstack = true,
+			ui_hstack = {gap = 10},
+		},
+	)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Flex D"),
+			name = "D",
+			has_ui_layout = true,
+			ui_layout = {
+				parent = shrink_root,
+				size = {100, 20},
+				min_size = {80, 0},
+				basis = 100,
+				shrink = 1,
+			},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Flex E"),
+			name = "E",
+			has_ui_layout = true,
+			ui_layout = {parent = shrink_root, size = {100, 20}, basis = 100, shrink = 1},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 240, 180) == "")
+
+	a := state.nodes[find_node_by_entity_index(state, 1)].rect
+	b := state.nodes[find_node_by_entity_index(state, 2)].rect
+	c := state.nodes[find_node_by_entity_index(state, 3)].rect
+	d := state.nodes[find_node_by_entity_index(state, 5)].rect
+	e := state.nodes[find_node_by_entity_index(state, 6)].rect
+	testing.expect_value(t, a, Rect{0, 0, 120, 20})
+	testing.expect_value(t, b, Rect{0, 28, 100, 20})
+	testing.expect_value(t, c, Rect{110, 28, 90, 20})
+	testing.expect_value(t, d, Rect{0, 110, 80, 20})
+	testing.expect_value(t, e, Rect{90, 110, 60, 20})
+}
+
+@(test)
 test_fill_stack_can_keep_fixed_children_while_siblings_grow :: proc(t: ^testing.T) {
 	root_id := ui_test_id("Fixed Fill Root")
 	scene := shared.Scene{}

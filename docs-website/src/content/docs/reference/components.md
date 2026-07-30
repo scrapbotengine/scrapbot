@@ -257,6 +257,7 @@ Vectors use `{x, y}`, `{x, y, z}`, or `{x, y, z, w}` in Luau and fixed arrays in
 | `fill_width: bool`, `fill_height: bool` | Consume available parent space on each axis. |
 | `fit_content_width: bool`, `fit_content_height: bool` | Size around visible descendants on each axis. |
 | `fixed_in_fill: bool` | Preserve authored main-axis size while flexible stack siblings divide remaining space. |
+| `basis`, `grow`, `shrink: number` | Non-negative flex sizing. Zero basis uses authored/intrinsic size; grow distributes positive space and shrink removes overflow without crossing `min_size`. |
 | `horizontal_alignment`, `vertical_alignment: string` | Independently place the box at `start`, `center`, or `end`, or `stretch` it through the available parent axis. |
 | `tree_item: bool`, `tree_parent: string`, `tree_order: number`, `tree_collapsed: bool` | Opt a direct child of a tree-enabled list into its semantic hierarchy. Parent is another row UUID, order is sibling-local, and collapse omits descendants without despawning them. |
 | `popup: bool`, `popup_anchor: string`, `popup_open: bool`, `popup_close_on_selection: bool` | Make this root a floating popup anchored to another UI UUID. Closed popups leave layout/paint/interaction; selection dismissal applies to descendant lists. Popup roots cannot have a parent. |
@@ -294,6 +295,8 @@ Both use the same payload:
 | `fill` | `false` | Treat authored main-axis sizes as proportions and fill available space. |
 | `draggable` | `false` | Turn gaps into resize separators; requires `fill`. |
 | `min_size` | `0` | Minimum pane extent along the stack axis. |
+| `wrap` | `false` | Pack children into additional lines when their preferred outer sizes exceed the main axis. Cannot be combined with legacy `fill` or draggable separators. |
+| `line_gap` | `0` | Non-negative spacing between wrapped lines; `gap` remains spacing between children on one line. |
 
 ### `scrapbot.ui_scroll_area`
 
@@ -420,6 +423,8 @@ The embedded catalog has UUID `a11c0000-0000-4000-8000-000000000001` and symbols
 | `text`, `font` | Empty | Text is required and non-empty. Empty font selects embedded Inter. |
 | `color`, `size` | White, `16` | Size must be positive. |
 | `alignment` | `left` | `left`, `center`, or `right`. |
+| `wrap` | `false` | Break at whitespace to fit the padded content width, falling back to glyph boundaries for oversized words. Explicit newlines always start a line. |
+| `line_height` | `0` | Positive line advance in logical pixels; zero uses `size`. |
 
 ### `scrapbot.ui_button`
 
