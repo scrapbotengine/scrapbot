@@ -332,7 +332,13 @@ sun_size = 1
 sun_glow = 1
 ```
 
-A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. `lighting_intensity` scales all environment lighting; `reflection_intensity` independently scales its specular part. An empty visible background reuses the lighting Environment; when both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune that procedural sky live and do not alter imported HDR backgrounds. The same analytic sky, ground, haze, and sun model supplies roughness-aware diffuse and specular environment lighting, so nonzero-metallic materials remain meaningfully lit without an imported HDR probe. Procedural sun elevation drives horizon occlusion and day/twilight/night presentation; above the horizon it also contributes the primary derived directional light and shadow direction. Explicit ECS lights remain additive. See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
+A scene may contain at most one World Environment. `lighting` and `background` are optional Environment-resource UUIDs. `lighting_intensity` scales all environment lighting; `reflection_intensity` independently scales its specular part.
+
+An empty visible background reuses the lighting Environment. When both are empty, Scrapbot renders its built-in procedural haze sky. The atmosphere fields tune only that procedural sky and do not alter imported HDR backgrounds.
+
+The analytic sky, ground, haze, and sun model supplies roughness-aware diffuse and specular environment lighting, so metallic materials remain meaningfully lit without an imported HDR probe. Procedural sun elevation drives horizon occlusion and day/twilight/night presentation. Above the horizon, it also contributes the primary derived directional light and shadow direction; explicit ECS lights remain additive.
+
+See the [component reference](/reference/components/#scrapbotworld_environment) for field constraints and change-driven runtime behavior.
 
 Built-in primitive convenience:
 
@@ -605,7 +611,24 @@ A `ui_checkbox` stores its current boolean in `checked` and toggles on primary-b
 
 A `ui_scroll_area` clips descendants to its padded content rectangle and scrolls vertically when the pointer wheel is over it. Give its nested pane an explicit size larger than the viewport; that pane may contain overlays or stacks of any size. `scroll_speed` is the target movement per wheel unit and `smoothness` controls frame-time interpolation toward that target. Both must be positive. Nested scroll clips intersect, and only the topmost hovered scroll area consumes a wheel update.
 
-A `ui_list` lays out its direct children as full-width selectable rows in scene order. Clicking a row or any of its descendants stores that row's UUID in the list's ECS-owned `selected` field. `gap` controls row spacing, while `selection_background`, `hover_background`, and `active_background` style interaction states. Set `filter_input` to a same-origin `ui_input` UUID to filter rows by an ASCII case-insensitive substring match over descendant text, button, and input content. Tree filters retain matching ancestors and reveal collapsed matching branches without changing their collapse values. Set `virtualized = true`, a positive uniform `item_height`, and a non-negative `overscan` count to lay out only the visible row window while retaining the exact complete scroll extent. Set `draggable = true` to resolve drag sources and targets to direct children. `drag_threshold` controls gesture recognition. `drop_edge_fraction` assigns the top and bottom portions of a target row to `before` and `after`; the middle is `into`. `drop_indicator_color`, `drop_indicator_thickness`, and `drop_indicator_inset` style insertion lines, while `drop_target_background` styles an into target. During a gesture, the list's read-only `ui_state` exposes `dragging`, `drag_source`, `drop_target`, and `drop_placement`; a completed in-list drop increments `drop_revision` and `change_revision`. An empty target UUID with `into` means the list background. Set `tree_enabled = true` to interpret direct children with layout `tree_item = true` as a nested tree. Their `tree_parent` is another row UUID, `tree_order` is sibling-local, and `tree_collapsed` hides descendants. `tree_indent` defaults to 14 pixels. Tree drops update those public layout fields: `into` reparents, while `before` and `after` can reparent and reorder in one operation. Combine the list with `ui_scroll_area` on the same entity for long lists:
+A `ui_list` lays out its direct children as full-width selectable rows in scene order. Clicking a row or any descendant stores the direct row's UUID in the list's ECS-owned `selected` field. `gap` controls spacing; `selection_background`, `hover_background`, and `active_background` style interaction states.
+
+Set `filter_input` to a same-origin `ui_input` UUID to filter rows by an ASCII case-insensitive substring match over descendant text, button, and input content. Tree filters retain matching ancestors and reveal matches below collapsed branches without changing collapse state.
+
+For long uniform lists, set `virtualized = true`, a positive `item_height`, and a non-negative `overscan`. The layout then retains the exact complete scroll extent while materializing only the visible row window plus overscan.
+
+Set `draggable = true` to resolve drag sources and targets to direct children:
+
+- `drag_threshold` controls gesture recognition.
+- `drop_edge_fraction` maps a target row's top and bottom zones to `before` and `after`; its middle is `into`.
+- `drop_indicator_color`, `drop_indicator_thickness`, and `drop_indicator_inset` style insertion lines.
+- `drop_target_background` styles an `into` target.
+
+During a gesture, read-only `ui_state` fields expose `dragging`, `drag_source`, `drop_target`, and `drop_placement`. A completed in-list drop increments `drop_revision` and `change_revision`. An empty target UUID with `into` means the list background.
+
+Set `tree_enabled = true` to interpret direct children whose layouts have `tree_item = true` as a nested tree. `tree_parent` identifies another row UUID, `tree_order` is sibling-local, `tree_collapsed` hides descendants, and `tree_indent` defaults to 14 pixels. An `into` drop reparents; `before` and `after` may reparent and reorder in one operation.
+
+Combine the list with `ui_scroll_area` on the same entity for long lists:
 
 ```toml
 [[entities]]
@@ -631,7 +654,15 @@ smoothness = 14
 
 Each direct child supplies its own row height and may use an overlay or another flow container for its contents. A list cannot share its entity with another flow container.
 
-Panels add a styled title band without choosing how their children flow, so they can compose with an overlay, stack, or nested table. Set `collapsible = true` on a titled panel to make its title band interactive. Its ECS-owned `collapsed` value selects the initial/current state: collapsed panels contract to the title height and omit ordinary descendants from layout, paint, focus traversal, and pointer interaction. Set `movable = true` when the same panel is a direct child of a reorderable stack; title actions remain excluded from the drag handle. The disclosure uses `caret-right` or `caret-down` from the ordinary built-in icon set. To add title actions, create ordinary direct child buttons with `panel_action = true`; they may use text or any public icon reference, activate independently, remain available while collapsed, and lay out from right to left. Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row; for example, widths `1` and `2` create a one-third/two-thirds split. `resizable_columns = true` turns column gaps into draggable separators and requires proportional columns; `min_column_width` limits adjacent-column shrinking. Resized proportions remain local to the current UI session. Child heights determine row height; `column_gap` and `row_gap` control spacing. A partial final row starts at the first column.
+Panels add a styled title band without choosing how their children flow, so they compose with overlays, stacks, and nested tables.
+
+Set `collapsible = true` to make a titled panel interactive. Its ECS-owned `collapsed` value selects the initial and current state. A collapsed panel contracts to the title height and omits ordinary descendants from layout, paint, focus traversal, and pointer interaction. The disclosure uses `caret-right` or `caret-down` from the ordinary built-in icon set.
+
+Set `movable = true` when the panel is a direct child of a reorderable stack. Title actions remain excluded from the drag handle. Add those actions as ordinary direct child buttons with `panel_action = true`; they may use text or any public icon, activate independently, remain available while collapsed, and lay out from right to left.
+
+Tables place children in row-major order across 1–64 columns. Columns are equal by default. With `proportional_columns = true`, the first row's positive authored cell widths become reusable weights for every row. For example, widths `1` and `2` create a one-third/two-thirds split.
+
+Set `resizable_columns = true` to turn column gaps into draggable separators; this requires proportional columns. `min_column_width` limits adjacent-column shrinking, and resized proportions remain local to the current UI session. Child heights determine row height, `column_gap` and `row_gap` control spacing, and a partial final row starts at the first column.
 
 ```toml
 [[entities]]

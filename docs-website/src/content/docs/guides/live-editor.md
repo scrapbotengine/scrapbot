@@ -169,7 +169,21 @@ While stopped, scene entities may use only scene parents, and one completed drag
 
 `+` creates a scene entity with a Transform, `DUP` duplicates the selected scene or runtime entity into a new authored UUID, `DEL` removes the selected authored entity, and `KEEP` explicitly promotes a selected runtime entity into scene data. The hierarchy shows scene-authored entities by default, so high-churn runtime spawns do not create thousands of editor rows. A runtime entity selected through the viewport or another tool is surfaced in muted gray and remains fully inspectable. Transient editor-origin entities—including the shell itself and scene camera—stay hidden from the browser and inspector.
 
-The shell is itself built from transient ECS entities using the same responsive layout, horizontal and vertical stack, draggable separator, dock-space/dock-item, scroll-area, selectable-list, progress, panel, table, text, button, input, and checkbox components available to project UI. Browse, Game, and Inspect are public dock items, each containing a reorderable VStack; Game keeps its viewport fixed as the initial stack item while still accepting tool panels. Performance, Systems, Scene, and Resources begin inside Browse, and the Inspect stack gives stable order to its identity and runtime-reflected component panels. Drop over tab content or directly on its header to insert into that tab's stack, including an inactive tab; drop over empty dock-space chrome to create a separate tab. Drop on an enabled edge of the Game space to create a public resizable left/right or above/below split—for example, move Scene to the right edge for a Game/Scene workspace. Directional dock targets take priority over nested tab stacks at that edge; center drops retain the existing stack/tab routing. A docked tab can be dragged back into any tab stack. Crossing the drag threshold and releasing over no destination cancels without collapsing the panel. Editor origin keeps those tool entities out of project data while letting the editor exercise the ordinary UI system. Sidebar and inspector sizing uses the public per-axis fill, minimum-size, ordering, and fit-to-content policies rather than editor-specific post-layout repair code. See [ECS UI](/guides/ecs-ui/) for the project-facing component model.
+The shell is built from transient ECS entities using the same public components as project UI: responsive layouts, stacks, draggable separators, dock spaces and items, scroll areas, lists, progress bars, panels, tables, text, buttons, inputs, and checkboxes. Editor origin keeps those tool entities out of project data while making the editor exercise the ordinary UI system.
+
+Browse, Game, and Inspect are public dock items, each containing a reorderable VStack. Game keeps its viewport fixed as the first stack item while still accepting tool panels. Performance, Systems, Scene, and Resources begin inside Browse; Inspect gives stable order to its identity and runtime-reflected component panels.
+
+Workspace dragging follows the same reusable rules everywhere:
+
+- Drop over tab content or its header to insert into that tab's stack, including an inactive tab.
+- Drop over empty dock-space chrome to create a separate tab.
+- Drop on an enabled Game-space edge to create a public resizable left/right or above/below split.
+- Drag a docked tab back into any tab stack.
+- Release over no destination after crossing the drag threshold to cancel without collapsing the panel.
+
+Directional targets take priority over nested tab stacks at an enabled edge; center drops retain normal stack and tab routing. For example, move Scene to the Game space's right edge to create a Game/Scene workspace.
+
+Sidebar and inspector sizing uses public per-axis fill, minimum-size, ordering, and fit-to-content policies. See [ECS UI](/guides/ecs-ui/) for the project-facing component model.
 
 Click an entry to select it, or click rendered geometry in the viewport. Viewport picking tests the rendered triangles and selects the nearest hit; clicking empty viewport space clears the selection. The browser scrolls to reveal a viewport-picked entity and automatically clears selection if that entity despawns.
 
@@ -240,7 +254,11 @@ Use the top-bar controls or `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` for Undo and Red
 
 While stopped, authored changes can be saved. Edits to unpromoted runtime entities and all edits made while running or paused are session-only and do not enter authoring history.
 
-Resource-browser values and the selected entity's running component values refresh every 200 ms, while selection and stopped-authoring changes refresh immediately. This periodic value refresh does not rebuild the Scene browser; explicit hierarchy invalidation, filter edits, and selection changes do. A periodic refresh leaves the actively edited text alone. Type into the Scene panel's filter field to match entity labels case-insensitively. Matching descendants retain their hierarchy context and appear beneath collapsed ancestors without changing those ancestors' saved collapse state. The Scene and Resource browsers use the public virtualized-list contract, so scrolling visits only visible rows plus a small overscan window. Their filters, scroll targets, and the inspector scroll remain independent, with frame-time smoothing without line snapping, clipped partial content, and proportional scrollbars. Fractional trackpad deltas remain fractional.
+Resource-browser values and the selected entity's running component values refresh every 200 ms. Selection and stopped-authoring changes refresh immediately. Periodic refresh leaves actively edited text alone and does not rebuild the Scene browser; hierarchy invalidation, filter edits, and selection changes do.
+
+Type in the Scene filter to match entity labels case-insensitively. Matching descendants retain their hierarchy context and appear beneath collapsed ancestors without changing saved collapse state.
+
+Scene and Resources use the public virtualized-list contract, so scrolling visits only visible rows plus a small overscan window. Their filters, scroll targets, and Inspector scroll remain independent. Each supports frame-time smoothing without line snapping, clipped partial content, proportional scrollbars, and fractional trackpad deltas.
 
 ## Transform an entity
 

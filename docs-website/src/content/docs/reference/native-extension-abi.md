@@ -164,7 +164,18 @@ Bindings must name query terms and obey the scheduled system's declared read/wri
 
 ## ECS UI payloads
 
-`UI_Component_Payload` is the fixed-layout transport for every public `scrapbot.ui_*` component. It includes the complete box, responsive sizing policy, progress value, embedded viewport target, control value, and style structures used by scene TOML, Luau, and editor chrome. The component name selects the relevant typed member. `UI_Layout_Payload` carries minimum size, per-axis fill and fit-to-content flags, and fixed-child behavior inside fill stacks; `UI_Dock_Space_Payload` carries the active UUID, tab/drop geometry and HDR colors, the shared content-sheet style, and transfer policy; `UI_Dock_Item_Payload` carries movement policy while its dedicated buffer carries the title. `UI_Progress_Payload` carries value, maximum, track/fill styling, inset, corner radius, and direction; `UI_Viewport_Payload` carries Texture/Model/Material/World, camera/root UUID, orbit, distance, clear-color, and interaction fields. `UI_Icon_Payload` carries the icon-set UUID, HDR tint, and inset while the icon buffer carries its symbol name. Scroll-area payloads include complete scrollbar geometry and colors; panel payloads include built-in disclosure-icon styling; button and input payloads include the same icon-set UUID/symbol plus position, size, gap, and inset. Inputs also carry independent icon tint plus their complete focus, validation, prefix, caret, and border styling; checkbox payloads carry complete checkmark and corner styling.
+`UI_Component_Payload` is the fixed-layout transport for every public `scrapbot.ui_*` component. It carries the complete box, responsive sizing policy, control value, and styles shared by scene TOML, Luau, native extensions, and editor chrome. The component name selects the relevant typed member.
+
+The specialized members cover:
+
+- `UI_Layout_Payload`: minimum size, per-axis fill and fit-to-content flags, and fixed-child behavior inside fill stacks.
+- `UI_Dock_Space_Payload`: active UUID, tab/drop geometry, HDR colors, shared content-sheet style, and transfer policy.
+- `UI_Dock_Item_Payload`: movement policy; a dedicated buffer carries the title.
+- `UI_Progress_Payload`: value, maximum, track/fill styling, inset, corner radius, and direction.
+- `UI_Viewport_Payload`: Texture, Model, Material, or World target; camera/root UUID; orbit; distance; clear color; and interaction fields.
+- `UI_Icon_Payload`: icon-set UUID, HDR tint, and inset; the icon buffer carries its symbol name.
+
+Scroll-area payloads include scrollbar geometry and colors, while panel payloads include disclosure-icon styling. Buttons and inputs carry icon UUID/symbol, position, size, gap, and inset. Inputs additionally carry independent icon tint plus focus, validation, prefix, caret, and border styling. Checkbox payloads carry their complete checkmark and corner styling.
 
 Text content, dock titles, dock fonts, icon symbols, ordinary font resource names, and input prefixes use separate bounded byte arrays inside the payload instead of allocator-owned Odin strings. A dock title/font never aliases the generic text/font buffers. The current limits are 1,023 text or dock-title bytes, 255 ordinary or dock-font bytes, 63 prefix bytes, and 63 icon-symbol bytes. Callers must copy values they want to retain; the payload itself remains caller-owned. The Odin wrapper exposes `ui_dock_space`, `ui_dock_item`, `ui_payload_dock_font`, and `ui_payload_dock_title` beside the typed component descriptors and defaults.
 

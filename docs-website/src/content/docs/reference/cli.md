@@ -128,11 +128,37 @@ Options:
 | `--ui-dump tree.json` | Write the final reconciled UI tree, geometry, control kinds, and interaction state as JSON, including on failure. |
 | `--json` | Emit one versioned machine-readable result. |
 
-The editor shell keeps the running project live across the complete central viewport with a camera aspect ratio derived from the available space. Transient editor-origin ECS UI entities build the shell, including a revision-driven Performance panel for rolling FPS/frame time plus current GPU, entity, draw-batch, and occlusion-culling health, and an independently sampled Systems panel for CPU phase attribution. An editor-origin scene camera navigates without changing the project's camera. Hold right mouse inside the viewport to capture the pointer, look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest project entity, reveals it in the scene sidebar, and drives an editable component inspector. The scene browser and inspector have independent pixel-continuous, smoothly scrolling, clipped panes with proportional scrollbars; neither pane snaps to lines. Selected entities with a Transform expose translation, rotation, and scale gizmo handles plus ECS UI controls for World or Local orientation. Inspector and gizmo gestures enter stopped-mode UUID-addressed undo/redo transactions. Stopped is authoring mode: supported scene-entity edits can be explicitly saved with the top-bar Save control or `Ctrl/Cmd+S`; Save compares dirty candidates with the disk-authored baseline and changes only semantically different fields. Revert discards unsaved authoring, clears history, and reloads scene entities from disk without reloading code or resources. Play snapshots the current authoring state in memory, and Stop restores that state while discarding playback mutations and runtime spawns. Runtime entities and running/paused mutations are never persisted. The browser distinguishes scene-authored names from runtime-spawned names and hides editor-origin entities. Combine `--editor`, `--headless`, `--ui-script`, `--ui-dump`, and `--framegrab` to reproduce and inspect editor interactions deterministically. Framegrabs are losslessly compressed; explicit regions or semantic capture targets change the output extent without scaling its pixels. See [Rendering And Testing](/guides/rendering-testing/#semantic-ui-diagnostics) for the script contract.
+The editor shell keeps the running project live across the complete central viewport. Its camera aspect ratio follows the available space, and an editor-origin scene camera navigates without changing the project's camera.
+
+The shell is built from transient editor-origin ECS UI entities. Its tools include:
+
+- A revision-driven Performance panel for rolling frame health and current rendering counters.
+- An independently sampled Systems panel for CPU phase attribution.
+- Smoothly scrolling, clipped Scene and Inspector panes with proportional scrollbars.
+- Translation, rotation, and scale gizmos with World and Local orientation controls.
+
+Hold right mouse inside the viewport to capture the pointer. Look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest project entity, reveals it in the Scene pane, and drives the component inspector.
+
+Stopped is authoring mode. Inspector and gizmo gestures enter UUID-addressed undo/redo transactions. Save from the top bar or press `Ctrl/Cmd+S`; only fields that differ semantically from the disk-authored baseline are written. Revert discards unsaved authoring, clears history, and reloads scene entities without reloading code or resources.
+
+Play snapshots the current authoring state in memory. Stop restores that state and discards playback mutations and runtime spawns. Runtime entities and running or paused mutations are never persisted. The Scene pane distinguishes authored entities from runtime spawns and hides editor-origin entities.
+
+Combine `--editor`, `--headless`, `--ui-script`, `--ui-dump`, and `--framegrab` to reproduce editor interactions deterministically. Framegrabs are losslessly compressed; explicit regions or semantic capture targets crop the output without scaling its pixels. See [Rendering And Testing](/guides/rendering-testing/#semantic-ui-diagnostics) for the script contract.
 
 With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
 
-JSON run results also include `render_stats`. For WGPU it reports whether compute culling, meshlet culling, native multi-draw acceleration, and clustered lighting are active; meshlet capability, retained draw count, visible capacity, frustum/cone/occlusion counters, and the opt-in `meshlet_debug_records` count; shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values; draw-database, instance-slot, and visibility-buffer capacities; database rebuilds and cumulative instance uploads; frustum candidates, explicit frustum rejections, visible instances, and occlusion rejections; per-LOD visible counts; Hi-Z state; and retained-UI vertex rebuild/upload counters, including separate project, editor, and editor-world overlay rebuild counts. When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms`, `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` samples. Visibility counters and timestamps use multi-frame readback rings: the renderer never waits synchronously and retains the latest completed sample when a frame has no new result.
+JSON run results also include `render_stats`. For WGPU, the object groups together:
+
+- Active-path flags for compute culling, meshlet culling, native multi-draw acceleration, and clustered lighting.
+- Meshlet capability, retained draw count, visible capacity, frustum/cone/occlusion counters, and the opt-in `meshlet_debug_records` count.
+- Shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values.
+- Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.
+- Frustum candidates, explicit frustum rejections, visible instances, occlusion rejections, per-LOD visible counts, and Hi-Z state.
+- Retained-UI vertex rebuild and upload counters for project UI, editor UI, and editor-world overlays.
+
+When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms`, `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` samples.
+
+Visibility counters and timestamps use multi-frame readback rings. The renderer never waits synchronously and retains the latest completed sample when a frame has no new result.
 
 ## `scrapbot profile`
 
