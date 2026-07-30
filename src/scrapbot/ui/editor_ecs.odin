@@ -18,6 +18,7 @@ EDITOR_UI_LEFT_NAME :: "__scrapbot_editor_left"
 EDITOR_UI_LEFT_DOCK_ITEM_NAME :: "__scrapbot_editor_left_dock_item"
 EDITOR_UI_LEFT_CONTENT_NAME :: "__scrapbot_editor_left_content"
 EDITOR_UI_DIAGNOSTICS_NAME :: "__scrapbot_editor_diagnostics"
+EDITOR_UI_DIAGNOSTICS_TABLE_NAME :: "__scrapbot_editor_diagnostics_table"
 EDITOR_UI_SYSTEMS_NAME :: "__scrapbot_editor_systems"
 EDITOR_UI_SYSTEMS_FILTER_NAME :: "__scrapbot_editor_systems_filter"
 EDITOR_UI_SYSTEMS_LIST_NAME :: "__scrapbot_editor_systems_list"
@@ -1279,6 +1280,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		diagnostics,
 		{
+			fill = true,
 			reorderable = true,
 			drop_indicator_color = theme.palette.accent,
 			drop_indicator_thickness = 2,
@@ -1287,16 +1289,17 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	diagnostics_table := editor_ui_create_box(
 		world,
-		"__scrapbot_editor_diagnostics_table",
+		EDITOR_UI_DIAGNOSTICS_TABLE_NAME,
 		EDITOR_UI_DIAGNOSTICS_NAME,
 		.None,
-		{size = {100, 208}, fill_width = true, fit_content_height = true},
+		{size = {100, 208}, min_size = {1, 1}, fill_width = true, fill_height = true},
 	)
 	editor_ui_add_table(
 		world,
 		diagnostics_table,
 		{columns = 2, column_gap = 8, row_gap = 0, proportional_columns = true},
 	)
+	editor_ui_add_scroll(world, diagnostics_table)
 	diagnostic_labels := [?]string {
 		"FPS",
 		"FRAME",
@@ -1312,7 +1315,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		label := editor_ui_create_box(
 			world,
 			label_name,
-			"__scrapbot_editor_diagnostics_table",
+			EDITOR_UI_DIAGNOSTICS_TABLE_NAME,
 			.Diagnostics_Label,
 			{size = {1, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {4, 3, 3, 4}},
 			slot,
@@ -1328,7 +1331,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		value := editor_ui_create_box(
 			world,
 			value_name,
-			"__scrapbot_editor_diagnostics_table",
+			EDITOR_UI_DIAGNOSTICS_TABLE_NAME,
 			.Diagnostics_Value,
 			{size = {1, SYSTEM_PROFILE_CELL_HEIGHT}, padding = {4, 3, 3, 4}},
 			slot,

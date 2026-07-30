@@ -7,6 +7,8 @@
     {"action": "expect", "target": {"text": "FPS", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "GPU FRAME", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "ENTITIES", "origin": "editor"}, "expect": "visible"},
+    {"action": "scroll", "target": {"name": "__scrapbot_editor_diagnostics_table", "origin": "editor"}, "wheel_y": -6},
+    {"action": "wait", "frames": 8},
     {"action": "expect", "target": {"text": "DRAW BATCHES", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "FRUSTUM CULLED", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"text": "OCCLUSION CULLED", "origin": "editor"}, "expect": "visible"},

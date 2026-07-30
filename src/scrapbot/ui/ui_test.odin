@@ -8577,6 +8577,13 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_vstack_index >= 0)
 		testing.expect(t, world.ui_panels[entity.ui_panel_index].title == "PERFORMANCE")
 	}
+	table := find_editor_name_node(state, &world, EDITOR_UI_DIAGNOSTICS_TABLE_NAME)
+	testing.expect(t, table >= 0)
+	if table >= 0 {
+		entity := world.entities[int(state.nodes[table].entity.index)]
+		testing.expect(t, entity.ui_table_index >= 0)
+		testing.expect(t, entity.ui_scroll_area_index >= 0)
+	}
 	expected_values := [8]string{"59.9", "16.69 ms", "2.25 ms", "75%", "42", "7", "9", "13"}
 	for expected, slot in expected_values {
 		cell, found := editor_ui_entity(&world, .Diagnostics_Value, slot)
@@ -8601,6 +8608,17 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 	if found {
 		text := world.ui_texts[world.entities[entity_value].ui_text_index]
 		testing.expect(t, text.text == "43")
+	}
+	if panel_found && table >= 0 {
+		panel_layout := world.ui_layouts[world.entities[panel].ui_layout_index]
+		panel_layout.size.y = 120
+		_ = ecs.set_ui_layout(&world, panel, panel_layout)
+		testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+		table = find_editor_name_node(state, &world, EDITOR_UI_DIAGNOSTICS_TABLE_NAME)
+		testing.expect(t, table >= 0)
+		if table >= 0 {
+			testing.expect(t, state.nodes[table].scroll_max > 0)
+		}
 	}
 }
 

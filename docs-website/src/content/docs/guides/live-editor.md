@@ -174,6 +174,8 @@ The shell is built from transient ECS entities using the same public components 
 
 Browse, Game, and Inspect are public dock items, each containing a reorderable VStack. Game keeps its viewport fixed as the first stack item while still accepting tool panels. Performance, Systems, Scene, and Resources begin inside Browse; Inspect gives stable order to its identity and runtime-reflected component panels.
 
+The Performance metrics table scrolls vertically when its panel is resized below the complete row set.
+
 Workspace dragging follows the same reusable rules everywhere:
 
 - Drop over tab content or its header to insert into that tab's stack, including an inactive tab.
