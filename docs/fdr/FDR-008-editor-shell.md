@@ -1,7 +1,7 @@
 # FDR-008: Editor shell
 
 **Status:** Active
-**Last reviewed:** 2026-07-30
+**Last reviewed:** 2026-07-31
 
 ## Overview
 
@@ -31,7 +31,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Header bands, inspector surfaces, controls, popups, and selection use tonal contrast and softly rounded public ECS boxes instead of persistent one-pixel outlines. Focus, validation, destructive actions, and playback may use stronger semantic emphasis. Pooled browser rows use hidden subtrees rather than leaving the ECS lifecycle. The default desktop density uses 13-pixel body text, 12-pixel technical section titles, 32-pixel scene rows, 32-pixel inspector rows around 28-pixel controls, and a 420-pixel inspector pane so labels and three-axis controls remain comfortable without becoming oversized.
 - Editor composition applies the same engine-owned reduced-dark recipes exposed to scene TOML, Luau, and native Odin before writing ordinary public component values. The renderer has no editor-theme path, and editor bindings add project meaning without owning visual mechanics.
 - The running project's world and project-authored UI always share the complete available viewport. With the editor closed that is the full window; with the editor open it is the remaining center workspace.
-- The Game viewport has a public-ECS popup selector for `Camera`, Lit, Base Color, World Normals, Roughness, Metallic, Depth, Meshlets, LOD, Meshlet Visibility, and Hi-Z. Hi-Z adds ordinary adjacent minus/label/plus controls for selecting a retained pyramid mip. `Camera` follows authored debug settings; editor choices override only the extracted camera copy, so inspection never enters history or marks the scene dirty.
+- The Game viewport has a public-ECS popup selector for `Camera`, Lit, Base Color, World Normals, Roughness, Metallic, Depth, Meshlets, LOD, Meshlet Visibility, Hi-Z, and Occlusion Queries. Hi-Z adds ordinary adjacent minus/label/plus controls for selecting a retained pyramid mip. Occlusion Queries adds an ordinary Freeze toggle for preserving the latest valid GPU evidence. `Camera` follows authored debug settings; editor choices override only the extracted camera copy, so inspection never enters history or marks the scene dirty.
 - Editor chrome and the project viewport follow the current drawable size when the window is resized. The camera derives its aspect ratio from the live viewport instead of enforcing a fixed ratio.
 - The derived project viewport is intersected with the physical render target. Extremely small or high-density diagnostic targets may clip editor chrome, but no world, postprocess, or UI pass may emit a viewport or scissor beyond the target.
 - Visible windows request a native high-pixel-density backbuffer. Editor chrome keeps logical dimensions while text and controls paint at the display's physical pixel density.
@@ -238,7 +238,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Publish a revisioned snapshot every five frames and copy in the renderer's latest GPU timestamp, draw-batch, instance, and visibility counters.
 - Use guaranteed FIFO presentation for window pacing without a second fixed sleep. Acquire the presentation surface before active-frame timing so expected vsync wait affects FPS but not `FRAME` duration or Systems attribution.
 - Maintain scene, runtime, and editor entity counts at spawn/despawn boundaries instead of scanning world capacity.
-- Render initial FPS, active CPU, GPU, project-entity, draw-batch, frustum-rejection, and occlusion-rejection values through an editor-origin collapsible panel composed only from public panel, table, scroll-area, VStack, layout, and text components. The table scrolls vertically when panel resizing leaves less height than its rows require.
+- Render FPS, active CPU, GPU, effective render scale, project-entity, draw-batch, Hi-Z state, frustum-rejection, object-occlusion, and meshlet-occlusion values through an editor-origin collapsible panel composed only from public panel, table, scroll-area, VStack, layout, and text components. The table scrolls vertically when panel resizing leaves less height than its rows require.
 
 **Why:** Basic performance health should be visible without leaving the editor, but observing the engine must not add an entity scan, rebuild UI every frame, or introduce private diagnostic widgets. A revision lets stable frames reuse the existing panel and paint stream.
 **Tradeoff:** FPS reflects the rolling wall-clock presentation interval, including display pacing, while `FRAME` reports active CPU work and GPU frame time appears only when timestamp queries have produced a valid asynchronous sample. Engine phases are sequential attribution, but non-conflicting native project systems may overlap, so all displayed callback durations are not guaranteed to form an exact arithmetic sum. “Draw batches” is the retained GPU-driven grouping unit; it is intentionally not labeled “draw calls,” because one batch can participate in multiple render passes and UI/postprocess commands have different submission shapes.

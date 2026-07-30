@@ -78,11 +78,15 @@ Frustum and LOD work uses the unjittered camera. TAA's eight projection samples 
 
 Surface data, indirect diffuse, and reflection output are current-frame derived targets. Visibility-bitmask AO consumes depth plus mapped normals and attenuates only indirect diffuse. SSR consumes surface data and HDR color. AO and SSR quality tiers update only their next uniform and bounded shader loop; retained target allocation and bind groups remain unchanged.
 
-The extracted camera's debug view and Hi-Z mip are authoritative for a rendered view. While the editor is visible, optional transient Game controls replace them only on the retained render-list camera copy.
+The extracted camera's debug view, Hi-Z mip, and occlusion-evidence freeze flag are authoritative for a rendered view. While the editor is visible, optional transient Game controls replace them only on the retained render-list camera copy.
 
 Non-lit output updates compact render/cull uniforms, skips temporal and presentation effects, and reuses existing targets. Hi-Z inspection reads the current retained pyramid after construction and adds no copy, readback, or pyramid rebuild.
 
-Meshlet identity storage follows topology/capacity invalidation rather than frames. Its visible-instance allocation reserves an aligned diagnostic tail. Visibility mode alone writes rejected bounds there during the frame-valued cull, copies the counter into an indirect line draw, and publishes the count asynchronously.
+Meshlet identity storage follows topology/capacity invalidation rather than frames. Its visible-instance allocation reserves an aligned diagnostic tail.
+
+Meshlet Visibility writes rejected bounds there during the frame-valued cull. Occlusion Queries instead writes every performed query's projected rectangle, mip, compared depths, identity, and decision. Both copy the counter into an indirect line draw and publish it asynchronously.
+
+While query freeze is active, the renderer leaves the latest valid tail and indirect count untouched. Current visibility, depth, and Hi-Z ownership remain frame-valued; freeze does not authorize stale depth reuse for culling. Leaving the view clears the diagnostic-valid flag and retained published count.
 
 The active camera's effective render scale sizes the world, depth, Hi-Z, surface, temporal, AO, reflection, fog, bloom, and exposure inputs. At scale `1`, WGPU borrows the native output depth target. Lower scales lazily own one matching depth target. Final composition stretches the complete scaled grid into the native output target, preserving editor-viewport coordinates. Project UI, editor-world overlays clipped to the Game viewport, and editor chrome are then painted at native resolution in that order.
 

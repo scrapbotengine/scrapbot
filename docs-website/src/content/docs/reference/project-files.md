@@ -277,6 +277,7 @@ near = 0.1
 far = 100
 debug_view = "lit"
 debug_hiz_mip = 0
+debug_occlusion_freeze = false
 exposure = 1
 automatic_exposure = false
 automatic_exposure_min = 0.125
@@ -292,6 +293,8 @@ bloom = true
 ```
 
 A camera reads its world position and Euler orientation from the entity's resolved transform chain. Rotation is expressed in radians: X controls pitch, Y controls yaw, and Z controls roll.
+
+`debug_view = "occlusion_queries"` overlays the exact screen-space rectangles tested by GPU Hi-Z culling. Set `debug_occlusion_freeze = true` to preserve the latest valid query evidence while the view remains selected. These fields use the same public camera payload in scene TOML, Luau, native Odin, and the editor's transient extracted-camera override.
 
 `exposure` is a positive linear multiplier and defaults to `1`. With automatic exposure disabled, it combines directly with World Environment exposure. With automatic exposure enabled, it becomes compensation around GPU-metered exposure, clamped by `automatic_exposure_min` and `automatic_exposure_max` and approached at `automatic_exposure_speed`.
 

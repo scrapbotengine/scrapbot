@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-30
+**Last reviewed:** 2026-07-31
 
 ## Overview
 
@@ -30,11 +30,13 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
 - Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Compute culls camera meshlets by sphere, normal cone, and Hi-Z and shadow meshlets by cascade sphere, then world, depth, and shadow issue one native fixed multi-draw per retained batch. Unsupported adapters, `--cpu-culling`, and layouts above the bounded visibility capacity use the whole-primitive path.
-- The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, object/meshlet visibility classification, or one retained Hi-Z mip. Non-lit views skip presentation effects so diagnostics remain direct and stable. Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it.
+- The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
+- Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
+- The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Hi-Z queries cover the complete coarse-mip footprint; camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
-- Structured run results include renderer counters for GPU-driven mode, meshlet capability/activation/draw/visibility state, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, instance/meshlet frustum, cone, and occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
+- Structured run results include renderer counters for GPU-driven mode, meshlet capability/activation/draw/visibility state, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, explicit Hi-Z status/threshold, instance/meshlet frustum, cone, and occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
 - Headless `wgpu` creates an adapter and device without SDL or an OS presentation surface, renders into an offscreen texture, and can run bounded GPU workloads without reading pixels back.
 - The offscreen path can optionally render a losslessly compressed final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
@@ -196,6 +198,15 @@ allocation, copies the resulting GPU counter into an indirect draw, and overlays
 lines. It adds neither a cull-stage storage binding nor CPU readback. Whole-primitive fallback
 renders an unmistakable unavailable pattern instead of mislabeling triangles as meshlets.
 
+Occlusion Queries reuses the same diagnostic tail but records every performed object or meshlet
+query. Each record contains the projected rectangle, selected mip, nearest bound depth, sampled
+farthest depth, identity, and decision produced by the culling shader. The overlay draws those
+rectangles indirectly over dim world context: mint survived and pink was rejected.
+
+Freeze stops replacing the query-record range and indirect count after one valid capture. It does
+not preserve the pyramid for real visibility decisions, stall the GPU, or copy the records to the
+CPU. Leaving the view releases the frozen diagnostic evidence.
+
 The editor composes its Game-view selector from ordinary public layout, button, popup, list, and
 scroll components. Its choice temporarily overrides the extracted camera copy and never mutates
 the authored project camera. Choosing `Camera` returns control to the authored value.
@@ -203,10 +214,11 @@ the authored project camera. Choosing `Camera` returns control to the authored v
 **Why:** Projects, tools, automated framegrabs, and the editor need the same view semantics.
 Diagnostics must describe actual retained renderer data, and inspecting a scene must not dirty it.
 
-**Tradeoff:** Meshlet modes require active meshlet submission. Visibility mode deliberately adds
-diagnostic writes and one indirect overlay pass while selected, and overlapping rejected bounds
-can become dense in large scenes. Hi-Z inspection shows conservative stored depth rather than
-linear camera distance and adds one fullscreen diagnostic pass while selected.
+**Tradeoff:** Meshlet identity, visibility, and query modes require active meshlet submission. Visibility and query modes
+deliberately add diagnostic writes and one indirect overlay pass while selected, and overlapping
+records can become dense in large scenes. Hi-Z inspection shows conservative stored depth rather
+than linear camera distance and adds one fullscreen diagnostic pass while selected. Query
+inspection exposes performed conservative sphere tests, not bypassed work or triangle silhouettes.
 
 ### 16. Compose the imported environment as the HDR sky and support camera exposure
 

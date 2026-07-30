@@ -150,10 +150,10 @@ With `--runtime-stats`, JSON results include a `runtime_stats` object. It report
 JSON run results also include `render_stats`. For WGPU, the object groups together:
 
 - Active-path flags for compute culling, meshlet culling, native multi-draw acceleration, and clustered lighting.
-- Meshlet capability, retained draw count, visible capacity, frustum/cone/occlusion counters, and the opt-in `meshlet_debug_records` count.
+- Meshlet capability, retained draw count, visible capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count.
 - Shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values.
 - Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.
-- Frustum candidates, explicit frustum rejections, visible instances, occlusion rejections, per-LOD visible counts, and Hi-Z state.
+- Frustum candidates, explicit frustum rejections, visible instances, per-LOD visible counts, and Hi-Z validity, status, mip count, and adaptive instance threshold.
 - Retained-UI vertex rebuild and upload counters for project UI, editor UI, and editor-world overlays.
 
 When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms`, `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` samples.

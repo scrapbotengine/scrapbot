@@ -24,11 +24,13 @@ Every registered Geometry also owns deterministic meshlets capped at 64 vertices
 
 When a native adapter exposes indirect-first-instance, WGPU retains one indexed-indirect command and aligned visible-instance slice per meshlet. After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum, single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World, depth, and shadow then submit the CPU-known meshlet ranges with one fixed multi-draw per retained geometry/material/LOD batch.
 
-Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, or `hiz` to capture the same diagnostics without opening the editor. `debug_hiz_mip` selects the retained pyramid level for `hiz`.
+Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, or `occlusion_queries` to capture the same diagnostics without opening the editor. `debug_hiz_mip` selects the retained pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for `occlusion_queries`.
 
-The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`, `game-debug-lod.json`, `game-debug-visibility.json`, and `game-debug-hiz.json` drive the editor selector and capture only Game. Pair LOD with `tests/fixtures/gpu-lod`, visibility or Hi-Z with `examples/ecs-showcase`, or either meshlet view with `examples/sponza`.
+The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`, `game-debug-lod.json`, `game-debug-visibility.json`, `game-debug-hiz.json`, and `game-debug-occlusion.json` drive the editor selector and capture only Game. Pair LOD with `tests/fixtures/gpu-lod`, visibility or Hi-Z with `examples/ecs-showcase`, either meshlet view with `examples/sponza`, and Occlusion Queries with the dense `examples/clustered-lights` cathedral.
 
-Visibility diagnostics remain GPU-native. The culling pass emits rejected meshlet bounds into an aligned diagnostic range only while the view is active, copies its count into an indirect line draw, and publishes `meshlet_debug_records` in structured render statistics. No CPU readback or topology rebuild is required.
+Visibility diagnostics remain GPU-native. The culling pass emits records into an aligned diagnostic range only while a matching view is active, copies its count into an indirect line draw, and publishes `meshlet_debug_records` through the existing asynchronous statistics path. Meshlet Visibility records rejected bounds. Occlusion Queries records the exact query rectangle, selected mip, nearest bound depth, sampled farthest depth, identity, and decision for every tested object or meshlet.
+
+Freeze stops replacing only the diagnostic range and indirect count. It does not pause simulation or reuse stale Hi-Z for real visibility decisions. Leaving the view invalidates the retained evidence. No topology rebuild or synchronous CPU readback is required.
 
 `--cpu-culling`, adapters without indirect-first-instance, and layouts exceeding 1,048,576 meshlet-visible entries use the whole-primitive indexed-indirect path. This is a capability and memory fallback, not a different project-facing geometry format.
 

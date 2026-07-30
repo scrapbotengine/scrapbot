@@ -162,6 +162,10 @@ WGPU derives one output layout and one effective world-render layout after that 
 
 When the camera selects Hi-Z inspection, WGPU builds the ordinary current-frame pyramid and then samples the requested mip directly into the HDR world target. The debug pass expands each stored texel to its exact screen footprint; selecting another mip changes only the compact render uniform.
 
+When the camera selects Occlusion Queries, the GPU culler appends exact query evidence into the meshlet diagnostic tail. Object rejection writes one record. Surviving objects write one record for each meshlet whose Hi-Z test executes. The overlay consumes the same GPU records through one indirect line draw.
+
+Freezing leaves the last valid diagnostic range and indirect count resident while ordinary visibility continues to use current safety gates. Disabling freeze resumes replacement. Leaving the view invalidates the evidence.
+
 Global volumetric fog is scene-owned rather than camera-owned. It composes before temporal resolution and bloom, stops at scene depth or its authored distance bound, and becomes a shader no-op when absent or at zero density.
 
 World shading writes:
@@ -182,12 +186,14 @@ Changing effective render scale replaces only size-dependent targets and rejects
 
 ```text
 frame interval ──> fixed 50-frame rolling accumulator ──┐
-WGPU timing / draw / visibility counters ──────────────┼─> revisioned snapshot every 5 frames
+WGPU timing / draw / visibility / Hi-Z state ──────────┼─> revisioned snapshot every 5 frames
 spawn/despawn-maintained entity-origin counts ─────────┘                │
                                                                public ECS UI panel
 ```
 
-The editor formats values only when the snapshot revision changes. GPU timestamp values are asynchronous, and draw batches describe retained GPU-driven grouping rather than every API draw command in every pass.
+The editor formats values only when the snapshot revision changes. GPU timestamp and visibility values are asynchronous, and draw batches describe retained GPU-driven grouping rather than every API draw command in every pass.
+
+Hi-Z state is an explicit enum: unavailable, below threshold, scene changed, camera changed, warming up, or active. Object and meshlet occlusion counts remain separate so a zero can be interpreted without guessing which eligibility or safety gate applied.
 
 ### Bounded render profiles
 
